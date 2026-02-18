@@ -1,0 +1,22 @@
+[package]
+name = "lojban_nesy_engine"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bumpalo = { version = "3.20.0", features = ["collections"] }
+egglog = "2.0.0"
+lasso = "0.7.3"
+logos = "0.16.1"
+pest = "2.8.6"
+pest_derive = "2.8.6"
+reedline = "0.45.0"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+
+[build]
+target = "wasm32-wasip2"

@@ -1,0 +1,37 @@
+// --- Core Structural Rules ---
+text = { SOI ~ (sentence)+ ~ EOI }
+
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" | "." }
+COMMENT = _{ "#" ~ (!NEWLINE ~ ANY)* }
+
+sentence = { sumti_list? ~ "cu"? ~ bridi_tail }
+
+bridi_tail = { selbri ~ sumti_list? ~ "vau"? }
+
+sumti_list = { sumti+ }
+
+// --- Predicates (Selbri) ---
+selbri = { tanru | simple_selbri }
+
+tanru = { simple_selbri ~ simple_selbri+ }
+
+simple_selbri = { gismu | lujvo | cmevla }
+
+// --- Arguments (Sumti) ---
+sumti = { lo_clause | pron_clause | name_clause | quoted_clause }
+
+// A description sumti. `ku` is the terminator, but it is often elided.
+lo_clause = { "lo" ~ selbri ~ "ku"? }
+
+pron_clause = { "mi" | "do" | "ko'a" | "da" | "de" | "di" }
+
+name_clause = { "la" ~ cmevla ~ "ku"? }
+
+quoted_clause = { "zo" ~ ANY | "zoi" ~ ANY+ } // Fallback for any quotes that survived preprocessing
+
+// --- Lexical Primitives ---
+// Since the preprocessor already sanitized the stream, these rules 
+// just match the clean strings we feed into the parser.
+gismu = @{ ASCII_ALPHA+ }
+lujvo = @{ ASCII_ALPHA+ }
+cmevla = @{ ASCII_ALPHA+ ~ "."? }
