@@ -1,207 +1,3 @@
-# Lojban NeSy Engine — Comprehensive Review
-
-## BUGS (Will cause incorrect behavior or crashes)
-
-### B1. `(let f1 ...)` rebinding in reasoning `assert_fact` [reasoning/lib.rs]
-
-Every call to `assert_fact` runs `(let f1 <sexp>)`. egglog `let` binds a global name. The second assertion either shadows or errors depending on egglog version. After two assertions, the engine is in undefined territory.
-
-**Fix:** Maintain an atomic counter alongside the `Mutex<EGraph>` and generate unique names (`f1`, `f2`, `f3`...), or drop `let` entirely and inline the expression directly into the `IsTrue` call:
-
-```rust
-let command = format!("(IsTrue {})\n(run 10)", sexp);
-```
-
----
-
-### B2. Bumpalo arena dropped while AST is still borrowed [parser/lib.rs]
-
-```rust
-fn parse_text(input: String) -> Result<AstBuffer, String> {
-    let arena = Bump::new();          // created here
-    let raw_tokens = tokenize(&input);
-    let normalized = preprocess(...);
-    let ast = parse_tokens_to_ast(&normalized, &arena)?;  // borrows arena
-    Ok(flatten_to_buffer(ast))        // arena dropped here
-}
-```
-
-This works *today* only because `flatten_to_buffer` eagerly `.to_string()`s everything. But the arena allocation is wasted — you pay for bump allocation then immediately copy to the heap. If anyone later tries to return arena-borrowed data, it's use-after-free.
-
-**Fix:** Either remove bumpalo entirely (use owned types in the AST), or move the arena to a caller-controlled scope where the borrow is valid for the full lifetime needed.
-
----
-
-### B3. `Box<Selbri>` in arena-allocated AST [parser/ast.rs]
-
-`Sumti::Description(Box<Selbri<'a>>)` and `Selbri::Tanru(Box<Selbri<'a>>, Box<Selbri<'a>>)` allocate on the global heap, not the bump arena. This defeats the purpose of using bumpalo and creates a mixed allocation model (some data in arena, some on heap).
-
-**Fix:** Either:
-- Use `&'a Selbri<'a>` references with `arena.alloc()` instead of `Box`, or
-- Drop bumpalo entirely and use `Box` everywhere (simpler, and you're copying to owned strings at the WIT boundary anyway)
-
----
-
-### B4. `sa` (EraseClass) panics at runtime [parser/preprocessor.rs]
-
-```rust
-LojbanToken::EraseClass => {
-    unimplemented!("'sa' (EraseClass) resolution requires...");
-}
-```
-
-Any Lojban input containing `sa` causes a WASM trap, killing the pipeline. Same for valid Lojban text that happens to contain `sa` as a substring matched by the lexer.
-
-**Fix:** Replace with a no-op that logs a warning, or return `Err`:
-
-```rust
-LojbanToken::EraseClass => {
-    // V1: treat as no-op, log warning
-    eprintln!("Warning: 'sa' erasure not yet supported, ignoring");
-}
-```
-
----
-
-### B5. `to_sexp` panics on `ForAll`/`Exists` [semantics/semantic.rs]
-
-```rust
-_ => unimplemented!("Other forms deferred for V1 MVP"),
-```
-
-If any code path ever constructs a quantified `LogicalForm` and serializes it, the WASM component traps. The variants exist in the IR enum but can't be serialized.
-
-**Fix:** Either implement stub serialization or remove the variants from the enum until supported:
-
-```rust
-LogicalForm::ForAll(var, body) => {
-    format!("(ForAll \"{}\" {})", self.interner.resolve(var), self.to_sexp(body))
-}
-LogicalForm::Exists(var, body) => {
-    format!("(Exists \"{}\" {})", self.interner.resolve(var), self.to_sexp(body))
-}
-```
-
----
-
-### B6. Cmevla regex is too greedy, overlaps with Gismu [parser/lexer.rs]
-
-```rust
-#[regex(r"[a-zA-Z'\.]+[^aeiouy \t\n\f\.]")]
-Cmevla,
-```
-
-This pattern will match words that should be classified as Gismu. For example, `donri` (a valid gismu meaning "daytime") ends in `i` (vowel), so it *shouldn't* match Cmevla — but the character class `[a-zA-Z'\.]+` could greedily consume partial matches in edge cases, especially with names adjacent to other words. More critically, the pattern matches any string ending in a consonant, which will eat multi-word sequences without proper word boundary anchoring.
-
-**Fix:** Add word boundary anchors or restructure the regex to be non-greedy. Test specifically with: `djan`, `donri`, `la .djan.`, `alis`.
-
----
-
-### B7. Query entailment uses error-as-control-flow [reasoning/lib.rs]
-
-```rust
-match egraph.parse_and_run_program(None, &command) {
-    Ok(_) => true,
-    Err(e) => false, // conflates "not entailed" with "malformed query" or egglog bug
-}
-```
-
-A malformed S-expression, an egglog internal error, and a legitimate `false` result are all treated identically.
-
-**Fix:** Inspect the error message — egglog's `check` failure has a specific format. At minimum, distinguish between check-failure and other errors:
-
-```rust
-Err(e) => {
-    let msg = format!("{}", e);
-    if msg.contains("Check failed") {
-        false
-    } else {
-        eprintln!("[Reasoning] Unexpected error: {}", e);
-        false
-    }
-}
-```
-
----
-
-### B8. Runner REPL crashes on WASM traps instead of recovering [runner/main.rs]
-
-```rust
-reasoning_inst
-    .lojban_nesy_reasoning()
-    .call_assert_fact(&mut store, &sexp)?;
-```
-
-The `?` operator propagates any WASM trap (from bugs B4, B5, or malformed input) as an `anyhow::Error`, which exits the REPL entirely. One bad input kills the session.
-
-**Fix:** Match the error and continue the REPL loop:
-
-```rust
-if let Err(e) = reasoning_inst
-    .lojban_nesy_reasoning()
-    .call_assert_fact(&mut store, &sexp)
-{
-    eprintln!("[Host] Reasoning error: {}", e);
-    continue;
-}
-```
-
----
-
-## IMPROVEMENTS (Ordered by impact and dependency chain)
-
-### Phase 1: Stabilize what exists
-
-#### I1. Delete dead code and unused dependencies
-
-| Item | Location |
-|---|---|
-| `reasoning.rs` | `reasoning/src/` — old dynamic-injection implementation that won't compile (references `dictionary::JbovlasteSchema` and `semantic::SemanticCompiler` which don't exist in this crate). Delete. |
-| `orchestrator` crate | Root tree — not in workspace `members`. Delete or add to workspace. |
-| `quick-xml` | `reasoning/Cargo.toml` — declared but unused. Remove. |
-| `nom` | `parser/Cargo.toml` — declared but unused. Remove. |
-| `lojban.pest` | `parser/src/` — file exists but no `pest`/`pest_derive` dependency. Remove. |
-| `rustix` (commented) | `runner/Cargo.toml` — dead comment. Remove. |
-| `serde` | `semantics/Cargo.toml` — declared but no `Serialize`/`Deserialize` derives in code. Remove unless planned. |
-
-#### I2. Align Rust editions
-
-Runner uses `edition = "2021"`, everything else uses `edition = "2024"`. Align to `2024`.
-
-#### I3. Add `result` types to WIT interface for semantics and reasoning
-
-```wit
-interface semantics {
-    use ast-types.{ast-buffer};
-    compile-buffer: func(ast: ast-buffer) -> result<list<string>, string>;
-}
-
-interface reasoning {
-    assert-fact: func(sexp: string) -> result<_, string>;
-    query-entailment: func(sexp: string) -> result<bool, string>;
-}
-```
-
-This makes errors part of the contract instead of causing WASM traps.
-
-#### I4. Fix `build.rs` XML parsing [semantics/build.rs]
-
-Replace `split("<valsi ")` + manual string extraction with `quick-xml` or `roxmltree` in `build-dependencies`. Current approach silently breaks on CDATA sections, XML entities (`&amp;`), multiline attributes, or `<valsi` appearing in definition text.
-
-Also: the arity extraction (`extract_arity`) searches for `x5`/`x4` etc. in definitions after stripping tags, but jbovlaste definitions use inconsistent formats (`$x_1$`, `{x1}`, prose descriptions). Validate against a known-correct arity table for at least the core gismu.
-
-#### I5. Make default arity explicit, not silent [semantics/dictionary.rs]
-
-```rust
-*JBOVLASTE_ARITIES.get(word).unwrap_or(&2)
-```
-
-Silently defaulting to 2 produces wrong logical forms for unknown words. Return `Option<usize>` and let the caller decide. The hardcoded `klama` fast-path suggests the PHF might have a bug for that entry — investigate and remove the override if the dictionary is correct.
-
----
-
-### Phase 2: Parser — the critical bottleneck
-
 #### I6. Implement recursive descent parser with `nom`
 
 The current parser is a flat single-pass loop that only handles `[sumti*] cu? selbri [sumti*]`. Everything downstream is bottlenecked by this. Priority constructs to implement, in order:
@@ -353,3 +149,48 @@ The current IR uses flat predicates: `prami(mi, do)`. The standard approach in f
 ```
 
 This enables temporal reasoning, adverbial modification, and causality chains — all expressible in Lojban via tense/aspect system (`pu`/`ca`/`ba`, `za'o`/`co'a`, etc.). This is a fundamental architectural shift but the correct long-term target for a neuro-symbolic engine.
+
+
+
+---
+
+
+### B4. `sa` (EraseClass) panics at runtime [parser/preprocessor.rs]
+
+```rust
+LojbanToken::EraseClass => {
+    unimplemented!("'sa' (EraseClass) resolution requires...");
+}
+```
+
+Any Lojban input containing `sa` causes a WASM trap, killing the pipeline. Same for valid Lojban text that happens to contain `sa` as a substring matched by the lexer.
+
+**Fix:** Replace with a no-op that logs a warning, or return `Err`:
+
+```rust
+LojbanToken::EraseClass => {
+    // V1: treat as no-op, log warning
+    eprintln!("Warning: 'sa' erasure not yet supported, ignoring");
+}
+```
+
+---
+
+### B5. `to_sexp` panics on `ForAll`/`Exists` [semantics/semantic.rs]
+
+```rust
+_ => unimplemented!("Other forms deferred for V1 MVP"),
+```
+
+If any code path ever constructs a quantified `LogicalForm` and serializes it, the WASM component traps. The variants exist in the IR enum but can't be serialized.
+
+**Fix:** Either implement stub serialization or remove the variants from the enum until supported:
+
+```rust
+LogicalForm::ForAll(var, body) => {
+    format!("(ForAll \"{}\" {})", self.interner.resolve(var), self.to_sexp(body))
+}
+LogicalForm::Exists(var, body) => {
+    format!("(Exists \"{}\" {})", self.interner.resolve(var), self.to_sexp(body))
+}
+```
