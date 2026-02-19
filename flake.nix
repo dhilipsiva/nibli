@@ -21,7 +21,7 @@
         # Inject the absolute latest stable compiler, forcing the WASI Preview 2 target
         rustToolchain = pkgs.rust-bin.stable.latest.default.override {
           extensions = [ "rust-src" "rust-analyzer" ];
-          targets = [ "wasm32-wasip2" "wasm32-unknown-unknown" ];
+          targets = [ "wasm32-wasip1" "wasm32-wasip2" "wasm32-unknown-unknown" ];
         };
       in
       {
@@ -30,6 +30,7 @@
           buildInputs = with pkgs; [
             # Core Compiler
             rustToolchain
+            just
 
             # WASI Preview 2 / Component Model Tooling
             wasm-tools          # Low-level WASM/WIT manipulation

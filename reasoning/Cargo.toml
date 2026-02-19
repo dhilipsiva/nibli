@@ -1,0 +1,19 @@
+[package]
+name = "reasoning"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+egglog = "2.0.0"
+quick-xml = "0.39.1"
+wit-bindgen-rt = "0.44.0"
+
+[package.metadata.component]
+package = "lojban:nesy"
+
+[package.metadata.component.target]
+path = "../wit/world.wit"
+world = "reasoning-component"
+
+[lib]
+crate-type = ["cdylib"]

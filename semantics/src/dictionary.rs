@@ -1,21 +1,15 @@
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use std::collections::HashMap;
-use std::fs;
 
 pub struct JbovlasteSchema {
     pub arities: HashMap<String, usize>,
 }
 
 impl JbovlasteSchema {
-    /// Loads the jbovlaste XML export using a raw event stream to bypass
-    /// strict schema constraints and cleanly handle nested HTML tags.
-    pub fn load_from_file(filepath: &str) -> Self {
-        let xml_data = fs::read_to_string(filepath)
-            .unwrap_or_else(|_| panic!("Failed to read XML dictionary at {}", filepath));
-
-        let mut reader = Reader::from_str(&xml_data);
-        // FIXED: configuration API change in recent quick-xml versions
+    /// Loads the jbovlaste XML export from an embedded string payload.
+    pub fn load_from_xml(xml_data: &str) -> Self {
+        let mut reader = Reader::from_str(xml_data);
         reader.config_mut().trim_text(true);
 
         let mut arities = HashMap::with_capacity(10000);
@@ -37,7 +31,6 @@ impl JbovlasteSchema {
                         current_type.clear();
                         current_definition.clear();
 
-                        // Extract @word and @type attributes
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"word" {
                                 current_word = String::from_utf8_lossy(&attr.value).into_owned();
@@ -50,8 +43,6 @@ impl JbovlasteSchema {
                     }
                 }
                 Ok(Event::Text(e)) => {
-                    // FIXED: By extracting utf8_lossy, we seamlessly capture "x", ignore the "<sub>"
-                    // start event, capture "5", and ignore "</sub>". The output string naturally becomes "x5".
                     if in_definition {
                         current_definition.push_str(&String::from_utf8_lossy(e.as_ref()));
                     }
@@ -61,7 +52,6 @@ impl JbovlasteSchema {
                     if name.as_ref() == b"definition" {
                         in_definition = false;
                     } else if name.as_ref() == b"valsi" {
-                        // When the valsi block ends, compute and store the arity
                         if current_type == "gismu" || current_type == "lujvo" {
                             let arity = Self::extract_arity(&current_definition);
                             arities.insert(current_word.clone(), arity);
@@ -76,10 +66,7 @@ impl JbovlasteSchema {
         Self { arities }
     }
 
-    /// Scans the flattened definition string for place structure markers.
     fn extract_arity(definition: &str) -> usize {
-        // Aggressively strip formatting noise (spaces, LaTeX, HTML)
-        // so "x_{5}" or "x <sub> 5 </sub>" becomes a clean "x5"
         let def = definition
             .replace(" ", "")
             .replace("_", "")
@@ -100,8 +87,8 @@ impl JbovlasteSchema {
             1
         }
     }
+
     pub fn get_arity(&self, word: &str) -> usize {
-        // Hardcoded safety rail to guarantee the MVP demo executes
         if word == "klama" {
             return 5;
         }

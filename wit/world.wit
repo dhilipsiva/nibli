@@ -1,0 +1,67 @@
+package lojban:nesy@0.1.0;
+
+interface ast-types {
+    type selbri-id = u32;
+    type sumti-id = u32;
+
+    variant sumti {
+        pro-sumti(string),
+        description(selbri-id),
+        name(string),
+        quoted-literal(string),
+    }
+
+    variant selbri {
+        root(string),
+        compound(list<string>),
+        tanru(tuple<selbri-id, selbri-id>),
+    }
+
+    record bridi {
+        relation: selbri-id,
+        terms: list<sumti-id>,
+    }
+
+    record ast-buffer {
+        selbris: list<selbri>,
+        sumtis: list<sumti>,
+        sentences: list<bridi>,
+    }
+}
+
+interface parser {
+    use ast-types.{ast-buffer};
+    parse-text: func(input: string) -> result<ast-buffer, string>;
+}
+
+interface semantics {
+    use ast-types.{ast-buffer};
+    compile-buffer: func(ast: ast-buffer) -> list<string>;
+}
+
+interface reasoning {
+    assert-fact: func(sexp: string);
+    query-entailment: func(sexp: string) -> bool;
+}
+
+// --- Component Worlds ---
+
+world parser-component {
+    export parser;
+}
+
+world semantics-component {
+    export semantics;
+}
+
+world reasoning-component {
+    export reasoning;
+}
+
+world engine-pipeline {
+    import parser;
+    import semantics;
+    import reasoning;
+    
+    export execute: func(input: string) -> bool;
+}

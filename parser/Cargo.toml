@@ -1,0 +1,21 @@
+[package]
+name = "parser"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+logos = "0.16.1"
+pest = "2.8.6"
+pest_derive = "2.8.6"
+bumpalo = { version = "3.20.0", features = ["collections"] }
+wit-bindgen-rt = "0.44.0"
+
+[package.metadata.component]
+package = "lojban:nesy"
+
+[package.metadata.component.target]
+path = "../wit/world.wit"
+world = "parser-component"
+
+[lib]
+crate-type = ["cdylib"]
