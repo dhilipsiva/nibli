@@ -1,37 +1,42 @@
-use crate::ast::{Bridi, Selbri, Sumti};
+use crate::bindings::lojban::nesy::ast_types::{Bridi, Selbri, Sumti};
 use crate::dictionary::JbovlasteSchema;
 use crate::ir::{LogicalForm, LogicalTerm};
 use lasso::Rodeo;
 
 pub struct SemanticCompiler {
     pub interner: Rodeo,
-    pub schema: JbovlasteSchema,
 }
 
 impl SemanticCompiler {
-    pub fn new(schema: JbovlasteSchema) -> Self {
+    pub fn new() -> Self {
         Self {
             interner: Rodeo::new(),
-            schema,
         }
     }
 
-    /// Compiles a parsed Bridi AST into an explicit First-Order Logic formula.
-    pub fn compile_bridi(&mut self, bridi: &Bridi) -> LogicalForm {
-        // 1. Resolve the Selbri (Relation)
-        let (relation_str, target_arity): (&str, usize) = match &bridi.selbri {
-            Selbri::Root(gismu) => (gismu, self.schema.get_arity(gismu)),
-            Selbri::Tanru(_modifier, head) => {
-                let head_str: &str = match head.as_ref() {
+    /// Compiles a flattened WASM Bridi AST into an explicit First-Order Logic formula.
+    pub fn compile_bridi(
+        &mut self,
+        bridi: &Bridi,
+        selbris: &[Selbri],
+        sumtis: &[Sumti],
+    ) -> LogicalForm {
+        // 1. Resolve the Selbri (Relation) using the flat array index
+        let selbri_node = &selbris[bridi.relation as usize];
+
+        let (relation_str, target_arity): (&str, usize) = match selbri_node {
+            Selbri::Root(gismu) => (gismu, JbovlasteSchema::get_arity(gismu)),
+            Selbri::Tanru((modifier_id, head_id)) => {
+                let head_node = &selbris[*head_id as usize];
+                let head_str: &str = match head_node {
                     Selbri::Root(h) => h,
                     _ => "unknown",
                 };
-                (head_str, self.schema.get_arity(head_str))
+                (head_str, JbovlasteSchema::get_arity(head_str))
             }
             Selbri::Compound(parts) => {
-                // Very crude fallback for V1 lujvo handling
-                let head_str = parts.last().unwrap_or(&"unknown");
-                (head_str, self.schema.get_arity(head_str))
+                let head_str = parts.last().map(|s| s.as_str()).unwrap_or("unknown");
+                (head_str, JbovlasteSchema::get_arity(head_str))
             }
         };
         let relation_id = self.interner.get_or_intern(relation_str);
@@ -39,8 +44,9 @@ impl SemanticCompiler {
         // 2. Map Sumti to Logical Terms
         let mut args: Vec<LogicalTerm> = Vec::with_capacity(target_arity);
 
-        for term in bridi.terms.iter() {
-            let logical_term = match term {
+        for &term_id in bridi.terms.iter() {
+            let term_node = &sumtis[term_id as usize];
+            let logical_term = match term_node {
                 Sumti::ProSumti(p) => {
                     let p_str: &str = p;
                     if p_str == "da" || p_str == "de" || p_str == "di" {
@@ -53,8 +59,9 @@ impl SemanticCompiler {
                     let n_str: &str = n;
                     LogicalTerm::Constant(self.interner.get_or_intern(n_str))
                 }
-                Sumti::Description(selbri) => {
-                    let desc_str: &str = match selbri.as_ref() {
+                Sumti::Description(desc_selbri_id) => {
+                    let desc_selbri_node = &selbris[*desc_selbri_id as usize];
+                    let desc_str: &str = match desc_selbri_node {
                         Selbri::Root(r) => r,
                         _ => "entity",
                     };
@@ -70,10 +77,8 @@ impl SemanticCompiler {
             args.push(LogicalTerm::Unspecified);
         }
 
-        // 4. Truncation (Safety rail against bad parsing)
-        if args.len() > target_arity {
-            args.truncate(target_arity);
-        }
+        // Note: Intentional removal of the `args.truncate()` safety rail.
+        // Lojban allows extended arities via modal tags (BAI). We preserve all data.
 
         LogicalForm::Predicate {
             relation: relation_id,
@@ -86,7 +91,6 @@ impl SemanticCompiler {
         match form {
             LogicalForm::Predicate { relation, args } => {
                 let raw_rel = self.interner.resolve(relation);
-                let rel_str = Self::sanitize_name(raw_rel);
 
                 let args_str: Vec<String> = args
                     .iter()
@@ -104,21 +108,13 @@ impl SemanticCompiler {
                     })
                     .collect();
 
-                format!("({} {})", rel_str, args_str.join(" "))
+                let arity = args.len().clamp(1, 5);
+                format!("(Pred{} \"{}\" {})", arity, raw_rel, args_str.join(" "))
             }
             LogicalForm::And(left, right) => {
                 format!("(And {} {})", self.to_sexp(left), self.to_sexp(right))
             }
             _ => unimplemented!("Other forms deferred for V1 MVP"),
         }
-    }
-
-    /// egglog datatypes must be capitalized and avoid special characters.
-    pub fn sanitize_name(word: &str) -> String {
-        let mut s = word.replace('\'', "_").replace('.', "");
-        if let Some(r) = s.get_mut(0..1) {
-            r.make_ascii_uppercase();
-        }
-        s
     }
 }

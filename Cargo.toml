@@ -2,8 +2,9 @@
 members = [
     "parser",
     "semantics",
-    "reasoning"
-, "runner"]
+    "reasoning", 
+    "runner"
+]
 resolver = "2"
 
 [profile.release]

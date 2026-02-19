@@ -1,107 +1,84 @@
+pub mod ast;
 #[allow(warnings)]
 mod bindings;
-
-mod ast;
-mod lexer;
-mod preprocessor;
+pub mod lexer;
+pub mod preprocessor;
 
 use bindings::exports::lojban::nesy::parser::Guest;
-use bindings::lojban::nesy::ast_types::{AstBuffer, Bridi, Selbri, Sumti};
+use bindings::lojban::nesy::ast_types::AstBuffer;
 use bumpalo::Bump;
-
-use crate::ast::parse_to_ast;
-use crate::lexer::tokenize;
-use crate::preprocessor::preprocess;
 
 struct ParserComponent;
 
 impl Guest for ParserComponent {
     fn parse_text(input: String) -> Result<AstBuffer, String> {
-        // 1. Lexing
-        let raw_tokens = tokenize(&input);
-
-        // 2. Preprocessing
-        let normalized_tokens = preprocess(raw_tokens.into_iter(), &input);
-
-        let sanitized_input = normalized_tokens
-            .iter()
-            .filter_map(|t| match t {
-                preprocessor::NormalizedToken::Standard(_, s) => Some(*s),
-                preprocessor::NormalizedToken::Quoted(s) => Some(*s),
-                preprocessor::NormalizedToken::Glued(parts) => Some(parts[0]),
-            })
-            .collect::<Vec<&str>>()
-            .join(" ");
-
-        // 3. Structural Parsing (Arena Allocated)
         let arena = Bump::new();
-        let bump_ast = parse_to_ast(&sanitized_input, &arena).map_err(|e| e.to_string())?;
 
-        // 4. Graph Flattening for Zero-Overhead WASM Boundary Crossing
-        let mut buffer = AstBuffer {
-            selbris: Vec::with_capacity(bump_ast.len() * 2),
-            sumtis: Vec::with_capacity(bump_ast.len() * 4),
-            sentences: Vec::with_capacity(bump_ast.len()),
-        };
+        // 1. Lex into classification stream
+        let raw_tokens = crate::lexer::tokenize(&input);
 
-        for bridi in bump_ast.iter() {
-            let relation_id = flatten_selbri(&bridi.selbri, &mut buffer.selbris);
+        // 2. Resolve metalinguistics (si/sa/su/zo/zoi) [cite: 1]
+        let normalized = crate::preprocessor::preprocess(raw_tokens.into_iter(), &input);
 
-            let mut term_ids = Vec::with_capacity(bridi.terms.len());
-            for term in bridi.terms.iter() {
-                term_ids.push(flatten_sumti(term, &mut buffer.selbris, &mut buffer.sumtis));
-            }
+        // 3. Structural Parse (Zero-Copy from tokens) [cite: 1]
+        let ast = crate::ast::parse_tokens_to_ast(&normalized, &arena)?;
 
-            buffer.sentences.push(Bridi {
-                relation: relation_id,
-                terms: term_ids,
-            });
-        }
-
-        // The Bump arena is instantly dropped here, leaving only the flat buffer to return.
-        Ok(buffer)
+        // 4. Flatten AST to linear buffer for WIT [cite: 1]
+        Ok(flatten_to_buffer(ast))
     }
 }
 
-/// Recursively flattens the Selbri tree into linear array indices.
-fn flatten_selbri(selbri: &crate::ast::Selbri, selbris: &mut Vec<Selbri>) -> u32 {
-    let mapped = match selbri {
-        crate::ast::Selbri::Root(r) => Selbri::Root(r.to_string()),
-        crate::ast::Selbri::Compound(parts) => {
-            Selbri::Compound(parts.iter().map(|s| s.to_string()).collect())
-        }
-        crate::ast::Selbri::Tanru(modi, head) => {
-            let m_id = flatten_selbri(modi, selbris);
-            let h_id = flatten_selbri(head, selbris);
-            Selbri::Tanru((m_id, h_id))
-        }
+fn flatten_to_buffer(ast_list: bumpalo::collections::Vec<crate::ast::Bridi>) -> AstBuffer {
+    let mut buffer = AstBuffer {
+        selbris: Vec::new(),
+        sumtis: Vec::new(),
+        sentences: Vec::new(),
     };
 
-    let id = selbris.len() as u32;
-    selbris.push(mapped);
-    id
-}
+    for bridi in ast_list {
+        let selbri_id = buffer.selbris.len() as u32;
+        let selbri_data = match bridi.selbri {
+            crate::ast::Selbri::Root(s) => {
+                bindings::lojban::nesy::ast_types::Selbri::Root(s.to_string())
+            }
+            _ => bindings::lojban::nesy::ast_types::Selbri::Root("unknown".to_string()),
+        };
+        buffer.selbris.push(selbri_data);
 
-/// Recursively flattens the Sumti tree into linear array indices.
-fn flatten_sumti(
-    sumti: &crate::ast::Sumti,
-    selbris: &mut Vec<Selbri>,
-    sumtis: &mut Vec<Sumti>,
-) -> u32 {
-    let mapped = match sumti {
-        crate::ast::Sumti::ProSumti(p) => Sumti::ProSumti(p.to_string()),
-        crate::ast::Sumti::Name(n) => Sumti::Name(n.to_string()),
-        crate::ast::Sumti::QuotedLiteral(q) => Sumti::QuotedLiteral(q.to_string()),
-        crate::ast::Sumti::Description(s) => {
-            let s_id = flatten_selbri(s, selbris);
-            Sumti::Description(s_id)
+        let mut term_ids = Vec::new();
+        for term in bridi.terms {
+            let sumti_id = buffer.sumtis.len() as u32;
+            let sumti_data = match term {
+                // Corrected namespace: nesy::ast_types
+                crate::ast::Sumti::ProSumti(s) => {
+                    bindings::lojban::nesy::ast_types::Sumti::ProSumti(s.to_string())
+                }
+                crate::ast::Sumti::Description(d_selbri) => {
+                    let d_selbri_id = buffer.selbris.len() as u32;
+                    let inner_selbri = match *d_selbri {
+                        crate::ast::Selbri::Root(s) => {
+                            bindings::lojban::nesy::ast_types::Selbri::Root(s.to_string())
+                        }
+                        _ => bindings::lojban::nesy::ast_types::Selbri::Root("desc".to_string()),
+                    };
+                    buffer.selbris.push(inner_selbri);
+                    bindings::lojban::nesy::ast_types::Sumti::Description(d_selbri_id)
+                }
+                _ => bindings::lojban::nesy::ast_types::Sumti::Name("unknown".to_string()),
+            };
+            buffer.sumtis.push(sumti_data);
+            term_ids.push(sumti_id);
         }
-    };
 
-    let id = sumtis.len() as u32;
-    sumtis.push(mapped);
-    id
+        buffer
+            .sentences
+            .push(bindings::lojban::nesy::ast_types::Bridi {
+                relation: selbri_id,
+                terms: term_ids,
+            });
+    }
+
+    buffer
 }
 
-// Bind the implementation to the generated WebAssembly exports
 bindings::export!(ParserComponent with_types_in bindings);

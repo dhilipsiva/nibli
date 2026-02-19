@@ -5,9 +5,12 @@ edition = "2024"
 
 [dependencies]
 lasso = "0.7.3"
-quick-xml = { version = "0.39.1", features = ["serialize"] }
+phf = "0.13.1"
 serde = { version = "1.0.228", features = ["derive"] }
 wit-bindgen-rt = "0.44.0"
+
+[build-dependencies]
+phf_codegen = "0.13.1"
 
 [package.metadata.component]
 package = "lojban:nesy"
