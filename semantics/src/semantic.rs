@@ -1,17 +1,25 @@
-use crate::bindings::lojban::nesy::ast_types::{Bridi, Conversion, Selbri, Sumti};
+use crate::bindings::lojban::nesy::ast_types::{Bridi, Conversion, Gadri, Selbri, Sumti};
 use crate::dictionary::JbovlasteSchema;
 use crate::ir::{LogicalForm, LogicalTerm};
 use lasso::Rodeo;
 
 pub struct SemanticCompiler {
     pub interner: Rodeo,
+    pub var_counter: usize,
 }
 
 impl SemanticCompiler {
     pub fn new() -> Self {
         Self {
             interner: Rodeo::new(),
+            var_counter: 0,
         }
+    }
+
+    fn fresh_var(&mut self) -> lasso::Spur {
+        let v = format!("_v{}", self.var_counter);
+        self.var_counter += 1;
+        self.interner.get_or_intern(&v)
     }
 
     pub fn compile_bridi(
@@ -47,8 +55,9 @@ impl SemanticCompiler {
 
         let relation_id = self.interner.get_or_intern(relation_str);
 
-        // 2. Map Sumti to Logical Terms
+        // 2. Map Sumti to Logical Terms and Extract Quantifiers
         let mut args: Vec<LogicalTerm> = Vec::with_capacity(target_arity);
+        let mut quantifiers = Vec::new(); // Stores (variable_spur, restrictor_relation_str)
 
         for &term_id in bridi.head_terms.iter().chain(bridi.tail_terms.iter()) {
             let logical_term = match &sumtis[term_id as usize] {
@@ -60,12 +69,20 @@ impl SemanticCompiler {
                     }
                 }
                 Sumti::Name(n) => LogicalTerm::Constant(self.interner.get_or_intern(n.as_str())),
-                Sumti::Description((_gadri, desc_id)) => {
+                Sumti::Description((gadri, desc_id)) => {
                     let desc_str = match &selbris[*desc_id as usize] {
                         Selbri::Root(r) => r.as_str(),
                         _ => "entity",
                     };
-                    LogicalTerm::Description(self.interner.get_or_intern(desc_str))
+
+                    // Core Fix: Map 'lo' to Existential Variables
+                    if matches!(gadri, Gadri::Lo) {
+                        let var = self.fresh_var();
+                        quantifiers.push((var, desc_str));
+                        LogicalTerm::Variable(var)
+                    } else {
+                        LogicalTerm::Description(self.interner.get_or_intern(desc_str))
+                    }
                 }
                 _ => LogicalTerm::Unspecified,
             };
@@ -88,10 +105,35 @@ impl SemanticCompiler {
             }
         }
 
-        LogicalForm::Predicate {
+        // 5. Construct Base Predicate
+        let mut final_form = LogicalForm::Predicate {
             relation: relation_id,
             args,
+        };
+
+        // 6. Wrap in Quantifiers (Outer-to-Inner)
+        for (var, desc_str) in quantifiers.into_iter().rev() {
+            let desc_rel = self.interner.get_or_intern(desc_str);
+            let target_arity = JbovlasteSchema::get_arity_or_default(desc_str);
+
+            let mut restrictor_args = Vec::with_capacity(target_arity);
+            restrictor_args.push(LogicalTerm::Variable(var));
+            while restrictor_args.len() < target_arity {
+                restrictor_args.push(LogicalTerm::Unspecified);
+            }
+
+            let restrictor = LogicalForm::Predicate {
+                relation: desc_rel,
+                args: restrictor_args,
+            };
+
+            final_form = LogicalForm::Exists(
+                var,
+                Box::new(LogicalForm::And(Box::new(restrictor), Box::new(final_form))),
+            );
         }
+
+        final_form
     }
 
     pub fn to_sexp(&self, form: &LogicalForm) -> String {

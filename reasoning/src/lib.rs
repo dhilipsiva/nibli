@@ -33,8 +33,12 @@ fn get_egraph() -> &'static Mutex<EGraph> {
                 (Or Formula Formula)
                 (Not Formula)
                 (Implies Formula Formula)
+                
+                ;; Quantifiers
+                (Exists String Formula)
+                (ForAll String Formula)
             )
-
+            
             ;; The Truth Relation (The Knowledge Base)
             (relation IsTrue (Formula))
 
