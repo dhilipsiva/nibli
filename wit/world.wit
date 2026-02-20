@@ -4,46 +4,15 @@ interface ast-types {
     type selbri-id = u32;
     type sumti-id = u32;
 
-    // ─── Grammatical marker enums ────────────────────────────────
-
-    enum place-tag {
-        fa, // x1
-        fe, // x2
-        fi, // x3
-        fo, // x4
-        fu, // x5
-    }
-
-    enum conversion {
-        se, // x1 ↔ x2
-        te, // x1 ↔ x3
-        ve, // x1 ↔ x4
-        xe, // x1 ↔ x5
-    }
-
-    enum connective {
-        je,  // AND (∧)
-        ja,  // OR  (∨)
-        jo,  // IFF (↔)
-        ju,  // XOR (⊕)
-    }
-
-    enum gadri {
-        lo, // veridical (∃)
-        le, // non-veridical
-        la, // named entity
-    }
-
-    enum rel-clause-kind {
-        poi, // restrictive
-        noi, // non-restrictive
-    }
-
-    // ─── Sumti (arguments) ───────────────────────────────────────
+    enum place-tag { fa, fe, fi, fo, fu }
+    enum conversion { se, te, ve, xe }
+    enum connective { je, ja, jo, ju }
+    enum gadri { lo, le, la }
+    enum rel-clause-kind { poi, noi }
 
     record rel-clause {
         kind: rel-clause-kind,
-        body-sentence: u32,  // index into sentences array
+        body-sentence: u32,
     }
 
     variant sumti {
@@ -56,8 +25,6 @@ interface ast-types {
         restricted(tuple<sumti-id, rel-clause>),
     }
 
-    // ─── Selbri (predicates) ─────────────────────────────────────
-
     variant selbri {
         root(string),
         compound(list<string>),
@@ -69,8 +36,6 @@ interface ast-types {
         connected(tuple<selbri-id, connective, selbri-id>),
     }
 
-    // ─── Bridi (predications) ────────────────────────────────────
-
     record bridi {
         relation: selbri-id,
         head-terms: list<sumti-id>,
@@ -78,12 +43,30 @@ interface ast-types {
         negated: bool,
     }
 
-    // ─── Top-level buffer ────────────────────────────────────────
-
     record ast-buffer {
         selbris: list<selbri>,
         sumtis: list<sumti>,
         sentences: list<bridi>,
+    }
+
+    // --- NEW: Zero-Copy Logic Types ---
+    variant logical-term {
+        variable(string),
+        constant(string),
+        description(string),
+        unspecified,
+    }
+
+    variant logic-node {
+        predicate(tuple<string, list<logical-term>>),
+        and-node(tuple<u32, u32>),
+        exists-node(tuple<string, u32>),
+        for-all-node(tuple<string, u32>),
+    }
+
+    record logic-buffer {
+        nodes: list<logic-node>,
+        roots: list<u32>,
     }
 }
 
@@ -93,34 +76,24 @@ interface parser {
 }
 
 interface semantics {
-    use ast-types.{ast-buffer};
-    compile-buffer: func(ast: ast-buffer) -> result<list<string>, string>;
+    use ast-types.{ast-buffer, logic-buffer};
+    compile-buffer: func(ast: ast-buffer) -> result<logic-buffer, string>;
 }
 
 interface reasoning {
-    assert-fact: func(sexp: string) -> result<_, string>;
-    query-entailment: func(sexp: string) -> result<bool, string>;
+    use ast-types.{logic-buffer};
+    assert-fact: func(logic: logic-buffer) -> result<_, string>;
+    query-entailment: func(logic: logic-buffer) -> result<bool, string>;
 }
 
 // --- Component Worlds ---
-
-world parser-component {
-    export parser;
-}
-
-world semantics-component {
-    export semantics;
-}
-
-world reasoning-component {
-    export reasoning;
-}
+world parser-component { export parser; }
+world semantics-component { export semantics; }
+world reasoning-component { export reasoning; }
 
 world engine-pipeline {
     import parser;
     import semantics;
     import reasoning;
-    
     export execute: func(input: string) -> bool;
 }
-

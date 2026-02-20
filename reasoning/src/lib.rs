@@ -1,7 +1,8 @@
 #[allow(warnings)]
 mod bindings;
 
-use bindings::exports::lojban::nesy::reasoning::Guest;
+use crate::bindings::exports::lojban::nesy::reasoning::Guest;
+use crate::bindings::lojban::nesy::ast_types::{LogicBuffer, LogicNode, LogicalTerm};
 use egglog::EGraph;
 use std::sync::{Mutex, OnceLock};
 
@@ -11,38 +12,29 @@ fn get_egraph() -> &'static Mutex<EGraph> {
     EGRAPH.get_or_init(|| {
         let mut egraph = EGraph::default();
 
-        // A strictly static, mathematical FOL schema. Zero dynamic Lojban injection required.
         let schema_str = r#"
-            ;; Data types
             (datatype Term
                 (Var String)
                 (Const String)
                 (Desc String)
-                (Zoe) ;; zo'e - unspecified
+                (Zoe)
             )
 
             (datatype Formula
-                ;; Generic Predicates replacing 9,300+ dynamic Lojban types
                 (Pred1 String Term)
                 (Pred2 String Term Term)
                 (Pred3 String Term Term Term)
                 (Pred4 String Term Term Term Term)
                 (Pred5 String Term Term Term Term Term)
-
                 (And Formula Formula)
                 (Or Formula Formula)
                 (Not Formula)
                 (Implies Formula Formula)
-                
-                ;; Quantifiers
                 (Exists String Formula)
                 (ForAll String Formula)
             )
-            
-            ;; The Truth Relation (The Knowledge Base)
-            (relation IsTrue (Formula))
 
-            ;; Equality Saturation Rules
+            (relation IsTrue (Formula))
             (rewrite (And A B) (And B A))
             (rewrite (Not (Not A)) A)
         "#;
@@ -58,32 +50,72 @@ fn get_egraph() -> &'static Mutex<EGraph> {
 struct ReasoningComponent;
 
 impl Guest for ReasoningComponent {
-    fn assert_fact(sexp: String) -> Result<(), String> {
+    fn assert_fact(logic: LogicBuffer) -> Result<(), String> {
         let egraph_mutex = get_egraph();
         let mut egraph = egraph_mutex.lock().unwrap();
 
-        let command = format!("(IsTrue {})\n(run 10)", sexp);
-        egraph
-            .parse_and_run_program(None, &command)
-            .map(|_| ())
-            .map_err(|e| format!("Failed to assert fact: {}", e))
+        for &root_id in &logic.roots {
+            let sexp = reconstruct_sexp(&logic, root_id);
+            let command = format!("(IsTrue {})\n(run 10)", sexp);
+            if let Err(e) = egraph.parse_and_run_program(None, &command) {
+                return Err(format!("Failed to assert fact: {}", e));
+            }
+        }
+        Ok(())
     }
 
-    fn query_entailment(sexp: String) -> Result<bool, String> {
+    fn query_entailment(logic: LogicBuffer) -> Result<bool, String> {
         let egraph_mutex = get_egraph();
         let mut egraph = egraph_mutex.lock().unwrap();
 
-        let command = format!("(check (IsTrue {}))", sexp);
-        match egraph.parse_and_run_program(None, &command) {
-            Ok(_) => Ok(true),
-            Err(e) => {
-                let msg = e.to_string();
-                if msg.contains("Check failed") {
-                    Ok(false)
-                } else {
-                    Err(format!("Reasoning error: {}", msg))
+        let mut all_true = true;
+        for &root_id in &logic.roots {
+            let sexp = reconstruct_sexp(&logic, root_id);
+            let command = format!("(check (IsTrue {}))", sexp);
+            match egraph.parse_and_run_program(None, &command) {
+                Ok(_) => {}
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("Check failed") {
+                        all_true = false;
+                    } else {
+                        return Err(format!("Reasoning error: {}", msg));
+                    }
                 }
             }
+        }
+        Ok(all_true)
+    }
+}
+
+/// A localized, high-speed translator operating purely on the zero-copy logic arena
+fn reconstruct_sexp(buffer: &LogicBuffer, node_id: u32) -> String {
+    match &buffer.nodes[node_id as usize] {
+        LogicNode::Predicate((rel, args)) => {
+            let args_str: Vec<String> = args
+                .iter()
+                .map(|arg| match arg {
+                    LogicalTerm::Variable(v) => format!("(Var \"{}\")", v),
+                    LogicalTerm::Constant(c) => format!("(Const \"{}\")", c),
+                    LogicalTerm::Description(d) => format!("(Desc \"{}\")", d),
+                    LogicalTerm::Unspecified => "(Zoe)".to_string(),
+                })
+                .collect();
+            let arity = args.len().clamp(1, 5);
+            format!("(Pred{} \"{}\" {})", arity, rel, args_str.join(" "))
+        }
+        LogicNode::AndNode((l, r)) => {
+            format!(
+                "(And {} {})",
+                reconstruct_sexp(buffer, *l),
+                reconstruct_sexp(buffer, *r)
+            )
+        }
+        LogicNode::ExistsNode((v, body)) => {
+            format!("(Exists \"{}\" {})", v, reconstruct_sexp(buffer, *body))
+        }
+        LogicNode::ForAllNode((v, body)) => {
+            format!("(ForAll \"{}\" {})", v, reconstruct_sexp(buffer, *body))
         }
     }
 }

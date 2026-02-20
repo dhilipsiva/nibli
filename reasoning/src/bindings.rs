@@ -3,6 +3,409 @@
 //   * runtime_path: "wit_bindgen_rt"
 #[rustfmt::skip]
 #[allow(dead_code, clippy::all)]
+pub mod lojban {
+    pub mod nesy {
+        #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
+        pub mod ast_types {
+            #[used]
+            #[doc(hidden)]
+            static __FORCE_SECTION_REF: fn() = super::super::super::__link_custom_section_describing_imports;
+            use super::super::super::_rt;
+            pub type SelbriId = u32;
+            pub type SumtiId = u32;
+            #[repr(u8)]
+            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+            pub enum PlaceTag {
+                Fa,
+                Fe,
+                Fi,
+                Fo,
+                Fu,
+            }
+            impl ::core::fmt::Debug for PlaceTag {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        PlaceTag::Fa => f.debug_tuple("PlaceTag::Fa").finish(),
+                        PlaceTag::Fe => f.debug_tuple("PlaceTag::Fe").finish(),
+                        PlaceTag::Fi => f.debug_tuple("PlaceTag::Fi").finish(),
+                        PlaceTag::Fo => f.debug_tuple("PlaceTag::Fo").finish(),
+                        PlaceTag::Fu => f.debug_tuple("PlaceTag::Fu").finish(),
+                    }
+                }
+            }
+            impl PlaceTag {
+                #[doc(hidden)]
+                pub unsafe fn _lift(val: u8) -> PlaceTag {
+                    if !cfg!(debug_assertions) {
+                        return ::core::mem::transmute(val);
+                    }
+                    match val {
+                        0 => PlaceTag::Fa,
+                        1 => PlaceTag::Fe,
+                        2 => PlaceTag::Fi,
+                        3 => PlaceTag::Fo,
+                        4 => PlaceTag::Fu,
+                        _ => panic!("invalid enum discriminant"),
+                    }
+                }
+            }
+            #[repr(u8)]
+            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+            pub enum Conversion {
+                Se,
+                Te,
+                Ve,
+                Xe,
+            }
+            impl ::core::fmt::Debug for Conversion {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        Conversion::Se => f.debug_tuple("Conversion::Se").finish(),
+                        Conversion::Te => f.debug_tuple("Conversion::Te").finish(),
+                        Conversion::Ve => f.debug_tuple("Conversion::Ve").finish(),
+                        Conversion::Xe => f.debug_tuple("Conversion::Xe").finish(),
+                    }
+                }
+            }
+            impl Conversion {
+                #[doc(hidden)]
+                pub unsafe fn _lift(val: u8) -> Conversion {
+                    if !cfg!(debug_assertions) {
+                        return ::core::mem::transmute(val);
+                    }
+                    match val {
+                        0 => Conversion::Se,
+                        1 => Conversion::Te,
+                        2 => Conversion::Ve,
+                        3 => Conversion::Xe,
+                        _ => panic!("invalid enum discriminant"),
+                    }
+                }
+            }
+            #[repr(u8)]
+            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+            pub enum Connective {
+                Je,
+                Ja,
+                Jo,
+                Ju,
+            }
+            impl ::core::fmt::Debug for Connective {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        Connective::Je => f.debug_tuple("Connective::Je").finish(),
+                        Connective::Ja => f.debug_tuple("Connective::Ja").finish(),
+                        Connective::Jo => f.debug_tuple("Connective::Jo").finish(),
+                        Connective::Ju => f.debug_tuple("Connective::Ju").finish(),
+                    }
+                }
+            }
+            impl Connective {
+                #[doc(hidden)]
+                pub unsafe fn _lift(val: u8) -> Connective {
+                    if !cfg!(debug_assertions) {
+                        return ::core::mem::transmute(val);
+                    }
+                    match val {
+                        0 => Connective::Je,
+                        1 => Connective::Ja,
+                        2 => Connective::Jo,
+                        3 => Connective::Ju,
+                        _ => panic!("invalid enum discriminant"),
+                    }
+                }
+            }
+            #[repr(u8)]
+            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+            pub enum Gadri {
+                Lo,
+                Le,
+                La,
+            }
+            impl ::core::fmt::Debug for Gadri {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        Gadri::Lo => f.debug_tuple("Gadri::Lo").finish(),
+                        Gadri::Le => f.debug_tuple("Gadri::Le").finish(),
+                        Gadri::La => f.debug_tuple("Gadri::La").finish(),
+                    }
+                }
+            }
+            impl Gadri {
+                #[doc(hidden)]
+                pub unsafe fn _lift(val: u8) -> Gadri {
+                    if !cfg!(debug_assertions) {
+                        return ::core::mem::transmute(val);
+                    }
+                    match val {
+                        0 => Gadri::Lo,
+                        1 => Gadri::Le,
+                        2 => Gadri::La,
+                        _ => panic!("invalid enum discriminant"),
+                    }
+                }
+            }
+            #[repr(u8)]
+            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+            pub enum RelClauseKind {
+                Poi,
+                Noi,
+            }
+            impl ::core::fmt::Debug for RelClauseKind {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        RelClauseKind::Poi => {
+                            f.debug_tuple("RelClauseKind::Poi").finish()
+                        }
+                        RelClauseKind::Noi => {
+                            f.debug_tuple("RelClauseKind::Noi").finish()
+                        }
+                    }
+                }
+            }
+            impl RelClauseKind {
+                #[doc(hidden)]
+                pub unsafe fn _lift(val: u8) -> RelClauseKind {
+                    if !cfg!(debug_assertions) {
+                        return ::core::mem::transmute(val);
+                    }
+                    match val {
+                        0 => RelClauseKind::Poi,
+                        1 => RelClauseKind::Noi,
+                        _ => panic!("invalid enum discriminant"),
+                    }
+                }
+            }
+            #[repr(C)]
+            #[derive(Clone, Copy)]
+            pub struct RelClause {
+                pub kind: RelClauseKind,
+                pub body_sentence: u32,
+            }
+            impl ::core::fmt::Debug for RelClause {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    f.debug_struct("RelClause")
+                        .field("kind", &self.kind)
+                        .field("body-sentence", &self.body_sentence)
+                        .finish()
+                }
+            }
+            #[derive(Clone)]
+            pub enum Sumti {
+                ProSumti(_rt::String),
+                Description((Gadri, SelbriId)),
+                Name(_rt::String),
+                QuotedLiteral(_rt::String),
+                Unspecified,
+                Tagged((PlaceTag, SumtiId)),
+                Restricted((SumtiId, RelClause)),
+            }
+            impl ::core::fmt::Debug for Sumti {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        Sumti::ProSumti(e) => {
+                            f.debug_tuple("Sumti::ProSumti").field(e).finish()
+                        }
+                        Sumti::Description(e) => {
+                            f.debug_tuple("Sumti::Description").field(e).finish()
+                        }
+                        Sumti::Name(e) => f.debug_tuple("Sumti::Name").field(e).finish(),
+                        Sumti::QuotedLiteral(e) => {
+                            f.debug_tuple("Sumti::QuotedLiteral").field(e).finish()
+                        }
+                        Sumti::Unspecified => {
+                            f.debug_tuple("Sumti::Unspecified").finish()
+                        }
+                        Sumti::Tagged(e) => {
+                            f.debug_tuple("Sumti::Tagged").field(e).finish()
+                        }
+                        Sumti::Restricted(e) => {
+                            f.debug_tuple("Sumti::Restricted").field(e).finish()
+                        }
+                    }
+                }
+            }
+            #[derive(Clone)]
+            pub enum Selbri {
+                Root(_rt::String),
+                Compound(_rt::Vec<_rt::String>),
+                Tanru((SelbriId, SelbriId)),
+                Converted((Conversion, SelbriId)),
+                Negated(SelbriId),
+                Grouped(SelbriId),
+                WithArgs((SelbriId, _rt::Vec<SumtiId>)),
+                Connected((SelbriId, Connective, SelbriId)),
+            }
+            impl ::core::fmt::Debug for Selbri {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        Selbri::Root(e) => {
+                            f.debug_tuple("Selbri::Root").field(e).finish()
+                        }
+                        Selbri::Compound(e) => {
+                            f.debug_tuple("Selbri::Compound").field(e).finish()
+                        }
+                        Selbri::Tanru(e) => {
+                            f.debug_tuple("Selbri::Tanru").field(e).finish()
+                        }
+                        Selbri::Converted(e) => {
+                            f.debug_tuple("Selbri::Converted").field(e).finish()
+                        }
+                        Selbri::Negated(e) => {
+                            f.debug_tuple("Selbri::Negated").field(e).finish()
+                        }
+                        Selbri::Grouped(e) => {
+                            f.debug_tuple("Selbri::Grouped").field(e).finish()
+                        }
+                        Selbri::WithArgs(e) => {
+                            f.debug_tuple("Selbri::WithArgs").field(e).finish()
+                        }
+                        Selbri::Connected(e) => {
+                            f.debug_tuple("Selbri::Connected").field(e).finish()
+                        }
+                    }
+                }
+            }
+            #[derive(Clone)]
+            pub struct Bridi {
+                pub relation: SelbriId,
+                pub head_terms: _rt::Vec<SumtiId>,
+                pub tail_terms: _rt::Vec<SumtiId>,
+                pub negated: bool,
+            }
+            impl ::core::fmt::Debug for Bridi {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    f.debug_struct("Bridi")
+                        .field("relation", &self.relation)
+                        .field("head-terms", &self.head_terms)
+                        .field("tail-terms", &self.tail_terms)
+                        .field("negated", &self.negated)
+                        .finish()
+                }
+            }
+            #[derive(Clone)]
+            pub struct AstBuffer {
+                pub selbris: _rt::Vec<Selbri>,
+                pub sumtis: _rt::Vec<Sumti>,
+                pub sentences: _rt::Vec<Bridi>,
+            }
+            impl ::core::fmt::Debug for AstBuffer {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    f.debug_struct("AstBuffer")
+                        .field("selbris", &self.selbris)
+                        .field("sumtis", &self.sumtis)
+                        .field("sentences", &self.sentences)
+                        .finish()
+                }
+            }
+            /// --- NEW: Zero-Copy Logic Types ---
+            #[derive(Clone)]
+            pub enum LogicalTerm {
+                Variable(_rt::String),
+                Constant(_rt::String),
+                Description(_rt::String),
+                Unspecified,
+            }
+            impl ::core::fmt::Debug for LogicalTerm {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        LogicalTerm::Variable(e) => {
+                            f.debug_tuple("LogicalTerm::Variable").field(e).finish()
+                        }
+                        LogicalTerm::Constant(e) => {
+                            f.debug_tuple("LogicalTerm::Constant").field(e).finish()
+                        }
+                        LogicalTerm::Description(e) => {
+                            f.debug_tuple("LogicalTerm::Description").field(e).finish()
+                        }
+                        LogicalTerm::Unspecified => {
+                            f.debug_tuple("LogicalTerm::Unspecified").finish()
+                        }
+                    }
+                }
+            }
+            #[derive(Clone)]
+            pub enum LogicNode {
+                Predicate((_rt::String, _rt::Vec<LogicalTerm>)),
+                AndNode((u32, u32)),
+                ExistsNode((_rt::String, u32)),
+                ForAllNode((_rt::String, u32)),
+            }
+            impl ::core::fmt::Debug for LogicNode {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        LogicNode::Predicate(e) => {
+                            f.debug_tuple("LogicNode::Predicate").field(e).finish()
+                        }
+                        LogicNode::AndNode(e) => {
+                            f.debug_tuple("LogicNode::AndNode").field(e).finish()
+                        }
+                        LogicNode::ExistsNode(e) => {
+                            f.debug_tuple("LogicNode::ExistsNode").field(e).finish()
+                        }
+                        LogicNode::ForAllNode(e) => {
+                            f.debug_tuple("LogicNode::ForAllNode").field(e).finish()
+                        }
+                    }
+                }
+            }
+            #[derive(Clone)]
+            pub struct LogicBuffer {
+                pub nodes: _rt::Vec<LogicNode>,
+                pub roots: _rt::Vec<u32>,
+            }
+            impl ::core::fmt::Debug for LogicBuffer {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    f.debug_struct("LogicBuffer")
+                        .field("nodes", &self.nodes)
+                        .field("roots", &self.roots)
+                        .finish()
+                }
+            }
+        }
+    }
+}
+#[rustfmt::skip]
+#[allow(dead_code, clippy::all)]
 pub mod exports {
     pub mod lojban {
         pub mod nesy {
@@ -12,36 +415,218 @@ pub mod exports {
                 #[doc(hidden)]
                 static __FORCE_SECTION_REF: fn() = super::super::super::super::__link_custom_section_describing_imports;
                 use super::super::super::super::_rt;
+                pub type LogicBuffer = super::super::super::super::lojban::nesy::ast_types::LogicBuffer;
                 #[doc(hidden)]
                 #[allow(non_snake_case)]
                 pub unsafe fn _export_assert_fact_cabi<T: Guest>(
                     arg0: *mut u8,
                     arg1: usize,
+                    arg2: *mut u8,
+                    arg3: usize,
                 ) -> *mut u8 {
                     #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
-                    let len0 = arg1;
-                    let bytes0 = _rt::Vec::from_raw_parts(arg0.cast(), len0, len0);
-                    let result1 = T::assert_fact(_rt::string_lift(bytes0));
-                    let ptr2 = (&raw mut _RET_AREA.0).cast::<u8>();
-                    match result1 {
+                    let base29 = arg0;
+                    let len29 = arg1;
+                    let mut result29 = _rt::Vec::with_capacity(len29);
+                    for i in 0..len29 {
+                        let base = base29
+                            .add(i * (5 * ::core::mem::size_of::<*const u8>()));
+                        let e29 = {
+                            let l0 = i32::from(*base.add(0).cast::<u8>());
+                            use super::super::super::super::lojban::nesy::ast_types::LogicNode as V28;
+                            let v28 = match l0 {
+                                0 => {
+                                    let e28 = {
+                                        let l1 = *base
+                                            .add(::core::mem::size_of::<*const u8>())
+                                            .cast::<*mut u8>();
+                                        let l2 = *base
+                                            .add(2 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<usize>();
+                                        let len3 = l2;
+                                        let bytes3 = _rt::Vec::from_raw_parts(
+                                            l1.cast(),
+                                            len3,
+                                            len3,
+                                        );
+                                        let l4 = *base
+                                            .add(3 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<*mut u8>();
+                                        let l5 = *base
+                                            .add(4 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<usize>();
+                                        let base17 = l4;
+                                        let len17 = l5;
+                                        let mut result17 = _rt::Vec::with_capacity(len17);
+                                        for i in 0..len17 {
+                                            let base = base17
+                                                .add(i * (3 * ::core::mem::size_of::<*const u8>()));
+                                            let e17 = {
+                                                let l6 = i32::from(*base.add(0).cast::<u8>());
+                                                use super::super::super::super::lojban::nesy::ast_types::LogicalTerm as V16;
+                                                let v16 = match l6 {
+                                                    0 => {
+                                                        let e16 = {
+                                                            let l7 = *base
+                                                                .add(::core::mem::size_of::<*const u8>())
+                                                                .cast::<*mut u8>();
+                                                            let l8 = *base
+                                                                .add(2 * ::core::mem::size_of::<*const u8>())
+                                                                .cast::<usize>();
+                                                            let len9 = l8;
+                                                            let bytes9 = _rt::Vec::from_raw_parts(
+                                                                l7.cast(),
+                                                                len9,
+                                                                len9,
+                                                            );
+                                                            _rt::string_lift(bytes9)
+                                                        };
+                                                        V16::Variable(e16)
+                                                    }
+                                                    1 => {
+                                                        let e16 = {
+                                                            let l10 = *base
+                                                                .add(::core::mem::size_of::<*const u8>())
+                                                                .cast::<*mut u8>();
+                                                            let l11 = *base
+                                                                .add(2 * ::core::mem::size_of::<*const u8>())
+                                                                .cast::<usize>();
+                                                            let len12 = l11;
+                                                            let bytes12 = _rt::Vec::from_raw_parts(
+                                                                l10.cast(),
+                                                                len12,
+                                                                len12,
+                                                            );
+                                                            _rt::string_lift(bytes12)
+                                                        };
+                                                        V16::Constant(e16)
+                                                    }
+                                                    2 => {
+                                                        let e16 = {
+                                                            let l13 = *base
+                                                                .add(::core::mem::size_of::<*const u8>())
+                                                                .cast::<*mut u8>();
+                                                            let l14 = *base
+                                                                .add(2 * ::core::mem::size_of::<*const u8>())
+                                                                .cast::<usize>();
+                                                            let len15 = l14;
+                                                            let bytes15 = _rt::Vec::from_raw_parts(
+                                                                l13.cast(),
+                                                                len15,
+                                                                len15,
+                                                            );
+                                                            _rt::string_lift(bytes15)
+                                                        };
+                                                        V16::Description(e16)
+                                                    }
+                                                    n => {
+                                                        debug_assert_eq!(n, 3, "invalid enum discriminant");
+                                                        V16::Unspecified
+                                                    }
+                                                };
+                                                v16
+                                            };
+                                            result17.push(e17);
+                                        }
+                                        _rt::cabi_dealloc(
+                                            base17,
+                                            len17 * (3 * ::core::mem::size_of::<*const u8>()),
+                                            ::core::mem::size_of::<*const u8>(),
+                                        );
+                                        (_rt::string_lift(bytes3), result17)
+                                    };
+                                    V28::Predicate(e28)
+                                }
+                                1 => {
+                                    let e28 = {
+                                        let l18 = *base
+                                            .add(::core::mem::size_of::<*const u8>())
+                                            .cast::<i32>();
+                                        let l19 = *base
+                                            .add(4 + 1 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<i32>();
+                                        (l18 as u32, l19 as u32)
+                                    };
+                                    V28::AndNode(e28)
+                                }
+                                2 => {
+                                    let e28 = {
+                                        let l20 = *base
+                                            .add(::core::mem::size_of::<*const u8>())
+                                            .cast::<*mut u8>();
+                                        let l21 = *base
+                                            .add(2 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<usize>();
+                                        let len22 = l21;
+                                        let bytes22 = _rt::Vec::from_raw_parts(
+                                            l20.cast(),
+                                            len22,
+                                            len22,
+                                        );
+                                        let l23 = *base
+                                            .add(3 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<i32>();
+                                        (_rt::string_lift(bytes22), l23 as u32)
+                                    };
+                                    V28::ExistsNode(e28)
+                                }
+                                n => {
+                                    debug_assert_eq!(n, 3, "invalid enum discriminant");
+                                    let e28 = {
+                                        let l24 = *base
+                                            .add(::core::mem::size_of::<*const u8>())
+                                            .cast::<*mut u8>();
+                                        let l25 = *base
+                                            .add(2 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<usize>();
+                                        let len26 = l25;
+                                        let bytes26 = _rt::Vec::from_raw_parts(
+                                            l24.cast(),
+                                            len26,
+                                            len26,
+                                        );
+                                        let l27 = *base
+                                            .add(3 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<i32>();
+                                        (_rt::string_lift(bytes26), l27 as u32)
+                                    };
+                                    V28::ForAllNode(e28)
+                                }
+                            };
+                            v28
+                        };
+                        result29.push(e29);
+                    }
+                    _rt::cabi_dealloc(
+                        base29,
+                        len29 * (5 * ::core::mem::size_of::<*const u8>()),
+                        ::core::mem::size_of::<*const u8>(),
+                    );
+                    let len30 = arg3;
+                    let result31 = T::assert_fact(super::super::super::super::lojban::nesy::ast_types::LogicBuffer {
+                        nodes: result29,
+                        roots: _rt::Vec::from_raw_parts(arg2.cast(), len30, len30),
+                    });
+                    let ptr32 = (&raw mut _RET_AREA.0).cast::<u8>();
+                    match result31 {
                         Ok(_) => {
-                            *ptr2.add(0).cast::<u8>() = (0i32) as u8;
+                            *ptr32.add(0).cast::<u8>() = (0i32) as u8;
                         }
                         Err(e) => {
-                            *ptr2.add(0).cast::<u8>() = (1i32) as u8;
-                            let vec3 = (e.into_bytes()).into_boxed_slice();
-                            let ptr3 = vec3.as_ptr().cast::<u8>();
-                            let len3 = vec3.len();
-                            ::core::mem::forget(vec3);
-                            *ptr2
+                            *ptr32.add(0).cast::<u8>() = (1i32) as u8;
+                            let vec33 = (e.into_bytes()).into_boxed_slice();
+                            let ptr33 = vec33.as_ptr().cast::<u8>();
+                            let len33 = vec33.len();
+                            ::core::mem::forget(vec33);
+                            *ptr32
                                 .add(2 * ::core::mem::size_of::<*const u8>())
-                                .cast::<usize>() = len3;
-                            *ptr2
+                                .cast::<usize>() = len33;
+                            *ptr32
                                 .add(::core::mem::size_of::<*const u8>())
-                                .cast::<*mut u8>() = ptr3.cast_mut();
+                                .cast::<*mut u8>() = ptr33.cast_mut();
                         }
                     };
-                    ptr2
+                    ptr32
                 }
                 #[doc(hidden)]
                 #[allow(non_snake_case)]
@@ -65,16 +650,197 @@ pub mod exports {
                 pub unsafe fn _export_query_entailment_cabi<T: Guest>(
                     arg0: *mut u8,
                     arg1: usize,
+                    arg2: *mut u8,
+                    arg3: usize,
                 ) -> *mut u8 {
                     #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
-                    let len0 = arg1;
-                    let bytes0 = _rt::Vec::from_raw_parts(arg0.cast(), len0, len0);
-                    let result1 = T::query_entailment(_rt::string_lift(bytes0));
-                    let ptr2 = (&raw mut _RET_AREA.0).cast::<u8>();
-                    match result1 {
+                    let base29 = arg0;
+                    let len29 = arg1;
+                    let mut result29 = _rt::Vec::with_capacity(len29);
+                    for i in 0..len29 {
+                        let base = base29
+                            .add(i * (5 * ::core::mem::size_of::<*const u8>()));
+                        let e29 = {
+                            let l0 = i32::from(*base.add(0).cast::<u8>());
+                            use super::super::super::super::lojban::nesy::ast_types::LogicNode as V28;
+                            let v28 = match l0 {
+                                0 => {
+                                    let e28 = {
+                                        let l1 = *base
+                                            .add(::core::mem::size_of::<*const u8>())
+                                            .cast::<*mut u8>();
+                                        let l2 = *base
+                                            .add(2 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<usize>();
+                                        let len3 = l2;
+                                        let bytes3 = _rt::Vec::from_raw_parts(
+                                            l1.cast(),
+                                            len3,
+                                            len3,
+                                        );
+                                        let l4 = *base
+                                            .add(3 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<*mut u8>();
+                                        let l5 = *base
+                                            .add(4 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<usize>();
+                                        let base17 = l4;
+                                        let len17 = l5;
+                                        let mut result17 = _rt::Vec::with_capacity(len17);
+                                        for i in 0..len17 {
+                                            let base = base17
+                                                .add(i * (3 * ::core::mem::size_of::<*const u8>()));
+                                            let e17 = {
+                                                let l6 = i32::from(*base.add(0).cast::<u8>());
+                                                use super::super::super::super::lojban::nesy::ast_types::LogicalTerm as V16;
+                                                let v16 = match l6 {
+                                                    0 => {
+                                                        let e16 = {
+                                                            let l7 = *base
+                                                                .add(::core::mem::size_of::<*const u8>())
+                                                                .cast::<*mut u8>();
+                                                            let l8 = *base
+                                                                .add(2 * ::core::mem::size_of::<*const u8>())
+                                                                .cast::<usize>();
+                                                            let len9 = l8;
+                                                            let bytes9 = _rt::Vec::from_raw_parts(
+                                                                l7.cast(),
+                                                                len9,
+                                                                len9,
+                                                            );
+                                                            _rt::string_lift(bytes9)
+                                                        };
+                                                        V16::Variable(e16)
+                                                    }
+                                                    1 => {
+                                                        let e16 = {
+                                                            let l10 = *base
+                                                                .add(::core::mem::size_of::<*const u8>())
+                                                                .cast::<*mut u8>();
+                                                            let l11 = *base
+                                                                .add(2 * ::core::mem::size_of::<*const u8>())
+                                                                .cast::<usize>();
+                                                            let len12 = l11;
+                                                            let bytes12 = _rt::Vec::from_raw_parts(
+                                                                l10.cast(),
+                                                                len12,
+                                                                len12,
+                                                            );
+                                                            _rt::string_lift(bytes12)
+                                                        };
+                                                        V16::Constant(e16)
+                                                    }
+                                                    2 => {
+                                                        let e16 = {
+                                                            let l13 = *base
+                                                                .add(::core::mem::size_of::<*const u8>())
+                                                                .cast::<*mut u8>();
+                                                            let l14 = *base
+                                                                .add(2 * ::core::mem::size_of::<*const u8>())
+                                                                .cast::<usize>();
+                                                            let len15 = l14;
+                                                            let bytes15 = _rt::Vec::from_raw_parts(
+                                                                l13.cast(),
+                                                                len15,
+                                                                len15,
+                                                            );
+                                                            _rt::string_lift(bytes15)
+                                                        };
+                                                        V16::Description(e16)
+                                                    }
+                                                    n => {
+                                                        debug_assert_eq!(n, 3, "invalid enum discriminant");
+                                                        V16::Unspecified
+                                                    }
+                                                };
+                                                v16
+                                            };
+                                            result17.push(e17);
+                                        }
+                                        _rt::cabi_dealloc(
+                                            base17,
+                                            len17 * (3 * ::core::mem::size_of::<*const u8>()),
+                                            ::core::mem::size_of::<*const u8>(),
+                                        );
+                                        (_rt::string_lift(bytes3), result17)
+                                    };
+                                    V28::Predicate(e28)
+                                }
+                                1 => {
+                                    let e28 = {
+                                        let l18 = *base
+                                            .add(::core::mem::size_of::<*const u8>())
+                                            .cast::<i32>();
+                                        let l19 = *base
+                                            .add(4 + 1 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<i32>();
+                                        (l18 as u32, l19 as u32)
+                                    };
+                                    V28::AndNode(e28)
+                                }
+                                2 => {
+                                    let e28 = {
+                                        let l20 = *base
+                                            .add(::core::mem::size_of::<*const u8>())
+                                            .cast::<*mut u8>();
+                                        let l21 = *base
+                                            .add(2 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<usize>();
+                                        let len22 = l21;
+                                        let bytes22 = _rt::Vec::from_raw_parts(
+                                            l20.cast(),
+                                            len22,
+                                            len22,
+                                        );
+                                        let l23 = *base
+                                            .add(3 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<i32>();
+                                        (_rt::string_lift(bytes22), l23 as u32)
+                                    };
+                                    V28::ExistsNode(e28)
+                                }
+                                n => {
+                                    debug_assert_eq!(n, 3, "invalid enum discriminant");
+                                    let e28 = {
+                                        let l24 = *base
+                                            .add(::core::mem::size_of::<*const u8>())
+                                            .cast::<*mut u8>();
+                                        let l25 = *base
+                                            .add(2 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<usize>();
+                                        let len26 = l25;
+                                        let bytes26 = _rt::Vec::from_raw_parts(
+                                            l24.cast(),
+                                            len26,
+                                            len26,
+                                        );
+                                        let l27 = *base
+                                            .add(3 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<i32>();
+                                        (_rt::string_lift(bytes26), l27 as u32)
+                                    };
+                                    V28::ForAllNode(e28)
+                                }
+                            };
+                            v28
+                        };
+                        result29.push(e29);
+                    }
+                    _rt::cabi_dealloc(
+                        base29,
+                        len29 * (5 * ::core::mem::size_of::<*const u8>()),
+                        ::core::mem::size_of::<*const u8>(),
+                    );
+                    let len30 = arg3;
+                    let result31 = T::query_entailment(super::super::super::super::lojban::nesy::ast_types::LogicBuffer {
+                        nodes: result29,
+                        roots: _rt::Vec::from_raw_parts(arg2.cast(), len30, len30),
+                    });
+                    let ptr32 = (&raw mut _RET_AREA.0).cast::<u8>();
+                    match result31 {
                         Ok(e) => {
-                            *ptr2.add(0).cast::<u8>() = (0i32) as u8;
-                            *ptr2
+                            *ptr32.add(0).cast::<u8>() = (0i32) as u8;
+                            *ptr32
                                 .add(::core::mem::size_of::<*const u8>())
                                 .cast::<u8>() = (match e {
                                 true => 1,
@@ -82,20 +848,20 @@ pub mod exports {
                             }) as u8;
                         }
                         Err(e) => {
-                            *ptr2.add(0).cast::<u8>() = (1i32) as u8;
-                            let vec3 = (e.into_bytes()).into_boxed_slice();
-                            let ptr3 = vec3.as_ptr().cast::<u8>();
-                            let len3 = vec3.len();
-                            ::core::mem::forget(vec3);
-                            *ptr2
+                            *ptr32.add(0).cast::<u8>() = (1i32) as u8;
+                            let vec33 = (e.into_bytes()).into_boxed_slice();
+                            let ptr33 = vec33.as_ptr().cast::<u8>();
+                            let len33 = vec33.len();
+                            ::core::mem::forget(vec33);
+                            *ptr32
                                 .add(2 * ::core::mem::size_of::<*const u8>())
-                                .cast::<usize>() = len3;
-                            *ptr2
+                                .cast::<usize>() = len33;
+                            *ptr32
                                 .add(::core::mem::size_of::<*const u8>())
-                                .cast::<*mut u8>() = ptr3.cast_mut();
+                                .cast::<*mut u8>() = ptr33.cast_mut();
                         }
                     };
-                    ptr2
+                    ptr32
                 }
                 #[doc(hidden)]
                 #[allow(non_snake_case)]
@@ -115,26 +881,27 @@ pub mod exports {
                     }
                 }
                 pub trait Guest {
-                    fn assert_fact(sexp: _rt::String) -> Result<(), _rt::String>;
-                    fn query_entailment(sexp: _rt::String) -> Result<bool, _rt::String>;
+                    fn assert_fact(logic: LogicBuffer) -> Result<(), _rt::String>;
+                    fn query_entailment(logic: LogicBuffer) -> Result<bool, _rt::String>;
                 }
                 #[doc(hidden)]
                 macro_rules! __export_lojban_nesy_reasoning_0_1_0_cabi {
                     ($ty:ident with_types_in $($path_to_types:tt)*) => {
                         const _ : () = { #[unsafe (export_name =
                         "lojban:nesy/reasoning@0.1.0#assert-fact")] unsafe extern "C" fn
-                        export_assert_fact(arg0 : * mut u8, arg1 : usize,) -> * mut u8 {
-                        unsafe { $($path_to_types)*:: _export_assert_fact_cabi::<$ty >
-                        (arg0, arg1) } } #[unsafe (export_name =
+                        export_assert_fact(arg0 : * mut u8, arg1 : usize, arg2 : * mut
+                        u8, arg3 : usize,) -> * mut u8 { unsafe { $($path_to_types)*::
+                        _export_assert_fact_cabi::<$ty > (arg0, arg1, arg2, arg3) } }
+                        #[unsafe (export_name =
                         "cabi_post_lojban:nesy/reasoning@0.1.0#assert-fact")] unsafe
                         extern "C" fn _post_return_assert_fact(arg0 : * mut u8,) { unsafe
                         { $($path_to_types)*:: __post_return_assert_fact::<$ty > (arg0) }
                         } #[unsafe (export_name =
                         "lojban:nesy/reasoning@0.1.0#query-entailment")] unsafe extern
-                        "C" fn export_query_entailment(arg0 : * mut u8, arg1 : usize,) ->
-                        * mut u8 { unsafe { $($path_to_types)*::
-                        _export_query_entailment_cabi::<$ty > (arg0, arg1) } } #[unsafe
-                        (export_name =
+                        "C" fn export_query_entailment(arg0 : * mut u8, arg1 : usize,
+                        arg2 : * mut u8, arg3 : usize,) -> * mut u8 { unsafe {
+                        $($path_to_types)*:: _export_query_entailment_cabi::<$ty > (arg0,
+                        arg1, arg2, arg3) } } #[unsafe (export_name =
                         "cabi_post_lojban:nesy/reasoning@0.1.0#query-entailment")] unsafe
                         extern "C" fn _post_return_query_entailment(arg0 : * mut u8,) {
                         unsafe { $($path_to_types)*::
@@ -161,11 +928,12 @@ pub mod exports {
 #[rustfmt::skip]
 mod _rt {
     #![allow(dead_code, clippy::all)]
+    pub use alloc_crate::string::String;
+    pub use alloc_crate::vec::Vec;
     #[cfg(target_arch = "wasm32")]
     pub fn run_ctors_once() {
         wit_bindgen_rt::run_ctors_once();
     }
-    pub use alloc_crate::vec::Vec;
     pub unsafe fn string_lift(bytes: Vec<u8>) -> String {
         if cfg!(debug_assertions) {
             String::from_utf8(bytes).unwrap()
@@ -180,7 +948,6 @@ mod _rt {
         let layout = alloc::Layout::from_size_align_unchecked(size, align);
         alloc::dealloc(ptr, layout);
     }
-    pub use alloc_crate::string::String;
     extern crate alloc as alloc_crate;
     pub use alloc_crate::alloc;
 }
@@ -220,13 +987,34 @@ pub(crate) use __export_reasoning_component_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 291] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x99\x01\x01A\x02\x01\
-A\x02\x01B\x06\x01j\0\x01s\x01@\x01\x04sexps\0\0\x04\0\x0bassert-fact\x01\x01\x01\
-j\x01\x7f\x01s\x01@\x01\x04sexps\0\x02\x04\0\x10query-entailment\x01\x03\x04\0\x1b\
-lojban:nesy/reasoning@0.1.0\x05\0\x04\0%lojban:nesy/reasoning-component@0.1.0\x04\
-\0\x0b\x19\x01\0\x13reasoning-component\x03\0\0\0G\x09producers\x01\x0cprocessed\
--by\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1165] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x83\x08\x01A\x02\x01\
+A\x05\x01B0\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
+m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x04\x02se\x02\
+te\x02ve\x02xe\x04\0\x0aconversion\x03\0\x06\x01m\x04\x02je\x02ja\x02jo\x02ju\x04\
+\0\x0aconnective\x03\0\x08\x01m\x03\x02lo\x02le\x02la\x04\0\x05gadri\x03\0\x0a\x01\
+m\x02\x03poi\x03noi\x04\0\x0frel-clause-kind\x03\0\x0c\x01r\x02\x04kind\x0d\x0db\
+ody-sentencey\x04\0\x0arel-clause\x03\0\x0e\x01o\x02\x0b\x01\x01o\x02\x05\x03\x01\
+o\x02\x03\x0f\x01q\x07\x09pro-sumti\x01s\0\x0bdescription\x01\x10\0\x04name\x01s\
+\0\x0equoted-literal\x01s\0\x0bunspecified\0\0\x06tagged\x01\x11\0\x0arestricted\
+\x01\x12\0\x04\0\x05sumti\x03\0\x13\x01ps\x01o\x02\x01\x01\x01o\x02\x07\x01\x01p\
+\x03\x01o\x02\x01\x18\x01o\x03\x01\x09\x01\x01q\x08\x04root\x01s\0\x08compound\x01\
+\x15\0\x05tanru\x01\x16\0\x09converted\x01\x17\0\x07negated\x01\x01\0\x07grouped\
+\x01\x01\0\x09with-args\x01\x19\0\x09connected\x01\x1a\0\x04\0\x06selbri\x03\0\x1b\
+\x01r\x04\x08relation\x01\x0ahead-terms\x18\x0atail-terms\x18\x07negated\x7f\x04\
+\0\x05bridi\x03\0\x1d\x01p\x1c\x01p\x14\x01p\x1e\x01r\x03\x07selbris\x1f\x06sumt\
+is\x20\x09sentences!\x04\0\x0aast-buffer\x03\0\"\x01q\x04\x08variable\x01s\0\x08\
+constant\x01s\0\x0bdescription\x01s\0\x0bunspecified\0\0\x04\0\x0clogical-term\x03\
+\0$\x01p%\x01o\x02s&\x01o\x02yy\x01o\x02sy\x01q\x04\x09predicate\x01'\0\x08and-n\
+ode\x01(\0\x0bexists-node\x01)\0\x0cfor-all-node\x01)\0\x04\0\x0alogic-node\x03\0\
+*\x01p+\x01py\x01r\x02\x05nodes,\x05roots-\x04\0\x0clogic-buffer\x03\0.\x03\0\x1b\
+lojban:nesy/ast-types@0.1.0\x05\0\x02\x03\0\0\x0clogic-buffer\x01B\x08\x02\x03\x02\
+\x01\x01\x04\0\x0clogic-buffer\x03\0\0\x01j\0\x01s\x01@\x01\x05logic\x01\0\x02\x04\
+\0\x0bassert-fact\x01\x03\x01j\x01\x7f\x01s\x01@\x01\x05logic\x01\0\x04\x04\0\x10\
+query-entailment\x01\x05\x04\0\x1blojban:nesy/reasoning@0.1.0\x05\x02\x04\0%lojb\
+an:nesy/reasoning-component@0.1.0\x04\0\x0b\x19\x01\0\x13reasoning-component\x03\
+\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10wit-\
+bindgen-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

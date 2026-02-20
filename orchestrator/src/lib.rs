@@ -8,7 +8,6 @@ struct EnginePipeline;
 
 impl Guest for EnginePipeline {
     fn execute(input: String) -> bool {
-        // REPL Command Routing
         let is_query = input.starts_with("?");
         let text = if is_query { input[1..].trim() } else { &input };
 
@@ -22,39 +21,40 @@ impl Guest for EnginePipeline {
         };
 
         // --- Phase 2: Zero-Copy Semantics ---
-        let sexps = match semantics::compile_buffer(&ast) {
-            Ok(s) => s,
+        let logic_buffer = match semantics::compile_buffer(&ast) {
+            Ok(buf) => buf,
             Err(e) => {
                 println!("[WASM] Semantics Error: {}", e);
                 return false;
             }
         };
 
-        let mut final_result = true;
-
         // --- Phase 3: Reasoning ---
-        for sexp in sexps {
-            if is_query {
-                match reasoning::query_entailment(&sexp) {
-                    Ok(result) => {
-                        println!(
-                            "[WASM] Query Entailment: {}",
-                            if result { "TRUE" } else { "FALSE" }
-                        );
-                        final_result = result;
-                    }
-                    Err(e) => println!("[WASM] Query Error: {}", e),
+        if is_query {
+            match reasoning::query_entailment(&logic_buffer) {
+                Ok(result) => {
+                    println!(
+                        "[WASM] Query Entailment: {}",
+                        if result { "TRUE" } else { "FALSE" }
+                    );
+                    return result;
                 }
-            } else {
-                if let Err(e) = reasoning::assert_fact(&sexp) {
-                    println!("[WASM] Assert Error: {}", e);
-                    continue;
+                Err(e) => {
+                    println!("[WASM] Query Error: {}", e);
+                    return false;
                 }
-                println!("[WASM] Fact Asserted: {}", sexp);
             }
+        } else {
+            if let Err(e) = reasoning::assert_fact(&logic_buffer) {
+                println!("[WASM] Assert Error: {}", e);
+                return false;
+            }
+            println!(
+                "[WASM] {} facts inserted into Knowledge Base natively.",
+                logic_buffer.roots.len()
+            );
+            return true;
         }
-
-        final_result
     }
 }
 

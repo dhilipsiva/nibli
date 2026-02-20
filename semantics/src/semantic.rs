@@ -158,43 +158,4 @@ impl SemanticCompiler {
 
         final_form
     }
-
-    pub fn to_sexp(&self, form: &LogicalForm) -> String {
-        match form {
-            LogicalForm::Predicate { relation, args } => {
-                let raw_rel = self.interner.resolve(relation);
-                let args_str: Vec<String> = args
-                    .iter()
-                    .map(|arg| match arg {
-                        LogicalTerm::Variable(v) => {
-                            format!("(Var \"{}\")", self.interner.resolve(v))
-                        }
-                        LogicalTerm::Constant(c) => {
-                            format!("(Const \"{}\")", self.interner.resolve(c))
-                        }
-                        LogicalTerm::Description(d) => {
-                            format!("(Desc \"{}\")", self.interner.resolve(d))
-                        }
-                        LogicalTerm::Unspecified => "(Zoe)".to_string(),
-                    })
-                    .collect();
-
-                let arity = args.len().clamp(1, 5);
-                format!("(Pred{} \"{}\" {})", arity, raw_rel, args_str.join(" "))
-            }
-            LogicalForm::And(left, right) => {
-                format!("(And {} {})", self.to_sexp(left), self.to_sexp(right))
-            }
-            LogicalForm::ForAll(v, b) => format!(
-                "(ForAll \"{}\" {})",
-                self.interner.resolve(v),
-                self.to_sexp(b)
-            ),
-            LogicalForm::Exists(v, b) => format!(
-                "(Exists \"{}\" {})",
-                self.interner.resolve(v),
-                self.to_sexp(b)
-            ),
-        }
-    }
 }
