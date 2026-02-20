@@ -13,6 +13,7 @@ fn get_egraph() -> &'static Mutex<EGraph> {
         let mut egraph = EGraph::default();
 
         let schema_str = r#"
+            ;; Atomic Terms
             (datatype Term
                 (Var String)
                 (Const String)
@@ -20,12 +21,17 @@ fn get_egraph() -> &'static Mutex<EGraph> {
                 (Zoe)
             )
 
+            ;; Variadic Argument List (Linked List)
+            (datatype TermList
+                (Nil)
+                (Cons Term TermList)
+            )
+
+            ;; Well-Formed Formulas
             (datatype Formula
-                (Pred1 String Term)
-                (Pred2 String Term Term)
-                (Pred3 String Term Term Term)
-                (Pred4 String Term Term Term Term)
-                (Pred5 String Term Term Term Term Term)
+                ;; A single variadic predicate replaces Pred1 through Pred5
+                (Pred String TermList)
+                
                 (And Formula Formula)
                 (Or Formula Formula)
                 (Not Formula)
@@ -34,14 +40,17 @@ fn get_egraph() -> &'static Mutex<EGraph> {
                 (ForAll String Formula)
             )
 
+            ;; The Knowledge Base
             (relation IsTrue (Formula))
+
+            ;; Equality Saturation Rules
             (rewrite (And A B) (And B A))
             (rewrite (Not (Not A)) A)
         "#;
 
         egraph
             .parse_and_run_program(None, schema_str)
-            .expect("Failed to load static FOL schema");
+            .expect("Failed to load variadic FOL schema");
 
         Mutex::new(egraph)
     })
@@ -56,7 +65,8 @@ impl Guest for ReasoningComponent {
 
         for &root_id in &logic.roots {
             let sexp = reconstruct_sexp(&logic, root_id);
-            let command = format!("(IsTrue {})\n(run 10)", sexp);
+            // FIX (I8): Removed (run 10) from assertion to speed up data ingestion
+            let command = format!("(IsTrue {})", sexp);
             if let Err(e) = egraph.parse_and_run_program(None, &command) {
                 return Err(format!("Failed to assert fact: {}", e));
             }
@@ -67,6 +77,11 @@ impl Guest for ReasoningComponent {
     fn query_entailment(logic: LogicBuffer) -> Result<bool, String> {
         let egraph_mutex = get_egraph();
         let mut egraph = egraph_mutex.lock().unwrap();
+
+        // FIX (I8): Saturate the E-Graph once before checking all roots
+        if let Err(e) = egraph.parse_and_run_program(None, "(run 10)") {
+            return Err(format!("Saturation error: {}", e));
+        }
 
         let mut all_true = true;
         for &root_id in &logic.roots {
@@ -88,21 +103,23 @@ impl Guest for ReasoningComponent {
     }
 }
 
-/// A localized, high-speed translator operating purely on the zero-copy logic arena
+/// Localized translator operating purely on the zero-copy logic arena.
+/// Automatically folds N-arity arguments into a Lisp-style Cons list.
 fn reconstruct_sexp(buffer: &LogicBuffer, node_id: u32) -> String {
     match &buffer.nodes[node_id as usize] {
         LogicNode::Predicate((rel, args)) => {
-            let args_str: Vec<String> = args
-                .iter()
-                .map(|arg| match arg {
+            // Fold the variadic array into a nested (Cons ... (Cons ... (Nil)))
+            let mut args_str = String::from("(Nil)");
+            for arg in args.iter().rev() {
+                let term_str = match arg {
                     LogicalTerm::Variable(v) => format!("(Var \"{}\")", v),
                     LogicalTerm::Constant(c) => format!("(Const \"{}\")", c),
                     LogicalTerm::Description(d) => format!("(Desc \"{}\")", d),
                     LogicalTerm::Unspecified => "(Zoe)".to_string(),
-                })
-                .collect();
-            let arity = args.len().clamp(1, 5);
-            format!("(Pred{} \"{}\" {})", arity, rel, args_str.join(" "))
+                };
+                args_str = format!("(Cons {} {})", term_str, args_str);
+            }
+            format!("(Pred \"{}\" {})", rel, args_str)
         }
         LogicNode::AndNode((l, r)) => {
             format!(
