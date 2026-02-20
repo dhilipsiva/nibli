@@ -1,0 +1,17 @@
+[package]
+name = "orchestrator"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+wit-bindgen-rt = "0.44.0"
+
+[package.metadata.component]
+package = "lojban:nesy"
+
+[package.metadata.component.target]
+path = "../wit/world.wit"
+world = "engine-pipeline"
+
+[lib]
+crate-type = ["cdylib"]

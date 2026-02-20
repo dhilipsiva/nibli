@@ -4,23 +4,81 @@ interface ast-types {
     type selbri-id = u32;
     type sumti-id = u32;
 
+    // ─── Grammatical marker enums ────────────────────────────────
+
+    enum place-tag {
+        fa, // x1
+        fe, // x2
+        fi, // x3
+        fo, // x4
+        fu, // x5
+    }
+
+    enum conversion {
+        se, // x1 ↔ x2
+        te, // x1 ↔ x3
+        ve, // x1 ↔ x4
+        xe, // x1 ↔ x5
+    }
+
+    enum connective {
+        je,  // AND (∧)
+        ja,  // OR  (∨)
+        jo,  // IFF (↔)
+        ju,  // XOR (⊕)
+    }
+
+    enum gadri {
+        lo, // veridical (∃)
+        le, // non-veridical
+        la, // named entity
+    }
+
+    enum rel-clause-kind {
+        poi, // restrictive
+        noi, // non-restrictive
+    }
+
+    // ─── Sumti (arguments) ───────────────────────────────────────
+
+    record rel-clause {
+        kind: rel-clause-kind,
+        body-sentence: u32,  // index into sentences array
+    }
+
     variant sumti {
         pro-sumti(string),
-        description(selbri-id),
+        description(tuple<gadri, selbri-id>),
         name(string),
         quoted-literal(string),
+        unspecified,
+        tagged(tuple<place-tag, sumti-id>),
+        restricted(tuple<sumti-id, rel-clause>),
     }
+
+    // ─── Selbri (predicates) ─────────────────────────────────────
 
     variant selbri {
         root(string),
         compound(list<string>),
         tanru(tuple<selbri-id, selbri-id>),
+        converted(tuple<conversion, selbri-id>),
+        negated(selbri-id),
+        grouped(selbri-id),
+        with-args(tuple<selbri-id, list<sumti-id>>),
+        connected(tuple<selbri-id, connective, selbri-id>),
     }
+
+    // ─── Bridi (predications) ────────────────────────────────────
 
     record bridi {
         relation: selbri-id,
-        terms: list<sumti-id>,
+        head-terms: list<sumti-id>,
+        tail-terms: list<sumti-id>,
+        negated: bool,
     }
+
+    // ─── Top-level buffer ────────────────────────────────────────
 
     record ast-buffer {
         selbris: list<selbri>,
@@ -65,3 +123,4 @@ world engine-pipeline {
     
     export execute: func(input: string) -> bool;
 }
+

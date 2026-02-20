@@ -3,10 +3,16 @@ set shell := ["bash", "-c"]
 # The default target executes the full build-and-run pipeline
 default: run
 
-# Compiles the discrete WebAssembly components to wasm32-wasip2
+# Compiles the discrete WebAssembly components and fuses them
 build-wasm:
     @echo "Building WASI Preview 2 components..."
-    cargo component build --release --target wasm32-wasip2 -p parser -p semantics -p reasoning
+    cargo component build --release -p parser -p semantics -p reasoning -p orchestrator
+    @echo "Fusing components with WAC..."
+    wac plug target/wasm32-wasip1/release/orchestrator.wasm \
+        --plug target/wasm32-wasip1/release/parser.wasm \
+        --plug target/wasm32-wasip1/release/semantics.wasm \
+        --plug target/wasm32-wasip1/release/reasoning.wasm \
+        -o target/wasm32-wasip1/release/engine-pipeline.wasm
 
 # Compiles the native Wasmtime host runner
 build-runner:

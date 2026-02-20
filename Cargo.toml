@@ -3,7 +3,8 @@ members = [
     "parser",
     "semantics",
     "reasoning", 
-    "runner"
+    "runner", 
+    "orchestrator"
 ]
 resolver = "2"
 

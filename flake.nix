@@ -37,6 +37,7 @@
             cargo-component     # Builds Rust crates as WASI components
             wit-bindgen         # Generates bindings from .wit files
             wasmtime            # Executes the compiled WASI components
+            wac-cli
 
             # Helix Editor Ecosystem
             taplo               # TOML Language Server

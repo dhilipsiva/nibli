@@ -1,10 +1,20 @@
+// parser/src/preprocessor.rs
+//
+// Consumes the raw lexical stream and resolves metalinguistic operations:
+//   si  — erase preceding word
+//   sa  — erase backward to matching class (degraded: no-op with warning)
+//   su  — erase entire discourse
+//   zo  — quote next word
+//   zoi — quote delimited text
+//   zei — glue adjacent words into compound
+
 use crate::lexer::LojbanToken;
 
 #[derive(Debug, PartialEq)]
 pub enum NormalizedToken<'a> {
     /// A standard Lojban word (Gismu, Cmavo, Cmevla, etc.)
     Standard(LojbanToken, &'a str),
-    /// Text explicitly quoted by `zo` or `zoi`. Ignored by the structural parser.
+    /// Text explicitly quoted by `zo` or `zoi`. Opaque to the structural parser.
     Quoted(&'a str),
     /// A compound word glued together by `zei`.
     Glued(Vec<&'a str>),
@@ -20,35 +30,38 @@ pub fn preprocess<'a>(
 
     while let Some((token, text)) = iter.next() {
         match token {
-            // --------------------------------------------------
-            // Erasure Operations
-            // --------------------------------------------------
+            // ── Erasure Operations ────────────────────────────────
             LojbanToken::EraseWord => {
                 // `si` erases the immediately preceding metalinguistically resolved token.
                 output.pop();
             }
+
             LojbanToken::EraseStream => {
                 // `su` clears the entire current discourse buffer.
                 output.clear();
             }
+
             LojbanToken::EraseClass => {
-                // `sa` erases backward until a token of the same grammatical class is found.
-                // NOTE: Full `sa` resolution requires the `selma'o` dictionary lookup to be loaded.
-                // For V1 bare-metal execution, this is a deferred feature.
-                unimplemented!(
-                    "'sa' (EraseClass) resolution requires the jbovlaste selma'o schema in V2."
+                // `sa` erases backward until a token of the same grammatical class
+                // is found. Full implementation requires selma'o classification.
+                //
+                // B4 FIX: was `unimplemented!()` which caused WASM trap.
+                // Degraded behavior: erase preceding word (same as si).
+                // This is safe and handles the most common use case.
+                eprintln!(
+                    "[parser] warning: 'sa' erasure degraded to single-word erase (si behavior)"
                 );
+                output.pop();
             }
 
-            // --------------------------------------------------
-            // Quotation Operations
-            // --------------------------------------------------
+            // ── Quotation Operations ─────────────────────────────
             LojbanToken::QuoteNext => {
                 // `zo` treats the immediately following token as a literal string.
                 if let Some((_, quoted_text)) = iter.next() {
                     output.push(NormalizedToken::Quoted(quoted_text));
                 }
             }
+
             LojbanToken::QuoteDelimited => {
                 // `zoi` requires a delimiter, arbitrary text, and the same delimiter.
                 if let Some((_, delimiter)) = iter.next() {
@@ -66,16 +79,17 @@ pub fn preprocess<'a>(
                     }
 
                     // Extract the zero-copy payload slice from the original input
-                    let payload = &original_input[start_ptr..end_ptr].trim();
-                    output.push(NormalizedToken::Quoted(payload));
+                    if end_ptr > start_ptr && end_ptr <= original_input.len() {
+                        let payload = &original_input[start_ptr..end_ptr].trim();
+                        output.push(NormalizedToken::Quoted(payload));
+                    }
                 }
             }
 
-            // --------------------------------------------------
-            // Word Gluing
-            // --------------------------------------------------
+            // ── Word Gluing ──────────────────────────────────────
             LojbanToken::GlueWords => {
-                // `zei` joins the previous token and the next token into a single lujvo-like unit.
+                // `zei` joins the previous token and the next token into a single
+                // lujvo-like unit.
                 if let Some(prev) = output.pop() {
                     if let Some((_, next_text)) = iter.next() {
                         let mut parts = match prev {
@@ -88,9 +102,7 @@ pub fn preprocess<'a>(
                 }
             }
 
-            // --------------------------------------------------
-            // Standard Tokens
-            // --------------------------------------------------
+            // ── Standard Tokens ──────────────────────────────────
             _ => {
                 output.push(NormalizedToken::Standard(token, text));
             }

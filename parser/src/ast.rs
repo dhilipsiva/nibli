@@ -1,83 +1,154 @@
-use crate::lexer::LojbanToken;
-use crate::preprocessor::NormalizedToken;
+// parser/src/ast.rs — Lojban AST types
+//
+// Covers I6 constructs:
+//   1. .i sentence separator
+//   2. fa/fe/fi/fo/fu place tags
+//   3. na/naku negation
+//   4. poi/noi relative clauses
+//   5. be/bei sumti raising
+//   6. ke/ke'e tanru grouping
+//   7. je/ja/jo/ju connectives
+//   8. ku/vau/ku'o/kei terminators
+// Plus: se/te/ve/xe conversion, lo/le/la gadri, extended pro-sumti
 
-#[derive(Debug, PartialEq)]
+// ─── Enums for grammatical markers ───────────────────────────────
+
+/// Place-tag cmavo: explicit argument position
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlaceTag {
+    Fa, // x1
+    Fe, // x2
+    Fi, // x3
+    Fo, // x4
+    Fu, // x5
+}
+
+impl PlaceTag {
+    pub fn to_index(self) -> usize {
+        match self {
+            PlaceTag::Fa => 0,
+            PlaceTag::Fe => 1,
+            PlaceTag::Fi => 2,
+            PlaceTag::Fo => 3,
+            PlaceTag::Fu => 4,
+        }
+    }
+}
+
+/// SE-series conversion: permutes argument places
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Conversion {
+    Se, // swap x1 ↔ x2
+    Te, // swap x1 ↔ x3
+    Ve, // swap x1 ↔ x4
+    Xe, // swap x1 ↔ x5
+}
+
+/// Logical connective between selbri or sumti
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Connective {
+    Je, // AND (∧)
+    Ja, // OR  (∨)
+    Jo, // IFF (↔)
+    Ju, // XOR (⊕)
+}
+
+/// Gadri (descriptor) type
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Gadri {
+    Lo, // veridical description (∃ in FOL)
+    Le, // non-veridical reference (specific referent)
+    La, // named entity (proper name)
+}
+
+/// Relative clause type
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RelClauseKind {
+    Poi, // restrictive (intersective)
+    Noi, // non-restrictive (appositive)
+}
+
+// ─── Core AST nodes ──────────────────────────────────────────────
+
+/// A term (argument slot) in a bridi.
+#[derive(Debug, Clone, PartialEq)]
 pub enum Sumti {
+    /// Pro-sumti: mi, do, ko'a..ko'u, da/de/di, ti/ta/tu, ri/ra/ru, etc.
     ProSumti(String),
-    Description(Box<Selbri>),
+
+    /// Gadri-description: lo/le/la + selbri [+ ku]
+    Description { gadri: Gadri, inner: Box<Selbri> },
+
+    /// la + cmevla name(s)
     Name(String),
+
+    /// Quoted literal (from zo/zoi)
     QuotedLiteral(String),
+
+    /// Explicit unspecified: zo'e
+    Unspecified,
+
+    /// Place-tagged sumti: fa/fe/fi/fo/fu + sumti
+    Tagged(PlaceTag, Box<Sumti>),
+
+    /// Sumti with relative clause: sumti + (poi|noi) sentence [ku'o]
+    Restricted {
+        inner: Box<Sumti>,
+        clause: RelClause,
+    },
 }
 
-#[derive(Debug, PartialEq)]
+/// A relative clause attached to a sumti.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RelClause {
+    pub kind: RelClauseKind,
+    pub body: Box<Bridi>,
+}
+
+/// The main predicate/relation in a bridi.
+#[derive(Debug, Clone, PartialEq)]
 pub enum Selbri {
+    /// Single root word (gismu or lujvo)
     Root(String),
+
+    /// Compound (lujvo rafsi sequence from zei-gluing)
     Compound(Vec<String>),
+
+    /// Tanru: modifier + head (right-grouping)
+    /// e.g., "sutra gerku" → Tanru(Root("sutra"), Root("gerku"))
     Tanru(Box<Selbri>, Box<Selbri>),
+
+    /// SE-conversion: se/te/ve/xe + selbri
+    Converted(Conversion, Box<Selbri>),
+
+    /// Bridi negation: na + selbri
+    Negated(Box<Selbri>),
+
+    /// Explicit grouping: ke + selbri + [ke'e]
+    Grouped(Box<Selbri>),
+
+    /// Selbri with bound arguments: selbri + be sumti (bei sumti)* [be'o]
+    WithArgs { core: Box<Selbri>, args: Vec<Sumti> },
+
+    /// Selbri connective: selbri + (je|ja|jo|ju) + selbri
+    Connected {
+        left: Box<Selbri>,
+        connective: Connective,
+        right: Box<Selbri>,
+    },
 }
 
-#[derive(Debug, PartialEq)]
+/// A single bridi (predication).
+#[derive(Debug, Clone, PartialEq)]
 pub struct Bridi {
     pub selbri: Selbri,
-    pub terms: Vec<Sumti>,
+    pub head_terms: Vec<Sumti>, // terms before selbri (cu-separated)
+    pub tail_terms: Vec<Sumti>, // terms after selbri
+    pub negated: bool,          // sentence-level na (before all terms)
 }
 
-struct TokenCursor<'a> {
-    tokens: &'a [NormalizedToken<'a>],
-    pos: usize,
-}
-
-impl<'a> TokenCursor<'a> {
-    fn peek(&self) -> Option<&'a NormalizedToken<'a>> {
-        self.tokens.get(self.pos)
-    }
-
-    fn next(&mut self) -> Option<&'a NormalizedToken<'a>> {
-        let t = self.tokens.get(self.pos);
-        if t.is_some() {
-            self.pos += 1;
-        }
-        t
-    }
-}
-
-pub fn parse_tokens_to_ast(tokens: &[NormalizedToken]) -> Result<Vec<Bridi>, String> {
-    let mut cursor = TokenCursor { tokens, pos: 0 };
-    let mut bridi_list = Vec::new();
-
-    // Sentence structure: [Sumti]* [cu]? [Selbri] [Sumti]*
-    let mut terms = Vec::new();
-    let mut selbri = None;
-
-    while let Some(token) = cursor.peek() {
-        match token {
-            NormalizedToken::Standard(LojbanToken::Cmavo, "lo") => {
-                cursor.next(); // consume 'lo'
-                if let Some(NormalizedToken::Standard(LojbanToken::Gismu, s)) = cursor.next() {
-                    terms.push(Sumti::Description(Box::new(Selbri::Root(s.to_string()))));
-                }
-            }
-            NormalizedToken::Standard(LojbanToken::Cmavo, s) if *s == "mi" || *s == "do" => {
-                cursor.next();
-                terms.push(Sumti::ProSumti(s.to_string()));
-            }
-            NormalizedToken::Standard(LojbanToken::Cmavo, "cu") => {
-                cursor.next(); // consume 'cu' separator
-            }
-            NormalizedToken::Standard(LojbanToken::Gismu, s) => {
-                cursor.next();
-                selbri = Some(Selbri::Root(s.to_string()));
-            }
-            _ => {
-                cursor.next();
-            } // Skip unknown for MVP
-        }
-    }
-
-    if let Some(s) = selbri {
-        bridi_list.push(Bridi { selbri: s, terms });
-        Ok(bridi_list)
-    } else {
-        Err("No selbri found in token stream".to_string())
-    }
+/// A complete parsed text: one or more sentences.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParsedText {
+    pub sentences: Vec<Bridi>,
 }

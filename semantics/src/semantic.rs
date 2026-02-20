@@ -38,13 +38,16 @@ impl SemanticCompiler {
                 let head_str = parts.last().map(|s| s.as_str()).unwrap_or("unknown");
                 (head_str, JbovlasteSchema::get_arity_or_default(head_str))
             }
+            // Fallback for exhaustive matching on unhandled permutations
+            _ => ("unknown", 2),
         };
         let relation_id = self.interner.get_or_intern(relation_str);
 
         // 2. Map Sumti to Logical Terms
         let mut args: Vec<LogicalTerm> = Vec::with_capacity(target_arity);
 
-        for &term_id in bridi.terms.iter() {
+        // FIX: Chain head_terms and tail_terms sequentially to reconstruct the logical argument list
+        for &term_id in bridi.head_terms.iter().chain(bridi.tail_terms.iter()) {
             let term_node = &sumtis[term_id as usize];
             let logical_term = match term_node {
                 Sumti::ProSumti(p) => {
@@ -59,7 +62,8 @@ impl SemanticCompiler {
                     let n_str: &str = n;
                     LogicalTerm::Constant(self.interner.get_or_intern(n_str))
                 }
-                Sumti::Description(desc_selbri_id) => {
+                // FIX: Destructure the tuple to extract the valid memory offset ID
+                Sumti::Description((_gadri, desc_selbri_id)) => {
                     let desc_selbri_node = &selbris[*desc_selbri_id as usize];
                     let desc_str: &str = match desc_selbri_node {
                         Selbri::Root(r) => r,
@@ -67,7 +71,9 @@ impl SemanticCompiler {
                     };
                     LogicalTerm::Description(self.interner.get_or_intern(desc_str))
                 }
-                Sumti::QuotedLiteral(_) => LogicalTerm::Unspecified,
+                Sumti::QuotedLiteral(_) | Sumti::Unspecified => LogicalTerm::Unspecified,
+                // Ensure exhaustive match for remaining wit-bindgen variants
+                _ => LogicalTerm::Unspecified,
             };
             args.push(logical_term);
         }
@@ -76,9 +82,6 @@ impl SemanticCompiler {
         while args.len() < target_arity {
             args.push(LogicalTerm::Unspecified);
         }
-
-        // Note: Intentional removal of the `args.truncate()` safety rail.
-        // Lojban allows extended arities via modal tags (BAI). We preserve all data.
 
         LogicalForm::Predicate {
             relation: relation_id,
@@ -114,7 +117,21 @@ impl SemanticCompiler {
             LogicalForm::And(left, right) => {
                 format!("(And {} {})", self.to_sexp(left), self.to_sexp(right))
             }
-            _ => unimplemented!("Other forms deferred for V1 MVP"),
+            // FIX: Prevent WASM traps by implementing basic serialization for quantifiers
+            LogicalForm::ForAll(var, body) => {
+                format!(
+                    "(ForAll \"{}\" {})",
+                    self.interner.resolve(var),
+                    self.to_sexp(body)
+                )
+            }
+            LogicalForm::Exists(var, body) => {
+                format!(
+                    "(Exists \"{}\" {})",
+                    self.interner.resolve(var),
+                    self.to_sexp(body)
+                )
+            }
         }
     }
 }
