@@ -16,4 +16,5 @@ path = "../wit/world.wit"
 world = "parser-component"
 
 [lib]
-crate-type = ["cdylib"]
+name = "parser_test"
+crate-type = ["cdylib", "lib"]

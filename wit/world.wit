@@ -97,6 +97,14 @@ world engine-pipeline {
     import parser;
     import semantics;
     import reasoning;
-    export execute: func(input: string) -> bool;
-}
 
+    /// Assert Lojban text as facts into the knowledge base.
+    /// Returns the number of root facts inserted.
+    export assert-text: func(input: string) -> result<u32, string>;
+
+    /// Query whether Lojban text is entailed by the knowledge base.
+    export query-text: func(input: string) -> result<bool, string>;
+
+    /// Debug: compile text to logic s-expression without asserting.
+    export compile-debug: func(input: string) -> result<string, string>;
+}

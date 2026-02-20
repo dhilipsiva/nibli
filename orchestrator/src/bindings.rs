@@ -3,29 +3,178 @@
 //   * runtime_path: "wit_bindgen_rt"
 #[doc(hidden)]
 #[allow(non_snake_case)]
-pub unsafe fn _export_execute_cabi<T: Guest>(arg0: *mut u8, arg1: usize) -> i32 {
+pub unsafe fn _export_assert_text_cabi<T: Guest>(arg0: *mut u8, arg1: usize) -> *mut u8 {
     #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
     let len0 = arg1;
     let bytes0 = _rt::Vec::from_raw_parts(arg0.cast(), len0, len0);
-    let result1 = T::execute(_rt::string_lift(bytes0));
+    let result1 = T::assert_text(_rt::string_lift(bytes0));
+    let ptr2 = (&raw mut _RET_AREA.0).cast::<u8>();
     match result1 {
-        true => 1,
-        false => 0,
+        Ok(e) => {
+            *ptr2.add(0).cast::<u8>() = (0i32) as u8;
+            *ptr2.add(::core::mem::size_of::<*const u8>()).cast::<i32>() = _rt::as_i32(
+                e,
+            );
+        }
+        Err(e) => {
+            *ptr2.add(0).cast::<u8>() = (1i32) as u8;
+            let vec3 = (e.into_bytes()).into_boxed_slice();
+            let ptr3 = vec3.as_ptr().cast::<u8>();
+            let len3 = vec3.len();
+            ::core::mem::forget(vec3);
+            *ptr2.add(2 * ::core::mem::size_of::<*const u8>()).cast::<usize>() = len3;
+            *ptr2.add(::core::mem::size_of::<*const u8>()).cast::<*mut u8>() = ptr3
+                .cast_mut();
+        }
+    };
+    ptr2
+}
+#[doc(hidden)]
+#[allow(non_snake_case)]
+pub unsafe fn __post_return_assert_text<T: Guest>(arg0: *mut u8) {
+    let l0 = i32::from(*arg0.add(0).cast::<u8>());
+    match l0 {
+        0 => {}
+        _ => {
+            let l1 = *arg0.add(::core::mem::size_of::<*const u8>()).cast::<*mut u8>();
+            let l2 = *arg0.add(2 * ::core::mem::size_of::<*const u8>()).cast::<usize>();
+            _rt::cabi_dealloc(l1, l2, 1);
+        }
+    }
+}
+#[doc(hidden)]
+#[allow(non_snake_case)]
+pub unsafe fn _export_query_text_cabi<T: Guest>(arg0: *mut u8, arg1: usize) -> *mut u8 {
+    #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+    let len0 = arg1;
+    let bytes0 = _rt::Vec::from_raw_parts(arg0.cast(), len0, len0);
+    let result1 = T::query_text(_rt::string_lift(bytes0));
+    let ptr2 = (&raw mut _RET_AREA.0).cast::<u8>();
+    match result1 {
+        Ok(e) => {
+            *ptr2.add(0).cast::<u8>() = (0i32) as u8;
+            *ptr2.add(::core::mem::size_of::<*const u8>()).cast::<u8>() = (match e {
+                true => 1,
+                false => 0,
+            }) as u8;
+        }
+        Err(e) => {
+            *ptr2.add(0).cast::<u8>() = (1i32) as u8;
+            let vec3 = (e.into_bytes()).into_boxed_slice();
+            let ptr3 = vec3.as_ptr().cast::<u8>();
+            let len3 = vec3.len();
+            ::core::mem::forget(vec3);
+            *ptr2.add(2 * ::core::mem::size_of::<*const u8>()).cast::<usize>() = len3;
+            *ptr2.add(::core::mem::size_of::<*const u8>()).cast::<*mut u8>() = ptr3
+                .cast_mut();
+        }
+    };
+    ptr2
+}
+#[doc(hidden)]
+#[allow(non_snake_case)]
+pub unsafe fn __post_return_query_text<T: Guest>(arg0: *mut u8) {
+    let l0 = i32::from(*arg0.add(0).cast::<u8>());
+    match l0 {
+        0 => {}
+        _ => {
+            let l1 = *arg0.add(::core::mem::size_of::<*const u8>()).cast::<*mut u8>();
+            let l2 = *arg0.add(2 * ::core::mem::size_of::<*const u8>()).cast::<usize>();
+            _rt::cabi_dealloc(l1, l2, 1);
+        }
+    }
+}
+#[doc(hidden)]
+#[allow(non_snake_case)]
+pub unsafe fn _export_compile_debug_cabi<T: Guest>(
+    arg0: *mut u8,
+    arg1: usize,
+) -> *mut u8 {
+    #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+    let len0 = arg1;
+    let bytes0 = _rt::Vec::from_raw_parts(arg0.cast(), len0, len0);
+    let result1 = T::compile_debug(_rt::string_lift(bytes0));
+    let ptr2 = (&raw mut _RET_AREA.0).cast::<u8>();
+    match result1 {
+        Ok(e) => {
+            *ptr2.add(0).cast::<u8>() = (0i32) as u8;
+            let vec3 = (e.into_bytes()).into_boxed_slice();
+            let ptr3 = vec3.as_ptr().cast::<u8>();
+            let len3 = vec3.len();
+            ::core::mem::forget(vec3);
+            *ptr2.add(2 * ::core::mem::size_of::<*const u8>()).cast::<usize>() = len3;
+            *ptr2.add(::core::mem::size_of::<*const u8>()).cast::<*mut u8>() = ptr3
+                .cast_mut();
+        }
+        Err(e) => {
+            *ptr2.add(0).cast::<u8>() = (1i32) as u8;
+            let vec4 = (e.into_bytes()).into_boxed_slice();
+            let ptr4 = vec4.as_ptr().cast::<u8>();
+            let len4 = vec4.len();
+            ::core::mem::forget(vec4);
+            *ptr2.add(2 * ::core::mem::size_of::<*const u8>()).cast::<usize>() = len4;
+            *ptr2.add(::core::mem::size_of::<*const u8>()).cast::<*mut u8>() = ptr4
+                .cast_mut();
+        }
+    };
+    ptr2
+}
+#[doc(hidden)]
+#[allow(non_snake_case)]
+pub unsafe fn __post_return_compile_debug<T: Guest>(arg0: *mut u8) {
+    let l0 = i32::from(*arg0.add(0).cast::<u8>());
+    match l0 {
+        0 => {
+            let l1 = *arg0.add(::core::mem::size_of::<*const u8>()).cast::<*mut u8>();
+            let l2 = *arg0.add(2 * ::core::mem::size_of::<*const u8>()).cast::<usize>();
+            _rt::cabi_dealloc(l1, l2, 1);
+        }
+        _ => {
+            let l3 = *arg0.add(::core::mem::size_of::<*const u8>()).cast::<*mut u8>();
+            let l4 = *arg0.add(2 * ::core::mem::size_of::<*const u8>()).cast::<usize>();
+            _rt::cabi_dealloc(l3, l4, 1);
+        }
     }
 }
 pub trait Guest {
-    fn execute(input: _rt::String) -> bool;
+    /// Assert Lojban text as facts into the knowledge base.
+    /// Returns the number of root facts inserted.
+    fn assert_text(input: _rt::String) -> Result<u32, _rt::String>;
+    /// Query whether Lojban text is entailed by the knowledge base.
+    fn query_text(input: _rt::String) -> Result<bool, _rt::String>;
+    /// Debug: compile text to logic s-expression without asserting.
+    fn compile_debug(input: _rt::String) -> Result<_rt::String, _rt::String>;
 }
 #[doc(hidden)]
 macro_rules! __export_world_engine_pipeline_cabi {
     ($ty:ident with_types_in $($path_to_types:tt)*) => {
-        const _ : () = { #[unsafe (export_name = "execute")] unsafe extern "C" fn
-        export_execute(arg0 : * mut u8, arg1 : usize,) -> i32 { unsafe {
-        $($path_to_types)*:: _export_execute_cabi::<$ty > (arg0, arg1) } } };
+        const _ : () = { #[unsafe (export_name = "assert-text")] unsafe extern "C" fn
+        export_assert_text(arg0 : * mut u8, arg1 : usize,) -> * mut u8 { unsafe {
+        $($path_to_types)*:: _export_assert_text_cabi::<$ty > (arg0, arg1) } } #[unsafe
+        (export_name = "cabi_post_assert-text")] unsafe extern "C" fn
+        _post_return_assert_text(arg0 : * mut u8,) { unsafe { $($path_to_types)*::
+        __post_return_assert_text::<$ty > (arg0) } } #[unsafe (export_name =
+        "query-text")] unsafe extern "C" fn export_query_text(arg0 : * mut u8, arg1 :
+        usize,) -> * mut u8 { unsafe { $($path_to_types)*:: _export_query_text_cabi::<$ty
+        > (arg0, arg1) } } #[unsafe (export_name = "cabi_post_query-text")] unsafe extern
+        "C" fn _post_return_query_text(arg0 : * mut u8,) { unsafe { $($path_to_types)*::
+        __post_return_query_text::<$ty > (arg0) } } #[unsafe (export_name =
+        "compile-debug")] unsafe extern "C" fn export_compile_debug(arg0 : * mut u8, arg1
+        : usize,) -> * mut u8 { unsafe { $($path_to_types)*::
+        _export_compile_debug_cabi::<$ty > (arg0, arg1) } } #[unsafe (export_name =
+        "cabi_post_compile-debug")] unsafe extern "C" fn _post_return_compile_debug(arg0
+        : * mut u8,) { unsafe { $($path_to_types)*:: __post_return_compile_debug::<$ty >
+        (arg0) } } };
     };
 }
 #[doc(hidden)]
 pub(crate) use __export_world_engine_pipeline_cabi;
+#[cfg_attr(target_pointer_width = "64", repr(align(8)))]
+#[cfg_attr(target_pointer_width = "32", repr(align(4)))]
+struct _RetArea([::core::mem::MaybeUninit<u8>; 3 * ::core::mem::size_of::<*const u8>()]);
+static mut _RET_AREA: _RetArea = _RetArea(
+    [::core::mem::MaybeUninit::uninit(); 3 * ::core::mem::size_of::<*const u8>()],
+);
 #[rustfmt::skip]
 #[allow(dead_code, clippy::all)]
 pub mod lojban {
@@ -2141,9 +2290,9 @@ pub(crate) use __export_engine_pipeline_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1419] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x85\x0a\x01A\x02\x01\
-A\x0c\x01B0\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1498] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xd4\x0a\x01A\x02\x01\
+A\x13\x01B0\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
 m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x04\x02se\x02\
 te\x02ve\x02xe\x04\0\x0aconversion\x03\0\x06\x01m\x04\x02je\x02ja\x02jo\x02ju\x04\
 \0\x0aconnective\x03\0\x08\x01m\x03\x02lo\x02le\x02la\x04\0\x05gadri\x03\0\x0a\x01\
@@ -2171,10 +2320,12 @@ an:nesy/parser@0.1.0\x05\x02\x02\x03\0\0\x0clogic-buffer\x01B\x07\x02\x03\x02\x0
 \x03\0\x1blojban:nesy/semantics@0.1.0\x05\x04\x01B\x08\x02\x03\x02\x01\x03\x04\0\
 \x0clogic-buffer\x03\0\0\x01j\0\x01s\x01@\x01\x05logic\x01\0\x02\x04\0\x0bassert\
 -fact\x01\x03\x01j\x01\x7f\x01s\x01@\x01\x05logic\x01\0\x04\x04\0\x10query-entai\
-lment\x01\x05\x03\0\x1blojban:nesy/reasoning@0.1.0\x05\x05\x01@\x01\x05inputs\0\x7f\
-\x04\0\x07execute\x01\x06\x04\0!lojban:nesy/engine-pipeline@0.1.0\x04\0\x0b\x15\x01\
-\0\x0fengine-pipeline\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-com\
-ponent\x070.227.1\x10wit-bindgen-rust\x060.41.0";
+lment\x01\x05\x03\0\x1blojban:nesy/reasoning@0.1.0\x05\x05\x01j\x01y\x01s\x01@\x01\
+\x05inputs\0\x06\x04\0\x0bassert-text\x01\x07\x01j\x01\x7f\x01s\x01@\x01\x05inpu\
+ts\0\x08\x04\0\x0aquery-text\x01\x09\x01j\x01s\x01s\x01@\x01\x05inputs\0\x0a\x04\
+\0\x0dcompile-debug\x01\x0b\x04\0!lojban:nesy/engine-pipeline@0.1.0\x04\0\x0b\x15\
+\x01\0\x0fengine-pipeline\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit\
+-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {
