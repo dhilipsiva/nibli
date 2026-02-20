@@ -5,12 +5,14 @@ use crate::dictionary::JbovlasteSchema;
 use crate::ir::{LogicalForm, LogicalTerm};
 use lasso::Rodeo;
 
-/// Tracks a quantifier introduced by a `lo` description,
+/// Tracks a quantifier introduced by a description (lo/le/ro lo/ro le),
 /// with an optional relative clause restrictor.
 struct QuantifierEntry {
     var: lasso::Spur,
     desc_id: u32,
     restrictor: Option<LogicalForm>,
+    /// If true, wraps as ∀x.(restrictor → body) instead of ∃x.(restrictor ∧ body)
+    universal: bool,
 }
 
 pub struct SemanticCompiler {
@@ -34,7 +36,6 @@ impl SemanticCompiler {
 
     // ─── Selbri Introspection ────────────────────────────────────
 
-    /// Recursively extracts the arity of the structural head of the relation.
     fn get_selbri_arity(&self, selbri_id: u32, selbris: &[Selbri]) -> usize {
         match &selbris[selbri_id as usize] {
             Selbri::Root(g) => JbovlasteSchema::get_arity_or_default(g.as_str()),
@@ -51,7 +52,6 @@ impl SemanticCompiler {
         }
     }
 
-    /// Extracts the string name of the structural head (for non-quantified descriptions).
     fn get_selbri_head_name<'a>(&self, selbri_id: u32, selbris: &'a [Selbri]) -> &'a str {
         match &selbris[selbri_id as usize] {
             Selbri::Root(r) => r.as_str(),
@@ -67,7 +67,6 @@ impl SemanticCompiler {
 
     // ─── Sumti Resolution ────────────────────────────────────────
 
-    /// Resolve a single sumti into a LogicalTerm, collecting any quantifier entries generated.
     fn resolve_sumti(
         &mut self,
         sumti: &Sumti,
@@ -91,39 +90,55 @@ impl SemanticCompiler {
             ),
 
             Sumti::Description((gadri, desc_id)) => {
-                if matches!(gadri, Gadri::Lo) {
-                    let var = self.fresh_var();
-                    (
-                        LogicalTerm::Variable(var),
-                        vec![QuantifierEntry {
-                            var,
-                            desc_id: *desc_id,
-                            restrictor: None,
-                        }],
-                    )
-                } else {
-                    // le/la descriptions: non-quantified specific referent
-                    let desc_str = self.get_selbri_head_name(*desc_id, selbris);
-                    (
-                        LogicalTerm::Description(self.interner.get_or_intern(desc_str)),
-                        vec![],
-                    )
+                match gadri {
+                    // Existential: lo → ∃x
+                    Gadri::Lo => {
+                        let var = self.fresh_var();
+                        (
+                            LogicalTerm::Variable(var),
+                            vec![QuantifierEntry {
+                                var,
+                                desc_id: *desc_id,
+                                restrictor: None,
+                                universal: false,
+                            }],
+                        )
+                    }
+
+                    // Universal: ro lo → ∀x, ro le → ∀x
+                    Gadri::RoLo | Gadri::RoLe => {
+                        let var = self.fresh_var();
+                        (
+                            LogicalTerm::Variable(var),
+                            vec![QuantifierEntry {
+                                var,
+                                desc_id: *desc_id,
+                                restrictor: None,
+                                universal: true,
+                            }],
+                        )
+                    }
+
+                    // le/la: non-quantified specific referent
+                    _ => {
+                        let desc_str = self.get_selbri_head_name(*desc_id, selbris);
+                        (
+                            LogicalTerm::Description(self.interner.get_or_intern(desc_str)),
+                            vec![],
+                        )
+                    }
                 }
             }
 
-            // FIX 1.3: Tagged sumti — resolve the inner sumti.
-            // Positional assignment is handled by compile_bridi, not here.
             Sumti::Tagged((_tag, inner_id)) => {
                 let inner = &sumtis[*inner_id as usize];
                 self.resolve_sumti(inner, sumtis, selbris, sentences)
             }
 
-            // FIX 1.4: Restricted sumti — resolve inner + compile relative clause.
             Sumti::Restricted((inner_id, rel_clause)) => {
                 let inner = &sumtis[*inner_id as usize];
                 let (term, mut quants) = self.resolve_sumti(inner, sumtis, selbris, sentences);
 
-                // Compile the relative clause body as a full bridi
                 let rel_body = self.compile_bridi(
                     &sentences[rel_clause.body_sentence as usize],
                     selbris,
@@ -131,13 +146,9 @@ impl SemanticCompiler {
                     sentences,
                 );
 
-                // Inject the bound variable as x1 of the restrictor and attach
-                // to the most recent quantifier (the one created by the inner sumti).
                 if let Some(last) = quants.last_mut() {
                     last.restrictor = Some(Self::inject_variable(rel_body, last.var));
                 }
-                // If no quantifier exists (e.g., "mi poi barda"), the restrictor
-                // is dropped. This is rare and semantically unusual.
 
                 (term, quants)
             }
@@ -151,9 +162,6 @@ impl SemanticCompiler {
         }
     }
 
-    /// Inject a variable as x1 of a logical form, replacing Unspecified in
-    /// the first argument position. Used to bind relative clause restrictors
-    /// to their head noun's variable.
     fn inject_variable(form: LogicalForm, var: lasso::Spur) -> LogicalForm {
         match form {
             LogicalForm::Predicate { relation, mut args } => {
@@ -164,7 +172,6 @@ impl SemanticCompiler {
                 }
                 LogicalForm::Predicate { relation, args }
             }
-            // Tanru produce And — inject into both branches
             LogicalForm::And(l, r) => LogicalForm::And(
                 Box::new(Self::inject_variable(*l, var)),
                 Box::new(Self::inject_variable(*r, var)),
@@ -172,16 +179,12 @@ impl SemanticCompiler {
             LogicalForm::Not(inner) => {
                 LogicalForm::Not(Box::new(Self::inject_variable(*inner, var)))
             }
-            // Quantifiers, Or — pass through unchanged
             other => other,
         }
     }
 
     // ─── Arity Normalization ─────────────────────────────────────
 
-    /// Fit an argument vector to a target arity: truncate if too long,
-    /// pad with Unspecified if too short. Ensures every predicate receives
-    /// exactly the right number of arguments regardless of calling context.
     fn fit_args(args: &[LogicalTerm], arity: usize) -> Vec<LogicalTerm> {
         let mut fitted = Vec::with_capacity(arity);
         for i in 0..arity {
@@ -196,9 +199,6 @@ impl SemanticCompiler {
 
     // ─── Selbri Application ──────────────────────────────────────
 
-    /// Recursively instantiates a Selbri against a set of arguments, correctly
-    /// mapping intersective Tanru, argument-swapping conversions, negation,
-    /// grouping, be/bei binding, and connectives across the AST tree.
     fn apply_selbri(
         &mut self,
         selbri_id: u32,
@@ -216,8 +216,6 @@ impl SemanticCompiler {
                 }
             }
 
-            // Tanru → Intersective Conjunction: sutra gerku(x) = sutra(x) ∧ gerku(x)
-            // Each sub-selbri gets args fit to its own arity.
             Selbri::Tanru((mod_id, head_id)) => {
                 let mod_arity = self.get_selbri_arity(*mod_id, selbris);
                 let head_arity = self.get_selbri_arity(*head_id, selbris);
@@ -238,7 +236,6 @@ impl SemanticCompiler {
                 LogicalForm::And(Box::new(left), Box::new(right))
             }
 
-            // SE-conversion: permute argument positions
             Selbri::Converted((conv, inner_id)) => {
                 let mut permuted = args.to_vec();
                 match conv {
@@ -251,31 +248,26 @@ impl SemanticCompiler {
                 self.apply_selbri(*inner_id, &permuted, selbris, sumtis, sentences)
             }
 
-            // FIX 1.2: Selbri negation → ¬P(args)
             Selbri::Negated(inner_id) => {
                 let inner = self.apply_selbri(*inner_id, args, selbris, sumtis, sentences);
                 LogicalForm::Not(Box::new(inner))
             }
 
-            // FIX 1.7: ke/ke'e grouping — transparent wrapper, just recurse
             Selbri::Grouped(inner_id) => {
                 self.apply_selbri(*inner_id, args, selbris, sumtis, sentences)
             }
 
-            // FIX 1.5: be/bei clause — bound arguments fill x2, x3, ... of the core
             Selbri::WithArgs((core_id, bound_ids)) => {
                 let core_arity = self.get_selbri_arity(*core_id, selbris);
                 let mut merged = Vec::with_capacity(core_arity);
                 let mut inner_quantifiers: Vec<QuantifierEntry> = Vec::new();
 
-                // x1 from outer context
                 merged.push(if !args.is_empty() {
                     args[0].clone()
                 } else {
                     LogicalTerm::Unspecified
                 });
 
-                // x2, x3, ... from be/bei bound arguments
                 for bound_id in bound_ids.iter() {
                     let bound_sumti = &sumtis[*bound_id as usize];
                     let (term, quants) =
@@ -284,8 +276,7 @@ impl SemanticCompiler {
                     merged.push(term);
                 }
 
-                // Pad remaining positions with outer args (if any) or Unspecified
-                let bound_count = 1 + bound_ids.len(); // x1 + be/bei args
+                let bound_count = 1 + bound_ids.len();
                 for i in merged.len()..core_arity {
                     if i < args.len() && i >= bound_count {
                         merged.push(args[i].clone());
@@ -296,7 +287,6 @@ impl SemanticCompiler {
 
                 let mut form = self.apply_selbri(*core_id, &merged, selbris, sumtis, sentences);
 
-                // Wrap with quantifiers from be/bei arguments (e.g., "nelci be lo gerku")
                 for entry in inner_quantifiers.into_iter().rev() {
                     let desc_arity = self.get_selbri_arity(entry.desc_id, selbris);
                     let mut restrictor_args = vec![LogicalTerm::Variable(entry.var)];
@@ -310,18 +300,33 @@ impl SemanticCompiler {
                         sumtis,
                         sentences,
                     );
-                    let mut body = LogicalForm::And(Box::new(restrictor), Box::new(form));
-                    if let Some(rel_restrictor) = entry.restrictor {
-                        body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
+
+                    if entry.universal {
+                        // ∀x. (restrictor → body) = ∀x. (¬restrictor ∨ body)
+                        let mut body = LogicalForm::Or(
+                            Box::new(LogicalForm::Not(Box::new(restrictor))),
+                            Box::new(form),
+                        );
+                        if let Some(rel_restrictor) = entry.restrictor {
+                            body = LogicalForm::Or(
+                                Box::new(LogicalForm::Not(Box::new(rel_restrictor))),
+                                Box::new(body),
+                            );
+                        }
+                        form = LogicalForm::ForAll(entry.var, Box::new(body));
+                    } else {
+                        // ∃x. (restrictor ∧ body)
+                        let mut body = LogicalForm::And(Box::new(restrictor), Box::new(form));
+                        if let Some(rel_restrictor) = entry.restrictor {
+                            body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
+                        }
+                        form = LogicalForm::Exists(entry.var, Box::new(body));
                     }
-                    form = LogicalForm::Exists(entry.var, Box::new(body));
                 }
 
                 form
             }
 
-            // FIX 1.6: Selbri connectives — je/ja/jo/ju
-            // Each side gets args fit to its own arity.
             Selbri::Connected((left_id, conn, right_id)) => {
                 let left_arity = self.get_selbri_arity(*left_id, selbris);
                 let right_arity = self.get_selbri_arity(*right_id, selbris);
@@ -331,13 +336,8 @@ impl SemanticCompiler {
                 let right = self.apply_selbri(*right_id, &right_args, selbris, sumtis, sentences);
 
                 match conn {
-                    // je (AND): P(x) ∧ Q(x)
                     Connective::Je => LogicalForm::And(Box::new(left), Box::new(right)),
-
-                    // ja (OR): P(x) ∨ Q(x)
                     Connective::Ja => LogicalForm::Or(Box::new(left), Box::new(right)),
-
-                    // jo (IFF): (¬A ∨ B) ∧ (¬B ∨ A)
                     Connective::Jo => {
                         let not_l = LogicalForm::Not(Box::new(left.clone()));
                         let not_r = LogicalForm::Not(Box::new(right.clone()));
@@ -346,8 +346,6 @@ impl SemanticCompiler {
                             Box::new(LogicalForm::Or(Box::new(not_r), Box::new(left))),
                         )
                     }
-
-                    // ju (XOR): (A ∨ B) ∧ ¬(A ∧ B)
                     Connective::Ju => LogicalForm::And(
                         Box::new(LogicalForm::Or(
                             Box::new(left.clone()),
@@ -383,8 +381,6 @@ impl SemanticCompiler {
     ) -> LogicalForm {
         let target_arity = self.get_selbri_arity(bridi.relation, selbris);
 
-        // FIX 1.3: Positional argument vector for place-tagged sumti.
-        // Tagged sumti go to their explicit position; untagged fill remaining slots.
         let mut positioned: Vec<Option<LogicalTerm>> = vec![None; target_arity];
         let mut untagged: Vec<LogicalTerm> = Vec::new();
         let mut quantifiers: Vec<QuantifierEntry> = Vec::new();
@@ -416,7 +412,6 @@ impl SemanticCompiler {
             }
         }
 
-        // Merge: tagged args at their positions, untagged fill remaining None slots
         let mut untagged_iter = untagged.into_iter();
         let args: Vec<LogicalTerm> = positioned
             .into_iter()
@@ -426,10 +421,9 @@ impl SemanticCompiler {
             })
             .collect();
 
-        // Construct the main relation via tree traversal
         let mut final_form = self.apply_selbri(bridi.relation, &args, selbris, sumtis, sentences);
 
-        // Wrap with existential quantifiers and restrictors (inner-to-outer)
+        // Wrap with quantifiers (inner-to-outer)
         for entry in quantifiers.into_iter().rev() {
             let desc_arity = self.get_selbri_arity(entry.desc_id, selbris);
 
@@ -439,20 +433,41 @@ impl SemanticCompiler {
                 restrictor_args.push(LogicalTerm::Unspecified);
             }
 
-            // Description selbris map structurally just like the main relation
             let desc_restrictor =
                 self.apply_selbri(entry.desc_id, &restrictor_args, selbris, sumtis, sentences);
-            let mut body = LogicalForm::And(Box::new(desc_restrictor), Box::new(final_form));
 
-            // Conjoin relative clause restrictor if present
-            if let Some(rel_restrictor) = entry.restrictor {
-                body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
+            if entry.universal {
+                // ∀x. (restrictor → body) = ∀x. (¬restrictor ∨ body)
+                let mut body = LogicalForm::Or(
+                    Box::new(LogicalForm::Not(Box::new(desc_restrictor))),
+                    Box::new(final_form),
+                );
+
+                // Conjoin relative clause restrictor into antecedent if present
+                if let Some(rel_restrictor) = entry.restrictor {
+                    // ∀x. ((restrictor ∧ rel_clause) → body)
+                    // = ∀x. (¬(restrictor ∧ rel_clause) ∨ body)
+                    // = ∀x. (¬restrictor ∨ ¬rel_clause ∨ body)
+                    // But cleaner: just wrap the rel_clause into the antecedent
+                    body = LogicalForm::Or(
+                        Box::new(LogicalForm::Not(Box::new(rel_restrictor))),
+                        Box::new(body),
+                    );
+                }
+
+                final_form = LogicalForm::ForAll(entry.var, Box::new(body));
+            } else {
+                // ∃x. (restrictor ∧ body)
+                let mut body = LogicalForm::And(Box::new(desc_restrictor), Box::new(final_form));
+
+                if let Some(rel_restrictor) = entry.restrictor {
+                    body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
+                }
+
+                final_form = LogicalForm::Exists(entry.var, Box::new(body));
             }
-
-            final_form = LogicalForm::Exists(entry.var, Box::new(body));
         }
 
-        // FIX 1.1: Sentence-level negation
         if bridi.negated {
             final_form = LogicalForm::Not(Box::new(final_form));
         }

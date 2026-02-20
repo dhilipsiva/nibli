@@ -130,6 +130,8 @@ pub mod lojban {
                 Lo,
                 Le,
                 La,
+                RoLo,
+                RoLe,
             }
             impl ::core::fmt::Debug for Gadri {
                 fn fmt(
@@ -140,6 +142,8 @@ pub mod lojban {
                         Gadri::Lo => f.debug_tuple("Gadri::Lo").finish(),
                         Gadri::Le => f.debug_tuple("Gadri::Le").finish(),
                         Gadri::La => f.debug_tuple("Gadri::La").finish(),
+                        Gadri::RoLo => f.debug_tuple("Gadri::RoLo").finish(),
+                        Gadri::RoLe => f.debug_tuple("Gadri::RoLe").finish(),
                     }
                 }
             }
@@ -153,6 +157,8 @@ pub mod lojban {
                         0 => Gadri::Lo,
                         1 => Gadri::Le,
                         2 => Gadri::La,
+                        3 => Gadri::RoLo,
+                        4 => Gadri::RoLe,
                         _ => panic!("invalid enum discriminant"),
                     }
                 }
@@ -1037,34 +1043,34 @@ pub(crate) use __export_reasoning_component_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1188] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x9a\x08\x01A\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1200] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xa6\x08\x01A\x02\x01\
 A\x05\x01B0\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
 m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x04\x02se\x02\
 te\x02ve\x02xe\x04\0\x0aconversion\x03\0\x06\x01m\x04\x02je\x02ja\x02jo\x02ju\x04\
-\0\x0aconnective\x03\0\x08\x01m\x03\x02lo\x02le\x02la\x04\0\x05gadri\x03\0\x0a\x01\
-m\x02\x03poi\x03noi\x04\0\x0frel-clause-kind\x03\0\x0c\x01r\x02\x04kind\x0d\x0db\
-ody-sentencey\x04\0\x0arel-clause\x03\0\x0e\x01o\x02\x0b\x01\x01o\x02\x05\x03\x01\
-o\x02\x03\x0f\x01q\x07\x09pro-sumti\x01s\0\x0bdescription\x01\x10\0\x04name\x01s\
-\0\x0equoted-literal\x01s\0\x0bunspecified\0\0\x06tagged\x01\x11\0\x0arestricted\
-\x01\x12\0\x04\0\x05sumti\x03\0\x13\x01ps\x01o\x02\x01\x01\x01o\x02\x07\x01\x01p\
-\x03\x01o\x02\x01\x18\x01o\x03\x01\x09\x01\x01q\x08\x04root\x01s\0\x08compound\x01\
-\x15\0\x05tanru\x01\x16\0\x09converted\x01\x17\0\x07negated\x01\x01\0\x07grouped\
-\x01\x01\0\x09with-args\x01\x19\0\x09connected\x01\x1a\0\x04\0\x06selbri\x03\0\x1b\
-\x01r\x04\x08relation\x01\x0ahead-terms\x18\x0atail-terms\x18\x07negated\x7f\x04\
-\0\x05bridi\x03\0\x1d\x01p\x1c\x01p\x14\x01p\x1e\x01r\x03\x07selbris\x1f\x06sumt\
-is\x20\x09sentences!\x04\0\x0aast-buffer\x03\0\"\x01q\x04\x08variable\x01s\0\x08\
-constant\x01s\0\x0bdescription\x01s\0\x0bunspecified\0\0\x04\0\x0clogical-term\x03\
-\0$\x01p%\x01o\x02s&\x01o\x02yy\x01o\x02sy\x01q\x06\x09predicate\x01'\0\x08and-n\
-ode\x01(\0\x07or-node\x01(\0\x08not-node\x01y\0\x0bexists-node\x01)\0\x0cfor-all\
--node\x01)\0\x04\0\x0alogic-node\x03\0*\x01p+\x01py\x01r\x02\x05nodes,\x05roots-\
-\x04\0\x0clogic-buffer\x03\0.\x03\0\x1blojban:nesy/ast-types@0.1.0\x05\0\x02\x03\
-\0\0\x0clogic-buffer\x01B\x08\x02\x03\x02\x01\x01\x04\0\x0clogic-buffer\x03\0\0\x01\
-j\0\x01s\x01@\x01\x05logic\x01\0\x02\x04\0\x0bassert-fact\x01\x03\x01j\x01\x7f\x01\
-s\x01@\x01\x05logic\x01\0\x04\x04\0\x10query-entailment\x01\x05\x04\0\x1blojban:\
-nesy/reasoning@0.1.0\x05\x02\x04\0%lojban:nesy/reasoning-component@0.1.0\x04\0\x0b\
-\x19\x01\0\x13reasoning-component\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\
-\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
+\0\x0aconnective\x03\0\x08\x01m\x05\x02lo\x02le\x02la\x05ro-lo\x05ro-le\x04\0\x05\
+gadri\x03\0\x0a\x01m\x02\x03poi\x03noi\x04\0\x0frel-clause-kind\x03\0\x0c\x01r\x02\
+\x04kind\x0d\x0dbody-sentencey\x04\0\x0arel-clause\x03\0\x0e\x01o\x02\x0b\x01\x01\
+o\x02\x05\x03\x01o\x02\x03\x0f\x01q\x07\x09pro-sumti\x01s\0\x0bdescription\x01\x10\
+\0\x04name\x01s\0\x0equoted-literal\x01s\0\x0bunspecified\0\0\x06tagged\x01\x11\0\
+\x0arestricted\x01\x12\0\x04\0\x05sumti\x03\0\x13\x01ps\x01o\x02\x01\x01\x01o\x02\
+\x07\x01\x01p\x03\x01o\x02\x01\x18\x01o\x03\x01\x09\x01\x01q\x08\x04root\x01s\0\x08\
+compound\x01\x15\0\x05tanru\x01\x16\0\x09converted\x01\x17\0\x07negated\x01\x01\0\
+\x07grouped\x01\x01\0\x09with-args\x01\x19\0\x09connected\x01\x1a\0\x04\0\x06sel\
+bri\x03\0\x1b\x01r\x04\x08relation\x01\x0ahead-terms\x18\x0atail-terms\x18\x07ne\
+gated\x7f\x04\0\x05bridi\x03\0\x1d\x01p\x1c\x01p\x14\x01p\x1e\x01r\x03\x07selbri\
+s\x1f\x06sumtis\x20\x09sentences!\x04\0\x0aast-buffer\x03\0\"\x01q\x04\x08variab\
+le\x01s\0\x08constant\x01s\0\x0bdescription\x01s\0\x0bunspecified\0\0\x04\0\x0cl\
+ogical-term\x03\0$\x01p%\x01o\x02s&\x01o\x02yy\x01o\x02sy\x01q\x06\x09predicate\x01\
+'\0\x08and-node\x01(\0\x07or-node\x01(\0\x08not-node\x01y\0\x0bexists-node\x01)\0\
+\x0cfor-all-node\x01)\0\x04\0\x0alogic-node\x03\0*\x01p+\x01py\x01r\x02\x05nodes\
+,\x05roots-\x04\0\x0clogic-buffer\x03\0.\x03\0\x1blojban:nesy/ast-types@0.1.0\x05\
+\0\x02\x03\0\0\x0clogic-buffer\x01B\x08\x02\x03\x02\x01\x01\x04\0\x0clogic-buffe\
+r\x03\0\0\x01j\0\x01s\x01@\x01\x05logic\x01\0\x02\x04\0\x0bassert-fact\x01\x03\x01\
+j\x01\x7f\x01s\x01@\x01\x05logic\x01\0\x04\x04\0\x10query-entailment\x01\x05\x04\
+\0\x1blojban:nesy/reasoning@0.1.0\x05\x02\x04\0%lojban:nesy/reasoning-component@\
+0.1.0\x04\0\x0b\x19\x01\0\x13reasoning-component\x03\0\0\0G\x09producers\x01\x0c\
+processed-by\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

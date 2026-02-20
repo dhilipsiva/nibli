@@ -12,10 +12,15 @@ use std::sync::{Mutex, OnceLock};
 static EGRAPH: OnceLock<Mutex<EGraph>> = OnceLock::new();
 static SKOLEM_COUNTER: OnceLock<Mutex<usize>> = OnceLock::new();
 static KNOWN_ENTITIES: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+static UNIVERSAL_TEMPLATES: OnceLock<Mutex<Vec<UniversalTemplate>>> = OnceLock::new();
 
-/// Maximum combinations when resolving existential queries.
-/// For N entities and K existential variables, we try N^K substitutions.
-const MAX_QUERY_COMBOS: usize = 10_000;
+/// A stored universal formula for Herbrand instantiation.
+/// When new entities appear, we instantiate the template for each.
+struct UniversalTemplate {
+    var_name: String,
+    /// The body s-expression with (Var "var_name") as placeholder
+    body_sexp: String,
+}
 
 fn fresh_skolem() -> String {
     let counter = SKOLEM_COUNTER.get_or_init(|| Mutex::new(0));
@@ -25,9 +30,32 @@ fn fresh_skolem() -> String {
     sk
 }
 
-fn register_entity(name: &str) {
+/// Register an entity and instantiate all stored universals for it.
+/// Returns true if the entity was NEW (not previously known).
+fn register_entity(name: &str, egraph: &mut EGraph) -> bool {
     let entities = KNOWN_ENTITIES.get_or_init(|| Mutex::new(HashSet::new()));
-    entities.lock().unwrap().insert(name.to_string());
+    let is_new = entities.lock().unwrap().insert(name.to_string());
+
+    if is_new {
+        // Instantiate all stored universals for the new entity
+        let templates = UNIVERSAL_TEMPLATES.get_or_init(|| Mutex::new(Vec::new()));
+        let templates_guard = templates.lock().unwrap();
+        for tmpl in templates_guard.iter() {
+            let instantiated = tmpl.body_sexp.replace(
+                &format!("(Var \"{}\")", tmpl.var_name),
+                &format!("(Const \"{}\")", name),
+            );
+            let command = format!("(IsTrue {})", instantiated);
+            if let Err(e) = egraph.parse_and_run_program(None, &command) {
+                eprintln!(
+                    "[reasoning] Failed to instantiate universal for {}: {}",
+                    name, e
+                );
+            }
+        }
+    }
+
+    is_new
 }
 
 fn get_known_entities() -> Vec<String> {
@@ -42,7 +70,7 @@ fn get_egraph() -> &'static Mutex<EGraph> {
         let schema_str = r#"
             ;; ═══════════════════════════════════════════════
             ;; Lojban NeSy Engine — FOL Schema & Rules
-            ;; Phase 6: Skolemization-aware
+            ;; Phase 6b: Skolemization + Herbrand instantiation
             ;; ═══════════════════════════════════════════════
 
             ;; Atomic Terms
@@ -99,7 +127,7 @@ fn get_egraph() -> &'static Mutex<EGraph> {
             ;; INFERENCE RULES
             ;; ───────────────────────────────────────────────
 
-            ;; Conjunction Elimination: A ∧ B ⊢ A, B
+            ;; Conjunction Elimination
             (rule ((IsTrue (And A B)))
                   ((IsTrue A) (IsTrue B)))
 
@@ -107,18 +135,23 @@ fn get_egraph() -> &'static Mutex<EGraph> {
             (rule ((IsTrue (Or A B)) (IsTrue (Not A)))
                   ((IsTrue B)))
 
-            ;; Modus Ponens: A → B, A ⊢ B
+            ;; Modus Ponens (disjunctive form): ¬A ∨ B, A ⊢ B
+            ;; Critical for universal instantiation: ∀x.(¬R(x) ∨ P(x)) + R(e) ⊢ P(e)
+            ;; Cannot rely on double negation to bridge because egglog rewrites
+            ;; are directional — Not(Not(A)) is never created from A alone.
+            (rule ((IsTrue (Or (Not A) B)) (IsTrue A))
+                  ((IsTrue B)))
+
+            ;; Modus Ponens
             (rule ((IsTrue (Implies A B)) (IsTrue A))
                   ((IsTrue B)))
 
-            ;; Modus Tollens: A → B, ¬B ⊢ ¬A
+            ;; Modus Tollens
             (rule ((IsTrue (Implies A B)) (IsTrue (Not B)))
                   ((IsTrue (Not A))))
 
             ;; ───────────────────────────────────────────────
-            ;; QUANTIFIER RULES (legacy, for non-Skolemized data)
-            ;; After Phase 6, assertions are Skolemized so these
-            ;; only fire on residual or manually asserted formulas.
+            ;; QUANTIFIER RULES (residual)
             ;; ───────────────────────────────────────────────
 
             ;; ∃-distribution over ∧
@@ -143,31 +176,66 @@ fn get_egraph() -> &'static Mutex<EGraph> {
 struct ReasoningComponent;
 
 impl Guest for ReasoningComponent {
-    /// Assert facts with Skolemization.
-    ///
-    /// All existential quantifiers are replaced with fresh Skolem constants.
-    /// `∃x. gerku(x) ∧ barda(x)` becomes `gerku(sk_0) ∧ barda(sk_0)`.
-    /// This eliminates variable aliasing across independent assertions.
+    /// Assert facts with Skolemization (∃) and Herbrand instantiation (∀).
     fn assert_fact(logic: LogicBuffer) -> Result<(), String> {
         let egraph_mutex = get_egraph();
         let mut egraph = egraph_mutex.lock().unwrap();
 
         for &root_id in &logic.roots {
-            // Collect all ∃-bound variables and assign globally unique Skolem constants
+            // Phase 1: Collect existential variables for Skolemization
             let mut skolem_subs = HashMap::new();
             collect_exists_for_skolem(&logic, root_id, &mut skolem_subs);
 
-            // Register Skolem constants as known entities
+            // Register Skolem constants as entities
             for sk in skolem_subs.values() {
-                register_entity(sk);
+                register_entity(sk, &mut egraph);
             }
 
-            // Register any named constants (la .bob. → "bob")
-            collect_and_register_constants(&logic, root_id);
+            // Register named constants as entities
+            collect_and_register_constants(&logic, root_id, &mut egraph);
 
-            // Build Skolemized s-expression (∃ wrappers removed, vars → Const)
-            let sexp = reconstruct_sexp_with_subs(&logic, root_id, &skolem_subs);
+            // Phase 2: Check for ForAll nodes and handle Herbrand instantiation
+            let forall_entries = collect_forall_nodes(&logic, root_id, &skolem_subs);
 
+            if !forall_entries.is_empty() {
+                for (var_name, body_sexp) in &forall_entries {
+                    println!(
+                        "[Universal] ∀{} registered for Herbrand instantiation",
+                        var_name
+                    );
+
+                    // Store template for future entity registration
+                    let templates = UNIVERSAL_TEMPLATES.get_or_init(|| Mutex::new(Vec::new()));
+                    templates.lock().unwrap().push(UniversalTemplate {
+                        var_name: var_name.clone(),
+                        body_sexp: body_sexp.clone(),
+                    });
+
+                    // Instantiate for all currently known entities
+                    let entities = get_known_entities();
+                    for entity in &entities {
+                        let instantiated = body_sexp.replace(
+                            &format!("(Var \"{}\")", var_name),
+                            &format!("(Const \"{}\")", entity),
+                        );
+                        let command = format!("(IsTrue {})", instantiated);
+                        if let Err(e) = egraph.parse_and_run_program(None, &command) {
+                            return Err(format!(
+                                "Failed to instantiate universal for {}: {}",
+                                entity, e
+                            ));
+                        }
+                    }
+                    if !entities.is_empty() {
+                        println!(
+                            "[Universal] Instantiated for {} known entities",
+                            entities.len()
+                        );
+                    }
+                }
+            }
+
+            // Phase 3: Assert the (possibly Skolemized) formula itself
             if !skolem_subs.is_empty() {
                 println!(
                     "[Skolem] {} variable(s) → {}",
@@ -180,6 +248,7 @@ impl Guest for ReasoningComponent {
                 );
             }
 
+            let sexp = reconstruct_sexp_with_subs(&logic, root_id, &skolem_subs);
             let command = format!("(IsTrue {})", sexp);
             if let Err(e) = egraph.parse_and_run_program(None, &command) {
                 return Err(format!("Failed to assert fact: {}", e));
@@ -188,19 +257,16 @@ impl Guest for ReasoningComponent {
         Ok(())
     }
 
-    /// Query entailment with existential resolution.
+    /// Query entailment via recursive Rust-side formula decomposition.
     ///
-    /// For queries without existentials (e.g., `la .bob. cu klama`):
-    ///   Direct structural check.
-    ///
-    /// For queries with existentials (e.g., `lo gerku cu barda`):
-    ///   Tries all known entity substitutions for each ∃-variable.
-    ///   Returns TRUE if any assignment satisfies the query.
+    /// All connective logic (And/Or/Not) and quantifier resolution
+    /// (Exists/ForAll) is handled in Rust. Only atomic predicates
+    /// are delegated to egglog via `(check (IsTrue ...))`.
     fn query_entailment(logic: LogicBuffer) -> Result<bool, String> {
         let egraph_mutex = get_egraph();
         let mut egraph = egraph_mutex.lock().unwrap();
 
-        // Saturate inference rules to fixpoint
+        // Saturate
         if let Err(e) = egraph.parse_and_run_program(None, "(run-schedule (saturate (run)))") {
             eprintln!(
                 "[reasoning] saturate failed, falling back to bounded run: {}",
@@ -212,40 +278,8 @@ impl Guest for ReasoningComponent {
         }
 
         for &root_id in &logic.roots {
-            // Collect existential variables in this query root
-            let exist_vars = collect_exists_vars(&logic, root_id);
-
-            if exist_vars.is_empty() {
-                // ── No existentials: direct structural check ──
-                let sexp = reconstruct_sexp(&logic, root_id);
-                let command = format!("(check (IsTrue {}))", sexp);
-                match egraph.parse_and_run_program(None, &command) {
-                    Ok(_) => {} // This root checks out
-                    Err(e) => {
-                        let msg = e.to_string();
-                        if msg.contains("Check failed") {
-                            return Ok(false);
-                        }
-                        return Err(format!("Reasoning error: {}", msg));
-                    }
-                }
-            } else {
-                // ── Has existentials: try Skolem constant substitutions ──
-                let entities = get_known_entities();
-                if entities.is_empty() {
-                    return Ok(false); // No entities in KB → can't satisfy ∃
-                }
-
-                let found = try_existential_resolution(
-                    &logic,
-                    root_id,
-                    &exist_vars,
-                    &entities,
-                    &mut egraph,
-                )?;
-                if !found {
-                    return Ok(false);
-                }
+            if !check_formula_holds(&logic, root_id, &HashMap::new(), &mut egraph)? {
+                return Ok(false);
             }
         }
 
@@ -253,9 +287,94 @@ impl Guest for ReasoningComponent {
     }
 }
 
+// ─── Recursive Formula Checking (Rust-side decomposition) ─────
+
+/// Recursively check whether a formula holds, decomposing connectives
+/// in Rust rather than relying on egglog conjunction introduction.
+///
+/// - Pred: check directly via egglog `(check (IsTrue ...))`
+/// - And(A,B): both must hold
+/// - Or(A,B): at least one must hold
+/// - Not(A): A must NOT hold
+/// - Exists: enumerate entities (delegated to caller)
+/// - ForAll: strip wrapper (variable already substituted by caller)
+fn check_formula_holds(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    subs: &HashMap<String, String>,
+    egraph: &mut EGraph,
+) -> Result<bool, String> {
+    match &buffer.nodes[node_id as usize] {
+        LogicNode::AndNode((l, r)) => {
+            // Both conjuncts must hold
+            Ok(check_formula_holds(buffer, *l, subs, egraph)?
+                && check_formula_holds(buffer, *r, subs, egraph)?)
+        }
+        LogicNode::OrNode((l, r)) => {
+            // At least one disjunct must hold
+            Ok(check_formula_holds(buffer, *l, subs, egraph)?
+                || check_formula_holds(buffer, *r, subs, egraph)?)
+        }
+        LogicNode::NotNode(inner) => {
+            // Inner must NOT hold
+            Ok(!check_formula_holds(buffer, *inner, subs, egraph)?)
+        }
+        LogicNode::ExistsNode((v, body)) => {
+            // If variable is already substituted, just check body
+            if subs.contains_key(v.as_str()) {
+                return check_formula_holds(buffer, *body, subs, egraph);
+            }
+            // Otherwise enumerate entities
+            let entities = get_known_entities();
+            for entity in &entities {
+                let mut new_subs = subs.clone();
+                new_subs.insert(v.clone(), entity.clone());
+                if check_formula_holds(buffer, *body, &new_subs, egraph)? {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+        LogicNode::ForAllNode((v, body)) => {
+            // If variable is already substituted, just check body
+            if subs.contains_key(v.as_str()) {
+                return check_formula_holds(buffer, *body, subs, egraph);
+            }
+            // Otherwise all entities must satisfy
+            let entities = get_known_entities();
+            if entities.is_empty() {
+                return Ok(true); // Vacuously true
+            }
+            for entity in &entities {
+                let mut new_subs = subs.clone();
+                new_subs.insert(v.clone(), entity.clone());
+                if !check_formula_holds(buffer, *body, &new_subs, egraph)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+        LogicNode::Predicate(_) => {
+            // Atomic: delegate to egglog
+            let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
+            let command = format!("(check (IsTrue {}))", sexp);
+            match egraph.parse_and_run_program(None, &command) {
+                Ok(_) => Ok(true),
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("Check failed") {
+                        Ok(false)
+                    } else {
+                        Err(format!("Reasoning error: {}", msg))
+                    }
+                }
+            }
+        }
+    }
+}
+
 // ─── Skolemization Helpers ────────────────────────────────────
 
-/// Walk the logic tree and assign a fresh Skolem constant to each ∃-bound variable.
 fn collect_exists_for_skolem(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -282,133 +401,65 @@ fn collect_exists_for_skolem(
     }
 }
 
-/// Collect names of all ∃-bound variables in the formula (for query resolution).
-fn collect_exists_vars(buffer: &LogicBuffer, node_id: u32) -> Vec<String> {
-    let mut vars = Vec::new();
-    collect_exists_vars_rec(buffer, node_id, &mut vars);
-    vars
+/// Extract ForAll nodes: returns (var_name, body_sexp) pairs.
+/// The body_sexp has the ForAll wrapper stripped and existentials Skolemized.
+fn collect_forall_nodes(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    skolem_subs: &HashMap<String, String>,
+) -> Vec<(String, String)> {
+    let mut entries = Vec::new();
+    collect_forall_nodes_rec(buffer, node_id, skolem_subs, &mut entries);
+    entries
 }
 
-fn collect_exists_vars_rec(buffer: &LogicBuffer, node_id: u32, vars: &mut Vec<String>) {
+fn collect_forall_nodes_rec(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    skolem_subs: &HashMap<String, String>,
+    entries: &mut Vec<(String, String)>,
+) {
     match &buffer.nodes[node_id as usize] {
-        LogicNode::ExistsNode((v, body)) => {
-            if !vars.contains(v) {
-                vars.push(v.clone());
-            }
-            collect_exists_vars_rec(buffer, *body, vars);
-        }
-        LogicNode::ForAllNode((_, body)) => {
-            collect_exists_vars_rec(buffer, *body, vars);
+        LogicNode::ForAllNode((v, body)) => {
+            let body_sexp = reconstruct_sexp_with_subs(buffer, *body, skolem_subs);
+            entries.push((v.clone(), body_sexp));
+            // Don't recurse into body — the template is the complete body
         }
         LogicNode::AndNode((l, r)) | LogicNode::OrNode((l, r)) => {
-            collect_exists_vars_rec(buffer, *l, vars);
-            collect_exists_vars_rec(buffer, *r, vars);
+            collect_forall_nodes_rec(buffer, *l, skolem_subs, entries);
+            collect_forall_nodes_rec(buffer, *r, skolem_subs, entries);
         }
-        LogicNode::NotNode(inner) => {
-            collect_exists_vars_rec(buffer, *inner, vars);
+        LogicNode::NotNode(inner) | LogicNode::ExistsNode((_, inner)) => {
+            collect_forall_nodes_rec(buffer, *inner, skolem_subs, entries);
         }
-        LogicNode::Predicate(_) => {}
+        _ => {}
     }
 }
 
 /// Register all Const terms found in the formula as known entities.
-fn collect_and_register_constants(buffer: &LogicBuffer, node_id: u32) {
+fn collect_and_register_constants(buffer: &LogicBuffer, node_id: u32, egraph: &mut EGraph) {
     match &buffer.nodes[node_id as usize] {
         LogicNode::Predicate((_, args)) => {
             for arg in args {
                 if let LogicalTerm::Constant(c) = arg {
-                    register_entity(c);
+                    register_entity(c, egraph);
                 }
             }
         }
         LogicNode::AndNode((l, r)) | LogicNode::OrNode((l, r)) => {
-            collect_and_register_constants(buffer, *l);
-            collect_and_register_constants(buffer, *r);
+            collect_and_register_constants(buffer, *l, egraph);
+            collect_and_register_constants(buffer, *r, egraph);
         }
         LogicNode::NotNode(inner)
         | LogicNode::ExistsNode((_, inner))
         | LogicNode::ForAllNode((_, inner)) => {
-            collect_and_register_constants(buffer, *inner);
+            collect_and_register_constants(buffer, *inner, egraph);
         }
     }
-}
-
-// ─── Existential Query Resolution ─────────────────────────────
-
-/// Try all combinations of known entities for existential variables.
-/// Returns true if any substitution satisfies the query.
-fn try_existential_resolution(
-    buffer: &LogicBuffer,
-    root_id: u32,
-    exist_vars: &[String],
-    entities: &[String],
-    egraph: &mut EGraph,
-) -> Result<bool, String> {
-    let n = entities.len();
-    let k = exist_vars.len();
-
-    // Check combinatorial bound
-    let total = n.checked_pow(k as u32).unwrap_or(usize::MAX);
-    if total > MAX_QUERY_COMBOS {
-        return Err(format!(
-            "Existential query too complex: {} variables × {} entities = {} combinations (limit {}). \
-             Narrow the query or assert fewer entities.",
-            k, n, total, MAX_QUERY_COMBOS
-        ));
-    }
-
-    // Iterate through all entity combinations (odometer algorithm)
-    let mut indices = vec![0usize; k];
-
-    loop {
-        // Build substitution: exist_var[i] → entities[indices[i]]
-        let mut subs = HashMap::with_capacity(k);
-        for (i, var) in exist_vars.iter().enumerate() {
-            subs.insert(var.clone(), entities[indices[i]].clone());
-        }
-
-        // Build substituted s-expression and check
-        let sexp = reconstruct_sexp_with_subs(buffer, root_id, &subs);
-        let command = format!("(check (IsTrue {}))", sexp);
-
-        match egraph.parse_and_run_program(None, &command) {
-            Ok(_) => return Ok(true), // Found a satisfying assignment
-            Err(e) => {
-                let msg = e.to_string();
-                if !msg.contains("Check failed") {
-                    return Err(format!("Reasoning error: {}", msg));
-                }
-                // This combination failed — try next
-            }
-        }
-
-        // Increment odometer (rightmost index first)
-        let mut carry = true;
-        for i in (0..k).rev() {
-            if carry {
-                indices[i] += 1;
-                if indices[i] >= n {
-                    indices[i] = 0;
-                } else {
-                    carry = false;
-                }
-            }
-        }
-        if carry {
-            break; // All combinations exhausted
-        }
-    }
-
-    Ok(false)
 }
 
 // ─── S-Expression Reconstruction ──────────────────────────────
 
-/// Reconstruct s-expression with variable substitutions.
-///
-/// When a substitution exists for an ∃-bound variable:
-/// - The `Exists` wrapper is removed (Skolemized away)
-/// - All `Variable(v)` occurrences become `Const(substitute)`
 fn reconstruct_sexp_with_subs(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -421,7 +472,6 @@ fn reconstruct_sexp_with_subs(
                 let term_str = match arg {
                     LogicalTerm::Variable(v) => {
                         if let Some(replacement) = subs.get(v.as_str()) {
-                            // Substituted: variable → constant
                             format!("(Const \"{}\")", replacement)
                         } else {
                             format!("(Var \"{}\")", v)
@@ -437,7 +487,6 @@ fn reconstruct_sexp_with_subs(
         }
         LogicNode::ExistsNode((v, body)) => {
             if subs.contains_key(v.as_str()) {
-                // Skolemized: strip Exists wrapper, body carries the substitution
                 reconstruct_sexp_with_subs(buffer, *body, subs)
             } else {
                 format!(
@@ -448,11 +497,16 @@ fn reconstruct_sexp_with_subs(
             }
         }
         LogicNode::ForAllNode((v, body)) => {
-            format!(
-                "(ForAll \"{}\" {})",
-                v,
+            if subs.contains_key(v.as_str()) {
+                // Universal variable substituted — strip ForAll wrapper
                 reconstruct_sexp_with_subs(buffer, *body, subs)
-            )
+            } else {
+                format!(
+                    "(ForAll \"{}\" {})",
+                    v,
+                    reconstruct_sexp_with_subs(buffer, *body, subs)
+                )
+            }
         }
         LogicNode::AndNode((l, r)) => {
             format!(
@@ -474,8 +528,6 @@ fn reconstruct_sexp_with_subs(
     }
 }
 
-/// Original s-expression reconstruction (no substitutions).
-/// Used for non-existential queries.
 fn reconstruct_sexp(buffer: &LogicBuffer, node_id: u32) -> String {
     reconstruct_sexp_with_subs(buffer, node_id, &HashMap::new())
 }

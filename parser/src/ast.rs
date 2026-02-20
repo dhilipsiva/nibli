@@ -9,7 +9,7 @@
 //   6. ke/ke'e tanru grouping
 //   7. je/ja/jo/ju connectives
 //   8. ku/vau/ku'o/kei terminators
-// Plus: se/te/ve/xe conversion, lo/le/la gadri, extended pro-sumti
+// Plus: se/te/ve/xe conversion, lo/le/la gadri, ro quantifier, extended pro-sumti
 
 // ─── Enums for grammatical markers ───────────────────────────────
 
@@ -56,9 +56,11 @@ pub enum Connective {
 /// Gadri (descriptor) type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Gadri {
-    Lo, // veridical description (∃ in FOL)
-    Le, // non-veridical reference (specific referent)
-    La, // named entity (proper name)
+    Lo,   // veridical description (∃ in FOL)
+    Le,   // non-veridical reference (specific referent)
+    La,   // named entity (proper name)
+    RoLo, // universal veridical (∀ in FOL): ro lo
+    RoLe, // universal referential (∀ over specific set): ro le
 }
 
 /// Relative clause type
@@ -76,7 +78,7 @@ pub enum Sumti {
     /// Pro-sumti: mi, do, ko'a..ko'u, da/de/di, ti/ta/tu, ri/ra/ru, etc.
     ProSumti(String),
 
-    /// Gadri-description: lo/le/la + selbri [+ ku]
+    /// Gadri-description: lo/le/la/ro lo/ro le + selbri [+ ku]
     Description { gadri: Gadri, inner: Box<Selbri> },
 
     /// la + cmevla name(s)

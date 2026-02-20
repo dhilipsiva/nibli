@@ -3,8 +3,13 @@ set shell := ["bash", "-c"]
 # The default target executes the full build-and-run pipeline
 default: run
 
+# Remove stale WASM artifacts to guarantee fresh compilation
+clean-wasm:
+    @echo "Removing stale WASM artifacts..."
+    rm -f target/wasm32-wasip1/release/*.wasm
+
 # Compiles the discrete WebAssembly components and fuses them
-build-wasm:
+build-wasm: clean-wasm
     @echo "Building WASI Preview 2 components..."
     cargo component build --release -p parser -p semantics -p reasoning -p orchestrator
     @echo "Fusing components with WAC..."
@@ -23,6 +28,14 @@ build-runner:
 run: build-wasm
     @echo "Launching Neuro-Symbolic Engine..."
     cargo run --release -p runner
+
+# Run parser unit tests only (bypasses cdylib linker issues)
+test-parser:
+    cargo test -p parser --lib -- --nocapture
+
+# Run all unit tests across workspace
+test:
+    cargo test --lib -- --nocapture
 
 # Wipes all compilation artifacts
 clean:

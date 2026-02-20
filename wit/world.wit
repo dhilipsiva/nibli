@@ -7,7 +7,7 @@ interface ast-types {
     enum place-tag { fa, fe, fi, fo, fu }
     enum conversion { se, te, ve, xe }
     enum connective { je, ja, jo, ju }
-    enum gadri { lo, le, la }
+    enum gadri { lo, le, la, ro-lo, ro-le }
     enum rel-clause-kind { poi, noi }
 
     record rel-clause {
@@ -108,3 +108,4 @@ world engine-pipeline {
     /// Debug: compile text to logic s-expression without asserting.
     export compile-debug: func(input: string) -> result<string, string>;
 }
+

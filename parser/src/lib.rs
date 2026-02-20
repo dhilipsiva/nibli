@@ -162,6 +162,8 @@ impl Flattener {
                     ast::Gadri::Lo => wit::Gadri::Lo,
                     ast::Gadri::Le => wit::Gadri::Le,
                     ast::Gadri::La => wit::Gadri::La,
+                    ast::Gadri::RoLo => wit::Gadri::RoLo,
+                    ast::Gadri::RoLe => wit::Gadri::RoLe,
                 };
                 wit::Sumti::Description((wit_gadri, inner_id))
             }
