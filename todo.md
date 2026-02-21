@@ -1,157 +1,130 @@
-### Phase 1: Make the semantics crate stop lying
+Here's the cross-reference of what's done, what remains, and the final prioritized list.
 
-These are bugs where the parser does real work that gets silently discarded. No new features — just honoring what already exists.
+## Status Audit
 
-**1.1 — Handle `bridi.negated` in `compile_bridi`**
-The parser sets `bridi.negated = true` for `na`-prefixed sentences. `compile_bridi` never reads this field. Add `Not` to `LogicalForm` in `ir.rs`, wrap the final form when `bridi.negated` is true.
+**Phase 1 (Semantics bugs)** — **ALL DONE.** 1.1–1.7 fully addressed. `bridi.negated`, `Selbri::Negated`, `Sumti::Tagged` (positional insertion), `Sumti::Restricted` (rel clauses), `WithArgs`, `Connected`, `Grouped` — all handled.
 
-**1.2 — Handle `Selbri::Negated` in `apply_selbri`**
-Currently falls to the `_ =>` unknown predicate catch-all. Should recurse into the inner selbri and wrap in `Not`.
+**Phase 2 (Type system)** — **ALL DONE.** `Not`/`Or`/`Exists`/`ForAll` in IR, WIT, flatten, reconstruct.
 
-**1.3 — Handle `Sumti::Tagged` in `compile_bridi`**
-Currently falls to `_ => LogicalTerm::Unspecified`. Match on `Tagged((tag, inner_id))`, resolve the inner sumti, and insert at `tag.to_index()` positionally into the args vector instead of appending sequentially. This requires changing the args-building logic from a linear push to a positional insert with a pre-allocated `Vec<Option<LogicalTerm>>` of size `target_arity`.
+**Phase 3 (Reasoning)** — **ALL DONE.** Saturation, conjunction elimination, modus ponens (both forms), disjunctive syllogism, De Morgan's, double negation, Skolemization, Herbrand instantiation.
 
-**1.4 — Handle `Sumti::Restricted` (relative clauses) in `compile_bridi`**
-Currently falls to catch-all. For `lo gerku poi barda`, the restrictor `barda(x)` should be conjoined with the description's existential. Resolve the inner sumti, compile the rel clause body as a `LogicalForm`, and conjoin it inside the quantifier scope.
+**Phase 4 (Hygiene)** — **PARTIALLY DONE.**
+- 4.1 ✅ Query routing moved to runner, WIT exports split
+- 4.2 ❌ `reconstruct_sexp` still duplicated (orchestrator + reasoning)
+- 4.3 ✅ Functionally solved (separate exports with typed returns)
+- 4.4 ❌ `ast-buffer` still mixes top-level sentences with rel clause bodies
+- 4.5 ❌ `logical-term`/`logic-node` still in `ast-types` interface
+- 4.6 ❌ wasip1/wasip2 misalignment (build targets wasip1, flake says wasip2)
 
-**1.5 — Handle `Selbri::WithArgs` (be/bei) in `apply_selbri`**
-Currently falls to unknown. Should extract the core selbri, bind the `args` from the be/bei clause into the predicate's argument positions (starting at x2), then apply the core selbri with the merged argument list.
+**Phase 5 (Parser hardening)** — **MOSTLY DONE.**
+- 5.1 ✅ MAX_DEPTH=64 with enter/leave
+- 5.2 ✅ Place tag backtracking with save/restore
+- 5.3 ❌ `bevri` still listed as arity 4 (CLL says 5)
+- 5.4 ⚠️ `sa` degraded to `si` with warning — documented but not fixed
 
-**1.6 — Handle `Selbri::Connected` in `apply_selbri`**
-Currently falls to unknown. For `je` (AND): apply both selbri to the same args, conjoin. Requires `Or` in the IR for `ja`.
+**Phase 6 (Research)** — 6.2 partially done (ro lo/ro le universal quantification added). 6.1, 6.3 untouched.
 
-**1.7 — Handle `Selbri::Grouped` (ke/ke'e) in `apply_selbri`**
-Trivial — just recurse into the inner selbri. Currently falls to unknown for no reason.
+**Phase 7–11 (Roadmap)** — Phase 10 (poi/noi) is already done. Everything else untouched.
 
-### Phase 2: Extend the type system to carry the new semantics
+---
 
-**2.1 — Add `Not`, `Or`, `Implies` to `ir::LogicalForm`**
-Required by 1.1, 1.2, 1.6. Trivial enum extension.
+## Final Prioritized Action List
 
-**2.2 — Add `not-node`, `or-node`, `implies-node` to WIT `logic-node` variant**
-The WIT type is the serialization boundary. Without this, the new IR types can't cross to the reasoning crate.
+Ranked by impact on application surface area and reasoning capability.
 
-**2.3 — Extend `flatten_form` in `semantics/lib.rs`**
-Handle the new `LogicalForm` variants when serializing to `LogicBuffer`.
+### Tier 1 — Capability Blockers (without these, the engine can't represent most real-world knowledge)
 
-**2.4 — Extend `reconstruct_sexp` in `reasoning/lib.rs`**
-Handle the new `LogicNode` variants when generating egglog s-expressions.
+**1. `nu` abstraction (propositions as arguments)**
+Status: Not started. Parser has `"nu"` in `looks_like_selbri_na` lookahead — dead code anticipating this.
+Impact: Blocks *every* domain. You cannot express beliefs ("I know that X"), causation ("the fact that A causes B"), evidence relations, desires, commands, or any higher-order claim. Every predicate is limited to entity arguments. This single feature probably doubles structural diversity of representable knowledge.
+Scope: Parser (new AST node `Abstraction`), grammar (parse `nu ... kei`), semantics (reify bridi as entity term), WIT (new sumti variant or selbri variant), reasoning (handle reified propositions).
 
-**2.5 — Extend `reconstruct_debug_sexp` in `orchestrator/lib.rs`**
-Same function, duplicated. (Or fix the duplication — see 4.2.)
+**2. Tense markers (`pu`/`ca`/`ba`)**
+Status: Not started.
+Impact: All assertions are timeless. Can't express "X happened before Y", "X is currently true", "X will occur". Blocks temporal reasoning — your evolutionary biology target domain is fundamentally about temporal ordering of events.
+Scope: Small. Parser (three cmavo → wrap selbri). Semantics (emit `Past(P)`/`Present(P)`/`Future(P)` wrappers). No reasoning changes needed initially — just structural markers that become queryable.
 
-### Phase 3: Make the reasoning engine actually reason
+**3. Tanru semantics fix**
+Status: Current implementation is *wrong*, not missing. `sutra gerku` → `sutra(x,zo'e) ∧ gerku(x,zo'e)` shares the full argument vector between modifier and head. This generates false entailments. "fast dog" doesn't mean "is-fast AND is-a-dog with the same x2".
+Impact: Every tanru in your training data produces semantically incorrect FOL. This is the most dangerous current bug because it silently produces wrong results rather than failing.
+Fix: Modifier should apply only x1 (the shared referent). Change `apply_selbri` for `Tanru` to give the modifier `[args[0], Unspecified, Unspecified, ...]` instead of the full args vector. Alternatively, use a tanru-specific predicate: `tanru_mod(sutra, gerku, x)`.
 
-**3.1 — Replace `(run 10)` with `(run-schedule (saturate ...))`**
-Deterministic fixpoint instead of arbitrary step count.
+### Tier 2 — Reasoning Depth (without these, inference chains are too shallow)
 
-**3.2 — Add conjunction elimination/introduction rules**
-```
-(rule ((IsTrue (And A B))) ((IsTrue A) (IsTrue B)))
-(rule ((IsTrue A) (IsTrue B)) ((IsTrue (And A B))))
-```
-Without these, `And` is opaque to queries.
+**4. Numerical predicates and comparisons**
+Status: Not started.
+Impact: Blocks every quantitative domain. "HbA1c > 7.0", "dN/dS > 1", "temperature above threshold". No numbers, no quantitative science.
+Scope: Extend `LogicalTerm` with numeric variant, add comparison predicates to the reasoning schema, parser support for Lojban number system (`li` + PA cmavo).
 
-**3.3 — Add modus ponens**
-```
-(rule ((IsTrue (Implies A B)) (IsTrue A)) ((IsTrue B)))
-```
+**5. Causal connectives (`ri'a`/`mu'i`/`ni'i`)**
+Status: Not started. Depends on `nu` (#1) since causes/motivations operate on propositions.
+Impact: Can't distinguish correlation from causation from logical entailment. Three distinct modalities that Lojban gives you for free. Critical for scientific reasoning.
+Scope: Parser (new binary connective cmavo), semantics (map to typed implication/causation predicates), reasoning (optional new inference rules for causal transitivity).
 
-**3.4 — Add negation rules (double negation, De Morgan's)**
-Required once `Not` flows through from Phase 2.
+**6. `ganai...gi` bare implication**
+Status: Not started. Currently universals encode `∀x.(A→B)` as `∀x.(¬A∨B)`, but there's no way to assert a bare conditional without a quantifier.
+Impact: "If it rains, the ground is wet" has no direct representation. Small diff, significant expressiveness gap.
+Scope: Parser (recognize `ganai` ... `gi` pattern), semantics (emit `Implies` or `Or(Not(A), B)`).
 
-**3.5 — Design existential instantiation strategy**
-Hardest item. egglog doesn't natively support Skolemization. Options: Skolem functions at the semantics level (replace `∃x.P(x)` with `P(sk_n)` before it hits egglog), or use egglog's `function` declarations to generate fresh constants. This is a design decision, not just code.
+**7. `inject_variable` fragility**
+Status: Known limitation (documented in limitations.md). Only replaces `Unspecified` in position 0 of a predicate.
+Impact: Relative clauses where the bound variable isn't x1 produce wrong results. "lo gerku poi mi nelci" (the dog that I like) — `nelci` has the variable in x2, not x1. The injector misses it.
+Fix: Either use `ke'a` explicit pronoun support, or scan all `Unspecified` positions (or at minimum, the first one that matches the expected binding site based on the relative clause's structure).
 
-### Phase 4: Architectural hygiene
+### Tier 3 — Architectural Integrity (not capability blockers, but accumulating debt)
 
-**4.1 — Move `?` query routing from orchestrator to runner**
-The runner should parse `:quit`, `?`, and any future commands. The WIT interface should export `assert` and `query` separately. The orchestrator shouldn't know about UI sigils.
+**8. `ast-buffer` sentence mixing (todo 4.4)**
+Top-level sentences and rel clause body sentences are in the same flat array with no way to distinguish them. When you add `nu` abstraction, this gets worse — abstracted bridi will also be in the mix. Add `roots: list<u32>` to `ast-buffer` mirroring what `logic-buffer` already has.
 
-**4.2 — Extract `reconstruct_sexp` into shared code**
-Either a shared Rust crate that compiles into each component, or a WIT-level `debug-print` function owned by one component.
+**9. wasip1/wasip2 alignment (todo 4.6)**
+Build targets `wasm32-wasip1`, flake shellHook says "wasip2 is active". Pick one. If you're using `cargo-component` and WAC fusion, wasip2 is the correct target. The current setup works by accident because cargo-component handles the translation, but it's a ticking bomb for toolchain updates.
 
-**4.3 — Improve `execute` return type**
-Change from `bool` to `result<execution-result, string>` with a variant enum so the runner can distinguish assertion success, query true/false, and specific error types.
+**10. `reconstruct_sexp` duplication (todo 4.2)**
+Identical logic in orchestrator and reasoning. When you add new `LogicNode` variants (and you will, for `nu`, tense, causation), you'll need to update both. Extract to a shared crate or have one component own the debug-print function.
 
-**4.4 — Add `roots: list<u32>` to `ast-buffer`**
-Currently `sentences` mixes top-level sentences with rel clause bodies. Either add an explicit roots list (like `logic-buffer` has) or separate them.
+**11. `ast-types` interface naming (todo 4.5)**
+`logical-term` and `logic-node` don't belong in `ast-types`. This is confusing and will get worse as types proliferate. Split into `ast-types` and `logic-types`.
 
-**4.5 — Rename/split `ast-types` interface**
-`logical-term` and `logic-node` don't belong in `ast-types`. Split into `ast-types` and `logic-types`, or rename to `types`.
+**12. Global state non-resettability**
+The reasoning engine's `OnceLock<Mutex<EGraph>>` plus entity set plus universal templates plus Skolem counter are all irrecoverable. No `:reset` command. For REPL-driven development this is painful — you have to restart the process to clear state. Add a `reset` export to the reasoning WIT interface that reinitializes all globals.
 
-**4.6 — Verify wasip1 vs wasip2 target alignment**
-Your flake advertises wasip2, your build outputs target wasip1 paths. Pick one and align the flake shellHook, Justfile, and cargo-component config.
+**13. `bevri` arity (todo 5.3)**
+Listed as 4-place in `CORE_GISMU_ARITIES`. CLL defines it as 5-place. One-line fix.
 
-### Phase 5: Parser hardening (lower priority)
+### Tier 4 — Long-term (not blocking current phases)
 
-**5.1 — Add recursion depth limit to `grammar.rs`**
-Nested `poi` clauses can stack overflow in WASM's 1MB stack. Add a depth counter to the `Parser` struct, check on each recursive call.
+**14. `sa` proper implementation** — Requires selma'o classification. Low priority since `sa` is rarely used in training data.
 
-**5.2 — Fix place tag backtracking**
-`try_parse_term` consumes a place tag but doesn't restore position if no sumti follows. Save/restore around the tag parse.
+**15. Event semantics (Neo-Davidsonian)** — The correct long-term foundation. Every predication becomes `∃e. P(e) ∧ agent(e, x) ∧ ...`. This changes everything. Don't touch until Tiers 1–2 are solid.
 
-**5.3 — Fix `bevri` arity in `CORE_GISMU_ARITIES`**
-Listed as 4-place, CLL defines it as 5-place.
+**16. Non-monotonic reasoning / belief revision** — Fact retraction. Fundamentally changes the egglog model. Research-grade problem.
 
-**5.4 — Validate `sa` degradation behavior**
-Currently acts as `si` (single-word erase). Document this limitation or implement selma'o-based class erasure.
+**17. Description term opacity** — `le gerku` becomes `(Desc "gerku")` which the reasoner can't decompose. For now this is acceptable (specific referents vs. quantified entities is a genuine semantic distinction), but eventually you'll want the reasoner to know that `le gerku` refers to something that satisfies `gerku(x)`.
 
-### Phase 6: Long-term research (not immediate)
+**18. E-Graph cycle detection / occurs check** — The `saturate` with fallback to `run 100` works but isn't principled. Pathological inputs can diverge. Low priority unless you're feeding untrusted input.
 
-**6.1 — Neo-Davidsonian event semantics**
-Reify events: `∃e. prami(e) ∧ agent(e, mi) ∧ theme(e, do)`. This changes the entire IR structure and predicate arity model. Don't touch this until Phases 1-3 are solid.
+**19. Conjunction introduction rule** — Conspicuously absent from the reasoning schema. You have conjunction *elimination* (`And(A,B) → A, B`) but not introduction (`A, B → And(A,B)`). This is likely intentional (introduction is expensive — quadratic blowup), but it means the reasoner can never *construct* conjunctions, only decompose them. If you ever need to query "is A∧B true?" where A and B were asserted separately, the Rust-side `check_formula_holds` handles it via recursive decomposition. But egglog-internal rules can't chain through constructed conjunctions.
 
-**6.2 — Quantifier scope ambiguity**
-`lo`/`le`/`ro`/`su'o` with proper scope resolution. Currently only `lo` (existential) is handled.
+---
 
-**6.3 — Non-monotonic reasoning / belief revision**
-Retraction of facts, default reasoning. Fundamentally changes the egglog model.
-
-Yes. The architecture is sound. The generic engine approach is correct. Here's what's missing, ranked purely by how much application surface each feature unlocks.
-
-**Tier 1 — Without these, training data is too structurally impoverished for useful embeddings.**
-
-`nu` abstraction is the single most critical gap. Every domain we discussed requires propositions as arguments: "I want [that you go]," "the process of [A binding B] causes [C increasing]," "evidence supports [that X evolved before Y]." Without `nu`, every predicate can only take entities as arguments. You can't represent beliefs, causation, evidence relations, or any higher-order claim. This blocks meaningful training data generation across every domain. Implementation: new AST node `Abstraction(body)` that reifies a proposition as an entity. Medium effort — touches parser, AST, semantics.
-
-Tense markers (`pu`/`ca`/`ba`) are required for temporal reasoning. Every domain needs before/after/during: drug administered before symptom onset, gene duplication before vertebrate radiation, sensor reading at time T. Without tense, all assertions are timeless. Implementation: three cmavo that wrap predicates in `Past(P)`/`Present(P)`/`Future(P)`. Small effort — parser + semantics only, no reasoning changes needed.
-
-Numerical predicates and comparisons. "HbA1c above 7.0," "expression fold-change greater than 2," "dN/dS ratio exceeds 1," "temperature above threshold." Every quantitative domain is blocked without this. Implementation: extend `LogicalTerm` with numeric literals, add comparison predicates (`greaterThan`, `lessThan`, `equalTo`). Medium effort.
-
-**Tier 2 — Without these, reasoning is too shallow for real inference chains.**
-
-Causal connectives (`ri'a`/`mu'i`/`ni'i`). "A causes B," "A motivates B," "A logically entails B." Lojban distinguishes physical causation, motivation, and logical entailment — three distinct causal modalities. This is gold for scientific reasoning where you need to distinguish correlation from causation from logical consequence. Implementation: new binary connective nodes in AST, map to typed implication predicates.
-
-Implication as a first-class connective. Currently your universal quantification encodes `∀x.(A→B)` as `∀x.(¬A∨B)`. But bare implication without quantifiers — "if it rains, the ground is wet" — has no direct syntax. Lojban's `ganai...gi` (if-then) should map to `Implies(A,B)` directly. Small diff, significant expressiveness.
-
-Multi-place predicate queries. Right now queries check `selbri(x1)` or `selbri(x1, x2)`. Real knowledge bases need queries like "who klama'd to what destination?" — partial binding where some places are bound and others are existentially quantified. Your `check_formula_holds` architecture supports this in principle, but the REPL and semantics need to handle underspecified place structures.
-
-**Tier 3 — Required for production-grade knowledge bases, not for initial training.**
-
-Event semantics (Neo-Davidsonian reification). Every predication becomes an event entity with role-linked participants. "Bob walked quickly to the store" becomes `∃e. walk(e) ∧ agent(e, bob) ∧ destination(e, store) ∧ manner(e, quick)`. This is the proper foundation for adverbials, temporal relations between events, and causal chains between processes. It's the right long-term architecture but it's a major refactor — every existing assertion changes structure.
-
-Relative clauses (`poi`/`noi`). "The dog which is big runs" — restrictive relative clauses define subsets. Your engine currently can't express "the X such that P(X)." This matters for any query that filters entities by properties. Implementation: `poi` introduces a subordinate bridi that constrains the description's referent.
-
-Ontological hierarchy / type system. "A dog is an animal. All animals are organisms." Subsumption reasoning. Currently your engine treats every predicate as flat. A type hierarchy lets you reason at multiple levels of abstraction — critical for Gene Ontology, taxonomic classification, legal entity types.
-
-**Tier 4 — Nice-to-have, not blockers.**
-
-Evidentials (`ba'a`/`ka'u`/`ti'e`). Lojban marks epistemic source — "I observe," "I hypothesize," "I heard." Useful for provenance tracking in knowledge bases but not structurally necessary.
-
-Attitudinals. Emotional/evaluative markers. Irrelevant for formal reasoning.
-
-MEX (mathematical expression system). Lojban's built-in math notation. Only needed if you want to embed mathematical reasoning directly. Numerical predicates from Tier 1 cover 90% of practical needs.
-
-**The implementation order I'd recommend:**
+## Recommended Execution Order
 
 ```
-Phase 7:  nu abstraction + pu/ca/ba tense         ← unlocks training data diversity
-Phase 8:  numerical predicates + comparisons       ← unlocks quantitative domains  
-Phase 9:  causal connectives + bare implication     ← unlocks scientific reasoning
-Phase 10: relative clauses (poi/noi)               ← unlocks filtered queries
-Phase 11: event semantics refactor                  ← proper long-term foundation
+Immediate:  #3 (tanru fix — it's generating wrong results NOW)
+            #13 (bevri — one line)
+            
+Phase 7:    #1 (nu) + #2 (tense) — unlock training data
+            #7 (inject_variable fix — wrong results for rel clauses)
+            
+Phase 8:    #4 (numerical predicates)
+            #6 (ganai/gi implication)
+            #8 (ast-buffer roots)
+            
+Phase 9:    #5 (causal connectives — depends on #1)
+            #9, #10, #11 (architectural cleanup batch)
+            #12 (reset command)
+            
+Later:      #14–#19 as needed
 ```
 
-Phases 7-9 are what make the engine genuinely useful. Phase 7 alone probably doubles the structural diversity of your training data. Phases 7-9 together cover every domain we discussed — medicine, law, genomics, evolution, astrophysics, NASA.
-
-Phase 7 first?
+Items #3 and #7 are correctness bugs — they produce wrong output on valid input. Everything else is missing capability. Fix correctness first.
