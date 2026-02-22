@@ -49,6 +49,7 @@ impl SemanticCompiler {
                 .last()
                 .map(|s| JbovlasteSchema::get_arity_or_default(s.as_str()))
                 .unwrap_or(2),
+            Selbri::Abstraction(_) => 1,
         }
     }
 
@@ -62,6 +63,7 @@ impl SemanticCompiler {
             Selbri::WithArgs((core_id, _)) => self.get_selbri_head_name(*core_id, selbris),
             Selbri::Connected((left_id, _, _)) => self.get_selbri_head_name(*left_id, selbris),
             Selbri::Compound(parts) => parts.last().map(|s| s.as_str()).unwrap_or("entity"),
+            Selbri::Abstraction(_) => "nu",
         }
     }
 
@@ -376,6 +378,26 @@ impl SemanticCompiler {
                     relation: self.interner.get_or_intern(head),
                     args: Self::fit_args(args, arity),
                 }
+            }
+
+            Selbri::Abstraction(body_sentence_idx) => {
+                // nu abstraction: compile inner bridi as standalone formula,
+                // conjoin with Pred("nu", [x1]).
+                // Result: And(Pred("nu", [x1]), inner_formula)
+                //
+                // When used in "lo nu mi klama cu barda":
+                //   ∃e. (nu(e) ∧ klama(mi,...) ∧ barda(e,...))
+                let inner_form = self.compile_bridi(
+                    &sentences[*body_sentence_idx as usize],
+                    selbris,
+                    sumtis,
+                    sentences,
+                );
+                let nu_pred = LogicalForm::Predicate {
+                    relation: self.interner.get_or_intern("nu"),
+                    args: Self::fit_args(args, 1),
+                };
+                LogicalForm::And(Box::new(nu_pred), Box::new(inner_form))
             }
         }
     }

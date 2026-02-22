@@ -65,9 +65,10 @@ impl Flattener {
             // The top-level sentence is always the LAST entry added by
             // push_bridi.  Rel clause bodies are pushed earlier (during
             // push_sumti for Restricted variants), so they have lower indices.
-            let root_idx = (f.buffer.sentences.len() - 1) as u32;
-            f.buffer.roots.push(root_idx);
         }
+        // Top-level sentence is LAST pushed (abstraction/rel clause bodies pushed earlier)
+        let root_idx = (f.buffer.sentences.len() - 1) as u32;
+        f.buffer.roots.push(root_idx);
         f.buffer
     }
 
@@ -151,6 +152,13 @@ impl Flattener {
                     ast::Connective::Ju => wit::Connective::Ju,
                 };
                 wit::Selbri::Connected((l_id, wit_conn, r_id))
+            }
+            ast::Selbri::Abstraction(inner_bridi) => {
+                // Inner bridi goes into sentences (NOT a root —
+                // same pattern as rel clause bodies).
+                let body_idx = self.buffer.sentences.len() as u32;
+                self.push_bridi(*inner_bridi);
+                wit::Selbri::Abstraction(body_idx)
             }
         };
 

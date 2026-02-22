@@ -34,6 +34,9 @@ interface ast-types {
         grouped(selbri-id),
         with-args(tuple<selbri-id, list<sumti-id>>),
         connected(tuple<selbri-id, connective, selbri-id>),
+        /// nu abstraction: inner bridi lives in sentences[u32].
+        /// Arity is 1 (x1 = event/proposition entity).
+        abstraction(u32),
     }
 
     record bridi {

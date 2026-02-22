@@ -138,6 +138,10 @@ pub enum Selbri {
         connective: Connective,
         right: Box<Selbri>,
     },
+
+    /// Abstraction: nu + bridi [+ kei]
+    /// Reifies a proposition/event as a 1-place selbri (x1 is the event).
+    Abstraction(Box<Bridi>),
 }
 
 /// A single bridi (predication).

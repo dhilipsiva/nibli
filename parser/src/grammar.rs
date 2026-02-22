@@ -680,6 +680,29 @@ impl<'a> Parser<'a> {
             }
         }
 
+        if self.peek_is_cmavo("nu") {
+            if self.depth >= MAX_DEPTH {
+                return None;
+            }
+            let saved = self.save();
+            self.pos += 1; // consume nu
+
+            self.depth += 1;
+            let inner = self.parse_sentence();
+            self.depth = self.depth.saturating_sub(1);
+
+            match inner {
+                Ok(bridi) => {
+                    self.eat_cmavo("kei");
+                    return Some(Selbri::Abstraction(Box::new(bridi)));
+                }
+                Err(_) => {
+                    self.restore(saved);
+                    return None;
+                }
+            }
+        }
+
         if self.peek_is_gismu() {
             if let Some(NormalizedToken::Standard(_, s)) = self.advance() {
                 return Some(Selbri::Root(s.to_string()));
