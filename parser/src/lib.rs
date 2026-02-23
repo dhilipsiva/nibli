@@ -41,7 +41,8 @@ impl Guest for ParserComponent {
 /// referenced by index from its parent.
 ///
 /// Top-level sentences are recorded in `buffer.roots`.
-/// Rel clause bodies are stored in `buffer.sentences` but are NOT roots.
+/// Rel clause bodies and nu abstraction bodies are stored in
+/// `buffer.sentences` but are NOT roots.
 struct Flattener {
     buffer: wit::AstBuffer,
 }
@@ -63,12 +64,12 @@ impl Flattener {
         for bridi in parsed.sentences {
             f.push_bridi(bridi);
             // The top-level sentence is always the LAST entry added by
-            // push_bridi.  Rel clause bodies are pushed earlier (during
-            // push_sumti for Restricted variants), so they have lower indices.
+            // push_bridi.  Rel clause bodies and nu abstraction bodies are
+            // pushed earlier (during recursive push_sumti/push_selbri),
+            // so they have lower indices.
+            let root_idx = (f.buffer.sentences.len() - 1) as u32;
+            f.buffer.roots.push(root_idx);
         }
-        // Top-level sentence is LAST pushed (abstraction/rel clause bodies pushed earlier)
-        let root_idx = (f.buffer.sentences.len() - 1) as u32;
-        f.buffer.roots.push(root_idx);
         f.buffer
     }
 
