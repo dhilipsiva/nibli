@@ -206,9 +206,7 @@ impl<'a> Parser<'a> {
         self.peek_is_any_cmavo(&["ku'o", "kei", "vau"])
     }
 
-    // ─── Top-level entry point ────────────────────────────────
-
-    /// Parse a complete text: sentence (.i sentence)*
+    // Replace the top-level parse_text method:
     pub fn parse_text(&mut self) -> Result<ParsedText, ParseError> {
         let mut sentences = Vec::new();
 
@@ -227,40 +225,20 @@ impl<'a> Parser<'a> {
                     break;
                 }
             }
-
             while self.eat_pause() {}
-
             if self.at_end() {
                 break;
             }
-
             if self.at_dot_i() {
                 continue;
             }
-
             sentences.push(self.parse_sentence()?);
         }
 
         while self.eat_pause() {}
 
-        // Detect unconsumed tokens
         if !self.at_end() {
-            let remaining = self.tokens.len() - self.pos;
-            let next_desc = match self.peek() {
-                Some(NormalizedToken::Standard(kind, text)) => {
-                    format!("{:?}(\"{}\")", kind, text)
-                }
-                Some(NormalizedToken::Quoted(text)) => format!("Quoted(\"{}\")", text),
-                Some(NormalizedToken::Glued(parts)) => format!("Glued({:?})", parts),
-                None => "???".to_string(),
-            };
-            return Err(ParseError {
-                message: format!(
-                    "{} unconsumed token(s) starting with {} at position {}",
-                    remaining, next_desc, self.pos
-                ),
-                position: self.pos,
-            });
+            return Err(self.error("unconsumed tokens remaining"));
         }
 
         Ok(ParsedText { sentences })
@@ -268,7 +246,50 @@ impl<'a> Parser<'a> {
 
     // ─── Sentence ─────────────────────────────────────────────
 
-    fn parse_sentence(&mut self) -> Result<Bridi, ParseError> {
+    fn parse_sentence(&mut self) -> Result<Sentence, ParseError> {
+        self.enter()?;
+
+        // Check for forethought connectives
+        let conn = if self.eat_cmavo("ganai") {
+            Some(SentenceConnective::GanaiGi)
+        } else if self.eat_cmavo("ge") {
+            Some(SentenceConnective::GeGi)
+        } else if self.eat_cmavo("ga") {
+            Some(SentenceConnective::GaGi)
+        } else {
+            None
+        };
+
+        if let Some(connective) = conn {
+            // Parse the left sentence
+            let left = self.parse_sentence()?;
+
+            // Expect the 'gi' separator
+            if !self.eat_cmavo("gi") {
+                self.leave();
+                return Err(
+                    self.error("expected 'gi' after forethought connective and first sentence")
+                );
+            }
+
+            // Parse the right sentence
+            let right = self.parse_sentence()?;
+
+            self.leave();
+            return Ok(Sentence::Connected {
+                connective,
+                left: Box::new(left),
+                right: Box::new(right),
+            });
+        }
+
+        // Fallback to standard simple bridi
+        let bridi = self.parse_simple_sentence()?;
+        self.leave();
+        Ok(Sentence::Simple(bridi))
+    }
+
+    fn parse_simple_sentence(&mut self) -> Result<Bridi, ParseError> {
         self.enter()?;
 
         // Tense can appear sentence-initially: "pu mi klama"
@@ -2077,7 +2098,6 @@ mod tests {
 
     #[test]
     fn test_kea_as_head_term() {
-        // lo prenu poi ke'a nelci lo mlatu
         let r = parse_ok(&[
             cmavo("lo"),
             gismu("prenu"),
@@ -2089,7 +2109,11 @@ mod tests {
         ]);
         match &r.sentences[0].head_terms[0] {
             Sumti::Restricted { clause, .. } => {
-                assert_eq!(clause.body.head_terms[0], Sumti::ProSumti("ke'a".into()));
+                let body_bridi = match &*clause.body {
+                    Sentence::Simple(b) => b,
+                    _ => panic!("expected simple bridi"),
+                };
+                assert_eq!(body_bridi.head_terms[0], Sumti::ProSumti("ke'a".into()));
             }
             other => panic!("expected Restricted with ke'a head, got {:?}", other),
         }

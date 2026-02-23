@@ -106,7 +106,7 @@ pub enum Sumti {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RelClause {
     pub kind: RelClauseKind,
-    pub body: Box<Bridi>,
+    pub body: Box<Sentence>,
 }
 
 /// The main predicate/relation in a bridi.
@@ -143,7 +143,7 @@ pub enum Selbri {
 
     /// Abstraction: nu + bridi [+ kei]
     /// Reifies a proposition/event as a 1-place selbri (x1 is the event).
-    Abstraction(Box<Bridi>),
+    Abstraction(Box<Sentence>),
 }
 
 /// Tense marker (PU selma'o)
@@ -164,8 +164,27 @@ pub struct Bridi {
     pub tense: Option<Tense>,
 }
 
-/// A complete parsed text: one or more sentences.
 #[derive(Debug, Clone, PartialEq)]
+pub enum Sentence {
+    /// A single, simple predicate relationship
+    Simple(Bridi),
+    /// Forethought connection: (Connective, Left Sentence, Right Sentence)
+    /// Example: ganai A gi B -> Connected(Implies, A, B)
+    Connected {
+        connective: SentenceConnective, // New enum for gi'i, ganai, etc.
+        left: Box<Sentence>,
+        right: Box<Sentence>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SentenceConnective {
+    GanaiGi, // Implication: ganai ... gi ...
+    GeGi,    // Conjunction: ge ... gi ... (AND)
+    GaGi,    // Disjunction: ga ... gi ... (OR)
+}
+
+// Update ParsedText to hold recursive Sentences, not flat Bridis
 pub struct ParsedText {
-    pub sentences: Vec<Bridi>,
+    pub sentences: Vec<Sentence>,
 }

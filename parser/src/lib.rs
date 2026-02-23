@@ -61,15 +61,19 @@ impl Flattener {
 
     fn flatten(parsed: ast::ParsedText) -> wit::AstBuffer {
         let mut f = Self::new();
-        for bridi in parsed.sentences {
-            f.push_bridi(bridi);
-            // The top-level sentence is always the LAST entry added by
-            // push_bridi.  Rel clause bodies and nu abstraction bodies are
-            // pushed earlier (during recursive push_sumti/push_selbri),
-            // so they have lower indices.
-            let root_idx = (f.buffer.sentences.len() - 1) as u32;
-            f.buffer.roots.push(root_idx);
+        for sentence in parsed.sentences {
+            let root_id = f.push_sentence(sentence);
+            f.buffer.roots.push(root_id);
         }
+        // xx       for bridi in parsed.sentences {
+        //            f.push_bridi(bridi);
+        //            // The top-level sentence is always the LAST entry added by
+        //            // push_bridi.  Rel clause bodies and nu abstraction bodies are
+        //            // pushed earlier (during recursive push_sumti/push_selbri),
+        //            // so they have lower indices.
+        //            let root_idx = (f.buffer.sentences.len() - 1) as u32;
+        //            f.buffer.roots.push(root_idx);
+        //        }
         f.buffer
     }
 
@@ -89,19 +93,96 @@ impl Flattener {
             .into_iter()
             .map(|s| self.push_sumti(s))
             .collect();
+        let tense = bridi.tense.map(|t| match t {
+            ast::Tense::Pu => wit::Tense::Pu,
+            ast::Tense::Ca => wit::Tense::Ca,
+            ast::Tense::Ba => wit::Tense::Ba,
+        });
 
-        self.buffer.sentences.push(wit::Bridi {
+        let flat_bridi = wit::Bridi {
             relation,
             head_terms,
             tail_terms,
             negated: bridi.negated,
-            tense: bridi.tense.map(|t| match t {
-                ast::Tense::Pu => wit::Tense::Pu,
-                ast::Tense::Ca => wit::Tense::Ca,
-                ast::Tense::Ba => wit::Tense::Ba,
-            }),
-        });
+            tense,
+        };
+
+        self.buffer
+            .sentences
+            .push(wit::Sentence::Simple(flat_bridi));
     }
+
+    // Add this method to your Flattener struct in parser/src/lib.rs:
+    fn push_sentence(&mut self, sentence: ast::Sentence) -> u32 {
+        use bindings::lojban::nesy::ast_types::{
+            Sentence as WasmSentence, SentenceConnective as WasmConn,
+        };
+
+        match sentence {
+            ast::Sentence::Simple(bridi) => {
+                let relation = self.push_selbri(bridi.selbri);
+
+                let mut head_terms = Vec::new();
+                for term in bridi.head_terms {
+                    head_terms.push(self.push_sumti(term));
+                }
+
+                let mut tail_terms = Vec::new();
+                for term in bridi.tail_terms {
+                    tail_terms.push(self.push_sumti(term));
+                }
+
+                let tense = bridi.tense.map(|t| match t {
+                    ast::Tense::Pu => bindings::lojban::nesy::ast_types::Tense::Pu,
+                    ast::Tense::Ca => bindings::lojban::nesy::ast_types::Tense::Ca,
+                    ast::Tense::Ba => bindings::lojban::nesy::ast_types::Tense::Ba,
+                });
+
+                let flat_bridi = bindings::lojban::nesy::ast_types::Bridi {
+                    relation,
+                    head_terms,
+                    tail_terms,
+                    negated: bridi.negated,
+                    tense,
+                };
+
+                let idx = self.buffer.sentences.len() as u32;
+                // Push the flat_bridi wrapped in the Simple enum variant
+                self.buffer
+                    .sentences
+                    .push(bindings::lojban::nesy::ast_types::Sentence::Simple(
+                        flat_bridi,
+                    ));
+                idx
+            }
+            ast::Sentence::Connected {
+                connective,
+                left,
+                right,
+            } => {
+                let l_idx = self.push_sentence(*left);
+                let r_idx = self.push_sentence(*right);
+
+                let conn = match connective {
+                    ast::SentenceConnective::GanaiGi => WasmConn::GanaiGi,
+                    ast::SentenceConnective::GeGi => WasmConn::GeGi,
+                    ast::SentenceConnective::GaGi => WasmConn::GaGi,
+                };
+
+                let idx = self.buffer.sentences.len() as u32;
+                self.buffer
+                    .sentences
+                    .push(WasmSentence::Connected((conn, l_idx, r_idx)));
+                idx
+            }
+        }
+    }
+
+    // In the Flattener's top-level loop, ensure you are calling it like this:
+    // for sentence in ast.sentences {
+    //     let root_id = self.push_sentence(sentence);
+    //     self.buffer.roots.push(root_id);
+    // }
 
     // ─── Selbri ──────────────────────────────────────────────
 
@@ -163,7 +244,7 @@ impl Flattener {
                 // Inner bridi goes into sentences (NOT a root —
                 // same pattern as rel clause bodies).
                 let body_idx = self.buffer.sentences.len() as u32;
-                self.push_bridi(*inner_bridi);
+                self.push_sentence(*inner_bridi);
                 wit::Selbri::Abstraction(body_idx)
             }
         };
@@ -210,7 +291,7 @@ impl Flattener {
                 // It is NOT a root; it lives in `sentences` only for
                 // cross-referencing by index from the Restricted variant.
                 let body_idx = self.buffer.sentences.len() as u32;
-                self.push_bridi(*clause.body);
+                self.push_sentence(*clause.body);
 
                 let wit_kind = match clause.kind {
                     ast::RelClauseKind::Poi => wit::RelClauseKind::Poi,
@@ -225,6 +306,7 @@ impl Flattener {
                     },
                 ))
             }
+
             ast::Sumti::Number(n) => wit::Sumti::Number(n),
         };
 

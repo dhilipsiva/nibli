@@ -566,8 +566,4 @@ fn reconstruct_sexp_with_subs(
     }
 }
 
-fn reconstruct_sexp(buffer: &LogicBuffer, node_id: u32) -> String {
-    reconstruct_sexp_with_subs(buffer, node_id, &HashMap::new())
-}
-
 bindings::export!(ReasoningComponent with_types_in bindings);

@@ -361,13 +361,72 @@ pub mod lojban {
                         .finish()
                 }
             }
+            #[repr(u8)]
+            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+            pub enum SentenceConnective {
+                GanaiGi,
+                GeGi,
+                GaGi,
+            }
+            impl ::core::fmt::Debug for SentenceConnective {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        SentenceConnective::GanaiGi => {
+                            f.debug_tuple("SentenceConnective::GanaiGi").finish()
+                        }
+                        SentenceConnective::GeGi => {
+                            f.debug_tuple("SentenceConnective::GeGi").finish()
+                        }
+                        SentenceConnective::GaGi => {
+                            f.debug_tuple("SentenceConnective::GaGi").finish()
+                        }
+                    }
+                }
+            }
+            impl SentenceConnective {
+                #[doc(hidden)]
+                pub unsafe fn _lift(val: u8) -> SentenceConnective {
+                    if !cfg!(debug_assertions) {
+                        return ::core::mem::transmute(val);
+                    }
+                    match val {
+                        0 => SentenceConnective::GanaiGi,
+                        1 => SentenceConnective::GeGi,
+                        2 => SentenceConnective::GaGi,
+                        _ => panic!("invalid enum discriminant"),
+                    }
+                }
+            }
+            #[derive(Clone)]
+            pub enum Sentence {
+                Simple(Bridi),
+                Connected((SentenceConnective, u32, u32)),
+            }
+            impl ::core::fmt::Debug for Sentence {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        Sentence::Simple(e) => {
+                            f.debug_tuple("Sentence::Simple").field(e).finish()
+                        }
+                        Sentence::Connected(e) => {
+                            f.debug_tuple("Sentence::Connected").field(e).finish()
+                        }
+                    }
+                }
+            }
+            /// Update ast-buffer to hold the new `sentence` variant:
             #[derive(Clone)]
             pub struct AstBuffer {
                 pub selbris: _rt::Vec<Selbri>,
                 pub sumtis: _rt::Vec<Sumti>,
-                pub sentences: _rt::Vec<Bridi>,
-                /// Indices into `sentences` for top-level sentences only.
-                /// Rel clause bodies live in `sentences` but are NOT roots.
+                pub sentences: _rt::Vec<Sentence>,
+                /// <-- CHANGED from bridi to sentence
                 pub roots: _rt::Vec<u32>,
             }
             impl ::core::fmt::Debug for AstBuffer {
@@ -1160,9 +1219,9 @@ pub(crate) use __export_reasoning_component_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1319] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x9d\x09\x01A\x02\x01\
-A\x05\x01B3\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1414] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xfc\x09\x01A\x02\x01\
+A\x05\x01B8\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
 m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x04\x02se\x02\
 te\x02ve\x02xe\x04\0\x0aconversion\x03\0\x06\x01m\x04\x02je\x02ja\x02jo\x02ju\x04\
 \0\x0aconnective\x03\0\x08\x01m\x05\x02lo\x02le\x02la\x05ro-lo\x05ro-le\x04\0\x05\
@@ -1176,14 +1235,16 @@ o\x02\x05\x03\x01o\x02\x03\x0f\x01q\x08\x09pro-sumti\x01s\0\x0bdescription\x01\x
 negated\x01\x01\0\x07grouped\x01\x01\0\x09with-args\x01\x19\0\x09connected\x01\x1a\
 \0\x0babstraction\x01y\0\x04\0\x06selbri\x03\0\x1b\x01m\x03\x02pu\x02ca\x02ba\x04\
 \0\x05tense\x03\0\x1d\x01k\x1e\x01r\x05\x08relation\x01\x0ahead-terms\x18\x0atai\
-l-terms\x18\x07negated\x7f\x05tense\x1f\x04\0\x05bridi\x03\0\x20\x01p\x1c\x01p\x14\
-\x01p!\x01py\x01r\x04\x07selbris\"\x06sumtis#\x09sentences$\x05roots%\x04\0\x0aa\
-st-buffer\x03\0&\x01q\x05\x08variable\x01s\0\x08constant\x01s\0\x0bdescription\x01\
-s\0\x0bunspecified\0\0\x06number\x01u\0\x04\0\x0clogical-term\x03\0(\x01p)\x01o\x02\
-s*\x01o\x02yy\x01o\x02sy\x01q\x09\x09predicate\x01+\0\x08and-node\x01,\0\x07or-n\
-ode\x01,\0\x08not-node\x01y\0\x0bexists-node\x01-\0\x0cfor-all-node\x01-\0\x09pa\
+l-terms\x18\x07negated\x7f\x05tense\x1f\x04\0\x05bridi\x03\0\x20\x01m\x03\x08gan\
+ai-gi\x05ge-gi\x05ga-gi\x04\0\x13sentence-connective\x03\0\"\x01o\x03#yy\x01q\x02\
+\x06simple\x01!\0\x09connected\x01$\0\x04\0\x08sentence\x03\0%\x01p\x1c\x01p\x14\
+\x01p&\x01py\x01r\x04\x07selbris'\x06sumtis(\x09sentences)\x05roots*\x04\0\x0aas\
+t-buffer\x03\0+\x01q\x05\x08variable\x01s\0\x08constant\x01s\0\x0bdescription\x01\
+s\0\x0bunspecified\0\0\x06number\x01u\0\x04\0\x0clogical-term\x03\0-\x01p.\x01o\x02\
+s/\x01o\x02yy\x01o\x02sy\x01q\x09\x09predicate\x010\0\x08and-node\x011\0\x07or-n\
+ode\x011\0\x08not-node\x01y\0\x0bexists-node\x012\0\x0cfor-all-node\x012\0\x09pa\
 st-node\x01y\0\x0cpresent-node\x01y\0\x0bfuture-node\x01y\0\x04\0\x0alogic-node\x03\
-\0.\x01p/\x01r\x02\x05nodes0\x05roots%\x04\0\x0clogic-buffer\x03\01\x03\0\x1bloj\
+\03\x01p4\x01r\x02\x05nodes5\x05roots*\x04\0\x0clogic-buffer\x03\06\x03\0\x1bloj\
 ban:nesy/ast-types@0.1.0\x05\0\x02\x03\0\0\x0clogic-buffer\x01B\x08\x02\x03\x02\x01\
 \x01\x04\0\x0clogic-buffer\x03\0\0\x01j\0\x01s\x01@\x01\x05logic\x01\0\x02\x04\0\
 \x0bassert-fact\x01\x03\x01j\x01\x7f\x01s\x01@\x01\x05logic\x01\0\x04\x04\0\x10q\

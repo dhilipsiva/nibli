@@ -1,5 +1,6 @@
 use crate::bindings::lojban::nesy::ast_types::{
-    Bridi, Connective, Conversion, Gadri, PlaceTag, Selbri, Sumti, Tense,
+    Bridi, Connective, Conversion, Gadri, PlaceTag, Selbri, Sentence, SentenceConnective, Sumti,
+    Tense,
 };
 use crate::dictionary::JbovlasteSchema;
 use crate::ir::{LogicalForm, LogicalTerm};
@@ -82,7 +83,7 @@ impl SemanticCompiler {
         sumti: &Sumti,
         sumtis: &[Sumti],
         selbris: &[Selbri],
-        sentences: &[Bridi],
+        sentences: &[Sentence],
     ) -> (LogicalTerm, Vec<QuantifierEntry>) {
         match sumti {
             Sumti::ProSumti(p) => {
@@ -170,8 +171,8 @@ impl SemanticCompiler {
                 }
                 self.kea_used = false;
 
-                let rel_body = self.compile_bridi(
-                    &sentences[rel_clause.body_sentence as usize],
+                let rel_body = self.compile_sentence(
+                    rel_clause.body_sentence, // Pass the u32 ID directly, NOT &sentences[...]
                     selbris,
                     sumtis,
                     sentences,
@@ -281,7 +282,7 @@ impl SemanticCompiler {
         args: &[LogicalTerm],
         selbris: &[Selbri],
         sumtis: &[Sumti],
-        sentences: &[Bridi],
+        sentences: &[Sentence],
     ) -> LogicalForm {
         match &selbris[selbri_id as usize] {
             Selbri::Root(g) => {
@@ -454,8 +455,8 @@ impl SemanticCompiler {
                 //
                 // When used in "lo nu mi klama cu barda":
                 //   ∃e. (nu(e) ∧ klama(mi,...) ∧ barda(e,...))
-                let inner_form = self.compile_bridi(
-                    &sentences[*body_sentence_idx as usize],
+                let inner_form = self.compile_sentence(
+                    *body_sentence_idx, // Pass the u32 ID directly
                     selbris,
                     sumtis,
                     sentences,
@@ -476,7 +477,7 @@ impl SemanticCompiler {
         bridi: &Bridi,
         selbris: &[Selbri],
         sumtis: &[Sumti],
-        sentences: &[Bridi],
+        sentences: &[Sentence],
     ) -> LogicalForm {
         let target_arity = self.get_selbri_arity(bridi.relation, selbris);
 
@@ -586,5 +587,34 @@ impl SemanticCompiler {
         }
 
         final_form
+    }
+
+    pub fn compile_sentence(
+        &mut self,
+        sentence_id: u32,
+        selbris: &[Selbri],
+        sumtis: &[Sumti],
+        sentences: &[Sentence],
+    ) -> LogicalForm {
+        match &sentences[sentence_id as usize] {
+            Sentence::Simple(bridi) => self.compile_bridi(bridi, selbris, sumtis, sentences),
+            Sentence::Connected((connective, left_id, right_id)) => {
+                let left_form = self.compile_sentence(*left_id, selbris, sumtis, sentences);
+                let right_form = self.compile_sentence(*right_id, selbris, sumtis, sentences);
+
+                match connective {
+                    SentenceConnective::GanaiGi => LogicalForm::Or(
+                        Box::new(LogicalForm::Not(Box::new(left_form))),
+                        Box::new(right_form),
+                    ),
+                    SentenceConnective::GeGi => {
+                        LogicalForm::And(Box::new(left_form), Box::new(right_form))
+                    }
+                    SentenceConnective::GaGi => {
+                        LogicalForm::Or(Box::new(left_form), Box::new(right_form))
+                    }
+                }
+            }
+        }
     }
 }

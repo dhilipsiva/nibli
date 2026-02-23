@@ -1,3 +1,5 @@
+Would you like to refactor world.wit and ast.rs to support the recursive Sentence structure required to parse ganai...gi, or must we fix the mathematically unsound OrNode evaluation in the reasoning crate first so the logic actually holds water?
+
 
 ### Tier 1: Critical Systemic Failures (Security & Commercial Blockers)
 

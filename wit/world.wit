@@ -50,14 +50,21 @@ interface ast-types {
         tense: option<tense>,
     }
 
+    enum sentence-connective { ganai-gi, ge-gi, ga-gi }
+
+    variant sentence {
+        simple(bridi),
+        connected(tuple<sentence-connective, u32, u32>), // Pointers to other sentences
+    }
+
+    // Update ast-buffer to hold the new `sentence` variant:
     record ast-buffer {
         selbris: list<selbri>,
         sumtis: list<sumti>,
-        sentences: list<bridi>,
-        /// Indices into `sentences` for top-level sentences only.
-        /// Rel clause bodies live in `sentences` but are NOT roots.
+        sentences: list<sentence>, // <-- CHANGED from bridi to sentence
         roots: list<u32>,
     }
+
 
     // --- Logic Types ---
     variant logical-term {
