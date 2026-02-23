@@ -584,6 +584,7 @@ impl<'a> Parser<'a> {
             "da" | "de" | "di" => Sumti::ProSumti(cmavo.to_string()),
             "ti" | "ta" | "tu" => Sumti::ProSumti(cmavo.to_string()),
             "ri" | "ra" | "ru" => Sumti::ProSumti(cmavo.to_string()),
+            "ke'a" => Sumti::ProSumti(cmavo.to_string()),
             "ma" => Sumti::ProSumti(cmavo.to_string()),
             _ => return None,
         };
@@ -2048,5 +2049,49 @@ mod tests {
         // mi klama — no tense marker
         let r = parse_ok(&[cmavo("mi"), gismu("klama")]);
         assert_eq!(r.sentences[0].tense, None);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 20. KE'A (relative clause pronoun)
+    // ═══════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_kea_in_relative_clause() {
+        // lo gerku poi mi nelci ke'a — ke'a as explicit bound variable
+        let r = parse_ok(&[
+            cmavo("lo"),
+            gismu("gerku"),
+            cmavo("poi"),
+            cmavo("mi"),
+            gismu("nelci"),
+            cmavo("ke'a"),
+        ]);
+        match &r.sentences[0].head_terms[0] {
+            Sumti::Restricted { clause, .. } => {
+                assert_eq!(clause.body.tail_terms.len(), 1);
+                assert_eq!(clause.body.tail_terms[0], Sumti::ProSumti("ke'a".into()));
+            }
+            other => panic!("expected Restricted with ke'a, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_kea_as_head_term() {
+        // lo prenu poi ke'a nelci lo mlatu
+        let r = parse_ok(&[
+            cmavo("lo"),
+            gismu("prenu"),
+            cmavo("poi"),
+            cmavo("ke'a"),
+            gismu("nelci"),
+            cmavo("lo"),
+            gismu("mlatu"),
+        ]);
+        match &r.sentences[0].head_terms[0] {
+            Sumti::Restricted { clause, .. } => {
+                assert_eq!(clause.body.head_terms[0], Sumti::ProSumti("ke'a".into()));
+            }
+            other => panic!("expected Restricted with ke'a head, got {:?}", other),
+        }
     }
 }

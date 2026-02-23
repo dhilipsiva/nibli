@@ -18,6 +18,12 @@ struct QuantifierEntry {
 pub struct SemanticCompiler {
     pub interner: Rodeo,
     pub var_counter: usize,
+    /// When inside a relative clause, holds the bound variable from the
+    /// enclosing description. ke'a resolves to this variable directly.
+    rel_clause_var: Option<lasso::Spur>,
+    /// Set to true when ke'a is encountered during rel clause compilation.
+    /// When true, inject_variable is skipped (user placed the variable explicitly).
+    kea_used: bool,
 }
 
 impl SemanticCompiler {
@@ -25,6 +31,8 @@ impl SemanticCompiler {
         Self {
             interner: Rodeo::new(),
             var_counter: 0,
+            rel_clause_var: None,
+            kea_used: false,
         }
     }
 
@@ -80,6 +88,16 @@ impl SemanticCompiler {
             Sumti::ProSumti(p) => {
                 let term = if matches!(p.as_str(), "da" | "de" | "di") {
                     LogicalTerm::Variable(self.interner.get_or_intern(p.as_str()))
+                } else if p.as_str() == "ke'a" {
+                    // ke'a resolves to the bound variable from the enclosing
+                    // relative clause description. If we're not inside a rel
+                    // clause, treat as unspecified (graceful degradation).
+                    if let Some(var) = self.rel_clause_var {
+                        self.kea_used = true;
+                        LogicalTerm::Variable(var)
+                    } else {
+                        LogicalTerm::Unspecified
+                    }
                 } else {
                     LogicalTerm::Constant(self.interner.get_or_intern(p.as_str()))
                 };
@@ -141,6 +159,17 @@ impl SemanticCompiler {
                 let inner = &sumtis[*inner_id as usize];
                 let (term, mut quants) = self.resolve_sumti(inner, sumtis, selbris, sentences);
 
+                // Set up ke'a context: the bound variable from the innermost
+                // description quantifier becomes available as ke'a inside the
+                // relative clause body.
+                let outer_rel_var = self.rel_clause_var;
+                let outer_kea_used = self.kea_used;
+
+                if let Some(last) = quants.last() {
+                    self.rel_clause_var = Some(last.var);
+                }
+                self.kea_used = false;
+
                 let rel_body = self.compile_bridi(
                     &sentences[rel_clause.body_sentence as usize],
                     selbris,
@@ -148,8 +177,23 @@ impl SemanticCompiler {
                     sentences,
                 );
 
+                let kea_was_used = self.kea_used;
+
+                // Restore outer context (handles nested rel clauses)
+                self.rel_clause_var = outer_rel_var;
+                self.kea_used = outer_kea_used;
+
                 if let Some(last) = quants.last_mut() {
-                    last.restrictor = Some(Self::inject_variable(rel_body, last.var));
+                    if kea_was_used {
+                        // ke'a was used — the bound variable is already in the
+                        // correct position. No heuristic injection needed.
+                        last.restrictor = Some(rel_body);
+                    } else {
+                        // No ke'a — use heuristic injection as fallback.
+                        // inject_variable fills the first Unspecified slot in
+                        // each predicate it can reach.
+                        last.restrictor = Some(Self::inject_variable(rel_body, last.var));
+                    }
                 }
 
                 (term, quants)
@@ -165,13 +209,17 @@ impl SemanticCompiler {
         }
     }
 
+    /// Heuristic variable injection for relative clauses without explicit ke'a.
+    ///
+    /// Recurses through the entire formula tree and replaces the first
+    /// Unspecified slot in each Predicate with the bound variable.
+    ///
+    /// Known limitation: when the rel clause contains descriptions (lo/le),
+    /// the restrictor predicates from those descriptions will also get the
+    /// variable injected. Use explicit ke'a for precise control.
     fn inject_variable(form: LogicalForm, var: lasso::Spur) -> LogicalForm {
         match form {
             LogicalForm::Predicate { relation, mut args } => {
-                // Find the FIRST Unspecified slot in any position and bind the
-                // relative-clause variable there.  This handles cases like
-                // "lo gerku poi mi nelci" where x1 is already filled ("mi")
-                // and the bound variable belongs in x2.
                 let first_unspec = args
                     .iter()
                     .position(|a| matches!(a, LogicalTerm::Unspecified));
@@ -186,8 +234,18 @@ impl SemanticCompiler {
                 Box::new(Self::inject_variable(*l, var)),
                 Box::new(Self::inject_variable(*r, var)),
             ),
+            LogicalForm::Or(l, r) => LogicalForm::Or(
+                Box::new(Self::inject_variable(*l, var)),
+                Box::new(Self::inject_variable(*r, var)),
+            ),
             LogicalForm::Not(inner) => {
                 LogicalForm::Not(Box::new(Self::inject_variable(*inner, var)))
+            }
+            LogicalForm::Exists(v, body) => {
+                LogicalForm::Exists(v, Box::new(Self::inject_variable(*body, var)))
+            }
+            LogicalForm::ForAll(v, body) => {
+                LogicalForm::ForAll(v, Box::new(Self::inject_variable(*body, var)))
             }
             LogicalForm::Past(inner) => {
                 LogicalForm::Past(Box::new(Self::inject_variable(*inner, var)))
@@ -198,7 +256,6 @@ impl SemanticCompiler {
             LogicalForm::Future(inner) => {
                 LogicalForm::Future(Box::new(Self::inject_variable(*inner, var)))
             }
-            other => other,
         }
     }
 
