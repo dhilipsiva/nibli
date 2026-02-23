@@ -1,0 +1,186 @@
+diff --git a/parser/src/ast.rs b/parser/src/ast.rs
+index 0613c84..e4b49be 100644
+--- a/parser/src/ast.rs
++++ b/parser/src/ast.rs
+@@ -98,6 +98,8 @@ pub enum Sumti {
+         inner: Box<Sumti>,
+         clause: RelClause,
+     },
++    /// Numeric literal: li + PA digits
++    Number(f64),
+ }
+ 
+ /// A relative clause attached to a sumti.
+diff --git a/parser/src/grammar.rs b/parser/src/grammar.rs
+index 02b355d..ac6f563 100644
+--- a/parser/src/grammar.rs
++++ b/parser/src/grammar.rs
+@@ -397,10 +397,72 @@ impl<'a> Parser<'a> {
+             self.pos += 1;
+             return Some(Sumti::QuotedLiteral(owned));
+         }
++        if self.peek_is_cmavo("li") {
++            return self.try_parse_li_number();
++        }
+ 
+         None
+     }
+ 
++    fn try_parse_li_number(&mut self) -> Option<Sumti> {
++        if !self.peek_is_cmavo("li") {
++            return None;
++        }
++        let saved = self.save();
++        self.pos += 1; // consume li
++
++        let mut integer_digits: Vec<u8> = Vec::new();
++        while let Some(d) = self.try_parse_pa_digit() {
++            integer_digits.push(d);
++        }
++
++        let mut fractional_digits: Vec<u8> = Vec::new();
++        if self.eat_cmavo("pi") {
++            while let Some(d) = self.try_parse_pa_digit() {
++                fractional_digits.push(d);
++            }
++        }
++
++        if integer_digits.is_empty() && fractional_digits.is_empty() {
++            self.restore(saved);
++            return None;
++        }
++
++        self.eat_cmavo("lo'o"); // optional terminator
++
++        let mut value: f64 = 0.0;
++        for &d in &integer_digits {
++            value = value * 10.0 + d as f64;
++        }
++        if !fractional_digits.is_empty() {
++            let mut frac: f64 = 0.0;
++            for &d in fractional_digits.iter().rev() {
++                frac = (frac + d as f64) / 10.0;
++            }
++            value += frac;
++        }
++
++        Some(Sumti::Number(value))
++    }
++
++    fn try_parse_pa_digit(&mut self) -> Option<u8> {
++        let d = match self.peek_cmavo()? {
++            "no" => 0,
++            "pa" => 1,
++            "re" => 2,
++            "ci" => 3,
++            "vo" => 4,
++            "mu" => 5,
++            "xa" => 6,
++            "ze" => 7,
++            "bi" => 8,
++            "so" => 9,
++            _ => return None,
++        };
++        self.pos += 1;
++        Some(d)
++    }
++
+     /// ro (lo|le) selbri ku? — universal quantification
+     fn try_parse_ro_description(&mut self) -> Option<Sumti> {
+         if !self.peek_is_cmavo("ro") {
+diff --git a/parser/src/lib.rs b/parser/src/lib.rs
+index f0839f7..d98c4fc 100644
+--- a/parser/src/lib.rs
++++ b/parser/src/lib.rs
+@@ -177,7 +177,6 @@ impl Flattener {
+     fn push_sumti(&mut self, sumti: ast::Sumti) -> u32 {
+         let wit_sumti = match sumti {
+             ast::Sumti::ProSumti(s) => wit::Sumti::ProSumti(s),
+-
+             ast::Sumti::Description { gadri, inner } => {
+                 let inner_id = self.push_selbri(*inner);
+                 let wit_gadri = match gadri {
+@@ -189,13 +188,9 @@ impl Flattener {
+                 };
+                 wit::Sumti::Description((wit_gadri, inner_id))
+             }
+-
+             ast::Sumti::Name(n) => wit::Sumti::Name(n),
+-
+             ast::Sumti::QuotedLiteral(q) => wit::Sumti::QuotedLiteral(q),
+-
+             ast::Sumti::Unspecified => wit::Sumti::Unspecified,
+-
+             ast::Sumti::Tagged(tag, inner) => {
+                 let inner_id = self.push_sumti(*inner);
+                 let wit_tag = match tag {
+@@ -207,7 +202,6 @@ impl Flattener {
+                 };
+                 wit::Sumti::Tagged((wit_tag, inner_id))
+             }
+-
+             ast::Sumti::Restricted { inner, clause } => {
+                 let inner_id = self.push_sumti(*inner);
+ 
+@@ -230,6 +224,7 @@ impl Flattener {
+                     },
+                 ))
+             }
++            ast::Sumti::Number(n) => wit::Sumti::Number(n),
+         };
+ 
+         let id = self.buffer.sumtis.len() as u32;
+diff --git a/semantics/src/ir.rs b/semantics/src/ir.rs
+index c1c1914..18a035f 100644
+--- a/semantics/src/ir.rs
++++ b/semantics/src/ir.rs
+@@ -34,4 +34,5 @@ pub enum LogicalForm {
+     Past(Box<LogicalForm>),    // ← NEW
+     Present(Box<LogicalForm>), // ← NEW
+     Future(Box<LogicalForm>),  // ← NEW
++    Number(f64),
+ }
+diff --git a/semantics/src/lib.rs b/semantics/src/lib.rs
+index 645b60b..9c4021c 100644
+--- a/semantics/src/lib.rs
++++ b/semantics/src/lib.rs
+@@ -121,6 +121,7 @@ fn flatten_form(form: &LogicalForm, nodes: &mut Vec<LogicNode>, interner: &lasso
+             nodes.push(LogicNode::FutureNode(inner_id));
+             id
+         }
++        LogicalForm::Number(_) => todo!(),
+     }
+ }
+ 
+diff --git a/semantics/src/semantic.rs b/semantics/src/semantic.rs
+index 229c6e8..b29870b 100644
+--- a/semantics/src/semantic.rs
++++ b/semantics/src/semantic.rs
+@@ -160,6 +160,7 @@ impl SemanticCompiler {
+                 vec![],
+             ),
+ 
++            Sumti::Number(n) => (LogicalTerm::Number(*n), vec![]),
+             Sumti::Unspecified => (LogicalTerm::Unspecified, vec![]),
+         }
+     }
+diff --git a/wit/world.wit b/wit/world.wit
+index eef9154..170805c 100644
+--- a/wit/world.wit
++++ b/wit/world.wit
+@@ -23,6 +23,7 @@ interface ast-types {
+         unspecified,
+         tagged(tuple<place-tag, sumti-id>),
+         restricted(tuple<sumti-id, rel-clause>),
++        number(float64),
+     }
+ 
+     variant selbri {
+@@ -64,6 +65,7 @@ interface ast-types {
+         constant(string),
+         description(string),
+         unspecified,
++        number(float64),
+     }
+ 
+     variant logic-node {

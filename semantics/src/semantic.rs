@@ -160,6 +160,7 @@ impl SemanticCompiler {
                 vec![],
             ),
 
+            Sumti::Number(n) => (LogicalTerm::Number(*n), vec![]),
             Sumti::Unspecified => (LogicalTerm::Unspecified, vec![]),
         }
     }

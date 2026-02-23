@@ -98,6 +98,8 @@ pub enum Sumti {
         inner: Box<Sumti>,
         clause: RelClause,
     },
+    /// Numeric literal: li + PA digits
+    Number(f64),
 }
 
 /// A relative clause attached to a sumti.

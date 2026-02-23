@@ -177,7 +177,6 @@ impl Flattener {
     fn push_sumti(&mut self, sumti: ast::Sumti) -> u32 {
         let wit_sumti = match sumti {
             ast::Sumti::ProSumti(s) => wit::Sumti::ProSumti(s),
-
             ast::Sumti::Description { gadri, inner } => {
                 let inner_id = self.push_selbri(*inner);
                 let wit_gadri = match gadri {
@@ -189,13 +188,9 @@ impl Flattener {
                 };
                 wit::Sumti::Description((wit_gadri, inner_id))
             }
-
             ast::Sumti::Name(n) => wit::Sumti::Name(n),
-
             ast::Sumti::QuotedLiteral(q) => wit::Sumti::QuotedLiteral(q),
-
             ast::Sumti::Unspecified => wit::Sumti::Unspecified,
-
             ast::Sumti::Tagged(tag, inner) => {
                 let inner_id = self.push_sumti(*inner);
                 let wit_tag = match tag {
@@ -207,7 +202,6 @@ impl Flattener {
                 };
                 wit::Sumti::Tagged((wit_tag, inner_id))
             }
-
             ast::Sumti::Restricted { inner, clause } => {
                 let inner_id = self.push_sumti(*inner);
 
@@ -230,6 +224,7 @@ impl Flattener {
                     },
                 ))
             }
+            ast::Sumti::Number(n) => wit::Sumti::Number(n),
         };
 
         let id = self.buffer.sumtis.len() as u32;

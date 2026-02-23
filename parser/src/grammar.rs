@@ -397,8 +397,70 @@ impl<'a> Parser<'a> {
             self.pos += 1;
             return Some(Sumti::QuotedLiteral(owned));
         }
+        if self.peek_is_cmavo("li") {
+            return self.try_parse_li_number();
+        }
 
         None
+    }
+
+    fn try_parse_li_number(&mut self) -> Option<Sumti> {
+        if !self.peek_is_cmavo("li") {
+            return None;
+        }
+        let saved = self.save();
+        self.pos += 1; // consume li
+
+        let mut integer_digits: Vec<u8> = Vec::new();
+        while let Some(d) = self.try_parse_pa_digit() {
+            integer_digits.push(d);
+        }
+
+        let mut fractional_digits: Vec<u8> = Vec::new();
+        if self.eat_cmavo("pi") {
+            while let Some(d) = self.try_parse_pa_digit() {
+                fractional_digits.push(d);
+            }
+        }
+
+        if integer_digits.is_empty() && fractional_digits.is_empty() {
+            self.restore(saved);
+            return None;
+        }
+
+        self.eat_cmavo("lo'o"); // optional terminator
+
+        let mut value: f64 = 0.0;
+        for &d in &integer_digits {
+            value = value * 10.0 + d as f64;
+        }
+        if !fractional_digits.is_empty() {
+            let mut frac: f64 = 0.0;
+            for &d in fractional_digits.iter().rev() {
+                frac = (frac + d as f64) / 10.0;
+            }
+            value += frac;
+        }
+
+        Some(Sumti::Number(value))
+    }
+
+    fn try_parse_pa_digit(&mut self) -> Option<u8> {
+        let d = match self.peek_cmavo()? {
+            "no" => 0,
+            "pa" => 1,
+            "re" => 2,
+            "ci" => 3,
+            "vo" => 4,
+            "mu" => 5,
+            "xa" => 6,
+            "ze" => 7,
+            "bi" => 8,
+            "so" => 9,
+            _ => return None,
+        };
+        self.pos += 1;
+        Some(d)
     }
 
     /// ro (lo|le) selbri ku? — universal quantification

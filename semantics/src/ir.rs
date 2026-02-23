@@ -11,6 +11,7 @@ pub enum LogicalTerm {
     Description(Spur),
     /// An explicitly unspecified argument (zo'e)
     Unspecified,
+    Number(f64),
 }
 
 /// The Well-Formed Formulas (WFFs) of our First-Order Logic engine.

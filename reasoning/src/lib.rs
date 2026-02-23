@@ -493,6 +493,7 @@ fn reconstruct_sexp_with_subs(
                     LogicalTerm::Constant(c) => format!("(Const \"{}\")", c),
                     LogicalTerm::Description(d) => format!("(Desc \"{}\")", d),
                     LogicalTerm::Unspecified => "(Zoe)".to_string(),
+                    LogicalTerm::Number(n) => format!("(Num {})", n),
                 };
                 args_str = format!("(Cons {} {})", term_str, args_str);
             }

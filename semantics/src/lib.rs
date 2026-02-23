@@ -55,6 +55,7 @@ fn flatten_form(form: &LogicalForm, nodes: &mut Vec<LogicNode>, interner: &lasso
                         WitTerm::Description(interner.resolve(d).to_string())
                     }
                     LogicalTerm::Unspecified => WitTerm::Unspecified,
+                    LogicalTerm::Number(n) => WitTerm::Number(*n),
                 })
                 .collect();
 

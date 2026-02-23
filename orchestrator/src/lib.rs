@@ -55,6 +55,7 @@ fn reconstruct_sexp(buffer: &LogicBuffer, node_id: u32) -> String {
                     LogicalTerm::Constant(c) => format!("(Const \"{}\")", c),
                     LogicalTerm::Description(d) => format!("(Desc \"{}\")", d),
                     LogicalTerm::Unspecified => "(Zoe)".to_string(),
+                    LogicalTerm::Number(n) => format!("(Num {})", n),
                 };
                 args_str = format!("(Cons {} {})", term_str, args_str);
             }

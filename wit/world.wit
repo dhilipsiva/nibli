@@ -23,6 +23,7 @@ interface ast-types {
         unspecified,
         tagged(tuple<place-tag, sumti-id>),
         restricted(tuple<sumti-id, rel-clause>),
+        number(f64),
     }
 
     variant selbri {
@@ -64,6 +65,7 @@ interface ast-types {
         constant(string),
         description(string),
         unspecified,
+        number(f64),
     }
 
     variant logic-node {
