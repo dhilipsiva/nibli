@@ -103,6 +103,24 @@ fn flatten_form(form: &LogicalForm, nodes: &mut Vec<LogicNode>, interner: &lasso
             )));
             id
         }
+        LogicalForm::Past(inner) => {
+            let inner_id = flatten_form(inner, nodes, interner);
+            let id = nodes.len() as u32;
+            nodes.push(LogicNode::PastNode(inner_id));
+            id
+        }
+        LogicalForm::Present(inner) => {
+            let inner_id = flatten_form(inner, nodes, interner);
+            let id = nodes.len() as u32;
+            nodes.push(LogicNode::PresentNode(inner_id));
+            id
+        }
+        LogicalForm::Future(inner) => {
+            let inner_id = flatten_form(inner, nodes, interner);
+            let id = nodes.len() as u32;
+            nodes.push(LogicNode::FutureNode(inner_id));
+            id
+        }
     }
 }
 

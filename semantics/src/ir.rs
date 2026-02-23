@@ -31,4 +31,7 @@ pub enum LogicalForm {
     Or(Box<LogicalForm>, Box<LogicalForm>),
     /// Logical Negation: ¬A
     Not(Box<LogicalForm>),
+    Past(Box<LogicalForm>),    // ← NEW
+    Present(Box<LogicalForm>), // ← NEW
+    Future(Box<LogicalForm>),  // ← NEW
 }

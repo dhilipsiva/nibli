@@ -94,6 +94,11 @@ impl Flattener {
             head_terms,
             tail_terms,
             negated: bridi.negated,
+            tense: bridi.tense.map(|t| match t {
+                ast::Tense::Pu => wit::Tense::Pu,
+                ast::Tense::Ca => wit::Tense::Ca,
+                ast::Tense::Ba => wit::Tense::Ba,
+            }),
         });
     }
 

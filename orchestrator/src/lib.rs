@@ -83,6 +83,9 @@ fn reconstruct_sexp(buffer: &LogicBuffer, node_id: u32) -> String {
         LogicNode::ForAllNode((v, body)) => {
             format!("(ForAll \"{}\" {})", v, reconstruct_sexp(buffer, *body))
         }
+        LogicNode::PastNode(inner) => format!("(Past {})", reconstruct_sexp(buffer, *inner)),
+        LogicNode::PresentNode(inner) => format!("(Present {})", reconstruct_sexp(buffer, *inner)),
+        LogicNode::FutureNode(inner) => format!("(Future {})", reconstruct_sexp(buffer, *inner)),
     }
 }
 

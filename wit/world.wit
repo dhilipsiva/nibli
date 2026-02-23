@@ -39,11 +39,14 @@ interface ast-types {
         abstraction(u32),
     }
 
+    enum tense { pu, ca, ba }
+
     record bridi {
         relation: selbri-id,
         head-terms: list<sumti-id>,
         tail-terms: list<sumti-id>,
         negated: bool,
+        tense: option<tense>,
     }
 
     record ast-buffer {
@@ -70,6 +73,9 @@ interface ast-types {
         not-node(u32),
         exists-node(tuple<string, u32>),
         for-all-node(tuple<string, u32>),
+        past-node(u32),
+        present-node(u32),
+        future-node(u32),
     }
 
     record logic-buffer {

@@ -302,12 +302,46 @@ pub mod lojban {
                     }
                 }
             }
+            #[repr(u8)]
+            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+            pub enum Tense {
+                Pu,
+                Ca,
+                Ba,
+            }
+            impl ::core::fmt::Debug for Tense {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        Tense::Pu => f.debug_tuple("Tense::Pu").finish(),
+                        Tense::Ca => f.debug_tuple("Tense::Ca").finish(),
+                        Tense::Ba => f.debug_tuple("Tense::Ba").finish(),
+                    }
+                }
+            }
+            impl Tense {
+                #[doc(hidden)]
+                pub unsafe fn _lift(val: u8) -> Tense {
+                    if !cfg!(debug_assertions) {
+                        return ::core::mem::transmute(val);
+                    }
+                    match val {
+                        0 => Tense::Pu,
+                        1 => Tense::Ca,
+                        2 => Tense::Ba,
+                        _ => panic!("invalid enum discriminant"),
+                    }
+                }
+            }
             #[derive(Clone)]
             pub struct Bridi {
                 pub relation: SelbriId,
                 pub head_terms: _rt::Vec<SumtiId>,
                 pub tail_terms: _rt::Vec<SumtiId>,
                 pub negated: bool,
+                pub tense: Option<Tense>,
             }
             impl ::core::fmt::Debug for Bridi {
                 fn fmt(
@@ -319,6 +353,7 @@ pub mod lojban {
                         .field("head-terms", &self.head_terms)
                         .field("tail-terms", &self.tail_terms)
                         .field("negated", &self.negated)
+                        .field("tense", &self.tense)
                         .finish()
                 }
             }
@@ -381,6 +416,9 @@ pub mod lojban {
                 NotNode(u32),
                 ExistsNode((_rt::String, u32)),
                 ForAllNode((_rt::String, u32)),
+                PastNode(u32),
+                PresentNode(u32),
+                FutureNode(u32),
             }
             impl ::core::fmt::Debug for LogicNode {
                 fn fmt(
@@ -405,6 +443,15 @@ pub mod lojban {
                         }
                         LogicNode::ForAllNode(e) => {
                             f.debug_tuple("LogicNode::ForAllNode").field(e).finish()
+                        }
+                        LogicNode::PastNode(e) => {
+                            f.debug_tuple("LogicNode::PastNode").field(e).finish()
+                        }
+                        LogicNode::PresentNode(e) => {
+                            f.debug_tuple("LogicNode::PresentNode").field(e).finish()
+                        }
+                        LogicNode::FutureNode(e) => {
+                            f.debug_tuple("LogicNode::FutureNode").field(e).finish()
                         }
                     }
                 }
@@ -742,6 +789,7 @@ pub mod exports {
                                         head_terms: head_terms23,
                                         tail_terms: tail_terms23,
                                         negated: negated23,
+                                        tense: tense23,
                                     } = e;
                                     *base.add(0).cast::<i32>() = _rt::as_i32(relation23);
                                     let vec24 = (head_terms23).into_boxed_slice();
@@ -770,6 +818,21 @@ pub mod exports {
                                         true => 1,
                                         false => 0,
                                     }) as u8;
+                                    match tense23 {
+                                        Some(e) => {
+                                            *base
+                                                .add(1 + 5 * ::core::mem::size_of::<*const u8>())
+                                                .cast::<u8>() = (1i32) as u8;
+                                            *base
+                                                .add(2 + 5 * ::core::mem::size_of::<*const u8>())
+                                                .cast::<u8>() = (e.clone() as i32) as u8;
+                                        }
+                                        None => {
+                                            *base
+                                                .add(1 + 5 * ::core::mem::size_of::<*const u8>())
+                                                .cast::<u8>() = (0i32) as u8;
+                                        }
+                                    };
                                 }
                             }
                             *ptr2
@@ -1151,9 +1214,9 @@ pub(crate) use __export_parser_component_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1170] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x8b\x08\x01A\x02\x01\
-A\x05\x01B0\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1247] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xd8\x08\x01A\x02\x01\
+A\x05\x01B3\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
 m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x04\x02se\x02\
 te\x02ve\x02xe\x04\0\x0aconversion\x03\0\x06\x01m\x04\x02je\x02ja\x02jo\x02ju\x04\
 \0\x0aconnective\x03\0\x08\x01m\x05\x02lo\x02le\x02la\x05ro-lo\x05ro-le\x04\0\x05\
@@ -1165,20 +1228,21 @@ o\x02\x05\x03\x01o\x02\x03\x0f\x01q\x07\x09pro-sumti\x01s\0\x0bdescription\x01\x
 \x07\x01\x01p\x03\x01o\x02\x01\x18\x01o\x03\x01\x09\x01\x01q\x09\x04root\x01s\0\x08\
 compound\x01\x15\0\x05tanru\x01\x16\0\x09converted\x01\x17\0\x07negated\x01\x01\0\
 \x07grouped\x01\x01\0\x09with-args\x01\x19\0\x09connected\x01\x1a\0\x0babstracti\
-on\x01y\0\x04\0\x06selbri\x03\0\x1b\x01r\x04\x08relation\x01\x0ahead-terms\x18\x0a\
-tail-terms\x18\x07negated\x7f\x04\0\x05bridi\x03\0\x1d\x01p\x1c\x01p\x14\x01p\x1e\
-\x01py\x01r\x04\x07selbris\x1f\x06sumtis\x20\x09sentences!\x05roots\"\x04\0\x0aa\
-st-buffer\x03\0#\x01q\x04\x08variable\x01s\0\x08constant\x01s\0\x0bdescription\x01\
-s\0\x0bunspecified\0\0\x04\0\x0clogical-term\x03\0%\x01p&\x01o\x02s'\x01o\x02yy\x01\
-o\x02sy\x01q\x06\x09predicate\x01(\0\x08and-node\x01)\0\x07or-node\x01)\0\x08not\
--node\x01y\0\x0bexists-node\x01*\0\x0cfor-all-node\x01*\0\x04\0\x0alogic-node\x03\
-\0+\x01p,\x01r\x02\x05nodes-\x05roots\"\x04\0\x0clogic-buffer\x03\0.\x03\0\x1blo\
-jban:nesy/ast-types@0.1.0\x05\0\x02\x03\0\0\x0aast-buffer\x01B\x05\x02\x03\x02\x01\
-\x01\x04\0\x0aast-buffer\x03\0\0\x01j\x01\x01\x01s\x01@\x01\x05inputs\0\x02\x04\0\
-\x0aparse-text\x01\x03\x04\0\x18lojban:nesy/parser@0.1.0\x05\x02\x04\0\"lojban:n\
-esy/parser-component@0.1.0\x04\0\x0b\x16\x01\0\x10parser-component\x03\0\0\0G\x09\
-producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rus\
-t\x060.41.0";
+on\x01y\0\x04\0\x06selbri\x03\0\x1b\x01m\x03\x02pu\x02ca\x02ba\x04\0\x05tense\x03\
+\0\x1d\x01k\x1e\x01r\x05\x08relation\x01\x0ahead-terms\x18\x0atail-terms\x18\x07\
+negated\x7f\x05tense\x1f\x04\0\x05bridi\x03\0\x20\x01p\x1c\x01p\x14\x01p!\x01py\x01\
+r\x04\x07selbris\"\x06sumtis#\x09sentences$\x05roots%\x04\0\x0aast-buffer\x03\0&\
+\x01q\x04\x08variable\x01s\0\x08constant\x01s\0\x0bdescription\x01s\0\x0bunspeci\
+fied\0\0\x04\0\x0clogical-term\x03\0(\x01p)\x01o\x02s*\x01o\x02yy\x01o\x02sy\x01\
+q\x09\x09predicate\x01+\0\x08and-node\x01,\0\x07or-node\x01,\0\x08not-node\x01y\0\
+\x0bexists-node\x01-\0\x0cfor-all-node\x01-\0\x09past-node\x01y\0\x0cpresent-nod\
+e\x01y\0\x0bfuture-node\x01y\0\x04\0\x0alogic-node\x03\0.\x01p/\x01r\x02\x05node\
+s0\x05roots%\x04\0\x0clogic-buffer\x03\01\x03\0\x1blojban:nesy/ast-types@0.1.0\x05\
+\0\x02\x03\0\0\x0aast-buffer\x01B\x05\x02\x03\x02\x01\x01\x04\0\x0aast-buffer\x03\
+\0\0\x01j\x01\x01\x01s\x01@\x01\x05inputs\0\x02\x04\0\x0aparse-text\x01\x03\x04\0\
+\x18lojban:nesy/parser@0.1.0\x05\x02\x04\0\"lojban:nesy/parser-component@0.1.0\x04\
+\0\x0b\x16\x01\0\x10parser-component\x03\0\0\0G\x09producers\x01\x0cprocessed-by\
+\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

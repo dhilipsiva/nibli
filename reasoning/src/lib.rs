@@ -319,6 +319,9 @@ fn check_formula_holds(
             // Inner must NOT hold
             Ok(!check_formula_holds(buffer, *inner, subs, egraph)?)
         }
+        LogicNode::PastNode(inner)
+        | LogicNode::PresentNode(inner)
+        | LogicNode::FutureNode(inner) => Ok(!check_formula_holds(buffer, *inner, subs, egraph)?),
         LogicNode::ExistsNode((v, body)) => {
             // If variable is already substituted, just check body
             if subs.contains_key(v.as_str()) {
@@ -398,6 +401,11 @@ fn collect_exists_for_skolem(
             collect_exists_for_skolem(buffer, *inner, subs);
         }
         LogicNode::Predicate(_) => {}
+        LogicNode::PastNode(inner)
+        | LogicNode::PresentNode(inner)
+        | LogicNode::FutureNode(inner) => {
+            collect_exists_for_skolem(buffer, *inner, subs);
+        }
     }
 }
 
@@ -453,6 +461,11 @@ fn collect_and_register_constants(buffer: &LogicBuffer, node_id: u32, egraph: &m
         LogicNode::NotNode(inner)
         | LogicNode::ExistsNode((_, inner))
         | LogicNode::ForAllNode((_, inner)) => {
+            collect_and_register_constants(buffer, *inner, egraph);
+        }
+        LogicNode::PastNode(inner)
+        | LogicNode::PresentNode(inner)
+        | LogicNode::FutureNode(inner) => {
             collect_and_register_constants(buffer, *inner, egraph);
         }
     }
@@ -523,6 +536,11 @@ fn reconstruct_sexp_with_subs(
             )
         }
         LogicNode::NotNode(inner) => {
+            format!("(Not {})", reconstruct_sexp_with_subs(buffer, *inner, subs))
+        }
+        LogicNode::PastNode(inner)
+        | LogicNode::PresentNode(inner)
+        | LogicNode::FutureNode(inner) => {
             format!("(Not {})", reconstruct_sexp_with_subs(buffer, *inner, subs))
         }
     }

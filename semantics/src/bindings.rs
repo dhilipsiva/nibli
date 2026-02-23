@@ -302,12 +302,46 @@ pub mod lojban {
                     }
                 }
             }
+            #[repr(u8)]
+            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+            pub enum Tense {
+                Pu,
+                Ca,
+                Ba,
+            }
+            impl ::core::fmt::Debug for Tense {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        Tense::Pu => f.debug_tuple("Tense::Pu").finish(),
+                        Tense::Ca => f.debug_tuple("Tense::Ca").finish(),
+                        Tense::Ba => f.debug_tuple("Tense::Ba").finish(),
+                    }
+                }
+            }
+            impl Tense {
+                #[doc(hidden)]
+                pub unsafe fn _lift(val: u8) -> Tense {
+                    if !cfg!(debug_assertions) {
+                        return ::core::mem::transmute(val);
+                    }
+                    match val {
+                        0 => Tense::Pu,
+                        1 => Tense::Ca,
+                        2 => Tense::Ba,
+                        _ => panic!("invalid enum discriminant"),
+                    }
+                }
+            }
             #[derive(Clone)]
             pub struct Bridi {
                 pub relation: SelbriId,
                 pub head_terms: _rt::Vec<SumtiId>,
                 pub tail_terms: _rt::Vec<SumtiId>,
                 pub negated: bool,
+                pub tense: Option<Tense>,
             }
             impl ::core::fmt::Debug for Bridi {
                 fn fmt(
@@ -319,6 +353,7 @@ pub mod lojban {
                         .field("head-terms", &self.head_terms)
                         .field("tail-terms", &self.tail_terms)
                         .field("negated", &self.negated)
+                        .field("tense", &self.tense)
                         .finish()
                 }
             }
@@ -381,6 +416,9 @@ pub mod lojban {
                 NotNode(u32),
                 ExistsNode((_rt::String, u32)),
                 ForAllNode((_rt::String, u32)),
+                PastNode(u32),
+                PresentNode(u32),
+                FutureNode(u32),
             }
             impl ::core::fmt::Debug for LogicNode {
                 fn fmt(
@@ -405,6 +443,15 @@ pub mod lojban {
                         }
                         LogicNode::ForAllNode(e) => {
                             f.debug_tuple("LogicNode::ForAllNode").field(e).finish()
+                        }
+                        LogicNode::PastNode(e) => {
+                            f.debug_tuple("LogicNode::PastNode").field(e).finish()
+                        }
+                        LogicNode::PresentNode(e) => {
+                            f.debug_tuple("LogicNode::PresentNode").field(e).finish()
+                        }
+                        LogicNode::FutureNode(e) => {
+                            f.debug_tuple("LogicNode::FutureNode").field(e).finish()
                         }
                     }
                 }
@@ -764,13 +811,13 @@ pub mod exports {
                         len44 * (8 + 2 * ::core::mem::size_of::<*const u8>()),
                         ::core::mem::size_of::<*const u8>(),
                     );
-                    let base53 = arg4;
-                    let len53 = arg5;
-                    let mut result53 = _rt::Vec::with_capacity(len53);
-                    for i in 0..len53 {
-                        let base = base53
+                    let base55 = arg4;
+                    let len55 = arg5;
+                    let mut result55 = _rt::Vec::with_capacity(len55);
+                    for i in 0..len55 {
+                        let base = base55
                             .add(i * (6 * ::core::mem::size_of::<*const u8>()));
-                        let e53 = {
+                        let e55 = {
                             let l45 = *base.add(0).cast::<i32>();
                             let l46 = *base
                                 .add(::core::mem::size_of::<*const u8>())
@@ -791,6 +838,11 @@ pub mod exports {
                                     .add(5 * ::core::mem::size_of::<*const u8>())
                                     .cast::<u8>(),
                             );
+                            let l53 = i32::from(
+                                *base
+                                    .add(1 + 5 * ::core::mem::size_of::<*const u8>())
+                                    .cast::<u8>(),
+                            );
                             super::super::super::super::lojban::nesy::ast_types::Bridi {
                                 relation: l45 as u32,
                                 head_terms: _rt::Vec::from_raw_parts(
@@ -804,113 +856,104 @@ pub mod exports {
                                     len51,
                                 ),
                                 negated: _rt::bool_lift(l52 as u8),
+                                tense: match l53 {
+                                    0 => None,
+                                    1 => {
+                                        let e = {
+                                            let l54 = i32::from(
+                                                *base
+                                                    .add(2 + 5 * ::core::mem::size_of::<*const u8>())
+                                                    .cast::<u8>(),
+                                            );
+                                            super::super::super::super::lojban::nesy::ast_types::Tense::_lift(
+                                                l54 as u8,
+                                            )
+                                        };
+                                        Some(e)
+                                    }
+                                    _ => _rt::invalid_enum_discriminant(),
+                                },
                             }
                         };
-                        result53.push(e53);
+                        result55.push(e55);
                     }
                     _rt::cabi_dealloc(
-                        base53,
-                        len53 * (6 * ::core::mem::size_of::<*const u8>()),
+                        base55,
+                        len55 * (6 * ::core::mem::size_of::<*const u8>()),
                         ::core::mem::size_of::<*const u8>(),
                     );
-                    let len54 = arg7;
-                    let result55 = T::compile_buffer(super::super::super::super::lojban::nesy::ast_types::AstBuffer {
+                    let len56 = arg7;
+                    let result57 = T::compile_buffer(super::super::super::super::lojban::nesy::ast_types::AstBuffer {
                         selbris: result25,
                         sumtis: result44,
-                        sentences: result53,
-                        roots: _rt::Vec::from_raw_parts(arg6.cast(), len54, len54),
+                        sentences: result55,
+                        roots: _rt::Vec::from_raw_parts(arg6.cast(), len56, len56),
                     });
-                    let ptr56 = (&raw mut _RET_AREA.0).cast::<u8>();
-                    match result55 {
+                    let ptr58 = (&raw mut _RET_AREA.0).cast::<u8>();
+                    match result57 {
                         Ok(e) => {
-                            *ptr56.add(0).cast::<u8>() = (0i32) as u8;
+                            *ptr58.add(0).cast::<u8>() = (0i32) as u8;
                             let super::super::super::super::lojban::nesy::ast_types::LogicBuffer {
-                                nodes: nodes57,
-                                roots: roots57,
+                                nodes: nodes59,
+                                roots: roots59,
                             } = e;
-                            let vec72 = nodes57;
-                            let len72 = vec72.len();
-                            let layout72 = _rt::alloc::Layout::from_size_align_unchecked(
-                                vec72.len() * (5 * ::core::mem::size_of::<*const u8>()),
+                            let vec74 = nodes59;
+                            let len74 = vec74.len();
+                            let layout74 = _rt::alloc::Layout::from_size_align_unchecked(
+                                vec74.len() * (5 * ::core::mem::size_of::<*const u8>()),
                                 ::core::mem::size_of::<*const u8>(),
                             );
-                            let result72 = if layout72.size() != 0 {
-                                let ptr = _rt::alloc::alloc(layout72).cast::<u8>();
+                            let result74 = if layout74.size() != 0 {
+                                let ptr = _rt::alloc::alloc(layout74).cast::<u8>();
                                 if ptr.is_null() {
-                                    _rt::alloc::handle_alloc_error(layout72);
+                                    _rt::alloc::handle_alloc_error(layout74);
                                 }
                                 ptr
                             } else {
                                 ::core::ptr::null_mut()
                             };
-                            for (i, e) in vec72.into_iter().enumerate() {
-                                let base = result72
+                            for (i, e) in vec74.into_iter().enumerate() {
+                                let base = result74
                                     .add(i * (5 * ::core::mem::size_of::<*const u8>()));
                                 {
-                                    use super::super::super::super::lojban::nesy::ast_types::LogicNode as V71;
+                                    use super::super::super::super::lojban::nesy::ast_types::LogicNode as V73;
                                     match e {
-                                        V71::Predicate(e) => {
+                                        V73::Predicate(e) => {
                                             *base.add(0).cast::<u8>() = (0i32) as u8;
-                                            let (t58_0, t58_1) = e;
-                                            let vec59 = (t58_0.into_bytes()).into_boxed_slice();
-                                            let ptr59 = vec59.as_ptr().cast::<u8>();
-                                            let len59 = vec59.len();
-                                            ::core::mem::forget(vec59);
+                                            let (t60_0, t60_1) = e;
+                                            let vec61 = (t60_0.into_bytes()).into_boxed_slice();
+                                            let ptr61 = vec61.as_ptr().cast::<u8>();
+                                            let len61 = vec61.len();
+                                            ::core::mem::forget(vec61);
                                             *base
                                                 .add(2 * ::core::mem::size_of::<*const u8>())
-                                                .cast::<usize>() = len59;
+                                                .cast::<usize>() = len61;
                                             *base
                                                 .add(::core::mem::size_of::<*const u8>())
-                                                .cast::<*mut u8>() = ptr59.cast_mut();
-                                            let vec64 = t58_1;
-                                            let len64 = vec64.len();
-                                            let layout64 = _rt::alloc::Layout::from_size_align_unchecked(
-                                                vec64.len() * (3 * ::core::mem::size_of::<*const u8>()),
+                                                .cast::<*mut u8>() = ptr61.cast_mut();
+                                            let vec66 = t60_1;
+                                            let len66 = vec66.len();
+                                            let layout66 = _rt::alloc::Layout::from_size_align_unchecked(
+                                                vec66.len() * (3 * ::core::mem::size_of::<*const u8>()),
                                                 ::core::mem::size_of::<*const u8>(),
                                             );
-                                            let result64 = if layout64.size() != 0 {
-                                                let ptr = _rt::alloc::alloc(layout64).cast::<u8>();
+                                            let result66 = if layout66.size() != 0 {
+                                                let ptr = _rt::alloc::alloc(layout66).cast::<u8>();
                                                 if ptr.is_null() {
-                                                    _rt::alloc::handle_alloc_error(layout64);
+                                                    _rt::alloc::handle_alloc_error(layout66);
                                                 }
                                                 ptr
                                             } else {
                                                 ::core::ptr::null_mut()
                                             };
-                                            for (i, e) in vec64.into_iter().enumerate() {
-                                                let base = result64
+                                            for (i, e) in vec66.into_iter().enumerate() {
+                                                let base = result66
                                                     .add(i * (3 * ::core::mem::size_of::<*const u8>()));
                                                 {
-                                                    use super::super::super::super::lojban::nesy::ast_types::LogicalTerm as V63;
+                                                    use super::super::super::super::lojban::nesy::ast_types::LogicalTerm as V65;
                                                     match e {
-                                                        V63::Variable(e) => {
+                                                        V65::Variable(e) => {
                                                             *base.add(0).cast::<u8>() = (0i32) as u8;
-                                                            let vec60 = (e.into_bytes()).into_boxed_slice();
-                                                            let ptr60 = vec60.as_ptr().cast::<u8>();
-                                                            let len60 = vec60.len();
-                                                            ::core::mem::forget(vec60);
-                                                            *base
-                                                                .add(2 * ::core::mem::size_of::<*const u8>())
-                                                                .cast::<usize>() = len60;
-                                                            *base
-                                                                .add(::core::mem::size_of::<*const u8>())
-                                                                .cast::<*mut u8>() = ptr60.cast_mut();
-                                                        }
-                                                        V63::Constant(e) => {
-                                                            *base.add(0).cast::<u8>() = (1i32) as u8;
-                                                            let vec61 = (e.into_bytes()).into_boxed_slice();
-                                                            let ptr61 = vec61.as_ptr().cast::<u8>();
-                                                            let len61 = vec61.len();
-                                                            ::core::mem::forget(vec61);
-                                                            *base
-                                                                .add(2 * ::core::mem::size_of::<*const u8>())
-                                                                .cast::<usize>() = len61;
-                                                            *base
-                                                                .add(::core::mem::size_of::<*const u8>())
-                                                                .cast::<*mut u8>() = ptr61.cast_mut();
-                                                        }
-                                                        V63::Description(e) => {
-                                                            *base.add(0).cast::<u8>() = (2i32) as u8;
                                                             let vec62 = (e.into_bytes()).into_boxed_slice();
                                                             let ptr62 = vec62.as_ptr().cast::<u8>();
                                                             let len62 = vec62.len();
@@ -922,7 +965,33 @@ pub mod exports {
                                                                 .add(::core::mem::size_of::<*const u8>())
                                                                 .cast::<*mut u8>() = ptr62.cast_mut();
                                                         }
-                                                        V63::Unspecified => {
+                                                        V65::Constant(e) => {
+                                                            *base.add(0).cast::<u8>() = (1i32) as u8;
+                                                            let vec63 = (e.into_bytes()).into_boxed_slice();
+                                                            let ptr63 = vec63.as_ptr().cast::<u8>();
+                                                            let len63 = vec63.len();
+                                                            ::core::mem::forget(vec63);
+                                                            *base
+                                                                .add(2 * ::core::mem::size_of::<*const u8>())
+                                                                .cast::<usize>() = len63;
+                                                            *base
+                                                                .add(::core::mem::size_of::<*const u8>())
+                                                                .cast::<*mut u8>() = ptr63.cast_mut();
+                                                        }
+                                                        V65::Description(e) => {
+                                                            *base.add(0).cast::<u8>() = (2i32) as u8;
+                                                            let vec64 = (e.into_bytes()).into_boxed_slice();
+                                                            let ptr64 = vec64.as_ptr().cast::<u8>();
+                                                            let len64 = vec64.len();
+                                                            ::core::mem::forget(vec64);
+                                                            *base
+                                                                .add(2 * ::core::mem::size_of::<*const u8>())
+                                                                .cast::<usize>() = len64;
+                                                            *base
+                                                                .add(::core::mem::size_of::<*const u8>())
+                                                                .cast::<*mut u8>() = ptr64.cast_mut();
+                                                        }
+                                                        V65::Unspecified => {
                                                             *base.add(0).cast::<u8>() = (3i32) as u8;
                                                         }
                                                     }
@@ -930,56 +999,39 @@ pub mod exports {
                                             }
                                             *base
                                                 .add(4 * ::core::mem::size_of::<*const u8>())
-                                                .cast::<usize>() = len64;
+                                                .cast::<usize>() = len66;
                                             *base
                                                 .add(3 * ::core::mem::size_of::<*const u8>())
-                                                .cast::<*mut u8>() = result64;
+                                                .cast::<*mut u8>() = result66;
                                         }
-                                        V71::AndNode(e) => {
+                                        V73::AndNode(e) => {
                                             *base.add(0).cast::<u8>() = (1i32) as u8;
-                                            let (t65_0, t65_1) = e;
+                                            let (t67_0, t67_1) = e;
                                             *base
                                                 .add(::core::mem::size_of::<*const u8>())
-                                                .cast::<i32>() = _rt::as_i32(t65_0);
+                                                .cast::<i32>() = _rt::as_i32(t67_0);
                                             *base
                                                 .add(4 + 1 * ::core::mem::size_of::<*const u8>())
-                                                .cast::<i32>() = _rt::as_i32(t65_1);
+                                                .cast::<i32>() = _rt::as_i32(t67_1);
                                         }
-                                        V71::OrNode(e) => {
+                                        V73::OrNode(e) => {
                                             *base.add(0).cast::<u8>() = (2i32) as u8;
-                                            let (t66_0, t66_1) = e;
+                                            let (t68_0, t68_1) = e;
                                             *base
                                                 .add(::core::mem::size_of::<*const u8>())
-                                                .cast::<i32>() = _rt::as_i32(t66_0);
+                                                .cast::<i32>() = _rt::as_i32(t68_0);
                                             *base
                                                 .add(4 + 1 * ::core::mem::size_of::<*const u8>())
-                                                .cast::<i32>() = _rt::as_i32(t66_1);
+                                                .cast::<i32>() = _rt::as_i32(t68_1);
                                         }
-                                        V71::NotNode(e) => {
+                                        V73::NotNode(e) => {
                                             *base.add(0).cast::<u8>() = (3i32) as u8;
                                             *base
                                                 .add(::core::mem::size_of::<*const u8>())
                                                 .cast::<i32>() = _rt::as_i32(e);
                                         }
-                                        V71::ExistsNode(e) => {
+                                        V73::ExistsNode(e) => {
                                             *base.add(0).cast::<u8>() = (4i32) as u8;
-                                            let (t67_0, t67_1) = e;
-                                            let vec68 = (t67_0.into_bytes()).into_boxed_slice();
-                                            let ptr68 = vec68.as_ptr().cast::<u8>();
-                                            let len68 = vec68.len();
-                                            ::core::mem::forget(vec68);
-                                            *base
-                                                .add(2 * ::core::mem::size_of::<*const u8>())
-                                                .cast::<usize>() = len68;
-                                            *base
-                                                .add(::core::mem::size_of::<*const u8>())
-                                                .cast::<*mut u8>() = ptr68.cast_mut();
-                                            *base
-                                                .add(3 * ::core::mem::size_of::<*const u8>())
-                                                .cast::<i32>() = _rt::as_i32(t67_1);
-                                        }
-                                        V71::ForAllNode(e) => {
-                                            *base.add(0).cast::<u8>() = (5i32) as u8;
                                             let (t69_0, t69_1) = e;
                                             let vec70 = (t69_0.into_bytes()).into_boxed_slice();
                                             let ptr70 = vec70.as_ptr().cast::<u8>();
@@ -995,41 +1047,76 @@ pub mod exports {
                                                 .add(3 * ::core::mem::size_of::<*const u8>())
                                                 .cast::<i32>() = _rt::as_i32(t69_1);
                                         }
+                                        V73::ForAllNode(e) => {
+                                            *base.add(0).cast::<u8>() = (5i32) as u8;
+                                            let (t71_0, t71_1) = e;
+                                            let vec72 = (t71_0.into_bytes()).into_boxed_slice();
+                                            let ptr72 = vec72.as_ptr().cast::<u8>();
+                                            let len72 = vec72.len();
+                                            ::core::mem::forget(vec72);
+                                            *base
+                                                .add(2 * ::core::mem::size_of::<*const u8>())
+                                                .cast::<usize>() = len72;
+                                            *base
+                                                .add(::core::mem::size_of::<*const u8>())
+                                                .cast::<*mut u8>() = ptr72.cast_mut();
+                                            *base
+                                                .add(3 * ::core::mem::size_of::<*const u8>())
+                                                .cast::<i32>() = _rt::as_i32(t71_1);
+                                        }
+                                        V73::PastNode(e) => {
+                                            *base.add(0).cast::<u8>() = (6i32) as u8;
+                                            *base
+                                                .add(::core::mem::size_of::<*const u8>())
+                                                .cast::<i32>() = _rt::as_i32(e);
+                                        }
+                                        V73::PresentNode(e) => {
+                                            *base.add(0).cast::<u8>() = (7i32) as u8;
+                                            *base
+                                                .add(::core::mem::size_of::<*const u8>())
+                                                .cast::<i32>() = _rt::as_i32(e);
+                                        }
+                                        V73::FutureNode(e) => {
+                                            *base.add(0).cast::<u8>() = (8i32) as u8;
+                                            *base
+                                                .add(::core::mem::size_of::<*const u8>())
+                                                .cast::<i32>() = _rt::as_i32(e);
+                                        }
                                     }
                                 }
                             }
-                            *ptr56
-                                .add(2 * ::core::mem::size_of::<*const u8>())
-                                .cast::<usize>() = len72;
-                            *ptr56
-                                .add(::core::mem::size_of::<*const u8>())
-                                .cast::<*mut u8>() = result72;
-                            let vec73 = (roots57).into_boxed_slice();
-                            let ptr73 = vec73.as_ptr().cast::<u8>();
-                            let len73 = vec73.len();
-                            ::core::mem::forget(vec73);
-                            *ptr56
-                                .add(4 * ::core::mem::size_of::<*const u8>())
-                                .cast::<usize>() = len73;
-                            *ptr56
-                                .add(3 * ::core::mem::size_of::<*const u8>())
-                                .cast::<*mut u8>() = ptr73.cast_mut();
-                        }
-                        Err(e) => {
-                            *ptr56.add(0).cast::<u8>() = (1i32) as u8;
-                            let vec74 = (e.into_bytes()).into_boxed_slice();
-                            let ptr74 = vec74.as_ptr().cast::<u8>();
-                            let len74 = vec74.len();
-                            ::core::mem::forget(vec74);
-                            *ptr56
+                            *ptr58
                                 .add(2 * ::core::mem::size_of::<*const u8>())
                                 .cast::<usize>() = len74;
-                            *ptr56
+                            *ptr58
                                 .add(::core::mem::size_of::<*const u8>())
-                                .cast::<*mut u8>() = ptr74.cast_mut();
+                                .cast::<*mut u8>() = result74;
+                            let vec75 = (roots59).into_boxed_slice();
+                            let ptr75 = vec75.as_ptr().cast::<u8>();
+                            let len75 = vec75.len();
+                            ::core::mem::forget(vec75);
+                            *ptr58
+                                .add(4 * ::core::mem::size_of::<*const u8>())
+                                .cast::<usize>() = len75;
+                            *ptr58
+                                .add(3 * ::core::mem::size_of::<*const u8>())
+                                .cast::<*mut u8>() = ptr75.cast_mut();
+                        }
+                        Err(e) => {
+                            *ptr58.add(0).cast::<u8>() = (1i32) as u8;
+                            let vec76 = (e.into_bytes()).into_boxed_slice();
+                            let ptr76 = vec76.as_ptr().cast::<u8>();
+                            let len76 = vec76.len();
+                            ::core::mem::forget(vec76);
+                            *ptr58
+                                .add(2 * ::core::mem::size_of::<*const u8>())
+                                .cast::<usize>() = len76;
+                            *ptr58
+                                .add(::core::mem::size_of::<*const u8>())
+                                .cast::<*mut u8>() = ptr76.cast_mut();
                         }
                     };
-                    ptr56
+                    ptr58
                 }
                 #[doc(hidden)]
                 #[allow(non_snake_case)]
@@ -1122,7 +1209,7 @@ pub mod exports {
                                                 .cast::<usize>();
                                             _rt::cabi_dealloc(l16, l17, 1);
                                         }
-                                        _ => {
+                                        5 => {
                                             let l18 = *base
                                                 .add(::core::mem::size_of::<*const u8>())
                                                 .cast::<*mut u8>();
@@ -1131,6 +1218,9 @@ pub mod exports {
                                                 .cast::<usize>();
                                             _rt::cabi_dealloc(l18, l19, 1);
                                         }
+                                        6 => {}
+                                        7 => {}
+                                        _ => {}
                                     }
                                 }
                             }
@@ -1232,6 +1322,13 @@ mod _rt {
             val != 0
         }
     }
+    pub unsafe fn invalid_enum_discriminant<T>() -> T {
+        if cfg!(debug_assertions) {
+            panic!("invalid enum discriminant")
+        } else {
+            unsafe { core::hint::unreachable_unchecked() }
+        }
+    }
     pub use alloc_crate::alloc;
     pub fn as_i32<T: AsI32>(t: T) -> i32 {
         t.as_i32()
@@ -1330,9 +1427,9 @@ pub(crate) use __export_semantics_component_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1221] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xbb\x08\x01A\x02\x01\
-A\x06\x01B0\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1298] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x88\x09\x01A\x02\x01\
+A\x06\x01B3\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
 m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x04\x02se\x02\
 te\x02ve\x02xe\x04\0\x0aconversion\x03\0\x06\x01m\x04\x02je\x02ja\x02jo\x02ju\x04\
 \0\x0aconnective\x03\0\x08\x01m\x05\x02lo\x02le\x02la\x05ro-lo\x05ro-le\x04\0\x05\
@@ -1344,21 +1441,22 @@ o\x02\x05\x03\x01o\x02\x03\x0f\x01q\x07\x09pro-sumti\x01s\0\x0bdescription\x01\x
 \x07\x01\x01p\x03\x01o\x02\x01\x18\x01o\x03\x01\x09\x01\x01q\x09\x04root\x01s\0\x08\
 compound\x01\x15\0\x05tanru\x01\x16\0\x09converted\x01\x17\0\x07negated\x01\x01\0\
 \x07grouped\x01\x01\0\x09with-args\x01\x19\0\x09connected\x01\x1a\0\x0babstracti\
-on\x01y\0\x04\0\x06selbri\x03\0\x1b\x01r\x04\x08relation\x01\x0ahead-terms\x18\x0a\
-tail-terms\x18\x07negated\x7f\x04\0\x05bridi\x03\0\x1d\x01p\x1c\x01p\x14\x01p\x1e\
-\x01py\x01r\x04\x07selbris\x1f\x06sumtis\x20\x09sentences!\x05roots\"\x04\0\x0aa\
-st-buffer\x03\0#\x01q\x04\x08variable\x01s\0\x08constant\x01s\0\x0bdescription\x01\
-s\0\x0bunspecified\0\0\x04\0\x0clogical-term\x03\0%\x01p&\x01o\x02s'\x01o\x02yy\x01\
-o\x02sy\x01q\x06\x09predicate\x01(\0\x08and-node\x01)\0\x07or-node\x01)\0\x08not\
--node\x01y\0\x0bexists-node\x01*\0\x0cfor-all-node\x01*\0\x04\0\x0alogic-node\x03\
-\0+\x01p,\x01r\x02\x05nodes-\x05roots\"\x04\0\x0clogic-buffer\x03\0.\x03\0\x1blo\
-jban:nesy/ast-types@0.1.0\x05\0\x02\x03\0\0\x0aast-buffer\x02\x03\0\0\x0clogic-b\
-uffer\x01B\x07\x02\x03\x02\x01\x01\x04\0\x0aast-buffer\x03\0\0\x02\x03\x02\x01\x02\
-\x04\0\x0clogic-buffer\x03\0\x02\x01j\x01\x03\x01s\x01@\x01\x03ast\x01\0\x04\x04\
-\0\x0ecompile-buffer\x01\x05\x04\0\x1blojban:nesy/semantics@0.1.0\x05\x03\x04\0%\
-lojban:nesy/semantics-component@0.1.0\x04\0\x0b\x19\x01\0\x13semantics-component\
-\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10\
-wit-bindgen-rust\x060.41.0";
+on\x01y\0\x04\0\x06selbri\x03\0\x1b\x01m\x03\x02pu\x02ca\x02ba\x04\0\x05tense\x03\
+\0\x1d\x01k\x1e\x01r\x05\x08relation\x01\x0ahead-terms\x18\x0atail-terms\x18\x07\
+negated\x7f\x05tense\x1f\x04\0\x05bridi\x03\0\x20\x01p\x1c\x01p\x14\x01p!\x01py\x01\
+r\x04\x07selbris\"\x06sumtis#\x09sentences$\x05roots%\x04\0\x0aast-buffer\x03\0&\
+\x01q\x04\x08variable\x01s\0\x08constant\x01s\0\x0bdescription\x01s\0\x0bunspeci\
+fied\0\0\x04\0\x0clogical-term\x03\0(\x01p)\x01o\x02s*\x01o\x02yy\x01o\x02sy\x01\
+q\x09\x09predicate\x01+\0\x08and-node\x01,\0\x07or-node\x01,\0\x08not-node\x01y\0\
+\x0bexists-node\x01-\0\x0cfor-all-node\x01-\0\x09past-node\x01y\0\x0cpresent-nod\
+e\x01y\0\x0bfuture-node\x01y\0\x04\0\x0alogic-node\x03\0.\x01p/\x01r\x02\x05node\
+s0\x05roots%\x04\0\x0clogic-buffer\x03\01\x03\0\x1blojban:nesy/ast-types@0.1.0\x05\
+\0\x02\x03\0\0\x0aast-buffer\x02\x03\0\0\x0clogic-buffer\x01B\x07\x02\x03\x02\x01\
+\x01\x04\0\x0aast-buffer\x03\0\0\x02\x03\x02\x01\x02\x04\0\x0clogic-buffer\x03\0\
+\x02\x01j\x01\x03\x01s\x01@\x01\x03ast\x01\0\x04\x04\0\x0ecompile-buffer\x01\x05\
+\x04\0\x1blojban:nesy/semantics@0.1.0\x05\x03\x04\0%lojban:nesy/semantics-compon\
+ent@0.1.0\x04\0\x0b\x19\x01\0\x13semantics-component\x03\0\0\0G\x09producers\x01\
+\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

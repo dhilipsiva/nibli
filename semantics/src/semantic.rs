@@ -1,5 +1,5 @@
 use crate::bindings::lojban::nesy::ast_types::{
-    Bridi, Connective, Conversion, Gadri, PlaceTag, Selbri, Sumti,
+    Bridi, Connective, Conversion, Gadri, PlaceTag, Selbri, Sumti, Tense,
 };
 use crate::dictionary::JbovlasteSchema;
 use crate::ir::{LogicalForm, LogicalTerm};
@@ -502,6 +502,20 @@ impl SemanticCompiler {
 
         if bridi.negated {
             final_form = LogicalForm::Not(Box::new(final_form));
+        }
+
+        // Tense wrapping (outermost — scopes over negation)
+        match &bridi.tense {
+            Some(Tense::Pu) => {
+                final_form = LogicalForm::Past(Box::new(final_form));
+            }
+            Some(Tense::Ca) => {
+                final_form = LogicalForm::Present(Box::new(final_form));
+            }
+            Some(Tense::Ba) => {
+                final_form = LogicalForm::Future(Box::new(final_form));
+            }
+            None => {}
         }
 
         final_form

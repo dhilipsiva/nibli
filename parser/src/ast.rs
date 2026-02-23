@@ -144,6 +144,14 @@ pub enum Selbri {
     Abstraction(Box<Bridi>),
 }
 
+/// Tense marker (PU selma'o)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tense {
+    Pu, // past
+    Ca, // present
+    Ba, // future
+}
+
 /// A single bridi (predication).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bridi {
@@ -151,6 +159,7 @@ pub struct Bridi {
     pub head_terms: Vec<Sumti>, // terms before selbri (cu-separated)
     pub tail_terms: Vec<Sumti>, // terms after selbri
     pub negated: bool,          // sentence-level na (before all terms)
+    pub tense: Option<Tense>,
 }
 
 /// A complete parsed text: one or more sentences.

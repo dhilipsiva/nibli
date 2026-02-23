@@ -274,6 +274,9 @@ impl<'a> Parser<'a> {
         let head_terms = self.parse_terms();
         self.eat_cmavo("cu");
 
+        // Tense markers before selbri (pu/ca/ba)
+        let tense = self.try_parse_tense();
+
         let selbri = if let Some(s) = self.try_parse_selbri()? {
             s
         } else {
@@ -299,6 +302,7 @@ impl<'a> Parser<'a> {
             head_terms,
             tail_terms,
             negated,
+            tense,
         })
     }
 
@@ -309,7 +313,10 @@ impl<'a> Parser<'a> {
         match &self.tokens[self.pos + 1] {
             NormalizedToken::Standard(LojbanToken::Gismu, _) => true,
             NormalizedToken::Standard(LojbanToken::Cmavo, s) => {
-                matches!(*s, "se" | "te" | "ve" | "xe" | "ke" | "na" | "nu")
+                matches!(
+                    *s,
+                    "se" | "te" | "ve" | "xe" | "ke" | "na" | "nu" | "pu" | "ca" | "ba"
+                )
             }
             _ => false,
         }
@@ -752,6 +759,17 @@ impl<'a> Parser<'a> {
             message: message.to_string(),
             position: self.pos,
         }
+    }
+
+    fn try_parse_tense(&mut self) -> Option<Tense> {
+        let t = match self.peek_cmavo()? {
+            "pu" => Tense::Pu,
+            "ca" => Tense::Ca,
+            "ba" => Tense::Ba,
+            _ => return None,
+        };
+        self.pos += 1;
+        Some(t)
     }
 }
 
