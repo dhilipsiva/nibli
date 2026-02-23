@@ -188,6 +188,15 @@ impl SemanticCompiler {
             LogicalForm::Not(inner) => {
                 LogicalForm::Not(Box::new(Self::inject_variable(*inner, var)))
             }
+            LogicalForm::Past(inner) => {
+                LogicalForm::Past(Box::new(Self::inject_variable(*inner, var)))
+            }
+            LogicalForm::Present(inner) => {
+                LogicalForm::Present(Box::new(Self::inject_variable(*inner, var)))
+            }
+            LogicalForm::Future(inner) => {
+                LogicalForm::Future(Box::new(Self::inject_variable(*inner, var)))
+            }
             other => other,
         }
     }
