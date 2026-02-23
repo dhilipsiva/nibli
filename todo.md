@@ -1,5 +1,14 @@
-Would you like to refactor world.wit and ast.rs to support the recursive Sentence structure required to parse ganai...gi, or must we fix the mathematically unsound OrNode evaluation in the reasoning crate first so the logic actually holds water?
 
+~/projects/dhilipsiva/lojban_nesy_engine〉:debug ganai mi klama gi do sutra                                                                                                                                                                           02/23/2026 03:13:07 PM
+[Error] Parse: parse error at token 0: expected selbri or terms
+~/projects/dhilipsiva/lojban_nesy_engine〉:debug ganai mi klama gi ganai do sutra gi la .djan. ciska                                                                                                                                                  02/23/2026 03:13:19 PM
+[Error] Parse: parse error at token 0: expected selbri or terms
+~/projects/dhilipsiva/lojban_nesy_engine〉:debug ganai ro lo gerku poi barda cu sutra gi lo mlatu cu bajra                                                                                                                                            02/23/2026 03:13:26 PM
+[Error] Parse: parse error at token 0: expected selbri or terms
+~/projects/dhilipsiva/lojban_nesy_engine〉:debug mi djica lo nu ganai do klama gi mi ciska kei                                                                                                                                                        02/23/2026 03:13:35 PM
+[Error] Parse: parse error at token 2: unconsumed tokens remaining
+~/projects/dhilipsiva/lojban_nesy_engine〉:debug mi nelci lo ke barda sutra ke'e gerku be la .alis.                                                                                                                                                   02/23/2026 03:13:41 PM
+[Logic] (Exists "_v0" (And (And (And (Pred "barda" (Cons (Var "_v0") (Cons (Zoe) (Cons (Zoe) (Nil))))) (Pred "sutra" (Cons (Var "_v0") (Cons (Zoe) (Nil))))) (Pred "gerku" (Cons (Var "_v0") (Cons (Const "alis") (Nil))))) (Pred "nelci" (Cons (Const "mi") (Cons (Var "_v0") (Nil))))))
 
 ### Tier 1: Critical Systemic Failures (Security & Commercial Blockers)
 
