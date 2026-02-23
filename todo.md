@@ -1,21 +1,39 @@
-## Missing Capabilities
 
-4. **Causal connectives (#5)** — `ri'a/mu'i/ni'i` completely absent from parser/semantics.
-5. **`ganai...gi` implication (#6)** — No bare conditional without a quantifier.
-6. **Numerical comparison predicates (#4, partial)** — Parser handles `li` + PA digits and `LogicalTerm::Number` exists in the IR/WIT, but the reasoning schema has zero comparison predicates. Numbers pass through structurally but can't be reasoned about.
-7. **`sa` proper implementation (#14)** — Still degraded to single-word erase.
+### Tier 1: Critical Systemic Failures (Security & Commercial Blockers)
 
-## Architectural Debt
+* **[NEW] WASM Unbounded Execution (DoS Vulnerability):** Add Wasmtime fuel/epoch interruption limits and transition to asynchronous execution via `tokio`. Synchronous execution without bounds guarantees host thread starvation on pathological logic queries.
+* **[NEW] WASI Ephemerality & State Persistence:** Replace the anti-pattern of `OnceLock<Mutex<...>>` in the reasoning component. Utilize WASI Resources to hoist the knowledge base state to the host level. This allows for multi-tenant database persistence and directly resolves the issue where global state cannot be reset without restarting the process.
+* **[NEW] Opaque Error Boundaries:** Strip out stringified error passing. Implement strict WIT error variants (e.g., `SyntaxError(position: u32)`) to enable programmatic recovery loops by upstream LLM agents.
+* **[NEW] WASI Capability Sandboxing:** Remove the blanket `inherit_stdio()` from the host environment to enforce the principle of least privilege.
 
-8. **wasip1/wasip2 misalignment (#9)** — Build targets wasip1, flake says wasip2.
-9. **`reconstruct_sexp` duplication (#10)** — Identical logic in orchestrator and reasoning.
-10. **`ast-types` interface naming (#11)** — `logical-term`/`logic-node` still in `ast-types`.
-11. **Global state non-resettability (#12)** — No `:reset` command, must restart process.
+### Tier 2: Algorithmic & Memory Bottlenecks
 
-## Long-term (acknowledged as future work)
+* **[NEW] AST Double-Allocation Churn:** Eliminate the recursive heap `Box` usage across the parser and semantics components. Write directly into the flat, index-based arrays (`AstBuffer` / `LogicBuffer`) or implement an arena allocator like `bumpalo`.
+* **[NEW]  String Allocations:** Refactor the left-fold `format!` loop in `reconstruct_sexp` to use pre-allocated `String::with_capacity()` buffers.
+* **wasip1/wasip2 misalignment (#9):** The build targets wasip1, but the flake specifies wasip2.
+* **`reconstruct_sexp` duplication (#10):** Identical logic exists in both the orchestrator and reasoning crates.
+* **`ast-types` interface naming (#11):** `logical-term` and `logic-node` are incorrectly housed within `ast-types`.
 
-12. **Event semantics / Neo-Davidsonian (#15)**
-13. **Non-monotonic reasoning / belief revision (#16)**
-14. **Description term opacity (#17)**
-15. **E-Graph cycle detection (#18)**
-16. **Conjunction introduction rule (#19)**
+### Tier 3: Logical Soundness & Theorem Proving
+
+* **[NEW] Herbrand Combinatorial Explosion:** Eradicate naive `ForAll` template grounding. Map universal rules directly into `egglog` Datalog-style `(rule ...)` definitions to prevent exponential memory consumption during inference.
+* **[NEW] Heuristic Variable Injection Flaw:** Remove the `inject_variable` AST search for resolving implicit relative clauses. Implement strictly scoped De Bruijn indices for bound variables.
+* **[NEW] Unsound Disjunction Evaluation:** Push `OrNode` evaluation down into `egglog` or an external SMT solver. Splitting `Or` checks inside the Rust AST evaluator objectively breaks valid  entailments.
+* **[NEW] Temporal Semantic Erasure:** Encode `Past`, `Present`, and `Future` wrappers directly into the e-graph. Do not strip them out during S-expression serialization.
+* **Numerical comparison predicates (#4, partial):** The parser handles `li` + PA digits, and `LogicalTerm::Number` exists in the IR/WIT. However, the reasoning schema has zero comparison predicates. Numbers pass through structurally but cannot be reasoned about.
+
+### Tier 4: Syntactic & Linguistic Integrity
+
+* **[NEW] Naive Lexical Regex:** Enforce strict Lojban phonotactics (valid consonant clusters) within the `logos` lexer to reject morphologically invalid strings prior to AST construction.
+* **[NEW] Parser Synchronization:** Implement standard error recovery mechanisms (skipping tokens until the next `.i` boundary) rather than hard-failing the entire parse tree on a single syntactic deviation.
+* **`sa` proper implementation (#14):** The operator is still degraded to a single-word erase.
+* **Causal connectives (#5):** `ri'a/mu'i/ni'i` are completely absent from the parser and semantics.
+* **`ganai...gi` implication (#6):** There is no bare conditional support without a quantifier.
+
+### Tier 5: Long-Term Theoretical (Future Work)
+
+* **Event semantics / Neo-Davidsonian (#15):** This is required to resolve the Tanru Intersective Fallacy currently hardcoded into the semantics compiler.
+* **Non-monotonic reasoning / belief revision (#16)**.
+* **Description term opacity (#17)**.
+* **E-Graph cycle detection (#18)**.
+* **Conjunction introduction rule (#19)**.
