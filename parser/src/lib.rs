@@ -235,3 +235,193 @@ impl Flattener {
 }
 
 bindings::export!(ParserComponent with_types_in bindings);
+
+// Add these tests to parser/src/lib.rs or a new integration test file.
+// They test the Flattener, not just the grammar parser.
+
+#[cfg(test)]
+mod flattener_tests {
+    use crate::ast::*;
+
+    // Re-use the Flattener (it's private, so these tests must live in lib.rs
+    // or you must make Flattener pub(crate)).
+
+    use super::Flattener;
+
+    /// Two simple sentences: "klama .i prami"
+    /// Both must appear as roots.
+    #[test]
+    fn test_multi_sentence_produces_two_roots() {
+        let parsed = ParsedText {
+            sentences: vec![
+                Bridi {
+                    selbri: Selbri::Root("klama".into()),
+                    head_terms: vec![],
+                    tail_terms: vec![],
+                    negated: false,
+                    tense: None,
+                },
+                Bridi {
+                    selbri: Selbri::Root("prami".into()),
+                    head_terms: vec![],
+                    tail_terms: vec![],
+                    negated: false,
+                    tense: None,
+                },
+            ],
+        };
+
+        let buffer = Flattener::flatten(parsed);
+        assert_eq!(
+            buffer.roots.len(),
+            2,
+            "expected 2 roots, got {}",
+            buffer.roots.len()
+        );
+
+        // Roots must point to distinct sentences
+        assert_ne!(buffer.roots[0], buffer.roots[1]);
+    }
+
+    /// Three sentences — all three must be roots.
+    #[test]
+    fn test_three_sentences_three_roots() {
+        let parsed = ParsedText {
+            sentences: vec![
+                Bridi {
+                    selbri: Selbri::Root("klama".into()),
+                    head_terms: vec![],
+                    tail_terms: vec![],
+                    negated: false,
+                    tense: None,
+                },
+                Bridi {
+                    selbri: Selbri::Root("prami".into()),
+                    head_terms: vec![],
+                    tail_terms: vec![],
+                    negated: false,
+                    tense: None,
+                },
+                Bridi {
+                    selbri: Selbri::Root("barda".into()),
+                    head_terms: vec![],
+                    tail_terms: vec![],
+                    negated: false,
+                    tense: None,
+                },
+            ],
+        };
+
+        let buffer = Flattener::flatten(parsed);
+        assert_eq!(buffer.roots.len(), 3);
+    }
+
+    /// Single sentence with a relative clause.
+    /// The rel clause body is in `sentences` but must NOT be a root.
+    /// Only 1 root expected.
+    #[test]
+    fn test_rel_clause_body_is_not_a_root() {
+        let parsed = ParsedText {
+            sentences: vec![Bridi {
+                selbri: Selbri::Root("barda".into()),
+                head_terms: vec![Sumti::Restricted {
+                    inner: Box::new(Sumti::Description {
+                        gadri: Gadri::Lo,
+                        inner: Box::new(Selbri::Root("gerku".into())),
+                    }),
+                    clause: RelClause {
+                        kind: RelClauseKind::Poi,
+                        body: Box::new(Bridi {
+                            selbri: Selbri::Root("sutra".into()),
+                            head_terms: vec![],
+                            tail_terms: vec![],
+                            negated: false,
+                            tense: None,
+                        }),
+                    },
+                }],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+            }],
+        };
+
+        let buffer = Flattener::flatten(parsed);
+        // sentences has 2 entries (rel clause body + top-level), but only 1 root
+        assert_eq!(buffer.sentences.len(), 2);
+        assert_eq!(buffer.roots.len(), 1);
+    }
+
+    /// nu abstraction body must NOT be a root.
+    #[test]
+    fn test_nu_abstraction_body_is_not_a_root() {
+        let parsed = ParsedText {
+            sentences: vec![Bridi {
+                selbri: Selbri::Root("barda".into()),
+                head_terms: vec![Sumti::Description {
+                    gadri: Gadri::Lo,
+                    inner: Box::new(Selbri::Abstraction(Box::new(Bridi {
+                        selbri: Selbri::Root("klama".into()),
+                        head_terms: vec![Sumti::ProSumti("mi".into())],
+                        tail_terms: vec![],
+                        negated: false,
+                        tense: None,
+                    }))),
+                }],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+            }],
+        };
+
+        let buffer = Flattener::flatten(parsed);
+        assert_eq!(buffer.sentences.len(), 2); // abstraction body + top-level
+        assert_eq!(buffer.roots.len(), 1); // only top-level is root
+    }
+
+    /// Multi-sentence with rel clauses — roots count must match
+    /// sentence count, not total bridi count.
+    #[test]
+    fn test_multi_sentence_with_rel_clauses() {
+        // Sentence 1: lo gerku poi barda cu klama  (1 rel clause body + 1 top-level)
+        // Sentence 2: mi prami do                   (1 top-level)
+        // Total sentences in buffer: 3, roots: 2
+        let parsed = ParsedText {
+            sentences: vec![
+                Bridi {
+                    selbri: Selbri::Root("klama".into()),
+                    head_terms: vec![Sumti::Restricted {
+                        inner: Box::new(Sumti::Description {
+                            gadri: Gadri::Lo,
+                            inner: Box::new(Selbri::Root("gerku".into())),
+                        }),
+                        clause: RelClause {
+                            kind: RelClauseKind::Poi,
+                            body: Box::new(Bridi {
+                                selbri: Selbri::Root("barda".into()),
+                                head_terms: vec![],
+                                tail_terms: vec![],
+                                negated: false,
+                                tense: None,
+                            }),
+                        },
+                    }],
+                    tail_terms: vec![],
+                    negated: false,
+                    tense: None,
+                },
+                Bridi {
+                    selbri: Selbri::Root("prami".into()),
+                    head_terms: vec![Sumti::ProSumti("mi".into())],
+                    tail_terms: vec![Sumti::ProSumti("do".into())],
+                    negated: false,
+                    tense: None,
+                },
+            ],
+        };
+
+        let buffer = Flattener::flatten(parsed);
+        assert_eq!(buffer.sentences.len(), 3); // 1 rel body + 2 top-level
+        assert_eq!(buffer.roots.len(), 2); // only the 2 top-level sentences
+    }
+}

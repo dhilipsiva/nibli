@@ -296,8 +296,10 @@ impl Guest for ReasoningComponent {
 /// - And(A,B): both must hold
 /// - Or(A,B): at least one must hold
 /// - Not(A): A must NOT hold
-/// - Exists: enumerate entities (delegated to caller)
-/// - ForAll: strip wrapper (variable already substituted by caller)
+/// - Past/Present/Future: transparent — check inner formula
+///   (tense is a structural marker; no temporal inference rules yet)
+/// - Exists: enumerate entities
+/// - ForAll: all entities must satisfy
 fn check_formula_holds(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -319,9 +321,13 @@ fn check_formula_holds(
             // Inner must NOT hold
             Ok(!check_formula_holds(buffer, *inner, subs, egraph)?)
         }
+        // Tense wrappers are transparent for reasoning.
+        // The inner formula is checked as-is. When temporal inference
+        // rules are added, these branches will dispatch to a temporal
+        // reasoning engine instead.
         LogicNode::PastNode(inner)
         | LogicNode::PresentNode(inner)
-        | LogicNode::FutureNode(inner) => Ok(!check_formula_holds(buffer, *inner, subs, egraph)?),
+        | LogicNode::FutureNode(inner) => check_formula_holds(buffer, *inner, subs, egraph),
         LogicNode::ExistsNode((v, body)) => {
             // If variable is already substituted, just check body
             if subs.contains_key(v.as_str()) {
@@ -440,6 +446,12 @@ fn collect_forall_nodes_rec(
         LogicNode::NotNode(inner) | LogicNode::ExistsNode((_, inner)) => {
             collect_forall_nodes_rec(buffer, *inner, skolem_subs, entries);
         }
+        // Tense wrappers: recurse through to find any ForAll nodes inside
+        LogicNode::PastNode(inner)
+        | LogicNode::PresentNode(inner)
+        | LogicNode::FutureNode(inner) => {
+            collect_forall_nodes_rec(buffer, *inner, skolem_subs, entries);
+        }
         _ => {}
     }
 }
@@ -473,6 +485,13 @@ fn collect_and_register_constants(buffer: &LogicBuffer, node_id: u32, egraph: &m
 
 // ─── S-Expression Reconstruction ──────────────────────────────
 
+/// Reconstruct an egglog-compatible s-expression from a LogicBuffer node.
+///
+/// Tense wrappers (Past/Present/Future) are transparent: they recurse
+/// directly into the inner formula. The egglog schema has no temporal
+/// types, so tense is stripped for assertion/query. Tense information
+/// is preserved in the LogicBuffer itself and visible via :debug output
+/// (handled by the orchestrator's separate reconstruct_sexp).
 fn reconstruct_sexp_with_subs(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -539,11 +558,11 @@ fn reconstruct_sexp_with_subs(
         LogicNode::NotNode(inner) => {
             format!("(Not {})", reconstruct_sexp_with_subs(buffer, *inner, subs))
         }
+        // Tense wrappers are transparent for egglog.
+        // Strip the wrapper and recurse into the inner formula.
         LogicNode::PastNode(inner)
         | LogicNode::PresentNode(inner)
-        | LogicNode::FutureNode(inner) => {
-            format!("(Not {})", reconstruct_sexp_with_subs(buffer, *inner, subs))
-        }
+        | LogicNode::FutureNode(inner) => reconstruct_sexp_with_subs(buffer, *inner, subs),
     }
 }
 

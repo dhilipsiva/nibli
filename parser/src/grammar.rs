@@ -4,7 +4,7 @@
 // Grammar (subset of CLL, expanded incrementally):
 //
 //   text        → sentence (.i sentence)*
-//   sentence    → terms? cu? selbri tail? vau?
+//   sentence    → tense? terms? cu? tense? selbri tail? vau?
 //   tail        → terms
 //   terms       → term+
 //   term        → place_tag? sumti
@@ -271,11 +271,16 @@ impl<'a> Parser<'a> {
     fn parse_sentence(&mut self) -> Result<Bridi, ParseError> {
         self.enter()?;
 
+        // Tense can appear sentence-initially: "pu mi klama"
+        let mut tense = self.try_parse_tense();
+
         let head_terms = self.parse_terms();
         self.eat_cmavo("cu");
 
-        // Tense markers before selbri (pu/ca/ba)
-        let tense = self.try_parse_tense();
+        // Tense can also appear mid-sentence: "mi pu klama" / "mi cu pu klama"
+        if tense.is_none() {
+            tense = self.try_parse_tense();
+        }
 
         let selbri = if let Some(s) = self.try_parse_selbri()? {
             s
@@ -1969,5 +1974,79 @@ mod tests {
         // barda je — missing right selbri
         let e = parse_err(&[gismu("barda"), cmavo("je")]);
         assert!(e.contains("expected") || e.contains("connective"));
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 19. TENSE MARKERS (pu/ca/ba)
+    // ═══════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_tense_mid_sentence() {
+        // mi pu klama — tense between head terms and selbri
+        let r = parse_ok(&[cmavo("mi"), cmavo("pu"), gismu("klama")]);
+        let s = &r.sentences[0];
+        assert_eq!(s.tense, Some(Tense::Pu));
+        assert_eq!(s.selbri, Selbri::Root("klama".into()));
+        assert_eq!(s.head_terms.len(), 1);
+    }
+
+    #[test]
+    fn test_tense_after_cu() {
+        // mi cu pu klama — tense after cu
+        let r = parse_ok(&[cmavo("mi"), cmavo("cu"), cmavo("pu"), gismu("klama")]);
+        let s = &r.sentences[0];
+        assert_eq!(s.tense, Some(Tense::Pu));
+    }
+
+    #[test]
+    fn test_tense_sentence_initial() {
+        // pu mi klama — tense at start of sentence
+        let r = parse_ok(&[cmavo("pu"), cmavo("mi"), gismu("klama")]);
+        let s = &r.sentences[0];
+        assert_eq!(s.tense, Some(Tense::Pu));
+        assert_eq!(s.selbri, Selbri::Root("klama".into()));
+        assert_eq!(s.head_terms.len(), 1);
+        assert_eq!(s.head_terms[0], Sumti::ProSumti("mi".into()));
+    }
+
+    #[test]
+    fn test_tense_ca_present() {
+        let r = parse_ok(&[cmavo("ca"), cmavo("mi"), gismu("klama")]);
+        assert_eq!(r.sentences[0].tense, Some(Tense::Ca));
+    }
+
+    #[test]
+    fn test_tense_ba_future() {
+        let r = parse_ok(&[cmavo("ba"), cmavo("do"), gismu("prami"), cmavo("mi")]);
+        let s = &r.sentences[0];
+        assert_eq!(s.tense, Some(Tense::Ba));
+        assert_eq!(s.head_terms[0], Sumti::ProSumti("do".into()));
+        assert_eq!(s.tail_terms[0], Sumti::ProSumti("mi".into()));
+    }
+
+    #[test]
+    fn test_tense_initial_selbri_only() {
+        // pu klama — tense + selbri, no terms
+        let r = parse_ok(&[cmavo("pu"), gismu("klama")]);
+        let s = &r.sentences[0];
+        assert_eq!(s.tense, Some(Tense::Pu));
+        assert_eq!(s.selbri, Selbri::Root("klama".into()));
+        assert!(s.head_terms.is_empty());
+    }
+
+    #[test]
+    fn test_tense_with_negation() {
+        // pu mi na klama — past tense + negation
+        let r = parse_ok(&[cmavo("pu"), cmavo("mi"), cmavo("na"), gismu("klama")]);
+        let s = &r.sentences[0];
+        assert_eq!(s.tense, Some(Tense::Pu));
+        assert!(s.negated);
+    }
+
+    #[test]
+    fn test_no_tense() {
+        // mi klama — no tense marker
+        let r = parse_ok(&[cmavo("mi"), gismu("klama")]);
+        assert_eq!(r.sentences[0].tense, None);
     }
 }
