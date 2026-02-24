@@ -523,4 +523,364 @@ mod flattener_tests {
         assert_eq!(buffer.sentences.len(), 3); // 1 rel body + 2 top-level
         assert_eq!(buffer.roots.len(), 2); // only the 2 top-level sentences
     }
+
+    /// Sumti::Connected flattens to wit::Sumti::Connected with correct indices
+    #[test]
+    fn test_connected_sumti_flattening() {
+        use crate::bindings::lojban::nesy::ast_types as wit;
+
+        // mi .e do klama → head: [Connected(mi, Je, false, do)], selbri: klama
+        let parsed = ParsedText {
+            sentences: vec![Sentence::Simple(Bridi {
+                selbri: Selbri::Root("klama".into()),
+                head_terms: vec![Sumti::Connected {
+                    left: Box::new(Sumti::ProSumti("mi".into())),
+                    connective: Connective::Je,
+                    right_negated: false,
+                    right: Box::new(Sumti::ProSumti("do".into())),
+                }],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+            })],
+        };
+
+        let buffer = Flattener::flatten(parsed);
+
+        // Should have 1 root sentence
+        assert_eq!(buffer.roots.len(), 1);
+
+        // Should have 3 sumtis: mi (0), do (1), Connected(0, Je, false, 1) (2)
+        assert_eq!(buffer.sumtis.len(), 3);
+
+        // Check the Connected sumti
+        match &buffer.sumtis[2] {
+            wit::Sumti::Connected((left_id, conn, negated, right_id)) => {
+                assert_eq!(*left_id, 0); // mi
+                assert_eq!(*conn, wit::Connective::Je);
+                assert!(!negated);
+                assert_eq!(*right_id, 1); // do
+            }
+            other => panic!("expected Connected sumti, got {:?}", other),
+        }
+
+        // Verify left and right are correct
+        assert!(matches!(&buffer.sumtis[0], wit::Sumti::ProSumti(s) if s == "mi"));
+        assert!(matches!(&buffer.sumtis[1], wit::Sumti::ProSumti(s) if s == "do"));
+
+        // The bridi's head_terms should point to the Connected sumti (index 2)
+        match &buffer.sentences[buffer.roots[0] as usize] {
+            wit::Sentence::Simple(bridi) => {
+                assert_eq!(bridi.head_terms, vec![2]);
+            }
+            other => panic!("expected Simple sentence, got {:?}", other),
+        }
+    }
+
+    /// Negated sumti connective flattens correctly
+    #[test]
+    fn test_connected_sumti_negated_flattening() {
+        use crate::bindings::lojban::nesy::ast_types as wit;
+
+        // mi .e nai do klama
+        let parsed = ParsedText {
+            sentences: vec![Sentence::Simple(Bridi {
+                selbri: Selbri::Root("klama".into()),
+                head_terms: vec![Sumti::Connected {
+                    left: Box::new(Sumti::ProSumti("mi".into())),
+                    connective: Connective::Je,
+                    right_negated: true,
+                    right: Box::new(Sumti::ProSumti("do".into())),
+                }],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+            })],
+        };
+
+        let buffer = Flattener::flatten(parsed);
+        match &buffer.sumtis[2] {
+            wit::Sumti::Connected((_, conn, negated, _)) => {
+                assert_eq!(*conn, wit::Connective::Je);
+                assert!(negated); // right_negated = true
+            }
+            other => panic!("expected Connected sumti, got {:?}", other),
+        }
+    }
+
+    /// Chained connected sumti flattens with correct nesting
+    #[test]
+    fn test_chained_connected_sumti_flattening() {
+        use crate::bindings::lojban::nesy::ast_types as wit;
+
+        // mi .e (do .a di) → right-associative nesting
+        let parsed = ParsedText {
+            sentences: vec![Sentence::Simple(Bridi {
+                selbri: Selbri::Root("klama".into()),
+                head_terms: vec![Sumti::Connected {
+                    left: Box::new(Sumti::ProSumti("mi".into())),
+                    connective: Connective::Je,
+                    right_negated: false,
+                    right: Box::new(Sumti::Connected {
+                        left: Box::new(Sumti::ProSumti("do".into())),
+                        connective: Connective::Ja,
+                        right_negated: false,
+                        right: Box::new(Sumti::ProSumti("di".into())),
+                    }),
+                }],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+            })],
+        };
+
+        let buffer = Flattener::flatten(parsed);
+
+        // 5 sumtis: mi(0), do(1), di(2), inner Connected(1,Ja,false,2)=3, outer Connected(0,Je,false,3)=4
+        assert_eq!(buffer.sumtis.len(), 5);
+
+        // Inner: Connected(do=1, Ja, false, di=2)
+        match &buffer.sumtis[3] {
+            wit::Sumti::Connected((left, conn, neg, right)) => {
+                assert_eq!(*left, 1);
+                assert_eq!(*conn, wit::Connective::Ja);
+                assert!(!neg);
+                assert_eq!(*right, 2);
+            }
+            other => panic!("expected inner Connected, got {:?}", other),
+        }
+
+        // Outer: Connected(mi=0, Je, false, inner=3)
+        match &buffer.sumtis[4] {
+            wit::Sumti::Connected((left, conn, neg, right)) => {
+                assert_eq!(*left, 0);
+                assert_eq!(*conn, wit::Connective::Je);
+                assert!(!neg);
+                assert_eq!(*right, 3);
+            }
+            other => panic!("expected outer Connected, got {:?}", other),
+        }
+    }
+}
+
+/// Full-pipeline tests: raw Lojban text → lex → preprocess → parse.
+/// These test the integration of lexer + preprocessor + parser for
+/// sumti connectives, verifying that the lexer correctly tokenizes
+/// the `.e`, `.a`, `.o`, `.u` patterns.
+#[cfg(test)]
+mod pipeline_tests {
+    use crate::ast::*;
+    use crate::grammar::parse_tokens_to_ast;
+    use crate::lexer::tokenize;
+    use crate::preprocessor::preprocess;
+
+    fn parse(input: &str) -> ParsedText {
+        let raw = tokenize(input);
+        let normalized = preprocess(raw.into_iter(), input);
+        parse_tokens_to_ast(&normalized).expect(&format!("failed to parse: {:?}", input))
+    }
+
+    fn as_bridi(sentence: &Sentence) -> &Bridi {
+        match sentence {
+            Sentence::Simple(b) => b,
+            other => panic!("expected Sentence::Simple, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pipeline_sumti_connective_e() {
+        let p = parse("mi .e do klama");
+        let s = as_bridi(&p.sentences[0]);
+        match &s.head_terms[0] {
+            Sumti::Connected {
+                left,
+                connective,
+                right_negated,
+                right,
+            } => {
+                assert_eq!(**left, Sumti::ProSumti("mi".into()));
+                assert_eq!(*connective, Connective::Je);
+                assert!(!right_negated);
+                assert_eq!(**right, Sumti::ProSumti("do".into()));
+            }
+            other => panic!("expected Connected(.e), got {:?}", other),
+        }
+        assert_eq!(s.selbri, Selbri::Root("klama".into()));
+    }
+
+    #[test]
+    fn pipeline_sumti_connective_a() {
+        let p = parse("mi .a do klama");
+        match &as_bridi(&p.sentences[0]).head_terms[0] {
+            Sumti::Connected { connective: Connective::Ja, .. } => {}
+            other => panic!("expected Connected(.a), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pipeline_sumti_connective_o() {
+        let p = parse("mi .o do klama");
+        match &as_bridi(&p.sentences[0]).head_terms[0] {
+            Sumti::Connected { connective: Connective::Jo, .. } => {}
+            other => panic!("expected Connected(.o), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pipeline_sumti_connective_u() {
+        let p = parse("mi .u do klama");
+        match &as_bridi(&p.sentences[0]).head_terms[0] {
+            Sumti::Connected { connective: Connective::Ju, .. } => {}
+            other => panic!("expected Connected(.u), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pipeline_sumti_connective_enai() {
+        let p = parse("mi .enai do klama");
+        match &as_bridi(&p.sentences[0]).head_terms[0] {
+            Sumti::Connected {
+                connective: Connective::Je,
+                right_negated: true,
+                ..
+            } => {}
+            other => panic!("expected Connected(.enai), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pipeline_sumti_connective_anai() {
+        let p = parse("mi .anai do klama");
+        match &as_bridi(&p.sentences[0]).head_terms[0] {
+            Sumti::Connected {
+                connective: Connective::Ja,
+                right_negated: true,
+                ..
+            } => {}
+            other => panic!("expected Connected(.anai), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pipeline_sumti_connective_onai() {
+        let p = parse("mi .onai do klama");
+        match &as_bridi(&p.sentences[0]).head_terms[0] {
+            Sumti::Connected {
+                connective: Connective::Jo,
+                right_negated: true,
+                ..
+            } => {}
+            other => panic!("expected Connected(.onai), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pipeline_sumti_connective_unai() {
+        let p = parse("mi .unai do klama");
+        match &as_bridi(&p.sentences[0]).head_terms[0] {
+            Sumti::Connected {
+                connective: Connective::Ju,
+                right_negated: true,
+                ..
+            } => {}
+            other => panic!("expected Connected(.unai), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pipeline_descriptions_connected() {
+        let p = parse("lo gerku .e lo mlatu cu barda");
+        let s = as_bridi(&p.sentences[0]);
+        match &s.head_terms[0] {
+            Sumti::Connected {
+                left,
+                connective: Connective::Je,
+                right,
+                ..
+            } => {
+                assert!(matches!(left.as_ref(), Sumti::Description { gadri: Gadri::Lo, .. }));
+                assert!(matches!(right.as_ref(), Sumti::Description { gadri: Gadri::Lo, .. }));
+            }
+            other => panic!("expected Connected descriptions, got {:?}", other),
+        }
+        assert_eq!(s.selbri, Selbri::Root("barda".into()));
+    }
+
+    #[test]
+    fn pipeline_connective_in_tail() {
+        let p = parse("mi nelci lo gerku .e lo mlatu");
+        let s = as_bridi(&p.sentences[0]);
+        match &s.tail_terms[0] {
+            Sumti::Connected { connective: Connective::Je, .. } => {}
+            other => panic!("expected Connected in tail, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pipeline_dot_i_not_connective() {
+        let p = parse("mi klama .i do prami");
+        assert_eq!(p.sentences.len(), 2);
+        assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("klama".into()));
+        assert_eq!(as_bridi(&p.sentences[1]).selbri, Selbri::Root("prami".into()));
+    }
+
+    #[test]
+    fn pipeline_chained_connectives() {
+        // mi .e do .e di klama → right-associative nesting
+        let p = parse("mi .e do .e di klama");
+        let s = as_bridi(&p.sentences[0]);
+        match &s.head_terms[0] {
+            Sumti::Connected {
+                left,
+                connective: Connective::Je,
+                right,
+                ..
+            } => {
+                assert_eq!(**left, Sumti::ProSumti("mi".into()));
+                assert!(matches!(right.as_ref(), Sumti::Connected { .. }));
+            }
+            other => panic!("expected outer Connected, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pipeline_names_connected() {
+        let p = parse("la .djan. .e la .meris. cu klama");
+        let s = as_bridi(&p.sentences[0]);
+        match &s.head_terms[0] {
+            Sumti::Connected {
+                left,
+                connective: Connective::Je,
+                right,
+                ..
+            } => {
+                assert!(matches!(left.as_ref(), Sumti::Name(_)));
+                assert!(matches!(right.as_ref(), Sumti::Name(_)));
+            }
+            other => panic!("expected Connected names, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pipeline_multi_sentence_with_connectives() {
+        let p = parse("mi .e do klama .i lo gerku .a lo mlatu cu barda");
+        assert_eq!(p.sentences.len(), 2);
+        match &as_bridi(&p.sentences[0]).head_terms[0] {
+            Sumti::Connected { connective: Connective::Je, .. } => {}
+            other => panic!("sentence 1: expected .e, got {:?}", other),
+        }
+        match &as_bridi(&p.sentences[1]).head_terms[0] {
+            Sumti::Connected { connective: Connective::Ja, .. } => {}
+            other => panic!("sentence 2: expected .a, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pipeline_connective_both_positions() {
+        // mi .e do prami lo gerku .a lo mlatu
+        let p = parse("mi .e do prami lo gerku .a lo mlatu");
+        let s = as_bridi(&p.sentences[0]);
+        assert!(matches!(&s.head_terms[0], Sumti::Connected { connective: Connective::Je, .. }));
+        assert!(matches!(&s.tail_terms[0], Sumti::Connected { connective: Connective::Ja, .. }));
+    }
 }

@@ -112,6 +112,51 @@ fn reclassify_compounds<'a>(tokens: &mut Vec<(LojbanToken, &'a str)>, input: &'a
     }
 }
 
+/// Post-lex pass: fix sumti connective `nai` compounds after a pause.
+///
+/// Logos greedily lexes `.enai` as Pause(".") + Cmevla("en") + Cmavo("ai")
+/// because "en" ends in consonant 'n'. The correct tokenization for sumti
+/// connectives is Pause + Cmavo("e") + Cmavo("nai").
+///
+/// This pass detects `Pause + Cmevla(Vn) + Cmavo("ai")` when contiguous
+/// in the source, and splits the Cmevla into Cmavo(V) + Cmavo("nai").
+fn fix_sumti_connective_nai<'a>(tokens: &mut Vec<(LojbanToken, &'a str)>, input: &'a str) {
+    let base = input.as_ptr() as usize;
+    let mut i = 1; // start at 1 since we need i-1
+
+    while i + 1 < tokens.len() {
+        let preceded_by_pause = tokens[i - 1].0 == LojbanToken::Pause;
+        let is_cmevla = tokens[i].0 == LojbanToken::Cmevla;
+        let followed_by_ai = tokens[i + 1].0 == LojbanToken::Cmavo && tokens[i + 1].1 == "ai";
+
+        if preceded_by_pause && is_cmevla && followed_by_ai {
+            let cmevla_text = tokens[i].1;
+            // Check if the cmevla is exactly a vowel + "n" (e.g., "en", "an", "on", "un")
+            if cmevla_text.len() == 2 {
+                let bytes = cmevla_text.as_bytes();
+                let is_vowel_n = matches!(bytes[0], b'e' | b'a' | b'o' | b'u') && bytes[1] == b'n';
+
+                if is_vowel_n {
+                    // Verify contiguity: cmevla + "ai" must be contiguous
+                    let off_cmevla = cmevla_text.as_ptr() as usize - base;
+                    let off_ai = tokens[i + 1].1.as_ptr() as usize - base;
+
+                    if off_cmevla + cmevla_text.len() == off_ai {
+                        // Split: Cmevla("en") + Cmavo("ai") → Cmavo("e") + Cmavo("nai")
+                        let vowel_slice = &input[off_cmevla..off_cmevla + 1];
+                        let nai_slice = &input[off_cmevla + 1..off_ai + 2];
+
+                        tokens[i] = (LojbanToken::Cmavo, vowel_slice);
+                        tokens[i + 1] = (LojbanToken::Cmavo, nai_slice);
+                    }
+                }
+            }
+        }
+
+        i += 1;
+    }
+}
+
 /// Tokenizer: Logos DFA + post-lex compound cmavo reclassification.
 pub fn tokenize(input: &str) -> Vec<(LojbanToken, &str)> {
     let mut lex = LojbanToken::lexer(input);
@@ -122,6 +167,7 @@ pub fn tokenize(input: &str) -> Vec<(LojbanToken, &str)> {
     }
 
     reclassify_compounds(&mut tokens, input);
+    fix_sumti_connective_nai(&mut tokens, input);
     tokens
 }
 
@@ -194,5 +240,51 @@ mod tests {
         assert_eq!(tokens[0], (LojbanToken::Gismu, "klama"));
         assert_eq!(tokens[1], (LojbanToken::Gismu, "sutra"));
         assert_eq!(tokens[2], (LojbanToken::Gismu, "bajra"));
+    }
+
+    #[test]
+    fn enai_fused_tokenization() {
+        // .enai → Pause + Cmavo("e") + Cmavo("nai") after fix_sumti_connective_nai
+        let tokens = tokenize("mi .enai do klama");
+        assert_eq!(tokens[0], (LojbanToken::Cmavo, "mi"));
+        assert_eq!(tokens[1], (LojbanToken::Pause, "."));
+        assert_eq!(tokens[2], (LojbanToken::Cmavo, "e"));
+        assert_eq!(tokens[3], (LojbanToken::Cmavo, "nai"));
+        assert_eq!(tokens[4], (LojbanToken::Cmavo, "do"));
+        assert_eq!(tokens[5], (LojbanToken::Gismu, "klama"));
+    }
+
+    #[test]
+    fn enai_spaced_tokenization() {
+        // .e nai → Pause + Cmavo("e") + Cmavo("nai") (already correct)
+        let tokens = tokenize("mi .e nai do klama");
+        assert_eq!(tokens[1], (LojbanToken::Pause, "."));
+        assert_eq!(tokens[2], (LojbanToken::Cmavo, "e"));
+        assert_eq!(tokens[3], (LojbanToken::Cmavo, "nai"));
+    }
+
+    #[test]
+    fn all_sumti_connective_nai_fused() {
+        for (input, vowel) in [
+            ("mi .enai do klama", "e"),
+            ("mi .anai do klama", "a"),
+            ("mi .onai do klama", "o"),
+            ("mi .unai do klama", "u"),
+        ] {
+            let tokens = tokenize(input);
+            assert_eq!(tokens[2], (LojbanToken::Cmavo, vowel),
+                "fused {} should produce Cmavo(\"{}\")", input, vowel);
+            assert_eq!(tokens[3], (LojbanToken::Cmavo, "nai"),
+                "fused {} should produce Cmavo(\"nai\")", input);
+        }
+    }
+
+    #[test]
+    fn cmevla_after_pause_not_affected_by_nai_fix() {
+        // ".djan." is a real cmevla — should NOT be reclassified
+        let tokens = tokenize(".djan. klama");
+        assert_eq!(tokens[0], (LojbanToken::Pause, "."));
+        assert_eq!(tokens[1], (LojbanToken::Cmevla, "djan"));
+        assert_eq!(tokens[2], (LojbanToken::Pause, "."));
     }
 }

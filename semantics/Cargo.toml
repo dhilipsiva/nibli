@@ -19,4 +19,4 @@ path = "../wit/world.wit"
 world = "semantics-component"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "lib"]

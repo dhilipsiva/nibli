@@ -2374,4 +2374,261 @@ mod tests {
         ]);
         assert_eq!(r.sentences.len(), 2);
     }
+
+    #[test]
+    fn test_sumti_connective_onai() {
+        // mi .o nai do klama → right_negated = true, connective = Jo
+        let r = parse_ok(&[
+            cmavo("mi"),
+            pause(),
+            cmavo("o"),
+            cmavo("nai"),
+            cmavo("do"),
+            gismu("klama"),
+        ]);
+        match &as_bridi(&r.sentences[0]).head_terms[0] {
+            Sumti::Connected {
+                connective: Connective::Jo,
+                right_negated: true,
+                ..
+            } => {}
+            other => panic!("expected Connected(.onai), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_sumti_connective_unai() {
+        // mi .u nai do klama → right_negated = true, connective = Ju
+        let r = parse_ok(&[
+            cmavo("mi"),
+            pause(),
+            cmavo("u"),
+            cmavo("nai"),
+            cmavo("do"),
+            gismu("klama"),
+        ]);
+        match &as_bridi(&r.sentences[0]).head_terms[0] {
+            Sumti::Connected {
+                connective: Connective::Ju,
+                right_negated: true,
+                ..
+            } => {}
+            other => panic!("expected Connected(.unai), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_sumti_connective_chained() {
+        // mi .e do .e di klama → right-associative (recursive try_parse_sumti):
+        //   Connected(mi, Je, Connected(do, Je, di))
+        let r = parse_ok(&[
+            cmavo("mi"),
+            pause(),
+            cmavo("e"),
+            cmavo("do"),
+            pause(),
+            cmavo("e"),
+            cmavo("di"),
+            gismu("klama"),
+        ]);
+        let s = as_bridi(&r.sentences[0]);
+        match &s.head_terms[0] {
+            Sumti::Connected {
+                left,
+                connective: Connective::Je,
+                right_negated: false,
+                right,
+            } => {
+                // Left is mi
+                assert_eq!(**left, Sumti::ProSumti("mi".into()));
+                // Right is Connected(do, Je, di)
+                match right.as_ref() {
+                    Sumti::Connected {
+                        left: inner_left,
+                        connective: Connective::Je,
+                        right_negated: false,
+                        right: inner_right,
+                    } => {
+                        assert_eq!(**inner_left, Sumti::ProSumti("do".into()));
+                        assert_eq!(**inner_right, Sumti::ProSumti("di".into()));
+                    }
+                    other => panic!("expected inner Connected, got {:?}", other),
+                }
+            }
+            other => panic!("expected outer Connected, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_sumti_connective_with_cu() {
+        // mi .e do cu klama → Connected in head, selbri after cu
+        let r = parse_ok(&[
+            cmavo("mi"),
+            pause(),
+            cmavo("e"),
+            cmavo("do"),
+            cmavo("cu"),
+            gismu("klama"),
+        ]);
+        let s = as_bridi(&r.sentences[0]);
+        assert!(matches!(&s.head_terms[0], Sumti::Connected { .. }));
+        assert_eq!(s.selbri, Selbri::Root("klama".into()));
+    }
+
+    #[test]
+    fn test_sumti_connective_with_names() {
+        // la .djan. .e la .meris. cu klama
+        let r = parse_ok(&[
+            cmavo("la"),
+            pause(),
+            cmevla("djan"),
+            pause(),
+            pause(),
+            cmavo("e"),
+            cmavo("la"),
+            pause(),
+            cmevla("meris"),
+            pause(),
+            cmavo("cu"),
+            gismu("klama"),
+        ]);
+        let s = as_bridi(&r.sentences[0]);
+        match &s.head_terms[0] {
+            Sumti::Connected {
+                left,
+                connective: Connective::Je,
+                right,
+                ..
+            } => {
+                assert!(matches!(left.as_ref(), Sumti::Name(_)));
+                assert!(matches!(right.as_ref(), Sumti::Name(_)));
+            }
+            other => panic!("expected Connected names, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_sumti_connective_with_place_tags() {
+        // fe mi .e do fa lo gerku cu klama
+        // fe applies to the entire Connected sumti
+        let r = parse_ok(&[
+            cmavo("fe"),
+            cmavo("mi"),
+            pause(),
+            cmavo("e"),
+            cmavo("do"),
+            cmavo("fa"),
+            cmavo("lo"),
+            gismu("gerku"),
+            cmavo("cu"),
+            gismu("klama"),
+        ]);
+        let s = as_bridi(&r.sentences[0]);
+        // First head term: fe (mi .e do) — Tagged wraps Connected
+        match &s.head_terms[0] {
+            Sumti::Tagged(PlaceTag::Fe, inner) => {
+                assert!(matches!(inner.as_ref(), Sumti::Connected { .. }));
+            }
+            other => panic!("expected Tagged(Fe, Connected), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_sumti_connective_with_se_conversion() {
+        // mi .e do se prami lo gerku → Connected in head, se conversion selbri
+        let r = parse_ok(&[
+            cmavo("mi"),
+            pause(),
+            cmavo("e"),
+            cmavo("do"),
+            cmavo("se"),
+            gismu("prami"),
+            cmavo("lo"),
+            gismu("gerku"),
+        ]);
+        let s = as_bridi(&r.sentences[0]);
+        assert!(matches!(&s.head_terms[0], Sumti::Connected { .. }));
+        assert!(matches!(&s.selbri, Selbri::Converted(Conversion::Se, _)));
+    }
+
+    #[test]
+    fn test_sumti_connective_mixed_types() {
+        // mi .a lo gerku ku klama → Connected(ProSumti, Ja, Description)
+        // ku terminates the description so klama becomes the selbri
+        let r = parse_ok(&[
+            cmavo("mi"),
+            pause(),
+            cmavo("a"),
+            cmavo("lo"),
+            gismu("gerku"),
+            cmavo("ku"),
+            gismu("klama"),
+        ]);
+        let s = as_bridi(&r.sentences[0]);
+        match &s.head_terms[0] {
+            Sumti::Connected {
+                left,
+                connective: Connective::Ja,
+                right,
+                ..
+            } => {
+                assert!(matches!(left.as_ref(), Sumti::ProSumti(_)));
+                assert!(matches!(right.as_ref(), Sumti::Description { .. }));
+            }
+            other => panic!("expected Connected(ProSumti, Ja, Description), got {:?}", other),
+        }
+        assert_eq!(s.selbri, Selbri::Root("klama".into()));
+    }
+
+    #[test]
+    fn test_sumti_connective_both_head_and_tail() {
+        // mi .e do prami lo gerku .a lo mlatu
+        // head: Connected(mi, Je, do), tail: Connected(lo gerku, Ja, lo mlatu)
+        let r = parse_ok(&[
+            cmavo("mi"),
+            pause(),
+            cmavo("e"),
+            cmavo("do"),
+            gismu("prami"),
+            cmavo("lo"),
+            gismu("gerku"),
+            pause(),
+            cmavo("a"),
+            cmavo("lo"),
+            gismu("mlatu"),
+        ]);
+        let s = as_bridi(&r.sentences[0]);
+        assert!(matches!(&s.head_terms[0], Sumti::Connected { connective: Connective::Je, .. }));
+        assert!(matches!(&s.tail_terms[0], Sumti::Connected { connective: Connective::Ja, .. }));
+    }
+
+    #[test]
+    fn test_sumti_connective_at_end_errors() {
+        // mi klama .e → trailing .e with nothing after it
+        // The parser backtracks the connective but can't consume the
+        // remaining Pause+Cmavo tokens → "unconsumed tokens" error
+        let err = parse_err(&[
+            cmavo("mi"),
+            gismu("klama"),
+            pause(),
+            cmavo("e"),
+        ]);
+        assert!(err.contains("unconsumed"), "expected unconsumed error, got: {}", err);
+    }
+
+    #[test]
+    fn test_sumti_connective_trailing_in_tail_errors() {
+        // mi klama .e do prami → after "mi klama", the tail position sees
+        // Pause(".") which is not a valid bare sumti start, so the .e is not
+        // consumed, resulting in "unconsumed tokens" error
+        let err = parse_err(&[
+            cmavo("mi"),
+            gismu("klama"),
+            pause(),
+            cmavo("e"),
+            cmavo("do"),
+            gismu("prami"),
+        ]);
+        assert!(err.contains("unconsumed"), "expected unconsumed error, got: {}", err);
+    }
 }

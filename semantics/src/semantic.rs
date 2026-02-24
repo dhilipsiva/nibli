@@ -704,3 +704,295 @@ impl SemanticCompiler {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bindings::lojban::nesy::ast_types::{
+        Bridi, Connective, Selbri, Sentence, Sumti,
+    };
+    use crate::ir::{LogicalForm, LogicalTerm};
+
+    /// Helper: build a minimal buffer and compile the first sentence.
+    /// Returns the compiled LogicalForm.
+    fn compile_one(
+        selbris: Vec<Selbri>,
+        sumtis: Vec<Sumti>,
+        bridi: Bridi,
+    ) -> (LogicalForm, SemanticCompiler) {
+        let sentences = vec![Sentence::Simple(bridi)];
+        let mut compiler = SemanticCompiler::new();
+        let form = compiler.compile_bridi(
+            match &sentences[0] {
+                Sentence::Simple(b) => b,
+                _ => unreachable!(),
+            },
+            &selbris,
+            &sumtis,
+            &sentences,
+        );
+        (form, compiler)
+    }
+
+    /// Helper: resolve a string from the compiler's interner
+    fn resolve(compiler: &SemanticCompiler, spur: &lasso::Spur) -> String {
+        compiler.interner.resolve(spur).to_string()
+    }
+
+    // ─── Sumti connective expansion tests ────────────────────────
+
+    #[test]
+    fn test_sumti_connective_e_expands_to_and() {
+        // mi .e do klama → klama(mi, ...) ∧ klama(do, ...)
+        // Buffer layout:
+        //   sumtis: [0: mi, 1: do, 2: Connected(0, Je, false, 1)]
+        //   selbris: [0: klama]
+        //   bridi: { relation: 0, head_terms: [2], tail_terms: [] }
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),      // 0
+            Sumti::ProSumti("do".into()),       // 1
+            Sumti::Connected((0, Connective::Je, false, 1)), // 2
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![2],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+        };
+
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+
+        // Should be And(klama(mi, ...), klama(do, ...))
+        match &form {
+            LogicalForm::And(left, right) => {
+                match left.as_ref() {
+                    LogicalForm::Predicate { relation, args } => {
+                        assert_eq!(resolve(&compiler, relation), "klama");
+                        match &args[0] {
+                            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "mi"),
+                            other => panic!("expected Constant(mi), got {:?}", other),
+                        }
+                    }
+                    other => panic!("expected left Predicate, got {:?}", other),
+                }
+                match right.as_ref() {
+                    LogicalForm::Predicate { relation, args } => {
+                        assert_eq!(resolve(&compiler, relation), "klama");
+                        match &args[0] {
+                            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "do"),
+                            other => panic!("expected Constant(do), got {:?}", other),
+                        }
+                    }
+                    other => panic!("expected right Predicate, got {:?}", other),
+                }
+            }
+            other => panic!("expected And, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_sumti_connective_a_expands_to_or() {
+        // mi .a do klama → klama(mi, ...) ∨ klama(do, ...)
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),
+            Sumti::ProSumti("do".into()),
+            Sumti::Connected((0, Connective::Ja, false, 1)),
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![2],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+        };
+
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+        assert!(matches!(&form, LogicalForm::Or(_, _)));
+    }
+
+    #[test]
+    fn test_sumti_connective_o_expands_to_biconditional() {
+        // mi .o do klama → (¬klama(mi) ∨ klama(do)) ∧ (¬klama(do) ∨ klama(mi))
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),
+            Sumti::ProSumti("do".into()),
+            Sumti::Connected((0, Connective::Jo, false, 1)),
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![2],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+        };
+
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+        // Biconditional is And(Or(Not(L), R), Or(Not(R), L))
+        match &form {
+            LogicalForm::And(left, right) => {
+                assert!(matches!(left.as_ref(), LogicalForm::Or(_, _)));
+                assert!(matches!(right.as_ref(), LogicalForm::Or(_, _)));
+            }
+            other => panic!("expected And(Or, Or) biconditional, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_sumti_connective_u_expands_to_xor() {
+        // mi .u do klama → (klama(mi) ∨ klama(do)) ∧ ¬(klama(mi) ∧ klama(do))
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),
+            Sumti::ProSumti("do".into()),
+            Sumti::Connected((0, Connective::Ju, false, 1)),
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![2],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+        };
+
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+        // XOR is And(Or(L, R), Not(And(L, R)))
+        match &form {
+            LogicalForm::And(or_part, not_part) => {
+                assert!(matches!(or_part.as_ref(), LogicalForm::Or(_, _)));
+                assert!(matches!(not_part.as_ref(), LogicalForm::Not(_)));
+            }
+            other => panic!("expected And(Or, Not(And)) XOR, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_sumti_connective_enai_negates_right() {
+        // mi .e nai do klama → klama(mi, ...) ∧ ¬klama(do, ...)
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),
+            Sumti::ProSumti("do".into()),
+            Sumti::Connected((0, Connective::Je, true, 1)), // right_negated = true
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![2],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+        };
+
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+
+        // Should be And(klama(mi), Not(klama(do)))
+        match &form {
+            LogicalForm::And(left, right) => {
+                // Left: klama(mi, ...)
+                match left.as_ref() {
+                    LogicalForm::Predicate { relation, args } => {
+                        assert_eq!(resolve(&compiler, relation), "klama");
+                        match &args[0] {
+                            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "mi"),
+                            other => panic!("expected Constant(mi), got {:?}", other),
+                        }
+                    }
+                    other => panic!("expected left Predicate, got {:?}", other),
+                }
+                // Right: Not(klama(do, ...))
+                match right.as_ref() {
+                    LogicalForm::Not(inner) => match inner.as_ref() {
+                        LogicalForm::Predicate { relation, args } => {
+                            assert_eq!(resolve(&compiler, relation), "klama");
+                            match &args[0] {
+                                LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "do"),
+                                other => panic!("expected Constant(do), got {:?}", other),
+                            }
+                        }
+                        other => panic!("expected Predicate inside Not, got {:?}", other),
+                    }
+                    other => panic!("expected Not, got {:?}", other),
+                }
+            }
+            other => panic!("expected And, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_sumti_connective_in_tail_position() {
+        // mi prami lo gerku .e lo mlatu
+        // head: [mi], selbri: prami, tail: [Connected(lo gerku, Je, lo mlatu)]
+        // → prami(mi, lo gerku) ∧ prami(mi, lo mlatu)
+        // But with descriptions: ∃v0.(gerku(v0) ∧ prami(mi, v0)) ∧ ∃v1.(mlatu(v1) ∧ prami(mi, v1))
+        let selbris = vec![
+            Selbri::Root("prami".into()), // 0
+            Selbri::Root("gerku".into()), // 1
+            Selbri::Root("mlatu".into()), // 2
+        ];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),            // 0
+            Sumti::Description((Gadri::Lo, 1)),       // 1: lo gerku
+            Sumti::Description((Gadri::Lo, 2)),       // 2: lo mlatu
+            Sumti::Connected((1, Connective::Je, false, 2)), // 3
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![3],
+            negated: false,
+            tense: None,
+        };
+
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+
+        // The result should be And(Exists(...), Exists(...))
+        match &form {
+            LogicalForm::And(left, right) => {
+                assert!(matches!(left.as_ref(), LogicalForm::Exists(_, _)),
+                    "expected Exists on left, got {:?}", left);
+                assert!(matches!(right.as_ref(), LogicalForm::Exists(_, _)),
+                    "expected Exists on right, got {:?}", right);
+            }
+            other => panic!("expected And(Exists, Exists), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_sumti_connective_with_bridi_negation() {
+        // mi .e do na klama → ¬(klama(mi) ∧ klama(do))
+        // Actually: na applies at bridi level, and .e expansion happens first
+        // → And(Not(klama(mi)), Not(klama(do)))? No...
+        // .e splits first: bridi(head:[mi], negated:true) and bridi(head:[do], negated:true)
+        // Each gets negated: Not(klama(mi)) ∧ Not(klama(do))
+        // Wait, the whole bridi is negated, so both copies inherit negated:true
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),
+            Sumti::ProSumti("do".into()),
+            Sumti::Connected((0, Connective::Je, false, 1)),
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![2],
+            tail_terms: vec![],
+            negated: true,
+            tense: None,
+        };
+
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+
+        // Both sub-bridis inherit negated:true → And(Not(klama(mi)), Not(klama(do)))
+        match &form {
+            LogicalForm::And(left, right) => {
+                assert!(matches!(left.as_ref(), LogicalForm::Not(_)),
+                    "expected Not on left, got {:?}", left);
+                assert!(matches!(right.as_ref(), LogicalForm::Not(_)),
+                    "expected Not on right, got {:?}", right);
+            }
+            other => panic!("expected And(Not, Not), got {:?}", other),
+        }
+    }
+}
