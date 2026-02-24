@@ -1112,9 +1112,55 @@ pub mod exports {
                         }
                     }
                 }
+                #[doc(hidden)]
+                #[allow(non_snake_case)]
+                pub unsafe fn _export_reset_state_cabi<T: Guest>() -> *mut u8 {
+                    #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+                    let result0 = T::reset_state();
+                    let ptr1 = (&raw mut _RET_AREA.0).cast::<u8>();
+                    match result0 {
+                        Ok(_) => {
+                            *ptr1.add(0).cast::<u8>() = (0i32) as u8;
+                        }
+                        Err(e) => {
+                            *ptr1.add(0).cast::<u8>() = (1i32) as u8;
+                            let vec2 = (e.into_bytes()).into_boxed_slice();
+                            let ptr2 = vec2.as_ptr().cast::<u8>();
+                            let len2 = vec2.len();
+                            ::core::mem::forget(vec2);
+                            *ptr1
+                                .add(2 * ::core::mem::size_of::<*const u8>())
+                                .cast::<usize>() = len2;
+                            *ptr1
+                                .add(::core::mem::size_of::<*const u8>())
+                                .cast::<*mut u8>() = ptr2.cast_mut();
+                        }
+                    };
+                    ptr1
+                }
+                #[doc(hidden)]
+                #[allow(non_snake_case)]
+                pub unsafe fn __post_return_reset_state<T: Guest>(arg0: *mut u8) {
+                    let l0 = i32::from(*arg0.add(0).cast::<u8>());
+                    match l0 {
+                        0 => {}
+                        _ => {
+                            let l1 = *arg0
+                                .add(::core::mem::size_of::<*const u8>())
+                                .cast::<*mut u8>();
+                            let l2 = *arg0
+                                .add(2 * ::core::mem::size_of::<*const u8>())
+                                .cast::<usize>();
+                            _rt::cabi_dealloc(l1, l2, 1);
+                        }
+                    }
+                }
                 pub trait Guest {
                     fn assert_fact(logic: LogicBuffer) -> Result<(), _rt::String>;
                     fn query_entailment(logic: LogicBuffer) -> Result<bool, _rt::String>;
+                    /// Clear the knowledge base, Skolem counter, entity registry,
+                    /// and universal templates. Returns to a fresh-boot state.
+                    fn reset_state() -> Result<(), _rt::String>;
                 }
                 #[doc(hidden)]
                 macro_rules! __export_lojban_nesy_reasoning_0_1_0_cabi {
@@ -1137,7 +1183,15 @@ pub mod exports {
                         "cabi_post_lojban:nesy/reasoning@0.1.0#query-entailment")] unsafe
                         extern "C" fn _post_return_query_entailment(arg0 : * mut u8,) {
                         unsafe { $($path_to_types)*::
-                        __post_return_query_entailment::<$ty > (arg0) } } };
+                        __post_return_query_entailment::<$ty > (arg0) } } #[unsafe
+                        (export_name = "lojban:nesy/reasoning@0.1.0#reset-state")] unsafe
+                        extern "C" fn export_reset_state() -> * mut u8 { unsafe {
+                        $($path_to_types)*:: _export_reset_state_cabi::<$ty > () } }
+                        #[unsafe (export_name =
+                        "cabi_post_lojban:nesy/reasoning@0.1.0#reset-state")] unsafe
+                        extern "C" fn _post_return_reset_state(arg0 : * mut u8,) { unsafe
+                        { $($path_to_types)*:: __post_return_reset_state::<$ty > (arg0) }
+                        } };
                     };
                 }
                 #[doc(hidden)]
@@ -1219,8 +1273,8 @@ pub(crate) use __export_reasoning_component_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1414] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xfc\x09\x01A\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1435] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x91\x0a\x01A\x02\x01\
 A\x05\x01B8\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
 m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x04\x02se\x02\
 te\x02ve\x02xe\x04\0\x0aconversion\x03\0\x06\x01m\x04\x02je\x02ja\x02jo\x02ju\x04\
@@ -1245,13 +1299,13 @@ s/\x01o\x02yy\x01o\x02sy\x01q\x09\x09predicate\x010\0\x08and-node\x011\0\x07or-n
 ode\x011\0\x08not-node\x01y\0\x0bexists-node\x012\0\x0cfor-all-node\x012\0\x09pa\
 st-node\x01y\0\x0cpresent-node\x01y\0\x0bfuture-node\x01y\0\x04\0\x0alogic-node\x03\
 \03\x01p4\x01r\x02\x05nodes5\x05roots*\x04\0\x0clogic-buffer\x03\06\x03\0\x1bloj\
-ban:nesy/ast-types@0.1.0\x05\0\x02\x03\0\0\x0clogic-buffer\x01B\x08\x02\x03\x02\x01\
+ban:nesy/ast-types@0.1.0\x05\0\x02\x03\0\0\x0clogic-buffer\x01B\x0a\x02\x03\x02\x01\
 \x01\x04\0\x0clogic-buffer\x03\0\0\x01j\0\x01s\x01@\x01\x05logic\x01\0\x02\x04\0\
 \x0bassert-fact\x01\x03\x01j\x01\x7f\x01s\x01@\x01\x05logic\x01\0\x04\x04\0\x10q\
-uery-entailment\x01\x05\x04\0\x1blojban:nesy/reasoning@0.1.0\x05\x02\x04\0%lojba\
-n:nesy/reasoning-component@0.1.0\x04\0\x0b\x19\x01\0\x13reasoning-component\x03\0\
-\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10wit-bi\
-ndgen-rust\x060.41.0";
+uery-entailment\x01\x05\x01@\0\0\x02\x04\0\x0breset-state\x01\x06\x04\0\x1blojba\
+n:nesy/reasoning@0.1.0\x05\x02\x04\0%lojban:nesy/reasoning-component@0.1.0\x04\0\
+\x0b\x19\x01\0\x13reasoning-component\x03\0\0\0G\x09producers\x01\x0cprocessed-b\
+y\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

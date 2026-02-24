@@ -136,6 +136,42 @@ pub unsafe fn __post_return_compile_debug<T: Guest>(arg0: *mut u8) {
         }
     }
 }
+#[doc(hidden)]
+#[allow(non_snake_case)]
+pub unsafe fn _export_reset_kb_cabi<T: Guest>() -> *mut u8 {
+    #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+    let result0 = T::reset_kb();
+    let ptr1 = (&raw mut _RET_AREA.0).cast::<u8>();
+    match result0 {
+        Ok(_) => {
+            *ptr1.add(0).cast::<u8>() = (0i32) as u8;
+        }
+        Err(e) => {
+            *ptr1.add(0).cast::<u8>() = (1i32) as u8;
+            let vec2 = (e.into_bytes()).into_boxed_slice();
+            let ptr2 = vec2.as_ptr().cast::<u8>();
+            let len2 = vec2.len();
+            ::core::mem::forget(vec2);
+            *ptr1.add(2 * ::core::mem::size_of::<*const u8>()).cast::<usize>() = len2;
+            *ptr1.add(::core::mem::size_of::<*const u8>()).cast::<*mut u8>() = ptr2
+                .cast_mut();
+        }
+    };
+    ptr1
+}
+#[doc(hidden)]
+#[allow(non_snake_case)]
+pub unsafe fn __post_return_reset_kb<T: Guest>(arg0: *mut u8) {
+    let l0 = i32::from(*arg0.add(0).cast::<u8>());
+    match l0 {
+        0 => {}
+        _ => {
+            let l1 = *arg0.add(::core::mem::size_of::<*const u8>()).cast::<*mut u8>();
+            let l2 = *arg0.add(2 * ::core::mem::size_of::<*const u8>()).cast::<usize>();
+            _rt::cabi_dealloc(l1, l2, 1);
+        }
+    }
+}
 pub trait Guest {
     /// Assert Lojban text as facts into the knowledge base.
     /// Returns the number of root facts inserted.
@@ -144,6 +180,8 @@ pub trait Guest {
     fn query_text(input: _rt::String) -> Result<bool, _rt::String>;
     /// Debug: compile text to logic s-expression without asserting.
     fn compile_debug(input: _rt::String) -> Result<_rt::String, _rt::String>;
+    /// Clear the entire knowledge base and reset to fresh state.
+    fn reset_kb() -> Result<(), _rt::String>;
 }
 #[doc(hidden)]
 macro_rules! __export_world_engine_pipeline_cabi {
@@ -164,7 +202,11 @@ macro_rules! __export_world_engine_pipeline_cabi {
         _export_compile_debug_cabi::<$ty > (arg0, arg1) } } #[unsafe (export_name =
         "cabi_post_compile-debug")] unsafe extern "C" fn _post_return_compile_debug(arg0
         : * mut u8,) { unsafe { $($path_to_types)*:: __post_return_compile_debug::<$ty >
-        (arg0) } } };
+        (arg0) } } #[unsafe (export_name = "reset-kb")] unsafe extern "C" fn
+        export_reset_kb() -> * mut u8 { unsafe { $($path_to_types)*::
+        _export_reset_kb_cabi::<$ty > () } } #[unsafe (export_name =
+        "cabi_post_reset-kb")] unsafe extern "C" fn _post_return_reset_kb(arg0 : * mut
+        u8,) { unsafe { $($path_to_types)*:: __post_return_reset_kb::<$ty > (arg0) } } };
     };
 }
 #[doc(hidden)]
@@ -2426,6 +2468,63 @@ pub mod lojban {
                     result24
                 }
             }
+            #[allow(unused_unsafe, clippy::all)]
+            /// Clear the knowledge base, Skolem counter, entity registry,
+            /// and universal templates. Returns to a fresh-boot state.
+            pub fn reset_state() -> Result<(), _rt::String> {
+                unsafe {
+                    #[cfg_attr(target_pointer_width = "64", repr(align(8)))]
+                    #[cfg_attr(target_pointer_width = "32", repr(align(4)))]
+                    struct RetArea(
+                        [::core::mem::MaybeUninit<
+                            u8,
+                        >; 3 * ::core::mem::size_of::<*const u8>()],
+                    );
+                    let mut ret_area = RetArea(
+                        [::core::mem::MaybeUninit::uninit(); 3
+                            * ::core::mem::size_of::<*const u8>()],
+                    );
+                    let ptr0 = ret_area.0.as_mut_ptr().cast::<u8>();
+                    #[cfg(target_arch = "wasm32")]
+                    #[link(wasm_import_module = "lojban:nesy/reasoning@0.1.0")]
+                    unsafe extern "C" {
+                        #[link_name = "reset-state"]
+                        fn wit_import1(_: *mut u8);
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    unsafe extern "C" fn wit_import1(_: *mut u8) {
+                        unreachable!()
+                    }
+                    unsafe { wit_import1(ptr0) };
+                    let l2 = i32::from(*ptr0.add(0).cast::<u8>());
+                    let result6 = match l2 {
+                        0 => {
+                            let e = ();
+                            Ok(e)
+                        }
+                        1 => {
+                            let e = {
+                                let l3 = *ptr0
+                                    .add(::core::mem::size_of::<*const u8>())
+                                    .cast::<*mut u8>();
+                                let l4 = *ptr0
+                                    .add(2 * ::core::mem::size_of::<*const u8>())
+                                    .cast::<usize>();
+                                let len5 = l4;
+                                let bytes5 = _rt::Vec::from_raw_parts(
+                                    l3.cast(),
+                                    len5,
+                                    len5,
+                                );
+                                _rt::string_lift(bytes5)
+                            };
+                            Err(e)
+                        }
+                        _ => _rt::invalid_enum_discriminant(),
+                    };
+                    result6
+                }
+            }
         }
     }
 }
@@ -2584,9 +2683,9 @@ pub(crate) use __export_engine_pipeline_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1724] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xb6\x0c\x01A\x02\x01\
-A\x13\x01B8\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1768] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xe2\x0c\x01A\x02\x01\
+A\x16\x01B8\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
 m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x04\x02se\x02\
 te\x02ve\x02xe\x04\0\x0aconversion\x03\0\x06\x01m\x04\x02je\x02ja\x02jo\x02ju\x04\
 \0\x0aconnective\x03\0\x08\x01m\x05\x02lo\x02le\x02la\x05ro-lo\x05ro-le\x04\0\x05\
@@ -2616,15 +2715,16 @@ ban:nesy/ast-types@0.1.0\x05\0\x02\x03\0\0\x0aast-buffer\x01B\x05\x02\x03\x02\x0
 logic-buffer\x01B\x07\x02\x03\x02\x01\x01\x04\0\x0aast-buffer\x03\0\0\x02\x03\x02\
 \x01\x03\x04\0\x0clogic-buffer\x03\0\x02\x01j\x01\x03\x01s\x01@\x01\x03ast\x01\0\
 \x04\x04\0\x0ecompile-buffer\x01\x05\x03\0\x1blojban:nesy/semantics@0.1.0\x05\x04\
-\x01B\x08\x02\x03\x02\x01\x03\x04\0\x0clogic-buffer\x03\0\0\x01j\0\x01s\x01@\x01\
+\x01B\x0a\x02\x03\x02\x01\x03\x04\0\x0clogic-buffer\x03\0\0\x01j\0\x01s\x01@\x01\
 \x05logic\x01\0\x02\x04\0\x0bassert-fact\x01\x03\x01j\x01\x7f\x01s\x01@\x01\x05l\
-ogic\x01\0\x04\x04\0\x10query-entailment\x01\x05\x03\0\x1blojban:nesy/reasoning@\
-0.1.0\x05\x05\x01j\x01y\x01s\x01@\x01\x05inputs\0\x06\x04\0\x0bassert-text\x01\x07\
-\x01j\x01\x7f\x01s\x01@\x01\x05inputs\0\x08\x04\0\x0aquery-text\x01\x09\x01j\x01\
-s\x01s\x01@\x01\x05inputs\0\x0a\x04\0\x0dcompile-debug\x01\x0b\x04\0!lojban:nesy\
-/engine-pipeline@0.1.0\x04\0\x0b\x15\x01\0\x0fengine-pipeline\x03\0\0\0G\x09prod\
-ucers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x06\
-0.41.0";
+ogic\x01\0\x04\x04\0\x10query-entailment\x01\x05\x01@\0\0\x02\x04\0\x0breset-sta\
+te\x01\x06\x03\0\x1blojban:nesy/reasoning@0.1.0\x05\x05\x01j\x01y\x01s\x01@\x01\x05\
+inputs\0\x06\x04\0\x0bassert-text\x01\x07\x01j\x01\x7f\x01s\x01@\x01\x05inputs\0\
+\x08\x04\0\x0aquery-text\x01\x09\x01j\x01s\x01s\x01@\x01\x05inputs\0\x0a\x04\0\x0d\
+compile-debug\x01\x0b\x01j\0\x01s\x01@\0\0\x0c\x04\0\x08reset-kb\x01\x0d\x04\0!l\
+ojban:nesy/engine-pipeline@0.1.0\x04\0\x0b\x15\x01\0\x0fengine-pipeline\x03\0\0\0\
+G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10wit-bindge\
+n-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

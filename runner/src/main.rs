@@ -48,7 +48,7 @@ fn main() -> Result<()> {
     let mut line_editor = Reedline::create();
     let prompt = DefaultPrompt::default();
 
-    println!("Ready. Commands: :quit :debug <text> :help");
+    println!("Ready. Commands: :quit :reset :debug <text> :help");
     println!("Prefix '?' for queries, plain text for assertions.\n");
 
     loop {
@@ -62,10 +62,19 @@ fn main() -> Result<()> {
 
                 match input {
                     ":quit" | ":q" => break,
+                    ":reset" | ":r" => {
+                        match pipeline.call_reset_kb(&mut store) {
+                            Ok(Ok(())) => println!("[Reset] Knowledge base cleared."),
+                            Ok(Err(e)) => println!("[Error] {}", e),
+                            Err(e) => println!("[Host Error] {:?}", e),
+                        }
+                        continue;
+                    }
                     ":help" | ":h" => {
                         println!("  <text>           Assert Lojban as fact");
                         println!("  ? <text>         Query entailment");
                         println!("  :debug <text>    Show compiled logic tree");
+                        println!("  :reset           Clear all facts (fresh KB)");
                         println!("  :quit            Exit");
                         continue;
                     }

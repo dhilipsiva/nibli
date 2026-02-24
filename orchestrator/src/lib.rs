@@ -41,6 +41,10 @@ impl Guest for EnginePipeline {
         let buf = compile_pipeline(&input)?;
         Ok(debug_sexp(&buf))
     }
+
+    fn reset_kb() -> Result<(), String> {
+        reasoning::reset_state().map_err(|e| format!("Reset: {}", e))
+    }
 }
 
 // ─── S-expression reconstruction ───

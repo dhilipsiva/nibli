@@ -107,6 +107,9 @@ interface reasoning {
     use ast-types.{logic-buffer};
     assert-fact: func(logic: logic-buffer) -> result<_, string>;
     query-entailment: func(logic: logic-buffer) -> result<bool, string>;
+    /// Clear the knowledge base, Skolem counter, entity registry,
+    /// and universal templates. Returns to a fresh-boot state.
+    reset-state: func() -> result<_, string>;
 }
 
 // --- Component Worlds ---
@@ -128,4 +131,8 @@ world engine-pipeline {
 
     /// Debug: compile text to logic s-expression without asserting.
     export compile-debug: func(input: string) -> result<string, string>;
+
+    /// Clear the entire knowledge base and reset to fresh state.
+    export reset-kb: func() -> result<_, string>;
 }
+
