@@ -299,8 +299,20 @@ fn check_formula_holds(
     match &buffer.nodes[node_id as usize] {
         LogicNode::AndNode((l, r)) => Ok(check_formula_holds(buffer, *l, subs, egraph)?
             && check_formula_holds(buffer, *r, subs, egraph)?),
-        LogicNode::OrNode((l, r)) => Ok(check_formula_holds(buffer, *l, subs, egraph)?
-            || check_formula_holds(buffer, *r, subs, egraph)?),
+        LogicNode::OrNode((l, r)) => {
+            // First: check if the compound (Or A B) itself is in the e-graph.
+            // This catches cases like `mi klama ja bajra` where (IsTrue (Or ...))
+            // was asserted but neither disjunct is individually derivable.
+            let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
+            let command = format!("(check (IsTrue {}))", sexp);
+            match egraph.parse_and_run_program(None, &command) {
+                Ok(_) => return Ok(true),
+                Err(_) => {}
+            }
+            // Fallback: check if either disjunct holds individually.
+            Ok(check_formula_holds(buffer, *l, subs, egraph)?
+                || check_formula_holds(buffer, *r, subs, egraph)?)
+        }
         LogicNode::NotNode(inner) => Ok(!check_formula_holds(buffer, *inner, subs, egraph)?),
         // Tense wrappers are transparent for reasoning
         LogicNode::PastNode(inner)
