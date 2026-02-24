@@ -66,7 +66,8 @@ const COMPOUND_CMAVO: &[&str] = &[
     // GA selma'o + nai — forethought connectives
     "ganai", "genai", "ginai", "gonai", "gunai",
     // JA selma'o + nai — afterthought logical connectives
-    "janai", "jenai", "jonai", "junai", // PU selma'o + nai — tense negation
+    "janai", "jenai", "jonai", "junai",
+    // PU selma'o + nai — tense negation
     "punai", "canai", "banai",
 ];
 

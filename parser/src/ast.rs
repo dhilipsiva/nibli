@@ -100,6 +100,16 @@ pub enum Sumti {
     },
     /// Numeric literal: li + PA digits
     Number(f64),
+
+    /// Sumti connective: sumti + (.e|.a|.o|.u)[nai] + sumti
+    /// Maps: .e→Je (∧), .a→Ja (∨), .o→Jo (↔), .u→Ju (⊕)
+    Connected {
+        left: Box<Sumti>,
+        connective: Connective,
+        /// If true, the RIGHT operand is negated (the `nai` suffix)
+        right_negated: bool,
+        right: Box<Sumti>,
+    },
 }
 
 /// A relative clause attached to a sumti.
@@ -185,6 +195,7 @@ pub enum SentenceConnective {
 }
 
 // Update ParsedText to hold recursive Sentences, not flat Bridis
+#[derive(Debug)]
 pub struct ParsedText {
     pub sentences: Vec<Sentence>,
 }

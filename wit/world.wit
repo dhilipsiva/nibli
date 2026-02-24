@@ -24,6 +24,9 @@ interface ast-types {
         tagged(tuple<place-tag, sumti-id>),
         restricted(tuple<sumti-id, rel-clause>),
         number(f64),
+        /// Sumti connective: left .e/.a/.o/.u [nai] right
+        /// Fields: (left-sumti-id, connective, right-negated, right-sumti-id)
+        connected(tuple<sumti-id, connective, bool, sumti-id>),
     }
 
     variant selbri {

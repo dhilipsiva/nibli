@@ -308,6 +308,23 @@ impl Flattener {
             }
 
             ast::Sumti::Number(n) => wit::Sumti::Number(n),
+
+            ast::Sumti::Connected {
+                left,
+                connective,
+                right_negated,
+                right,
+            } => {
+                let left_id = self.push_sumti(*left);
+                let right_id = self.push_sumti(*right);
+                let wit_conn = match connective {
+                    ast::Connective::Je => wit::Connective::Je,
+                    ast::Connective::Ja => wit::Connective::Ja,
+                    ast::Connective::Jo => wit::Connective::Jo,
+                    ast::Connective::Ju => wit::Connective::Ju,
+                };
+                wit::Sumti::Connected((left_id, wit_conn, right_negated, right_id))
+            }
         };
 
         let id = self.buffer.sumtis.len() as u32;
@@ -336,20 +353,20 @@ mod flattener_tests {
     fn test_multi_sentence_produces_two_roots() {
         let parsed = ParsedText {
             sentences: vec![
-                Bridi {
+                Sentence::Simple(Bridi {
                     selbri: Selbri::Root("klama".into()),
                     head_terms: vec![],
                     tail_terms: vec![],
                     negated: false,
                     tense: None,
-                },
-                Bridi {
+                }),
+                Sentence::Simple(Bridi {
                     selbri: Selbri::Root("prami".into()),
                     head_terms: vec![],
                     tail_terms: vec![],
                     negated: false,
                     tense: None,
-                },
+                }),
             ],
         };
 
@@ -370,27 +387,27 @@ mod flattener_tests {
     fn test_three_sentences_three_roots() {
         let parsed = ParsedText {
             sentences: vec![
-                Bridi {
+                Sentence::Simple(Bridi {
                     selbri: Selbri::Root("klama".into()),
                     head_terms: vec![],
                     tail_terms: vec![],
                     negated: false,
                     tense: None,
-                },
-                Bridi {
+                }),
+                Sentence::Simple(Bridi {
                     selbri: Selbri::Root("prami".into()),
                     head_terms: vec![],
                     tail_terms: vec![],
                     negated: false,
                     tense: None,
-                },
-                Bridi {
+                }),
+                Sentence::Simple(Bridi {
                     selbri: Selbri::Root("barda".into()),
                     head_terms: vec![],
                     tail_terms: vec![],
                     negated: false,
                     tense: None,
-                },
+                }),
             ],
         };
 
@@ -404,7 +421,7 @@ mod flattener_tests {
     #[test]
     fn test_rel_clause_body_is_not_a_root() {
         let parsed = ParsedText {
-            sentences: vec![Bridi {
+            sentences: vec![Sentence::Simple(Bridi {
                 selbri: Selbri::Root("barda".into()),
                 head_terms: vec![Sumti::Restricted {
                     inner: Box::new(Sumti::Description {
@@ -413,19 +430,19 @@ mod flattener_tests {
                     }),
                     clause: RelClause {
                         kind: RelClauseKind::Poi,
-                        body: Box::new(Bridi {
+                        body: Box::new(Sentence::Simple(Bridi {
                             selbri: Selbri::Root("sutra".into()),
                             head_terms: vec![],
                             tail_terms: vec![],
                             negated: false,
                             tense: None,
-                        }),
+                        })),
                     },
                 }],
                 tail_terms: vec![],
                 negated: false,
                 tense: None,
-            }],
+            })],
         };
 
         let buffer = Flattener::flatten(parsed);
@@ -438,22 +455,22 @@ mod flattener_tests {
     #[test]
     fn test_nu_abstraction_body_is_not_a_root() {
         let parsed = ParsedText {
-            sentences: vec![Bridi {
+            sentences: vec![Sentence::Simple(Bridi {
                 selbri: Selbri::Root("barda".into()),
                 head_terms: vec![Sumti::Description {
                     gadri: Gadri::Lo,
-                    inner: Box::new(Selbri::Abstraction(Box::new(Bridi {
+                    inner: Box::new(Selbri::Abstraction(Box::new(Sentence::Simple(Bridi {
                         selbri: Selbri::Root("klama".into()),
                         head_terms: vec![Sumti::ProSumti("mi".into())],
                         tail_terms: vec![],
                         negated: false,
                         tense: None,
-                    }))),
+                    })))),
                 }],
                 tail_terms: vec![],
                 negated: false,
                 tense: None,
-            }],
+            })],
         };
 
         let buffer = Flattener::flatten(parsed);
@@ -470,7 +487,7 @@ mod flattener_tests {
         // Total sentences in buffer: 3, roots: 2
         let parsed = ParsedText {
             sentences: vec![
-                Bridi {
+                Sentence::Simple(Bridi {
                     selbri: Selbri::Root("klama".into()),
                     head_terms: vec![Sumti::Restricted {
                         inner: Box::new(Sumti::Description {
@@ -479,26 +496,26 @@ mod flattener_tests {
                         }),
                         clause: RelClause {
                             kind: RelClauseKind::Poi,
-                            body: Box::new(Bridi {
+                            body: Box::new(Sentence::Simple(Bridi {
                                 selbri: Selbri::Root("barda".into()),
                                 head_terms: vec![],
                                 tail_terms: vec![],
                                 negated: false,
                                 tense: None,
-                            }),
+                            })),
                         },
                     }],
                     tail_terms: vec![],
                     negated: false,
                     tense: None,
-                },
-                Bridi {
+                }),
+                Sentence::Simple(Bridi {
                     selbri: Selbri::Root("prami".into()),
                     head_terms: vec![Sumti::ProSumti("mi".into())],
                     tail_terms: vec![Sumti::ProSumti("do".into())],
                     negated: false,
                     tense: None,
-                },
+                }),
             ],
         };
 

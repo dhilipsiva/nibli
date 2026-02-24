@@ -207,6 +207,13 @@ impl SemanticCompiler {
 
             Sumti::Number(n) => (LogicalTerm::Number(*n), vec![]),
             Sumti::Unspecified => (LogicalTerm::Unspecified, vec![]),
+
+            // Connected sumti in resolve_sumti context (e.g. inside BE clause):
+            // resolve the LEFT side only. Full expansion happens in compile_bridi.
+            Sumti::Connected((left_id, _conn, _negated, _right_id)) => {
+                let left = &sumtis[*left_id as usize];
+                self.resolve_sumti(left, sumtis, selbris, sentences)
+            }
         }
     }
 
@@ -479,6 +486,85 @@ impl SemanticCompiler {
         sumtis: &[Sumti],
         sentences: &[Sentence],
     ) -> LogicalForm {
+        // ── Sumti connective expansion ──────────────────────────────
+        // Scan all term IDs for Sumti::Connected. If found, split the
+        // bridi into two copies (left/right substituted) and combine
+        // with the appropriate logical connective.
+        let all_terms: Vec<u32> = bridi
+            .head_terms
+            .iter()
+            .chain(bridi.tail_terms.iter())
+            .copied()
+            .collect();
+
+        for (idx, &term_id) in all_terms.iter().enumerate() {
+            if let Sumti::Connected((left_id, conn, right_negated, right_id)) =
+                &sumtis[term_id as usize]
+            {
+                let conn = *conn;
+                let right_negated = *right_negated;
+                let left_id = *left_id;
+                let right_id = *right_id;
+
+                // Build left bridi: replace the connected sumti slot with its left part
+                let head_len = bridi.head_terms.len();
+                let make_substituted_bridi = |replacement_id: u32| -> Bridi {
+                    let mut head = bridi.head_terms.clone();
+                    let mut tail = bridi.tail_terms.clone();
+                    if idx < head_len {
+                        head[idx] = replacement_id;
+                    } else {
+                        tail[idx - head_len] = replacement_id;
+                    }
+                    Bridi {
+                        relation: bridi.relation,
+                        head_terms: head,
+                        tail_terms: tail,
+                        negated: bridi.negated,
+                        tense: bridi.tense,
+                    }
+                };
+
+                let left_bridi = make_substituted_bridi(left_id);
+                let right_bridi = make_substituted_bridi(right_id);
+
+                let left_form = self.compile_bridi(&left_bridi, selbris, sumtis, sentences);
+                let mut right_form = self.compile_bridi(&right_bridi, selbris, sumtis, sentences);
+
+                if right_negated {
+                    right_form = LogicalForm::Not(Box::new(right_form));
+                }
+
+                return match conn {
+                    Connective::Je => LogicalForm::And(Box::new(left_form), Box::new(right_form)),
+                    Connective::Ja => LogicalForm::Or(Box::new(left_form), Box::new(right_form)),
+                    Connective::Jo => {
+                        // Biconditional: (A → B) ∧ (B → A)
+                        let not_l = LogicalForm::Not(Box::new(left_form.clone()));
+                        let not_r = LogicalForm::Not(Box::new(right_form.clone()));
+                        LogicalForm::And(
+                            Box::new(LogicalForm::Or(Box::new(not_l), Box::new(right_form))),
+                            Box::new(LogicalForm::Or(Box::new(not_r), Box::new(left_form))),
+                        )
+                    }
+                    Connective::Ju => {
+                        // XOR: (A ∨ B) ∧ ¬(A ∧ B)
+                        LogicalForm::And(
+                            Box::new(LogicalForm::Or(
+                                Box::new(left_form.clone()),
+                                Box::new(right_form.clone()),
+                            )),
+                            Box::new(LogicalForm::Not(Box::new(LogicalForm::And(
+                                Box::new(left_form),
+                                Box::new(right_form),
+                            )))),
+                        )
+                    }
+                };
+            }
+        }
+
+        // ── Normal compilation (no sumti connectives) ───────────────
         let target_arity = self.get_selbri_arity(bridi.relation, selbris);
 
         let mut positioned: Vec<Option<LogicalTerm>> = vec![None; target_arity];
