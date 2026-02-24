@@ -1,366 +1,382 @@
+### 0.1 Lexer phonotactic enforcement
 
-~/projects/dhilipsiva/lojban_nesy_engine〉:debug ganai mi klama gi do sutra                                                                                                                                                                           02/23/2026 03:13:07 PM
-[Error] Parse: parse error at token 0: expected selbri or terms
-~/projects/dhilipsiva/lojban_nesy_engine〉:debug ganai mi klama gi ganai do sutra gi la .djan. ciska                                                                                                                                                  02/23/2026 03:13:19 PM
-[Error] Parse: parse error at token 0: expected selbri or terms
-~/projects/dhilipsiva/lojban_nesy_engine〉:debug ganai ro lo gerku poi barda cu sutra gi lo mlatu cu bajra                                                                                                                                            02/23/2026 03:13:26 PM
-[Error] Parse: parse error at token 0: expected selbri or terms
-~/projects/dhilipsiva/lojban_nesy_engine〉:debug mi djica lo nu ganai do klama gi mi ciska kei                                                                                                                                                        02/23/2026 03:13:35 PM
-[Error] Parse: parse error at token 2: unconsumed tokens remaining
-~/projects/dhilipsiva/lojban_nesy_engine〉:debug mi nelci lo ke barda sutra ke'e gerku be la .alis.                                                                                                                                                   02/23/2026 03:13:41 PM
-[Logic] (Exists "_v0" (And (And (And (Pred "barda" (Cons (Var "_v0") (Cons (Zoe) (Cons (Zoe) (Nil))))) (Pred "sutra" (Cons (Var "_v0") (Cons (Zoe) (Nil))))) (Pred "gerku" (Cons (Var "_v0") (Cons (Const "alis") (Nil))))) (Pred "nelci" (Cons (Const "mi") (Cons (Var "_v0") (Nil))))))
+`ganai` lexes as Gismu (CVCCV match). Will keep causing bugs for every cmavo compound that matches CVCCV/CCVCV patterns.
 
-## Phase 1 — Expressivity foundation
-*Parser + semantics work. No architectural changes. Unlocks: faithful encoding of ANY domain.*
+**Fix options (pick one):**
+- (a) Cmavo lookup table that overrides Logos classification — low complexity, immediate
+- (b) Validate consonant clusters in Logos regex against legal Lojban pairs — medium, correct long-term
 
-**1. Fix `ganai` lexer classification**
-`ganai` lexes as Gismu (5 letters). Match on token text, not token kind.
-Complexity: 20 minutes. Blocks: nothing downstream, but it's broken right now.
+**Crate:** parser/lexer.rs
+**Blocks:** 0.2, all forethought connective usage
 
-**2. Sumti connectives (`.e` / `.a` / `.o` / `.u` + negated forms)**
+### 0.2 `ganai...gi` end-to-end verification
+
+Parser code exists and is correct. Untested in REPL because of 0.1. Once lexer fixed, verify full pipeline including nested `ganai` inside `nu` abstraction.
+
+**Crate:** parser/grammar.rs
+**Complexity:** minutes
+
+### 0.3 Disjunction query soundness
+
+Assert `lo mlatu ja gerku` → `Or(mlatu, gerku)` is in e-graph.
+Query `? lo mlatu ja gerku` → FALSE (wrong).
+
+**Root cause:** `check_formula_holds` for `OrNode` tries each disjunct independently against egglog. But the *compound* `Or(A, B)` was asserted as a single e-graph node — neither `A` nor `B` alone was derived.
+
+**Fix:** In the `OrNode` branch of `check_formula_holds`, first attempt `(check (IsTrue (Or sexp_l sexp_r)))` in egglog. Fall back to component check only if that fails.
+
+**Crate:** reasoning/lib.rs `check_formula_holds`
+**Complexity:** low
+
+### 0.4 `[NEW]` Skolemization under universals produces constants instead of functions
+
+`collect_exists_for_skolem` walks through `ForAllNode` without tracking enclosing universal variables. Standard Skolemization requires: `∀x.∃y.P(x,y)` → `∀x.P(x, f(x))`, not `∀x.P(x, sk_0)`.
+
+Current code produces the same witness for all x — **unsound** for any formula with `∃` nested under `∀`.
+
+**Trigger:** `ro lo prenu cu nelci lo mlatu` (every person likes a cat) → `∀x.(¬prenu(x) ∨ ∃y.(mlatu(y) ∧ nelci(x,y)))`.
+
+**Fix:** Track a `Vec<String>` of enclosing universal variables during Skolem collection. When creating a Skolem for an ∃ under ∀, generate a Skolem function term applied to the universals. This requires extending `Term` in the egglog schema to support function application, or approximating via unique constant-per-entity at Herbrand instantiation time.
+
+**Pragmatic short-term fix:** During Herbrand instantiation of the ∀, re-Skolemize the body fresh for each entity, giving each entity its own Skolem constant. This is sound for ground reasoning over a finite domain and doesn't require schema changes.
+
+**Crate:** reasoning/lib.rs `collect_exists_for_skolem`
+**Severity:** soundness — wrong answers
+**Complexity:** medium (short-term), high (proper Skolem functions)
+
+### 0.5 `[NEW]` Missing `Num` in egglog `Term` datatype
+
+The egglog schema defines `Term` as `(Var String) | (Const String) | (Desc String) | (Zoe)`. But `reconstruct_sexp_with_subs` emits `(Num N)` for numeric arguments. Any formula with a `li` numeral will crash on assertion with an egglog parse error.
+
+**Fix:** Add `(Num f64)` to the `Term` datatype in the egglog schema string.
+
+**Crate:** reasoning/lib.rs schema definition
+**Severity:** runtime crash
+**Complexity:** 5 minutes
+
+### 0.6 `[NEW]` `∃-distribution over ∧` egglog rule is unsound
+
+Rule: `(IsTrue (Exists v (And A B))) → (IsTrue (And (Exists v A) (Exists v B)))`.
+
+This splits the witness identity — `∃x.(A(x) ∧ B(x))` does NOT entail that the *same* x satisfies both when split into `∃x.A(x) ∧ ∃x.B(x)`. If any residual `Exists` node reaches egglog (not Skolemized), this produces over-approximation.
+
+**Fix options:**
+- (a) Remove the rule entirely — Skolemization handles ∃ before it reaches egglog, so the rule should never fire. Safest.
+- (b) Keep but document as "only sound when v does not appear free in both A and B."
+
+**Crate:** reasoning/lib.rs schema rules
+**Complexity:** 5 minutes
+
+
+## PHASE 1 — Expressivity Foundation
+
+Parser + semantics work. No architectural changes. Unlocks faithful encoding of any domain.
+
+### 1.1 Sumti connectives (`.e` / `.a` / `.o` / `.u` + negated forms)
+
 "Electrons and muons are leptons." "Drug X or drug Y inhibits CYP3A4."
-Every single application needs this — taxonomy is the foundation of every domain.
+
 Parser: afterthought connectives between sumti. Semantics: `.e` → conjunction of two predications sharing the selbri, `.a` → disjunction. Negatable: `.e nai`, `.a nai`, etc.
-Complexity: medium. Pattern matches existing selbri connective implementation.
 
-**3. `du'u` / `ka` / `ni` / `si'o` abstractions**
-- `du'u` (proposition): "I know THAT the drug inhibits the enzyme" — propositional embedding
-- `ka` (property): "the property of being toxic" — needed for classification predicates, symmetry properties, quality attributes
-- `ni` (quantity): "the amount of mass" — the bridge between qualitative reasoning and numerical computation dispatch
-- `si'o` (concept): "the concept of conservation" — useful for meta-level reasoning
+**Crate:** parser/grammar.rs, semantics/semantic.rs
+**Complexity:** medium — mirrors existing selbri connective implementation
+**Needed by:** every application (taxonomy is universal)
 
-Parser: same structure as `nu...kei`, different selma'o tag. Semantics: each gets a distinct reification strategy. `du'u` → propositional node. `ka` → lambda-like property with `ce'u` as the open variable. `ni` → quantity node (this is where computation dispatch will hook in later).
-Complexity: medium-high. `nu` sets the pattern but `ka` needs `ce'u` (lambda variable) support.
+### 1.2 `du'u` / `ka` / `ni` / `si'o` abstractions
 
-**4. BAI modal tags (minimum viable set)**
+- `du'u` (proposition): propositional embedding
+- `ka` (property): lambda-like with `ce'u` as open variable
+- `ni` (quantity): bridge to numerical computation dispatch
+- `si'o` (concept): meta-level reasoning
 
-The full BAI series is ~60+ tags. You need these to start:
+Parser: same structure as `nu...kei`, different selma'o tag. Semantics: each gets a distinct reification strategy.
 
-| Tag | Meaning | Applications |
-|---|---|---|
-| `ri'a` | physical cause | drug interactions, physics, biology, climate |
-| `ni'i` | logical entailment | legal reasoning, requirements, all formal domains |
-| `mu'i` | motivation | legal intent, medical decision reasoning |
-| `ki'u` | justification | audit trails, explainability |
-| `pi'o` | used by / tool | supply chain, synthetic biology |
-| `ba'i` | replaced by | belief revision, theory comparison |
-| `fi'o...fe'u` | generic modal | escape hatch for any relation not covered |
+**Crate:** parser/ast.rs, parser/grammar.rs, semantics/semantic.rs, semantics/ir.rs
+**Complexity:** medium-high (`ka` needs `ce'u` lambda variable support)
+**Depends on:** nothing blocked
 
-Parser: BAI tags behave like place tags but create a new predicate relation rather than filling an existing place. `mi klama ri'a lo nu brife` → "I go, caused-by the event of wind."
-Semantics: compile as conjoined predication with the modal relation connecting the main bridi to the tagged sumti.
-Complexity: high. This is a new grammatical category, not an extension of existing ones.
+### 1.3 BAI modal tags (minimum viable set: `ri'a`, `ni'i`, `mu'i`, `ki'u`, `pi'o`, `ba'i`, `fi'o...fe'u`)
 
-**5. Numeric quantifiers**
-`re lo kuark` (two quarks), `ci lo elektron` (three electrons), `no lo lepton` (zero leptons), `su'o` (at least one — explicit existential).
-Parser: number + gadri as a quantifier position. Semantics: existential with cardinality constraint, or universal with count. This is where Lojban's number system intersects with quantifier logic.
-Complexity: medium. Parser part is simple. Semantics for "exactly N" in FOL is verbose (conjunction of N existentials + pairwise inequality + nothing else) — you'll want a dedicated `CountNode` in the IR rather than expanding it.
+New grammatical category. BAI tags create a new predicate relation rather than filling an existing place. `mi klama ri'a lo nu brife` → "I go, caused-by the event of wind."
 
-**6. Sumti-tail `noi` / `poi` on descriptions with `voi`**
-Incidental (`noi`) vs restrictive (`poi`) relative clauses are implemented. But `voi` (non-veridical restrictive) is missing, and you can't currently stack multiple relative clauses. Stacking matters for complex classifications: "the protein which binds ATP and which is phosphorylated."
-Complexity: low-medium. Extension of existing relative clause machinery.
+Semantics: conjoined predication with modal relation connecting main bridi to tagged sumti.
 
-**7. Afterthought sentence connectives (`.i je` / `.i ja` / `.i jo` / `.i ju`)**
-Currently `.i` only separates sentences. You need `.i ja` (or), `.i je` (and — explicit), `.i naja` (implication — afterthought form of `ganai...gi`), `.i jo` (iff).
-"The reactor is critical. Therefore the control rods insert." — `.i ni'ibo` or `.i se ni'i bo`.
-Parser: recognize connective after `.i`. Semantics: combine adjacent sentence logic forms with the connective.
-Complexity: low.
+**Crate:** parser (new tag class), semantics (modal predication)
+**Complexity:** high
+**Needed by:** causation in every domain
 
-## Phase 2 — Reasoning engine power
-*egglog schema + Rust-side reasoning changes. Unlocks: actual inference over encoded knowledge.*
+### 1.4 Numeric quantifiers (`re lo`, `ci lo`, `su'o`, `no`)
 
-**8. Numerical comparison predicates in egglog**
-`zmadu` (greater), `mleca` (lesser), `dunli` (equal) operating on `Number` terms.
-Add to egglog schema:
+Parser: number + gadri in quantifier position. Semantics: existential with cardinality constraint. Expanding "exactly N" in raw FOL is verbose — add a dedicated `CountNode` in the IR.
+
+**Crate:** parser/grammar.rs, semantics/ir.rs, semantics/semantic.rs
+**Complexity:** medium
+
+### 1.5 Afterthought sentence connectives (`.i je` / `.i ja` / `.i naja` / `.i jo`)
+
+Parser: recognize connective after `.i`. Semantics: combine adjacent sentence logic forms.
+
+**Crate:** parser/grammar.rs
+**Complexity:** low
+
+### 1.6 Relative clause stacking + `voi`
+
+`voi` (non-veridical restrictive) missing. Can't stack multiple relative clauses. Needed for: "the protein which binds ATP and which is phosphorylated."
+
+**Crate:** parser/grammar.rs, parser/ast.rs
+**Complexity:** low-medium
+
+### 1.7 Deontic predicates (`bilga`/`curmi`/`nitcu`/`e'e`/`ei`)
+
+If predicate-based: `bilga`/`curmi` already work as gismu, just need dictionary arity entries. If attitudinal-based: new parser category required.
+
+**Crate:** semantics/dictionary, parser (if attitudinal)
+**Complexity:** low (predicate) or high (attitudinal)
+
+### 1.8 `[NEW]` `da`/`de`/`di` quantifier closure
+
+Currently compiled as free `Variable(Spur)` with no quantifier wrapping. `da prami mi` should produce `∃x.prami(x, mi)`, not an open formula with free `da`.
+
+**Fix:** In `compile_bridi`, after building the predication, scan the args for pro-sumti `da`/`de`/`di`. For each, wrap the final form in `Exists(var, ...)`.
+
+**Crate:** semantics/semantic.rs `compile_bridi`
+**Complexity:** low-medium
+**Needed by:** correct reasoning on any sentence using `da`/`de`/`di`
+
+### 1.9 `[NEW]` Lujvo morphological recognition
+
+Lexer only recognizes gismu (5-letter CVCCV/CCVCV) and cmavo. Lujvo (compound brivla like `brivla`, `nunprami`) fall through to Cmavo or Cmevla depending on ending. The `Compound` selbri variant exists but is only populated via `zei`-gluing.
+
+**Options:**
+- (a) Dictionary lookup at lex time — check if token is a known lujvo from jbovlaste (already have the dictionary at build time). Low complexity, high coverage.
+- (b) Rafsi decomposition — algorithmic, handles novel lujvo. High complexity, complete.
+
+Start with (a). The jbovlaste phf map already includes lujvo entries from `build.rs`.
+
+**Crate:** parser/lexer.rs (or post-lex classification pass)
+**Complexity:** medium
+**Needed by:** any Lojban text using compound words
+
+### 1.10 `[NEW]` Observative sentences
+
+`mi do` (observative, implicit `go'i`) currently errors: "observative sentences not yet supported." Low priority but affects naturalness.
+
+**Crate:** parser/grammar.rs
+**Complexity:** medium (requires `go'i` pro-bridi resolution)
+
+
+## PHASE 2 — Reasoning Engine Correctness + Power
+
+egglog schema + Rust-side reasoning changes.
+
+### 2.1 `[AMENDED]` WASI state hoisting (replaces `OnceLock` anti-pattern)
+
+Move knowledge base to host-managed WASI Resource. Enables: reset, multi-tenant, persistence. Subsumes `:reset` command and persistence layer.
+
+**Additional context from review:** Current `OnceLock<Mutex<EGraph>>` works only because the runner reuses a single component instance. The `Mutex` is unnecessary overhead in single-threaded WASI. If wasmtime ever instantiates fresh, all state is silently lost. This is the most fragile part of the architecture.
+
+**Crate:** reasoning/lib.rs, runner/main.rs
+**Complexity:** high (architectural rework)
+**Blocks:** 2.2, 2.5, deployment, `:reset`
+
+### 2.2 Herbrand explosion → egglog native rules
+
+Replace eager N×M entity grounding with lazy `(rule ...)` definitions. Current approach hits wall at ~10K entities.
+
+**Crate:** reasoning/lib.rs
+**Complexity:** high
+**Blocks:** scaling to real datasets
+
+### 2.3 Numerical comparison predicates in egglog
+
+`zmadu`/`mleca`/`dunli` operating on `Number` terms. Requires 0.5 (`Num` datatype) first.
+
+**Crate:** reasoning/lib.rs schema
+**Complexity:** medium
+**Depends on:** 0.5
+
+### 2.4 Conjunction introduction rule (guarded)
+
+Assert A, assert B → egglog can derive `And(A, B)`. Guard: only fire when both A, B are atomic predicates sharing at least one term. Prevents combinatorial explosion.
+
+**Crate:** reasoning/lib.rs schema
+**Complexity:** low
+
+### 2.5 Existential witness extraction (answer variables)
+
+`query_entailment` → bool. Need: `query_find` → bindings. "ma klama" → returns "mi". Modify `check_formula_holds` to return successful bindings. Existential branch already enumerates entities — capture the match.
+
+**Crate:** reasoning/lib.rs, WIT interface (new export)
+**Complexity:** medium
+
+### 2.6 Non-monotonic reasoning / belief revision
+
+Retraction + justification tracking (TMS-style). egglog doesn't natively support retraction — needs wrapper layer.
+
+**Crate:** reasoning (new subsystem)
+**Complexity:** very high
+
+### 2.7 `[NEW]` Herbrand instantiation via string replacement is fragile
+
+`body_sexp.replace(&format!("(Var \"{}\")", var_name), ...)` does global string substitution. If variable names are substrings of other variables (`_v1` inside `_v10`), or appear in predicate names, silent corruption occurs.
+
+**Fix:** Use proper s-expression tree manipulation instead of string replacement. Or ensure variable names are always terminated by `"` in the sexp format (which they currently are due to quoting — verify this invariant holds).
+
+**Crate:** reasoning/lib.rs `register_entity`, Herbrand instantiation
+**Complexity:** low (verification) or medium (proper tree manip)
+
+
+## PHASE 3 — Security + Deployment Readiness
+
+### 3.1 WASM fuel/epoch limits
+
+Prevent unbounded execution. Wasmtime API supports natively.
+
+**Crate:** runner/main.rs
+**Complexity:** low
+**Blocks:** production deployment
+
+### 3.2 WIT error variants
+
+Replace `Result<_, String>` with typed error enums: `SyntaxError(pos)`, `SemanticError(msg)`, `ReasoningTimeout`, `BackendError(backend, msg)`.
+
+**Crate:** wit/world.wit, all 4 components
+**Complexity:** medium
+
+### 3.3 WASI capability sandboxing
+
+Remove `inherit_stdio()`. Grant minimal capabilities.
+
+**Crate:** runner/main.rs
+**Complexity:** low
+
+### 3.4 Parser error recovery
+
+Skip to next `.i` on syntax error, continue parsing. Return `Vec<Result<Sentence, SyntaxError>>` instead of failing entire input.
+
+**Crate:** parser/grammar.rs
+**Complexity:** medium
+
+### 3.5 Explanation / proof trace generation
+
+`check_formula_holds` builds proof tree as it recurses. Each node records which rule/axiom was applied.
+
+**Crate:** reasoning/lib.rs
+**Complexity:** medium-high
+**Needed by:** every high-stakes domain
+
+
+## PHASE 4 — Computation Dispatch
+
+### 4.1 Computation dispatch WIT protocol
+
+New interface: `compute-backend` with dispatch function. New IR node: `ComputeNode`. Predicate registry marks which predicates dispatch externally.
+
+**Crate:** new crate + WIT interface
+**Complexity:** high
+
+### 4.2 Python backend adapter
+
+Subprocess or embedded. Covers SciPy, SymPy, RDKit, BioPython, MadGraph, PK/PD solvers.
+
+**Complexity:** medium
+
+### 4.3 Mathematica/Wolfram backend adapter
+
+Via WSTP or WolframScript CLI.
+
+**Complexity:** medium
+
+### 4.4 Result ingestion as assertions
+
+Computation results → Lojban assertions → knowledge base. Closes the reason→compute→reason loop. Needs trusted assertion path (bypass user input parsing).
+
+**Complexity:** medium
+
+
+## PHASE 5 — Theoretical Depth
+
+### 5.1 Event semantics (Neo-Davidsonian)
+
+Structured events with named roles, temporal ordering, causal links. Resolves tanru intersective fallacy.
+
+**Complexity:** research-grade
+
+### 5.2 Temporal reasoning in e-graph
+
+Encode Past/Present/Future in egglog schema with inference rules. Current tense-transparent approach becomes dispatch point.
+
+**Additional context:** Currently tense is stripped at assertion and transparent at query — asserting `pu mi klama` and querying `ba mi klama` will return TRUE. This is the first thing that breaks when encoding any temporally-sensitive domain.
+
+**Crate:** reasoning/lib.rs schema + `check_formula_holds`
+**Complexity:** high
+
+### 5.3 `[AMENDED]` Description term opacity (`le` vs `lo`)
+
+Currently `le` and `la` both produce `LogicalTerm::Description` — a non-quantified opaque token. The reasoning engine can't distinguish `le gerku` from `la gerku` at the logic level. Matters for belief contexts and intensional reasoning.
+
+**Crate:** semantics/semantic.rs, reasoning schema
+**Complexity:** high
+
+### 5.4 E-graph cycle detection
+
+Prevent infinite rewrite loops in egglog.
+
+**Complexity:** medium (egglog may handle natively)
+
+### 5.5 Module / namespace system
+
+Domain-prefixed predicates for multi-domain KBs.
+
+**Complexity:** medium
+
+
+## ONGOING — Technical Debt
+
+Interleave as convenient.
+
+| ID | Item | Crate | Complexity |
+|----|-------|-------|------------|
+| D.1 | wasip1 → wasip2 alignment | Justfile, flake.nix | low |
+| D.2 | `reconstruct_sexp` deduplication (orchestrator + reasoning have near-identical copies) | orchestrator, reasoning | low |
+| D.3 | `ast-types` interface naming (split logic types into separate WIT interface) | wit/world.wit | medium |
+| D.4 | String pre-allocation in `reconstruct_sexp` (currently O(n²) from nested `format!`) | reasoning, orchestrator | low |
+| D.5 | Arena allocator for parser AST (when batch processing) | parser | medium |
+| D.6 | `sa` proper implementation (requires selma'o classification) | parser/preprocessor.rs | medium |
+| D.7 | `inject_variable` ambiguity warning (when multiple Unspecified slots and no ke'a) | semantics/semantic.rs | low |
+| D.8 | `[NEW]` Remove `bumpalo` dependency from parser — imported but unused, dead weight in WASM binary | parser/Cargo.toml | 2 min |
+| D.9 | `[NEW]` Delete dead `push_bridi` method in Flattener — superseded by `push_sentence` | parser/lib.rs lines 82-113 | 2 min |
+| D.10 | `[NEW]` Delete dead commented-out loop in `Flattener::flatten` | parser/lib.rs lines 68-76 | 1 min |
+| D.11 | `[NEW]` Fix or remove `looks_like_selbri_na` — dead code behind `#[allow(dead_code)]`, will break if used (missing cmavo-selbri like `go'i`) | parser/grammar.rs lines 335-349 | low |
+| D.12 | `[NEW]` Verify Flattener test type correctness — tests construct `ParsedText { sentences: vec![Bridi {...}] }` but `sentences` is `Vec<Sentence>`. Either won't compile or has implicit conversion hiding a mismatch | parser/lib.rs flattener_tests | low |
+| D.13 | `[NEW]` Remove `Connective::Jo` / `Connective::Ju` deep clones in `apply_selbri` — restructure to avoid cloning recursive `LogicalForm` trees | semantics/semantic.rs lines 421-438 | low |
+
+
+## Dependency Graph (Critical Path)
 
 ```
-(relation NumVal (Term f64))
-(rule ((IsTrue (Pred "zmadu" (Cons a (Cons b (Nil)))))
-       (NumVal a va) (NumVal b vb))
-      ((if (> va vb) (IsTrue ...))))
+0.1 ──→ 0.2
+0.5 ──→ 2.3
+0.4 ──→ (any ∀∃ formula correctness)
+2.1 ──→ 2.2, 2.5, 3.1, persistence
+1.2 ──→ 4.1 (ka/ni needed for computation dispatch)
+1.3 ──→ 5.1 (BAI needed for event role binding)
+
+Immediate (do today):
+  0.5  — 5 minutes, prevents crashes
+  0.6  — 5 minutes, prevents unsound inference
+  D.8  — 2 minutes, smaller WASM binary
+  D.9  — 2 minutes, dead code removal
+  D.10 — 1 minute, dead code removal
+
+This week:
+  0.1  — unblocks 0.2 and all forethought connective usage
+  0.3  — unblocks correct disjunctive reasoning
+  0.4  — unblocks sound ∀∃ reasoning
+  1.8  — unblocks correct da/de/di reasoning
+
+Next sprint:
+  1.1  — sumti connectives (high application value)
+  1.5  — afterthought sentence connectives (low effort, high value)
+  1.9  — lujvo recognition (coverage)
 ```
-
-This is where "the mass of the Higgs is greater than the mass of the W boson" becomes machine-checkable.
-Complexity: medium. egglog supports primitives but wiring them into your schema needs care.
-
-**9. Non-monotonic reasoning / belief revision**
-Currently, assertions are permanent. You can't retract. Every application involving changing knowledge needs this: new drug data contradicts old, new experimental results invalidate a theory, contract amendments override prior clauses.
-Implementation: tagged assertions with retraction support. TMS (Truth Maintenance System) style — each fact tracks its justification chain. When a supporting fact is retracted, derived facts are invalidated.
-Complexity: high. This is a fundamental change to the reasoning architecture. egglog doesn't natively support retraction — you'll likely need a wrapper layer.
-
-**10. `:reset` command**
-Your REPL currently can't reset state. This is listed on your todo and it's blocking development iteration on everything above.
-Complexity: low. Export a `reset` function that reinitializes the `OnceLock` statics. Requires `OnceLock` → `Mutex<Option<>>` migration since `OnceLock` can't be reset.
-
-**11. Existential witness extraction (answer variables)**
-Currently `query_entailment` returns bool. You need: "WHICH entity satisfies this query?" — `ma klama` should return `mi` if `mi klama` was asserted. This is needed for every application that involves search: "which drugs inhibit CYP3A4?", "which particles have spin 1/2?", "which contract clauses create obligation?"
-Implementation: modify `check_formula_holds` to return bindings, not just bool. Existential branch already enumerates entities — capture the successful binding.
-Complexity: medium.
-
-**12. Conjunction introduction rule**
-Item #19 on your todo. Without it, asserting `A` and `B` separately doesn't let egglog derive `A ∧ B`. This blocks queries like "is it true that BOTH the electron has charge AND the electron has spin?" when charge and spin were asserted independently.
-Complexity: low for egglog (one rule), but risk of combinatorial explosion — needs guarding.
-
-## Phase 3 — Computation dispatch architecture
-*New WIT interfaces + host-level integration. Unlocks: quantitative reasoning across all domains.*
-
-**13. Computation dispatch protocol**
-The WIT interface for external backend routing. The reasoning engine recognizes when a predicate requires numerical computation (via annotation or predicate registry) and emits a `ComputeRequest` instead of attempting egglog resolution.
-New IR node: `ComputeNode { backend: Backend, expression: String, bindings: Vec<(String, LogicalTerm)> }`.
-Host-side: Wasmtime runner routes requests to registered backends.
-Complexity: high. This is new architecture, not an extension.
-
-**14. Backend adapters (at least 2 to prove generality)**
-- **Mathematica** via WSTP or WolframScript CLI — covers symbolic + numeric computation
-- **Python** via subprocess or embedded interpreter — covers SciPy, SymPy, domain-specific packages (RDKit for chemistry, BioPython, etc.)
-
-Start with Python. It's the lingua franca of scientific computing and covers 80% of backends you'd want (MadGraph, lattice QCD wrappers, PK/PD solvers, optimization solvers all have Python APIs).
-Complexity: medium per backend.
-
-**15. Result ingestion — computation results as assertions**
-When a backend returns a value, it needs to flow back into the knowledge base as a Lojban assertion. "The computed mass is 125.1 GeV" becomes a new fact that participates in further reasoning.
-This closes the loop: reason → compute → assert result → reason further.
-Complexity: medium. Needs a trusted assertion path (computation results bypass user input parsing).
-
-## Phase 4 — Production readiness
-*Unlocks: real users, real deployments.*
-
-**16. Deontic modals (`e'e` / `e'o` / `ei` / `bilga` / `curmi`)**
-Obligation, permission, prohibition. Required for: legal contracts, AV traffic rules, aerospace requirements, medical guidelines, regulatory compliance.
-"The vehicle must yield" — `ei lo karce cu jundi`. "The drug is permitted for patients over 18" — `.e'e lo mikce cu pilno`.
-Lojban has attitudinals for this but they're currently unparsed. Alternative: use predicates `bilga` (obligated), `curmi` (permitted) which work with existing grammar.
-Complexity: if predicate-based, low. If attitudinal-based, high (new parser category).
-
-**17. Event semantics depth (Neo-Davidsonian)**
-Current `nu` creates a flat event. Real applications need: events with participants in named roles, temporal ordering between events, events causing other events.
-"The reaction in which enzyme E catalyzes substrate S producing product P" — one event, three participants, each in a specific role.
-Implementation: extend `nu` compilation to create structured event nodes with role bindings. Connect to BAI modals for inter-event relations.
-Complexity: high. Research-grade work.
-
-**18. Module / namespace system**
-When you encode the Standard Model AND drug interactions AND traffic law, you need namespaces. Predicates from different domains will collide (`tcarge` means "charged" in physics but could mean something else in legal).
-Implementation: Lojban doesn't have native namespaces, but you can use `zoi` quoting or a convention like `xukmi.tcarge` vs `flalu.tcarge`. Engine-side: prefixed predicate resolution.
-Complexity: medium.
-
-**19. Persistence layer**
-The knowledge base currently lives in WASM memory and dies with the process. Every application needs persistence. Minimum: serialize the egglog state + universal templates + known entities to disk. Better: a proper triple store or graph database backend that the egglog state syncs with.
-Complexity: medium for serialization, high for a real database backend.
-
-**20. Explanation / proof trace generation**
-"WHY did you conclude this drug interaction exists?" Every high-stakes application (medical, legal, aerospace, regulatory) requires explainability. The reasoning engine needs to emit the derivation chain, not just the boolean result.
-Implementation: modify `check_formula_holds` to build a proof tree as it recurses. Each node records which rule/axiom was applied.
-Complexity: medium-high.
-
-
-═══════════════════════════════════════════════════════════════
-PHASE 0 — Broken right now (fix before anything else)
-═══════════════════════════════════════════════════════════════
-
-0.1  Lexer phonotactic enforcement
-     ganai lexes as Gismu. Will keep causing bugs for every
-     new cmavo compound that matches CVCCV/CCVCV.
-     Fix: validate consonant clusters in logos regex, or
-     add a cmavo lookup table that overrides classification.
-     Complexity: medium (regex rework) or low (lookup table)
-     Blocks: 0.2
-
-0.2  ganai...gi end-to-end verification
-     Parser code exists but untested in REPL due to 0.1.
-     Once lexer fixed, verify full pipeline.
-     Complexity: minutes
-     Blocks: nothing
-
-0.3  Disjunction query soundness
-     assert "lo mlatu ja gerku" → Or(mlatu, gerku)
-     query "? lo mlatu ja gerku" → FALSE (wrong)
-     Fix: check_formula_holds OrNode branch should first
-     try (check (IsTrue (Or sexp_l sexp_r))) in egglog,
-     fall back to component check only if egglog check fails.
-     Complexity: low
-     Blocks: correct reasoning on any disjunctive knowledge
-
-
-═══════════════════════════════════════════════════════════════
-PHASE 1 — Expressivity foundation
-Grammar coverage to encode any domain.
-═══════════════════════════════════════════════════════════════
-
-1.1  Sumti connectives (.e / .a / .o / .u + negated forms)
-     Needed by: every application (taxonomy is universal)
-     Complexity: medium
-     Pattern: mirrors existing selbri connectives
-
-1.2  du'u / ka / ni / si'o abstractions
-     Needed by: drug interactions (du'u), physics (ka/ni),
-     legal (du'u), all meta-reasoning
-     Complexity: medium-high
-     Depends on: ce'u (lambda variable for ka)
-
-1.3  BAI modal tags (ri'a, ni'i, mu'i, ki'u, pi'o, ba'i,
-     fi'o...fe'u)
-     Needed by: causation in every domain
-     Complexity: high (new grammatical category)
-
-1.4  Numeric quantifiers (re lo, ci lo, su'o, no)
-     Needed by: particle physics, chemistry, biology
-     Complexity: medium
-
-1.5  Afterthought sentence connectives (.i je / .i ja /
-     .i naja / .i jo)
-     Needed by: natural discourse encoding
-     Complexity: low
-
-1.6  Relative clause stacking + voi
-     Needed by: complex entity classification
-     Complexity: low-medium
-
-1.7  Deontic predicates (bilga/curmi/nitcu/e'e/ei)
-     Needed by: legal, regulatory, AV, aerospace
-     Complexity: low if predicate-based (bilga/curmi already
-     work as gismu — just need dictionary entries)
-     High if attitudinal-based (new parser category)
-
-
-═══════════════════════════════════════════════════════════════
-PHASE 2 — Reasoning engine correctness + power
-═══════════════════════════════════════════════════════════════
-
-2.1  WASI state hoisting (replaces OnceLock anti-pattern)
-     Move knowledge base to host-managed WASI Resource.
-     Enables: reset, multi-tenant, persistence.
-     Subsumes: :reset command, persistence layer.
-     Complexity: high (architectural rework)
-     Blocks: 2.2, 2.5, deployment
-
-2.2  Herbrand explosion → egglog native rules
-     Replace eager N×M grounding with lazy (rule ...) defs.
-     Current approach hits wall at ~10K entities.
-     Needed by: any real-world knowledge base.
-     Complexity: high (changes assertion pipeline)
-     Blocks: scaling to real datasets
-
-2.3  Numerical comparison predicates in egglog
-     zmadu/mleca/dunli operating on Number terms.
-     Needed by: physics, pharma (dosage), any quantitative
-     Complexity: medium
-
-2.4  Conjunction introduction rule (guarded)
-     Assert A, assert B → egglog can derive And(A,B).
-     Guard: only fire when both A, B are atomic predicates
-     sharing at least one term (prevents combinatorial blow).
-     Complexity: low (one rule + guard condition)
-
-2.5  Existential witness extraction (answer variables)
-     query_entailment → bool. Need: query_find → bindings.
-     "ma klama" → returns "mi".
-     Needed by: every search/query application.
-     Complexity: medium
-
-2.6  Non-monotonic reasoning / belief revision
-     Retraction of facts + justification tracking.
-     Needed by: evolving knowledge (drug data updates,
-     theory revision, contract amendments).
-     Complexity: very high (TMS layer over egglog)
-
-
-═══════════════════════════════════════════════════════════════
-PHASE 3 — Security + deployment readiness
-═══════════════════════════════════════════════════════════════
-
-3.1  WASM fuel/epoch limits
-     Prevent unbounded execution. Required for any
-     networked deployment.
-     Complexity: low (Wasmtime API supports this natively)
-     Blocks: production deployment
-
-3.2  WIT error variants
-     Replace Result<_, String> with typed error enums.
-     SyntaxError(pos), SemanticError(msg),
-     ReasoningTimeout, BackendError(backend, msg).
-     Needed by: LLM agent integration, API clients.
-     Complexity: medium (touches all 4 component interfaces)
-
-3.3  WASI capability sandboxing
-     Remove inherit_stdio(). Grant minimal capabilities.
-     Complexity: low
-     Blocks: computation dispatch security
-
-3.4  Parser error recovery
-     Skip to next .i on syntax error, continue parsing.
-     Return Vec<Result<Bridi, SyntaxError>> instead of
-     failing the entire input.
-     Needed by: batch processing, robust API usage.
-     Complexity: medium
-
-3.5  Explanation / proof trace generation
-     check_formula_holds builds proof tree as it recurses.
-     Needed by: every high-stakes domain (medical, legal,
-     aerospace).
-     Complexity: medium-high
-
-
-═══════════════════════════════════════════════════════════════
-PHASE 4 — Computation dispatch
-═══════════════════════════════════════════════════════════════
-
-4.1  Computation dispatch WIT protocol
-     New interface: compute-backend with dispatch function.
-     ComputeNode in logic IR.
-     Predicate registry marks which predicates dispatch.
-     Complexity: high (new architecture)
-
-4.2  Python backend adapter
-     Subprocess or embedded. Covers: SciPy, SymPy, RDKit,
-     BioPython, MadGraph, PK/PD solvers.
-     Complexity: medium
-
-4.3  Mathematica/Wolfram backend adapter
-     Via WSTP or WolframScript CLI.
-     Complexity: medium
-
-4.4  Result ingestion as assertions
-     Computation results → Lojban assertions → knowledge
-     base. Closes the reason→compute→reason loop.
-     Complexity: medium
-
-
-═══════════════════════════════════════════════════════════════
-PHASE 5 — Theoretical depth
-═══════════════════════════════════════════════════════════════
-
-5.1  Event semantics (Neo-Davidsonian)
-     Structured events with named roles, temporal ordering,
-     causal links. Resolves tanru intersective fallacy.
-     Complexity: research-grade
-
-5.2  Temporal reasoning in e-graph
-     Encode Past/Present/Future in egglog schema with
-     inference rules (temporal transitivity, persistence).
-     Current transparent approach becomes dispatch point.
-     Complexity: high
-
-5.3  Description term opacity
-     le vs lo distinction in reasoning (intensional vs
-     extensional). Matters for belief contexts.
-     Complexity: high
-
-5.4  E-graph cycle detection
-     Prevent infinite rewrite loops in egglog.
-     Complexity: medium (egglog may handle natively)
-
-5.5  Module / namespace system
-     Domain-prefixed predicates for multi-domain KBs.
-     Complexity: medium
-
-
-═══════════════════════════════════════════════════════════════
-ONGOING — Technical debt (interleave as convenient)
-═══════════════════════════════════════════════════════════════
-
-D.1  wasip1 → wasip2 alignment
-D.2  reconstruct_sexp deduplication
-D.3  ast-types interface naming (split logic types out)
-D.4  String pre-allocation in reconstruct_sexp
-D.5  Arena allocator for parser AST (when batch processing)
-D.6  sa proper implementation
-D.7  inject_variable ambiguity warning (when multiple
-     Unspecified slots and no ke'a)
