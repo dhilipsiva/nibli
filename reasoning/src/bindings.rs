@@ -165,6 +165,55 @@ pub mod lojban {
             }
             #[repr(u8)]
             #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+            pub enum AbstractionKind {
+                Nu,
+                Duhu,
+                Ka,
+                Ni,
+                Siho,
+            }
+            impl ::core::fmt::Debug for AbstractionKind {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        AbstractionKind::Nu => {
+                            f.debug_tuple("AbstractionKind::Nu").finish()
+                        }
+                        AbstractionKind::Duhu => {
+                            f.debug_tuple("AbstractionKind::Duhu").finish()
+                        }
+                        AbstractionKind::Ka => {
+                            f.debug_tuple("AbstractionKind::Ka").finish()
+                        }
+                        AbstractionKind::Ni => {
+                            f.debug_tuple("AbstractionKind::Ni").finish()
+                        }
+                        AbstractionKind::Siho => {
+                            f.debug_tuple("AbstractionKind::Siho").finish()
+                        }
+                    }
+                }
+            }
+            impl AbstractionKind {
+                #[doc(hidden)]
+                pub unsafe fn _lift(val: u8) -> AbstractionKind {
+                    if !cfg!(debug_assertions) {
+                        return ::core::mem::transmute(val);
+                    }
+                    match val {
+                        0 => AbstractionKind::Nu,
+                        1 => AbstractionKind::Duhu,
+                        2 => AbstractionKind::Ka,
+                        3 => AbstractionKind::Ni,
+                        4 => AbstractionKind::Siho,
+                        _ => panic!("invalid enum discriminant"),
+                    }
+                }
+            }
+            #[repr(u8)]
+            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
             pub enum RelClauseKind {
                 Poi,
                 Noi,
@@ -272,9 +321,9 @@ pub mod lojban {
                 Grouped(SelbriId),
                 WithArgs((SelbriId, _rt::Vec<SumtiId>)),
                 Connected((SelbriId, Connective, SelbriId)),
-                /// nu abstraction: inner bridi lives in sentences[u32].
-                /// Arity is 1 (x1 = event/proposition entity).
-                Abstraction(u32),
+                /// Abstraction: inner bridi lives in sentences[u32].
+                /// Arity is 1 (x1 = reified entity: event/proposition/property/quantity/concept).
+                Abstraction((AbstractionKind, u32)),
             }
             impl ::core::fmt::Debug for Selbri {
                 fn fmt(
@@ -1279,40 +1328,41 @@ pub(crate) use __export_reasoning_component_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1455] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xa5\x0a\x01A\x02\x01\
-A\x05\x01B9\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1504] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xd6\x0a\x01A\x02\x01\
+A\x05\x01B<\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
 m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x04\x02se\x02\
 te\x02ve\x02xe\x04\0\x0aconversion\x03\0\x06\x01m\x04\x02je\x02ja\x02jo\x02ju\x04\
 \0\x0aconnective\x03\0\x08\x01m\x05\x02lo\x02le\x02la\x05ro-lo\x05ro-le\x04\0\x05\
-gadri\x03\0\x0a\x01m\x02\x03poi\x03noi\x04\0\x0frel-clause-kind\x03\0\x0c\x01r\x02\
-\x04kind\x0d\x0dbody-sentencey\x04\0\x0arel-clause\x03\0\x0e\x01o\x02\x0b\x01\x01\
-o\x02\x05\x03\x01o\x02\x03\x0f\x01o\x04\x03\x09\x7f\x03\x01q\x09\x09pro-sumti\x01\
-s\0\x0bdescription\x01\x10\0\x04name\x01s\0\x0equoted-literal\x01s\0\x0bunspecif\
-ied\0\0\x06tagged\x01\x11\0\x0arestricted\x01\x12\0\x06number\x01u\0\x09connecte\
-d\x01\x13\0\x04\0\x05sumti\x03\0\x14\x01ps\x01o\x02\x01\x01\x01o\x02\x07\x01\x01\
-p\x03\x01o\x02\x01\x19\x01o\x03\x01\x09\x01\x01q\x09\x04root\x01s\0\x08compound\x01\
-\x16\0\x05tanru\x01\x17\0\x09converted\x01\x18\0\x07negated\x01\x01\0\x07grouped\
-\x01\x01\0\x09with-args\x01\x1a\0\x09connected\x01\x1b\0\x0babstraction\x01y\0\x04\
-\0\x06selbri\x03\0\x1c\x01m\x03\x02pu\x02ca\x02ba\x04\0\x05tense\x03\0\x1e\x01k\x1f\
-\x01r\x05\x08relation\x01\x0ahead-terms\x19\x0atail-terms\x19\x07negated\x7f\x05\
-tense\x20\x04\0\x05bridi\x03\0!\x01m\x03\x08ganai-gi\x05ge-gi\x05ga-gi\x04\0\x13\
-sentence-connective\x03\0#\x01o\x03$yy\x01q\x02\x06simple\x01\"\0\x09connected\x01\
-%\0\x04\0\x08sentence\x03\0&\x01p\x1d\x01p\x15\x01p'\x01py\x01r\x04\x07selbris(\x06\
-sumtis)\x09sentences*\x05roots+\x04\0\x0aast-buffer\x03\0,\x01q\x05\x08variable\x01\
-s\0\x08constant\x01s\0\x0bdescription\x01s\0\x0bunspecified\0\0\x06number\x01u\0\
-\x04\0\x0clogical-term\x03\0.\x01p/\x01o\x02s0\x01o\x02yy\x01o\x02sy\x01q\x09\x09\
-predicate\x011\0\x08and-node\x012\0\x07or-node\x012\0\x08not-node\x01y\0\x0bexis\
-ts-node\x013\0\x0cfor-all-node\x013\0\x09past-node\x01y\0\x0cpresent-node\x01y\0\
-\x0bfuture-node\x01y\0\x04\0\x0alogic-node\x03\04\x01p5\x01r\x02\x05nodes6\x05ro\
-ots+\x04\0\x0clogic-buffer\x03\07\x03\0\x1blojban:nesy/ast-types@0.1.0\x05\0\x02\
-\x03\0\0\x0clogic-buffer\x01B\x0a\x02\x03\x02\x01\x01\x04\0\x0clogic-buffer\x03\0\
-\0\x01j\0\x01s\x01@\x01\x05logic\x01\0\x02\x04\0\x0bassert-fact\x01\x03\x01j\x01\
-\x7f\x01s\x01@\x01\x05logic\x01\0\x04\x04\0\x10query-entailment\x01\x05\x01@\0\0\
-\x02\x04\0\x0breset-state\x01\x06\x04\0\x1blojban:nesy/reasoning@0.1.0\x05\x02\x04\
-\0%lojban:nesy/reasoning-component@0.1.0\x04\0\x0b\x19\x01\0\x13reasoning-compon\
-ent\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10\
-wit-bindgen-rust\x060.41.0";
+gadri\x03\0\x0a\x01m\x05\x02nu\x04duhu\x02ka\x02ni\x04siho\x04\0\x10abstraction-\
+kind\x03\0\x0c\x01m\x02\x03poi\x03noi\x04\0\x0frel-clause-kind\x03\0\x0e\x01r\x02\
+\x04kind\x0f\x0dbody-sentencey\x04\0\x0arel-clause\x03\0\x10\x01o\x02\x0b\x01\x01\
+o\x02\x05\x03\x01o\x02\x03\x11\x01o\x04\x03\x09\x7f\x03\x01q\x09\x09pro-sumti\x01\
+s\0\x0bdescription\x01\x12\0\x04name\x01s\0\x0equoted-literal\x01s\0\x0bunspecif\
+ied\0\0\x06tagged\x01\x13\0\x0arestricted\x01\x14\0\x06number\x01u\0\x09connecte\
+d\x01\x15\0\x04\0\x05sumti\x03\0\x16\x01ps\x01o\x02\x01\x01\x01o\x02\x07\x01\x01\
+p\x03\x01o\x02\x01\x1b\x01o\x03\x01\x09\x01\x01o\x02\x0dy\x01q\x09\x04root\x01s\0\
+\x08compound\x01\x18\0\x05tanru\x01\x19\0\x09converted\x01\x1a\0\x07negated\x01\x01\
+\0\x07grouped\x01\x01\0\x09with-args\x01\x1c\0\x09connected\x01\x1d\0\x0babstrac\
+tion\x01\x1e\0\x04\0\x06selbri\x03\0\x1f\x01m\x03\x02pu\x02ca\x02ba\x04\0\x05ten\
+se\x03\0!\x01k\"\x01r\x05\x08relation\x01\x0ahead-terms\x1b\x0atail-terms\x1b\x07\
+negated\x7f\x05tense#\x04\0\x05bridi\x03\0$\x01m\x03\x08ganai-gi\x05ge-gi\x05ga-\
+gi\x04\0\x13sentence-connective\x03\0&\x01o\x03'yy\x01q\x02\x06simple\x01%\0\x09\
+connected\x01(\0\x04\0\x08sentence\x03\0)\x01p\x20\x01p\x17\x01p*\x01py\x01r\x04\
+\x07selbris+\x06sumtis,\x09sentences-\x05roots.\x04\0\x0aast-buffer\x03\0/\x01q\x05\
+\x08variable\x01s\0\x08constant\x01s\0\x0bdescription\x01s\0\x0bunspecified\0\0\x06\
+number\x01u\0\x04\0\x0clogical-term\x03\01\x01p2\x01o\x02s3\x01o\x02yy\x01o\x02s\
+y\x01q\x09\x09predicate\x014\0\x08and-node\x015\0\x07or-node\x015\0\x08not-node\x01\
+y\0\x0bexists-node\x016\0\x0cfor-all-node\x016\0\x09past-node\x01y\0\x0cpresent-\
+node\x01y\0\x0bfuture-node\x01y\0\x04\0\x0alogic-node\x03\07\x01p8\x01r\x02\x05n\
+odes9\x05roots.\x04\0\x0clogic-buffer\x03\0:\x03\0\x1blojban:nesy/ast-types@0.1.\
+0\x05\0\x02\x03\0\0\x0clogic-buffer\x01B\x0a\x02\x03\x02\x01\x01\x04\0\x0clogic-\
+buffer\x03\0\0\x01j\0\x01s\x01@\x01\x05logic\x01\0\x02\x04\0\x0bassert-fact\x01\x03\
+\x01j\x01\x7f\x01s\x01@\x01\x05logic\x01\0\x04\x04\0\x10query-entailment\x01\x05\
+\x01@\0\0\x02\x04\0\x0breset-state\x01\x06\x04\0\x1blojban:nesy/reasoning@0.1.0\x05\
+\x02\x04\0%lojban:nesy/reasoning-component@0.1.0\x04\0\x0b\x19\x01\0\x13reasonin\
+g-component\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x07\
+0.227.1\x10wit-bindgen-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

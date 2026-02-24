@@ -70,6 +70,16 @@ pub enum RelClauseKind {
     Noi, // non-restrictive (appositive)
 }
 
+/// Abstraction type: which NU-class cmavo introduced this abstraction
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AbstractionKind {
+    Nu,   // event/state
+    Duhu, // proposition (du'u)
+    Ka,   // property (ka) — may contain ce'u
+    Ni,   // quantity/amount
+    Siho, // concept/idea (si'o)
+}
+
 // ─── Core AST nodes ──────────────────────────────────────────────
 
 /// A term (argument slot) in a bridi.
@@ -151,9 +161,9 @@ pub enum Selbri {
         right: Box<Selbri>,
     },
 
-    /// Abstraction: nu + bridi [+ kei]
-    /// Reifies a proposition/event as a 1-place selbri (x1 is the event).
-    Abstraction(Box<Sentence>),
+    /// Abstraction: (nu|du'u|ka|ni|si'o) + bridi [+ kei]
+    /// Reifies a proposition/event/property/quantity/concept as a 1-place selbri.
+    Abstraction(AbstractionKind, Box<Sentence>),
 }
 
 /// Tense marker (PU selma'o)

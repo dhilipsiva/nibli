@@ -1,6 +1,6 @@
 use crate::bindings::lojban::nesy::ast_types::{
-    Bridi, Connective, Conversion, Gadri, PlaceTag, Selbri, Sentence, SentenceConnective, Sumti,
-    Tense,
+    AbstractionKind, Bridi, Connective, Conversion, Gadri, PlaceTag, Selbri, Sentence,
+    SentenceConnective, Sumti, Tense,
 };
 use crate::dictionary::JbovlasteSchema;
 use crate::ir::{LogicalForm, LogicalTerm};
@@ -25,6 +25,9 @@ pub struct SemanticCompiler {
     /// Set to true when ke'a is encountered during rel clause compilation.
     /// When true, inject_variable is skipped (user placed the variable explicitly).
     kea_used: bool,
+    /// When inside a ka abstraction, holds the variable that ce'u resolves to.
+    /// This is the x1 arg from the enclosing description quantifier.
+    ka_open_var: Option<lasso::Spur>,
 }
 
 impl SemanticCompiler {
@@ -34,6 +37,7 @@ impl SemanticCompiler {
             var_counter: 0,
             rel_clause_var: None,
             kea_used: false,
+            ka_open_var: None,
         }
     }
 
@@ -58,7 +62,7 @@ impl SemanticCompiler {
                 .last()
                 .map(|s| JbovlasteSchema::get_arity_or_default(s.as_str()))
                 .unwrap_or(2),
-            Selbri::Abstraction(_) => 1,
+            Selbri::Abstraction((_, _)) => 1,
         }
     }
 
@@ -72,7 +76,13 @@ impl SemanticCompiler {
             Selbri::WithArgs((core_id, _)) => self.get_selbri_head_name(*core_id, selbris),
             Selbri::Connected((left_id, _, _)) => self.get_selbri_head_name(*left_id, selbris),
             Selbri::Compound(parts) => parts.last().map(|s| s.as_str()).unwrap_or("entity"),
-            Selbri::Abstraction(_) => "nu",
+            Selbri::Abstraction((kind, _)) => match kind {
+                AbstractionKind::Nu => "nu",
+                AbstractionKind::Duhu => "duhu",
+                AbstractionKind::Ka => "ka",
+                AbstractionKind::Ni => "ni",
+                AbstractionKind::Siho => "siho",
+            },
         }
     }
 
@@ -98,6 +108,15 @@ impl SemanticCompiler {
                         LogicalTerm::Variable(var)
                     } else {
                         LogicalTerm::Unspecified
+                    }
+                } else if p.as_str() == "ce'u" {
+                    // ce'u resolves to the open variable from the enclosing
+                    // ka abstraction. If not inside a ka, treat as fresh variable.
+                    if let Some(var) = self.ka_open_var {
+                        LogicalTerm::Variable(var)
+                    } else {
+                        let var = self.fresh_var();
+                        LogicalTerm::Variable(var)
                     }
                 } else {
                     LogicalTerm::Constant(self.interner.get_or_intern(p.as_str()))
@@ -455,24 +474,39 @@ impl SemanticCompiler {
                 }
             }
 
-            Selbri::Abstraction(body_sentence_idx) => {
-                // nu abstraction: compile inner bridi as standalone formula,
-                // conjoin with Pred("nu", [x1]).
-                // Result: And(Pred("nu", [x1]), inner_formula)
-                //
-                // When used in "lo nu mi klama cu barda":
-                //   ∃e. (nu(e) ∧ klama(mi,...) ∧ barda(e,...))
+            Selbri::Abstraction((kind, body_sentence_idx)) => {
+                let type_name = match kind {
+                    AbstractionKind::Nu => "nu",
+                    AbstractionKind::Duhu => "duhu",
+                    AbstractionKind::Ka => "ka",
+                    AbstractionKind::Ni => "ni",
+                    AbstractionKind::Siho => "siho",
+                };
+
+                // For ka: set ka_open_var so ce'u resolves to the
+                // quantified entity variable (args[0]).
+                let outer_ka_var = self.ka_open_var;
+                if *kind == AbstractionKind::Ka {
+                    if let Some(LogicalTerm::Variable(v)) = args.first() {
+                        self.ka_open_var = Some(*v);
+                    }
+                }
+
                 let inner_form = self.compile_sentence(
-                    *body_sentence_idx, // Pass the u32 ID directly
+                    *body_sentence_idx,
                     selbris,
                     sumtis,
                     sentences,
                 );
-                let nu_pred = LogicalForm::Predicate {
-                    relation: self.interner.get_or_intern("nu"),
+
+                // Restore ka_open_var
+                self.ka_open_var = outer_ka_var;
+
+                let type_pred = LogicalForm::Predicate {
+                    relation: self.interner.get_or_intern(type_name),
                     args: Self::fit_args(args, 1),
                 };
-                LogicalForm::And(Box::new(nu_pred), Box::new(inner_form))
+                LogicalForm::And(Box::new(type_pred), Box::new(inner_form))
             }
         }
     }
@@ -993,6 +1027,258 @@ mod tests {
                     "expected Not on right, got {:?}", right);
             }
             other => panic!("expected And(Not, Not), got {:?}", other),
+        }
+    }
+
+    // ─── Abstraction type tests ──────────────────────────────────
+
+    /// Helper: build a buffer with abstraction and compile.
+    fn compile_abstraction(
+        kind: AbstractionKind,
+        inner_selbri: &str,
+        inner_sumtis: Vec<Sumti>,
+    ) -> (LogicalForm, SemanticCompiler) {
+        // Build: lo <kind> <inner_sumtis> <inner_selbri> kei cu barda
+        // Buffer layout:
+        //   selbris: [0: inner_selbri, 1: Abstraction(kind, sentence_idx=1), 2: barda]
+        //   sumtis: [0..N: inner sumtis, N: Description(Lo, 1)]
+        //   sentences: [0: top-level bridi, 1: inner bridi]
+        let inner_sumti_ids: Vec<u32> = (0..inner_sumtis.len() as u32).collect();
+        let desc_sumti_idx = inner_sumtis.len() as u32;
+
+        let mut all_sumtis = inner_sumtis;
+        all_sumtis.push(Sumti::Description((Gadri::Lo, 1))); // desc_sumti_idx
+
+        let selbris = vec![
+            Selbri::Root(inner_selbri.into()), // 0
+            Selbri::Abstraction((kind, 1)),     // 1 → sentences[1]
+            Selbri::Root("barda".into()),       // 2
+        ];
+
+        let inner_bridi = Bridi {
+            relation: 0,
+            head_terms: inner_sumti_ids,
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+        };
+        let outer_bridi = Bridi {
+            relation: 2,
+            head_terms: vec![desc_sumti_idx],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+        };
+
+        let sentences = vec![
+            Sentence::Simple(outer_bridi),
+            Sentence::Simple(inner_bridi),
+        ];
+
+        let mut compiler = SemanticCompiler::new();
+        let form = compiler.compile_bridi(
+            match &sentences[0] {
+                Sentence::Simple(b) => b,
+                _ => unreachable!(),
+            },
+            &selbris,
+            &all_sumtis,
+            &sentences,
+        );
+        (form, compiler)
+    }
+
+    #[test]
+    fn test_duhu_abstraction_produces_duhu_predicate() {
+        // lo du'u mi klama kei cu barda
+        // → Exists(_v0, And(duhu(_v0), And(klama(mi, ...), barda(_v0, ...))))
+        let (form, compiler) = compile_abstraction(
+            AbstractionKind::Duhu,
+            "klama",
+            vec![Sumti::ProSumti("mi".into())],
+        );
+
+        // Should be Exists(_v0, And(duhu(_v0), And(klama(mi,...), barda(_v0,...))))
+        match &form {
+            LogicalForm::Exists(var, body) => {
+                assert!(resolve(&compiler, var).starts_with("_v"));
+                // The body should contain "duhu" predicate
+                fn find_predicate_name(form: &LogicalForm, compiler: &SemanticCompiler) -> Vec<String> {
+                    match form {
+                        LogicalForm::Predicate { relation, .. } => {
+                            vec![compiler.interner.resolve(relation).to_string()]
+                        }
+                        LogicalForm::And(l, r) => {
+                            let mut names = find_predicate_name(l, compiler);
+                            names.extend(find_predicate_name(r, compiler));
+                            names
+                        }
+                        _ => vec![],
+                    }
+                }
+                let names = find_predicate_name(body, &compiler);
+                assert!(names.contains(&"duhu".to_string()),
+                    "expected 'duhu' predicate in {:?}", names);
+                assert!(names.contains(&"klama".to_string()),
+                    "expected 'klama' predicate in {:?}", names);
+            }
+            other => panic!("expected Exists, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ka_with_ceu_binds_open_variable() {
+        // lo ka ce'u melbi kei cu barda
+        // ce'u should resolve to the same variable as the quantified entity
+        let (form, compiler) = compile_abstraction(
+            AbstractionKind::Ka,
+            "melbi",
+            vec![Sumti::ProSumti("ce'u".into())],
+        );
+
+        // Should be Exists(_v0, And(ka(_v0), And(melbi(_v0,...), barda(_v0,...))))
+        // The key: ce'u resolves to _v0, which is the same as the description variable
+        match &form {
+            LogicalForm::Exists(var, body) => {
+                let var_name = resolve(&compiler, var);
+                // Find the ka predicate's arg and melbi's arg — they should both use var
+                fn collect_pred_args(form: &LogicalForm, compiler: &SemanticCompiler) -> Vec<(String, String)> {
+                    match form {
+                        LogicalForm::Predicate { relation, args } => {
+                            let rel = compiler.interner.resolve(relation).to_string();
+                            let arg0 = match &args[0] {
+                                LogicalTerm::Variable(v) => compiler.interner.resolve(v).to_string(),
+                                LogicalTerm::Constant(c) => compiler.interner.resolve(c).to_string(),
+                                other => format!("{:?}", other),
+                            };
+                            vec![(rel, arg0)]
+                        }
+                        LogicalForm::And(l, r) => {
+                            let mut v = collect_pred_args(l, compiler);
+                            v.extend(collect_pred_args(r, compiler));
+                            v
+                        }
+                        _ => vec![],
+                    }
+                }
+                let args = collect_pred_args(body, &compiler);
+                let ka_arg = args.iter().find(|(r, _)| r == "ka").map(|(_, a)| a.clone());
+                let melbi_arg = args.iter().find(|(r, _)| r == "melbi").map(|(_, a)| a.clone());
+
+                assert_eq!(ka_arg.as_deref(), Some(var_name.as_str()),
+                    "ka predicate arg should be the quantified variable");
+                assert_eq!(melbi_arg.as_deref(), Some(var_name.as_str()),
+                    "ce'u should resolve to the same variable as ka's entity");
+            }
+            other => panic!("expected Exists, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ni_abstraction_produces_ni_predicate() {
+        let (form, compiler) = compile_abstraction(
+            AbstractionKind::Ni,
+            "gleki",
+            vec![Sumti::ProSumti("mi".into())],
+        );
+
+        match &form {
+            LogicalForm::Exists(_, body) => {
+                fn has_predicate(form: &LogicalForm, name: &str, compiler: &SemanticCompiler) -> bool {
+                    match form {
+                        LogicalForm::Predicate { relation, .. } => {
+                            compiler.interner.resolve(relation) == name
+                        }
+                        LogicalForm::And(l, r) => has_predicate(l, name, compiler) || has_predicate(r, name, compiler),
+                        _ => false,
+                    }
+                }
+                assert!(has_predicate(body, "ni", &compiler), "expected 'ni' predicate");
+                assert!(has_predicate(body, "gleki", &compiler), "expected 'gleki' predicate");
+            }
+            other => panic!("expected Exists, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_siho_abstraction_produces_siho_predicate() {
+        let (form, compiler) = compile_abstraction(
+            AbstractionKind::Siho,
+            "klama",
+            vec![Sumti::ProSumti("mi".into())],
+        );
+
+        match &form {
+            LogicalForm::Exists(_, body) => {
+                fn has_predicate(form: &LogicalForm, name: &str, compiler: &SemanticCompiler) -> bool {
+                    match form {
+                        LogicalForm::Predicate { relation, .. } => {
+                            compiler.interner.resolve(relation) == name
+                        }
+                        LogicalForm::And(l, r) => has_predicate(l, name, compiler) || has_predicate(r, name, compiler),
+                        _ => false,
+                    }
+                }
+                assert!(has_predicate(body, "siho", &compiler), "expected 'siho' predicate");
+                assert!(has_predicate(body, "klama", &compiler), "expected 'klama' predicate");
+            }
+            other => panic!("expected Exists, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_nu_abstraction_still_works() {
+        let (form, compiler) = compile_abstraction(
+            AbstractionKind::Nu,
+            "klama",
+            vec![Sumti::ProSumti("mi".into())],
+        );
+
+        match &form {
+            LogicalForm::Exists(_, body) => {
+                fn has_predicate(form: &LogicalForm, name: &str, compiler: &SemanticCompiler) -> bool {
+                    match form {
+                        LogicalForm::Predicate { relation, .. } => {
+                            compiler.interner.resolve(relation) == name
+                        }
+                        LogicalForm::And(l, r) => has_predicate(l, name, compiler) || has_predicate(r, name, compiler),
+                        _ => false,
+                    }
+                }
+                assert!(has_predicate(body, "nu", &compiler), "expected 'nu' predicate");
+                assert!(has_predicate(body, "klama", &compiler), "expected 'klama' predicate");
+            }
+            other => panic!("expected Exists, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ceu_outside_ka_is_fresh_variable() {
+        // ce'u used outside ka should degrade gracefully to a fresh variable
+        let selbris = vec![Selbri::Root("melbi".into())];
+        let sumtis = vec![Sumti::ProSumti("ce'u".into())];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+        };
+
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+
+        // ce'u outside ka should become a Variable (not Constant)
+        match &form {
+            LogicalForm::Predicate { args, .. } => {
+                match &args[0] {
+                    LogicalTerm::Variable(v) => {
+                        assert!(resolve(&compiler, v).starts_with("_v"),
+                            "ce'u outside ka should be fresh variable, got: {}", resolve(&compiler, v));
+                    }
+                    other => panic!("expected Variable for ce'u, got {:?}", other),
+                }
+            }
+            other => panic!("expected Predicate, got {:?}", other),
         }
     }
 }

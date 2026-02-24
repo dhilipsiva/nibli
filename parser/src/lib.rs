@@ -240,12 +240,19 @@ impl Flattener {
                 };
                 wit::Selbri::Connected((l_id, wit_conn, r_id))
             }
-            ast::Selbri::Abstraction(inner_bridi) => {
+            ast::Selbri::Abstraction(kind, inner_bridi) => {
                 // Inner bridi goes into sentences (NOT a root —
                 // same pattern as rel clause bodies).
                 let body_idx = self.buffer.sentences.len() as u32;
                 self.push_sentence(*inner_bridi);
-                wit::Selbri::Abstraction(body_idx)
+                let wit_kind = match kind {
+                    ast::AbstractionKind::Nu => wit::AbstractionKind::Nu,
+                    ast::AbstractionKind::Duhu => wit::AbstractionKind::Duhu,
+                    ast::AbstractionKind::Ka => wit::AbstractionKind::Ka,
+                    ast::AbstractionKind::Ni => wit::AbstractionKind::Ni,
+                    ast::AbstractionKind::Siho => wit::AbstractionKind::Siho,
+                };
+                wit::Selbri::Abstraction((wit_kind, body_idx))
             }
         };
 
@@ -459,7 +466,7 @@ mod flattener_tests {
                 selbri: Selbri::Root("barda".into()),
                 head_terms: vec![Sumti::Description {
                     gadri: Gadri::Lo,
-                    inner: Box::new(Selbri::Abstraction(Box::new(Sentence::Simple(Bridi {
+                    inner: Box::new(Selbri::Abstraction(AbstractionKind::Nu, Box::new(Sentence::Simple(Bridi {
                         selbri: Selbri::Root("klama".into()),
                         head_terms: vec![Sumti::ProSumti("mi".into())],
                         tail_terms: vec![],
@@ -522,6 +529,50 @@ mod flattener_tests {
         let buffer = Flattener::flatten(parsed);
         assert_eq!(buffer.sentences.len(), 3); // 1 rel body + 2 top-level
         assert_eq!(buffer.roots.len(), 2); // only the 2 top-level sentences
+    }
+
+    /// Abstraction kind is preserved through flattening
+    #[test]
+    fn test_abstraction_kind_flattening() {
+        use crate::bindings::lojban::nesy::ast_types as wit;
+
+        for (kind, wit_kind) in [
+            (AbstractionKind::Nu, wit::AbstractionKind::Nu),
+            (AbstractionKind::Duhu, wit::AbstractionKind::Duhu),
+            (AbstractionKind::Ka, wit::AbstractionKind::Ka),
+            (AbstractionKind::Ni, wit::AbstractionKind::Ni),
+            (AbstractionKind::Siho, wit::AbstractionKind::Siho),
+        ] {
+            let parsed = ParsedText {
+                sentences: vec![Sentence::Simple(Bridi {
+                    selbri: Selbri::Root("barda".into()),
+                    head_terms: vec![Sumti::Description {
+                        gadri: Gadri::Lo,
+                        inner: Box::new(Selbri::Abstraction(kind, Box::new(Sentence::Simple(Bridi {
+                            selbri: Selbri::Root("klama".into()),
+                            head_terms: vec![Sumti::ProSumti("mi".into())],
+                            tail_terms: vec![],
+                            negated: false,
+                            tense: None,
+                        })))),
+                    }],
+                    tail_terms: vec![],
+                    negated: false,
+                    tense: None,
+                })]
+            };
+
+            let buffer = Flattener::flatten(parsed);
+
+            // Find the abstraction selbri
+            let abs = buffer.selbris.iter().find(|s| matches!(s, wit::Selbri::Abstraction(_)));
+            match abs {
+                Some(wit::Selbri::Abstraction((k, _))) => {
+                    assert_eq!(*k, wit_kind, "abstraction kind mismatch for {:?}", kind);
+                }
+                other => panic!("expected Abstraction selbri for {:?}, got {:?}", kind, other),
+            }
+        }
     }
 
     /// Sumti::Connected flattens to wit::Sumti::Connected with correct indices
@@ -882,5 +933,78 @@ mod pipeline_tests {
         let s = as_bridi(&p.sentences[0]);
         assert!(matches!(&s.head_terms[0], Sumti::Connected { connective: Connective::Je, .. }));
         assert!(matches!(&s.tail_terms[0], Sumti::Connected { connective: Connective::Ja, .. }));
+    }
+
+    // ─── Abstraction types pipeline tests ──────────────────────────
+
+    #[test]
+    fn pipeline_duhu_abstraction() {
+        let p = parse("lo du'u mi klama kei cu barda");
+        let s = as_bridi(&p.sentences[0]);
+        assert_eq!(s.selbri, Selbri::Root("barda".into()));
+        match &s.head_terms[0] {
+            Sumti::Description { inner, .. } => {
+                assert!(matches!(inner.as_ref(), Selbri::Abstraction(AbstractionKind::Duhu, _)));
+            }
+            other => panic!("expected Description with Duhu abstraction, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pipeline_ka_with_ceu() {
+        let p = parse("lo ka ce'u melbi kei cu barda");
+        let s = as_bridi(&p.sentences[0]);
+        match &s.head_terms[0] {
+            Sumti::Description { inner, .. } => {
+                match inner.as_ref() {
+                    Selbri::Abstraction(AbstractionKind::Ka, body) => {
+                        match body.as_ref() {
+                            Sentence::Simple(inner_bridi) => {
+                                assert_eq!(inner_bridi.head_terms[0], Sumti::ProSumti("ce'u".into()));
+                            }
+                            other => panic!("expected Simple, got {:?}", other),
+                        }
+                    }
+                    other => panic!("expected Ka abstraction, got {:?}", other),
+                }
+            }
+            other => panic!("expected Description, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pipeline_ni_abstraction() {
+        let p = parse("lo ni mi gleki kei cu barda");
+        let s = as_bridi(&p.sentences[0]);
+        match &s.head_terms[0] {
+            Sumti::Description { inner, .. } => {
+                assert!(matches!(inner.as_ref(), Selbri::Abstraction(AbstractionKind::Ni, _)));
+            }
+            other => panic!("expected Description with Ni abstraction, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pipeline_siho_abstraction() {
+        let p = parse("lo si'o mi klama kei cu barda");
+        let s = as_bridi(&p.sentences[0]);
+        match &s.head_terms[0] {
+            Sumti::Description { inner, .. } => {
+                assert!(matches!(inner.as_ref(), Selbri::Abstraction(AbstractionKind::Siho, _)));
+            }
+            other => panic!("expected Description with Siho abstraction, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pipeline_nu_still_works() {
+        let p = parse("lo nu mi klama kei cu barda");
+        let s = as_bridi(&p.sentences[0]);
+        match &s.head_terms[0] {
+            Sumti::Description { inner, .. } => {
+                assert!(matches!(inner.as_ref(), Selbri::Abstraction(AbstractionKind::Nu, _)));
+            }
+            other => panic!("expected Description with Nu abstraction, got {:?}", other),
+        }
     }
 }

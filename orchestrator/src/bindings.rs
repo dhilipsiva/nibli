@@ -381,6 +381,55 @@ pub mod lojban {
             }
             #[repr(u8)]
             #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+            pub enum AbstractionKind {
+                Nu,
+                Duhu,
+                Ka,
+                Ni,
+                Siho,
+            }
+            impl ::core::fmt::Debug for AbstractionKind {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        AbstractionKind::Nu => {
+                            f.debug_tuple("AbstractionKind::Nu").finish()
+                        }
+                        AbstractionKind::Duhu => {
+                            f.debug_tuple("AbstractionKind::Duhu").finish()
+                        }
+                        AbstractionKind::Ka => {
+                            f.debug_tuple("AbstractionKind::Ka").finish()
+                        }
+                        AbstractionKind::Ni => {
+                            f.debug_tuple("AbstractionKind::Ni").finish()
+                        }
+                        AbstractionKind::Siho => {
+                            f.debug_tuple("AbstractionKind::Siho").finish()
+                        }
+                    }
+                }
+            }
+            impl AbstractionKind {
+                #[doc(hidden)]
+                pub unsafe fn _lift(val: u8) -> AbstractionKind {
+                    if !cfg!(debug_assertions) {
+                        return ::core::mem::transmute(val);
+                    }
+                    match val {
+                        0 => AbstractionKind::Nu,
+                        1 => AbstractionKind::Duhu,
+                        2 => AbstractionKind::Ka,
+                        3 => AbstractionKind::Ni,
+                        4 => AbstractionKind::Siho,
+                        _ => panic!("invalid enum discriminant"),
+                    }
+                }
+            }
+            #[repr(u8)]
+            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
             pub enum RelClauseKind {
                 Poi,
                 Noi,
@@ -488,9 +537,9 @@ pub mod lojban {
                 Grouped(SelbriId),
                 WithArgs((SelbriId, _rt::Vec<SumtiId>)),
                 Connected((SelbriId, Connective, SelbriId)),
-                /// nu abstraction: inner bridi lives in sentences[u32].
-                /// Arity is 1 (x1 = event/proposition entity).
-                Abstraction(u32),
+                /// Abstraction: inner bridi lives in sentences[u32].
+                /// Arity is 1 (x1 = reified entity: event/proposition/property/quantity/concept).
+                Abstraction((AbstractionKind, u32)),
             }
             impl ::core::fmt::Debug for Selbri {
                 fn fmt(
@@ -799,7 +848,7 @@ pub mod lojban {
                     }
                     unsafe { wit_import2(ptr0.cast_mut(), len0, ptr1) };
                     let l3 = i32::from(*ptr1.add(0).cast::<u8>());
-                    let result82 = match l3 {
+                    let result83 = match l3 {
                         0 => {
                             let e = {
                                 let l4 = *ptr1
@@ -808,18 +857,18 @@ pub mod lojban {
                                 let l5 = *ptr1
                                     .add(2 * ::core::mem::size_of::<*const u8>())
                                     .cast::<usize>();
-                                let base31 = l4;
-                                let len31 = l5;
-                                let mut result31 = _rt::Vec::with_capacity(len31);
-                                for i in 0..len31 {
-                                    let base = base31
+                                let base32 = l4;
+                                let len32 = l5;
+                                let mut result32 = _rt::Vec::with_capacity(len32);
+                                for i in 0..len32 {
+                                    let base = base32
                                         .add(i * (4 * ::core::mem::size_of::<*const u8>()));
-                                    let e31 = {
+                                    let e32 = {
                                         let l6 = i32::from(*base.add(0).cast::<u8>());
-                                        use super::super::super::lojban::nesy::ast_types::Selbri as V30;
-                                        let v30 = match l6 {
+                                        use super::super::super::lojban::nesy::ast_types::Selbri as V31;
+                                        let v31 = match l6 {
                                             0 => {
-                                                let e30 = {
+                                                let e31 = {
                                                     let l7 = *base
                                                         .add(::core::mem::size_of::<*const u8>())
                                                         .cast::<*mut u8>();
@@ -834,10 +883,10 @@ pub mod lojban {
                                                     );
                                                     _rt::string_lift(bytes9)
                                                 };
-                                                V30::Root(e30)
+                                                V31::Root(e31)
                                             }
                                             1 => {
-                                                let e30 = {
+                                                let e31 = {
                                                     let l10 = *base
                                                         .add(::core::mem::size_of::<*const u8>())
                                                         .cast::<*mut u8>();
@@ -872,10 +921,10 @@ pub mod lojban {
                                                     );
                                                     result15
                                                 };
-                                                V30::Compound(e30)
+                                                V31::Compound(e31)
                                             }
                                             2 => {
-                                                let e30 = {
+                                                let e31 = {
                                                     let l16 = *base
                                                         .add(::core::mem::size_of::<*const u8>())
                                                         .cast::<i32>();
@@ -884,10 +933,10 @@ pub mod lojban {
                                                         .cast::<i32>();
                                                     (l16 as u32, l17 as u32)
                                                 };
-                                                V30::Tanru(e30)
+                                                V31::Tanru(e31)
                                             }
                                             3 => {
-                                                let e30 = {
+                                                let e31 = {
                                                     let l18 = i32::from(
                                                         *base.add(::core::mem::size_of::<*const u8>()).cast::<u8>(),
                                                     );
@@ -901,28 +950,28 @@ pub mod lojban {
                                                         l19 as u32,
                                                     )
                                                 };
-                                                V30::Converted(e30)
+                                                V31::Converted(e31)
                                             }
                                             4 => {
-                                                let e30 = {
+                                                let e31 = {
                                                     let l20 = *base
                                                         .add(::core::mem::size_of::<*const u8>())
                                                         .cast::<i32>();
                                                     l20 as u32
                                                 };
-                                                V30::Negated(e30)
+                                                V31::Negated(e31)
                                             }
                                             5 => {
-                                                let e30 = {
+                                                let e31 = {
                                                     let l21 = *base
                                                         .add(::core::mem::size_of::<*const u8>())
                                                         .cast::<i32>();
                                                     l21 as u32
                                                 };
-                                                V30::Grouped(e30)
+                                                V31::Grouped(e31)
                                             }
                                             6 => {
-                                                let e30 = {
+                                                let e31 = {
                                                     let l22 = *base
                                                         .add(::core::mem::size_of::<*const u8>())
                                                         .cast::<i32>();
@@ -938,10 +987,10 @@ pub mod lojban {
                                                         _rt::Vec::from_raw_parts(l23.cast(), len25, len25),
                                                     )
                                                 };
-                                                V30::WithArgs(e30)
+                                                V31::WithArgs(e31)
                                             }
                                             7 => {
-                                                let e30 = {
+                                                let e31 = {
                                                     let l26 = *base
                                                         .add(::core::mem::size_of::<*const u8>())
                                                         .cast::<i32>();
@@ -961,235 +1010,243 @@ pub mod lojban {
                                                         l28 as u32,
                                                     )
                                                 };
-                                                V30::Connected(e30)
+                                                V31::Connected(e31)
                                             }
                                             n => {
                                                 debug_assert_eq!(n, 8, "invalid enum discriminant");
-                                                let e30 = {
-                                                    let l29 = *base
-                                                        .add(::core::mem::size_of::<*const u8>())
+                                                let e31 = {
+                                                    let l29 = i32::from(
+                                                        *base.add(::core::mem::size_of::<*const u8>()).cast::<u8>(),
+                                                    );
+                                                    let l30 = *base
+                                                        .add(4 + 1 * ::core::mem::size_of::<*const u8>())
                                                         .cast::<i32>();
-                                                    l29 as u32
+                                                    (
+                                                        super::super::super::lojban::nesy::ast_types::AbstractionKind::_lift(
+                                                            l29 as u8,
+                                                        ),
+                                                        l30 as u32,
+                                                    )
                                                 };
-                                                V30::Abstraction(e30)
+                                                V31::Abstraction(e31)
                                             }
                                         };
-                                        v30
+                                        v31
                                     };
-                                    result31.push(e31);
+                                    result32.push(e32);
                                 }
                                 _rt::cabi_dealloc(
-                                    base31,
-                                    len31 * (4 * ::core::mem::size_of::<*const u8>()),
+                                    base32,
+                                    len32 * (4 * ::core::mem::size_of::<*const u8>()),
                                     ::core::mem::size_of::<*const u8>(),
                                 );
-                                let l32 = *ptr1
+                                let l33 = *ptr1
                                     .add(3 * ::core::mem::size_of::<*const u8>())
                                     .cast::<*mut u8>();
-                                let l33 = *ptr1
+                                let l34 = *ptr1
                                     .add(4 * ::core::mem::size_of::<*const u8>())
                                     .cast::<usize>();
-                                let base57 = l32;
-                                let len57 = l33;
-                                let mut result57 = _rt::Vec::with_capacity(len57);
-                                for i in 0..len57 {
-                                    let base = base57.add(i * 24);
-                                    let e57 = {
-                                        let l34 = i32::from(*base.add(0).cast::<u8>());
-                                        use super::super::super::lojban::nesy::ast_types::Sumti as V56;
-                                        let v56 = match l34 {
+                                let base58 = l33;
+                                let len58 = l34;
+                                let mut result58 = _rt::Vec::with_capacity(len58);
+                                for i in 0..len58 {
+                                    let base = base58.add(i * 24);
+                                    let e58 = {
+                                        let l35 = i32::from(*base.add(0).cast::<u8>());
+                                        use super::super::super::lojban::nesy::ast_types::Sumti as V57;
+                                        let v57 = match l35 {
                                             0 => {
-                                                let e56 = {
-                                                    let l35 = *base.add(8).cast::<*mut u8>();
-                                                    let l36 = *base
+                                                let e57 = {
+                                                    let l36 = *base.add(8).cast::<*mut u8>();
+                                                    let l37 = *base
                                                         .add(8 + 1 * ::core::mem::size_of::<*const u8>())
                                                         .cast::<usize>();
-                                                    let len37 = l36;
-                                                    let bytes37 = _rt::Vec::from_raw_parts(
-                                                        l35.cast(),
-                                                        len37,
-                                                        len37,
+                                                    let len38 = l37;
+                                                    let bytes38 = _rt::Vec::from_raw_parts(
+                                                        l36.cast(),
+                                                        len38,
+                                                        len38,
                                                     );
-                                                    _rt::string_lift(bytes37)
+                                                    _rt::string_lift(bytes38)
                                                 };
-                                                V56::ProSumti(e56)
+                                                V57::ProSumti(e57)
                                             }
                                             1 => {
-                                                let e56 = {
-                                                    let l38 = i32::from(*base.add(8).cast::<u8>());
-                                                    let l39 = *base.add(12).cast::<i32>();
+                                                let e57 = {
+                                                    let l39 = i32::from(*base.add(8).cast::<u8>());
+                                                    let l40 = *base.add(12).cast::<i32>();
                                                     (
                                                         super::super::super::lojban::nesy::ast_types::Gadri::_lift(
-                                                            l38 as u8,
+                                                            l39 as u8,
                                                         ),
-                                                        l39 as u32,
+                                                        l40 as u32,
                                                     )
                                                 };
-                                                V56::Description(e56)
+                                                V57::Description(e57)
                                             }
                                             2 => {
-                                                let e56 = {
-                                                    let l40 = *base.add(8).cast::<*mut u8>();
-                                                    let l41 = *base
+                                                let e57 = {
+                                                    let l41 = *base.add(8).cast::<*mut u8>();
+                                                    let l42 = *base
                                                         .add(8 + 1 * ::core::mem::size_of::<*const u8>())
                                                         .cast::<usize>();
-                                                    let len42 = l41;
-                                                    let bytes42 = _rt::Vec::from_raw_parts(
-                                                        l40.cast(),
-                                                        len42,
-                                                        len42,
+                                                    let len43 = l42;
+                                                    let bytes43 = _rt::Vec::from_raw_parts(
+                                                        l41.cast(),
+                                                        len43,
+                                                        len43,
                                                     );
-                                                    _rt::string_lift(bytes42)
+                                                    _rt::string_lift(bytes43)
                                                 };
-                                                V56::Name(e56)
+                                                V57::Name(e57)
                                             }
                                             3 => {
-                                                let e56 = {
-                                                    let l43 = *base.add(8).cast::<*mut u8>();
-                                                    let l44 = *base
+                                                let e57 = {
+                                                    let l44 = *base.add(8).cast::<*mut u8>();
+                                                    let l45 = *base
                                                         .add(8 + 1 * ::core::mem::size_of::<*const u8>())
                                                         .cast::<usize>();
-                                                    let len45 = l44;
-                                                    let bytes45 = _rt::Vec::from_raw_parts(
-                                                        l43.cast(),
-                                                        len45,
-                                                        len45,
+                                                    let len46 = l45;
+                                                    let bytes46 = _rt::Vec::from_raw_parts(
+                                                        l44.cast(),
+                                                        len46,
+                                                        len46,
                                                     );
-                                                    _rt::string_lift(bytes45)
+                                                    _rt::string_lift(bytes46)
                                                 };
-                                                V56::QuotedLiteral(e56)
+                                                V57::QuotedLiteral(e57)
                                             }
-                                            4 => V56::Unspecified,
+                                            4 => V57::Unspecified,
                                             5 => {
-                                                let e56 = {
-                                                    let l46 = i32::from(*base.add(8).cast::<u8>());
-                                                    let l47 = *base.add(12).cast::<i32>();
+                                                let e57 = {
+                                                    let l47 = i32::from(*base.add(8).cast::<u8>());
+                                                    let l48 = *base.add(12).cast::<i32>();
                                                     (
                                                         super::super::super::lojban::nesy::ast_types::PlaceTag::_lift(
-                                                            l46 as u8,
+                                                            l47 as u8,
                                                         ),
-                                                        l47 as u32,
+                                                        l48 as u32,
                                                     )
                                                 };
-                                                V56::Tagged(e56)
+                                                V57::Tagged(e57)
                                             }
                                             6 => {
-                                                let e56 = {
-                                                    let l48 = *base.add(8).cast::<i32>();
-                                                    let l49 = i32::from(*base.add(12).cast::<u8>());
-                                                    let l50 = *base.add(16).cast::<i32>();
+                                                let e57 = {
+                                                    let l49 = *base.add(8).cast::<i32>();
+                                                    let l50 = i32::from(*base.add(12).cast::<u8>());
+                                                    let l51 = *base.add(16).cast::<i32>();
                                                     (
-                                                        l48 as u32,
+                                                        l49 as u32,
                                                         super::super::super::lojban::nesy::ast_types::RelClause {
                                                             kind: super::super::super::lojban::nesy::ast_types::RelClauseKind::_lift(
-                                                                l49 as u8,
+                                                                l50 as u8,
                                                             ),
-                                                            body_sentence: l50 as u32,
+                                                            body_sentence: l51 as u32,
                                                         },
                                                     )
                                                 };
-                                                V56::Restricted(e56)
+                                                V57::Restricted(e57)
                                             }
                                             7 => {
-                                                let e56 = {
-                                                    let l51 = *base.add(8).cast::<f64>();
-                                                    l51
+                                                let e57 = {
+                                                    let l52 = *base.add(8).cast::<f64>();
+                                                    l52
                                                 };
-                                                V56::Number(e56)
+                                                V57::Number(e57)
                                             }
                                             n => {
                                                 debug_assert_eq!(n, 8, "invalid enum discriminant");
-                                                let e56 = {
-                                                    let l52 = *base.add(8).cast::<i32>();
-                                                    let l53 = i32::from(*base.add(12).cast::<u8>());
-                                                    let l54 = i32::from(*base.add(13).cast::<u8>());
-                                                    let l55 = *base.add(16).cast::<i32>();
+                                                let e57 = {
+                                                    let l53 = *base.add(8).cast::<i32>();
+                                                    let l54 = i32::from(*base.add(12).cast::<u8>());
+                                                    let l55 = i32::from(*base.add(13).cast::<u8>());
+                                                    let l56 = *base.add(16).cast::<i32>();
                                                     (
-                                                        l52 as u32,
+                                                        l53 as u32,
                                                         super::super::super::lojban::nesy::ast_types::Connective::_lift(
-                                                            l53 as u8,
+                                                            l54 as u8,
                                                         ),
-                                                        _rt::bool_lift(l54 as u8),
-                                                        l55 as u32,
+                                                        _rt::bool_lift(l55 as u8),
+                                                        l56 as u32,
                                                     )
                                                 };
-                                                V56::Connected(e56)
+                                                V57::Connected(e57)
                                             }
                                         };
-                                        v56
+                                        v57
                                     };
-                                    result57.push(e57);
+                                    result58.push(e58);
                                 }
-                                _rt::cabi_dealloc(base57, len57 * 24, 8);
-                                let l58 = *ptr1
+                                _rt::cabi_dealloc(base58, len58 * 24, 8);
+                                let l59 = *ptr1
                                     .add(5 * ::core::mem::size_of::<*const u8>())
                                     .cast::<*mut u8>();
-                                let l59 = *ptr1
+                                let l60 = *ptr1
                                     .add(6 * ::core::mem::size_of::<*const u8>())
                                     .cast::<usize>();
-                                let base75 = l58;
-                                let len75 = l59;
-                                let mut result75 = _rt::Vec::with_capacity(len75);
-                                for i in 0..len75 {
-                                    let base = base75
+                                let base76 = l59;
+                                let len76 = l60;
+                                let mut result76 = _rt::Vec::with_capacity(len76);
+                                for i in 0..len76 {
+                                    let base = base76
                                         .add(i * (7 * ::core::mem::size_of::<*const u8>()));
-                                    let e75 = {
-                                        let l60 = i32::from(*base.add(0).cast::<u8>());
-                                        use super::super::super::lojban::nesy::ast_types::Sentence as V74;
-                                        let v74 = match l60 {
+                                    let e76 = {
+                                        let l61 = i32::from(*base.add(0).cast::<u8>());
+                                        use super::super::super::lojban::nesy::ast_types::Sentence as V75;
+                                        let v75 = match l61 {
                                             0 => {
-                                                let e74 = {
-                                                    let l61 = *base
+                                                let e75 = {
+                                                    let l62 = *base
                                                         .add(::core::mem::size_of::<*const u8>())
                                                         .cast::<i32>();
-                                                    let l62 = *base
+                                                    let l63 = *base
                                                         .add(2 * ::core::mem::size_of::<*const u8>())
                                                         .cast::<*mut u8>();
-                                                    let l63 = *base
+                                                    let l64 = *base
                                                         .add(3 * ::core::mem::size_of::<*const u8>())
                                                         .cast::<usize>();
-                                                    let len64 = l63;
-                                                    let l65 = *base
+                                                    let len65 = l64;
+                                                    let l66 = *base
                                                         .add(4 * ::core::mem::size_of::<*const u8>())
                                                         .cast::<*mut u8>();
-                                                    let l66 = *base
+                                                    let l67 = *base
                                                         .add(5 * ::core::mem::size_of::<*const u8>())
                                                         .cast::<usize>();
-                                                    let len67 = l66;
-                                                    let l68 = i32::from(
+                                                    let len68 = l67;
+                                                    let l69 = i32::from(
                                                         *base
                                                             .add(6 * ::core::mem::size_of::<*const u8>())
                                                             .cast::<u8>(),
                                                     );
-                                                    let l69 = i32::from(
+                                                    let l70 = i32::from(
                                                         *base
                                                             .add(1 + 6 * ::core::mem::size_of::<*const u8>())
                                                             .cast::<u8>(),
                                                     );
                                                     super::super::super::lojban::nesy::ast_types::Bridi {
-                                                        relation: l61 as u32,
+                                                        relation: l62 as u32,
                                                         head_terms: _rt::Vec::from_raw_parts(
-                                                            l62.cast(),
-                                                            len64,
-                                                            len64,
+                                                            l63.cast(),
+                                                            len65,
+                                                            len65,
                                                         ),
                                                         tail_terms: _rt::Vec::from_raw_parts(
-                                                            l65.cast(),
-                                                            len67,
-                                                            len67,
+                                                            l66.cast(),
+                                                            len68,
+                                                            len68,
                                                         ),
-                                                        negated: _rt::bool_lift(l68 as u8),
-                                                        tense: match l69 {
+                                                        negated: _rt::bool_lift(l69 as u8),
+                                                        tense: match l70 {
                                                             0 => None,
                                                             1 => {
                                                                 let e = {
-                                                                    let l70 = i32::from(
+                                                                    let l71 = i32::from(
                                                                         *base
                                                                             .add(2 + 6 * ::core::mem::size_of::<*const u8>())
                                                                             .cast::<u8>(),
                                                                     );
                                                                     super::super::super::lojban::nesy::ast_types::Tense::_lift(
-                                                                        l70 as u8,
+                                                                        l71 as u8,
                                                                     )
                                                                 };
                                                                 Some(e)
@@ -1198,77 +1255,77 @@ pub mod lojban {
                                                         },
                                                     }
                                                 };
-                                                V74::Simple(e74)
+                                                V75::Simple(e75)
                                             }
                                             n => {
                                                 debug_assert_eq!(n, 1, "invalid enum discriminant");
-                                                let e74 = {
-                                                    let l71 = i32::from(
+                                                let e75 = {
+                                                    let l72 = i32::from(
                                                         *base.add(::core::mem::size_of::<*const u8>()).cast::<u8>(),
                                                     );
-                                                    let l72 = *base
+                                                    let l73 = *base
                                                         .add(4 + 1 * ::core::mem::size_of::<*const u8>())
                                                         .cast::<i32>();
-                                                    let l73 = *base
+                                                    let l74 = *base
                                                         .add(8 + 1 * ::core::mem::size_of::<*const u8>())
                                                         .cast::<i32>();
                                                     (
                                                         super::super::super::lojban::nesy::ast_types::SentenceConnective::_lift(
-                                                            l71 as u8,
+                                                            l72 as u8,
                                                         ),
-                                                        l72 as u32,
                                                         l73 as u32,
+                                                        l74 as u32,
                                                     )
                                                 };
-                                                V74::Connected(e74)
+                                                V75::Connected(e75)
                                             }
                                         };
-                                        v74
+                                        v75
                                     };
-                                    result75.push(e75);
+                                    result76.push(e76);
                                 }
                                 _rt::cabi_dealloc(
-                                    base75,
-                                    len75 * (7 * ::core::mem::size_of::<*const u8>()),
+                                    base76,
+                                    len76 * (7 * ::core::mem::size_of::<*const u8>()),
                                     ::core::mem::size_of::<*const u8>(),
                                 );
-                                let l76 = *ptr1
+                                let l77 = *ptr1
                                     .add(7 * ::core::mem::size_of::<*const u8>())
                                     .cast::<*mut u8>();
-                                let l77 = *ptr1
+                                let l78 = *ptr1
                                     .add(8 * ::core::mem::size_of::<*const u8>())
                                     .cast::<usize>();
-                                let len78 = l77;
+                                let len79 = l78;
                                 super::super::super::lojban::nesy::ast_types::AstBuffer {
-                                    selbris: result31,
-                                    sumtis: result57,
-                                    sentences: result75,
-                                    roots: _rt::Vec::from_raw_parts(l76.cast(), len78, len78),
+                                    selbris: result32,
+                                    sumtis: result58,
+                                    sentences: result76,
+                                    roots: _rt::Vec::from_raw_parts(l77.cast(), len79, len79),
                                 }
                             };
                             Ok(e)
                         }
                         1 => {
                             let e = {
-                                let l79 = *ptr1
+                                let l80 = *ptr1
                                     .add(::core::mem::size_of::<*const u8>())
                                     .cast::<*mut u8>();
-                                let l80 = *ptr1
+                                let l81 = *ptr1
                                     .add(2 * ::core::mem::size_of::<*const u8>())
                                     .cast::<usize>();
-                                let len81 = l80;
-                                let bytes81 = _rt::Vec::from_raw_parts(
-                                    l79.cast(),
-                                    len81,
-                                    len81,
+                                let len82 = l81;
+                                let bytes82 = _rt::Vec::from_raw_parts(
+                                    l80.cast(),
+                                    len82,
+                                    len82,
                                 );
-                                _rt::string_lift(bytes81)
+                                _rt::string_lift(bytes82)
                             };
                             Err(e)
                         }
                         _ => _rt::invalid_enum_discriminant(),
                     };
-                    result82
+                    result83
                 }
             }
         }
@@ -1301,28 +1358,28 @@ pub mod lojban {
                         sentences: sentences0,
                         roots: roots0,
                     } = ast;
-                    let vec10 = selbris0;
-                    let len10 = vec10.len();
-                    let layout10 = _rt::alloc::Layout::from_size_align_unchecked(
-                        vec10.len() * (4 * ::core::mem::size_of::<*const u8>()),
+                    let vec11 = selbris0;
+                    let len11 = vec11.len();
+                    let layout11 = _rt::alloc::Layout::from_size_align_unchecked(
+                        vec11.len() * (4 * ::core::mem::size_of::<*const u8>()),
                         ::core::mem::size_of::<*const u8>(),
                     );
-                    let result10 = if layout10.size() != 0 {
-                        let ptr = _rt::alloc::alloc(layout10).cast::<u8>();
+                    let result11 = if layout11.size() != 0 {
+                        let ptr = _rt::alloc::alloc(layout11).cast::<u8>();
                         if ptr.is_null() {
-                            _rt::alloc::handle_alloc_error(layout10);
+                            _rt::alloc::handle_alloc_error(layout11);
                         }
                         ptr
                     } else {
                         ::core::ptr::null_mut()
                     };
-                    for (i, e) in vec10.into_iter().enumerate() {
-                        let base = result10
+                    for (i, e) in vec11.into_iter().enumerate() {
+                        let base = result11
                             .add(i * (4 * ::core::mem::size_of::<*const u8>()));
                         {
-                            use super::super::super::lojban::nesy::ast_types::Selbri as V9;
+                            use super::super::super::lojban::nesy::ast_types::Selbri as V10;
                             match e {
-                                V9::Root(e) => {
+                                V10::Root(e) => {
                                     *base.add(0).cast::<u8>() = (0i32) as u8;
                                     let vec1 = e;
                                     let ptr1 = vec1.as_ptr().cast::<u8>();
@@ -1334,7 +1391,7 @@ pub mod lojban {
                                         .add(::core::mem::size_of::<*const u8>())
                                         .cast::<*mut u8>() = ptr1.cast_mut();
                                 }
-                                V9::Compound(e) => {
+                                V10::Compound(e) => {
                                     *base.add(0).cast::<u8>() = (1i32) as u8;
                                     let vec3 = e;
                                     let len3 = vec3.len();
@@ -1372,7 +1429,7 @@ pub mod lojban {
                                         .cast::<*mut u8>() = result3;
                                     cleanup_list.extend_from_slice(&[(result3, layout3)]);
                                 }
-                                V9::Tanru(e) => {
+                                V10::Tanru(e) => {
                                     *base.add(0).cast::<u8>() = (2i32) as u8;
                                     let (t4_0, t4_1) = e;
                                     *base
@@ -1382,7 +1439,7 @@ pub mod lojban {
                                         .add(4 + 1 * ::core::mem::size_of::<*const u8>())
                                         .cast::<i32>() = _rt::as_i32(t4_1);
                                 }
-                                V9::Converted(e) => {
+                                V10::Converted(e) => {
                                     *base.add(0).cast::<u8>() = (3i32) as u8;
                                     let (t5_0, t5_1) = e;
                                     *base
@@ -1392,19 +1449,19 @@ pub mod lojban {
                                         .add(4 + 1 * ::core::mem::size_of::<*const u8>())
                                         .cast::<i32>() = _rt::as_i32(t5_1);
                                 }
-                                V9::Negated(e) => {
+                                V10::Negated(e) => {
                                     *base.add(0).cast::<u8>() = (4i32) as u8;
                                     *base
                                         .add(::core::mem::size_of::<*const u8>())
                                         .cast::<i32>() = _rt::as_i32(e);
                                 }
-                                V9::Grouped(e) => {
+                                V10::Grouped(e) => {
                                     *base.add(0).cast::<u8>() = (5i32) as u8;
                                     *base
                                         .add(::core::mem::size_of::<*const u8>())
                                         .cast::<i32>() = _rt::as_i32(e);
                                 }
-                                V9::WithArgs(e) => {
+                                V10::WithArgs(e) => {
                                     *base.add(0).cast::<u8>() = (6i32) as u8;
                                     let (t6_0, t6_1) = e;
                                     *base
@@ -1420,7 +1477,7 @@ pub mod lojban {
                                         .add(2 * ::core::mem::size_of::<*const u8>())
                                         .cast::<*mut u8>() = ptr7.cast_mut();
                                 }
-                                V9::Connected(e) => {
+                                V10::Connected(e) => {
                                     *base.add(0).cast::<u8>() = (7i32) as u8;
                                     let (t8_0, t8_1, t8_2) = e;
                                     *base
@@ -1433,63 +1490,57 @@ pub mod lojban {
                                         .add(8 + 1 * ::core::mem::size_of::<*const u8>())
                                         .cast::<i32>() = _rt::as_i32(t8_2);
                                 }
-                                V9::Abstraction(e) => {
+                                V10::Abstraction(e) => {
                                     *base.add(0).cast::<u8>() = (8i32) as u8;
+                                    let (t9_0, t9_1) = e;
                                     *base
                                         .add(::core::mem::size_of::<*const u8>())
-                                        .cast::<i32>() = _rt::as_i32(e);
+                                        .cast::<u8>() = (t9_0.clone() as i32) as u8;
+                                    *base
+                                        .add(4 + 1 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<i32>() = _rt::as_i32(t9_1);
                                 }
                             }
                         }
                     }
-                    let vec20 = sumtis0;
-                    let len20 = vec20.len();
-                    let layout20 = _rt::alloc::Layout::from_size_align_unchecked(
-                        vec20.len() * 24,
+                    let vec21 = sumtis0;
+                    let len21 = vec21.len();
+                    let layout21 = _rt::alloc::Layout::from_size_align_unchecked(
+                        vec21.len() * 24,
                         8,
                     );
-                    let result20 = if layout20.size() != 0 {
-                        let ptr = _rt::alloc::alloc(layout20).cast::<u8>();
+                    let result21 = if layout21.size() != 0 {
+                        let ptr = _rt::alloc::alloc(layout21).cast::<u8>();
                         if ptr.is_null() {
-                            _rt::alloc::handle_alloc_error(layout20);
+                            _rt::alloc::handle_alloc_error(layout21);
                         }
                         ptr
                     } else {
                         ::core::ptr::null_mut()
                     };
-                    for (i, e) in vec20.into_iter().enumerate() {
-                        let base = result20.add(i * 24);
+                    for (i, e) in vec21.into_iter().enumerate() {
+                        let base = result21.add(i * 24);
                         {
-                            use super::super::super::lojban::nesy::ast_types::Sumti as V19;
+                            use super::super::super::lojban::nesy::ast_types::Sumti as V20;
                             match e {
-                                V19::ProSumti(e) => {
+                                V20::ProSumti(e) => {
                                     *base.add(0).cast::<u8>() = (0i32) as u8;
-                                    let vec11 = e;
-                                    let ptr11 = vec11.as_ptr().cast::<u8>();
-                                    let len11 = vec11.len();
+                                    let vec12 = e;
+                                    let ptr12 = vec12.as_ptr().cast::<u8>();
+                                    let len12 = vec12.len();
                                     *base
                                         .add(8 + 1 * ::core::mem::size_of::<*const u8>())
-                                        .cast::<usize>() = len11;
-                                    *base.add(8).cast::<*mut u8>() = ptr11.cast_mut();
+                                        .cast::<usize>() = len12;
+                                    *base.add(8).cast::<*mut u8>() = ptr12.cast_mut();
                                 }
-                                V19::Description(e) => {
+                                V20::Description(e) => {
                                     *base.add(0).cast::<u8>() = (1i32) as u8;
-                                    let (t12_0, t12_1) = e;
-                                    *base.add(8).cast::<u8>() = (t12_0.clone() as i32) as u8;
-                                    *base.add(12).cast::<i32>() = _rt::as_i32(t12_1);
+                                    let (t13_0, t13_1) = e;
+                                    *base.add(8).cast::<u8>() = (t13_0.clone() as i32) as u8;
+                                    *base.add(12).cast::<i32>() = _rt::as_i32(t13_1);
                                 }
-                                V19::Name(e) => {
+                                V20::Name(e) => {
                                     *base.add(0).cast::<u8>() = (2i32) as u8;
-                                    let vec13 = e;
-                                    let ptr13 = vec13.as_ptr().cast::<u8>();
-                                    let len13 = vec13.len();
-                                    *base
-                                        .add(8 + 1 * ::core::mem::size_of::<*const u8>())
-                                        .cast::<usize>() = len13;
-                                    *base.add(8).cast::<*mut u8>() = ptr13.cast_mut();
-                                }
-                                V19::QuotedLiteral(e) => {
-                                    *base.add(0).cast::<u8>() = (3i32) as u8;
                                     let vec14 = e;
                                     let ptr14 = vec14.as_ptr().cast::<u8>();
                                     let len14 = vec14.len();
@@ -1498,102 +1549,112 @@ pub mod lojban {
                                         .cast::<usize>() = len14;
                                     *base.add(8).cast::<*mut u8>() = ptr14.cast_mut();
                                 }
-                                V19::Unspecified => {
+                                V20::QuotedLiteral(e) => {
+                                    *base.add(0).cast::<u8>() = (3i32) as u8;
+                                    let vec15 = e;
+                                    let ptr15 = vec15.as_ptr().cast::<u8>();
+                                    let len15 = vec15.len();
+                                    *base
+                                        .add(8 + 1 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>() = len15;
+                                    *base.add(8).cast::<*mut u8>() = ptr15.cast_mut();
+                                }
+                                V20::Unspecified => {
                                     *base.add(0).cast::<u8>() = (4i32) as u8;
                                 }
-                                V19::Tagged(e) => {
+                                V20::Tagged(e) => {
                                     *base.add(0).cast::<u8>() = (5i32) as u8;
-                                    let (t15_0, t15_1) = e;
-                                    *base.add(8).cast::<u8>() = (t15_0.clone() as i32) as u8;
-                                    *base.add(12).cast::<i32>() = _rt::as_i32(t15_1);
-                                }
-                                V19::Restricted(e) => {
-                                    *base.add(0).cast::<u8>() = (6i32) as u8;
                                     let (t16_0, t16_1) = e;
-                                    *base.add(8).cast::<i32>() = _rt::as_i32(t16_0);
-                                    let super::super::super::lojban::nesy::ast_types::RelClause {
-                                        kind: kind17,
-                                        body_sentence: body_sentence17,
-                                    } = t16_1;
-                                    *base.add(12).cast::<u8>() = (kind17.clone() as i32) as u8;
-                                    *base.add(16).cast::<i32>() = _rt::as_i32(body_sentence17);
+                                    *base.add(8).cast::<u8>() = (t16_0.clone() as i32) as u8;
+                                    *base.add(12).cast::<i32>() = _rt::as_i32(t16_1);
                                 }
-                                V19::Number(e) => {
+                                V20::Restricted(e) => {
+                                    *base.add(0).cast::<u8>() = (6i32) as u8;
+                                    let (t17_0, t17_1) = e;
+                                    *base.add(8).cast::<i32>() = _rt::as_i32(t17_0);
+                                    let super::super::super::lojban::nesy::ast_types::RelClause {
+                                        kind: kind18,
+                                        body_sentence: body_sentence18,
+                                    } = t17_1;
+                                    *base.add(12).cast::<u8>() = (kind18.clone() as i32) as u8;
+                                    *base.add(16).cast::<i32>() = _rt::as_i32(body_sentence18);
+                                }
+                                V20::Number(e) => {
                                     *base.add(0).cast::<u8>() = (7i32) as u8;
                                     *base.add(8).cast::<f64>() = _rt::as_f64(e);
                                 }
-                                V19::Connected(e) => {
+                                V20::Connected(e) => {
                                     *base.add(0).cast::<u8>() = (8i32) as u8;
-                                    let (t18_0, t18_1, t18_2, t18_3) = e;
-                                    *base.add(8).cast::<i32>() = _rt::as_i32(t18_0);
-                                    *base.add(12).cast::<u8>() = (t18_1.clone() as i32) as u8;
-                                    *base.add(13).cast::<u8>() = (match t18_2 {
+                                    let (t19_0, t19_1, t19_2, t19_3) = e;
+                                    *base.add(8).cast::<i32>() = _rt::as_i32(t19_0);
+                                    *base.add(12).cast::<u8>() = (t19_1.clone() as i32) as u8;
+                                    *base.add(13).cast::<u8>() = (match t19_2 {
                                         true => 1,
                                         false => 0,
                                     }) as u8;
-                                    *base.add(16).cast::<i32>() = _rt::as_i32(t18_3);
+                                    *base.add(16).cast::<i32>() = _rt::as_i32(t19_3);
                                 }
                             }
                         }
                     }
-                    let vec26 = sentences0;
-                    let len26 = vec26.len();
-                    let layout26 = _rt::alloc::Layout::from_size_align_unchecked(
-                        vec26.len() * (7 * ::core::mem::size_of::<*const u8>()),
+                    let vec27 = sentences0;
+                    let len27 = vec27.len();
+                    let layout27 = _rt::alloc::Layout::from_size_align_unchecked(
+                        vec27.len() * (7 * ::core::mem::size_of::<*const u8>()),
                         ::core::mem::size_of::<*const u8>(),
                     );
-                    let result26 = if layout26.size() != 0 {
-                        let ptr = _rt::alloc::alloc(layout26).cast::<u8>();
+                    let result27 = if layout27.size() != 0 {
+                        let ptr = _rt::alloc::alloc(layout27).cast::<u8>();
                         if ptr.is_null() {
-                            _rt::alloc::handle_alloc_error(layout26);
+                            _rt::alloc::handle_alloc_error(layout27);
                         }
                         ptr
                     } else {
                         ::core::ptr::null_mut()
                     };
-                    for (i, e) in vec26.into_iter().enumerate() {
-                        let base = result26
+                    for (i, e) in vec27.into_iter().enumerate() {
+                        let base = result27
                             .add(i * (7 * ::core::mem::size_of::<*const u8>()));
                         {
-                            use super::super::super::lojban::nesy::ast_types::Sentence as V25;
+                            use super::super::super::lojban::nesy::ast_types::Sentence as V26;
                             match e {
-                                V25::Simple(e) => {
+                                V26::Simple(e) => {
                                     *base.add(0).cast::<u8>() = (0i32) as u8;
                                     let super::super::super::lojban::nesy::ast_types::Bridi {
-                                        relation: relation21,
-                                        head_terms: head_terms21,
-                                        tail_terms: tail_terms21,
-                                        negated: negated21,
-                                        tense: tense21,
+                                        relation: relation22,
+                                        head_terms: head_terms22,
+                                        tail_terms: tail_terms22,
+                                        negated: negated22,
+                                        tense: tense22,
                                     } = e;
                                     *base
                                         .add(::core::mem::size_of::<*const u8>())
-                                        .cast::<i32>() = _rt::as_i32(relation21);
-                                    let vec22 = head_terms21;
-                                    let ptr22 = vec22.as_ptr().cast::<u8>();
-                                    let len22 = vec22.len();
-                                    *base
-                                        .add(3 * ::core::mem::size_of::<*const u8>())
-                                        .cast::<usize>() = len22;
-                                    *base
-                                        .add(2 * ::core::mem::size_of::<*const u8>())
-                                        .cast::<*mut u8>() = ptr22.cast_mut();
-                                    let vec23 = tail_terms21;
+                                        .cast::<i32>() = _rt::as_i32(relation22);
+                                    let vec23 = head_terms22;
                                     let ptr23 = vec23.as_ptr().cast::<u8>();
                                     let len23 = vec23.len();
                                     *base
-                                        .add(5 * ::core::mem::size_of::<*const u8>())
+                                        .add(3 * ::core::mem::size_of::<*const u8>())
                                         .cast::<usize>() = len23;
                                     *base
-                                        .add(4 * ::core::mem::size_of::<*const u8>())
+                                        .add(2 * ::core::mem::size_of::<*const u8>())
                                         .cast::<*mut u8>() = ptr23.cast_mut();
+                                    let vec24 = tail_terms22;
+                                    let ptr24 = vec24.as_ptr().cast::<u8>();
+                                    let len24 = vec24.len();
+                                    *base
+                                        .add(5 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>() = len24;
+                                    *base
+                                        .add(4 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>() = ptr24.cast_mut();
                                     *base
                                         .add(6 * ::core::mem::size_of::<*const u8>())
-                                        .cast::<u8>() = (match negated21 {
+                                        .cast::<u8>() = (match negated22 {
                                         true => 1,
                                         false => 0,
                                     }) as u8;
-                                    match tense21 {
+                                    match tense22 {
                                         Some(e) => {
                                             *base
                                                 .add(1 + 6 * ::core::mem::size_of::<*const u8>())
@@ -1609,31 +1670,31 @@ pub mod lojban {
                                         }
                                     };
                                 }
-                                V25::Connected(e) => {
+                                V26::Connected(e) => {
                                     *base.add(0).cast::<u8>() = (1i32) as u8;
-                                    let (t24_0, t24_1, t24_2) = e;
+                                    let (t25_0, t25_1, t25_2) = e;
                                     *base
                                         .add(::core::mem::size_of::<*const u8>())
-                                        .cast::<u8>() = (t24_0.clone() as i32) as u8;
+                                        .cast::<u8>() = (t25_0.clone() as i32) as u8;
                                     *base
                                         .add(4 + 1 * ::core::mem::size_of::<*const u8>())
-                                        .cast::<i32>() = _rt::as_i32(t24_1);
+                                        .cast::<i32>() = _rt::as_i32(t25_1);
                                     *base
                                         .add(8 + 1 * ::core::mem::size_of::<*const u8>())
-                                        .cast::<i32>() = _rt::as_i32(t24_2);
+                                        .cast::<i32>() = _rt::as_i32(t25_2);
                                 }
                             }
                         }
                     }
-                    let vec27 = roots0;
-                    let ptr27 = vec27.as_ptr().cast::<u8>();
-                    let len27 = vec27.len();
-                    let ptr28 = ret_area.0.as_mut_ptr().cast::<u8>();
+                    let vec28 = roots0;
+                    let ptr28 = vec28.as_ptr().cast::<u8>();
+                    let len28 = vec28.len();
+                    let ptr29 = ret_area.0.as_mut_ptr().cast::<u8>();
                     #[cfg(target_arch = "wasm32")]
                     #[link(wasm_import_module = "lojban:nesy/semantics@0.1.0")]
                     unsafe extern "C" {
                         #[link_name = "compile-buffer"]
-                        fn wit_import29(
+                        fn wit_import30(
                             _: *mut u8,
                             _: usize,
                             _: *mut u8,
@@ -1646,7 +1707,7 @@ pub mod lojban {
                         );
                     }
                     #[cfg(not(target_arch = "wasm32"))]
-                    unsafe extern "C" fn wit_import29(
+                    unsafe extern "C" fn wit_import30(
                         _: *mut u8,
                         _: usize,
                         _: *mut u8,
@@ -1660,301 +1721,301 @@ pub mod lojban {
                         unreachable!()
                     }
                     unsafe {
-                        wit_import29(
-                            result10,
-                            len10,
-                            result20,
-                            len20,
-                            result26,
-                            len26,
-                            ptr27.cast_mut(),
+                        wit_import30(
+                            result11,
+                            len11,
+                            result21,
+                            len21,
+                            result27,
                             len27,
-                            ptr28,
+                            ptr28.cast_mut(),
+                            len28,
+                            ptr29,
                         )
                     };
-                    let l30 = i32::from(*ptr28.add(0).cast::<u8>());
-                    let result76 = match l30 {
+                    let l31 = i32::from(*ptr29.add(0).cast::<u8>());
+                    let result77 = match l31 {
                         0 => {
                             let e = {
-                                let l31 = *ptr28
+                                let l32 = *ptr29
                                     .add(::core::mem::size_of::<*const u8>())
                                     .cast::<*mut u8>();
-                                let l32 = *ptr28
+                                let l33 = *ptr29
                                     .add(2 * ::core::mem::size_of::<*const u8>())
                                     .cast::<usize>();
-                                let base69 = l31;
-                                let len69 = l32;
-                                let mut result69 = _rt::Vec::with_capacity(len69);
-                                for i in 0..len69 {
-                                    let base = base69
+                                let base70 = l32;
+                                let len70 = l33;
+                                let mut result70 = _rt::Vec::with_capacity(len70);
+                                for i in 0..len70 {
+                                    let base = base70
                                         .add(i * (5 * ::core::mem::size_of::<*const u8>()));
-                                    let e69 = {
-                                        let l33 = i32::from(*base.add(0).cast::<u8>());
-                                        use super::super::super::lojban::nesy::ast_types::LogicNode as V68;
-                                        let v68 = match l33 {
+                                    let e70 = {
+                                        let l34 = i32::from(*base.add(0).cast::<u8>());
+                                        use super::super::super::lojban::nesy::ast_types::LogicNode as V69;
+                                        let v69 = match l34 {
                                             0 => {
-                                                let e68 = {
-                                                    let l34 = *base
+                                                let e69 = {
+                                                    let l35 = *base
                                                         .add(::core::mem::size_of::<*const u8>())
                                                         .cast::<*mut u8>();
-                                                    let l35 = *base
+                                                    let l36 = *base
                                                         .add(2 * ::core::mem::size_of::<*const u8>())
                                                         .cast::<usize>();
-                                                    let len36 = l35;
-                                                    let bytes36 = _rt::Vec::from_raw_parts(
-                                                        l34.cast(),
-                                                        len36,
-                                                        len36,
+                                                    let len37 = l36;
+                                                    let bytes37 = _rt::Vec::from_raw_parts(
+                                                        l35.cast(),
+                                                        len37,
+                                                        len37,
                                                     );
-                                                    let l37 = *base
+                                                    let l38 = *base
                                                         .add(3 * ::core::mem::size_of::<*const u8>())
                                                         .cast::<*mut u8>();
-                                                    let l38 = *base
+                                                    let l39 = *base
                                                         .add(4 * ::core::mem::size_of::<*const u8>())
                                                         .cast::<usize>();
-                                                    let base51 = l37;
-                                                    let len51 = l38;
-                                                    let mut result51 = _rt::Vec::with_capacity(len51);
-                                                    for i in 0..len51 {
-                                                        let base = base51
+                                                    let base52 = l38;
+                                                    let len52 = l39;
+                                                    let mut result52 = _rt::Vec::with_capacity(len52);
+                                                    for i in 0..len52 {
+                                                        let base = base52
                                                             .add(i * (8 + 2 * ::core::mem::size_of::<*const u8>()));
-                                                        let e51 = {
-                                                            let l39 = i32::from(*base.add(0).cast::<u8>());
-                                                            use super::super::super::lojban::nesy::ast_types::LogicalTerm as V50;
-                                                            let v50 = match l39 {
+                                                        let e52 = {
+                                                            let l40 = i32::from(*base.add(0).cast::<u8>());
+                                                            use super::super::super::lojban::nesy::ast_types::LogicalTerm as V51;
+                                                            let v51 = match l40 {
                                                                 0 => {
-                                                                    let e50 = {
-                                                                        let l40 = *base.add(8).cast::<*mut u8>();
-                                                                        let l41 = *base
+                                                                    let e51 = {
+                                                                        let l41 = *base.add(8).cast::<*mut u8>();
+                                                                        let l42 = *base
                                                                             .add(8 + 1 * ::core::mem::size_of::<*const u8>())
                                                                             .cast::<usize>();
-                                                                        let len42 = l41;
-                                                                        let bytes42 = _rt::Vec::from_raw_parts(
-                                                                            l40.cast(),
-                                                                            len42,
-                                                                            len42,
+                                                                        let len43 = l42;
+                                                                        let bytes43 = _rt::Vec::from_raw_parts(
+                                                                            l41.cast(),
+                                                                            len43,
+                                                                            len43,
                                                                         );
-                                                                        _rt::string_lift(bytes42)
+                                                                        _rt::string_lift(bytes43)
                                                                     };
-                                                                    V50::Variable(e50)
+                                                                    V51::Variable(e51)
                                                                 }
                                                                 1 => {
-                                                                    let e50 = {
-                                                                        let l43 = *base.add(8).cast::<*mut u8>();
-                                                                        let l44 = *base
+                                                                    let e51 = {
+                                                                        let l44 = *base.add(8).cast::<*mut u8>();
+                                                                        let l45 = *base
                                                                             .add(8 + 1 * ::core::mem::size_of::<*const u8>())
                                                                             .cast::<usize>();
-                                                                        let len45 = l44;
-                                                                        let bytes45 = _rt::Vec::from_raw_parts(
-                                                                            l43.cast(),
-                                                                            len45,
-                                                                            len45,
+                                                                        let len46 = l45;
+                                                                        let bytes46 = _rt::Vec::from_raw_parts(
+                                                                            l44.cast(),
+                                                                            len46,
+                                                                            len46,
                                                                         );
-                                                                        _rt::string_lift(bytes45)
+                                                                        _rt::string_lift(bytes46)
                                                                     };
-                                                                    V50::Constant(e50)
+                                                                    V51::Constant(e51)
                                                                 }
                                                                 2 => {
-                                                                    let e50 = {
-                                                                        let l46 = *base.add(8).cast::<*mut u8>();
-                                                                        let l47 = *base
+                                                                    let e51 = {
+                                                                        let l47 = *base.add(8).cast::<*mut u8>();
+                                                                        let l48 = *base
                                                                             .add(8 + 1 * ::core::mem::size_of::<*const u8>())
                                                                             .cast::<usize>();
-                                                                        let len48 = l47;
-                                                                        let bytes48 = _rt::Vec::from_raw_parts(
-                                                                            l46.cast(),
-                                                                            len48,
-                                                                            len48,
+                                                                        let len49 = l48;
+                                                                        let bytes49 = _rt::Vec::from_raw_parts(
+                                                                            l47.cast(),
+                                                                            len49,
+                                                                            len49,
                                                                         );
-                                                                        _rt::string_lift(bytes48)
+                                                                        _rt::string_lift(bytes49)
                                                                     };
-                                                                    V50::Description(e50)
+                                                                    V51::Description(e51)
                                                                 }
-                                                                3 => V50::Unspecified,
+                                                                3 => V51::Unspecified,
                                                                 n => {
                                                                     debug_assert_eq!(n, 4, "invalid enum discriminant");
-                                                                    let e50 = {
-                                                                        let l49 = *base.add(8).cast::<f64>();
-                                                                        l49
+                                                                    let e51 = {
+                                                                        let l50 = *base.add(8).cast::<f64>();
+                                                                        l50
                                                                     };
-                                                                    V50::Number(e50)
+                                                                    V51::Number(e51)
                                                                 }
                                                             };
-                                                            v50
+                                                            v51
                                                         };
-                                                        result51.push(e51);
+                                                        result52.push(e52);
                                                     }
                                                     _rt::cabi_dealloc(
-                                                        base51,
-                                                        len51 * (8 + 2 * ::core::mem::size_of::<*const u8>()),
+                                                        base52,
+                                                        len52 * (8 + 2 * ::core::mem::size_of::<*const u8>()),
                                                         8,
                                                     );
-                                                    (_rt::string_lift(bytes36), result51)
+                                                    (_rt::string_lift(bytes37), result52)
                                                 };
-                                                V68::Predicate(e68)
+                                                V69::Predicate(e69)
                                             }
                                             1 => {
-                                                let e68 = {
-                                                    let l52 = *base
+                                                let e69 = {
+                                                    let l53 = *base
                                                         .add(::core::mem::size_of::<*const u8>())
                                                         .cast::<i32>();
-                                                    let l53 = *base
+                                                    let l54 = *base
                                                         .add(4 + 1 * ::core::mem::size_of::<*const u8>())
                                                         .cast::<i32>();
-                                                    (l52 as u32, l53 as u32)
+                                                    (l53 as u32, l54 as u32)
                                                 };
-                                                V68::AndNode(e68)
+                                                V69::AndNode(e69)
                                             }
                                             2 => {
-                                                let e68 = {
-                                                    let l54 = *base
+                                                let e69 = {
+                                                    let l55 = *base
                                                         .add(::core::mem::size_of::<*const u8>())
                                                         .cast::<i32>();
-                                                    let l55 = *base
+                                                    let l56 = *base
                                                         .add(4 + 1 * ::core::mem::size_of::<*const u8>())
                                                         .cast::<i32>();
-                                                    (l54 as u32, l55 as u32)
+                                                    (l55 as u32, l56 as u32)
                                                 };
-                                                V68::OrNode(e68)
+                                                V69::OrNode(e69)
                                             }
                                             3 => {
-                                                let e68 = {
-                                                    let l56 = *base
-                                                        .add(::core::mem::size_of::<*const u8>())
-                                                        .cast::<i32>();
-                                                    l56 as u32
-                                                };
-                                                V68::NotNode(e68)
-                                            }
-                                            4 => {
-                                                let e68 = {
+                                                let e69 = {
                                                     let l57 = *base
                                                         .add(::core::mem::size_of::<*const u8>())
-                                                        .cast::<*mut u8>();
+                                                        .cast::<i32>();
+                                                    l57 as u32
+                                                };
+                                                V69::NotNode(e69)
+                                            }
+                                            4 => {
+                                                let e69 = {
                                                     let l58 = *base
+                                                        .add(::core::mem::size_of::<*const u8>())
+                                                        .cast::<*mut u8>();
+                                                    let l59 = *base
                                                         .add(2 * ::core::mem::size_of::<*const u8>())
                                                         .cast::<usize>();
-                                                    let len59 = l58;
-                                                    let bytes59 = _rt::Vec::from_raw_parts(
-                                                        l57.cast(),
-                                                        len59,
-                                                        len59,
+                                                    let len60 = l59;
+                                                    let bytes60 = _rt::Vec::from_raw_parts(
+                                                        l58.cast(),
+                                                        len60,
+                                                        len60,
                                                     );
-                                                    let l60 = *base
+                                                    let l61 = *base
                                                         .add(3 * ::core::mem::size_of::<*const u8>())
                                                         .cast::<i32>();
-                                                    (_rt::string_lift(bytes59), l60 as u32)
+                                                    (_rt::string_lift(bytes60), l61 as u32)
                                                 };
-                                                V68::ExistsNode(e68)
+                                                V69::ExistsNode(e69)
                                             }
                                             5 => {
-                                                let e68 = {
-                                                    let l61 = *base
+                                                let e69 = {
+                                                    let l62 = *base
                                                         .add(::core::mem::size_of::<*const u8>())
                                                         .cast::<*mut u8>();
-                                                    let l62 = *base
+                                                    let l63 = *base
                                                         .add(2 * ::core::mem::size_of::<*const u8>())
                                                         .cast::<usize>();
-                                                    let len63 = l62;
-                                                    let bytes63 = _rt::Vec::from_raw_parts(
-                                                        l61.cast(),
-                                                        len63,
-                                                        len63,
+                                                    let len64 = l63;
+                                                    let bytes64 = _rt::Vec::from_raw_parts(
+                                                        l62.cast(),
+                                                        len64,
+                                                        len64,
                                                     );
-                                                    let l64 = *base
+                                                    let l65 = *base
                                                         .add(3 * ::core::mem::size_of::<*const u8>())
                                                         .cast::<i32>();
-                                                    (_rt::string_lift(bytes63), l64 as u32)
+                                                    (_rt::string_lift(bytes64), l65 as u32)
                                                 };
-                                                V68::ForAllNode(e68)
+                                                V69::ForAllNode(e69)
                                             }
                                             6 => {
-                                                let e68 = {
-                                                    let l65 = *base
-                                                        .add(::core::mem::size_of::<*const u8>())
-                                                        .cast::<i32>();
-                                                    l65 as u32
-                                                };
-                                                V68::PastNode(e68)
-                                            }
-                                            7 => {
-                                                let e68 = {
+                                                let e69 = {
                                                     let l66 = *base
                                                         .add(::core::mem::size_of::<*const u8>())
                                                         .cast::<i32>();
                                                     l66 as u32
                                                 };
-                                                V68::PresentNode(e68)
+                                                V69::PastNode(e69)
                                             }
-                                            n => {
-                                                debug_assert_eq!(n, 8, "invalid enum discriminant");
-                                                let e68 = {
+                                            7 => {
+                                                let e69 = {
                                                     let l67 = *base
                                                         .add(::core::mem::size_of::<*const u8>())
                                                         .cast::<i32>();
                                                     l67 as u32
                                                 };
-                                                V68::FutureNode(e68)
+                                                V69::PresentNode(e69)
+                                            }
+                                            n => {
+                                                debug_assert_eq!(n, 8, "invalid enum discriminant");
+                                                let e69 = {
+                                                    let l68 = *base
+                                                        .add(::core::mem::size_of::<*const u8>())
+                                                        .cast::<i32>();
+                                                    l68 as u32
+                                                };
+                                                V69::FutureNode(e69)
                                             }
                                         };
-                                        v68
+                                        v69
                                     };
-                                    result69.push(e69);
+                                    result70.push(e70);
                                 }
                                 _rt::cabi_dealloc(
-                                    base69,
-                                    len69 * (5 * ::core::mem::size_of::<*const u8>()),
+                                    base70,
+                                    len70 * (5 * ::core::mem::size_of::<*const u8>()),
                                     ::core::mem::size_of::<*const u8>(),
                                 );
-                                let l70 = *ptr28
+                                let l71 = *ptr29
                                     .add(3 * ::core::mem::size_of::<*const u8>())
                                     .cast::<*mut u8>();
-                                let l71 = *ptr28
+                                let l72 = *ptr29
                                     .add(4 * ::core::mem::size_of::<*const u8>())
                                     .cast::<usize>();
-                                let len72 = l71;
+                                let len73 = l72;
                                 super::super::super::lojban::nesy::ast_types::LogicBuffer {
-                                    nodes: result69,
-                                    roots: _rt::Vec::from_raw_parts(l70.cast(), len72, len72),
+                                    nodes: result70,
+                                    roots: _rt::Vec::from_raw_parts(l71.cast(), len73, len73),
                                 }
                             };
                             Ok(e)
                         }
                         1 => {
                             let e = {
-                                let l73 = *ptr28
+                                let l74 = *ptr29
                                     .add(::core::mem::size_of::<*const u8>())
                                     .cast::<*mut u8>();
-                                let l74 = *ptr28
+                                let l75 = *ptr29
                                     .add(2 * ::core::mem::size_of::<*const u8>())
                                     .cast::<usize>();
-                                let len75 = l74;
-                                let bytes75 = _rt::Vec::from_raw_parts(
-                                    l73.cast(),
-                                    len75,
-                                    len75,
+                                let len76 = l75;
+                                let bytes76 = _rt::Vec::from_raw_parts(
+                                    l74.cast(),
+                                    len76,
+                                    len76,
                                 );
-                                _rt::string_lift(bytes75)
+                                _rt::string_lift(bytes76)
                             };
                             Err(e)
                         }
                         _ => _rt::invalid_enum_discriminant(),
                     };
-                    if layout10.size() != 0 {
-                        _rt::alloc::dealloc(result10.cast(), layout10);
+                    if layout11.size() != 0 {
+                        _rt::alloc::dealloc(result11.cast(), layout11);
                     }
-                    if layout20.size() != 0 {
-                        _rt::alloc::dealloc(result20.cast(), layout20);
+                    if layout21.size() != 0 {
+                        _rt::alloc::dealloc(result21.cast(), layout21);
                     }
-                    if layout26.size() != 0 {
-                        _rt::alloc::dealloc(result26.cast(), layout26);
+                    if layout27.size() != 0 {
+                        _rt::alloc::dealloc(result27.cast(), layout27);
                     }
                     for (ptr, layout) in cleanup_list {
                         if layout.size() != 0 {
                             _rt::alloc::dealloc(ptr.cast(), layout);
                         }
                     }
-                    result76
+                    result77
                 }
             }
         }
@@ -2717,48 +2778,49 @@ pub(crate) use __export_engine_pipeline_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1788] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xf6\x0c\x01A\x02\x01\
-A\x16\x01B9\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1837] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xa7\x0d\x01A\x02\x01\
+A\x16\x01B<\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
 m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x04\x02se\x02\
 te\x02ve\x02xe\x04\0\x0aconversion\x03\0\x06\x01m\x04\x02je\x02ja\x02jo\x02ju\x04\
 \0\x0aconnective\x03\0\x08\x01m\x05\x02lo\x02le\x02la\x05ro-lo\x05ro-le\x04\0\x05\
-gadri\x03\0\x0a\x01m\x02\x03poi\x03noi\x04\0\x0frel-clause-kind\x03\0\x0c\x01r\x02\
-\x04kind\x0d\x0dbody-sentencey\x04\0\x0arel-clause\x03\0\x0e\x01o\x02\x0b\x01\x01\
-o\x02\x05\x03\x01o\x02\x03\x0f\x01o\x04\x03\x09\x7f\x03\x01q\x09\x09pro-sumti\x01\
-s\0\x0bdescription\x01\x10\0\x04name\x01s\0\x0equoted-literal\x01s\0\x0bunspecif\
-ied\0\0\x06tagged\x01\x11\0\x0arestricted\x01\x12\0\x06number\x01u\0\x09connecte\
-d\x01\x13\0\x04\0\x05sumti\x03\0\x14\x01ps\x01o\x02\x01\x01\x01o\x02\x07\x01\x01\
-p\x03\x01o\x02\x01\x19\x01o\x03\x01\x09\x01\x01q\x09\x04root\x01s\0\x08compound\x01\
-\x16\0\x05tanru\x01\x17\0\x09converted\x01\x18\0\x07negated\x01\x01\0\x07grouped\
-\x01\x01\0\x09with-args\x01\x1a\0\x09connected\x01\x1b\0\x0babstraction\x01y\0\x04\
-\0\x06selbri\x03\0\x1c\x01m\x03\x02pu\x02ca\x02ba\x04\0\x05tense\x03\0\x1e\x01k\x1f\
-\x01r\x05\x08relation\x01\x0ahead-terms\x19\x0atail-terms\x19\x07negated\x7f\x05\
-tense\x20\x04\0\x05bridi\x03\0!\x01m\x03\x08ganai-gi\x05ge-gi\x05ga-gi\x04\0\x13\
-sentence-connective\x03\0#\x01o\x03$yy\x01q\x02\x06simple\x01\"\0\x09connected\x01\
-%\0\x04\0\x08sentence\x03\0&\x01p\x1d\x01p\x15\x01p'\x01py\x01r\x04\x07selbris(\x06\
-sumtis)\x09sentences*\x05roots+\x04\0\x0aast-buffer\x03\0,\x01q\x05\x08variable\x01\
-s\0\x08constant\x01s\0\x0bdescription\x01s\0\x0bunspecified\0\0\x06number\x01u\0\
-\x04\0\x0clogical-term\x03\0.\x01p/\x01o\x02s0\x01o\x02yy\x01o\x02sy\x01q\x09\x09\
-predicate\x011\0\x08and-node\x012\0\x07or-node\x012\0\x08not-node\x01y\0\x0bexis\
-ts-node\x013\0\x0cfor-all-node\x013\0\x09past-node\x01y\0\x0cpresent-node\x01y\0\
-\x0bfuture-node\x01y\0\x04\0\x0alogic-node\x03\04\x01p5\x01r\x02\x05nodes6\x05ro\
-ots+\x04\0\x0clogic-buffer\x03\07\x03\0\x1blojban:nesy/ast-types@0.1.0\x05\0\x02\
-\x03\0\0\x0aast-buffer\x01B\x05\x02\x03\x02\x01\x01\x04\0\x0aast-buffer\x03\0\0\x01\
-j\x01\x01\x01s\x01@\x01\x05inputs\0\x02\x04\0\x0aparse-text\x01\x03\x03\0\x18loj\
-ban:nesy/parser@0.1.0\x05\x02\x02\x03\0\0\x0clogic-buffer\x01B\x07\x02\x03\x02\x01\
-\x01\x04\0\x0aast-buffer\x03\0\0\x02\x03\x02\x01\x03\x04\0\x0clogic-buffer\x03\0\
-\x02\x01j\x01\x03\x01s\x01@\x01\x03ast\x01\0\x04\x04\0\x0ecompile-buffer\x01\x05\
-\x03\0\x1blojban:nesy/semantics@0.1.0\x05\x04\x01B\x0a\x02\x03\x02\x01\x03\x04\0\
-\x0clogic-buffer\x03\0\0\x01j\0\x01s\x01@\x01\x05logic\x01\0\x02\x04\0\x0bassert\
--fact\x01\x03\x01j\x01\x7f\x01s\x01@\x01\x05logic\x01\0\x04\x04\0\x10query-entai\
-lment\x01\x05\x01@\0\0\x02\x04\0\x0breset-state\x01\x06\x03\0\x1blojban:nesy/rea\
-soning@0.1.0\x05\x05\x01j\x01y\x01s\x01@\x01\x05inputs\0\x06\x04\0\x0bassert-tex\
-t\x01\x07\x01j\x01\x7f\x01s\x01@\x01\x05inputs\0\x08\x04\0\x0aquery-text\x01\x09\
-\x01j\x01s\x01s\x01@\x01\x05inputs\0\x0a\x04\0\x0dcompile-debug\x01\x0b\x01j\0\x01\
-s\x01@\0\0\x0c\x04\0\x08reset-kb\x01\x0d\x04\0!lojban:nesy/engine-pipeline@0.1.0\
-\x04\0\x0b\x15\x01\0\x0fengine-pipeline\x03\0\0\0G\x09producers\x01\x0cprocessed\
--by\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
+gadri\x03\0\x0a\x01m\x05\x02nu\x04duhu\x02ka\x02ni\x04siho\x04\0\x10abstraction-\
+kind\x03\0\x0c\x01m\x02\x03poi\x03noi\x04\0\x0frel-clause-kind\x03\0\x0e\x01r\x02\
+\x04kind\x0f\x0dbody-sentencey\x04\0\x0arel-clause\x03\0\x10\x01o\x02\x0b\x01\x01\
+o\x02\x05\x03\x01o\x02\x03\x11\x01o\x04\x03\x09\x7f\x03\x01q\x09\x09pro-sumti\x01\
+s\0\x0bdescription\x01\x12\0\x04name\x01s\0\x0equoted-literal\x01s\0\x0bunspecif\
+ied\0\0\x06tagged\x01\x13\0\x0arestricted\x01\x14\0\x06number\x01u\0\x09connecte\
+d\x01\x15\0\x04\0\x05sumti\x03\0\x16\x01ps\x01o\x02\x01\x01\x01o\x02\x07\x01\x01\
+p\x03\x01o\x02\x01\x1b\x01o\x03\x01\x09\x01\x01o\x02\x0dy\x01q\x09\x04root\x01s\0\
+\x08compound\x01\x18\0\x05tanru\x01\x19\0\x09converted\x01\x1a\0\x07negated\x01\x01\
+\0\x07grouped\x01\x01\0\x09with-args\x01\x1c\0\x09connected\x01\x1d\0\x0babstrac\
+tion\x01\x1e\0\x04\0\x06selbri\x03\0\x1f\x01m\x03\x02pu\x02ca\x02ba\x04\0\x05ten\
+se\x03\0!\x01k\"\x01r\x05\x08relation\x01\x0ahead-terms\x1b\x0atail-terms\x1b\x07\
+negated\x7f\x05tense#\x04\0\x05bridi\x03\0$\x01m\x03\x08ganai-gi\x05ge-gi\x05ga-\
+gi\x04\0\x13sentence-connective\x03\0&\x01o\x03'yy\x01q\x02\x06simple\x01%\0\x09\
+connected\x01(\0\x04\0\x08sentence\x03\0)\x01p\x20\x01p\x17\x01p*\x01py\x01r\x04\
+\x07selbris+\x06sumtis,\x09sentences-\x05roots.\x04\0\x0aast-buffer\x03\0/\x01q\x05\
+\x08variable\x01s\0\x08constant\x01s\0\x0bdescription\x01s\0\x0bunspecified\0\0\x06\
+number\x01u\0\x04\0\x0clogical-term\x03\01\x01p2\x01o\x02s3\x01o\x02yy\x01o\x02s\
+y\x01q\x09\x09predicate\x014\0\x08and-node\x015\0\x07or-node\x015\0\x08not-node\x01\
+y\0\x0bexists-node\x016\0\x0cfor-all-node\x016\0\x09past-node\x01y\0\x0cpresent-\
+node\x01y\0\x0bfuture-node\x01y\0\x04\0\x0alogic-node\x03\07\x01p8\x01r\x02\x05n\
+odes9\x05roots.\x04\0\x0clogic-buffer\x03\0:\x03\0\x1blojban:nesy/ast-types@0.1.\
+0\x05\0\x02\x03\0\0\x0aast-buffer\x01B\x05\x02\x03\x02\x01\x01\x04\0\x0aast-buff\
+er\x03\0\0\x01j\x01\x01\x01s\x01@\x01\x05inputs\0\x02\x04\0\x0aparse-text\x01\x03\
+\x03\0\x18lojban:nesy/parser@0.1.0\x05\x02\x02\x03\0\0\x0clogic-buffer\x01B\x07\x02\
+\x03\x02\x01\x01\x04\0\x0aast-buffer\x03\0\0\x02\x03\x02\x01\x03\x04\0\x0clogic-\
+buffer\x03\0\x02\x01j\x01\x03\x01s\x01@\x01\x03ast\x01\0\x04\x04\0\x0ecompile-bu\
+ffer\x01\x05\x03\0\x1blojban:nesy/semantics@0.1.0\x05\x04\x01B\x0a\x02\x03\x02\x01\
+\x03\x04\0\x0clogic-buffer\x03\0\0\x01j\0\x01s\x01@\x01\x05logic\x01\0\x02\x04\0\
+\x0bassert-fact\x01\x03\x01j\x01\x7f\x01s\x01@\x01\x05logic\x01\0\x04\x04\0\x10q\
+uery-entailment\x01\x05\x01@\0\0\x02\x04\0\x0breset-state\x01\x06\x03\0\x1blojba\
+n:nesy/reasoning@0.1.0\x05\x05\x01j\x01y\x01s\x01@\x01\x05inputs\0\x06\x04\0\x0b\
+assert-text\x01\x07\x01j\x01\x7f\x01s\x01@\x01\x05inputs\0\x08\x04\0\x0aquery-te\
+xt\x01\x09\x01j\x01s\x01s\x01@\x01\x05inputs\0\x0a\x04\0\x0dcompile-debug\x01\x0b\
+\x01j\0\x01s\x01@\0\0\x0c\x04\0\x08reset-kb\x01\x0d\x04\0!lojban:nesy/engine-pip\
+eline@0.1.0\x04\0\x0b\x15\x01\0\x0fengine-pipeline\x03\0\0\0G\x09producers\x01\x0c\
+processed-by\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

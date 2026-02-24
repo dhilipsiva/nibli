@@ -341,7 +341,9 @@ impl<'a> Parser<'a> {
             NormalizedToken::Standard(LojbanToken::Cmavo, s) => {
                 matches!(
                     *s,
-                    "se" | "te" | "ve" | "xe" | "ke" | "na" | "nu" | "pu" | "ca" | "ba"
+                    "se" | "te" | "ve" | "xe" | "ke" | "na"
+                    | "nu" | "du'u" | "ka" | "ni" | "si'o"
+                    | "pu" | "ca" | "ba"
                 )
             }
             _ => false,
@@ -658,6 +660,7 @@ impl<'a> Parser<'a> {
             "ti" | "ta" | "tu" => Sumti::ProSumti(cmavo.to_string()),
             "ri" | "ra" | "ru" => Sumti::ProSumti(cmavo.to_string()),
             "ke'a" => Sumti::ProSumti(cmavo.to_string()),
+            "ce'u" => Sumti::ProSumti(cmavo.to_string()),
             "ma" => Sumti::ProSumti(cmavo.to_string()),
             _ => return None,
         };
@@ -828,12 +831,11 @@ impl<'a> Parser<'a> {
             }
         }
 
-        if self.peek_is_cmavo("nu") {
+        if let Some(kind) = self.try_parse_abstraction_keyword() {
             if self.depth >= MAX_DEPTH {
                 return None;
             }
             let saved = self.save();
-            self.pos += 1; // consume nu
 
             self.depth += 1;
             let inner = self.parse_sentence();
@@ -842,7 +844,7 @@ impl<'a> Parser<'a> {
             match inner {
                 Ok(bridi) => {
                     self.eat_cmavo("kei");
-                    return Some(Selbri::Abstraction(Box::new(bridi)));
+                    return Some(Selbri::Abstraction(kind, Box::new(bridi)));
                 }
                 Err(_) => {
                     self.restore(saved);
@@ -864,6 +866,21 @@ impl<'a> Parser<'a> {
         }
 
         None
+    }
+
+    /// Try to parse an abstraction keyword (NU selma'o).
+    /// Returns the AbstractionKind and consumes the keyword token.
+    fn try_parse_abstraction_keyword(&mut self) -> Option<AbstractionKind> {
+        let kind = match self.peek_cmavo()? {
+            "nu" => AbstractionKind::Nu,
+            "du'u" => AbstractionKind::Duhu,
+            "ka" => AbstractionKind::Ka,
+            "ni" => AbstractionKind::Ni,
+            "si'o" => AbstractionKind::Siho,
+            _ => return None,
+        };
+        self.pos += 1;
+        Some(kind)
     }
 
     fn parse_be_clause(&mut self, core: Selbri) -> Selbri {
@@ -2139,7 +2156,8 @@ mod tests {
 
     #[test]
     fn test_kea_in_relative_clause() {
-        // lo gerku poi mi nelci ke'a — ke'a as explicit bound variable
+        // lo gerku poi mi nelci ke'a ku'o cu barda
+        // ke'a as explicit bound variable in relative clause tail
         let r = parse_ok(&[
             cmavo("lo"),
             gismu("gerku"),
@@ -2147,8 +2165,13 @@ mod tests {
             cmavo("mi"),
             gismu("nelci"),
             cmavo("ke'a"),
+            cmavo("ku'o"),
+            cmavo("cu"),
+            gismu("barda"),
         ]);
-        match &as_bridi(&r.sentences[0]).head_terms[0] {
+        let bridi = as_bridi(&r.sentences[0]);
+        assert_eq!(bridi.selbri, Selbri::Root("barda".into()));
+        match &bridi.head_terms[0] {
             Sumti::Restricted { clause, .. } => {
                 let body_bridi = as_bridi(&clause.body);
                 assert_eq!(body_bridi.tail_terms.len(), 1);
@@ -2160,6 +2183,8 @@ mod tests {
 
     #[test]
     fn test_kea_as_head_term() {
+        // lo prenu poi ke'a nelci lo mlatu ku'o cu barda
+        // ke'a as explicit bound variable in relative clause head
         let r = parse_ok(&[
             cmavo("lo"),
             gismu("prenu"),
@@ -2168,8 +2193,13 @@ mod tests {
             gismu("nelci"),
             cmavo("lo"),
             gismu("mlatu"),
+            cmavo("ku'o"),
+            cmavo("cu"),
+            gismu("barda"),
         ]);
-        match &as_bridi(&r.sentences[0]).head_terms[0] {
+        let bridi = as_bridi(&r.sentences[0]);
+        assert_eq!(bridi.selbri, Selbri::Root("barda".into()));
+        match &bridi.head_terms[0] {
             Sumti::Restricted { clause, .. } => {
                 let body_bridi = match &*clause.body {
                     Sentence::Simple(b) => b,
@@ -2600,6 +2630,183 @@ mod tests {
         let s = as_bridi(&r.sentences[0]);
         assert!(matches!(&s.head_terms[0], Sumti::Connected { connective: Connective::Je, .. }));
         assert!(matches!(&s.tail_terms[0], Sumti::Connected { connective: Connective::Ja, .. }));
+    }
+
+    // ─── §22 Abstraction types (du'u, ka, ni, si'o) ─────────────────────
+
+    #[test]
+    fn test_duhu_abstraction_parses() {
+        // lo du'u mi klama kei cu barda
+        let s = parse_ok(&[
+            cmavo("lo"), cmavo("du'u"), cmavo("mi"), gismu("klama"), cmavo("kei"),
+            cmavo("cu"), gismu("barda"),
+        ]);
+        let bridi = as_bridi(&s.sentences[0]);
+        assert_eq!(bridi.selbri, Selbri::Root("barda".into()));
+        match &bridi.head_terms[0] {
+            Sumti::Description { gadri: Gadri::Lo, inner } => {
+                match inner.as_ref() {
+                    Selbri::Abstraction(AbstractionKind::Duhu, _) => {}
+                    other => panic!("expected Abstraction(Duhu, ..), got {:?}", other),
+                }
+            }
+            other => panic!("expected Description, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ka_abstraction_parses() {
+        // lo ka ce'u melbi kei cu barda
+        let s = parse_ok(&[
+            cmavo("lo"), cmavo("ka"), cmavo("ce'u"), gismu("melbi"), cmavo("kei"),
+            cmavo("cu"), gismu("barda"),
+        ]);
+        let bridi = as_bridi(&s.sentences[0]);
+        match &bridi.head_terms[0] {
+            Sumti::Description { inner, .. } => {
+                match inner.as_ref() {
+                    Selbri::Abstraction(AbstractionKind::Ka, body) => {
+                        // The inner sentence should have ce'u as head term
+                        match body.as_ref() {
+                            Sentence::Simple(inner_bridi) => {
+                                assert_eq!(inner_bridi.head_terms[0], Sumti::ProSumti("ce'u".into()));
+                            }
+                            other => panic!("expected Simple sentence, got {:?}", other),
+                        }
+                    }
+                    other => panic!("expected Abstraction(Ka, ..), got {:?}", other),
+                }
+            }
+            other => panic!("expected Description, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ka_without_ceu_parses() {
+        // lo ka melbi kei cu barda
+        let s = parse_ok(&[
+            cmavo("lo"), cmavo("ka"), gismu("melbi"), cmavo("kei"),
+            cmavo("cu"), gismu("barda"),
+        ]);
+        let bridi = as_bridi(&s.sentences[0]);
+        match &bridi.head_terms[0] {
+            Sumti::Description { inner, .. } => {
+                match inner.as_ref() {
+                    Selbri::Abstraction(AbstractionKind::Ka, _) => {}
+                    other => panic!("expected Abstraction(Ka, ..), got {:?}", other),
+                }
+            }
+            other => panic!("expected Description, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ni_abstraction_parses() {
+        // lo ni mi gleki kei cu barda
+        let s = parse_ok(&[
+            cmavo("lo"), cmavo("ni"), cmavo("mi"), gismu("gleki"), cmavo("kei"),
+            cmavo("cu"), gismu("barda"),
+        ]);
+        let bridi = as_bridi(&s.sentences[0]);
+        match &bridi.head_terms[0] {
+            Sumti::Description { inner, .. } => {
+                match inner.as_ref() {
+                    Selbri::Abstraction(AbstractionKind::Ni, _) => {}
+                    other => panic!("expected Abstraction(Ni, ..), got {:?}", other),
+                }
+            }
+            other => panic!("expected Description, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_siho_abstraction_parses() {
+        // lo si'o mi klama kei cu barda
+        let s = parse_ok(&[
+            cmavo("lo"), cmavo("si'o"), cmavo("mi"), gismu("klama"), cmavo("kei"),
+            cmavo("cu"), gismu("barda"),
+        ]);
+        let bridi = as_bridi(&s.sentences[0]);
+        match &bridi.head_terms[0] {
+            Sumti::Description { inner, .. } => {
+                match inner.as_ref() {
+                    Selbri::Abstraction(AbstractionKind::Siho, _) => {}
+                    other => panic!("expected Abstraction(Siho, ..), got {:?}", other),
+                }
+            }
+            other => panic!("expected Description, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_nu_still_parses_with_kind() {
+        // lo nu mi klama kei cu barda — ensure existing nu still works
+        let s = parse_ok(&[
+            cmavo("lo"), cmavo("nu"), cmavo("mi"), gismu("klama"), cmavo("kei"),
+            cmavo("cu"), gismu("barda"),
+        ]);
+        let bridi = as_bridi(&s.sentences[0]);
+        match &bridi.head_terms[0] {
+            Sumti::Description { inner, .. } => {
+                match inner.as_ref() {
+                    Selbri::Abstraction(AbstractionKind::Nu, _) => {}
+                    other => panic!("expected Abstraction(Nu, ..), got {:?}", other),
+                }
+            }
+            other => panic!("expected Description, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ceu_as_pro_sumti() {
+        // ce'u melbi → head: [ProSumti("ce'u")], selbri: melbi
+        let s = parse_ok(&[cmavo("ce'u"), gismu("melbi")]);
+        let bridi = as_bridi(&s.sentences[0]);
+        assert_eq!(bridi.head_terms[0], Sumti::ProSumti("ce'u".into()));
+    }
+
+    #[test]
+    fn test_abstraction_without_kei() {
+        // lo du'u mi klama cu barda — kei is optional
+        let s = parse_ok(&[
+            cmavo("lo"), cmavo("du'u"), cmavo("mi"), gismu("klama"),
+            cmavo("cu"), gismu("barda"),
+        ]);
+        let bridi = as_bridi(&s.sentences[0]);
+        // With optional kei, the inner sentence is "mi klama" and cu+barda is outer
+        assert_eq!(bridi.selbri, Selbri::Root("barda".into()));
+    }
+
+    #[test]
+    fn test_nested_abstractions() {
+        // lo nu lo ka ce'u melbi kei cu barda kei cu xamgu
+        // outer: nu(ka(ce'u melbi) cu barda), selbri: xamgu
+        let s = parse_ok(&[
+            cmavo("lo"), cmavo("nu"),
+            cmavo("lo"), cmavo("ka"), cmavo("ce'u"), gismu("melbi"), cmavo("kei"),
+            cmavo("cu"), gismu("barda"),
+            cmavo("kei"),
+            cmavo("cu"), gismu("xamgu"),
+        ]);
+        let bridi = as_bridi(&s.sentences[0]);
+        assert_eq!(bridi.selbri, Selbri::Root("xamgu".into()));
+        match &bridi.head_terms[0] {
+            Sumti::Description { inner, .. } => {
+                match inner.as_ref() {
+                    Selbri::Abstraction(AbstractionKind::Nu, inner_sentence) => {
+                        // Inner: lo ka ce'u melbi cu barda
+                        match inner_sentence.as_ref() {
+                            Sentence::Simple(inner_bridi) => {
+                                assert_eq!(inner_bridi.selbri, Selbri::Root("barda".into()));
+                            }
+                            other => panic!("expected Simple inner, got {:?}", other),
+                        }
+                    }
+                    other => panic!("expected Abstraction(Nu), got {:?}", other),
+                }
+            }
+            other => panic!("expected Description, got {:?}", other),
+        }
     }
 
     #[test]
