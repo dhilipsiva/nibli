@@ -1,33 +1,3 @@
-### 0.1 Lexer phonotactic enforcement
-
-`ganai` lexes as Gismu (CVCCV match). Will keep causing bugs for every cmavo compound that matches CVCCV/CCVCV patterns.
-
-**Fix options (pick one):**
-- (a) Cmavo lookup table that overrides Logos classification — low complexity, immediate
-- (b) Validate consonant clusters in Logos regex against legal Lojban pairs — medium, correct long-term
-
-**Crate:** parser/lexer.rs
-**Blocks:** 0.2, all forethought connective usage
-
-### 0.2 `ganai...gi` end-to-end verification
-
-Parser code exists and is correct. Untested in REPL because of 0.1. Once lexer fixed, verify full pipeline including nested `ganai` inside `nu` abstraction.
-
-**Crate:** parser/grammar.rs
-**Complexity:** minutes
-
-### 0.3 Disjunction query soundness
-
-Assert `lo mlatu ja gerku` → `Or(mlatu, gerku)` is in e-graph.
-Query `? lo mlatu ja gerku` → FALSE (wrong).
-
-**Root cause:** `check_formula_holds` for `OrNode` tries each disjunct independently against egglog. But the *compound* `Or(A, B)` was asserted as a single e-graph node — neither `A` nor `B` alone was derived.
-
-**Fix:** In the `OrNode` branch of `check_formula_holds`, first attempt `(check (IsTrue (Or sexp_l sexp_r)))` in egglog. Fall back to component check only if that fails.
-
-**Crate:** reasoning/lib.rs `check_formula_holds`
-**Complexity:** low
-
 ### 0.4 `[NEW]` Skolemization under universals produces constants instead of functions
 
 `collect_exists_for_skolem` walks through `ForAllNode` without tracking enclosing universal variables. Standard Skolemization requires: `∀x.∃y.P(x,y)` → `∀x.P(x, f(x))`, not `∀x.P(x, sk_0)`.
