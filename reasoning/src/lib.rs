@@ -123,10 +123,6 @@ const SCHEMA: &str = r#"
     ;; QUANTIFIER RULES (residual)
     ;; ───────────────────────────────────────────────────
 
-    ;; ∃-distribution over ∧
-    (rule ((IsTrue (Exists v (And A B))))
-          ((IsTrue (And (Exists v A) (Exists v B)))))
-
     ;; ∀-distribution over ∧
     (rule ((IsTrue (ForAll v (And A B))))
           ((IsTrue (And (ForAll v A) (ForAll v B)))))
@@ -241,12 +237,7 @@ impl Guest for ReasoningComponent {
             // Tracks enclosing universals to detect ∃-under-∀ (dependent Skolems).
             let mut skolem_subs = HashMap::new();
             let mut enclosing_universals = Vec::new();
-            collect_exists_for_skolem(
-                &logic,
-                root_id,
-                &mut skolem_subs,
-                &mut enclosing_universals,
-            );
+            collect_exists_for_skolem(&logic, root_id, &mut skolem_subs, &mut enclosing_universals);
 
             // Log Skolem substitutions
             if !skolem_subs.is_empty() {
@@ -254,11 +245,7 @@ impl Guest for ReasoningComponent {
                     .iter()
                     .map(|(v, sk)| {
                         if sk.starts_with(SKDEP_PREFIX) {
-                            format!(
-                                "{} ↦ {}(∀-dependent)",
-                                v,
-                                &sk[SKDEP_PREFIX.len()..]
-                            )
+                            format!("{} ↦ {}(∀-dependent)", v, &sk[SKDEP_PREFIX.len()..])
                         } else {
                             format!("{} ↦ {}", v, sk)
                         }
@@ -314,12 +301,8 @@ impl Guest for ReasoningComponent {
                     // Instantiate for all currently known entities
                     let entities = get_known_entities();
                     for entity in &entities {
-                        let instantiated = instantiate_for_entity(
-                            body_sexp,
-                            var_name,
-                            entity,
-                            dependent_skolems,
-                        );
+                        let instantiated =
+                            instantiate_for_entity(body_sexp, var_name, entity, dependent_skolems);
                         // Register entity-specific Skolem constants
                         for (_, base_name) in dependent_skolems {
                             let unique_sk = format!("{}_{}", base_name, entity);
@@ -400,10 +383,8 @@ fn check_formula_holds(
     egraph: &mut EGraph,
 ) -> Result<bool, String> {
     match &buffer.nodes[node_id as usize] {
-        LogicNode::AndNode((l, r)) => {
-            Ok(check_formula_holds(buffer, *l, subs, egraph)?
-                && check_formula_holds(buffer, *r, subs, egraph)?)
-        }
+        LogicNode::AndNode((l, r)) => Ok(check_formula_holds(buffer, *l, subs, egraph)?
+            && check_formula_holds(buffer, *r, subs, egraph)?),
         LogicNode::OrNode((l, r)) => {
             // First: check if the compound (Or A B) itself is in the e-graph.
             // This catches cases like `mi klama ja bajra` where (IsTrue (Or ...))
@@ -418,15 +399,11 @@ fn check_formula_holds(
             Ok(check_formula_holds(buffer, *l, subs, egraph)?
                 || check_formula_holds(buffer, *r, subs, egraph)?)
         }
-        LogicNode::NotNode(inner) => {
-            Ok(!check_formula_holds(buffer, *inner, subs, egraph)?)
-        }
+        LogicNode::NotNode(inner) => Ok(!check_formula_holds(buffer, *inner, subs, egraph)?),
         // Tense wrappers are transparent for reasoning
         LogicNode::PastNode(inner)
         | LogicNode::PresentNode(inner)
-        | LogicNode::FutureNode(inner) => {
-            check_formula_holds(buffer, *inner, subs, egraph)
-        }
+        | LogicNode::FutureNode(inner) => check_formula_holds(buffer, *inner, subs, egraph),
         LogicNode::ExistsNode((v, body)) => {
             // Check if any known entity satisfies the body
             let entities = get_known_entities();
