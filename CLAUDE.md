@@ -1,6 +1,8 @@
-# Lojban NeSy Engine
+# Nibli
 
-Neuro-symbolic reasoning engine that parses Lojban natural language into first-order logic and performs inference via egglog e-graphs.
+A Zero-Hallucination Symbolic Reasoning Engine.
+
+Nibli is a deterministic theorem prover compiled to WebAssembly (WASI P2). It compiles Lojban natural language syntax into First-Order Logic and performs inference via egglog e-graph equality saturation. Every conclusion is formally derived — no hallucination, no approximation.
 
 ## Environment
 

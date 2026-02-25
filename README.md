@@ -1,98 +1,99 @@
-# Lojban Neuro-Symbolic (NeSy) Engine
+# Nibli
 
-A high-performance, future-ready pipeline designed to parse, semantically compile, and logically reason about Lojban text using a zero-copy WebAssembly (Wasm) architecture.
+**A Zero-Hallucination Symbolic Reasoning Engine**
 
-## 🚀 Architectural Overview
+Nibli is a deterministic theorem prover compiled to WebAssembly (WASI P2). It compiles Lojban natural language syntax into First-Order Logic and performs inference via egglog e-graph equality saturation. Every conclusion is formally derived — no hallucination, no approximation.
 
-The engine utilizes the **WASI Preview 2 Component Model** to facilitate deterministic execution and polyglot interoperability. By composing discrete Wasm modules into a single, fused binary, the system achieves near-native performance through shared linear memory.
+> *nibli* (Lojban): x1 logically necessitates/entails x2 under rules x3.
 
-### The Zero-Copy Pipeline
+## Pipeline
 
-1. **Lexical Analysis (`logos`)**: Rapidly tokenizes raw Lojban strings into morphological classes without intermediate string allocations.
-2. **Preprocessing**: Resolves metalinguistic erasures (`si`, `sa`, `su`) and quotations (`zo`, `zoi`) at the token level.
-3. **Recursive Descent Parser**: A high-speed,  parser that consumes the token stream to build an arena-allocated Abstract Syntax Tree (AST).
-4. **Semantic Compiler**: Maps the AST to First-Order Logic (FOL) predicates. It utilizes a **Perfect Hash Function (PHF)** dictionary baked into the binary for  predicate lookups.
-5. **Reasoning Core (`egglog`)**: Performs equality saturation and logical entailment checking within an E-Graph database.
+```
+Lojban text ──→ Lexer ──→ Parser (AST) ──→ Semantics (FOL IR) ──→ Reasoning (egglog e-graph)
+                 │            │                    │                        │
+                logos     recursive            Skolemization         equality saturation
+              tokenizer    descent          Herbrand instantiation    inference rules
+```
 
-## 🛠️ Tech Stack
+5 WASM components composed via WIT interfaces into a single fused binary:
 
-* 
-**Language**: Rust (Latest Stable).
+| Component | Role |
+|-----------|------|
+| **parser** | Lojban text → AST → flat WIT buffer |
+| **semantics** | AST buffer → FOL logic IR → flat WIT logic buffer |
+| **reasoning** | FOL logic buffer → egglog e-graph assert/query |
+| **orchestrator** | Chains parser → semantics → reasoning |
+| **runner** | Native Wasmtime host, REPL, loads fused WASM |
 
-
-* **Wasm Runtime**: Wasmtime 41.0.3.
-* 
-**Package Manager**: Nix / NixOS (for hermetic dev environments).
-
-
-* **Task Runner**: Just.
-* **Logic Engine**: Egglog (Equality Saturation).
-* **Lexing**: Logos.
-
----
-
-## 💻 Development Setup
+## Quick Start
 
 ### Prerequisites
 
-* 
-[Nix](https://nixos.org/download.html) (Recommended for a reproducible environment).
-
-
-* 
-[Just](https://github.com/casey/just).
-
-
-
-### Loading the Environment
-
-```bash
-# Load the Nix shell with all necessary WASI and Rust tooling
-nix flake update
-nix develop
-
-```
+- [Nix](https://nixos.org/download.html) (all tooling — rustc, cargo-component, wac, just, wasmtime — comes from `flake.nix`)
 
 ### Build & Run
 
-The project uses a structured `Justfile` to automate the complex build and composition process.
-
 ```bash
-# Build components, fuse them into a single engine, and launch the REPL
+# Enter the dev shell
+nix --extra-experimental-features 'nix-command flakes' develop
+
+# Build components, fuse into a single engine, and launch the REPL
 just run
 
+# Run all unit tests
+just test
 ```
 
----
-
-## 🧩 Component Breakdown
-
-| Component | Responsibility | Key Optimization |
-| --- | --- | --- |
-| **Parser** | Morphological/Structural Parsing | Single-pass, zero-copy recursive descent. |
-| **Semantics** | Syntax-to-Logic Mapping | Static PHF dictionary lookup (). |
-| **Reasoning** | Logical Entailment | E-Graph equality saturation via `egglog`. |
-| **Orchestrator** | Pipeline Coordination | Cross-component calls within a single Wasm sandbox. |
-
----
-
-## 📜 World Interface (WIT)
-
-The system boundaries are defined by `world.wit`, enforcing strict I/O typing for the engine pipeline .
-
-```rust
-world engine-pipeline {
-    import parser;
-    import semantics;
-    import reasoning;
-    
-    export execute: func(input: string) -> bool;
-}
+### REPL Usage
 
 ```
+~/nibli〉lo gerku cu barda
+[Assert] 1 fact(s) inserted.
 
-## 🧪 Future Roadmap
+~/nibli〉? lo gerku cu barda
+[Query] TRUE
 
-* **SIMD Gismu Matching**: Accelerating the morphological scan using AVX-512 instructions.
-* **Lujvo Decomposition**: Algorithmically breaking down compound words into their base meanings during semantic compilation.
-* **BAI Modal Tags**: Extending the reasoning core to support Lojban's extensive case-tagging system.
+~/nibli〉:debug re lo gerku cu barda
+[Logic] (Count "_v0" 2 (And (Pred "gerku" ...) (Pred "barda" ...)))
+
+~/nibli〉:reset
+[Reset] Knowledge base cleared.
+```
+
+## Tech Stack
+
+- **Language:** Rust (stable)
+- **WASM:** WASI Preview 2 Component Model (cargo-component + wac)
+- **Runtime:** Wasmtime
+- **Logic Engine:** egglog (equality saturation)
+- **Lexer:** Logos
+- **Dictionary:** Perfect Hash Function (PHF) baked into binary
+- **Dev Environment:** Nix flake
+- **Task Runner:** Just
+
+## Lojban Coverage
+
+- Gadri descriptions (`lo`/`le`/`la`), universal (`ro lo`/`ro le`), numeric quantifiers (`PA lo`/`su'o lo`)
+- Place tags (`fa`/`fe`/`fi`/`fo`/`fu`), BAI modal tags (`ri'a`, `ni'i`, `mu'i`, `ki'u`, `pi'o`, `ba'i`), `fi'o`...`fe'u`
+- Selbri: root, tanru, conversion (`se`/`te`/`ve`/`xe`), negation (`na`), grouping (`ke`...`ke'e`), compounds (`zei`), `be`...`bei`...`be'o`
+- Relative clauses (`poi`/`noi`) with `ke'a`, implicit variable injection
+- Sumti connectives (`.e`/`.a`/`.o`/`.u` + `nai`), selbri connectives (`je`/`ja`/`jo`/`ju`)
+- Sentence connectives (forethought: `ge`...`gi`, `ga`...`gi`, `ganai`...`gi`)
+- Abstractions (`nu`, `du'u`, `ka` with `ce'u`, `ni`, `si'o`)
+- Tense (`pu`/`ca`/`ba`)
+- Quoted literals (`lu`...`li'u`), number sumti (`li` + PA)
+
+## Reasoning
+
+- Skolemization (independent + dependent under `∀`)
+- Herbrand instantiation for universal formulas
+- egglog e-graph with structural rewrites (commutativity, associativity, De Morgan, double negation) + inference rules (conjunction elimination, disjunctive syllogism, modus ponens/tollens)
+- Count quantifier (exactly N) for numeric descriptions
+
+## Roadmap
+
+See `todo.md` for the full phased roadmap (Phases 1-5), dependency graph, and technical debt tracker.
+
+## License
+
+See `LICENSE` for details.
