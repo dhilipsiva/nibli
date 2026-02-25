@@ -1,10 +1,3 @@
-### 1.4 Numeric quantifiers (`re lo`, `ci lo`, `su'o`, `no`)
-
-Parser: number + gadri in quantifier position. Semantics: existential with cardinality constraint. Expanding "exactly N" in raw FOL is verbose — add a dedicated `CountNode` in the IR.
-
-**Crate:** parser/grammar.rs, semantics/ir.rs, semantics/semantic.rs
-**Complexity:** medium
-
 ### 1.5 Afterthought sentence connectives (`.i je` / `.i ja` / `.i naja` / `.i jo`)
 
 Parser: recognize connective after `.i`. Semantics: combine adjacent sentence logic forms.

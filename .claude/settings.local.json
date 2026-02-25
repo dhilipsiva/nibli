@@ -14,7 +14,8 @@
       "Bash(wsl -d Ubuntu -e ls:*)",
       "Bash(wsl -d Ubuntu -e bash -c \"wc -l ~/projects/dhilipsiva/lojban_nesy_engine/parser/src/grammar.rs\":*)",
       "Bash(wsl -d Ubuntu -e bash -c \"wc -l ~/projects/dhilipsiva/lojban_nesy_engine/parser/src/lib.rs\":*)",
-      "Bash(wsl -d Ubuntu -e bash -c:*)"
+      "Bash(wsl -d Ubuntu -e bash -c:*)",
+      "Bash(wc:*)"
     ]
   }
 }
