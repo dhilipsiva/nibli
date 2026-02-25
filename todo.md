@@ -1,10 +1,3 @@
-### 1.5 Afterthought sentence connectives (`.i je` / `.i ja` / `.i naja` / `.i jo`)
-
-Parser: recognize connective after `.i`. Semantics: combine adjacent sentence logic forms.
-
-**Crate:** parser/grammar.rs
-**Complexity:** low
-
 ### 1.6 Relative clause stacking + `voi`
 
 `voi` (non-veridical restrictive) missing. Can't stack multiple relative clauses. Needed for: "the protein which binds ATP and which is phosphorylated."
@@ -263,7 +256,6 @@ This week:
 
 Next sprint:
   1.1  — sumti connectives (high application value)
-  1.5  — afterthought sentence connectives (low effort, high value)
   1.9  — lujvo recognition (coverage)
 ```
 

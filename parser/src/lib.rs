@@ -167,6 +167,19 @@ impl Flattener {
                     ast::SentenceConnective::GanaiGi => WasmConn::GanaiGi,
                     ast::SentenceConnective::GeGi => WasmConn::GeGi,
                     ast::SentenceConnective::GaGi => WasmConn::GaGi,
+                    ast::SentenceConnective::Afterthought {
+                        left_negated,
+                        connective: c,
+                        right_negated,
+                    } => {
+                        let wit_conn = match c {
+                            ast::Connective::Je => wit::Connective::Je,
+                            ast::Connective::Ja => wit::Connective::Ja,
+                            ast::Connective::Jo => wit::Connective::Jo,
+                            ast::Connective::Ju => wit::Connective::Ju,
+                        };
+                        WasmConn::Afterthought((left_negated, wit_conn, right_negated))
+                    }
                 };
 
                 let idx = self.buffer.sentences.len() as u32;

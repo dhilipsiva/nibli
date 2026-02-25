@@ -852,6 +852,44 @@ impl SemanticCompiler {
                     SentenceConnective::GaGi => {
                         LogicalForm::Or(Box::new(left_form), Box::new(right_form))
                     }
+                    SentenceConnective::Afterthought((left_neg, conn, right_neg)) => {
+                        let l = if *left_neg {
+                            LogicalForm::Not(Box::new(left_form))
+                        } else {
+                            left_form
+                        };
+                        let r = if *right_neg {
+                            LogicalForm::Not(Box::new(right_form))
+                        } else {
+                            right_form
+                        };
+                        match conn {
+                            Connective::Je => LogicalForm::And(Box::new(l), Box::new(r)),
+                            Connective::Ja => LogicalForm::Or(Box::new(l), Box::new(r)),
+                            Connective::Jo => {
+                                // Biconditional: (¬L ∨ R) ∧ (¬R ∨ L)
+                                let not_l = LogicalForm::Not(Box::new(l.clone()));
+                                let not_r = LogicalForm::Not(Box::new(r.clone()));
+                                LogicalForm::And(
+                                    Box::new(LogicalForm::Or(Box::new(not_l), Box::new(r))),
+                                    Box::new(LogicalForm::Or(Box::new(not_r), Box::new(l))),
+                                )
+                            }
+                            Connective::Ju => {
+                                // XOR: (L ∨ R) ∧ ¬(L ∧ R)
+                                LogicalForm::And(
+                                    Box::new(LogicalForm::Or(
+                                        Box::new(l.clone()),
+                                        Box::new(r.clone()),
+                                    )),
+                                    Box::new(LogicalForm::Not(Box::new(LogicalForm::And(
+                                        Box::new(l),
+                                        Box::new(r),
+                                    )))),
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -862,7 +900,7 @@ impl SemanticCompiler {
 mod tests {
     use super::*;
     use crate::bindings::lojban::nesy::ast_types::{
-        Bridi, Connective, Selbri, Sentence, Sumti,
+        Bridi, Connective, Selbri, Sentence, SentenceConnective, Sumti,
     };
     use crate::ir::{LogicalForm, LogicalTerm};
 
@@ -1720,5 +1758,109 @@ mod tests {
 
         assert!(matches!(&form, LogicalForm::Exists(_, _)),
             "expected Exists, got {:?}", form);
+    }
+
+    // ─── Afterthought sentence connective tests ───────────────────
+
+    /// Helper: compile a connected sentence from two simple bridi.
+    fn compile_connected(
+        conn: SentenceConnective,
+        left_selbri: &str,
+        left_sumti: &str,
+        right_selbri: &str,
+        right_sumti: &str,
+    ) -> (LogicalForm, SemanticCompiler) {
+        let selbris = vec![
+            Selbri::Root(left_selbri.into()),
+            Selbri::Root(right_selbri.into()),
+        ];
+        let sumtis = vec![
+            Sumti::ProSumti(left_sumti.into()),
+            Sumti::ProSumti(right_sumti.into()),
+        ];
+        let left_bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+        };
+        let right_bridi = Bridi {
+            relation: 1,
+            head_terms: vec![1],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+        };
+        let sentences = vec![
+            Sentence::Simple(left_bridi),
+            Sentence::Simple(right_bridi),
+            Sentence::Connected((conn, 0, 1)),
+        ];
+        let mut compiler = SemanticCompiler::new();
+        let form = compiler.compile_sentence(2, &selbris, &sumtis, &sentences);
+        (form, compiler)
+    }
+
+    #[test]
+    fn test_afterthought_je_compiles_to_and() {
+        let conn = SentenceConnective::Afterthought((false, Connective::Je, false));
+        let (form, _) = compile_connected(conn, "klama", "mi", "prami", "do");
+        assert!(
+            matches!(&form, LogicalForm::And(_, _)),
+            "expected And, got {:?}",
+            form
+        );
+    }
+
+    #[test]
+    fn test_afterthought_ja_compiles_to_or() {
+        let conn = SentenceConnective::Afterthought((false, Connective::Ja, false));
+        let (form, _) = compile_connected(conn, "klama", "mi", "prami", "do");
+        assert!(
+            matches!(&form, LogicalForm::Or(_, _)),
+            "expected Or, got {:?}",
+            form
+        );
+    }
+
+    #[test]
+    fn test_afterthought_naja_compiles_to_implies() {
+        // .i naja = ¬A ∨ B (material conditional)
+        let conn = SentenceConnective::Afterthought((true, Connective::Ja, false));
+        let (form, _) = compile_connected(conn, "klama", "mi", "prami", "do");
+        // Should be Or(Not(left), right)
+        match &form {
+            LogicalForm::Or(left, _right) => {
+                assert!(
+                    matches!(left.as_ref(), LogicalForm::Not(_)),
+                    "expected Not on left of Or, got {:?}",
+                    left
+                );
+            }
+            other => panic!("expected Or(Not(_), _), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_afterthought_jo_compiles_to_biconditional() {
+        // .i jo = (¬L ∨ R) ∧ (¬R ∨ L)
+        let conn = SentenceConnective::Afterthought((false, Connective::Jo, false));
+        let (form, _) = compile_connected(conn, "klama", "mi", "prami", "do");
+        match &form {
+            LogicalForm::And(left, right) => {
+                assert!(
+                    matches!(left.as_ref(), LogicalForm::Or(_, _)),
+                    "expected Or on left of And, got {:?}",
+                    left
+                );
+                assert!(
+                    matches!(right.as_ref(), LogicalForm::Or(_, _)),
+                    "expected Or on right of And, got {:?}",
+                    right
+                );
+            }
+            other => panic!("expected And(Or(_,_), Or(_,_)), got {:?}", other),
+        }
     }
 }

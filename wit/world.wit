@@ -63,7 +63,14 @@ interface ast-types {
         tense: option<tense>,
     }
 
-    enum sentence-connective { ganai-gi, ge-gi, ga-gi }
+    variant sentence-connective {
+        ganai-gi,
+        ge-gi,
+        ga-gi,
+        /// Afterthought: .i [na] (je|ja|jo|ju) [nai]
+        /// Fields: (left-negated, connective, right-negated)
+        afterthought(tuple<bool, connective, bool>),
+    }
 
     variant sentence {
         simple(bridi),

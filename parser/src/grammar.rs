@@ -198,6 +198,45 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Try to parse an afterthought sentence connective: [na] (je|ja|jo|ju) [nai]
+    /// Called right after `.i` has been consumed. Returns the SentenceConnective
+    /// or None (restoring position) if no connective follows.
+    fn try_parse_afterthought_sentence_connective(&mut self) -> Option<SentenceConnective> {
+        let saved = self.save();
+
+        // Optional left negation: na
+        let left_negated = self.eat_cmavo("na");
+
+        // Try compound forms first (jenai, janai, jonai, junai)
+        let (conn, right_negated) = if self.eat_cmavo("jenai") {
+            (Connective::Je, true)
+        } else if self.eat_cmavo("janai") {
+            (Connective::Ja, true)
+        } else if self.eat_cmavo("jonai") {
+            (Connective::Jo, true)
+        } else if self.eat_cmavo("junai") {
+            (Connective::Ju, true)
+        } else if self.eat_cmavo("je") {
+            (Connective::Je, self.eat_cmavo("nai"))
+        } else if self.eat_cmavo("ja") {
+            (Connective::Ja, self.eat_cmavo("nai"))
+        } else if self.eat_cmavo("jo") {
+            (Connective::Jo, self.eat_cmavo("nai"))
+        } else if self.eat_cmavo("ju") {
+            (Connective::Ju, self.eat_cmavo("nai"))
+        } else {
+            // No connective found; backtrack (may have consumed "na")
+            self.restore(saved);
+            return None;
+        };
+
+        Some(SentenceConnective::Afterthought {
+            left_negated,
+            connective: conn,
+            right_negated,
+        })
+    }
+
     /// Check if current token is a sentence boundary.
     fn at_sentence_boundary(&self) -> bool {
         if self.at_end() {
@@ -228,6 +267,27 @@ impl<'a> Parser<'a> {
                     break;
                 }
             }
+
+            // Try afterthought sentence connective: .i [na] (je|ja|jo|ju) [nai]
+            if let Some(conn) = self.try_parse_afterthought_sentence_connective() {
+                while self.eat_pause() {}
+                if self.at_end() {
+                    return Err(
+                        self.error("expected sentence after afterthought connective"),
+                    );
+                }
+                let left = sentences
+                    .pop()
+                    .ok_or_else(|| self.error("no preceding sentence for connective"))?;
+                let right = self.parse_sentence()?;
+                sentences.push(Sentence::Connected {
+                    connective: conn,
+                    left: Box::new(left),
+                    right: Box::new(right),
+                });
+                continue;
+            }
+
             while self.eat_pause() {}
             if self.at_end() {
                 break;
@@ -1245,6 +1305,245 @@ mod tests {
         // .i mi klama — leading .i is harmless
         let r = parse_ok(&[pause(), cmavo("i"), cmavo("mi"), gismu("klama")]);
         assert_eq!(r.sentences.len(), 1);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 2b. AFTERTHOUGHT SENTENCE CONNECTIVES
+    // ═══════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_afterthought_sentence_je() {
+        // mi klama .i je do prami → Connected(Afterthought(Je), left, right)
+        let r = parse_ok(&[
+            cmavo("mi"),
+            gismu("klama"),
+            pause(),
+            cmavo("i"),
+            cmavo("je"),
+            cmavo("do"),
+            gismu("prami"),
+        ]);
+        assert_eq!(r.sentences.len(), 1);
+        match &r.sentences[0] {
+            Sentence::Connected {
+                connective:
+                    SentenceConnective::Afterthought {
+                        left_negated: false,
+                        connective: Connective::Je,
+                        right_negated: false,
+                    },
+                left,
+                right,
+            } => {
+                let lb = as_bridi(left);
+                assert_eq!(lb.selbri, Selbri::Root("klama".into()));
+                let rb = as_bridi(right);
+                assert_eq!(rb.selbri, Selbri::Root("prami".into()));
+            }
+            other => panic!("expected Connected(.i je), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_afterthought_sentence_ja() {
+        // mi klama .i ja do prami
+        let r = parse_ok(&[
+            cmavo("mi"),
+            gismu("klama"),
+            pause(),
+            cmavo("i"),
+            cmavo("ja"),
+            cmavo("do"),
+            gismu("prami"),
+        ]);
+        assert_eq!(r.sentences.len(), 1);
+        match &r.sentences[0] {
+            Sentence::Connected {
+                connective:
+                    SentenceConnective::Afterthought {
+                        left_negated: false,
+                        connective: Connective::Ja,
+                        right_negated: false,
+                    },
+                ..
+            } => {}
+            other => panic!("expected Connected(.i ja), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_afterthought_sentence_jo() {
+        // mi klama .i jo do prami
+        let r = parse_ok(&[
+            cmavo("mi"),
+            gismu("klama"),
+            pause(),
+            cmavo("i"),
+            cmavo("jo"),
+            cmavo("do"),
+            gismu("prami"),
+        ]);
+        assert_eq!(r.sentences.len(), 1);
+        match &r.sentences[0] {
+            Sentence::Connected {
+                connective:
+                    SentenceConnective::Afterthought {
+                        left_negated: false,
+                        connective: Connective::Jo,
+                        right_negated: false,
+                    },
+                ..
+            } => {}
+            other => panic!("expected Connected(.i jo), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_afterthought_sentence_ju() {
+        // mi klama .i ju do prami
+        let r = parse_ok(&[
+            cmavo("mi"),
+            gismu("klama"),
+            pause(),
+            cmavo("i"),
+            cmavo("ju"),
+            cmavo("do"),
+            gismu("prami"),
+        ]);
+        assert_eq!(r.sentences.len(), 1);
+        match &r.sentences[0] {
+            Sentence::Connected {
+                connective:
+                    SentenceConnective::Afterthought {
+                        left_negated: false,
+                        connective: Connective::Ju,
+                        right_negated: false,
+                    },
+                ..
+            } => {}
+            other => panic!("expected Connected(.i ju), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_afterthought_sentence_naja() {
+        // mi klama .i na ja do prami → implies (left negated)
+        let r = parse_ok(&[
+            cmavo("mi"),
+            gismu("klama"),
+            pause(),
+            cmavo("i"),
+            cmavo("na"),
+            cmavo("ja"),
+            cmavo("do"),
+            gismu("prami"),
+        ]);
+        assert_eq!(r.sentences.len(), 1);
+        match &r.sentences[0] {
+            Sentence::Connected {
+                connective:
+                    SentenceConnective::Afterthought {
+                        left_negated: true,
+                        connective: Connective::Ja,
+                        right_negated: false,
+                    },
+                ..
+            } => {}
+            other => panic!("expected Connected(.i naja), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_afterthought_sentence_jenai() {
+        // mi klama .i jenai do prami → AND with right negation
+        let r = parse_ok(&[
+            cmavo("mi"),
+            gismu("klama"),
+            pause(),
+            cmavo("i"),
+            cmavo("jenai"),
+            cmavo("do"),
+            gismu("prami"),
+        ]);
+        assert_eq!(r.sentences.len(), 1);
+        match &r.sentences[0] {
+            Sentence::Connected {
+                connective:
+                    SentenceConnective::Afterthought {
+                        left_negated: false,
+                        connective: Connective::Je,
+                        right_negated: true,
+                    },
+                ..
+            } => {}
+            other => panic!("expected Connected(.i jenai), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_afterthought_sentence_chain() {
+        // A .i je B .i ja C → left-associative: Connected(ja, Connected(je, A, B), C)
+        let r = parse_ok(&[
+            cmavo("mi"),
+            gismu("klama"),
+            pause(),
+            cmavo("i"),
+            cmavo("je"),
+            cmavo("do"),
+            gismu("prami"),
+            pause(),
+            cmavo("i"),
+            cmavo("ja"),
+            cmavo("ti"),
+            gismu("barda"),
+        ]);
+        assert_eq!(r.sentences.len(), 1);
+        match &r.sentences[0] {
+            Sentence::Connected {
+                connective:
+                    SentenceConnective::Afterthought {
+                        connective: Connective::Ja,
+                        ..
+                    },
+                left,
+                right,
+            } => {
+                // Left should be the .i je connection
+                match left.as_ref() {
+                    Sentence::Connected {
+                        connective:
+                            SentenceConnective::Afterthought {
+                                connective: Connective::Je,
+                                ..
+                            },
+                        ..
+                    } => {}
+                    other => panic!("inner should be .i je, got {:?}", other),
+                }
+                // Right should be simple
+                let rb = as_bridi(right);
+                assert_eq!(rb.selbri, Selbri::Root("barda".into()));
+            }
+            other => panic!("expected chained Connected, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_plain_dot_i_still_separates() {
+        // mi klama .i do prami → two independent sentences (no connective)
+        let r = parse_ok(&[
+            cmavo("mi"),
+            gismu("klama"),
+            pause(),
+            cmavo("i"),
+            cmavo("do"),
+            gismu("prami"),
+        ]);
+        assert_eq!(r.sentences.len(), 2);
+        let b0 = as_bridi(&r.sentences[0]);
+        assert_eq!(b0.selbri, Selbri::Root("klama".into()));
+        let b1 = as_bridi(&r.sentences[1]);
+        assert_eq!(b1.selbri, Selbri::Root("prami".into()));
     }
 
     // ═══════════════════════════════════════════════════════════

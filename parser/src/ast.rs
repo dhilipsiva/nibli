@@ -234,6 +234,12 @@ pub enum SentenceConnective {
     GanaiGi, // Implication: ganai ... gi ...
     GeGi,    // Conjunction: ge ... gi ... (AND)
     GaGi,    // Disjunction: ga ... gi ... (OR)
+    /// Afterthought: .i [na] (je|ja|jo|ju) [nai]
+    Afterthought {
+        left_negated: bool,
+        connective: Connective,
+        right_negated: bool,
+    },
 }
 
 // Update ParsedText to hold recursive Sentences, not flat Bridis

@@ -72,9 +72,17 @@ When analyzing or searching the codebase:
 
 See `todo.md` for the full phased roadmap (Phases 1-5), dependency graph, and technical debt tracker.
 
+## Pre-commit Checklist
+
+Before every commit, always:
+1. Update `CLAUDE.md` — bump Current Status if a roadmap phase was completed
+2. Update `todo.md` — remove completed tasks
+3. Update `README.md` — if Lojban coverage or reasoning capabilities changed
+4. Then commit all code + doc changes together
+
 ## Current Status
 
-Completed through Phase 1.4.
+Completed through Phase 1.5.
 
 **Implemented features:**
 - Lexer + recursive-descent parser (gismu, cmavo, cmevla, lujvo partial)
@@ -83,7 +91,7 @@ Completed through Phase 1.4.
 - Selbri: root, tanru, conversion (se/te/ve/xe), negation (na), grouping (ke...ke'e), compounds (zei), be...bei...be'o
 - Relative clauses (poi/noi) with ke'a, implicit variable injection
 - Sumti connectives (.e/.a/.o/.u + nai), selbri connectives (je/ja/jo/ju)
-- Sentence connectives (forethought: ge...gi, ga...gi, ganai...gi)
+- Sentence connectives (forethought: ge...gi, ga...gi, ganai...gi; afterthought: .i je/ja/jo/ju with na/nai)
 - Abstractions (nu, du'u, ka with ce'u, ni, si'o)
 - Tense (pu/ca/ba)
 - Quoted literals (lu...li'u), number sumti (li + PA)
@@ -91,4 +99,4 @@ Completed through Phase 1.4.
 - egglog e-graph reasoning with structural rewrites + inference rules
 - Count quantifier (exactly N) for numeric descriptions
 
-**Next up:** 1.5 Afterthought sentence connectives (.i je / .i ja)
+**Next up:** 1.6 Relative clause stacking + `voi`
