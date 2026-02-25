@@ -1,6 +1,6 @@
 use crate::bindings::lojban::nesy::ast_types::{
-    AbstractionKind, Bridi, Connective, Conversion, Gadri, PlaceTag, Selbri, Sentence,
-    SentenceConnective, Sumti, Tense,
+    AbstractionKind, BaiTag, Bridi, Connective, Conversion, Gadri, ModalTag, PlaceTag, Selbri,
+    Sentence, SentenceConnective, Sumti, Tense,
 };
 use crate::dictionary::JbovlasteSchema;
 use crate::ir::{LogicalForm, LogicalTerm};
@@ -45,6 +45,19 @@ impl SemanticCompiler {
         let v = format!("_v{}", self.var_counter);
         self.var_counter += 1;
         self.interner.get_or_intern(&v)
+    }
+
+    // ─── BAI → gismu mapping ──────────────────────────────────────
+
+    fn bai_to_gismu(tag: &BaiTag) -> &'static str {
+        match tag {
+            BaiTag::Ria => "rinka",
+            BaiTag::Nii => "nibli",
+            BaiTag::Mui => "mukti",
+            BaiTag::Kiu => "krinu",
+            BaiTag::Pio => "pilno",
+            BaiTag::Bai => "basti",
+        }
     }
 
     // ─── Selbri Introspection ────────────────────────────────────
@@ -171,6 +184,11 @@ impl SemanticCompiler {
             }
 
             Sumti::Tagged((_tag, inner_id)) => {
+                let inner = &sumtis[*inner_id as usize];
+                self.resolve_sumti(inner, sumtis, selbris, sentences)
+            }
+
+            Sumti::ModalTagged((_modal_tag, inner_id)) => {
                 let inner = &sumtis[*inner_id as usize];
                 self.resolve_sumti(inner, sumtis, selbris, sentences)
             }
@@ -604,6 +622,7 @@ impl SemanticCompiler {
         let mut positioned: Vec<Option<LogicalTerm>> = vec![None; target_arity];
         let mut untagged: Vec<LogicalTerm> = Vec::new();
         let mut quantifiers: Vec<QuantifierEntry> = Vec::new();
+        let mut modal_entries: Vec<(ModalTag, LogicalTerm, Vec<QuantifierEntry>)> = Vec::new();
 
         for &term_id in bridi.head_terms.iter().chain(bridi.tail_terms.iter()) {
             let sumti = &sumtis[term_id as usize];
@@ -624,6 +643,11 @@ impl SemanticCompiler {
                         positioned[idx] = Some(term);
                     }
                 }
+                Sumti::ModalTagged((modal_tag, inner_id)) => {
+                    let inner = &sumtis[*inner_id as usize];
+                    let (term, quants) = self.resolve_sumti(inner, sumtis, selbris, sentences);
+                    modal_entries.push((modal_tag.clone(), term, quants));
+                }
                 other => {
                     let (term, quants) = self.resolve_sumti(other, sumtis, selbris, sentences);
                     quantifiers.extend(quants);
@@ -642,6 +666,43 @@ impl SemanticCompiler {
             .collect();
 
         let mut final_form = self.apply_selbri(bridi.relation, &args, selbris, sumtis, sentences);
+
+        // ── Modal predicate conjunction (BAI / fi'o tags) ─────────
+        // Each modal tag creates a conjoined predication using the
+        // underlying gismu: x1 = tagged sumti, x2 = main bridi's x1.
+        for (modal_tag, tagged_term, modal_quants) in modal_entries {
+            quantifiers.extend(modal_quants);
+
+            let (modal_gismu, modal_arity) = match &modal_tag {
+                ModalTag::Fixed(bai) => {
+                    let gismu = Self::bai_to_gismu(bai);
+                    let arity = JbovlasteSchema::get_arity_or_default(gismu);
+                    (self.interner.get_or_intern(gismu), arity)
+                }
+                ModalTag::Fio(selbri_id) => {
+                    let name = self.get_selbri_head_name(*selbri_id, selbris);
+                    let arity = self.get_selbri_arity(*selbri_id, selbris);
+                    (self.interner.get_or_intern(name), arity)
+                }
+            };
+
+            // x1 = tagged sumti (cause/reason/tool), x2 = main bridi's x1
+            let main_x1 = args.first().cloned().unwrap_or(LogicalTerm::Unspecified);
+            let mut modal_args = vec![LogicalTerm::Unspecified; modal_arity];
+            if modal_arity > 0 {
+                modal_args[0] = tagged_term;
+            }
+            if modal_arity > 1 {
+                modal_args[1] = main_x1;
+            }
+
+            let modal_form = LogicalForm::Predicate {
+                relation: modal_gismu,
+                args: modal_args,
+            };
+
+            final_form = LogicalForm::And(Box::new(final_form), Box::new(modal_form));
+        }
 
         // Wrap with quantifiers (inner-to-outer)
         for entry in quantifiers.into_iter().rev() {
@@ -1279,6 +1340,198 @@ mod tests {
                 }
             }
             other => panic!("expected Predicate, got {:?}", other),
+        }
+    }
+
+    // ─── BAI modal tag tests ──────────────────────────────────────
+
+    #[test]
+    fn test_bai_ria_produces_conjoined_rinka() {
+        // mi klama ri'a do → And(klama(mi, ...), rinka(do, mi, ...))
+        // Buffer layout:
+        //   sumtis: [0: mi, 1: do, 2: ModalTagged(Fixed(Ria), 1)]
+        //   selbris: [0: klama]
+        //   bridi: { relation: 0, head_terms: [0], tail_terms: [2] }
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),                            // 0
+            Sumti::ProSumti("do".into()),                            // 1
+            Sumti::ModalTagged((ModalTag::Fixed(BaiTag::Ria), 1)),   // 2
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![2],
+            negated: false,
+            tense: None,
+        };
+
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+
+        // Should be And(klama(mi, ...), rinka(do, mi, ...))
+        match &form {
+            LogicalForm::And(left, right) => {
+                // Left: klama(mi, ...)
+                match left.as_ref() {
+                    LogicalForm::Predicate { relation, args } => {
+                        assert_eq!(resolve(&compiler, relation), "klama");
+                        assert_eq!(args[0], LogicalTerm::Constant(compiler.interner.get("mi").unwrap()));
+                    }
+                    other => panic!("expected Predicate(klama), got {:?}", other),
+                }
+                // Right: rinka(do, mi, ...)
+                match right.as_ref() {
+                    LogicalForm::Predicate { relation, args } => {
+                        assert_eq!(resolve(&compiler, relation), "rinka");
+                        // x1 = tagged sumti (do), x2 = main x1 (mi)
+                        assert_eq!(args[0], LogicalTerm::Constant(compiler.interner.get("do").unwrap()));
+                        assert_eq!(args[1], LogicalTerm::Constant(compiler.interner.get("mi").unwrap()));
+                    }
+                    other => panic!("expected Predicate(rinka), got {:?}", other),
+                }
+            }
+            other => panic!("expected And(klama, rinka), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_bai_pio_produces_pilno() {
+        // mi citka pi'o lo forca → And(citka(mi, ...), pilno(lo_forca_var, mi, ...))
+        // Buffer:
+        //   sumtis: [0: mi, 1: Description(Lo, 1), 2: ModalTagged(Fixed(Pio), 1)]
+        //   selbris: [0: citka, 1: forca]
+        let selbris = vec![
+            Selbri::Root("citka".into()),  // 0
+            Selbri::Root("forca".into()),  // 1
+        ];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),                             // 0
+            Sumti::Description((Gadri::Lo, 1)),                       // 1
+            Sumti::ModalTagged((ModalTag::Fixed(BaiTag::Pio), 1)),    // 2
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![2],
+            negated: false,
+            tense: None,
+        };
+
+        let (form, _compiler) = compile_one(selbris, sumtis, bridi);
+
+        // Should be ∃x.(forca(x) ∧ And(citka(mi,...), pilno(x, mi,...)))
+        // The outermost is Exists wrapping the description's quantifier
+        match &form {
+            LogicalForm::Exists(_, body) => {
+                match body.as_ref() {
+                    LogicalForm::And(restrictor, inner_and) => {
+                        // restrictor = forca(x, ...)
+                        assert!(matches!(restrictor.as_ref(), LogicalForm::Predicate { .. }));
+                        // inner_and = And(citka(...), pilno(...))
+                        assert!(matches!(inner_and.as_ref(), LogicalForm::And(_, _)));
+                    }
+                    other => panic!("expected And(forca_restrictor, And(citka, pilno)), got {:?}", other),
+                }
+            }
+            other => panic!("expected Exists wrapping modal conjunction, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_fio_produces_custom_modal() {
+        // mi klama fi'o zbasu do → And(klama(mi,...), zbasu(do, mi,...))
+        // Buffer:
+        //   sumtis: [0: mi, 1: do, 2: ModalTagged(Fio(1), 1)]
+        //   selbris: [0: klama, 1: zbasu]
+        let selbris = vec![
+            Selbri::Root("klama".into()),  // 0
+            Selbri::Root("zbasu".into()),  // 1
+        ];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),              // 0
+            Sumti::ProSumti("do".into()),               // 1
+            Sumti::ModalTagged((ModalTag::Fio(1), 1)),  // 2
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![2],
+            negated: false,
+            tense: None,
+        };
+
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+
+        match &form {
+            LogicalForm::And(left, right) => {
+                match left.as_ref() {
+                    LogicalForm::Predicate { relation, .. } => {
+                        assert_eq!(resolve(&compiler, relation), "klama");
+                    }
+                    other => panic!("expected klama predicate, got {:?}", other),
+                }
+                match right.as_ref() {
+                    LogicalForm::Predicate { relation, args } => {
+                        assert_eq!(resolve(&compiler, relation), "zbasu");
+                        assert_eq!(args[0], LogicalTerm::Constant(compiler.interner.get("do").unwrap()));
+                        assert_eq!(args[1], LogicalTerm::Constant(compiler.interner.get("mi").unwrap()));
+                    }
+                    other => panic!("expected zbasu predicate, got {:?}", other),
+                }
+            }
+            other => panic!("expected And(klama, zbasu), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_multiple_bai_tags_conjoin() {
+        // mi klama ri'a do pi'o ti → And(And(klama(...), rinka(do,mi,...)), pilno(ti,mi,...))
+        let selbris = vec![Selbri::Root("klama".into())]; // 0
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),                            // 0
+            Sumti::ProSumti("do".into()),                            // 1
+            Sumti::ModalTagged((ModalTag::Fixed(BaiTag::Ria), 1)),   // 2
+            Sumti::ProSumti("ti".into()),                            // 3
+            Sumti::ModalTagged((ModalTag::Fixed(BaiTag::Pio), 3)),   // 4
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![2, 4],
+            negated: false,
+            tense: None,
+        };
+
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+
+        // Outermost should be And(And(klama, rinka), pilno)
+        match &form {
+            LogicalForm::And(inner_and, pilno) => {
+                match inner_and.as_ref() {
+                    LogicalForm::And(klama, rinka) => {
+                        match klama.as_ref() {
+                            LogicalForm::Predicate { relation, .. } => {
+                                assert_eq!(resolve(&compiler, relation), "klama");
+                            }
+                            other => panic!("expected klama, got {:?}", other),
+                        }
+                        match rinka.as_ref() {
+                            LogicalForm::Predicate { relation, .. } => {
+                                assert_eq!(resolve(&compiler, relation), "rinka");
+                            }
+                            other => panic!("expected rinka, got {:?}", other),
+                        }
+                    }
+                    other => panic!("expected And(klama, rinka), got {:?}", other),
+                }
+                match pilno.as_ref() {
+                    LogicalForm::Predicate { relation, .. } => {
+                        assert_eq!(resolve(&compiler, relation), "pilno");
+                    }
+                    other => panic!("expected pilno, got {:?}", other),
+                }
+            }
+            other => panic!("expected nested And, got {:?}", other),
         }
     }
 }

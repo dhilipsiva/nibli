@@ -7,7 +7,9 @@
 //   sentence    → tense? terms? cu? tense? selbri tail? vau?
 //   tail        → terms
 //   terms       → term+
-//   term        → place_tag? sumti
+//   term        → place_tag sumti | modal_tag sumti | sumti
+//   modal_tag   → bai_tag | fi'o selbri fe'u?
+//   bai_tag     → ri'a | ni'i | mu'i | ki'u | pi'o | ba'i
 //   sumti       → la_name | description | pro_sumti | quoted
 //                | sumti rel_clause
 //   la_name     → la cmevla+
@@ -363,9 +365,19 @@ impl<'a> Parser<'a> {
     fn try_parse_term(&mut self) -> Option<Sumti> {
         let saved = self.save();
 
+        // Place tags first (fa/fe/fi/fo/fu)
         if let Some(tag) = self.try_parse_place_tag() {
             if let Some(sumti) = self.try_parse_sumti() {
                 return Some(Sumti::Tagged(tag, Box::new(sumti)));
+            }
+            self.restore(saved);
+            return None;
+        }
+
+        // Modal tags (BAI or fi'o)
+        if let Some(modal) = self.try_parse_modal_tag() {
+            if let Some(sumti) = self.try_parse_sumti() {
+                return Some(Sumti::ModalTagged(modal, Box::new(sumti)));
             }
             self.restore(saved);
             return None;
@@ -385,6 +397,47 @@ impl<'a> Parser<'a> {
         };
         self.pos += 1;
         Some(tag)
+    }
+
+    fn try_parse_bai_tag(&mut self) -> Option<BaiTag> {
+        let tag = match self.peek_cmavo()? {
+            "ri'a" => BaiTag::Ria,
+            "ni'i" => BaiTag::Nii,
+            "mu'i" => BaiTag::Mui,
+            "ki'u" => BaiTag::Kiu,
+            "pi'o" => BaiTag::Pio,
+            "ba'i" => BaiTag::Bai,
+            _ => return None,
+        };
+        self.pos += 1;
+        Some(tag)
+    }
+
+    fn try_parse_fio_tag(&mut self) -> Option<ModalTag> {
+        if !self.peek_is_cmavo("fi'o") {
+            return None;
+        }
+        let saved = self.save();
+        self.pos += 1; // consume fi'o
+
+        let selbri = match self.try_parse_selbri_for_description() {
+            Some(s) => s,
+            None => {
+                self.restore(saved);
+                return None;
+            }
+        };
+
+        self.eat_cmavo("fe'u"); // optional terminator
+
+        Some(ModalTag::Fio(Box::new(selbri)))
+    }
+
+    fn try_parse_modal_tag(&mut self) -> Option<ModalTag> {
+        if let Some(bai) = self.try_parse_bai_tag() {
+            return Some(ModalTag::Fixed(bai));
+        }
+        self.try_parse_fio_tag()
     }
 
     // ─── Sumti ────────────────────────────────────────────────
@@ -2837,5 +2890,169 @@ mod tests {
             gismu("prami"),
         ]);
         assert!(err.contains("unconsumed"), "expected unconsumed error, got: {}", err);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // BAI MODAL TAGS
+    // ═══════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_bai_tag_ria() {
+        // ri'a lo nu brife → ModalTagged(Fixed(Ria), Description(Lo, "brife"))
+        let r = parse_ok(&[
+            gismu("klama"),
+            cmavo("ri'a"),
+            cmavo("lo"),
+            cmavo("nu"),
+            gismu("brife"),
+        ]);
+        let s = as_bridi(&r.sentences[0]);
+        assert_eq!(s.tail_terms.len(), 1);
+        match &s.tail_terms[0] {
+            Sumti::ModalTagged(ModalTag::Fixed(BaiTag::Ria), inner) => {
+                assert!(matches!(inner.as_ref(), Sumti::Description { .. }));
+            }
+            other => panic!("expected ModalTagged(Ria, Description), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_bai_in_tail_terms() {
+        // mi klama ri'a lo nu brife → head:[mi], tail:[ModalTagged(Ria, ...)]
+        let r = parse_ok(&[
+            cmavo("mi"),
+            gismu("klama"),
+            cmavo("ri'a"),
+            cmavo("lo"),
+            cmavo("nu"),
+            gismu("brife"),
+        ]);
+        let s = as_bridi(&r.sentences[0]);
+        assert_eq!(s.head_terms.len(), 1);
+        assert_eq!(s.tail_terms.len(), 1);
+        assert!(matches!(
+            &s.tail_terms[0],
+            Sumti::ModalTagged(ModalTag::Fixed(BaiTag::Ria), _)
+        ));
+    }
+
+    #[test]
+    fn test_bai_all_six() {
+        // Test each BAI tag parses correctly
+        for (cmavo_str, expected_tag) in [
+            ("ri'a", BaiTag::Ria),
+            ("ni'i", BaiTag::Nii),
+            ("mu'i", BaiTag::Mui),
+            ("ki'u", BaiTag::Kiu),
+            ("pi'o", BaiTag::Pio),
+            ("ba'i", BaiTag::Bai),
+        ] {
+            let r = parse_ok(&[gismu("klama"), cmavo(cmavo_str), cmavo("mi")]);
+            let s = as_bridi(&r.sentences[0]);
+            match &s.tail_terms[0] {
+                Sumti::ModalTagged(ModalTag::Fixed(tag), inner) => {
+                    assert_eq!(*tag, expected_tag, "BAI mismatch for {}", cmavo_str);
+                    assert_eq!(**inner, Sumti::ProSumti("mi".into()));
+                }
+                other => panic!("expected ModalTagged for {}, got {:?}", cmavo_str, other),
+            }
+        }
+    }
+
+    #[test]
+    fn test_fio_with_selbri() {
+        // fi'o klama fe'u mi → ModalTagged(Fio(Root("klama")), ProSumti("mi"))
+        let r = parse_ok(&[
+            gismu("barda"),
+            cmavo("fi'o"),
+            gismu("klama"),
+            cmavo("fe'u"),
+            cmavo("mi"),
+        ]);
+        let s = as_bridi(&r.sentences[0]);
+        assert_eq!(s.tail_terms.len(), 1);
+        match &s.tail_terms[0] {
+            Sumti::ModalTagged(ModalTag::Fio(selbri), inner) => {
+                assert_eq!(**selbri, Selbri::Root("klama".into()));
+                assert_eq!(**inner, Sumti::ProSumti("mi".into()));
+            }
+            other => panic!("expected ModalTagged(Fio(klama), mi), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_fio_without_feu() {
+        // fi'o klama mi → ModalTagged(Fio(Root("klama")), ProSumti("mi"))
+        let r = parse_ok(&[
+            gismu("barda"),
+            cmavo("fi'o"),
+            gismu("klama"),
+            cmavo("mi"),
+        ]);
+        let s = as_bridi(&r.sentences[0]);
+        assert_eq!(s.tail_terms.len(), 1);
+        match &s.tail_terms[0] {
+            Sumti::ModalTagged(ModalTag::Fio(selbri), inner) => {
+                assert_eq!(**selbri, Selbri::Root("klama".into()));
+                assert_eq!(**inner, Sumti::ProSumti("mi".into()));
+            }
+            other => panic!("expected ModalTagged(Fio(klama), mi), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_bai_with_place_tags() {
+        // fa mi klama ri'a lo nu brife — mix of place and modal tags
+        let r = parse_ok(&[
+            cmavo("fa"),
+            cmavo("mi"),
+            gismu("klama"),
+            cmavo("ri'a"),
+            cmavo("lo"),
+            cmavo("nu"),
+            gismu("brife"),
+        ]);
+        let s = as_bridi(&r.sentences[0]);
+        assert_eq!(s.head_terms.len(), 1);
+        assert!(matches!(
+            &s.head_terms[0],
+            Sumti::Tagged(PlaceTag::Fa, _)
+        ));
+        assert_eq!(s.tail_terms.len(), 1);
+        assert!(matches!(
+            &s.tail_terms[0],
+            Sumti::ModalTagged(ModalTag::Fixed(BaiTag::Ria), _)
+        ));
+    }
+
+    #[test]
+    fn test_multiple_bai_tags() {
+        // mi klama ri'a do pi'o lo tanxe — two BAI tags
+        let r = parse_ok(&[
+            cmavo("mi"),
+            gismu("klama"),
+            cmavo("ri'a"),
+            cmavo("do"),
+            cmavo("pi'o"),
+            cmavo("lo"),
+            gismu("tanxe"),
+        ]);
+        let s = as_bridi(&r.sentences[0]);
+        assert_eq!(s.tail_terms.len(), 2);
+        assert!(matches!(
+            &s.tail_terms[0],
+            Sumti::ModalTagged(ModalTag::Fixed(BaiTag::Ria), _)
+        ));
+        assert!(matches!(
+            &s.tail_terms[1],
+            Sumti::ModalTagged(ModalTag::Fixed(BaiTag::Pio), _)
+        ));
+    }
+
+    #[test]
+    fn test_bai_tag_backtrack_at_end() {
+        // klama ri'a — ri'a with no following sumti should error
+        let e = parse_err(&[gismu("klama"), cmavo("ri'a")]);
+        assert!(e.contains("unconsumed") || e.len() > 0);
     }
 }

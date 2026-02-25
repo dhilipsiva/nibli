@@ -291,6 +291,27 @@ impl Flattener {
                 };
                 wit::Sumti::Tagged((wit_tag, inner_id))
             }
+            ast::Sumti::ModalTagged(modal, inner) => {
+                let inner_id = self.push_sumti(*inner);
+                let wit_modal = match modal {
+                    ast::ModalTag::Fixed(bai) => {
+                        let wit_bai = match bai {
+                            ast::BaiTag::Ria => wit::BaiTag::Ria,
+                            ast::BaiTag::Nii => wit::BaiTag::Nii,
+                            ast::BaiTag::Mui => wit::BaiTag::Mui,
+                            ast::BaiTag::Kiu => wit::BaiTag::Kiu,
+                            ast::BaiTag::Pio => wit::BaiTag::Pio,
+                            ast::BaiTag::Bai => wit::BaiTag::Bai,
+                        };
+                        wit::ModalTag::Fixed(wit_bai)
+                    }
+                    ast::ModalTag::Fio(selbri) => {
+                        let selbri_id = self.push_selbri(*selbri);
+                        wit::ModalTag::Fio(selbri_id)
+                    }
+                };
+                wit::Sumti::ModalTagged((wit_modal, inner_id))
+            }
             ast::Sumti::Restricted { inner, clause } => {
                 let inner_id = self.push_sumti(*inner);
 
@@ -348,6 +369,7 @@ bindings::export!(ParserComponent with_types_in bindings);
 #[cfg(test)]
 mod flattener_tests {
     use crate::ast::*;
+    use crate::bindings::lojban::nesy::ast_types as wit;
 
     // Re-use the Flattener (it's private, so these tests must live in lib.rs
     // or you must make Flattener pub(crate)).
@@ -712,6 +734,68 @@ mod flattener_tests {
             other => panic!("expected outer Connected, got {:?}", other),
         }
     }
+
+    #[test]
+    fn test_modal_tagged_flattening() {
+        // klama ri'a mi → tail_terms: [ModalTagged(Fixed(Ria), ProSumti("mi"))]
+        let parsed = ParsedText {
+            sentences: vec![Sentence::Simple(Bridi {
+                selbri: Selbri::Root("klama".into()),
+                head_terms: vec![],
+                tail_terms: vec![Sumti::ModalTagged(
+                    ModalTag::Fixed(BaiTag::Ria),
+                    Box::new(Sumti::ProSumti("mi".into())),
+                )],
+                negated: false,
+                tense: None,
+            })],
+        };
+
+        let buffer = Flattener::flatten(parsed);
+        assert_eq!(buffer.roots.len(), 1);
+        // sumtis should have 2 entries: inner "mi" and the ModalTagged wrapper
+        assert_eq!(buffer.sumtis.len(), 2);
+        match &buffer.sumtis[1] {
+            wit::Sumti::ModalTagged((modal_tag, inner_id)) => {
+                assert!(matches!(modal_tag, wit::ModalTag::Fixed(wit::BaiTag::Ria)));
+                assert_eq!(*inner_id, 0); // inner is first sumti
+                assert!(matches!(&buffer.sumtis[0], wit::Sumti::ProSumti(s) if s == "mi"));
+            }
+            other => panic!("expected ModalTagged, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_fio_flattening() {
+        // barda fi'o klama mi → tail: [ModalTagged(Fio(Root("klama")), ProSumti("mi"))]
+        let parsed = ParsedText {
+            sentences: vec![Sentence::Simple(Bridi {
+                selbri: Selbri::Root("barda".into()),
+                head_terms: vec![],
+                tail_terms: vec![Sumti::ModalTagged(
+                    ModalTag::Fio(Box::new(Selbri::Root("klama".into()))),
+                    Box::new(Sumti::ProSumti("mi".into())),
+                )],
+                negated: false,
+                tense: None,
+            })],
+        };
+
+        let buffer = Flattener::flatten(parsed);
+        assert_eq!(buffer.sumtis.len(), 2);
+        match &buffer.sumtis[1] {
+            wit::Sumti::ModalTagged((modal_tag, inner_id)) => {
+                match modal_tag {
+                    wit::ModalTag::Fio(selbri_id) => {
+                        assert!(matches!(&buffer.selbris[*selbri_id as usize], wit::Selbri::Root(s) if s == "klama"));
+                    }
+                    other => panic!("expected Fio modal tag, got {:?}", other),
+                }
+                assert_eq!(*inner_id, 0);
+            }
+            other => panic!("expected ModalTagged, got {:?}", other),
+        }
+    }
 }
 
 /// Full-pipeline tests: raw Lojban text → lex → preprocess → parse.
@@ -1006,5 +1090,48 @@ mod pipeline_tests {
             }
             other => panic!("expected Description with Nu abstraction, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn pipeline_bai_ria() {
+        let p = parse("mi klama ri'a lo nu brife");
+        let s = as_bridi(&p.sentences[0]);
+        assert_eq!(s.head_terms.len(), 1);
+        assert_eq!(s.tail_terms.len(), 1);
+        match &s.tail_terms[0] {
+            Sumti::ModalTagged(ModalTag::Fixed(BaiTag::Ria), inner) => {
+                assert!(matches!(inner.as_ref(), Sumti::Description { .. }));
+            }
+            other => panic!("expected ModalTagged(Ria, Description), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pipeline_fio_klama() {
+        let p = parse("mi barda fi'o klama fe'u do");
+        let s = as_bridi(&p.sentences[0]);
+        assert_eq!(s.tail_terms.len(), 1);
+        match &s.tail_terms[0] {
+            Sumti::ModalTagged(ModalTag::Fio(selbri), inner) => {
+                assert_eq!(**selbri, Selbri::Root("klama".into()));
+                assert_eq!(**inner, Sumti::ProSumti("do".into()));
+            }
+            other => panic!("expected ModalTagged(Fio(klama), do), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pipeline_multiple_bai() {
+        let p = parse("mi klama ri'a do pi'o lo tanxe");
+        let s = as_bridi(&p.sentences[0]);
+        assert_eq!(s.tail_terms.len(), 2);
+        assert!(matches!(
+            &s.tail_terms[0],
+            Sumti::ModalTagged(ModalTag::Fixed(BaiTag::Ria), _)
+        ));
+        assert!(matches!(
+            &s.tail_terms[1],
+            Sumti::ModalTagged(ModalTag::Fixed(BaiTag::Pio), _)
+        ));
     }
 }

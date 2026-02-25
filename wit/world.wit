@@ -5,6 +5,11 @@ interface ast-types {
     type sumti-id = u32;
 
     enum place-tag { fa, fe, fi, fo, fu }
+    enum bai-tag { ria, nii, mui, kiu, pio, bai }
+    variant modal-tag {
+        fixed(bai-tag),
+        fio(selbri-id),
+    }
     enum conversion { se, te, ve, xe }
     enum connective { je, ja, jo, ju }
     enum gadri { lo, le, la, ro-lo, ro-le }
@@ -23,6 +28,7 @@ interface ast-types {
         quoted-literal(string),
         unspecified,
         tagged(tuple<place-tag, sumti-id>),
+        modal-tagged(tuple<modal-tag, sumti-id>),
         restricted(tuple<sumti-id, rel-clause>),
         number(f64),
         /// Sumti connective: left .e/.a/.o/.u [nai] right

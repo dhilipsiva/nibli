@@ -35,6 +35,26 @@ impl PlaceTag {
     }
 }
 
+/// BAI cmavo: modal tags derived from underlying gismu
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BaiTag {
+    Ria, // ri'a → rinka (cause)
+    Nii, // ni'i → nibli (logical entailment)
+    Mui, // mu'i → mukti (motivation)
+    Kiu, // ki'u → krinu (reason)
+    Pio, // pi'o → pilno (tool/use)
+    Bai, // ba'i → basti (replace)
+}
+
+/// Modal tag: either a fixed BAI shortcut or a fi'o-based custom tag
+#[derive(Debug, Clone, PartialEq)]
+pub enum ModalTag {
+    /// Fixed BAI cmavo (ri'a, ni'i, etc.)
+    Fixed(BaiTag),
+    /// Generic modal: fi'o + selbri [+ fe'u]
+    Fio(Box<Selbri>),
+}
+
 /// SE-series conversion: permutes argument places
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Conversion {
@@ -102,6 +122,10 @@ pub enum Sumti {
 
     /// Place-tagged sumti: fa/fe/fi/fo/fu + sumti
     Tagged(PlaceTag, Box<Sumti>),
+
+    /// Modal-tagged sumti: BAI tag or fi'o + sumti
+    /// Creates a conjoined modal predication rather than filling a place
+    ModalTagged(ModalTag, Box<Sumti>),
 
     /// Sumti with relative clause: sumti + (poi|noi) sentence [ku'o]
     Restricted {

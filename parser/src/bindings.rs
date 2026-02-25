@@ -54,6 +54,68 @@ pub mod lojban {
             }
             #[repr(u8)]
             #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+            pub enum BaiTag {
+                Ria,
+                Nii,
+                Mui,
+                Kiu,
+                Pio,
+                Bai,
+            }
+            impl ::core::fmt::Debug for BaiTag {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        BaiTag::Ria => f.debug_tuple("BaiTag::Ria").finish(),
+                        BaiTag::Nii => f.debug_tuple("BaiTag::Nii").finish(),
+                        BaiTag::Mui => f.debug_tuple("BaiTag::Mui").finish(),
+                        BaiTag::Kiu => f.debug_tuple("BaiTag::Kiu").finish(),
+                        BaiTag::Pio => f.debug_tuple("BaiTag::Pio").finish(),
+                        BaiTag::Bai => f.debug_tuple("BaiTag::Bai").finish(),
+                    }
+                }
+            }
+            impl BaiTag {
+                #[doc(hidden)]
+                pub unsafe fn _lift(val: u8) -> BaiTag {
+                    if !cfg!(debug_assertions) {
+                        return ::core::mem::transmute(val);
+                    }
+                    match val {
+                        0 => BaiTag::Ria,
+                        1 => BaiTag::Nii,
+                        2 => BaiTag::Mui,
+                        3 => BaiTag::Kiu,
+                        4 => BaiTag::Pio,
+                        5 => BaiTag::Bai,
+                        _ => panic!("invalid enum discriminant"),
+                    }
+                }
+            }
+            #[derive(Clone, Copy)]
+            pub enum ModalTag {
+                Fixed(BaiTag),
+                Fio(SelbriId),
+            }
+            impl ::core::fmt::Debug for ModalTag {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        ModalTag::Fixed(e) => {
+                            f.debug_tuple("ModalTag::Fixed").field(e).finish()
+                        }
+                        ModalTag::Fio(e) => {
+                            f.debug_tuple("ModalTag::Fio").field(e).finish()
+                        }
+                    }
+                }
+            }
+            #[repr(u8)]
+            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
             pub enum Conversion {
                 Se,
                 Te,
@@ -271,6 +333,7 @@ pub mod lojban {
                 QuotedLiteral(_rt::String),
                 Unspecified,
                 Tagged((PlaceTag, SumtiId)),
+                ModalTagged((ModalTag, SumtiId)),
                 Restricted((SumtiId, RelClause)),
                 Number(f64),
                 /// Sumti connective: left .e/.a/.o/.u [nai] right
@@ -298,6 +361,9 @@ pub mod lojban {
                         }
                         Sumti::Tagged(e) => {
                             f.debug_tuple("Sumti::Tagged").field(e).finish()
+                        }
+                        Sumti::ModalTagged(e) => {
+                            f.debug_tuple("Sumti::ModalTagged").field(e).finish()
                         }
                         Sumti::Restricted(e) => {
                             f.debug_tuple("Sumti::Restricted").field(e).finish()
@@ -782,27 +848,27 @@ pub mod exports {
                             *ptr2
                                 .add(::core::mem::size_of::<*const u8>())
                                 .cast::<*mut u8>() = result14;
-                            let vec24 = sumtis3;
-                            let len24 = vec24.len();
-                            let layout24 = _rt::alloc::Layout::from_size_align_unchecked(
-                                vec24.len() * 24,
+                            let vec26 = sumtis3;
+                            let len26 = vec26.len();
+                            let layout26 = _rt::alloc::Layout::from_size_align_unchecked(
+                                vec26.len() * 24,
                                 8,
                             );
-                            let result24 = if layout24.size() != 0 {
-                                let ptr = _rt::alloc::alloc(layout24).cast::<u8>();
+                            let result26 = if layout26.size() != 0 {
+                                let ptr = _rt::alloc::alloc(layout26).cast::<u8>();
                                 if ptr.is_null() {
-                                    _rt::alloc::handle_alloc_error(layout24);
+                                    _rt::alloc::handle_alloc_error(layout26);
                                 }
                                 ptr
                             } else {
                                 ::core::ptr::null_mut()
                             };
-                            for (i, e) in vec24.into_iter().enumerate() {
-                                let base = result24.add(i * 24);
+                            for (i, e) in vec26.into_iter().enumerate() {
+                                let base = result26.add(i * 24);
                                 {
-                                    use super::super::super::super::lojban::nesy::ast_types::Sumti as V23;
+                                    use super::super::super::super::lojban::nesy::ast_types::Sumti as V25;
                                     match e {
-                                        V23::ProSumti(e) => {
+                                        V25::ProSumti(e) => {
                                             *base.add(0).cast::<u8>() = (0i32) as u8;
                                             let vec15 = (e.into_bytes()).into_boxed_slice();
                                             let ptr15 = vec15.as_ptr().cast::<u8>();
@@ -813,13 +879,13 @@ pub mod exports {
                                                 .cast::<usize>() = len15;
                                             *base.add(8).cast::<*mut u8>() = ptr15.cast_mut();
                                         }
-                                        V23::Description(e) => {
+                                        V25::Description(e) => {
                                             *base.add(0).cast::<u8>() = (1i32) as u8;
                                             let (t16_0, t16_1) = e;
                                             *base.add(8).cast::<u8>() = (t16_0.clone() as i32) as u8;
                                             *base.add(12).cast::<i32>() = _rt::as_i32(t16_1);
                                         }
-                                        V23::Name(e) => {
+                                        V25::Name(e) => {
                                             *base.add(0).cast::<u8>() = (2i32) as u8;
                                             let vec17 = (e.into_bytes()).into_boxed_slice();
                                             let ptr17 = vec17.as_ptr().cast::<u8>();
@@ -830,7 +896,7 @@ pub mod exports {
                                                 .cast::<usize>() = len17;
                                             *base.add(8).cast::<*mut u8>() = ptr17.cast_mut();
                                         }
-                                        V23::QuotedLiteral(e) => {
+                                        V25::QuotedLiteral(e) => {
                                             *base.add(0).cast::<u8>() = (3i32) as u8;
                                             let vec18 = (e.into_bytes()).into_boxed_slice();
                                             let ptr18 = vec18.as_ptr().cast::<u8>();
@@ -841,110 +907,126 @@ pub mod exports {
                                                 .cast::<usize>() = len18;
                                             *base.add(8).cast::<*mut u8>() = ptr18.cast_mut();
                                         }
-                                        V23::Unspecified => {
+                                        V25::Unspecified => {
                                             *base.add(0).cast::<u8>() = (4i32) as u8;
                                         }
-                                        V23::Tagged(e) => {
+                                        V25::Tagged(e) => {
                                             *base.add(0).cast::<u8>() = (5i32) as u8;
                                             let (t19_0, t19_1) = e;
                                             *base.add(8).cast::<u8>() = (t19_0.clone() as i32) as u8;
                                             *base.add(12).cast::<i32>() = _rt::as_i32(t19_1);
                                         }
-                                        V23::Restricted(e) => {
+                                        V25::ModalTagged(e) => {
                                             *base.add(0).cast::<u8>() = (6i32) as u8;
                                             let (t20_0, t20_1) = e;
-                                            *base.add(8).cast::<i32>() = _rt::as_i32(t20_0);
-                                            let super::super::super::super::lojban::nesy::ast_types::RelClause {
-                                                kind: kind21,
-                                                body_sentence: body_sentence21,
-                                            } = t20_1;
-                                            *base.add(12).cast::<u8>() = (kind21.clone() as i32) as u8;
-                                            *base.add(16).cast::<i32>() = _rt::as_i32(body_sentence21);
+                                            use super::super::super::super::lojban::nesy::ast_types::ModalTag as V21;
+                                            match t20_0 {
+                                                V21::Fixed(e) => {
+                                                    *base.add(8).cast::<u8>() = (0i32) as u8;
+                                                    *base.add(12).cast::<u8>() = (e.clone() as i32) as u8;
+                                                }
+                                                V21::Fio(e) => {
+                                                    *base.add(8).cast::<u8>() = (1i32) as u8;
+                                                    *base.add(12).cast::<i32>() = _rt::as_i32(e);
+                                                }
+                                            }
+                                            *base.add(16).cast::<i32>() = _rt::as_i32(t20_1);
                                         }
-                                        V23::Number(e) => {
+                                        V25::Restricted(e) => {
                                             *base.add(0).cast::<u8>() = (7i32) as u8;
+                                            let (t22_0, t22_1) = e;
+                                            *base.add(8).cast::<i32>() = _rt::as_i32(t22_0);
+                                            let super::super::super::super::lojban::nesy::ast_types::RelClause {
+                                                kind: kind23,
+                                                body_sentence: body_sentence23,
+                                            } = t22_1;
+                                            *base.add(12).cast::<u8>() = (kind23.clone() as i32) as u8;
+                                            *base.add(16).cast::<i32>() = _rt::as_i32(body_sentence23);
+                                        }
+                                        V25::Number(e) => {
+                                            *base.add(0).cast::<u8>() = (8i32) as u8;
                                             *base.add(8).cast::<f64>() = _rt::as_f64(e);
                                         }
-                                        V23::Connected(e) => {
-                                            *base.add(0).cast::<u8>() = (8i32) as u8;
-                                            let (t22_0, t22_1, t22_2, t22_3) = e;
-                                            *base.add(8).cast::<i32>() = _rt::as_i32(t22_0);
-                                            *base.add(12).cast::<u8>() = (t22_1.clone() as i32) as u8;
-                                            *base.add(13).cast::<u8>() = (match t22_2 {
+                                        V25::Connected(e) => {
+                                            *base.add(0).cast::<u8>() = (9i32) as u8;
+                                            let (t24_0, t24_1, t24_2, t24_3) = e;
+                                            *base.add(8).cast::<i32>() = _rt::as_i32(t24_0);
+                                            *base.add(12).cast::<u8>() = (t24_1.clone() as i32) as u8;
+                                            *base.add(13).cast::<u8>() = (match t24_2 {
                                                 true => 1,
                                                 false => 0,
                                             }) as u8;
-                                            *base.add(16).cast::<i32>() = _rt::as_i32(t22_3);
+                                            *base.add(16).cast::<i32>() = _rt::as_i32(t24_3);
                                         }
                                     }
                                 }
                             }
                             *ptr2
                                 .add(4 * ::core::mem::size_of::<*const u8>())
-                                .cast::<usize>() = len24;
+                                .cast::<usize>() = len26;
                             *ptr2
                                 .add(3 * ::core::mem::size_of::<*const u8>())
-                                .cast::<*mut u8>() = result24;
-                            let vec30 = sentences3;
-                            let len30 = vec30.len();
-                            let layout30 = _rt::alloc::Layout::from_size_align_unchecked(
-                                vec30.len() * (7 * ::core::mem::size_of::<*const u8>()),
+                                .cast::<*mut u8>() = result26;
+                            let vec32 = sentences3;
+                            let len32 = vec32.len();
+                            let layout32 = _rt::alloc::Layout::from_size_align_unchecked(
+                                vec32.len() * (7 * ::core::mem::size_of::<*const u8>()),
                                 ::core::mem::size_of::<*const u8>(),
                             );
-                            let result30 = if layout30.size() != 0 {
-                                let ptr = _rt::alloc::alloc(layout30).cast::<u8>();
+                            let result32 = if layout32.size() != 0 {
+                                let ptr = _rt::alloc::alloc(layout32).cast::<u8>();
                                 if ptr.is_null() {
-                                    _rt::alloc::handle_alloc_error(layout30);
+                                    _rt::alloc::handle_alloc_error(layout32);
                                 }
                                 ptr
                             } else {
                                 ::core::ptr::null_mut()
                             };
-                            for (i, e) in vec30.into_iter().enumerate() {
-                                let base = result30
+                            for (i, e) in vec32.into_iter().enumerate() {
+                                let base = result32
                                     .add(i * (7 * ::core::mem::size_of::<*const u8>()));
                                 {
-                                    use super::super::super::super::lojban::nesy::ast_types::Sentence as V29;
+                                    use super::super::super::super::lojban::nesy::ast_types::Sentence as V31;
                                     match e {
-                                        V29::Simple(e) => {
+                                        V31::Simple(e) => {
                                             *base.add(0).cast::<u8>() = (0i32) as u8;
                                             let super::super::super::super::lojban::nesy::ast_types::Bridi {
-                                                relation: relation25,
-                                                head_terms: head_terms25,
-                                                tail_terms: tail_terms25,
-                                                negated: negated25,
-                                                tense: tense25,
+                                                relation: relation27,
+                                                head_terms: head_terms27,
+                                                tail_terms: tail_terms27,
+                                                negated: negated27,
+                                                tense: tense27,
                                             } = e;
                                             *base
                                                 .add(::core::mem::size_of::<*const u8>())
-                                                .cast::<i32>() = _rt::as_i32(relation25);
-                                            let vec26 = (head_terms25).into_boxed_slice();
-                                            let ptr26 = vec26.as_ptr().cast::<u8>();
-                                            let len26 = vec26.len();
-                                            ::core::mem::forget(vec26);
+                                                .cast::<i32>() = _rt::as_i32(relation27);
+                                            let vec28 = (head_terms27).into_boxed_slice();
+                                            let ptr28 = vec28.as_ptr().cast::<u8>();
+                                            let len28 = vec28.len();
+                                            ::core::mem::forget(vec28);
                                             *base
                                                 .add(3 * ::core::mem::size_of::<*const u8>())
-                                                .cast::<usize>() = len26;
+                                                .cast::<usize>() = len28;
                                             *base
                                                 .add(2 * ::core::mem::size_of::<*const u8>())
-                                                .cast::<*mut u8>() = ptr26.cast_mut();
-                                            let vec27 = (tail_terms25).into_boxed_slice();
-                                            let ptr27 = vec27.as_ptr().cast::<u8>();
-                                            let len27 = vec27.len();
-                                            ::core::mem::forget(vec27);
+                                                .cast::<*mut u8>() = ptr28.cast_mut();
+                                            let vec29 = (tail_terms27).into_boxed_slice();
+                                            let ptr29 = vec29.as_ptr().cast::<u8>();
+                                            let len29 = vec29.len();
+                                            ::core::mem::forget(vec29);
                                             *base
                                                 .add(5 * ::core::mem::size_of::<*const u8>())
-                                                .cast::<usize>() = len27;
+                                                .cast::<usize>() = len29;
                                             *base
                                                 .add(4 * ::core::mem::size_of::<*const u8>())
-                                                .cast::<*mut u8>() = ptr27.cast_mut();
+                                                .cast::<*mut u8>() = ptr29.cast_mut();
                                             *base
                                                 .add(6 * ::core::mem::size_of::<*const u8>())
-                                                .cast::<u8>() = (match negated25 {
+                                                .cast::<u8>() = (match negated27 {
                                                 true => 1,
                                                 false => 0,
                                             }) as u8;
-                                            match tense25 {
+                                            match tense27 {
                                                 Some(e) => {
                                                     *base
                                                         .add(1 + 6 * ::core::mem::size_of::<*const u8>())
@@ -960,51 +1042,51 @@ pub mod exports {
                                                 }
                                             };
                                         }
-                                        V29::Connected(e) => {
+                                        V31::Connected(e) => {
                                             *base.add(0).cast::<u8>() = (1i32) as u8;
-                                            let (t28_0, t28_1, t28_2) = e;
+                                            let (t30_0, t30_1, t30_2) = e;
                                             *base
                                                 .add(::core::mem::size_of::<*const u8>())
-                                                .cast::<u8>() = (t28_0.clone() as i32) as u8;
+                                                .cast::<u8>() = (t30_0.clone() as i32) as u8;
                                             *base
                                                 .add(4 + 1 * ::core::mem::size_of::<*const u8>())
-                                                .cast::<i32>() = _rt::as_i32(t28_1);
+                                                .cast::<i32>() = _rt::as_i32(t30_1);
                                             *base
                                                 .add(8 + 1 * ::core::mem::size_of::<*const u8>())
-                                                .cast::<i32>() = _rt::as_i32(t28_2);
+                                                .cast::<i32>() = _rt::as_i32(t30_2);
                                         }
                                     }
                                 }
                             }
                             *ptr2
                                 .add(6 * ::core::mem::size_of::<*const u8>())
-                                .cast::<usize>() = len30;
+                                .cast::<usize>() = len32;
                             *ptr2
                                 .add(5 * ::core::mem::size_of::<*const u8>())
-                                .cast::<*mut u8>() = result30;
-                            let vec31 = (roots3).into_boxed_slice();
-                            let ptr31 = vec31.as_ptr().cast::<u8>();
-                            let len31 = vec31.len();
-                            ::core::mem::forget(vec31);
+                                .cast::<*mut u8>() = result32;
+                            let vec33 = (roots3).into_boxed_slice();
+                            let ptr33 = vec33.as_ptr().cast::<u8>();
+                            let len33 = vec33.len();
+                            ::core::mem::forget(vec33);
                             *ptr2
                                 .add(8 * ::core::mem::size_of::<*const u8>())
-                                .cast::<usize>() = len31;
+                                .cast::<usize>() = len33;
                             *ptr2
                                 .add(7 * ::core::mem::size_of::<*const u8>())
-                                .cast::<*mut u8>() = ptr31.cast_mut();
+                                .cast::<*mut u8>() = ptr33.cast_mut();
                         }
                         Err(e) => {
                             *ptr2.add(0).cast::<u8>() = (1i32) as u8;
-                            let vec32 = (e.into_bytes()).into_boxed_slice();
-                            let ptr32 = vec32.as_ptr().cast::<u8>();
-                            let len32 = vec32.len();
-                            ::core::mem::forget(vec32);
+                            let vec34 = (e.into_bytes()).into_boxed_slice();
+                            let ptr34 = vec34.as_ptr().cast::<u8>();
+                            let len34 = vec34.len();
+                            ::core::mem::forget(vec34);
                             *ptr2
                                 .add(2 * ::core::mem::size_of::<*const u8>())
-                                .cast::<usize>() = len32;
+                                .cast::<usize>() = len34;
                             *ptr2
                                 .add(::core::mem::size_of::<*const u8>())
-                                .cast::<*mut u8>() = ptr32.cast_mut();
+                                .cast::<*mut u8>() = ptr34.cast_mut();
                         }
                     };
                     ptr2
@@ -1128,6 +1210,7 @@ pub mod exports {
                                         5 => {}
                                         6 => {}
                                         7 => {}
+                                        8 => {}
                                         _ => {}
                                     }
                                 }
@@ -1369,39 +1452,41 @@ pub(crate) use __export_parser_component_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1431] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x90\x0a\x01A\x02\x01\
-A\x05\x01B<\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
-m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x04\x02se\x02\
-te\x02ve\x02xe\x04\0\x0aconversion\x03\0\x06\x01m\x04\x02je\x02ja\x02jo\x02ju\x04\
-\0\x0aconnective\x03\0\x08\x01m\x05\x02lo\x02le\x02la\x05ro-lo\x05ro-le\x04\0\x05\
-gadri\x03\0\x0a\x01m\x05\x02nu\x04duhu\x02ka\x02ni\x04siho\x04\0\x10abstraction-\
-kind\x03\0\x0c\x01m\x02\x03poi\x03noi\x04\0\x0frel-clause-kind\x03\0\x0e\x01r\x02\
-\x04kind\x0f\x0dbody-sentencey\x04\0\x0arel-clause\x03\0\x10\x01o\x02\x0b\x01\x01\
-o\x02\x05\x03\x01o\x02\x03\x11\x01o\x04\x03\x09\x7f\x03\x01q\x09\x09pro-sumti\x01\
-s\0\x0bdescription\x01\x12\0\x04name\x01s\0\x0equoted-literal\x01s\0\x0bunspecif\
-ied\0\0\x06tagged\x01\x13\0\x0arestricted\x01\x14\0\x06number\x01u\0\x09connecte\
-d\x01\x15\0\x04\0\x05sumti\x03\0\x16\x01ps\x01o\x02\x01\x01\x01o\x02\x07\x01\x01\
-p\x03\x01o\x02\x01\x1b\x01o\x03\x01\x09\x01\x01o\x02\x0dy\x01q\x09\x04root\x01s\0\
-\x08compound\x01\x18\0\x05tanru\x01\x19\0\x09converted\x01\x1a\0\x07negated\x01\x01\
-\0\x07grouped\x01\x01\0\x09with-args\x01\x1c\0\x09connected\x01\x1d\0\x0babstrac\
-tion\x01\x1e\0\x04\0\x06selbri\x03\0\x1f\x01m\x03\x02pu\x02ca\x02ba\x04\0\x05ten\
-se\x03\0!\x01k\"\x01r\x05\x08relation\x01\x0ahead-terms\x1b\x0atail-terms\x1b\x07\
-negated\x7f\x05tense#\x04\0\x05bridi\x03\0$\x01m\x03\x08ganai-gi\x05ge-gi\x05ga-\
-gi\x04\0\x13sentence-connective\x03\0&\x01o\x03'yy\x01q\x02\x06simple\x01%\0\x09\
-connected\x01(\0\x04\0\x08sentence\x03\0)\x01p\x20\x01p\x17\x01p*\x01py\x01r\x04\
-\x07selbris+\x06sumtis,\x09sentences-\x05roots.\x04\0\x0aast-buffer\x03\0/\x01q\x05\
-\x08variable\x01s\0\x08constant\x01s\0\x0bdescription\x01s\0\x0bunspecified\0\0\x06\
-number\x01u\0\x04\0\x0clogical-term\x03\01\x01p2\x01o\x02s3\x01o\x02yy\x01o\x02s\
-y\x01q\x09\x09predicate\x014\0\x08and-node\x015\0\x07or-node\x015\0\x08not-node\x01\
-y\0\x0bexists-node\x016\0\x0cfor-all-node\x016\0\x09past-node\x01y\0\x0cpresent-\
-node\x01y\0\x0bfuture-node\x01y\0\x04\0\x0alogic-node\x03\07\x01p8\x01r\x02\x05n\
-odes9\x05roots.\x04\0\x0clogic-buffer\x03\0:\x03\0\x1blojban:nesy/ast-types@0.1.\
-0\x05\0\x02\x03\0\0\x0aast-buffer\x01B\x05\x02\x03\x02\x01\x01\x04\0\x0aast-buff\
-er\x03\0\0\x01j\x01\x01\x01s\x01@\x01\x05inputs\0\x02\x04\0\x0aparse-text\x01\x03\
-\x04\0\x18lojban:nesy/parser@0.1.0\x05\x02\x04\0\"lojban:nesy/parser-component@0\
-.1.0\x04\0\x0b\x16\x01\0\x10parser-component\x03\0\0\0G\x09producers\x01\x0cproc\
-essed-by\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1526] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xef\x0a\x01A\x02\x01\
+A\x05\x01BA\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
+m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x06\x03ria\
+\x03nii\x03mui\x03kiu\x03pio\x03bai\x04\0\x07bai-tag\x03\0\x06\x01q\x02\x05fixed\
+\x01\x07\0\x03fio\x01\x01\0\x04\0\x09modal-tag\x03\0\x08\x01m\x04\x02se\x02te\x02\
+ve\x02xe\x04\0\x0aconversion\x03\0\x0a\x01m\x04\x02je\x02ja\x02jo\x02ju\x04\0\x0a\
+connective\x03\0\x0c\x01m\x05\x02lo\x02le\x02la\x05ro-lo\x05ro-le\x04\0\x05gadri\
+\x03\0\x0e\x01m\x05\x02nu\x04duhu\x02ka\x02ni\x04siho\x04\0\x10abstraction-kind\x03\
+\0\x10\x01m\x02\x03poi\x03noi\x04\0\x0frel-clause-kind\x03\0\x12\x01r\x02\x04kin\
+d\x13\x0dbody-sentencey\x04\0\x0arel-clause\x03\0\x14\x01o\x02\x0f\x01\x01o\x02\x05\
+\x03\x01o\x02\x09\x03\x01o\x02\x03\x15\x01o\x04\x03\x0d\x7f\x03\x01q\x0a\x09pro-\
+sumti\x01s\0\x0bdescription\x01\x16\0\x04name\x01s\0\x0equoted-literal\x01s\0\x0b\
+unspecified\0\0\x06tagged\x01\x17\0\x0cmodal-tagged\x01\x18\0\x0arestricted\x01\x19\
+\0\x06number\x01u\0\x09connected\x01\x1a\0\x04\0\x05sumti\x03\0\x1b\x01ps\x01o\x02\
+\x01\x01\x01o\x02\x0b\x01\x01p\x03\x01o\x02\x01\x20\x01o\x03\x01\x0d\x01\x01o\x02\
+\x11y\x01q\x09\x04root\x01s\0\x08compound\x01\x1d\0\x05tanru\x01\x1e\0\x09conver\
+ted\x01\x1f\0\x07negated\x01\x01\0\x07grouped\x01\x01\0\x09with-args\x01!\0\x09c\
+onnected\x01\"\0\x0babstraction\x01#\0\x04\0\x06selbri\x03\0$\x01m\x03\x02pu\x02\
+ca\x02ba\x04\0\x05tense\x03\0&\x01k'\x01r\x05\x08relation\x01\x0ahead-terms\x20\x0a\
+tail-terms\x20\x07negated\x7f\x05tense(\x04\0\x05bridi\x03\0)\x01m\x03\x08ganai-\
+gi\x05ge-gi\x05ga-gi\x04\0\x13sentence-connective\x03\0+\x01o\x03,yy\x01q\x02\x06\
+simple\x01*\0\x09connected\x01-\0\x04\0\x08sentence\x03\0.\x01p%\x01p\x1c\x01p/\x01\
+py\x01r\x04\x07selbris0\x06sumtis1\x09sentences2\x05roots3\x04\0\x0aast-buffer\x03\
+\04\x01q\x05\x08variable\x01s\0\x08constant\x01s\0\x0bdescription\x01s\0\x0bunsp\
+ecified\0\0\x06number\x01u\0\x04\0\x0clogical-term\x03\06\x01p7\x01o\x02s8\x01o\x02\
+yy\x01o\x02sy\x01q\x09\x09predicate\x019\0\x08and-node\x01:\0\x07or-node\x01:\0\x08\
+not-node\x01y\0\x0bexists-node\x01;\0\x0cfor-all-node\x01;\0\x09past-node\x01y\0\
+\x0cpresent-node\x01y\0\x0bfuture-node\x01y\0\x04\0\x0alogic-node\x03\0<\x01p=\x01\
+r\x02\x05nodes>\x05roots3\x04\0\x0clogic-buffer\x03\0?\x03\0\x1blojban:nesy/ast-\
+types@0.1.0\x05\0\x02\x03\0\0\x0aast-buffer\x01B\x05\x02\x03\x02\x01\x01\x04\0\x0a\
+ast-buffer\x03\0\0\x01j\x01\x01\x01s\x01@\x01\x05inputs\0\x02\x04\0\x0aparse-tex\
+t\x01\x03\x04\0\x18lojban:nesy/parser@0.1.0\x05\x02\x04\0\"lojban:nesy/parser-co\
+mponent@0.1.0\x04\0\x0b\x16\x01\0\x10parser-component\x03\0\0\0G\x09producers\x01\
+\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {
