@@ -6,14 +6,24 @@ use crate::dictionary::JbovlasteSchema;
 use crate::ir::{LogicalForm, LogicalTerm};
 use lasso::Rodeo;
 
-/// Tracks a quantifier introduced by a description (lo/le/ro lo/ro le),
+/// The kind of quantifier introduced by a gadri description.
+#[derive(Debug, Clone)]
+enum QuantifierKind {
+    /// lo → ∃x
+    Existential,
+    /// ro lo → ∀x
+    Universal,
+    /// PA lo → exactly N entities satisfy
+    ExactCount(u32),
+}
+
+/// Tracks a quantifier introduced by a description (lo/le/ro lo/ro le/PA lo),
 /// with an optional relative clause restrictor.
 struct QuantifierEntry {
     var: lasso::Spur,
     desc_id: u32,
     restrictor: Option<LogicalForm>,
-    /// If true, wraps as ∀x.(restrictor → body) instead of ∃x.(restrictor ∧ body)
-    universal: bool,
+    kind: QuantifierKind,
 }
 
 pub struct SemanticCompiler {
@@ -153,7 +163,7 @@ impl SemanticCompiler {
                                 var,
                                 desc_id: *desc_id,
                                 restrictor: None,
-                                universal: false,
+                                kind: QuantifierKind::Existential,
                             }],
                         )
                     }
@@ -167,7 +177,7 @@ impl SemanticCompiler {
                                 var,
                                 desc_id: *desc_id,
                                 restrictor: None,
-                                universal: true,
+                                kind: QuantifierKind::Universal,
                             }],
                         )
                     }
@@ -181,6 +191,19 @@ impl SemanticCompiler {
                         )
                     }
                 }
+            }
+
+            Sumti::QuantifiedDescription((count, _gadri, desc_id)) => {
+                let var = self.fresh_var();
+                (
+                    LogicalTerm::Variable(var),
+                    vec![QuantifierEntry {
+                        var,
+                        desc_id: *desc_id,
+                        restrictor: None,
+                        kind: QuantifierKind::ExactCount(*count),
+                    }],
+                )
             }
 
             Sumti::Tagged((_tag, inner_id)) => {
@@ -300,6 +323,13 @@ impl SemanticCompiler {
             }
             LogicalForm::Future(inner) => {
                 LogicalForm::Future(Box::new(Self::inject_variable(*inner, var)))
+            }
+            LogicalForm::Count { var: v, count, body } => {
+                LogicalForm::Count {
+                    var: v,
+                    count,
+                    body: Box::new(Self::inject_variable(*body, var)),
+                }
             }
         }
     }
@@ -425,26 +455,41 @@ impl SemanticCompiler {
                         sentences,
                     );
 
-                    if entry.universal {
-                        // ∀x. (restrictor → body) = ∀x. (¬restrictor ∨ body)
-                        let mut body = LogicalForm::Or(
-                            Box::new(LogicalForm::Not(Box::new(restrictor))),
-                            Box::new(form),
-                        );
-                        if let Some(rel_restrictor) = entry.restrictor {
-                            body = LogicalForm::Or(
-                                Box::new(LogicalForm::Not(Box::new(rel_restrictor))),
-                                Box::new(body),
+                    match entry.kind {
+                        QuantifierKind::Universal => {
+                            // ∀x. (restrictor → body) = ∀x. (¬restrictor ∨ body)
+                            let mut body = LogicalForm::Or(
+                                Box::new(LogicalForm::Not(Box::new(restrictor))),
+                                Box::new(form),
                             );
+                            if let Some(rel_restrictor) = entry.restrictor {
+                                body = LogicalForm::Or(
+                                    Box::new(LogicalForm::Not(Box::new(rel_restrictor))),
+                                    Box::new(body),
+                                );
+                            }
+                            form = LogicalForm::ForAll(entry.var, Box::new(body));
                         }
-                        form = LogicalForm::ForAll(entry.var, Box::new(body));
-                    } else {
-                        // ∃x. (restrictor ∧ body)
-                        let mut body = LogicalForm::And(Box::new(restrictor), Box::new(form));
-                        if let Some(rel_restrictor) = entry.restrictor {
-                            body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
+                        QuantifierKind::Existential => {
+                            // ∃x. (restrictor ∧ body)
+                            let mut body = LogicalForm::And(Box::new(restrictor), Box::new(form));
+                            if let Some(rel_restrictor) = entry.restrictor {
+                                body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
+                            }
+                            form = LogicalForm::Exists(entry.var, Box::new(body));
                         }
-                        form = LogicalForm::Exists(entry.var, Box::new(body));
+                        QuantifierKind::ExactCount(n) => {
+                            // Count(x, n, restrictor ∧ body)
+                            let mut body = LogicalForm::And(Box::new(restrictor), Box::new(form));
+                            if let Some(rel_restrictor) = entry.restrictor {
+                                body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
+                            }
+                            form = LogicalForm::Count {
+                                var: entry.var,
+                                count: n,
+                                body: Box::new(body),
+                            };
+                        }
                     }
                 }
 
@@ -717,35 +762,48 @@ impl SemanticCompiler {
             let desc_restrictor =
                 self.apply_selbri(entry.desc_id, &restrictor_args, selbris, sumtis, sentences);
 
-            if entry.universal {
-                // ∀x. (restrictor → body) = ∀x. (¬restrictor ∨ body)
-                let mut body = LogicalForm::Or(
-                    Box::new(LogicalForm::Not(Box::new(desc_restrictor))),
-                    Box::new(final_form),
-                );
-
-                // Conjoin relative clause restrictor into antecedent if present
-                if let Some(rel_restrictor) = entry.restrictor {
-                    // ∀x. ((restrictor ∧ rel_clause) → body)
-                    // = ∀x. (¬(restrictor ∧ rel_clause) ∨ body)
-                    // = ∀x. (¬restrictor ∨ ¬rel_clause ∨ body)
-                    // But cleaner: just wrap the rel_clause into the antecedent
-                    body = LogicalForm::Or(
-                        Box::new(LogicalForm::Not(Box::new(rel_restrictor))),
-                        Box::new(body),
+            match entry.kind {
+                QuantifierKind::Universal => {
+                    // ∀x. (restrictor → body) = ∀x. (¬restrictor ∨ body)
+                    let mut body = LogicalForm::Or(
+                        Box::new(LogicalForm::Not(Box::new(desc_restrictor))),
+                        Box::new(final_form),
                     );
+
+                    // Conjoin relative clause restrictor into antecedent if present
+                    if let Some(rel_restrictor) = entry.restrictor {
+                        body = LogicalForm::Or(
+                            Box::new(LogicalForm::Not(Box::new(rel_restrictor))),
+                            Box::new(body),
+                        );
+                    }
+
+                    final_form = LogicalForm::ForAll(entry.var, Box::new(body));
                 }
+                QuantifierKind::Existential => {
+                    // ∃x. (restrictor ∧ body)
+                    let mut body = LogicalForm::And(Box::new(desc_restrictor), Box::new(final_form));
 
-                final_form = LogicalForm::ForAll(entry.var, Box::new(body));
-            } else {
-                // ∃x. (restrictor ∧ body)
-                let mut body = LogicalForm::And(Box::new(desc_restrictor), Box::new(final_form));
+                    if let Some(rel_restrictor) = entry.restrictor {
+                        body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
+                    }
 
-                if let Some(rel_restrictor) = entry.restrictor {
-                    body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
+                    final_form = LogicalForm::Exists(entry.var, Box::new(body));
                 }
+                QuantifierKind::ExactCount(n) => {
+                    // Count(x, n, restrictor ∧ body)
+                    let mut body = LogicalForm::And(Box::new(desc_restrictor), Box::new(final_form));
 
-                final_form = LogicalForm::Exists(entry.var, Box::new(body));
+                    if let Some(rel_restrictor) = entry.restrictor {
+                        body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
+                    }
+
+                    final_form = LogicalForm::Count {
+                        var: entry.var,
+                        count: n,
+                        body: Box::new(body),
+                    };
+                }
             }
         }
 
@@ -1533,5 +1591,134 @@ mod tests {
             }
             other => panic!("expected nested And, got {:?}", other),
         }
+    }
+
+    // ─── Numeric quantifier tests ──────────────────────────────────
+
+    #[test]
+    fn test_re_lo_produces_count_2() {
+        // re lo gerku cu barda → Count(_v0, 2, And(gerku(_v0,...), barda(_v0,...)))
+        // Buffer:
+        //   sumtis: [0: QuantifiedDescription(2, Lo, 0)]
+        //   selbris: [0: gerku, 1: barda]
+        //   bridi: { relation: 1, head_terms: [0], tail_terms: [] }
+        let selbris = vec![
+            Selbri::Root("gerku".into()),  // 0
+            Selbri::Root("barda".into()),  // 1
+        ];
+        let sumtis = vec![
+            Sumti::QuantifiedDescription((2, Gadri::Lo, 0)),  // 0
+        ];
+        let bridi = Bridi {
+            relation: 1,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+        };
+
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+
+        // Should be Count { var: _v0, count: 2, body: And(gerku(_v0,...), barda(_v0,...)) }
+        match &form {
+            LogicalForm::Count { var, count, body } => {
+                assert_eq!(*count, 2);
+                assert!(resolve(&compiler, var).starts_with("_v"));
+                match body.as_ref() {
+                    LogicalForm::And(restrictor, pred) => {
+                        match restrictor.as_ref() {
+                            LogicalForm::Predicate { relation, .. } => {
+                                assert_eq!(resolve(&compiler, relation), "gerku");
+                            }
+                            other => panic!("expected gerku restrictor, got {:?}", other),
+                        }
+                        match pred.as_ref() {
+                            LogicalForm::Predicate { relation, .. } => {
+                                assert_eq!(resolve(&compiler, relation), "barda");
+                            }
+                            other => panic!("expected barda predicate, got {:?}", other),
+                        }
+                    }
+                    other => panic!("expected And body, got {:?}", other),
+                }
+            }
+            other => panic!("expected Count, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_no_lo_produces_count_0() {
+        // no lo gerku cu barda → Count(_v0, 0, And(gerku(_v0,...), barda(_v0,...)))
+        let selbris = vec![
+            Selbri::Root("gerku".into()),  // 0
+            Selbri::Root("barda".into()),  // 1
+        ];
+        let sumtis = vec![
+            Sumti::QuantifiedDescription((0, Gadri::Lo, 0)),  // 0
+        ];
+        let bridi = Bridi {
+            relation: 1,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+        };
+
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+
+        match &form {
+            LogicalForm::Count { count, .. } => assert_eq!(*count, 0),
+            other => panic!("expected Count with count=0, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_pa_lo_produces_count_1() {
+        // pa lo gerku cu barda → Count(_v0, 1, ...)
+        let selbris = vec![
+            Selbri::Root("gerku".into()),
+            Selbri::Root("barda".into()),
+        ];
+        let sumtis = vec![
+            Sumti::QuantifiedDescription((1, Gadri::Lo, 0)),
+        ];
+        let bridi = Bridi {
+            relation: 1,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+        };
+
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+
+        match &form {
+            LogicalForm::Count { count, .. } => assert_eq!(*count, 1),
+            other => panic!("expected Count with count=1, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lo_still_produces_exists() {
+        // Regression: lo gerku cu barda → Exists (not Count)
+        let selbris = vec![
+            Selbri::Root("gerku".into()),
+            Selbri::Root("barda".into()),
+        ];
+        let sumtis = vec![
+            Sumti::Description((Gadri::Lo, 0)),
+        ];
+        let bridi = Bridi {
+            relation: 1,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+        };
+
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+
+        assert!(matches!(&form, LogicalForm::Exists(_, _)),
+            "expected Exists, got {:?}", form);
     }
 }

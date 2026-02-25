@@ -326,6 +326,9 @@ impl Guest for ReasoningComponent {
                     .map_err(|e| format!("Failed to assert fact: {}", e))?;
             }
 
+            // Phase 3: Generate extra witnesses for Count quantifiers (n > 1)
+            generate_count_extra_witnesses(&logic, root_id, &skolem_subs, &mut egraph);
+
             // Run rules to fixpoint
             egraph.parse_and_run_program(None, "(run 100)").ok();
         }
@@ -432,6 +435,19 @@ fn check_formula_holds(
             }
             Ok(true)
         }
+        LogicNode::CountNode((v, count, body)) => {
+            // Check that exactly `count` known entities satisfy the body
+            let entities = get_known_entities();
+            let mut satisfying = 0u32;
+            for entity in &entities {
+                let mut new_subs = subs.clone();
+                new_subs.insert(v.clone(), entity.clone());
+                if check_formula_holds(buffer, *body, &new_subs, egraph)? {
+                    satisfying += 1;
+                }
+            }
+            Ok(satisfying == *count)
+        }
         LogicNode::Predicate(_) => {
             // Atomic: delegate to egglog
             let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
@@ -488,6 +504,20 @@ fn collect_exists_for_skolem(
         LogicNode::NotNode(inner) => {
             collect_exists_for_skolem(buffer, *inner, subs, enclosing_universals);
         }
+        LogicNode::CountNode((v, count, body)) => {
+            // Count(x, n > 0, body): the variable needs a Skolem witness (like Exists)
+            if *count > 0 && !subs.contains_key(v.as_str()) {
+                if enclosing_universals.is_empty() {
+                    subs.insert(v.clone(), fresh_skolem());
+                } else {
+                    let base = fresh_skolem();
+                    let placeholder = format!("{}{}", SKDEP_PREFIX, base);
+                    subs.insert(v.clone(), placeholder);
+                }
+            }
+            // Count(x, 0, body): no witness needed (it means ∀x.¬body)
+            collect_exists_for_skolem(buffer, *body, subs, enclosing_universals);
+        }
         LogicNode::Predicate(_) => {}
         LogicNode::PastNode(inner)
         | LogicNode::PresentNode(inner)
@@ -543,6 +573,30 @@ fn collect_forall_nodes_rec(
         LogicNode::NotNode(inner) | LogicNode::ExistsNode((_, inner)) => {
             collect_forall_nodes_rec(buffer, *inner, skolem_subs, entries);
         }
+        LogicNode::CountNode((v, count, body)) => {
+            if *count == 0 {
+                // Count(x, 0, body) ≡ ∀x.¬body — treat as universal template
+                let body_sexp = reconstruct_sexp_with_subs(buffer, *body, skolem_subs);
+                let negated = format!("(Not {})", body_sexp);
+                // Collect dependent Skolems in the negated body
+                let dependent_skolems: Vec<(String, String)> = skolem_subs
+                    .values()
+                    .filter_map(|val| {
+                        val.strip_prefix(SKDEP_PREFIX).and_then(|base| {
+                            if negated.contains(&format!("(Var \"{}\")", val)) {
+                                Some((val.clone(), base.to_string()))
+                            } else {
+                                None
+                            }
+                        })
+                    })
+                    .collect();
+                entries.push((v.clone(), negated, dependent_skolems));
+            } else {
+                // Count(x, n>0, body): recurse into body for nested ForAlls
+                collect_forall_nodes_rec(buffer, *body, skolem_subs, entries);
+            }
+        }
         // Tense wrappers: recurse through to find any ForAll nodes inside
         LogicNode::PastNode(inner)
         | LogicNode::PresentNode(inner)
@@ -571,6 +625,9 @@ fn collect_and_register_constants(buffer: &LogicBuffer, node_id: u32, egraph: &m
         | LogicNode::ExistsNode((_, inner))
         | LogicNode::ForAllNode((_, inner)) => {
             collect_and_register_constants(buffer, *inner, egraph);
+        }
+        LogicNode::CountNode((_, _, body)) => {
+            collect_and_register_constants(buffer, *body, egraph);
         }
         LogicNode::PastNode(inner)
         | LogicNode::PresentNode(inner)
@@ -662,11 +719,79 @@ fn reconstruct_sexp_with_subs(
         LogicNode::NotNode(inner) => {
             format!("(Not {})", reconstruct_sexp_with_subs(buffer, *inner, subs))
         }
+        LogicNode::CountNode((v, count, body)) => {
+            if *count == 0 {
+                // Count(x, 0, body) ≡ ∀x.¬body
+                let body_sexp = reconstruct_sexp_with_subs(buffer, *body, subs);
+                format!("(ForAll \"{}\" (Not {}))", v, body_sexp)
+            } else {
+                // Count(x, n>0, body): primary Skolem already in subs. Emit as Exists.
+                if subs.contains_key(v.as_str()) {
+                    reconstruct_sexp_with_subs(buffer, *body, subs)
+                } else {
+                    let body_sexp = reconstruct_sexp_with_subs(buffer, *body, subs);
+                    format!("(Exists \"{}\" {})", v, body_sexp)
+                }
+            }
+        }
         // Tense wrappers are transparent for egglog.
         // Strip the wrapper and recurse into the inner formula.
         LogicNode::PastNode(inner)
         | LogicNode::PresentNode(inner)
         | LogicNode::FutureNode(inner) => reconstruct_sexp_with_subs(buffer, *inner, subs),
+    }
+}
+
+/// Generate extra Skolem witnesses for Count(x, n, body) where n > 1.
+/// The primary Skolem witness was already created in phase 1 (Skolemization).
+/// This function creates n-1 additional witnesses and asserts the body for each.
+fn generate_count_extra_witnesses(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    skolem_subs: &HashMap<String, String>,
+    egraph: &mut EGraph,
+) {
+    match &buffer.nodes[node_id as usize] {
+        LogicNode::CountNode((v, count, body)) => {
+            if *count > 1 {
+                // The primary witness is already in skolem_subs.
+                // Generate (count - 1) additional witnesses.
+                for _ in 1..*count {
+                    let extra_sk = fresh_skolem();
+                    register_entity_no_instantiate(&extra_sk);
+
+                    // Build substitutions with the extra witness replacing v
+                    let mut extra_subs = skolem_subs.clone();
+                    extra_subs.insert(v.clone(), extra_sk.clone());
+
+                    let sexp = reconstruct_sexp_with_subs(buffer, *body, &extra_subs);
+                    let command = format!("(IsTrue {})", sexp);
+                    if let Err(e) = egraph.parse_and_run_program(None, &command) {
+                        eprintln!(
+                            "[reasoning] Failed to assert extra Count witness {}: {}",
+                            extra_sk, e
+                        );
+                    }
+                }
+            }
+            // Recurse into body for nested Count nodes
+            generate_count_extra_witnesses(buffer, *body, skolem_subs, egraph);
+        }
+        LogicNode::AndNode((l, r)) | LogicNode::OrNode((l, r)) => {
+            generate_count_extra_witnesses(buffer, *l, skolem_subs, egraph);
+            generate_count_extra_witnesses(buffer, *r, skolem_subs, egraph);
+        }
+        LogicNode::NotNode(inner)
+        | LogicNode::ExistsNode((_, inner))
+        | LogicNode::ForAllNode((_, inner)) => {
+            generate_count_extra_witnesses(buffer, *inner, skolem_subs, egraph);
+        }
+        LogicNode::PastNode(inner)
+        | LogicNode::PresentNode(inner)
+        | LogicNode::FutureNode(inner) => {
+            generate_count_extra_witnesses(buffer, *inner, skolem_subs, egraph);
+        }
+        LogicNode::Predicate(_) => {}
     }
 }
 

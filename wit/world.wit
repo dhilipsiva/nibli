@@ -34,6 +34,9 @@ interface ast-types {
         /// Sumti connective: left .e/.a/.o/.u [nai] right
         /// Fields: (left-sumti-id, connective, right-negated, right-sumti-id)
         connected(tuple<sumti-id, connective, bool, sumti-id>),
+        /// Numeric quantifier + description: PA lo/le selbri [ku]
+        /// Fields: (count, gadri, selbri-id)
+        quantified-description(tuple<u32, gadri, selbri-id>),
     }
 
     variant selbri {
@@ -95,6 +98,8 @@ interface ast-types {
         past-node(u32),
         present-node(u32),
         future-node(u32),
+        /// Exactly N entities satisfy the body: Count(variable-name, count, body-node-id)
+        count-node(tuple<string, u32, u32>),
     }
 
     record logic-buffer {

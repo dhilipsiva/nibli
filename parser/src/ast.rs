@@ -144,6 +144,14 @@ pub enum Sumti {
         right_negated: bool,
         right: Box<Sumti>,
     },
+
+    /// Numeric quantifier + description: <PA> lo/le selbri [ku]
+    /// "re lo gerku" = exactly 2 dogs
+    QuantifiedDescription {
+        count: u32,
+        gadri: Gadri,
+        inner: Box<Selbri>,
+    },
 }
 
 /// A relative clause attached to a sumti.

@@ -32,7 +32,14 @@ pub enum LogicalForm {
     Or(Box<LogicalForm>, Box<LogicalForm>),
     /// Logical Negation: ¬A
     Not(Box<LogicalForm>),
-    Past(Box<LogicalForm>),    // ← NEW
-    Present(Box<LogicalForm>), // ← NEW
-    Future(Box<LogicalForm>),  // ← NEW
+    Past(Box<LogicalForm>),
+    Present(Box<LogicalForm>),
+    Future(Box<LogicalForm>),
+    /// Exactly `count` distinct x satisfy `body`.
+    /// Count(var, count, body)
+    Count {
+        var: Spur,
+        count: u32,
+        body: Box<LogicalForm>,
+    },
 }

@@ -121,6 +121,16 @@ fn flatten_form(form: &LogicalForm, nodes: &mut Vec<LogicNode>, interner: &lasso
             nodes.push(LogicNode::FutureNode(inner_id));
             id
         }
+        LogicalForm::Count { var, count, body } => {
+            let b_id = flatten_form(body, nodes, interner);
+            let id = nodes.len() as u32;
+            nodes.push(LogicNode::CountNode((
+                interner.resolve(var).to_string(),
+                *count,
+                b_id,
+            )));
+            id
+        }
     }
 }
 

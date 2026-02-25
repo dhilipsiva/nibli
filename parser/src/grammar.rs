@@ -13,6 +13,7 @@
 //   sumti       → la_name | description | pro_sumti | quoted
 //                | sumti rel_clause
 //   la_name     → la cmevla+
+//   quantified_desc → su'o? PA* (lo|le) selbri ku?
 //   description → ro? (lo|le) selbri ku?
 //   rel_clause  → (poi|noi) sentence ku'o?
 //   selbri      → na? selbri_conn
@@ -512,6 +513,20 @@ impl<'a> Parser<'a> {
             return self.try_parse_la_name();
         }
 
+        // ── su'o lo/le → plain existential (same as bare lo/le) ──
+        if self.peek_is_cmavo("su'o") {
+            if let Some(desc) = self.try_parse_suho_description() {
+                return Some(desc);
+            }
+        }
+
+        // ── PA digit(s) + lo/le → numeric quantified description ──
+        if self.peek_is_pa_digit() {
+            if let Some(desc) = self.try_parse_numeric_quantified_description() {
+                return Some(desc);
+            }
+        }
+
         // ── Phase 6b: ro lo / ro le (universal quantification) ──
         if self.peek_is_cmavo("ro") {
             return self.try_parse_ro_description();
@@ -594,6 +609,87 @@ impl<'a> Parser<'a> {
         };
         self.pos += 1;
         Some(d)
+    }
+
+    /// Peek whether the current token is a PA digit (no consuming).
+    fn peek_is_pa_digit(&self) -> bool {
+        matches!(
+            self.peek_cmavo(),
+            Some("no" | "pa" | "re" | "ci" | "vo" | "mu" | "xa" | "ze" | "bi" | "so")
+        )
+    }
+
+    /// su'o (lo|le) selbri ku? — existential ("at least one"), same as bare lo/le.
+    /// Backtracks if su'o is not followed by lo/le.
+    fn try_parse_suho_description(&mut self) -> Option<Sumti> {
+        if !self.peek_is_cmavo("su'o") {
+            return None;
+        }
+        let saved = self.save();
+        self.pos += 1; // consume su'o
+
+        // Must be followed by lo or le
+        let gadri = match self.peek_cmavo() {
+            Some("lo") => { self.pos += 1; Gadri::Lo }
+            Some("le") => { self.pos += 1; Gadri::Le }
+            _ => { self.restore(saved); return None; }
+        };
+
+        let selbri = match self.try_parse_selbri_for_description() {
+            Some(s) => s,
+            None => { self.restore(saved); return None; }
+        };
+
+        self.eat_cmavo("ku");
+
+        // su'o lo X ≡ lo X (existential default)
+        Some(Sumti::Description {
+            gadri,
+            inner: Box::new(selbri),
+        })
+    }
+
+    /// PA+ (lo|le) selbri ku? — numeric quantified description.
+    /// Multi-digit: [pa, no] → 10. Backtracks if digits not followed by gadri.
+    fn try_parse_numeric_quantified_description(&mut self) -> Option<Sumti> {
+        let saved = self.save();
+
+        // Collect one or more PA digits
+        let mut digits: Vec<u8> = Vec::new();
+        while let Some(d) = self.try_parse_pa_digit() {
+            digits.push(d);
+        }
+
+        if digits.is_empty() {
+            self.restore(saved);
+            return None;
+        }
+
+        // Must be followed by lo or le
+        let gadri = match self.peek_cmavo() {
+            Some("lo") => { self.pos += 1; Gadri::Lo }
+            Some("le") => { self.pos += 1; Gadri::Le }
+            _ => { self.restore(saved); return None; }
+        };
+
+        let selbri = match self.try_parse_selbri_for_description() {
+            Some(s) => s,
+            None => { self.restore(saved); return None; }
+        };
+
+        self.eat_cmavo("ku");
+
+        // Compute multi-digit number: [pa, no] → 10, [re] → 2
+        let mut count: u32 = 0;
+        for d in &digits {
+            count = count * 10 + (*d as u32);
+        }
+
+        Some(Sumti::QuantifiedDescription {
+            count,
+            gadri,
+            inner: Box::new(selbri),
+        })
     }
 
     /// ro (lo|le) selbri ku? — universal quantification
@@ -3054,5 +3150,116 @@ mod tests {
         // klama ri'a — ri'a with no following sumti should error
         let e = parse_err(&[gismu("klama"), cmavo("ri'a")]);
         assert!(e.contains("unconsumed") || e.len() > 0);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // NUMERIC QUANTIFIERS (PA lo/le)
+    // ═══════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_re_lo_description() {
+        // re lo gerku cu barda → QuantifiedDescription { count: 2, Lo, gerku }
+        let r = parse_ok(&[
+            cmavo("re"), cmavo("lo"), gismu("gerku"), cmavo("cu"), gismu("barda"),
+        ]);
+        let s = as_bridi(&r.sentences[0]);
+        match &s.head_terms[0] {
+            Sumti::QuantifiedDescription { count, gadri, inner } => {
+                assert_eq!(*count, 2);
+                assert_eq!(*gadri, Gadri::Lo);
+                assert_eq!(**inner, Selbri::Root("gerku".into()));
+            }
+            other => panic!("expected QuantifiedDescription, got {:?}", other),
+        }
+        assert_eq!(s.selbri, Selbri::Root("barda".into()));
+    }
+
+    #[test]
+    fn test_ci_lo_description() {
+        // ci lo mlatu cu barda → count: 3
+        let r = parse_ok(&[
+            cmavo("ci"), cmavo("lo"), gismu("mlatu"), cmavo("cu"), gismu("barda"),
+        ]);
+        match &as_bridi(&r.sentences[0]).head_terms[0] {
+            Sumti::QuantifiedDescription { count, .. } => assert_eq!(*count, 3),
+            other => panic!("expected QuantifiedDescription, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_no_lo_description() {
+        // no lo gerku cu barda → count: 0
+        let r = parse_ok(&[
+            cmavo("no"), cmavo("lo"), gismu("gerku"), cmavo("cu"), gismu("barda"),
+        ]);
+        match &as_bridi(&r.sentences[0]).head_terms[0] {
+            Sumti::QuantifiedDescription { count, .. } => assert_eq!(*count, 0),
+            other => panic!("expected QuantifiedDescription, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_pa_lo_description() {
+        // pa lo gerku cu barda → count: 1
+        let r = parse_ok(&[
+            cmavo("pa"), cmavo("lo"), gismu("gerku"), cmavo("cu"), gismu("barda"),
+        ]);
+        match &as_bridi(&r.sentences[0]).head_terms[0] {
+            Sumti::QuantifiedDescription { count, .. } => assert_eq!(*count, 1),
+            other => panic!("expected QuantifiedDescription, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_multi_digit_pa_no() {
+        // pa no lo gerku cu barda → count: 10
+        let r = parse_ok(&[
+            cmavo("pa"), cmavo("no"), cmavo("lo"), gismu("gerku"), cmavo("cu"), gismu("barda"),
+        ]);
+        match &as_bridi(&r.sentences[0]).head_terms[0] {
+            Sumti::QuantifiedDescription { count, .. } => assert_eq!(*count, 10),
+            other => panic!("expected QuantifiedDescription with count 10, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_suho_lo_is_plain_existential() {
+        // su'o lo gerku cu barda → plain Description(Lo) (existential)
+        let r = parse_ok(&[
+            cmavo("su'o"), cmavo("lo"), gismu("gerku"), cmavo("cu"), gismu("barda"),
+        ]);
+        match &as_bridi(&r.sentences[0]).head_terms[0] {
+            Sumti::Description { gadri: Gadri::Lo, inner } => {
+                assert_eq!(**inner, Selbri::Root("gerku".into()));
+            }
+            other => panic!("expected plain Description(Lo), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ro_lo_still_universal() {
+        // Regression: ro lo gerku cu barda → RoLo (not affected by new code)
+        let r = parse_ok(&[
+            cmavo("ro"), cmavo("lo"), gismu("gerku"), cmavo("cu"), gismu("barda"),
+        ]);
+        match &as_bridi(&r.sentences[0]).head_terms[0] {
+            Sumti::Description { gadri: Gadri::RoLo, .. } => {}
+            other => panic!("expected Description(RoLo), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_re_le_description() {
+        // re le gerku cu barda → QuantifiedDescription with Le gadri
+        let r = parse_ok(&[
+            cmavo("re"), cmavo("le"), gismu("gerku"), cmavo("cu"), gismu("barda"),
+        ]);
+        match &as_bridi(&r.sentences[0]).head_terms[0] {
+            Sumti::QuantifiedDescription { count, gadri, .. } => {
+                assert_eq!(*count, 2);
+                assert_eq!(*gadri, Gadri::Le);
+            }
+            other => panic!("expected QuantifiedDescription(Le), got {:?}", other),
+        }
     }
 }

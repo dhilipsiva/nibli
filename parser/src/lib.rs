@@ -353,6 +353,16 @@ impl Flattener {
                 };
                 wit::Sumti::Connected((left_id, wit_conn, right_negated, right_id))
             }
+
+            ast::Sumti::QuantifiedDescription { count, gadri, inner } => {
+                let inner_id = self.push_selbri(*inner);
+                let wit_gadri = match gadri {
+                    ast::Gadri::Lo => wit::Gadri::Lo,
+                    ast::Gadri::Le => wit::Gadri::Le,
+                    _ => unreachable!("QuantifiedDescription only uses Lo or Le"),
+                };
+                wit::Sumti::QuantifiedDescription((count, wit_gadri, inner_id))
+            }
         };
 
         let id = self.buffer.sumtis.len() as u32;
@@ -766,6 +776,36 @@ mod flattener_tests {
     }
 
     #[test]
+    fn test_quantified_description_flattening() {
+        // re lo gerku cu barda → QuantifiedDescription(2, Lo, gerku)
+        let parsed = ParsedText {
+            sentences: vec![Sentence::Simple(Bridi {
+                selbri: Selbri::Root("barda".into()),
+                head_terms: vec![Sumti::QuantifiedDescription {
+                    count: 2,
+                    gadri: Gadri::Lo,
+                    inner: Box::new(Selbri::Root("gerku".into())),
+                }],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+            })],
+        };
+
+        let buffer = Flattener::flatten(parsed);
+        assert_eq!(buffer.roots.len(), 1);
+        assert_eq!(buffer.sumtis.len(), 1);
+        match &buffer.sumtis[0] {
+            wit::Sumti::QuantifiedDescription((count, gadri, selbri_id)) => {
+                assert_eq!(*count, 2);
+                assert_eq!(*gadri, wit::Gadri::Lo);
+                assert!(matches!(&buffer.selbris[*selbri_id as usize], wit::Selbri::Root(s) if s == "gerku"));
+            }
+            other => panic!("expected QuantifiedDescription, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn test_fio_flattening() {
         // barda fi'o klama mi → tail: [ModalTagged(Fio(Root("klama")), ProSumti("mi"))]
         let parsed = ParsedText {
@@ -1133,5 +1173,58 @@ mod pipeline_tests {
             &s.tail_terms[1],
             Sumti::ModalTagged(ModalTag::Fixed(BaiTag::Pio), _)
         ));
+    }
+
+    // ─── Numeric Quantifier pipeline tests ──────────────────────────
+
+    #[test]
+    fn pipeline_re_lo_gerku() {
+        let p = parse("re lo gerku cu barda");
+        let s = as_bridi(&p.sentences[0]);
+        match &s.head_terms[0] {
+            Sumti::QuantifiedDescription { count, gadri, inner } => {
+                assert_eq!(*count, 2);
+                assert_eq!(*gadri, Gadri::Lo);
+                assert_eq!(**inner, Selbri::Root("gerku".into()));
+            }
+            other => panic!("expected QuantifiedDescription, got {:?}", other),
+        }
+        assert_eq!(s.selbri, Selbri::Root("barda".into()));
+    }
+
+    #[test]
+    fn pipeline_suho_lo_gerku() {
+        let p = parse("su'o lo gerku cu barda");
+        let s = as_bridi(&p.sentences[0]);
+        match &s.head_terms[0] {
+            Sumti::Description { gadri: Gadri::Lo, inner } => {
+                assert_eq!(**inner, Selbri::Root("gerku".into()));
+            }
+            other => panic!("expected Description(Lo), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pipeline_no_lo_gerku() {
+        let p = parse("no lo gerku cu barda");
+        let s = as_bridi(&p.sentences[0]);
+        match &s.head_terms[0] {
+            Sumti::QuantifiedDescription { count, .. } => {
+                assert_eq!(*count, 0);
+            }
+            other => panic!("expected QuantifiedDescription with count 0, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pipeline_multi_digit_quantifier() {
+        let p = parse("pa re lo gerku cu barda");
+        let s = as_bridi(&p.sentences[0]);
+        match &s.head_terms[0] {
+            Sumti::QuantifiedDescription { count, .. } => {
+                assert_eq!(*count, 12); // pa=1, re=2 → 12
+            }
+            other => panic!("expected QuantifiedDescription with count 12, got {:?}", other),
+        }
     }
 }
