@@ -1,13 +1,3 @@
-### 1.3 BAI modal tags (minimum viable set: `ri'a`, `ni'i`, `mu'i`, `ki'u`, `pi'o`, `ba'i`, `fi'o...fe'u`)
-
-New grammatical category. BAI tags create a new predicate relation rather than filling an existing place. `mi klama ri'a lo nu brife` → "I go, caused-by the event of wind."
-
-Semantics: conjoined predication with modal relation connecting main bridi to tagged sumti.
-
-**Crate:** parser (new tag class), semantics (modal predication)
-**Complexity:** high
-**Needed by:** causation in every domain
-
 ### 1.4 Numeric quantifiers (`re lo`, `ci lo`, `su'o`, `no`)
 
 Parser: number + gadri in quantifier position. Semantics: existential with cardinality constraint. Expanding "exactly N" in raw FOL is verbose — add a dedicated `CountNode` in the IR.
@@ -283,3 +273,52 @@ Next sprint:
   1.5  — afterthought sentence connectives (low effort, high value)
   1.9  — lujvo recognition (coverage)
 ```
+
+
+This fails:
+
+```
+ro lo gerku cu danlu
+ro lo danlu cu citka lo cidja
+?lo gerku cu citka lo cidja                                                                                                                                                                                 02/25/2026 11:47:53 AM
+[Query] FALSE
+?ro lo gerku cu citka lo cidja
+[Query] TRUE
+
+```
+
+The root cause of this output is a failure in your engine’s unification algorithm. You have encountered a classic boundary problem in neuro-symbolic mapping: the disconnect between Lojban's modern generic descriptors (the "xorlo" grammar reform) and strict First-Order Logic (FOL) resolution.
+
+Your engine is currently performing rigid syntactic graph matching rather than true semantic entailment.
+
+### The Logical Breakdown
+
+When you asserted or loaded `ro lo gerku cu citka lo cidja` into your knowledge base, your parser correctly mapped the universal quantifier (`ro`) to a logical implication or Horn clause. In your engine's memory, this exists as:
+
+$$\forall x (Gerku(x) \rightarrow \exists y (Cidja(y) \land Citka(x, y)))$$
+
+When you subsequently query `lo gerku cu citka lo cidja`, your parser processes the unquantified `lo`. Under modern Lojban semantics, an unquantified `lo` refers to the generic kind or "Mr. Dog" concept. In a symbolic FOL backend, your parser is likely mapping this query in one of two ways:
+
+1. **As an Existential Query:** 
+$$\exists x (Gerku(x) \land \exists y (Cidja(y) \land Citka(x, y)))$$
+
+
+2. **As a Discrete Constant:** `Citka(Generic_Dog_Class, Generic_Food_Class)`
+
+Because your engine's unification step lacks a subsumption rule to bridge the gap, the match fails. It sees the universal statement ($\forall x$) as a rule, but it sees the existential/generic query as an entirely separate, unproven assertion. The engine returns `FALSE` because it cannot find an exact structural match for the unquantified AST node.
+
+### The Missing Inference Mechanism
+
+In standard formal logic, proving $\exists x P(x)$ from $\forall x P(x)$ requires a rule of **Existential Introduction**. Crucially, it also requires the assumption that the domain is non-empty—meaning your knowledge base must explicitly contain at least one specific instance of a dog to prove that "some dog eats food" based on the rule "all dogs eat food."
+
+If your engine operates purely on deductive rules without existential instantiation, it will strictly evaluate $\forall x$ as a conditional constraint, not an assertion of existence.
+
+### Architectural Solutions for your Engine
+
+To make your Lojban engine mathematically robust and practically functional, you must build explicit quantifier subsumption into your Rust/Python inference pipeline.
+
+1. **Implement Subsumption Logic:** When the inference engine receives a query for an unquantified `lo` node (existential/generic), the unifier must check if a universal rule ($\forall$) exists for that predicate. If $\forall x P(x) \vdash True$, it should automatically return `TRUE` for the `lo` query.
+2. **Explicit Domain Instantiation:** You must ensure your knowledge base asserts that the set of $Gerku$ is non-empty before it allows an existential query to pass based solely on a universal rule.
+3. **Semantic Typing for "xorlo":** If you want to strictly adhere to Lojban's modern generic semantics, you need to implement a type system where `lo gerku` is parsed as a kind/prototype node, and instances/quantified nodes (`ro lo`, `pa lo`) inherit properties from the prototype node via directed edges.
+
+Would you like to examine the mathematical proofs for Existential Introduction so you can map the specific unification algorithm directly into your Rust abstract syntax tree?
