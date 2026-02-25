@@ -1,26 +1,3 @@
-### 1.1 Sumti connectives (`.e` / `.a` / `.o` / `.u` + negated forms)
-
-"Electrons and muons are leptons." "Drug X or drug Y inhibits CYP3A4."
-
-Parser: afterthought connectives between sumti. Semantics: `.e` → conjunction of two predications sharing the selbri, `.a` → disjunction. Negatable: `.e nai`, `.a nai`, etc.
-
-**Crate:** parser/grammar.rs, semantics/semantic.rs
-**Complexity:** medium — mirrors existing selbri connective implementation
-**Needed by:** every application (taxonomy is universal)
-
-### 1.2 `du'u` / `ka` / `ni` / `si'o` abstractions
-
-- `du'u` (proposition): propositional embedding
-- `ka` (property): lambda-like with `ce'u` as open variable
-- `ni` (quantity): bridge to numerical computation dispatch
-- `si'o` (concept): meta-level reasoning
-
-Parser: same structure as `nu...kei`, different selma'o tag. Semantics: each gets a distinct reification strategy.
-
-**Crate:** parser/ast.rs, parser/grammar.rs, semantics/semantic.rs, semantics/ir.rs
-**Complexity:** medium-high (`ka` needs `ce'u` lambda variable support)
-**Depends on:** nothing blocked
-
 ### 1.3 BAI modal tags (minimum viable set: `ri'a`, `ni'i`, `mu'i`, `ki'u`, `pi'o`, `ba'i`, `fi'o...fe'u`)
 
 New grammatical category. BAI tags create a new predicate relation rather than filling an existing place. `mi klama ri'a lo nu brife` → "I go, caused-by the event of wind."

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd:*)",
+      "Bash(cargo test:*)",
+      "Bash(CARGO_INCREMENTAL=0 cargo test:*)",
+      "Bash(wsl -d Ubuntu -e bash -lc:*)",
+      "Bash(wsl -e bash -c \"cd ~/projects/dhilipsiva/lojban_nesy_engine && cargo test --lib -p parser:*)",
+      "Bash(wsl -e bash -lc:*)",
+      "Bash(git status:*)"
+    ]
+  }
+}
