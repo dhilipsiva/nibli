@@ -882,6 +882,7 @@ impl<'a> Parser<'a> {
         let kind = match self.peek_cmavo()? {
             "poi" => RelClauseKind::Poi,
             "noi" => RelClauseKind::Noi,
+            "voi" => RelClauseKind::Voi,
             _ => return None,
         };
 
@@ -2360,6 +2361,114 @@ mod tests {
                 }
             }
             other => panic!("expected Restricted(RoLo), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_voi_relative_clause() {
+        // lo gerku voi barda → Restricted(Description(lo, gerku), voi)
+        let r = parse_ok(&[
+            cmavo("mi"),
+            gismu("nelci"),
+            cmavo("lo"),
+            gismu("gerku"),
+            cmavo("voi"),
+            gismu("barda"),
+        ]);
+        match &as_bridi(&r.sentences[0]).tail_terms[0] {
+            Sumti::Restricted { clause, .. } => {
+                assert_eq!(clause.kind, RelClauseKind::Voi);
+            }
+            other => panic!("expected Restricted(voi), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_voi_with_ku_o() {
+        // lo gerku voi barda ku'o klama
+        let r = parse_ok(&[
+            cmavo("lo"),
+            gismu("gerku"),
+            cmavo("voi"),
+            gismu("barda"),
+            cmavo("ku'o"),
+            gismu("klama"),
+        ]);
+        let s = as_bridi(&r.sentences[0]);
+        assert!(matches!(&s.head_terms[0], Sumti::Restricted { .. }));
+        assert_eq!(s.selbri, Selbri::Root("klama".into()));
+    }
+
+    #[test]
+    fn test_stacked_relative_clauses() {
+        // lo gerku poi barda noi sutra → nested Restricted
+        let r = parse_ok(&[
+            cmavo("lo"),
+            gismu("gerku"),
+            cmavo("poi"),
+            gismu("barda"),
+            cmavo("ku'o"),
+            cmavo("noi"),
+            gismu("sutra"),
+            cmavo("ku'o"),
+            gismu("klama"),
+        ]);
+        let s = as_bridi(&r.sentences[0]);
+        // Outer: noi sutra
+        match &s.head_terms[0] {
+            Sumti::Restricted { inner, clause } => {
+                assert_eq!(clause.kind, RelClauseKind::Noi);
+                // Inner: poi barda
+                match inner.as_ref() {
+                    Sumti::Restricted { inner: innermost, clause: inner_clause } => {
+                        assert_eq!(inner_clause.kind, RelClauseKind::Poi);
+                        assert!(matches!(innermost.as_ref(), Sumti::Description { .. }));
+                    }
+                    other => panic!("expected inner Restricted(poi), got {:?}", other),
+                }
+            }
+            other => panic!("expected outer Restricted(noi), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_stacked_three_clauses() {
+        // lo gerku poi barda noi sutra voi cmalu → triple nesting
+        let r = parse_ok(&[
+            cmavo("lo"),
+            gismu("gerku"),
+            cmavo("poi"),
+            gismu("barda"),
+            cmavo("ku'o"),
+            cmavo("noi"),
+            gismu("sutra"),
+            cmavo("ku'o"),
+            cmavo("voi"),
+            gismu("cmalu"),
+            cmavo("ku'o"),
+            gismu("klama"),
+        ]);
+        let s = as_bridi(&r.sentences[0]);
+        // Outermost: voi cmalu
+        match &s.head_terms[0] {
+            Sumti::Restricted { inner, clause } => {
+                assert_eq!(clause.kind, RelClauseKind::Voi);
+                // Middle: noi sutra
+                match inner.as_ref() {
+                    Sumti::Restricted { inner: mid, clause: mid_clause } => {
+                        assert_eq!(mid_clause.kind, RelClauseKind::Noi);
+                        // Innermost: poi barda
+                        match mid.as_ref() {
+                            Sumti::Restricted { clause: inner_clause, .. } => {
+                                assert_eq!(inner_clause.kind, RelClauseKind::Poi);
+                            }
+                            other => panic!("expected innermost Restricted(poi), got {:?}", other),
+                        }
+                    }
+                    other => panic!("expected middle Restricted(noi), got {:?}", other),
+                }
+            }
+            other => panic!("expected outer Restricted(voi), got {:?}", other),
         }
     }
 

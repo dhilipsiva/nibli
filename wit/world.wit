@@ -14,7 +14,7 @@ interface ast-types {
     enum connective { je, ja, jo, ju }
     enum gadri { lo, le, la, ro-lo, ro-le }
     enum abstraction-kind { nu, duhu, ka, ni, siho }
-    enum rel-clause-kind { poi, noi }
+    enum rel-clause-kind { poi, noi, voi }
 
     record rel-clause {
         kind: rel-clause-kind,

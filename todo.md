@@ -1,10 +1,3 @@
-### 1.6 Relative clause stacking + `voi`
-
-`voi` (non-veridical restrictive) missing. Can't stack multiple relative clauses. Needed for: "the protein which binds ATP and which is phosphorylated."
-
-**Crate:** parser/grammar.rs, parser/ast.rs
-**Complexity:** low-medium
-
 ### 1.7 Deontic predicates (`bilga`/`curmi`/`nitcu`/`e'e`/`ei`)
 
 If predicate-based: `bilga`/`curmi` already work as gismu, just need dictionary arity entries. If attitudinal-based: new parser category required.

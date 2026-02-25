@@ -82,14 +82,14 @@ Before every commit, always:
 
 ## Current Status
 
-Completed through Phase 1.5.
+Completed through Phase 1.6.
 
 **Implemented features:**
 - Lexer + recursive-descent parser (gismu, cmavo, cmevla, lujvo partial)
 - Gadri descriptions (lo/le/la), universal (ro lo/ro le), numeric quantifiers (PA lo/le, su'o lo)
 - Place tags (fa/fe/fi/fo/fu), BAI modal tags (ri'a, ni'i, mu'i, ki'u, pi'o, ba'i), fi'o...fe'u
 - Selbri: root, tanru, conversion (se/te/ve/xe), negation (na), grouping (ke...ke'e), compounds (zei), be...bei...be'o
-- Relative clauses (poi/noi) with ke'a, implicit variable injection
+- Relative clauses (poi/noi/voi) with ke'a, implicit variable injection, clause stacking
 - Sumti connectives (.e/.a/.o/.u + nai), selbri connectives (je/ja/jo/ju)
 - Sentence connectives (forethought: ge...gi, ga...gi, ganai...gi; afterthought: .i je/ja/jo/ju with na/nai)
 - Abstractions (nu, du'u, ka with ce'u, ni, si'o)
@@ -99,4 +99,4 @@ Completed through Phase 1.5.
 - egglog e-graph reasoning with structural rewrites + inference rules
 - Count quantifier (exactly N) for numeric descriptions
 
-**Next up:** 1.6 Relative clause stacking + `voi`
+**Next up:** 1.7 Deontic predicates (`bilga`/`curmi`/`nitcu`/`e'e`/`ei`)

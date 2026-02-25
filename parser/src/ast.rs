@@ -88,6 +88,7 @@ pub enum Gadri {
 pub enum RelClauseKind {
     Poi, // restrictive (intersective)
     Noi, // non-restrictive (appositive)
+    Voi, // non-veridical restrictive
 }
 
 /// Abstraction type: which NU-class cmavo introduced this abstraction

@@ -337,6 +337,7 @@ impl Flattener {
                 let wit_kind = match clause.kind {
                     ast::RelClauseKind::Poi => wit::RelClauseKind::Poi,
                     ast::RelClauseKind::Noi => wit::RelClauseKind::Noi,
+                    ast::RelClauseKind::Voi => wit::RelClauseKind::Voi,
                 };
 
                 wit::Sumti::Restricted((
