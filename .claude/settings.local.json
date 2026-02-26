@@ -20,7 +20,9 @@
       "WebFetch(domain:egraphs-good.github.io)",
       "WebFetch(domain:www.philipzucker.com)",
       "WebFetch(domain:egglog-python.readthedocs.io)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.chriswarbo.net)",
+      "WebFetch(domain:docs.rs)"
     ]
   }
 }
