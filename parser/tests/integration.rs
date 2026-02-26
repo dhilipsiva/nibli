@@ -331,6 +331,48 @@ fn su_erasure() {
     );
 }
 
+#[test]
+fn sa_erasure_gadri_class() {
+    // "lo gerku cu klama sa lo mlatu cu sutra"
+    // sa sees "lo" (LE class) → erases back to previous "lo" → result: "lo mlatu cu sutra"
+    let p = parse("lo gerku cu klama sa lo mlatu cu sutra");
+    assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("sutra".into()));
+    match &as_bridi(&p.sentences[0]).head_terms[0] {
+        Sumti::Description(gadri, selbri, _) => {
+            assert_eq!(*gadri, Gadri::Lo);
+            assert_eq!(*selbri, Selbri::Root("mlatu".into()));
+        }
+        other => panic!("expected Description, got {:?}", other),
+    }
+}
+
+#[test]
+fn sa_erasure_brivla_class() {
+    // "mi klama sa prami do" → erases back to "klama" (Brivla class) → "mi prami do"
+    let p = parse("mi klama sa prami do");
+    assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("prami".into()));
+    assert_eq!(
+        as_bridi(&p.sentences[0]).head_terms,
+        vec![Sumti::ProSumti("mi".into())]
+    );
+    assert_eq!(
+        as_bridi(&p.sentences[0]).tail_terms,
+        vec![Sumti::ProSumti("do".into())]
+    );
+}
+
+#[test]
+fn sa_erasure_no_match_fallback() {
+    // "mi klama sa lo gerku" → no LE-class in output → falls back to single-word erase
+    // Removes "klama" → "mi lo gerku" → parses as observative with head=[mi, lo gerku]
+    // Actually: "mi" + "lo gerku" → mi is head, "lo gerku" is also head, implicit go'i
+    // Let's use a simpler case: "klama sa lo gerku" → no LE before sa → removes "klama"
+    // → "lo gerku" → description with implicit go'i
+    let p = parse("klama sa lo gerku");
+    // After fallback erase: "lo gerku" → observative with go'i and lo gerku as head term
+    assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("go'i".into()));
+}
+
 // ─── Complex combinations ────────────────────────────────────────
 
 #[test]

@@ -1,18 +1,5 @@
 # Nibli Roadmap
 
-## Tier 3 — Domain-Specific Language Coverage
-
-Features needed to express domain knowledge naturally in Lojban.
-
-### 3.2 `sa` proper implementation
-
-Requires selma'o classification for the erasure-to-next-construct behavior.
-
-**Crate:** parser/preprocessor.rs
-**Complexity:** medium
-
----
-
 ## Tier 4 — Production Reasoning Features
 
 Features needed for the engine to be genuinely useful (not just correct) in real applications.
