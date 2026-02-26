@@ -98,5 +98,6 @@ Completed through Phase 1.6.
 - Skolemization (independent + dependent under ∀), Herbrand instantiation
 - egglog e-graph reasoning with structural rewrites + inference rules
 - Count quantifier (exactly N) for numeric descriptions
+- da/de/di existential quantifier closure (bare logic variables now properly wrapped in ∃)
 
-**Next up:** 1.7 Deontic predicates (`bilga`/`curmi`/`nitcu`/`e'e`/`ei`)
+**Next up:** Tier 0.2 Existential introduction gap

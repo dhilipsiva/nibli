@@ -807,6 +807,21 @@ impl SemanticCompiler {
             }
         }
 
+        // ── da/de/di quantifier closure ────────────────────────────
+        // These pro-sumti are bare existential variables with no
+        // description restrictor. Wrap the formula in ∃ for each.
+        // Deduplicate: if the same variable appears in multiple arg
+        // slots (e.g., `da prami da`), wrap only once.
+        let mut da_vars_seen = std::collections::HashSet::new();
+        for arg in &args {
+            if let LogicalTerm::Variable(spur) = arg {
+                let name = self.interner.resolve(spur);
+                if matches!(name, "da" | "de" | "di") && da_vars_seen.insert(*spur) {
+                    final_form = LogicalForm::Exists(*spur, Box::new(final_form));
+                }
+            }
+        }
+
         if bridi.negated {
             final_form = LogicalForm::Not(Box::new(final_form));
         }
@@ -1839,6 +1854,168 @@ mod tests {
                 );
             }
             other => panic!("expected Or(Not(_), _), got {:?}", other),
+        }
+    }
+
+    // ─── da/de/di quantifier closure tests ──────────────────────
+
+    #[test]
+    fn test_da_produces_exists() {
+        // da prami mi → ∃da. prami(da, mi, ...)
+        let selbris = vec![Selbri::Root("prami".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("da".into()), // 0
+            Sumti::ProSumti("mi".into()), // 1
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![1],
+            negated: false,
+            tense: None,
+        };
+
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+
+        // Outermost should be Exists wrapping the predicate
+        match &form {
+            LogicalForm::Exists(var, body) => {
+                assert_eq!(resolve(&compiler, var), "da");
+                match body.as_ref() {
+                    LogicalForm::Predicate { relation, args } => {
+                        assert_eq!(resolve(&compiler, relation), "prami");
+                        match &args[0] {
+                            LogicalTerm::Variable(v) => assert_eq!(resolve(&compiler, v), "da"),
+                            other => panic!("expected Variable(da), got {:?}", other),
+                        }
+                        match &args[1] {
+                            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "mi"),
+                            other => panic!("expected Constant(mi), got {:?}", other),
+                        }
+                    }
+                    other => panic!("expected Predicate inside Exists, got {:?}", other),
+                }
+            }
+            other => panic!("expected Exists, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_da_de_both_produce_nested_exists() {
+        // da prami de → ∃da. ∃de. prami(da, de, ...)
+        let selbris = vec![Selbri::Root("prami".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("da".into()), // 0
+            Sumti::ProSumti("de".into()), // 1
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![1],
+            negated: false,
+            tense: None,
+        };
+
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+
+        // Should be Exists(da/de, Exists(da/de, Predicate))
+        match &form {
+            LogicalForm::Exists(v1, inner) => {
+                let name1 = resolve(&compiler, v1);
+                match inner.as_ref() {
+                    LogicalForm::Exists(v2, body) => {
+                        let name2 = resolve(&compiler, v2);
+                        // Both da and de should appear (order may vary)
+                        let mut names = vec![name1, name2];
+                        names.sort();
+                        assert_eq!(names, vec!["da", "de"]);
+                        assert!(matches!(body.as_ref(), LogicalForm::Predicate { .. }));
+                    }
+                    other => panic!("expected nested Exists, got {:?}", other),
+                }
+            }
+            other => panic!("expected Exists, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_da_repeated_wraps_once() {
+        // da prami da → ∃da. prami(da, da, ...) (only one Exists)
+        let selbris = vec![Selbri::Root("prami".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("da".into()), // 0
+            Sumti::ProSumti("da".into()), // 1 (same variable)
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![1],
+            negated: false,
+            tense: None,
+        };
+
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+
+        // Should be Exists(da, Predicate) — NOT Exists(da, Exists(da, ...))
+        match &form {
+            LogicalForm::Exists(var, body) => {
+                assert_eq!(resolve(&compiler, var), "da");
+                assert!(matches!(body.as_ref(), LogicalForm::Predicate { .. }),
+                    "expected single Exists wrapping Predicate, got nested: {:?}", body);
+            }
+            other => panic!("expected Exists, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_di_produces_exists() {
+        // di barda → ∃di. barda(di, ...)
+        let selbris = vec![Selbri::Root("barda".into())];
+        let sumtis = vec![Sumti::ProSumti("di".into())];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+        };
+
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+
+        match &form {
+            LogicalForm::Exists(var, _) => {
+                assert_eq!(resolve(&compiler, var), "di");
+            }
+            other => panic!("expected Exists for di, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_da_with_negation() {
+        // da na prami mi → ¬(∃da. prami(da, mi, ...))
+        // negation wraps OUTSIDE the existential
+        let selbris = vec![Selbri::Root("prami".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("da".into()),
+            Sumti::ProSumti("mi".into()),
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![1],
+            negated: true,
+            tense: None,
+        };
+
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+
+        // Should be Not(Exists(da, Predicate))
+        match &form {
+            LogicalForm::Not(inner) => {
+                assert!(matches!(inner.as_ref(), LogicalForm::Exists(_, _)),
+                    "expected Exists inside Not, got {:?}", inner);
+            }
+            other => panic!("expected Not(Exists(...)), got {:?}", other),
         }
     }
 

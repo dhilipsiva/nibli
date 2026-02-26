@@ -2,16 +2,6 @@
 
 ## Tier 0 — Correctness (wrong answers are worse than no answers)
 
-### 0.1 `da`/`de`/`di` quantifier closure
-
-Currently compiled as free `Variable(Spur)` with no quantifier wrapping. `da prami mi` produces an open formula instead of `∃x.prami(x, mi)`.
-
-**Fix:** In `compile_bridi`, after building the predication, scan args for pro-sumti `da`/`de`/`di`. For each, wrap the final form in `Exists(var, ...)`.
-
-**Crate:** semantics/semantic.rs
-**Complexity:** low-medium
-**Impact:** every domain — free variables produce unsound reasoning
-
 ### 0.2 Existential introduction gap (`lo` query vs `ro lo` assertion)
 
 Known failure:
