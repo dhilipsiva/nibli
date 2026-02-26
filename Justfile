@@ -1,23 +1,26 @@
 set shell := ["bash", "-c"]
 
+wasi_target := "wasm32-wasip2"
+wasm_dir := "target/" + wasi_target + "/release"
+
 # The default target executes the full build-and-run pipeline
 default: run
 
 # Remove stale WASM artifacts to guarantee fresh compilation
 clean-wasm:
     @echo "Removing stale WASM artifacts..."
-    rm -f target/wasm32-wasip1/release/*.wasm
+    rm -f {{wasm_dir}}/*.wasm
 
 # Compiles the discrete WebAssembly components and fuses them
 build-wasm: clean-wasm
-    @echo "Building WASI components (wasip1 target)..."
-    cargo component build --release -p parser -p semantics -p reasoning -p orchestrator
+    @echo "Building WASI components ({{wasi_target}})..."
+    cargo component build --release --target {{wasi_target}} -p parser -p semantics -p reasoning -p orchestrator
     @echo "Fusing components with WAC..."
-    wac plug target/wasm32-wasip1/release/orchestrator.wasm \
-        --plug target/wasm32-wasip1/release/parser.wasm \
-        --plug target/wasm32-wasip1/release/semantics.wasm \
-        --plug target/wasm32-wasip1/release/reasoning.wasm \
-        -o target/wasm32-wasip1/release/engine-pipeline.wasm
+    wac plug {{wasm_dir}}/orchestrator.wasm \
+        --plug {{wasm_dir}}/parser.wasm \
+        --plug {{wasm_dir}}/semantics.wasm \
+        --plug {{wasm_dir}}/reasoning.wasm \
+        -o {{wasm_dir}}/engine-pipeline.wasm
 
 # Compiles the native Wasmtime host runner
 build-runner:

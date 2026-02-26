@@ -42,7 +42,7 @@ fn main() -> Result<()> {
 
     println!("Loading fused WebAssembly Component...");
     let pipeline_comp =
-        Component::from_file(&engine, "target/wasm32-wasip1/release/engine-pipeline.wasm")?;
+        Component::from_file(&engine, "target/wasm32-wasip2/release/engine-pipeline.wasm")?;
     let pipeline = pipeline_bind::EnginePipeline::instantiate(&mut store, &pipeline_comp, &linker)?;
 
     let mut line_editor = Reedline::create();

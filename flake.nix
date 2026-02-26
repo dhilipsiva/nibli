@@ -18,7 +18,7 @@
           inherit system overlays;
         };
 
-        # Latest stable Rust with WASI targets (wasip1 used by cargo-component)
+        # Latest stable Rust with WASI targets (wasip2 used by cargo-component)
         rustToolchain = pkgs.rust-bin.stable.latest.default.override {
           extensions = [ "rust-src" "rust-analyzer" ];
           targets = [ "wasm32-wasip1" "wasm32-wasip2" "wasm32-unknown-unknown" ];
@@ -53,7 +53,7 @@
             echo " Lojban NeSy Engine - Nix Dev Environment Loaded  "
             echo "=================================================="
             rustc --version
-            echo "Target 'wasm32-wasip1' is active."
+            echo "Target 'wasm32-wasip2' is active."
           '';
         };
       }
