@@ -94,12 +94,18 @@ impl Flattener {
                     ast::Tense::Ba => bindings::lojban::nesy::ast_types::Tense::Ba,
                 });
 
+                let attitudinal = bridi.attitudinal.map(|a| match a {
+                    ast::Attitudinal::Ei => bindings::lojban::nesy::ast_types::Attitudinal::Ei,
+                    ast::Attitudinal::Ehe => bindings::lojban::nesy::ast_types::Attitudinal::Ehe,
+                });
+
                 let flat_bridi = bindings::lojban::nesy::ast_types::Bridi {
                     relation,
                     head_terms,
                     tail_terms,
                     negated: bridi.negated,
                     tense,
+                    attitudinal,
                 };
 
                 let idx = self.buffer.sentences.len() as u32;
@@ -368,6 +374,7 @@ mod flattener_tests {
                     tail_terms: vec![],
                     negated: false,
                     tense: None,
+                    attitudinal: None,
                 }),
                 Sentence::Simple(Bridi {
                     selbri: Selbri::Root("prami".into()),
@@ -375,6 +382,7 @@ mod flattener_tests {
                     tail_terms: vec![],
                     negated: false,
                     tense: None,
+                    attitudinal: None,
                 }),
             ],
         };
@@ -402,6 +410,7 @@ mod flattener_tests {
                     tail_terms: vec![],
                     negated: false,
                     tense: None,
+                    attitudinal: None,
                 }),
                 Sentence::Simple(Bridi {
                     selbri: Selbri::Root("prami".into()),
@@ -409,6 +418,7 @@ mod flattener_tests {
                     tail_terms: vec![],
                     negated: false,
                     tense: None,
+                    attitudinal: None,
                 }),
                 Sentence::Simple(Bridi {
                     selbri: Selbri::Root("barda".into()),
@@ -416,6 +426,7 @@ mod flattener_tests {
                     tail_terms: vec![],
                     negated: false,
                     tense: None,
+                    attitudinal: None,
                 }),
             ],
         };
@@ -445,12 +456,14 @@ mod flattener_tests {
                             tail_terms: vec![],
                             negated: false,
                             tense: None,
+                            attitudinal: None,
                         })),
                     },
                 }],
                 tail_terms: vec![],
                 negated: false,
                 tense: None,
+                attitudinal: None,
             })],
         };
 
@@ -474,11 +487,13 @@ mod flattener_tests {
                         tail_terms: vec![],
                         negated: false,
                         tense: None,
+                        attitudinal: None,
                     })))),
                 }],
                 tail_terms: vec![],
                 negated: false,
                 tense: None,
+                attitudinal: None,
             })],
         };
 
@@ -511,12 +526,14 @@ mod flattener_tests {
                                 tail_terms: vec![],
                                 negated: false,
                                 tense: None,
+                                attitudinal: None,
                             })),
                         },
                     }],
                     tail_terms: vec![],
                     negated: false,
                     tense: None,
+                    attitudinal: None,
                 }),
                 Sentence::Simple(Bridi {
                     selbri: Selbri::Root("prami".into()),
@@ -524,6 +541,7 @@ mod flattener_tests {
                     tail_terms: vec![Sumti::ProSumti("do".into())],
                     negated: false,
                     tense: None,
+                    attitudinal: None,
                 }),
             ],
         };
@@ -556,11 +574,13 @@ mod flattener_tests {
                             tail_terms: vec![],
                             negated: false,
                             tense: None,
+                            attitudinal: None,
                         })))),
                     }],
                     tail_terms: vec![],
                     negated: false,
                     tense: None,
+                    attitudinal: None,
                 })]
             };
 
@@ -595,6 +615,7 @@ mod flattener_tests {
                 tail_terms: vec![],
                 negated: false,
                 tense: None,
+                attitudinal: None,
             })],
         };
 
@@ -648,6 +669,7 @@ mod flattener_tests {
                 tail_terms: vec![],
                 negated: false,
                 tense: None,
+                attitudinal: None,
             })],
         };
 
@@ -684,6 +706,7 @@ mod flattener_tests {
                 tail_terms: vec![],
                 negated: false,
                 tense: None,
+                attitudinal: None,
             })],
         };
 
@@ -728,6 +751,7 @@ mod flattener_tests {
                 )],
                 negated: false,
                 tense: None,
+                attitudinal: None,
             })],
         };
 
@@ -759,6 +783,7 @@ mod flattener_tests {
                 tail_terms: vec![],
                 negated: false,
                 tense: None,
+                attitudinal: None,
             })],
         };
 
@@ -788,6 +813,7 @@ mod flattener_tests {
                 )],
                 negated: false,
                 tense: None,
+                attitudinal: None,
             })],
         };
 

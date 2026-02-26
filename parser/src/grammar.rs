@@ -357,6 +357,8 @@ impl<'a> Parser<'a> {
 
         // Tense can appear sentence-initially: "pu mi klama"
         let mut tense = self.try_parse_tense();
+        // Attitudinal can appear sentence-initially: "ei mi klama"
+        let mut attitudinal = self.try_parse_attitudinal();
 
         let head_terms = self.parse_terms();
         self.eat_cmavo("cu");
@@ -364,6 +366,10 @@ impl<'a> Parser<'a> {
         // Tense can also appear mid-sentence: "mi pu klama" / "mi cu pu klama"
         if tense.is_none() {
             tense = self.try_parse_tense();
+        }
+        // Attitudinal can also appear mid-sentence: "mi ei klama"
+        if attitudinal.is_none() {
+            attitudinal = self.try_parse_attitudinal();
         }
 
         let selbri = if let Some(s) = self.try_parse_selbri()? {
@@ -392,6 +398,7 @@ impl<'a> Parser<'a> {
             tail_terms,
             negated,
             tense,
+            attitudinal,
         })
     }
 
@@ -1120,6 +1127,16 @@ impl<'a> Parser<'a> {
         };
         self.pos += 1;
         Some(t)
+    }
+
+    fn try_parse_attitudinal(&mut self) -> Option<Attitudinal> {
+        let a = match self.peek_cmavo()? {
+            "ei" => Attitudinal::Ei,
+            "e'e" => Attitudinal::Ehe,
+            _ => return None,
+        };
+        self.pos += 1;
+        Some(a)
     }
 }
 
@@ -2687,6 +2704,53 @@ mod tests {
         // mi klama — no tense marker
         let r = parse_ok(&[cmavo("mi"), gismu("klama")]);
         assert_eq!(as_bridi(&r.sentences[0]).tense, None);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 19b. ATTITUDINALS (ei, e'e)
+    // ═══════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_attitudinal_ei_sentence_initial() {
+        // ei mi klama — obligation at start
+        let r = parse_ok(&[cmavo("ei"), cmavo("mi"), gismu("klama")]);
+        let s = as_bridi(&r.sentences[0]);
+        assert_eq!(s.attitudinal, Some(Attitudinal::Ei));
+        assert_eq!(s.selbri, Selbri::Root("klama".into()));
+        assert_eq!(s.head_terms.len(), 1);
+    }
+
+    #[test]
+    fn test_attitudinal_ehe_sentence_initial() {
+        // e'e mi klama — competence/permission at start
+        let r = parse_ok(&[cmavo("e'e"), cmavo("mi"), gismu("klama")]);
+        let s = as_bridi(&r.sentences[0]);
+        assert_eq!(s.attitudinal, Some(Attitudinal::Ehe));
+    }
+
+    #[test]
+    fn test_attitudinal_mid_sentence() {
+        // mi ei klama — attitudinal between head and selbri
+        let r = parse_ok(&[cmavo("mi"), cmavo("ei"), gismu("klama")]);
+        let s = as_bridi(&r.sentences[0]);
+        assert_eq!(s.attitudinal, Some(Attitudinal::Ei));
+        assert_eq!(s.head_terms.len(), 1);
+    }
+
+    #[test]
+    fn test_attitudinal_with_tense() {
+        // pu ei mi klama — tense + attitudinal both present
+        let r = parse_ok(&[cmavo("pu"), cmavo("ei"), cmavo("mi"), gismu("klama")]);
+        let s = as_bridi(&r.sentences[0]);
+        assert_eq!(s.tense, Some(Tense::Pu));
+        assert_eq!(s.attitudinal, Some(Attitudinal::Ei));
+    }
+
+    #[test]
+    fn test_attitudinal_none_without_marker() {
+        // mi klama — no attitudinal
+        let r = parse_ok(&[cmavo("mi"), gismu("klama")]);
+        assert_eq!(as_bridi(&r.sentences[0]).attitudinal, None);
     }
 
     // ═══════════════════════════════════════════════════════════

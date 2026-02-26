@@ -55,12 +55,15 @@ interface ast-types {
 
     enum tense { pu, ca, ba }
 
+    enum attitudinal { ei, ehe }
+
     record bridi {
         relation: selbri-id,
         head-terms: list<sumti-id>,
         tail-terms: list<sumti-id>,
         negated: bool,
         tense: option<tense>,
+        attitudinal: option<attitudinal>,
     }
 
     variant sentence-connective {
@@ -106,6 +109,8 @@ interface logic-types {
         past-node(u32),
         present-node(u32),
         future-node(u32),
+        obligatory-node(u32),
+        permitted-node(u32),
         /// Exactly N entities satisfy the body: Count(variable-name, count, body-node-id)
         count-node(tuple<string, u32, u32>),
     }

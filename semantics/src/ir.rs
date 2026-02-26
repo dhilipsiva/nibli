@@ -35,6 +35,8 @@ pub enum LogicalForm {
     Past(Box<LogicalForm>),
     Present(Box<LogicalForm>),
     Future(Box<LogicalForm>),
+    Obligatory(Box<LogicalForm>),
+    Permitted(Box<LogicalForm>),
     /// Exactly `count` distinct x satisfy `body`.
     /// Count(var, count, body)
     Count {

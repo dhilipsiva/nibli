@@ -207,6 +207,13 @@ pub enum Tense {
     Ba, // future
 }
 
+/// Deontic attitudinal marker (UI selma'o subset)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Attitudinal {
+    Ei,  // obligation (should)
+    Ehe, // competence/permission (may)
+}
+
 /// A single bridi (predication).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bridi {
@@ -215,6 +222,7 @@ pub struct Bridi {
     pub tail_terms: Vec<Sumti>, // terms after selbri
     pub negated: bool,          // sentence-level na (before all terms)
     pub tense: Option<Tense>,
+    pub attitudinal: Option<Attitudinal>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

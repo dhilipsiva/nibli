@@ -108,7 +108,7 @@ Completed through all Tier 1 items + full Tier 2 (numerical comparisons + comput
 - Sumti connectives (.e/.a/.o/.u + nai), selbri connectives (je/ja/jo/ju)
 - Sentence connectives (forethought: ge...gi, ga...gi, ganai...gi; afterthought: .i je/ja/jo/ju with na/nai)
 - Abstractions (nu, du'u, ka with ce'u, ni, si'o)
-- Tense (pu/ca/ba)
+- Tense (pu/ca/ba), deontic attitudinals (ei/e'e)
 - Quoted literals (lu...li'u), number sumti (li + PA)
 - Skolemization (independent + dependent under ∀ via SkolemFn)
 - All universals compile to native egglog rules with O(K) hash-join matching
@@ -129,5 +129,6 @@ Completed through all Tier 1 items + full Tier 2 (numerical comparisons + comput
 - REPL `:assert` command: `:assert <relation> <arg1> <arg2> ...` for direct fact injection (numbers auto-detected, else constant)
 - Deontic predicates: bilga (obligation), curmi (permission), nitcu (necessity) — standard gismu, work through full pipeline
 - Bidirectional material conditional rewrite enables modus ponens/tollens on sentence connectives (ganai...gi)
+- Deontic attitudinals: ei (obligation/should), e'e (competence/permission/may) — sentence-level modifiers, transparent wrapper nodes in reasoning
 
 **Next up:** Tier 3.2 (Lujvo morphological recognition) or Tier 4.1 (Existential witness extraction)

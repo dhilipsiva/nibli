@@ -84,7 +84,7 @@ just test
 - Sumti connectives (`.e`/`.a`/`.o`/`.u` + `nai`), selbri connectives (`je`/`ja`/`jo`/`ju`)
 - Sentence connectives (forethought: `ge`...`gi`, `ga`...`gi`, `ganai`...`gi`; afterthought: `.i je`/`ja`/`jo`/`ju` with `na`/`nai`)
 - Abstractions (`nu`, `du'u`, `ka` with `ce'u`, `ni`, `si'o`)
-- Tense (`pu`/`ca`/`ba`)
+- Tense (`pu`/`ca`/`ba`), deontic attitudinals (`ei`/`e'e`)
 - Quoted literals (`lu`...`li'u`), number sumti (`li` + PA)
 
 ## Reasoning

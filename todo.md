@@ -4,14 +4,6 @@
 
 Features needed to express domain knowledge naturally in Lojban.
 
-### 3.1b Deontic attitudinals (`e'e`/`ei`)
-
-Attitudinal forms for obligation/permission require new parser category. Deferred from 3.1 (predicate forms now work).
-
-**Crate:** parser (new attitudinal selma'o)
-**Complexity:** high
-**Impact:** more natural deontic expression
-
 ### 3.2 Lujvo morphological recognition
 
 Lexer only recognizes gismu (5-letter CVCCV/CCVCV) and cmavo. Lujvo (compound brivla like `brivla`, `nunprami`) fall through.

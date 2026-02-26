@@ -1,6 +1,6 @@
 use crate::bindings::lojban::nesy::ast_types::{
-    AbstractionKind, BaiTag, Bridi, Connective, Conversion, Gadri, ModalTag, PlaceTag, Selbri,
-    Sentence, SentenceConnective, Sumti, Tense,
+    AbstractionKind, Attitudinal, BaiTag, Bridi, Connective, Conversion, Gadri, ModalTag,
+    PlaceTag, Selbri, Sentence, SentenceConnective, Sumti, Tense,
 };
 use crate::dictionary::JbovlasteSchema;
 use crate::ir::{LogicalForm, LogicalTerm};
@@ -304,7 +304,9 @@ impl SemanticCompiler {
             | LogicalForm::ForAll(_, inner)
             | LogicalForm::Past(inner)
             | LogicalForm::Present(inner)
-            | LogicalForm::Future(inner) => Self::count_unspecified_predicates(inner),
+            | LogicalForm::Future(inner)
+            | LogicalForm::Obligatory(inner)
+            | LogicalForm::Permitted(inner) => Self::count_unspecified_predicates(inner),
             LogicalForm::Count { body, .. } => Self::count_unspecified_predicates(body),
         }
     }
@@ -355,6 +357,12 @@ impl SemanticCompiler {
             }
             LogicalForm::Future(inner) => {
                 LogicalForm::Future(Box::new(Self::inject_variable(*inner, var)))
+            }
+            LogicalForm::Obligatory(inner) => {
+                LogicalForm::Obligatory(Box::new(Self::inject_variable(*inner, var)))
+            }
+            LogicalForm::Permitted(inner) => {
+                LogicalForm::Permitted(Box::new(Self::inject_variable(*inner, var)))
             }
             LogicalForm::Count { var: v, count, body } => {
                 LogicalForm::Count {
@@ -651,6 +659,7 @@ impl SemanticCompiler {
                         tail_terms: tail,
                         negated: bridi.negated,
                         tense: bridi.tense,
+                        attitudinal: bridi.attitudinal,
                     }
                 };
 
@@ -858,7 +867,7 @@ impl SemanticCompiler {
             final_form = LogicalForm::Not(Box::new(final_form));
         }
 
-        // Tense wrapping (outermost — scopes over negation)
+        // Tense wrapping (scopes over negation)
         match &bridi.tense {
             Some(Tense::Pu) => {
                 final_form = LogicalForm::Past(Box::new(final_form));
@@ -868,6 +877,17 @@ impl SemanticCompiler {
             }
             Some(Tense::Ba) => {
                 final_form = LogicalForm::Future(Box::new(final_form));
+            }
+            None => {}
+        }
+
+        // Attitudinal wrapping (outermost — scopes over tense and negation)
+        match &bridi.attitudinal {
+            Some(Attitudinal::Ei) => {
+                final_form = LogicalForm::Obligatory(Box::new(final_form));
+            }
+            Some(Attitudinal::Ehe) => {
+                final_form = LogicalForm::Permitted(Box::new(final_form));
             }
             None => {}
         }
@@ -998,6 +1018,7 @@ mod tests {
             tail_terms: vec![],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
@@ -1045,6 +1066,7 @@ mod tests {
             tail_terms: vec![],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, _) = compile_one(selbris, sumtis, bridi);
@@ -1066,6 +1088,7 @@ mod tests {
             tail_terms: vec![],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, _) = compile_one(selbris, sumtis, bridi);
@@ -1094,6 +1117,7 @@ mod tests {
             tail_terms: vec![],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, _) = compile_one(selbris, sumtis, bridi);
@@ -1122,6 +1146,7 @@ mod tests {
             tail_terms: vec![],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
@@ -1182,6 +1207,7 @@ mod tests {
             tail_terms: vec![3],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, _) = compile_one(selbris, sumtis, bridi);
@@ -1218,6 +1244,7 @@ mod tests {
             tail_terms: vec![],
             negated: true,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, _) = compile_one(selbris, sumtis, bridi);
@@ -1265,6 +1292,7 @@ mod tests {
             tail_terms: vec![],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
         let outer_bridi = Bridi {
             relation: 2,
@@ -1272,6 +1300,7 @@ mod tests {
             tail_terms: vec![],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
 
         let sentences = vec![
@@ -1467,6 +1496,7 @@ mod tests {
             tail_terms: vec![],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
@@ -1507,6 +1537,7 @@ mod tests {
             tail_terms: vec![2],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
@@ -1558,6 +1589,7 @@ mod tests {
             tail_terms: vec![2],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, _compiler) = compile_one(selbris, sumtis, bridi);
@@ -1601,6 +1633,7 @@ mod tests {
             tail_terms: vec![2],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
@@ -1643,6 +1676,7 @@ mod tests {
             tail_terms: vec![2, 4],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
@@ -1700,6 +1734,7 @@ mod tests {
             tail_terms: vec![],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
@@ -1747,6 +1782,7 @@ mod tests {
             tail_terms: vec![],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, _) = compile_one(selbris, sumtis, bridi);
@@ -1773,6 +1809,7 @@ mod tests {
             tail_terms: vec![],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, _) = compile_one(selbris, sumtis, bridi);
@@ -1799,6 +1836,7 @@ mod tests {
             tail_terms: vec![],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, _) = compile_one(selbris, sumtis, bridi);
@@ -1831,6 +1869,7 @@ mod tests {
             tail_terms: vec![],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
         let right_bridi = Bridi {
             relation: 1,
@@ -1838,6 +1877,7 @@ mod tests {
             tail_terms: vec![],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
         let sentences = vec![
             Sentence::Simple(left_bridi),
@@ -1905,6 +1945,7 @@ mod tests {
             tail_terms: vec![1],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
@@ -1946,6 +1987,7 @@ mod tests {
             tail_terms: vec![1],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
@@ -1984,6 +2026,7 @@ mod tests {
             tail_terms: vec![1],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
@@ -2010,6 +2053,7 @@ mod tests {
             tail_terms: vec![],
             negated: false,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
@@ -2037,6 +2081,7 @@ mod tests {
             tail_terms: vec![1],
             negated: true,
             tense: None,
+            attitudinal: None,
         };
 
         let (form, _) = compile_one(selbris, sumtis, bridi);

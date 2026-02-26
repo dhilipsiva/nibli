@@ -489,7 +489,9 @@ fn check_formula_holds(
         LogicNode::NotNode(inner_node) => Ok(!check_formula_holds(buffer, *inner_node, subs, inner)?),
         LogicNode::PastNode(inner_node)
         | LogicNode::PresentNode(inner_node)
-        | LogicNode::FutureNode(inner_node) => check_formula_holds(buffer, *inner_node, subs, inner),
+        | LogicNode::FutureNode(inner_node)
+        | LogicNode::ObligatoryNode(inner_node)
+        | LogicNode::PermittedNode(inner_node) => check_formula_holds(buffer, *inner_node, subs, inner),
         LogicNode::ExistsNode((v, body)) => {
             // 1. Check if any known entity satisfies the body
             let entities = inner.get_known_entities();
@@ -658,7 +660,9 @@ fn collect_exists_for_skolem(
         LogicNode::Predicate(_) | LogicNode::ComputeNode(_) => {}
         LogicNode::PastNode(inner)
         | LogicNode::PresentNode(inner)
-        | LogicNode::FutureNode(inner) => {
+        | LogicNode::FutureNode(inner)
+        | LogicNode::ObligatoryNode(inner)
+        | LogicNode::PermittedNode(inner) => {
             collect_exists_for_skolem(buffer, *inner, subs, enclosing_universals, counter);
         }
     }
@@ -748,7 +752,9 @@ fn collect_and_note_constants(buffer: &LogicBuffer, node_id: u32, inner: &mut Kn
         }
         LogicNode::PastNode(inner_node)
         | LogicNode::PresentNode(inner_node)
-        | LogicNode::FutureNode(inner_node) => {
+        | LogicNode::FutureNode(inner_node)
+        | LogicNode::ObligatoryNode(inner_node)
+        | LogicNode::PermittedNode(inner_node) => {
             collect_and_note_constants(buffer, *inner_node, inner);
         }
     }
@@ -847,7 +853,9 @@ fn reconstruct_rule_sexp(
         }
         LogicNode::PastNode(inner)
         | LogicNode::PresentNode(inner)
-        | LogicNode::FutureNode(inner) => {
+        | LogicNode::FutureNode(inner)
+        | LogicNode::ObligatoryNode(inner)
+        | LogicNode::PermittedNode(inner) => {
             reconstruct_rule_sexp(buffer, *inner, pattern_vars, ground_skolems, dependent_skolems)
         }
     }
@@ -871,7 +879,9 @@ fn compile_forall_to_rule(
             }
             LogicNode::PastNode(inner_node)
             | LogicNode::PresentNode(inner_node)
-            | LogicNode::FutureNode(inner_node) => {
+            | LogicNode::FutureNode(inner_node)
+            | LogicNode::ObligatoryNode(inner_node)
+            | LogicNode::PermittedNode(inner_node) => {
                 current = *inner_node;
             }
             _ => break,
@@ -1084,7 +1094,9 @@ fn reconstruct_sexp_with_subs(
         }
         LogicNode::PastNode(inner)
         | LogicNode::PresentNode(inner)
-        | LogicNode::FutureNode(inner) => reconstruct_sexp_with_subs(buffer, *inner, subs),
+        | LogicNode::FutureNode(inner)
+        | LogicNode::ObligatoryNode(inner)
+        | LogicNode::PermittedNode(inner) => reconstruct_sexp_with_subs(buffer, *inner, subs),
     }
 }
 
@@ -1132,7 +1144,9 @@ fn generate_count_extra_witnesses(
         }
         LogicNode::PastNode(inner_node)
         | LogicNode::PresentNode(inner_node)
-        | LogicNode::FutureNode(inner_node) => {
+        | LogicNode::FutureNode(inner_node)
+        | LogicNode::ObligatoryNode(inner_node)
+        | LogicNode::PermittedNode(inner_node) => {
             generate_count_extra_witnesses(buffer, *inner_node, skolem_subs, inner);
         }
         LogicNode::Predicate(_) | LogicNode::ComputeNode(_) => {}
@@ -1781,6 +1795,85 @@ mod tests {
         assert_buf(&kb, make_assertion("sol", "bilga"));
         assert_buf(&kb, make_material_conditional("sol", "bilga", "nitcu"));
         assert!(query(&kb, make_query("sol", "nitcu")));
+    }
+
+    // ── Deontic attitudinal tests ──
+
+    /// Helper: build an ObligatoryNode wrapping the given node.
+    fn obligatory(nodes: &mut Vec<LogicNode>, inner: u32) -> u32 {
+        let id = nodes.len() as u32;
+        nodes.push(LogicNode::ObligatoryNode(inner));
+        id
+    }
+
+    /// Helper: build a PermittedNode wrapping the given node.
+    fn permitted(nodes: &mut Vec<LogicNode>, inner: u32) -> u32 {
+        let id = nodes.len() as u32;
+        nodes.push(LogicNode::PermittedNode(inner));
+        id
+    }
+
+    #[test]
+    fn test_obligatory_assert_query() {
+        // Assert Obligatory(klama(alis, zo'e)) then query exact → TRUE
+        let kb = new_kb();
+        let mut a_nodes = Vec::new();
+        let inner = pred(
+            &mut a_nodes,
+            "klama",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let root = obligatory(&mut a_nodes, inner);
+        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![root] });
+
+        let mut q_nodes = Vec::new();
+        let q_inner = pred(
+            &mut q_nodes,
+            "klama",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let q_root = obligatory(&mut q_nodes, q_inner);
+        assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+    }
+
+    #[test]
+    fn test_permitted_assert_query() {
+        // Assert Permitted(klama(alis, zo'e)) then query exact → TRUE
+        let kb = new_kb();
+        let mut a_nodes = Vec::new();
+        let inner = pred(
+            &mut a_nodes,
+            "klama",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let root = permitted(&mut a_nodes, inner);
+        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![root] });
+
+        let mut q_nodes = Vec::new();
+        let q_inner = pred(
+            &mut q_nodes,
+            "klama",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let q_root = permitted(&mut q_nodes, q_inner);
+        assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+    }
+
+    #[test]
+    fn test_obligatory_transparent() {
+        // Assert Obligatory(klama(alis, zo'e)) then query without wrapper → TRUE (transparent)
+        let kb = new_kb();
+        let mut a_nodes = Vec::new();
+        let inner = pred(
+            &mut a_nodes,
+            "klama",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let root = obligatory(&mut a_nodes, inner);
+        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![root] });
+
+        // Query without obligatory wrapper → still TRUE (pass-through)
+        assert!(query(&kb, make_query("alis", "klama")));
     }
 
     // ── Compute result ingestion tests ──

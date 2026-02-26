@@ -190,6 +190,16 @@ fn write_sexp(out: &mut String, buffer: &LogicBuffer, node_id: u32) {
             write_sexp(out, buffer, *inner);
             out.push(')');
         }
+        LogicNode::ObligatoryNode(inner) => {
+            out.push_str("(Obligatory ");
+            write_sexp(out, buffer, *inner);
+            out.push(')');
+        }
+        LogicNode::PermittedNode(inner) => {
+            out.push_str("(Permitted ");
+            write_sexp(out, buffer, *inner);
+            out.push(')');
+        }
         LogicNode::CountNode((v, count, body)) => {
             out.push_str("(Count \"");
             out.push_str(v);
