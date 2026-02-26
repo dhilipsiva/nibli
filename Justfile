@@ -38,7 +38,19 @@ test-parser:
 
 # Run all unit tests across workspace
 test:
-    cargo test --lib -- --nocapture
+    cargo test --lib -- --nocapture --test-threads=1
+
+# Start the Python reference compute backend
+backend:
+    python3 python/nibli_backend.py
+
+# Full pipeline with compute backend auto-configured
+run-with-backend: build-wasm
+    NIBLI_COMPUTE_ADDR=127.0.0.1:5555 cargo run --release -p runner
+
+# Run Python backend tests
+test-backend:
+    python3 -m pytest python/test_nibli_backend.py -v 2>/dev/null || python3 -m unittest python.test_nibli_backend -v 2>/dev/null || python3 python/test_nibli_backend.py
 
 # Wipes all compilation artifacts
 clean:

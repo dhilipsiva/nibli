@@ -19,10 +19,13 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | Command | What it does |
 |---------|-------------|
 | `just run` | Full pipeline: clean WASM -> build components -> fuse with wac -> launch REPL |
-| `just test` | Run all unit tests (`cargo test --lib -- --nocapture`) |
+| `just test` | Run all unit tests (`cargo test --lib -- --nocapture --test-threads=1`) |
 | `just test-parser` | Run parser tests only |
+| `just test-backend` | Run Python backend tests |
 | `just build-wasm` | Build WASM components + fuse with wac |
 | `just build-runner` | Build native Wasmtime host runner |
+| `just backend` | Start the Python reference compute backend (port 5555) |
+| `just run-with-backend` | Build + run with `NIBLI_COMPUTE_ADDR=127.0.0.1:5555` |
 | `just clean` | `cargo clean` |
 
 **Important:**
@@ -30,6 +33,18 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 - **Regenerate WIT bindings:** `cargo component build` (bindings appear in each crate's `src/bindings.rs`)
   - Note: full build fails on `io-extras` crate (`#![feature]` on stable). Bindings still generate successfully before the failure.
 - **REPL uses reedline** — does not work with piped stdin
+- Reasoning tests require `--test-threads=1` (shared global state: EGRAPH, KNOWN_ENTITIES). The Justfile handles this.
+
+## Compute Backend
+
+The runner acts as a TCP client to an external compute backend server via JSON Lines protocol.
+
+- **Env var:** `NIBLI_COMPUTE_ADDR=host:port` — configures the backend address at startup
+- **REPL command:** `:backend [host:port]` — show or change backend address at runtime
+- **Protocol:** One JSON object per line. Request: `{"relation":"tenfa","args":[{"type":"number","value":8.0},...]}`. Response: `{"result":true}` or `{"error":"..."}`.
+- **Fallback:** Built-in arithmetic (pilji/sumji/dilcu) always handled locally. Unknown predicates forward to external backend. If no backend configured, returns error.
+- **Lazy connection:** TCP connects on first external dispatch, auto-reconnects on failure.
+- **Reference server:** `python/nibli_backend.py` — handles pilji, sumji, dilcu, tenfa (exponent), dugri (log). Extend via `HANDLERS` dict.
 
 ## Architecture
 
@@ -41,7 +56,8 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | `semantics` | Flat AST buffer -> FOL logic IR -> flat WIT logic buffer | `semantic.rs`, `ir.rs`, `lib.rs` (flattener) |
 | `reasoning` | FOL logic buffer -> egglog e-graph assert/query | `lib.rs` (single file, all logic) |
 | `orchestrator` | Glue: chains parser -> semantics -> reasoning | `lib.rs` |
-| `runner` | Native Wasmtime host, REPL, loads fused WASM | `main.rs` |
+| `runner` | Native Wasmtime host, REPL, external compute backend TCP client | `main.rs` |
+| `python/` | Reference compute backend server (TCP + JSON Lines) | `nibli_backend.py` |
 
 - **WIT interfaces:** `wit/world.wit` defines `ast-types` (parser output), `logic-types` (FOL IR), `parser`, `semantics`, `reasoning`, `compute-backend`, `engine`. `cargo component build` regenerates `src/bindings.rs` in each crate.
 - **Cross-component data:** Flat index-based arrays (`AstBuffer`, `LogicBuffer`) with `u32` indices — no pointers across WASM boundaries.
@@ -81,7 +97,7 @@ Before every commit, always:
 
 ## Current Status
 
-Completed through all Tier 1 items + Tier 2.1-2.2 (numerical comparisons + computation dispatch).
+Completed through all Tier 1 items + Tier 2.1-2.3 (numerical comparisons + computation dispatch + external compute backend).
 
 **Implemented features:**
 - Lexer + recursive-descent parser (gismu, cmavo, cmevla, lujvo partial)
@@ -106,5 +122,7 @@ Completed through all Tier 1 items + Tier 2.1-2.2 (numerical comparisons + compu
 - Computation dispatch WIT protocol: `compute-backend` interface, `ComputeNode` IR variant, predicate registry in orchestrator
 - Built-in arithmetic evaluation: pilji (multiply), sumji (add), dilcu (divide) with query-time dispatch fallback chain
 - Host-provided compute backend with wasmtime linker integration
+- Generic external compute backend: TCP + JSON Lines client in runner, lazy connect, auto-reconnect
+- Python reference backend server: pilji, sumji, dilcu, tenfa (exponentiation), dugri (logarithm)
 
-**Next up:** Tier 2.3 (Python backend adapter) or Tier 3.1 (Deontic predicates)
+**Next up:** Tier 2.4 (Result ingestion as assertions) or Tier 3.1 (Deontic predicates)

@@ -23,7 +23,7 @@ Lojban text ──→ Lexer ──→ Parser (AST) ──→ Semantics (FOL IR) 
 | **semantics** | AST buffer → FOL logic IR → flat WIT logic buffer |
 | **reasoning** | FOL logic buffer → egglog e-graph assert/query, compute dispatch |
 | **orchestrator** | Chains parser → semantics → reasoning, compute predicate registry |
-| **runner** | Native Wasmtime host, REPL, compute-backend provider |
+| **runner** | Native Wasmtime host, REPL, external compute backend TCP client |
 
 ## Quick Start
 
@@ -69,6 +69,7 @@ just test
 - **Lexer:** Logos
 - **Dictionary:** Perfect Hash Function (PHF) baked into binary
 - **Dev Environment:** Nix flake
+- **Compute Backend:** TCP + JSON Lines (generic protocol, any language)
 - **Task Runner:** Just
 
 ## Lojban Coverage
@@ -92,6 +93,26 @@ just test
 - Numerical comparison predicates: `zmadu` (>), `mleca` (<), `dunli` (==) on `Num` terms
 - Computation dispatch: `compute-backend` WIT protocol for external evaluation, `ComputeNode` IR variant
 - Built-in arithmetic: `pilji` (multiply), `sumji` (add), `dilcu` (divide) with host-provided compute backend
+- External compute backend: generic TCP client with JSON Lines protocol, lazy connect, auto-reconnect
+
+## Compute Backend
+
+The runner connects to an external compute backend over TCP using a JSON Lines protocol. Any process (Python, Node.js, Rust, another WASM module) can serve as a backend.
+
+```bash
+# Terminal 1: Start the Python reference backend
+just backend
+
+# Terminal 2: Launch the engine with backend configured
+just run-with-backend
+
+# In the REPL:
+:compute tenfa                      # register tenfa for compute dispatch
+li bi tenfa li re li ci             # assert: 8 = 2^3
+? li bi tenfa li re li ci           # query: TRUE (dispatched to Python)
+```
+
+Set `NIBLI_COMPUTE_ADDR=host:port` or use `:backend host:port` in the REPL. Without a backend, built-in arithmetic still works.
 
 ## Roadmap
 

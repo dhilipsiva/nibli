@@ -44,6 +44,9 @@
             marksman            # Markdown Language Server
             lldb                # Debugger
 
+            # Compute Backend (Python reference server)
+            python3
+
             # Native build dependencies
             pkg-config
             openssl
@@ -53,6 +56,7 @@
             echo " Lojban NeSy Engine - Nix Dev Environment Loaded  "
             echo "=================================================="
             rustc --version
+            python3 --version
             echo "Target 'wasm32-wasip2' is active."
           '';
         };

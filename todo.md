@@ -4,18 +4,11 @@
 
 Without this tier, the engine can only do qualitative symbolic reasoning. Every scientific domain needs quantitative capabilities.
 
-### 2.3 Python backend adapter
-
-Subprocess or embedded. Covers SciPy, NumPy, AstroPy, SymPy, RDKit, BioPython, MadGraph, PK/PD solvers.
-
-**Complexity:** medium
-**Impact:** the bridge between symbolic reasoning and numerical computation
-
 ### 2.4 Result ingestion as assertions
 
 Computation results → Lojban assertions → knowledge base. Closes the reason→compute→reason loop. Needs trusted assertion path (bypass user input parsing).
 
-**Depends on:** 2.3
+**Depends on:** 2.3 (done — generic TCP compute backend)
 **Complexity:** medium
 
 ---
@@ -194,7 +187,7 @@ Items identified during implementation but not yet prioritized into a tier.
 
 ```
 Tier 2 (quantitative)
-  2.3 Python adapter ──→ 2.4 result ingestion
+  2.4 result ingestion
 
 Tier 3 (language)         Tier 4 (production)         Tier 5 (advanced)
   3.1 deontic               4.1 witness extraction      5.1 non-monotonic
