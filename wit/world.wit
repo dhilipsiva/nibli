@@ -96,6 +96,8 @@ interface logic-types {
 
     variant logic-node {
         predicate(tuple<string, list<logical-term>>),
+        /// A predicate dispatched to an external compute backend for evaluation.
+        compute-node(tuple<string, list<logical-term>>),
         and-node(tuple<u32, u32>),
         or-node(tuple<u32, u32>),
         not-node(u32),
@@ -125,6 +127,12 @@ interface semantics {
     compile-buffer: func(ast: ast-buffer) -> result<logic-buffer, string>;
 }
 
+interface compute-backend {
+    use logic-types.{logical-term};
+    /// Evaluate whether a computed predicate holds for fully-ground arguments.
+    evaluate: func(relation: string, args: list<logical-term>) -> result<bool, string>;
+}
+
 interface reasoning {
     use logic-types.{logic-buffer};
 
@@ -143,7 +151,10 @@ interface reasoning {
 // --- Component Worlds ---
 world parser-component { export parser; }
 world semantics-component { export semantics; }
-world reasoning-component { export reasoning; }
+world reasoning-component {
+    import compute-backend;
+    export reasoning;
+}
 
 interface engine {
     resource session {
@@ -157,6 +168,8 @@ interface engine {
         compile-debug: func(input: string) -> result<string, string>;
         /// Reset the session's KB to fresh state.
         reset-kb: func() -> result<_, string>;
+        /// Register a predicate name for external computation dispatch.
+        register-compute-predicate: func(name: string);
     }
 }
 
@@ -164,6 +177,7 @@ world engine-pipeline {
     import parser;
     import semantics;
     import reasoning;
+    import compute-backend;
     export engine;
 }
 

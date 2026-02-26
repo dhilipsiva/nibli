@@ -355,6 +355,92 @@ fn try_numeric_comparison(
     }
 }
 
+/// Evaluate arithmetic predicates (pilji/sumji/dilcu) when all three args are Num.
+/// Place structure: x1 = op(x2, x3).
+fn try_arithmetic_evaluation(
+    rel: &str,
+    args: &[LogicalTerm],
+    subs: &HashMap<String, String>,
+) -> Option<bool> {
+    let x1 = extract_num_value(args.get(0)?, subs)?;
+    let x2 = extract_num_value(args.get(1)?, subs)?;
+    let x3 = extract_num_value(args.get(2)?, subs)?;
+    match rel {
+        "pilji" => Some(x1 == x2 * x3),
+        "sumji" => Some(x1 == x2 + x3),
+        "dilcu" => {
+            if x3 == 0 {
+                return Some(false);
+            }
+            Some(x1 == x2 / x3)
+        }
+        _ => None,
+    }
+}
+
+// ─── Compute Dispatch Helpers ────────────────────────────────────
+
+/// Parse an egglog s-expression substitution back to a LogicalTerm.
+fn parse_sexp_to_term(sexp: &str) -> LogicalTerm {
+    if let Some(name) = sexp
+        .strip_prefix("(Const \"")
+        .and_then(|s| s.strip_suffix("\")"))
+    {
+        LogicalTerm::Constant(name.to_string())
+    } else if let Some(n) = sexp
+        .strip_prefix("(Num ")
+        .and_then(|s| s.strip_suffix(')'))
+    {
+        LogicalTerm::Number(n.parse::<f64>().unwrap_or(0.0))
+    } else if let Some(name) = sexp
+        .strip_prefix("(Desc \"")
+        .and_then(|s| s.strip_suffix("\")"))
+    {
+        LogicalTerm::Description(name.to_string())
+    } else if sexp == "(Zoe)" {
+        LogicalTerm::Unspecified
+    } else if let Some(name) = sexp
+        .strip_prefix("(Var \"")
+        .and_then(|s| s.strip_suffix("\")"))
+    {
+        LogicalTerm::Variable(name.to_string())
+    } else {
+        LogicalTerm::Variable(sexp.to_string())
+    }
+}
+
+/// Resolve variable substitutions in args back to concrete LogicalTerm values
+/// for passing to the compute backend.
+fn resolve_args_for_dispatch(
+    args: &[LogicalTerm],
+    subs: &HashMap<String, String>,
+) -> Vec<LogicalTerm> {
+    args.iter()
+        .map(|a| match a {
+            LogicalTerm::Variable(v) => {
+                if let Some(s) = subs.get(v.as_str()) {
+                    parse_sexp_to_term(s)
+                } else {
+                    a.clone()
+                }
+            }
+            _ => a.clone(),
+        })
+        .collect()
+}
+
+/// Dispatch a compute predicate to the WIT compute-backend import.
+/// On native (non-wasm32) targets, returns Err (backend unavailable).
+#[cfg(target_arch = "wasm32")]
+fn dispatch_to_backend(rel: &str, args: &[LogicalTerm]) -> Result<bool, String> {
+    crate::bindings::lojban::nesy::compute_backend::evaluate(rel, args)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn dispatch_to_backend(_rel: &str, _args: &[LogicalTerm]) -> Result<bool, String> {
+    Err("Compute backend unavailable in native mode".to_string())
+}
+
 // ─── Query Decomposition ─────────────────────────────────────────
 
 fn check_formula_holds(
@@ -451,6 +537,31 @@ fn check_formula_holds(
                 }
             }
         }
+        LogicNode::ComputeNode((rel, args)) => {
+            // 1. Try WIT dispatch to external compute backend (wasm32 only)
+            let resolved = resolve_args_for_dispatch(args, subs);
+            if let Ok(result) = dispatch_to_backend(rel, &resolved) {
+                return Ok(result);
+            }
+            // 2. Try built-in arithmetic evaluation
+            if let Some(result) = try_arithmetic_evaluation(rel, args, subs) {
+                return Ok(result);
+            }
+            // 3. Fall back to egglog check
+            let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
+            let command = format!("(check (IsTrue {}))", sexp);
+            match inner.egraph.parse_and_run_program(None, &command) {
+                Ok(_) => Ok(true),
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("Check failed") {
+                        Ok(false)
+                    } else {
+                        Err(format!("Reasoning error: {}", msg))
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -506,7 +617,7 @@ fn collect_exists_for_skolem(
             }
             collect_exists_for_skolem(buffer, *body, subs, enclosing_universals, counter);
         }
-        LogicNode::Predicate(_) => {}
+        LogicNode::Predicate(_) | LogicNode::ComputeNode(_) => {}
         LogicNode::PastNode(inner)
         | LogicNode::PresentNode(inner)
         | LogicNode::FutureNode(inner) => {
@@ -578,7 +689,7 @@ fn flatten_consequent(
 /// Note all Const terms found in the formula as known entities.
 fn collect_and_note_constants(buffer: &LogicBuffer, node_id: u32, inner: &mut KnowledgeBaseInner) {
     match &buffer.nodes[node_id as usize] {
-        LogicNode::Predicate((_, args)) => {
+        LogicNode::Predicate((_, args)) | LogicNode::ComputeNode((_, args)) => {
             for arg in args {
                 if let LogicalTerm::Constant(c) = arg {
                     inner.note_entity(c);
@@ -614,7 +725,7 @@ fn reconstruct_rule_sexp(
     dependent_skolems: &HashMap<String, (String, Vec<String>)>,
 ) -> String {
     match &buffer.nodes[node_id as usize] {
-        LogicNode::Predicate((rel, args)) => {
+        LogicNode::Predicate((rel, args)) | LogicNode::ComputeNode((rel, args)) => {
             let mut args_str = String::from("(Nil)");
             for arg in args.iter().rev() {
                 let term_str = match arg {
@@ -861,7 +972,7 @@ fn reconstruct_sexp_with_subs(
     subs: &HashMap<String, String>,
 ) -> String {
     match &buffer.nodes[node_id as usize] {
-        LogicNode::Predicate((rel, args)) => {
+        LogicNode::Predicate((rel, args)) | LogicNode::ComputeNode((rel, args)) => {
             let mut args_str = String::from("(Nil)");
             for arg in args.iter().rev() {
                 let term_str = match arg {
@@ -986,7 +1097,7 @@ fn generate_count_extra_witnesses(
         | LogicNode::FutureNode(inner_node) => {
             generate_count_extra_witnesses(buffer, *inner_node, skolem_subs, inner);
         }
-        LogicNode::Predicate(_) => {}
+        LogicNode::Predicate(_) | LogicNode::ComputeNode(_) => {}
     }
 }
 
@@ -1368,5 +1479,122 @@ mod tests {
         let kb = new_kb();
         assert!(query(&kb, make_numeric_query("zmadu", -1.0, -2.0)));
         assert!(!query(&kb, make_numeric_query("zmadu", -2.0, -1.0)));
+    }
+
+    // ─── ComputeNode Tests ───────────────────────────────────────
+
+    /// Helper: build a ComputeNode with the given relation and args.
+    fn compute(nodes: &mut Vec<LogicNode>, rel: &str, args: Vec<LogicalTerm>) -> u32 {
+        let id = nodes.len() as u32;
+        nodes.push(LogicNode::ComputeNode((rel.to_string(), args)));
+        id
+    }
+
+    /// Helper: build a ComputeNode query buffer for arithmetic predicates.
+    fn make_compute_query(rel: &str, x1: f64, x2: f64, x3: f64) -> LogicBuffer {
+        let mut nodes = Vec::new();
+        let root = compute(
+            &mut nodes,
+            rel,
+            vec![
+                LogicalTerm::Number(x1),
+                LogicalTerm::Number(x2),
+                LogicalTerm::Number(x3),
+            ],
+        );
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
+    }
+
+    #[test]
+    fn test_compute_pilji_true() {
+        let kb = new_kb();
+        // 6 = 2 * 3
+        assert!(query(&kb, make_compute_query("pilji", 6.0, 2.0, 3.0)));
+    }
+
+    #[test]
+    fn test_compute_pilji_false() {
+        let kb = new_kb();
+        // 7 != 2 * 3
+        assert!(!query(&kb, make_compute_query("pilji", 7.0, 2.0, 3.0)));
+    }
+
+    #[test]
+    fn test_compute_sumji_true() {
+        let kb = new_kb();
+        // 5 = 2 + 3
+        assert!(query(&kb, make_compute_query("sumji", 5.0, 2.0, 3.0)));
+    }
+
+    #[test]
+    fn test_compute_sumji_false() {
+        let kb = new_kb();
+        // 4 != 2 + 3
+        assert!(!query(&kb, make_compute_query("sumji", 4.0, 2.0, 3.0)));
+    }
+
+    #[test]
+    fn test_compute_dilcu_true() {
+        let kb = new_kb();
+        // 3 = 6 / 2
+        assert!(query(&kb, make_compute_query("dilcu", 3.0, 6.0, 2.0)));
+    }
+
+    #[test]
+    fn test_compute_dilcu_division_by_zero() {
+        let kb = new_kb();
+        // x / 0 is always false
+        assert!(!query(&kb, make_compute_query("dilcu", 0.0, 5.0, 0.0)));
+    }
+
+    #[test]
+    fn test_compute_negated() {
+        let kb = new_kb();
+        // NOT(7 = 2 * 3) → TRUE (because 7 != 6)
+        let mut nodes = Vec::new();
+        let inner = compute(
+            &mut nodes,
+            "pilji",
+            vec![
+                LogicalTerm::Number(7.0),
+                LogicalTerm::Number(2.0),
+                LogicalTerm::Number(3.0),
+            ],
+        );
+        let root = not(&mut nodes, inner);
+        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+    }
+
+    #[test]
+    fn test_compute_node_egglog_fallback() {
+        // ComputeNode with non-arithmetic predicate falls back to egglog
+        let kb = new_kb();
+
+        // Assert: klama(alis, zarci) as a regular fact
+        let mut a_nodes = Vec::new();
+        let a_root = pred(
+            &mut a_nodes,
+            "klama",
+            vec![
+                LogicalTerm::Constant("alis".to_string()),
+                LogicalTerm::Constant("zarci".to_string()),
+            ],
+        );
+        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![a_root] });
+
+        // Query as ComputeNode — unknown to arithmetic, should fall through to egglog
+        let mut q_nodes = Vec::new();
+        let q_root = compute(
+            &mut q_nodes,
+            "klama",
+            vec![
+                LogicalTerm::Constant("alis".to_string()),
+                LogicalTerm::Constant("zarci".to_string()),
+            ],
+        );
+        assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
     }
 }

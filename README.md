@@ -21,9 +21,9 @@ Lojban text ──→ Lexer ──→ Parser (AST) ──→ Semantics (FOL IR) 
 |-----------|------|
 | **parser** | Lojban text → AST → flat WIT buffer |
 | **semantics** | AST buffer → FOL logic IR → flat WIT logic buffer |
-| **reasoning** | FOL logic buffer → egglog e-graph assert/query |
-| **orchestrator** | Chains parser → semantics → reasoning |
-| **runner** | Native Wasmtime host, REPL, loads fused WASM |
+| **reasoning** | FOL logic buffer → egglog e-graph assert/query, compute dispatch |
+| **orchestrator** | Chains parser → semantics → reasoning, compute predicate registry |
+| **runner** | Native Wasmtime host, REPL, compute-backend provider |
 
 ## Quick Start
 
@@ -90,6 +90,8 @@ just test
 - egglog e-graph with structural rewrites (commutativity, associativity, De Morgan, double negation) + inference rules (conjunction elimination, disjunctive syllogism, modus ponens/tollens)
 - Count quantifier (exactly N) for numeric descriptions
 - Numerical comparison predicates: `zmadu` (>), `mleca` (<), `dunli` (==) on `Num` terms
+- Computation dispatch: `compute-backend` WIT protocol for external evaluation, `ComputeNode` IR variant
+- Built-in arithmetic: `pilji` (multiply), `sumji` (add), `dilcu` (divide) with host-provided compute backend
 
 ## Roadmap
 

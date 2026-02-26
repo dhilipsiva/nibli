@@ -43,7 +43,7 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | `orchestrator` | Glue: chains parser -> semantics -> reasoning | `lib.rs` |
 | `runner` | Native Wasmtime host, REPL, loads fused WASM | `main.rs` |
 
-- **WIT interfaces:** `wit/world.wit` defines `ast-types` (parser output), `logic-types` (FOL IR), `parser`, `semantics`, `reasoning`, `engine`. `cargo component build` regenerates `src/bindings.rs` in each crate.
+- **WIT interfaces:** `wit/world.wit` defines `ast-types` (parser output), `logic-types` (FOL IR), `parser`, `semantics`, `reasoning`, `compute-backend`, `engine`. `cargo component build` regenerates `src/bindings.rs` in each crate.
 - **Cross-component data:** Flat index-based arrays (`AstBuffer`, `LogicBuffer`) with `u32` indices — no pointers across WASM boundaries.
 
 ## Code Conventions
@@ -81,7 +81,7 @@ Before every commit, always:
 
 ## Current Status
 
-Completed through all Tier 1 items + Tier 2.1 (numerical comparison predicates).
+Completed through all Tier 1 items + Tier 2.1-2.2 (numerical comparisons + computation dispatch).
 
 **Implemented features:**
 - Lexer + recursive-descent parser (gismu, cmavo, cmevla, lujvo partial)
@@ -103,5 +103,8 @@ Completed through all Tier 1 items + Tier 2.1 (numerical comparison predicates).
 - Host-managed WIT resources: `resource knowledge-base` (reasoning) + `resource session` (engine interface)
 - KnowledgeBase uses `RefCell` (not `Mutex`) — single-threaded WASI, no global state
 - Numerical comparison predicates: zmadu (>), mleca (<), dunli (==) evaluated at query time on Num terms
+- Computation dispatch WIT protocol: `compute-backend` interface, `ComputeNode` IR variant, predicate registry in orchestrator
+- Built-in arithmetic evaluation: pilji (multiply), sumji (add), dilcu (divide) with query-time dispatch fallback chain
+- Host-provided compute backend with wasmtime linker integration
 
-**Next up:** Tier 2.2 (computation dispatch) or Tier 3.1 (Deontic predicates)
+**Next up:** Tier 2.3 (Python backend adapter) or Tier 3.1 (Deontic predicates)

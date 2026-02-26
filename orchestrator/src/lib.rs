@@ -6,10 +6,24 @@ use bindings::lojban::nesy::logic_types::{LogicBuffer, LogicNode, LogicalTerm};
 use bindings::lojban::nesy::{parser, semantics};
 use bindings::lojban::nesy::reasoning::KnowledgeBase;
 
+use std::cell::RefCell;
+use std::collections::HashSet;
+
 struct EnginePipeline;
 
 pub struct Session {
     kb: KnowledgeBase,
+    compute_predicates: RefCell<HashSet<String>>,
+}
+
+// ─── Default compute predicates ───
+
+fn default_compute_predicates() -> HashSet<String> {
+    let mut set = HashSet::new();
+    set.insert("pilji".to_string());
+    set.insert("sumji".to_string());
+    set.insert("dilcu".to_string());
+    set
 }
 
 // ─── Shared pipeline: text → AST → LogicBuffer ───
@@ -17,6 +31,23 @@ pub struct Session {
 fn compile_pipeline(text: &str) -> Result<LogicBuffer, String> {
     let ast = parser::parse_text(text).map_err(|e| format!("Parse: {}", e))?;
     semantics::compile_buffer(&ast).map_err(|e| format!("Semantics: {}", e))
+}
+
+/// Transform Predicate nodes into ComputeNode for registered compute predicates.
+fn transform_compute_nodes(buf: &mut LogicBuffer, compute_preds: &HashSet<String>) {
+    let nodes = std::mem::take(&mut buf.nodes);
+    buf.nodes = nodes
+        .into_iter()
+        .map(|node| match &node {
+            LogicNode::Predicate((rel, _)) if compute_preds.contains(rel.as_str()) => {
+                let LogicNode::Predicate(inner) = node else {
+                    unreachable!()
+                };
+                LogicNode::ComputeNode(inner)
+            }
+            _ => node,
+        })
+        .collect();
 }
 
 fn debug_sexp(buffer: &LogicBuffer) -> String {
@@ -38,11 +69,13 @@ impl GuestSession for Session {
     fn new() -> Self {
         Session {
             kb: KnowledgeBase::new(),
+            compute_predicates: RefCell::new(default_compute_predicates()),
         }
     }
 
     fn assert_text(&self, input: String) -> Result<u32, String> {
-        let buf = compile_pipeline(&input)?;
+        let mut buf = compile_pipeline(&input)?;
+        transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
         self.kb
             .assert_fact(&buf)
             .map_err(|e| format!("Reasoning: {}", e))?;
@@ -50,19 +83,25 @@ impl GuestSession for Session {
     }
 
     fn query_text(&self, input: String) -> Result<bool, String> {
-        let buf = compile_pipeline(&input)?;
+        let mut buf = compile_pipeline(&input)?;
+        transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
         self.kb
             .query_entailment(&buf)
             .map_err(|e| format!("Reasoning: {}", e))
     }
 
     fn compile_debug(&self, input: String) -> Result<String, String> {
-        let buf = compile_pipeline(&input)?;
+        let mut buf = compile_pipeline(&input)?;
+        transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
         Ok(debug_sexp(&buf))
     }
 
     fn reset_kb(&self) -> Result<(), String> {
         self.kb.reset().map_err(|e| format!("Reset: {}", e))
+    }
+
+    fn register_compute_predicate(&self, name: String) {
+        self.compute_predicates.borrow_mut().insert(name);
     }
 }
 
@@ -80,6 +119,13 @@ fn write_sexp(out: &mut String, buffer: &LogicBuffer, node_id: u32) {
     match &buffer.nodes[node_id as usize] {
         LogicNode::Predicate((rel, args)) => {
             out.push_str("(Pred \"");
+            out.push_str(rel);
+            out.push_str("\" ");
+            write_term_list(out, args);
+            out.push(')');
+        }
+        LogicNode::ComputeNode((rel, args)) => {
+            out.push_str("(Compute \"");
             out.push_str(rel);
             out.push_str("\" ");
             write_term_list(out, args);
