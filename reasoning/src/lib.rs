@@ -131,8 +131,9 @@ const SCHEMA: &str = r#"
     (rewrite (Not (And a b)) (Or (Not a) (Not b)))
     (rewrite (Not (Or a b)) (And (Not a) (Not b)))
 
-    ;; Material conditional
+    ;; Material conditional (bidirectional)
     (rewrite (Implies a b) (Or (Not a) b))
+    (rewrite (Or (Not a) b) (Implies a b))
 
     ;; ── Inference rules ──────────────────────────────
     ;; Conjunction elimination
@@ -1633,6 +1634,89 @@ mod tests {
             ],
         );
         assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+    }
+
+    // ── Material conditional / modus ponens tests ──
+
+    /// Helper: build "ganai la .X. P gi la .X. Q" as Or(Not(Pred(P, [X])), Pred(Q, [X]))
+    /// This is the logic IR that sentence connective `ganai...gi` produces.
+    fn make_material_conditional(entity: &str, antecedent: &str, consequent: &str) -> LogicBuffer {
+        let mut nodes = Vec::new();
+        let ante = pred(
+            &mut nodes,
+            antecedent,
+            vec![LogicalTerm::Constant(entity.to_string()), LogicalTerm::Unspecified],
+        );
+        let cons = pred(
+            &mut nodes,
+            consequent,
+            vec![LogicalTerm::Constant(entity.to_string()), LogicalTerm::Unspecified],
+        );
+        let neg_ante = not(&mut nodes, ante);
+        let root = or(&mut nodes, neg_ante, cons);
+        LogicBuffer { nodes, roots: vec![root] }
+    }
+
+    #[test]
+    fn test_material_conditional_modus_ponens() {
+        // ganai la .sol. barda gi la .sol. tsali
+        // + la .sol. barda
+        // → la .sol. tsali should be TRUE via modus ponens
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("sol", "barda"));
+        assert_buf(&kb, make_material_conditional("sol", "barda", "tsali"));
+        assert!(query(&kb, make_query("sol", "tsali")));
+    }
+
+    #[test]
+    fn test_material_conditional_modus_ponens_reversed_order() {
+        // Assert the conditional FIRST, then the antecedent
+        let kb = new_kb();
+        assert_buf(&kb, make_material_conditional("sol", "barda", "tsali"));
+        assert_buf(&kb, make_assertion("sol", "barda"));
+        assert!(query(&kb, make_query("sol", "tsali")));
+    }
+
+    #[test]
+    fn test_material_conditional_modus_tollens() {
+        // ganai la .sol. barda gi la .sol. tsali
+        // + la .sol. na tsali (Not tsali)
+        // → la .sol. na barda (Not barda) via modus tollens
+        let kb = new_kb();
+        assert_buf(&kb, make_material_conditional("sol", "barda", "tsali"));
+
+        // Assert Not(tsali(sol))
+        let mut neg_nodes = Vec::new();
+        let inner = pred(
+            &mut neg_nodes,
+            "tsali",
+            vec![LogicalTerm::Constant("sol".to_string()), LogicalTerm::Unspecified],
+        );
+        let root = not(&mut neg_nodes, inner);
+        assert_buf(&kb, LogicBuffer { nodes: neg_nodes, roots: vec![root] });
+
+        // Query: barda(sol) should be FALSE (modus tollens derives Not(barda(sol)))
+        assert!(!query(&kb, make_query("sol", "barda")));
+    }
+
+    #[test]
+    fn test_material_conditional_antecedent_not_satisfied() {
+        // ganai la .sol. barda gi la .sol. tsali
+        // (no barda assertion)
+        // → la .sol. tsali should be FALSE (antecedent not satisfied)
+        let kb = new_kb();
+        assert_buf(&kb, make_material_conditional("sol", "barda", "tsali"));
+        assert!(!query(&kb, make_query("sol", "tsali")));
+    }
+
+    #[test]
+    fn test_material_conditional_chain() {
+        // ganai A gi B, ganai B gi C, assert A → derive C
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("sol", "tarci"));
+        assert_buf(&kb, make_material_conditional("sol", "tarci", "gusni"));
+        assert_buf(&kb, make_material_conditional("sol", "gusni", "melbi"));
+        assert!(query(&kb, make_query("sol", "melbi")));
     }
 
     // ── Compute result ingestion tests ──
