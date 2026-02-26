@@ -79,7 +79,6 @@ When analyzing or searching the codebase:
 
 ## Known Issues
 
-- `test_kea_as_head_term` and `test_kea_in_relative_clause` fail with "observative sentences not yet supported" (pre-existing)
 - `cargo component build` fails on `io-extras` crate — pre-existing, unrelated to our changes. Bindings generate before the failure.
 - Existential introduction gap: `ro lo gerku cu danlu` then `? lo gerku cu danlu` returns FALSE because engine lacks ∀x.P(x) ⊢ ∃x.P(x) bridging when domain is non-empty (see `todo.md` bottom for full analysis)
 
@@ -131,5 +130,6 @@ Completed through all Tier 1 items + full Tier 2 (numerical comparisons + comput
 - Bidirectional material conditional rewrite enables modus ponens/tollens on sentence connectives (ganai...gi)
 - Deontic attitudinals: ei (obligation/should), e'e (competence/permission/may) — sentence-level modifiers, transparent wrapper nodes in reasoning
 - Lujvo morphological recognition: Logos regex `[a-z']{5}[a-z']*[aeiou]` captures 6+ char brivla; longest-match prevents cmavo prefix theft; PHF dictionary handles arity lookup
+- Observative sentences & go'i pro-bridi: parser accepts sentences without explicit selbri (inserts implicit `go'i`), orchestrator resolves go'i → last known relation via cross-call `last_relation` tracking
 
-**Next up:** Tier 3.3 (Observative sentences) or Tier 4.1 (Existential witness extraction)
+**Next up:** Tier 3.3 (`sa` proper implementation) or Tier 4.1 (Existential witness extraction)

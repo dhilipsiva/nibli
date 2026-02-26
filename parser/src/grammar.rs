@@ -380,8 +380,8 @@ impl<'a> Parser<'a> {
                 self.leave();
                 return Err(self.error("expected selbri or terms"));
             }
-            self.leave();
-            return Err(self.error("observative sentences not yet supported"));
+            // Observative: implicit go'i (resolved by orchestrator)
+            Selbri::Root("go'i".to_string())
         };
 
         let (selbri, negated) = match selbri {
@@ -1063,6 +1063,13 @@ impl<'a> Parser<'a> {
             let compound: Vec<String> = parts.iter().map(|s| s.to_string()).collect();
             self.pos += 1;
             return Some(Selbri::Compound(compound));
+        }
+
+        // Pro-bridi: go'i refers to the previous sentence's relation.
+        // Resolved by orchestrator before reaching semantics.
+        if self.peek_is_cmavo("go'i") {
+            self.pos += 1;
+            return Some(Selbri::Root("go'i".to_string()));
         }
 
         None
@@ -3758,6 +3765,44 @@ mod tests {
         ]);
         let b = as_bridi(&r.sentences[0]);
         assert_eq!(b.selbri, Selbri::Root("nunprami".to_string()));
+        assert_eq!(b.head_terms.len(), 1);
+    }
+
+    // ─── Observative / go'i (Tier 3.2) ──────────────────────────
+
+    #[test]
+    fn test_explicit_go_i_as_selbri() {
+        // mi go'i do → Bridi { selbri: Root("go'i"), head: [mi], tail: [do] }
+        let r = parse_ok(&[
+            cmavo("mi"), cmavo("go'i"), cmavo("do"),
+        ]);
+        let b = as_bridi(&r.sentences[0]);
+        assert_eq!(b.selbri, Selbri::Root("go'i".to_string()));
+        assert_eq!(b.head_terms.len(), 1);
+        assert_eq!(b.tail_terms.len(), 1);
+    }
+
+    #[test]
+    fn test_observative_implicit_go_i() {
+        // mi do → observative, implicit go'i
+        // Previously errored with "observative sentences not yet supported"
+        let r = parse_ok(&[
+            cmavo("mi"), cmavo("do"),
+        ]);
+        let b = as_bridi(&r.sentences[0]);
+        assert_eq!(b.selbri, Selbri::Root("go'i".to_string()));
+        assert_eq!(b.head_terms.len(), 2);
+        assert_eq!(b.tail_terms.len(), 0);
+    }
+
+    #[test]
+    fn test_observative_single_description() {
+        // lo gerku → observative with single description term
+        let r = parse_ok(&[
+            cmavo("lo"), gismu("gerku"),
+        ]);
+        let b = as_bridi(&r.sentences[0]);
+        assert_eq!(b.selbri, Selbri::Root("go'i".to_string()));
         assert_eq!(b.head_terms.len(), 1);
     }
 }

@@ -4,14 +4,7 @@
 
 Features needed to express domain knowledge naturally in Lojban.
 
-### 3.2 Observative sentences
-
-`mi do` (observative, implicit `go'i`) currently errors. Low priority but affects naturalness of input.
-
-**Crate:** parser/grammar.rs
-**Complexity:** medium (requires `go'i` pro-bridi resolution)
-
-### 3.3 `sa` proper implementation
+### 3.2 `sa` proper implementation
 
 Requires selma'o classification for the erasure-to-next-construct behavior.
 
