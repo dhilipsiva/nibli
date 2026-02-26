@@ -176,7 +176,7 @@ const CORE_GISMU_ARITIES: &[(&str, usize)] = &[
     ("tirna", 3), // x1 hears x2 from source x3
     ("nelci", 2), // x1 likes x2
     ("djica", 3), // x1 desires x2 for purpose x3
-    ("nitcu", 2), // x1 needs x2
+    ("nitcu", 3), // x1 needs x2 for purpose x3
     ("kakne", 2), // x1 is able to do x2
     ("ckana", 2), // x1 is a bed for x2
     ("zdani", 2), // x1 is a home of x2

@@ -4,15 +4,13 @@
 
 Features needed to express domain knowledge naturally in Lojban.
 
-### 3.1 Deontic predicates (`bilga`/`curmi`/`nitcu`)
+### 3.1b Deontic attitudinals (`e'e`/`ei`)
 
-Predicate-based deontic modality: `bilga` (obligated), `curmi` (permitted), `nitcu` (needed). These are standard gismu — should work if dictionary arity entries exist.
+Attitudinal forms for obligation/permission require new parser category. Deferred from 3.1 (predicate forms now work).
 
-Attitudinal forms (`e'e`/`ei`) require new parser category — defer to 3.1b.
-
-**Crate:** semantics/dictionary, parser (if attitudinal)
-**Complexity:** low (predicate) or high (attitudinal)
-**Impact:** critical for legal corpus (obligation, permission, prohibition)
+**Crate:** parser (new attitudinal selma'o)
+**Complexity:** high
+**Impact:** more natural deontic expression
 
 ### 3.2 Lujvo morphological recognition
 
@@ -168,19 +166,3 @@ Items identified during implementation but not yet prioritized into a tier.
 - **Existential introduction gap** — `ro lo gerku cu danlu` then `? lo gerku cu danlu` returns FALSE. Engine lacks ∀x.P(x) ⊢ ∃x.P(x) bridging when domain is non-empty. Revisit xorlo presupposition.
 - **SkolemFn multi-dependency** — Currently supports dep_count=1 only (single universal dependency). Multi-dependency (`∀x.∀y. → ∃z.`) needs SkolemPair or TermList encoding. Deferred until needed.
 
----
-
-## Dependency Graph
-
-```
-Tier 3 (language)         Tier 4 (production)         Tier 5 (advanced)
-  3.1 deontic               4.1 witness extraction      5.1 non-monotonic
-  3.2 lujvo                 4.2 proof traces            5.2 temporal
-  3.3 observative           4.3 error recovery          5.3 event semantics
-  3.4 sa impl               4.4 fuel limits             5.4 description opacity
-                            4.5 conj. introduction      5.5 namespaces
-                            4.6 WIT error variants      5.6 cycle detection
-                            4.7 WASI sandboxing
-                            4.8 clone elimination
-                            4.9 arena allocator
-```

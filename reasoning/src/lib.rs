@@ -1719,6 +1719,70 @@ mod tests {
         assert!(query(&kb, make_query("sol", "melbi")));
     }
 
+    // ── Deontic predicate tests ──
+
+    /// Helper: build a 3-place deontic assertion: Pred(rel, [Const(entity), Const(action), Zoe])
+    fn make_deontic_assertion(entity: &str, relation: &str, action: &str) -> LogicBuffer {
+        let mut nodes = Vec::new();
+        let root = pred(
+            &mut nodes,
+            relation,
+            vec![
+                LogicalTerm::Constant(entity.to_string()),
+                LogicalTerm::Constant(action.to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        LogicBuffer { nodes, roots: vec![root] }
+    }
+
+    #[test]
+    fn test_deontic_bilga_assert_query() {
+        // bilga(alis, klama, Zoe) — Alice is obligated to go
+        let kb = new_kb();
+        assert_buf(&kb, make_deontic_assertion("alis", "bilga", "klama"));
+        assert!(query(&kb, make_deontic_assertion("alis", "bilga", "klama")));
+        assert!(!query(&kb, make_deontic_assertion("bob", "bilga", "klama")));
+    }
+
+    #[test]
+    fn test_deontic_curmi_assert_query() {
+        // curmi(alis, klama, Zoe) — Alice is permitted to go
+        let kb = new_kb();
+        assert_buf(&kb, make_deontic_assertion("alis", "curmi", "klama"));
+        assert!(query(&kb, make_deontic_assertion("alis", "curmi", "klama")));
+        assert!(!query(&kb, make_deontic_assertion("alis", "curmi", "tavla")));
+    }
+
+    #[test]
+    fn test_deontic_nitcu_assert_query() {
+        // nitcu(alis, klama, Zoe) — Alice needs to go
+        let kb = new_kb();
+        assert_buf(&kb, make_deontic_assertion("alis", "nitcu", "klama"));
+        assert!(query(&kb, make_deontic_assertion("alis", "nitcu", "klama")));
+        assert!(!query(&kb, make_deontic_assertion("alis", "nitcu", "tavla")));
+    }
+
+    #[test]
+    fn test_deontic_universal_obligation() {
+        // ∀x. prenu(x) → bilga(x, Zoe, Zoe) — all people are obligated
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "prenu"));
+        assert_buf(&kb, make_universal("prenu", "bilga"));
+        assert!(query(&kb, make_query("alis", "bilga")));
+        assert!(!query(&kb, make_query("bob", "bilga")));
+    }
+
+    #[test]
+    fn test_deontic_conditional_chain() {
+        // ganai bilga(sol) gi nitcu(sol) — if obligated then needed
+        // + bilga(sol) → nitcu(sol) via modus ponens
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("sol", "bilga"));
+        assert_buf(&kb, make_material_conditional("sol", "bilga", "nitcu"));
+        assert!(query(&kb, make_query("sol", "nitcu")));
+    }
+
     // ── Compute result ingestion tests ──
 
     #[test]
