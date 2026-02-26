@@ -1,18 +1,10 @@
 # Nibli Roadmap
 
-## Tier 1 — Architecture for Scale (the gate to real domains)
+## Tier 1 — Architecture for Scale
 
 Without this tier, the engine caps out at ~100 entities. Science and legal domains need 1K-50K+.
 
-### 1.1 Native egglog rules ~~COMPLETE~~
-
-**Phase A+B complete.** All universals (simple and dependent Skolem) now compile to native egglog rules with O(K) hash-join matching. `SkolemFn` Term constructor in egglog schema handles dependent Skolems (`∀x. P(x) → ∃y. R(x,y)`) — creates `(SkolemFn "sk_N" x)` unique per entity. All Herbrand machinery removed (`UniversalTemplate`, `register_entity`, `instantiate_for_entity`, `collect_forall_nodes`, `has_dependent_skolems`). String replacement fragility (0.3) fully eliminated.
-
-**Still pending:**
-- Existential introduction gap (0.2 deferred) — revisit xorlo presupposition
-- SkolemFn currently supports dep_count=1 only (single universal dependency). Multi-dependency (`∀x.∀y. → ∃z.`) needs SkolemPair or TermList encoding — deferred until needed.
-
-### 1.2 WASI state hoisting (replaces `OnceLock` anti-pattern)
+### 1.1 WASI state hoisting (replaces `OnceLock` anti-pattern)
 
 Move knowledge base to host-managed WASI Resource. Enables: reset, multi-tenant, persistence.
 
@@ -22,44 +14,21 @@ Current `OnceLock<Mutex<EGraph>>` works only because the runner reuses a single 
 **Complexity:** high (architectural rework)
 **Blocks:** persistence, multi-tenant deployment, clean `:reset`
 
-### 1.3 `reconstruct_sexp` deduplication — MOOT
-
-Reasoning-side `reconstruct_sexp_with_subs` still exists for query decomposition and ground assertion, but is no longer duplicated for Herbrand instantiation. Orchestrator's copy is the primary display version. Low priority — the functions serve different roles now.
-
-### 1.4 String pre-allocation in `reconstruct_sexp` — reduced scope
+### 1.2 String pre-allocation in `reconstruct_sexp`
 
 Only applies to orchestrator's display copy now. Reasoning-side `reconstruct_sexp_with_subs` is used sparingly (ground assertions + query checks).
 
 **Crate:** orchestrator
 **Complexity:** low
 
-### 1.5 wasip1 → wasip2 alignment
+### 1.3 wasip1 → wasip2 alignment
 
 Ensure Justfile and flake.nix target consistent WASI preview version.
 
 **Crate:** Justfile, flake.nix
 **Complexity:** low
 
-### 1.6 Remove `bumpalo` dependency
-
-Imported but unused — dead weight in WASM binary.
-
-**Crate:** parser/Cargo.toml
-**Complexity:** trivial (2 min)
-
-### 1.7 Delete dead `push_bridi` method in Flattener
-
-Superseded by `push_sentence`, generates unused-code warning.
-
-**Crate:** parser/lib.rs lines 82-113
-**Complexity:** trivial (2 min)
-
-### 1.8 Delete dead commented-out loop in `Flattener::flatten`
-
-**Crate:** parser/lib.rs lines 68-76
-**Complexity:** trivial (1 min)
-
-### 1.9 `ast-types` WIT interface naming
+### 1.4 `ast-types` WIT interface naming
 
 Split logic types into separate WIT interface from AST types. Currently both live in `ast-types` which is misleading.
 
@@ -68,7 +37,7 @@ Split logic types into separate WIT interface from AST types. Currently both liv
 
 ---
 
-## Tier 2 — Quantitative Reasoning (science needs numbers and computation)
+## Tier 2 — Quantitative Reasoning
 
 Without this tier, the engine can only do qualitative symbolic reasoning. Every scientific domain needs quantitative capabilities.
 
@@ -266,23 +235,23 @@ Prevent infinite rewrite loops in egglog. May be handled natively by egglog's sa
 
 ---
 
+## Deferred / Known Gaps
+
+Items identified during implementation but not yet prioritized into a tier.
+
+- **Existential introduction gap** — `ro lo gerku cu danlu` then `? lo gerku cu danlu` returns FALSE. Engine lacks ∀x.P(x) ⊢ ∃x.P(x) bridging when domain is non-empty. Revisit xorlo presupposition.
+- **SkolemFn multi-dependency** — Currently supports dep_count=1 only (single universal dependency). Multi-dependency (`∀x.∀y. → ∃z.`) needs SkolemPair or TermList encoding. Deferred until needed.
+
+---
+
 ## Dependency Graph
 
 ```
-Tier 0 (correctness)
-  0.1 da/de/di closure ── no dependencies, do anytime
-  0.2 existential introduction gap ── partially solved by 1.1
-  0.3 string replacement ── ✓ eliminated by 1.1
-
 Tier 1 (scale)                        Tier 2 (quantitative)
-  1.1 native egglog rules ✓ DONE        2.1 numerical predicates
-       │                                 2.2 computation dispatch WIT
-       ├── ✓ eliminates 0.3                   │
-       ├── partially solves 0.2          2.3 Python adapter ──→ 2.4 result ingestion
-       ├── 1.3, 1.4 now moot (Herbrand removed)
-       └── enables Tier 4, 5
-  1.2 WASI state hoisting
-       └── enables persistence, multi-tenant
+  1.1 WASI state hoisting               2.1 numerical predicates
+       └── enables persistence,          2.2 computation dispatch WIT
+           multi-tenant                       │
+                                         2.3 Python adapter ──→ 2.4 result ingestion
 
 Tier 3 (language)         Tier 4 (production)         Tier 5 (advanced)
   3.1 deontic               4.1 witness extraction      5.1 non-monotonic

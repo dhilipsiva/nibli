@@ -65,54 +65,10 @@ impl Flattener {
             let root_id = f.push_sentence(sentence);
             f.buffer.roots.push(root_id);
         }
-        // xx       for bridi in parsed.sentences {
-        //            f.push_bridi(bridi);
-        //            // The top-level sentence is always the LAST entry added by
-        //            // push_bridi.  Rel clause bodies and nu abstraction bodies are
-        //            // pushed earlier (during recursive push_sumti/push_selbri),
-        //            // so they have lower indices.
-        //            let root_idx = (f.buffer.sentences.len() - 1) as u32;
-        //            f.buffer.roots.push(root_idx);
-        //        }
         f.buffer
     }
 
-    // ─── Bridi ───────────────────────────────────────────────
-
-    fn push_bridi(&mut self, bridi: ast::Bridi) {
-        let relation = self.push_selbri(bridi.selbri);
-
-        let head_terms: Vec<u32> = bridi
-            .head_terms
-            .into_iter()
-            .map(|s| self.push_sumti(s))
-            .collect();
-
-        let tail_terms: Vec<u32> = bridi
-            .tail_terms
-            .into_iter()
-            .map(|s| self.push_sumti(s))
-            .collect();
-        let tense = bridi.tense.map(|t| match t {
-            ast::Tense::Pu => wit::Tense::Pu,
-            ast::Tense::Ca => wit::Tense::Ca,
-            ast::Tense::Ba => wit::Tense::Ba,
-        });
-
-        let flat_bridi = wit::Bridi {
-            relation,
-            head_terms,
-            tail_terms,
-            negated: bridi.negated,
-            tense,
-        };
-
-        self.buffer
-            .sentences
-            .push(wit::Sentence::Simple(flat_bridi));
-    }
-
-    // Add this method to your Flattener struct in parser/src/lib.rs:
+    // ─── Sentence Flattening ────────────────────────────────
     fn push_sentence(&mut self, sentence: ast::Sentence) -> u32 {
         use bindings::lojban::nesy::ast_types::{
             Sentence as WasmSentence, SentenceConnective as WasmConn,

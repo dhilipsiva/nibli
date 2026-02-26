@@ -1889,7 +1889,6 @@ dependencies = [
 name = "parser"
 version = "0.1.0"
 dependencies = [
- "bumpalo",
  "logos",
  "wit-bindgen-rt",
 ]

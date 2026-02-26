@@ -64,7 +64,6 @@ When analyzing or searching the codebase:
 ## Known Issues
 
 - `test_kea_as_head_term` and `test_kea_in_relative_clause` fail with "observative sentences not yet supported" (pre-existing)
-- `push_bridi` in `parser/src/lib.rs` is dead code (unused warning)
 - `cargo component build` fails on `io-extras` crate — pre-existing, unrelated to our changes. Bindings generate before the failure.
 - Existential introduction gap: `ro lo gerku cu danlu` then `? lo gerku cu danlu` returns FALSE because engine lacks ∀x.P(x) ⊢ ∃x.P(x) bridging when domain is non-empty (see `todo.md` bottom for full analysis)
 - Reasoning tests require `--test-threads=1` (shared global state: EGRAPH, KNOWN_ENTITIES). The Justfile `just test` handles this.
@@ -83,7 +82,7 @@ Before every commit, always:
 
 ## Current Status
 
-Completed through Tier 1.1 (all phases).
+Completed through Tier 1.8 (1.1 all phases + trivial cleanups 1.6-1.8).
 
 **Implemented features:**
 - Lexer + recursive-descent parser (gismu, cmavo, cmevla, lujvo partial)
