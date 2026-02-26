@@ -13,6 +13,7 @@ static EGRAPH: OnceLock<Mutex<EGraph>> = OnceLock::new();
 static SKOLEM_COUNTER: OnceLock<Mutex<usize>> = OnceLock::new();
 static KNOWN_ENTITIES: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 static UNIVERSAL_TEMPLATES: OnceLock<Mutex<Vec<UniversalTemplate>>> = OnceLock::new();
+static KNOWN_RULES: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 
 /// A stored universal formula for Herbrand instantiation.
 /// When new entities appear, we instantiate the template for each.
@@ -425,6 +426,10 @@ impl Guest for ReasoningComponent {
         // 4. Clear universal templates
         let templates = UNIVERSAL_TEMPLATES.get_or_init(|| Mutex::new(Vec::new()));
         templates.lock().unwrap().clear();
+
+        // 5. Clear known rules
+        let rules = KNOWN_RULES.get_or_init(|| Mutex::new(HashSet::new()));
+        rules.lock().unwrap().clear();
 
         Ok(())
     }
@@ -989,25 +994,21 @@ fn compile_forall_to_rule(
                 actions_sexp.join(" ")
             );
 
-            println!(
-                "[Rule] Compiled ∀{} to native egglog rule",
-                universals.join(",")
-            );
-
-            // egglog 2.0 panics on duplicate rules, so catch that case
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                egraph.parse_and_run_program(None, &rule)
-            }));
-            match result {
-                Ok(Ok(_)) => {}
-                Ok(Err(e)) => {
-                    return Err(format!("Failed to compile universal to rule: {}", e));
-                }
-                Err(_) => {
-                    // Duplicate rule — egglog panics. This is harmless; the rule
-                    // already exists and will fire on matching facts.
-                    println!("[Rule] (already present, skipping)");
-                }
+            // Deduplicate: egglog 2.0 panics on duplicate rules
+            let known_rules = KNOWN_RULES.get_or_init(|| Mutex::new(HashSet::new()));
+            if !known_rules.lock().unwrap().insert(rule.clone()) {
+                println!(
+                    "[Rule] ∀{} already present, skipping",
+                    universals.join(",")
+                );
+            } else {
+                println!(
+                    "[Rule] Compiled ∀{} to native egglog rule",
+                    universals.join(",")
+                );
+                egraph
+                    .parse_and_run_program(None, &rule)
+                    .map_err(|e| format!("Failed to compile universal to rule: {}", e))?;
             }
         }
         None => {
@@ -1026,22 +1027,20 @@ fn compile_forall_to_rule(
                 body_sexp
             );
 
-            println!(
-                "[Rule] Compiled bare ∀{} with InDomain trigger",
-                universals.join(",")
-            );
-
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                egraph.parse_and_run_program(None, &rule)
-            }));
-            match result {
-                Ok(Ok(_)) => {}
-                Ok(Err(e)) => {
-                    return Err(format!("Failed to compile bare universal to rule: {}", e));
-                }
-                Err(_) => {
-                    println!("[Rule] (already present, skipping)");
-                }
+            let known_rules = KNOWN_RULES.get_or_init(|| Mutex::new(HashSet::new()));
+            if !known_rules.lock().unwrap().insert(rule.clone()) {
+                println!(
+                    "[Rule] bare ∀{} already present, skipping",
+                    universals.join(",")
+                );
+            } else {
+                println!(
+                    "[Rule] Compiled bare ∀{} with InDomain trigger",
+                    universals.join(",")
+                );
+                egraph
+                    .parse_and_run_program(None, &rule)
+                    .map_err(|e| format!("Failed to compile bare universal to rule: {}", e))?;
             }
         }
     }
