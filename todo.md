@@ -4,36 +4,19 @@
 
 Without this tier, the engine caps out at ~100 entities. Science and legal domains need 1K-50K+.
 
-### 1.1 Herbrand expansion → egglog native rules
+### 1.1 Native egglog rules — Phase B: Dependent Skolem functions
 
-**THE critical architectural change.** Replace eager Rust-side N×M entity grounding with egglog's native rule language.
+**Phase A complete.** Simple universals (no ∃ under ∀) now compile to native egglog rules with O(K) hash-join matching. Old Herbrand fallback retained for dependent-Skolem universals.
 
-**Current approach (O(E×T)):** For `∀x. gerku(x) → danlu(x)`, the Rust side loops over every known entity, stamps out a ground s-expression via string replacement, and feeds each into egglog as a separate `(IsTrue ...)` fact. 100 entities × 50 universals = 5,000 ground assertions.
+**Remaining:** Add `SkolemFn` term to egglog schema for dependent Skolems (`∀x. P(x) → ∃y. R(x,y)`). The rule head creates `(SkolemFn "sk_N" (Cons x (Nil)))` — a unique witness per entity. Requires query-side SkolemFn witness registry for existential enumeration. Then remove all remaining Herbrand machinery (`UNIVERSAL_TEMPLATES`, `register_entity`, `instantiate_for_entity`, `collect_forall_nodes`).
 
-**Target approach (O(K)):** Emit one egglog rule per universal:
-```egglog
-(rule ((IsTrue (Pred "gerku" (Cons x (Nil)))))
-      ((IsTrue (Pred "danlu" (Cons x (Nil))))))
-```
-egglog performs hash-joins over the e-graph, matching `x` only against entities that actually appear in `gerku(...)` facts. No irrelevant instantiations, no cross-product.
+**Also still pending:**
+- Existential introduction gap (0.2 deferred) — revisit xorlo presupposition after Phase B
+- String replacement fragility (0.3 deferred) — fully eliminated once Phase B removes Herbrand fallback
 
-**Key insight (credit: Gemini):** egglog *is* a Datalog engine with e-graph unification. It already does relational joins internally — the current Herbrand expansion is literally doing by hand what egglog was designed to do natively.
-
-**Eliminates:** `UNIVERSAL_TEMPLATES`, `KNOWN_ENTITIES`, `register_entity`, `register_entity_no_instantiate`, `instantiate_for_entity`, `collect_forall_nodes`, the entire E×T cross-product, and item 0.3 (string replacement fragility).
-
-**Challenges:**
-- Simple `∀x. P(x) → Q(x)`: straightforward single-pattern rule
-- Multi-premise `∀x. (P(x) ∧ Q(x)) → R(x)`: multi-pattern rule (egglog handles this)
-- Dependent Skolems `∀x. P(x) → ∃y. R(x, y)`: rule head needs Skolem *function* `(sk_R x)`, not a ground constant — requires egglog `function` declarations
-- Nested `∀x∀y. ...`: multiple pattern variables (egglog handles this)
-
-**Crate:** reasoning/lib.rs (major rewrite)
-**Complexity:** high
-**Impact:** enables legal corpus (5K-50K entities), large scientific KBs, eliminates ~200 lines of fragile machinery
-**Blocks:** scaling to any real dataset
-**Also resolves:**
-- Existential introduction gap (0.2 deferred) — native rules only fire when matching facts exist; revisit xorlo presupposition (option C: `ro lo` implies non-empty domain) after this rewrite
-- String replacement fragility (0.3 deferred) — entire Herbrand instantiation machinery is eliminated
+**Crate:** reasoning/lib.rs
+**Complexity:** medium (Phase A infrastructure in place)
+**Blocks:** full elimination of O(E×T) cross-product
 
 ### 1.2 WASI state hoisting (replaces `OnceLock` anti-pattern)
 

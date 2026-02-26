@@ -86,7 +86,7 @@ just test
 ## Reasoning
 
 - Skolemization (independent + dependent under `∀`)
-- Herbrand instantiation for universal formulas
+- Native egglog rules for universal formulas (O(K) hash-join matching, no Herbrand cross-product)
 - egglog e-graph with structural rewrites (commutativity, associativity, De Morgan, double negation) + inference rules (conjunction elimination, disjunctive syllogism, modus ponens/tollens)
 - Count quantifier (exactly N) for numeric descriptions
 

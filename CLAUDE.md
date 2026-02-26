@@ -82,7 +82,7 @@ Before every commit, always:
 
 ## Current Status
 
-Completed through Phase 1.6.
+Completed through Tier 1.1 Phase A.
 
 **Implemented features:**
 - Lexer + recursive-descent parser (gismu, cmavo, cmevla, lujvo partial)
@@ -95,9 +95,10 @@ Completed through Phase 1.6.
 - Abstractions (nu, du'u, ka with ce'u, ni, si'o)
 - Tense (pu/ca/ba)
 - Quoted literals (lu...li'u), number sumti (li + PA)
-- Skolemization (independent + dependent under ∀), Herbrand instantiation
+- Skolemization (independent + dependent under ∀)
+- Native egglog rules for simple universals (Phase A), Herbrand fallback for dependent-Skolem universals
 - egglog e-graph reasoning with structural rewrites + inference rules
 - Count quantifier (exactly N) for numeric descriptions
 - da/de/di existential quantifier closure (bare logic variables now properly wrapped in ∃)
 
-**Next up:** Tier 0.2 Existential introduction gap
+**Next up:** Tier 1.1 Phase B (SkolemFn for dependent Skolems) or Tier 1.2 (WASI state hoisting)
