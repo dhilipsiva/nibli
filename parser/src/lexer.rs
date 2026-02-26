@@ -33,6 +33,12 @@ pub enum LojbanToken {
     #[regex(r"([bcdfghjklmnprstvxz][aeiou][bcdfghjklmnprstvxz][bcdfghjklmnprstvxz][aeiou])|([bcdfghjklmnprstvxz][bcdfghjklmnprstvxz][aeiou][bcdfghjklmnprstvxz][aeiou])")]
     Gismu,
 
+    // Lujvo (compound brivla): 6+ letter words ending in vowel.
+    // Longest-match prevents cmavo from stealing prefixes (e.g., "nunprami" ≠ "nu" + ...).
+    // Semantics dictionary lookup handles arity for known lujvo.
+    #[regex(r"[a-z']{5}[a-z']*[aeiou]")]
+    Lujvo,
+
     // Cmevla (Names): Must end in a consonant.
     // No dots in body — dots are pause tokens and must not be consumed as part of a word.
     // Final character is explicitly a Lojban consonant, not a negated vowel class.
@@ -286,5 +292,44 @@ mod tests {
         assert_eq!(tokens[0], (LojbanToken::Pause, "."));
         assert_eq!(tokens[1], (LojbanToken::Cmevla, "djan"));
         assert_eq!(tokens[2], (LojbanToken::Pause, "."));
+    }
+
+    // ─── Lujvo recognition (Tier 3.2) ────────────────────────────
+
+    #[test]
+    fn test_lujvo_brivla() {
+        // "brivla" (6 chars, CCVCCV ending in vowel) → Lujvo
+        let tokens = tokenize("brivla cu klama");
+        assert_eq!(tokens[0], (LojbanToken::Lujvo, "brivla"));
+    }
+
+    #[test]
+    fn test_lujvo_nunprami() {
+        // "nunprami" (8 chars) → Lujvo
+        let tokens = tokenize("nunprami cu klama");
+        assert_eq!(tokens[0], (LojbanToken::Lujvo, "nunprami"));
+    }
+
+    #[test]
+    fn test_lujvo_selkla() {
+        // "selkla" (6 chars) → Lujvo
+        let tokens = tokenize("selkla");
+        assert_eq!(tokens[0], (LojbanToken::Lujvo, "selkla"));
+    }
+
+    #[test]
+    fn test_lujvo_does_not_steal_gismu() {
+        // "klama" (5 chars, valid CVCCV) → still Gismu, not Lujvo
+        let tokens = tokenize("klama");
+        assert_eq!(tokens[0], (LojbanToken::Gismu, "klama"));
+    }
+
+    #[test]
+    fn test_lujvo_in_sentence() {
+        // "jbobau" in a sentence → Lujvo
+        let tokens = tokenize("mi jbobau tavla");
+        assert_eq!(tokens[0], (LojbanToken::Cmavo, "mi"));
+        assert_eq!(tokens[1], (LojbanToken::Lujvo, "jbobau"));
+        assert_eq!(tokens[2], (LojbanToken::Gismu, "tavla"));
     }
 }

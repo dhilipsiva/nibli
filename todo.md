@@ -4,24 +4,14 @@
 
 Features needed to express domain knowledge naturally in Lojban.
 
-### 3.2 Lujvo morphological recognition
-
-Lexer only recognizes gismu (5-letter CVCCV/CCVCV) and cmavo. Lujvo (compound brivla like `brivla`, `nunprami`) fall through.
-
-**Approach:** Dictionary lookup at lex time — check if token is a known lujvo from jbovlaste (already in PHF map from `build.rs`). Handles ~95% of real text.
-
-**Crate:** parser/lexer.rs
-**Complexity:** medium
-**Impact:** all domains — real Lojban text uses compound words heavily
-
-### 3.3 Observative sentences
+### 3.2 Observative sentences
 
 `mi do` (observative, implicit `go'i`) currently errors. Low priority but affects naturalness of input.
 
 **Crate:** parser/grammar.rs
 **Complexity:** medium (requires `go'i` pro-bridi resolution)
 
-### 3.4 `sa` proper implementation
+### 3.3 `sa` proper implementation
 
 Requires selma'o classification for the erasure-to-next-construct behavior.
 

@@ -111,6 +111,7 @@ impl<'a> Parser<'a> {
         matches!(
             self.peek(),
             Some(NormalizedToken::Standard(LojbanToken::Gismu, _))
+                | Some(NormalizedToken::Standard(LojbanToken::Lujvo, _))
         )
     }
 
@@ -1161,6 +1162,10 @@ mod tests {
 
     fn gismu(text: &'static str) -> NormalizedToken<'static> {
         NormalizedToken::Standard(LojbanToken::Gismu, text)
+    }
+
+    fn lujvo(text: &'static str) -> NormalizedToken<'static> {
+        NormalizedToken::Standard(LojbanToken::Lujvo, text)
     }
 
     fn pause() -> NormalizedToken<'static> {
@@ -3715,5 +3720,44 @@ mod tests {
             }
             other => panic!("expected QuantifiedDescription(Le), got {:?}", other),
         }
+    }
+
+    // ─── Lujvo recognition (Tier 3.2) ────────────────────────────
+
+    #[test]
+    fn test_lujvo_as_selbri() {
+        // lujvo("brivla") should parse as Selbri::Root("brivla")
+        let r = parse_ok(&[
+            cmavo("mi"), lujvo("brivla"),
+        ]);
+        let b = as_bridi(&r.sentences[0]);
+        assert_eq!(b.selbri, Selbri::Root("brivla".to_string()));
+    }
+
+    #[test]
+    fn test_lujvo_in_tanru() {
+        // lujvo + gismu → Tanru
+        let r = parse_ok(&[
+            cmavo("mi"), lujvo("brivla"), gismu("klama"),
+        ]);
+        let b = as_bridi(&r.sentences[0]);
+        match &b.selbri {
+            Selbri::Tanru(left, right) => {
+                assert_eq!(**left, Selbri::Root("brivla".to_string()));
+                assert_eq!(**right, Selbri::Root("klama".to_string()));
+            }
+            other => panic!("expected Tanru, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lujvo_with_head_term() {
+        // mi nunprami → bridi with selbri Root("nunprami")
+        let r = parse_ok(&[
+            cmavo("mi"), lujvo("nunprami"),
+        ]);
+        let b = as_bridi(&r.sentences[0]);
+        assert_eq!(b.selbri, Selbri::Root("nunprami".to_string()));
+        assert_eq!(b.head_terms.len(), 1);
     }
 }

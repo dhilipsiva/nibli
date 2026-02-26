@@ -100,7 +100,7 @@ Before every commit, always:
 Completed through all Tier 1 items + full Tier 2 (numerical comparisons + computation dispatch + external compute backend + result ingestion).
 
 **Implemented features:**
-- Lexer + recursive-descent parser (gismu, cmavo, cmevla, lujvo partial)
+- Lexer + recursive-descent parser (gismu, cmavo, cmevla, lujvo)
 - Gadri descriptions (lo/le/la), universal (ro lo/ro le), numeric quantifiers (PA lo/le, su'o lo)
 - Place tags (fa/fe/fi/fo/fu), BAI modal tags (ri'a, ni'i, mu'i, ki'u, pi'o, ba'i), fi'o...fe'u
 - Selbri: root, tanru, conversion (se/te/ve/xe), negation (na), grouping (ke...ke'e), compounds (zei), be...bei...be'o
@@ -130,5 +130,6 @@ Completed through all Tier 1 items + full Tier 2 (numerical comparisons + comput
 - Deontic predicates: bilga (obligation), curmi (permission), nitcu (necessity) — standard gismu, work through full pipeline
 - Bidirectional material conditional rewrite enables modus ponens/tollens on sentence connectives (ganai...gi)
 - Deontic attitudinals: ei (obligation/should), e'e (competence/permission/may) — sentence-level modifiers, transparent wrapper nodes in reasoning
+- Lujvo morphological recognition: Logos regex `[a-z']{5}[a-z']*[aeiou]` captures 6+ char brivla; longest-match prevents cmavo prefix theft; PHF dictionary handles arity lookup
 
-**Next up:** Tier 3.2 (Lujvo morphological recognition) or Tier 4.1 (Existential witness extraction)
+**Next up:** Tier 3.3 (Observative sentences) or Tier 4.1 (Existential witness extraction)
