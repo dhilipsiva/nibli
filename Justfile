@@ -37,9 +37,8 @@ test-parser:
     cargo test -p parser --lib -- --nocapture
 
 # Run all unit tests across workspace
-# --test-threads=1 required: reasoning tests share global state (EGRAPH, KNOWN_ENTITIES)
 test:
-    cargo test --lib -- --nocapture --test-threads=1
+    cargo test --lib -- --nocapture
 
 # Wipes all compilation artifacts
 clean:

@@ -686,17 +686,154 @@ pub mod exports {
                 static __FORCE_SECTION_REF: fn() = super::super::super::super::__link_custom_section_describing_imports;
                 use super::super::super::super::_rt;
                 pub type LogicBuffer = super::super::super::super::lojban::nesy::ast_types::LogicBuffer;
+                #[derive(Debug)]
+                #[repr(transparent)]
+                pub struct KnowledgeBase {
+                    handle: _rt::Resource<KnowledgeBase>,
+                }
+                type _KnowledgeBaseRep<T> = Option<T>;
+                impl KnowledgeBase {
+                    /// Creates a new resource from the specified representation.
+                    ///
+                    /// This function will create a new resource handle by moving `val` onto
+                    /// the heap and then passing that heap pointer to the component model to
+                    /// create a handle. The owned handle is then returned as `KnowledgeBase`.
+                    pub fn new<T: GuestKnowledgeBase>(val: T) -> Self {
+                        Self::type_guard::<T>();
+                        let val: _KnowledgeBaseRep<T> = Some(val);
+                        let ptr: *mut _KnowledgeBaseRep<T> = _rt::Box::into_raw(
+                            _rt::Box::new(val),
+                        );
+                        unsafe { Self::from_handle(T::_resource_new(ptr.cast())) }
+                    }
+                    /// Gets access to the underlying `T` which represents this resource.
+                    pub fn get<T: GuestKnowledgeBase>(&self) -> &T {
+                        let ptr = unsafe { &*self.as_ptr::<T>() };
+                        ptr.as_ref().unwrap()
+                    }
+                    /// Gets mutable access to the underlying `T` which represents this
+                    /// resource.
+                    pub fn get_mut<T: GuestKnowledgeBase>(&mut self) -> &mut T {
+                        let ptr = unsafe { &mut *self.as_ptr::<T>() };
+                        ptr.as_mut().unwrap()
+                    }
+                    /// Consumes this resource and returns the underlying `T`.
+                    pub fn into_inner<T: GuestKnowledgeBase>(self) -> T {
+                        let ptr = unsafe { &mut *self.as_ptr::<T>() };
+                        ptr.take().unwrap()
+                    }
+                    #[doc(hidden)]
+                    pub unsafe fn from_handle(handle: u32) -> Self {
+                        Self {
+                            handle: unsafe { _rt::Resource::from_handle(handle) },
+                        }
+                    }
+                    #[doc(hidden)]
+                    pub fn take_handle(&self) -> u32 {
+                        _rt::Resource::take_handle(&self.handle)
+                    }
+                    #[doc(hidden)]
+                    pub fn handle(&self) -> u32 {
+                        _rt::Resource::handle(&self.handle)
+                    }
+                    #[doc(hidden)]
+                    fn type_guard<T: 'static>() {
+                        use core::any::TypeId;
+                        static mut LAST_TYPE: Option<TypeId> = None;
+                        unsafe {
+                            assert!(! cfg!(target_feature = "atomics"));
+                            let id = TypeId::of::<T>();
+                            match LAST_TYPE {
+                                Some(ty) => {
+                                    assert!(
+                                        ty == id, "cannot use two types with this resource type"
+                                    )
+                                }
+                                None => LAST_TYPE = Some(id),
+                            }
+                        }
+                    }
+                    #[doc(hidden)]
+                    pub unsafe fn dtor<T: 'static>(handle: *mut u8) {
+                        Self::type_guard::<T>();
+                        let _ = unsafe {
+                            _rt::Box::from_raw(handle as *mut _KnowledgeBaseRep<T>)
+                        };
+                    }
+                    fn as_ptr<T: GuestKnowledgeBase>(
+                        &self,
+                    ) -> *mut _KnowledgeBaseRep<T> {
+                        KnowledgeBase::type_guard::<T>();
+                        T::_resource_rep(self.handle()).cast()
+                    }
+                }
+                /// A borrowed version of [`KnowledgeBase`] which represents a borrowed value
+                /// with the lifetime `'a`.
+                #[derive(Debug)]
+                #[repr(transparent)]
+                pub struct KnowledgeBaseBorrow<'a> {
+                    rep: *mut u8,
+                    _marker: core::marker::PhantomData<&'a KnowledgeBase>,
+                }
+                impl<'a> KnowledgeBaseBorrow<'a> {
+                    #[doc(hidden)]
+                    pub unsafe fn lift(rep: usize) -> Self {
+                        Self {
+                            rep: rep as *mut u8,
+                            _marker: core::marker::PhantomData,
+                        }
+                    }
+                    /// Gets access to the underlying `T` in this resource.
+                    pub fn get<T: GuestKnowledgeBase>(&self) -> &T {
+                        let ptr = unsafe { &mut *self.as_ptr::<T>() };
+                        ptr.as_ref().unwrap()
+                    }
+                    fn as_ptr<T: 'static>(&self) -> *mut _KnowledgeBaseRep<T> {
+                        KnowledgeBase::type_guard::<T>();
+                        self.rep.cast()
+                    }
+                }
+                unsafe impl _rt::WasmResource for KnowledgeBase {
+                    #[inline]
+                    unsafe fn drop(_handle: u32) {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        unreachable!();
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            #[link(
+                                wasm_import_module = "[export]lojban:nesy/reasoning@0.1.0"
+                            )]
+                            unsafe extern "C" {
+                                #[link_name = "[resource-drop]knowledge-base"]
+                                fn drop(_: u32);
+                            }
+                            unsafe { drop(_handle) };
+                        }
+                    }
+                }
                 #[doc(hidden)]
                 #[allow(non_snake_case)]
-                pub unsafe fn _export_assert_fact_cabi<T: Guest>(
+                pub unsafe fn _export_constructor_knowledge_base_cabi<
+                    T: GuestKnowledgeBase,
+                >() -> i32 {
+                    #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+                    let result0 = KnowledgeBase::new(T::new());
+                    (result0).take_handle() as i32
+                }
+                #[doc(hidden)]
+                #[allow(non_snake_case)]
+                pub unsafe fn _export_method_knowledge_base_assert_fact_cabi<
+                    T: GuestKnowledgeBase,
+                >(
                     arg0: *mut u8,
-                    arg1: usize,
-                    arg2: *mut u8,
-                    arg3: usize,
+                    arg1: *mut u8,
+                    arg2: usize,
+                    arg3: *mut u8,
+                    arg4: usize,
                 ) -> *mut u8 {
                     #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
-                    let base41 = arg0;
-                    let len41 = arg1;
+                    let base41 = arg1;
+                    let len41 = arg2;
                     let mut result41 = _rt::Vec::with_capacity(len41);
                     for i in 0..len41 {
                         let base = base41
@@ -943,11 +1080,14 @@ pub mod exports {
                         len41 * (5 * ::core::mem::size_of::<*const u8>()),
                         ::core::mem::size_of::<*const u8>(),
                     );
-                    let len42 = arg3;
-                    let result43 = T::assert_fact(super::super::super::super::lojban::nesy::ast_types::LogicBuffer {
-                        nodes: result41,
-                        roots: _rt::Vec::from_raw_parts(arg2.cast(), len42, len42),
-                    });
+                    let len42 = arg4;
+                    let result43 = T::assert_fact(
+                        unsafe { KnowledgeBaseBorrow::lift(arg0 as u32 as usize) }.get(),
+                        super::super::super::super::lojban::nesy::ast_types::LogicBuffer {
+                            nodes: result41,
+                            roots: _rt::Vec::from_raw_parts(arg3.cast(), len42, len42),
+                        },
+                    );
                     let ptr44 = (&raw mut _RET_AREA.0).cast::<u8>();
                     match result43 {
                         Ok(_) => {
@@ -971,7 +1111,9 @@ pub mod exports {
                 }
                 #[doc(hidden)]
                 #[allow(non_snake_case)]
-                pub unsafe fn __post_return_assert_fact<T: Guest>(arg0: *mut u8) {
+                pub unsafe fn __post_return_method_knowledge_base_assert_fact<
+                    T: GuestKnowledgeBase,
+                >(arg0: *mut u8) {
                     let l0 = i32::from(*arg0.add(0).cast::<u8>());
                     match l0 {
                         0 => {}
@@ -988,15 +1130,18 @@ pub mod exports {
                 }
                 #[doc(hidden)]
                 #[allow(non_snake_case)]
-                pub unsafe fn _export_query_entailment_cabi<T: Guest>(
+                pub unsafe fn _export_method_knowledge_base_query_entailment_cabi<
+                    T: GuestKnowledgeBase,
+                >(
                     arg0: *mut u8,
-                    arg1: usize,
-                    arg2: *mut u8,
-                    arg3: usize,
+                    arg1: *mut u8,
+                    arg2: usize,
+                    arg3: *mut u8,
+                    arg4: usize,
                 ) -> *mut u8 {
                     #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
-                    let base41 = arg0;
-                    let len41 = arg1;
+                    let base41 = arg1;
+                    let len41 = arg2;
                     let mut result41 = _rt::Vec::with_capacity(len41);
                     for i in 0..len41 {
                         let base = base41
@@ -1243,11 +1388,14 @@ pub mod exports {
                         len41 * (5 * ::core::mem::size_of::<*const u8>()),
                         ::core::mem::size_of::<*const u8>(),
                     );
-                    let len42 = arg3;
-                    let result43 = T::query_entailment(super::super::super::super::lojban::nesy::ast_types::LogicBuffer {
-                        nodes: result41,
-                        roots: _rt::Vec::from_raw_parts(arg2.cast(), len42, len42),
-                    });
+                    let len42 = arg4;
+                    let result43 = T::query_entailment(
+                        unsafe { KnowledgeBaseBorrow::lift(arg0 as u32 as usize) }.get(),
+                        super::super::super::super::lojban::nesy::ast_types::LogicBuffer {
+                            nodes: result41,
+                            roots: _rt::Vec::from_raw_parts(arg3.cast(), len42, len42),
+                        },
+                    );
                     let ptr44 = (&raw mut _RET_AREA.0).cast::<u8>();
                     match result43 {
                         Ok(e) => {
@@ -1277,7 +1425,9 @@ pub mod exports {
                 }
                 #[doc(hidden)]
                 #[allow(non_snake_case)]
-                pub unsafe fn __post_return_query_entailment<T: Guest>(arg0: *mut u8) {
+                pub unsafe fn __post_return_method_knowledge_base_query_entailment<
+                    T: GuestKnowledgeBase,
+                >(arg0: *mut u8) {
                     let l0 = i32::from(*arg0.add(0).cast::<u8>());
                     match l0 {
                         0 => {}
@@ -1294,9 +1444,13 @@ pub mod exports {
                 }
                 #[doc(hidden)]
                 #[allow(non_snake_case)]
-                pub unsafe fn _export_reset_state_cabi<T: Guest>() -> *mut u8 {
+                pub unsafe fn _export_method_knowledge_base_reset_cabi<
+                    T: GuestKnowledgeBase,
+                >(arg0: *mut u8) -> *mut u8 {
                     #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
-                    let result0 = T::reset_state();
+                    let result0 = T::reset(
+                        unsafe { KnowledgeBaseBorrow::lift(arg0 as u32 as usize) }.get(),
+                    );
                     let ptr1 = (&raw mut _RET_AREA.0).cast::<u8>();
                     match result0 {
                         Ok(_) => {
@@ -1320,7 +1474,9 @@ pub mod exports {
                 }
                 #[doc(hidden)]
                 #[allow(non_snake_case)]
-                pub unsafe fn __post_return_reset_state<T: Guest>(arg0: *mut u8) {
+                pub unsafe fn __post_return_method_knowledge_base_reset<
+                    T: GuestKnowledgeBase,
+                >(arg0: *mut u8) {
                     let l0 = i32::from(*arg0.add(0).cast::<u8>());
                     match l0 {
                         0 => {}
@@ -1336,42 +1492,122 @@ pub mod exports {
                     }
                 }
                 pub trait Guest {
-                    fn assert_fact(logic: LogicBuffer) -> Result<(), _rt::String>;
-                    fn query_entailment(logic: LogicBuffer) -> Result<bool, _rt::String>;
-                    /// Clear the knowledge base, Skolem counter, entity registry,
-                    /// and universal templates. Returns to a fresh-boot state.
-                    fn reset_state() -> Result<(), _rt::String>;
+                    type KnowledgeBase: GuestKnowledgeBase;
+                }
+                pub trait GuestKnowledgeBase: 'static {
+                    #[doc(hidden)]
+                    unsafe fn _resource_new(val: *mut u8) -> u32
+                    where
+                        Self: Sized,
+                    {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            let _ = val;
+                            unreachable!();
+                        }
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            #[link(
+                                wasm_import_module = "[export]lojban:nesy/reasoning@0.1.0"
+                            )]
+                            unsafe extern "C" {
+                                #[link_name = "[resource-new]knowledge-base"]
+                                fn new(_: *mut u8) -> u32;
+                            }
+                            unsafe { new(val) }
+                        }
+                    }
+                    #[doc(hidden)]
+                    fn _resource_rep(handle: u32) -> *mut u8
+                    where
+                        Self: Sized,
+                    {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            let _ = handle;
+                            unreachable!();
+                        }
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            #[link(
+                                wasm_import_module = "[export]lojban:nesy/reasoning@0.1.0"
+                            )]
+                            unsafe extern "C" {
+                                #[link_name = "[resource-rep]knowledge-base"]
+                                fn rep(_: u32) -> *mut u8;
+                            }
+                            unsafe { rep(handle) }
+                        }
+                    }
+                    /// Create a fresh KB with FOL schema loaded.
+                    fn new() -> Self;
+                    /// Assert FOL facts into this KB.
+                    fn assert_fact(&self, logic: LogicBuffer) -> Result<(), _rt::String>;
+                    /// Query whether FOL formula is entailed by this KB.
+                    fn query_entailment(
+                        &self,
+                        logic: LogicBuffer,
+                    ) -> Result<bool, _rt::String>;
+                    /// Reset this KB to fresh state (clear all facts, Skolems, rules).
+                    fn reset(&self) -> Result<(), _rt::String>;
                 }
                 #[doc(hidden)]
                 macro_rules! __export_lojban_nesy_reasoning_0_1_0_cabi {
                     ($ty:ident with_types_in $($path_to_types:tt)*) => {
                         const _ : () = { #[unsafe (export_name =
-                        "lojban:nesy/reasoning@0.1.0#assert-fact")] unsafe extern "C" fn
-                        export_assert_fact(arg0 : * mut u8, arg1 : usize, arg2 : * mut
-                        u8, arg3 : usize,) -> * mut u8 { unsafe { $($path_to_types)*::
-                        _export_assert_fact_cabi::<$ty > (arg0, arg1, arg2, arg3) } }
-                        #[unsafe (export_name =
-                        "cabi_post_lojban:nesy/reasoning@0.1.0#assert-fact")] unsafe
-                        extern "C" fn _post_return_assert_fact(arg0 : * mut u8,) { unsafe
-                        { $($path_to_types)*:: __post_return_assert_fact::<$ty > (arg0) }
-                        } #[unsafe (export_name =
-                        "lojban:nesy/reasoning@0.1.0#query-entailment")] unsafe extern
-                        "C" fn export_query_entailment(arg0 : * mut u8, arg1 : usize,
-                        arg2 : * mut u8, arg3 : usize,) -> * mut u8 { unsafe {
-                        $($path_to_types)*:: _export_query_entailment_cabi::<$ty > (arg0,
-                        arg1, arg2, arg3) } } #[unsafe (export_name =
-                        "cabi_post_lojban:nesy/reasoning@0.1.0#query-entailment")] unsafe
-                        extern "C" fn _post_return_query_entailment(arg0 : * mut u8,) {
+                        "lojban:nesy/reasoning@0.1.0#[constructor]knowledge-base")]
+                        unsafe extern "C" fn export_constructor_knowledge_base() -> i32 {
                         unsafe { $($path_to_types)*::
-                        __post_return_query_entailment::<$ty > (arg0) } } #[unsafe
-                        (export_name = "lojban:nesy/reasoning@0.1.0#reset-state")] unsafe
-                        extern "C" fn export_reset_state() -> * mut u8 { unsafe {
-                        $($path_to_types)*:: _export_reset_state_cabi::<$ty > () } }
-                        #[unsafe (export_name =
-                        "cabi_post_lojban:nesy/reasoning@0.1.0#reset-state")] unsafe
-                        extern "C" fn _post_return_reset_state(arg0 : * mut u8,) { unsafe
-                        { $($path_to_types)*:: __post_return_reset_state::<$ty > (arg0) }
-                        } };
+                        _export_constructor_knowledge_base_cabi::<<$ty as
+                        $($path_to_types)*:: Guest >::KnowledgeBase > () } } #[unsafe
+                        (export_name =
+                        "lojban:nesy/reasoning@0.1.0#[method]knowledge-base.assert-fact")]
+                        unsafe extern "C" fn
+                        export_method_knowledge_base_assert_fact(arg0 : * mut u8, arg1 :
+                        * mut u8, arg2 : usize, arg3 : * mut u8, arg4 : usize,) -> * mut
+                        u8 { unsafe { $($path_to_types)*::
+                        _export_method_knowledge_base_assert_fact_cabi::<<$ty as
+                        $($path_to_types)*:: Guest >::KnowledgeBase > (arg0, arg1, arg2,
+                        arg3, arg4) } } #[unsafe (export_name =
+                        "cabi_post_lojban:nesy/reasoning@0.1.0#[method]knowledge-base.assert-fact")]
+                        unsafe extern "C" fn
+                        _post_return_method_knowledge_base_assert_fact(arg0 : * mut u8,)
+                        { unsafe { $($path_to_types)*::
+                        __post_return_method_knowledge_base_assert_fact::<<$ty as
+                        $($path_to_types)*:: Guest >::KnowledgeBase > (arg0) } } #[unsafe
+                        (export_name =
+                        "lojban:nesy/reasoning@0.1.0#[method]knowledge-base.query-entailment")]
+                        unsafe extern "C" fn
+                        export_method_knowledge_base_query_entailment(arg0 : * mut u8,
+                        arg1 : * mut u8, arg2 : usize, arg3 : * mut u8, arg4 : usize,) ->
+                        * mut u8 { unsafe { $($path_to_types)*::
+                        _export_method_knowledge_base_query_entailment_cabi::<<$ty as
+                        $($path_to_types)*:: Guest >::KnowledgeBase > (arg0, arg1, arg2,
+                        arg3, arg4) } } #[unsafe (export_name =
+                        "cabi_post_lojban:nesy/reasoning@0.1.0#[method]knowledge-base.query-entailment")]
+                        unsafe extern "C" fn
+                        _post_return_method_knowledge_base_query_entailment(arg0 : * mut
+                        u8,) { unsafe { $($path_to_types)*::
+                        __post_return_method_knowledge_base_query_entailment::<<$ty as
+                        $($path_to_types)*:: Guest >::KnowledgeBase > (arg0) } } #[unsafe
+                        (export_name =
+                        "lojban:nesy/reasoning@0.1.0#[method]knowledge-base.reset")]
+                        unsafe extern "C" fn export_method_knowledge_base_reset(arg0 : *
+                        mut u8,) -> * mut u8 { unsafe { $($path_to_types)*::
+                        _export_method_knowledge_base_reset_cabi::<<$ty as
+                        $($path_to_types)*:: Guest >::KnowledgeBase > (arg0) } } #[unsafe
+                        (export_name =
+                        "cabi_post_lojban:nesy/reasoning@0.1.0#[method]knowledge-base.reset")]
+                        unsafe extern "C" fn
+                        _post_return_method_knowledge_base_reset(arg0 : * mut u8,) {
+                        unsafe { $($path_to_types)*::
+                        __post_return_method_knowledge_base_reset::<<$ty as
+                        $($path_to_types)*:: Guest >::KnowledgeBase > (arg0) } } const _
+                        : () = { #[doc(hidden)] #[unsafe (export_name =
+                        "lojban:nesy/reasoning@0.1.0#[dtor]knowledge-base")]
+                        #[allow(non_snake_case)] unsafe extern "C" fn dtor(rep : * mut
+                        u8) { unsafe { $($path_to_types)*:: KnowledgeBase::dtor::< <$ty
+                        as $($path_to_types)*:: Guest >::KnowledgeBase > (rep) } } }; };
                     };
                 }
                 #[doc(hidden)]
@@ -1396,6 +1632,81 @@ mod _rt {
     #![allow(dead_code, clippy::all)]
     pub use alloc_crate::string::String;
     pub use alloc_crate::vec::Vec;
+    use core::fmt;
+    use core::marker;
+    use core::sync::atomic::{AtomicU32, Ordering::Relaxed};
+    /// A type which represents a component model resource, either imported or
+    /// exported into this component.
+    ///
+    /// This is a low-level wrapper which handles the lifetime of the resource
+    /// (namely this has a destructor). The `T` provided defines the component model
+    /// intrinsics that this wrapper uses.
+    ///
+    /// One of the chief purposes of this type is to provide `Deref` implementations
+    /// to access the underlying data when it is owned.
+    ///
+    /// This type is primarily used in generated code for exported and imported
+    /// resources.
+    #[repr(transparent)]
+    pub struct Resource<T: WasmResource> {
+        handle: AtomicU32,
+        _marker: marker::PhantomData<T>,
+    }
+    /// A trait which all wasm resources implement, namely providing the ability to
+    /// drop a resource.
+    ///
+    /// This generally is implemented by generated code, not user-facing code.
+    #[allow(clippy::missing_safety_doc)]
+    pub unsafe trait WasmResource {
+        /// Invokes the `[resource-drop]...` intrinsic.
+        unsafe fn drop(handle: u32);
+    }
+    impl<T: WasmResource> Resource<T> {
+        #[doc(hidden)]
+        pub unsafe fn from_handle(handle: u32) -> Self {
+            debug_assert!(handle != u32::MAX);
+            Self {
+                handle: AtomicU32::new(handle),
+                _marker: marker::PhantomData,
+            }
+        }
+        /// Takes ownership of the handle owned by `resource`.
+        ///
+        /// Note that this ideally would be `into_handle` taking `Resource<T>` by
+        /// ownership. The code generator does not enable that in all situations,
+        /// unfortunately, so this is provided instead.
+        ///
+        /// Also note that `take_handle` is in theory only ever called on values
+        /// owned by a generated function. For example a generated function might
+        /// take `Resource<T>` as an argument but then call `take_handle` on a
+        /// reference to that argument. In that sense the dynamic nature of
+        /// `take_handle` should only be exposed internally to generated code, not
+        /// to user code.
+        #[doc(hidden)]
+        pub fn take_handle(resource: &Resource<T>) -> u32 {
+            resource.handle.swap(u32::MAX, Relaxed)
+        }
+        #[doc(hidden)]
+        pub fn handle(resource: &Resource<T>) -> u32 {
+            resource.handle.load(Relaxed)
+        }
+    }
+    impl<T: WasmResource> fmt::Debug for Resource<T> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.debug_struct("Resource").field("handle", &self.handle).finish()
+        }
+    }
+    impl<T: WasmResource> Drop for Resource<T> {
+        fn drop(&mut self) {
+            unsafe {
+                match self.handle.load(Relaxed) {
+                    u32::MAX => {}
+                    other => T::drop(other),
+                }
+            }
+        }
+    }
+    pub use alloc_crate::boxed::Box;
     #[cfg(target_arch = "wasm32")]
     pub fn run_ctors_once() {
         wit_bindgen_rt::run_ctors_once();
@@ -1453,8 +1764,8 @@ pub(crate) use __export_reasoning_component_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1685] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x8b\x0c\x01A\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1828] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x9a\x0d\x01A\x02\x01\
 A\x05\x01BD\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
 m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x06\x03ria\
 \x03nii\x03mui\x03kiu\x03pio\x03bai\x04\0\x07bai-tag\x03\0\x06\x01q\x02\x05fixed\
@@ -1485,13 +1796,16 @@ predicate\x01;\0\x08and-node\x01<\0\x07or-node\x01<\0\x08not-node\x01y\0\x0bexis
 ts-node\x01=\0\x0cfor-all-node\x01=\0\x09past-node\x01y\0\x0cpresent-node\x01y\0\
 \x0bfuture-node\x01y\0\x0acount-node\x01>\0\x04\0\x0alogic-node\x03\0?\x01p\xc0\0\
 \x01r\x02\x05nodes\xc1\0\x05roots5\x04\0\x0clogic-buffer\x03\0B\x03\0\x1blojban:\
-nesy/ast-types@0.1.0\x05\0\x02\x03\0\0\x0clogic-buffer\x01B\x0a\x02\x03\x02\x01\x01\
-\x04\0\x0clogic-buffer\x03\0\0\x01j\0\x01s\x01@\x01\x05logic\x01\0\x02\x04\0\x0b\
-assert-fact\x01\x03\x01j\x01\x7f\x01s\x01@\x01\x05logic\x01\0\x04\x04\0\x10query\
--entailment\x01\x05\x01@\0\0\x02\x04\0\x0breset-state\x01\x06\x04\0\x1blojban:ne\
-sy/reasoning@0.1.0\x05\x02\x04\0%lojban:nesy/reasoning-component@0.1.0\x04\0\x0b\
-\x19\x01\0\x13reasoning-component\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\
-\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
+nesy/ast-types@0.1.0\x05\0\x02\x03\0\0\x0clogic-buffer\x01B\x0f\x02\x03\x02\x01\x01\
+\x04\0\x0clogic-buffer\x03\0\0\x04\0\x0eknowledge-base\x03\x01\x01i\x02\x01@\0\0\
+\x03\x04\0\x1b[constructor]knowledge-base\x01\x04\x01h\x02\x01j\0\x01s\x01@\x02\x04\
+self\x05\x05logic\x01\0\x06\x04\0\"[method]knowledge-base.assert-fact\x01\x07\x01\
+j\x01\x7f\x01s\x01@\x02\x04self\x05\x05logic\x01\0\x08\x04\0'[method]knowledge-b\
+ase.query-entailment\x01\x09\x01@\x01\x04self\x05\0\x06\x04\0\x1c[method]knowled\
+ge-base.reset\x01\x0a\x04\0\x1blojban:nesy/reasoning@0.1.0\x05\x02\x04\0%lojban:\
+nesy/reasoning-component@0.1.0\x04\0\x0b\x19\x01\0\x13reasoning-component\x03\0\0\
+\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10wit-bind\
+gen-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

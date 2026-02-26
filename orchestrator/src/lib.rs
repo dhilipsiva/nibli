@@ -1,11 +1,16 @@
 #[allow(warnings)]
 mod bindings;
 
-use bindings::Guest;
+use bindings::exports::lojban::nesy::engine::{Guest, GuestSession};
 use bindings::lojban::nesy::ast_types::{LogicBuffer, LogicNode, LogicalTerm};
-use bindings::lojban::nesy::{parser, reasoning, semantics};
+use bindings::lojban::nesy::{parser, semantics};
+use bindings::lojban::nesy::reasoning::KnowledgeBase;
 
 struct EnginePipeline;
+
+pub struct Session {
+    kb: KnowledgeBase,
+}
 
 // ─── Shared pipeline: text → AST → LogicBuffer ───
 
@@ -26,24 +31,38 @@ fn debug_sexp(buffer: &LogicBuffer) -> String {
 // ─── WIT exports ───
 
 impl Guest for EnginePipeline {
-    fn assert_text(input: String) -> Result<u32, String> {
+    type Session = Session;
+}
+
+impl GuestSession for Session {
+    fn new() -> Self {
+        Session {
+            kb: KnowledgeBase::new(),
+        }
+    }
+
+    fn assert_text(&self, input: String) -> Result<u32, String> {
         let buf = compile_pipeline(&input)?;
-        reasoning::assert_fact(&buf).map_err(|e| format!("Reasoning: {}", e))?;
+        self.kb
+            .assert_fact(&buf)
+            .map_err(|e| format!("Reasoning: {}", e))?;
         Ok(buf.roots.len() as u32)
     }
 
-    fn query_text(input: String) -> Result<bool, String> {
+    fn query_text(&self, input: String) -> Result<bool, String> {
         let buf = compile_pipeline(&input)?;
-        reasoning::query_entailment(&buf).map_err(|e| format!("Reasoning: {}", e))
+        self.kb
+            .query_entailment(&buf)
+            .map_err(|e| format!("Reasoning: {}", e))
     }
 
-    fn compile_debug(input: String) -> Result<String, String> {
+    fn compile_debug(&self, input: String) -> Result<String, String> {
         let buf = compile_pipeline(&input)?;
         Ok(debug_sexp(&buf))
     }
 
-    fn reset_kb() -> Result<(), String> {
-        reasoning::reset_state().map_err(|e| format!("Reset: {}", e))
+    fn reset_kb(&self) -> Result<(), String> {
+        self.kb.reset().map_err(|e| format!("Reset: {}", e))
     }
 }
 
@@ -127,10 +146,6 @@ fn write_sexp(out: &mut String, buffer: &LogicBuffer, node_id: u32) {
 }
 
 fn write_term_list(out: &mut String, args: &[LogicalTerm]) {
-    // Build Cons list from args in reverse order
-    // We need to write nested (Cons term (Cons term ... (Nil)))
-    // Since we can't easily reverse-write into a forward buffer,
-    // we recurse through the slice.
     if args.is_empty() {
         out.push_str("(Nil)");
         return;

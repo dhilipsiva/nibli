@@ -1,19 +1,13 @@
 #[allow(warnings)]
 mod bindings;
 
-use crate::bindings::exports::lojban::nesy::reasoning::Guest;
+use crate::bindings::exports::lojban::nesy::reasoning::{Guest, GuestKnowledgeBase};
 use crate::bindings::lojban::nesy::ast_types::{LogicBuffer, LogicNode, LogicalTerm};
 use egglog::EGraph;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Mutex, OnceLock};
 
-// ─── Global Persistent State ──────────────────────────────────────
-
-static EGRAPH: OnceLock<Mutex<EGraph>> = OnceLock::new();
-static SKOLEM_COUNTER: OnceLock<Mutex<usize>> = OnceLock::new();
-static KNOWN_ENTITIES: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-static KNOWN_RULES: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-static SKOLEM_FN_REGISTRY: OnceLock<Mutex<Vec<SkolemFnEntry>>> = OnceLock::new();
+// ─── Knowledge Base State ────────────────────────────────────────
 
 /// Registry entry for a SkolemFn created by native rule compilation.
 /// Used by query-side existential checking to generate SkolemFn witness terms.
@@ -25,12 +19,62 @@ struct SkolemFnEntry {
 
 /// Prefix used for dependent Skolem placeholder variables.
 /// A dependent Skolem is an ∃ variable nested under a ∀.
-/// These remain as (Var "...") in the template sexp and get replaced
-/// with entity-specific constants during Herbrand instantiation.
 const SKDEP_PREFIX: &str = "__skdep__";
 
+/// All mutable KB state behind a single RefCell.
+struct KnowledgeBaseInner {
+    egraph: EGraph,
+    skolem_counter: usize,
+    known_entities: HashSet<String>,
+    known_rules: HashSet<String>,
+    skolem_fn_registry: Vec<SkolemFnEntry>,
+}
+
+impl KnowledgeBaseInner {
+    fn new() -> Self {
+        Self {
+            egraph: make_fresh_egraph(),
+            skolem_counter: 0,
+            known_entities: HashSet::new(),
+            known_rules: HashSet::new(),
+            skolem_fn_registry: Vec::new(),
+        }
+    }
+
+    fn reset(&mut self) {
+        self.egraph = make_fresh_egraph();
+        self.skolem_counter = 0;
+        self.known_entities.clear();
+        self.known_rules.clear();
+        self.skolem_fn_registry.clear();
+    }
+
+    fn fresh_skolem(&mut self) -> String {
+        let sk = format!("sk_{}", self.skolem_counter);
+        self.skolem_counter += 1;
+        sk
+    }
+
+    fn get_known_entities(&self) -> Vec<String> {
+        self.known_entities.iter().cloned().collect()
+    }
+
+    fn note_entity(&mut self, name: &str) {
+        let is_new = self.known_entities.insert(name.to_string());
+        if is_new {
+            let cmd = format!("(InDomain (Const \"{}\"))", name);
+            self.egraph.parse_and_run_program(None, &cmd).ok();
+        }
+    }
+}
+
+/// The WIT-exported resource type.
+/// wit-bindgen generates `&self` for methods, so RefCell provides mutability.
+pub struct KnowledgeBase {
+    inner: RefCell<KnowledgeBaseInner>,
+}
+
 /// The egglog schema and inference rules, shared between init and reset.
-/// NOTE: Num added to Term datatype (bug 0.5 fix).
 const SCHEMA: &str = r#"
     ;; ═══════════════════════════════════════════════════
     ;; Lojban NeSy Engine — FOL Schema & Rules
@@ -39,8 +83,7 @@ const SCHEMA: &str = r#"
 
     ;; Atomic Terms
     ;; SkolemFn: dependent Skolem witness — (SkolemFn "sk_N" dep_term)
-    ;; where dep_term is the universal variable the witness depends on.
-    ;; Currently supports dep_count=1 (single universal dependency).
+    ;; where dep_term is a Term (either Var in rules, or Const in ground facts)
     (datatype Term
         (Var String)
         (Const String)
@@ -50,81 +93,60 @@ const SCHEMA: &str = r#"
         (SkolemFn String Term)
     )
 
-    ;; Variadic Argument List (Linked List)
+    ;; Argument list (Cons/Nil encoding)
     (datatype TermList
         (Nil)
         (Cons Term TermList)
     )
 
-    ;; Well-Formed Formulas
+    ;; Logical Formulae
     (datatype Formula
         (Pred String TermList)
         (And Formula Formula)
         (Or Formula Formula)
         (Not Formula)
-        (Implies Formula Formula)
         (Exists String Formula)
         (ForAll String Formula)
+        (Implies Formula Formula)
     )
 
-    ;; The Knowledge Base
+    ;; Ground-truth relation: "this formula is known true"
     (relation IsTrue (Formula))
-
-    ;; Domain of known entities (for bare universal triggers)
+    ;; Domain tracking: "this term is a known entity"
     (relation InDomain (Term))
 
-    ;; ───────────────────────────────────────────────────
-    ;; STRUCTURAL REWRITES
-    ;; ───────────────────────────────────────────────────
-
+    ;; ── Structural rewrites ──────────────────────────
     ;; Commutativity
-    (rewrite (And A B) (And B A))
-    (rewrite (Or A B) (Or B A))
+    (rewrite (And a b) (And b a))
+    (rewrite (Or a b) (Or b a))
 
     ;; Associativity
-    (rewrite (And (And A B) C) (And A (And B C)))
-    (rewrite (Or (Or A B) C) (Or A (Or B C)))
+    (rewrite (And (And a b) c) (And a (And b c)))
+    (rewrite (Or (Or a b) c) (Or a (Or b c)))
 
     ;; Double negation elimination
-    (rewrite (Not (Not A)) A)
+    (rewrite (Not (Not a)) a)
 
-    ;; De Morgan's Laws
-    (rewrite (Not (And A B)) (Or (Not A) (Not B)))
-    (rewrite (Not (Or A B)) (And (Not A) (Not B)))
+    ;; De Morgan's laws
+    (rewrite (Not (And a b)) (Or (Not a) (Not b)))
+    (rewrite (Not (Or a b)) (And (Not a) (Not b)))
 
-    ;; Material conditional elimination
-    (rewrite (Implies A B) (Or (Not A) B))
+    ;; Material conditional
+    (rewrite (Implies a b) (Or (Not a) b))
 
-    ;; ───────────────────────────────────────────────────
-    ;; INFERENCE RULES
-    ;; ───────────────────────────────────────────────────
+    ;; ── Inference rules ──────────────────────────────
+    ;; Conjunction elimination
+    (rule ((IsTrue (And a b))) ((IsTrue a) (IsTrue b)))
 
-    ;; Conjunction Elimination
-    (rule ((IsTrue (And A B)))
-          ((IsTrue A) (IsTrue B)))
+    ;; Disjunctive syllogism
+    (rule ((IsTrue (Or a b)) (IsTrue (Not a))) ((IsTrue b)))
+    (rule ((IsTrue (Or a b)) (IsTrue (Not b))) ((IsTrue a)))
 
-    ;; Disjunctive Syllogism: A ∨ B, ¬A ⊢ B
-    (rule ((IsTrue (Or A B)) (IsTrue (Not A)))
-          ((IsTrue B)))
+    ;; Modus ponens via implication
+    (rule ((IsTrue (Implies a b)) (IsTrue a)) ((IsTrue b)))
 
-    ;; Modus Ponens (disjunctive form): ¬A ∨ B, A ⊢ B
-    ;; Critical for universal instantiation: ∀x.(¬R(x) ∨ P(x)) + R(e) ⊢ P(e)
-    ;; Cannot rely on double negation to bridge because egglog rewrites
-    ;; are directional — Not(Not(A)) is never created from A alone.
-    (rule ((IsTrue (Or (Not A) B)) (IsTrue A))
-          ((IsTrue B)))
-
-    ;; Modus Ponens
-    (rule ((IsTrue (Implies A B)) (IsTrue A))
-          ((IsTrue B)))
-
-    ;; Modus Tollens
-    (rule ((IsTrue (Implies A B)) (IsTrue (Not B)))
-          ((IsTrue (Not A))))
-
-    ;; ───────────────────────────────────────────────────
-    ;; QUANTIFIER RULES (residual)
-    ;; ───────────────────────────────────────────────────
+    ;; Modus tollens
+    (rule ((IsTrue (Implies a b)) (IsTrue (Not b))) ((IsTrue (Not a))))
 
     ;; ∀-distribution over ∧
     (rule ((IsTrue (ForAll v (And A B))))
@@ -140,22 +162,7 @@ fn make_fresh_egraph() -> EGraph {
     egraph
 }
 
-fn fresh_skolem() -> String {
-    let counter = SKOLEM_COUNTER.get_or_init(|| Mutex::new(0));
-    let mut c = counter.lock().unwrap();
-    let sk = format!("sk_{}", *c);
-    *c += 1;
-    sk
-}
-
-fn get_known_entities() -> Vec<String> {
-    let entities = KNOWN_ENTITIES.get_or_init(|| Mutex::new(HashSet::new()));
-    entities.lock().unwrap().iter().cloned().collect()
-}
-
 /// Build an egglog SkolemFn s-expression from a base name and pattern variable names.
-/// E.g., build_skolem_fn_sexp("sk_0", &["x__v0"]) → "(SkolemFn \"sk_0\" x__v0)"
-/// Currently supports dep_count=1 (single universal dependency).
 fn build_skolem_fn_sexp(base_name: &str, pattern_var_names: &[String]) -> String {
     assert_eq!(
         pattern_var_names.len(),
@@ -167,8 +174,6 @@ fn build_skolem_fn_sexp(base_name: &str, pattern_var_names: &[String]) -> String
 }
 
 /// Build a ground SkolemFn s-expression with a Const entity argument.
-/// E.g., build_ground_skolem_fn("sk_0", &["alice"]) → "(SkolemFn \"sk_0\" (Const \"alice\"))"
-/// Currently supports dep_count=1 (single universal dependency).
 fn build_ground_skolem_fn(base_name: &str, entities: &[String]) -> String {
     assert_eq!(
         entities.len(),
@@ -180,8 +185,6 @@ fn build_ground_skolem_fn(base_name: &str, entities: &[String]) -> String {
 }
 
 /// Generate cartesian product of entities with given arity.
-/// For dep_count=1: [[e1], [e2], ...]
-/// For dep_count=2: [[e1,e1], [e1,e2], [e2,e1], [e2,e2], ...]
 fn cartesian_product(entities: &[String], dep_count: usize) -> Vec<Vec<String>> {
     if dep_count == 0 {
         return vec![vec![]];
@@ -201,40 +204,36 @@ fn cartesian_product(entities: &[String], dep_count: usize) -> Vec<Vec<String>> 
     result
 }
 
-fn get_egraph() -> &'static Mutex<EGraph> {
-    EGRAPH.get_or_init(|| Mutex::new(make_fresh_egraph()))
-}
-
-/// Record an entity name for query-side enumeration and InDomain tracking.
-/// Unlike register_entity, this does NOT trigger template instantiation.
-/// Used by the native-rule path where egglog handles universals directly.
-fn note_entity(name: &str, egraph: &mut EGraph) {
-    let entities = KNOWN_ENTITIES.get_or_init(|| Mutex::new(HashSet::new()));
-    let is_new = entities.lock().unwrap().insert(name.to_string());
-    if is_new {
-        let cmd = format!("(InDomain (Const \"{}\"))", name);
-        egraph.parse_and_run_program(None, &cmd).ok();
-    }
-}
-
-/// Register an entity WITHOUT triggering universal template instantiation.
 // ─── WIT Export Implementation ────────────────────────────────────
 
 struct ReasoningComponent;
 
 impl Guest for ReasoningComponent {
+    type KnowledgeBase = KnowledgeBase;
+}
+
+impl GuestKnowledgeBase for KnowledgeBase {
+    fn new() -> Self {
+        KnowledgeBase {
+            inner: RefCell::new(KnowledgeBaseInner::new()),
+        }
+    }
+
     /// Assert facts with Skolemization (∃) and native egglog rules (∀).
-    /// All universals compile to native egglog rules with SkolemFn for dependent Skolems.
-    fn assert_fact(logic: LogicBuffer) -> Result<(), String> {
-        let egraph_mutex = get_egraph();
-        let mut egraph = egraph_mutex.lock().unwrap();
+    fn assert_fact(&self, logic: LogicBuffer) -> Result<(), String> {
+        let mut inner = self.inner.borrow_mut();
 
         for &root_id in &logic.roots {
             // Phase 1: Collect existential variables for Skolemization.
-            // Tracks enclosing universals to detect ∃-under-∀ (dependent Skolems).
             let mut skolem_subs = HashMap::new();
             let mut enclosing_universals = Vec::new();
-            collect_exists_for_skolem(&logic, root_id, &mut skolem_subs, &mut enclosing_universals);
+            collect_exists_for_skolem(
+                &logic,
+                root_id,
+                &mut skolem_subs,
+                &mut enclosing_universals,
+                &mut inner.skolem_counter,
+            );
 
             // Log Skolem substitutions
             if !skolem_subs.is_empty() {
@@ -263,36 +262,22 @@ impl Guest for ReasoningComponent {
 
             if is_forall {
                 // ═══ NATIVE RULE PATH ═══
-                // All universals (simple and dependent Skolem) compile to egglog rules.
-                // Dependent Skolems use SkolemFn terms; egglog's hash-join handles matching — O(K).
-
-                // Note independent Skolem constants as entities
                 for sk in skolem_subs.values() {
                     if !sk.starts_with(SKDEP_PREFIX) {
-                        note_entity(sk, &mut egraph);
+                        inner.note_entity(sk);
                     }
                 }
-
-                // Note named constants as entities
-                collect_and_note_constants(&logic, root_id, &mut egraph);
-
-                // Compile ForAll to native egglog rule
-                compile_forall_to_rule(&logic, root_id, &skolem_subs, &mut egraph)?;
+                collect_and_note_constants(&logic, root_id, &mut inner);
+                compile_forall_to_rule(&logic, root_id, &skolem_subs, &mut inner)?;
             } else {
                 // ═══ GROUND FORMULA PATH ═══
-                // No universals — just assert the ground formula.
-
-                // Register independent Skolem constants
                 for sk in skolem_subs.values() {
                     if !sk.starts_with(SKDEP_PREFIX) {
-                        note_entity(sk, &mut egraph);
+                        inner.note_entity(sk);
                     }
                 }
+                collect_and_note_constants(&logic, root_id, &mut inner);
 
-                // Note named constants as entities
-                collect_and_note_constants(&logic, root_id, &mut egraph);
-
-                // Convert skolem_subs to raw sexp form for reconstruct_sexp_with_subs
                 let raw_subs: HashMap<String, String> = skolem_subs
                     .iter()
                     .filter(|(_, v)| !v.starts_with(SKDEP_PREFIX))
@@ -300,31 +285,31 @@ impl Guest for ReasoningComponent {
                     .collect();
                 let sexp = reconstruct_sexp_with_subs(&logic, root_id, &raw_subs);
                 let command = format!("(IsTrue {})", sexp);
-                egraph
+                inner
+                    .egraph
                     .parse_and_run_program(None, &command)
                     .map_err(|e| format!("Failed to assert fact: {}", e))?;
             }
 
             // Phase 3: Generate extra witnesses for Count quantifiers (n > 1)
-            generate_count_extra_witnesses(&logic, root_id, &skolem_subs, &mut egraph);
+            generate_count_extra_witnesses(&logic, root_id, &skolem_subs, &mut inner);
 
             // Run rules to fixpoint
-            egraph.parse_and_run_program(None, "(run 100)").ok();
+            inner.egraph.parse_and_run_program(None, "(run 100)").ok();
         }
 
         Ok(())
     }
 
-    fn query_entailment(logic: LogicBuffer) -> Result<bool, String> {
-        let egraph_mutex = get_egraph();
-        let mut egraph = egraph_mutex.lock().unwrap();
+    fn query_entailment(&self, logic: LogicBuffer) -> Result<bool, String> {
+        let mut inner = self.inner.borrow_mut();
 
         // Run rules to fixpoint before querying
-        egraph.parse_and_run_program(None, "(run 100)").ok();
+        inner.egraph.parse_and_run_program(None, "(run 100)").ok();
 
         for &root_id in &logic.roots {
             let subs = HashMap::new();
-            if !check_formula_holds(&logic, root_id, &subs, &mut egraph)? {
+            if !check_formula_holds(&logic, root_id, &subs, &mut inner)? {
                 return Ok(false);
             }
         }
@@ -332,30 +317,8 @@ impl Guest for ReasoningComponent {
         Ok(true)
     }
 
-    /// Clear the knowledge base, Skolem counter, entity registry,
-    /// and universal templates. Returns to a fresh-boot state.
-    fn reset_state() -> Result<(), String> {
-        // 1. Replace e-graph with a fresh one (schema reloaded)
-        let egraph_mutex = get_egraph();
-        let mut egraph = egraph_mutex.lock().unwrap();
-        *egraph = make_fresh_egraph();
-
-        // 2. Reset Skolem counter to 0
-        let counter = SKOLEM_COUNTER.get_or_init(|| Mutex::new(0));
-        *counter.lock().unwrap() = 0;
-
-        // 3. Clear known entities
-        let entities = KNOWN_ENTITIES.get_or_init(|| Mutex::new(HashSet::new()));
-        entities.lock().unwrap().clear();
-
-        // 4. Clear known rules
-        let rules = KNOWN_RULES.get_or_init(|| Mutex::new(HashSet::new()));
-        rules.lock().unwrap().clear();
-
-        // 5. Clear SkolemFn registry
-        let sfr = SKOLEM_FN_REGISTRY.get_or_init(|| Mutex::new(Vec::new()));
-        sfr.lock().unwrap().clear();
-
+    fn reset(&self) -> Result<(), String> {
+        self.inner.borrow_mut().reset();
         Ok(())
     }
 }
@@ -366,50 +329,44 @@ fn check_formula_holds(
     buffer: &LogicBuffer,
     node_id: u32,
     subs: &HashMap<String, String>,
-    egraph: &mut EGraph,
+    inner: &mut KnowledgeBaseInner,
 ) -> Result<bool, String> {
     match &buffer.nodes[node_id as usize] {
-        LogicNode::AndNode((l, r)) => Ok(check_formula_holds(buffer, *l, subs, egraph)?
-            && check_formula_holds(buffer, *r, subs, egraph)?),
+        LogicNode::AndNode((l, r)) => Ok(check_formula_holds(buffer, *l, subs, inner)?
+            && check_formula_holds(buffer, *r, subs, inner)?),
         LogicNode::OrNode((l, r)) => {
-            // First: check if the compound (Or A B) itself is in the e-graph.
-            // This catches cases like `mi klama ja bajra` where (IsTrue (Or ...))
-            // was asserted but neither disjunct is individually derivable.
             let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
             let command = format!("(check (IsTrue {}))", sexp);
-            match egraph.parse_and_run_program(None, &command) {
+            match inner.egraph.parse_and_run_program(None, &command) {
                 Ok(_) => return Ok(true),
                 Err(_) => {}
             }
-            // Fallback: check if either disjunct holds individually.
-            Ok(check_formula_holds(buffer, *l, subs, egraph)?
-                || check_formula_holds(buffer, *r, subs, egraph)?)
+            Ok(check_formula_holds(buffer, *l, subs, inner)?
+                || check_formula_holds(buffer, *r, subs, inner)?)
         }
-        LogicNode::NotNode(inner) => Ok(!check_formula_holds(buffer, *inner, subs, egraph)?),
-        // Tense wrappers are transparent for reasoning
-        LogicNode::PastNode(inner)
-        | LogicNode::PresentNode(inner)
-        | LogicNode::FutureNode(inner) => check_formula_holds(buffer, *inner, subs, egraph),
+        LogicNode::NotNode(inner_node) => Ok(!check_formula_holds(buffer, *inner_node, subs, inner)?),
+        LogicNode::PastNode(inner_node)
+        | LogicNode::PresentNode(inner_node)
+        | LogicNode::FutureNode(inner_node) => check_formula_holds(buffer, *inner_node, subs, inner),
         LogicNode::ExistsNode((v, body)) => {
             // 1. Check if any known entity satisfies the body
-            let entities = get_known_entities();
+            let entities = inner.get_known_entities();
             for entity in &entities {
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
-                if check_formula_holds(buffer, *body, &new_subs, egraph)? {
+                if check_formula_holds(buffer, *body, &new_subs, inner)? {
                     return Ok(true);
                 }
             }
             // 2. Try SkolemFn witnesses from the registry
-            let sfr = SKOLEM_FN_REGISTRY.get_or_init(|| Mutex::new(Vec::new()));
-            let entries: Vec<SkolemFnEntry> = sfr.lock().unwrap().clone();
+            let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
             for entry in &entries {
                 let combos = cartesian_product(&entities, entry.dep_count);
                 for combo in &combos {
                     let witness_sexp = build_ground_skolem_fn(&entry.base_name, combo);
                     let mut new_subs = subs.clone();
                     new_subs.insert(v.clone(), witness_sexp);
-                    if check_formula_holds(buffer, *body, &new_subs, egraph)? {
+                    if check_formula_holds(buffer, *body, &new_subs, inner)? {
                         return Ok(true);
                     }
                 }
@@ -417,39 +374,35 @@ fn check_formula_holds(
             Ok(false)
         }
         LogicNode::ForAllNode((v, body)) => {
-            // Check if ALL known entities satisfy the body
-            let entities = get_known_entities();
+            let entities = inner.get_known_entities();
             if entities.is_empty() {
-                // Vacuously true over empty domain
                 return Ok(true);
             }
             for entity in &entities {
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
-                if !check_formula_holds(buffer, *body, &new_subs, egraph)? {
+                if !check_formula_holds(buffer, *body, &new_subs, inner)? {
                     return Ok(false);
                 }
             }
             Ok(true)
         }
         LogicNode::CountNode((v, count, body)) => {
-            // Check that exactly `count` known entities satisfy the body
-            let entities = get_known_entities();
+            let entities = inner.get_known_entities();
             let mut satisfying = 0u32;
             for entity in &entities {
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
-                if check_formula_holds(buffer, *body, &new_subs, egraph)? {
+                if check_formula_holds(buffer, *body, &new_subs, inner)? {
                     satisfying += 1;
                 }
             }
             Ok(satisfying == *count)
         }
         LogicNode::Predicate(_) => {
-            // Atomic: delegate to egglog
             let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
             let command = format!("(check (IsTrue {}))", sexp);
-            match egraph.parse_and_run_program(None, &command) {
+            match inner.egraph.parse_and_run_program(None, &command) {
                 Ok(_) => Ok(true),
                 Err(e) => {
                     let msg = e.to_string();
@@ -471,55 +424,56 @@ fn collect_exists_for_skolem(
     node_id: u32,
     subs: &mut HashMap<String, String>,
     enclosing_universals: &mut Vec<String>,
+    counter: &mut usize,
 ) {
     match &buffer.nodes[node_id as usize] {
         LogicNode::ExistsNode((v, body)) => {
             if !subs.contains_key(v.as_str()) {
                 if enclosing_universals.is_empty() {
-                    // Independent ∃ (not under any ∀): ground Skolem constant
-                    subs.insert(v.clone(), fresh_skolem());
+                    let sk = format!("sk_{}", *counter);
+                    *counter += 1;
+                    subs.insert(v.clone(), sk);
                 } else {
-                    // Dependent ∃ (under ∀): placeholder for per-entity Skolemization.
-                    // The witness depends on the enclosing universal variables,
-                    // so each entity gets its own Skolem constant at instantiation time.
-                    let base = fresh_skolem();
+                    let base = format!("sk_{}", *counter);
+                    *counter += 1;
                     let placeholder = format!("{}{}", SKDEP_PREFIX, base);
                     subs.insert(v.clone(), placeholder);
                 }
             }
-            collect_exists_for_skolem(buffer, *body, subs, enclosing_universals);
+            collect_exists_for_skolem(buffer, *body, subs, enclosing_universals, counter);
         }
         LogicNode::ForAllNode((v, body)) => {
             enclosing_universals.push(v.clone());
-            collect_exists_for_skolem(buffer, *body, subs, enclosing_universals);
+            collect_exists_for_skolem(buffer, *body, subs, enclosing_universals, counter);
             enclosing_universals.pop();
         }
         LogicNode::AndNode((l, r)) | LogicNode::OrNode((l, r)) => {
-            collect_exists_for_skolem(buffer, *l, subs, enclosing_universals);
-            collect_exists_for_skolem(buffer, *r, subs, enclosing_universals);
+            collect_exists_for_skolem(buffer, *l, subs, enclosing_universals, counter);
+            collect_exists_for_skolem(buffer, *r, subs, enclosing_universals, counter);
         }
         LogicNode::NotNode(inner) => {
-            collect_exists_for_skolem(buffer, *inner, subs, enclosing_universals);
+            collect_exists_for_skolem(buffer, *inner, subs, enclosing_universals, counter);
         }
         LogicNode::CountNode((v, count, body)) => {
-            // Count(x, n > 0, body): the variable needs a Skolem witness (like Exists)
             if *count > 0 && !subs.contains_key(v.as_str()) {
                 if enclosing_universals.is_empty() {
-                    subs.insert(v.clone(), fresh_skolem());
+                    let sk = format!("sk_{}", *counter);
+                    *counter += 1;
+                    subs.insert(v.clone(), sk);
                 } else {
-                    let base = fresh_skolem();
+                    let base = format!("sk_{}", *counter);
+                    *counter += 1;
                     let placeholder = format!("{}{}", SKDEP_PREFIX, base);
                     subs.insert(v.clone(), placeholder);
                 }
             }
-            // Count(x, 0, body): no witness needed (it means ∀x.¬body)
-            collect_exists_for_skolem(buffer, *body, subs, enclosing_universals);
+            collect_exists_for_skolem(buffer, *body, subs, enclosing_universals, counter);
         }
         LogicNode::Predicate(_) => {}
         LogicNode::PastNode(inner)
         | LogicNode::PresentNode(inner)
         | LogicNode::FutureNode(inner) => {
-            collect_exists_for_skolem(buffer, *inner, subs, enclosing_universals);
+            collect_exists_for_skolem(buffer, *inner, subs, enclosing_universals, counter);
         }
     }
 }
@@ -527,9 +481,6 @@ fn collect_exists_for_skolem(
 // ─── Native Rule Compilation ─────────────────────────────────────
 
 /// Decompose a material conditional body into (conditions, action).
-/// The semantics layer produces universals as ForAll(v, Or(Not(restrictor), body)).
-/// This walks the Or(Not(...), ...) chain collecting antecedents.
-/// Returns None if the body is not in implication form.
 fn decompose_implication(buffer: &LogicBuffer, body_id: u32) -> Option<(Vec<u32>, u32)> {
     let mut conditions = Vec::new();
     let mut current = body_id;
@@ -539,7 +490,6 @@ fn decompose_implication(buffer: &LogicBuffer, body_id: u32) -> Option<(Vec<u32>
             LogicNode::OrNode((left, right)) => {
                 match &buffer.nodes[*left as usize] {
                     LogicNode::NotNode(inner) => {
-                        // Or(Not(condition), rest) → add condition, continue with rest
                         conditions.push(*inner);
                         current = *right;
                     }
@@ -588,41 +538,37 @@ fn flatten_consequent(
     }
 }
 
-/// Note all Const terms found in the formula as known entities (no template instantiation).
-fn collect_and_note_constants(buffer: &LogicBuffer, node_id: u32, egraph: &mut EGraph) {
+/// Note all Const terms found in the formula as known entities.
+fn collect_and_note_constants(buffer: &LogicBuffer, node_id: u32, inner: &mut KnowledgeBaseInner) {
     match &buffer.nodes[node_id as usize] {
         LogicNode::Predicate((_, args)) => {
             for arg in args {
                 if let LogicalTerm::Constant(c) = arg {
-                    note_entity(c, egraph);
+                    inner.note_entity(c);
                 }
             }
         }
         LogicNode::AndNode((l, r)) | LogicNode::OrNode((l, r)) => {
-            collect_and_note_constants(buffer, *l, egraph);
-            collect_and_note_constants(buffer, *r, egraph);
+            collect_and_note_constants(buffer, *l, inner);
+            collect_and_note_constants(buffer, *r, inner);
         }
-        LogicNode::NotNode(inner)
-        | LogicNode::ExistsNode((_, inner))
-        | LogicNode::ForAllNode((_, inner)) => {
-            collect_and_note_constants(buffer, *inner, egraph);
+        LogicNode::NotNode(inner_node)
+        | LogicNode::ExistsNode((_, inner_node))
+        | LogicNode::ForAllNode((_, inner_node)) => {
+            collect_and_note_constants(buffer, *inner_node, inner);
         }
         LogicNode::CountNode((_, _, body)) => {
-            collect_and_note_constants(buffer, *body, egraph);
+            collect_and_note_constants(buffer, *body, inner);
         }
-        LogicNode::PastNode(inner)
-        | LogicNode::PresentNode(inner)
-        | LogicNode::FutureNode(inner) => {
-            collect_and_note_constants(buffer, *inner, egraph);
+        LogicNode::PastNode(inner_node)
+        | LogicNode::PresentNode(inner_node)
+        | LogicNode::FutureNode(inner_node) => {
+            collect_and_note_constants(buffer, *inner_node, inner);
         }
     }
 }
 
 /// Reconstruct an egglog s-expression with bare pattern variables for rule compilation.
-/// Variables in `pattern_vars` are emitted as bare identifiers (egglog pattern variables).
-/// Variables in `ground_skolems` are emitted as (Const "sk_N").
-/// Variables in `dependent_skolems` are emitted as (SkolemFn "base" (Cons pvar ...)).
-/// Other variables are emitted as (Var "name").
 fn reconstruct_rule_sexp(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -637,7 +583,6 @@ fn reconstruct_rule_sexp(
                 let term_str = match arg {
                     LogicalTerm::Variable(v) => {
                         if let Some(pvar) = pattern_vars.get(v.as_str()) {
-                            // Bare egglog pattern variable (no quotes, no Var constructor)
                             pvar.clone()
                         } else if let Some(sk) = ground_skolems.get(v.as_str()) {
                             format!("(Const \"{}\")", sk)
@@ -657,7 +602,6 @@ fn reconstruct_rule_sexp(
             format!("(Pred \"{}\" {})", rel, args_str)
         }
         LogicNode::ExistsNode((v, body)) => {
-            // In rule context, Skolemized exists are stripped
             if ground_skolems.contains_key(v.as_str())
                 || pattern_vars.contains_key(v.as_str())
                 || dependent_skolems.contains_key(v.as_str())
@@ -672,7 +616,6 @@ fn reconstruct_rule_sexp(
             }
         }
         LogicNode::ForAllNode((v, body)) => {
-            // In rule context, ForAll wrappers are stripped (pattern vars handle them)
             if pattern_vars.contains_key(v.as_str()) {
                 reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems, dependent_skolems)
             } else {
@@ -725,14 +668,11 @@ fn reconstruct_rule_sexp(
 }
 
 /// Compile a ForAll node into a native egglog rule.
-/// The ForAll variable becomes a pattern variable in the rule.
-/// The formula body (expected to be in material conditional form Or(Not(A), B))
-/// is decomposed into rule conditions and actions.
 fn compile_forall_to_rule(
     buffer: &LogicBuffer,
     node_id: u32,
     skolem_subs: &HashMap<String, String>,
-    egraph: &mut EGraph,
+    inner: &mut KnowledgeBaseInner,
 ) -> Result<(), String> {
     // 1. Collect universal variables from nested ForAll nodes
     let mut universals: Vec<String> = Vec::new();
@@ -743,10 +683,10 @@ fn compile_forall_to_rule(
                 universals.push(v.clone());
                 current = *body;
             }
-            LogicNode::PastNode(inner)
-            | LogicNode::PresentNode(inner)
-            | LogicNode::FutureNode(inner) => {
-                current = *inner;
+            LogicNode::PastNode(inner_node)
+            | LogicNode::PresentNode(inner_node)
+            | LogicNode::FutureNode(inner_node) => {
+                current = *inner_node;
             }
             _ => break,
         }
@@ -760,15 +700,12 @@ fn compile_forall_to_rule(
         .map(|(i, v)| (v.clone(), format!("x__v{}", i)))
         .collect();
 
-    // Extract ground Skolem subs (independent Skolems)
     let ground_skolems: HashMap<String, String> = skolem_subs
         .iter()
         .filter(|(_, v)| !v.starts_with(SKDEP_PREFIX))
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
 
-    // Build dependent Skolem map: var -> (base_name, [egglog_pattern_var_names])
-    // Ordered pattern var names for SkolemFn argument list
     let pattern_var_names: Vec<String> = universals
         .iter()
         .map(|v| pattern_vars[v].clone())
@@ -784,11 +721,9 @@ fn compile_forall_to_rule(
 
     // Register dependent Skolems for query-side witness enumeration
     if !dependent_skolems.is_empty() {
-        let sfr = SKOLEM_FN_REGISTRY.get_or_init(|| Mutex::new(Vec::new()));
-        let mut registry = sfr.lock().unwrap();
         for (_, (base, pvars)) in &dependent_skolems {
-            if !registry.iter().any(|e| e.base_name == *base) {
-                registry.push(SkolemFnEntry {
+            if !inner.skolem_fn_registry.iter().any(|e| e.base_name == *base) {
+                inner.skolem_fn_registry.push(SkolemFnEntry {
                     base_name: base.clone(),
                     dep_count: pvars.len(),
                 });
@@ -799,15 +734,11 @@ fn compile_forall_to_rule(
     // 3. Decompose inner body
     match decompose_implication(buffer, inner_body_id) {
         Some((condition_ids, consequent_id)) => {
-            // Implication form: conditions become rule patterns, consequent becomes action
-
-            // 4. Flatten conditions into individual atoms
             let mut all_conditions = Vec::new();
             for cid in &condition_ids {
                 all_conditions.extend(flatten_conjuncts(buffer, *cid));
             }
 
-            // 5. Build condition s-expressions
             let conditions_sexp: Vec<String> = all_conditions
                 .iter()
                 .map(|&cid| {
@@ -817,7 +748,6 @@ fn compile_forall_to_rule(
                 })
                 .collect();
 
-            // 6. Build action s-expressions
             let consequent_atoms = flatten_consequent(buffer, consequent_id, skolem_subs);
             let actions_sexp: Vec<String> = consequent_atoms
                 .iter()
@@ -828,16 +758,13 @@ fn compile_forall_to_rule(
                 })
                 .collect();
 
-            // 7. Emit egglog rule
             let rule = format!(
                 "(rule ({}) ({}))",
                 conditions_sexp.join(" "),
                 actions_sexp.join(" ")
             );
 
-            // Deduplicate: egglog 2.0 panics on duplicate rules
-            let known_rules = KNOWN_RULES.get_or_init(|| Mutex::new(HashSet::new()));
-            if !known_rules.lock().unwrap().insert(rule.clone()) {
+            if !inner.known_rules.insert(rule.clone()) {
                 println!(
                     "[Rule] ∀{} already present, skipping",
                     universals.join(",")
@@ -847,13 +774,13 @@ fn compile_forall_to_rule(
                     "[Rule] Compiled ∀{} to native egglog rule",
                     universals.join(",")
                 );
-                egraph
+                inner
+                    .egraph
                     .parse_and_run_program(None, &rule)
                     .map_err(|e| format!("Failed to compile universal to rule: {}", e))?;
             }
         }
         None => {
-            // Bare universal (no implication): use InDomain trigger
             let body_sexp =
                 reconstruct_rule_sexp(buffer, inner_body_id, &pattern_vars, &ground_skolems, &dependent_skolems);
 
@@ -868,8 +795,7 @@ fn compile_forall_to_rule(
                 body_sexp
             );
 
-            let known_rules = KNOWN_RULES.get_or_init(|| Mutex::new(HashSet::new()));
-            if !known_rules.lock().unwrap().insert(rule.clone()) {
+            if !inner.known_rules.insert(rule.clone()) {
                 println!(
                     "[Rule] bare ∀{} already present, skipping",
                     universals.join(",")
@@ -879,7 +805,8 @@ fn compile_forall_to_rule(
                     "[Rule] Compiled bare ∀{} with InDomain trigger",
                     universals.join(",")
                 );
-                egraph
+                inner
+                    .egraph
                     .parse_and_run_program(None, &rule)
                     .map_err(|e| format!("Failed to compile bare universal to rule: {}", e))?;
             }
@@ -891,13 +818,6 @@ fn compile_forall_to_rule(
 
 // ─── S-Expression Reconstruction ─────────────────────────────────
 
-/// Reconstruct an egglog-compatible s-expression from a LogicBuffer node.
-///
-/// Tense wrappers (Past/Present/Future) are transparent: they recurse
-/// directly into the inner formula. The egglog schema has no temporal
-/// types, so tense is stripped for assertion/query. Tense information
-/// is preserved in the LogicBuffer itself and visible via :debug output
-/// (handled by the orchestrator's separate reconstruct_sexp).
 fn reconstruct_sexp_with_subs(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -937,7 +857,6 @@ fn reconstruct_sexp_with_subs(
         }
         LogicNode::ForAllNode((v, body)) => {
             if subs.contains_key(v.as_str()) {
-                // Universal variable substituted — strip ForAll wrapper
                 reconstruct_sexp_with_subs(buffer, *body, subs)
             } else {
                 format!(
@@ -966,11 +885,9 @@ fn reconstruct_sexp_with_subs(
         }
         LogicNode::CountNode((v, count, body)) => {
             if *count == 0 {
-                // Count(x, 0, body) ≡ ∀x.¬body
                 let body_sexp = reconstruct_sexp_with_subs(buffer, *body, subs);
                 format!("(ForAll \"{}\" (Not {}))", v, body_sexp)
             } else {
-                // Count(x, n>0, body): primary Skolem already in subs. Emit as Exists.
                 if subs.contains_key(v.as_str()) {
                     reconstruct_sexp_with_subs(buffer, *body, subs)
                 } else {
@@ -979,8 +896,6 @@ fn reconstruct_sexp_with_subs(
                 }
             }
         }
-        // Tense wrappers are transparent for egglog.
-        // Strip the wrapper and recurse into the inner formula.
         LogicNode::PastNode(inner)
         | LogicNode::PresentNode(inner)
         | LogicNode::FutureNode(inner) => reconstruct_sexp_with_subs(buffer, *inner, subs),
@@ -988,24 +903,19 @@ fn reconstruct_sexp_with_subs(
 }
 
 /// Generate extra Skolem witnesses for Count(x, n, body) where n > 1.
-/// The primary Skolem witness was already created in phase 1 (Skolemization).
-/// This function creates n-1 additional witnesses and asserts the body for each.
 fn generate_count_extra_witnesses(
     buffer: &LogicBuffer,
     node_id: u32,
     skolem_subs: &HashMap<String, String>,
-    egraph: &mut EGraph,
+    inner: &mut KnowledgeBaseInner,
 ) {
     match &buffer.nodes[node_id as usize] {
         LogicNode::CountNode((v, count, body)) => {
             if *count > 1 {
-                // The primary witness is already in skolem_subs.
-                // Generate (count - 1) additional witnesses.
                 for _ in 1..*count {
-                    let extra_sk = fresh_skolem();
-                    note_entity(&extra_sk, egraph);
+                    let extra_sk = inner.fresh_skolem();
+                    inner.note_entity(&extra_sk);
 
-                    // Build raw sexp substitutions with the extra witness replacing v
                     let mut extra_subs: HashMap<String, String> = skolem_subs
                         .iter()
                         .filter(|(_, sv)| !sv.starts_with(SKDEP_PREFIX))
@@ -1015,7 +925,7 @@ fn generate_count_extra_witnesses(
 
                     let sexp = reconstruct_sexp_with_subs(buffer, *body, &extra_subs);
                     let command = format!("(IsTrue {})", sexp);
-                    if let Err(e) = egraph.parse_and_run_program(None, &command) {
+                    if let Err(e) = inner.egraph.parse_and_run_program(None, &command) {
                         eprintln!(
                             "[reasoning] Failed to assert extra Count witness {}: {}",
                             extra_sk, e
@@ -1023,22 +933,21 @@ fn generate_count_extra_witnesses(
                     }
                 }
             }
-            // Recurse into body for nested Count nodes
-            generate_count_extra_witnesses(buffer, *body, skolem_subs, egraph);
+            generate_count_extra_witnesses(buffer, *body, skolem_subs, inner);
         }
         LogicNode::AndNode((l, r)) | LogicNode::OrNode((l, r)) => {
-            generate_count_extra_witnesses(buffer, *l, skolem_subs, egraph);
-            generate_count_extra_witnesses(buffer, *r, skolem_subs, egraph);
+            generate_count_extra_witnesses(buffer, *l, skolem_subs, inner);
+            generate_count_extra_witnesses(buffer, *r, skolem_subs, inner);
         }
-        LogicNode::NotNode(inner)
-        | LogicNode::ExistsNode((_, inner))
-        | LogicNode::ForAllNode((_, inner)) => {
-            generate_count_extra_witnesses(buffer, *inner, skolem_subs, egraph);
+        LogicNode::NotNode(inner_node)
+        | LogicNode::ExistsNode((_, inner_node))
+        | LogicNode::ForAllNode((_, inner_node)) => {
+            generate_count_extra_witnesses(buffer, *inner_node, skolem_subs, inner);
         }
-        LogicNode::PastNode(inner)
-        | LogicNode::PresentNode(inner)
-        | LogicNode::FutureNode(inner) => {
-            generate_count_extra_witnesses(buffer, *inner, skolem_subs, egraph);
+        LogicNode::PastNode(inner_node)
+        | LogicNode::PresentNode(inner_node)
+        | LogicNode::FutureNode(inner_node) => {
+            generate_count_extra_witnesses(buffer, *inner_node, skolem_subs, inner);
         }
         LogicNode::Predicate(_) => {}
     }
@@ -1094,16 +1003,18 @@ mod tests {
         id
     }
 
-    fn reset() {
-        ReasoningComponent::reset_state().unwrap();
+    fn new_kb() -> KnowledgeBase {
+        KnowledgeBase {
+            inner: RefCell::new(KnowledgeBaseInner::new()),
+        }
     }
 
-    fn assert_buf(buf: LogicBuffer) {
-        ReasoningComponent::assert_fact(buf).unwrap();
+    fn assert_buf(kb: &KnowledgeBase, buf: LogicBuffer) {
+        kb.assert_fact(buf).unwrap();
     }
 
-    fn query(buf: LogicBuffer) -> bool {
-        ReasoningComponent::query_entailment(buf).unwrap()
+    fn query(kb: &KnowledgeBase, buf: LogicBuffer) -> bool {
+        kb.query_entailment(buf).unwrap()
     }
 
     /// Build "la .X. P" -> Pred("P", [Const("X"), Zoe])
@@ -1136,83 +1047,60 @@ mod tests {
         LogicBuffer { nodes, roots: vec![root] }
     }
 
-    /// Build query "? la .X. P" -> Pred("P", [Const("X"), Zoe])
     fn make_query(entity: &str, predicate: &str) -> LogicBuffer {
         make_assertion(entity, predicate)
     }
 
     #[test]
     fn test_native_rule_simple_universal() {
-        reset();
-        // la .alis. gerku
-        assert_buf(make_assertion("alis", "gerku"));
-        // ro lo gerku cu danlu
-        assert_buf(make_universal("gerku", "danlu"));
-        // ? la .alis. danlu -> TRUE
-        assert!(query(make_query("alis", "danlu")));
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert!(query(&kb, make_query("alis", "danlu")));
     }
 
     #[test]
     fn test_native_rule_entity_after_rule() {
-        reset();
-        // ro lo gerku cu danlu (rule first)
-        assert_buf(make_universal("gerku", "danlu"));
-        // la .alis. gerku (entity second — egglog rule fires on new facts)
-        assert_buf(make_assertion("alis", "gerku"));
-        // ? la .alis. danlu -> TRUE
-        assert!(query(make_query("alis", "danlu")));
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert!(query(&kb, make_query("alis", "danlu")));
     }
 
     #[test]
     fn test_native_rule_selective_application() {
-        reset();
-        // la .alis. gerku
-        assert_buf(make_assertion("alis", "gerku"));
-        // la .bob. mlatu
-        assert_buf(make_assertion("bob", "mlatu"));
-        // ro lo gerku cu danlu
-        assert_buf(make_universal("gerku", "danlu"));
-        // ? la .alis. danlu -> TRUE (alis is gerku)
-        assert!(query(make_query("alis", "danlu")));
-        // ? la .bob. danlu -> FALSE (bob is mlatu, not gerku)
-        assert!(!query(make_query("bob", "danlu")));
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_assertion("bob", "mlatu"));
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert!(query(&kb, make_query("alis", "danlu")));
+        assert!(!query(&kb, make_query("bob", "danlu")));
     }
 
     #[test]
     fn test_native_rule_transitive_chain() {
-        reset();
-        // ro lo gerku cu danlu
-        assert_buf(make_universal("gerku", "danlu"));
-        // ro lo danlu cu xanlu
-        assert_buf(make_universal("danlu", "xanlu"));
-        // la .alis. gerku
-        assert_buf(make_assertion("alis", "gerku"));
-        // ? la .alis. xanlu -> TRUE (gerku->danlu->xanlu)
-        assert!(query(make_query("alis", "xanlu")));
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_universal("danlu", "xanlu"));
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert!(query(&kb, make_query("alis", "xanlu")));
     }
 
     #[test]
     fn test_native_rule_multiple_entities() {
-        reset();
-        // la .alis. gerku
-        assert_buf(make_assertion("alis", "gerku"));
-        // la .bob. gerku
-        assert_buf(make_assertion("bob", "gerku"));
-        // ro lo gerku cu danlu
-        assert_buf(make_universal("gerku", "danlu"));
-        // Both should derive danlu
-        assert!(query(make_query("alis", "danlu")));
-        assert!(query(make_query("bob", "danlu")));
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_assertion("bob", "gerku"));
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert!(query(&kb, make_query("alis", "danlu")));
+        assert!(query(&kb, make_query("bob", "danlu")));
     }
 
     #[test]
     fn test_native_rule_negated_universal() {
-        reset();
-        // la .alis. gerku
-        assert_buf(make_assertion("alis", "gerku"));
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
 
-        // ro lo gerku cu na danlu
-        // ForAll("_v0", Or(Not(Pred("gerku", [Var, Zoe])), Not(Pred("danlu", [Var, Zoe]))))
         let mut nodes = Vec::new();
         let restrict = pred(
             &mut nodes,
@@ -1228,28 +1116,22 @@ mod tests {
         let neg_restrict = not(&mut nodes, restrict);
         let disj = or(&mut nodes, neg_restrict, neg_body);
         let root = forall(&mut nodes, "_v0", disj);
-        assert_buf(LogicBuffer { nodes, roots: vec![root] });
+        assert_buf(&kb, LogicBuffer { nodes, roots: vec![root] });
 
-        // ? la .alis. danlu -> FALSE
-        assert!(!query(make_query("alis", "danlu")));
+        assert!(!query(&kb, make_query("alis", "danlu")));
     }
 
     #[test]
     fn test_native_rule_duplicate_rule_no_panic() {
-        reset();
-        // Assert the same universal twice — should not panic
-        assert_buf(make_universal("gerku", "danlu"));
-        assert_buf(make_universal("gerku", "danlu"));
-        // Should still work correctly
-        assert_buf(make_assertion("alis", "gerku"));
-        assert!(query(make_query("alis", "danlu")));
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert!(query(&kb, make_query("alis", "danlu")));
     }
 
     // ─── Dependent Skolem (Phase B) Tests ────────────────────────────
 
-    /// Build ∀x. P(x) → ∃y. R(x,y)
-    /// ForAll("_v0", Or(Not(Pred(restrictor, [Var("_v0"), Zoe])),
-    ///                   Exists("_v1", Pred(consequent, [Var("_v0"), Var("_v1"), Zoe]))))
     fn make_dependent_skolem_universal(restrictor: &str, consequent: &str) -> LogicBuffer {
         let mut nodes = Vec::new();
         let restrict = pred(
@@ -1273,7 +1155,6 @@ mod tests {
         LogicBuffer { nodes, roots: vec![root] }
     }
 
-    /// Build existential query: ∃y. R(entity, y)
     fn make_exists_query(entity: &str, predicate: &str) -> LogicBuffer {
         let mut nodes = Vec::new();
         let body = pred(
@@ -1291,63 +1172,46 @@ mod tests {
 
     #[test]
     fn test_dependent_skolem_native_rule() {
-        reset();
-        // la .alis. prenu  (alis is a person)
-        assert_buf(make_assertion("alis", "prenu"));
-        // ro lo prenu cu se zdani da  (every person has a home)
-        // ∀x. prenu(x) → ∃y. zdani(x, y)
-        assert_buf(make_dependent_skolem_universal("prenu", "zdani"));
-        // ? da zo'u la .alis. zdani da  (does alis have a home?) → TRUE
-        assert!(query(make_exists_query("alis", "zdani")));
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "prenu"));
+        assert_buf(&kb, make_dependent_skolem_universal("prenu", "zdani"));
+        assert!(query(&kb, make_exists_query("alis", "zdani")));
     }
 
     #[test]
     fn test_dependent_skolem_entity_after_rule() {
-        reset();
-        // Rule first: every person has a home
-        assert_buf(make_dependent_skolem_universal("prenu", "zdani"));
-        // Entity second: alis is a person
-        assert_buf(make_assertion("alis", "prenu"));
-        // ? ∃y. zdani(alis, y) → TRUE (egglog rule fires on new facts)
-        assert!(query(make_exists_query("alis", "zdani")));
+        let kb = new_kb();
+        assert_buf(&kb, make_dependent_skolem_universal("prenu", "zdani"));
+        assert_buf(&kb, make_assertion("alis", "prenu"));
+        assert!(query(&kb, make_exists_query("alis", "zdani")));
     }
 
     #[test]
     fn test_dependent_skolem_query_existential() {
-        reset();
-        // Setup: person → has home
-        assert_buf(make_assertion("alis", "prenu"));
-        assert_buf(make_dependent_skolem_universal("prenu", "zdani"));
-        // Query without existential: specific SkolemFn check would fail for unknown entity
-        // But existential query should find the SkolemFn witness
-        assert!(query(make_exists_query("alis", "zdani")));
-        // Negative: bob is not a person, should have no home
-        assert!(!query(make_exists_query("bob", "zdani")));
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "prenu"));
+        assert_buf(&kb, make_dependent_skolem_universal("prenu", "zdani"));
+        assert!(query(&kb, make_exists_query("alis", "zdani")));
+        assert!(!query(&kb, make_exists_query("bob", "zdani")));
     }
 
     #[test]
     fn test_skolem_fn_multiple_entities() {
-        reset();
-        // Multiple entities: alis and bob are both persons
-        assert_buf(make_assertion("alis", "prenu"));
-        assert_buf(make_assertion("bob", "prenu"));
-        // Every person has a home
-        assert_buf(make_dependent_skolem_universal("prenu", "zdani"));
-        // Both should have homes via unique SkolemFn witnesses
-        assert!(query(make_exists_query("alis", "zdani")));
-        assert!(query(make_exists_query("bob", "zdani")));
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "prenu"));
+        assert_buf(&kb, make_assertion("bob", "prenu"));
+        assert_buf(&kb, make_dependent_skolem_universal("prenu", "zdani"));
+        assert!(query(&kb, make_exists_query("alis", "zdani")));
+        assert!(query(&kb, make_exists_query("bob", "zdani")));
     }
 
     #[test]
     fn test_skolem_fn_registry_populated() {
-        reset();
-        // Assert a dependent Skolem universal
-        assert_buf(make_dependent_skolem_universal("prenu", "zdani"));
-        // Verify the SkolemFn registry was populated (not Herbrand templates)
-        let sfr = SKOLEM_FN_REGISTRY.get_or_init(|| Mutex::new(Vec::new()));
-        let entries = sfr.lock().unwrap();
-        assert!(!entries.is_empty(), "SkolemFn registry should have entries");
-        assert_eq!(entries[0].base_name, "sk_0");
-        assert_eq!(entries[0].dep_count, 1);
+        let kb = new_kb();
+        assert_buf(&kb, make_dependent_skolem_universal("prenu", "zdani"));
+        let inner = kb.inner.borrow();
+        assert!(!inner.skolem_fn_registry.is_empty(), "SkolemFn registry should have entries");
+        assert_eq!(inner.skolem_fn_registry[0].base_name, "sk_0");
+        assert_eq!(inner.skolem_fn_registry[0].dep_count, 1);
     }
 }

@@ -19,7 +19,7 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | Command | What it does |
 |---------|-------------|
 | `just run` | Full pipeline: clean WASM -> build components -> fuse with wac -> launch REPL |
-| `just test` | Run all unit tests (`cargo test --lib -- --nocapture --test-threads=1`) |
+| `just test` | Run all unit tests (`cargo test --lib -- --nocapture`) |
 | `just test-parser` | Run parser tests only |
 | `just build-wasm` | Build WASM components + fuse with wac |
 | `just build-runner` | Build native Wasmtime host runner |
@@ -66,7 +66,6 @@ When analyzing or searching the codebase:
 - `test_kea_as_head_term` and `test_kea_in_relative_clause` fail with "observative sentences not yet supported" (pre-existing)
 - `cargo component build` fails on `io-extras` crate — pre-existing, unrelated to our changes. Bindings generate before the failure.
 - Existential introduction gap: `ro lo gerku cu danlu` then `? lo gerku cu danlu` returns FALSE because engine lacks ∀x.P(x) ⊢ ∃x.P(x) bridging when domain is non-empty (see `todo.md` bottom for full analysis)
-- Reasoning tests require `--test-threads=1` (shared global state: EGRAPH, KNOWN_ENTITIES). The Justfile `just test` handles this.
 
 ## Roadmap
 
@@ -82,7 +81,7 @@ Before every commit, always:
 
 ## Current Status
 
-Completed through Tier 1.8 (1.1 all phases + trivial cleanups 1.6-1.8).
+Completed through Tier 1.2 WASI state hoisting + all trivial cleanups.
 
 **Implemented features:**
 - Lexer + recursive-descent parser (gismu, cmavo, cmevla, lujvo partial)
@@ -101,5 +100,7 @@ Completed through Tier 1.8 (1.1 all phases + trivial cleanups 1.6-1.8).
 - egglog e-graph reasoning with structural rewrites + inference rules
 - Count quantifier (exactly N) for numeric descriptions
 - da/de/di existential quantifier closure (bare logic variables now properly wrapped in ∃)
+- Host-managed WIT resources: `resource knowledge-base` (reasoning) + `resource session` (engine interface)
+- KnowledgeBase uses `RefCell` (not `Mutex`) — single-threaded WASI, no global state
 
-**Next up:** Tier 1.2 (WASI state hoisting) or Tier 3.1 (Deontic predicates)
+**Next up:** Tier 1.1 (WIT interface naming) or Tier 3.1 (Deontic predicates)

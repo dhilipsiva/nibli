@@ -4,17 +4,7 @@
 
 Without this tier, the engine caps out at ~100 entities. Science and legal domains need 1K-50K+.
 
-### 1.1 WASI state hoisting (replaces `OnceLock` anti-pattern)
-
-Move knowledge base to host-managed WASI Resource. Enables: reset, multi-tenant, persistence.
-
-Current `OnceLock<Mutex<EGraph>>` works only because the runner reuses a single component instance. The `Mutex` is unnecessary overhead in single-threaded WASI. If wasmtime ever instantiates fresh, all state is silently lost.
-
-**Crate:** reasoning/lib.rs, runner/main.rs
-**Complexity:** high (architectural rework)
-**Blocks:** persistence, multi-tenant deployment, clean `:reset`
-
-### 1.2 `ast-types` WIT interface naming
+### 1.1 `ast-types` WIT interface naming
 
 Split logic types into separate WIT interface from AST types. Currently both live in `ast-types` which is misleading.
 
@@ -234,10 +224,10 @@ Items identified during implementation but not yet prioritized into a tier.
 
 ```
 Tier 1 (scale)                        Tier 2 (quantitative)
-  1.1 WASI state hoisting               2.1 numerical predicates
-       └── enables persistence,          2.2 computation dispatch WIT
-           multi-tenant                       │
-  1.2 WIT interface naming               2.3 Python adapter ──→ 2.4 result ingestion
+  1.1 WIT interface naming               2.1 numerical predicates
+                                          2.2 computation dispatch WIT
+                                               │
+                                          2.3 Python adapter ──→ 2.4 result ingestion
 
 Tier 3 (language)         Tier 4 (production)         Tier 5 (advanced)
   3.1 deontic               4.1 witness extraction      5.1 non-monotonic

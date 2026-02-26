@@ -127,11 +127,17 @@ interface semantics {
 
 interface reasoning {
     use ast-types.{logic-buffer};
-    assert-fact: func(logic: logic-buffer) -> result<_, string>;
-    query-entailment: func(logic: logic-buffer) -> result<bool, string>;
-    /// Clear the knowledge base, Skolem counter, entity registry,
-    /// and universal templates. Returns to a fresh-boot state.
-    reset-state: func() -> result<_, string>;
+
+    resource knowledge-base {
+        /// Create a fresh KB with FOL schema loaded.
+        constructor();
+        /// Assert FOL facts into this KB.
+        assert-fact: func(logic: logic-buffer) -> result<_, string>;
+        /// Query whether FOL formula is entailed by this KB.
+        query-entailment: func(logic: logic-buffer) -> result<bool, string>;
+        /// Reset this KB to fresh state (clear all facts, Skolems, rules).
+        reset: func() -> result<_, string>;
+    }
 }
 
 // --- Component Worlds ---
@@ -139,22 +145,25 @@ world parser-component { export parser; }
 world semantics-component { export semantics; }
 world reasoning-component { export reasoning; }
 
+interface engine {
+    resource session {
+        /// Create a new session (internally creates a fresh KB).
+        constructor();
+        /// Assert Lojban text as facts.
+        assert-text: func(input: string) -> result<u32, string>;
+        /// Query whether Lojban text is entailed.
+        query-text: func(input: string) -> result<bool, string>;
+        /// Debug: compile text to logic s-expression without asserting.
+        compile-debug: func(input: string) -> result<string, string>;
+        /// Reset the session's KB to fresh state.
+        reset-kb: func() -> result<_, string>;
+    }
+}
+
 world engine-pipeline {
     import parser;
     import semantics;
     import reasoning;
-
-    /// Assert Lojban text as facts into the knowledge base.
-    /// Returns the number of root facts inserted.
-    export assert-text: func(input: string) -> result<u32, string>;
-
-    /// Query whether Lojban text is entailed by the knowledge base.
-    export query-text: func(input: string) -> result<bool, string>;
-
-    /// Debug: compile text to logic s-expression without asserting.
-    export compile-debug: func(input: string) -> result<string, string>;
-
-    /// Clear the entire knowledge base and reset to fresh state.
-    export reset-kb: func() -> result<_, string>;
+    export engine;
 }
 

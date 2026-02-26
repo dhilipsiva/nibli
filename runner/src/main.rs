@@ -45,6 +45,11 @@ fn main() -> Result<()> {
         Component::from_file(&engine, "target/wasm32-wasip2/release/engine-pipeline.wasm")?;
     let pipeline = pipeline_bind::EnginePipeline::instantiate(&mut store, &pipeline_comp, &linker)?;
 
+    // Get the exported engine interface and create a session
+    let engine_iface = pipeline.lojban_nesy_engine();
+    let session = engine_iface.session();
+    let session_handle = session.call_constructor(&mut store)?;
+
     let mut line_editor = Reedline::create();
     let prompt = DefaultPrompt::default();
 
@@ -63,7 +68,7 @@ fn main() -> Result<()> {
                 match input {
                     ":quit" | ":q" => break,
                     ":reset" | ":r" => {
-                        match pipeline.call_reset_kb(&mut store) {
+                        match session.call_reset_kb(&mut store, session_handle) {
                             Ok(Ok(())) => println!("[Reset] Knowledge base cleared."),
                             Ok(Err(e)) => println!("[Error] {}", e),
                             Err(e) => println!("[Host Error] {:?}", e),
@@ -88,7 +93,7 @@ fn main() -> Result<()> {
                         println!("[Host] Usage: :debug <lojban text>");
                         continue;
                     }
-                    match pipeline.call_compile_debug(&mut store, text) {
+                    match session.call_compile_debug(&mut store, session_handle, text) {
                         Ok(Ok(sexp)) => println!("[Logic] {}", sexp),
                         Ok(Err(e)) => println!("[Error] {}", e),
                         Err(e) => println!("[Host Error] {:?}", e),
@@ -99,14 +104,14 @@ fn main() -> Result<()> {
                         println!("[Host] Usage: ? <lojban query>");
                         continue;
                     }
-                    match pipeline.call_query_text(&mut store, text) {
+                    match session.call_query_text(&mut store, session_handle, text) {
                         Ok(Ok(true)) => println!("[Query] TRUE"),
                         Ok(Ok(false)) => println!("[Query] FALSE"),
                         Ok(Err(e)) => println!("[Error] {}", e),
                         Err(e) => println!("[Host Error] {:?}", e),
                     }
                 } else {
-                    match pipeline.call_assert_text(&mut store, input) {
+                    match session.call_assert_text(&mut store, session_handle, input) {
                         Ok(Ok(n)) => println!("[Assert] {} fact(s) inserted.", n),
                         Ok(Err(e)) => println!("[Error] {}", e),
                         Err(e) => println!("[Host Error] {:?}", e),
@@ -120,5 +125,9 @@ fn main() -> Result<()> {
             }
         }
     }
+
+    // Drop the session resource
+    session_handle.resource_drop(&mut store)?;
+
     Ok(())
 }
