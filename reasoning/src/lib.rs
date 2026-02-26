@@ -12,20 +12,15 @@ use std::sync::{Mutex, OnceLock};
 static EGRAPH: OnceLock<Mutex<EGraph>> = OnceLock::new();
 static SKOLEM_COUNTER: OnceLock<Mutex<usize>> = OnceLock::new();
 static KNOWN_ENTITIES: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-static UNIVERSAL_TEMPLATES: OnceLock<Mutex<Vec<UniversalTemplate>>> = OnceLock::new();
 static KNOWN_RULES: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+static SKOLEM_FN_REGISTRY: OnceLock<Mutex<Vec<SkolemFnEntry>>> = OnceLock::new();
 
-/// A stored universal formula for Herbrand instantiation.
-/// When new entities appear, we instantiate the template for each.
-struct UniversalTemplate {
-    var_name: String,
-    /// The body s-expression with (Var "var_name") as placeholder.
-    /// Dependent Skolem variables appear as (Var "__skdep__sk_N").
-    body_sexp: String,
-    /// Dependent Skolem placeholders: (placeholder_var_name, base_skolem_name).
-    /// For ∃ nested under ∀, each gets a unique constant per entity:
-    /// e.g., base "sk_1" + entity "alice" → "sk_1_alice".
-    dependent_skolems: Vec<(String, String)>,
+/// Registry entry for a SkolemFn created by native rule compilation.
+/// Used by query-side existential checking to generate SkolemFn witness terms.
+#[derive(Clone)]
+struct SkolemFnEntry {
+    base_name: String,
+    dep_count: usize,
 }
 
 /// Prefix used for dependent Skolem placeholder variables.
@@ -43,12 +38,16 @@ const SCHEMA: &str = r#"
     ;; ═══════════════════════════════════════════════════
 
     ;; Atomic Terms
+    ;; SkolemFn: dependent Skolem witness — (SkolemFn "sk_N" dep_term)
+    ;; where dep_term is the universal variable the witness depends on.
+    ;; Currently supports dep_count=1 (single universal dependency).
     (datatype Term
         (Var String)
         (Const String)
         (Desc String)
         (Zoe)
         (Num i64)
+        (SkolemFn String Term)
     )
 
     ;; Variadic Argument List (Linked List)
@@ -149,45 +148,57 @@ fn fresh_skolem() -> String {
     sk
 }
 
-/// Register an entity and instantiate all stored universals for it.
-/// Returns true if the entity was NEW (not previously known).
-fn register_entity(name: &str, egraph: &mut EGraph) -> bool {
-    let entities = KNOWN_ENTITIES.get_or_init(|| Mutex::new(HashSet::new()));
-    let is_new = entities.lock().unwrap().insert(name.to_string());
-
-    if is_new {
-        // Instantiate all stored universals for the new entity
-        let templates = UNIVERSAL_TEMPLATES.get_or_init(|| Mutex::new(Vec::new()));
-        let templates_guard = templates.lock().unwrap();
-        for tmpl in templates_guard.iter() {
-            let instantiated = instantiate_for_entity(
-                &tmpl.body_sexp,
-                &tmpl.var_name,
-                name,
-                &tmpl.dependent_skolems,
-            );
-            // Register entity-specific Skolem constants (without triggering
-            // further universal instantiation — avoids infinite expansion).
-            for (_, base_name) in &tmpl.dependent_skolems {
-                let unique_sk = format!("{}_{}", base_name, name);
-                entities.lock().unwrap().insert(unique_sk);
-            }
-            let command = format!("(IsTrue {})", instantiated);
-            if let Err(e) = egraph.parse_and_run_program(None, &command) {
-                eprintln!(
-                    "[reasoning] Failed to instantiate universal for {}: {}",
-                    name, e
-                );
-            }
-        }
-    }
-
-    is_new
-}
-
 fn get_known_entities() -> Vec<String> {
     let entities = KNOWN_ENTITIES.get_or_init(|| Mutex::new(HashSet::new()));
     entities.lock().unwrap().iter().cloned().collect()
+}
+
+/// Build an egglog SkolemFn s-expression from a base name and pattern variable names.
+/// E.g., build_skolem_fn_sexp("sk_0", &["x__v0"]) → "(SkolemFn \"sk_0\" x__v0)"
+/// Currently supports dep_count=1 (single universal dependency).
+fn build_skolem_fn_sexp(base_name: &str, pattern_var_names: &[String]) -> String {
+    assert_eq!(
+        pattern_var_names.len(),
+        1,
+        "SkolemFn currently supports dep_count=1, got {}",
+        pattern_var_names.len()
+    );
+    format!("(SkolemFn \"{}\" {})", base_name, pattern_var_names[0])
+}
+
+/// Build a ground SkolemFn s-expression with a Const entity argument.
+/// E.g., build_ground_skolem_fn("sk_0", &["alice"]) → "(SkolemFn \"sk_0\" (Const \"alice\"))"
+/// Currently supports dep_count=1 (single universal dependency).
+fn build_ground_skolem_fn(base_name: &str, entities: &[String]) -> String {
+    assert_eq!(
+        entities.len(),
+        1,
+        "SkolemFn currently supports dep_count=1, got {}",
+        entities.len()
+    );
+    format!("(SkolemFn \"{}\" (Const \"{}\"))", base_name, entities[0])
+}
+
+/// Generate cartesian product of entities with given arity.
+/// For dep_count=1: [[e1], [e2], ...]
+/// For dep_count=2: [[e1,e1], [e1,e2], [e2,e1], [e2,e2], ...]
+fn cartesian_product(entities: &[String], dep_count: usize) -> Vec<Vec<String>> {
+    if dep_count == 0 {
+        return vec![vec![]];
+    }
+    let mut result: Vec<Vec<String>> = vec![vec![]];
+    for _ in 0..dep_count {
+        let mut next = Vec::new();
+        for combo in &result {
+            for entity in entities {
+                let mut extended = combo.clone();
+                extended.push(entity.clone());
+                next.push(extended);
+            }
+        }
+        result = next;
+    }
+    result
 }
 
 fn get_egraph() -> &'static Mutex<EGraph> {
@@ -207,45 +218,13 @@ fn note_entity(name: &str, egraph: &mut EGraph) {
 }
 
 /// Register an entity WITHOUT triggering universal template instantiation.
-/// Used for Skolem-generated witnesses to avoid infinite expansion:
-/// if we instantiated universals for Skolem witnesses, those could create
-/// more Skolem witnesses → infinite loop.
-fn register_entity_no_instantiate(name: &str) {
-    let entities = KNOWN_ENTITIES.get_or_init(|| Mutex::new(HashSet::new()));
-    entities.lock().unwrap().insert(name.to_string());
-}
-
-/// Instantiate a universal template body for a specific entity.
-/// Replaces the ∀ variable AND generates per-entity Skolem constants
-/// for any dependent Skolems (∃ under ∀).
-fn instantiate_for_entity(
-    body_sexp: &str,
-    var_name: &str,
-    entity: &str,
-    dependent_skolems: &[(String, String)],
-) -> String {
-    let mut result = body_sexp.replace(
-        &format!("(Var \"{}\")", var_name),
-        &format!("(Const \"{}\")", entity),
-    );
-    for (placeholder, base_name) in dependent_skolems {
-        let unique_sk = format!("{}_{}", base_name, entity);
-        result = result.replace(
-            &format!("(Var \"{}\")", placeholder),
-            &format!("(Const \"{}\")", unique_sk),
-        );
-    }
-    result
-}
-
 // ─── WIT Export Implementation ────────────────────────────────────
 
 struct ReasoningComponent;
 
 impl Guest for ReasoningComponent {
     /// Assert facts with Skolemization (∃) and native egglog rules (∀).
-    /// Phase A: Simple universals (no dependent Skolems) compile to native rules.
-    /// Universals with dependent Skolems (∃ under ∀) fall back to Herbrand expansion.
+    /// All universals compile to native egglog rules with SkolemFn for dependent Skolems.
     fn assert_fact(logic: LogicBuffer) -> Result<(), String> {
         let egraph_mutex = get_egraph();
         let mut egraph = egraph_mutex.lock().unwrap();
@@ -282,10 +261,10 @@ impl Guest for ReasoningComponent {
                 LogicNode::ForAllNode(_)
             );
 
-            if is_forall && !has_dependent_skolems(&logic, root_id, false) {
+            if is_forall {
                 // ═══ NATIVE RULE PATH ═══
-                // Simple universal (no ∃ under ∀): compile to egglog rule.
-                // egglog's hash-join engine handles matching natively — O(K) not O(E×T).
+                // All universals (simple and dependent Skolem) compile to egglog rules.
+                // Dependent Skolems use SkolemFn terms; egglog's hash-join handles matching — O(K).
 
                 // Note independent Skolem constants as entities
                 for sk in skolem_subs.values() {
@@ -299,66 +278,6 @@ impl Guest for ReasoningComponent {
 
                 // Compile ForAll to native egglog rule
                 compile_forall_to_rule(&logic, root_id, &skolem_subs, &mut egraph)?;
-            } else if is_forall {
-                // ═══ HERBRAND FALLBACK PATH ═══
-                // Universal with dependent Skolems (∃ under ∀): use old approach.
-                // Will be replaced by SkolemFn in Phase B.
-
-                // Register independent Skolem constants as entities
-                for sk in skolem_subs.values() {
-                    if !sk.starts_with(SKDEP_PREFIX) {
-                        register_entity(sk, &mut egraph);
-                    }
-                }
-
-                // Register named constants as entities
-                collect_and_register_constants(&logic, root_id, &mut egraph);
-
-                let forall_entries = collect_forall_nodes(&logic, root_id, &skolem_subs);
-                for (var_name, body_sexp, dependent_skolems) in &forall_entries {
-                    println!(
-                        "[Universal] ∀{} registered for Herbrand instantiation (dependent Skolems)",
-                        var_name
-                    );
-                    if !dependent_skolems.is_empty() {
-                        let deps: Vec<&str> = dependent_skolems
-                            .iter()
-                            .map(|(_, base)| base.as_str())
-                            .collect();
-                        println!(
-                            "[Skolem] {} dependent witness(es): {} (unique per entity)",
-                            dependent_skolems.len(),
-                            deps.join(", ")
-                        );
-                    }
-
-                    // Store template for future entity registration
-                    let templates = UNIVERSAL_TEMPLATES.get_or_init(|| Mutex::new(Vec::new()));
-                    templates.lock().unwrap().push(UniversalTemplate {
-                        var_name: var_name.clone(),
-                        body_sexp: body_sexp.clone(),
-                        dependent_skolems: dependent_skolems.clone(),
-                    });
-
-                    // Instantiate for all currently known entities
-                    let entities = get_known_entities();
-                    for entity in &entities {
-                        let instantiated =
-                            instantiate_for_entity(body_sexp, var_name, entity, dependent_skolems);
-                        // Register entity-specific Skolem constants
-                        for (_, base_name) in dependent_skolems {
-                            let unique_sk = format!("{}_{}", base_name, entity);
-                            register_entity_no_instantiate(&unique_sk);
-                        }
-                        let command = format!("(IsTrue {})", instantiated);
-                        if let Err(e) = egraph.parse_and_run_program(None, &command) {
-                            eprintln!(
-                                "[reasoning] Failed to instantiate ∀{} for {}: {}",
-                                var_name, entity, e
-                            );
-                        }
-                    }
-                }
             } else {
                 // ═══ GROUND FORMULA PATH ═══
                 // No universals — just assert the ground formula.
@@ -373,7 +292,13 @@ impl Guest for ReasoningComponent {
                 // Note named constants as entities
                 collect_and_note_constants(&logic, root_id, &mut egraph);
 
-                let sexp = reconstruct_sexp_with_subs(&logic, root_id, &skolem_subs);
+                // Convert skolem_subs to raw sexp form for reconstruct_sexp_with_subs
+                let raw_subs: HashMap<String, String> = skolem_subs
+                    .iter()
+                    .filter(|(_, v)| !v.starts_with(SKDEP_PREFIX))
+                    .map(|(k, v)| (k.clone(), format!("(Const \"{}\")", v)))
+                    .collect();
+                let sexp = reconstruct_sexp_with_subs(&logic, root_id, &raw_subs);
                 let command = format!("(IsTrue {})", sexp);
                 egraph
                     .parse_and_run_program(None, &command)
@@ -423,13 +348,13 @@ impl Guest for ReasoningComponent {
         let entities = KNOWN_ENTITIES.get_or_init(|| Mutex::new(HashSet::new()));
         entities.lock().unwrap().clear();
 
-        // 4. Clear universal templates
-        let templates = UNIVERSAL_TEMPLATES.get_or_init(|| Mutex::new(Vec::new()));
-        templates.lock().unwrap().clear();
-
-        // 5. Clear known rules
+        // 4. Clear known rules
         let rules = KNOWN_RULES.get_or_init(|| Mutex::new(HashSet::new()));
         rules.lock().unwrap().clear();
+
+        // 5. Clear SkolemFn registry
+        let sfr = SKOLEM_FN_REGISTRY.get_or_init(|| Mutex::new(Vec::new()));
+        sfr.lock().unwrap().clear();
 
         Ok(())
     }
@@ -466,13 +391,27 @@ fn check_formula_holds(
         | LogicNode::PresentNode(inner)
         | LogicNode::FutureNode(inner) => check_formula_holds(buffer, *inner, subs, egraph),
         LogicNode::ExistsNode((v, body)) => {
-            // Check if any known entity satisfies the body
+            // 1. Check if any known entity satisfies the body
             let entities = get_known_entities();
             for entity in &entities {
                 let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), entity.clone());
+                new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
                 if check_formula_holds(buffer, *body, &new_subs, egraph)? {
                     return Ok(true);
+                }
+            }
+            // 2. Try SkolemFn witnesses from the registry
+            let sfr = SKOLEM_FN_REGISTRY.get_or_init(|| Mutex::new(Vec::new()));
+            let entries: Vec<SkolemFnEntry> = sfr.lock().unwrap().clone();
+            for entry in &entries {
+                let combos = cartesian_product(&entities, entry.dep_count);
+                for combo in &combos {
+                    let witness_sexp = build_ground_skolem_fn(&entry.base_name, combo);
+                    let mut new_subs = subs.clone();
+                    new_subs.insert(v.clone(), witness_sexp);
+                    if check_formula_holds(buffer, *body, &new_subs, egraph)? {
+                        return Ok(true);
+                    }
                 }
             }
             Ok(false)
@@ -486,7 +425,7 @@ fn check_formula_holds(
             }
             for entity in &entities {
                 let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), entity.clone());
+                new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
                 if !check_formula_holds(buffer, *body, &new_subs, egraph)? {
                     return Ok(false);
                 }
@@ -499,7 +438,7 @@ fn check_formula_holds(
             let mut satisfying = 0u32;
             for entity in &entities {
                 let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), entity.clone());
+                new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
                 if check_formula_holds(buffer, *body, &new_subs, egraph)? {
                     satisfying += 1;
                 }
@@ -585,141 +524,7 @@ fn collect_exists_for_skolem(
     }
 }
 
-/// Extract ForAll nodes: returns (var_name, body_sexp, dependent_skolems) tuples.
-/// The body_sexp has the ForAll wrapper stripped and existentials Skolemized.
-/// Independent Skolems (∃ not under ∀) become (Const "sk_N").
-/// Dependent Skolems (∃ under ∀) become (Var "__skdep__sk_N") placeholders.
-fn collect_forall_nodes(
-    buffer: &LogicBuffer,
-    node_id: u32,
-    skolem_subs: &HashMap<String, String>,
-) -> Vec<(String, String, Vec<(String, String)>)> {
-    let mut entries = Vec::new();
-    collect_forall_nodes_rec(buffer, node_id, skolem_subs, &mut entries);
-    entries
-}
-
-fn collect_forall_nodes_rec(
-    buffer: &LogicBuffer,
-    node_id: u32,
-    skolem_subs: &HashMap<String, String>,
-    entries: &mut Vec<(String, String, Vec<(String, String)>)>,
-) {
-    match &buffer.nodes[node_id as usize] {
-        LogicNode::ForAllNode((v, body)) => {
-            let body_sexp = reconstruct_sexp_with_subs(buffer, *body, skolem_subs);
-            // Collect dependent Skolems that appear in this body.
-            let dependent_skolems: Vec<(String, String)> = skolem_subs
-                .values()
-                .filter_map(|val| {
-                    val.strip_prefix(SKDEP_PREFIX).and_then(|base| {
-                        if body_sexp.contains(&format!("(Var \"{}\")", val)) {
-                            Some((val.clone(), base.to_string()))
-                        } else {
-                            None
-                        }
-                    })
-                })
-                .collect();
-            entries.push((v.clone(), body_sexp, dependent_skolems));
-            // Don't recurse into body — the template is the complete body
-        }
-        LogicNode::AndNode((l, r)) | LogicNode::OrNode((l, r)) => {
-            collect_forall_nodes_rec(buffer, *l, skolem_subs, entries);
-            collect_forall_nodes_rec(buffer, *r, skolem_subs, entries);
-        }
-        LogicNode::NotNode(inner) | LogicNode::ExistsNode((_, inner)) => {
-            collect_forall_nodes_rec(buffer, *inner, skolem_subs, entries);
-        }
-        LogicNode::CountNode((v, count, body)) => {
-            if *count == 0 {
-                // Count(x, 0, body) ≡ ∀x.¬body — treat as universal template
-                let body_sexp = reconstruct_sexp_with_subs(buffer, *body, skolem_subs);
-                let negated = format!("(Not {})", body_sexp);
-                // Collect dependent Skolems in the negated body
-                let dependent_skolems: Vec<(String, String)> = skolem_subs
-                    .values()
-                    .filter_map(|val| {
-                        val.strip_prefix(SKDEP_PREFIX).and_then(|base| {
-                            if negated.contains(&format!("(Var \"{}\")", val)) {
-                                Some((val.clone(), base.to_string()))
-                            } else {
-                                None
-                            }
-                        })
-                    })
-                    .collect();
-                entries.push((v.clone(), negated, dependent_skolems));
-            } else {
-                // Count(x, n>0, body): recurse into body for nested ForAlls
-                collect_forall_nodes_rec(buffer, *body, skolem_subs, entries);
-            }
-        }
-        // Tense wrappers: recurse through to find any ForAll nodes inside
-        LogicNode::PastNode(inner)
-        | LogicNode::PresentNode(inner)
-        | LogicNode::FutureNode(inner) => {
-            collect_forall_nodes_rec(buffer, *inner, skolem_subs, entries);
-        }
-        _ => {}
-    }
-}
-
-/// Register all Const terms found in the formula as known entities.
-fn collect_and_register_constants(buffer: &LogicBuffer, node_id: u32, egraph: &mut EGraph) {
-    match &buffer.nodes[node_id as usize] {
-        LogicNode::Predicate((_, args)) => {
-            for arg in args {
-                if let LogicalTerm::Constant(c) = arg {
-                    register_entity(c, egraph);
-                }
-            }
-        }
-        LogicNode::AndNode((l, r)) | LogicNode::OrNode((l, r)) => {
-            collect_and_register_constants(buffer, *l, egraph);
-            collect_and_register_constants(buffer, *r, egraph);
-        }
-        LogicNode::NotNode(inner)
-        | LogicNode::ExistsNode((_, inner))
-        | LogicNode::ForAllNode((_, inner)) => {
-            collect_and_register_constants(buffer, *inner, egraph);
-        }
-        LogicNode::CountNode((_, _, body)) => {
-            collect_and_register_constants(buffer, *body, egraph);
-        }
-        LogicNode::PastNode(inner)
-        | LogicNode::PresentNode(inner)
-        | LogicNode::FutureNode(inner) => {
-            collect_and_register_constants(buffer, *inner, egraph);
-        }
-    }
-}
-
 // ─── Native Rule Compilation ─────────────────────────────────────
-
-/// Check if a ForAll node has any dependent existentials (∃ nested under ∀).
-/// If true, the old Herbrand approach is used as fallback (Phase A).
-fn has_dependent_skolems(buffer: &LogicBuffer, node_id: u32, under_forall: bool) -> bool {
-    match &buffer.nodes[node_id as usize] {
-        LogicNode::ForAllNode((_, body)) => has_dependent_skolems(buffer, *body, true),
-        LogicNode::ExistsNode((_, body)) => {
-            if under_forall {
-                return true;
-            }
-            has_dependent_skolems(buffer, *body, false)
-        }
-        LogicNode::AndNode((l, r)) | LogicNode::OrNode((l, r)) => {
-            has_dependent_skolems(buffer, *l, under_forall)
-                || has_dependent_skolems(buffer, *r, under_forall)
-        }
-        LogicNode::NotNode(inner) => has_dependent_skolems(buffer, *inner, under_forall),
-        LogicNode::CountNode((_, _, body)) => has_dependent_skolems(buffer, *body, under_forall),
-        LogicNode::PastNode(inner)
-        | LogicNode::PresentNode(inner)
-        | LogicNode::FutureNode(inner) => has_dependent_skolems(buffer, *inner, under_forall),
-        LogicNode::Predicate(_) => false,
-    }
-}
 
 /// Decompose a material conditional body into (conditions, action).
 /// The semantics layer produces universals as ForAll(v, Or(Not(restrictor), body)).
@@ -816,12 +621,14 @@ fn collect_and_note_constants(buffer: &LogicBuffer, node_id: u32, egraph: &mut E
 /// Reconstruct an egglog s-expression with bare pattern variables for rule compilation.
 /// Variables in `pattern_vars` are emitted as bare identifiers (egglog pattern variables).
 /// Variables in `ground_skolems` are emitted as (Const "sk_N").
+/// Variables in `dependent_skolems` are emitted as (SkolemFn "base" (Cons pvar ...)).
 /// Other variables are emitted as (Var "name").
 fn reconstruct_rule_sexp(
     buffer: &LogicBuffer,
     node_id: u32,
     pattern_vars: &HashMap<String, String>,
     ground_skolems: &HashMap<String, String>,
+    dependent_skolems: &HashMap<String, (String, Vec<String>)>,
 ) -> String {
     match &buffer.nodes[node_id as usize] {
         LogicNode::Predicate((rel, args)) => {
@@ -834,6 +641,8 @@ fn reconstruct_rule_sexp(
                             pvar.clone()
                         } else if let Some(sk) = ground_skolems.get(v.as_str()) {
                             format!("(Const \"{}\")", sk)
+                        } else if let Some((base, pvars)) = dependent_skolems.get(v.as_str()) {
+                            build_skolem_fn_sexp(base, pvars)
                         } else {
                             format!("(Var \"{}\")", v)
                         }
@@ -849,65 +658,68 @@ fn reconstruct_rule_sexp(
         }
         LogicNode::ExistsNode((v, body)) => {
             // In rule context, Skolemized exists are stripped
-            if ground_skolems.contains_key(v.as_str()) || pattern_vars.contains_key(v.as_str()) {
-                reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems)
+            if ground_skolems.contains_key(v.as_str())
+                || pattern_vars.contains_key(v.as_str())
+                || dependent_skolems.contains_key(v.as_str())
+            {
+                reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems, dependent_skolems)
             } else {
                 format!(
                     "(Exists \"{}\" {})",
                     v,
-                    reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems)
+                    reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems, dependent_skolems)
                 )
             }
         }
         LogicNode::ForAllNode((v, body)) => {
             // In rule context, ForAll wrappers are stripped (pattern vars handle them)
             if pattern_vars.contains_key(v.as_str()) {
-                reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems)
+                reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems, dependent_skolems)
             } else {
                 format!(
                     "(ForAll \"{}\" {})",
                     v,
-                    reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems)
+                    reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems, dependent_skolems)
                 )
             }
         }
         LogicNode::AndNode((l, r)) => {
             format!(
                 "(And {} {})",
-                reconstruct_rule_sexp(buffer, *l, pattern_vars, ground_skolems),
-                reconstruct_rule_sexp(buffer, *r, pattern_vars, ground_skolems)
+                reconstruct_rule_sexp(buffer, *l, pattern_vars, ground_skolems, dependent_skolems),
+                reconstruct_rule_sexp(buffer, *r, pattern_vars, ground_skolems, dependent_skolems)
             )
         }
         LogicNode::OrNode((l, r)) => {
             format!(
                 "(Or {} {})",
-                reconstruct_rule_sexp(buffer, *l, pattern_vars, ground_skolems),
-                reconstruct_rule_sexp(buffer, *r, pattern_vars, ground_skolems)
+                reconstruct_rule_sexp(buffer, *l, pattern_vars, ground_skolems, dependent_skolems),
+                reconstruct_rule_sexp(buffer, *r, pattern_vars, ground_skolems, dependent_skolems)
             )
         }
         LogicNode::NotNode(inner) => {
             format!(
                 "(Not {})",
-                reconstruct_rule_sexp(buffer, *inner, pattern_vars, ground_skolems)
+                reconstruct_rule_sexp(buffer, *inner, pattern_vars, ground_skolems, dependent_skolems)
             )
         }
         LogicNode::CountNode((v, count, body)) => {
             if *count == 0 {
                 let body_sexp =
-                    reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems);
+                    reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems, dependent_skolems);
                 format!("(ForAll \"{}\" (Not {}))", v, body_sexp)
             } else if ground_skolems.contains_key(v.as_str()) {
-                reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems)
+                reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems, dependent_skolems)
             } else {
                 let body_sexp =
-                    reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems);
+                    reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems, dependent_skolems);
                 format!("(Exists \"{}\" {})", v, body_sexp)
             }
         }
         LogicNode::PastNode(inner)
         | LogicNode::PresentNode(inner)
         | LogicNode::FutureNode(inner) => {
-            reconstruct_rule_sexp(buffer, *inner, pattern_vars, ground_skolems)
+            reconstruct_rule_sexp(buffer, *inner, pattern_vars, ground_skolems, dependent_skolems)
         }
     }
 }
@@ -948,12 +760,41 @@ fn compile_forall_to_rule(
         .map(|(i, v)| (v.clone(), format!("x__v{}", i)))
         .collect();
 
-    // Extract only ground Skolem subs (no dependent ones in Phase A)
+    // Extract ground Skolem subs (independent Skolems)
     let ground_skolems: HashMap<String, String> = skolem_subs
         .iter()
         .filter(|(_, v)| !v.starts_with(SKDEP_PREFIX))
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
+
+    // Build dependent Skolem map: var -> (base_name, [egglog_pattern_var_names])
+    // Ordered pattern var names for SkolemFn argument list
+    let pattern_var_names: Vec<String> = universals
+        .iter()
+        .map(|v| pattern_vars[v].clone())
+        .collect();
+    let dependent_skolems: HashMap<String, (String, Vec<String>)> = skolem_subs
+        .iter()
+        .filter_map(|(k, v)| {
+            v.strip_prefix(SKDEP_PREFIX).map(|base| {
+                (k.clone(), (base.to_string(), pattern_var_names.clone()))
+            })
+        })
+        .collect();
+
+    // Register dependent Skolems for query-side witness enumeration
+    if !dependent_skolems.is_empty() {
+        let sfr = SKOLEM_FN_REGISTRY.get_or_init(|| Mutex::new(Vec::new()));
+        let mut registry = sfr.lock().unwrap();
+        for (_, (base, pvars)) in &dependent_skolems {
+            if !registry.iter().any(|e| e.base_name == *base) {
+                registry.push(SkolemFnEntry {
+                    base_name: base.clone(),
+                    dep_count: pvars.len(),
+                });
+            }
+        }
+    }
 
     // 3. Decompose inner body
     match decompose_implication(buffer, inner_body_id) {
@@ -971,7 +812,7 @@ fn compile_forall_to_rule(
                 .iter()
                 .map(|&cid| {
                     let sexp =
-                        reconstruct_rule_sexp(buffer, cid, &pattern_vars, &ground_skolems);
+                        reconstruct_rule_sexp(buffer, cid, &pattern_vars, &ground_skolems, &dependent_skolems);
                     format!("(IsTrue {})", sexp)
                 })
                 .collect();
@@ -982,7 +823,7 @@ fn compile_forall_to_rule(
                 .iter()
                 .map(|&aid| {
                     let sexp =
-                        reconstruct_rule_sexp(buffer, aid, &pattern_vars, &ground_skolems);
+                        reconstruct_rule_sexp(buffer, aid, &pattern_vars, &ground_skolems, &dependent_skolems);
                     format!("(IsTrue {})", sexp)
                 })
                 .collect();
@@ -1014,7 +855,7 @@ fn compile_forall_to_rule(
         None => {
             // Bare universal (no implication): use InDomain trigger
             let body_sexp =
-                reconstruct_rule_sexp(buffer, inner_body_id, &pattern_vars, &ground_skolems);
+                reconstruct_rule_sexp(buffer, inner_body_id, &pattern_vars, &ground_skolems, &dependent_skolems);
 
             let domain_conditions: Vec<String> = universals
                 .iter()
@@ -1068,15 +909,8 @@ fn reconstruct_sexp_with_subs(
             for arg in args.iter().rev() {
                 let term_str = match arg {
                     LogicalTerm::Variable(v) => {
-                        if let Some(replacement) = subs.get(v.as_str()) {
-                            if replacement.starts_with(SKDEP_PREFIX) {
-                                // Dependent Skolem: stays as a Var placeholder.
-                                // Will be replaced with a per-entity Const during
-                                // Herbrand instantiation.
-                                format!("(Var \"{}\")", replacement)
-                            } else {
-                                format!("(Const \"{}\")", replacement)
-                            }
+                        if let Some(raw_sexp) = subs.get(v.as_str()) {
+                            raw_sexp.clone()
                         } else {
                             format!("(Var \"{}\")", v)
                         }
@@ -1171,9 +1005,13 @@ fn generate_count_extra_witnesses(
                     let extra_sk = fresh_skolem();
                     note_entity(&extra_sk, egraph);
 
-                    // Build substitutions with the extra witness replacing v
-                    let mut extra_subs = skolem_subs.clone();
-                    extra_subs.insert(v.clone(), extra_sk.clone());
+                    // Build raw sexp substitutions with the extra witness replacing v
+                    let mut extra_subs: HashMap<String, String> = skolem_subs
+                        .iter()
+                        .filter(|(_, sv)| !sv.starts_with(SKDEP_PREFIX))
+                        .map(|(k, sv)| (k.clone(), format!("(Const \"{}\")", sv)))
+                        .collect();
+                    extra_subs.insert(v.clone(), format!("(Const \"{}\")", extra_sk));
 
                     let sexp = reconstruct_sexp_with_subs(buffer, *body, &extra_subs);
                     let command = format!("(IsTrue {})", sexp);
@@ -1238,6 +1076,21 @@ mod tests {
     fn forall(nodes: &mut Vec<LogicNode>, var: &str, body: u32) -> u32 {
         let id = nodes.len() as u32;
         nodes.push(LogicNode::ForAllNode((var.to_string(), body)));
+        id
+    }
+
+    /// Helper: build an ExistsNode.
+    fn exists(nodes: &mut Vec<LogicNode>, var: &str, body: u32) -> u32 {
+        let id = nodes.len() as u32;
+        nodes.push(LogicNode::ExistsNode((var.to_string(), body)));
+        id
+    }
+
+    /// Helper: build an AndNode.
+    #[allow(dead_code)]
+    fn and(nodes: &mut Vec<LogicNode>, left: u32, right: u32) -> u32 {
+        let id = nodes.len() as u32;
+        nodes.push(LogicNode::AndNode((left, right)));
         id
     }
 
@@ -1390,5 +1243,111 @@ mod tests {
         // Should still work correctly
         assert_buf(make_assertion("alis", "gerku"));
         assert!(query(make_query("alis", "danlu")));
+    }
+
+    // ─── Dependent Skolem (Phase B) Tests ────────────────────────────
+
+    /// Build ∀x. P(x) → ∃y. R(x,y)
+    /// ForAll("_v0", Or(Not(Pred(restrictor, [Var("_v0"), Zoe])),
+    ///                   Exists("_v1", Pred(consequent, [Var("_v0"), Var("_v1"), Zoe]))))
+    fn make_dependent_skolem_universal(restrictor: &str, consequent: &str) -> LogicBuffer {
+        let mut nodes = Vec::new();
+        let restrict = pred(
+            &mut nodes,
+            restrictor,
+            vec![LogicalTerm::Variable("_v0".to_string()), LogicalTerm::Unspecified],
+        );
+        let body = pred(
+            &mut nodes,
+            consequent,
+            vec![
+                LogicalTerm::Variable("_v0".to_string()),
+                LogicalTerm::Variable("_v1".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let ex = exists(&mut nodes, "_v1", body);
+        let neg = not(&mut nodes, restrict);
+        let disj = or(&mut nodes, neg, ex);
+        let root = forall(&mut nodes, "_v0", disj);
+        LogicBuffer { nodes, roots: vec![root] }
+    }
+
+    /// Build existential query: ∃y. R(entity, y)
+    fn make_exists_query(entity: &str, predicate: &str) -> LogicBuffer {
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            predicate,
+            vec![
+                LogicalTerm::Constant(entity.to_string()),
+                LogicalTerm::Variable("_v1".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let root = exists(&mut nodes, "_v1", body);
+        LogicBuffer { nodes, roots: vec![root] }
+    }
+
+    #[test]
+    fn test_dependent_skolem_native_rule() {
+        reset();
+        // la .alis. prenu  (alis is a person)
+        assert_buf(make_assertion("alis", "prenu"));
+        // ro lo prenu cu se zdani da  (every person has a home)
+        // ∀x. prenu(x) → ∃y. zdani(x, y)
+        assert_buf(make_dependent_skolem_universal("prenu", "zdani"));
+        // ? da zo'u la .alis. zdani da  (does alis have a home?) → TRUE
+        assert!(query(make_exists_query("alis", "zdani")));
+    }
+
+    #[test]
+    fn test_dependent_skolem_entity_after_rule() {
+        reset();
+        // Rule first: every person has a home
+        assert_buf(make_dependent_skolem_universal("prenu", "zdani"));
+        // Entity second: alis is a person
+        assert_buf(make_assertion("alis", "prenu"));
+        // ? ∃y. zdani(alis, y) → TRUE (egglog rule fires on new facts)
+        assert!(query(make_exists_query("alis", "zdani")));
+    }
+
+    #[test]
+    fn test_dependent_skolem_query_existential() {
+        reset();
+        // Setup: person → has home
+        assert_buf(make_assertion("alis", "prenu"));
+        assert_buf(make_dependent_skolem_universal("prenu", "zdani"));
+        // Query without existential: specific SkolemFn check would fail for unknown entity
+        // But existential query should find the SkolemFn witness
+        assert!(query(make_exists_query("alis", "zdani")));
+        // Negative: bob is not a person, should have no home
+        assert!(!query(make_exists_query("bob", "zdani")));
+    }
+
+    #[test]
+    fn test_skolem_fn_multiple_entities() {
+        reset();
+        // Multiple entities: alis and bob are both persons
+        assert_buf(make_assertion("alis", "prenu"));
+        assert_buf(make_assertion("bob", "prenu"));
+        // Every person has a home
+        assert_buf(make_dependent_skolem_universal("prenu", "zdani"));
+        // Both should have homes via unique SkolemFn witnesses
+        assert!(query(make_exists_query("alis", "zdani")));
+        assert!(query(make_exists_query("bob", "zdani")));
+    }
+
+    #[test]
+    fn test_skolem_fn_registry_populated() {
+        reset();
+        // Assert a dependent Skolem universal
+        assert_buf(make_dependent_skolem_universal("prenu", "zdani"));
+        // Verify the SkolemFn registry was populated (not Herbrand templates)
+        let sfr = SKOLEM_FN_REGISTRY.get_or_init(|| Mutex::new(Vec::new()));
+        let entries = sfr.lock().unwrap();
+        assert!(!entries.is_empty(), "SkolemFn registry should have entries");
+        assert_eq!(entries[0].base_name, "sk_0");
+        assert_eq!(entries[0].dep_count, 1);
     }
 }

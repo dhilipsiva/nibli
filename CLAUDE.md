@@ -19,7 +19,7 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | Command | What it does |
 |---------|-------------|
 | `just run` | Full pipeline: clean WASM -> build components -> fuse with wac -> launch REPL |
-| `just test` | Run all unit tests (`cargo test --lib -- --nocapture`) |
+| `just test` | Run all unit tests (`cargo test --lib -- --nocapture --test-threads=1`) |
 | `just test-parser` | Run parser tests only |
 | `just build-wasm` | Build WASM components + fuse with wac |
 | `just build-runner` | Build native Wasmtime host runner |
@@ -67,6 +67,7 @@ When analyzing or searching the codebase:
 - `push_bridi` in `parser/src/lib.rs` is dead code (unused warning)
 - `cargo component build` fails on `io-extras` crate — pre-existing, unrelated to our changes. Bindings generate before the failure.
 - Existential introduction gap: `ro lo gerku cu danlu` then `? lo gerku cu danlu` returns FALSE because engine lacks ∀x.P(x) ⊢ ∃x.P(x) bridging when domain is non-empty (see `todo.md` bottom for full analysis)
+- Reasoning tests require `--test-threads=1` (shared global state: EGRAPH, KNOWN_ENTITIES). The Justfile `just test` handles this.
 
 ## Roadmap
 
@@ -82,7 +83,7 @@ Before every commit, always:
 
 ## Current Status
 
-Completed through Tier 1.1 Phase A.
+Completed through Tier 1.1 (all phases).
 
 **Implemented features:**
 - Lexer + recursive-descent parser (gismu, cmavo, cmevla, lujvo partial)
@@ -95,10 +96,11 @@ Completed through Tier 1.1 Phase A.
 - Abstractions (nu, du'u, ka with ce'u, ni, si'o)
 - Tense (pu/ca/ba)
 - Quoted literals (lu...li'u), number sumti (li + PA)
-- Skolemization (independent + dependent under ∀)
-- Native egglog rules for simple universals (Phase A), Herbrand fallback for dependent-Skolem universals
+- Skolemization (independent + dependent under ∀ via SkolemFn)
+- All universals compile to native egglog rules with O(K) hash-join matching
+- SkolemFn constructor for dependent Skolems (∀x. P(x) → ∃y. R(x,y))
 - egglog e-graph reasoning with structural rewrites + inference rules
 - Count quantifier (exactly N) for numeric descriptions
 - da/de/di existential quantifier closure (bare logic variables now properly wrapped in ∃)
 
-**Next up:** Tier 1.1 Phase B (SkolemFn for dependent Skolems) or Tier 1.2 (WASI state hoisting)
+**Next up:** Tier 1.2 (WASI state hoisting) or Tier 3.1 (Deontic predicates)

@@ -12,7 +12,7 @@ Nibli is a deterministic theorem prover compiled to WebAssembly (WASI P2). It co
 Lojban text ──→ Lexer ──→ Parser (AST) ──→ Semantics (FOL IR) ──→ Reasoning (egglog e-graph)
                  │            │                    │                        │
                 logos     recursive            Skolemization         equality saturation
-              tokenizer    descent          Herbrand instantiation    inference rules
+              tokenizer    descent           SkolemFn witnesses      native egglog rules
 ```
 
 5 WASM components composed via WIT interfaces into a single fused binary:
@@ -85,8 +85,8 @@ just test
 
 ## Reasoning
 
-- Skolemization (independent + dependent under `∀`)
-- Native egglog rules for universal formulas (O(K) hash-join matching, no Herbrand cross-product)
+- Skolemization (independent + dependent under `∀` via `SkolemFn` constructor)
+- All universals compile to native egglog rules (O(K) hash-join matching, zero Herbrand overhead)
 - egglog e-graph with structural rewrites (commutativity, associativity, De Morgan, double negation) + inference rules (conjunction elimination, disjunctive syllogism, modus ponens/tollens)
 - Count quantifier (exactly N) for numeric descriptions
 

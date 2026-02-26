@@ -4,19 +4,13 @@
 
 Without this tier, the engine caps out at ~100 entities. Science and legal domains need 1K-50K+.
 
-### 1.1 Native egglog rules — Phase B: Dependent Skolem functions
+### 1.1 Native egglog rules ~~COMPLETE~~
 
-**Phase A complete.** Simple universals (no ∃ under ∀) now compile to native egglog rules with O(K) hash-join matching. Old Herbrand fallback retained for dependent-Skolem universals.
+**Phase A+B complete.** All universals (simple and dependent Skolem) now compile to native egglog rules with O(K) hash-join matching. `SkolemFn` Term constructor in egglog schema handles dependent Skolems (`∀x. P(x) → ∃y. R(x,y)`) — creates `(SkolemFn "sk_N" x)` unique per entity. All Herbrand machinery removed (`UniversalTemplate`, `register_entity`, `instantiate_for_entity`, `collect_forall_nodes`, `has_dependent_skolems`). String replacement fragility (0.3) fully eliminated.
 
-**Remaining:** Add `SkolemFn` term to egglog schema for dependent Skolems (`∀x. P(x) → ∃y. R(x,y)`). The rule head creates `(SkolemFn "sk_N" (Cons x (Nil)))` — a unique witness per entity. Requires query-side SkolemFn witness registry for existential enumeration. Then remove all remaining Herbrand machinery (`UNIVERSAL_TEMPLATES`, `register_entity`, `instantiate_for_entity`, `collect_forall_nodes`).
-
-**Also still pending:**
-- Existential introduction gap (0.2 deferred) — revisit xorlo presupposition after Phase B
-- String replacement fragility (0.3 deferred) — fully eliminated once Phase B removes Herbrand fallback
-
-**Crate:** reasoning/lib.rs
-**Complexity:** medium (Phase A infrastructure in place)
-**Blocks:** full elimination of O(E×T) cross-product
+**Still pending:**
+- Existential introduction gap (0.2 deferred) — revisit xorlo presupposition
+- SkolemFn currently supports dep_count=1 only (single universal dependency). Multi-dependency (`∀x.∀y. → ∃z.`) needs SkolemPair or TermList encoding — deferred until needed.
 
 ### 1.2 WASI state hoisting (replaces `OnceLock` anti-pattern)
 
@@ -28,22 +22,15 @@ Current `OnceLock<Mutex<EGraph>>` works only because the runner reuses a single 
 **Complexity:** high (architectural rework)
 **Blocks:** persistence, multi-tenant deployment, clean `:reset`
 
-### 1.3 `reconstruct_sexp` deduplication
+### 1.3 `reconstruct_sexp` deduplication — MOOT
 
-Orchestrator and reasoning have near-identical copies of `reconstruct_sexp`. Extract into shared utility or unify via the WIT interface.
+Reasoning-side `reconstruct_sexp_with_subs` still exists for query decomposition and ground assertion, but is no longer duplicated for Herbrand instantiation. Orchestrator's copy is the primary display version. Low priority — the functions serve different roles now.
 
-**Note:** If 1.1 removes `reconstruct_sexp` from reasoning entirely, this becomes moot — just verify orchestrator's copy is the sole survivor.
+### 1.4 String pre-allocation in `reconstruct_sexp` — reduced scope
 
-**Crate:** orchestrator, reasoning
-**Complexity:** low
+Only applies to orchestrator's display copy now. Reasoning-side `reconstruct_sexp_with_subs` is used sparingly (ground assertions + query checks).
 
-### 1.4 String pre-allocation in `reconstruct_sexp`
-
-Currently O(n^2) from nested `format!` calls. Use a `String` buffer with `write!` or pre-calculate capacity.
-
-**Note:** Reduced in scope if 1.1 eliminates the reasoning-side copy.
-
-**Crate:** reasoning, orchestrator
+**Crate:** orchestrator
 **Complexity:** low
 
 ### 1.5 wasip1 → wasip2 alignment
@@ -285,14 +272,14 @@ Prevent infinite rewrite loops in egglog. May be handled natively by egglog's sa
 Tier 0 (correctness)
   0.1 da/de/di closure ── no dependencies, do anytime
   0.2 existential introduction gap ── partially solved by 1.1
-  0.3 string replacement ── eliminated by 1.1
+  0.3 string replacement ── ✓ eliminated by 1.1
 
 Tier 1 (scale)                        Tier 2 (quantitative)
-  1.1 native egglog rules               2.1 numerical predicates
+  1.1 native egglog rules ✓ DONE        2.1 numerical predicates
        │                                 2.2 computation dispatch WIT
-       ├── eliminates 0.3                     │
+       ├── ✓ eliminates 0.3                   │
        ├── partially solves 0.2          2.3 Python adapter ──→ 2.4 result ingestion
-       ├── may make 1.3, 1.4 moot
+       ├── 1.3, 1.4 now moot (Herbrand removed)
        └── enables Tier 4, 5
   1.2 WASI state hoisting
        └── enables persistence, multi-tenant
