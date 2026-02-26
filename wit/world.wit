@@ -157,6 +157,8 @@ world reasoning-component {
 }
 
 interface engine {
+    use logic-types.{logical-term};
+
     resource session {
         /// Create a new session (internally creates a fresh KB).
         constructor();
@@ -170,6 +172,8 @@ interface engine {
         reset-kb: func() -> result<_, string>;
         /// Register a predicate name for external computation dispatch.
         register-compute-predicate: func(name: string);
+        /// Assert a ground fact directly into the KB (bypasses Lojban parsing).
+        assert-fact: func(relation: string, args: list<logical-term>) -> result<_, string>;
     }
 }
 

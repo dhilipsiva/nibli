@@ -161,6 +161,7 @@ mod pipeline_bind {
 }
 
 use pipeline_bind::lojban::nesy::compute_backend;
+use pipeline_bind::lojban::nesy::logic_types::LogicalTerm as EngineLogicalTerm;
 
 impl compute_backend::Host for HostState {
     fn evaluate(
@@ -205,6 +206,28 @@ impl compute_backend::Host for HostState {
         // 2. Forward to external backend (if configured)
         self.dispatch_to_backend(&relation, &args)
     }
+}
+
+/// Parse a `:assert` command string into (relation, args).
+/// Numbers are detected automatically; everything else is treated as a Constant.
+/// Format: `<relation> <arg1> <arg2> ...`
+fn parse_assert_args(input: &str) -> std::result::Result<(String, Vec<EngineLogicalTerm>), String> {
+    let parts: Vec<&str> = input.split_whitespace().collect();
+    if parts.is_empty() {
+        return Err("Usage: :assert <relation> <arg1> <arg2> ...".to_string());
+    }
+    let relation = parts[0].to_string();
+    let args = parts[1..]
+        .iter()
+        .map(|&s| {
+            if let Ok(n) = s.parse::<f64>() {
+                EngineLogicalTerm::Number(n)
+            } else {
+                EngineLogicalTerm::Constant(s.to_string())
+            }
+        })
+        .collect();
+    Ok((relation, args))
 }
 
 fn main() -> Result<()> {
@@ -253,7 +276,7 @@ fn main() -> Result<()> {
     let prompt = DefaultPrompt::default();
 
     println!(
-        "Ready. Commands: :quit :reset :debug <text> :compute <name> :backend [addr] :help"
+        "Ready. Commands: :quit :reset :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :help"
     );
     println!("Prefix '?' for queries, plain text for assertions.\n");
 
@@ -296,6 +319,7 @@ fn main() -> Result<()> {
                         println!("  ? <text>            Query entailment");
                         println!("  :debug <text>       Show compiled logic tree");
                         println!("  :compute <name>     Register predicate for compute dispatch");
+                        println!("  :assert <rel> <args..> Assert a ground fact directly");
                         println!("  :backend [host:port] Show or set compute backend address");
                         println!("  :reset              Clear all facts (fresh KB)");
                         println!("  :quit               Exit");
@@ -343,6 +367,39 @@ fn main() -> Result<()> {
                             println!("[Compute] Registered '{}' for external dispatch", name)
                         }
                         Err(e) => println!("[Host Error] {:?}", e),
+                    }
+                } else if let Some(assert_args) = input.strip_prefix(":assert ") {
+                    let text = assert_args.trim();
+                    if text.is_empty() {
+                        println!("[Host] Usage: :assert <relation> <arg1> <arg2> ...");
+                        continue;
+                    }
+                    match parse_assert_args(text) {
+                        Ok((relation, args)) => {
+                            let display_args: Vec<String> = args
+                                .iter()
+                                .map(|a| match a {
+                                    EngineLogicalTerm::Number(n) => format!("{}", n),
+                                    EngineLogicalTerm::Constant(s) => s.clone(),
+                                    _ => "?".to_string(),
+                                })
+                                .collect();
+                            match session.call_assert_fact(
+                                &mut store,
+                                session_handle,
+                                &relation,
+                                &args,
+                            ) {
+                                Ok(Ok(())) => println!(
+                                    "[Assert] Fact {}({}) inserted.",
+                                    relation,
+                                    display_args.join(", ")
+                                ),
+                                Ok(Err(e)) => println!("[Error] {}", e),
+                                Err(e) => println!("[Host Error] {:?}", e),
+                            }
+                        }
+                        Err(e) => println!("[Error] {}", e),
                     }
                 } else if let Some(query_text) = input.strip_prefix('?') {
                     let text = query_text.trim();

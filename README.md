@@ -56,6 +56,9 @@ just test
 ~/nibli〉:debug re lo gerku cu barda
 [Logic] (Count "_v0" 2 (And (Pred "gerku" ...) (Pred "barda" ...)))
 
+~/nibli〉:assert tenfa 8 2 3
+[Assert] tenfa(8, 2, 3)
+
 ~/nibli〉:reset
 [Reset] Knowledge base cleared.
 ```
@@ -94,6 +97,8 @@ just test
 - Computation dispatch: `compute-backend` WIT protocol for external evaluation, `ComputeNode` IR variant
 - Built-in arithmetic: `pilji` (multiply), `sumji` (add), `dilcu` (divide) with host-provided compute backend
 - External compute backend: generic TCP client with JSON Lines protocol, lazy connect, auto-reconnect
+- Compute result auto-ingestion: successful compute results automatically cached in the KB as ground predicates (closes reason→compute→reason loop)
+- Direct fact assertion: `assert-fact` WIT method + `:assert` REPL command for programmatic fact injection bypassing Lojban parsing
 
 ## Compute Backend
 

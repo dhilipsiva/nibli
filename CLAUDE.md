@@ -97,7 +97,7 @@ Before every commit, always:
 
 ## Current Status
 
-Completed through all Tier 1 items + Tier 2.1-2.3 (numerical comparisons + computation dispatch + external compute backend).
+Completed through all Tier 1 items + full Tier 2 (numerical comparisons + computation dispatch + external compute backend + result ingestion).
 
 **Implemented features:**
 - Lexer + recursive-descent parser (gismu, cmavo, cmevla, lujvo partial)
@@ -124,5 +124,8 @@ Completed through all Tier 1 items + Tier 2.1-2.3 (numerical comparisons + compu
 - Host-provided compute backend with wasmtime linker integration
 - Generic external compute backend: TCP + JSON Lines client in runner, lazy connect, auto-reconnect
 - Python reference backend server: pilji, sumji, dilcu, tenfa (exponentiation), dugri (logarithm)
+- Compute result auto-ingestion: successful compute dispatch results automatically asserted into egglog KB as ground predicates
+- Direct fact assertion: `assert-fact` WIT method on session resource bypasses Lojban parsing for trusted programmatic injection
+- REPL `:assert` command: `:assert <relation> <arg1> <arg2> ...` for direct fact injection (numbers auto-detected, else constant)
 
-**Next up:** Tier 2.4 (Result ingestion as assertions) or Tier 3.1 (Deontic predicates)
+**Next up:** Tier 3.1 (Deontic predicates) or Tier 4.1 (Existential witness extraction)

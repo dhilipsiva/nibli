@@ -1,18 +1,5 @@
 # Nibli Roadmap
 
-## Tier 2 — Quantitative Reasoning
-
-Without this tier, the engine can only do qualitative symbolic reasoning. Every scientific domain needs quantitative capabilities.
-
-### 2.4 Result ingestion as assertions
-
-Computation results → Lojban assertions → knowledge base. Closes the reason→compute→reason loop. Needs trusted assertion path (bypass user input parsing).
-
-**Depends on:** 2.3 (done — generic TCP compute backend)
-**Complexity:** medium
-
----
-
 ## Tier 3 — Domain-Specific Language Coverage
 
 Features needed to express domain knowledge naturally in Lojban.
@@ -186,9 +173,6 @@ Items identified during implementation but not yet prioritized into a tier.
 ## Dependency Graph
 
 ```
-Tier 2 (quantitative)
-  2.4 result ingestion
-
 Tier 3 (language)         Tier 4 (production)         Tier 5 (advanced)
   3.1 deontic               4.1 witness extraction      5.1 non-monotonic
   3.2 lujvo                 4.2 proof traces            5.2 temporal

@@ -3198,6 +3198,7 @@ pub mod exports {
                 #[doc(hidden)]
                 static __FORCE_SECTION_REF: fn() = super::super::super::super::__link_custom_section_describing_imports;
                 use super::super::super::super::_rt;
+                pub type LogicalTerm = super::super::super::super::lojban::nesy::logic_types::LogicalTerm;
                 #[derive(Debug)]
                 #[repr(transparent)]
                 pub struct Session {
@@ -3579,6 +3580,140 @@ pub mod exports {
                         _rt::string_lift(bytes0),
                     );
                 }
+                #[doc(hidden)]
+                #[allow(non_snake_case)]
+                pub unsafe fn _export_method_session_assert_fact_cabi<T: GuestSession>(
+                    arg0: *mut u8,
+                    arg1: *mut u8,
+                    arg2: usize,
+                    arg3: *mut u8,
+                    arg4: usize,
+                ) -> *mut u8 {
+                    #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+                    let len0 = arg2;
+                    let bytes0 = _rt::Vec::from_raw_parts(arg1.cast(), len0, len0);
+                    let base13 = arg3;
+                    let len13 = arg4;
+                    let mut result13 = _rt::Vec::with_capacity(len13);
+                    for i in 0..len13 {
+                        let base = base13
+                            .add(i * (8 + 2 * ::core::mem::size_of::<*const u8>()));
+                        let e13 = {
+                            let l1 = i32::from(*base.add(0).cast::<u8>());
+                            use super::super::super::super::lojban::nesy::logic_types::LogicalTerm as V12;
+                            let v12 = match l1 {
+                                0 => {
+                                    let e12 = {
+                                        let l2 = *base.add(8).cast::<*mut u8>();
+                                        let l3 = *base
+                                            .add(8 + 1 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<usize>();
+                                        let len4 = l3;
+                                        let bytes4 = _rt::Vec::from_raw_parts(
+                                            l2.cast(),
+                                            len4,
+                                            len4,
+                                        );
+                                        _rt::string_lift(bytes4)
+                                    };
+                                    V12::Variable(e12)
+                                }
+                                1 => {
+                                    let e12 = {
+                                        let l5 = *base.add(8).cast::<*mut u8>();
+                                        let l6 = *base
+                                            .add(8 + 1 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<usize>();
+                                        let len7 = l6;
+                                        let bytes7 = _rt::Vec::from_raw_parts(
+                                            l5.cast(),
+                                            len7,
+                                            len7,
+                                        );
+                                        _rt::string_lift(bytes7)
+                                    };
+                                    V12::Constant(e12)
+                                }
+                                2 => {
+                                    let e12 = {
+                                        let l8 = *base.add(8).cast::<*mut u8>();
+                                        let l9 = *base
+                                            .add(8 + 1 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<usize>();
+                                        let len10 = l9;
+                                        let bytes10 = _rt::Vec::from_raw_parts(
+                                            l8.cast(),
+                                            len10,
+                                            len10,
+                                        );
+                                        _rt::string_lift(bytes10)
+                                    };
+                                    V12::Description(e12)
+                                }
+                                3 => V12::Unspecified,
+                                n => {
+                                    debug_assert_eq!(n, 4, "invalid enum discriminant");
+                                    let e12 = {
+                                        let l11 = *base.add(8).cast::<f64>();
+                                        l11
+                                    };
+                                    V12::Number(e12)
+                                }
+                            };
+                            v12
+                        };
+                        result13.push(e13);
+                    }
+                    _rt::cabi_dealloc(
+                        base13,
+                        len13 * (8 + 2 * ::core::mem::size_of::<*const u8>()),
+                        8,
+                    );
+                    let result14 = T::assert_fact(
+                        unsafe { SessionBorrow::lift(arg0 as u32 as usize) }.get(),
+                        _rt::string_lift(bytes0),
+                        result13,
+                    );
+                    let ptr15 = (&raw mut _RET_AREA.0).cast::<u8>();
+                    match result14 {
+                        Ok(_) => {
+                            *ptr15.add(0).cast::<u8>() = (0i32) as u8;
+                        }
+                        Err(e) => {
+                            *ptr15.add(0).cast::<u8>() = (1i32) as u8;
+                            let vec16 = (e.into_bytes()).into_boxed_slice();
+                            let ptr16 = vec16.as_ptr().cast::<u8>();
+                            let len16 = vec16.len();
+                            ::core::mem::forget(vec16);
+                            *ptr15
+                                .add(2 * ::core::mem::size_of::<*const u8>())
+                                .cast::<usize>() = len16;
+                            *ptr15
+                                .add(::core::mem::size_of::<*const u8>())
+                                .cast::<*mut u8>() = ptr16.cast_mut();
+                        }
+                    };
+                    ptr15
+                }
+                #[doc(hidden)]
+                #[allow(non_snake_case)]
+                pub unsafe fn __post_return_method_session_assert_fact<T: GuestSession>(
+                    arg0: *mut u8,
+                ) {
+                    let l0 = i32::from(*arg0.add(0).cast::<u8>());
+                    match l0 {
+                        0 => {}
+                        _ => {
+                            let l1 = *arg0
+                                .add(::core::mem::size_of::<*const u8>())
+                                .cast::<*mut u8>();
+                            let l2 = *arg0
+                                .add(2 * ::core::mem::size_of::<*const u8>())
+                                .cast::<usize>();
+                            _rt::cabi_dealloc(l1, l2, 1);
+                        }
+                    }
+                }
                 pub trait Guest {
                     type Session: GuestSession;
                 }
@@ -3648,6 +3783,12 @@ pub mod exports {
                     fn reset_kb(&self) -> Result<(), _rt::String>;
                     /// Register a predicate name for external computation dispatch.
                     fn register_compute_predicate(&self, name: _rt::String) -> ();
+                    /// Assert a ground fact directly into the KB (bypasses Lojban parsing).
+                    fn assert_fact(
+                        &self,
+                        relation: _rt::String,
+                        args: _rt::Vec<LogicalTerm>,
+                    ) -> Result<(), _rt::String>;
                 }
                 #[doc(hidden)]
                 macro_rules! __export_lojban_nesy_engine_0_1_0_cabi {
@@ -3716,7 +3857,20 @@ pub mod exports {
                         arg1 : * mut u8, arg2 : usize,) { unsafe { $($path_to_types)*::
                         _export_method_session_register_compute_predicate_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::Session > (arg0, arg1, arg2) } }
-                        const _ : () = { #[doc(hidden)] #[unsafe (export_name =
+                        #[unsafe (export_name =
+                        "lojban:nesy/engine@0.1.0#[method]session.assert-fact")] unsafe
+                        extern "C" fn export_method_session_assert_fact(arg0 : * mut u8,
+                        arg1 : * mut u8, arg2 : usize, arg3 : * mut u8, arg4 : usize,) ->
+                        * mut u8 { unsafe { $($path_to_types)*::
+                        _export_method_session_assert_fact_cabi::<<$ty as
+                        $($path_to_types)*:: Guest >::Session > (arg0, arg1, arg2, arg3,
+                        arg4) } } #[unsafe (export_name =
+                        "cabi_post_lojban:nesy/engine@0.1.0#[method]session.assert-fact")]
+                        unsafe extern "C" fn _post_return_method_session_assert_fact(arg0
+                        : * mut u8,) { unsafe { $($path_to_types)*::
+                        __post_return_method_session_assert_fact::<<$ty as
+                        $($path_to_types)*:: Guest >::Session > (arg0) } } const _ : () =
+                        { #[doc(hidden)] #[unsafe (export_name =
                         "lojban:nesy/engine@0.1.0#[dtor]session")]
                         #[allow(non_snake_case)] unsafe extern "C" fn dtor(rep : * mut
                         u8) { unsafe { $($path_to_types)*:: Session::dtor::< <$ty as
@@ -3971,8 +4125,8 @@ pub(crate) use __export_engine_pipeline_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 2571] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x85\x13\x01A\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 2656] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xda\x13\x01A\x02\x01\
 A\x11\x01B8\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
 m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x06\x03ria\
 \x03nii\x03mui\x03kiu\x03pio\x03bai\x04\0\x07bai-tag\x03\0\x06\x01q\x02\x05fixed\
@@ -4019,17 +4173,19 @@ nesy/semantics@0.1.0\x05\x05\x01B\x0f\x02\x03\x02\x01\x04\x04\0\x0clogic-buffer\
 \0\x1blojban:nesy/reasoning@0.1.0\x05\x06\x02\x03\0\x02\x0clogical-term\x01B\x06\
 \x02\x03\x02\x01\x07\x04\0\x0clogical-term\x03\0\0\x01p\x01\x01j\x01\x7f\x01s\x01\
 @\x02\x08relations\x04args\x02\0\x03\x04\0\x08evaluate\x01\x04\x03\0!lojban:nesy\
-/compute-backend@0.1.0\x05\x08\x01B\x13\x04\0\x07session\x03\x01\x01i\0\x01@\0\0\
-\x01\x04\0\x14[constructor]session\x01\x02\x01h\0\x01j\x01y\x01s\x01@\x02\x04sel\
-f\x03\x05inputs\0\x04\x04\0\x1b[method]session.assert-text\x01\x05\x01j\x01\x7f\x01\
-s\x01@\x02\x04self\x03\x05inputs\0\x06\x04\0\x1a[method]session.query-text\x01\x07\
-\x01j\x01s\x01s\x01@\x02\x04self\x03\x05inputs\0\x08\x04\0\x1d[method]session.co\
-mpile-debug\x01\x09\x01j\0\x01s\x01@\x01\x04self\x03\0\x0a\x04\0\x18[method]sess\
-ion.reset-kb\x01\x0b\x01@\x02\x04self\x03\x04names\x01\0\x04\0*[method]session.r\
-egister-compute-predicate\x01\x0c\x04\0\x18lojban:nesy/engine@0.1.0\x05\x09\x04\0\
-!lojban:nesy/engine-pipeline@0.1.0\x04\0\x0b\x15\x01\0\x0fengine-pipeline\x03\0\0\
-\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10wit-bind\
-gen-rust\x060.41.0";
+/compute-backend@0.1.0\x05\x08\x01B\x18\x02\x03\x02\x01\x07\x04\0\x0clogical-ter\
+m\x03\0\0\x04\0\x07session\x03\x01\x01i\x02\x01@\0\0\x03\x04\0\x14[constructor]s\
+ession\x01\x04\x01h\x02\x01j\x01y\x01s\x01@\x02\x04self\x05\x05inputs\0\x06\x04\0\
+\x1b[method]session.assert-text\x01\x07\x01j\x01\x7f\x01s\x01@\x02\x04self\x05\x05\
+inputs\0\x08\x04\0\x1a[method]session.query-text\x01\x09\x01j\x01s\x01s\x01@\x02\
+\x04self\x05\x05inputs\0\x0a\x04\0\x1d[method]session.compile-debug\x01\x0b\x01j\
+\0\x01s\x01@\x01\x04self\x05\0\x0c\x04\0\x18[method]session.reset-kb\x01\x0d\x01\
+@\x02\x04self\x05\x04names\x01\0\x04\0*[method]session.register-compute-predicat\
+e\x01\x0e\x01p\x01\x01@\x03\x04self\x05\x08relations\x04args\x0f\0\x0c\x04\0\x1b\
+[method]session.assert-fact\x01\x10\x04\0\x18lojban:nesy/engine@0.1.0\x05\x09\x04\
+\0!lojban:nesy/engine-pipeline@0.1.0\x04\0\x0b\x15\x01\0\x0fengine-pipeline\x03\0\
+\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10wit-bi\
+ndgen-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

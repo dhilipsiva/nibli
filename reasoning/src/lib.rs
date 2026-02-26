@@ -441,6 +441,29 @@ fn dispatch_to_backend(_rel: &str, _args: &[LogicalTerm]) -> Result<bool, String
     Err("Compute backend unavailable in native mode".to_string())
 }
 
+/// Build an egglog s-expression for a ground predicate from resolved args.
+/// Returns None if any argument is still a Variable (not fully ground).
+/// Output: `(Pred "rel" (Cons (Num 8) (Cons (Num 2) (Cons (Num 3) (Nil)))))`
+fn build_ground_predicate_sexp(rel: &str, resolved_args: &[LogicalTerm]) -> Option<String> {
+    for arg in resolved_args {
+        if matches!(arg, LogicalTerm::Variable(_)) {
+            return None;
+        }
+    }
+    let mut args_str = String::from("(Nil)");
+    for arg in resolved_args.iter().rev() {
+        let term_str = match arg {
+            LogicalTerm::Number(n) => format!("(Num {})", *n as i64),
+            LogicalTerm::Constant(c) => format!("(Const \"{}\")", c),
+            LogicalTerm::Description(d) => format!("(Desc \"{}\")", d),
+            LogicalTerm::Unspecified => "(Zoe)".to_string(),
+            LogicalTerm::Variable(_) => unreachable!(),
+        };
+        args_str = format!("(Cons {} {})", term_str, args_str);
+    }
+    Some(format!("(Pred \"{}\" {})", rel, args_str))
+}
+
 // ─── Query Decomposition ─────────────────────────────────────────
 
 fn check_formula_holds(
@@ -541,13 +564,27 @@ fn check_formula_holds(
             // 1. Try WIT dispatch to external compute backend (wasm32 only)
             let resolved = resolve_args_for_dispatch(args, subs);
             if let Ok(result) = dispatch_to_backend(rel, &resolved) {
+                if result {
+                    // Ingest ground fact into KB for future reasoning
+                    if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
+                        let cmd = format!("(IsTrue {})", sexp);
+                        inner.egraph.parse_and_run_program(None, &cmd).ok();
+                    }
+                }
                 return Ok(result);
             }
             // 2. Try built-in arithmetic evaluation
             if let Some(result) = try_arithmetic_evaluation(rel, args, subs) {
+                if result {
+                    // Ingest ground fact into KB for future reasoning
+                    if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
+                        let cmd = format!("(IsTrue {})", sexp);
+                        inner.egraph.parse_and_run_program(None, &cmd).ok();
+                    }
+                }
                 return Ok(result);
             }
-            // 3. Fall back to egglog check
+            // 3. Fall back to egglog check (already in KB, no ingestion needed)
             let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
             let command = format!("(check (IsTrue {}))", sexp);
             match inner.egraph.parse_and_run_program(None, &command) {
@@ -1596,5 +1633,137 @@ mod tests {
             ],
         );
         assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+    }
+
+    // ── Compute result ingestion tests ──
+
+    #[test]
+    fn test_compute_result_ingested_into_kb() {
+        let kb = new_kb();
+
+        // Query pilji(6, 2, 3) via ComputeNode → TRUE (built-in arithmetic)
+        // This should auto-ingest the fact into egglog
+        let mut q_nodes = Vec::new();
+        let q_root = compute(
+            &mut q_nodes,
+            "pilji",
+            vec![
+                LogicalTerm::Number(6.0),
+                LogicalTerm::Number(2.0),
+                LogicalTerm::Number(3.0),
+            ],
+        );
+        assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+
+        // Now query the SAME fact as a plain Predicate (not ComputeNode)
+        // It should be found directly in egglog because of auto-ingestion
+        let mut p_nodes = Vec::new();
+        let p_root = pred(
+            &mut p_nodes,
+            "pilji",
+            vec![
+                LogicalTerm::Number(6.0),
+                LogicalTerm::Number(2.0),
+                LogicalTerm::Number(3.0),
+            ],
+        );
+        assert!(query(&kb, LogicBuffer { nodes: p_nodes, roots: vec![p_root] }));
+    }
+
+    #[test]
+    fn test_compute_false_not_ingested() {
+        let kb = new_kb();
+
+        // Query pilji(7, 2, 3) via ComputeNode → FALSE (7 != 2*3)
+        let mut q_nodes = Vec::new();
+        let q_root = compute(
+            &mut q_nodes,
+            "pilji",
+            vec![
+                LogicalTerm::Number(7.0),
+                LogicalTerm::Number(2.0),
+                LogicalTerm::Number(3.0),
+            ],
+        );
+        assert!(!query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+
+        // Verify the false fact was NOT ingested as a plain Predicate
+        let mut p_nodes = Vec::new();
+        let p_root = pred(
+            &mut p_nodes,
+            "pilji",
+            vec![
+                LogicalTerm::Number(7.0),
+                LogicalTerm::Number(2.0),
+                LogicalTerm::Number(3.0),
+            ],
+        );
+        assert!(!query(&kb, LogicBuffer { nodes: p_nodes, roots: vec![p_root] }));
+    }
+
+    #[test]
+    fn test_ingested_result_available_for_reasoning() {
+        let kb = new_kb();
+
+        // Step 1: Query sumji(5, 2, 3) via ComputeNode → TRUE, auto-ingests
+        let mut q_nodes = Vec::new();
+        let q_root = compute(
+            &mut q_nodes,
+            "sumji",
+            vec![
+                LogicalTerm::Number(5.0),
+                LogicalTerm::Number(2.0),
+                LogicalTerm::Number(3.0),
+            ],
+        );
+        assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+
+        // Step 2: Assert another fact
+        assert_buf(&kb, make_assertion("ok", "derived"));
+
+        // Step 3: Query conjunction: And(sumji(5,2,3), derived("ok", Zoe))
+        // Both facts should be in KB: sumji from compute ingestion, derived from assertion
+        let mut q2_nodes = Vec::new();
+        let left = pred(
+            &mut q2_nodes,
+            "sumji",
+            vec![
+                LogicalTerm::Number(5.0),
+                LogicalTerm::Number(2.0),
+                LogicalTerm::Number(3.0),
+            ],
+        );
+        let right = pred(
+            &mut q2_nodes,
+            "derived",
+            vec![
+                LogicalTerm::Constant("ok".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let root = and(&mut q2_nodes, left, right);
+        assert!(query(&kb, LogicBuffer { nodes: q2_nodes, roots: vec![root] }));
+
+        // Step 4: Conjunctive query with a non-ingested compute fact fails
+        let mut q3_nodes = Vec::new();
+        let l2 = pred(
+            &mut q3_nodes,
+            "sumji",
+            vec![
+                LogicalTerm::Number(99.0),
+                LogicalTerm::Number(2.0),
+                LogicalTerm::Number(3.0),
+            ],
+        );
+        let r2 = pred(
+            &mut q3_nodes,
+            "derived",
+            vec![
+                LogicalTerm::Constant("ok".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let root2 = and(&mut q3_nodes, l2, r2);
+        assert!(!query(&kb, LogicBuffer { nodes: q3_nodes, roots: vec![root2] }));
     }
 }

@@ -103,6 +103,17 @@ impl GuestSession for Session {
     fn register_compute_predicate(&self, name: String) {
         self.compute_predicates.borrow_mut().insert(name);
     }
+
+    fn assert_fact(&self, relation: String, args: Vec<LogicalTerm>) -> Result<(), String> {
+        let nodes = vec![LogicNode::Predicate((relation, args))];
+        let buf = LogicBuffer {
+            nodes,
+            roots: vec![0],
+        };
+        self.kb
+            .assert_fact(&buf)
+            .map_err(|e| format!("Reasoning: {}", e))
+    }
 }
 
 // ─── S-expression reconstruction ───
