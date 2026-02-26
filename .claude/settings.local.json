@@ -16,7 +16,11 @@
       "Bash(wsl -d Ubuntu -e bash -c \"wc -l ~/projects/dhilipsiva/lojban_nesy_engine/parser/src/lib.rs\":*)",
       "Bash(wsl -d Ubuntu -e bash -c:*)",
       "Bash(wc:*)",
-      "Bash(nix:*)"
+      "Bash(nix:*)",
+      "WebFetch(domain:egraphs-good.github.io)",
+      "WebFetch(domain:www.philipzucker.com)",
+      "WebFetch(domain:egglog-python.readthedocs.io)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }
