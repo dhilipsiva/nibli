@@ -81,7 +81,7 @@ Before every commit, always:
 
 ## Current Status
 
-Completed through all Tier 1 items (architecture for scale).
+Completed through all Tier 1 items + Tier 2.1 (numerical comparison predicates).
 
 **Implemented features:**
 - Lexer + recursive-descent parser (gismu, cmavo, cmevla, lujvo partial)
@@ -102,5 +102,6 @@ Completed through all Tier 1 items (architecture for scale).
 - da/de/di existential quantifier closure (bare logic variables now properly wrapped in ∃)
 - Host-managed WIT resources: `resource knowledge-base` (reasoning) + `resource session` (engine interface)
 - KnowledgeBase uses `RefCell` (not `Mutex`) — single-threaded WASI, no global state
+- Numerical comparison predicates: zmadu (>), mleca (<), dunli (==) evaluated at query time on Num terms
 
-**Next up:** Tier 2.1 (numerical predicates) or Tier 3.1 (Deontic predicates)
+**Next up:** Tier 2.2 (computation dispatch) or Tier 3.1 (Deontic predicates)

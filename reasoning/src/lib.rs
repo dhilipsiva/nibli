@@ -323,6 +323,38 @@ impl GuestKnowledgeBase for KnowledgeBase {
     }
 }
 
+// ─── Numeric Comparison Helpers ──────────────────────────────────
+
+/// Extract an i64 numeric value from a LogicalTerm.
+/// Handles direct Number literals and Variables substituted to "(Num N)" form.
+fn extract_num_value(term: &LogicalTerm, subs: &HashMap<String, String>) -> Option<i64> {
+    match term {
+        LogicalTerm::Number(n) => Some(*n as i64),
+        LogicalTerm::Variable(v) => {
+            let s = subs.get(v.as_str())?;
+            s.strip_prefix("(Num ")?.strip_suffix(')')?.parse::<i64>().ok()
+        }
+        _ => None,
+    }
+}
+
+/// Evaluate zmadu/mleca/dunli when first two args are Num.
+/// Returns None for non-numeric args (fall through to standard egglog check).
+fn try_numeric_comparison(
+    rel: &str,
+    args: &[LogicalTerm],
+    subs: &HashMap<String, String>,
+) -> Option<bool> {
+    let a = extract_num_value(args.get(0)?, subs)?;
+    let b = extract_num_value(args.get(1)?, subs)?;
+    match rel {
+        "zmadu" => Some(a > b),
+        "mleca" => Some(a < b),
+        "dunli" => Some(a == b),
+        _ => None,
+    }
+}
+
 // ─── Query Decomposition ─────────────────────────────────────────
 
 fn check_formula_holds(
@@ -399,7 +431,12 @@ fn check_formula_holds(
             }
             Ok(satisfying == *count)
         }
-        LogicNode::Predicate(_) => {
+        LogicNode::Predicate((rel, args)) => {
+            // Try numeric comparison short-circuit for zmadu/mleca/dunli
+            if let Some(result) = try_numeric_comparison(rel, args, subs) {
+                return Ok(result);
+            }
+            // Standard egglog check
             let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
             let command = format!("(check (IsTrue {}))", sexp);
             match inner.egraph.parse_and_run_program(None, &command) {
@@ -1213,5 +1250,123 @@ mod tests {
         assert!(!inner.skolem_fn_registry.is_empty(), "SkolemFn registry should have entries");
         assert_eq!(inner.skolem_fn_registry[0].base_name, "sk_0");
         assert_eq!(inner.skolem_fn_registry[0].dep_count, 1);
+    }
+
+    // ─── Numeric Comparison Tests ────────────────────────────────
+
+    /// Build a comparison predicate: Pred(rel, [Num(a), Num(b), Zoe, ...])
+    fn make_numeric_pred(nodes: &mut Vec<LogicNode>, relation: &str, a: f64, b: f64) -> u32 {
+        let mut args = vec![
+            LogicalTerm::Number(a),
+            LogicalTerm::Number(b),
+            LogicalTerm::Unspecified,
+        ];
+        // zmadu and mleca have arity 4; dunli has arity 3
+        if relation == "zmadu" || relation == "mleca" {
+            args.push(LogicalTerm::Unspecified);
+        }
+        pred(nodes, relation, args)
+    }
+
+    fn make_numeric_query(relation: &str, a: f64, b: f64) -> LogicBuffer {
+        let mut nodes = Vec::new();
+        let root = make_numeric_pred(&mut nodes, relation, a, b);
+        LogicBuffer { nodes, roots: vec![root] }
+    }
+
+    #[test]
+    fn test_zmadu_numeric_true() {
+        let kb = new_kb();
+        assert!(query(&kb, make_numeric_query("zmadu", 2.0, 1.0)));
+    }
+
+    #[test]
+    fn test_zmadu_numeric_false() {
+        let kb = new_kb();
+        assert!(!query(&kb, make_numeric_query("zmadu", 1.0, 2.0)));
+    }
+
+    #[test]
+    fn test_zmadu_numeric_equal_false() {
+        let kb = new_kb();
+        assert!(!query(&kb, make_numeric_query("zmadu", 2.0, 2.0)));
+    }
+
+    #[test]
+    fn test_mleca_numeric_true() {
+        let kb = new_kb();
+        assert!(query(&kb, make_numeric_query("mleca", 1.0, 2.0)));
+    }
+
+    #[test]
+    fn test_mleca_numeric_false() {
+        let kb = new_kb();
+        assert!(!query(&kb, make_numeric_query("mleca", 2.0, 1.0)));
+    }
+
+    #[test]
+    fn test_dunli_numeric_true() {
+        let kb = new_kb();
+        assert!(query(&kb, make_numeric_query("dunli", 5.0, 5.0)));
+    }
+
+    #[test]
+    fn test_dunli_numeric_false() {
+        let kb = new_kb();
+        assert!(!query(&kb, make_numeric_query("dunli", 5.0, 3.0)));
+    }
+
+    #[test]
+    fn test_zmadu_negated() {
+        let kb = new_kb();
+        // NOT (1 > 2) should be TRUE
+        let mut nodes = Vec::new();
+        let cmp = make_numeric_pred(&mut nodes, "zmadu", 1.0, 2.0);
+        let root = not(&mut nodes, cmp);
+        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+    }
+
+    #[test]
+    fn test_zmadu_non_numeric_fallback() {
+        let kb = new_kb();
+        // Non-numeric zmadu: assert then query via standard egglog path
+        let mut a_nodes = Vec::new();
+        let a_root = pred(
+            &mut a_nodes,
+            "zmadu",
+            vec![
+                LogicalTerm::Constant("alis".to_string()),
+                LogicalTerm::Constant("bob".to_string()),
+                LogicalTerm::Unspecified,
+                LogicalTerm::Unspecified,
+            ],
+        );
+        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![a_root] });
+
+        let mut q_nodes = Vec::new();
+        let q_root = pred(
+            &mut q_nodes,
+            "zmadu",
+            vec![
+                LogicalTerm::Constant("alis".to_string()),
+                LogicalTerm::Constant("bob".to_string()),
+                LogicalTerm::Unspecified,
+                LogicalTerm::Unspecified,
+            ],
+        );
+        assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+    }
+
+    #[test]
+    fn test_zmadu_large_numbers() {
+        let kb = new_kb();
+        assert!(query(&kb, make_numeric_query("zmadu", 1_000_000.0, 999_999.0)));
+    }
+
+    #[test]
+    fn test_zmadu_negative_numbers() {
+        let kb = new_kb();
+        assert!(query(&kb, make_numeric_query("zmadu", -1.0, -2.0)));
+        assert!(!query(&kb, make_numeric_query("zmadu", -2.0, -1.0)));
     }
 }

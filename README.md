@@ -89,6 +89,7 @@ just test
 - All universals compile to native egglog rules (O(K) hash-join matching, zero Herbrand overhead)
 - egglog e-graph with structural rewrites (commutativity, associativity, De Morgan, double negation) + inference rules (conjunction elimination, disjunctive syllogism, modus ponens/tollens)
 - Count quantifier (exactly N) for numeric descriptions
+- Numerical comparison predicates: `zmadu` (>), `mleca` (<), `dunli` (==) on `Num` terms
 
 ## Roadmap
 

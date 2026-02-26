@@ -22,7 +22,9 @@
       "WebFetch(domain:egglog-python.readthedocs.io)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:www.chriswarbo.net)",
-      "WebFetch(domain:docs.rs)"
+      "WebFetch(domain:docs.rs)",
+      "WebFetch(domain:component-model.bytecodealliance.org)",
+      "WebFetch(domain:docs.wasmtime.dev)"
     ]
   }
 }

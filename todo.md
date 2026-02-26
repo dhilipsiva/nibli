@@ -4,14 +4,6 @@
 
 Without this tier, the engine can only do qualitative symbolic reasoning. Every scientific domain needs quantitative capabilities.
 
-### 2.1 Numerical comparison predicates in egglog
-
-`zmadu`/`mleca`/`dunli` operating on `Num` terms. The `Num` datatype already exists in the schema.
-
-**Crate:** reasoning/lib.rs schema
-**Complexity:** medium
-**Impact:** astrophysics (magnitude comparisons, orbital parameters), chemistry (bond energies, molecular weights), legal (monetary thresholds, statutory limits)
-
 ### 2.2 Computation dispatch WIT protocol
 
 New interface: `compute-backend` with dispatch function. New IR node: `ComputeNode`. Predicate registry marks which predicates dispatch externally.
@@ -211,7 +203,6 @@ Items identified during implementation but not yet prioritized into a tier.
 
 ```
 Tier 2 (quantitative)
-  2.1 numerical predicates
   2.2 computation dispatch WIT
        │
   2.3 Python adapter ──→ 2.4 result ingestion
