@@ -49,55 +49,119 @@ impl Guest for EnginePipeline {
 
 // ─── S-expression reconstruction ───
 
+use std::fmt::Write;
+
 fn reconstruct_sexp(buffer: &LogicBuffer, node_id: u32) -> String {
+    let mut out = String::with_capacity(256);
+    write_sexp(&mut out, buffer, node_id);
+    out
+}
+
+fn write_sexp(out: &mut String, buffer: &LogicBuffer, node_id: u32) {
     match &buffer.nodes[node_id as usize] {
         LogicNode::Predicate((rel, args)) => {
-            let mut args_str = String::from("(Nil)");
-            for arg in args.iter().rev() {
-                let term_str = match arg {
-                    LogicalTerm::Variable(v) => format!("(Var \"{}\")", v),
-                    LogicalTerm::Constant(c) => format!("(Const \"{}\")", c),
-                    LogicalTerm::Description(d) => format!("(Desc \"{}\")", d),
-                    LogicalTerm::Unspecified => "(Zoe)".to_string(),
-                    LogicalTerm::Number(n) => format!("(Num {})", n),
-                };
-                args_str = format!("(Cons {} {})", term_str, args_str);
-            }
-            format!("(Pred \"{}\" {})", rel, args_str)
+            out.push_str("(Pred \"");
+            out.push_str(rel);
+            out.push_str("\" ");
+            write_term_list(out, args);
+            out.push(')');
         }
         LogicNode::AndNode((l, r)) => {
-            format!(
-                "(And {} {})",
-                reconstruct_sexp(buffer, *l),
-                reconstruct_sexp(buffer, *r)
-            )
+            out.push_str("(And ");
+            write_sexp(out, buffer, *l);
+            out.push(' ');
+            write_sexp(out, buffer, *r);
+            out.push(')');
         }
         LogicNode::OrNode((l, r)) => {
-            format!(
-                "(Or {} {})",
-                reconstruct_sexp(buffer, *l),
-                reconstruct_sexp(buffer, *r)
-            )
+            out.push_str("(Or ");
+            write_sexp(out, buffer, *l);
+            out.push(' ');
+            write_sexp(out, buffer, *r);
+            out.push(')');
         }
         LogicNode::NotNode(inner) => {
-            format!("(Not {})", reconstruct_sexp(buffer, *inner))
+            out.push_str("(Not ");
+            write_sexp(out, buffer, *inner);
+            out.push(')');
         }
         LogicNode::ExistsNode((v, body)) => {
-            format!("(Exists \"{}\" {})", v, reconstruct_sexp(buffer, *body))
+            out.push_str("(Exists \"");
+            out.push_str(v);
+            out.push_str("\" ");
+            write_sexp(out, buffer, *body);
+            out.push(')');
         }
         LogicNode::ForAllNode((v, body)) => {
-            format!("(ForAll \"{}\" {})", v, reconstruct_sexp(buffer, *body))
+            out.push_str("(ForAll \"");
+            out.push_str(v);
+            out.push_str("\" ");
+            write_sexp(out, buffer, *body);
+            out.push(')');
         }
-        LogicNode::PastNode(inner) => format!("(Past {})", reconstruct_sexp(buffer, *inner)),
-        LogicNode::PresentNode(inner) => format!("(Present {})", reconstruct_sexp(buffer, *inner)),
-        LogicNode::FutureNode(inner) => format!("(Future {})", reconstruct_sexp(buffer, *inner)),
+        LogicNode::PastNode(inner) => {
+            out.push_str("(Past ");
+            write_sexp(out, buffer, *inner);
+            out.push(')');
+        }
+        LogicNode::PresentNode(inner) => {
+            out.push_str("(Present ");
+            write_sexp(out, buffer, *inner);
+            out.push(')');
+        }
+        LogicNode::FutureNode(inner) => {
+            out.push_str("(Future ");
+            write_sexp(out, buffer, *inner);
+            out.push(')');
+        }
         LogicNode::CountNode((v, count, body)) => {
-            format!(
-                "(Count \"{}\" {} {})",
-                v,
-                count,
-                reconstruct_sexp(buffer, *body)
-            )
+            out.push_str("(Count \"");
+            out.push_str(v);
+            out.push_str("\" ");
+            let _ = write!(out, "{}", count);
+            out.push(' ');
+            write_sexp(out, buffer, *body);
+            out.push(')');
+        }
+    }
+}
+
+fn write_term_list(out: &mut String, args: &[LogicalTerm]) {
+    // Build Cons list from args in reverse order
+    // We need to write nested (Cons term (Cons term ... (Nil)))
+    // Since we can't easily reverse-write into a forward buffer,
+    // we recurse through the slice.
+    if args.is_empty() {
+        out.push_str("(Nil)");
+        return;
+    }
+    out.push_str("(Cons ");
+    write_term(out, &args[0]);
+    out.push(' ');
+    write_term_list(out, &args[1..]);
+    out.push(')');
+}
+
+fn write_term(out: &mut String, term: &LogicalTerm) {
+    match term {
+        LogicalTerm::Variable(v) => {
+            out.push_str("(Var \"");
+            out.push_str(v);
+            out.push_str("\")");
+        }
+        LogicalTerm::Constant(c) => {
+            out.push_str("(Const \"");
+            out.push_str(c);
+            out.push_str("\")");
+        }
+        LogicalTerm::Description(d) => {
+            out.push_str("(Desc \"");
+            out.push_str(d);
+            out.push_str("\")");
+        }
+        LogicalTerm::Unspecified => out.push_str("(Zoe)"),
+        LogicalTerm::Number(n) => {
+            let _ = write!(out, "(Num {})", n);
         }
     }
 }

@@ -18,7 +18,7 @@
           inherit system overlays;
         };
 
-        # Inject the absolute latest stable compiler, forcing the WASI Preview 2 target
+        # Latest stable Rust with WASI targets (wasip1 used by cargo-component)
         rustToolchain = pkgs.rust-bin.stable.latest.default.override {
           extensions = [ "rust-src" "rust-analyzer" ];
           targets = [ "wasm32-wasip1" "wasm32-wasip2" "wasm32-unknown-unknown" ];
@@ -32,7 +32,7 @@
             rustToolchain
             just
 
-            # WASI Preview 2 / Component Model Tooling
+            # WASI Component Model Tooling
             wasm-tools          # Low-level WASM/WIT manipulation
             cargo-component     # Builds Rust crates as WASI components
             wit-bindgen         # Generates bindings from .wit files
@@ -53,7 +53,7 @@
             echo " Lojban NeSy Engine - Nix Dev Environment Loaded  "
             echo "=================================================="
             rustc --version
-            echo "Target 'wasm32-wasip2' is active."
+            echo "Target 'wasm32-wasip1' is active."
           '';
         };
       }

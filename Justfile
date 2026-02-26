@@ -10,7 +10,7 @@ clean-wasm:
 
 # Compiles the discrete WebAssembly components and fuses them
 build-wasm: clean-wasm
-    @echo "Building WASI Preview 2 components..."
+    @echo "Building WASI components (wasip1 target)..."
     cargo component build --release -p parser -p semantics -p reasoning -p orchestrator
     @echo "Fusing components with WAC..."
     wac plug target/wasm32-wasip1/release/orchestrator.wasm \

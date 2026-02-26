@@ -14,21 +14,7 @@ Current `OnceLock<Mutex<EGraph>>` works only because the runner reuses a single 
 **Complexity:** high (architectural rework)
 **Blocks:** persistence, multi-tenant deployment, clean `:reset`
 
-### 1.2 String pre-allocation in `reconstruct_sexp`
-
-Only applies to orchestrator's display copy now. Reasoning-side `reconstruct_sexp_with_subs` is used sparingly (ground assertions + query checks).
-
-**Crate:** orchestrator
-**Complexity:** low
-
-### 1.3 wasip1 → wasip2 alignment
-
-Ensure Justfile and flake.nix target consistent WASI preview version.
-
-**Crate:** Justfile, flake.nix
-**Complexity:** low
-
-### 1.4 `ast-types` WIT interface naming
+### 1.2 `ast-types` WIT interface naming
 
 Split logic types into separate WIT interface from AST types. Currently both live in `ast-types` which is misleading.
 
@@ -251,7 +237,7 @@ Tier 1 (scale)                        Tier 2 (quantitative)
   1.1 WASI state hoisting               2.1 numerical predicates
        └── enables persistence,          2.2 computation dispatch WIT
            multi-tenant                       │
-                                         2.3 Python adapter ──→ 2.4 result ingestion
+  1.2 WIT interface naming               2.3 Python adapter ──→ 2.4 result ingestion
 
 Tier 3 (language)         Tier 4 (production)         Tier 5 (advanced)
   3.1 deontic               4.1 witness extraction      5.1 non-monotonic
