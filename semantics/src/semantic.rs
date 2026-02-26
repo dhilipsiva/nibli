@@ -253,6 +253,15 @@ impl SemanticCompiler {
                         // No ke'a — use heuristic injection as fallback.
                         // inject_variable fills the first Unspecified slot in
                         // each predicate it can reach.
+                        let unspec_count = Self::count_unspecified_predicates(&rel_body);
+                        if unspec_count > 1 {
+                            eprintln!(
+                                "[warning] Relative clause has {} predicates with unspecified slots; \
+                                 implicit variable injection is ambiguous. Use explicit ke'a for \
+                                 precise control.",
+                                unspec_count
+                            );
+                        }
                         last.restrictor = Some(Self::inject_variable(rel_body, last.var));
                     }
                 }
@@ -274,6 +283,29 @@ impl SemanticCompiler {
                 let left = &sumtis[*left_id as usize];
                 self.resolve_sumti(left, sumtis, selbris, sentences)
             }
+        }
+    }
+
+    /// Count how many predicates in a formula have at least one Unspecified slot.
+    fn count_unspecified_predicates(form: &LogicalForm) -> usize {
+        match form {
+            LogicalForm::Predicate { args, .. } => {
+                if args.iter().any(|a| matches!(a, LogicalTerm::Unspecified)) {
+                    1
+                } else {
+                    0
+                }
+            }
+            LogicalForm::And(l, r) | LogicalForm::Or(l, r) => {
+                Self::count_unspecified_predicates(l) + Self::count_unspecified_predicates(r)
+            }
+            LogicalForm::Not(inner)
+            | LogicalForm::Exists(_, inner)
+            | LogicalForm::ForAll(_, inner)
+            | LogicalForm::Past(inner)
+            | LogicalForm::Present(inner)
+            | LogicalForm::Future(inner) => Self::count_unspecified_predicates(inner),
+            LogicalForm::Count { body, .. } => Self::count_unspecified_predicates(body),
         }
     }
 

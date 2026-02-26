@@ -395,24 +395,6 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn looks_like_selbri_na(&self) -> bool {
-        if self.pos + 1 >= self.tokens.len() {
-            return false;
-        }
-        match &self.tokens[self.pos + 1] {
-            NormalizedToken::Standard(LojbanToken::Gismu, _) => true,
-            NormalizedToken::Standard(LojbanToken::Cmavo, s) => {
-                matches!(
-                    *s,
-                    "se" | "te" | "ve" | "xe" | "ke" | "na"
-                    | "nu" | "du'u" | "ka" | "ni" | "si'o"
-                    | "pu" | "ca" | "ba"
-                )
-            }
-            _ => false,
-        }
-    }
-
     // ─── Terms ────────────────────────────────────────────────
 
     fn parse_terms(&mut self) -> Vec<Sumti> {

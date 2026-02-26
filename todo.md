@@ -1,62 +1,5 @@
 # Nibli Roadmap
 
-## Tier 0 — Correctness (wrong answers are worse than no answers)
-
-### 0.2 Existential introduction gap (`lo` query vs `ro lo` assertion)
-
-Known failure:
-```
-ro lo gerku cu danlu
-ro lo danlu cu citka lo cidja
-? lo gerku cu citka lo cidja   → FALSE (wrong)
-? ro lo gerku cu citka lo cidja → TRUE  (vacuously, no entities)
-```
-
-Root cause: `∀x.P(x)` does not entail `∃x.P(x)` without a non-empty domain witness. Querying with bare `lo` generates an existential, but no ground entities exist to satisfy it. The universal is vacuously true over the empty domain but the existential has nothing to bind to.
-
-**Options:**
-- (a) Require explicit domain population (user asserts `la rex gerku` before querying)
-- (b) Track predicate domains: when `∀x. P(x) → Q(x)` is asserted, if any `P(e)` is known, the chain fires; otherwise defer until a witness appears
-- (c) Closed-world domain assumption: `ro lo gerku` implicitly asserts the gerku domain is non-empty
-
-**Note:** Option (b) is largely solved by Tier 1's native egglog rules — rules only fire when matching facts exist, which is the correct behavior. The remaining gap is whether bare `lo` in queries should require a ground witness or not.
-
-**Crate:** reasoning/lib.rs, possibly semantics
-**Complexity:** medium (design decision more than code)
-**Impact:** every domain — users expect chained universals to work
-
-### 0.3 Herbrand instantiation string replacement fragility
-
-`body_sexp.replace(&format!("(Var \"{}\")", var_name), ...)` does global string substitution. If variable names are substrings of other variables, silent corruption occurs.
-
-**Note:** Entirely eliminated by 1.1 (native egglog rules). If 1.1 is done first, skip this.
-
-**Crate:** reasoning/lib.rs
-**Complexity:** low (verify quoting invariant) or medium (tree manipulation)
-
-### 0.4 `inject_variable` ambiguity warning
-
-When multiple `Unspecified` slots exist and no explicit `ke'a`, the implicit variable injection picks one silently. Should warn the user.
-
-**Crate:** semantics/semantic.rs
-**Complexity:** low
-
-### 0.5 Verify Flattener test type correctness
-
-Tests construct `ParsedText { sentences: vec![Bridi {...}] }` but `sentences` is `Vec<Sentence>`. Either won't compile or has implicit conversion hiding a mismatch.
-
-**Crate:** parser/lib.rs flattener_tests
-**Complexity:** low
-
-### 0.6 Fix or remove `looks_like_selbri_na`
-
-Dead code behind `#[allow(dead_code)]`, will break if used (missing cmavo-selbri like `go'i`).
-
-**Crate:** parser/grammar.rs lines 335-349
-**Complexity:** low
-
----
-
 ## Tier 1 — Architecture for Scale (the gate to real domains)
 
 Without this tier, the engine caps out at ~100 entities. Science and legal domains need 1K-50K+.
@@ -88,6 +31,9 @@ egglog performs hash-joins over the e-graph, matching `x` only against entities 
 **Complexity:** high
 **Impact:** enables legal corpus (5K-50K entities), large scientific KBs, eliminates ~200 lines of fragile machinery
 **Blocks:** scaling to any real dataset
+**Also resolves:**
+- Existential introduction gap (0.2 deferred) — native rules only fire when matching facts exist; revisit xorlo presupposition (option C: `ro lo` implies non-empty domain) after this rewrite
+- String replacement fragility (0.3 deferred) — entire Herbrand instantiation machinery is eliminated
 
 ### 1.2 WASI state hoisting (replaces `OnceLock` anti-pattern)
 
