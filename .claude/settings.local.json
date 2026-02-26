@@ -25,7 +25,11 @@
       "WebFetch(domain:docs.rs)",
       "WebFetch(domain:component-model.bytecodealliance.org)",
       "WebFetch(domain:docs.wasmtime.dev)",
-      "Bash(curl -s \"https://docs.rs/wasmtime/41.0.3/wasmtime/component/struct.Linker.html\")"
+      "Bash(curl -s \"https://docs.rs/wasmtime/41.0.3/wasmtime/component/struct.Linker.html\")",
+      "Bash(xargs head -200)",
+      "WebFetch(domain:lojban.github.io)",
+      "WebFetch(domain:mw-live.lojban.org)",
+      "WebFetch(domain:lojban.org)"
     ]
   }
 }
