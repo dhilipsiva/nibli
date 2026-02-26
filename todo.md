@@ -1,106 +1,273 @@
-### 1.7 Deontic predicates (`bilga`/`curmi`/`nitcu`/`e'e`/`ei`)
+# Nibli Roadmap
 
-If predicate-based: `bilga`/`curmi` already work as gismu, just need dictionary arity entries. If attitudinal-based: new parser category required.
+## Tier 0 — Correctness (wrong answers are worse than no answers)
+
+### 0.1 `da`/`de`/`di` quantifier closure
+
+Currently compiled as free `Variable(Spur)` with no quantifier wrapping. `da prami mi` produces an open formula instead of `∃x.prami(x, mi)`.
+
+**Fix:** In `compile_bridi`, after building the predication, scan args for pro-sumti `da`/`de`/`di`. For each, wrap the final form in `Exists(var, ...)`.
+
+**Crate:** semantics/semantic.rs
+**Complexity:** low-medium
+**Impact:** every domain — free variables produce unsound reasoning
+
+### 0.2 Existential introduction gap (`lo` query vs `ro lo` assertion)
+
+Known failure:
+```
+ro lo gerku cu danlu
+ro lo danlu cu citka lo cidja
+? lo gerku cu citka lo cidja   → FALSE (wrong)
+? ro lo gerku cu citka lo cidja → TRUE  (vacuously, no entities)
+```
+
+Root cause: `∀x.P(x)` does not entail `∃x.P(x)` without a non-empty domain witness. Querying with bare `lo` generates an existential, but no ground entities exist to satisfy it. The universal is vacuously true over the empty domain but the existential has nothing to bind to.
+
+**Options:**
+- (a) Require explicit domain population (user asserts `la rex gerku` before querying)
+- (b) Track predicate domains: when `∀x. P(x) → Q(x)` is asserted, if any `P(e)` is known, the chain fires; otherwise defer until a witness appears
+- (c) Closed-world domain assumption: `ro lo gerku` implicitly asserts the gerku domain is non-empty
+
+**Note:** Option (b) is largely solved by Tier 1's native egglog rules — rules only fire when matching facts exist, which is the correct behavior. The remaining gap is whether bare `lo` in queries should require a ground witness or not.
+
+**Crate:** reasoning/lib.rs, possibly semantics
+**Complexity:** medium (design decision more than code)
+**Impact:** every domain — users expect chained universals to work
+
+### 0.3 Herbrand instantiation string replacement fragility
+
+`body_sexp.replace(&format!("(Var \"{}\")", var_name), ...)` does global string substitution. If variable names are substrings of other variables, silent corruption occurs.
+
+**Note:** Entirely eliminated by 1.1 (native egglog rules). If 1.1 is done first, skip this.
+
+**Crate:** reasoning/lib.rs
+**Complexity:** low (verify quoting invariant) or medium (tree manipulation)
+
+### 0.4 `inject_variable` ambiguity warning
+
+When multiple `Unspecified` slots exist and no explicit `ke'a`, the implicit variable injection picks one silently. Should warn the user.
+
+**Crate:** semantics/semantic.rs
+**Complexity:** low
+
+### 0.5 Verify Flattener test type correctness
+
+Tests construct `ParsedText { sentences: vec![Bridi {...}] }` but `sentences` is `Vec<Sentence>`. Either won't compile or has implicit conversion hiding a mismatch.
+
+**Crate:** parser/lib.rs flattener_tests
+**Complexity:** low
+
+### 0.6 Fix or remove `looks_like_selbri_na`
+
+Dead code behind `#[allow(dead_code)]`, will break if used (missing cmavo-selbri like `go'i`).
+
+**Crate:** parser/grammar.rs lines 335-349
+**Complexity:** low
+
+---
+
+## Tier 1 — Architecture for Scale (the gate to real domains)
+
+Without this tier, the engine caps out at ~100 entities. Science and legal domains need 1K-50K+.
+
+### 1.1 Herbrand expansion → egglog native rules
+
+**THE critical architectural change.** Replace eager Rust-side N×M entity grounding with egglog's native rule language.
+
+**Current approach (O(E×T)):** For `∀x. gerku(x) → danlu(x)`, the Rust side loops over every known entity, stamps out a ground s-expression via string replacement, and feeds each into egglog as a separate `(IsTrue ...)` fact. 100 entities × 50 universals = 5,000 ground assertions.
+
+**Target approach (O(K)):** Emit one egglog rule per universal:
+```egglog
+(rule ((IsTrue (Pred "gerku" (Cons x (Nil)))))
+      ((IsTrue (Pred "danlu" (Cons x (Nil))))))
+```
+egglog performs hash-joins over the e-graph, matching `x` only against entities that actually appear in `gerku(...)` facts. No irrelevant instantiations, no cross-product.
+
+**Key insight (credit: Gemini):** egglog *is* a Datalog engine with e-graph unification. It already does relational joins internally — the current Herbrand expansion is literally doing by hand what egglog was designed to do natively.
+
+**Eliminates:** `UNIVERSAL_TEMPLATES`, `KNOWN_ENTITIES`, `register_entity`, `register_entity_no_instantiate`, `instantiate_for_entity`, `collect_forall_nodes`, the entire E×T cross-product, and item 0.3 (string replacement fragility).
+
+**Challenges:**
+- Simple `∀x. P(x) → Q(x)`: straightforward single-pattern rule
+- Multi-premise `∀x. (P(x) ∧ Q(x)) → R(x)`: multi-pattern rule (egglog handles this)
+- Dependent Skolems `∀x. P(x) → ∃y. R(x, y)`: rule head needs Skolem *function* `(sk_R x)`, not a ground constant — requires egglog `function` declarations
+- Nested `∀x∀y. ...`: multiple pattern variables (egglog handles this)
+
+**Crate:** reasoning/lib.rs (major rewrite)
+**Complexity:** high
+**Impact:** enables legal corpus (5K-50K entities), large scientific KBs, eliminates ~200 lines of fragile machinery
+**Blocks:** scaling to any real dataset
+
+### 1.2 WASI state hoisting (replaces `OnceLock` anti-pattern)
+
+Move knowledge base to host-managed WASI Resource. Enables: reset, multi-tenant, persistence.
+
+Current `OnceLock<Mutex<EGraph>>` works only because the runner reuses a single component instance. The `Mutex` is unnecessary overhead in single-threaded WASI. If wasmtime ever instantiates fresh, all state is silently lost.
+
+**Crate:** reasoning/lib.rs, runner/main.rs
+**Complexity:** high (architectural rework)
+**Blocks:** persistence, multi-tenant deployment, clean `:reset`
+
+### 1.3 `reconstruct_sexp` deduplication
+
+Orchestrator and reasoning have near-identical copies of `reconstruct_sexp`. Extract into shared utility or unify via the WIT interface.
+
+**Note:** If 1.1 removes `reconstruct_sexp` from reasoning entirely, this becomes moot — just verify orchestrator's copy is the sole survivor.
+
+**Crate:** orchestrator, reasoning
+**Complexity:** low
+
+### 1.4 String pre-allocation in `reconstruct_sexp`
+
+Currently O(n^2) from nested `format!` calls. Use a `String` buffer with `write!` or pre-calculate capacity.
+
+**Note:** Reduced in scope if 1.1 eliminates the reasoning-side copy.
+
+**Crate:** reasoning, orchestrator
+**Complexity:** low
+
+### 1.5 wasip1 → wasip2 alignment
+
+Ensure Justfile and flake.nix target consistent WASI preview version.
+
+**Crate:** Justfile, flake.nix
+**Complexity:** low
+
+### 1.6 Remove `bumpalo` dependency
+
+Imported but unused — dead weight in WASM binary.
+
+**Crate:** parser/Cargo.toml
+**Complexity:** trivial (2 min)
+
+### 1.7 Delete dead `push_bridi` method in Flattener
+
+Superseded by `push_sentence`, generates unused-code warning.
+
+**Crate:** parser/lib.rs lines 82-113
+**Complexity:** trivial (2 min)
+
+### 1.8 Delete dead commented-out loop in `Flattener::flatten`
+
+**Crate:** parser/lib.rs lines 68-76
+**Complexity:** trivial (1 min)
+
+### 1.9 `ast-types` WIT interface naming
+
+Split logic types into separate WIT interface from AST types. Currently both live in `ast-types` which is misleading.
+
+**Crate:** wit/world.wit
+**Complexity:** medium
+
+---
+
+## Tier 2 — Quantitative Reasoning (science needs numbers and computation)
+
+Without this tier, the engine can only do qualitative symbolic reasoning. Every scientific domain needs quantitative capabilities.
+
+### 2.1 Numerical comparison predicates in egglog
+
+`zmadu`/`mleca`/`dunli` operating on `Num` terms. The `Num` datatype already exists in the schema.
+
+**Crate:** reasoning/lib.rs schema
+**Complexity:** medium
+**Impact:** astrophysics (magnitude comparisons, orbital parameters), chemistry (bond energies, molecular weights), legal (monetary thresholds, statutory limits)
+
+### 2.2 Computation dispatch WIT protocol
+
+New interface: `compute-backend` with dispatch function. New IR node: `ComputeNode`. Predicate registry marks which predicates dispatch externally.
+
+**Crate:** new crate + WIT interface
+**Complexity:** high
+**Impact:** unlocks all quantitative science — without external computation, the engine can only do symbolic manipulation
+
+### 2.3 Python backend adapter
+
+Subprocess or embedded. Covers SciPy, NumPy, AstroPy, SymPy, RDKit, BioPython, MadGraph, PK/PD solvers.
+
+**Depends on:** 2.2
+**Complexity:** medium
+**Impact:** the bridge between symbolic reasoning and numerical computation
+
+### 2.4 Result ingestion as assertions
+
+Computation results → Lojban assertions → knowledge base. Closes the reason→compute→reason loop. Needs trusted assertion path (bypass user input parsing).
+
+**Depends on:** 2.2, 2.3
+**Complexity:** medium
+
+---
+
+## Tier 3 — Domain-Specific Language Coverage
+
+Features needed to express domain knowledge naturally in Lojban.
+
+### 3.1 Deontic predicates (`bilga`/`curmi`/`nitcu`)
+
+Predicate-based deontic modality: `bilga` (obligated), `curmi` (permitted), `nitcu` (needed). These are standard gismu — should work if dictionary arity entries exist.
+
+Attitudinal forms (`e'e`/`ei`) require new parser category — defer to 3.1b.
 
 **Crate:** semantics/dictionary, parser (if attitudinal)
 **Complexity:** low (predicate) or high (attitudinal)
+**Impact:** critical for legal corpus (obligation, permission, prohibition)
 
-### 1.8 `[NEW]` `da`/`de`/`di` quantifier closure
+### 3.2 Lujvo morphological recognition
 
-Currently compiled as free `Variable(Spur)` with no quantifier wrapping. `da prami mi` should produce `∃x.prami(x, mi)`, not an open formula with free `da`.
+Lexer only recognizes gismu (5-letter CVCCV/CCVCV) and cmavo. Lujvo (compound brivla like `brivla`, `nunprami`) fall through.
 
-**Fix:** In `compile_bridi`, after building the predication, scan the args for pro-sumti `da`/`de`/`di`. For each, wrap the final form in `Exists(var, ...)`.
+**Approach:** Dictionary lookup at lex time — check if token is a known lujvo from jbovlaste (already in PHF map from `build.rs`). Handles ~95% of real text.
 
-**Crate:** semantics/semantic.rs `compile_bridi`
-**Complexity:** low-medium
-**Needed by:** correct reasoning on any sentence using `da`/`de`/`di`
-
-### 1.9 `[NEW]` Lujvo morphological recognition
-
-Lexer only recognizes gismu (5-letter CVCCV/CCVCV) and cmavo. Lujvo (compound brivla like `brivla`, `nunprami`) fall through to Cmavo or Cmevla depending on ending. The `Compound` selbri variant exists but is only populated via `zei`-gluing.
-
-**Options:**
-- (a) Dictionary lookup at lex time — check if token is a known lujvo from jbovlaste (already have the dictionary at build time). Low complexity, high coverage.
-- (b) Rafsi decomposition — algorithmic, handles novel lujvo. High complexity, complete.
-
-Start with (a). The jbovlaste phf map already includes lujvo entries from `build.rs`.
-
-**Crate:** parser/lexer.rs (or post-lex classification pass)
+**Crate:** parser/lexer.rs
 **Complexity:** medium
-**Needed by:** any Lojban text using compound words
+**Impact:** all domains — real Lojban text uses compound words heavily
 
-### 1.10 `[NEW]` Observative sentences
+### 3.3 Observative sentences
 
-`mi do` (observative, implicit `go'i`) currently errors: "observative sentences not yet supported." Low priority but affects naturalness.
+`mi do` (observative, implicit `go'i`) currently errors. Low priority but affects naturalness of input.
 
 **Crate:** parser/grammar.rs
 **Complexity:** medium (requires `go'i` pro-bridi resolution)
 
+### 3.4 `sa` proper implementation
 
-## PHASE 2 — Reasoning Engine Correctness + Power
+Requires selma'o classification for the erasure-to-next-construct behavior.
 
-egglog schema + Rust-side reasoning changes.
-
-### 2.1 `[AMENDED]` WASI state hoisting (replaces `OnceLock` anti-pattern)
-
-Move knowledge base to host-managed WASI Resource. Enables: reset, multi-tenant, persistence. Subsumes `:reset` command and persistence layer.
-
-**Additional context from review:** Current `OnceLock<Mutex<EGraph>>` works only because the runner reuses a single component instance. The `Mutex` is unnecessary overhead in single-threaded WASI. If wasmtime ever instantiates fresh, all state is silently lost. This is the most fragile part of the architecture.
-
-**Crate:** reasoning/lib.rs, runner/main.rs
-**Complexity:** high (architectural rework)
-**Blocks:** 2.2, 2.5, deployment, `:reset`
-
-### 2.2 Herbrand explosion → egglog native rules
-
-Replace eager N×M entity grounding with lazy `(rule ...)` definitions. Current approach hits wall at ~10K entities.
-
-**Crate:** reasoning/lib.rs
-**Complexity:** high
-**Blocks:** scaling to real datasets
-
-### 2.3 Numerical comparison predicates in egglog
-
-`zmadu`/`mleca`/`dunli` operating on `Number` terms. Requires 0.5 (`Num` datatype) first.
-
-**Crate:** reasoning/lib.rs schema
+**Crate:** parser/preprocessor.rs
 **Complexity:** medium
-**Depends on:** 0.5
 
-### 2.4 Conjunction introduction rule (guarded)
+---
 
-Assert A, assert B → egglog can derive `And(A, B)`. Guard: only fire when both A, B are atomic predicates sharing at least one term. Prevents combinatorial explosion.
+## Tier 4 — Production Reasoning Features
 
-**Crate:** reasoning/lib.rs schema
-**Complexity:** low
+Features needed for the engine to be genuinely useful (not just correct) in real applications.
 
-### 2.5 Existential witness extraction (answer variables)
+### 4.1 Existential witness extraction (answer variables)
 
-`query_entailment` → bool. Need: `query_find` → bindings. "ma klama" → returns "mi". Modify `check_formula_holds` to return successful bindings. Existential branch already enumerates entities — capture the match.
+`query_entailment` returns bool. Need: `query_find` returning bindings. "ma klama" → "mi". The `check_formula_holds` existential branch already enumerates entities — capture the successful binding.
 
 **Crate:** reasoning/lib.rs, WIT interface (new export)
 **Complexity:** medium
+**Impact:** every domain — "what satisfies this?" is the most natural query form
 
-### 2.6 Non-monotonic reasoning / belief revision
+### 4.2 Proof trace generation
 
-Retraction + justification tracking (TMS-style). egglog doesn't natively support retraction — needs wrapper layer.
+`check_formula_holds` builds proof tree as it recurses. Each node records which rule/axiom was applied.
 
-**Crate:** reasoning (new subsystem)
-**Complexity:** very high
+**Crate:** reasoning/lib.rs
+**Complexity:** medium-high
+**Impact:** legal (arguments require justification), scientific (reproducibility), astrophysics (audit trail for derived conclusions)
 
-### 2.7 `[NEW]` Herbrand instantiation via string replacement is fragile
+### 4.3 Parser error recovery
 
-`body_sexp.replace(&format!("(Var \"{}\")", var_name), ...)` does global string substitution. If variable names are substrings of other variables (`_v1` inside `_v10`), or appear in predicate names, silent corruption occurs.
+Skip to next `.i` on syntax error, continue parsing. Return `Vec<Result<Sentence, SyntaxError>>` instead of failing entire input.
 
-**Fix:** Use proper s-expression tree manipulation instead of string replacement. Or ensure variable names are always terminated by `"` in the sexp format (which they currently are due to quoting — verify this invariant holds).
+**Crate:** parser/grammar.rs
+**Complexity:** medium
+**Impact:** all domains — real corpora have errors; failing on first bad sentence is unusable
 
-**Crate:** reasoning/lib.rs `register_entity`, Herbrand instantiation
-**Complexity:** low (verification) or medium (proper tree manip)
-
-
-## PHASE 3 — Security + Deployment Readiness
-
-### 3.1 WASM fuel/epoch limits
+### 4.4 WASM fuel/epoch limits
 
 Prevent unbounded execution. Wasmtime API supports natively.
 
@@ -108,195 +275,117 @@ Prevent unbounded execution. Wasmtime API supports natively.
 **Complexity:** low
 **Blocks:** production deployment
 
-### 3.2 WIT error variants
+### 4.5 Conjunction introduction rule (guarded)
+
+Assert A, assert B → egglog can derive `And(A, B)`. Guard: only fire when both A, B are atomic predicates sharing at least one term. Prevents combinatorial explosion.
+
+**Crate:** reasoning/lib.rs schema
+**Complexity:** low
+
+### 4.6 WIT error variants
 
 Replace `Result<_, String>` with typed error enums: `SyntaxError(pos)`, `SemanticError(msg)`, `ReasoningTimeout`, `BackendError(backend, msg)`.
 
 **Crate:** wit/world.wit, all 4 components
 **Complexity:** medium
 
-### 3.3 WASI capability sandboxing
+### 4.7 WASI capability sandboxing
 
 Remove `inherit_stdio()`. Grant minimal capabilities.
 
 **Crate:** runner/main.rs
 **Complexity:** low
 
-### 3.4 Parser error recovery
+### 4.8 Remove deep clones in `apply_selbri` for `Jo`/`Ju` connectives
 
-Skip to next `.i` on syntax error, continue parsing. Return `Vec<Result<Sentence, SyntaxError>>` instead of failing entire input.
+Restructure to avoid cloning recursive `LogicalForm` trees.
 
-**Crate:** parser/grammar.rs
+**Crate:** semantics/semantic.rs lines 421-438
+**Complexity:** low
+
+### 4.9 Arena allocator for parser AST
+
+Batch processing of corpora will stress the allocator. Arena allocation reduces fragmentation and improves throughput.
+
+**Crate:** parser
 **Complexity:** medium
 
-### 3.5 Explanation / proof trace generation
+---
 
-`check_formula_holds` builds proof tree as it recurses. Each node records which rule/axiom was applied.
+## Tier 5 — Advanced Reasoning
 
-**Crate:** reasoning/lib.rs
-**Complexity:** medium-high
-**Needed by:** every high-stakes domain
+Features for complex domains that require deeper logical machinery.
 
+### 5.1 Non-monotonic reasoning / belief revision
 
-## PHASE 4 — Computation Dispatch
+Retraction + justification tracking (TMS-style). egglog doesn't natively support retraction — needs wrapper layer.
 
-### 4.1 Computation dispatch WIT protocol
+**Crate:** reasoning (new subsystem)
+**Complexity:** very high
+**Impact:** legal corpus (statutes get amended/repealed, precedent overturned), biology (hypothesis revision), any evolving knowledge base
 
-New interface: `compute-backend` with dispatch function. New IR node: `ComputeNode`. Predicate registry marks which predicates dispatch externally.
+### 5.2 Temporal reasoning in e-graph
 
-**Crate:** new crate + WIT interface
+Encode Past/Present/Future in egglog schema with inference rules. Currently tense is stripped at assertion and transparent at query — asserting `pu mi klama` and querying `ba mi klama` returns TRUE (wrong).
+
+**Crate:** reasoning/lib.rs schema + `check_formula_holds`
 **Complexity:** high
+**Impact:** astrophysics (stellar evolution, cosmological timelines), legal (effective dates, statute of limitations), biology (developmental stages)
 
-### 4.2 Python backend adapter
-
-Subprocess or embedded. Covers SciPy, SymPy, RDKit, BioPython, MadGraph, PK/PD solvers.
-
-**Complexity:** medium
-
-### 4.3 Mathematica/Wolfram backend adapter
-
-Via WSTP or WolframScript CLI.
-
-**Complexity:** medium
-
-### 4.4 Result ingestion as assertions
-
-Computation results → Lojban assertions → knowledge base. Closes the reason→compute→reason loop. Needs trusted assertion path (bypass user input parsing).
-
-**Complexity:** medium
-
-
-## PHASE 5 — Theoretical Depth
-
-### 5.1 Event semantics (Neo-Davidsonian)
+### 5.3 Event semantics (Neo-Davidsonian)
 
 Structured events with named roles, temporal ordering, causal links. Resolves tanru intersective fallacy.
 
 **Complexity:** research-grade
+**Impact:** physics (physical processes), legal (actions and liability), biology (metabolic pathways)
 
-### 5.2 Temporal reasoning in e-graph
+### 5.4 Description term opacity (`le` vs `lo`)
 
-Encode Past/Present/Future in egglog schema with inference rules. Current tense-transparent approach becomes dispatch point.
-
-**Additional context:** Currently tense is stripped at assertion and transparent at query — asserting `pu mi klama` and querying `ba mi klama` will return TRUE. This is the first thing that breaks when encoding any temporally-sensitive domain.
-
-**Crate:** reasoning/lib.rs schema + `check_formula_holds`
-**Complexity:** high
-
-### 5.3 `[AMENDED]` Description term opacity (`le` vs `lo`)
-
-Currently `le` and `la` both produce `LogicalTerm::Description` — a non-quantified opaque token. The reasoning engine can't distinguish `le gerku` from `la gerku` at the logic level. Matters for belief contexts and intensional reasoning.
+Currently `le` and `la` both produce `LogicalTerm::Description` — a non-quantified opaque token. Matters for belief contexts and intensional reasoning.
 
 **Crate:** semantics/semantic.rs, reasoning schema
 **Complexity:** high
 
-### 5.4 E-graph cycle detection
-
-Prevent infinite rewrite loops in egglog.
-
-**Complexity:** medium (egglog may handle natively)
-
 ### 5.5 Module / namespace system
 
-Domain-prefixed predicates for multi-domain KBs.
+Domain-prefixed predicates for multi-domain KBs. Essential when combining astrophysics + chemistry ontologies or multiple legal codes.
 
 **Complexity:** medium
 
+### 5.6 E-graph cycle detection
 
-## ONGOING — Technical Debt
+Prevent infinite rewrite loops in egglog. May be handled natively by egglog's saturation guarantees.
 
-Interleave as convenient.
+**Complexity:** medium
 
-| ID | Item | Crate | Complexity |
-|----|-------|-------|------------|
-| D.1 | wasip1 → wasip2 alignment | Justfile, flake.nix | low |
-| D.2 | `reconstruct_sexp` deduplication (orchestrator + reasoning have near-identical copies) | orchestrator, reasoning | low |
-| D.3 | `ast-types` interface naming (split logic types into separate WIT interface) | wit/world.wit | medium |
-| D.4 | String pre-allocation in `reconstruct_sexp` (currently O(n²) from nested `format!`) | reasoning, orchestrator | low |
-| D.5 | Arena allocator for parser AST (when batch processing) | parser | medium |
-| D.6 | `sa` proper implementation (requires selma'o classification) | parser/preprocessor.rs | medium |
-| D.7 | `inject_variable` ambiguity warning (when multiple Unspecified slots and no ke'a) | semantics/semantic.rs | low |
-| D.8 | `[NEW]` Remove `bumpalo` dependency from parser — imported but unused, dead weight in WASM binary | parser/Cargo.toml | 2 min |
-| D.9 | `[NEW]` Delete dead `push_bridi` method in Flattener — superseded by `push_sentence` | parser/lib.rs lines 82-113 | 2 min |
-| D.10 | `[NEW]` Delete dead commented-out loop in `Flattener::flatten` | parser/lib.rs lines 68-76 | 1 min |
-| D.11 | `[NEW]` Fix or remove `looks_like_selbri_na` — dead code behind `#[allow(dead_code)]`, will break if used (missing cmavo-selbri like `go'i`) | parser/grammar.rs lines 335-349 | low |
-| D.12 | `[NEW]` Verify Flattener test type correctness — tests construct `ParsedText { sentences: vec![Bridi {...}] }` but `sentences` is `Vec<Sentence>`. Either won't compile or has implicit conversion hiding a mismatch | parser/lib.rs flattener_tests | low |
-| D.13 | `[NEW]` Remove `Connective::Jo` / `Connective::Ju` deep clones in `apply_selbri` — restructure to avoid cloning recursive `LogicalForm` trees | semantics/semantic.rs lines 421-438 | low |
+---
 
-
-## Dependency Graph (Critical Path)
+## Dependency Graph
 
 ```
-0.1 ──→ 0.2
-0.5 ──→ 2.3
-0.4 ──→ (any ∀∃ formula correctness)
-2.1 ──→ 2.2, 2.5, 3.1, persistence
-1.2 ──→ 4.1 (ka/ni needed for computation dispatch)
-1.3 ──→ 5.1 (BAI needed for event role binding)
+Tier 0 (correctness)
+  0.1 da/de/di closure ── no dependencies, do anytime
+  0.2 existential introduction gap ── partially solved by 1.1
+  0.3 string replacement ── eliminated by 1.1
 
-Immediate (do today):
-  0.5  — 5 minutes, prevents crashes
-  0.6  — 5 minutes, prevents unsound inference
-  D.8  — 2 minutes, smaller WASM binary
-  D.9  — 2 minutes, dead code removal
-  D.10 — 1 minute, dead code removal
+Tier 1 (scale)                        Tier 2 (quantitative)
+  1.1 native egglog rules               2.1 numerical predicates
+       │                                 2.2 computation dispatch WIT
+       ├── eliminates 0.3                     │
+       ├── partially solves 0.2          2.3 Python adapter ──→ 2.4 result ingestion
+       ├── may make 1.3, 1.4 moot
+       └── enables Tier 4, 5
+  1.2 WASI state hoisting
+       └── enables persistence, multi-tenant
 
-This week:
-  0.1  — unblocks 0.2 and all forethought connective usage
-  0.3  — unblocks correct disjunctive reasoning
-  0.4  — unblocks sound ∀∃ reasoning
-  1.8  — unblocks correct da/de/di reasoning
-
-Next sprint:
-  1.1  — sumti connectives (high application value)
-  1.9  — lujvo recognition (coverage)
+Tier 3 (language)         Tier 4 (production)         Tier 5 (advanced)
+  3.1 deontic               4.1 witness extraction      5.1 non-monotonic
+  3.2 lujvo                 4.2 proof traces            5.2 temporal
+  3.3 observative           4.3 error recovery          5.3 event semantics
+  3.4 sa impl               4.4 fuel limits             5.4 description opacity
+                            4.5 conj. introduction      5.5 namespaces
+                            4.6 WIT error variants      5.6 cycle detection
+                            4.7 WASI sandboxing
+                            4.8 clone elimination
+                            4.9 arena allocator
 ```
-
-
-This fails:
-
-```
-ro lo gerku cu danlu
-ro lo danlu cu citka lo cidja
-?lo gerku cu citka lo cidja                                                                                                                                                                                 02/25/2026 11:47:53 AM
-[Query] FALSE
-?ro lo gerku cu citka lo cidja
-[Query] TRUE
-
-```
-
-The root cause of this output is a failure in your engine’s unification algorithm. You have encountered a classic boundary problem in neuro-symbolic mapping: the disconnect between Lojban's modern generic descriptors (the "xorlo" grammar reform) and strict First-Order Logic (FOL) resolution.
-
-Your engine is currently performing rigid syntactic graph matching rather than true semantic entailment.
-
-### The Logical Breakdown
-
-When you asserted or loaded `ro lo gerku cu citka lo cidja` into your knowledge base, your parser correctly mapped the universal quantifier (`ro`) to a logical implication or Horn clause. In your engine's memory, this exists as:
-
-$$\forall x (Gerku(x) \rightarrow \exists y (Cidja(y) \land Citka(x, y)))$$
-
-When you subsequently query `lo gerku cu citka lo cidja`, your parser processes the unquantified `lo`. Under modern Lojban semantics, an unquantified `lo` refers to the generic kind or "Mr. Dog" concept. In a symbolic FOL backend, your parser is likely mapping this query in one of two ways:
-
-1. **As an Existential Query:** 
-$$\exists x (Gerku(x) \land \exists y (Cidja(y) \land Citka(x, y)))$$
-
-
-2. **As a Discrete Constant:** `Citka(Generic_Dog_Class, Generic_Food_Class)`
-
-Because your engine's unification step lacks a subsumption rule to bridge the gap, the match fails. It sees the universal statement ($\forall x$) as a rule, but it sees the existential/generic query as an entirely separate, unproven assertion. The engine returns `FALSE` because it cannot find an exact structural match for the unquantified AST node.
-
-### The Missing Inference Mechanism
-
-In standard formal logic, proving $\exists x P(x)$ from $\forall x P(x)$ requires a rule of **Existential Introduction**. Crucially, it also requires the assumption that the domain is non-empty—meaning your knowledge base must explicitly contain at least one specific instance of a dog to prove that "some dog eats food" based on the rule "all dogs eat food."
-
-If your engine operates purely on deductive rules without existential instantiation, it will strictly evaluate $\forall x$ as a conditional constraint, not an assertion of existence.
-
-### Architectural Solutions for your Engine
-
-To make your Lojban engine mathematically robust and practically functional, you must build explicit quantifier subsumption into your Rust/Python inference pipeline.
-
-1. **Implement Subsumption Logic:** When the inference engine receives a query for an unquantified `lo` node (existential/generic), the unifier must check if a universal rule ($\forall$) exists for that predicate. If $\forall x P(x) \vdash True$, it should automatically return `TRUE` for the `lo` query.
-2. **Explicit Domain Instantiation:** You must ensure your knowledge base asserts that the set of $Gerku$ is non-empty before it allows an existential query to pass based solely on a universal rule.
-3. **Semantic Typing for "xorlo":** If you want to strictly adhere to Lojban's modern generic semantics, you need to implement a type system where `lo gerku` is parsed as a kind/prototype node, and instances/quantified nodes (`ro lo`, `pa lo`) inherit properties from the prototype node via directed edges.
-
-Would you like to examine the mathematical proofs for Existential Introduction so you can map the specific unification algorithm directly into your Rust abstract syntax tree?
