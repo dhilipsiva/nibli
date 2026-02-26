@@ -1592,6 +1592,45 @@ mod tests {
         assert!(e.contains("na"), "error should mention 'na': {}", e);
     }
 
+    #[test]
+    fn test_na_before_sumti_errors() {
+        // na mi citka lo plise — bare na before sumti is invalid Lojban
+        // Per CLL, bare `na` can only appear immediately before the selbri.
+        // Sentence-initial negation requires `na ku` (not implemented yet).
+        let e = parse_err(&[
+            cmavo("na"),
+            cmavo("mi"),
+            gismu("citka"),
+            cmavo("lo"),
+            gismu("plise"),
+        ]);
+        assert!(e.contains("na"), "error should mention 'na': {}", e);
+    }
+
+    #[test]
+    fn test_negation_with_tail_description() {
+        // mi na citka lo plise → negated bridi with tail description
+        let r = parse_ok(&[
+            cmavo("mi"),
+            cmavo("na"),
+            gismu("citka"),
+            cmavo("lo"),
+            gismu("plise"),
+        ]);
+        let s = as_bridi(&r.sentences[0]);
+        assert!(s.negated);
+        assert_eq!(s.selbri, Selbri::Root("citka".into()));
+        assert_eq!(s.head_terms, vec![Sumti::ProSumti("mi".into())]);
+        assert_eq!(s.tail_terms.len(), 1);
+        match &s.tail_terms[0] {
+            Sumti::Description { gadri, inner } => {
+                assert_eq!(*gadri, Gadri::Lo);
+                assert_eq!(**inner, Selbri::Root("plise".into()));
+            }
+            other => panic!("expected Description, got {:?}", other),
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════
     // 4. PLACE TAGS (fa/fe/fi/fo/fu)
     // ═══════════════════════════════════════════════════════════

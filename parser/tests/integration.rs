@@ -158,6 +158,41 @@ fn bridi_negation() {
     assert_eq!(s.selbri, Selbri::Root("prami".into()));
 }
 
+#[test]
+fn bridi_negation_with_cu() {
+    let p = parse("mi cu na prami do");
+    let s = as_bridi(&p.sentences[0]);
+    assert!(s.negated);
+    assert_eq!(s.selbri, Selbri::Root("prami".into()));
+}
+
+#[test]
+fn na_before_sumti_errors() {
+    // Bare `na` before sumti is invalid — per CLL, bare `na` must
+    // immediately precede the selbri. Sentence-initial negation
+    // requires `na ku` (a separate grammar production).
+    let e = parse_err("na mi citka lo plise");
+    assert!(e.contains("na"), "error should mention 'na': {}", e);
+}
+
+#[test]
+fn bridi_negation_with_tail_description() {
+    // mi na citka lo plise → negated bridi with tail description
+    let p = parse("mi na citka lo plise");
+    let s = as_bridi(&p.sentences[0]);
+    assert!(s.negated);
+    assert_eq!(s.selbri, Selbri::Root("citka".into()));
+    assert_eq!(s.head_terms, vec![Sumti::ProSumti("mi".into())]);
+    assert_eq!(s.tail_terms.len(), 1);
+    match &s.tail_terms[0] {
+        Sumti::Description { gadri, inner } => {
+            assert_eq!(*gadri, Gadri::Lo);
+            assert_eq!(**inner, Selbri::Root("plise".into()));
+        }
+        other => panic!("expected Description, got {:?}", other),
+    }
+}
+
 // ─── SE conversion ───────────────────────────────────────────────
 
 #[test]
@@ -338,9 +373,9 @@ fn sa_erasure_gadri_class() {
     let p = parse("lo gerku cu klama sa lo mlatu cu sutra");
     assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("sutra".into()));
     match &as_bridi(&p.sentences[0]).head_terms[0] {
-        Sumti::Description(gadri, selbri, _) => {
+        Sumti::Description { gadri, inner } => {
             assert_eq!(*gadri, Gadri::Lo);
-            assert_eq!(*selbri, Selbri::Root("mlatu".into()));
+            assert_eq!(**inner, Selbri::Root("mlatu".into()));
         }
         other => panic!("expected Description, got {:?}", other),
     }
