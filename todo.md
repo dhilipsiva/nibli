@@ -1,18 +1,5 @@
 # Nibli Roadmap
 
-## Tier 1 — Architecture for Scale
-
-Without this tier, the engine caps out at ~100 entities. Science and legal domains need 1K-50K+.
-
-### 1.1 `ast-types` WIT interface naming
-
-Split logic types into separate WIT interface from AST types. Currently both live in `ast-types` which is misleading.
-
-**Crate:** wit/world.wit
-**Complexity:** medium
-
----
-
 ## Tier 2 — Quantitative Reasoning
 
 Without this tier, the engine can only do qualitative symbolic reasoning. Every scientific domain needs quantitative capabilities.
@@ -223,11 +210,11 @@ Items identified during implementation but not yet prioritized into a tier.
 ## Dependency Graph
 
 ```
-Tier 1 (scale)                        Tier 2 (quantitative)
-  1.1 WIT interface naming               2.1 numerical predicates
-                                          2.2 computation dispatch WIT
-                                               │
-                                          2.3 Python adapter ──→ 2.4 result ingestion
+Tier 2 (quantitative)
+  2.1 numerical predicates
+  2.2 computation dispatch WIT
+       │
+  2.3 Python adapter ──→ 2.4 result ingestion
 
 Tier 3 (language)         Tier 4 (production)         Tier 5 (advanced)
   3.1 deontic               4.1 witness extraction      5.1 non-monotonic

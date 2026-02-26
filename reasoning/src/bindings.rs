@@ -6,570 +6,11 @@
 pub mod lojban {
     pub mod nesy {
         #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
-        pub mod ast_types {
+        pub mod logic_types {
             #[used]
             #[doc(hidden)]
             static __FORCE_SECTION_REF: fn() = super::super::super::__link_custom_section_describing_imports;
             use super::super::super::_rt;
-            pub type SelbriId = u32;
-            pub type SumtiId = u32;
-            #[repr(u8)]
-            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-            pub enum PlaceTag {
-                Fa,
-                Fe,
-                Fi,
-                Fo,
-                Fu,
-            }
-            impl ::core::fmt::Debug for PlaceTag {
-                fn fmt(
-                    &self,
-                    f: &mut ::core::fmt::Formatter<'_>,
-                ) -> ::core::fmt::Result {
-                    match self {
-                        PlaceTag::Fa => f.debug_tuple("PlaceTag::Fa").finish(),
-                        PlaceTag::Fe => f.debug_tuple("PlaceTag::Fe").finish(),
-                        PlaceTag::Fi => f.debug_tuple("PlaceTag::Fi").finish(),
-                        PlaceTag::Fo => f.debug_tuple("PlaceTag::Fo").finish(),
-                        PlaceTag::Fu => f.debug_tuple("PlaceTag::Fu").finish(),
-                    }
-                }
-            }
-            impl PlaceTag {
-                #[doc(hidden)]
-                pub unsafe fn _lift(val: u8) -> PlaceTag {
-                    if !cfg!(debug_assertions) {
-                        return ::core::mem::transmute(val);
-                    }
-                    match val {
-                        0 => PlaceTag::Fa,
-                        1 => PlaceTag::Fe,
-                        2 => PlaceTag::Fi,
-                        3 => PlaceTag::Fo,
-                        4 => PlaceTag::Fu,
-                        _ => panic!("invalid enum discriminant"),
-                    }
-                }
-            }
-            #[repr(u8)]
-            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-            pub enum BaiTag {
-                Ria,
-                Nii,
-                Mui,
-                Kiu,
-                Pio,
-                Bai,
-            }
-            impl ::core::fmt::Debug for BaiTag {
-                fn fmt(
-                    &self,
-                    f: &mut ::core::fmt::Formatter<'_>,
-                ) -> ::core::fmt::Result {
-                    match self {
-                        BaiTag::Ria => f.debug_tuple("BaiTag::Ria").finish(),
-                        BaiTag::Nii => f.debug_tuple("BaiTag::Nii").finish(),
-                        BaiTag::Mui => f.debug_tuple("BaiTag::Mui").finish(),
-                        BaiTag::Kiu => f.debug_tuple("BaiTag::Kiu").finish(),
-                        BaiTag::Pio => f.debug_tuple("BaiTag::Pio").finish(),
-                        BaiTag::Bai => f.debug_tuple("BaiTag::Bai").finish(),
-                    }
-                }
-            }
-            impl BaiTag {
-                #[doc(hidden)]
-                pub unsafe fn _lift(val: u8) -> BaiTag {
-                    if !cfg!(debug_assertions) {
-                        return ::core::mem::transmute(val);
-                    }
-                    match val {
-                        0 => BaiTag::Ria,
-                        1 => BaiTag::Nii,
-                        2 => BaiTag::Mui,
-                        3 => BaiTag::Kiu,
-                        4 => BaiTag::Pio,
-                        5 => BaiTag::Bai,
-                        _ => panic!("invalid enum discriminant"),
-                    }
-                }
-            }
-            #[derive(Clone, Copy)]
-            pub enum ModalTag {
-                Fixed(BaiTag),
-                Fio(SelbriId),
-            }
-            impl ::core::fmt::Debug for ModalTag {
-                fn fmt(
-                    &self,
-                    f: &mut ::core::fmt::Formatter<'_>,
-                ) -> ::core::fmt::Result {
-                    match self {
-                        ModalTag::Fixed(e) => {
-                            f.debug_tuple("ModalTag::Fixed").field(e).finish()
-                        }
-                        ModalTag::Fio(e) => {
-                            f.debug_tuple("ModalTag::Fio").field(e).finish()
-                        }
-                    }
-                }
-            }
-            #[repr(u8)]
-            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-            pub enum Conversion {
-                Se,
-                Te,
-                Ve,
-                Xe,
-            }
-            impl ::core::fmt::Debug for Conversion {
-                fn fmt(
-                    &self,
-                    f: &mut ::core::fmt::Formatter<'_>,
-                ) -> ::core::fmt::Result {
-                    match self {
-                        Conversion::Se => f.debug_tuple("Conversion::Se").finish(),
-                        Conversion::Te => f.debug_tuple("Conversion::Te").finish(),
-                        Conversion::Ve => f.debug_tuple("Conversion::Ve").finish(),
-                        Conversion::Xe => f.debug_tuple("Conversion::Xe").finish(),
-                    }
-                }
-            }
-            impl Conversion {
-                #[doc(hidden)]
-                pub unsafe fn _lift(val: u8) -> Conversion {
-                    if !cfg!(debug_assertions) {
-                        return ::core::mem::transmute(val);
-                    }
-                    match val {
-                        0 => Conversion::Se,
-                        1 => Conversion::Te,
-                        2 => Conversion::Ve,
-                        3 => Conversion::Xe,
-                        _ => panic!("invalid enum discriminant"),
-                    }
-                }
-            }
-            #[repr(u8)]
-            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-            pub enum Connective {
-                Je,
-                Ja,
-                Jo,
-                Ju,
-            }
-            impl ::core::fmt::Debug for Connective {
-                fn fmt(
-                    &self,
-                    f: &mut ::core::fmt::Formatter<'_>,
-                ) -> ::core::fmt::Result {
-                    match self {
-                        Connective::Je => f.debug_tuple("Connective::Je").finish(),
-                        Connective::Ja => f.debug_tuple("Connective::Ja").finish(),
-                        Connective::Jo => f.debug_tuple("Connective::Jo").finish(),
-                        Connective::Ju => f.debug_tuple("Connective::Ju").finish(),
-                    }
-                }
-            }
-            impl Connective {
-                #[doc(hidden)]
-                pub unsafe fn _lift(val: u8) -> Connective {
-                    if !cfg!(debug_assertions) {
-                        return ::core::mem::transmute(val);
-                    }
-                    match val {
-                        0 => Connective::Je,
-                        1 => Connective::Ja,
-                        2 => Connective::Jo,
-                        3 => Connective::Ju,
-                        _ => panic!("invalid enum discriminant"),
-                    }
-                }
-            }
-            #[repr(u8)]
-            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-            pub enum Gadri {
-                Lo,
-                Le,
-                La,
-                RoLo,
-                RoLe,
-            }
-            impl ::core::fmt::Debug for Gadri {
-                fn fmt(
-                    &self,
-                    f: &mut ::core::fmt::Formatter<'_>,
-                ) -> ::core::fmt::Result {
-                    match self {
-                        Gadri::Lo => f.debug_tuple("Gadri::Lo").finish(),
-                        Gadri::Le => f.debug_tuple("Gadri::Le").finish(),
-                        Gadri::La => f.debug_tuple("Gadri::La").finish(),
-                        Gadri::RoLo => f.debug_tuple("Gadri::RoLo").finish(),
-                        Gadri::RoLe => f.debug_tuple("Gadri::RoLe").finish(),
-                    }
-                }
-            }
-            impl Gadri {
-                #[doc(hidden)]
-                pub unsafe fn _lift(val: u8) -> Gadri {
-                    if !cfg!(debug_assertions) {
-                        return ::core::mem::transmute(val);
-                    }
-                    match val {
-                        0 => Gadri::Lo,
-                        1 => Gadri::Le,
-                        2 => Gadri::La,
-                        3 => Gadri::RoLo,
-                        4 => Gadri::RoLe,
-                        _ => panic!("invalid enum discriminant"),
-                    }
-                }
-            }
-            #[repr(u8)]
-            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-            pub enum AbstractionKind {
-                Nu,
-                Duhu,
-                Ka,
-                Ni,
-                Siho,
-            }
-            impl ::core::fmt::Debug for AbstractionKind {
-                fn fmt(
-                    &self,
-                    f: &mut ::core::fmt::Formatter<'_>,
-                ) -> ::core::fmt::Result {
-                    match self {
-                        AbstractionKind::Nu => {
-                            f.debug_tuple("AbstractionKind::Nu").finish()
-                        }
-                        AbstractionKind::Duhu => {
-                            f.debug_tuple("AbstractionKind::Duhu").finish()
-                        }
-                        AbstractionKind::Ka => {
-                            f.debug_tuple("AbstractionKind::Ka").finish()
-                        }
-                        AbstractionKind::Ni => {
-                            f.debug_tuple("AbstractionKind::Ni").finish()
-                        }
-                        AbstractionKind::Siho => {
-                            f.debug_tuple("AbstractionKind::Siho").finish()
-                        }
-                    }
-                }
-            }
-            impl AbstractionKind {
-                #[doc(hidden)]
-                pub unsafe fn _lift(val: u8) -> AbstractionKind {
-                    if !cfg!(debug_assertions) {
-                        return ::core::mem::transmute(val);
-                    }
-                    match val {
-                        0 => AbstractionKind::Nu,
-                        1 => AbstractionKind::Duhu,
-                        2 => AbstractionKind::Ka,
-                        3 => AbstractionKind::Ni,
-                        4 => AbstractionKind::Siho,
-                        _ => panic!("invalid enum discriminant"),
-                    }
-                }
-            }
-            #[repr(u8)]
-            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-            pub enum RelClauseKind {
-                Poi,
-                Noi,
-                Voi,
-            }
-            impl ::core::fmt::Debug for RelClauseKind {
-                fn fmt(
-                    &self,
-                    f: &mut ::core::fmt::Formatter<'_>,
-                ) -> ::core::fmt::Result {
-                    match self {
-                        RelClauseKind::Poi => {
-                            f.debug_tuple("RelClauseKind::Poi").finish()
-                        }
-                        RelClauseKind::Noi => {
-                            f.debug_tuple("RelClauseKind::Noi").finish()
-                        }
-                        RelClauseKind::Voi => {
-                            f.debug_tuple("RelClauseKind::Voi").finish()
-                        }
-                    }
-                }
-            }
-            impl RelClauseKind {
-                #[doc(hidden)]
-                pub unsafe fn _lift(val: u8) -> RelClauseKind {
-                    if !cfg!(debug_assertions) {
-                        return ::core::mem::transmute(val);
-                    }
-                    match val {
-                        0 => RelClauseKind::Poi,
-                        1 => RelClauseKind::Noi,
-                        2 => RelClauseKind::Voi,
-                        _ => panic!("invalid enum discriminant"),
-                    }
-                }
-            }
-            #[repr(C)]
-            #[derive(Clone, Copy)]
-            pub struct RelClause {
-                pub kind: RelClauseKind,
-                pub body_sentence: u32,
-            }
-            impl ::core::fmt::Debug for RelClause {
-                fn fmt(
-                    &self,
-                    f: &mut ::core::fmt::Formatter<'_>,
-                ) -> ::core::fmt::Result {
-                    f.debug_struct("RelClause")
-                        .field("kind", &self.kind)
-                        .field("body-sentence", &self.body_sentence)
-                        .finish()
-                }
-            }
-            #[derive(Clone)]
-            pub enum Sumti {
-                ProSumti(_rt::String),
-                Description((Gadri, SelbriId)),
-                Name(_rt::String),
-                QuotedLiteral(_rt::String),
-                Unspecified,
-                Tagged((PlaceTag, SumtiId)),
-                ModalTagged((ModalTag, SumtiId)),
-                Restricted((SumtiId, RelClause)),
-                Number(f64),
-                /// Sumti connective: left .e/.a/.o/.u [nai] right
-                /// Fields: (left-sumti-id, connective, right-negated, right-sumti-id)
-                Connected((SumtiId, Connective, bool, SumtiId)),
-                /// Numeric quantifier + description: PA lo/le selbri [ku]
-                /// Fields: (count, gadri, selbri-id)
-                QuantifiedDescription((u32, Gadri, SelbriId)),
-            }
-            impl ::core::fmt::Debug for Sumti {
-                fn fmt(
-                    &self,
-                    f: &mut ::core::fmt::Formatter<'_>,
-                ) -> ::core::fmt::Result {
-                    match self {
-                        Sumti::ProSumti(e) => {
-                            f.debug_tuple("Sumti::ProSumti").field(e).finish()
-                        }
-                        Sumti::Description(e) => {
-                            f.debug_tuple("Sumti::Description").field(e).finish()
-                        }
-                        Sumti::Name(e) => f.debug_tuple("Sumti::Name").field(e).finish(),
-                        Sumti::QuotedLiteral(e) => {
-                            f.debug_tuple("Sumti::QuotedLiteral").field(e).finish()
-                        }
-                        Sumti::Unspecified => {
-                            f.debug_tuple("Sumti::Unspecified").finish()
-                        }
-                        Sumti::Tagged(e) => {
-                            f.debug_tuple("Sumti::Tagged").field(e).finish()
-                        }
-                        Sumti::ModalTagged(e) => {
-                            f.debug_tuple("Sumti::ModalTagged").field(e).finish()
-                        }
-                        Sumti::Restricted(e) => {
-                            f.debug_tuple("Sumti::Restricted").field(e).finish()
-                        }
-                        Sumti::Number(e) => {
-                            f.debug_tuple("Sumti::Number").field(e).finish()
-                        }
-                        Sumti::Connected(e) => {
-                            f.debug_tuple("Sumti::Connected").field(e).finish()
-                        }
-                        Sumti::QuantifiedDescription(e) => {
-                            f.debug_tuple("Sumti::QuantifiedDescription")
-                                .field(e)
-                                .finish()
-                        }
-                    }
-                }
-            }
-            #[derive(Clone)]
-            pub enum Selbri {
-                Root(_rt::String),
-                Compound(_rt::Vec<_rt::String>),
-                Tanru((SelbriId, SelbriId)),
-                Converted((Conversion, SelbriId)),
-                Negated(SelbriId),
-                Grouped(SelbriId),
-                WithArgs((SelbriId, _rt::Vec<SumtiId>)),
-                Connected((SelbriId, Connective, SelbriId)),
-                /// Abstraction: inner bridi lives in sentences[u32].
-                /// Arity is 1 (x1 = reified entity: event/proposition/property/quantity/concept).
-                Abstraction((AbstractionKind, u32)),
-            }
-            impl ::core::fmt::Debug for Selbri {
-                fn fmt(
-                    &self,
-                    f: &mut ::core::fmt::Formatter<'_>,
-                ) -> ::core::fmt::Result {
-                    match self {
-                        Selbri::Root(e) => {
-                            f.debug_tuple("Selbri::Root").field(e).finish()
-                        }
-                        Selbri::Compound(e) => {
-                            f.debug_tuple("Selbri::Compound").field(e).finish()
-                        }
-                        Selbri::Tanru(e) => {
-                            f.debug_tuple("Selbri::Tanru").field(e).finish()
-                        }
-                        Selbri::Converted(e) => {
-                            f.debug_tuple("Selbri::Converted").field(e).finish()
-                        }
-                        Selbri::Negated(e) => {
-                            f.debug_tuple("Selbri::Negated").field(e).finish()
-                        }
-                        Selbri::Grouped(e) => {
-                            f.debug_tuple("Selbri::Grouped").field(e).finish()
-                        }
-                        Selbri::WithArgs(e) => {
-                            f.debug_tuple("Selbri::WithArgs").field(e).finish()
-                        }
-                        Selbri::Connected(e) => {
-                            f.debug_tuple("Selbri::Connected").field(e).finish()
-                        }
-                        Selbri::Abstraction(e) => {
-                            f.debug_tuple("Selbri::Abstraction").field(e).finish()
-                        }
-                    }
-                }
-            }
-            #[repr(u8)]
-            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-            pub enum Tense {
-                Pu,
-                Ca,
-                Ba,
-            }
-            impl ::core::fmt::Debug for Tense {
-                fn fmt(
-                    &self,
-                    f: &mut ::core::fmt::Formatter<'_>,
-                ) -> ::core::fmt::Result {
-                    match self {
-                        Tense::Pu => f.debug_tuple("Tense::Pu").finish(),
-                        Tense::Ca => f.debug_tuple("Tense::Ca").finish(),
-                        Tense::Ba => f.debug_tuple("Tense::Ba").finish(),
-                    }
-                }
-            }
-            impl Tense {
-                #[doc(hidden)]
-                pub unsafe fn _lift(val: u8) -> Tense {
-                    if !cfg!(debug_assertions) {
-                        return ::core::mem::transmute(val);
-                    }
-                    match val {
-                        0 => Tense::Pu,
-                        1 => Tense::Ca,
-                        2 => Tense::Ba,
-                        _ => panic!("invalid enum discriminant"),
-                    }
-                }
-            }
-            #[derive(Clone)]
-            pub struct Bridi {
-                pub relation: SelbriId,
-                pub head_terms: _rt::Vec<SumtiId>,
-                pub tail_terms: _rt::Vec<SumtiId>,
-                pub negated: bool,
-                pub tense: Option<Tense>,
-            }
-            impl ::core::fmt::Debug for Bridi {
-                fn fmt(
-                    &self,
-                    f: &mut ::core::fmt::Formatter<'_>,
-                ) -> ::core::fmt::Result {
-                    f.debug_struct("Bridi")
-                        .field("relation", &self.relation)
-                        .field("head-terms", &self.head_terms)
-                        .field("tail-terms", &self.tail_terms)
-                        .field("negated", &self.negated)
-                        .field("tense", &self.tense)
-                        .finish()
-                }
-            }
-            #[derive(Clone, Copy)]
-            pub enum SentenceConnective {
-                GanaiGi,
-                GeGi,
-                GaGi,
-                /// Afterthought: .i [na] (je|ja|jo|ju) [nai]
-                /// Fields: (left-negated, connective, right-negated)
-                Afterthought((bool, Connective, bool)),
-            }
-            impl ::core::fmt::Debug for SentenceConnective {
-                fn fmt(
-                    &self,
-                    f: &mut ::core::fmt::Formatter<'_>,
-                ) -> ::core::fmt::Result {
-                    match self {
-                        SentenceConnective::GanaiGi => {
-                            f.debug_tuple("SentenceConnective::GanaiGi").finish()
-                        }
-                        SentenceConnective::GeGi => {
-                            f.debug_tuple("SentenceConnective::GeGi").finish()
-                        }
-                        SentenceConnective::GaGi => {
-                            f.debug_tuple("SentenceConnective::GaGi").finish()
-                        }
-                        SentenceConnective::Afterthought(e) => {
-                            f.debug_tuple("SentenceConnective::Afterthought")
-                                .field(e)
-                                .finish()
-                        }
-                    }
-                }
-            }
-            #[derive(Clone)]
-            pub enum Sentence {
-                Simple(Bridi),
-                Connected((SentenceConnective, u32, u32)),
-            }
-            impl ::core::fmt::Debug for Sentence {
-                fn fmt(
-                    &self,
-                    f: &mut ::core::fmt::Formatter<'_>,
-                ) -> ::core::fmt::Result {
-                    match self {
-                        Sentence::Simple(e) => {
-                            f.debug_tuple("Sentence::Simple").field(e).finish()
-                        }
-                        Sentence::Connected(e) => {
-                            f.debug_tuple("Sentence::Connected").field(e).finish()
-                        }
-                    }
-                }
-            }
-            /// Update ast-buffer to hold the new `sentence` variant:
-            #[derive(Clone)]
-            pub struct AstBuffer {
-                pub selbris: _rt::Vec<Selbri>,
-                pub sumtis: _rt::Vec<Sumti>,
-                pub sentences: _rt::Vec<Sentence>,
-                /// <-- CHANGED from bridi to sentence
-                pub roots: _rt::Vec<u32>,
-            }
-            impl ::core::fmt::Debug for AstBuffer {
-                fn fmt(
-                    &self,
-                    f: &mut ::core::fmt::Formatter<'_>,
-                ) -> ::core::fmt::Result {
-                    f.debug_struct("AstBuffer")
-                        .field("selbris", &self.selbris)
-                        .field("sumtis", &self.sumtis)
-                        .field("sentences", &self.sentences)
-                        .field("roots", &self.roots)
-                        .finish()
-                }
-            }
-            /// --- Logic Types ---
             #[derive(Clone)]
             pub enum LogicalTerm {
                 Variable(_rt::String),
@@ -685,7 +126,7 @@ pub mod exports {
                 #[doc(hidden)]
                 static __FORCE_SECTION_REF: fn() = super::super::super::super::__link_custom_section_describing_imports;
                 use super::super::super::super::_rt;
-                pub type LogicBuffer = super::super::super::super::lojban::nesy::ast_types::LogicBuffer;
+                pub type LogicBuffer = super::super::super::super::lojban::nesy::logic_types::LogicBuffer;
                 #[derive(Debug)]
                 #[repr(transparent)]
                 pub struct KnowledgeBase {
@@ -840,7 +281,7 @@ pub mod exports {
                             .add(i * (5 * ::core::mem::size_of::<*const u8>()));
                         let e41 = {
                             let l0 = i32::from(*base.add(0).cast::<u8>());
-                            use super::super::super::super::lojban::nesy::ast_types::LogicNode as V40;
+                            use super::super::super::super::lojban::nesy::logic_types::LogicNode as V40;
                             let v40 = match l0 {
                                 0 => {
                                     let e40 = {
@@ -870,7 +311,7 @@ pub mod exports {
                                                 .add(i * (8 + 2 * ::core::mem::size_of::<*const u8>()));
                                             let e18 = {
                                                 let l6 = i32::from(*base.add(0).cast::<u8>());
-                                                use super::super::super::super::lojban::nesy::ast_types::LogicalTerm as V17;
+                                                use super::super::super::super::lojban::nesy::logic_types::LogicalTerm as V17;
                                                 let v17 = match l6 {
                                                     0 => {
                                                         let e17 = {
@@ -1083,7 +524,7 @@ pub mod exports {
                     let len42 = arg4;
                     let result43 = T::assert_fact(
                         unsafe { KnowledgeBaseBorrow::lift(arg0 as u32 as usize) }.get(),
-                        super::super::super::super::lojban::nesy::ast_types::LogicBuffer {
+                        super::super::super::super::lojban::nesy::logic_types::LogicBuffer {
                             nodes: result41,
                             roots: _rt::Vec::from_raw_parts(arg3.cast(), len42, len42),
                         },
@@ -1148,7 +589,7 @@ pub mod exports {
                             .add(i * (5 * ::core::mem::size_of::<*const u8>()));
                         let e41 = {
                             let l0 = i32::from(*base.add(0).cast::<u8>());
-                            use super::super::super::super::lojban::nesy::ast_types::LogicNode as V40;
+                            use super::super::super::super::lojban::nesy::logic_types::LogicNode as V40;
                             let v40 = match l0 {
                                 0 => {
                                     let e40 = {
@@ -1178,7 +619,7 @@ pub mod exports {
                                                 .add(i * (8 + 2 * ::core::mem::size_of::<*const u8>()));
                                             let e18 = {
                                                 let l6 = i32::from(*base.add(0).cast::<u8>());
-                                                use super::super::super::super::lojban::nesy::ast_types::LogicalTerm as V17;
+                                                use super::super::super::super::lojban::nesy::logic_types::LogicalTerm as V17;
                                                 let v17 = match l6 {
                                                     0 => {
                                                         let e17 = {
@@ -1391,7 +832,7 @@ pub mod exports {
                     let len42 = arg4;
                     let result43 = T::query_entailment(
                         unsafe { KnowledgeBaseBorrow::lift(arg0 as u32 as usize) }.get(),
-                        super::super::super::super::lojban::nesy::ast_types::LogicBuffer {
+                        super::super::super::super::lojban::nesy::logic_types::LogicBuffer {
                             nodes: result41,
                             roots: _rt::Vec::from_raw_parts(arg3.cast(), len42, len42),
                         },
@@ -1764,48 +1205,25 @@ pub(crate) use __export_reasoning_component_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1828] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x9a\x0d\x01A\x02\x01\
-A\x05\x01BD\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
-m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x06\x03ria\
-\x03nii\x03mui\x03kiu\x03pio\x03bai\x04\0\x07bai-tag\x03\0\x06\x01q\x02\x05fixed\
-\x01\x07\0\x03fio\x01\x01\0\x04\0\x09modal-tag\x03\0\x08\x01m\x04\x02se\x02te\x02\
-ve\x02xe\x04\0\x0aconversion\x03\0\x0a\x01m\x04\x02je\x02ja\x02jo\x02ju\x04\0\x0a\
-connective\x03\0\x0c\x01m\x05\x02lo\x02le\x02la\x05ro-lo\x05ro-le\x04\0\x05gadri\
-\x03\0\x0e\x01m\x05\x02nu\x04duhu\x02ka\x02ni\x04siho\x04\0\x10abstraction-kind\x03\
-\0\x10\x01m\x03\x03poi\x03noi\x03voi\x04\0\x0frel-clause-kind\x03\0\x12\x01r\x02\
-\x04kind\x13\x0dbody-sentencey\x04\0\x0arel-clause\x03\0\x14\x01o\x02\x0f\x01\x01\
-o\x02\x05\x03\x01o\x02\x09\x03\x01o\x02\x03\x15\x01o\x04\x03\x0d\x7f\x03\x01o\x03\
-y\x0f\x01\x01q\x0b\x09pro-sumti\x01s\0\x0bdescription\x01\x16\0\x04name\x01s\0\x0e\
-quoted-literal\x01s\0\x0bunspecified\0\0\x06tagged\x01\x17\0\x0cmodal-tagged\x01\
-\x18\0\x0arestricted\x01\x19\0\x06number\x01u\0\x09connected\x01\x1a\0\x16quanti\
-fied-description\x01\x1b\0\x04\0\x05sumti\x03\0\x1c\x01ps\x01o\x02\x01\x01\x01o\x02\
-\x0b\x01\x01p\x03\x01o\x02\x01!\x01o\x03\x01\x0d\x01\x01o\x02\x11y\x01q\x09\x04r\
-oot\x01s\0\x08compound\x01\x1e\0\x05tanru\x01\x1f\0\x09converted\x01\x20\0\x07ne\
-gated\x01\x01\0\x07grouped\x01\x01\0\x09with-args\x01\"\0\x09connected\x01#\0\x0b\
-abstraction\x01$\0\x04\0\x06selbri\x03\0%\x01m\x03\x02pu\x02ca\x02ba\x04\0\x05te\
-nse\x03\0'\x01k(\x01r\x05\x08relation\x01\x0ahead-terms!\x0atail-terms!\x07negat\
-ed\x7f\x05tense)\x04\0\x05bridi\x03\0*\x01o\x03\x7f\x0d\x7f\x01q\x04\x08ganai-gi\
-\0\0\x05ge-gi\0\0\x05ga-gi\0\0\x0cafterthought\x01,\0\x04\0\x13sentence-connecti\
-ve\x03\0-\x01o\x03.yy\x01q\x02\x06simple\x01+\0\x09connected\x01/\0\x04\0\x08sen\
-tence\x03\00\x01p&\x01p\x1d\x01p1\x01py\x01r\x04\x07selbris2\x06sumtis3\x09sente\
-nces4\x05roots5\x04\0\x0aast-buffer\x03\06\x01q\x05\x08variable\x01s\0\x08consta\
-nt\x01s\0\x0bdescription\x01s\0\x0bunspecified\0\0\x06number\x01u\0\x04\0\x0clog\
-ical-term\x03\08\x01p9\x01o\x02s:\x01o\x02yy\x01o\x02sy\x01o\x03syy\x01q\x0a\x09\
-predicate\x01;\0\x08and-node\x01<\0\x07or-node\x01<\0\x08not-node\x01y\0\x0bexis\
-ts-node\x01=\0\x0cfor-all-node\x01=\0\x09past-node\x01y\0\x0cpresent-node\x01y\0\
-\x0bfuture-node\x01y\0\x0acount-node\x01>\0\x04\0\x0alogic-node\x03\0?\x01p\xc0\0\
-\x01r\x02\x05nodes\xc1\0\x05roots5\x04\0\x0clogic-buffer\x03\0B\x03\0\x1blojban:\
-nesy/ast-types@0.1.0\x05\0\x02\x03\0\0\x0clogic-buffer\x01B\x0f\x02\x03\x02\x01\x01\
-\x04\0\x0clogic-buffer\x03\0\0\x04\0\x0eknowledge-base\x03\x01\x01i\x02\x01@\0\0\
-\x03\x04\0\x1b[constructor]knowledge-base\x01\x04\x01h\x02\x01j\0\x01s\x01@\x02\x04\
-self\x05\x05logic\x01\0\x06\x04\0\"[method]knowledge-base.assert-fact\x01\x07\x01\
-j\x01\x7f\x01s\x01@\x02\x04self\x05\x05logic\x01\0\x08\x04\0'[method]knowledge-b\
-ase.query-entailment\x01\x09\x01@\x01\x04self\x05\0\x06\x04\0\x1c[method]knowled\
-ge-base.reset\x01\x0a\x04\0\x1blojban:nesy/reasoning@0.1.0\x05\x02\x04\0%lojban:\
-nesy/reasoning-component@0.1.0\x04\0\x0b\x19\x01\0\x13reasoning-component\x03\0\0\
-\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10wit-bind\
-gen-rust\x060.41.0";
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 839] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xbd\x05\x01A\x02\x01\
+A\x05\x01B\x0d\x01q\x05\x08variable\x01s\0\x08constant\x01s\0\x0bdescription\x01\
+s\0\x0bunspecified\0\0\x06number\x01u\0\x04\0\x0clogical-term\x03\0\0\x01p\x01\x01\
+o\x02s\x02\x01o\x02yy\x01o\x02sy\x01o\x03syy\x01q\x0a\x09predicate\x01\x03\0\x08\
+and-node\x01\x04\0\x07or-node\x01\x04\0\x08not-node\x01y\0\x0bexists-node\x01\x05\
+\0\x0cfor-all-node\x01\x05\0\x09past-node\x01y\0\x0cpresent-node\x01y\0\x0bfutur\
+e-node\x01y\0\x0acount-node\x01\x06\0\x04\0\x0alogic-node\x03\0\x07\x01p\x08\x01\
+py\x01r\x02\x05nodes\x09\x05roots\x0a\x04\0\x0clogic-buffer\x03\0\x0b\x03\0\x1dl\
+ojban:nesy/logic-types@0.1.0\x05\0\x02\x03\0\0\x0clogic-buffer\x01B\x0f\x02\x03\x02\
+\x01\x01\x04\0\x0clogic-buffer\x03\0\0\x04\0\x0eknowledge-base\x03\x01\x01i\x02\x01\
+@\0\0\x03\x04\0\x1b[constructor]knowledge-base\x01\x04\x01h\x02\x01j\0\x01s\x01@\
+\x02\x04self\x05\x05logic\x01\0\x06\x04\0\"[method]knowledge-base.assert-fact\x01\
+\x07\x01j\x01\x7f\x01s\x01@\x02\x04self\x05\x05logic\x01\0\x08\x04\0'[method]kno\
+wledge-base.query-entailment\x01\x09\x01@\x01\x04self\x05\0\x06\x04\0\x1c[method\
+]knowledge-base.reset\x01\x0a\x04\0\x1blojban:nesy/reasoning@0.1.0\x05\x02\x04\0\
+%lojban:nesy/reasoning-component@0.1.0\x04\0\x0b\x19\x01\0\x13reasoning-componen\
+t\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10\
+wit-bindgen-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

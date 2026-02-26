@@ -43,7 +43,7 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | `orchestrator` | Glue: chains parser -> semantics -> reasoning | `lib.rs` |
 | `runner` | Native Wasmtime host, REPL, loads fused WASM | `main.rs` |
 
-- **WIT interface:** `wit/world.wit` defines all shared types. `cargo component build` regenerates `src/bindings.rs` in each crate.
+- **WIT interfaces:** `wit/world.wit` defines `ast-types` (parser output), `logic-types` (FOL IR), `parser`, `semantics`, `reasoning`, `engine`. `cargo component build` regenerates `src/bindings.rs` in each crate.
 - **Cross-component data:** Flat index-based arrays (`AstBuffer`, `LogicBuffer`) with `u32` indices — no pointers across WASM boundaries.
 
 ## Code Conventions
@@ -81,7 +81,7 @@ Before every commit, always:
 
 ## Current Status
 
-Completed through Tier 1.2 WASI state hoisting + all trivial cleanups.
+Completed through all Tier 1 items (architecture for scale).
 
 **Implemented features:**
 - Lexer + recursive-descent parser (gismu, cmavo, cmevla, lujvo partial)
@@ -103,4 +103,4 @@ Completed through Tier 1.2 WASI state hoisting + all trivial cleanups.
 - Host-managed WIT resources: `resource knowledge-base` (reasoning) + `resource session` (engine interface)
 - KnowledgeBase uses `RefCell` (not `Mutex`) — single-threaded WASI, no global state
 
-**Next up:** Tier 1.1 (WIT interface naming) or Tier 3.1 (Deontic predicates)
+**Next up:** Tier 2.1 (numerical predicates) or Tier 3.1 (Deontic predicates)

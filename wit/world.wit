@@ -77,16 +77,15 @@ interface ast-types {
         connected(tuple<sentence-connective, u32, u32>), // Pointers to other sentences
     }
 
-    // Update ast-buffer to hold the new `sentence` variant:
     record ast-buffer {
         selbris: list<selbri>,
         sumtis: list<sumti>,
-        sentences: list<sentence>, // <-- CHANGED from bridi to sentence
+        sentences: list<sentence>,
         roots: list<u32>,
     }
+}
 
-
-    // --- Logic Types ---
+interface logic-types {
     variant logical-term {
         variable(string),
         constant(string),
@@ -121,12 +120,13 @@ interface parser {
 }
 
 interface semantics {
-    use ast-types.{ast-buffer, logic-buffer};
+    use ast-types.{ast-buffer};
+    use logic-types.{logic-buffer};
     compile-buffer: func(ast: ast-buffer) -> result<logic-buffer, string>;
 }
 
 interface reasoning {
-    use ast-types.{logic-buffer};
+    use logic-types.{logic-buffer};
 
     resource knowledge-base {
         /// Create a fresh KB with FOL schema loaded.

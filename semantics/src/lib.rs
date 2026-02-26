@@ -5,9 +5,8 @@ pub mod ir;
 pub mod semantic;
 
 use bindings::exports::lojban::nesy::semantics::Guest;
-use bindings::lojban::nesy::ast_types::{
-    AstBuffer, LogicBuffer, LogicNode, LogicalTerm as WitTerm,
-};
+use bindings::lojban::nesy::ast_types::AstBuffer;
+use bindings::lojban::nesy::logic_types::{LogicBuffer, LogicNode, LogicalTerm as WitTerm};
 use ir::{LogicalForm, LogicalTerm};
 use semantic::SemanticCompiler;
 

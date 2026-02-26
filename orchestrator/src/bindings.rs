@@ -547,13 +547,11 @@ pub mod lojban {
                     }
                 }
             }
-            /// Update ast-buffer to hold the new `sentence` variant:
             #[derive(Clone)]
             pub struct AstBuffer {
                 pub selbris: _rt::Vec<Selbri>,
                 pub sumtis: _rt::Vec<Sumti>,
                 pub sentences: _rt::Vec<Sentence>,
-                /// <-- CHANGED from bridi to sentence
                 pub roots: _rt::Vec<u32>,
             }
             impl ::core::fmt::Debug for AstBuffer {
@@ -565,108 +563,6 @@ pub mod lojban {
                         .field("selbris", &self.selbris)
                         .field("sumtis", &self.sumtis)
                         .field("sentences", &self.sentences)
-                        .field("roots", &self.roots)
-                        .finish()
-                }
-            }
-            /// --- Logic Types ---
-            #[derive(Clone)]
-            pub enum LogicalTerm {
-                Variable(_rt::String),
-                Constant(_rt::String),
-                Description(_rt::String),
-                Unspecified,
-                Number(f64),
-            }
-            impl ::core::fmt::Debug for LogicalTerm {
-                fn fmt(
-                    &self,
-                    f: &mut ::core::fmt::Formatter<'_>,
-                ) -> ::core::fmt::Result {
-                    match self {
-                        LogicalTerm::Variable(e) => {
-                            f.debug_tuple("LogicalTerm::Variable").field(e).finish()
-                        }
-                        LogicalTerm::Constant(e) => {
-                            f.debug_tuple("LogicalTerm::Constant").field(e).finish()
-                        }
-                        LogicalTerm::Description(e) => {
-                            f.debug_tuple("LogicalTerm::Description").field(e).finish()
-                        }
-                        LogicalTerm::Unspecified => {
-                            f.debug_tuple("LogicalTerm::Unspecified").finish()
-                        }
-                        LogicalTerm::Number(e) => {
-                            f.debug_tuple("LogicalTerm::Number").field(e).finish()
-                        }
-                    }
-                }
-            }
-            #[derive(Clone)]
-            pub enum LogicNode {
-                Predicate((_rt::String, _rt::Vec<LogicalTerm>)),
-                AndNode((u32, u32)),
-                OrNode((u32, u32)),
-                NotNode(u32),
-                ExistsNode((_rt::String, u32)),
-                ForAllNode((_rt::String, u32)),
-                PastNode(u32),
-                PresentNode(u32),
-                FutureNode(u32),
-                /// Exactly N entities satisfy the body: Count(variable-name, count, body-node-id)
-                CountNode((_rt::String, u32, u32)),
-            }
-            impl ::core::fmt::Debug for LogicNode {
-                fn fmt(
-                    &self,
-                    f: &mut ::core::fmt::Formatter<'_>,
-                ) -> ::core::fmt::Result {
-                    match self {
-                        LogicNode::Predicate(e) => {
-                            f.debug_tuple("LogicNode::Predicate").field(e).finish()
-                        }
-                        LogicNode::AndNode(e) => {
-                            f.debug_tuple("LogicNode::AndNode").field(e).finish()
-                        }
-                        LogicNode::OrNode(e) => {
-                            f.debug_tuple("LogicNode::OrNode").field(e).finish()
-                        }
-                        LogicNode::NotNode(e) => {
-                            f.debug_tuple("LogicNode::NotNode").field(e).finish()
-                        }
-                        LogicNode::ExistsNode(e) => {
-                            f.debug_tuple("LogicNode::ExistsNode").field(e).finish()
-                        }
-                        LogicNode::ForAllNode(e) => {
-                            f.debug_tuple("LogicNode::ForAllNode").field(e).finish()
-                        }
-                        LogicNode::PastNode(e) => {
-                            f.debug_tuple("LogicNode::PastNode").field(e).finish()
-                        }
-                        LogicNode::PresentNode(e) => {
-                            f.debug_tuple("LogicNode::PresentNode").field(e).finish()
-                        }
-                        LogicNode::FutureNode(e) => {
-                            f.debug_tuple("LogicNode::FutureNode").field(e).finish()
-                        }
-                        LogicNode::CountNode(e) => {
-                            f.debug_tuple("LogicNode::CountNode").field(e).finish()
-                        }
-                    }
-                }
-            }
-            #[derive(Clone)]
-            pub struct LogicBuffer {
-                pub nodes: _rt::Vec<LogicNode>,
-                pub roots: _rt::Vec<u32>,
-            }
-            impl ::core::fmt::Debug for LogicBuffer {
-                fn fmt(
-                    &self,
-                    f: &mut ::core::fmt::Formatter<'_>,
-                ) -> ::core::fmt::Result {
-                    f.debug_struct("LogicBuffer")
-                        .field("nodes", &self.nodes)
                         .field("roots", &self.roots)
                         .finish()
                 }
@@ -1262,13 +1158,121 @@ pub mod lojban {
             }
         }
         #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
+        pub mod logic_types {
+            #[used]
+            #[doc(hidden)]
+            static __FORCE_SECTION_REF: fn() = super::super::super::__link_custom_section_describing_imports;
+            use super::super::super::_rt;
+            #[derive(Clone)]
+            pub enum LogicalTerm {
+                Variable(_rt::String),
+                Constant(_rt::String),
+                Description(_rt::String),
+                Unspecified,
+                Number(f64),
+            }
+            impl ::core::fmt::Debug for LogicalTerm {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        LogicalTerm::Variable(e) => {
+                            f.debug_tuple("LogicalTerm::Variable").field(e).finish()
+                        }
+                        LogicalTerm::Constant(e) => {
+                            f.debug_tuple("LogicalTerm::Constant").field(e).finish()
+                        }
+                        LogicalTerm::Description(e) => {
+                            f.debug_tuple("LogicalTerm::Description").field(e).finish()
+                        }
+                        LogicalTerm::Unspecified => {
+                            f.debug_tuple("LogicalTerm::Unspecified").finish()
+                        }
+                        LogicalTerm::Number(e) => {
+                            f.debug_tuple("LogicalTerm::Number").field(e).finish()
+                        }
+                    }
+                }
+            }
+            #[derive(Clone)]
+            pub enum LogicNode {
+                Predicate((_rt::String, _rt::Vec<LogicalTerm>)),
+                AndNode((u32, u32)),
+                OrNode((u32, u32)),
+                NotNode(u32),
+                ExistsNode((_rt::String, u32)),
+                ForAllNode((_rt::String, u32)),
+                PastNode(u32),
+                PresentNode(u32),
+                FutureNode(u32),
+                /// Exactly N entities satisfy the body: Count(variable-name, count, body-node-id)
+                CountNode((_rt::String, u32, u32)),
+            }
+            impl ::core::fmt::Debug for LogicNode {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        LogicNode::Predicate(e) => {
+                            f.debug_tuple("LogicNode::Predicate").field(e).finish()
+                        }
+                        LogicNode::AndNode(e) => {
+                            f.debug_tuple("LogicNode::AndNode").field(e).finish()
+                        }
+                        LogicNode::OrNode(e) => {
+                            f.debug_tuple("LogicNode::OrNode").field(e).finish()
+                        }
+                        LogicNode::NotNode(e) => {
+                            f.debug_tuple("LogicNode::NotNode").field(e).finish()
+                        }
+                        LogicNode::ExistsNode(e) => {
+                            f.debug_tuple("LogicNode::ExistsNode").field(e).finish()
+                        }
+                        LogicNode::ForAllNode(e) => {
+                            f.debug_tuple("LogicNode::ForAllNode").field(e).finish()
+                        }
+                        LogicNode::PastNode(e) => {
+                            f.debug_tuple("LogicNode::PastNode").field(e).finish()
+                        }
+                        LogicNode::PresentNode(e) => {
+                            f.debug_tuple("LogicNode::PresentNode").field(e).finish()
+                        }
+                        LogicNode::FutureNode(e) => {
+                            f.debug_tuple("LogicNode::FutureNode").field(e).finish()
+                        }
+                        LogicNode::CountNode(e) => {
+                            f.debug_tuple("LogicNode::CountNode").field(e).finish()
+                        }
+                    }
+                }
+            }
+            #[derive(Clone)]
+            pub struct LogicBuffer {
+                pub nodes: _rt::Vec<LogicNode>,
+                pub roots: _rt::Vec<u32>,
+            }
+            impl ::core::fmt::Debug for LogicBuffer {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    f.debug_struct("LogicBuffer")
+                        .field("nodes", &self.nodes)
+                        .field("roots", &self.roots)
+                        .finish()
+                }
+            }
+        }
+        #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
         pub mod semantics {
             #[used]
             #[doc(hidden)]
             static __FORCE_SECTION_REF: fn() = super::super::super::__link_custom_section_describing_imports;
             use super::super::super::_rt;
             pub type AstBuffer = super::super::super::lojban::nesy::ast_types::AstBuffer;
-            pub type LogicBuffer = super::super::super::lojban::nesy::ast_types::LogicBuffer;
+            pub type LogicBuffer = super::super::super::lojban::nesy::logic_types::LogicBuffer;
             #[allow(unused_unsafe, clippy::all)]
             pub fn compile_buffer(ast: &AstBuffer) -> Result<LogicBuffer, _rt::String> {
                 unsafe {
@@ -1742,7 +1746,7 @@ pub mod lojban {
                                         .add(i * (5 * ::core::mem::size_of::<*const u8>()));
                                     let e80 = {
                                         let l39 = i32::from(*base.add(0).cast::<u8>());
-                                        use super::super::super::lojban::nesy::ast_types::LogicNode as V79;
+                                        use super::super::super::lojban::nesy::logic_types::LogicNode as V79;
                                         let v79 = match l39 {
                                             0 => {
                                                 let e79 = {
@@ -1772,7 +1776,7 @@ pub mod lojban {
                                                             .add(i * (8 + 2 * ::core::mem::size_of::<*const u8>()));
                                                         let e57 = {
                                                             let l45 = i32::from(*base.add(0).cast::<u8>());
-                                                            use super::super::super::lojban::nesy::ast_types::LogicalTerm as V56;
+                                                            use super::super::super::lojban::nesy::logic_types::LogicalTerm as V56;
                                                             let v56 = match l45 {
                                                                 0 => {
                                                                     let e56 = {
@@ -1989,7 +1993,7 @@ pub mod lojban {
                                     .add(4 * ::core::mem::size_of::<*const u8>())
                                     .cast::<usize>();
                                 let len83 = l82;
-                                super::super::super::lojban::nesy::ast_types::LogicBuffer {
+                                super::super::super::lojban::nesy::logic_types::LogicBuffer {
                                     nodes: result80,
                                     roots: _rt::Vec::from_raw_parts(l81.cast(), len83, len83),
                                 }
@@ -2040,7 +2044,7 @@ pub mod lojban {
             #[doc(hidden)]
             static __FORCE_SECTION_REF: fn() = super::super::super::__link_custom_section_describing_imports;
             use super::super::super::_rt;
-            pub type LogicBuffer = super::super::super::lojban::nesy::ast_types::LogicBuffer;
+            pub type LogicBuffer = super::super::super::lojban::nesy::logic_types::LogicBuffer;
             #[derive(Debug)]
             #[repr(transparent)]
             pub struct KnowledgeBase {
@@ -2118,7 +2122,7 @@ pub mod lojban {
                             [::core::mem::MaybeUninit::uninit(); 3
                                 * ::core::mem::size_of::<*const u8>()],
                         );
-                        let super::super::super::lojban::nesy::ast_types::LogicBuffer {
+                        let super::super::super::lojban::nesy::logic_types::LogicBuffer {
                             nodes: nodes0,
                             roots: roots0,
                         } = logic;
@@ -2141,7 +2145,7 @@ pub mod lojban {
                             let base = result17
                                 .add(i * (5 * ::core::mem::size_of::<*const u8>()));
                             {
-                                use super::super::super::lojban::nesy::ast_types::LogicNode as V16;
+                                use super::super::super::lojban::nesy::logic_types::LogicNode as V16;
                                 match e {
                                     V16::Predicate(e) => {
                                         *base.add(0).cast::<u8>() = (0i32) as u8;
@@ -2174,7 +2178,7 @@ pub mod lojban {
                                             let base = result7
                                                 .add(i * (8 + 2 * ::core::mem::size_of::<*const u8>()));
                                             {
-                                                use super::super::super::lojban::nesy::ast_types::LogicalTerm as V6;
+                                                use super::super::super::lojban::nesy::logic_types::LogicalTerm as V6;
                                                 match e {
                                                     V6::Variable(e) => {
                                                         *base.add(0).cast::<u8>() = (0i32) as u8;
@@ -2418,7 +2422,7 @@ pub mod lojban {
                             [::core::mem::MaybeUninit::uninit(); 3
                                 * ::core::mem::size_of::<*const u8>()],
                         );
-                        let super::super::super::lojban::nesy::ast_types::LogicBuffer {
+                        let super::super::super::lojban::nesy::logic_types::LogicBuffer {
                             nodes: nodes0,
                             roots: roots0,
                         } = logic;
@@ -2441,7 +2445,7 @@ pub mod lojban {
                             let base = result17
                                 .add(i * (5 * ::core::mem::size_of::<*const u8>()));
                             {
-                                use super::super::super::lojban::nesy::ast_types::LogicNode as V16;
+                                use super::super::super::lojban::nesy::logic_types::LogicNode as V16;
                                 match e {
                                     V16::Predicate(e) => {
                                         *base.add(0).cast::<u8>() = (0i32) as u8;
@@ -2474,7 +2478,7 @@ pub mod lojban {
                                             let base = result7
                                                 .add(i * (8 + 2 * ::core::mem::size_of::<*const u8>()));
                                             {
-                                                use super::super::super::lojban::nesy::ast_types::LogicalTerm as V6;
+                                                use super::super::super::lojban::nesy::logic_types::LogicalTerm as V6;
                                                 match e {
                                                     V6::Variable(e) => {
                                                         *base.add(0).cast::<u8>() = (0i32) as u8;
@@ -3526,9 +3530,9 @@ pub(crate) use __export_engine_pipeline_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 2329] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x93\x11\x01A\x02\x01\
-A\x0c\x01BD\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 2367] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xb9\x11\x01A\x02\x01\
+A\x0e\x01B8\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
 m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x06\x03ria\
 \x03nii\x03mui\x03kiu\x03pio\x03bai\x04\0\x07bai-tag\x03\0\x06\x01q\x02\x05fixed\
 \x01\x07\0\x03fio\x01\x01\0\x04\0\x09modal-tag\x03\0\x08\x01m\x04\x02se\x02te\x02\
@@ -3551,34 +3555,35 @@ ed\x7f\x05tense)\x04\0\x05bridi\x03\0*\x01o\x03\x7f\x0d\x7f\x01q\x04\x08ganai-gi
 \0\0\x05ge-gi\0\0\x05ga-gi\0\0\x0cafterthought\x01,\0\x04\0\x13sentence-connecti\
 ve\x03\0-\x01o\x03.yy\x01q\x02\x06simple\x01+\0\x09connected\x01/\0\x04\0\x08sen\
 tence\x03\00\x01p&\x01p\x1d\x01p1\x01py\x01r\x04\x07selbris2\x06sumtis3\x09sente\
-nces4\x05roots5\x04\0\x0aast-buffer\x03\06\x01q\x05\x08variable\x01s\0\x08consta\
-nt\x01s\0\x0bdescription\x01s\0\x0bunspecified\0\0\x06number\x01u\0\x04\0\x0clog\
-ical-term\x03\08\x01p9\x01o\x02s:\x01o\x02yy\x01o\x02sy\x01o\x03syy\x01q\x0a\x09\
-predicate\x01;\0\x08and-node\x01<\0\x07or-node\x01<\0\x08not-node\x01y\0\x0bexis\
-ts-node\x01=\0\x0cfor-all-node\x01=\0\x09past-node\x01y\0\x0cpresent-node\x01y\0\
-\x0bfuture-node\x01y\0\x0acount-node\x01>\0\x04\0\x0alogic-node\x03\0?\x01p\xc0\0\
-\x01r\x02\x05nodes\xc1\0\x05roots5\x04\0\x0clogic-buffer\x03\0B\x03\0\x1blojban:\
-nesy/ast-types@0.1.0\x05\0\x02\x03\0\0\x0aast-buffer\x01B\x05\x02\x03\x02\x01\x01\
-\x04\0\x0aast-buffer\x03\0\0\x01j\x01\x01\x01s\x01@\x01\x05inputs\0\x02\x04\0\x0a\
-parse-text\x01\x03\x03\0\x18lojban:nesy/parser@0.1.0\x05\x02\x02\x03\0\0\x0clogi\
-c-buffer\x01B\x07\x02\x03\x02\x01\x01\x04\0\x0aast-buffer\x03\0\0\x02\x03\x02\x01\
-\x03\x04\0\x0clogic-buffer\x03\0\x02\x01j\x01\x03\x01s\x01@\x01\x03ast\x01\0\x04\
-\x04\0\x0ecompile-buffer\x01\x05\x03\0\x1blojban:nesy/semantics@0.1.0\x05\x04\x01\
-B\x0f\x02\x03\x02\x01\x03\x04\0\x0clogic-buffer\x03\0\0\x04\0\x0eknowledge-base\x03\
-\x01\x01i\x02\x01@\0\0\x03\x04\0\x1b[constructor]knowledge-base\x01\x04\x01h\x02\
-\x01j\0\x01s\x01@\x02\x04self\x05\x05logic\x01\0\x06\x04\0\"[method]knowledge-ba\
-se.assert-fact\x01\x07\x01j\x01\x7f\x01s\x01@\x02\x04self\x05\x05logic\x01\0\x08\
-\x04\0'[method]knowledge-base.query-entailment\x01\x09\x01@\x01\x04self\x05\0\x06\
-\x04\0\x1c[method]knowledge-base.reset\x01\x0a\x03\0\x1blojban:nesy/reasoning@0.\
-1.0\x05\x05\x01B\x11\x04\0\x07session\x03\x01\x01i\0\x01@\0\0\x01\x04\0\x14[cons\
-tructor]session\x01\x02\x01h\0\x01j\x01y\x01s\x01@\x02\x04self\x03\x05inputs\0\x04\
-\x04\0\x1b[method]session.assert-text\x01\x05\x01j\x01\x7f\x01s\x01@\x02\x04self\
-\x03\x05inputs\0\x06\x04\0\x1a[method]session.query-text\x01\x07\x01j\x01s\x01s\x01\
-@\x02\x04self\x03\x05inputs\0\x08\x04\0\x1d[method]session.compile-debug\x01\x09\
-\x01j\0\x01s\x01@\x01\x04self\x03\0\x0a\x04\0\x18[method]session.reset-kb\x01\x0b\
-\x04\0\x18lojban:nesy/engine@0.1.0\x05\x06\x04\0!lojban:nesy/engine-pipeline@0.1\
-.0\x04\0\x0b\x15\x01\0\x0fengine-pipeline\x03\0\0\0G\x09producers\x01\x0cprocess\
-ed-by\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
+nces4\x05roots5\x04\0\x0aast-buffer\x03\06\x03\0\x1blojban:nesy/ast-types@0.1.0\x05\
+\0\x02\x03\0\0\x0aast-buffer\x01B\x05\x02\x03\x02\x01\x01\x04\0\x0aast-buffer\x03\
+\0\0\x01j\x01\x01\x01s\x01@\x01\x05inputs\0\x02\x04\0\x0aparse-text\x01\x03\x03\0\
+\x18lojban:nesy/parser@0.1.0\x05\x02\x01B\x0d\x01q\x05\x08variable\x01s\0\x08con\
+stant\x01s\0\x0bdescription\x01s\0\x0bunspecified\0\0\x06number\x01u\0\x04\0\x0c\
+logical-term\x03\0\0\x01p\x01\x01o\x02s\x02\x01o\x02yy\x01o\x02sy\x01o\x03syy\x01\
+q\x0a\x09predicate\x01\x03\0\x08and-node\x01\x04\0\x07or-node\x01\x04\0\x08not-n\
+ode\x01y\0\x0bexists-node\x01\x05\0\x0cfor-all-node\x01\x05\0\x09past-node\x01y\0\
+\x0cpresent-node\x01y\0\x0bfuture-node\x01y\0\x0acount-node\x01\x06\0\x04\0\x0al\
+ogic-node\x03\0\x07\x01p\x08\x01py\x01r\x02\x05nodes\x09\x05roots\x0a\x04\0\x0cl\
+ogic-buffer\x03\0\x0b\x03\0\x1dlojban:nesy/logic-types@0.1.0\x05\x03\x02\x03\0\x02\
+\x0clogic-buffer\x01B\x07\x02\x03\x02\x01\x01\x04\0\x0aast-buffer\x03\0\0\x02\x03\
+\x02\x01\x04\x04\0\x0clogic-buffer\x03\0\x02\x01j\x01\x03\x01s\x01@\x01\x03ast\x01\
+\0\x04\x04\0\x0ecompile-buffer\x01\x05\x03\0\x1blojban:nesy/semantics@0.1.0\x05\x05\
+\x01B\x0f\x02\x03\x02\x01\x04\x04\0\x0clogic-buffer\x03\0\0\x04\0\x0eknowledge-b\
+ase\x03\x01\x01i\x02\x01@\0\0\x03\x04\0\x1b[constructor]knowledge-base\x01\x04\x01\
+h\x02\x01j\0\x01s\x01@\x02\x04self\x05\x05logic\x01\0\x06\x04\0\"[method]knowled\
+ge-base.assert-fact\x01\x07\x01j\x01\x7f\x01s\x01@\x02\x04self\x05\x05logic\x01\0\
+\x08\x04\0'[method]knowledge-base.query-entailment\x01\x09\x01@\x01\x04self\x05\0\
+\x06\x04\0\x1c[method]knowledge-base.reset\x01\x0a\x03\0\x1blojban:nesy/reasonin\
+g@0.1.0\x05\x06\x01B\x11\x04\0\x07session\x03\x01\x01i\0\x01@\0\0\x01\x04\0\x14[\
+constructor]session\x01\x02\x01h\0\x01j\x01y\x01s\x01@\x02\x04self\x03\x05inputs\
+\0\x04\x04\0\x1b[method]session.assert-text\x01\x05\x01j\x01\x7f\x01s\x01@\x02\x04\
+self\x03\x05inputs\0\x06\x04\0\x1a[method]session.query-text\x01\x07\x01j\x01s\x01\
+s\x01@\x02\x04self\x03\x05inputs\0\x08\x04\0\x1d[method]session.compile-debug\x01\
+\x09\x01j\0\x01s\x01@\x01\x04self\x03\0\x0a\x04\0\x18[method]session.reset-kb\x01\
+\x0b\x04\0\x18lojban:nesy/engine@0.1.0\x05\x07\x04\0!lojban:nesy/engine-pipeline\
+@0.1.0\x04\0\x0b\x15\x01\0\x0fengine-pipeline\x03\0\0\0G\x09producers\x01\x0cpro\
+cessed-by\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

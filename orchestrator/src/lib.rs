@@ -2,7 +2,7 @@
 mod bindings;
 
 use bindings::exports::lojban::nesy::engine::{Guest, GuestSession};
-use bindings::lojban::nesy::ast_types::{LogicBuffer, LogicNode, LogicalTerm};
+use bindings::lojban::nesy::logic_types::{LogicBuffer, LogicNode, LogicalTerm};
 use bindings::lojban::nesy::{parser, semantics};
 use bindings::lojban::nesy::reasoning::KnowledgeBase;
 

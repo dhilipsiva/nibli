@@ -2,7 +2,7 @@
 mod bindings;
 
 use crate::bindings::exports::lojban::nesy::reasoning::{Guest, GuestKnowledgeBase};
-use crate::bindings::lojban::nesy::ast_types::{LogicBuffer, LogicNode, LogicalTerm};
+use crate::bindings::lojban::nesy::logic_types::{LogicBuffer, LogicNode, LogicalTerm};
 use egglog::EGraph;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -958,7 +958,7 @@ bindings::export!(ReasoningComponent with_types_in bindings);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bindings::lojban::nesy::ast_types::{LogicBuffer, LogicNode, LogicalTerm};
+    use crate::bindings::lojban::nesy::logic_types::{LogicBuffer, LogicNode, LogicalTerm};
 
     /// Helper: build a Predicate node with the given relation and args.
     fn pred(nodes: &mut Vec<LogicNode>, rel: &str, args: Vec<LogicalTerm>) -> u32 {

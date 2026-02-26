@@ -547,13 +547,11 @@ pub mod lojban {
                     }
                 }
             }
-            /// Update ast-buffer to hold the new `sentence` variant:
             #[derive(Clone)]
             pub struct AstBuffer {
                 pub selbris: _rt::Vec<Selbri>,
                 pub sumtis: _rt::Vec<Sumti>,
                 pub sentences: _rt::Vec<Sentence>,
-                /// <-- CHANGED from bridi to sentence
                 pub roots: _rt::Vec<u32>,
             }
             impl ::core::fmt::Debug for AstBuffer {
@@ -569,7 +567,13 @@ pub mod lojban {
                         .finish()
                 }
             }
-            /// --- Logic Types ---
+        }
+        #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
+        pub mod logic_types {
+            #[used]
+            #[doc(hidden)]
+            static __FORCE_SECTION_REF: fn() = super::super::super::__link_custom_section_describing_imports;
+            use super::super::super::_rt;
             #[derive(Clone)]
             pub enum LogicalTerm {
                 Variable(_rt::String),
@@ -686,7 +690,7 @@ pub mod exports {
                 static __FORCE_SECTION_REF: fn() = super::super::super::super::__link_custom_section_describing_imports;
                 use super::super::super::super::_rt;
                 pub type AstBuffer = super::super::super::super::lojban::nesy::ast_types::AstBuffer;
-                pub type LogicBuffer = super::super::super::super::lojban::nesy::ast_types::LogicBuffer;
+                pub type LogicBuffer = super::super::super::super::lojban::nesy::logic_types::LogicBuffer;
                 #[doc(hidden)]
                 #[allow(non_snake_case)]
                 pub unsafe fn _export_compile_buffer_cabi<T: Guest>(
@@ -1202,7 +1206,7 @@ pub mod exports {
                     match result80 {
                         Ok(e) => {
                             *ptr81.add(0).cast::<u8>() = (0i32) as u8;
-                            let super::super::super::super::lojban::nesy::ast_types::LogicBuffer {
+                            let super::super::super::super::lojban::nesy::logic_types::LogicBuffer {
                                 nodes: nodes82,
                                 roots: roots82,
                             } = e;
@@ -1225,7 +1229,7 @@ pub mod exports {
                                 let base = result99
                                     .add(i * (5 * ::core::mem::size_of::<*const u8>()));
                                 {
-                                    use super::super::super::super::lojban::nesy::ast_types::LogicNode as V98;
+                                    use super::super::super::super::lojban::nesy::logic_types::LogicNode as V98;
                                     match e {
                                         V98::Predicate(e) => {
                                             *base.add(0).cast::<u8>() = (0i32) as u8;
@@ -1259,7 +1263,7 @@ pub mod exports {
                                                 let base = result89
                                                     .add(i * (8 + 2 * ::core::mem::size_of::<*const u8>()));
                                                 {
-                                                    use super::super::super::super::lojban::nesy::ast_types::LogicalTerm as V88;
+                                                    use super::super::super::super::lojban::nesy::logic_types::LogicalTerm as V88;
                                                     match e {
                                                         V88::Variable(e) => {
                                                             *base.add(0).cast::<u8>() = (0i32) as u8;
@@ -1775,9 +1779,9 @@ pub(crate) use __export_semantics_component_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1663] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xf5\x0b\x01A\x02\x01\
-A\x06\x01BD\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1701] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x9b\x0c\x01A\x02\x01\
+A\x08\x01B8\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
 m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x06\x03ria\
 \x03nii\x03mui\x03kiu\x03pio\x03bai\x04\0\x07bai-tag\x03\0\x06\x01q\x02\x05fixed\
 \x01\x07\0\x03fio\x01\x01\0\x04\0\x09modal-tag\x03\0\x08\x01m\x04\x02se\x02te\x02\
@@ -1800,20 +1804,21 @@ ed\x7f\x05tense)\x04\0\x05bridi\x03\0*\x01o\x03\x7f\x0d\x7f\x01q\x04\x08ganai-gi
 \0\0\x05ge-gi\0\0\x05ga-gi\0\0\x0cafterthought\x01,\0\x04\0\x13sentence-connecti\
 ve\x03\0-\x01o\x03.yy\x01q\x02\x06simple\x01+\0\x09connected\x01/\0\x04\0\x08sen\
 tence\x03\00\x01p&\x01p\x1d\x01p1\x01py\x01r\x04\x07selbris2\x06sumtis3\x09sente\
-nces4\x05roots5\x04\0\x0aast-buffer\x03\06\x01q\x05\x08variable\x01s\0\x08consta\
-nt\x01s\0\x0bdescription\x01s\0\x0bunspecified\0\0\x06number\x01u\0\x04\0\x0clog\
-ical-term\x03\08\x01p9\x01o\x02s:\x01o\x02yy\x01o\x02sy\x01o\x03syy\x01q\x0a\x09\
-predicate\x01;\0\x08and-node\x01<\0\x07or-node\x01<\0\x08not-node\x01y\0\x0bexis\
-ts-node\x01=\0\x0cfor-all-node\x01=\0\x09past-node\x01y\0\x0cpresent-node\x01y\0\
-\x0bfuture-node\x01y\0\x0acount-node\x01>\0\x04\0\x0alogic-node\x03\0?\x01p\xc0\0\
-\x01r\x02\x05nodes\xc1\0\x05roots5\x04\0\x0clogic-buffer\x03\0B\x03\0\x1blojban:\
-nesy/ast-types@0.1.0\x05\0\x02\x03\0\0\x0aast-buffer\x02\x03\0\0\x0clogic-buffer\
-\x01B\x07\x02\x03\x02\x01\x01\x04\0\x0aast-buffer\x03\0\0\x02\x03\x02\x01\x02\x04\
-\0\x0clogic-buffer\x03\0\x02\x01j\x01\x03\x01s\x01@\x01\x03ast\x01\0\x04\x04\0\x0e\
-compile-buffer\x01\x05\x04\0\x1blojban:nesy/semantics@0.1.0\x05\x03\x04\0%lojban\
-:nesy/semantics-component@0.1.0\x04\0\x0b\x19\x01\0\x13semantics-component\x03\0\
-\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10wit-bi\
-ndgen-rust\x060.41.0";
+nces4\x05roots5\x04\0\x0aast-buffer\x03\06\x03\0\x1blojban:nesy/ast-types@0.1.0\x05\
+\0\x01B\x0d\x01q\x05\x08variable\x01s\0\x08constant\x01s\0\x0bdescription\x01s\0\
+\x0bunspecified\0\0\x06number\x01u\0\x04\0\x0clogical-term\x03\0\0\x01p\x01\x01o\
+\x02s\x02\x01o\x02yy\x01o\x02sy\x01o\x03syy\x01q\x0a\x09predicate\x01\x03\0\x08a\
+nd-node\x01\x04\0\x07or-node\x01\x04\0\x08not-node\x01y\0\x0bexists-node\x01\x05\
+\0\x0cfor-all-node\x01\x05\0\x09past-node\x01y\0\x0cpresent-node\x01y\0\x0bfutur\
+e-node\x01y\0\x0acount-node\x01\x06\0\x04\0\x0alogic-node\x03\0\x07\x01p\x08\x01\
+py\x01r\x02\x05nodes\x09\x05roots\x0a\x04\0\x0clogic-buffer\x03\0\x0b\x03\0\x1dl\
+ojban:nesy/logic-types@0.1.0\x05\x01\x02\x03\0\0\x0aast-buffer\x02\x03\0\x01\x0c\
+logic-buffer\x01B\x07\x02\x03\x02\x01\x02\x04\0\x0aast-buffer\x03\0\0\x02\x03\x02\
+\x01\x03\x04\0\x0clogic-buffer\x03\0\x02\x01j\x01\x03\x01s\x01@\x01\x03ast\x01\0\
+\x04\x04\0\x0ecompile-buffer\x01\x05\x04\0\x1blojban:nesy/semantics@0.1.0\x05\x04\
+\x04\0%lojban:nesy/semantics-component@0.1.0\x04\0\x0b\x19\x01\0\x13semantics-co\
+mponent\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.22\
+7.1\x10wit-bindgen-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {
