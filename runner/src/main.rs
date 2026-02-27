@@ -5,7 +5,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::time::Duration;
 use wasmtime::component::{Component, HasSelf, Linker};
-use wasmtime::{Config, Engine, Store};
+use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder};
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 // ── JSON Lines protocol types ──
@@ -42,6 +42,7 @@ struct ComputeResponse {
 struct HostState {
     ctx: WasiCtx,
     table: ResourceTable,
+    limits: StoreLimits,
     backend_addr: Option<String>,
     backend_conn: Option<BufReader<TcpStream>>,
 }
@@ -312,6 +313,9 @@ fn format_host_error(e: &anyhow::Error) -> String {
     if msg.contains("fuel") {
         "[Limit] Execution fuel exhausted. Increase with NIBLI_FUEL env var or :fuel command."
             .to_string()
+    } else if msg.contains("memory") || msg.contains("Memory") {
+        "[Limit] Memory limit exceeded. Increase with NIBLI_MEMORY_MB env var or :memory command."
+            .to_string()
     } else {
         format!("[Host Error] {:?}", e)
     }
@@ -358,14 +362,24 @@ fn main() -> Result<()> {
         .unwrap_or(10_000_000_000);
     println!("Fuel budget: {} per command", fuel_budget);
 
+    let mut memory_limit_mb: usize = std::env::var("NIBLI_MEMORY_MB")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(512);
+    println!("Memory limit: {} MB", memory_limit_mb);
+
     let state = HostState {
         ctx: WasiCtxBuilder::new().inherit_stdout().inherit_stderr().build(),
         table: ResourceTable::new(),
+        limits: StoreLimitsBuilder::new()
+            .memory_size(memory_limit_mb * 1024 * 1024)
+            .build(),
         backend_addr,
         backend_conn: None,
     };
     let mut store = Store::new(&engine, state);
     store.set_fuel(fuel_budget)?;
+    store.limiter(|state| &mut state.limits);
 
     println!("Loading fused WebAssembly Component...");
     let pipeline_comp =
@@ -382,7 +396,7 @@ fn main() -> Result<()> {
     let prompt = DefaultPrompt::default();
 
     println!(
-        "Ready. Commands: :quit :reset :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :help"
+        "Ready. Commands: :quit :reset :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :help"
     );
     println!("Prefix '?' for queries, '?!' for proof trace, '??' for find, plain text for assertions.\n");
 
@@ -410,6 +424,10 @@ fn main() -> Result<()> {
                         println!("[Fuel] Budget: {} per command", fuel_budget);
                         continue;
                     }
+                    ":memory" | ":m" => {
+                        println!("[Memory] Limit: {} MB", memory_limit_mb);
+                        continue;
+                    }
                     ":backend" | ":b" => {
                         let state = store.data();
                         match &state.backend_addr {
@@ -435,6 +453,7 @@ fn main() -> Result<()> {
                         println!("  :assert <rel> <args..> Assert a ground fact directly");
                         println!("  :backend [host:port] Show or set compute backend address");
                         println!("  :fuel [amount]      Show or set WASM fuel budget per command");
+                        println!("  :memory [mb]        Show or set WASM memory limit in MB");
                         println!("  :reset              Clear all facts (fresh KB)");
                         println!("  :quit               Exit");
                         continue;
@@ -477,6 +496,19 @@ fn main() -> Result<()> {
                             println!("[Fuel] Budget set to {}", fuel_budget);
                         }
                         _ => println!("[Host] Usage: :fuel <positive-integer>"),
+                    }
+                } else if let Some(mem_arg) = input.strip_prefix(":memory ") {
+                    let arg = mem_arg.trim();
+                    match arg.parse::<usize>() {
+                        Ok(n) if n > 0 => {
+                            memory_limit_mb = n;
+                            let state = store.data_mut();
+                            state.limits = StoreLimitsBuilder::new()
+                                .memory_size(memory_limit_mb * 1024 * 1024)
+                                .build();
+                            println!("[Memory] Limit set to {} MB", memory_limit_mb);
+                        }
+                        _ => println!("[Host] Usage: :memory <positive-integer-mb>"),
                     }
                 } else if let Some(compute_name) = input.strip_prefix(":compute ") {
                     let name = compute_name.trim();
@@ -641,6 +673,9 @@ mod tests {
         HostState {
             ctx: WasiCtxBuilder::new().build(),
             table: ResourceTable::new(),
+            limits: StoreLimitsBuilder::new()
+                .memory_size(512 * 1024 * 1024)
+                .build(),
             backend_addr: addr,
             backend_conn: None,
         }
@@ -804,6 +839,115 @@ mod tests {
             }
             other => panic!("expected NibliError::Backend, got {:?}", other),
         }
+    }
+
+    // ── Memory limit tests ──
+
+    #[test]
+    fn test_make_host_has_limits() {
+        // HostState should contain StoreLimits
+        let _host = make_host(None);
+        // If it compiles and runs, the limits field is present
+    }
+
+    #[test]
+    fn test_format_host_error_memory() {
+        let e = anyhow::anyhow!("memory allocation limit exceeded");
+        let out = format_host_error(&e);
+        assert!(out.starts_with("[Limit]"));
+        assert!(out.contains("Memory limit"));
+        assert!(out.contains("NIBLI_MEMORY_MB"));
+        assert!(out.contains(":memory"));
+    }
+
+    #[test]
+    fn test_format_host_error_memory_uppercase() {
+        let e = anyhow::anyhow!("Memory allocation failed");
+        let out = format_host_error(&e);
+        assert!(out.starts_with("[Limit]"));
+        assert!(out.contains("Memory limit"));
+    }
+
+    #[test]
+    fn test_format_host_error_fuel_unchanged() {
+        let e = anyhow::anyhow!("all fuel consumed");
+        let out = format_host_error(&e);
+        assert!(out.starts_with("[Limit]"));
+        assert!(out.contains("fuel"));
+        assert!(out.contains("NIBLI_FUEL"));
+    }
+
+    #[test]
+    fn test_format_host_error_other_unchanged() {
+        let e = anyhow::anyhow!("something else broke");
+        let out = format_host_error(&e);
+        assert!(out.starts_with("[Host Error]"));
+    }
+
+    #[test]
+    fn test_store_limits_builder_creates_valid_limits() {
+        // Verify StoreLimitsBuilder API works as expected
+        let limits = StoreLimitsBuilder::new()
+            .memory_size(256 * 1024 * 1024)
+            .build();
+        // Assign into a HostState — if it compiles, the types are correct
+        let _host = HostState {
+            ctx: WasiCtxBuilder::new().build(),
+            table: ResourceTable::new(),
+            limits,
+            backend_addr: None,
+            backend_conn: None,
+        };
+    }
+
+    #[test]
+    fn test_store_limiter_integration() {
+        // Verify Store::limiter works with our HostState
+        let mut config = Config::new();
+        config.wasm_component_model(true);
+        config.consume_fuel(true);
+        let engine = Engine::new(&config).unwrap();
+
+        let state = HostState {
+            ctx: WasiCtxBuilder::new().build(),
+            table: ResourceTable::new(),
+            limits: StoreLimitsBuilder::new()
+                .memory_size(64 * 1024 * 1024)
+                .build(),
+            backend_addr: None,
+            backend_conn: None,
+        };
+        let mut store = Store::new(&engine, state);
+        store.set_fuel(1_000_000).unwrap();
+        store.limiter(|state| &mut state.limits);
+        // Store is set up with both fuel and memory limits — if no panic, success
+    }
+
+    #[test]
+    fn test_parse_assert_args_basic() {
+        let (rel, args) = parse_assert_args("gerku alis").unwrap();
+        assert_eq!(rel, "gerku");
+        assert_eq!(args.len(), 1);
+        match &args[0] {
+            EngineLogicalTerm::Constant(s) => assert_eq!(s, "alis"),
+            other => panic!("expected Constant, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_assert_args_number() {
+        let (rel, args) = parse_assert_args("pilji 6 2 3").unwrap();
+        assert_eq!(rel, "pilji");
+        assert_eq!(args.len(), 3);
+        match &args[0] {
+            EngineLogicalTerm::Number(n) => assert_eq!(*n, 6.0),
+            other => panic!("expected Number, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_assert_args_empty() {
+        assert!(parse_assert_args("").is_err());
     }
 
     #[test]

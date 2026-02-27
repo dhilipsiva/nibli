@@ -6,16 +6,7 @@ Single-phase backlog ordered by severity: soundness bugs first, then safety, the
 
 ## Runtime Safety
 
-### R1. Wasmtime memory limits
-
-`Store` has fuel limits (CPU) but no memory cap. An adversarial or pathological input creating combinatorial e-graph growth can consume unbounded memory, crashing the host process.
-
-**Fix:** Configure `StoreLimits` with a hard memory cap on the `wasmtime::Store`. Make it configurable via `NIBLI_MEMORY_MB` env var and `:memory` REPL command, defaulting to a reasonable bound (e.g., 512 MB).
-
-**Crate:** runner/src/main.rs
-**Severity:** high — production safety requirement
-
-### R2. inject_variable ambiguity in nested descriptions
+### R1. inject_variable ambiguity in nested descriptions
 
 When a relative clause lacks explicit `ke'a` and contains nested descriptions, `inject_variable` injects the bound variable into restrictor predicates of inner descriptions, corrupting the logic graph. Currently documented + warned at runtime, but the heuristic can silently produce wrong FOL.
 
