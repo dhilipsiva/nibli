@@ -6,16 +6,7 @@ Single-phase backlog ordered by severity: soundness bugs first, then safety, the
 
 ## Soundness Bugs
 
-### S1. go'i anaphora collapse
-
-`extract_head_relation()` in orchestrator strips `Negated` and `Converted` wrappers, returning only the root brivla name. If the previous sentence was `mi na se prami do`, go'i resolves to just `prami`, erasing negation and conversion — structurally hallucinating facts into the KB.
-
-**Fix:** Deep-clone the antecedent Selbri AST node (or store the full flat-buffer selbri subtree), preserving all modifiers (negation, conversion, tanru, grouping, be/bei args).
-
-**Crate:** orchestrator/lib.rs (`extract_head_relation`, `resolve_go_i`)
-**Severity:** critical — introduces unsound facts
-
-### S2. Silent partial-parse assertion
+### S1. Silent partial-parse assertion
 
 When a multi-sentence text has parse failures, `compile_pipeline` asserts the successfully parsed sentences and discards the failures. Warnings are collected but callers (`assert_text`, `query_text`, etc.) discard them with `_warnings`. The user is never told a constraint was dropped.
 
@@ -24,7 +15,7 @@ When a multi-sentence text has parse failures, `compile_pipeline` asserts the su
 **Crate:** orchestrator/lib.rs (`compile_pipeline`, all call sites)
 **Severity:** critical — incomplete KB leads to unsound proofs
 
-### S3. Existential introduction gap
+### S2. Existential introduction gap
 
 `ro lo gerku cu danlu` then `? lo gerku cu danlu` returns FALSE. Engine lacks ∀x.P(x) ⊢ ∃x.P(x) bridging when domain is non-empty. The universal rule fires per entity, but querying via existential over the same predicate doesn't find witnesses if no entity was explicitly asserted for the restrictor.
 

@@ -130,7 +130,7 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - Bidirectional material conditional rewrite enables modus ponens/tollens on sentence connectives (ganai...gi)
 - Deontic attitudinals: ei (obligation/should), e'e (competence/permission/may) — sentence-level modifiers, transparent wrapper nodes in reasoning
 - Lujvo morphological recognition: Logos regex `[a-z']{5}[a-z']*[aeiou]` captures 6+ char brivla; longest-match prevents cmavo prefix theft; PHF dictionary handles arity lookup
-- Observative sentences & go'i pro-bridi: parser accepts sentences without explicit selbri (inserts implicit `go'i`), orchestrator resolves go'i → last known relation via cross-call `last_relation` tracking
+- Observative sentences & go'i pro-bridi: parser accepts sentences without explicit selbri (inserts implicit `go'i`), orchestrator resolves go'i via `SelbriSnapshot` deep-clone preserving full selbri structure (negation, conversion, tanru, be/bei args, abstractions) across calls
 - Metalinguistic `sa` construct-class erasure: proper selma'o classification (28 classes) with backward-walk to matching grammatical class; graceful fallback to single-word erase for unclassified cmavo
 - Existential witness extraction: `query-find` WIT method + `find_witnesses` reasoning function returns all satisfying binding sets for existential variables; `ma` question pro-sumti compiles to existential variable (like da/de/di); REPL `??` prefix for find queries
 - Proof trace generation: `check_formula_holds_traced` builds proof tree as it recurses, recording which rule/axiom was applied at each step (13 proof rule variants); `query-entailment-with-proof` / `query-text-with-proof` WIT methods; REPL `?!` prefix for traced queries with indented tree output
