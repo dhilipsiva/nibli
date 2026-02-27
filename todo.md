@@ -4,14 +4,6 @@
 
 Features needed for the engine to be genuinely useful (not just correct) in real applications.
 
-### 4.4 WASM fuel/epoch limits
-
-Prevent unbounded execution. Wasmtime API supports natively.
-
-**Crate:** runner/main.rs
-**Complexity:** low
-**Blocks:** production deployment
-
 ### 4.5 Conjunction introduction rule (guarded)
 
 Assert A, assert B → egglog can derive `And(A, B)`. Guard: only fire when both A, B are atomic predicates sharing at least one term. Prevents combinatorial explosion.

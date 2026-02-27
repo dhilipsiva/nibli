@@ -162,7 +162,7 @@ mod pipeline_bind {
 
 use pipeline_bind::lojban::nesy::compute_backend;
 use pipeline_bind::lojban::nesy::logic_types::LogicalTerm as EngineLogicalTerm;
-use pipeline_bind::lojban::nesy::logic_types::{ProofRule, ProofStep, ProofTrace, WitnessBinding};
+use pipeline_bind::lojban::nesy::logic_types::{ProofRule, ProofStep, ProofTrace};
 
 /// Format a LogicalTerm from the engine bindings for display.
 fn format_term(term: &EngineLogicalTerm) -> String {
@@ -301,6 +301,20 @@ fn parse_assert_args(input: &str) -> std::result::Result<(String, Vec<EngineLogi
     Ok((relation, args))
 }
 
+fn refuel(store: &mut Store<HostState>, budget: u64) {
+    let _ = store.set_fuel(budget);
+}
+
+fn format_host_error(e: &anyhow::Error) -> String {
+    let msg = e.to_string();
+    if msg.contains("fuel") {
+        "[Limit] Execution fuel exhausted. Increase with NIBLI_FUEL env var or :fuel command."
+            .to_string()
+    } else {
+        format!("[Host Error] {:?}", e)
+    }
+}
+
 fn main() -> Result<()> {
     println!("==================================================");
     println!(" Lojban Neuro-Symbolic Engine - V4 Typed Pipeline  ");
@@ -308,6 +322,7 @@ fn main() -> Result<()> {
 
     let mut config = Config::new();
     config.wasm_component_model(true);
+    config.consume_fuel(true);
     let engine = Engine::new(&config)?;
 
     let mut linker = Linker::new(&engine);
@@ -324,6 +339,12 @@ fn main() -> Result<()> {
         println!("Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)");
     }
 
+    let mut fuel_budget: u64 = std::env::var("NIBLI_FUEL")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10_000_000_000);
+    println!("Fuel budget: {} per command", fuel_budget);
+
     let state = HostState {
         ctx: WasiCtxBuilder::new().inherit_stdio().build(),
         table: ResourceTable::new(),
@@ -331,6 +352,7 @@ fn main() -> Result<()> {
         backend_conn: None,
     };
     let mut store = Store::new(&engine, state);
+    store.set_fuel(fuel_budget)?;
 
     println!("Loading fused WebAssembly Component...");
     let pipeline_comp =
@@ -347,7 +369,7 @@ fn main() -> Result<()> {
     let prompt = DefaultPrompt::default();
 
     println!(
-        "Ready. Commands: :quit :reset :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :help"
+        "Ready. Commands: :quit :reset :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :help"
     );
     println!("Prefix '?' for queries, '?!' for proof trace, '??' for find, plain text for assertions.\n");
 
@@ -363,11 +385,16 @@ fn main() -> Result<()> {
                 match input {
                     ":quit" | ":q" => break,
                     ":reset" | ":r" => {
+                        refuel(&mut store, fuel_budget);
                         match session.call_reset_kb(&mut store, session_handle) {
                             Ok(Ok(())) => println!("[Reset] Knowledge base cleared."),
                             Ok(Err(e)) => println!("[Error] {}", e),
-                            Err(e) => println!("[Host Error] {:?}", e),
+                            Err(e) => println!("{}", format_host_error(&e)),
                         }
+                        continue;
+                    }
+                    ":fuel" | ":f" => {
+                        println!("[Fuel] Budget: {} per command", fuel_budget);
                         continue;
                     }
                     ":backend" | ":b" => {
@@ -394,6 +421,7 @@ fn main() -> Result<()> {
                         println!("  :compute <name>     Register predicate for compute dispatch");
                         println!("  :assert <rel> <args..> Assert a ground fact directly");
                         println!("  :backend [host:port] Show or set compute backend address");
+                        println!("  :fuel [amount]      Show or set WASM fuel budget per command");
                         println!("  :reset              Clear all facts (fresh KB)");
                         println!("  :quit               Exit");
                         continue;
@@ -408,10 +436,11 @@ fn main() -> Result<()> {
                         println!("[Host] Usage: :debug <lojban text>");
                         continue;
                     }
+                    refuel(&mut store, fuel_budget);
                     match session.call_compile_debug(&mut store, session_handle, text) {
                         Ok(Ok(sexp)) => println!("[Logic] {}", sexp),
                         Ok(Err(e)) => println!("[Error] {}", e),
-                        Err(e) => println!("[Host Error] {:?}", e),
+                        Err(e) => println!("{}", format_host_error(&e)),
                     }
                 } else if let Some(backend_arg) = input.strip_prefix(":backend ") {
                     let addr = backend_arg.trim();
@@ -427,19 +456,29 @@ fn main() -> Result<()> {
                         state.backend_addr = Some(addr.to_string());
                         println!("[Backend] Set to {} (connects on first use)", addr);
                     }
+                } else if let Some(fuel_arg) = input.strip_prefix(":fuel ") {
+                    let arg = fuel_arg.trim();
+                    match arg.parse::<u64>() {
+                        Ok(n) if n > 0 => {
+                            fuel_budget = n;
+                            println!("[Fuel] Budget set to {}", fuel_budget);
+                        }
+                        _ => println!("[Host] Usage: :fuel <positive-integer>"),
+                    }
                 } else if let Some(compute_name) = input.strip_prefix(":compute ") {
                     let name = compute_name.trim();
                     if name.is_empty() {
                         println!("[Host] Usage: :compute <predicate-name>");
                         continue;
                     }
+                    refuel(&mut store, fuel_budget);
                     match session
                         .call_register_compute_predicate(&mut store, session_handle, name)
                     {
                         Ok(()) => {
                             println!("[Compute] Registered '{}' for external dispatch", name)
                         }
-                        Err(e) => println!("[Host Error] {:?}", e),
+                        Err(e) => println!("{}", format_host_error(&e)),
                     }
                 } else if let Some(assert_args) = input.strip_prefix(":assert ") {
                     let text = assert_args.trim();
@@ -457,6 +496,7 @@ fn main() -> Result<()> {
                                     _ => "?".to_string(),
                                 })
                                 .collect();
+                            refuel(&mut store, fuel_budget);
                             match session.call_assert_fact(
                                 &mut store,
                                 session_handle,
@@ -469,7 +509,7 @@ fn main() -> Result<()> {
                                     display_args.join(", ")
                                 ),
                                 Ok(Err(e)) => println!("[Error] {}", e),
-                                Err(e) => println!("[Host Error] {:?}", e),
+                                Err(e) => println!("{}", format_host_error(&e)),
                             }
                         }
                         Err(e) => println!("[Error] {}", e),
@@ -480,6 +520,7 @@ fn main() -> Result<()> {
                         println!("[Host] Usage: ?? <lojban query with ma>");
                         continue;
                     }
+                    refuel(&mut store, fuel_budget);
                     match session.call_query_find_text(&mut store, session_handle, text) {
                         Ok(Ok(binding_sets)) => {
                             if binding_sets.is_empty() {
@@ -497,7 +538,7 @@ fn main() -> Result<()> {
                             }
                         }
                         Ok(Err(e)) => println!("[Error] {}", e),
-                        Err(e) => println!("[Host Error] {:?}", e),
+                        Err(e) => println!("{}", format_host_error(&e)),
                     }
                 } else if let Some(proof_text) = input.strip_prefix("?!") {
                     let text = proof_text.trim();
@@ -505,6 +546,7 @@ fn main() -> Result<()> {
                         println!("[Host] Usage: ?! <lojban query>");
                         continue;
                     }
+                    refuel(&mut store, fuel_budget);
                     match session.call_query_text_with_proof(&mut store, session_handle, text) {
                         Ok(Ok((result, trace))) => {
                             let tag = if result { "TRUE" } else { "FALSE" };
@@ -512,7 +554,7 @@ fn main() -> Result<()> {
                             print!("{}", format_proof_trace(&trace));
                         }
                         Ok(Err(e)) => println!("[Error] {}", e),
-                        Err(e) => println!("[Host Error] {:?}", e),
+                        Err(e) => println!("{}", format_host_error(&e)),
                     }
                 } else if let Some(query_text) = input.strip_prefix('?') {
                     let text = query_text.trim();
@@ -520,17 +562,19 @@ fn main() -> Result<()> {
                         println!("[Host] Usage: ? <lojban query>");
                         continue;
                     }
+                    refuel(&mut store, fuel_budget);
                     match session.call_query_text(&mut store, session_handle, text) {
                         Ok(Ok(true)) => println!("[Query] TRUE"),
                         Ok(Ok(false)) => println!("[Query] FALSE"),
                         Ok(Err(e)) => println!("[Error] {}", e),
-                        Err(e) => println!("[Host Error] {:?}", e),
+                        Err(e) => println!("{}", format_host_error(&e)),
                     }
                 } else {
+                    refuel(&mut store, fuel_budget);
                     match session.call_assert_text(&mut store, session_handle, input) {
                         Ok(Ok(n)) => println!("[Assert] {} fact(s) inserted.", n),
                         Ok(Err(e)) => println!("[Error] {}", e),
-                        Err(e) => println!("[Host Error] {:?}", e),
+                        Err(e) => println!("{}", format_host_error(&e)),
                     }
                 }
             }
