@@ -103,6 +103,7 @@ just test
 - Direct fact assertion: `assert-fact` WIT method + `:assert` REPL command for programmatic fact injection bypassing Lojban parsing
 - Existential witness extraction: `query-find` returns all satisfying entity bindings for existential variables (`??` REPL prefix)
 - Proof trace generation: `query-entailment-with-proof` returns proof tree showing which rule/axiom was applied at each step (13 proof rule variants: conjunction, disjunction, negation, modal, exists-witness, forall-verified, count, predicate-check, compute-check, etc.) — `?!` REPL prefix
+- Parser error recovery: per-sentence recovery skips to next `.i` on parse failure, continues parsing remaining sentences; errors include exact line:column positions
 
 ## Compute Backend
 

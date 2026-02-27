@@ -599,6 +599,40 @@ pub mod lojban {
                         .finish()
                 }
             }
+            #[derive(Clone)]
+            pub struct ParseError {
+                pub message: _rt::String,
+                pub line: u32,
+                pub column: u32,
+            }
+            impl ::core::fmt::Debug for ParseError {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    f.debug_struct("ParseError")
+                        .field("message", &self.message)
+                        .field("line", &self.line)
+                        .field("column", &self.column)
+                        .finish()
+                }
+            }
+            #[derive(Clone)]
+            pub struct ParseResult {
+                pub buffer: AstBuffer,
+                pub errors: _rt::Vec<ParseError>,
+            }
+            impl ::core::fmt::Debug for ParseResult {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    f.debug_struct("ParseResult")
+                        .field("buffer", &self.buffer)
+                        .field("errors", &self.errors)
+                        .finish()
+                }
+            }
         }
         #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
         pub mod logic_types {
@@ -2137,9 +2171,9 @@ pub(crate) use __export_semantics_component_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 2180] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xfa\x0f\x01A\x02\x01\
-A\x08\x01B;\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 2263] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xcd\x10\x01A\x02\x01\
+A\x08\x01B@\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
 m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x06\x03ria\
 \x03nii\x03mui\x03kiu\x03pio\x03bai\x04\0\x07bai-tag\x03\0\x06\x01q\x02\x05fixed\
 \x01\x07\0\x03fio\x01\x01\0\x04\0\x09modal-tag\x03\0\x08\x01m\x04\x02se\x02te\x02\
@@ -2163,29 +2197,31 @@ udinal,\x04\0\x05bridi\x03\0-\x01o\x03\x7f\x0d\x7f\x01q\x04\x08ganai-gi\0\0\x05g
 e-gi\0\0\x05ga-gi\0\0\x0cafterthought\x01/\0\x04\0\x13sentence-connective\x03\00\
 \x01o\x031yy\x01q\x02\x06simple\x01.\0\x09connected\x012\0\x04\0\x08sentence\x03\
 \03\x01p&\x01p\x1d\x01p4\x01py\x01r\x04\x07selbris5\x06sumtis6\x09sentences7\x05\
-roots8\x04\0\x0aast-buffer\x03\09\x03\0\x1blojban:nesy/ast-types@0.1.0\x05\0\x01\
-B\x18\x01q\x05\x08variable\x01s\0\x08constant\x01s\0\x0bdescription\x01s\0\x0bun\
-specified\0\0\x06number\x01u\0\x04\0\x0clogical-term\x03\0\0\x01p\x01\x01o\x02s\x02\
-\x01o\x02yy\x01o\x02sy\x01o\x03syy\x01q\x0d\x09predicate\x01\x03\0\x0ccompute-no\
-de\x01\x03\0\x08and-node\x01\x04\0\x07or-node\x01\x04\0\x08not-node\x01y\0\x0bex\
-ists-node\x01\x05\0\x0cfor-all-node\x01\x05\0\x09past-node\x01y\0\x0cpresent-nod\
-e\x01y\0\x0bfuture-node\x01y\0\x0fobligatory-node\x01y\0\x0epermitted-node\x01y\0\
-\x0acount-node\x01\x06\0\x04\0\x0alogic-node\x03\0\x07\x01p\x08\x01py\x01r\x02\x05\
-nodes\x09\x05roots\x0a\x04\0\x0clogic-buffer\x03\0\x0b\x01r\x02\x08variables\x04\
-term\x01\x04\0\x0fwitness-binding\x03\0\x0d\x01o\x02s\x01\x01o\x02ss\x01q\x0d\x0b\
-conjunction\0\0\x12disjunction-egraph\x01s\0\x11disjunction-intro\x01s\0\x08nega\
-tion\0\0\x11modal-passthrough\x01s\0\x0eexists-witness\x01\x0f\0\x0dexists-faile\
-d\0\0\x0eforall-vacuous\0\0\x0fforall-verified\x01\x02\0\x15forall-counterexampl\
-e\x01\x01\0\x0ccount-result\x01\x04\0\x0fpredicate-check\x01\x10\0\x0dcompute-ch\
-eck\x01\x10\0\x04\0\x0aproof-rule\x03\0\x11\x01r\x03\x04rule\x12\x05holds\x7f\x08\
-children\x0a\x04\0\x0aproof-step\x03\0\x13\x01p\x14\x01r\x02\x05steps\x15\x04roo\
-ty\x04\0\x0bproof-trace\x03\0\x16\x03\0\x1dlojban:nesy/logic-types@0.1.0\x05\x01\
-\x02\x03\0\0\x0aast-buffer\x02\x03\0\x01\x0clogic-buffer\x01B\x07\x02\x03\x02\x01\
-\x02\x04\0\x0aast-buffer\x03\0\0\x02\x03\x02\x01\x03\x04\0\x0clogic-buffer\x03\0\
-\x02\x01j\x01\x03\x01s\x01@\x01\x03ast\x01\0\x04\x04\0\x0ecompile-buffer\x01\x05\
-\x04\0\x1blojban:nesy/semantics@0.1.0\x05\x04\x04\0%lojban:nesy/semantics-compon\
-ent@0.1.0\x04\0\x0b\x19\x01\0\x13semantics-component\x03\0\0\0G\x09producers\x01\
-\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
+roots8\x04\0\x0aast-buffer\x03\09\x01r\x03\x07messages\x04liney\x06columny\x04\0\
+\x0bparse-error\x03\0;\x01p<\x01r\x02\x06buffer:\x06errors=\x04\0\x0cparse-resul\
+t\x03\0>\x03\0\x1blojban:nesy/ast-types@0.1.0\x05\0\x01B\x18\x01q\x05\x08variabl\
+e\x01s\0\x08constant\x01s\0\x0bdescription\x01s\0\x0bunspecified\0\0\x06number\x01\
+u\0\x04\0\x0clogical-term\x03\0\0\x01p\x01\x01o\x02s\x02\x01o\x02yy\x01o\x02sy\x01\
+o\x03syy\x01q\x0d\x09predicate\x01\x03\0\x0ccompute-node\x01\x03\0\x08and-node\x01\
+\x04\0\x07or-node\x01\x04\0\x08not-node\x01y\0\x0bexists-node\x01\x05\0\x0cfor-a\
+ll-node\x01\x05\0\x09past-node\x01y\0\x0cpresent-node\x01y\0\x0bfuture-node\x01y\
+\0\x0fobligatory-node\x01y\0\x0epermitted-node\x01y\0\x0acount-node\x01\x06\0\x04\
+\0\x0alogic-node\x03\0\x07\x01p\x08\x01py\x01r\x02\x05nodes\x09\x05roots\x0a\x04\
+\0\x0clogic-buffer\x03\0\x0b\x01r\x02\x08variables\x04term\x01\x04\0\x0fwitness-\
+binding\x03\0\x0d\x01o\x02s\x01\x01o\x02ss\x01q\x0d\x0bconjunction\0\0\x12disjun\
+ction-egraph\x01s\0\x11disjunction-intro\x01s\0\x08negation\0\0\x11modal-passthr\
+ough\x01s\0\x0eexists-witness\x01\x0f\0\x0dexists-failed\0\0\x0eforall-vacuous\0\
+\0\x0fforall-verified\x01\x02\0\x15forall-counterexample\x01\x01\0\x0ccount-resu\
+lt\x01\x04\0\x0fpredicate-check\x01\x10\0\x0dcompute-check\x01\x10\0\x04\0\x0apr\
+oof-rule\x03\0\x11\x01r\x03\x04rule\x12\x05holds\x7f\x08children\x0a\x04\0\x0apr\
+oof-step\x03\0\x13\x01p\x14\x01r\x02\x05steps\x15\x04rooty\x04\0\x0bproof-trace\x03\
+\0\x16\x03\0\x1dlojban:nesy/logic-types@0.1.0\x05\x01\x02\x03\0\0\x0aast-buffer\x02\
+\x03\0\x01\x0clogic-buffer\x01B\x07\x02\x03\x02\x01\x02\x04\0\x0aast-buffer\x03\0\
+\0\x02\x03\x02\x01\x03\x04\0\x0clogic-buffer\x03\0\x02\x01j\x01\x03\x01s\x01@\x01\
+\x03ast\x01\0\x04\x04\0\x0ecompile-buffer\x01\x05\x04\0\x1blojban:nesy/semantics\
+@0.1.0\x05\x04\x04\0%lojban:nesy/semantics-component@0.1.0\x04\0\x0b\x19\x01\0\x13\
+semantics-component\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-compo\
+nent\x070.227.1\x10wit-bindgen-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

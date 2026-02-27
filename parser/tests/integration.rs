@@ -1,5 +1,5 @@
 use parser_test::ast::*;
-use parser_test::grammar::parse_tokens_to_ast;
+use parser_test::grammar::{parse_tokens_to_ast, ParseResult};
 use parser_test::lexer::tokenize;
 use parser_test::preprocessor::preprocess;
 
@@ -7,13 +7,33 @@ use parser_test::preprocessor::preprocess;
 fn parse(input: &str) -> ParsedText {
     let raw = tokenize(input);
     let normalized = preprocess(raw.into_iter(), input);
-    parse_tokens_to_ast(&normalized).expect(&format!("failed to parse: {:?}", input))
+    let result = parse_tokens_to_ast(&normalized, input);
+    assert!(
+        result.errors.is_empty(),
+        "unexpected parse errors for {:?}: {:?}",
+        input,
+        result.errors
+    );
+    result.parsed
 }
 
 fn parse_err(input: &str) -> String {
     let raw = tokenize(input);
     let normalized = preprocess(raw.into_iter(), input);
-    parse_tokens_to_ast(&normalized).unwrap_err()
+    let result = parse_tokens_to_ast(&normalized, input);
+    assert!(
+        !result.errors.is_empty(),
+        "expected parse error for {:?}",
+        input
+    );
+    result.errors[0].to_string()
+}
+
+/// Parse and return the full result (for testing recovery).
+fn parse_result(input: &str) -> ParseResult {
+    let raw = tokenize(input);
+    let normalized = preprocess(raw.into_iter(), input);
+    parse_tokens_to_ast(&normalized, input)
 }
 
 /// Helper: extract Bridi from a Sentence::Simple
@@ -615,4 +635,62 @@ fn sumti_connective_with_multi_sentence() {
         Sumti::Connected { connective: Connective::Ja, .. } => {}
         other => panic!("sentence 2: expected Connected(.a), got {:?}", other),
     }
+}
+
+// ─── Error recovery tests ──────────────────────────────────────
+
+#[test]
+fn error_recovery_skips_bad_sentence() {
+    // Middle sentence "ke ke ke" is malformed; first and third are fine
+    let r = parse_result("mi klama .i ke ke ke .i do prami mi");
+    assert_eq!(r.parsed.sentences.len(), 2);
+    assert_eq!(r.errors.len(), 1);
+    // First sentence: mi klama
+    let s1 = as_bridi(&r.parsed.sentences[0]);
+    assert_eq!(s1.selbri, Selbri::Root("klama".into()));
+    // Third sentence: do prami mi
+    let s2 = as_bridi(&r.parsed.sentences[1]);
+    assert_eq!(s2.selbri, Selbri::Root("prami".into()));
+}
+
+#[test]
+fn error_recovery_all_sentences_fail() {
+    // Both sentences are malformed
+    let r = parse_result("ke ke .i ke ke");
+    assert_eq!(r.parsed.sentences.len(), 0);
+    assert_eq!(r.errors.len(), 2);
+}
+
+#[test]
+fn error_recovery_empty_input() {
+    let r = parse_result("");
+    assert_eq!(r.parsed.sentences.len(), 0);
+    assert_eq!(r.errors.len(), 1);
+    assert!(r.errors[0].message.contains("empty input"));
+}
+
+#[test]
+fn error_reports_line_column() {
+    // Error on line 2 ("ke ke ke" is malformed)
+    let r = parse_result("mi klama\n.i ke ke ke\n.i do prami mi");
+    assert_eq!(r.parsed.sentences.len(), 2);
+    assert_eq!(r.errors.len(), 1);
+    assert_eq!(r.errors[0].line, 2, "error should be on line 2");
+    assert!(r.errors[0].column > 0, "column should be positive");
+}
+
+#[test]
+fn error_reports_first_line() {
+    // Error on line 1
+    let r = parse_result("ke ke ke");
+    assert_eq!(r.errors.len(), 1);
+    assert_eq!(r.errors[0].line, 1);
+}
+
+#[test]
+fn error_display_includes_line_column() {
+    let r = parse_result("ke ke ke");
+    let msg = r.errors[0].to_string();
+    // Format should be "line:col: message"
+    assert!(msg.contains(':'), "error display should contain line:col separator");
 }

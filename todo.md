@@ -4,14 +4,6 @@
 
 Features needed for the engine to be genuinely useful (not just correct) in real applications.
 
-### 4.3 Parser error recovery
-
-Skip to next `.i` on syntax error, continue parsing. Return `Vec<Result<Sentence, SyntaxError>>` instead of failing entire input.
-
-**Crate:** parser/grammar.rs
-**Complexity:** medium
-**Impact:** all domains — real corpora have errors; failing on first bad sentence is unusable
-
 ### 4.4 WASM fuel/epoch limits
 
 Prevent unbounded execution. Wasmtime API supports natively.

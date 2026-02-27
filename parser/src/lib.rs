@@ -19,18 +19,31 @@ use bindings::lojban::nesy::ast_types as wit;
 struct ParserComponent;
 
 impl Guest for ParserComponent {
-    fn parse_text(input: String) -> Result<wit::AstBuffer, String> {
+    fn parse_text(input: String) -> Result<wit::ParseResult, String> {
         // 1. Lex into morphological classification stream
         let raw_tokens = crate::lexer::tokenize(&input);
 
         // 2. Resolve metalinguistic operators (si/sa/su/zo/zoi/zei)
         let normalized = crate::preprocessor::preprocess(raw_tokens.into_iter(), &input);
 
-        // 3. Recursive descent parse
-        let parsed = crate::grammar::parse_tokens_to_ast(&normalized)?;
+        // 3. Recursive descent parse (with per-sentence error recovery)
+        let result = crate::grammar::parse_tokens_to_ast(&normalized, &input);
 
-        // 4. Flatten tree AST → index-based WIT buffer
-        Ok(Flattener::flatten(parsed))
+        // 4. Convert grammar errors to WIT errors
+        let errors: Vec<wit::ParseError> = result
+            .errors
+            .iter()
+            .map(|e| wit::ParseError {
+                message: e.to_string(),
+                line: e.line,
+                column: e.column,
+            })
+            .collect();
+
+        // 5. Flatten tree AST → index-based WIT buffer
+        let buffer = Flattener::flatten(result.parsed);
+
+        Ok(wit::ParseResult { buffer, errors })
     }
 }
 
@@ -848,7 +861,14 @@ mod pipeline_tests {
     fn parse(input: &str) -> ParsedText {
         let raw = tokenize(input);
         let normalized = preprocess(raw.into_iter(), input);
-        parse_tokens_to_ast(&normalized).expect(&format!("failed to parse: {:?}", input))
+        let result = parse_tokens_to_ast(&normalized, input);
+        assert!(
+            result.errors.is_empty(),
+            "unexpected parse errors for {:?}: {:?}",
+            input,
+            result.errors
+        );
+        result.parsed
     }
 
     fn as_bridi(sentence: &Sentence) -> &Bridi {
@@ -1222,5 +1242,67 @@ mod pipeline_tests {
             }
             other => panic!("expected QuantifiedDescription with count 12, got {:?}", other),
         }
+    }
+
+    // ─── Error recovery tests ──────────────────────────────────────
+
+    use crate::grammar::ParseResult;
+
+    fn parse_result(input: &str) -> ParseResult {
+        let raw = tokenize(input);
+        let normalized = preprocess(raw.into_iter(), input);
+        parse_tokens_to_ast(&normalized, input)
+    }
+
+    #[test]
+    fn pipeline_error_recovery_skips_bad_sentence() {
+        // Middle sentence "ke ke ke" is malformed; first and third are fine
+        let r = parse_result("mi klama .i ke ke ke .i do prami mi");
+        assert_eq!(r.parsed.sentences.len(), 2);
+        assert_eq!(r.errors.len(), 1);
+        let s1 = as_bridi(&r.parsed.sentences[0]);
+        assert_eq!(s1.selbri, Selbri::Root("klama".into()));
+        let s2 = as_bridi(&r.parsed.sentences[1]);
+        assert_eq!(s2.selbri, Selbri::Root("prami".into()));
+    }
+
+    #[test]
+    fn pipeline_error_recovery_all_fail() {
+        let r = parse_result("ke ke .i ke ke");
+        assert_eq!(r.parsed.sentences.len(), 0);
+        assert_eq!(r.errors.len(), 2);
+    }
+
+    #[test]
+    fn pipeline_error_recovery_empty_input() {
+        let r = parse_result("");
+        assert_eq!(r.parsed.sentences.len(), 0);
+        assert_eq!(r.errors.len(), 1);
+        assert!(r.errors[0].message.contains("empty input"));
+    }
+
+    #[test]
+    fn pipeline_error_reports_line_column() {
+        // Error on line 2 ("ke ke ke" is malformed)
+        let r = parse_result("mi klama\n.i ke ke ke\n.i do prami mi");
+        assert_eq!(r.parsed.sentences.len(), 2);
+        assert_eq!(r.errors.len(), 1);
+        assert_eq!(r.errors[0].line, 2, "error should be on line 2");
+        assert!(r.errors[0].column > 0, "column should be positive");
+    }
+
+    #[test]
+    fn pipeline_error_reports_first_line() {
+        let r = parse_result("ke ke ke");
+        assert_eq!(r.errors.len(), 1);
+        assert_eq!(r.errors[0].line, 1);
+    }
+
+    #[test]
+    fn pipeline_error_display_format() {
+        let r = parse_result("ke ke ke");
+        let msg = r.errors[0].to_string();
+        // Format should be "line:col: message"
+        assert!(msg.contains(':'), "error display should contain line:col separator");
     }
 }

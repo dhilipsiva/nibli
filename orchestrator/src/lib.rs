@@ -2,7 +2,7 @@
 mod bindings;
 
 use bindings::exports::lojban::nesy::engine::{Guest, GuestSession};
-use bindings::lojban::nesy::ast_types::{AstBuffer, Selbri, Sentence};
+use bindings::lojban::nesy::ast_types::{AstBuffer, ParseError as WitParseError, Selbri, Sentence};
 use bindings::lojban::nesy::logic_types::{
     LogicBuffer, LogicNode, LogicalTerm, ProofTrace, WitnessBinding,
 };
@@ -100,12 +100,27 @@ fn resolve_go_i(
 fn compile_pipeline(
     text: &str,
     last_relation: &Option<String>,
-) -> Result<(LogicBuffer, Option<String>), String> {
-    let mut ast = parser::parse_text(text).map_err(|e| format!("Parse: {}", e))?;
+) -> Result<(LogicBuffer, Option<String>, Vec<String>), String> {
+    let parse_result = parser::parse_text(text).map_err(|e| format!("Parse: {}", e))?;
+
+    // Collect per-sentence parse errors as warning strings
+    let parse_warnings: Vec<String> = parse_result
+        .errors
+        .iter()
+        .map(|e| e.message.clone())
+        .collect();
+
+    let mut ast = parse_result.buffer;
+
+    // If ALL sentences failed, report error
+    if ast.roots.is_empty() && !parse_warnings.is_empty() {
+        return Err(parse_warnings.join("; "));
+    }
+
     let new_last = resolve_go_i(&mut ast, last_relation)
         .map_err(|e| format!("Resolution: {}", e))?;
     let buf = semantics::compile_buffer(&ast).map_err(|e| format!("Semantics: {}", e))?;
-    Ok((buf, new_last))
+    Ok((buf, new_last, parse_warnings))
 }
 
 /// Transform Predicate nodes into ComputeNode for registered compute predicates.
@@ -150,7 +165,7 @@ impl GuestSession for Session {
     }
 
     fn assert_text(&self, input: String) -> Result<u32, String> {
-        let (mut buf, new_last) =
+        let (mut buf, new_last, _warnings) =
             compile_pipeline(&input, &self.last_relation.borrow())?;
         transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
         self.kb
@@ -162,7 +177,7 @@ impl GuestSession for Session {
     }
 
     fn query_text(&self, input: String) -> Result<bool, String> {
-        let (mut buf, _) =
+        let (mut buf, _, _warnings) =
             compile_pipeline(&input, &self.last_relation.borrow())?;
         // Don't update last_relation for queries (read-only)
         transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
@@ -172,7 +187,7 @@ impl GuestSession for Session {
     }
 
     fn query_find_text(&self, input: String) -> Result<Vec<Vec<WitnessBinding>>, String> {
-        let (mut buf, _) =
+        let (mut buf, _, _warnings) =
             compile_pipeline(&input, &self.last_relation.borrow())?;
         // Don't update last_relation for queries (read-only)
         transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
@@ -182,7 +197,7 @@ impl GuestSession for Session {
     }
 
     fn query_text_with_proof(&self, input: String) -> Result<(bool, ProofTrace), String> {
-        let (mut buf, _) =
+        let (mut buf, _, _warnings) =
             compile_pipeline(&input, &self.last_relation.borrow())?;
         // Don't update last_relation for queries (read-only)
         transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
@@ -192,7 +207,7 @@ impl GuestSession for Session {
     }
 
     fn compile_debug(&self, input: String) -> Result<String, String> {
-        let (mut buf, _) =
+        let (mut buf, _, _warnings) =
             compile_pipeline(&input, &self.last_relation.borrow())?;
         // Don't update last_relation for debug (read-only)
         transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());

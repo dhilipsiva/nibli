@@ -599,6 +599,40 @@ pub mod lojban {
                         .finish()
                 }
             }
+            #[derive(Clone)]
+            pub struct ParseError {
+                pub message: _rt::String,
+                pub line: u32,
+                pub column: u32,
+            }
+            impl ::core::fmt::Debug for ParseError {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    f.debug_struct("ParseError")
+                        .field("message", &self.message)
+                        .field("line", &self.line)
+                        .field("column", &self.column)
+                        .finish()
+                }
+            }
+            #[derive(Clone)]
+            pub struct ParseResult {
+                pub buffer: AstBuffer,
+                pub errors: _rt::Vec<ParseError>,
+            }
+            impl ::core::fmt::Debug for ParseResult {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    f.debug_struct("ParseResult")
+                        .field("buffer", &self.buffer)
+                        .field("errors", &self.errors)
+                        .finish()
+                }
+            }
         }
         #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
         pub mod parser {
@@ -606,19 +640,19 @@ pub mod lojban {
             #[doc(hidden)]
             static __FORCE_SECTION_REF: fn() = super::super::super::__link_custom_section_describing_imports;
             use super::super::super::_rt;
-            pub type AstBuffer = super::super::super::lojban::nesy::ast_types::AstBuffer;
+            pub type ParseResult = super::super::super::lojban::nesy::ast_types::ParseResult;
             #[allow(unused_unsafe, clippy::all)]
-            pub fn parse_text(input: &str) -> Result<AstBuffer, _rt::String> {
+            pub fn parse_text(input: &str) -> Result<ParseResult, _rt::String> {
                 unsafe {
                     #[cfg_attr(target_pointer_width = "64", repr(align(8)))]
                     #[cfg_attr(target_pointer_width = "32", repr(align(4)))]
                     struct RetArea(
                         [::core::mem::MaybeUninit<
                             u8,
-                        >; 9 * ::core::mem::size_of::<*const u8>()],
+                        >; 11 * ::core::mem::size_of::<*const u8>()],
                     );
                     let mut ret_area = RetArea(
-                        [::core::mem::MaybeUninit::uninit(); 9
+                        [::core::mem::MaybeUninit::uninit(); 11
                             * ::core::mem::size_of::<*const u8>()],
                     );
                     let vec0 = input;
@@ -637,7 +671,7 @@ pub mod lojban {
                     }
                     unsafe { wit_import2(ptr0.cast_mut(), len0, ptr1) };
                     let l3 = i32::from(*ptr1.add(0).cast::<u8>());
-                    let result97 = match l3 {
+                    let result105 = match l3 {
                         0 => {
                             let e = {
                                 let l4 = *ptr1
@@ -1178,36 +1212,81 @@ pub mod lojban {
                                     .add(8 * ::core::mem::size_of::<*const u8>())
                                     .cast::<usize>();
                                 let len93 = l92;
-                                super::super::super::lojban::nesy::ast_types::AstBuffer {
-                                    selbris: result32,
-                                    sumtis: result66,
-                                    sentences: result90,
-                                    roots: _rt::Vec::from_raw_parts(l91.cast(), len93, len93),
+                                let l94 = *ptr1
+                                    .add(9 * ::core::mem::size_of::<*const u8>())
+                                    .cast::<*mut u8>();
+                                let l95 = *ptr1
+                                    .add(10 * ::core::mem::size_of::<*const u8>())
+                                    .cast::<usize>();
+                                let base101 = l94;
+                                let len101 = l95;
+                                let mut result101 = _rt::Vec::with_capacity(len101);
+                                for i in 0..len101 {
+                                    let base = base101
+                                        .add(i * (8 + 2 * ::core::mem::size_of::<*const u8>()));
+                                    let e101 = {
+                                        let l96 = *base.add(0).cast::<*mut u8>();
+                                        let l97 = *base
+                                            .add(::core::mem::size_of::<*const u8>())
+                                            .cast::<usize>();
+                                        let len98 = l97;
+                                        let bytes98 = _rt::Vec::from_raw_parts(
+                                            l96.cast(),
+                                            len98,
+                                            len98,
+                                        );
+                                        let l99 = *base
+                                            .add(2 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<i32>();
+                                        let l100 = *base
+                                            .add(4 + 2 * ::core::mem::size_of::<*const u8>())
+                                            .cast::<i32>();
+                                        super::super::super::lojban::nesy::ast_types::ParseError {
+                                            message: _rt::string_lift(bytes98),
+                                            line: l99 as u32,
+                                            column: l100 as u32,
+                                        }
+                                    };
+                                    result101.push(e101);
+                                }
+                                _rt::cabi_dealloc(
+                                    base101,
+                                    len101 * (8 + 2 * ::core::mem::size_of::<*const u8>()),
+                                    ::core::mem::size_of::<*const u8>(),
+                                );
+                                super::super::super::lojban::nesy::ast_types::ParseResult {
+                                    buffer: super::super::super::lojban::nesy::ast_types::AstBuffer {
+                                        selbris: result32,
+                                        sumtis: result66,
+                                        sentences: result90,
+                                        roots: _rt::Vec::from_raw_parts(l91.cast(), len93, len93),
+                                    },
+                                    errors: result101,
                                 }
                             };
                             Ok(e)
                         }
                         1 => {
                             let e = {
-                                let l94 = *ptr1
+                                let l102 = *ptr1
                                     .add(::core::mem::size_of::<*const u8>())
                                     .cast::<*mut u8>();
-                                let l95 = *ptr1
+                                let l103 = *ptr1
                                     .add(2 * ::core::mem::size_of::<*const u8>())
                                     .cast::<usize>();
-                                let len96 = l95;
-                                let bytes96 = _rt::Vec::from_raw_parts(
-                                    l94.cast(),
-                                    len96,
-                                    len96,
+                                let len104 = l103;
+                                let bytes104 = _rt::Vec::from_raw_parts(
+                                    l102.cast(),
+                                    len104,
+                                    len104,
                                 );
-                                _rt::string_lift(bytes96)
+                                _rt::string_lift(bytes104)
                             };
                             Err(e)
                         }
                         _ => _rt::invalid_enum_discriminant(),
                     };
-                    result97
+                    result105
                 }
             }
         }
@@ -6624,9 +6703,9 @@ pub(crate) use __export_engine_pipeline_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 3540] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xce\x1a\x01A\x02\x01\
-A\x13\x01B;\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 3642] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xb4\x1b\x01A\x02\x01\
+A\x14\x01B@\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
 m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x06\x03ria\
 \x03nii\x03mui\x03kiu\x03pio\x03bai\x04\0\x07bai-tag\x03\0\x06\x01q\x02\x05fixed\
 \x01\x07\0\x03fio\x01\x01\0\x04\0\x09modal-tag\x03\0\x08\x01m\x04\x02se\x02te\x02\
@@ -6650,31 +6729,33 @@ udinal,\x04\0\x05bridi\x03\0-\x01o\x03\x7f\x0d\x7f\x01q\x04\x08ganai-gi\0\0\x05g
 e-gi\0\0\x05ga-gi\0\0\x0cafterthought\x01/\0\x04\0\x13sentence-connective\x03\00\
 \x01o\x031yy\x01q\x02\x06simple\x01.\0\x09connected\x012\0\x04\0\x08sentence\x03\
 \03\x01p&\x01p\x1d\x01p4\x01py\x01r\x04\x07selbris5\x06sumtis6\x09sentences7\x05\
-roots8\x04\0\x0aast-buffer\x03\09\x03\0\x1blojban:nesy/ast-types@0.1.0\x05\0\x02\
-\x03\0\0\x0aast-buffer\x01B\x05\x02\x03\x02\x01\x01\x04\0\x0aast-buffer\x03\0\0\x01\
-j\x01\x01\x01s\x01@\x01\x05inputs\0\x02\x04\0\x0aparse-text\x01\x03\x03\0\x18loj\
-ban:nesy/parser@0.1.0\x05\x02\x01B\x18\x01q\x05\x08variable\x01s\0\x08constant\x01\
-s\0\x0bdescription\x01s\0\x0bunspecified\0\0\x06number\x01u\0\x04\0\x0clogical-t\
-erm\x03\0\0\x01p\x01\x01o\x02s\x02\x01o\x02yy\x01o\x02sy\x01o\x03syy\x01q\x0d\x09\
-predicate\x01\x03\0\x0ccompute-node\x01\x03\0\x08and-node\x01\x04\0\x07or-node\x01\
-\x04\0\x08not-node\x01y\0\x0bexists-node\x01\x05\0\x0cfor-all-node\x01\x05\0\x09\
-past-node\x01y\0\x0cpresent-node\x01y\0\x0bfuture-node\x01y\0\x0fobligatory-node\
-\x01y\0\x0epermitted-node\x01y\0\x0acount-node\x01\x06\0\x04\0\x0alogic-node\x03\
-\0\x07\x01p\x08\x01py\x01r\x02\x05nodes\x09\x05roots\x0a\x04\0\x0clogic-buffer\x03\
-\0\x0b\x01r\x02\x08variables\x04term\x01\x04\0\x0fwitness-binding\x03\0\x0d\x01o\
-\x02s\x01\x01o\x02ss\x01q\x0d\x0bconjunction\0\0\x12disjunction-egraph\x01s\0\x11\
-disjunction-intro\x01s\0\x08negation\0\0\x11modal-passthrough\x01s\0\x0eexists-w\
-itness\x01\x0f\0\x0dexists-failed\0\0\x0eforall-vacuous\0\0\x0fforall-verified\x01\
-\x02\0\x15forall-counterexample\x01\x01\0\x0ccount-result\x01\x04\0\x0fpredicate\
--check\x01\x10\0\x0dcompute-check\x01\x10\0\x04\0\x0aproof-rule\x03\0\x11\x01r\x03\
-\x04rule\x12\x05holds\x7f\x08children\x0a\x04\0\x0aproof-step\x03\0\x13\x01p\x14\
-\x01r\x02\x05steps\x15\x04rooty\x04\0\x0bproof-trace\x03\0\x16\x03\0\x1dlojban:n\
-esy/logic-types@0.1.0\x05\x03\x02\x03\0\x02\x0clogic-buffer\x01B\x07\x02\x03\x02\
-\x01\x01\x04\0\x0aast-buffer\x03\0\0\x02\x03\x02\x01\x04\x04\0\x0clogic-buffer\x03\
+roots8\x04\0\x0aast-buffer\x03\09\x01r\x03\x07messages\x04liney\x06columny\x04\0\
+\x0bparse-error\x03\0;\x01p<\x01r\x02\x06buffer:\x06errors=\x04\0\x0cparse-resul\
+t\x03\0>\x03\0\x1blojban:nesy/ast-types@0.1.0\x05\0\x02\x03\0\0\x0cparse-result\x01\
+B\x05\x02\x03\x02\x01\x01\x04\0\x0cparse-result\x03\0\0\x01j\x01\x01\x01s\x01@\x01\
+\x05inputs\0\x02\x04\0\x0aparse-text\x01\x03\x03\0\x18lojban:nesy/parser@0.1.0\x05\
+\x02\x01B\x18\x01q\x05\x08variable\x01s\0\x08constant\x01s\0\x0bdescription\x01s\
+\0\x0bunspecified\0\0\x06number\x01u\0\x04\0\x0clogical-term\x03\0\0\x01p\x01\x01\
+o\x02s\x02\x01o\x02yy\x01o\x02sy\x01o\x03syy\x01q\x0d\x09predicate\x01\x03\0\x0c\
+compute-node\x01\x03\0\x08and-node\x01\x04\0\x07or-node\x01\x04\0\x08not-node\x01\
+y\0\x0bexists-node\x01\x05\0\x0cfor-all-node\x01\x05\0\x09past-node\x01y\0\x0cpr\
+esent-node\x01y\0\x0bfuture-node\x01y\0\x0fobligatory-node\x01y\0\x0epermitted-n\
+ode\x01y\0\x0acount-node\x01\x06\0\x04\0\x0alogic-node\x03\0\x07\x01p\x08\x01py\x01\
+r\x02\x05nodes\x09\x05roots\x0a\x04\0\x0clogic-buffer\x03\0\x0b\x01r\x02\x08vari\
+ables\x04term\x01\x04\0\x0fwitness-binding\x03\0\x0d\x01o\x02s\x01\x01o\x02ss\x01\
+q\x0d\x0bconjunction\0\0\x12disjunction-egraph\x01s\0\x11disjunction-intro\x01s\0\
+\x08negation\0\0\x11modal-passthrough\x01s\0\x0eexists-witness\x01\x0f\0\x0dexis\
+ts-failed\0\0\x0eforall-vacuous\0\0\x0fforall-verified\x01\x02\0\x15forall-count\
+erexample\x01\x01\0\x0ccount-result\x01\x04\0\x0fpredicate-check\x01\x10\0\x0dco\
+mpute-check\x01\x10\0\x04\0\x0aproof-rule\x03\0\x11\x01r\x03\x04rule\x12\x05hold\
+s\x7f\x08children\x0a\x04\0\x0aproof-step\x03\0\x13\x01p\x14\x01r\x02\x05steps\x15\
+\x04rooty\x04\0\x0bproof-trace\x03\0\x16\x03\0\x1dlojban:nesy/logic-types@0.1.0\x05\
+\x03\x02\x03\0\0\x0aast-buffer\x02\x03\0\x02\x0clogic-buffer\x01B\x07\x02\x03\x02\
+\x01\x04\x04\0\x0aast-buffer\x03\0\0\x02\x03\x02\x01\x05\x04\0\x0clogic-buffer\x03\
 \0\x02\x01j\x01\x03\x01s\x01@\x01\x03ast\x01\0\x04\x04\0\x0ecompile-buffer\x01\x05\
-\x03\0\x1blojban:nesy/semantics@0.1.0\x05\x05\x02\x03\0\x02\x0fwitness-binding\x02\
-\x03\0\x02\x0bproof-trace\x01B\x1c\x02\x03\x02\x01\x04\x04\0\x0clogic-buffer\x03\
-\0\0\x02\x03\x02\x01\x06\x04\0\x0fwitness-binding\x03\0\x02\x02\x03\x02\x01\x07\x04\
+\x03\0\x1blojban:nesy/semantics@0.1.0\x05\x06\x02\x03\0\x02\x0fwitness-binding\x02\
+\x03\0\x02\x0bproof-trace\x01B\x1c\x02\x03\x02\x01\x05\x04\0\x0clogic-buffer\x03\
+\0\0\x02\x03\x02\x01\x07\x04\0\x0fwitness-binding\x03\0\x02\x02\x03\x02\x01\x08\x04\
 \0\x0bproof-trace\x03\0\x04\x04\0\x0eknowledge-base\x03\x01\x01i\x06\x01@\0\0\x07\
 \x04\0\x1b[constructor]knowledge-base\x01\x08\x01h\x06\x01j\0\x01s\x01@\x02\x04s\
 elf\x09\x05logic\x01\0\x0a\x04\0\"[method]knowledge-base.assert-fact\x01\x0b\x01\
@@ -6684,11 +6765,11 @@ ase.query-entailment\x01\x0d\x01o\x02\x7f\x05\x01j\x01\x0e\x01s\x01@\x02\x04self
 \x01\x10\x01p\x03\x01p\x11\x01j\x01\x12\x01s\x01@\x02\x04self\x09\x05logic\x01\0\
 \x13\x04\0![method]knowledge-base.query-find\x01\x14\x01@\x01\x04self\x09\0\x0a\x04\
 \0\x1c[method]knowledge-base.reset\x01\x15\x03\0\x1blojban:nesy/reasoning@0.1.0\x05\
-\x08\x02\x03\0\x02\x0clogical-term\x01B\x06\x02\x03\x02\x01\x09\x04\0\x0clogical\
+\x09\x02\x03\0\x02\x0clogical-term\x01B\x06\x02\x03\x02\x01\x0a\x04\0\x0clogical\
 -term\x03\0\0\x01p\x01\x01j\x01\x7f\x01s\x01@\x02\x08relations\x04args\x02\0\x03\
-\x04\0\x08evaluate\x01\x04\x03\0!lojban:nesy/compute-backend@0.1.0\x05\x0a\x01B%\
-\x02\x03\x02\x01\x09\x04\0\x0clogical-term\x03\0\0\x02\x03\x02\x01\x06\x04\0\x0f\
-witness-binding\x03\0\x02\x02\x03\x02\x01\x07\x04\0\x0bproof-trace\x03\0\x04\x04\
+\x04\0\x08evaluate\x01\x04\x03\0!lojban:nesy/compute-backend@0.1.0\x05\x0b\x01B%\
+\x02\x03\x02\x01\x0a\x04\0\x0clogical-term\x03\0\0\x02\x03\x02\x01\x07\x04\0\x0f\
+witness-binding\x03\0\x02\x02\x03\x02\x01\x08\x04\0\x0bproof-trace\x03\0\x04\x04\
 \0\x07session\x03\x01\x01i\x06\x01@\0\0\x07\x04\0\x14[constructor]session\x01\x08\
 \x01h\x06\x01j\x01y\x01s\x01@\x02\x04self\x09\x05inputs\0\x0a\x04\0\x1b[method]s\
 ession.assert-text\x01\x0b\x01j\x01\x7f\x01s\x01@\x02\x04self\x09\x05inputs\0\x0c\
@@ -6700,7 +6781,7 @@ ession.assert-text\x01\x0b\x01j\x01\x7f\x01s\x01@\x02\x04self\x09\x05inputs\0\x0
 \x01\x04self\x09\0\x17\x04\0\x18[method]session.reset-kb\x01\x18\x01@\x02\x04sel\
 f\x09\x04names\x01\0\x04\0*[method]session.register-compute-predicate\x01\x19\x01\
 p\x01\x01@\x03\x04self\x09\x08relations\x04args\x1a\0\x17\x04\0\x1b[method]sessi\
-on.assert-fact\x01\x1b\x04\0\x18lojban:nesy/engine@0.1.0\x05\x0b\x04\0!lojban:ne\
+on.assert-fact\x01\x1b\x04\0\x18lojban:nesy/engine@0.1.0\x05\x0c\x04\0!lojban:ne\
 sy/engine-pipeline@0.1.0\x04\0\x0b\x15\x01\0\x0fengine-pipeline\x03\0\0\0G\x09pr\
 oducers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x06\
 0.41.0";

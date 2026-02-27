@@ -86,6 +86,17 @@ interface ast-types {
         sentences: list<sentence>,
         roots: list<u32>,
     }
+
+    record parse-error {
+        message: string,
+        line: u32,
+        column: u32,
+    }
+
+    record parse-result {
+        buffer: ast-buffer,
+        errors: list<parse-error>,
+    }
 }
 
 interface logic-types {
@@ -171,8 +182,8 @@ interface logic-types {
 }
 
 interface parser {
-    use ast-types.{ast-buffer};
-    parse-text: func(input: string) -> result<ast-buffer, string>;
+    use ast-types.{parse-result};
+    parse-text: func(input: string) -> result<parse-result, string>;
 }
 
 interface semantics {

@@ -33,21 +33,25 @@ use crate::preprocessor::NormalizedToken;
 /// Maximum recursion depth to prevent stack overflow on pathological input.
 const MAX_DEPTH: usize = 64;
 
-/// Parse error with context.
+/// Parse error with line:column context.
 #[derive(Debug, Clone)]
 pub struct ParseError {
     pub message: String,
     pub position: usize,
+    pub line: u32,
+    pub column: u32,
 }
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "parse error at token {}: {}",
-            self.position, self.message
-        )
+        write!(f, "{}:{}: {}", self.line, self.column, self.message)
     }
+}
+
+/// Result of parsing: successfully parsed sentences + any per-sentence errors.
+pub struct ParseResult {
+    pub parsed: ParsedText,
+    pub errors: Vec<ParseError>,
 }
 
 /// Recursive descent parser over the preprocessed token stream.
@@ -55,16 +59,61 @@ pub struct Parser<'a> {
     tokens: &'a [NormalizedToken<'a>],
     pos: usize,
     depth: usize,
+    original_input: &'a str,
 }
 
 #[allow(dead_code)]
 impl<'a> Parser<'a> {
-    pub fn new(tokens: &'a [NormalizedToken<'a>]) -> Self {
+    pub fn new(tokens: &'a [NormalizedToken<'a>], original_input: &'a str) -> Self {
         Self {
             tokens,
             pos: 0,
             depth: 0,
+            original_input,
         }
+    }
+
+    // ─── Position helpers ────────────────────────────────────
+
+    /// Derive the byte offset into original_input for the token at `idx`.
+    fn byte_offset_of_token(&self, idx: usize) -> usize {
+        if idx >= self.tokens.len() || self.original_input.is_empty() {
+            return self.original_input.len();
+        }
+        let slice = match &self.tokens[idx] {
+            NormalizedToken::Standard(_, s) => *s,
+            NormalizedToken::Quoted(s) => *s,
+            NormalizedToken::Glued(parts) => {
+                if let Some(first) = parts.first() {
+                    *first
+                } else {
+                    return self.original_input.len();
+                }
+            }
+        };
+        let base = self.original_input.as_ptr() as usize;
+        let ptr = slice.as_ptr() as usize;
+        if ptr >= base && ptr <= base + self.original_input.len() {
+            ptr - base
+        } else {
+            // Token slice doesn't point into original_input (test constructors)
+            0
+        }
+    }
+
+    /// Compute 1-indexed (line, column) from a byte offset into original_input.
+    fn line_col_at(&self, byte_offset: usize) -> (u32, u32) {
+        let text = if byte_offset <= self.original_input.len() {
+            &self.original_input[..byte_offset]
+        } else {
+            self.original_input
+        };
+        let line = text.bytes().filter(|&b| b == b'\n').count() as u32 + 1;
+        let col = match text.rfind('\n') {
+            Some(nl_pos) => (byte_offset - nl_pos - 1) as u32 + 1,
+            None => byte_offset as u32 + 1,
+        };
+        (line, col)
     }
 
     // ─── Depth guard ──────────────────────────────────────────
@@ -249,17 +298,41 @@ impl<'a> Parser<'a> {
         self.peek_is_any_cmavo(&["ku'o", "kei", "vau"])
     }
 
-    // Replace the top-level parse_text method:
-    pub fn parse_text(&mut self) -> Result<ParsedText, ParseError> {
+    /// Advance to the next `.i` boundary or end of tokens (error recovery).
+    fn skip_to_next_dot_i(&mut self) {
+        while !self.at_end() {
+            if self.at_dot_i() {
+                return; // Don't consume — the main loop will eat it
+            }
+            self.pos += 1;
+        }
+    }
+
+    /// Parse all sentences with per-sentence error recovery.
+    /// Successfully parsed sentences go into `parsed.sentences`;
+    /// per-sentence errors go into `errors`.
+    pub fn parse_text(&mut self) -> ParseResult {
         let mut sentences = Vec::new();
+        let mut errors = Vec::new();
 
         while self.eat_dot_i() || self.eat_pause() {}
 
         if self.at_end() {
-            return Err(self.error("empty input"));
+            errors.push(self.error("empty input"));
+            return ParseResult {
+                parsed: ParsedText { sentences },
+                errors,
+            };
         }
 
-        sentences.push(self.parse_sentence()?);
+        // First sentence
+        match self.parse_sentence() {
+            Ok(s) => sentences.push(s),
+            Err(e) => {
+                errors.push(e);
+                self.skip_to_next_dot_i();
+            }
+        }
 
         loop {
             if !self.eat_dot_i() {
@@ -273,19 +346,29 @@ impl<'a> Parser<'a> {
             if let Some(conn) = self.try_parse_afterthought_sentence_connective() {
                 while self.eat_pause() {}
                 if self.at_end() {
-                    return Err(
+                    errors.push(
                         self.error("expected sentence after afterthought connective"),
                     );
+                    break;
                 }
-                let left = sentences
-                    .pop()
-                    .ok_or_else(|| self.error("no preceding sentence for connective"))?;
-                let right = self.parse_sentence()?;
-                sentences.push(Sentence::Connected {
-                    connective: conn,
-                    left: Box::new(left),
-                    right: Box::new(right),
-                });
+                match self.parse_sentence() {
+                    Ok(right) => {
+                        if let Some(left) = sentences.pop() {
+                            sentences.push(Sentence::Connected {
+                                connective: conn,
+                                left: Box::new(left),
+                                right: Box::new(right),
+                            });
+                        } else {
+                            // Left sentence had an error; push right as standalone
+                            sentences.push(right);
+                        }
+                    }
+                    Err(e) => {
+                        errors.push(e);
+                        self.skip_to_next_dot_i();
+                    }
+                }
                 continue;
             }
 
@@ -296,16 +379,26 @@ impl<'a> Parser<'a> {
             if self.at_dot_i() {
                 continue;
             }
-            sentences.push(self.parse_sentence()?);
+
+            match self.parse_sentence() {
+                Ok(s) => sentences.push(s),
+                Err(e) => {
+                    errors.push(e);
+                    self.skip_to_next_dot_i();
+                }
+            }
         }
 
         while self.eat_pause() {}
 
         if !self.at_end() {
-            return Err(self.error("unconsumed tokens remaining"));
+            errors.push(self.error("unconsumed tokens remaining"));
         }
 
-        Ok(ParsedText { sentences })
+        ParseResult {
+            parsed: ParsedText { sentences },
+            errors,
+        }
     }
 
     // ─── Sentence ─────────────────────────────────────────────
@@ -1120,9 +1213,26 @@ impl<'a> Parser<'a> {
     // ─── Error helpers ────────────────────────────────────────
 
     fn error(&self, message: &str) -> ParseError {
+        let byte_off = if self.pos < self.tokens.len() {
+            self.byte_offset_of_token(self.pos)
+        } else if !self.tokens.is_empty() {
+            let last = self.tokens.len() - 1;
+            let off = self.byte_offset_of_token(last);
+            let len = match &self.tokens[last] {
+                NormalizedToken::Standard(_, s) => s.len(),
+                NormalizedToken::Quoted(s) => s.len(),
+                NormalizedToken::Glued(parts) => parts.iter().map(|p| p.len()).sum(),
+            };
+            off + len
+        } else {
+            0
+        };
+        let (line, column) = self.line_col_at(byte_off);
         ParseError {
             message: message.to_string(),
             position: self.pos,
+            line,
+            column,
         }
     }
 
@@ -1150,9 +1260,12 @@ impl<'a> Parser<'a> {
 
 // ─── Public entry point ───────────────────────────────────────────
 
-pub fn parse_tokens_to_ast(tokens: &[NormalizedToken<'_>]) -> Result<ParsedText, String> {
-    let mut parser = Parser::new(tokens);
-    parser.parse_text().map_err(|e| e.to_string())
+pub fn parse_tokens_to_ast<'a>(
+    tokens: &[NormalizedToken<'a>],
+    original_input: &'a str,
+) -> ParseResult {
+    let mut parser = Parser::new(tokens, original_input);
+    parser.parse_text()
 }
 
 // ─── Tests ────────────────────────────────────────────────────────
@@ -1193,12 +1306,23 @@ mod tests {
 
     /// Helper: parse tokens, assert success, return ParsedText
     fn parse_ok(tokens: &[NormalizedToken<'_>]) -> ParsedText {
-        parse_tokens_to_ast(tokens).unwrap_or_else(|e| panic!("unexpected parse error: {}", e))
+        let result = parse_tokens_to_ast(tokens, "");
+        assert!(
+            result.errors.is_empty(),
+            "unexpected parse errors: {:?}",
+            result.errors
+        );
+        result.parsed
     }
 
     /// Helper: parse tokens, assert failure, return error string
     fn parse_err(tokens: &[NormalizedToken<'_>]) -> String {
-        parse_tokens_to_ast(tokens).unwrap_err()
+        let result = parse_tokens_to_ast(tokens, "");
+        assert!(
+            !result.errors.is_empty(),
+            "expected parse error but got none"
+        );
+        result.errors[0].message.clone()
     }
 
     /// Helper: extract Bridi from a Sentence::Simple
@@ -2052,7 +2176,7 @@ mod tests {
             tokens.push(cmavo("ke'e"));
         }
         // Should not panic/stack overflow — either parses partially or errors
-        let _ = parse_tokens_to_ast(&tokens);
+        let _ = parse_tokens_to_ast(&tokens, "");
     }
 
     // ═══════════════════════════════════════════════════════════

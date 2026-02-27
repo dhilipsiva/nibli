@@ -134,5 +134,6 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 (lujvo recognitio
 - Metalinguistic `sa` construct-class erasure: proper selma'o classification (28 classes) with backward-walk to matching grammatical class; graceful fallback to single-word erase for unclassified cmavo
 - Existential witness extraction: `query-find` WIT method + `find_witnesses` reasoning function returns all satisfying binding sets for existential variables; `ma` question pro-sumti compiles to existential variable (like da/de/di); REPL `??` prefix for find queries
 - Proof trace generation: `check_formula_holds_traced` builds proof tree as it recurses, recording which rule/axiom was applied at each step (13 proof rule variants); `query-entailment-with-proof` / `query-text-with-proof` WIT methods; REPL `?!` prefix for traced queries with indented tree output
+- Parser error recovery: per-sentence recovery (skip to next `.i` on parse failure, continue parsing remaining sentences); `ParseResult` carries both partial results and errors; exact line:column reporting via pointer arithmetic on token `&str` slices; WIT `parse-error` and `parse-result` types; orchestrator surfaces parse warnings
 
-**Next up:** Tier 4.3 (Parser error recovery)
+**Next up:** Tier 4.4 (WASM fuel/epoch limits)
