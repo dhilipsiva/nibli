@@ -80,7 +80,6 @@ When analyzing or searching the codebase:
 ## Known Issues
 
 - `cargo component build` fails on `io-extras` crate — pre-existing, unrelated to our changes. Bindings generate before the failure.
-- Existential introduction gap: `ro lo gerku cu danlu` then `? lo gerku cu danlu` returns FALSE because engine lacks ∀x.P(x) ⊢ ∃x.P(x) bridging when domain is non-empty (see `todo.md` bottom for full analysis)
 
 ## Roadmap
 
@@ -110,7 +109,7 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - Tense (pu/ca/ba), deontic attitudinals (ei/e'e)
 - Quoted literals (lu...li'u), number sumti (li + PA)
 - Skolemization (independent + dependent under ∀ via SkolemFn)
-- All universals compile to native egglog rules with O(K) hash-join matching
+- All universals compile to native egglog rules with O(K) hash-join matching + xorlo presupposition Skolems (restrictor domain guaranteed non-empty)
 - SkolemFn constructor for dependent Skolems (∀x. P(x) → ∃y. R(x,y))
 - egglog e-graph reasoning with structural rewrites + inference rules
 - Count quantifier (exactly N) for numeric descriptions

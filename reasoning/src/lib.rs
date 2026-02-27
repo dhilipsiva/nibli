@@ -1537,6 +1537,27 @@ fn compile_forall_to_rule(
                     .egraph
                     .parse_and_run_program(None, &rule)
                     .map_err(|e| format!("Failed to compile universal to rule: {}", e))?;
+
+                // ── xorlo presupposition: assert restrictor domain is non-empty ──
+                // In Lojban, `ro lo P cu Q` presupposes at least one P exists.
+                // Create a presupposition Skolem for each restrictor predicate,
+                // substituting universal variables with a fresh constant.
+                let xp_name = inner.fresh_skolem();
+                inner.note_entity(&xp_name);
+                let mut xp_subs: HashMap<String, String> = HashMap::new();
+                for v in &universals {
+                    xp_subs.insert(v.clone(), format!("(Const \"{}\")", xp_name));
+                }
+                // Merge ground skolems from outer scope
+                for (k, v) in &ground_skolems {
+                    xp_subs.entry(k.clone()).or_insert_with(|| format!("(Const \"{}\")", v));
+                }
+                for &cid in &all_conditions {
+                    let presup = reconstruct_sexp_with_subs(buffer, cid, &xp_subs);
+                    let cmd = format!("(IsTrue {})", presup);
+                    inner.egraph.parse_and_run_program(None, &cmd).ok();
+                }
+                inner.egraph.parse_and_run_program(None, "(run 100)").ok();
             }
         }
         None => {
@@ -1839,6 +1860,123 @@ mod tests {
         assert_buf(&kb, make_universal("gerku", "danlu"));
         assert!(query(&kb, make_query("alis", "danlu")));
         assert!(!query(&kb, make_query("bob", "danlu")));
+    }
+
+    // ─── Existential introduction (xorlo presupposition) ─────────
+
+    #[test]
+    fn test_xorlo_presupposition_basic() {
+        // ro lo gerku cu danlu → presupposition: ∃x. gerku(x)
+        // Query ∃x. gerku(x) should find the presupposition Skolem
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+
+        // Query: ∃x. gerku(x)
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "gerku",
+            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+        );
+        let root = exists(&mut nodes, "x", body);
+        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+    }
+
+    #[test]
+    fn test_xorlo_presupposition_consequent() {
+        // ro lo gerku cu danlu → presupposition creates sk entity → rule fires
+        // Query ∃x. danlu(x) should find the derived fact
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "danlu",
+            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+        );
+        let root = exists(&mut nodes, "x", body);
+        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+    }
+
+    #[test]
+    fn test_xorlo_presupposition_conjunction() {
+        // THE BUG FIX: ro lo gerku cu danlu, then ? lo gerku cu danlu
+        // (∃x. gerku(x) ∧ danlu(x)) should be TRUE
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+
+        let mut nodes = Vec::new();
+        let p1 = pred(
+            &mut nodes,
+            "gerku",
+            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+        );
+        let p2 = pred(
+            &mut nodes,
+            "danlu",
+            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+        );
+        let conj = and(&mut nodes, p1, p2);
+        let root = exists(&mut nodes, "x", conj);
+        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+    }
+
+    #[test]
+    fn test_xorlo_presupposition_with_real_entity() {
+        // Real entity + presupposition Skolem both satisfy the query
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+
+        // Both alis and the presupposition Skolem are in the KB
+        assert!(query(&kb, make_query("alis", "danlu")));
+
+        // Witness search should find both alis and the presupposition Skolem
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "danlu",
+            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+        );
+        let root = exists(&mut nodes, "x", body);
+        let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
+        assert!(results.len() >= 2); // alis + presupposition Skolem
+    }
+
+    #[test]
+    fn test_xorlo_presupposition_transitive() {
+        // ro lo gerku cu danlu, ro lo danlu cu xanlu
+        // Each universal creates its own presupposition Skolem
+        // Query ∃x. xanlu(x) should find witnesses via chain
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_universal("danlu", "xanlu"));
+
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "xanlu",
+            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+        );
+        let root = exists(&mut nodes, "x", body);
+        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+    }
+
+    #[test]
+    fn test_xorlo_presupposition_no_false_positives() {
+        // ro lo gerku cu danlu should NOT make mlatu(x) exist
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "mlatu",
+            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+        );
+        let root = exists(&mut nodes, "x", body);
+        assert!(!query(&kb, LogicBuffer { nodes, roots: vec![root] }));
     }
 
     #[test]
@@ -2681,7 +2819,7 @@ mod tests {
     #[test]
     fn test_find_witnesses_via_universal_rule() {
         // Assert gerku(alis), ∀x.(gerku(x)→danlu(x))
-        // Query ∃x.danlu(x) → x = alis (derived via rule)
+        // Query ∃x.danlu(x) → should find alis (+ presupposition Skolem)
         let kb = new_kb();
         assert_buf(&kb, make_assertion("alis", "gerku"));
         assert_buf(&kb, make_universal("gerku", "danlu"));
@@ -2695,9 +2833,12 @@ mod tests {
         let root = exists(&mut nodes, "x", body);
         let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
 
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0][0].variable, "x");
-        assert!(matches!(&results[0][0].term, LogicalTerm::Constant(c) if c == "alis"));
+        // At least alis + presupposition Skolem
+        assert!(results.len() >= 1);
+        let found: Vec<String> = results.iter().filter_map(|bs| {
+            match &bs[0].term { LogicalTerm::Constant(c) => Some(c.clone()), _ => None }
+        }).collect();
+        assert!(found.contains(&"alis".to_string()), "alis should be a witness");
     }
 
     #[test]
@@ -2743,7 +2884,7 @@ mod tests {
     #[test]
     fn test_find_witnesses_transitive_chain() {
         // Assert gerku(alis), ∀x.(gerku→danlu), ∀x.(danlu→xanlu)
-        // Query ∃x.xanlu(x) → x = alis (derived via 2-hop chain)
+        // Query ∃x.xanlu(x) → should find alis (+ presupposition Skolems)
         let kb = new_kb();
         assert_buf(&kb, make_assertion("alis", "gerku"));
         assert_buf(&kb, make_universal("gerku", "danlu"));
@@ -2758,9 +2899,11 @@ mod tests {
         let root = exists(&mut nodes, "x", body);
         let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
 
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0][0].variable, "x");
-        assert!(matches!(&results[0][0].term, LogicalTerm::Constant(c) if c == "alis"));
+        assert!(results.len() >= 1);
+        let found: Vec<String> = results.iter().filter_map(|bs| {
+            match &bs[0].term { LogicalTerm::Constant(c) => Some(c.clone()), _ => None }
+        }).collect();
+        assert!(found.contains(&"alis".to_string()), "alis should be a witness");
     }
 
     // ─── Proof trace tests ───────────────────────────────────────
@@ -3137,12 +3280,12 @@ mod tests {
         // Simulates the REPL demo:
         //   la .alis. gerku          → gerku(alis)
         //   ro lo gerku cu se nelci la .bob.  → ∀x. gerku(x) → nelci(bob, x)
-        //   ?? ma se nelci la .bob.           → ∃x. nelci(bob, x) → x = alis
+        //   ?? ma se nelci la .bob.           → ∃x. nelci(bob, x) → includes alis
         let kb = new_kb();
         assert_buf(&kb, make_assertion("alis", "gerku"));
         assert_buf(&kb, make_universal_2arg("gerku", "nelci", "bob"));
 
-        // Query: ∃x. nelci(bob, x) — should find x = alis
+        // Query: ∃x. nelci(bob, x) — should find alis (+ presupposition Skolem)
         let mut nodes = Vec::new();
         let body = pred(
             &mut nodes,
@@ -3156,10 +3299,11 @@ mod tests {
         let root = exists(&mut nodes, "x", body);
         let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
 
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].len(), 1);
-        assert_eq!(results[0][0].variable, "x");
-        assert!(matches!(&results[0][0].term, LogicalTerm::Constant(c) if c == "alis"));
+        assert!(results.len() >= 1);
+        let found: Vec<String> = results.iter().filter_map(|bs| {
+            match &bs[0].term { LogicalTerm::Constant(c) => Some(c.clone()), _ => None }
+        }).collect();
+        assert!(found.contains(&"alis".to_string()), "alis should be a witness");
     }
 
     #[test]
@@ -3170,7 +3314,7 @@ mod tests {
         assert_buf(&kb, make_assertion("rex", "gerku"));
         assert_buf(&kb, make_universal_2arg("gerku", "nelci", "bob"));
 
-        // Query: ∃x. nelci(bob, x) — should find x = alis AND x = rex
+        // Query: ∃x. nelci(bob, x) — should find alis AND rex (+ presupposition Skolem)
         let mut nodes = Vec::new();
         let body = pred(
             &mut nodes,
@@ -3184,20 +3328,12 @@ mod tests {
         let root = exists(&mut nodes, "x", body);
         let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
 
-        assert_eq!(results.len(), 2);
-        let mut found: Vec<String> = results
-            .iter()
-            .map(|bs| {
-                assert_eq!(bs.len(), 1);
-                assert_eq!(bs[0].variable, "x");
-                match &bs[0].term {
-                    LogicalTerm::Constant(c) => c.clone(),
-                    _ => panic!("expected Constant"),
-                }
-            })
-            .collect();
-        found.sort();
-        assert_eq!(found, vec!["alis", "rex"]);
+        assert!(results.len() >= 2);
+        let found: Vec<String> = results.iter().filter_map(|bs| {
+            match &bs[0].term { LogicalTerm::Constant(c) => Some(c.clone()), _ => None }
+        }).collect();
+        assert!(found.contains(&"alis".to_string()), "alis should be a witness");
+        assert!(found.contains(&"rex".to_string()), "rex should be a witness");
     }
 
     #[test]

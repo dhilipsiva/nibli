@@ -4,19 +4,6 @@ Single-phase backlog ordered by severity: soundness bugs first, then safety, the
 
 ---
 
-## Soundness Bugs
-
-### S1. Existential introduction gap
-
-`ro lo gerku cu danlu` then `? lo gerku cu danlu` returns FALSE. Engine lacks ∀x.P(x) ⊢ ∃x.P(x) bridging when domain is non-empty. The universal rule fires per entity, but querying via existential over the same predicate doesn't find witnesses if no entity was explicitly asserted for the restrictor.
-
-**Fix:** Add bridge rule in egglog schema: when a universal rule has fired for at least one entity, the consequent should be discoverable via existential query. Alternatively, revisit xorlo presupposition (lo X presupposes at least one X exists).
-
-**Crate:** reasoning/lib.rs (egglog schema)
-**Severity:** high — correct logical entailment fails
-
----
-
 ## Runtime Safety
 
 ### R1. Wasmtime memory limits
