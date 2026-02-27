@@ -162,7 +162,7 @@ mod pipeline_bind {
 
 use pipeline_bind::lojban::nesy::compute_backend;
 use pipeline_bind::lojban::nesy::logic_types::LogicalTerm as EngineLogicalTerm;
-use pipeline_bind::lojban::nesy::logic_types::WitnessBinding;
+use pipeline_bind::lojban::nesy::logic_types::{ProofRule, ProofStep, ProofTrace, WitnessBinding};
 
 /// Format a LogicalTerm from the engine bindings for display.
 fn format_term(term: &EngineLogicalTerm) -> String {
@@ -179,6 +179,59 @@ fn format_term(term: &EngineLogicalTerm) -> String {
         }
         EngineLogicalTerm::Unspecified => "zo'e".to_string(),
     }
+}
+
+/// Format a proof rule for display.
+fn format_rule(rule: &ProofRule, result: bool) -> String {
+    let tag = if result { "TRUE" } else { "FALSE" };
+    match rule {
+        ProofRule::Conjunction => format!("Conjunction → {}", tag),
+        ProofRule::DisjunctionEgraph(s) => format!("Disjunction (e-graph: {}) → {}", s, tag),
+        ProofRule::DisjunctionIntro(side) => format!("Disjunction ({}) → {}", side, tag),
+        ProofRule::Negation => format!("Negation → {}", tag),
+        ProofRule::ModalPassthrough(kind) => format!("Modal ({}) → {}", kind, tag),
+        ProofRule::ExistsWitness((var, term)) => {
+            format!("Exists: {} = {} → {}", var, format_term(term), tag)
+        }
+        ProofRule::ExistsFailed => format!("Exists: no witness → {}", tag),
+        ProofRule::ForallVacuous => format!("ForAll: vacuous (empty domain) → {}", tag),
+        ProofRule::ForallVerified(entities) => {
+            let names: Vec<String> = entities.iter().map(format_term).collect();
+            format!("ForAll: verified [{}] → {}", names.join(", "), tag)
+        }
+        ProofRule::ForallCounterexample(term) => {
+            format!("ForAll: counterexample {} → {}", format_term(term), tag)
+        }
+        ProofRule::CountResult((expected, actual)) => {
+            format!("Count: expected={}, actual={} → {}", expected, actual, tag)
+        }
+        ProofRule::PredicateCheck((method, detail)) => {
+            format!("{}: {} → {}", method, detail, tag)
+        }
+        ProofRule::ComputeCheck((method, detail)) => {
+            format!("Compute ({}): {} → {}", method, detail, tag)
+        }
+    }
+}
+
+/// Recursively format a proof tree node with indentation.
+fn format_proof_node(steps: &[ProofStep], idx: u32, indent: usize, out: &mut String) {
+    let step = &steps[idx as usize];
+    for _ in 0..indent {
+        out.push_str("  ");
+    }
+    out.push_str(&format_rule(&step.rule, step.holds));
+    out.push('\n');
+    for &child in &step.children {
+        format_proof_node(steps, child, indent + 1, out);
+    }
+}
+
+/// Format an entire proof trace as an indented tree string.
+fn format_proof_trace(trace: &ProofTrace) -> String {
+    let mut out = String::new();
+    format_proof_node(&trace.steps, trace.root, 1, &mut out);
+    out
 }
 
 impl compute_backend::Host for HostState {
@@ -296,7 +349,7 @@ fn main() -> Result<()> {
     println!(
         "Ready. Commands: :quit :reset :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :help"
     );
-    println!("Prefix '?' for queries, '??' for find (witness extraction), plain text for assertions.\n");
+    println!("Prefix '?' for queries, '?!' for proof trace, '??' for find, plain text for assertions.\n");
 
     loop {
         let sig = line_editor.read_line(&prompt);
@@ -335,6 +388,7 @@ fn main() -> Result<()> {
                     ":help" | ":h" => {
                         println!("  <text>              Assert Lojban as fact");
                         println!("  ? <text>            Query entailment (true/false)");
+                        println!("  ?! <text>           Query with proof trace");
                         println!("  ?? <text>           Find witnesses (answer variables)");
                         println!("  :debug <text>       Show compiled logic tree");
                         println!("  :compute <name>     Register predicate for compute dispatch");
@@ -441,6 +495,21 @@ fn main() -> Result<()> {
                                     println!("[Find] {}", parts.join(", "));
                                 }
                             }
+                        }
+                        Ok(Err(e)) => println!("[Error] {}", e),
+                        Err(e) => println!("[Host Error] {:?}", e),
+                    }
+                } else if let Some(proof_text) = input.strip_prefix("?!") {
+                    let text = proof_text.trim();
+                    if text.is_empty() {
+                        println!("[Host] Usage: ?! <lojban query>");
+                        continue;
+                    }
+                    match session.call_query_text_with_proof(&mut store, session_handle, text) {
+                        Ok(Ok((result, trace))) => {
+                            let tag = if result { "TRUE" } else { "FALSE" };
+                            println!("[Proof] {}", tag);
+                            print!("{}", format_proof_trace(&trace));
                         }
                         Ok(Err(e)) => println!("[Error] {}", e),
                         Err(e) => println!("[Host Error] {:?}", e),

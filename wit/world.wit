@@ -125,6 +125,49 @@ interface logic-types {
         variable: string,
         term: logical-term,
     }
+
+    /// Proof rule applied at a proof step.
+    variant proof-rule {
+        /// Both conjuncts checked. Children: [left, right].
+        conjunction,
+        /// Entire disjunction found in e-graph. Payload: sexp checked.
+        disjunction-egraph(string),
+        /// One disjunct checked. Payload: "left" or "right". Children: [winner].
+        disjunction-intro(string),
+        /// Inner formula failed. Children: [inner-attempt].
+        negation,
+        /// Transparent tense/deontic wrapper. Payload: wrapper kind. Children: [inner].
+        modal-passthrough(string),
+        /// Entity witness found. Payload: (variable, witness-term). Children: [body-proof].
+        exists-witness(tuple<string, logical-term>),
+        /// No witness found for existential.
+        exists-failed,
+        /// Empty domain, vacuously true.
+        forall-vacuous,
+        /// All entities verified. Payload: entity list. Children: [body-proof per entity].
+        forall-verified(list<logical-term>),
+        /// Counterexample found. Payload: failing entity. Children: [failed-body-proof].
+        forall-counterexample(logical-term),
+        /// Count check. Payload: (expected, actual).
+        count-result(tuple<u32, u32>),
+        /// Predicate leaf checked. Payload: (method, sexp-or-detail).
+        predicate-check(tuple<string, string>),
+        /// Compute node checked. Payload: (method, relation-or-detail).
+        compute-check(tuple<string, string>),
+    }
+
+    /// A single step in a proof trace.
+    record proof-step {
+        rule: proof-rule,
+        holds: bool,
+        children: list<u32>,
+    }
+
+    /// A complete proof trace (flat indexed buffer).
+    record proof-trace {
+        steps: list<proof-step>,
+        root: u32,
+    }
 }
 
 interface parser {
@@ -145,7 +188,7 @@ interface compute-backend {
 }
 
 interface reasoning {
-    use logic-types.{logic-buffer, witness-binding};
+    use logic-types.{logic-buffer, witness-binding, proof-trace};
 
     resource knowledge-base {
         /// Create a fresh KB with FOL schema loaded.
@@ -154,6 +197,8 @@ interface reasoning {
         assert-fact: func(logic: logic-buffer) -> result<_, string>;
         /// Query whether FOL formula is entailed by this KB.
         query-entailment: func(logic: logic-buffer) -> result<bool, string>;
+        /// Query with proof trace: returns result + proof tree.
+        query-entailment-with-proof: func(logic: logic-buffer) -> result<tuple<bool, proof-trace>, string>;
         /// Query with witness extraction: returns all satisfying binding sets
         /// for existential variables. Each inner list is one complete assignment.
         query-find: func(logic: logic-buffer) -> result<list<list<witness-binding>>, string>;
@@ -171,7 +216,7 @@ world reasoning-component {
 }
 
 interface engine {
-    use logic-types.{logical-term, witness-binding};
+    use logic-types.{logical-term, witness-binding, proof-trace};
 
     resource session {
         /// Create a new session (internally creates a fresh KB).
@@ -180,6 +225,8 @@ interface engine {
         assert-text: func(input: string) -> result<u32, string>;
         /// Query whether Lojban text is entailed.
         query-text: func(input: string) -> result<bool, string>;
+        /// Query Lojban text with proof trace.
+        query-text-with-proof: func(input: string) -> result<tuple<bool, proof-trace>, string>;
         /// Query Lojban text and return witness bindings for existential variables.
         query-find-text: func(input: string) -> result<list<list<witness-binding>>, string>;
         /// Debug: compile text to logic s-expression without asserting.

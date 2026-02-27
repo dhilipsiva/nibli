@@ -102,6 +102,7 @@ just test
 - Compute result auto-ingestion: successful compute results automatically cached in the KB as ground predicates (closes reason→compute→reason loop)
 - Direct fact assertion: `assert-fact` WIT method + `:assert` REPL command for programmatic fact injection bypassing Lojban parsing
 - Existential witness extraction: `query-find` returns all satisfying entity bindings for existential variables (`??` REPL prefix)
+- Proof trace generation: `query-entailment-with-proof` returns proof tree showing which rule/axiom was applied at each step (13 proof rule variants: conjunction, disjunction, negation, modal, exists-witness, forall-verified, count, predicate-check, compute-check, etc.) — `?!` REPL prefix
 
 ## Compute Backend
 

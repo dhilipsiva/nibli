@@ -4,14 +4,6 @@
 
 Features needed for the engine to be genuinely useful (not just correct) in real applications.
 
-### 4.2 Proof trace generation
-
-`check_formula_holds` builds proof tree as it recurses. Each node records which rule/axiom was applied.
-
-**Crate:** reasoning/lib.rs
-**Complexity:** medium-high
-**Impact:** legal (arguments require justification), scientific (reproducibility), astrophysics (audit trail for derived conclusions)
-
 ### 4.3 Parser error recovery
 
 Skip to next `.i` on syntax error, continue parsing. Return `Vec<Result<Sentence, SyntaxError>>` instead of failing entire input.

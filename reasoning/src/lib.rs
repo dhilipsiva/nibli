@@ -2,7 +2,9 @@
 mod bindings;
 
 use crate::bindings::exports::lojban::nesy::reasoning::{Guest, GuestKnowledgeBase};
-use crate::bindings::lojban::nesy::logic_types::{LogicBuffer, LogicNode, LogicalTerm, WitnessBinding};
+use crate::bindings::lojban::nesy::logic_types::{
+    LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofStep, ProofTrace, WitnessBinding,
+};
 use egglog::EGraph;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -362,6 +364,45 @@ impl GuestKnowledgeBase for KnowledgeBase {
             .collect();
 
         Ok(wit_results)
+    }
+
+    fn query_entailment_with_proof(
+        &self,
+        logic: LogicBuffer,
+    ) -> Result<(bool, ProofTrace), String> {
+        let mut inner = self.inner.borrow_mut();
+
+        // Run rules to fixpoint before querying
+        inner.egraph.parse_and_run_program(None, "(run 100)").ok();
+
+        let mut steps: Vec<ProofStep> = Vec::new();
+        let mut root_children: Vec<u32> = Vec::new();
+        let mut all_hold = true;
+
+        for &root_id in &logic.roots {
+            let subs = HashMap::new();
+            let (holds, step_idx) =
+                check_formula_holds_traced(&logic, root_id, &subs, &mut inner, &mut steps)?;
+            root_children.push(step_idx);
+            if !holds {
+                all_hold = false;
+            }
+        }
+
+        // If multiple roots, wrap in a conjunction step
+        let root = if root_children.len() == 1 {
+            root_children[0]
+        } else {
+            let idx = steps.len() as u32;
+            steps.push(ProofStep {
+                rule: ProofRule::Conjunction,
+                holds: all_hold,
+                children: root_children,
+            });
+            idx
+        };
+
+        Ok((all_hold, ProofTrace { steps, root }))
     }
 
     fn reset(&self) -> Result<(), String> {
@@ -727,6 +768,378 @@ fn find_witnesses(
                 Ok(vec![vec![]])
             } else {
                 Ok(vec![])
+            }
+        }
+    }
+}
+
+// ─── Proof Trace Generation ──────────────────────────────────────
+
+/// Like `check_formula_holds` but builds a proof trace as it recurses.
+/// Returns (result, step_index) where step_index is the index of this
+/// step in the `steps` Vec.
+fn check_formula_holds_traced(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    subs: &HashMap<String, String>,
+    inner: &mut KnowledgeBaseInner,
+    steps: &mut Vec<ProofStep>,
+) -> Result<(bool, u32), String> {
+    match &buffer.nodes[node_id as usize] {
+        LogicNode::AndNode((l, r)) => {
+            let (l_result, l_idx) = check_formula_holds_traced(buffer, *l, subs, inner, steps)?;
+            let (r_result, r_idx) = check_formula_holds_traced(buffer, *r, subs, inner, steps)?;
+            let result = l_result && r_result;
+            let idx = steps.len() as u32;
+            steps.push(ProofStep {
+                rule: ProofRule::Conjunction,
+                holds: result,
+                children: vec![l_idx, r_idx],
+            });
+            Ok((result, idx))
+        }
+        LogicNode::OrNode((l, r)) => {
+            // Try egglog direct check first
+            let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
+            let command = format!("(check (IsTrue {}))", sexp);
+            match inner.egraph.parse_and_run_program(None, &command) {
+                Ok(_) => {
+                    let idx = steps.len() as u32;
+                    steps.push(ProofStep {
+                        rule: ProofRule::DisjunctionEgraph(sexp),
+                        holds: true,
+                        children: vec![],
+                    });
+                    return Ok((true, idx));
+                }
+                Err(_) => {}
+            }
+            // Fallback: try left then right
+            let (l_result, l_idx) = check_formula_holds_traced(buffer, *l, subs, inner, steps)?;
+            if l_result {
+                let idx = steps.len() as u32;
+                steps.push(ProofStep {
+                    rule: ProofRule::DisjunctionIntro("left".to_string()),
+                    holds: true,
+                    children: vec![l_idx],
+                });
+                return Ok((true, idx));
+            }
+            let (r_result, r_idx) = check_formula_holds_traced(buffer, *r, subs, inner, steps)?;
+            if r_result {
+                let idx = steps.len() as u32;
+                steps.push(ProofStep {
+                    rule: ProofRule::DisjunctionIntro("right".to_string()),
+                    holds: true,
+                    children: vec![r_idx],
+                });
+                return Ok((true, idx));
+            }
+            // Neither holds
+            let idx = steps.len() as u32;
+            steps.push(ProofStep {
+                rule: ProofRule::DisjunctionIntro("neither".to_string()),
+                holds: false,
+                children: vec![l_idx, r_idx],
+            });
+            Ok((false, idx))
+        }
+        LogicNode::NotNode(inner_node) => {
+            let (inner_result, inner_idx) =
+                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps)?;
+            let result = !inner_result;
+            let idx = steps.len() as u32;
+            steps.push(ProofStep {
+                rule: ProofRule::Negation,
+                holds: result,
+                children: vec![inner_idx],
+            });
+            Ok((result, idx))
+        }
+        LogicNode::PastNode(inner_node) => {
+            let (result, child_idx) =
+                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps)?;
+            let idx = steps.len() as u32;
+            steps.push(ProofStep {
+                rule: ProofRule::ModalPassthrough("past".to_string()),
+                holds: result,
+                children: vec![child_idx],
+            });
+            Ok((result, idx))
+        }
+        LogicNode::PresentNode(inner_node) => {
+            let (result, child_idx) =
+                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps)?;
+            let idx = steps.len() as u32;
+            steps.push(ProofStep {
+                rule: ProofRule::ModalPassthrough("present".to_string()),
+                holds: result,
+                children: vec![child_idx],
+            });
+            Ok((result, idx))
+        }
+        LogicNode::FutureNode(inner_node) => {
+            let (result, child_idx) =
+                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps)?;
+            let idx = steps.len() as u32;
+            steps.push(ProofStep {
+                rule: ProofRule::ModalPassthrough("future".to_string()),
+                holds: result,
+                children: vec![child_idx],
+            });
+            Ok((result, idx))
+        }
+        LogicNode::ObligatoryNode(inner_node) => {
+            let (result, child_idx) =
+                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps)?;
+            let idx = steps.len() as u32;
+            steps.push(ProofStep {
+                rule: ProofRule::ModalPassthrough("obligatory".to_string()),
+                holds: result,
+                children: vec![child_idx],
+            });
+            Ok((result, idx))
+        }
+        LogicNode::PermittedNode(inner_node) => {
+            let (result, child_idx) =
+                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps)?;
+            let idx = steps.len() as u32;
+            steps.push(ProofStep {
+                rule: ProofRule::ModalPassthrough("permitted".to_string()),
+                holds: result,
+                children: vec![child_idx],
+            });
+            Ok((result, idx))
+        }
+        LogicNode::ExistsNode((v, body)) => {
+            // 1. Try known entities
+            let entities = inner.get_known_entities();
+            for entity in &entities {
+                let mut new_subs = subs.clone();
+                new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
+                let (holds, body_idx) =
+                    check_formula_holds_traced(buffer, *body, &new_subs, inner, steps)?;
+                if holds {
+                    let idx = steps.len() as u32;
+                    steps.push(ProofStep {
+                        rule: ProofRule::ExistsWitness((
+                            v.clone(),
+                            LogicalTerm::Constant(entity.clone()),
+                        )),
+                        holds: true,
+                        children: vec![body_idx],
+                    });
+                    return Ok((true, idx));
+                }
+            }
+            // 2. Try SkolemFn witnesses
+            let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
+            for entry in &entries {
+                let combos = cartesian_product(&entities, entry.dep_count);
+                for combo in &combos {
+                    let witness_sexp = build_ground_skolem_fn(&entry.base_name, combo);
+                    let mut new_subs = subs.clone();
+                    new_subs.insert(v.clone(), witness_sexp.clone());
+                    let (holds, body_idx) =
+                        check_formula_holds_traced(buffer, *body, &new_subs, inner, steps)?;
+                    if holds {
+                        let idx = steps.len() as u32;
+                        steps.push(ProofStep {
+                            rule: ProofRule::ExistsWitness((
+                                v.clone(),
+                                parse_sexp_to_term(&witness_sexp),
+                            )),
+                            holds: true,
+                            children: vec![body_idx],
+                        });
+                        return Ok((true, idx));
+                    }
+                }
+            }
+            let idx = steps.len() as u32;
+            steps.push(ProofStep {
+                rule: ProofRule::ExistsFailed,
+                holds: false,
+                children: vec![],
+            });
+            Ok((false, idx))
+        }
+        LogicNode::ForAllNode((v, body)) => {
+            let entities = inner.get_known_entities();
+            if entities.is_empty() {
+                let idx = steps.len() as u32;
+                steps.push(ProofStep {
+                    rule: ProofRule::ForallVacuous,
+                    holds: true,
+                    children: vec![],
+                });
+                return Ok((true, idx));
+            }
+            let mut child_indices = Vec::new();
+            let mut entity_terms = Vec::new();
+            for entity in &entities {
+                let mut new_subs = subs.clone();
+                new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
+                let (holds, body_idx) =
+                    check_formula_holds_traced(buffer, *body, &new_subs, inner, steps)?;
+                if !holds {
+                    let idx = steps.len() as u32;
+                    steps.push(ProofStep {
+                        rule: ProofRule::ForallCounterexample(LogicalTerm::Constant(
+                            entity.clone(),
+                        )),
+                        holds: false,
+                        children: vec![body_idx],
+                    });
+                    return Ok((false, idx));
+                }
+                child_indices.push(body_idx);
+                entity_terms.push(LogicalTerm::Constant(entity.clone()));
+            }
+            let idx = steps.len() as u32;
+            steps.push(ProofStep {
+                rule: ProofRule::ForallVerified(entity_terms),
+                holds: true,
+                children: child_indices,
+            });
+            Ok((true, idx))
+        }
+        LogicNode::CountNode((v, count, body)) => {
+            let entities = inner.get_known_entities();
+            let mut satisfying = 0u32;
+            for entity in &entities {
+                let mut new_subs = subs.clone();
+                new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
+                if check_formula_holds(buffer, *body, &new_subs, inner)? {
+                    satisfying += 1;
+                }
+            }
+            let result = satisfying == *count;
+            let idx = steps.len() as u32;
+            steps.push(ProofStep {
+                rule: ProofRule::CountResult((*count, satisfying)),
+                holds: result,
+                children: vec![],
+            });
+            Ok((result, idx))
+        }
+        LogicNode::Predicate((rel, args)) => {
+            // Try numeric comparison short-circuit
+            if let Some(result) = try_numeric_comparison(rel, args, subs) {
+                let detail = format!(
+                    "{}({}) = {}",
+                    rel,
+                    args.iter()
+                        .map(|a| match a {
+                            LogicalTerm::Number(n) => format!("{}", *n as i64),
+                            LogicalTerm::Variable(v) => subs
+                                .get(v.as_str())
+                                .cloned()
+                                .unwrap_or_else(|| v.clone()),
+                            _ => "?".to_string(),
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    result
+                );
+                let idx = steps.len() as u32;
+                steps.push(ProofStep {
+                    rule: ProofRule::PredicateCheck(("numeric".to_string(), detail)),
+                    holds: result,
+                    children: vec![],
+                });
+                return Ok((result, idx));
+            }
+            // Standard egglog check
+            let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
+            let command = format!("(check (IsTrue {}))", sexp);
+            match inner.egraph.parse_and_run_program(None, &command) {
+                Ok(_) => {
+                    let idx = steps.len() as u32;
+                    steps.push(ProofStep {
+                        rule: ProofRule::PredicateCheck(("egglog".to_string(), sexp)),
+                        holds: true,
+                        children: vec![],
+                    });
+                    Ok((true, idx))
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("Check failed") {
+                        let idx = steps.len() as u32;
+                        steps.push(ProofStep {
+                            rule: ProofRule::PredicateCheck(("egglog".to_string(), sexp)),
+                            holds: false,
+                            children: vec![],
+                        });
+                        Ok((false, idx))
+                    } else {
+                        Err(format!("Reasoning error: {}", msg))
+                    }
+                }
+            }
+        }
+        LogicNode::ComputeNode((rel, args)) => {
+            // 1. Try WIT dispatch
+            let resolved = resolve_args_for_dispatch(args, subs);
+            if let Ok(result) = dispatch_to_backend(rel, &resolved) {
+                if result {
+                    if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
+                        let cmd = format!("(IsTrue {})", sexp);
+                        inner.egraph.parse_and_run_program(None, &cmd).ok();
+                    }
+                }
+                let idx = steps.len() as u32;
+                steps.push(ProofStep {
+                    rule: ProofRule::ComputeCheck(("backend".to_string(), rel.clone())),
+                    holds: result,
+                    children: vec![],
+                });
+                return Ok((result, idx));
+            }
+            // 2. Try built-in arithmetic
+            if let Some(result) = try_arithmetic_evaluation(rel, args, subs) {
+                if result {
+                    if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
+                        let cmd = format!("(IsTrue {})", sexp);
+                        inner.egraph.parse_and_run_program(None, &cmd).ok();
+                    }
+                }
+                let idx = steps.len() as u32;
+                steps.push(ProofStep {
+                    rule: ProofRule::ComputeCheck(("arithmetic".to_string(), rel.clone())),
+                    holds: result,
+                    children: vec![],
+                });
+                return Ok((result, idx));
+            }
+            // 3. Egglog fallback
+            let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
+            let command = format!("(check (IsTrue {}))", sexp);
+            match inner.egraph.parse_and_run_program(None, &command) {
+                Ok(_) => {
+                    let idx = steps.len() as u32;
+                    steps.push(ProofStep {
+                        rule: ProofRule::ComputeCheck(("egglog".to_string(), rel.clone())),
+                        holds: true,
+                        children: vec![],
+                    });
+                    Ok((true, idx))
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("Check failed") {
+                        let idx = steps.len() as u32;
+                        steps.push(ProofStep {
+                            rule: ProofRule::ComputeCheck(("egglog".to_string(), rel.clone())),
+                            holds: false,
+                            children: vec![],
+                        });
+                        Ok((false, idx))
+                    } else {
+                        Err(format!("Reasoning error: {}", msg))
+                    }
+                }
             }
         }
     }
@@ -1285,7 +1698,9 @@ bindings::export!(ReasoningComponent with_types_in bindings);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bindings::lojban::nesy::logic_types::{LogicBuffer, LogicNode, LogicalTerm};
+    use crate::bindings::lojban::nesy::logic_types::{
+        LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofTrace,
+    };
 
     /// Helper: build a Predicate node with the given relation and args.
     fn pred(nodes: &mut Vec<LogicNode>, rel: &str, args: Vec<LogicalTerm>) -> u32 {
@@ -2261,5 +2676,176 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0][0].variable, "x");
         assert!(matches!(&results[0][0].term, LogicalTerm::Constant(c) if c == "alis"));
+    }
+
+    // ─── Proof trace tests ───────────────────────────────────────
+
+    fn query_with_proof(kb: &KnowledgeBase, buf: LogicBuffer) -> (bool, ProofTrace) {
+        kb.query_entailment_with_proof(buf).unwrap()
+    }
+
+    #[test]
+    fn test_proof_trace_simple_predicate() {
+        // Assert klama(mi), query it → single predicate-check step, result true
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("mi", "klama"));
+        let (result, trace) = query_with_proof(&kb, make_query("mi", "klama"));
+
+        assert!(result);
+        assert!(!trace.steps.is_empty());
+        let root_step = &trace.steps[trace.root as usize];
+        assert!(root_step.holds);
+        assert!(matches!(&root_step.rule, ProofRule::PredicateCheck(_)));
+    }
+
+    #[test]
+    fn test_proof_trace_false_predicate() {
+        // Query non-existent fact → predicate-check with result false
+        let kb = new_kb();
+        let (result, trace) = query_with_proof(&kb, make_query("mi", "klama"));
+
+        assert!(!result);
+        let root_step = &trace.steps[trace.root as usize];
+        assert!(!root_step.holds);
+        assert!(matches!(&root_step.rule, ProofRule::PredicateCheck(_)));
+    }
+
+    #[test]
+    fn test_proof_trace_conjunction() {
+        // Assert klama(mi), prami(mi), query conjunction → conjunction root with two children
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("mi", "klama"));
+        assert_buf(&kb, make_assertion("mi", "prami"));
+
+        let mut nodes = Vec::new();
+        let p1 = pred(
+            &mut nodes,
+            "klama",
+            vec![LogicalTerm::Constant("mi".into()), LogicalTerm::Unspecified],
+        );
+        let p2 = pred(
+            &mut nodes,
+            "prami",
+            vec![LogicalTerm::Constant("mi".into()), LogicalTerm::Unspecified],
+        );
+        let root = and(&mut nodes, p1, p2);
+        let (result, trace) =
+            query_with_proof(&kb, LogicBuffer { nodes, roots: vec![root] });
+
+        assert!(result);
+        let root_step = &trace.steps[trace.root as usize];
+        assert!(root_step.holds);
+        assert!(matches!(&root_step.rule, ProofRule::Conjunction));
+        assert_eq!(root_step.children.len(), 2);
+        // Both children should be predicate-check with result true
+        for &child in &root_step.children {
+            let child_step = &trace.steps[child as usize];
+            assert!(child_step.holds);
+            assert!(matches!(&child_step.rule, ProofRule::PredicateCheck(_)));
+        }
+    }
+
+    #[test]
+    fn test_proof_trace_negation() {
+        // Query negation of non-existent fact → negation root with result true
+        let kb = new_kb();
+        let mut nodes = Vec::new();
+        let inner = pred(
+            &mut nodes,
+            "klama",
+            vec![LogicalTerm::Constant("mi".into()), LogicalTerm::Unspecified],
+        );
+        let root = not(&mut nodes, inner);
+        let (result, trace) =
+            query_with_proof(&kb, LogicBuffer { nodes, roots: vec![root] });
+
+        assert!(result);
+        let root_step = &trace.steps[trace.root as usize];
+        assert!(root_step.holds);
+        assert!(matches!(&root_step.rule, ProofRule::Negation));
+        assert_eq!(root_step.children.len(), 1);
+        // Inner should be predicate-check with result false
+        let inner_step = &trace.steps[root_step.children[0] as usize];
+        assert!(!inner_step.holds);
+    }
+
+    #[test]
+    fn test_proof_trace_exists_witness() {
+        // Assert klama(alis), query ∃x.klama(x) → exists-witness with x = alis
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "klama"));
+
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "klama",
+            vec![LogicalTerm::Variable("x".into()), LogicalTerm::Unspecified],
+        );
+        let root = exists(&mut nodes, "x", body);
+        let (result, trace) =
+            query_with_proof(&kb, LogicBuffer { nodes, roots: vec![root] });
+
+        assert!(result);
+        let root_step = &trace.steps[trace.root as usize];
+        assert!(root_step.holds);
+        assert!(matches!(&root_step.rule, ProofRule::ExistsWitness(_)));
+        if let ProofRule::ExistsWitness((var, term)) = &root_step.rule {
+            assert_eq!(var, "x");
+            assert!(matches!(term, LogicalTerm::Constant(c) if c == "alis"));
+        }
+    }
+
+    #[test]
+    fn test_proof_trace_exists_failed() {
+        // Query ∃x.klama(x) with no facts → exists-failed
+        let kb = new_kb();
+
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "klama",
+            vec![LogicalTerm::Variable("x".into()), LogicalTerm::Unspecified],
+        );
+        let root = exists(&mut nodes, "x", body);
+        let (result, trace) =
+            query_with_proof(&kb, LogicBuffer { nodes, roots: vec![root] });
+
+        assert!(!result);
+        let root_step = &trace.steps[trace.root as usize];
+        assert!(!root_step.holds);
+        assert!(matches!(&root_step.rule, ProofRule::ExistsFailed));
+    }
+
+    #[test]
+    fn test_proof_trace_forall() {
+        // Assert gerku(alis), gerku(bob), query ∀x.gerku(x)→gerku(x) [trivially true]
+        // Actually: assert gerku for both entities, query ∀x.(gerku(x)→gerku(x))
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_assertion("bob", "gerku"));
+
+        // Query: ∀x. gerku(x) — should be ForAll verified for both entities
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "gerku",
+            vec![LogicalTerm::Variable("x".into()), LogicalTerm::Unspecified],
+        );
+        let root = forall(&mut nodes, "x", body);
+        let (result, trace) =
+            query_with_proof(&kb, LogicBuffer { nodes, roots: vec![root] });
+
+        assert!(result);
+        let root_step = &trace.steps[trace.root as usize];
+        assert!(root_step.holds);
+        assert!(matches!(&root_step.rule, ProofRule::ForallVerified(_)));
+        if let ProofRule::ForallVerified(entities) = &root_step.rule {
+            assert_eq!(entities.len(), 2);
+        }
+        // Each child should be a predicate-check with result true
+        for &child in &root_step.children {
+            let child_step = &trace.steps[child as usize];
+            assert!(child_step.holds);
+        }
     }
 }

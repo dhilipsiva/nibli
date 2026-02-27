@@ -3,7 +3,9 @@ mod bindings;
 
 use bindings::exports::lojban::nesy::engine::{Guest, GuestSession};
 use bindings::lojban::nesy::ast_types::{AstBuffer, Selbri, Sentence};
-use bindings::lojban::nesy::logic_types::{LogicBuffer, LogicNode, LogicalTerm, WitnessBinding};
+use bindings::lojban::nesy::logic_types::{
+    LogicBuffer, LogicNode, LogicalTerm, ProofTrace, WitnessBinding,
+};
 use bindings::lojban::nesy::{parser, semantics};
 use bindings::lojban::nesy::reasoning::KnowledgeBase;
 
@@ -176,6 +178,16 @@ impl GuestSession for Session {
         transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
         self.kb
             .query_find(&buf)
+            .map_err(|e| format!("Reasoning: {}", e))
+    }
+
+    fn query_text_with_proof(&self, input: String) -> Result<(bool, ProofTrace), String> {
+        let (mut buf, _) =
+            compile_pipeline(&input, &self.last_relation.borrow())?;
+        // Don't update last_relation for queries (read-only)
+        transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
+        self.kb
+            .query_entailment_with_proof(&buf)
             .map_err(|e| format!("Reasoning: {}", e))
     }
 

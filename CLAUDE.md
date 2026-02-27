@@ -133,5 +133,6 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 (lujvo recognitio
 - Observative sentences & go'i pro-bridi: parser accepts sentences without explicit selbri (inserts implicit `go'i`), orchestrator resolves go'i → last known relation via cross-call `last_relation` tracking
 - Metalinguistic `sa` construct-class erasure: proper selma'o classification (28 classes) with backward-walk to matching grammatical class; graceful fallback to single-word erase for unclassified cmavo
 - Existential witness extraction: `query-find` WIT method + `find_witnesses` reasoning function returns all satisfying binding sets for existential variables; `ma` question pro-sumti compiles to existential variable (like da/de/di); REPL `??` prefix for find queries
+- Proof trace generation: `check_formula_holds_traced` builds proof tree as it recurses, recording which rule/axiom was applied at each step (13 proof rule variants); `query-entailment-with-proof` / `query-text-with-proof` WIT methods; REPL `?!` prefix for traced queries with indented tree output
 
-**Next up:** Tier 4.2 (Proof trace generation)
+**Next up:** Tier 4.3 (Parser error recovery)
