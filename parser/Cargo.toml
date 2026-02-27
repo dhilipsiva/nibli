@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+bumpalo = "3"
 logos = "0.16.1"
 wit-bindgen-rt = "0.44.0"
 

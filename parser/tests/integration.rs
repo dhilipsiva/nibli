@@ -1,13 +1,14 @@
+use bumpalo::Bump;
 use parser_test::ast::*;
 use parser_test::grammar::{parse_tokens_to_ast, ParseResult};
 use parser_test::lexer::tokenize;
 use parser_test::preprocessor::preprocess;
 
 /// Parse a raw Lojban string through the full pipeline.
-fn parse(input: &str) -> ParsedText {
+fn parse<'a>(input: &str, arena: &'a Bump) -> ParsedText<'a> {
     let raw = tokenize(input);
     let normalized = preprocess(raw.into_iter(), input);
-    let result = parse_tokens_to_ast(&normalized, input);
+    let result = parse_tokens_to_ast(&normalized, input, arena);
     assert!(
         result.errors.is_empty(),
         "unexpected parse errors for {:?}: {:?}",
@@ -18,9 +19,10 @@ fn parse(input: &str) -> ParsedText {
 }
 
 fn parse_err(input: &str) -> String {
+    let arena = Bump::new();
     let raw = tokenize(input);
     let normalized = preprocess(raw.into_iter(), input);
-    let result = parse_tokens_to_ast(&normalized, input);
+    let result = parse_tokens_to_ast(&normalized, input, &arena);
     assert!(
         !result.errors.is_empty(),
         "expected parse error for {:?}",
@@ -30,14 +32,14 @@ fn parse_err(input: &str) -> String {
 }
 
 /// Parse and return the full result (for testing recovery).
-fn parse_result(input: &str) -> ParseResult {
+fn parse_result<'a>(input: &str, arena: &'a Bump) -> ParseResult<'a> {
     let raw = tokenize(input);
     let normalized = preprocess(raw.into_iter(), input);
-    parse_tokens_to_ast(&normalized, input)
+    parse_tokens_to_ast(&normalized, input, arena)
 }
 
 /// Helper: extract Bridi from a Sentence::Simple
-fn as_bridi(sentence: &Sentence) -> &Bridi {
+fn as_bridi<'a>(sentence: &'a Sentence<'a>) -> &'a Bridi<'a> {
     match sentence {
         Sentence::Simple(b) => b,
         other => panic!("expected Sentence::Simple, got {:?}", other),
@@ -48,7 +50,8 @@ fn as_bridi(sentence: &Sentence) -> &Bridi {
 
 #[test]
 fn simple_assertion() {
-    let p = parse("mi prami do");
+    let arena = Bump::new();
+    let p = parse("mi prami do", &arena);
     assert_eq!(p.sentences.len(), 1);
     let s = as_bridi(&p.sentences[0]);
     assert_eq!(s.selbri, Selbri::Root("prami".into()));
@@ -59,7 +62,8 @@ fn simple_assertion() {
 
 #[test]
 fn with_cu_separator() {
-    let p = parse("mi cu klama");
+    let arena = Bump::new();
+    let p = parse("mi cu klama", &arena);
     let s = as_bridi(&p.sentences[0]);
     assert_eq!(s.selbri, Selbri::Root("klama".into()));
     assert_eq!(s.head_terms.len(), 1);
@@ -68,7 +72,8 @@ fn with_cu_separator() {
 #[test]
 fn multiple_tail_sumti() {
     // mi klama do ti ta
-    let p = parse("mi klama do ti ta");
+    let arena = Bump::new();
+    let p = parse("mi klama do ti ta", &arena);
     let s = as_bridi(&p.sentences[0]);
     assert_eq!(s.tail_terms.len(), 3);
 }
@@ -77,7 +82,8 @@ fn multiple_tail_sumti() {
 
 #[test]
 fn two_sentences() {
-    let p = parse("mi prami do .i do prami mi");
+    let arena = Bump::new();
+    let p = parse("mi prami do .i do prami mi", &arena);
     assert_eq!(p.sentences.len(), 2);
     assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("prami".into()));
     assert_eq!(as_bridi(&p.sentences[1]).selbri, Selbri::Root("prami".into()));
@@ -93,7 +99,8 @@ fn two_sentences() {
 
 #[test]
 fn three_sentences() {
-    let p = parse("mi prami do .i do nelci mi .i mi klama");
+    let arena = Bump::new();
+    let p = parse("mi prami do .i do nelci mi .i mi klama", &arena);
     assert_eq!(p.sentences.len(), 3);
 }
 
@@ -101,7 +108,8 @@ fn three_sentences() {
 
 #[test]
 fn lo_description() {
-    let p = parse("mi nelci lo gerku");
+    let arena = Bump::new();
+    let p = parse("mi nelci lo gerku", &arena);
     let s = as_bridi(&p.sentences[0]);
     assert_eq!(s.tail_terms.len(), 1);
     match &s.tail_terms[0] {
@@ -115,7 +123,8 @@ fn lo_description() {
 
 #[test]
 fn le_description() {
-    let p = parse("mi nelci le mlatu");
+    let arena = Bump::new();
+    let p = parse("mi nelci le mlatu", &arena);
     match &as_bridi(&p.sentences[0]).tail_terms[0] {
         Sumti::Description { gadri, .. } => assert_eq!(*gadri, Gadri::Le),
         other => panic!("expected Description with Le, got {:?}", other),
@@ -124,7 +133,8 @@ fn le_description() {
 
 #[test]
 fn lo_with_ku() {
-    let p = parse("lo gerku ku cu klama");
+    let arena = Bump::new();
+    let p = parse("lo gerku ku cu klama", &arena);
     let s = as_bridi(&p.sentences[0]);
     assert_eq!(s.head_terms.len(), 1);
     match &s.head_terms[0] {
@@ -141,7 +151,8 @@ fn lo_with_ku() {
 
 #[test]
 fn la_name() {
-    let p = parse("la .djan. cu klama");
+    let arena = Bump::new();
+    let p = parse("la .djan. cu klama", &arena);
     let s = as_bridi(&p.sentences[0]);
     assert_eq!(s.head_terms, vec![Sumti::Name("djan".into())]);
     assert_eq!(s.selbri, Selbri::Root("klama".into()));
@@ -151,7 +162,8 @@ fn la_name() {
 
 #[test]
 fn explicit_place_tags() {
-    let p = parse("fe do fa mi prami");
+    let arena = Bump::new();
+    let p = parse("fe do fa mi prami", &arena);
     let s = as_bridi(&p.sentences[0]);
     assert_eq!(s.head_terms.len(), 2);
     match &s.head_terms[0] {
@@ -172,7 +184,8 @@ fn explicit_place_tags() {
 
 #[test]
 fn bridi_negation() {
-    let p = parse("mi na prami do");
+    let arena = Bump::new();
+    let p = parse("mi na prami do", &arena);
     let s = as_bridi(&p.sentences[0]);
     assert!(s.negated);
     assert_eq!(s.selbri, Selbri::Root("prami".into()));
@@ -180,7 +193,8 @@ fn bridi_negation() {
 
 #[test]
 fn bridi_negation_with_cu() {
-    let p = parse("mi cu na prami do");
+    let arena = Bump::new();
+    let p = parse("mi cu na prami do", &arena);
     let s = as_bridi(&p.sentences[0]);
     assert!(s.negated);
     assert_eq!(s.selbri, Selbri::Root("prami".into()));
@@ -198,7 +212,8 @@ fn na_before_sumti_errors() {
 #[test]
 fn bridi_negation_with_tail_description() {
     // mi na citka lo plise → negated bridi with tail description
-    let p = parse("mi na citka lo plise");
+    let arena = Bump::new();
+    let p = parse("mi na citka lo plise", &arena);
     let s = as_bridi(&p.sentences[0]);
     assert!(s.negated);
     assert_eq!(s.selbri, Selbri::Root("citka".into()));
@@ -217,7 +232,8 @@ fn bridi_negation_with_tail_description() {
 
 #[test]
 fn se_conversion() {
-    let p = parse("do se prami mi");
+    let arena = Bump::new();
+    let p = parse("do se prami mi", &arena);
     let s = as_bridi(&p.sentences[0]);
     match &s.selbri {
         Selbri::Converted(Conversion::Se, inner) => {
@@ -229,7 +245,8 @@ fn se_conversion() {
 
 #[test]
 fn te_conversion() {
-    let p = parse("ti te klama do mi");
+    let arena = Bump::new();
+    let p = parse("ti te klama do mi", &arena);
     match &as_bridi(&p.sentences[0]).selbri {
         Selbri::Converted(Conversion::Te, _) => {}
         other => panic!("expected Converted(Te), got {:?}", other),
@@ -241,7 +258,8 @@ fn te_conversion() {
 #[test]
 fn simple_tanru() {
     // sutra gerku = fast-type-of dog
-    let p = parse("mi sutra gerku");
+    let arena = Bump::new();
+    let p = parse("mi sutra gerku", &arena);
     match &as_bridi(&p.sentences[0]).selbri {
         Selbri::Tanru(modifier, head) => {
             assert_eq!(**modifier, Selbri::Root("sutra".into()));
@@ -254,7 +272,8 @@ fn simple_tanru() {
 #[test]
 fn triple_tanru_right_groups() {
     // barda sutra gerku = barda (sutra gerku) = big fast-dog
-    let p = parse("mi barda sutra gerku");
+    let arena = Bump::new();
+    let p = parse("mi barda sutra gerku", &arena);
     match &as_bridi(&p.sentences[0]).selbri {
         Selbri::Tanru(a, bc) => {
             assert_eq!(**a, Selbri::Root("barda".into()));
@@ -274,7 +293,8 @@ fn triple_tanru_right_groups() {
 
 #[test]
 fn be_clause() {
-    let p = parse("mi nelci be lo gerku");
+    let arena = Bump::new();
+    let p = parse("mi nelci be lo gerku", &arena);
     match &as_bridi(&p.sentences[0]).selbri {
         Selbri::WithArgs { core, args } => {
             assert_eq!(**core, Selbri::Root("nelci".into()));
@@ -286,7 +306,8 @@ fn be_clause() {
 
 #[test]
 fn be_bei_clause() {
-    let p = parse("mi klama be lo zarci bei do");
+    let arena = Bump::new();
+    let p = parse("mi klama be lo zarci bei do", &arena);
     match &as_bridi(&p.sentences[0]).selbri {
         Selbri::WithArgs { core, args } => {
             assert_eq!(**core, Selbri::Root("klama".into()));
@@ -300,7 +321,8 @@ fn be_bei_clause() {
 
 #[test]
 fn ke_grouping() {
-    let p = parse("mi ke sutra gerku ke'e");
+    let arena = Bump::new();
+    let p = parse("mi ke sutra gerku ke'e", &arena);
     match &as_bridi(&p.sentences[0]).selbri {
         Selbri::Grouped(inner) => match inner.as_ref() {
             Selbri::Tanru(_, _) => {}
@@ -314,7 +336,8 @@ fn ke_grouping() {
 
 #[test]
 fn je_connective() {
-    let p = parse("mi barda je xunre");
+    let arena = Bump::new();
+    let p = parse("mi barda je xunre", &arena);
     match &as_bridi(&p.sentences[0]).selbri {
         Selbri::Connected {
             left,
@@ -331,7 +354,8 @@ fn je_connective() {
 
 #[test]
 fn ja_connective() {
-    let p = parse("mi barda ja cmalu");
+    let arena = Bump::new();
+    let p = parse("mi barda ja cmalu", &arena);
     match &as_bridi(&p.sentences[0]).selbri {
         Selbri::Connected { connective, .. } => {
             assert_eq!(*connective, Connective::Ja);
@@ -344,7 +368,8 @@ fn ja_connective() {
 
 #[test]
 fn poi_relative_clause() {
-    let p = parse("mi nelci lo gerku poi barda");
+    let arena = Bump::new();
+    let p = parse("mi nelci lo gerku poi barda", &arena);
     let s = as_bridi(&p.sentences[0]);
     match &s.tail_terms[0] {
         Sumti::Restricted { inner, clause } => {
@@ -362,7 +387,8 @@ fn poi_relative_clause() {
 
 #[test]
 fn explicit_unspecified() {
-    let p = parse("mi prami zo'e");
+    let arena = Bump::new();
+    let p = parse("mi prami zo'e", &arena);
     assert_eq!(as_bridi(&p.sentences[0]).tail_terms, vec![Sumti::Unspecified]);
 }
 
@@ -371,14 +397,16 @@ fn explicit_unspecified() {
 #[test]
 fn si_erasure() {
     // "mi klama si prami do" → mi prami do (klama erased by si)
-    let p = parse("mi klama si prami do");
+    let arena = Bump::new();
+    let p = parse("mi klama si prami do", &arena);
     assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("prami".into()));
 }
 
 #[test]
 fn su_erasure() {
     // "mi klama su do prami mi" → do prami mi (everything before su erased)
-    let p = parse("mi klama su do prami mi");
+    let arena = Bump::new();
+    let p = parse("mi klama su do prami mi", &arena);
     assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("prami".into()));
     assert_eq!(
         as_bridi(&p.sentences[0]).head_terms,
@@ -390,7 +418,8 @@ fn su_erasure() {
 fn sa_erasure_gadri_class() {
     // "lo gerku cu klama sa lo mlatu cu sutra"
     // sa sees "lo" (LE class) → erases back to previous "lo" → result: "lo mlatu cu sutra"
-    let p = parse("lo gerku cu klama sa lo mlatu cu sutra");
+    let arena = Bump::new();
+    let p = parse("lo gerku cu klama sa lo mlatu cu sutra", &arena);
     assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("sutra".into()));
     match &as_bridi(&p.sentences[0]).head_terms[0] {
         Sumti::Description { gadri, inner } => {
@@ -404,7 +433,8 @@ fn sa_erasure_gadri_class() {
 #[test]
 fn sa_erasure_brivla_class() {
     // "mi klama sa prami do" → erases back to "klama" (Brivla class) → "mi prami do"
-    let p = parse("mi klama sa prami do");
+    let arena = Bump::new();
+    let p = parse("mi klama sa prami do", &arena);
     assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("prami".into()));
     assert_eq!(
         as_bridi(&p.sentences[0]).head_terms,
@@ -423,7 +453,8 @@ fn sa_erasure_no_match_fallback() {
     // Actually: "mi" + "lo gerku" → mi is head, "lo gerku" is also head, implicit go'i
     // Let's use a simpler case: "klama sa lo gerku" → no LE before sa → removes "klama"
     // → "lo gerku" → description with implicit go'i
-    let p = parse("klama sa lo gerku");
+    let arena = Bump::new();
+    let p = parse("klama sa lo gerku", &arena);
     // After fallback erase: "lo gerku" → observative with go'i and lo gerku as head term
     assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("go'i".into()));
 }
@@ -432,7 +463,8 @@ fn sa_erasure_no_match_fallback() {
 
 #[test]
 fn multi_sentence_with_descriptions() {
-    let p = parse("mi prami lo gerku .i lo mlatu cu nelci mi");
+    let arena = Bump::new();
+    let p = parse("mi prami lo gerku .i lo mlatu cu nelci mi", &arena);
     assert_eq!(p.sentences.len(), 2);
     assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("prami".into()));
     assert_eq!(as_bridi(&p.sentences[1]).selbri, Selbri::Root("nelci".into()));
@@ -440,7 +472,8 @@ fn multi_sentence_with_descriptions() {
 
 #[test]
 fn se_with_tanru() {
-    let p = parse("do se sutra klama");
+    let arena = Bump::new();
+    let p = parse("do se sutra klama", &arena);
     match &as_bridi(&p.sentences[0]).selbri {
         Selbri::Converted(Conversion::Se, inner) => match inner.as_ref() {
             Selbri::Tanru(_, _) => {}
@@ -455,7 +488,8 @@ fn se_with_tanru() {
 #[test]
 fn sumti_connective_e_full_pipeline() {
     // mi .e do klama — full text through lex→preprocess→parse
-    let p = parse("mi .e do klama");
+    let arena = Bump::new();
+    let p = parse("mi .e do klama", &arena);
     let s = as_bridi(&p.sentences[0]);
     match &s.head_terms[0] {
         Sumti::Connected {
@@ -476,7 +510,8 @@ fn sumti_connective_e_full_pipeline() {
 
 #[test]
 fn sumti_connective_a_full_pipeline() {
-    let p = parse("mi .a do klama");
+    let arena = Bump::new();
+    let p = parse("mi .a do klama", &arena);
     match &as_bridi(&p.sentences[0]).head_terms[0] {
         Sumti::Connected { connective: Connective::Ja, .. } => {}
         other => panic!("expected Connected(.a), got {:?}", other),
@@ -485,7 +520,8 @@ fn sumti_connective_a_full_pipeline() {
 
 #[test]
 fn sumti_connective_o_full_pipeline() {
-    let p = parse("mi .o do klama");
+    let arena = Bump::new();
+    let p = parse("mi .o do klama", &arena);
     match &as_bridi(&p.sentences[0]).head_terms[0] {
         Sumti::Connected { connective: Connective::Jo, .. } => {}
         other => panic!("expected Connected(.o), got {:?}", other),
@@ -494,7 +530,8 @@ fn sumti_connective_o_full_pipeline() {
 
 #[test]
 fn sumti_connective_u_full_pipeline() {
-    let p = parse("mi .u do klama");
+    let arena = Bump::new();
+    let p = parse("mi .u do klama", &arena);
     match &as_bridi(&p.sentences[0]).head_terms[0] {
         Sumti::Connected { connective: Connective::Ju, .. } => {}
         other => panic!("expected Connected(.u), got {:?}", other),
@@ -503,7 +540,8 @@ fn sumti_connective_u_full_pipeline() {
 
 #[test]
 fn sumti_connective_enai_full_pipeline() {
-    let p = parse("mi .enai do klama");
+    let arena = Bump::new();
+    let p = parse("mi .enai do klama", &arena);
     match &as_bridi(&p.sentences[0]).head_terms[0] {
         Sumti::Connected {
             connective: Connective::Je,
@@ -516,7 +554,8 @@ fn sumti_connective_enai_full_pipeline() {
 
 #[test]
 fn sumti_connective_anai_full_pipeline() {
-    let p = parse("mi .anai do klama");
+    let arena = Bump::new();
+    let p = parse("mi .anai do klama", &arena);
     match &as_bridi(&p.sentences[0]).head_terms[0] {
         Sumti::Connected {
             connective: Connective::Ja,
@@ -530,7 +569,8 @@ fn sumti_connective_anai_full_pipeline() {
 #[test]
 fn sumti_connective_descriptions_full_pipeline() {
     // lo gerku .e lo mlatu cu barda
-    let p = parse("lo gerku .e lo mlatu cu barda");
+    let arena = Bump::new();
+    let p = parse("lo gerku .e lo mlatu cu barda", &arena);
     let s = as_bridi(&p.sentences[0]);
     match &s.head_terms[0] {
         Sumti::Connected {
@@ -550,7 +590,8 @@ fn sumti_connective_descriptions_full_pipeline() {
 #[test]
 fn sumti_connective_in_tail_full_pipeline() {
     // mi nelci lo gerku .e lo mlatu
-    let p = parse("mi nelci lo gerku .e lo mlatu");
+    let arena = Bump::new();
+    let p = parse("mi nelci lo gerku .e lo mlatu", &arena);
     let s = as_bridi(&p.sentences[0]);
     match &s.tail_terms[0] {
         Sumti::Connected { connective: Connective::Je, .. } => {}
@@ -561,7 +602,8 @@ fn sumti_connective_in_tail_full_pipeline() {
 #[test]
 fn sumti_connective_does_not_eat_dot_i_full_pipeline() {
     // mi klama .i do prami — .i is a sentence separator, NOT a connective
-    let p = parse("mi klama .i do prami");
+    let arena = Bump::new();
+    let p = parse("mi klama .i do prami", &arena);
     assert_eq!(p.sentences.len(), 2);
     assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("klama".into()));
     assert_eq!(as_bridi(&p.sentences[1]).selbri, Selbri::Root("prami".into()));
@@ -570,7 +612,8 @@ fn sumti_connective_does_not_eat_dot_i_full_pipeline() {
 #[test]
 fn sumti_connective_chained_full_pipeline() {
     // mi .e do .e di klama → right-associative
-    let p = parse("mi .e do .e di klama");
+    let arena = Bump::new();
+    let p = parse("mi .e do .e di klama", &arena);
     let s = as_bridi(&p.sentences[0]);
     match &s.head_terms[0] {
         Sumti::Connected {
@@ -601,7 +644,8 @@ fn sumti_connective_chained_full_pipeline() {
 #[test]
 fn sumti_connective_with_names_full_pipeline() {
     // la .djan. .e la .meris. cu klama
-    let p = parse("la .djan. .e la .meris. cu klama");
+    let arena = Bump::new();
+    let p = parse("la .djan. .e la .meris. cu klama", &arena);
     let s = as_bridi(&p.sentences[0]);
     match &s.head_terms[0] {
         Sumti::Connected {
@@ -621,7 +665,8 @@ fn sumti_connective_with_names_full_pipeline() {
 #[test]
 fn sumti_connective_with_multi_sentence() {
     // mi .e do klama .i lo gerku .a lo mlatu cu barda
-    let p = parse("mi .e do klama .i lo gerku .a lo mlatu cu barda");
+    let arena = Bump::new();
+    let p = parse("mi .e do klama .i lo gerku .a lo mlatu cu barda", &arena);
     assert_eq!(p.sentences.len(), 2);
 
     // First sentence: mi .e do klama
@@ -642,7 +687,8 @@ fn sumti_connective_with_multi_sentence() {
 #[test]
 fn error_recovery_skips_bad_sentence() {
     // Middle sentence "ke ke ke" is malformed; first and third are fine
-    let r = parse_result("mi klama .i ke ke ke .i do prami mi");
+    let arena = Bump::new();
+    let r = parse_result("mi klama .i ke ke ke .i do prami mi", &arena);
     assert_eq!(r.parsed.sentences.len(), 2);
     assert_eq!(r.errors.len(), 1);
     // First sentence: mi klama
@@ -656,14 +702,16 @@ fn error_recovery_skips_bad_sentence() {
 #[test]
 fn error_recovery_all_sentences_fail() {
     // Both sentences are malformed
-    let r = parse_result("ke ke .i ke ke");
+    let arena = Bump::new();
+    let r = parse_result("ke ke .i ke ke", &arena);
     assert_eq!(r.parsed.sentences.len(), 0);
     assert_eq!(r.errors.len(), 2);
 }
 
 #[test]
 fn error_recovery_empty_input() {
-    let r = parse_result("");
+    let arena = Bump::new();
+    let r = parse_result("", &arena);
     assert_eq!(r.parsed.sentences.len(), 0);
     assert_eq!(r.errors.len(), 1);
     assert!(r.errors[0].message.contains("empty input"));
@@ -672,7 +720,8 @@ fn error_recovery_empty_input() {
 #[test]
 fn error_reports_line_column() {
     // Error on line 2 ("ke ke ke" is malformed)
-    let r = parse_result("mi klama\n.i ke ke ke\n.i do prami mi");
+    let arena = Bump::new();
+    let r = parse_result("mi klama\n.i ke ke ke\n.i do prami mi", &arena);
     assert_eq!(r.parsed.sentences.len(), 2);
     assert_eq!(r.errors.len(), 1);
     assert_eq!(r.errors[0].line, 2, "error should be on line 2");
@@ -682,14 +731,16 @@ fn error_reports_line_column() {
 #[test]
 fn error_reports_first_line() {
     // Error on line 1
-    let r = parse_result("ke ke ke");
+    let arena = Bump::new();
+    let r = parse_result("ke ke ke", &arena);
     assert_eq!(r.errors.len(), 1);
     assert_eq!(r.errors[0].line, 1);
 }
 
 #[test]
 fn error_display_includes_line_column() {
-    let r = parse_result("ke ke ke");
+    let arena = Bump::new();
+    let r = parse_result("ke ke ke", &arena);
     let msg = r.errors[0].to_string();
     // Format should be "line:col: message"
     assert!(msg.contains(':'), "error display should contain line:col separator");

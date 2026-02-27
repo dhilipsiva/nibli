@@ -48,11 +48,11 @@ pub enum BaiTag {
 
 /// Modal tag: either a fixed BAI shortcut or a fi'o-based custom tag
 #[derive(Debug, Clone, PartialEq)]
-pub enum ModalTag {
+pub enum ModalTag<'a> {
     /// Fixed BAI cmavo (ri'a, ni'i, etc.)
     Fixed(BaiTag),
     /// Generic modal: fi'o + selbri [+ fe'u]
-    Fio(Box<Selbri>),
+    Fio(&'a Selbri<'a>),
 }
 
 /// SE-series conversion: permutes argument places
@@ -105,12 +105,12 @@ pub enum AbstractionKind {
 
 /// A term (argument slot) in a bridi.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Sumti {
+pub enum Sumti<'a> {
     /// Pro-sumti: mi, do, ko'a..ko'u, da/de/di, ti/ta/tu, ri/ra/ru, etc.
     ProSumti(String),
 
     /// Gadri-description: lo/le/la/ro lo/ro le + selbri [+ ku]
-    Description { gadri: Gadri, inner: Box<Selbri> },
+    Description { gadri: Gadri, inner: &'a Selbri<'a> },
 
     /// la + cmevla name(s)
     Name(String),
@@ -122,16 +122,16 @@ pub enum Sumti {
     Unspecified,
 
     /// Place-tagged sumti: fa/fe/fi/fo/fu + sumti
-    Tagged(PlaceTag, Box<Sumti>),
+    Tagged(PlaceTag, &'a Sumti<'a>),
 
     /// Modal-tagged sumti: BAI tag or fi'o + sumti
     /// Creates a conjoined modal predication rather than filling a place
-    ModalTagged(ModalTag, Box<Sumti>),
+    ModalTagged(ModalTag<'a>, &'a Sumti<'a>),
 
     /// Sumti with relative clause: sumti + (poi|noi) sentence [ku'o]
     Restricted {
-        inner: Box<Sumti>,
-        clause: RelClause,
+        inner: &'a Sumti<'a>,
+        clause: RelClause<'a>,
     },
     /// Numeric literal: li + PA digits
     Number(f64),
@@ -139,11 +139,11 @@ pub enum Sumti {
     /// Sumti connective: sumti + (.e|.a|.o|.u)[nai] + sumti
     /// Maps: .e→Je (∧), .a→Ja (∨), .o→Jo (↔), .u→Ju (⊕)
     Connected {
-        left: Box<Sumti>,
+        left: &'a Sumti<'a>,
         connective: Connective,
         /// If true, the RIGHT operand is negated (the `nai` suffix)
         right_negated: bool,
-        right: Box<Sumti>,
+        right: &'a Sumti<'a>,
     },
 
     /// Numeric quantifier + description: <PA> lo/le selbri [ku]
@@ -151,20 +151,20 @@ pub enum Sumti {
     QuantifiedDescription {
         count: u32,
         gadri: Gadri,
-        inner: Box<Selbri>,
+        inner: &'a Selbri<'a>,
     },
 }
 
 /// A relative clause attached to a sumti.
 #[derive(Debug, Clone, PartialEq)]
-pub struct RelClause {
+pub struct RelClause<'a> {
     pub kind: RelClauseKind,
-    pub body: Box<Sentence>,
+    pub body: &'a Sentence<'a>,
 }
 
 /// The main predicate/relation in a bridi.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Selbri {
+pub enum Selbri<'a> {
     /// Single root word (gismu or lujvo)
     Root(String),
 
@@ -173,30 +173,30 @@ pub enum Selbri {
 
     /// Tanru: modifier + head (right-grouping)
     /// e.g., "sutra gerku" → Tanru(Root("sutra"), Root("gerku"))
-    Tanru(Box<Selbri>, Box<Selbri>),
+    Tanru(&'a Selbri<'a>, &'a Selbri<'a>),
 
     /// SE-conversion: se/te/ve/xe + selbri
-    Converted(Conversion, Box<Selbri>),
+    Converted(Conversion, &'a Selbri<'a>),
 
     /// Bridi negation: na + selbri
-    Negated(Box<Selbri>),
+    Negated(&'a Selbri<'a>),
 
     /// Explicit grouping: ke + selbri + [ke'e]
-    Grouped(Box<Selbri>),
+    Grouped(&'a Selbri<'a>),
 
     /// Selbri with bound arguments: selbri + be sumti (bei sumti)* [be'o]
-    WithArgs { core: Box<Selbri>, args: Vec<Sumti> },
+    WithArgs { core: &'a Selbri<'a>, args: Vec<Sumti<'a>> },
 
     /// Selbri connective: selbri + (je|ja|jo|ju) + selbri
     Connected {
-        left: Box<Selbri>,
+        left: &'a Selbri<'a>,
         connective: Connective,
-        right: Box<Selbri>,
+        right: &'a Selbri<'a>,
     },
 
     /// Abstraction: (nu|du'u|ka|ni|si'o) + bridi [+ kei]
     /// Reifies a proposition/event/property/quantity/concept as a 1-place selbri.
-    Abstraction(AbstractionKind, Box<Sentence>),
+    Abstraction(AbstractionKind, &'a Sentence<'a>),
 }
 
 /// Tense marker (PU selma'o)
@@ -216,25 +216,25 @@ pub enum Attitudinal {
 
 /// A single bridi (predication).
 #[derive(Debug, Clone, PartialEq)]
-pub struct Bridi {
-    pub selbri: Selbri,
-    pub head_terms: Vec<Sumti>, // terms before selbri (cu-separated)
-    pub tail_terms: Vec<Sumti>, // terms after selbri
-    pub negated: bool,          // sentence-level na (before all terms)
+pub struct Bridi<'a> {
+    pub selbri: Selbri<'a>,
+    pub head_terms: Vec<Sumti<'a>>, // terms before selbri (cu-separated)
+    pub tail_terms: Vec<Sumti<'a>>, // terms after selbri
+    pub negated: bool,              // sentence-level na (before all terms)
     pub tense: Option<Tense>,
     pub attitudinal: Option<Attitudinal>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Sentence {
+pub enum Sentence<'a> {
     /// A single, simple predicate relationship
-    Simple(Bridi),
+    Simple(Bridi<'a>),
     /// Forethought connection: (Connective, Left Sentence, Right Sentence)
     /// Example: ganai A gi B -> Connected(Implies, A, B)
     Connected {
         connective: SentenceConnective, // New enum for gi'i, ganai, etc.
-        left: Box<Sentence>,
-        right: Box<Sentence>,
+        left: &'a Sentence<'a>,
+        right: &'a Sentence<'a>,
     },
 }
 
@@ -253,6 +253,6 @@ pub enum SentenceConnective {
 
 // Update ParsedText to hold recursive Sentences, not flat Bridis
 #[derive(Debug)]
-pub struct ParsedText {
-    pub sentences: Vec<Sentence>,
+pub struct ParsedText<'a> {
+    pub sentences: Vec<Sentence<'a>>,
 }

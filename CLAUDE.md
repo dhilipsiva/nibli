@@ -96,7 +96,7 @@ Before every commit, always:
 
 ## Current Status
 
-Completed through all Tier 1 items + full Tier 2 + full Tier 3 (lujvo recognition, observative sentences/go'i, `sa` proper implementation).
+Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator).
 
 **Implemented features:**
 - Lexer + recursive-descent parser (gismu, cmavo, cmevla, lujvo)
@@ -140,5 +140,6 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 (lujvo recognitio
 - WIT typed error variants: shared `nibli-error` variant (syntax/semantic/reasoning/backend) replaces `Result<_, String>` across all 14 WIT functions; `syntax-detail` record carries line:column; orchestrator propagates via `?`; runner pattern-matches for structured `[Syntax Error]`/`[Semantic Error]`/`[Reasoning Error]`/`[Backend Error]` REPL output
 - WASI capability sandboxing: replaced `inherit_stdio()` with `inherit_stdout().inherit_stderr()` — WASM components get only stdout/stderr (for diagnostic prints), no stdin, no filesystem, no network, no env vars
 - Clone-free Jo/Ju connectives: added `Biconditional` and `Xor` variants to `LogicalForm` IR — each operand stored once, expansion to And/Or/Not happens during flattening where operands are u32 indices (zero-cost copy); eliminated 6 deep `.clone()` calls across 3 compilation sites
+- Arena-allocated parser AST: bumpalo `Bump` arena replaces all `Box<T>` with `&'arena T` in AST types; 24 heap allocations per parse batched into contiguous arena chunks; arena created per `parse_text()` call, freed in one shot after flattening; enables memory reuse via `Bump::reset()` for batch corpus processing
 
-**Next up:** Tier 4.9 (Arena allocator for parser AST)
+**Next up:** Tier 5.1 (Non-monotonic reasoning / belief revision)

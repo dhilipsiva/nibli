@@ -1,18 +1,5 @@
 # Nibli Roadmap
 
-## Tier 4 — Production Reasoning Features
-
-Features needed for the engine to be genuinely useful (not just correct) in real applications.
-
-### 4.9 Arena allocator for parser AST
-
-Batch processing of corpora will stress the allocator. Arena allocation reduces fragmentation and improves throughput.
-
-**Crate:** parser
-**Complexity:** medium
-
----
-
 ## Tier 5 — Advanced Reasoning
 
 Features for complex domains that require deeper logical machinery.
