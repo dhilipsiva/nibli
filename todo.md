@@ -4,13 +4,6 @@
 
 Features needed for the engine to be genuinely useful (not just correct) in real applications.
 
-### 4.8 Remove deep clones in `apply_selbri` for `Jo`/`Ju` connectives
-
-Restructure to avoid cloning recursive `LogicalForm` trees.
-
-**Crate:** semantics/semantic.rs lines 421-438
-**Complexity:** low
-
 ### 4.9 Arena allocator for parser AST
 
 Batch processing of corpora will stress the allocator. Arena allocation reduces fragmentation and improves throughput.

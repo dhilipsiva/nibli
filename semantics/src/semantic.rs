@@ -307,7 +307,10 @@ impl SemanticCompiler {
                     0
                 }
             }
-            LogicalForm::And(l, r) | LogicalForm::Or(l, r) => {
+            LogicalForm::And(l, r)
+            | LogicalForm::Or(l, r)
+            | LogicalForm::Biconditional(l, r)
+            | LogicalForm::Xor(l, r) => {
                 Self::count_unspecified_predicates(l) + Self::count_unspecified_predicates(r)
             }
             LogicalForm::Not(inner)
@@ -348,6 +351,14 @@ impl SemanticCompiler {
                 Box::new(Self::inject_variable(*r, var)),
             ),
             LogicalForm::Or(l, r) => LogicalForm::Or(
+                Box::new(Self::inject_variable(*l, var)),
+                Box::new(Self::inject_variable(*r, var)),
+            ),
+            LogicalForm::Biconditional(l, r) => LogicalForm::Biconditional(
+                Box::new(Self::inject_variable(*l, var)),
+                Box::new(Self::inject_variable(*r, var)),
+            ),
+            LogicalForm::Xor(l, r) => LogicalForm::Xor(
                 Box::new(Self::inject_variable(*l, var)),
                 Box::new(Self::inject_variable(*r, var)),
             ),
@@ -559,23 +570,11 @@ impl SemanticCompiler {
                     Connective::Je => LogicalForm::And(Box::new(left), Box::new(right)),
                     Connective::Ja => LogicalForm::Or(Box::new(left), Box::new(right)),
                     Connective::Jo => {
-                        let not_l = LogicalForm::Not(Box::new(left.clone()));
-                        let not_r = LogicalForm::Not(Box::new(right.clone()));
-                        LogicalForm::And(
-                            Box::new(LogicalForm::Or(Box::new(not_l), Box::new(right))),
-                            Box::new(LogicalForm::Or(Box::new(not_r), Box::new(left))),
-                        )
+                        LogicalForm::Biconditional(Box::new(left), Box::new(right))
                     }
-                    Connective::Ju => LogicalForm::And(
-                        Box::new(LogicalForm::Or(
-                            Box::new(left.clone()),
-                            Box::new(right.clone()),
-                        )),
-                        Box::new(LogicalForm::Not(Box::new(LogicalForm::And(
-                            Box::new(left),
-                            Box::new(right),
-                        )))),
-                    ),
+                    Connective::Ju => {
+                        LogicalForm::Xor(Box::new(left), Box::new(right))
+                    }
                 }
             }
 
@@ -688,26 +687,10 @@ impl SemanticCompiler {
                     Connective::Je => LogicalForm::And(Box::new(left_form), Box::new(right_form)),
                     Connective::Ja => LogicalForm::Or(Box::new(left_form), Box::new(right_form)),
                     Connective::Jo => {
-                        // Biconditional: (A → B) ∧ (B → A)
-                        let not_l = LogicalForm::Not(Box::new(left_form.clone()));
-                        let not_r = LogicalForm::Not(Box::new(right_form.clone()));
-                        LogicalForm::And(
-                            Box::new(LogicalForm::Or(Box::new(not_l), Box::new(right_form))),
-                            Box::new(LogicalForm::Or(Box::new(not_r), Box::new(left_form))),
-                        )
+                        LogicalForm::Biconditional(Box::new(left_form), Box::new(right_form))
                     }
                     Connective::Ju => {
-                        // XOR: (A ∨ B) ∧ ¬(A ∧ B)
-                        LogicalForm::And(
-                            Box::new(LogicalForm::Or(
-                                Box::new(left_form.clone()),
-                                Box::new(right_form.clone()),
-                            )),
-                            Box::new(LogicalForm::Not(Box::new(LogicalForm::And(
-                                Box::new(left_form),
-                                Box::new(right_form),
-                            )))),
-                        )
+                        LogicalForm::Xor(Box::new(left_form), Box::new(right_form))
                     }
                 };
             }
@@ -952,26 +935,10 @@ impl SemanticCompiler {
                             Connective::Je => LogicalForm::And(Box::new(l), Box::new(r)),
                             Connective::Ja => LogicalForm::Or(Box::new(l), Box::new(r)),
                             Connective::Jo => {
-                                // Biconditional: (¬L ∨ R) ∧ (¬R ∨ L)
-                                let not_l = LogicalForm::Not(Box::new(l.clone()));
-                                let not_r = LogicalForm::Not(Box::new(r.clone()));
-                                LogicalForm::And(
-                                    Box::new(LogicalForm::Or(Box::new(not_l), Box::new(r))),
-                                    Box::new(LogicalForm::Or(Box::new(not_r), Box::new(l))),
-                                )
+                                LogicalForm::Biconditional(Box::new(l), Box::new(r))
                             }
                             Connective::Ju => {
-                                // XOR: (L ∨ R) ∧ ¬(L ∧ R)
-                                LogicalForm::And(
-                                    Box::new(LogicalForm::Or(
-                                        Box::new(l.clone()),
-                                        Box::new(r.clone()),
-                                    )),
-                                    Box::new(LogicalForm::Not(Box::new(LogicalForm::And(
-                                        Box::new(l),
-                                        Box::new(r),
-                                    )))),
-                                )
+                                LogicalForm::Xor(Box::new(l), Box::new(r))
                             }
                         }
                     }
@@ -1110,14 +1077,12 @@ mod tests {
         };
 
         let (form, _) = compile_one(selbris, sumtis, bridi);
-        // Biconditional is And(Or(Not(L), R), Or(Not(R), L))
-        match &form {
-            LogicalForm::And(left, right) => {
-                assert!(matches!(left.as_ref(), LogicalForm::Or(_, _)));
-                assert!(matches!(right.as_ref(), LogicalForm::Or(_, _)));
-            }
-            other => panic!("expected And(Or, Or) biconditional, got {:?}", other),
-        }
+        // Biconditional stored as first-class IR node (expanded at flattening)
+        assert!(
+            matches!(&form, LogicalForm::Biconditional(_, _)),
+            "expected Biconditional, got {:?}",
+            form
+        );
     }
 
     #[test]
@@ -1139,14 +1104,12 @@ mod tests {
         };
 
         let (form, _) = compile_one(selbris, sumtis, bridi);
-        // XOR is And(Or(L, R), Not(And(L, R)))
-        match &form {
-            LogicalForm::And(or_part, not_part) => {
-                assert!(matches!(or_part.as_ref(), LogicalForm::Or(_, _)));
-                assert!(matches!(not_part.as_ref(), LogicalForm::Not(_)));
-            }
-            other => panic!("expected And(Or, Not(And)) XOR, got {:?}", other),
-        }
+        // XOR stored as first-class IR node (expanded at flattening)
+        assert!(
+            matches!(&form, LogicalForm::Xor(_, _)),
+            "expected Xor, got {:?}",
+            form
+        );
     }
 
     #[test]
@@ -2116,24 +2079,14 @@ mod tests {
 
     #[test]
     fn test_afterthought_jo_compiles_to_biconditional() {
-        // .i jo = (¬L ∨ R) ∧ (¬R ∨ L)
+        // .i jo → Biconditional IR node (expanded at flattening)
         let conn = SentenceConnective::Afterthought((false, Connective::Jo, false));
         let (form, _) = compile_connected(conn, "klama", "mi", "prami", "do");
-        match &form {
-            LogicalForm::And(left, right) => {
-                assert!(
-                    matches!(left.as_ref(), LogicalForm::Or(_, _)),
-                    "expected Or on left of And, got {:?}",
-                    left
-                );
-                assert!(
-                    matches!(right.as_ref(), LogicalForm::Or(_, _)),
-                    "expected Or on right of And, got {:?}",
-                    right
-                );
-            }
-            other => panic!("expected And(Or(_,_), Or(_,_)), got {:?}", other),
-        }
+        assert!(
+            matches!(&form, LogicalForm::Biconditional(_, _)),
+            "expected Biconditional, got {:?}",
+            form
+        );
     }
 
     // ─── ma question pro-sumti tests ─────────────────────────────

@@ -44,4 +44,8 @@ pub enum LogicalForm {
         count: u32,
         body: Box<LogicalForm>,
     },
+    /// Biconditional: A ↔ B  (expanded at flattening to And(Or(Not(A), B), Or(Not(B), A)))
+    Biconditional(Box<LogicalForm>, Box<LogicalForm>),
+    /// Exclusive or: A ⊕ B  (expanded at flattening to And(Or(A, B), Not(And(A, B))))
+    Xor(Box<LogicalForm>, Box<LogicalForm>),
 }

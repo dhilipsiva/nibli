@@ -139,5 +139,6 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 (lujvo recognitio
 - Guarded conjunction introduction: egglog rule derives `And(A, B)` when both A, B are atomic `Pred` forms sharing an `InDomain` entity; `PredHasEntity` helper relation extracts entities from argument positions x1-x3; prevents combinatorial explosion by excluding `(Zoe)` and non-entity terms
 - WIT typed error variants: shared `nibli-error` variant (syntax/semantic/reasoning/backend) replaces `Result<_, String>` across all 14 WIT functions; `syntax-detail` record carries line:column; orchestrator propagates via `?`; runner pattern-matches for structured `[Syntax Error]`/`[Semantic Error]`/`[Reasoning Error]`/`[Backend Error]` REPL output
 - WASI capability sandboxing: replaced `inherit_stdio()` with `inherit_stdout().inherit_stderr()` — WASM components get only stdout/stderr (for diagnostic prints), no stdin, no filesystem, no network, no env vars
+- Clone-free Jo/Ju connectives: added `Biconditional` and `Xor` variants to `LogicalForm` IR — each operand stored once, expansion to And/Or/Not happens during flattening where operands are u32 indices (zero-cost copy); eliminated 6 deep `.clone()` calls across 3 compilation sites
 
-**Next up:** Tier 4.8 (Remove deep clones in apply_selbri for Jo/Ju connectives)
+**Next up:** Tier 4.9 (Arena allocator for parser AST)

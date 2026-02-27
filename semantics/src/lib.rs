@@ -143,6 +143,36 @@ fn flatten_form(form: &LogicalForm, nodes: &mut Vec<LogicNode>, interner: &lasso
             )));
             id
         }
+        LogicalForm::Biconditional(left, right) => {
+            // Expand A ↔ B to (¬A ∨ B) ∧ (¬B ∨ A) using shared sub-tree indices
+            let l_id = flatten_form(left, nodes, interner);
+            let r_id = flatten_form(right, nodes, interner);
+            let not_l = nodes.len() as u32;
+            nodes.push(LogicNode::NotNode(l_id));
+            let not_r = nodes.len() as u32;
+            nodes.push(LogicNode::NotNode(r_id));
+            let impl1 = nodes.len() as u32;
+            nodes.push(LogicNode::OrNode((not_l, r_id)));
+            let impl2 = nodes.len() as u32;
+            nodes.push(LogicNode::OrNode((not_r, l_id)));
+            let id = nodes.len() as u32;
+            nodes.push(LogicNode::AndNode((impl1, impl2)));
+            id
+        }
+        LogicalForm::Xor(left, right) => {
+            // Expand A ⊕ B to (A ∨ B) ∧ ¬(A ∧ B) using shared sub-tree indices
+            let l_id = flatten_form(left, nodes, interner);
+            let r_id = flatten_form(right, nodes, interner);
+            let or_id = nodes.len() as u32;
+            nodes.push(LogicNode::OrNode((l_id, r_id)));
+            let and_id = nodes.len() as u32;
+            nodes.push(LogicNode::AndNode((l_id, r_id)));
+            let not_and = nodes.len() as u32;
+            nodes.push(LogicNode::NotNode(and_id));
+            let id = nodes.len() as u32;
+            nodes.push(LogicNode::AndNode((or_id, not_and)));
+            id
+        }
     }
 }
 
