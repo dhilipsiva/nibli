@@ -414,8 +414,21 @@ impl GuestSession for Session {
     }
 
     fn assert_text(&self, input: String) -> Result<u32, NibliError> {
-        let (mut buf, new_last, _warnings) =
+        let (mut buf, new_last, warnings) =
             compile_pipeline(&input, &self.last_relation.borrow())?;
+        // Abort entire assertion if any sentence failed to parse.
+        // Partial assertion is unsound: dropped constraints can lead to wrong proofs.
+        if !warnings.is_empty() {
+            return Err(NibliError::Syntax(SyntaxDetail {
+                message: format!(
+                    "Assertion aborted: {} sentence(s) failed to parse: {}",
+                    warnings.len(),
+                    warnings.join("; ")
+                ),
+                line: 0,
+                column: 0,
+            }));
+        }
         transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
         self.kb.assert_fact(&buf)?;
         *self.last_relation.borrow_mut() = new_last;

@@ -6,16 +6,7 @@ Single-phase backlog ordered by severity: soundness bugs first, then safety, the
 
 ## Soundness Bugs
 
-### S1. Silent partial-parse assertion
-
-When a multi-sentence text has parse failures, `compile_pipeline` asserts the successfully parsed sentences and discards the failures. Warnings are collected but callers (`assert_text`, `query_text`, etc.) discard them with `_warnings`. The user is never told a constraint was dropped.
-
-**Fix:** If any sentence in a multi-sentence assertion fails to parse, abort the entire transaction. Return an error containing both the partial results and the parse errors so the caller can decide policy. For queries (read-only), partial parse is acceptable with warnings surfaced to the user.
-
-**Crate:** orchestrator/lib.rs (`compile_pipeline`, all call sites)
-**Severity:** critical — incomplete KB leads to unsound proofs
-
-### S2. Existential introduction gap
+### S1. Existential introduction gap
 
 `ro lo gerku cu danlu` then `? lo gerku cu danlu` returns FALSE. Engine lacks ∀x.P(x) ⊢ ∃x.P(x) bridging when domain is non-empty. The universal rule fires per entity, but querying via existential over the same predicate doesn't find witnesses if no entity was explicitly asserted for the restrictor.
 
