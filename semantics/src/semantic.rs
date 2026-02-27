@@ -42,6 +42,9 @@ pub struct SemanticCompiler {
     /// an independent variable (unlike da/de/di which co-refer). These are
     /// wrapped in ∃ during quantifier closure.
     ma_vars: Vec<lasso::Spur>,
+    /// Accumulated semantic errors (e.g., ambiguous inject_variable).
+    /// Checked after compilation; if non-empty, compile_buffer returns error.
+    pub errors: Vec<String>,
 }
 
 impl SemanticCompiler {
@@ -53,6 +56,7 @@ impl SemanticCompiler {
             kea_used: false,
             ka_open_var: None,
             ma_vars: Vec::new(),
+            errors: Vec::new(),
         }
     }
 
@@ -266,12 +270,13 @@ impl SemanticCompiler {
                         // each predicate it can reach.
                         let unspec_count = Self::count_unspecified_predicates(&rel_body);
                         if unspec_count > 1 {
-                            eprintln!(
-                                "[warning] Relative clause has {} predicates with unspecified slots; \
-                                 implicit variable injection is ambiguous. Use explicit ke'a for \
-                                 precise control.",
+                            // Ambiguous injection — reject rather than silently produce wrong FOL.
+                            self.errors.push(format!(
+                                "Relative clause has {} predicates with unspecified slots; \
+                                 implicit variable injection is ambiguous. Use explicit ke'a \
+                                 for precise control.",
                                 unspec_count
-                            );
+                            ));
                         }
                         last.restrictor = Some(Self::inject_variable(rel_body, last.var));
                     }
@@ -952,7 +957,8 @@ impl SemanticCompiler {
 mod tests {
     use super::*;
     use crate::bindings::lojban::nesy::ast_types::{
-        Bridi, Connective, Selbri, Sentence, SentenceConnective, Sumti,
+        Bridi, Connective, Gadri, RelClause, RelClauseKind, Selbri, Sentence,
+        SentenceConnective, Sumti,
     };
     use crate::ir::{LogicalForm, LogicalTerm};
 
@@ -2177,6 +2183,290 @@ mod tests {
                 }
             }
             other => panic!("expected outer Exists, got {:?}", other),
+        }
+    }
+
+    // ─── inject_variable ambiguity tests ────────────────────────
+
+    /// Helper: compile a full sentence (not just bridi) to test rel clause handling.
+    fn compile_sentence_full(
+        selbris: Vec<Selbri>,
+        sumtis: Vec<Sumti>,
+        sentences: Vec<Sentence>,
+    ) -> (LogicalForm, SemanticCompiler) {
+        let mut compiler = SemanticCompiler::new();
+        let form = compiler.compile_sentence(0, &selbris, &sumtis, &sentences);
+        (form, compiler)
+    }
+
+    #[test]
+    fn test_inject_variable_single_predicate_no_error() {
+        // lo gerku poi barda cu klama
+        // Rel clause body "barda" has only 1 predicate with unspecified slot — no ambiguity.
+        //
+        // Buffer layout:
+        //   selbris: [0: gerku, 1: barda, 2: klama]
+        //   sumtis:  [0: Description(Lo, 0), 1: Restricted(0, poi body=1)]
+        //   sentences: [0: Simple(klama, head=[1]), 1: Simple(barda, head=[])]
+        let selbris = vec![
+            Selbri::Root("gerku".into()), // 0
+            Selbri::Root("barda".into()), // 1
+            Selbri::Root("klama".into()), // 2
+        ];
+        let sumtis = vec![
+            Sumti::Description((Gadri::Lo, 0)),  // 0: lo gerku
+            Sumti::Restricted((
+                0,
+                RelClause {
+                    kind: RelClauseKind::Poi,
+                    body_sentence: 1,
+                },
+            )), // 1: lo gerku poi barda
+        ];
+        let sentences = vec![
+            Sentence::Simple(Bridi {
+                relation: 2,
+                head_terms: vec![1],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+            Sentence::Simple(Bridi {
+                relation: 1,
+                head_terms: vec![],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+        ];
+
+        let (_form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        // No errors — single predicate is unambiguous
+        assert!(compiler.errors.is_empty(), "Expected no errors, got: {:?}", compiler.errors);
+    }
+
+    #[test]
+    fn test_inject_variable_nested_description_produces_error() {
+        // lo gerku poi lo mlatu cu barda
+        // Rel clause body has 2 predicates with unspecified slots:
+        //   mlatu(?) from the inner description + barda(?) from the main predicate.
+        // This should produce a semantic error.
+        //
+        // Buffer layout:
+        //   selbris: [0: gerku, 1: mlatu, 2: barda]
+        //   sumtis:  [0: Description(Lo, 0), 1: Description(Lo, 1), 2: Restricted(0, poi body=1)]
+        //   sentences: [0: Simple(barda, head=[2]), 1: Simple(barda, head=[1])]
+        //
+        // The rel clause body sentence (1) is: "lo mlatu cu barda"
+        //   → barda(lo_mlatu, ...) where lo_mlatu introduces ∃x.(mlatu(x) ∧ barda(x, ...))
+        //   But mlatu has unspecified slot AND barda has unspecified slot
+        let selbris = vec![
+            Selbri::Root("gerku".into()), // 0
+            Selbri::Root("mlatu".into()), // 1
+            Selbri::Root("barda".into()), // 2
+        ];
+        let sumtis = vec![
+            Sumti::Description((Gadri::Lo, 0)),  // 0: lo gerku
+            Sumti::Description((Gadri::Lo, 1)),  // 1: lo mlatu
+            Sumti::Restricted((
+                0,
+                RelClause {
+                    kind: RelClauseKind::Poi,
+                    body_sentence: 1,
+                },
+            )), // 2: lo gerku poi ...
+        ];
+        let sentences = vec![
+            Sentence::Simple(Bridi {
+                relation: 2, // barda (main sentence)
+                head_terms: vec![2], // lo gerku poi ...
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+            Sentence::Simple(Bridi {
+                relation: 2, // barda (rel clause body: lo mlatu cu barda)
+                head_terms: vec![1], // lo mlatu
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+        ];
+
+        let (_form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        // Should have exactly one error about ambiguous injection
+        assert_eq!(compiler.errors.len(), 1, "Expected 1 error, got: {:?}", compiler.errors);
+        assert!(
+            compiler.errors[0].contains("ambiguous"),
+            "Error should mention 'ambiguous': {}",
+            compiler.errors[0]
+        );
+        assert!(
+            compiler.errors[0].contains("ke'a"),
+            "Error should mention ke'a: {}",
+            compiler.errors[0]
+        );
+    }
+
+    #[test]
+    fn test_inject_variable_with_explicit_kea_no_error() {
+        // lo gerku poi ke'a barda cu klama
+        // ke'a used explicitly — no injection needed, no error.
+        //
+        // Buffer layout:
+        //   selbris: [0: gerku, 1: barda, 2: klama]
+        //   sumtis:  [0: Description(Lo, 0), 1: ProSumti("ke'a"), 2: Restricted(0, poi body=1)]
+        //   sentences: [0: Simple(klama, head=[2]), 1: Simple(barda, head=[1])]
+        let selbris = vec![
+            Selbri::Root("gerku".into()), // 0
+            Selbri::Root("barda".into()), // 1
+            Selbri::Root("klama".into()), // 2
+        ];
+        let sumtis = vec![
+            Sumti::Description((Gadri::Lo, 0)),  // 0: lo gerku
+            Sumti::ProSumti("ke'a".into()),       // 1: ke'a
+            Sumti::Restricted((
+                0,
+                RelClause {
+                    kind: RelClauseKind::Poi,
+                    body_sentence: 1,
+                },
+            )), // 2: lo gerku poi ke'a barda
+        ];
+        let sentences = vec![
+            Sentence::Simple(Bridi {
+                relation: 2,
+                head_terms: vec![2],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+            Sentence::Simple(Bridi {
+                relation: 1,
+                head_terms: vec![1], // ke'a as head term
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+        ];
+
+        let (_form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        // No errors — ke'a was used explicitly
+        assert!(compiler.errors.is_empty(), "Expected no errors, got: {:?}", compiler.errors);
+    }
+
+    #[test]
+    fn test_inject_variable_error_message_contains_count() {
+        // Verify the error message contains the actual predicate count.
+        // Same setup as test_inject_variable_nested_description_produces_error
+        let selbris = vec![
+            Selbri::Root("gerku".into()),
+            Selbri::Root("mlatu".into()),
+            Selbri::Root("barda".into()),
+        ];
+        let sumtis = vec![
+            Sumti::Description((Gadri::Lo, 0)),
+            Sumti::Description((Gadri::Lo, 1)),
+            Sumti::Restricted((
+                0,
+                RelClause {
+                    kind: RelClauseKind::Poi,
+                    body_sentence: 1,
+                },
+            )),
+        ];
+        let sentences = vec![
+            Sentence::Simple(Bridi {
+                relation: 2,
+                head_terms: vec![2],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+            Sentence::Simple(Bridi {
+                relation: 2,
+                head_terms: vec![1],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+        ];
+
+        let (_, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        assert!(!compiler.errors.is_empty());
+        // Should contain "2 predicates" (the mlatu restrictor + the barda predicate)
+        assert!(
+            compiler.errors[0].contains("predicates"),
+            "Error should mention 'predicates': {}",
+            compiler.errors[0]
+        );
+    }
+
+    #[test]
+    fn test_count_unspecified_predicates_single() {
+        let mut compiler = SemanticCompiler::new();
+        let rel = compiler.interner.get_or_intern("gerku");
+        let form = LogicalForm::Predicate {
+            relation: rel,
+            args: vec![LogicalTerm::Unspecified],
+        };
+        assert_eq!(SemanticCompiler::count_unspecified_predicates(&form), 1);
+    }
+
+    #[test]
+    fn test_count_unspecified_predicates_none() {
+        let mut compiler = SemanticCompiler::new();
+        let rel = compiler.interner.get_or_intern("gerku");
+        let var = compiler.interner.get_or_intern("x");
+        let form = LogicalForm::Predicate {
+            relation: rel,
+            args: vec![LogicalTerm::Variable(var)],
+        };
+        assert_eq!(SemanticCompiler::count_unspecified_predicates(&form), 0);
+    }
+
+    #[test]
+    fn test_count_unspecified_predicates_conjunction() {
+        let mut compiler = SemanticCompiler::new();
+        let rel1 = compiler.interner.get_or_intern("gerku");
+        let rel2 = compiler.interner.get_or_intern("mlatu");
+        let form = LogicalForm::And(
+            Box::new(LogicalForm::Predicate {
+                relation: rel1,
+                args: vec![LogicalTerm::Unspecified],
+            }),
+            Box::new(LogicalForm::Predicate {
+                relation: rel2,
+                args: vec![LogicalTerm::Unspecified],
+            }),
+        );
+        assert_eq!(SemanticCompiler::count_unspecified_predicates(&form), 2);
+    }
+
+    #[test]
+    fn test_inject_variable_fills_first_unspecified() {
+        let mut compiler = SemanticCompiler::new();
+        let rel = compiler.interner.get_or_intern("gerku");
+        let var = compiler.interner.get_or_intern("_v0");
+        let form = LogicalForm::Predicate {
+            relation: rel,
+            args: vec![LogicalTerm::Unspecified, LogicalTerm::Unspecified],
+        };
+        let injected = SemanticCompiler::inject_variable(form, var);
+        match injected {
+            LogicalForm::Predicate { args, .. } => {
+                assert!(matches!(args[0], LogicalTerm::Variable(_)));
+                assert!(matches!(args[1], LogicalTerm::Unspecified));
+            }
+            other => panic!("expected Predicate, got {:?}", other),
         }
     }
 }

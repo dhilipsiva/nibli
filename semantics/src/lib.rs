@@ -30,6 +30,11 @@ impl Guest for SemanticsComponent {
             ));
         }
 
+        // Check for semantic errors accumulated during compilation.
+        if let Some(err) = compiler.errors.first() {
+            return Err(NibliError::Semantic(err.clone()));
+        }
+
         let mut nodes = Vec::new();
         let mut roots = Vec::with_capacity(logic_forms.len());
 

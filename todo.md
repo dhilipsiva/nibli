@@ -4,19 +4,6 @@ Single-phase backlog ordered by severity: soundness bugs first, then safety, the
 
 ---
 
-## Runtime Safety
-
-### R1. inject_variable ambiguity in nested descriptions
-
-When a relative clause lacks explicit `ke'a` and contains nested descriptions, `inject_variable` injects the bound variable into restrictor predicates of inner descriptions, corrupting the logic graph. Currently documented + warned at runtime, but the heuristic can silently produce wrong FOL.
-
-**Fix:** Replace tree-walk heuristic with a strict "open slot" index tracker during AST lowering. Track which predicate introduced each `Unspecified` slot and only inject into the clause's own top-level predicate. Alternatively, require `ke'a` when ambiguity is detected (promote warning to error).
-
-**Crate:** semantics/src/semantic.rs (`inject_variable`)
-**Severity:** medium — only affects implicit `ke'a` in complex relative clauses
-
----
-
 ## Capability Gaps
 
 ### C1. Multi-hop derivation provenance

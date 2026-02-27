@@ -102,7 +102,7 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - Gadri descriptions (lo/le/la), universal (ro lo/ro le), numeric quantifiers (PA lo/le, su'o lo)
 - Place tags (fa/fe/fi/fo/fu), BAI modal tags (ri'a, ni'i, mu'i, ki'u, pi'o, ba'i), fi'o...fe'u
 - Selbri: root, tanru, conversion (se/te/ve/xe), negation (na), grouping (ke...ke'e), compounds (zei), be...bei...be'o
-- Relative clauses (poi/noi/voi) with ke'a, implicit variable injection, clause stacking
+- Relative clauses (poi/noi/voi) with ke'a, implicit variable injection (ambiguous cases with nested descriptions rejected as error — requires explicit ke'a), clause stacking
 - Sumti connectives (.e/.a/.o/.u + nai), selbri connectives (je/ja/jo/ju)
 - Sentence connectives (forethought: ge...gi, ga...gi, ganai...gi; afterthought: .i je/ja/jo/ju with na/nai)
 - Abstractions (nu, du'u, ka with ce'u, ni, si'o)
