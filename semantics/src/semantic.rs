@@ -120,7 +120,7 @@ impl SemanticCompiler {
     ) -> (LogicalTerm, Vec<QuantifierEntry>) {
         match sumti {
             Sumti::ProSumti(p) => {
-                let term = if matches!(p.as_str(), "da" | "de" | "di") {
+                let term = if matches!(p.as_str(), "da" | "de" | "di" | "ma") {
                     LogicalTerm::Variable(self.interner.get_or_intern(p.as_str()))
                 } else if p.as_str() == "ke'a" {
                     // ke'a resolves to the bound variable from the enclosing
@@ -857,7 +857,7 @@ impl SemanticCompiler {
         for arg in &args {
             if let LogicalTerm::Variable(spur) = arg {
                 let name = self.interner.resolve(spur);
-                if matches!(name, "da" | "de" | "di") && da_vars_seen.insert(*spur) {
+                if matches!(name, "da" | "de" | "di" | "ma") && da_vars_seen.insert(*spur) {
                     final_form = LogicalForm::Exists(*spur, Box::new(final_form));
                 }
             }
@@ -2115,6 +2115,45 @@ mod tests {
                 );
             }
             other => panic!("expected And(Or(_,_), Or(_,_)), got {:?}", other),
+        }
+    }
+
+    // ─── ma question pro-sumti tests ─────────────────────────────
+
+    #[test]
+    fn test_ma_produces_exists() {
+        // ma klama → ∃ma. klama(ma, ...)
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("ma".into()), // 0
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+
+        // Outermost should be Exists wrapping the predicate
+        match &form {
+            LogicalForm::Exists(var, body) => {
+                assert_eq!(resolve(&compiler, var), "ma");
+                match body.as_ref() {
+                    LogicalForm::Predicate { relation, args } => {
+                        assert_eq!(resolve(&compiler, relation), "klama");
+                        match &args[0] {
+                            LogicalTerm::Variable(v) => assert_eq!(resolve(&compiler, v), "ma"),
+                            other => panic!("expected Variable(ma), got {:?}", other),
+                        }
+                    }
+                    other => panic!("expected Predicate inside Exists, got {:?}", other),
+                }
+            }
+            other => panic!("expected Exists, got {:?}", other),
         }
     }
 }

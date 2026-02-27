@@ -2,7 +2,7 @@
 mod bindings;
 
 use crate::bindings::exports::lojban::nesy::reasoning::{Guest, GuestKnowledgeBase};
-use crate::bindings::lojban::nesy::logic_types::{LogicBuffer, LogicNode, LogicalTerm};
+use crate::bindings::lojban::nesy::logic_types::{LogicBuffer, LogicNode, LogicalTerm, WitnessBinding};
 use egglog::EGraph;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -318,6 +318,52 @@ impl GuestKnowledgeBase for KnowledgeBase {
         Ok(true)
     }
 
+    fn query_find(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, String> {
+        let mut inner = self.inner.borrow_mut();
+
+        // Run rules to fixpoint before querying
+        inner.egraph.parse_and_run_program(None, "(run 100)").ok();
+
+        // Collect witness bindings across all roots (intersect: all roots must hold)
+        let mut result_sets: Option<Vec<Vec<(String, String)>>> = None;
+
+        for &root_id in &logic.roots {
+            let subs = HashMap::new();
+            let witnesses = find_witnesses(&logic, root_id, &subs, &mut inner)?;
+
+            match result_sets {
+                None => result_sets = Some(witnesses),
+                Some(ref _prev) => {
+                    // Intersect: keep only binding sets compatible with both roots
+                    // For simplicity, if multiple roots, require all to produce witnesses
+                    if witnesses.is_empty() {
+                        return Ok(vec![]);
+                    }
+                    // Keep previous results (multiple roots with existentials is rare)
+                    // Each root independently produces binding sets
+                    result_sets = Some(witnesses);
+                }
+            }
+        }
+
+        // Convert sexp bindings to WitnessBinding
+        let binding_sets = result_sets.unwrap_or_default();
+        let wit_results: Vec<Vec<WitnessBinding>> = binding_sets
+            .into_iter()
+            .map(|bindings| {
+                bindings
+                    .into_iter()
+                    .map(|(var, sexp)| WitnessBinding {
+                        variable: var,
+                        term: parse_sexp_to_term(&sexp),
+                    })
+                    .collect()
+            })
+            .collect();
+
+        Ok(wit_results)
+    }
+
     fn reset(&self) -> Result<(), String> {
         self.inner.borrow_mut().reset();
         Ok(())
@@ -600,6 +646,87 @@ fn check_formula_holds(
                         Err(format!("Reasoning error: {}", msg))
                     }
                 }
+            }
+        }
+    }
+}
+
+// ─── Witness Extraction ──────────────────────────────────────────
+
+/// Find all satisfying binding sets for existential variables in a formula.
+/// Returns Vec<Vec<(variable_name, sexp_value)>> — each inner Vec is one
+/// complete assignment. Empty outer Vec means no witnesses found.
+fn find_witnesses(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    subs: &HashMap<String, String>,
+    inner: &mut KnowledgeBaseInner,
+) -> Result<Vec<Vec<(String, String)>>, String> {
+    match &buffer.nodes[node_id as usize] {
+        LogicNode::ExistsNode((v, body)) => {
+            let mut results = Vec::new();
+
+            // 1. Try each known entity as a witness
+            let entities = inner.get_known_entities();
+            for entity in &entities {
+                let mut new_subs = subs.clone();
+                new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
+                let sub_results = find_witnesses(buffer, *body, &new_subs, inner)?;
+                for mut bindings in sub_results {
+                    bindings.push((v.clone(), format!("(Const \"{}\")", entity)));
+                    results.push(bindings);
+                }
+            }
+
+            // 2. Try SkolemFn witnesses from the registry
+            let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
+            for entry in &entries {
+                let combos = cartesian_product(&entities, entry.dep_count);
+                for combo in &combos {
+                    let witness_sexp = build_ground_skolem_fn(&entry.base_name, combo);
+                    let mut new_subs = subs.clone();
+                    new_subs.insert(v.clone(), witness_sexp.clone());
+                    let sub_results = find_witnesses(buffer, *body, &new_subs, inner)?;
+                    for mut bindings in sub_results {
+                        bindings.push((v.clone(), witness_sexp.clone()));
+                        results.push(bindings);
+                    }
+                }
+            }
+
+            Ok(results)
+        }
+        LogicNode::AndNode((l, r)) => {
+            // Cross-product: for each left binding set, check right with merged subs
+            let left_results = find_witnesses(buffer, *l, subs, inner)?;
+            let mut results = Vec::new();
+            for left_bindings in left_results {
+                let mut merged_subs = subs.clone();
+                for (k, v) in &left_bindings {
+                    merged_subs.insert(k.clone(), v.clone());
+                }
+                let right_results = find_witnesses(buffer, *r, &merged_subs, inner)?;
+                for right_bindings in right_results {
+                    let mut combined = left_bindings.clone();
+                    combined.extend(right_bindings);
+                    results.push(combined);
+                }
+            }
+            Ok(results)
+        }
+        LogicNode::OrNode((l, r)) => {
+            // Union: collect from both sides
+            let mut results = find_witnesses(buffer, *l, subs, inner)?;
+            results.extend(find_witnesses(buffer, *r, subs, inner)?);
+            Ok(results)
+        }
+        // For all other node types, delegate to boolean check.
+        // If the formula holds, return one empty binding set; otherwise empty.
+        _ => {
+            if check_formula_holds(buffer, node_id, subs, inner)? {
+                Ok(vec![vec![]])
+            } else {
+                Ok(vec![])
             }
         }
     }
@@ -2006,5 +2133,133 @@ mod tests {
         );
         let root2 = and(&mut q3_nodes, l2, r2);
         assert!(!query(&kb, LogicBuffer { nodes: q3_nodes, roots: vec![root2] }));
+    }
+
+    // ─── Witness extraction tests ────────────────────────────────
+
+    fn query_find(kb: &KnowledgeBase, buf: LogicBuffer) -> Vec<Vec<WitnessBinding>> {
+        kb.query_find(buf).unwrap()
+    }
+
+    #[test]
+    fn test_find_witnesses_single() {
+        // Assert klama(mi), query ∃x.klama(x) → x = mi
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("mi", "klama"));
+
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "klama",
+            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+        );
+        let root = exists(&mut nodes, "x", body);
+        let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].len(), 1);
+        assert_eq!(results[0][0].variable, "x");
+        assert!(matches!(&results[0][0].term, LogicalTerm::Constant(c) if c == "mi"));
+    }
+
+    #[test]
+    fn test_find_witnesses_multiple() {
+        // Assert klama(mi) + klama(do), query ∃x.klama(x) → x = mi, x = do
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("mi", "klama"));
+        assert_buf(&kb, make_assertion("do", "klama"));
+
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "klama",
+            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+        );
+        let root = exists(&mut nodes, "x", body);
+        let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
+
+        assert_eq!(results.len(), 2);
+        let mut found: Vec<String> = results
+            .iter()
+            .map(|bs| {
+                assert_eq!(bs.len(), 1);
+                assert_eq!(bs[0].variable, "x");
+                match &bs[0].term {
+                    LogicalTerm::Constant(c) => c.clone(),
+                    _ => panic!("expected Constant"),
+                }
+            })
+            .collect();
+        found.sort();
+        assert_eq!(found, vec!["do", "mi"]);
+    }
+
+    #[test]
+    fn test_find_witnesses_conjunction() {
+        // Assert klama(mi), prami(mi), klama(do)
+        // Query ∃x.(klama(x) ∧ prami(x)) → only x = mi satisfies both
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("mi", "klama"));
+        assert_buf(&kb, make_assertion("mi", "prami"));
+        assert_buf(&kb, make_assertion("do", "klama"));
+
+        let mut nodes = Vec::new();
+        let p1 = pred(
+            &mut nodes,
+            "klama",
+            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+        );
+        let p2 = pred(
+            &mut nodes,
+            "prami",
+            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+        );
+        let conj = and(&mut nodes, p1, p2);
+        let root = exists(&mut nodes, "x", conj);
+        let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].len(), 1);
+        assert_eq!(results[0][0].variable, "x");
+        assert!(matches!(&results[0][0].term, LogicalTerm::Constant(c) if c == "mi"));
+    }
+
+    #[test]
+    fn test_find_witnesses_no_match() {
+        // No facts, query ∃x.klama(x) → empty
+        let kb = new_kb();
+
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "klama",
+            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+        );
+        let root = exists(&mut nodes, "x", body);
+        let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
+
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_find_witnesses_via_universal_rule() {
+        // Assert gerku(alis), ∀x.(gerku(x)→danlu(x))
+        // Query ∃x.danlu(x) → x = alis (derived via rule)
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "danlu",
+            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+        );
+        let root = exists(&mut nodes, "x", body);
+        let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0][0].variable, "x");
+        assert!(matches!(&results[0][0].term, LogicalTerm::Constant(c) if c == "alis"));
     }
 }

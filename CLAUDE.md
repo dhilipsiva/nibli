@@ -132,5 +132,6 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 (lujvo recognitio
 - Lujvo morphological recognition: Logos regex `[a-z']{5}[a-z']*[aeiou]` captures 6+ char brivla; longest-match prevents cmavo prefix theft; PHF dictionary handles arity lookup
 - Observative sentences & go'i pro-bridi: parser accepts sentences without explicit selbri (inserts implicit `go'i`), orchestrator resolves go'i → last known relation via cross-call `last_relation` tracking
 - Metalinguistic `sa` construct-class erasure: proper selma'o classification (28 classes) with backward-walk to matching grammatical class; graceful fallback to single-word erase for unclassified cmavo
+- Existential witness extraction: `query-find` WIT method + `find_witnesses` reasoning function returns all satisfying binding sets for existential variables; `ma` question pro-sumti compiles to existential variable (like da/de/di); REPL `??` prefix for find queries
 
-**Next up:** Tier 4.1 (Existential witness extraction)
+**Next up:** Tier 4.2 (Proof trace generation)

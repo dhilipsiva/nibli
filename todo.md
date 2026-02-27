@@ -4,14 +4,6 @@
 
 Features needed for the engine to be genuinely useful (not just correct) in real applications.
 
-### 4.1 Existential witness extraction (answer variables)
-
-`query_entailment` returns bool. Need: `query_find` returning bindings. "ma klama" → "mi". The `check_formula_holds` existential branch already enumerates entities — capture the successful binding.
-
-**Crate:** reasoning/lib.rs, WIT interface (new export)
-**Complexity:** medium
-**Impact:** every domain — "what satisfies this?" is the most natural query form
-
 ### 4.2 Proof trace generation
 
 `check_formula_holds` builds proof tree as it recurses. Each node records which rule/axiom was applied.

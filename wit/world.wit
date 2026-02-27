@@ -119,6 +119,12 @@ interface logic-types {
         nodes: list<logic-node>,
         roots: list<u32>,
     }
+
+    /// A single variable-to-term binding from witness extraction.
+    record witness-binding {
+        variable: string,
+        term: logical-term,
+    }
 }
 
 interface parser {
@@ -139,7 +145,7 @@ interface compute-backend {
 }
 
 interface reasoning {
-    use logic-types.{logic-buffer};
+    use logic-types.{logic-buffer, witness-binding};
 
     resource knowledge-base {
         /// Create a fresh KB with FOL schema loaded.
@@ -148,6 +154,9 @@ interface reasoning {
         assert-fact: func(logic: logic-buffer) -> result<_, string>;
         /// Query whether FOL formula is entailed by this KB.
         query-entailment: func(logic: logic-buffer) -> result<bool, string>;
+        /// Query with witness extraction: returns all satisfying binding sets
+        /// for existential variables. Each inner list is one complete assignment.
+        query-find: func(logic: logic-buffer) -> result<list<list<witness-binding>>, string>;
         /// Reset this KB to fresh state (clear all facts, Skolems, rules).
         reset: func() -> result<_, string>;
     }
@@ -162,7 +171,7 @@ world reasoning-component {
 }
 
 interface engine {
-    use logic-types.{logical-term};
+    use logic-types.{logical-term, witness-binding};
 
     resource session {
         /// Create a new session (internally creates a fresh KB).
@@ -171,6 +180,8 @@ interface engine {
         assert-text: func(input: string) -> result<u32, string>;
         /// Query whether Lojban text is entailed.
         query-text: func(input: string) -> result<bool, string>;
+        /// Query Lojban text and return witness bindings for existential variables.
+        query-find-text: func(input: string) -> result<list<list<witness-binding>>, string>;
         /// Debug: compile text to logic s-expression without asserting.
         compile-debug: func(input: string) -> result<string, string>;
         /// Reset the session's KB to fresh state.

@@ -86,6 +86,7 @@ just test
 - Abstractions (`nu`, `du'u`, `ka` with `ce'u`, `ni`, `si'o`)
 - Tense (`pu`/`ca`/`ba`), deontic attitudinals (`ei`/`e'e`)
 - Observative sentences (implicit `go'i` pro-bridi), explicit `go'i` as selbri
+- Question pro-sumti `ma` — compiles to existential variable for witness extraction
 - Quoted literals (`lu`...`li'u`), number sumti (`li` + PA)
 
 ## Reasoning
@@ -100,6 +101,7 @@ just test
 - External compute backend: generic TCP client with JSON Lines protocol, lazy connect, auto-reconnect
 - Compute result auto-ingestion: successful compute results automatically cached in the KB as ground predicates (closes reason→compute→reason loop)
 - Direct fact assertion: `assert-fact` WIT method + `:assert` REPL command for programmatic fact injection bypassing Lojban parsing
+- Existential witness extraction: `query-find` returns all satisfying entity bindings for existential variables (`??` REPL prefix)
 
 ## Compute Backend
 

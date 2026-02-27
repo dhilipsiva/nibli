@@ -720,6 +720,23 @@ pub mod lojban {
                         .finish()
                 }
             }
+            /// A single variable-to-term binding from witness extraction.
+            #[derive(Clone)]
+            pub struct WitnessBinding {
+                pub variable: _rt::String,
+                pub term: LogicalTerm,
+            }
+            impl ::core::fmt::Debug for WitnessBinding {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    f.debug_struct("WitnessBinding")
+                        .field("variable", &self.variable)
+                        .field("term", &self.term)
+                        .finish()
+                }
+            }
         }
     }
 }
@@ -1998,8 +2015,8 @@ pub(crate) use __export_semantics_component_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1797] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xfb\x0c\x01A\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1837] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xa3\x0d\x01A\x02\x01\
 A\x08\x01B;\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
 m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x06\x03ria\
 \x03nii\x03mui\x03kiu\x03pio\x03bai\x04\0\x07bai-tag\x03\0\x06\x01q\x02\x05fixed\
@@ -2025,21 +2042,22 @@ e-gi\0\0\x05ga-gi\0\0\x0cafterthought\x01/\0\x04\0\x13sentence-connective\x03\00
 \x01o\x031yy\x01q\x02\x06simple\x01.\0\x09connected\x012\0\x04\0\x08sentence\x03\
 \03\x01p&\x01p\x1d\x01p4\x01py\x01r\x04\x07selbris5\x06sumtis6\x09sentences7\x05\
 roots8\x04\0\x0aast-buffer\x03\09\x03\0\x1blojban:nesy/ast-types@0.1.0\x05\0\x01\
-B\x0d\x01q\x05\x08variable\x01s\0\x08constant\x01s\0\x0bdescription\x01s\0\x0bun\
+B\x0f\x01q\x05\x08variable\x01s\0\x08constant\x01s\0\x0bdescription\x01s\0\x0bun\
 specified\0\0\x06number\x01u\0\x04\0\x0clogical-term\x03\0\0\x01p\x01\x01o\x02s\x02\
 \x01o\x02yy\x01o\x02sy\x01o\x03syy\x01q\x0d\x09predicate\x01\x03\0\x0ccompute-no\
 de\x01\x03\0\x08and-node\x01\x04\0\x07or-node\x01\x04\0\x08not-node\x01y\0\x0bex\
 ists-node\x01\x05\0\x0cfor-all-node\x01\x05\0\x09past-node\x01y\0\x0cpresent-nod\
 e\x01y\0\x0bfuture-node\x01y\0\x0fobligatory-node\x01y\0\x0epermitted-node\x01y\0\
 \x0acount-node\x01\x06\0\x04\0\x0alogic-node\x03\0\x07\x01p\x08\x01py\x01r\x02\x05\
-nodes\x09\x05roots\x0a\x04\0\x0clogic-buffer\x03\0\x0b\x03\0\x1dlojban:nesy/logi\
-c-types@0.1.0\x05\x01\x02\x03\0\0\x0aast-buffer\x02\x03\0\x01\x0clogic-buffer\x01\
-B\x07\x02\x03\x02\x01\x02\x04\0\x0aast-buffer\x03\0\0\x02\x03\x02\x01\x03\x04\0\x0c\
-logic-buffer\x03\0\x02\x01j\x01\x03\x01s\x01@\x01\x03ast\x01\0\x04\x04\0\x0ecomp\
-ile-buffer\x01\x05\x04\0\x1blojban:nesy/semantics@0.1.0\x05\x04\x04\0%lojban:nes\
-y/semantics-component@0.1.0\x04\0\x0b\x19\x01\0\x13semantics-component\x03\0\0\0\
-G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10wit-bindge\
-n-rust\x060.41.0";
+nodes\x09\x05roots\x0a\x04\0\x0clogic-buffer\x03\0\x0b\x01r\x02\x08variables\x04\
+term\x01\x04\0\x0fwitness-binding\x03\0\x0d\x03\0\x1dlojban:nesy/logic-types@0.1\
+.0\x05\x01\x02\x03\0\0\x0aast-buffer\x02\x03\0\x01\x0clogic-buffer\x01B\x07\x02\x03\
+\x02\x01\x02\x04\0\x0aast-buffer\x03\0\0\x02\x03\x02\x01\x03\x04\0\x0clogic-buff\
+er\x03\0\x02\x01j\x01\x03\x01s\x01@\x01\x03ast\x01\0\x04\x04\0\x0ecompile-buffer\
+\x01\x05\x04\0\x1blojban:nesy/semantics@0.1.0\x05\x04\x04\0%lojban:nesy/semantic\
+s-component@0.1.0\x04\0\x0b\x19\x01\0\x13semantics-component\x03\0\0\0G\x09produ\
+cers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x06\
+0.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

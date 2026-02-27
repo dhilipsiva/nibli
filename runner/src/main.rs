@@ -162,6 +162,24 @@ mod pipeline_bind {
 
 use pipeline_bind::lojban::nesy::compute_backend;
 use pipeline_bind::lojban::nesy::logic_types::LogicalTerm as EngineLogicalTerm;
+use pipeline_bind::lojban::nesy::logic_types::WitnessBinding;
+
+/// Format a LogicalTerm from the engine bindings for display.
+fn format_term(term: &EngineLogicalTerm) -> String {
+    match term {
+        EngineLogicalTerm::Constant(s) => s.clone(),
+        EngineLogicalTerm::Variable(s) => format!("?{}", s),
+        EngineLogicalTerm::Description(s) => format!("lo {}", s),
+        EngineLogicalTerm::Number(n) => {
+            if *n == (*n as i64) as f64 {
+                format!("{}", *n as i64)
+            } else {
+                format!("{}", n)
+            }
+        }
+        EngineLogicalTerm::Unspecified => "zo'e".to_string(),
+    }
+}
 
 impl compute_backend::Host for HostState {
     fn evaluate(
@@ -278,7 +296,7 @@ fn main() -> Result<()> {
     println!(
         "Ready. Commands: :quit :reset :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :help"
     );
-    println!("Prefix '?' for queries, plain text for assertions.\n");
+    println!("Prefix '?' for queries, '??' for find (witness extraction), plain text for assertions.\n");
 
     loop {
         let sig = line_editor.read_line(&prompt);
@@ -316,7 +334,8 @@ fn main() -> Result<()> {
                     }
                     ":help" | ":h" => {
                         println!("  <text>              Assert Lojban as fact");
-                        println!("  ? <text>            Query entailment");
+                        println!("  ? <text>            Query entailment (true/false)");
+                        println!("  ?? <text>           Find witnesses (answer variables)");
                         println!("  :debug <text>       Show compiled logic tree");
                         println!("  :compute <name>     Register predicate for compute dispatch");
                         println!("  :assert <rel> <args..> Assert a ground fact directly");
@@ -400,6 +419,31 @@ fn main() -> Result<()> {
                             }
                         }
                         Err(e) => println!("[Error] {}", e),
+                    }
+                } else if let Some(find_text) = input.strip_prefix("??") {
+                    let text = find_text.trim();
+                    if text.is_empty() {
+                        println!("[Host] Usage: ?? <lojban query with ma>");
+                        continue;
+                    }
+                    match session.call_query_find_text(&mut store, session_handle, text) {
+                        Ok(Ok(binding_sets)) => {
+                            if binding_sets.is_empty() {
+                                println!("[Find] No witnesses found.");
+                            } else {
+                                for bindings in &binding_sets {
+                                    let parts: Vec<String> = bindings
+                                        .iter()
+                                        .map(|b| {
+                                            format!("{} = {}", b.variable, format_term(&b.term))
+                                        })
+                                        .collect();
+                                    println!("[Find] {}", parts.join(", "));
+                                }
+                            }
+                        }
+                        Ok(Err(e)) => println!("[Error] {}", e),
+                        Err(e) => println!("[Host Error] {:?}", e),
                     }
                 } else if let Some(query_text) = input.strip_prefix('?') {
                     let text = query_text.trim();
