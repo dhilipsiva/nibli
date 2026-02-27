@@ -38,6 +38,10 @@ pub struct SemanticCompiler {
     /// When inside a ka abstraction, holds the variable that ce'u resolves to.
     /// This is the x1 arg from the enclosing description quantifier.
     ka_open_var: Option<lasso::Spur>,
+    /// Fresh variables generated for `ma` query pro-sumti. Each `ma` gets
+    /// an independent variable (unlike da/de/di which co-refer). These are
+    /// wrapped in ∃ during quantifier closure.
+    ma_vars: Vec<lasso::Spur>,
 }
 
 impl SemanticCompiler {
@@ -48,6 +52,7 @@ impl SemanticCompiler {
             rel_clause_var: None,
             kea_used: false,
             ka_open_var: None,
+            ma_vars: Vec::new(),
         }
     }
 
@@ -120,7 +125,13 @@ impl SemanticCompiler {
     ) -> (LogicalTerm, Vec<QuantifierEntry>) {
         match sumti {
             Sumti::ProSumti(p) => {
-                let term = if matches!(p.as_str(), "da" | "de" | "di" | "ma") {
+                let term = if p.as_str() == "ma" {
+                    // Each `ma` gets a fresh variable — they are independent
+                    // query unknowns, unlike da/de/di which co-refer.
+                    let var = self.fresh_var();
+                    self.ma_vars.push(var);
+                    LogicalTerm::Variable(var)
+                } else if matches!(p.as_str(), "da" | "de" | "di") {
                     LogicalTerm::Variable(self.interner.get_or_intern(p.as_str()))
                 } else if p.as_str() == "ke'a" {
                     // ke'a resolves to the bound variable from the enclosing
@@ -857,10 +868,17 @@ impl SemanticCompiler {
         for arg in &args {
             if let LogicalTerm::Variable(spur) = arg {
                 let name = self.interner.resolve(spur);
-                if matches!(name, "da" | "de" | "di" | "ma") && da_vars_seen.insert(*spur) {
+                if matches!(name, "da" | "de" | "di") && da_vars_seen.insert(*spur) {
                     final_form = LogicalForm::Exists(*spur, Box::new(final_form));
                 }
             }
+        }
+
+        // ── ma quantifier closure ────────────────────────────────
+        // Each `ma` got a fresh variable (independent unknowns).
+        // Wrap each in its own ∃, then clear for next sentence.
+        for var in self.ma_vars.drain(..) {
+            final_form = LogicalForm::Exists(var, Box::new(final_form));
         }
 
         if bridi.negated {
@@ -2122,7 +2140,8 @@ mod tests {
 
     #[test]
     fn test_ma_produces_exists() {
-        // ma klama → ∃ma. klama(ma, ...)
+        // ma klama → ∃_v0. klama(_v0, ...)
+        // Each `ma` gets a fresh variable (independent query unknowns).
         let selbris = vec![Selbri::Root("klama".into())];
         let sumtis = vec![
             Sumti::ProSumti("ma".into()), // 0
@@ -2141,19 +2160,70 @@ mod tests {
         // Outermost should be Exists wrapping the predicate
         match &form {
             LogicalForm::Exists(var, body) => {
-                assert_eq!(resolve(&compiler, var), "ma");
+                // ma now generates a fresh variable (_v0), not "ma"
+                assert!(resolve(&compiler, var).starts_with("_v"));
                 match body.as_ref() {
                     LogicalForm::Predicate { relation, args } => {
                         assert_eq!(resolve(&compiler, relation), "klama");
                         match &args[0] {
-                            LogicalTerm::Variable(v) => assert_eq!(resolve(&compiler, v), "ma"),
-                            other => panic!("expected Variable(ma), got {:?}", other),
+                            LogicalTerm::Variable(v) => assert_eq!(v, var),
+                            other => panic!("expected Variable, got {:?}", other),
                         }
                     }
                     other => panic!("expected Predicate inside Exists, got {:?}", other),
                 }
             }
             other => panic!("expected Exists, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_two_ma_produce_independent_exists() {
+        // ma nelci ma → ∃_v1. ∃_v0. nelci(_v0, _v1, ...)
+        // Two `ma` tokens must produce two *different* variables,
+        // each wrapped in its own ∃.
+        let selbris = vec![Selbri::Root("nelci".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("ma".into()), // 0
+            Sumti::ProSumti("ma".into()), // 1
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![1],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+
+        // Should be ∃v1.(∃v0.(nelci(v0, v1, ...)))
+        match &form {
+            LogicalForm::Exists(var1, inner) => {
+                assert!(resolve(&compiler, var1).starts_with("_v"));
+                match inner.as_ref() {
+                    LogicalForm::Exists(var0, body) => {
+                        assert!(resolve(&compiler, var0).starts_with("_v"));
+                        // The two variables must be different
+                        assert_ne!(var0, var1, "two ma should produce different variables");
+                        match body.as_ref() {
+                            LogicalForm::Predicate { args, .. } => {
+                                // First arg should be one var, second should be the other
+                                match (&args[0], &args[1]) {
+                                    (LogicalTerm::Variable(a), LogicalTerm::Variable(b)) => {
+                                        assert_ne!(a, b, "args should reference different vars");
+                                    }
+                                    other => panic!("expected two Variables, got {:?}", other),
+                                }
+                            }
+                            other => panic!("expected Predicate, got {:?}", other),
+                        }
+                    }
+                    other => panic!("expected inner Exists, got {:?}", other),
+                }
+            }
+            other => panic!("expected outer Exists, got {:?}", other),
         }
     }
 }

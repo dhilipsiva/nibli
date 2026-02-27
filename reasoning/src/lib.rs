@@ -2678,6 +2678,69 @@ mod tests {
         assert!(matches!(&results[0][0].term, LogicalTerm::Constant(c) if c == "alis"));
     }
 
+    #[test]
+    fn test_find_witnesses_two_variables() {
+        // Assert nelci(bob, alis), query ∃x.∃y.nelci(x, y)
+        // Should find x=bob, y=alis
+        let kb = new_kb();
+
+        let mut anodes = Vec::new();
+        let aidx = pred(
+            &mut anodes,
+            "nelci",
+            vec![
+                LogicalTerm::Constant("bob".to_string()),
+                LogicalTerm::Constant("alis".to_string()),
+            ],
+        );
+        assert_buf(&kb, LogicBuffer { nodes: anodes, roots: vec![aidx] });
+
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "nelci",
+            vec![
+                LogicalTerm::Variable("x".to_string()),
+                LogicalTerm::Variable("y".to_string()),
+            ],
+        );
+        let inner = exists(&mut nodes, "y", body);
+        let root = exists(&mut nodes, "x", inner);
+        let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].len(), 2);
+        let vars: std::collections::HashMap<&str, &LogicalTerm> = results[0]
+            .iter()
+            .map(|b| (b.variable.as_str(), &b.term))
+            .collect();
+        assert!(matches!(vars["x"], LogicalTerm::Constant(c) if c == "bob"));
+        assert!(matches!(vars["y"], LogicalTerm::Constant(c) if c == "alis"));
+    }
+
+    #[test]
+    fn test_find_witnesses_transitive_chain() {
+        // Assert gerku(alis), ∀x.(gerku→danlu), ∀x.(danlu→xanlu)
+        // Query ∃x.xanlu(x) → x = alis (derived via 2-hop chain)
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_universal("danlu", "xanlu"));
+
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "xanlu",
+            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+        );
+        let root = exists(&mut nodes, "x", body);
+        let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0][0].variable, "x");
+        assert!(matches!(&results[0][0].term, LogicalTerm::Constant(c) if c == "alis"));
+    }
+
     // ─── Proof trace tests ───────────────────────────────────────
 
     fn query_with_proof(kb: &KnowledgeBase, buf: LogicBuffer) -> (bool, ProofTrace) {

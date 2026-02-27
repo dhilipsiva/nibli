@@ -2,7 +2,7 @@
 mod bindings;
 
 use bindings::exports::lojban::nesy::engine::{Guest, GuestSession};
-use bindings::lojban::nesy::ast_types::{AstBuffer, ParseError as WitParseError, Selbri, Sentence};
+use bindings::lojban::nesy::ast_types::{AstBuffer, Selbri, Sentence};
 use bindings::lojban::nesy::logic_types::{
     LogicBuffer, LogicNode, LogicalTerm, ProofTrace, WitnessBinding,
 };

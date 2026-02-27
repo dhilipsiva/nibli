@@ -97,6 +97,25 @@ Prevent infinite rewrite loops in egglog. May be handled natively by egglog's sa
 
 ---
 
+## Tier 6 — Derivation Provenance
+
+### 6.1 Multi-hop derivation chain recording
+
+Current proof traces only show "found in egglog" for facts derived via rule saturation, because egglog derives facts at assertion time (during saturation) — not at query time. The proof trace cannot reconstruct *how* a fact was derived (e.g., `gerku(alis) → danlu(alis) → xanlu(alis)` via two universal rules).
+
+Record the full derivation chain so proof traces show which rule fired at each hop, what premises matched, and what conclusion was produced. Must be efficient — derivation recording happens during saturation (hot path), so cannot add significant per-rule overhead.
+
+**Possible approaches:**
+- **egglog proof extraction** — egglog may expose proof terms natively; investigate upstream API
+- **Shadow derivation log** — lightweight append-only log recording `(rule-id, premises, conclusion)` tuples during saturation; proof trace reconstructs chain by walking backwards from queried fact
+- **Annotated e-nodes** — tag each e-node with its derivation parent(s); amortized O(1) per rule firing, O(depth) reconstruction at query time
+
+**Crate:** reasoning/lib.rs
+**Complexity:** high
+**Constraint:** must be performant — saturation is the inner loop; derivation recording must not degrade throughput significantly
+
+---
+
 ## Deferred / Known Gaps
 
 Items identified during implementation but not yet prioritized into a tier.
