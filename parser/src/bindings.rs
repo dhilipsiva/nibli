@@ -634,6 +634,73 @@ pub mod lojban {
                 }
             }
         }
+        #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
+        pub mod error_types {
+            #[used]
+            #[doc(hidden)]
+            static __FORCE_SECTION_REF: fn() = super::super::super::__link_custom_section_describing_imports;
+            use super::super::super::_rt;
+            #[derive(Clone)]
+            pub struct SyntaxDetail {
+                pub message: _rt::String,
+                pub line: u32,
+                pub column: u32,
+            }
+            impl ::core::fmt::Debug for SyntaxDetail {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    f.debug_struct("SyntaxDetail")
+                        .field("message", &self.message)
+                        .field("line", &self.line)
+                        .field("column", &self.column)
+                        .finish()
+                }
+            }
+            /// Structured error type for the Nibli engine pipeline.
+            #[derive(Clone)]
+            pub enum NibliError {
+                /// Parse error with source location.
+                Syntax(SyntaxDetail),
+                /// Semantic compilation error.
+                Semantic(_rt::String),
+                /// Reasoning engine error (egglog assertion/query failure).
+                Reasoning(_rt::String),
+                /// Compute backend error. Fields: (kind, message).
+                Backend((_rt::String, _rt::String)),
+            }
+            impl ::core::fmt::Debug for NibliError {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        NibliError::Syntax(e) => {
+                            f.debug_tuple("NibliError::Syntax").field(e).finish()
+                        }
+                        NibliError::Semantic(e) => {
+                            f.debug_tuple("NibliError::Semantic").field(e).finish()
+                        }
+                        NibliError::Reasoning(e) => {
+                            f.debug_tuple("NibliError::Reasoning").field(e).finish()
+                        }
+                        NibliError::Backend(e) => {
+                            f.debug_tuple("NibliError::Backend").field(e).finish()
+                        }
+                    }
+                }
+            }
+            impl ::core::fmt::Display for NibliError {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    write!(f, "{:?}", self)
+                }
+            }
+            impl std::error::Error for NibliError {}
+        }
     }
 }
 #[rustfmt::skip]
@@ -648,6 +715,7 @@ pub mod exports {
                 static __FORCE_SECTION_REF: fn() = super::super::super::super::__link_custom_section_describing_imports;
                 use super::super::super::super::_rt;
                 pub type ParseResult = super::super::super::super::lojban::nesy::ast_types::ParseResult;
+                pub type NibliError = super::super::super::super::lojban::nesy::error_types::NibliError;
                 #[doc(hidden)]
                 #[allow(non_snake_case)]
                 pub unsafe fn _export_parse_text_cabi<T: Guest>(
@@ -1159,16 +1227,91 @@ pub mod exports {
                         }
                         Err(e) => {
                             *ptr2.add(0).cast::<u8>() = (1i32) as u8;
-                            let vec41 = (e.into_bytes()).into_boxed_slice();
-                            let ptr41 = vec41.as_ptr().cast::<u8>();
-                            let len41 = vec41.len();
-                            ::core::mem::forget(vec41);
-                            *ptr2
-                                .add(2 * ::core::mem::size_of::<*const u8>())
-                                .cast::<usize>() = len41;
-                            *ptr2
-                                .add(::core::mem::size_of::<*const u8>())
-                                .cast::<*mut u8>() = ptr41.cast_mut();
+                            use super::super::super::super::lojban::nesy::error_types::NibliError as V48;
+                            match e {
+                                V48::Syntax(e) => {
+                                    *ptr2
+                                        .add(::core::mem::size_of::<*const u8>())
+                                        .cast::<u8>() = (0i32) as u8;
+                                    let super::super::super::super::lojban::nesy::error_types::SyntaxDetail {
+                                        message: message41,
+                                        line: line41,
+                                        column: column41,
+                                    } = e;
+                                    let vec42 = (message41.into_bytes()).into_boxed_slice();
+                                    let ptr42 = vec42.as_ptr().cast::<u8>();
+                                    let len42 = vec42.len();
+                                    ::core::mem::forget(vec42);
+                                    *ptr2
+                                        .add(3 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>() = len42;
+                                    *ptr2
+                                        .add(2 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>() = ptr42.cast_mut();
+                                    *ptr2
+                                        .add(4 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<i32>() = _rt::as_i32(line41);
+                                    *ptr2
+                                        .add(4 + 4 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<i32>() = _rt::as_i32(column41);
+                                }
+                                V48::Semantic(e) => {
+                                    *ptr2
+                                        .add(::core::mem::size_of::<*const u8>())
+                                        .cast::<u8>() = (1i32) as u8;
+                                    let vec43 = (e.into_bytes()).into_boxed_slice();
+                                    let ptr43 = vec43.as_ptr().cast::<u8>();
+                                    let len43 = vec43.len();
+                                    ::core::mem::forget(vec43);
+                                    *ptr2
+                                        .add(3 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>() = len43;
+                                    *ptr2
+                                        .add(2 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>() = ptr43.cast_mut();
+                                }
+                                V48::Reasoning(e) => {
+                                    *ptr2
+                                        .add(::core::mem::size_of::<*const u8>())
+                                        .cast::<u8>() = (2i32) as u8;
+                                    let vec44 = (e.into_bytes()).into_boxed_slice();
+                                    let ptr44 = vec44.as_ptr().cast::<u8>();
+                                    let len44 = vec44.len();
+                                    ::core::mem::forget(vec44);
+                                    *ptr2
+                                        .add(3 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>() = len44;
+                                    *ptr2
+                                        .add(2 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>() = ptr44.cast_mut();
+                                }
+                                V48::Backend(e) => {
+                                    *ptr2
+                                        .add(::core::mem::size_of::<*const u8>())
+                                        .cast::<u8>() = (3i32) as u8;
+                                    let (t45_0, t45_1) = e;
+                                    let vec46 = (t45_0.into_bytes()).into_boxed_slice();
+                                    let ptr46 = vec46.as_ptr().cast::<u8>();
+                                    let len46 = vec46.len();
+                                    ::core::mem::forget(vec46);
+                                    *ptr2
+                                        .add(3 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>() = len46;
+                                    *ptr2
+                                        .add(2 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>() = ptr46.cast_mut();
+                                    let vec47 = (t45_1.into_bytes()).into_boxed_slice();
+                                    let ptr47 = vec47.as_ptr().cast::<u8>();
+                                    let len47 = vec47.len();
+                                    ::core::mem::forget(vec47);
+                                    *ptr2
+                                        .add(5 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>() = len47;
+                                    *ptr2
+                                        .add(4 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>() = ptr47.cast_mut();
+                                }
+                            }
                         }
                     };
                     ptr2
@@ -1377,20 +1520,59 @@ pub mod exports {
                             );
                         }
                         _ => {
-                            let l43 = *arg0
-                                .add(::core::mem::size_of::<*const u8>())
-                                .cast::<*mut u8>();
-                            let l44 = *arg0
-                                .add(2 * ::core::mem::size_of::<*const u8>())
-                                .cast::<usize>();
-                            _rt::cabi_dealloc(l43, l44, 1);
+                            let l43 = i32::from(
+                                *arg0.add(::core::mem::size_of::<*const u8>()).cast::<u8>(),
+                            );
+                            match l43 {
+                                0 => {
+                                    let l44 = *arg0
+                                        .add(2 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>();
+                                    let l45 = *arg0
+                                        .add(3 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>();
+                                    _rt::cabi_dealloc(l44, l45, 1);
+                                }
+                                1 => {
+                                    let l46 = *arg0
+                                        .add(2 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>();
+                                    let l47 = *arg0
+                                        .add(3 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>();
+                                    _rt::cabi_dealloc(l46, l47, 1);
+                                }
+                                2 => {
+                                    let l48 = *arg0
+                                        .add(2 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>();
+                                    let l49 = *arg0
+                                        .add(3 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>();
+                                    _rt::cabi_dealloc(l48, l49, 1);
+                                }
+                                _ => {
+                                    let l50 = *arg0
+                                        .add(2 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>();
+                                    let l51 = *arg0
+                                        .add(3 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>();
+                                    _rt::cabi_dealloc(l50, l51, 1);
+                                    let l52 = *arg0
+                                        .add(4 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>();
+                                    let l53 = *arg0
+                                        .add(5 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>();
+                                    _rt::cabi_dealloc(l52, l53, 1);
+                                }
+                            }
                         }
                     }
                 }
                 pub trait Guest {
-                    fn parse_text(
-                        input: _rt::String,
-                    ) -> Result<ParseResult, _rt::String>;
+                    fn parse_text(input: _rt::String) -> Result<ParseResult, NibliError>;
                 }
                 #[doc(hidden)]
                 macro_rules! __export_lojban_nesy_parser_0_1_0_cabi {
@@ -1561,9 +1743,9 @@ pub(crate) use __export_parser_component_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1438] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x97\x0a\x01A\x02\x01\
-A\x05\x01B@\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1629] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xd6\x0b\x01A\x02\x01\
+A\x08\x01B@\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
 m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x06\x03ria\
 \x03nii\x03mui\x03kiu\x03pio\x03bai\x04\0\x07bai-tag\x03\0\x06\x01q\x02\x05fixed\
 \x01\x07\0\x03fio\x01\x01\0\x04\0\x09modal-tag\x03\0\x08\x01m\x04\x02se\x02te\x02\
@@ -1589,12 +1771,16 @@ e-gi\0\0\x05ga-gi\0\0\x0cafterthought\x01/\0\x04\0\x13sentence-connective\x03\00
 \03\x01p&\x01p\x1d\x01p4\x01py\x01r\x04\x07selbris5\x06sumtis6\x09sentences7\x05\
 roots8\x04\0\x0aast-buffer\x03\09\x01r\x03\x07messages\x04liney\x06columny\x04\0\
 \x0bparse-error\x03\0;\x01p<\x01r\x02\x06buffer:\x06errors=\x04\0\x0cparse-resul\
-t\x03\0>\x03\0\x1blojban:nesy/ast-types@0.1.0\x05\0\x02\x03\0\0\x0cparse-result\x01\
-B\x05\x02\x03\x02\x01\x01\x04\0\x0cparse-result\x03\0\0\x01j\x01\x01\x01s\x01@\x01\
-\x05inputs\0\x02\x04\0\x0aparse-text\x01\x03\x04\0\x18lojban:nesy/parser@0.1.0\x05\
-\x02\x04\0\"lojban:nesy/parser-component@0.1.0\x04\0\x0b\x16\x01\0\x10parser-com\
-ponent\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227\
-.1\x10wit-bindgen-rust\x060.41.0";
+t\x03\0>\x03\0\x1blojban:nesy/ast-types@0.1.0\x05\0\x01B\x05\x01r\x03\x07message\
+s\x04liney\x06columny\x04\0\x0dsyntax-detail\x03\0\0\x01o\x02ss\x01q\x04\x06synt\
+ax\x01\x01\0\x08semantic\x01s\0\x09reasoning\x01s\0\x07backend\x01\x02\0\x04\0\x0b\
+nibli-error\x03\0\x03\x03\0\x1dlojban:nesy/error-types@0.1.0\x05\x01\x02\x03\0\0\
+\x0cparse-result\x02\x03\0\x01\x0bnibli-error\x01B\x07\x02\x03\x02\x01\x02\x04\0\
+\x0cparse-result\x03\0\0\x02\x03\x02\x01\x03\x04\0\x0bnibli-error\x03\0\x02\x01j\
+\x01\x01\x01\x03\x01@\x01\x05inputs\0\x04\x04\0\x0aparse-text\x01\x05\x04\0\x18l\
+ojban:nesy/parser@0.1.0\x05\x04\x04\0\"lojban:nesy/parser-component@0.1.0\x04\0\x0b\
+\x16\x01\0\x10parser-component\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0d\
+wit-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

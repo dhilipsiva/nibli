@@ -15,11 +15,12 @@ pub mod preprocessor;
 
 use bindings::exports::lojban::nesy::parser::Guest;
 use bindings::lojban::nesy::ast_types as wit;
+use bindings::lojban::nesy::error_types::NibliError;
 
 struct ParserComponent;
 
 impl Guest for ParserComponent {
-    fn parse_text(input: String) -> Result<wit::ParseResult, String> {
+    fn parse_text(input: String) -> Result<wit::ParseResult, NibliError> {
         // 1. Lex into morphological classification stream
         let raw_tokens = crate::lexer::tokenize(&input);
 
@@ -34,7 +35,7 @@ impl Guest for ParserComponent {
             .errors
             .iter()
             .map(|e| wit::ParseError {
-                message: e.to_string(),
+                message: e.message.clone(),
                 line: e.line,
                 column: e.column,
             })

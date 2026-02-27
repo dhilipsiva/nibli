@@ -4,13 +4,6 @@
 
 Features needed for the engine to be genuinely useful (not just correct) in real applications.
 
-### 4.6 WIT error variants
-
-Replace `Result<_, String>` with typed error enums: `SyntaxError(pos)`, `SemanticError(msg)`, `ReasoningTimeout`, `BackendError(backend, msg)`.
-
-**Crate:** wit/world.wit, all 4 components
-**Complexity:** medium
-
 ### 4.7 WASI capability sandboxing
 
 Remove `inherit_stdio()`. Grant minimal capabilities.

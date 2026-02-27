@@ -137,5 +137,6 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 (lujvo recognitio
 - Parser error recovery: per-sentence recovery (skip to next `.i` on parse failure, continue parsing remaining sentences); `ParseResult` carries both partial results and errors; exact line:column reporting via pointer arithmetic on token `&str` slices; WIT `parse-error` and `parse-result` types; orchestrator surfaces parse warnings
 - WASM fuel limits: Wasmtime fuel-based execution limits prevent unbounded computation; per-command refuel in REPL; configurable via `NIBLI_FUEL` env var or `:fuel` REPL command; friendly `[Limit]` message on fuel exhaustion
 - Guarded conjunction introduction: egglog rule derives `And(A, B)` when both A, B are atomic `Pred` forms sharing an `InDomain` entity; `PredHasEntity` helper relation extracts entities from argument positions x1-x3; prevents combinatorial explosion by excluding `(Zoe)` and non-entity terms
+- WIT typed error variants: shared `nibli-error` variant (syntax/semantic/reasoning/backend) replaces `Result<_, String>` across all 14 WIT functions; `syntax-detail` record carries line:column; orchestrator propagates via `?`; runner pattern-matches for structured `[Syntax Error]`/`[Semantic Error]`/`[Reasoning Error]`/`[Backend Error]` REPL output
 
-**Next up:** Tier 4.6 (WIT error variants)
+**Next up:** Tier 4.7 (WASI capability sandboxing)

@@ -99,6 +99,26 @@ interface ast-types {
     }
 }
 
+interface error-types {
+    /// Structured error type for the Nibli engine pipeline.
+    variant nibli-error {
+        /// Parse error with source location.
+        syntax(syntax-detail),
+        /// Semantic compilation error.
+        semantic(string),
+        /// Reasoning engine error (egglog assertion/query failure).
+        reasoning(string),
+        /// Compute backend error. Fields: (kind, message).
+        backend(tuple<string, string>),
+    }
+
+    record syntax-detail {
+        message: string,
+        line: u32,
+        column: u32,
+    }
+}
+
 interface logic-types {
     variant logical-term {
         variable(string),
@@ -183,38 +203,42 @@ interface logic-types {
 
 interface parser {
     use ast-types.{parse-result};
-    parse-text: func(input: string) -> result<parse-result, string>;
+    use error-types.{nibli-error};
+    parse-text: func(input: string) -> result<parse-result, nibli-error>;
 }
 
 interface semantics {
     use ast-types.{ast-buffer};
     use logic-types.{logic-buffer};
-    compile-buffer: func(ast: ast-buffer) -> result<logic-buffer, string>;
+    use error-types.{nibli-error};
+    compile-buffer: func(ast: ast-buffer) -> result<logic-buffer, nibli-error>;
 }
 
 interface compute-backend {
     use logic-types.{logical-term};
+    use error-types.{nibli-error};
     /// Evaluate whether a computed predicate holds for fully-ground arguments.
-    evaluate: func(relation: string, args: list<logical-term>) -> result<bool, string>;
+    evaluate: func(relation: string, args: list<logical-term>) -> result<bool, nibli-error>;
 }
 
 interface reasoning {
     use logic-types.{logic-buffer, witness-binding, proof-trace};
+    use error-types.{nibli-error};
 
     resource knowledge-base {
         /// Create a fresh KB with FOL schema loaded.
         constructor();
         /// Assert FOL facts into this KB.
-        assert-fact: func(logic: logic-buffer) -> result<_, string>;
+        assert-fact: func(logic: logic-buffer) -> result<_, nibli-error>;
         /// Query whether FOL formula is entailed by this KB.
-        query-entailment: func(logic: logic-buffer) -> result<bool, string>;
+        query-entailment: func(logic: logic-buffer) -> result<bool, nibli-error>;
         /// Query with proof trace: returns result + proof tree.
-        query-entailment-with-proof: func(logic: logic-buffer) -> result<tuple<bool, proof-trace>, string>;
+        query-entailment-with-proof: func(logic: logic-buffer) -> result<tuple<bool, proof-trace>, nibli-error>;
         /// Query with witness extraction: returns all satisfying binding sets
         /// for existential variables. Each inner list is one complete assignment.
-        query-find: func(logic: logic-buffer) -> result<list<list<witness-binding>>, string>;
+        query-find: func(logic: logic-buffer) -> result<list<list<witness-binding>>, nibli-error>;
         /// Reset this KB to fresh state (clear all facts, Skolems, rules).
-        reset: func() -> result<_, string>;
+        reset: func() -> result<_, nibli-error>;
     }
 }
 
@@ -228,26 +252,27 @@ world reasoning-component {
 
 interface engine {
     use logic-types.{logical-term, witness-binding, proof-trace};
+    use error-types.{nibli-error};
 
     resource session {
         /// Create a new session (internally creates a fresh KB).
         constructor();
         /// Assert Lojban text as facts.
-        assert-text: func(input: string) -> result<u32, string>;
+        assert-text: func(input: string) -> result<u32, nibli-error>;
         /// Query whether Lojban text is entailed.
-        query-text: func(input: string) -> result<bool, string>;
+        query-text: func(input: string) -> result<bool, nibli-error>;
         /// Query Lojban text with proof trace.
-        query-text-with-proof: func(input: string) -> result<tuple<bool, proof-trace>, string>;
+        query-text-with-proof: func(input: string) -> result<tuple<bool, proof-trace>, nibli-error>;
         /// Query Lojban text and return witness bindings for existential variables.
-        query-find-text: func(input: string) -> result<list<list<witness-binding>>, string>;
+        query-find-text: func(input: string) -> result<list<list<witness-binding>>, nibli-error>;
         /// Debug: compile text to logic s-expression without asserting.
-        compile-debug: func(input: string) -> result<string, string>;
+        compile-debug: func(input: string) -> result<string, nibli-error>;
         /// Reset the session's KB to fresh state.
-        reset-kb: func() -> result<_, string>;
+        reset-kb: func() -> result<_, nibli-error>;
         /// Register a predicate name for external computation dispatch.
         register-compute-predicate: func(name: string);
         /// Assert a ground fact directly into the KB (bypasses Lojban parsing).
-        assert-fact: func(relation: string, args: list<logical-term>) -> result<_, string>;
+        assert-fact: func(relation: string, args: list<logical-term>) -> result<_, nibli-error>;
     }
 }
 

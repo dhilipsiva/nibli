@@ -3,6 +3,7 @@ mod bindings;
 
 use bindings::exports::lojban::nesy::engine::{Guest, GuestSession};
 use bindings::lojban::nesy::ast_types::{AstBuffer, Selbri, Sentence};
+use bindings::lojban::nesy::error_types::{NibliError, SyntaxDetail};
 use bindings::lojban::nesy::logic_types::{
     LogicBuffer, LogicNode, LogicalTerm, ProofTrace, WitnessBinding,
 };
@@ -100,8 +101,8 @@ fn resolve_go_i(
 fn compile_pipeline(
     text: &str,
     last_relation: &Option<String>,
-) -> Result<(LogicBuffer, Option<String>, Vec<String>), String> {
-    let parse_result = parser::parse_text(text).map_err(|e| format!("Parse: {}", e))?;
+) -> Result<(LogicBuffer, Option<String>, Vec<String>), NibliError> {
+    let parse_result = parser::parse_text(text)?;
 
     // Collect per-sentence parse errors as warning strings
     let parse_warnings: Vec<String> = parse_result
@@ -112,14 +113,19 @@ fn compile_pipeline(
 
     let mut ast = parse_result.buffer;
 
-    // If ALL sentences failed, report error
+    // If ALL sentences failed, report error with first error's location
     if ast.roots.is_empty() && !parse_warnings.is_empty() {
-        return Err(parse_warnings.join("; "));
+        let first = &parse_result.errors[0];
+        return Err(NibliError::Syntax(SyntaxDetail {
+            message: parse_warnings.join("; "),
+            line: first.line,
+            column: first.column,
+        }));
     }
 
     let new_last = resolve_go_i(&mut ast, last_relation)
-        .map_err(|e| format!("Resolution: {}", e))?;
-    let buf = semantics::compile_buffer(&ast).map_err(|e| format!("Semantics: {}", e))?;
+        .map_err(|e| NibliError::Semantic(e))?;
+    let buf = semantics::compile_buffer(&ast)?;
     Ok((buf, new_last, parse_warnings))
 }
 
@@ -164,76 +170,60 @@ impl GuestSession for Session {
         }
     }
 
-    fn assert_text(&self, input: String) -> Result<u32, String> {
+    fn assert_text(&self, input: String) -> Result<u32, NibliError> {
         let (mut buf, new_last, _warnings) =
             compile_pipeline(&input, &self.last_relation.borrow())?;
         transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
-        self.kb
-            .assert_fact(&buf)
-            .map_err(|e| format!("Reasoning: {}", e))?;
-        // Update last_relation after successful assertion
+        self.kb.assert_fact(&buf)?;
         *self.last_relation.borrow_mut() = new_last;
         Ok(buf.roots.len() as u32)
     }
 
-    fn query_text(&self, input: String) -> Result<bool, String> {
+    fn query_text(&self, input: String) -> Result<bool, NibliError> {
         let (mut buf, _, _warnings) =
             compile_pipeline(&input, &self.last_relation.borrow())?;
-        // Don't update last_relation for queries (read-only)
         transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
-        self.kb
-            .query_entailment(&buf)
-            .map_err(|e| format!("Reasoning: {}", e))
+        self.kb.query_entailment(&buf)
     }
 
-    fn query_find_text(&self, input: String) -> Result<Vec<Vec<WitnessBinding>>, String> {
+    fn query_find_text(&self, input: String) -> Result<Vec<Vec<WitnessBinding>>, NibliError> {
         let (mut buf, _, _warnings) =
             compile_pipeline(&input, &self.last_relation.borrow())?;
-        // Don't update last_relation for queries (read-only)
         transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
-        self.kb
-            .query_find(&buf)
-            .map_err(|e| format!("Reasoning: {}", e))
+        self.kb.query_find(&buf)
     }
 
-    fn query_text_with_proof(&self, input: String) -> Result<(bool, ProofTrace), String> {
+    fn query_text_with_proof(&self, input: String) -> Result<(bool, ProofTrace), NibliError> {
         let (mut buf, _, _warnings) =
             compile_pipeline(&input, &self.last_relation.borrow())?;
-        // Don't update last_relation for queries (read-only)
         transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
-        self.kb
-            .query_entailment_with_proof(&buf)
-            .map_err(|e| format!("Reasoning: {}", e))
+        self.kb.query_entailment_with_proof(&buf)
     }
 
-    fn compile_debug(&self, input: String) -> Result<String, String> {
+    fn compile_debug(&self, input: String) -> Result<String, NibliError> {
         let (mut buf, _, _warnings) =
             compile_pipeline(&input, &self.last_relation.borrow())?;
-        // Don't update last_relation for debug (read-only)
         transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
         Ok(debug_sexp(&buf))
     }
 
-    fn reset_kb(&self) -> Result<(), String> {
+    fn reset_kb(&self) -> Result<(), NibliError> {
         *self.last_relation.borrow_mut() = None;
-        self.kb.reset().map_err(|e| format!("Reset: {}", e))
+        self.kb.reset()
     }
 
     fn register_compute_predicate(&self, name: String) {
         self.compute_predicates.borrow_mut().insert(name);
     }
 
-    fn assert_fact(&self, relation: String, args: Vec<LogicalTerm>) -> Result<(), String> {
-        // Direct fact assertion: update last_relation to the asserted relation
+    fn assert_fact(&self, relation: String, args: Vec<LogicalTerm>) -> Result<(), NibliError> {
         *self.last_relation.borrow_mut() = Some(relation.clone());
         let nodes = vec![LogicNode::Predicate((relation, args))];
         let buf = LogicBuffer {
             nodes,
             roots: vec![0],
         };
-        self.kb
-            .assert_fact(&buf)
-            .map_err(|e| format!("Reasoning: {}", e))
+        self.kb.assert_fact(&buf)
     }
 }
 

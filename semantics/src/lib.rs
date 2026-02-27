@@ -6,6 +6,7 @@ pub mod semantic;
 
 use bindings::exports::lojban::nesy::semantics::Guest;
 use bindings::lojban::nesy::ast_types::AstBuffer;
+use bindings::lojban::nesy::error_types::NibliError;
 use bindings::lojban::nesy::logic_types::{LogicBuffer, LogicNode, LogicalTerm as WitTerm};
 use ir::{LogicalForm, LogicalTerm};
 use semantic::SemanticCompiler;
@@ -13,7 +14,7 @@ use semantic::SemanticCompiler;
 struct SemanticsComponent;
 
 impl Guest for SemanticsComponent {
-    fn compile_buffer(ast: AstBuffer) -> Result<LogicBuffer, String> {
+    fn compile_buffer(ast: AstBuffer) -> Result<LogicBuffer, NibliError> {
         let mut compiler = SemanticCompiler::new();
         let mut logic_forms = Vec::with_capacity(ast.roots.len());
 

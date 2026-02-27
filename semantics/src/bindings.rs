@@ -894,6 +894,73 @@ pub mod lojban {
                 }
             }
         }
+        #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
+        pub mod error_types {
+            #[used]
+            #[doc(hidden)]
+            static __FORCE_SECTION_REF: fn() = super::super::super::__link_custom_section_describing_imports;
+            use super::super::super::_rt;
+            #[derive(Clone)]
+            pub struct SyntaxDetail {
+                pub message: _rt::String,
+                pub line: u32,
+                pub column: u32,
+            }
+            impl ::core::fmt::Debug for SyntaxDetail {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    f.debug_struct("SyntaxDetail")
+                        .field("message", &self.message)
+                        .field("line", &self.line)
+                        .field("column", &self.column)
+                        .finish()
+                }
+            }
+            /// Structured error type for the Nibli engine pipeline.
+            #[derive(Clone)]
+            pub enum NibliError {
+                /// Parse error with source location.
+                Syntax(SyntaxDetail),
+                /// Semantic compilation error.
+                Semantic(_rt::String),
+                /// Reasoning engine error (egglog assertion/query failure).
+                Reasoning(_rt::String),
+                /// Compute backend error. Fields: (kind, message).
+                Backend((_rt::String, _rt::String)),
+            }
+            impl ::core::fmt::Debug for NibliError {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        NibliError::Syntax(e) => {
+                            f.debug_tuple("NibliError::Syntax").field(e).finish()
+                        }
+                        NibliError::Semantic(e) => {
+                            f.debug_tuple("NibliError::Semantic").field(e).finish()
+                        }
+                        NibliError::Reasoning(e) => {
+                            f.debug_tuple("NibliError::Reasoning").field(e).finish()
+                        }
+                        NibliError::Backend(e) => {
+                            f.debug_tuple("NibliError::Backend").field(e).finish()
+                        }
+                    }
+                }
+            }
+            impl ::core::fmt::Display for NibliError {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    write!(f, "{:?}", self)
+                }
+            }
+            impl std::error::Error for NibliError {}
+        }
     }
 }
 #[rustfmt::skip]
@@ -909,6 +976,7 @@ pub mod exports {
                 use super::super::super::super::_rt;
                 pub type AstBuffer = super::super::super::super::lojban::nesy::ast_types::AstBuffer;
                 pub type LogicBuffer = super::super::super::super::lojban::nesy::logic_types::LogicBuffer;
+                pub type NibliError = super::super::super::super::lojban::nesy::error_types::NibliError;
                 #[doc(hidden)]
                 #[allow(non_snake_case)]
                 pub unsafe fn _export_compile_buffer_cabi<T: Guest>(
@@ -1771,16 +1839,91 @@ pub mod exports {
                         }
                         Err(e) => {
                             *ptr83.add(0).cast::<u8>() = (1i32) as u8;
-                            let vec110 = (e.into_bytes()).into_boxed_slice();
-                            let ptr110 = vec110.as_ptr().cast::<u8>();
-                            let len110 = vec110.len();
-                            ::core::mem::forget(vec110);
-                            *ptr83
-                                .add(2 * ::core::mem::size_of::<*const u8>())
-                                .cast::<usize>() = len110;
-                            *ptr83
-                                .add(::core::mem::size_of::<*const u8>())
-                                .cast::<*mut u8>() = ptr110.cast_mut();
+                            use super::super::super::super::lojban::nesy::error_types::NibliError as V117;
+                            match e {
+                                V117::Syntax(e) => {
+                                    *ptr83
+                                        .add(::core::mem::size_of::<*const u8>())
+                                        .cast::<u8>() = (0i32) as u8;
+                                    let super::super::super::super::lojban::nesy::error_types::SyntaxDetail {
+                                        message: message110,
+                                        line: line110,
+                                        column: column110,
+                                    } = e;
+                                    let vec111 = (message110.into_bytes()).into_boxed_slice();
+                                    let ptr111 = vec111.as_ptr().cast::<u8>();
+                                    let len111 = vec111.len();
+                                    ::core::mem::forget(vec111);
+                                    *ptr83
+                                        .add(3 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>() = len111;
+                                    *ptr83
+                                        .add(2 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>() = ptr111.cast_mut();
+                                    *ptr83
+                                        .add(4 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<i32>() = _rt::as_i32(line110);
+                                    *ptr83
+                                        .add(4 + 4 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<i32>() = _rt::as_i32(column110);
+                                }
+                                V117::Semantic(e) => {
+                                    *ptr83
+                                        .add(::core::mem::size_of::<*const u8>())
+                                        .cast::<u8>() = (1i32) as u8;
+                                    let vec112 = (e.into_bytes()).into_boxed_slice();
+                                    let ptr112 = vec112.as_ptr().cast::<u8>();
+                                    let len112 = vec112.len();
+                                    ::core::mem::forget(vec112);
+                                    *ptr83
+                                        .add(3 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>() = len112;
+                                    *ptr83
+                                        .add(2 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>() = ptr112.cast_mut();
+                                }
+                                V117::Reasoning(e) => {
+                                    *ptr83
+                                        .add(::core::mem::size_of::<*const u8>())
+                                        .cast::<u8>() = (2i32) as u8;
+                                    let vec113 = (e.into_bytes()).into_boxed_slice();
+                                    let ptr113 = vec113.as_ptr().cast::<u8>();
+                                    let len113 = vec113.len();
+                                    ::core::mem::forget(vec113);
+                                    *ptr83
+                                        .add(3 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>() = len113;
+                                    *ptr83
+                                        .add(2 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>() = ptr113.cast_mut();
+                                }
+                                V117::Backend(e) => {
+                                    *ptr83
+                                        .add(::core::mem::size_of::<*const u8>())
+                                        .cast::<u8>() = (3i32) as u8;
+                                    let (t114_0, t114_1) = e;
+                                    let vec115 = (t114_0.into_bytes()).into_boxed_slice();
+                                    let ptr115 = vec115.as_ptr().cast::<u8>();
+                                    let len115 = vec115.len();
+                                    ::core::mem::forget(vec115);
+                                    *ptr83
+                                        .add(3 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>() = len115;
+                                    *ptr83
+                                        .add(2 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>() = ptr115.cast_mut();
+                                    let vec116 = (t114_1.into_bytes()).into_boxed_slice();
+                                    let ptr116 = vec116.as_ptr().cast::<u8>();
+                                    let len116 = vec116.len();
+                                    ::core::mem::forget(vec116);
+                                    *ptr83
+                                        .add(5 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>() = len116;
+                                    *ptr83
+                                        .add(4 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>() = ptr116.cast_mut();
+                                }
+                            }
                         }
                     };
                     ptr83
@@ -1967,20 +2110,59 @@ pub mod exports {
                             _rt::cabi_dealloc(base37, len37 * 4, 4);
                         }
                         _ => {
-                            let l38 = *arg0
-                                .add(::core::mem::size_of::<*const u8>())
-                                .cast::<*mut u8>();
-                            let l39 = *arg0
-                                .add(2 * ::core::mem::size_of::<*const u8>())
-                                .cast::<usize>();
-                            _rt::cabi_dealloc(l38, l39, 1);
+                            let l38 = i32::from(
+                                *arg0.add(::core::mem::size_of::<*const u8>()).cast::<u8>(),
+                            );
+                            match l38 {
+                                0 => {
+                                    let l39 = *arg0
+                                        .add(2 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>();
+                                    let l40 = *arg0
+                                        .add(3 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>();
+                                    _rt::cabi_dealloc(l39, l40, 1);
+                                }
+                                1 => {
+                                    let l41 = *arg0
+                                        .add(2 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>();
+                                    let l42 = *arg0
+                                        .add(3 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>();
+                                    _rt::cabi_dealloc(l41, l42, 1);
+                                }
+                                2 => {
+                                    let l43 = *arg0
+                                        .add(2 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>();
+                                    let l44 = *arg0
+                                        .add(3 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>();
+                                    _rt::cabi_dealloc(l43, l44, 1);
+                                }
+                                _ => {
+                                    let l45 = *arg0
+                                        .add(2 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>();
+                                    let l46 = *arg0
+                                        .add(3 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>();
+                                    _rt::cabi_dealloc(l45, l46, 1);
+                                    let l47 = *arg0
+                                        .add(4 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>();
+                                    let l48 = *arg0
+                                        .add(5 * ::core::mem::size_of::<*const u8>())
+                                        .cast::<usize>();
+                                    _rt::cabi_dealloc(l47, l48, 1);
+                                }
+                            }
                         }
                     }
                 }
                 pub trait Guest {
-                    fn compile_buffer(
-                        ast: AstBuffer,
-                    ) -> Result<LogicBuffer, _rt::String>;
+                    fn compile_buffer(ast: AstBuffer) -> Result<LogicBuffer, NibliError>;
                 }
                 #[doc(hidden)]
                 macro_rules! __export_lojban_nesy_semantics_0_1_0_cabi {
@@ -2005,10 +2187,10 @@ pub mod exports {
                 struct _RetArea(
                     [::core::mem::MaybeUninit<
                         u8,
-                    >; 5 * ::core::mem::size_of::<*const u8>()],
+                    >; 6 * ::core::mem::size_of::<*const u8>()],
                 );
                 static mut _RET_AREA: _RetArea = _RetArea(
-                    [::core::mem::MaybeUninit::uninit(); 5
+                    [::core::mem::MaybeUninit::uninit(); 6
                         * ::core::mem::size_of::<*const u8>()],
                 );
             }
@@ -2171,9 +2353,9 @@ pub(crate) use __export_semantics_component_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 2263] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xcd\x10\x01A\x02\x01\
-A\x08\x01B@\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 2454] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x8c\x12\x01A\x02\x01\
+A\x0b\x01B@\x01y\x04\0\x09selbri-id\x03\0\0\x01y\x04\0\x08sumti-id\x03\0\x02\x01\
 m\x05\x02fa\x02fe\x02fi\x02fo\x02fu\x04\0\x09place-tag\x03\0\x04\x01m\x06\x03ria\
 \x03nii\x03mui\x03kiu\x03pio\x03bai\x04\0\x07bai-tag\x03\0\x06\x01q\x02\x05fixed\
 \x01\x07\0\x03fio\x01\x01\0\x04\0\x09modal-tag\x03\0\x08\x01m\x04\x02se\x02te\x02\
@@ -2215,13 +2397,17 @@ ough\x01s\0\x0eexists-witness\x01\x0f\0\x0dexists-failed\0\0\x0eforall-vacuous\0
 lt\x01\x04\0\x0fpredicate-check\x01\x10\0\x0dcompute-check\x01\x10\0\x04\0\x0apr\
 oof-rule\x03\0\x11\x01r\x03\x04rule\x12\x05holds\x7f\x08children\x0a\x04\0\x0apr\
 oof-step\x03\0\x13\x01p\x14\x01r\x02\x05steps\x15\x04rooty\x04\0\x0bproof-trace\x03\
-\0\x16\x03\0\x1dlojban:nesy/logic-types@0.1.0\x05\x01\x02\x03\0\0\x0aast-buffer\x02\
-\x03\0\x01\x0clogic-buffer\x01B\x07\x02\x03\x02\x01\x02\x04\0\x0aast-buffer\x03\0\
-\0\x02\x03\x02\x01\x03\x04\0\x0clogic-buffer\x03\0\x02\x01j\x01\x03\x01s\x01@\x01\
-\x03ast\x01\0\x04\x04\0\x0ecompile-buffer\x01\x05\x04\0\x1blojban:nesy/semantics\
-@0.1.0\x05\x04\x04\0%lojban:nesy/semantics-component@0.1.0\x04\0\x0b\x19\x01\0\x13\
-semantics-component\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-compo\
-nent\x070.227.1\x10wit-bindgen-rust\x060.41.0";
+\0\x16\x03\0\x1dlojban:nesy/logic-types@0.1.0\x05\x01\x01B\x05\x01r\x03\x07messa\
+ges\x04liney\x06columny\x04\0\x0dsyntax-detail\x03\0\0\x01o\x02ss\x01q\x04\x06sy\
+ntax\x01\x01\0\x08semantic\x01s\0\x09reasoning\x01s\0\x07backend\x01\x02\0\x04\0\
+\x0bnibli-error\x03\0\x03\x03\0\x1dlojban:nesy/error-types@0.1.0\x05\x02\x02\x03\
+\0\0\x0aast-buffer\x02\x03\0\x01\x0clogic-buffer\x02\x03\0\x02\x0bnibli-error\x01\
+B\x09\x02\x03\x02\x01\x03\x04\0\x0aast-buffer\x03\0\0\x02\x03\x02\x01\x04\x04\0\x0c\
+logic-buffer\x03\0\x02\x02\x03\x02\x01\x05\x04\0\x0bnibli-error\x03\0\x04\x01j\x01\
+\x03\x01\x05\x01@\x01\x03ast\x01\0\x06\x04\0\x0ecompile-buffer\x01\x07\x04\0\x1b\
+lojban:nesy/semantics@0.1.0\x05\x06\x04\0%lojban:nesy/semantics-component@0.1.0\x04\
+\0\x0b\x19\x01\0\x13semantics-component\x03\0\0\0G\x09producers\x01\x0cprocessed\
+-by\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

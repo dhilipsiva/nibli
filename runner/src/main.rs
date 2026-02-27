@@ -161,6 +161,7 @@ mod pipeline_bind {
 }
 
 use pipeline_bind::lojban::nesy::compute_backend;
+use pipeline_bind::lojban::nesy::error_types::NibliError;
 use pipeline_bind::lojban::nesy::logic_types::LogicalTerm as EngineLogicalTerm;
 use pipeline_bind::lojban::nesy::logic_types::{ProofRule, ProofStep, ProofTrace};
 
@@ -239,7 +240,7 @@ impl compute_backend::Host for HostState {
         &mut self,
         relation: String,
         args: Vec<compute_backend::LogicalTerm>,
-    ) -> std::result::Result<bool, String> {
+    ) -> std::result::Result<bool, NibliError> {
         use compute_backend::LogicalTerm;
 
         // Extract i64 from a LogicalTerm::Number
@@ -276,6 +277,7 @@ impl compute_backend::Host for HostState {
 
         // 2. Forward to external backend (if configured)
         self.dispatch_to_backend(&relation, &args)
+            .map_err(|msg| NibliError::Backend((relation, msg)))
     }
 }
 
@@ -312,6 +314,17 @@ fn format_host_error(e: &anyhow::Error) -> String {
             .to_string()
     } else {
         format!("[Host Error] {:?}", e)
+    }
+}
+
+fn format_nibli_error(e: &NibliError) -> String {
+    match e {
+        NibliError::Syntax(d) => {
+            format!("[Syntax Error] line {}:{}: {}", d.line, d.column, d.message)
+        }
+        NibliError::Semantic(msg) => format!("[Semantic Error] {}", msg),
+        NibliError::Reasoning(msg) => format!("[Reasoning Error] {}", msg),
+        NibliError::Backend((kind, msg)) => format!("[Backend Error] {} — {}", kind, msg),
     }
 }
 
@@ -388,7 +401,7 @@ fn main() -> Result<()> {
                         refuel(&mut store, fuel_budget);
                         match session.call_reset_kb(&mut store, session_handle) {
                             Ok(Ok(())) => println!("[Reset] Knowledge base cleared."),
-                            Ok(Err(e)) => println!("[Error] {}", e),
+                            Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                             Err(e) => println!("{}", format_host_error(&e)),
                         }
                         continue;
@@ -439,7 +452,7 @@ fn main() -> Result<()> {
                     refuel(&mut store, fuel_budget);
                     match session.call_compile_debug(&mut store, session_handle, text) {
                         Ok(Ok(sexp)) => println!("[Logic] {}", sexp),
-                        Ok(Err(e)) => println!("[Error] {}", e),
+                        Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                         Err(e) => println!("{}", format_host_error(&e)),
                     }
                 } else if let Some(backend_arg) = input.strip_prefix(":backend ") {
@@ -508,7 +521,7 @@ fn main() -> Result<()> {
                                     relation,
                                     display_args.join(", ")
                                 ),
-                                Ok(Err(e)) => println!("[Error] {}", e),
+                                Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                                 Err(e) => println!("{}", format_host_error(&e)),
                             }
                         }
@@ -537,7 +550,7 @@ fn main() -> Result<()> {
                                 }
                             }
                         }
-                        Ok(Err(e)) => println!("[Error] {}", e),
+                        Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                         Err(e) => println!("{}", format_host_error(&e)),
                     }
                 } else if let Some(proof_text) = input.strip_prefix("?!") {
@@ -553,7 +566,7 @@ fn main() -> Result<()> {
                             println!("[Proof] {}", tag);
                             print!("{}", format_proof_trace(&trace));
                         }
-                        Ok(Err(e)) => println!("[Error] {}", e),
+                        Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                         Err(e) => println!("{}", format_host_error(&e)),
                     }
                 } else if let Some(query_text) = input.strip_prefix('?') {
@@ -566,14 +579,14 @@ fn main() -> Result<()> {
                     match session.call_query_text(&mut store, session_handle, text) {
                         Ok(Ok(true)) => println!("[Query] TRUE"),
                         Ok(Ok(false)) => println!("[Query] FALSE"),
-                        Ok(Err(e)) => println!("[Error] {}", e),
+                        Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                         Err(e) => println!("{}", format_host_error(&e)),
                     }
                 } else {
                     refuel(&mut store, fuel_budget);
                     match session.call_assert_text(&mut store, session_handle, input) {
                         Ok(Ok(n)) => println!("[Assert] {} fact(s) inserted.", n),
-                        Ok(Err(e)) => println!("[Error] {}", e),
+                        Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                         Err(e) => println!("{}", format_host_error(&e)),
                     }
                 }
@@ -687,8 +700,7 @@ mod tests {
             compute_backend::LogicalTerm::Number(3.0),
         ];
         // pilji: 6 == 2 * 3
-        let result = host.evaluate("pilji".to_string(), args);
-        assert_eq!(result, Ok(true));
+        assert_eq!(host.evaluate("pilji".to_string(), args).unwrap(), true);
     }
 
     #[test]
@@ -702,8 +714,7 @@ mod tests {
             compute_backend::LogicalTerm::Number(3.0),
         ];
         // tenfa is NOT built-in, should forward to backend
-        let result = host.evaluate("tenfa".to_string(), args);
-        assert_eq!(result, Ok(true));
+        assert_eq!(host.evaluate("tenfa".to_string(), args).unwrap(), true);
     }
 
     #[test]
@@ -725,6 +736,74 @@ mod tests {
         assert!(json.contains(r#""type":"constant""#));
         assert!(json.contains(r#""type":"description""#));
         assert!(json.contains(r#""type":"unspecified""#));
+    }
+
+    // ── format_nibli_error tests ──
+
+    #[test]
+    fn test_format_nibli_error_syntax() {
+        use pipeline_bind::lojban::nesy::error_types::SyntaxDetail;
+        let e = NibliError::Syntax(SyntaxDetail {
+            message: "expected selbri or terms".to_string(),
+            line: 3,
+            column: 7,
+        });
+        let out = format_nibli_error(&e);
+        assert_eq!(out, "[Syntax Error] line 3:7: expected selbri or terms");
+    }
+
+    #[test]
+    fn test_format_nibli_error_semantic() {
+        let e = NibliError::Semantic("go'i has no antecedent".to_string());
+        let out = format_nibli_error(&e);
+        assert_eq!(out, "[Semantic Error] go'i has no antecedent");
+    }
+
+    #[test]
+    fn test_format_nibli_error_reasoning() {
+        let e = NibliError::Reasoning("egglog assertion failed".to_string());
+        let out = format_nibli_error(&e);
+        assert_eq!(out, "[Reasoning Error] egglog assertion failed");
+    }
+
+    #[test]
+    fn test_format_nibli_error_backend() {
+        let e = NibliError::Backend(("tenfa".to_string(), "connection refused".to_string()));
+        let out = format_nibli_error(&e);
+        assert_eq!(out, "[Backend Error] tenfa \u{2014} connection refused");
+    }
+
+    // ── evaluate wraps errors as NibliError::Backend ──
+
+    #[test]
+    fn test_evaluate_wraps_dispatch_error_as_backend() {
+        // No backend configured → dispatch_to_backend returns Err(String)
+        // evaluate should wrap it as NibliError::Backend((relation, msg))
+        let mut host = make_host(None);
+        let args = vec![compute_backend::LogicalTerm::Number(1.0)];
+        let result = host.evaluate("tenfa".to_string(), args);
+        match result {
+            Err(NibliError::Backend((kind, msg))) => {
+                assert_eq!(kind, "tenfa");
+                assert!(msg.contains("Unknown compute predicate"));
+            }
+            other => panic!("expected NibliError::Backend, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_evaluate_backend_error_from_server() {
+        let (addr, _listener) = mock_server(r#"{"error": "division by zero"}"#);
+        let mut host = make_host(Some(addr));
+        let args = vec![compute_backend::LogicalTerm::Number(1.0)];
+        let result = host.evaluate("dilcu_ext".to_string(), args);
+        match result {
+            Err(NibliError::Backend((kind, msg))) => {
+                assert_eq!(kind, "dilcu_ext");
+                assert!(msg.contains("division by zero"));
+            }
+            other => panic!("expected NibliError::Backend, got {:?}", other),
+        }
     }
 
     #[test]

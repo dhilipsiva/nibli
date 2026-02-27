@@ -2,6 +2,7 @@
 mod bindings;
 
 use crate::bindings::exports::lojban::nesy::reasoning::{Guest, GuestKnowledgeBase};
+use crate::bindings::lojban::nesy::error_types::NibliError;
 use crate::bindings::lojban::nesy::logic_types::{
     LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofStep, ProofTrace, WitnessBinding,
 };
@@ -239,15 +240,9 @@ impl Guest for ReasoningComponent {
     type KnowledgeBase = KnowledgeBase;
 }
 
-impl GuestKnowledgeBase for KnowledgeBase {
-    fn new() -> Self {
-        KnowledgeBase {
-            inner: RefCell::new(KnowledgeBaseInner::new()),
-        }
-    }
-
-    /// Assert facts with Skolemization (∃) and native egglog rules (∀).
-    fn assert_fact(&self, logic: LogicBuffer) -> Result<(), String> {
+/// Internal methods that return Result<_, String> for use by both WIT boundary and tests.
+impl KnowledgeBase {
+    fn assert_fact_inner(&self, logic: LogicBuffer) -> Result<(), String> {
         let mut inner = self.inner.borrow_mut();
 
         for &root_id in &logic.roots {
@@ -328,53 +323,37 @@ impl GuestKnowledgeBase for KnowledgeBase {
         Ok(())
     }
 
-    fn query_entailment(&self, logic: LogicBuffer) -> Result<bool, String> {
+    fn query_entailment_inner(&self, logic: LogicBuffer) -> Result<bool, String> {
         let mut inner = self.inner.borrow_mut();
-
-        // Run rules to fixpoint before querying
         inner.egraph.parse_and_run_program(None, "(run 100)").ok();
-
         for &root_id in &logic.roots {
             let subs = HashMap::new();
             if !check_formula_holds(&logic, root_id, &subs, &mut inner)? {
                 return Ok(false);
             }
         }
-
         Ok(true)
     }
 
-    fn query_find(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, String> {
+    fn query_find_inner(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, String> {
         let mut inner = self.inner.borrow_mut();
-
-        // Run rules to fixpoint before querying
         inner.egraph.parse_and_run_program(None, "(run 100)").ok();
-
-        // Collect witness bindings across all roots (intersect: all roots must hold)
         let mut result_sets: Option<Vec<Vec<(String, String)>>> = None;
-
         for &root_id in &logic.roots {
             let subs = HashMap::new();
             let witnesses = find_witnesses(&logic, root_id, &subs, &mut inner)?;
-
             match result_sets {
                 None => result_sets = Some(witnesses),
                 Some(ref _prev) => {
-                    // Intersect: keep only binding sets compatible with both roots
-                    // For simplicity, if multiple roots, require all to produce witnesses
                     if witnesses.is_empty() {
                         return Ok(vec![]);
                     }
-                    // Keep previous results (multiple roots with existentials is rare)
-                    // Each root independently produces binding sets
                     result_sets = Some(witnesses);
                 }
             }
         }
-
-        // Convert sexp bindings to WitnessBinding
         let binding_sets = result_sets.unwrap_or_default();
-        let wit_results: Vec<Vec<WitnessBinding>> = binding_sets
+        Ok(binding_sets
             .into_iter()
             .map(|bindings| {
                 bindings
@@ -385,24 +364,18 @@ impl GuestKnowledgeBase for KnowledgeBase {
                     })
                     .collect()
             })
-            .collect();
-
-        Ok(wit_results)
+            .collect())
     }
 
-    fn query_entailment_with_proof(
+    fn query_entailment_with_proof_inner(
         &self,
         logic: LogicBuffer,
     ) -> Result<(bool, ProofTrace), String> {
         let mut inner = self.inner.borrow_mut();
-
-        // Run rules to fixpoint before querying
         inner.egraph.parse_and_run_program(None, "(run 100)").ok();
-
         let mut steps: Vec<ProofStep> = Vec::new();
         let mut root_children: Vec<u32> = Vec::new();
         let mut all_hold = true;
-
         for &root_id in &logic.roots {
             let subs = HashMap::new();
             let (holds, step_idx) =
@@ -412,8 +385,6 @@ impl GuestKnowledgeBase for KnowledgeBase {
                 all_hold = false;
             }
         }
-
-        // If multiple roots, wrap in a conjunction step
         let root = if root_children.len() == 1 {
             root_children[0]
         } else {
@@ -425,11 +396,38 @@ impl GuestKnowledgeBase for KnowledgeBase {
             });
             idx
         };
-
         Ok((all_hold, ProofTrace { steps, root }))
     }
+}
 
-    fn reset(&self) -> Result<(), String> {
+impl GuestKnowledgeBase for KnowledgeBase {
+    fn new() -> Self {
+        KnowledgeBase {
+            inner: RefCell::new(KnowledgeBaseInner::new()),
+        }
+    }
+
+    fn assert_fact(&self, logic: LogicBuffer) -> Result<(), NibliError> {
+        self.assert_fact_inner(logic).map_err(NibliError::Reasoning)
+    }
+
+    fn query_entailment(&self, logic: LogicBuffer) -> Result<bool, NibliError> {
+        self.query_entailment_inner(logic).map_err(NibliError::Reasoning)
+    }
+
+    fn query_find(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, NibliError> {
+        self.query_find_inner(logic).map_err(NibliError::Reasoning)
+    }
+
+    fn query_entailment_with_proof(
+        &self,
+        logic: LogicBuffer,
+    ) -> Result<(bool, ProofTrace), NibliError> {
+        self.query_entailment_with_proof_inner(logic)
+            .map_err(NibliError::Reasoning)
+    }
+
+    fn reset(&self) -> Result<(), NibliError> {
         self.inner.borrow_mut().reset();
         Ok(())
     }
@@ -546,6 +544,7 @@ fn resolve_args_for_dispatch(
 #[cfg(target_arch = "wasm32")]
 fn dispatch_to_backend(rel: &str, args: &[LogicalTerm]) -> Result<bool, String> {
     crate::bindings::lojban::nesy::compute_backend::evaluate(rel, args)
+        .map_err(|e| format!("{}", e))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1775,11 +1774,11 @@ mod tests {
     }
 
     fn assert_buf(kb: &KnowledgeBase, buf: LogicBuffer) {
-        kb.assert_fact(buf).unwrap();
+        kb.assert_fact_inner(buf).unwrap();
     }
 
     fn query(kb: &KnowledgeBase, buf: LogicBuffer) -> bool {
-        kb.query_entailment(buf).unwrap()
+        kb.query_entailment_inner(buf).unwrap()
     }
 
     /// Build "la .X. P" -> Pred("P", [Const("X"), Zoe])
@@ -2576,7 +2575,7 @@ mod tests {
     // ─── Witness extraction tests ────────────────────────────────
 
     fn query_find(kb: &KnowledgeBase, buf: LogicBuffer) -> Vec<Vec<WitnessBinding>> {
-        kb.query_find(buf).unwrap()
+        kb.query_find_inner(buf).unwrap()
     }
 
     #[test]
@@ -2767,7 +2766,7 @@ mod tests {
     // ─── Proof trace tests ───────────────────────────────────────
 
     fn query_with_proof(kb: &KnowledgeBase, buf: LogicBuffer) -> (bool, ProofTrace) {
-        kb.query_entailment_with_proof(buf).unwrap()
+        kb.query_entailment_with_proof_inner(buf).unwrap()
     }
 
     #[test]
