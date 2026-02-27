@@ -136,5 +136,6 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 (lujvo recognitio
 - Proof trace generation: `check_formula_holds_traced` builds proof tree as it recurses, recording which rule/axiom was applied at each step (13 proof rule variants); `query-entailment-with-proof` / `query-text-with-proof` WIT methods; REPL `?!` prefix for traced queries with indented tree output
 - Parser error recovery: per-sentence recovery (skip to next `.i` on parse failure, continue parsing remaining sentences); `ParseResult` carries both partial results and errors; exact line:column reporting via pointer arithmetic on token `&str` slices; WIT `parse-error` and `parse-result` types; orchestrator surfaces parse warnings
 - WASM fuel limits: Wasmtime fuel-based execution limits prevent unbounded computation; per-command refuel in REPL; configurable via `NIBLI_FUEL` env var or `:fuel` REPL command; friendly `[Limit]` message on fuel exhaustion
+- Guarded conjunction introduction: egglog rule derives `And(A, B)` when both A, B are atomic `Pred` forms sharing an `InDomain` entity; `PredHasEntity` helper relation extracts entities from argument positions x1-x3; prevents combinatorial explosion by excluding `(Zoe)` and non-entity terms
 
-**Next up:** Tier 4.5 (Conjunction introduction rule)
+**Next up:** Tier 4.6 (WIT error variants)

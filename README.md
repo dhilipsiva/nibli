@@ -93,7 +93,7 @@ just test
 
 - Skolemization (independent + dependent under `∀` via `SkolemFn` constructor)
 - All universals compile to native egglog rules (O(K) hash-join matching, zero Herbrand overhead)
-- egglog e-graph with structural rewrites (commutativity, associativity, De Morgan, double negation) + inference rules (conjunction elimination, disjunctive syllogism, modus ponens/tollens)
+- egglog e-graph with structural rewrites (commutativity, associativity, De Morgan, double negation) + inference rules (conjunction elimination/introduction, disjunctive syllogism, modus ponens/tollens)
 - Count quantifier (exactly N) for numeric descriptions
 - Numerical comparison predicates: `zmadu` (>), `mleca` (<), `dunli` (==) on `Num` terms
 - Computation dispatch: `compute-backend` WIT protocol for external evaluation, `ComputeNode` IR variant
@@ -104,6 +104,7 @@ just test
 - Existential witness extraction: `query-find` returns all satisfying entity bindings for existential variables (`??` REPL prefix)
 - Proof trace generation: `query-entailment-with-proof` returns proof tree showing which rule/axiom was applied at each step (13 proof rule variants: conjunction, disjunction, negation, modal, exists-witness, forall-verified, count, predicate-check, compute-check, etc.) — `?!` REPL prefix
 - Parser error recovery: per-sentence recovery skips to next `.i` on parse failure, continues parsing remaining sentences; errors include exact line:column positions
+- Guarded conjunction introduction: `And(A, B)` derived when both A, B are atomic predicates sharing an `InDomain` entity (prevents combinatorial explosion)
 - WASM fuel limits: per-command execution budget prevents unbounded computation; configurable via `NIBLI_FUEL` env var or `:fuel` REPL command
 
 ## Compute Backend

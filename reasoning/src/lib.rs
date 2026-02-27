@@ -154,6 +154,30 @@ const SCHEMA: &str = r#"
     ;; ∀-distribution over ∧
     (rule ((IsTrue (ForAll v (And A B))))
           ((IsTrue (And (ForAll v A) (ForAll v B)))))
+
+    ;; ── Conjunction introduction (guarded) ─────────────
+    ;; Helper: extract InDomain entities from predicate argument positions.
+    ;; Only fires for terms already in InDomain (named entities, Skolem constants),
+    ;; so (Zoe) and other non-entity terms are naturally excluded.
+    (relation PredHasEntity (Formula Term))
+
+    ;; Position x1
+    (rule ((IsTrue (Pred r (Cons t rest))) (InDomain t))
+          ((PredHasEntity (Pred r (Cons t rest)) t)))
+
+    ;; Position x2
+    (rule ((IsTrue (Pred r (Cons a1 (Cons t rest)))) (InDomain t))
+          ((PredHasEntity (Pred r (Cons a1 (Cons t rest))) t)))
+
+    ;; Position x3
+    (rule ((IsTrue (Pred r (Cons a1 (Cons a2 (Cons t rest))))) (InDomain t))
+          ((PredHasEntity (Pred r (Cons a1 (Cons a2 (Cons t rest)))) t)))
+
+    ;; Introduction: derive And(A,B) when both A,B are atomic Pred forms
+    ;; sharing at least one InDomain entity (any argument position).
+    (rule ((IsTrue (Pred r1 args1)) (IsTrue (Pred r2 args2))
+           (PredHasEntity (Pred r1 args1) t) (PredHasEntity (Pred r2 args2) t))
+          ((IsTrue (And (Pred r1 args1) (Pred r2 args2)))))
 "#;
 
 /// Create a fresh EGraph with the schema loaded.
@@ -1738,7 +1762,6 @@ mod tests {
     }
 
     /// Helper: build an AndNode.
-    #[allow(dead_code)]
     fn and(nodes: &mut Vec<LogicNode>, left: u32, right: u32) -> u32 {
         let id = nodes.len() as u32;
         nodes.push(LogicNode::AndNode((left, right)));
@@ -2910,5 +2933,113 @@ mod tests {
             let child_step = &trace.steps[child as usize];
             assert!(child_step.holds);
         }
+    }
+
+    // ─── Conjunction Introduction (Guarded) Tests ────────────────────
+
+    /// Helper: check whether an IsTrue(And(...)) exists in the e-graph.
+    fn egraph_has_conjunction(kb: &KnowledgeBase, pred1: &str, entity1: &str, pred2: &str, entity2: &str) -> bool {
+        let mut inner = kb.inner.borrow_mut();
+        let cmd = format!(
+            "(check (IsTrue (And (Pred \"{}\" (Cons (Const \"{}\") (Cons (Zoe) (Nil)))) (Pred \"{}\" (Cons (Const \"{}\") (Cons (Zoe) (Nil)))))))",
+            pred1, entity1, pred2, entity2
+        );
+        inner.egraph.parse_and_run_program(None, &cmd).is_ok()
+    }
+
+    #[test]
+    fn test_conjunction_introduction_basic() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_assertion("alis", "barda"));
+
+        // Both share entity "alis" in x1 → conjunction should exist
+        assert!(
+            egraph_has_conjunction(&kb, "gerku", "alis", "barda", "alis"),
+            "And(gerku(alis), barda(alis)) should be derived"
+        );
+        // Commutativity: reversed order should also hold
+        assert!(
+            egraph_has_conjunction(&kb, "barda", "alis", "gerku", "alis"),
+            "And(barda(alis), gerku(alis)) should be derived (commutativity)"
+        );
+    }
+
+    #[test]
+    fn test_conjunction_introduction_no_shared_entity() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_assertion("bob", "mlatu"));
+
+        // No shared entity → conjunction should NOT exist
+        assert!(
+            !egraph_has_conjunction(&kb, "gerku", "alis", "mlatu", "bob"),
+            "And(gerku(alis), mlatu(bob)) should NOT be derived (no shared entity)"
+        );
+    }
+
+    #[test]
+    fn test_conjunction_introduction_with_derived() {
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu")); // All dogs are animals
+        assert_buf(&kb, make_assertion("alis", "gerku"));   // Alice is a dog
+        assert_buf(&kb, make_assertion("alis", "barda"));   // Alice is big
+
+        // Rule derives danlu(alis). Conjunction introduction should combine derived + asserted.
+        assert!(
+            egraph_has_conjunction(&kb, "danlu", "alis", "barda", "alis"),
+            "And(danlu(alis), barda(alis)) should be derived via rule + conjunction intro"
+        );
+        // Also: gerku(alis) ∧ danlu(alis) (asserted + derived)
+        assert!(
+            egraph_has_conjunction(&kb, "gerku", "alis", "danlu", "alis"),
+            "And(gerku(alis), danlu(alis)) should be derived"
+        );
+    }
+
+    #[test]
+    fn test_conjunction_introduction_cross_position() {
+        // nelci(bob, alis) and gerku(alis) share "alis" across x2 and x1
+        let kb = new_kb();
+
+        // gerku(alis, _)
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+
+        // nelci(bob, alis, _)
+        let mut nodes = Vec::new();
+        let root = pred(
+            &mut nodes,
+            "nelci",
+            vec![
+                LogicalTerm::Constant("bob".to_string()),
+                LogicalTerm::Constant("alis".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        assert_buf(&kb, LogicBuffer { nodes, roots: vec![root] });
+
+        // Check: And(gerku(alis,_), nelci(bob,alis,_)) should exist
+        let mut inner = kb.inner.borrow_mut();
+        let cmd = "(check (IsTrue (And (Pred \"gerku\" (Cons (Const \"alis\") (Cons (Zoe) (Nil)))) (Pred \"nelci\" (Cons (Const \"bob\") (Cons (Const \"alis\") (Cons (Zoe) (Nil))))))))";
+        assert!(
+            inner.egraph.parse_and_run_program(None, cmd).is_ok(),
+            "Cross-position entity sharing should trigger conjunction introduction"
+        );
+    }
+
+    #[test]
+    fn test_conjunction_introduction_multiple_entities() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_assertion("alis", "barda"));
+        assert_buf(&kb, make_assertion("bob", "mlatu"));
+        assert_buf(&kb, make_assertion("bob", "cmalu"));
+
+        // alis predicates should conjoin with each other
+        assert!(egraph_has_conjunction(&kb, "gerku", "alis", "barda", "alis"));
+        // bob predicates should conjoin with each other
+        assert!(egraph_has_conjunction(&kb, "mlatu", "bob", "cmalu", "bob"));
+        // cross-entity should NOT conjoin
+        assert!(!egraph_has_conjunction(&kb, "gerku", "alis", "mlatu", "bob"));
     }
 }

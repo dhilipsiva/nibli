@@ -4,13 +4,6 @@
 
 Features needed for the engine to be genuinely useful (not just correct) in real applications.
 
-### 4.5 Conjunction introduction rule (guarded)
-
-Assert A, assert B → egglog can derive `And(A, B)`. Guard: only fire when both A, B are atomic predicates sharing at least one term. Prevents combinatorial explosion.
-
-**Crate:** reasoning/lib.rs schema
-**Complexity:** low
-
 ### 4.6 WIT error variants
 
 Replace `Result<_, String>` with typed error enums: `SyntaxError(pos)`, `SemanticError(msg)`, `ReasoningTimeout`, `BackendError(backend, msg)`.
