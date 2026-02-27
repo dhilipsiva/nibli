@@ -359,7 +359,7 @@ fn main() -> Result<()> {
     println!("Fuel budget: {} per command", fuel_budget);
 
     let state = HostState {
-        ctx: WasiCtxBuilder::new().inherit_stdio().build(),
+        ctx: WasiCtxBuilder::new().inherit_stdout().inherit_stderr().build(),
         table: ResourceTable::new(),
         backend_addr,
         backend_conn: None,

@@ -4,13 +4,6 @@
 
 Features needed for the engine to be genuinely useful (not just correct) in real applications.
 
-### 4.7 WASI capability sandboxing
-
-Remove `inherit_stdio()`. Grant minimal capabilities.
-
-**Crate:** runner/main.rs
-**Complexity:** low
-
 ### 4.8 Remove deep clones in `apply_selbri` for `Jo`/`Ju` connectives
 
 Restructure to avoid cloning recursive `LogicalForm` trees.
