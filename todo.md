@@ -1,9 +1,3 @@
-Custom TODO: 
-
-1. Add comprehensive documentaion for all Rust code and WIT files
-2. Add comprehensive test cases for all the Rust code and WIT files
-
-
 # Nibli — Production Readiness Roadmap
 
 Single-phase backlog ordered by severity: soundness bugs first, then safety, then capability gaps, then improvements.
