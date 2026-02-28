@@ -95,7 +95,7 @@ Before every commit, always:
 
 ## Current Status
 
-Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator) + C2 (non-monotonic reasoning / belief revision).
+Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator) + C2 (non-monotonic reasoning / belief revision) + C3 (temporal reasoning in e-graph).
 
 **Implemented features:**
 - Lexer + recursive-descent parser (gismu, cmavo, cmevla, lujvo)
@@ -143,5 +143,6 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - Clone-free Jo/Ju connectives: added `Biconditional` and `Xor` variants to `LogicalForm` IR — each operand stored once, expansion to And/Or/Not happens during flattening where operands are u32 indices (zero-cost copy); eliminated 6 deep `.clone()` calls across 3 compilation sites
 - Arena-allocated parser AST: bumpalo `Bump` arena replaces all `Box<T>` with `&'arena T` in AST types; 24 heap allocations per parse batched into contiguous arena chunks; arena created per `parse_text()` call, freed in one shot after flattening; enables memory reuse via `Bump::reset()` for batch corpus processing
 - Non-monotonic reasoning / belief revision: fact registry with per-assertion FactId (u64), FactRecord stores cloned LogicBuffer + label + retracted flag; retraction marks fact withdrawn then rebuilds egraph from surviving base facts (sound because all derived facts recomputed); `retract-fact` and `list-facts` WIT methods on both `knowledge-base` and `session` resources; REPL `:retract <id>` and `:facts` commands; idempotent retraction; `rebuilding` flag suppresses diagnostic prints during replay
+- Temporal reasoning in e-graph: `Past`/`Present`/`Future` constructors in egglog `Formula` datatype; tense wrappers preserved end-to-end (assertion, query, rule compilation, proof tracing, witness extraction); tense conjunction elimination rules; temporal entity extraction for guarded conjunction introduction; temporal lifting of universal rules (timeless rules automatically fire on tensed premises to derive tensed conclusions); tense-aware backward-chaining provenance; strict tense discrimination (Past ≠ Future ≠ bare)
 
-**Next up:** C3 (Temporal reasoning in e-graph)
+**Next up:** C4 (Event semantics — Neo-Davidsonian)

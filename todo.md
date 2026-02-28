@@ -6,13 +6,6 @@ Single-phase backlog ordered by severity: soundness bugs first, then safety, the
 
 ## Capability Gaps
 
-### C3. Temporal reasoning in e-graph
-
-Encode Past/Present/Future in egglog schema with inference rules. Currently tense is stripped at assertion and transparent at query — asserting `pu mi klama` and querying `ba mi klama` returns TRUE (wrong).
-
-**Crate:** reasoning/lib.rs schema + `check_formula_holds`
-**Complexity:** high
-
 ### C4. Event semantics (Neo-Davidsonian)
 
 Structured events with named roles, temporal ordering, causal links. Resolves tanru intersective fallacy.

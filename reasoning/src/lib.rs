@@ -181,6 +181,9 @@ const SCHEMA: &str = r#"
         (Exists String Formula)
         (ForAll String Formula)
         (Implies Formula Formula)
+        (Past Formula)
+        (Present Formula)
+        (Future Formula)
     )
 
     ;; Ground-truth relation: "this formula is known true"
@@ -249,6 +252,48 @@ const SCHEMA: &str = r#"
     (rule ((IsTrue (Pred r1 args1)) (IsTrue (Pred r2 args2))
            (PredHasEntity (Pred r1 args1) t) (PredHasEntity (Pred r2 args2) t))
           ((IsTrue (And (Pred r1 args1) (Pred r2 args2)))))
+
+    ;; ── Temporal conjunction elimination ─────────────
+    ;; Past(A ∧ B) → Past(A) ∧ Past(B)
+    (rule ((IsTrue (Past (And a b)))) ((IsTrue (Past a)) (IsTrue (Past b))))
+    ;; Present(A ∧ B) → Present(A) ∧ Present(B)
+    (rule ((IsTrue (Present (And a b)))) ((IsTrue (Present a)) (IsTrue (Present b))))
+    ;; Future(A ∧ B) → Future(A) ∧ Future(B)
+    (rule ((IsTrue (Future (And a b)))) ((IsTrue (Future a)) (IsTrue (Future b))))
+
+    ;; ── Temporal entity extraction (for conjunction introduction under tense) ──
+    ;; Past predicates
+    (rule ((IsTrue (Past (Pred r (Cons t rest)))) (InDomain t))
+          ((PredHasEntity (Past (Pred r (Cons t rest))) t)))
+    (rule ((IsTrue (Past (Pred r (Cons a1 (Cons t rest))))) (InDomain t))
+          ((PredHasEntity (Past (Pred r (Cons a1 (Cons t rest)))) t)))
+    (rule ((IsTrue (Past (Pred r (Cons a1 (Cons a2 (Cons t rest)))))) (InDomain t))
+          ((PredHasEntity (Past (Pred r (Cons a1 (Cons a2 (Cons t rest))))) t)))
+    ;; Present predicates
+    (rule ((IsTrue (Present (Pred r (Cons t rest)))) (InDomain t))
+          ((PredHasEntity (Present (Pred r (Cons t rest))) t)))
+    (rule ((IsTrue (Present (Pred r (Cons a1 (Cons t rest))))) (InDomain t))
+          ((PredHasEntity (Present (Pred r (Cons a1 (Cons t rest)))) t)))
+    (rule ((IsTrue (Present (Pred r (Cons a1 (Cons a2 (Cons t rest)))))) (InDomain t))
+          ((PredHasEntity (Present (Pred r (Cons a1 (Cons a2 (Cons t rest))))) t)))
+    ;; Future predicates
+    (rule ((IsTrue (Future (Pred r (Cons t rest)))) (InDomain t))
+          ((PredHasEntity (Future (Pred r (Cons t rest))) t)))
+    (rule ((IsTrue (Future (Pred r (Cons a1 (Cons t rest))))) (InDomain t))
+          ((PredHasEntity (Future (Pred r (Cons a1 (Cons t rest)))) t)))
+    (rule ((IsTrue (Future (Pred r (Cons a1 (Cons a2 (Cons t rest)))))) (InDomain t))
+          ((PredHasEntity (Future (Pred r (Cons a1 (Cons a2 (Cons t rest))))) t)))
+
+    ;; Temporal conjunction introduction (same tense)
+    (rule ((IsTrue (Past (Pred r1 args1))) (IsTrue (Past (Pred r2 args2)))
+           (PredHasEntity (Past (Pred r1 args1)) t) (PredHasEntity (Past (Pred r2 args2)) t))
+          ((IsTrue (Past (And (Pred r1 args1) (Pred r2 args2))))))
+    (rule ((IsTrue (Present (Pred r1 args1))) (IsTrue (Present (Pred r2 args2)))
+           (PredHasEntity (Present (Pred r1 args1)) t) (PredHasEntity (Present (Pred r2 args2)) t))
+          ((IsTrue (Present (And (Pred r1 args1) (Pred r2 args2))))))
+    (rule ((IsTrue (Future (Pred r1 args1))) (IsTrue (Future (Pred r2 args2)))
+           (PredHasEntity (Future (Pred r1 args1)) t) (PredHasEntity (Future (Pred r2 args2)) t))
+          ((IsTrue (Future (And (Pred r1 args1) (Pred r2 args2))))))
 "#;
 
 /// Create a fresh EGraph with the schema loaded.
@@ -476,7 +521,7 @@ impl KnowledgeBase {
         inner.egraph.parse_and_run_program(None, "(run 100)").ok();
         for &root_id in &logic.roots {
             let subs = HashMap::new();
-            if !check_formula_holds(&logic, root_id, &subs, &mut inner)? {
+            if !check_formula_holds(&logic, root_id, &subs, &mut inner, None)? {
                 return Ok(false);
             }
         }
@@ -491,7 +536,7 @@ impl KnowledgeBase {
         let mut result_sets: Option<Vec<Vec<(String, String)>>> = None;
         for &root_id in &logic.roots {
             let subs = HashMap::new();
-            let witnesses = find_witnesses(&logic, root_id, &subs, &mut inner)?;
+            let witnesses = find_witnesses(&logic, root_id, &subs, &mut inner, None)?;
             match result_sets {
                 None => result_sets = Some(witnesses),
                 Some(ref _prev) => {
@@ -529,7 +574,7 @@ impl KnowledgeBase {
         for &root_id in &logic.roots {
             let subs = HashMap::new();
             let (holds, step_idx) =
-                check_formula_holds_traced(&logic, root_id, &subs, &mut inner, &mut steps)?;
+                check_formula_holds_traced(&logic, root_id, &subs, &mut inner, &mut steps, None)?;
             root_children.push(step_idx);
             if !holds {
                 all_hold = false;
@@ -742,43 +787,57 @@ fn build_ground_predicate_sexp(rel: &str, resolved_args: &[LogicalTerm]) -> Opti
 
 // ─── Query Decomposition ─────────────────────────────────────────
 
+/// Wrap an s-expression with a temporal operator if a tense context is active.
+fn wrap_with_tense(tense: Option<&str>, sexp: &str) -> String {
+    match tense {
+        Some(t) => format!("({} {})", t, sexp),
+        None => sexp.to_string(),
+    }
+}
+
 /// Recursively check whether a formula (identified by `node_id`) is entailed by the KB.
 ///
 /// Handles all FOL node types: conjunction, disjunction, negation, quantifiers,
 /// tense/deontic wrappers, count quantifiers, compute nodes, and predicate leaves.
 /// Variable substitutions are threaded through `subs` for universal quantifier instantiation.
+/// The `tense` parameter propagates a temporal context (Past/Present/Future) through the
+/// formula tree — tense nodes set it, leaf predicates wrap their s-expression with it.
 fn check_formula_holds(
     buffer: &LogicBuffer,
     node_id: u32,
     subs: &HashMap<String, String>,
     inner: &mut KnowledgeBaseInner,
+    tense: Option<&str>,
 ) -> Result<bool, String> {
     match &buffer.nodes[node_id as usize] {
-        LogicNode::AndNode((l, r)) => Ok(check_formula_holds(buffer, *l, subs, inner)?
-            && check_formula_holds(buffer, *r, subs, inner)?),
+        LogicNode::AndNode((l, r)) => Ok(check_formula_holds(buffer, *l, subs, inner, tense)?
+            && check_formula_holds(buffer, *r, subs, inner, tense)?),
         LogicNode::OrNode((l, r)) => {
             let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
-            let command = format!("(check (IsTrue {}))", sexp);
+            let wrapped = wrap_with_tense(tense, &sexp);
+            let command = format!("(check (IsTrue {}))", wrapped);
             match inner.egraph.parse_and_run_program(None, &command) {
                 Ok(_) => return Ok(true),
                 Err(_) => {}
             }
-            Ok(check_formula_holds(buffer, *l, subs, inner)?
-                || check_formula_holds(buffer, *r, subs, inner)?)
+            Ok(check_formula_holds(buffer, *l, subs, inner, tense)?
+                || check_formula_holds(buffer, *r, subs, inner, tense)?)
         }
-        LogicNode::NotNode(inner_node) => Ok(!check_formula_holds(buffer, *inner_node, subs, inner)?),
-        LogicNode::PastNode(inner_node)
-        | LogicNode::PresentNode(inner_node)
-        | LogicNode::FutureNode(inner_node)
-        | LogicNode::ObligatoryNode(inner_node)
-        | LogicNode::PermittedNode(inner_node) => check_formula_holds(buffer, *inner_node, subs, inner),
+        LogicNode::NotNode(inner_node) => Ok(!check_formula_holds(buffer, *inner_node, subs, inner, tense)?),
+        // Temporal nodes: set tense context for inner formula
+        LogicNode::PastNode(inner_node) => check_formula_holds(buffer, *inner_node, subs, inner, Some("Past")),
+        LogicNode::PresentNode(inner_node) => check_formula_holds(buffer, *inner_node, subs, inner, Some("Present")),
+        LogicNode::FutureNode(inner_node) => check_formula_holds(buffer, *inner_node, subs, inner, Some("Future")),
+        // Deontic nodes: remain transparent, pass through current tense
+        LogicNode::ObligatoryNode(inner_node)
+        | LogicNode::PermittedNode(inner_node) => check_formula_holds(buffer, *inner_node, subs, inner, tense),
         LogicNode::ExistsNode((v, body)) => {
             // 1. Check if any known entity satisfies the body
             let entities = inner.get_known_entities();
             for entity in &entities {
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
-                if check_formula_holds(buffer, *body, &new_subs, inner)? {
+                if check_formula_holds(buffer, *body, &new_subs, inner, tense)? {
                     return Ok(true);
                 }
             }
@@ -790,7 +849,7 @@ fn check_formula_holds(
                     let witness_sexp = build_ground_skolem_fn(&entry.base_name, combo);
                     let mut new_subs = subs.clone();
                     new_subs.insert(v.clone(), witness_sexp);
-                    if check_formula_holds(buffer, *body, &new_subs, inner)? {
+                    if check_formula_holds(buffer, *body, &new_subs, inner, tense)? {
                         return Ok(true);
                     }
                 }
@@ -805,7 +864,7 @@ fn check_formula_holds(
             for entity in &entities {
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
-                if !check_formula_holds(buffer, *body, &new_subs, inner)? {
+                if !check_formula_holds(buffer, *body, &new_subs, inner, tense)? {
                     return Ok(false);
                 }
             }
@@ -817,20 +876,21 @@ fn check_formula_holds(
             for entity in &entities {
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
-                if check_formula_holds(buffer, *body, &new_subs, inner)? {
+                if check_formula_holds(buffer, *body, &new_subs, inner, tense)? {
                     satisfying += 1;
                 }
             }
             Ok(satisfying == *count)
         }
         LogicNode::Predicate((rel, args)) => {
-            // Try numeric comparison short-circuit for zmadu/mleca/dunli
+            // Try numeric comparison short-circuit for zmadu/mleca/dunli (timeless)
             if let Some(result) = try_numeric_comparison(rel, args, subs) {
                 return Ok(result);
             }
-            // Standard egglog check
+            // Standard egglog check with tense wrapping
             let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
-            let command = format!("(check (IsTrue {}))", sexp);
+            let wrapped = wrap_with_tense(tense, &sexp);
+            let command = format!("(check (IsTrue {}))", wrapped);
             match inner.egraph.parse_and_run_program(None, &command) {
                 Ok(_) => Ok(true),
                 Err(e) => {
@@ -895,6 +955,7 @@ fn find_witnesses(
     node_id: u32,
     subs: &HashMap<String, String>,
     inner: &mut KnowledgeBaseInner,
+    tense: Option<&str>,
 ) -> Result<Vec<Vec<(String, String)>>, String> {
     match &buffer.nodes[node_id as usize] {
         LogicNode::ExistsNode((v, body)) => {
@@ -905,7 +966,7 @@ fn find_witnesses(
             for entity in &entities {
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
-                let sub_results = find_witnesses(buffer, *body, &new_subs, inner)?;
+                let sub_results = find_witnesses(buffer, *body, &new_subs, inner, tense)?;
                 for mut bindings in sub_results {
                     bindings.push((v.clone(), format!("(Const \"{}\")", entity)));
                     results.push(bindings);
@@ -920,7 +981,7 @@ fn find_witnesses(
                     let witness_sexp = build_ground_skolem_fn(&entry.base_name, combo);
                     let mut new_subs = subs.clone();
                     new_subs.insert(v.clone(), witness_sexp.clone());
-                    let sub_results = find_witnesses(buffer, *body, &new_subs, inner)?;
+                    let sub_results = find_witnesses(buffer, *body, &new_subs, inner, tense)?;
                     for mut bindings in sub_results {
                         bindings.push((v.clone(), witness_sexp.clone()));
                         results.push(bindings);
@@ -930,16 +991,20 @@ fn find_witnesses(
 
             Ok(results)
         }
+        // Temporal nodes: set tense context
+        LogicNode::PastNode(inner_node) => find_witnesses(buffer, *inner_node, subs, inner, Some("Past")),
+        LogicNode::PresentNode(inner_node) => find_witnesses(buffer, *inner_node, subs, inner, Some("Present")),
+        LogicNode::FutureNode(inner_node) => find_witnesses(buffer, *inner_node, subs, inner, Some("Future")),
         LogicNode::AndNode((l, r)) => {
             // Cross-product: for each left binding set, check right with merged subs
-            let left_results = find_witnesses(buffer, *l, subs, inner)?;
+            let left_results = find_witnesses(buffer, *l, subs, inner, tense)?;
             let mut results = Vec::new();
             for left_bindings in left_results {
                 let mut merged_subs = subs.clone();
                 for (k, v) in &left_bindings {
                     merged_subs.insert(k.clone(), v.clone());
                 }
-                let right_results = find_witnesses(buffer, *r, &merged_subs, inner)?;
+                let right_results = find_witnesses(buffer, *r, &merged_subs, inner, tense)?;
                 for right_bindings in right_results {
                     let mut combined = left_bindings.clone();
                     combined.extend(right_bindings);
@@ -950,14 +1015,14 @@ fn find_witnesses(
         }
         LogicNode::OrNode((l, r)) => {
             // Union: collect from both sides
-            let mut results = find_witnesses(buffer, *l, subs, inner)?;
-            results.extend(find_witnesses(buffer, *r, subs, inner)?);
+            let mut results = find_witnesses(buffer, *l, subs, inner, tense)?;
+            results.extend(find_witnesses(buffer, *r, subs, inner, tense)?);
             Ok(results)
         }
         // For all other node types, delegate to boolean check.
         // If the formula holds, return one empty binding set; otherwise empty.
         _ => {
-            if check_formula_holds(buffer, node_id, subs, inner)? {
+            if check_formula_holds(buffer, node_id, subs, inner, tense)? {
                 Ok(vec![vec![]])
             } else {
                 Ok(vec![])
@@ -1086,11 +1151,12 @@ fn check_formula_holds_traced(
     subs: &HashMap<String, String>,
     inner: &mut KnowledgeBaseInner,
     steps: &mut Vec<ProofStep>,
+    tense: Option<&str>,
 ) -> Result<(bool, u32), String> {
     match &buffer.nodes[node_id as usize] {
         LogicNode::AndNode((l, r)) => {
-            let (l_result, l_idx) = check_formula_holds_traced(buffer, *l, subs, inner, steps)?;
-            let (r_result, r_idx) = check_formula_holds_traced(buffer, *r, subs, inner, steps)?;
+            let (l_result, l_idx) = check_formula_holds_traced(buffer, *l, subs, inner, steps, tense)?;
+            let (r_result, r_idx) = check_formula_holds_traced(buffer, *r, subs, inner, steps, tense)?;
             let result = l_result && r_result;
             let idx = steps.len() as u32;
             steps.push(ProofStep {
@@ -1101,14 +1167,15 @@ fn check_formula_holds_traced(
             Ok((result, idx))
         }
         LogicNode::OrNode((l, r)) => {
-            // Try egglog direct check first
+            // Try egglog direct check first (with tense wrapping)
             let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
-            let command = format!("(check (IsTrue {}))", sexp);
+            let wrapped = wrap_with_tense(tense, &sexp);
+            let command = format!("(check (IsTrue {}))", wrapped);
             match inner.egraph.parse_and_run_program(None, &command) {
                 Ok(_) => {
                     let idx = steps.len() as u32;
                     steps.push(ProofStep {
-                        rule: ProofRule::DisjunctionEgraph(sexp),
+                        rule: ProofRule::DisjunctionEgraph(wrapped),
                         holds: true,
                         children: vec![],
                     });
@@ -1117,7 +1184,7 @@ fn check_formula_holds_traced(
                 Err(_) => {}
             }
             // Fallback: try left then right
-            let (l_result, l_idx) = check_formula_holds_traced(buffer, *l, subs, inner, steps)?;
+            let (l_result, l_idx) = check_formula_holds_traced(buffer, *l, subs, inner, steps, tense)?;
             if l_result {
                 let idx = steps.len() as u32;
                 steps.push(ProofStep {
@@ -1127,7 +1194,7 @@ fn check_formula_holds_traced(
                 });
                 return Ok((true, idx));
             }
-            let (r_result, r_idx) = check_formula_holds_traced(buffer, *r, subs, inner, steps)?;
+            let (r_result, r_idx) = check_formula_holds_traced(buffer, *r, subs, inner, steps, tense)?;
             if r_result {
                 let idx = steps.len() as u32;
                 steps.push(ProofStep {
@@ -1148,7 +1215,7 @@ fn check_formula_holds_traced(
         }
         LogicNode::NotNode(inner_node) => {
             let (inner_result, inner_idx) =
-                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps)?;
+                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, tense)?;
             let result = !inner_result;
             let idx = steps.len() as u32;
             steps.push(ProofStep {
@@ -1158,9 +1225,10 @@ fn check_formula_holds_traced(
             });
             Ok((result, idx))
         }
+        // Temporal nodes: set tense context for inner formula
         LogicNode::PastNode(inner_node) => {
             let (result, child_idx) =
-                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps)?;
+                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, Some("Past"))?;
             let idx = steps.len() as u32;
             steps.push(ProofStep {
                 rule: ProofRule::ModalPassthrough("past".to_string()),
@@ -1171,7 +1239,7 @@ fn check_formula_holds_traced(
         }
         LogicNode::PresentNode(inner_node) => {
             let (result, child_idx) =
-                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps)?;
+                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, Some("Present"))?;
             let idx = steps.len() as u32;
             steps.push(ProofStep {
                 rule: ProofRule::ModalPassthrough("present".to_string()),
@@ -1182,7 +1250,7 @@ fn check_formula_holds_traced(
         }
         LogicNode::FutureNode(inner_node) => {
             let (result, child_idx) =
-                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps)?;
+                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, Some("Future"))?;
             let idx = steps.len() as u32;
             steps.push(ProofStep {
                 rule: ProofRule::ModalPassthrough("future".to_string()),
@@ -1191,9 +1259,10 @@ fn check_formula_holds_traced(
             });
             Ok((result, idx))
         }
+        // Deontic nodes: remain transparent, pass through current tense
         LogicNode::ObligatoryNode(inner_node) => {
             let (result, child_idx) =
-                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps)?;
+                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, tense)?;
             let idx = steps.len() as u32;
             steps.push(ProofStep {
                 rule: ProofRule::ModalPassthrough("obligatory".to_string()),
@@ -1204,7 +1273,7 @@ fn check_formula_holds_traced(
         }
         LogicNode::PermittedNode(inner_node) => {
             let (result, child_idx) =
-                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps)?;
+                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, tense)?;
             let idx = steps.len() as u32;
             steps.push(ProofStep {
                 rule: ProofRule::ModalPassthrough("permitted".to_string()),
@@ -1220,7 +1289,7 @@ fn check_formula_holds_traced(
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
                 let (holds, body_idx) =
-                    check_formula_holds_traced(buffer, *body, &new_subs, inner, steps)?;
+                    check_formula_holds_traced(buffer, *body, &new_subs, inner, steps, tense)?;
                 if holds {
                     let idx = steps.len() as u32;
                     steps.push(ProofStep {
@@ -1243,7 +1312,7 @@ fn check_formula_holds_traced(
                     let mut new_subs = subs.clone();
                     new_subs.insert(v.clone(), witness_sexp.clone());
                     let (holds, body_idx) =
-                        check_formula_holds_traced(buffer, *body, &new_subs, inner, steps)?;
+                        check_formula_holds_traced(buffer, *body, &new_subs, inner, steps, tense)?;
                     if holds {
                         let idx = steps.len() as u32;
                         steps.push(ProofStep {
@@ -1283,7 +1352,7 @@ fn check_formula_holds_traced(
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
                 let (holds, body_idx) =
-                    check_formula_holds_traced(buffer, *body, &new_subs, inner, steps)?;
+                    check_formula_holds_traced(buffer, *body, &new_subs, inner, steps, tense)?;
                 if !holds {
                     let idx = steps.len() as u32;
                     steps.push(ProofStep {
@@ -1312,7 +1381,7 @@ fn check_formula_holds_traced(
             for entity in &entities {
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
-                if check_formula_holds(buffer, *body, &new_subs, inner)? {
+                if check_formula_holds(buffer, *body, &new_subs, inner, tense)? {
                     satisfying += 1;
                 }
             }
@@ -1326,7 +1395,7 @@ fn check_formula_holds_traced(
             Ok((result, idx))
         }
         LogicNode::Predicate((rel, args)) => {
-            // Try numeric comparison short-circuit
+            // Try numeric comparison short-circuit (timeless)
             if let Some(result) = try_numeric_comparison(rel, args, subs) {
                 let detail = format!(
                     "{}({}) = {}",
@@ -1352,13 +1421,14 @@ fn check_formula_holds_traced(
                 });
                 return Ok((result, idx));
             }
-            // Standard egglog check
+            // Standard egglog check with tense wrapping
             let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
-            let command = format!("(check (IsTrue {}))", sexp);
+            let wrapped = wrap_with_tense(tense, &sexp);
+            let command = format!("(check (IsTrue {}))", wrapped);
             match inner.egraph.parse_and_run_program(None, &command) {
                 Ok(_) => {
                     // Trace provenance: asserted → derived → fallback
-                    let idx = trace_predicate_provenance(&sexp, inner, steps, 0);
+                    let idx = trace_predicate_provenance(&wrapped, inner, steps, 0);
                     Ok((true, idx))
                 }
                 Err(e) => {
@@ -1366,7 +1436,7 @@ fn check_formula_holds_traced(
                     if msg.contains("Check failed") {
                         let idx = steps.len() as u32;
                         steps.push(ProofStep {
-                            rule: ProofRule::PredicateCheck(("egglog".to_string(), sexp)),
+                            rule: ProofRule::PredicateCheck(("egglog".to_string(), wrapped)),
                             holds: false,
                             children: vec![],
                         });
@@ -1693,10 +1763,16 @@ fn reconstruct_rule_sexp(
                 format!("(Exists \"{}\" {})", v, body_sexp)
             }
         }
-        LogicNode::PastNode(inner)
-        | LogicNode::PresentNode(inner)
-        | LogicNode::FutureNode(inner)
-        | LogicNode::ObligatoryNode(inner)
+        LogicNode::PastNode(inner) => {
+            format!("(Past {})", reconstruct_rule_sexp(buffer, *inner, pattern_vars, ground_skolems, dependent_skolems))
+        }
+        LogicNode::PresentNode(inner) => {
+            format!("(Present {})", reconstruct_rule_sexp(buffer, *inner, pattern_vars, ground_skolems, dependent_skolems))
+        }
+        LogicNode::FutureNode(inner) => {
+            format!("(Future {})", reconstruct_rule_sexp(buffer, *inner, pattern_vars, ground_skolems, dependent_skolems))
+        }
+        LogicNode::ObligatoryNode(inner)
         | LogicNode::PermittedNode(inner) => {
             reconstruct_rule_sexp(buffer, *inner, pattern_vars, ground_skolems, dependent_skolems)
         }
@@ -1880,6 +1956,9 @@ fn compile_forall_to_rule(
                     inner.egraph.parse_and_run_program(None, &cmd).ok();
                 }
                 inner.egraph.parse_and_run_program(None, "(run 100)").ok();
+
+                // ── Temporal lifting: compile Past/Present/Future variants ──
+                compile_temporal_lifted_rules(inner, &bare_condition_sexps, &bare_conclusion_sexps, &pattern_var_names)?;
             }
         }
         None => {
@@ -1921,13 +2000,81 @@ fn compile_forall_to_rule(
                 inner.universal_rules.push(UniversalRuleRecord {
                     label,
                     condition_templates: vec![],
-                    conclusion_templates: vec![body_sexp],
+                    conclusion_templates: vec![body_sexp.clone()],
                     pattern_var_names: pattern_var_names.clone(),
                 });
+
+                // ── Temporal lifting: compile Past/Present/Future variants ──
+                compile_temporal_lifted_rules(inner, &[], &[body_sexp], &pattern_var_names)?;
             }
         }
     }
 
+    Ok(())
+}
+
+/// Compile Past/Present/Future variants of a universal rule.
+/// For each tense T, wraps all conditions and conclusions with T(...).
+fn compile_temporal_lifted_rules(
+    inner: &mut KnowledgeBaseInner,
+    bare_condition_sexps: &[String],
+    bare_conclusion_sexps: &[String],
+    pattern_var_names: &[String],
+) -> Result<(), String> {
+    for tense in &["Past", "Present", "Future"] {
+        let tensed_conditions: Vec<String> = bare_condition_sexps
+            .iter()
+            .map(|s| format!("(IsTrue ({} {}))", tense, s))
+            .collect();
+        let tensed_actions: Vec<String> = bare_conclusion_sexps
+            .iter()
+            .map(|s| format!("(IsTrue ({} {}))", tense, s))
+            .collect();
+
+        // For bare rules (no conditions), use InDomain triggers
+        let rule = if tensed_conditions.is_empty() {
+            // Bare rules need InDomain as triggers
+            let domain_conditions: Vec<String> = pattern_var_names
+                .iter()
+                .map(|pv| format!("(InDomain {})", pv))
+                .collect();
+            format!(
+                "(rule ({}) ({}))",
+                domain_conditions.join(" "),
+                tensed_actions.join(" ")
+            )
+        } else {
+            format!(
+                "(rule ({}) ({}))",
+                tensed_conditions.join(" "),
+                tensed_actions.join(" ")
+            )
+        };
+
+        if inner.known_rules.insert(rule.clone()) {
+            inner
+                .egraph
+                .parse_and_run_program(None, &rule)
+                .map_err(|e| format!("Failed to compile {}-lifted rule: {}", tense, e))?;
+
+            // Record tense-lifted rule for backward-chaining provenance
+            let tensed_cond_templates: Vec<String> = bare_condition_sexps
+                .iter()
+                .map(|s| format!("({} {})", tense, s))
+                .collect();
+            let tensed_concl_templates: Vec<String> = bare_conclusion_sexps
+                .iter()
+                .map(|s| format!("({} {})", tense, s))
+                .collect();
+            let label = build_rule_label(&tensed_cond_templates, &tensed_concl_templates);
+            inner.universal_rules.push(UniversalRuleRecord {
+                label,
+                condition_templates: tensed_cond_templates,
+                conclusion_templates: tensed_concl_templates,
+                pattern_var_names: pattern_var_names.to_vec(),
+            });
+        }
+    }
     Ok(())
 }
 
@@ -2193,10 +2340,16 @@ fn reconstruct_sexp_with_subs(
                 }
             }
         }
-        LogicNode::PastNode(inner)
-        | LogicNode::PresentNode(inner)
-        | LogicNode::FutureNode(inner)
-        | LogicNode::ObligatoryNode(inner)
+        LogicNode::PastNode(inner) => {
+            format!("(Past {})", reconstruct_sexp_with_subs(buffer, *inner, subs))
+        }
+        LogicNode::PresentNode(inner) => {
+            format!("(Present {})", reconstruct_sexp_with_subs(buffer, *inner, subs))
+        }
+        LogicNode::FutureNode(inner) => {
+            format!("(Future {})", reconstruct_sexp_with_subs(buffer, *inner, subs))
+        }
+        LogicNode::ObligatoryNode(inner)
         | LogicNode::PermittedNode(inner) => reconstruct_sexp_with_subs(buffer, *inner, subs),
     }
 }
@@ -4139,6 +4292,18 @@ mod tests {
         id
     }
 
+    fn present(nodes: &mut Vec<LogicNode>, inner: u32) -> u32 {
+        let id = nodes.len() as u32;
+        nodes.push(LogicNode::PresentNode(inner));
+        id
+    }
+
+    fn future(nodes: &mut Vec<LogicNode>, inner: u32) -> u32 {
+        let id = nodes.len() as u32;
+        nodes.push(LogicNode::FutureNode(inner));
+        id
+    }
+
     #[test]
     fn test_past_tense_wrapper_assert_query() {
         let kb = new_kb();
@@ -4151,7 +4316,7 @@ mod tests {
         let root = past(&mut a_nodes, inner);
         assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![root] });
 
-        // Query same tense wrapper
+        // Query same tense wrapper → TRUE
         let mut q_nodes = Vec::new();
         let q_inner = pred(
             &mut q_nodes,
@@ -4163,8 +4328,9 @@ mod tests {
     }
 
     #[test]
-    fn test_tense_transparent_query() {
-        // Assert Past(klama(alis)), query klama(alis) without tense → TRUE (pass-through)
+    fn test_tense_not_transparent() {
+        // Assert Past(klama(alis)), query klama(alis) without tense → FALSE
+        // (tense is NOT transparent — tensed assertion ≠ timeless query)
         let kb = new_kb();
         let mut a_nodes = Vec::new();
         let inner = pred(
@@ -4175,7 +4341,167 @@ mod tests {
         let root = past(&mut a_nodes, inner);
         assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![root] });
 
-        assert!(query(&kb, make_query("alis", "klama")));
+        assert!(!query(&kb, make_query("alis", "klama")));
+    }
+
+    #[test]
+    fn test_tense_discrimination_past_vs_future() {
+        // Assert Past(klama(alis)), query Future(klama(alis)) → FALSE
+        let kb = new_kb();
+        let mut a_nodes = Vec::new();
+        let inner = pred(
+            &mut a_nodes,
+            "klama",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let root = past(&mut a_nodes, inner);
+        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![root] });
+
+        let mut q_nodes = Vec::new();
+        let q_inner = pred(
+            &mut q_nodes,
+            "klama",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let q_root = future(&mut q_nodes, q_inner);
+        assert!(!query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+    }
+
+    #[test]
+    fn test_tense_discrimination_present_vs_past() {
+        // Assert Present(klama(alis)), query Past(klama(alis)) → FALSE
+        let kb = new_kb();
+        let mut a_nodes = Vec::new();
+        let inner = pred(
+            &mut a_nodes,
+            "klama",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let root = present(&mut a_nodes, inner);
+        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![root] });
+
+        let mut q_nodes = Vec::new();
+        let q_inner = pred(
+            &mut q_nodes,
+            "klama",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let q_root = past(&mut q_nodes, q_inner);
+        assert!(!query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+    }
+
+    #[test]
+    fn test_untensed_assert_tensed_query() {
+        // Assert klama(alis) (bare/timeless), query Past(klama(alis)) → FALSE
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "klama"));
+
+        let mut q_nodes = Vec::new();
+        let q_inner = pred(
+            &mut q_nodes,
+            "klama",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let q_root = past(&mut q_nodes, q_inner);
+        assert!(!query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+    }
+
+    #[test]
+    fn test_temporal_rule_lifting() {
+        // Assert: ∀x. gerku(x) → danlu(x) (timeless rule)
+        // Assert: Past(gerku(alis))
+        // Query: Past(danlu(alis)) → TRUE (temporal lifting)
+        let kb = new_kb();
+
+        // Compile the universal rule: ForAll(x, Or(Not(gerku(x)), danlu(x)))
+        let mut r_nodes = Vec::new();
+        let gerku = pred(
+            &mut r_nodes,
+            "gerku",
+            vec![LogicalTerm::Variable("_v0".into()), LogicalTerm::Unspecified],
+        );
+        let danlu = pred(
+            &mut r_nodes,
+            "danlu",
+            vec![LogicalTerm::Variable("_v0".into()), LogicalTerm::Unspecified],
+        );
+        let neg_gerku = not(&mut r_nodes, gerku);
+        let impl_body = or(&mut r_nodes, neg_gerku, danlu);
+        let forall = {
+            let id = r_nodes.len() as u32;
+            r_nodes.push(LogicNode::ForAllNode(("_v0".into(), impl_body)));
+            id
+        };
+        assert_buf(&kb, LogicBuffer { nodes: r_nodes, roots: vec![forall] });
+
+        // Assert Past(gerku(alis))
+        let mut a_nodes = Vec::new();
+        let gerku_alis = pred(
+            &mut a_nodes,
+            "gerku",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let past_gerku = past(&mut a_nodes, gerku_alis);
+        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![past_gerku] });
+
+        // Query Past(danlu(alis)) → TRUE (lifted rule fires on Past premises)
+        let mut q_nodes = Vec::new();
+        let danlu_alis = pred(
+            &mut q_nodes,
+            "danlu",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let past_danlu = past(&mut q_nodes, danlu_alis);
+        assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![past_danlu] }));
+    }
+
+    #[test]
+    fn test_temporal_rule_no_cross_tense() {
+        // Assert: ∀x. gerku(x) → danlu(x) (timeless rule)
+        // Assert: Past(gerku(alis))
+        // Query: Future(danlu(alis)) → FALSE (no cross-tense derivation)
+        let kb = new_kb();
+
+        // Universal rule
+        let mut r_nodes = Vec::new();
+        let gerku = pred(
+            &mut r_nodes,
+            "gerku",
+            vec![LogicalTerm::Variable("_v0".into()), LogicalTerm::Unspecified],
+        );
+        let danlu = pred(
+            &mut r_nodes,
+            "danlu",
+            vec![LogicalTerm::Variable("_v0".into()), LogicalTerm::Unspecified],
+        );
+        let neg_gerku = not(&mut r_nodes, gerku);
+        let impl_body = or(&mut r_nodes, neg_gerku, danlu);
+        let forall = {
+            let id = r_nodes.len() as u32;
+            r_nodes.push(LogicNode::ForAllNode(("_v0".into(), impl_body)));
+            id
+        };
+        assert_buf(&kb, LogicBuffer { nodes: r_nodes, roots: vec![forall] });
+
+        // Assert Past(gerku(alis))
+        let mut a_nodes = Vec::new();
+        let gerku_alis = pred(
+            &mut a_nodes,
+            "gerku",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let past_gerku = past(&mut a_nodes, gerku_alis);
+        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![past_gerku] });
+
+        // Query Future(danlu(alis)) → FALSE (Past ≠ Future)
+        let mut q_nodes = Vec::new();
+        let danlu_alis = pred(
+            &mut q_nodes,
+            "danlu",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let future_danlu = future(&mut q_nodes, danlu_alis);
+        assert!(!query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![future_danlu] }));
     }
 
     // ─── Multiple roots test ─────────────────────────────────────
