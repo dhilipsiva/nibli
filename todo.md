@@ -6,19 +6,6 @@ Single-phase backlog ordered by severity: soundness bugs first, then safety, the
 
 ## Capability Gaps
 
-### C1. Multi-hop derivation provenance
-
-Proof traces show "found in egglog" for facts derived via rule saturation. Cannot reconstruct the causal chain (e.g., `gerku(alis) → danlu(alis) → xanlu(alis)` via two universal rules).
-
-**Possible approaches:**
-- egglog proof extraction — investigate upstream API for proof terms
-- Shadow derivation log — append-only `(rule-id, premises, conclusion)` tuples during saturation; reconstruct by walking backwards from queried fact
-- Annotated e-nodes — tag each e-node with derivation parent(s); O(1) per rule firing, O(depth) at query time
-
-**Crate:** reasoning/lib.rs
-**Complexity:** high
-**Constraint:** derivation recording is on the saturation hot path; must not degrade throughput
-
 ### C2. Non-monotonic reasoning / belief revision
 
 Retraction + justification tracking (TMS-style). egglog doesn't natively support retraction — needs wrapper layer. Required for any evolving knowledge base (legal corpus where statutes get amended/repealed, biology with hypothesis revision).

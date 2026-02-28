@@ -24,6 +24,20 @@ struct SkolemFnEntry {
 /// A dependent Skolem is an ∃ variable nested under a ∀.
 const SKDEP_PREFIX: &str = "__skdep__";
 
+/// Records the structure of a compiled universal rule for backward-chaining provenance.
+/// Templates use bare pattern variables (e.g., `x__v0`) instead of bound values.
+#[derive(Clone)]
+struct UniversalRuleRecord {
+    /// Human-readable label, e.g. "gerku → danlu"
+    label: String,
+    /// S-expression templates for the rule's conditions (without `(IsTrue ...)` wrapper).
+    condition_templates: Vec<String>,
+    /// S-expression templates for the rule's conclusions (without `(IsTrue ...)` wrapper).
+    conclusion_templates: Vec<String>,
+    /// Pattern variable names used in templates, e.g. ["x__v0"].
+    pattern_var_names: Vec<String>,
+}
+
 /// All mutable KB state behind a single RefCell.
 struct KnowledgeBaseInner {
     egraph: EGraph,
@@ -31,6 +45,10 @@ struct KnowledgeBaseInner {
     known_entities: HashSet<String>,
     known_rules: HashSet<String>,
     skolem_fn_registry: Vec<SkolemFnEntry>,
+    /// Ground facts directly asserted by the user (for provenance tracking).
+    asserted_sexps: HashSet<String>,
+    /// Compiled universal rule templates (for backward-chaining provenance).
+    universal_rules: Vec<UniversalRuleRecord>,
 }
 
 impl KnowledgeBaseInner {
@@ -41,6 +59,8 @@ impl KnowledgeBaseInner {
             known_entities: HashSet::new(),
             known_rules: HashSet::new(),
             skolem_fn_registry: Vec::new(),
+            asserted_sexps: HashSet::new(),
+            universal_rules: Vec::new(),
         }
     }
 
@@ -50,6 +70,8 @@ impl KnowledgeBaseInner {
         self.known_entities.clear();
         self.known_rules.clear();
         self.skolem_fn_registry.clear();
+        self.asserted_sexps.clear();
+        self.universal_rules.clear();
     }
 
     fn fresh_skolem(&mut self) -> String {
@@ -306,6 +328,8 @@ impl KnowledgeBase {
                     .map(|(k, v)| (k.clone(), format!("(Const \"{}\")", v)))
                     .collect();
                 let sexp = reconstruct_sexp_with_subs(&logic, root_id, &raw_subs);
+                // Record as user-asserted fact for provenance tracking
+                inner.asserted_sexps.insert(sexp.clone());
                 let command = format!("(IsTrue {})", sexp);
                 inner
                     .egraph
@@ -798,6 +822,115 @@ fn find_witnesses(
 
 // ─── Proof Trace Generation ──────────────────────────────────────
 
+// ─── Backward-Chaining Provenance ────────────────────────────────
+
+/// Maximum backward-chaining depth to prevent infinite recursion on cyclic rules.
+const MAX_BACKWARD_CHAIN_DEPTH: usize = 10;
+
+/// Try to explain a derived fact by backward-chaining through universal rules.
+/// Returns the proof step index if a derivation is found.
+fn try_backward_chain_traced(
+    sexp: &str,
+    inner: &mut KnowledgeBaseInner,
+    steps: &mut Vec<ProofStep>,
+    depth: usize,
+) -> Option<u32> {
+    // Snapshot rules to avoid borrow conflict with mutable egglog access
+    let rules: Vec<UniversalRuleRecord> = inner.universal_rules.clone();
+
+    for rule in &rules {
+        for conclusion_template in &rule.conclusion_templates {
+            if let Some(bindings) = sexp_match(conclusion_template, sexp, &rule.pattern_var_names)
+            {
+                // Verify all conditions hold in egglog with the bound variables
+                let mut all_conditions_hold = true;
+                let mut condition_sexps = Vec::new();
+
+                for cond_template in &rule.condition_templates {
+                    let cond_sexp = sexp_substitute(cond_template, &bindings);
+                    let check_cmd = format!("(check (IsTrue {}))", cond_sexp);
+                    match inner.egraph.parse_and_run_program(None, &check_cmd) {
+                        Ok(_) => condition_sexps.push(cond_sexp),
+                        Err(_) => {
+                            all_conditions_hold = false;
+                            break;
+                        }
+                    }
+                }
+
+                if !all_conditions_hold {
+                    continue;
+                }
+
+                // For bare rules (no conditions), just record the derivation
+                if rule.condition_templates.is_empty() {
+                    let idx = steps.len() as u32;
+                    steps.push(ProofStep {
+                        rule: ProofRule::Derived((rule.label.clone(), sexp.to_string())),
+                        holds: true,
+                        children: vec![],
+                    });
+                    return Some(idx);
+                }
+
+                // Recursively trace each condition
+                let mut child_indices = Vec::new();
+                for cond_sexp in &condition_sexps {
+                    let child_idx =
+                        trace_predicate_provenance(cond_sexp, inner, steps, depth + 1);
+                    child_indices.push(child_idx);
+                }
+
+                let idx = steps.len() as u32;
+                steps.push(ProofStep {
+                    rule: ProofRule::Derived((rule.label.clone(), sexp.to_string())),
+                    holds: true,
+                    children: child_indices,
+                });
+                return Some(idx);
+            }
+        }
+    }
+
+    None
+}
+
+/// Trace the provenance of a predicate fact known to be in egglog.
+/// Returns the proof step index.
+fn trace_predicate_provenance(
+    sexp: &str,
+    inner: &mut KnowledgeBaseInner,
+    steps: &mut Vec<ProofStep>,
+    depth: usize,
+) -> u32 {
+    // 1. Was this fact directly asserted?
+    if inner.asserted_sexps.contains(sexp) {
+        let idx = steps.len() as u32;
+        steps.push(ProofStep {
+            rule: ProofRule::Asserted(sexp.to_string()),
+            holds: true,
+            children: vec![],
+        });
+        return idx;
+    }
+
+    // 2. Try backward-chaining through universal rules
+    if depth < MAX_BACKWARD_CHAIN_DEPTH {
+        if let Some(idx) = try_backward_chain_traced(sexp, inner, steps, depth) {
+            return idx;
+        }
+    }
+
+    // 3. Fallback: in egglog but can't trace derivation
+    let idx = steps.len() as u32;
+    steps.push(ProofStep {
+        rule: ProofRule::PredicateCheck(("egglog".to_string(), sexp.to_string())),
+        holds: true,
+        children: vec![],
+    });
+    idx
+}
+
 /// Like `check_formula_holds` but builds a proof trace as it recurses.
 /// Returns (result, step_index) where step_index is the index of this
 /// step in the `steps` Vec.
@@ -1078,12 +1211,8 @@ fn check_formula_holds_traced(
             let command = format!("(check (IsTrue {}))", sexp);
             match inner.egraph.parse_and_run_program(None, &command) {
                 Ok(_) => {
-                    let idx = steps.len() as u32;
-                    steps.push(ProofStep {
-                        rule: ProofRule::PredicateCheck(("egglog".to_string(), sexp)),
-                        holds: true,
-                        children: vec![],
-                    });
+                    // Trace provenance: asserted → derived → fallback
+                    let idx = trace_predicate_provenance(&sexp, inner, steps, 0);
                     Ok((true, idx))
                 }
                 Err(e) => {
@@ -1424,6 +1553,30 @@ fn reconstruct_rule_sexp(
     }
 }
 
+/// Extract the predicate name from a bare s-expression like `(Pred "gerku" ...)`.
+fn extract_pred_name(sexp: &str) -> Option<&str> {
+    let rest = sexp.strip_prefix("(Pred \"")?;
+    let end = rest.find('"')?;
+    Some(&rest[..end])
+}
+
+/// Build a human-readable rule label from condition/conclusion templates.
+fn build_rule_label(conditions: &[String], conclusions: &[String]) -> String {
+    let cond_names: Vec<&str> = conditions
+        .iter()
+        .filter_map(|s| extract_pred_name(s))
+        .collect();
+    let concl_names: Vec<&str> = conclusions
+        .iter()
+        .filter_map(|s| extract_pred_name(s))
+        .collect();
+    if cond_names.is_empty() {
+        format!("∀ → {}", concl_names.join(" ∧ "))
+    } else {
+        format!("{} → {}", cond_names.join(" ∧ "), concl_names.join(" ∧ "))
+    }
+}
+
 /// Compile a ForAll node into a native egglog rule.
 fn compile_forall_to_rule(
     buffer: &LogicBuffer,
@@ -1498,23 +1651,27 @@ fn compile_forall_to_rule(
                 all_conditions.extend(flatten_conjuncts(buffer, *cid));
             }
 
-            let conditions_sexp: Vec<String> = all_conditions
+            let bare_condition_sexps: Vec<String> = all_conditions
                 .iter()
                 .map(|&cid| {
-                    let sexp =
-                        reconstruct_rule_sexp(buffer, cid, &pattern_vars, &ground_skolems, &dependent_skolems);
-                    format!("(IsTrue {})", sexp)
+                    reconstruct_rule_sexp(buffer, cid, &pattern_vars, &ground_skolems, &dependent_skolems)
                 })
+                .collect();
+            let conditions_sexp: Vec<String> = bare_condition_sexps
+                .iter()
+                .map(|s| format!("(IsTrue {})", s))
                 .collect();
 
             let consequent_atoms = flatten_consequent(buffer, consequent_id, skolem_subs);
-            let actions_sexp: Vec<String> = consequent_atoms
+            let bare_conclusion_sexps: Vec<String> = consequent_atoms
                 .iter()
                 .map(|&aid| {
-                    let sexp =
-                        reconstruct_rule_sexp(buffer, aid, &pattern_vars, &ground_skolems, &dependent_skolems);
-                    format!("(IsTrue {})", sexp)
+                    reconstruct_rule_sexp(buffer, aid, &pattern_vars, &ground_skolems, &dependent_skolems)
                 })
+                .collect();
+            let actions_sexp: Vec<String> = bare_conclusion_sexps
+                .iter()
+                .map(|s| format!("(IsTrue {})", s))
                 .collect();
 
             let rule = format!(
@@ -1538,6 +1695,15 @@ fn compile_forall_to_rule(
                     .parse_and_run_program(None, &rule)
                     .map_err(|e| format!("Failed to compile universal to rule: {}", e))?;
 
+                // Record rule structure for backward-chaining provenance
+                let label = build_rule_label(&bare_condition_sexps, &bare_conclusion_sexps);
+                inner.universal_rules.push(UniversalRuleRecord {
+                    label,
+                    condition_templates: bare_condition_sexps.clone(),
+                    conclusion_templates: bare_conclusion_sexps.clone(),
+                    pattern_var_names: pattern_var_names.clone(),
+                });
+
                 // ── xorlo presupposition: assert restrictor domain is non-empty ──
                 // In Lojban, `ro lo P cu Q` presupposes at least one P exists.
                 // Create a presupposition Skolem for each restrictor predicate,
@@ -1554,6 +1720,8 @@ fn compile_forall_to_rule(
                 }
                 for &cid in &all_conditions {
                     let presup = reconstruct_sexp_with_subs(buffer, cid, &xp_subs);
+                    // Record xorlo presupposition as asserted for provenance
+                    inner.asserted_sexps.insert(presup.clone());
                     let cmd = format!("(IsTrue {})", presup);
                     inner.egraph.parse_and_run_program(None, &cmd).ok();
                 }
@@ -1589,11 +1757,202 @@ fn compile_forall_to_rule(
                     .egraph
                     .parse_and_run_program(None, &rule)
                     .map_err(|e| format!("Failed to compile bare universal to rule: {}", e))?;
+
+                // Record bare rule structure for backward-chaining provenance
+                let label = build_rule_label(&[], &[body_sexp.clone()]);
+                inner.universal_rules.push(UniversalRuleRecord {
+                    label,
+                    condition_templates: vec![],
+                    conclusion_templates: vec![body_sexp],
+                    pattern_var_names: pattern_var_names.clone(),
+                });
             }
         }
     }
 
     Ok(())
+}
+
+// ─── S-Expression Pattern Matching (for backward-chaining provenance) ────
+
+/// Tokenize an s-expression string into atoms, parens, and quoted strings.
+fn sexp_tokenize(s: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut chars = s.chars().peekable();
+    while let Some(&ch) = chars.peek() {
+        match ch {
+            '(' => {
+                tokens.push("(".to_string());
+                chars.next();
+            }
+            ')' => {
+                tokens.push(")".to_string());
+                chars.next();
+            }
+            '"' => {
+                chars.next(); // consume opening quote
+                let mut quoted = String::from("\"");
+                while let Some(&c) = chars.peek() {
+                    chars.next();
+                    if c == '"' {
+                        break;
+                    }
+                    quoted.push(c);
+                }
+                quoted.push('"');
+                tokens.push(quoted);
+            }
+            c if c.is_whitespace() => {
+                chars.next();
+            }
+            _ => {
+                let mut atom = String::new();
+                while let Some(&c) = chars.peek() {
+                    if c == '(' || c == ')' || c == '"' || c.is_whitespace() {
+                        break;
+                    }
+                    atom.push(c);
+                    chars.next();
+                }
+                tokens.push(atom);
+            }
+        }
+    }
+    tokens
+}
+
+/// Extract one complete s-expression starting at position `start` in a token stream.
+/// Returns `(end_position, reconstructed_sexp_string)`.
+fn extract_sexp_at(tokens: &[String], start: usize) -> Option<(usize, String)> {
+    if start >= tokens.len() {
+        return None;
+    }
+    if tokens[start] == "(" {
+        let mut depth = 1usize;
+        let mut end = start + 1;
+        while end < tokens.len() && depth > 0 {
+            if tokens[end] == "(" {
+                depth += 1;
+            } else if tokens[end] == ")" {
+                depth -= 1;
+            }
+            end += 1;
+        }
+        if depth != 0 {
+            return None;
+        }
+        // Reconstruct the s-expression with proper spacing
+        let mut out = String::new();
+        for i in start..end {
+            if i > start && tokens[i] != ")" && tokens[i - 1] != "(" {
+                out.push(' ');
+            }
+            out.push_str(&tokens[i]);
+        }
+        Some((end, out))
+    } else {
+        Some((start + 1, tokens[start].clone()))
+    }
+}
+
+/// Match one s-expression element starting at `(pi, ci)`.
+/// Returns `(new_pi, new_ci)` — the positions right after the matched element.
+/// Does NOT tail-recurse beyond the single matched element.
+fn sexp_match_one(
+    pat: &[String],
+    pi: usize,
+    conc: &[String],
+    ci: usize,
+    var_names: &[String],
+    bindings: &mut HashMap<String, String>,
+) -> Option<(usize, usize)> {
+    if pi >= pat.len() || ci >= conc.len() {
+        return None;
+    }
+
+    let pt = &pat[pi];
+
+    // If pattern token is a variable name, match a complete sub-expression
+    if var_names.contains(pt) {
+        let (sub_end, sub_sexp) = extract_sexp_at(conc, ci)?;
+        if let Some(existing) = bindings.get(pt.as_str()) {
+            if *existing != sub_sexp {
+                return None;
+            }
+        } else {
+            bindings.insert(pt.clone(), sub_sexp);
+        }
+        return Some((pi + 1, sub_end));
+    }
+
+    // Both are "(" — match parenthesized sub-expressions element by element
+    if pt == "(" && conc[ci] == "(" {
+        let mut pj = pi + 1;
+        let mut cj = ci + 1;
+        loop {
+            if pj >= pat.len() || cj >= conc.len() {
+                return None;
+            }
+            if pat[pj] == ")" && conc[cj] == ")" {
+                return Some((pj + 1, cj + 1));
+            }
+            if pat[pj] == ")" || conc[cj] == ")" {
+                return None;
+            }
+            let (new_pj, new_cj) =
+                sexp_match_one(pat, pj, conc, cj, var_names, bindings)?;
+            pj = new_pj;
+            cj = new_cj;
+        }
+    }
+
+    // Literal match
+    if pt == &conc[ci] {
+        Some((pi + 1, ci + 1))
+    } else {
+        None
+    }
+}
+
+/// Match a template s-expression against a concrete s-expression.
+/// Pattern variables in `var_names` (e.g., "x__v0") match complete sub-expressions.
+/// Returns bindings mapping variable names to their matched sub-expressions.
+fn sexp_match(
+    pattern: &str,
+    concrete: &str,
+    var_names: &[String],
+) -> Option<HashMap<String, String>> {
+    let pat_tokens = sexp_tokenize(pattern);
+    let conc_tokens = sexp_tokenize(concrete);
+    let mut bindings = HashMap::new();
+    let (pe, ce) = sexp_match_one(&pat_tokens, 0, &conc_tokens, 0, var_names, &mut bindings)?;
+    if pe == pat_tokens.len() && ce == conc_tokens.len() {
+        Some(bindings)
+    } else {
+        None
+    }
+}
+
+/// Substitute pattern variable names in a template with their bound values.
+fn sexp_substitute(template: &str, bindings: &HashMap<String, String>) -> String {
+    let tokens = sexp_tokenize(template);
+    let mut result_tokens: Vec<String> = Vec::new();
+    for token in &tokens {
+        if let Some(replacement) = bindings.get(token.as_str()) {
+            result_tokens.extend(sexp_tokenize(replacement));
+        } else {
+            result_tokens.push(token.clone());
+        }
+    }
+    // Reconstruct s-expression string with proper spacing
+    let mut out = String::new();
+    for (i, token) in result_tokens.iter().enumerate() {
+        if i > 0 && token != ")" && result_tokens[i - 1] != "(" {
+            out.push(' ');
+        }
+        out.push_str(token);
+    }
+    out
 }
 
 // ─── S-Expression Reconstruction ─────────────────────────────────
@@ -2914,7 +3273,7 @@ mod tests {
 
     #[test]
     fn test_proof_trace_simple_predicate() {
-        // Assert klama(mi), query it → single predicate-check step, result true
+        // Assert klama(mi), query it → single asserted step, result true
         let kb = new_kb();
         assert_buf(&kb, make_assertion("mi", "klama"));
         let (result, trace) = query_with_proof(&kb, make_query("mi", "klama"));
@@ -2923,7 +3282,7 @@ mod tests {
         assert!(!trace.steps.is_empty());
         let root_step = &trace.steps[trace.root as usize];
         assert!(root_step.holds);
-        assert!(matches!(&root_step.rule, ProofRule::PredicateCheck(_)));
+        assert!(matches!(&root_step.rule, ProofRule::Asserted(_)));
     }
 
     #[test]
@@ -2965,11 +3324,11 @@ mod tests {
         assert!(root_step.holds);
         assert!(matches!(&root_step.rule, ProofRule::Conjunction));
         assert_eq!(root_step.children.len(), 2);
-        // Both children should be predicate-check with result true
+        // Both children should be asserted with result true
         for &child in &root_step.children {
             let child_step = &trace.steps[child as usize];
             assert!(child_step.holds);
-            assert!(matches!(&child_step.rule, ProofRule::PredicateCheck(_)));
+            assert!(matches!(&child_step.rule, ProofRule::Asserted(_)));
         }
     }
 
@@ -3075,6 +3434,129 @@ mod tests {
             let child_step = &trace.steps[child as usize];
             assert!(child_step.holds);
         }
+    }
+
+    // ─── Derivation Provenance Tests ──────────────────────────────────
+
+    #[test]
+    fn test_proof_trace_asserted_fact() {
+        // Directly asserted fact should show Asserted, not PredicateCheck
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        let (result, trace) = query_with_proof(&kb, make_query("alis", "gerku"));
+        assert!(result);
+        let root_step = &trace.steps[trace.root as usize];
+        assert!(root_step.holds);
+        assert!(matches!(&root_step.rule, ProofRule::Asserted(_)));
+        if let ProofRule::Asserted(sexp) = &root_step.rule {
+            assert!(sexp.contains("gerku"));
+            assert!(sexp.contains("alis"));
+        }
+    }
+
+    #[test]
+    fn test_proof_trace_single_hop_derived() {
+        // gerku(alis) + rule gerku→danlu → danlu(alis) should show Derived with Asserted child
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        let (result, trace) = query_with_proof(&kb, make_query("alis", "danlu"));
+        assert!(result);
+        let root_step = &trace.steps[trace.root as usize];
+        assert!(root_step.holds);
+        assert!(matches!(&root_step.rule, ProofRule::Derived(_)));
+        if let ProofRule::Derived((label, sexp)) = &root_step.rule {
+            assert!(sexp.contains("danlu"));
+            assert!(label.contains("gerku"));
+            assert!(label.contains("danlu"));
+        }
+        assert_eq!(root_step.children.len(), 1);
+        // The child should be Asserted (gerku(alis))
+        let child_step = &trace.steps[root_step.children[0] as usize];
+        assert!(child_step.holds);
+        assert!(matches!(&child_step.rule, ProofRule::Asserted(_)));
+    }
+
+    #[test]
+    fn test_proof_trace_multi_hop_derived() {
+        // Chain: gerku(alis) → danlu(alis) → xanlu(alis) via two rules
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_universal("danlu", "xanlu"));
+        let (result, trace) = query_with_proof(&kb, make_query("alis", "xanlu"));
+        assert!(result);
+
+        // Root: Derived(danlu → xanlu)
+        let root_step = &trace.steps[trace.root as usize];
+        assert!(root_step.holds);
+        assert!(matches!(&root_step.rule, ProofRule::Derived(_)));
+        if let ProofRule::Derived((label, _)) = &root_step.rule {
+            assert!(label.contains("xanlu"));
+        }
+        assert_eq!(root_step.children.len(), 1);
+
+        // Child: Derived(gerku → danlu)
+        let mid_step = &trace.steps[root_step.children[0] as usize];
+        assert!(mid_step.holds);
+        assert!(matches!(&mid_step.rule, ProofRule::Derived(_)));
+        assert_eq!(mid_step.children.len(), 1);
+
+        // Grandchild: Asserted(gerku(alis))
+        let leaf_step = &trace.steps[mid_step.children[0] as usize];
+        assert!(leaf_step.holds);
+        assert!(matches!(&leaf_step.rule, ProofRule::Asserted(_)));
+    }
+
+    #[test]
+    fn test_proof_trace_derived_depth_limit() {
+        // Self-referencing rule: gerku → gerku. Asserted fact should be found first,
+        // preventing infinite backward-chaining.
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_universal("gerku", "gerku"));
+        let (result, trace) = query_with_proof(&kb, make_query("alis", "gerku"));
+        assert!(result);
+        // Should not panic or infinite-loop. Asserted is checked first.
+        let root_step = &trace.steps[trace.root as usize];
+        assert!(root_step.holds);
+        assert!(matches!(&root_step.rule, ProofRule::Asserted(_)));
+    }
+
+    #[test]
+    fn test_proof_trace_xorlo_presup_is_asserted() {
+        // Universal "ro lo gerku cu danlu" creates xorlo presupposition Skolem.
+        // That fact should show as Asserted, not trigger backward-chaining.
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        // xorlo presupposition creates sk_0 as a gerku
+        let (result, trace) = query_with_proof(&kb, make_query("sk_0", "gerku"));
+        assert!(result);
+        let root_step = &trace.steps[trace.root as usize];
+        assert!(root_step.holds);
+        assert!(matches!(&root_step.rule, ProofRule::Asserted(_)));
+    }
+
+    #[test]
+    fn test_sexp_pattern_matching() {
+        // Test the s-expression pattern matcher directly
+        let var_names = vec!["x__v0".to_string()];
+
+        // Simple predicate match
+        let pattern = r#"(Pred "gerku" (Cons x__v0 (Cons (Zoe) (Nil))))"#;
+        let concrete = r#"(Pred "gerku" (Cons (Const "alis") (Cons (Zoe) (Nil))))"#;
+        let bindings = sexp_match(pattern, concrete, &var_names).unwrap();
+        assert_eq!(bindings.get("x__v0").unwrap(), r#"(Const "alis")"#);
+
+        // Non-matching predicate name
+        let wrong = r#"(Pred "mlatu" (Cons (Const "alis") (Cons (Zoe) (Nil))))"#;
+        assert!(sexp_match(pattern, wrong, &var_names).is_none());
+
+        // Substitution
+        let template = r#"(Pred "danlu" (Cons x__v0 (Cons (Zoe) (Nil))))"#;
+        let result = sexp_substitute(template, &bindings);
+        assert!(result.contains(r#"Const "alis""#));
+        assert!(result.contains("danlu"));
     }
 
     // ─── Conjunction Introduction (Guarded) Tests ────────────────────

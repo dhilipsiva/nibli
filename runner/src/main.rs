@@ -213,6 +213,10 @@ fn format_rule(rule: &ProofRule, result: bool) -> String {
         ProofRule::ComputeCheck((method, detail)) => {
             format!("Compute ({}): {} → {}", method, detail, tag)
         }
+        ProofRule::Asserted(sexp) => format!("Asserted: {} → {}", sexp, tag),
+        ProofRule::Derived((label, sexp)) => {
+            format!("Derived ({}): {} → {}", label, sexp, tag)
+        }
     }
 }
 

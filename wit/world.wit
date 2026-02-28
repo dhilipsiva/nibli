@@ -185,6 +185,11 @@ interface logic-types {
         predicate-check(tuple<string, string>),
         /// Compute node checked. Payload: (method, relation-or-detail).
         compute-check(tuple<string, string>),
+        /// Directly asserted fact (ground truth). Payload: sexp that was asserted.
+        asserted(string),
+        /// Derived via universal rule saturation. Payload: (rule-label, conclusion-sexp).
+        /// Children: proof traces of each premise that triggered the rule.
+        derived(tuple<string, string>),
     }
 
     /// A single step in a proof trace.
