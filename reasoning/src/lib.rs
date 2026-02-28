@@ -1,3 +1,23 @@
+//! Reasoning engine: FOL assertion and query via egglog e-graph equality saturation.
+//!
+//! This is the core inference component of Nibli. It maintains a stateful knowledge
+//! base backed by an egglog e-graph and provides:
+//!
+//! - **Fact assertion** — Ground predicates asserted as `(IsTrue (Pred "rel" ...))` facts.
+//!   Universal quantifiers compile to native egglog rewrite rules with O(K) hash-join matching.
+//! - **Entailment queries** — Recursive formula checking via [`check_formula_holds`] with
+//!   structural rewrites (commutativity, De Morgan, double negation) and inference rules
+//!   (conjunction elimination/introduction, disjunctive syllogism, modus ponens/tollens).
+//! - **Proof traces** — [`check_formula_holds_traced`] builds a proof tree recording which
+//!   rule/axiom was applied at each step (15 proof rule variants). Multi-hop derivation
+//!   provenance traces derived facts through universal rule chains via backward-chaining.
+//! - **Witness extraction** — [`find_witnesses`] returns all satisfying entity bindings for
+//!   existential variables.
+//! - **Compute dispatch** — `ComputeNode` predicates are forwarded to the host-provided
+//!   `compute-backend` WIT interface for external evaluation.
+//!
+//! The knowledge base uses `RefCell` (not `Mutex`) — single-threaded WASI, no global state.
+
 #[allow(warnings)]
 mod bindings;
 
@@ -262,8 +282,14 @@ impl Guest for ReasoningComponent {
     type KnowledgeBase = KnowledgeBase;
 }
 
-/// Internal methods that return Result<_, String> for use by both WIT boundary and tests.
+/// Internal methods that return `Result<_, String>` for use by both the WIT boundary and tests.
 impl KnowledgeBase {
+    /// Assert FOL facts from a logic buffer into the egglog e-graph.
+    ///
+    /// Ground predicates are asserted as `(IsTrue (Pred "rel" ...))` facts.
+    /// Universal quantifiers (`ForAll`) are compiled into native egglog rewrite rules
+    /// via [`compile_forall_to_rule`]. Existential variables are Skolemized
+    /// (dependent Skolems under universals use `SkolemFn`).
     fn assert_fact_inner(&self, logic: LogicBuffer) -> Result<(), String> {
         let mut inner = self.inner.borrow_mut();
 
@@ -347,6 +373,8 @@ impl KnowledgeBase {
         Ok(())
     }
 
+    /// Check whether all root formulas in the logic buffer are entailed by the KB.
+    /// Runs egglog saturation (up to 100 iterations) before checking.
     fn query_entailment_inner(&self, logic: LogicBuffer) -> Result<bool, String> {
         let mut inner = self.inner.borrow_mut();
         inner.egraph.parse_and_run_program(None, "(run 100)").ok();
@@ -359,6 +387,8 @@ impl KnowledgeBase {
         Ok(true)
     }
 
+    /// Find all satisfying binding sets for existential variables in the query formula.
+    /// Returns one `Vec<WitnessBinding>` per satisfying assignment.
     fn query_find_inner(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, String> {
         let mut inner = self.inner.borrow_mut();
         inner.egraph.parse_and_run_program(None, "(run 100)").ok();
@@ -515,6 +545,8 @@ fn try_arithmetic_evaluation(
 // ─── Compute Dispatch Helpers ────────────────────────────────────
 
 /// Parse an egglog s-expression substitution back to a LogicalTerm.
+/// Parse an egglog s-expression string back into a [`LogicalTerm`] for witness extraction.
+/// Recognizes `(Const "...")`, `(Desc "...")`, `(Num ...)`, `(Zoe)` patterns.
 fn parse_sexp_to_term(sexp: &str) -> LogicalTerm {
     if let Some(name) = sexp
         .strip_prefix("(Const \"")
@@ -579,6 +611,8 @@ fn dispatch_to_backend(_rel: &str, _args: &[LogicalTerm]) -> Result<bool, String
 /// Build an egglog s-expression for a ground predicate from resolved args.
 /// Returns None if any argument is still a Variable (not fully ground).
 /// Output: `(Pred "rel" (Cons (Num 8) (Cons (Num 2) (Cons (Num 3) (Nil)))))`
+/// Build an egglog s-expression for a ground predicate: `(Pred "rel" (Const "a") ...)`.
+/// Returns `None` if any argument is a non-ground variable (cannot be fully resolved).
 fn build_ground_predicate_sexp(rel: &str, resolved_args: &[LogicalTerm]) -> Option<String> {
     for arg in resolved_args {
         if matches!(arg, LogicalTerm::Variable(_)) {
@@ -601,6 +635,11 @@ fn build_ground_predicate_sexp(rel: &str, resolved_args: &[LogicalTerm]) -> Opti
 
 // ─── Query Decomposition ─────────────────────────────────────────
 
+/// Recursively check whether a formula (identified by `node_id`) is entailed by the KB.
+///
+/// Handles all FOL node types: conjunction, disjunction, negation, quantifiers,
+/// tense/deontic wrappers, count quantifiers, compute nodes, and predicate leaves.
+/// Variable substitutions are threaded through `subs` for universal quantifier instantiation.
 fn check_formula_holds(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -1363,6 +1402,8 @@ fn collect_exists_for_skolem(
 // ─── Native Rule Compilation ─────────────────────────────────────
 
 /// Decompose a material conditional body into (conditions, action).
+/// Decompose a formula into (conditions, consequent) for material conditional rules.
+/// Recognizes `Not(And(conditions)) → consequent` and `Or(Not(conditions), consequent)` patterns.
 fn decompose_implication(buffer: &LogicBuffer, body_id: u32) -> Option<(Vec<u32>, u32)> {
     let mut conditions = Vec::new();
     let mut current = body_id;
@@ -1453,6 +1494,8 @@ fn collect_and_note_constants(buffer: &LogicBuffer, node_id: u32, inner: &mut Kn
 }
 
 /// Reconstruct an egglog s-expression with bare pattern variables for rule compilation.
+/// Reconstruct an egglog s-expression from a logic buffer node, applying variable
+/// substitutions and Skolem replacements. Used for building egglog rule bodies.
 fn reconstruct_rule_sexp(
     buffer: &LogicBuffer,
     node_id: u32,

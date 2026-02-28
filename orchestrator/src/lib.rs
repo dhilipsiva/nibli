@@ -1,3 +1,21 @@
+//! Orchestrator WASM component: chains parser → semantics → reasoning.
+//!
+//! Entry point for the `engine-pipeline` WIT world. Provides a high-level
+//! [`Session`] resource that accepts Lojban text and internally orchestrates
+//! the full pipeline:
+//!
+//! 1. **Parse** — Lojban text → flat AST buffer (with error recovery)
+//! 2. **Compute node injection** — Rewrites registered predicates to `ComputeNode` IR
+//! 3. **Compile** — AST buffer → FOL logic buffer
+//! 4. **Assert/Query** — FOL logic buffer → egglog e-graph
+//!
+//! Also handles:
+//! - **go'i pro-bridi resolution** — Replaces `go'i` with a deep clone of the
+//!   previous sentence's selbri via [`SelbriSnapshot`]
+//! - **Compute predicate registry** — Built-in arithmetic (pilji/sumji/dilcu) plus
+//!   user-registered predicates are rewritten to `ComputeNode` before semantic compilation
+//! - **Parse error surfacing** — Non-fatal parse errors are returned as warnings
+
 #[allow(warnings)]
 mod bindings;
 
@@ -16,8 +34,14 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+/// WIT component implementation for the `engine` interface.
 struct EnginePipeline;
 
+/// A user-facing session wrapping the full parser → semantics → reasoning pipeline.
+///
+/// Maintains a knowledge base, compute predicate registry, and go'i pro-bridi
+/// anaphora state. All state is behind `RefCell` for interior mutability
+/// (WIT generates `&self` method signatures).
 pub struct Session {
     kb: KnowledgeBase,
     compute_predicates: RefCell<HashSet<String>>,

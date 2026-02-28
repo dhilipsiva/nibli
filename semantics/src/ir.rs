@@ -1,3 +1,12 @@
+//! First-Order Logic intermediate representation.
+//!
+//! Defines [`LogicalTerm`] (atomic terms) and [`LogicalForm`] (well-formed formulas)
+//! that the semantic compiler produces from the parser's AST. The reasoning engine
+//! consumes these via the WIT flattener in `lib.rs`.
+//!
+//! String interning uses [`lasso::Spur`] keys — resolved to `String` only at the
+//! WIT boundary during flattening.
+
 use lasso::Spur;
 
 /// The atomic arguments of a predicate.
@@ -11,6 +20,7 @@ pub enum LogicalTerm {
     Description(Spur),
     /// An explicitly unspecified argument (zo'e)
     Unspecified,
+    /// Numeric literal (from `li` + PA).
     Number(f64),
 }
 
@@ -32,10 +42,15 @@ pub enum LogicalForm {
     Or(Box<LogicalForm>, Box<LogicalForm>),
     /// Logical Negation: ¬A
     Not(Box<LogicalForm>),
+    /// Past tense wrapper (pu): P was true.
     Past(Box<LogicalForm>),
+    /// Present tense wrapper (ca): P is true now.
     Present(Box<LogicalForm>),
+    /// Future tense wrapper (ba): P will be true.
     Future(Box<LogicalForm>),
+    /// Deontic obligation (ei/bilga): P ought to be true.
     Obligatory(Box<LogicalForm>),
+    /// Deontic permission (e'e/curmi): P is permitted.
     Permitted(Box<LogicalForm>),
     /// Exactly `count` distinct x satisfy `body`.
     /// Count(var, count, body)

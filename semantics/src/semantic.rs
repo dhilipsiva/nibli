@@ -1,3 +1,21 @@
+//! Semantic compiler: flat AST buffer → First-Order Logic IR.
+//!
+//! Walks the WIT AST buffer (flat arrays of `Selbri`, `Sumti`, `Sentence`) and
+//! compiles each sentence into a [`LogicalForm`] tree. Key transformations:
+//!
+//! - **Quantifier scoping**: gadri descriptions (`lo`/`le`/`la`/`ro lo`) introduce
+//!   quantified variables; scopes are closed outward after the bridi body is compiled.
+//! - **Skolemization**: existential quantifiers under universals produce `SkolemFn`
+//!   dependent terms instead of bare Skolem constants.
+//! - **Connective expansion**: sumti/selbri/sentence connectives expand into FOL
+//!   `And`/`Or`/`Not`/`Biconditional`/`Xor` combinations.
+//! - **Conversion**: `se`/`te`/`ve`/`xe` permute argument places.
+//! - **Abstraction**: `nu`/`du'u`/`ka`/`ni`/`si'o` reify inner bridi as 1-place predicates.
+//! - **Relative clauses**: `poi`/`noi`/`voi` clauses conjoin restrictor predicates.
+//! - **Modal tags**: BAI cmavo and `fi'o` produce conjoined modal predications.
+//! - **String interning**: all relation names and variable names use [`lasso::Rodeo`]
+//!   for zero-copy comparison and deduplication.
+
 use crate::bindings::lojban::nesy::ast_types::{
     AbstractionKind, Attitudinal, BaiTag, Bridi, Connective, Conversion, Gadri, ModalTag,
     PlaceTag, Selbri, Sentence, SentenceConnective, Sumti, Tense,
@@ -26,8 +44,15 @@ struct QuantifierEntry {
     kind: QuantifierKind,
 }
 
+/// Stateful compiler that transforms flat AST buffers into FOL logic forms.
+///
+/// Maintains a string interner, fresh variable counter, and context state for
+/// relative clauses, ka-abstractions, and `ma` query variables. Accumulated
+/// errors are checked after compilation.
 pub struct SemanticCompiler {
+    /// String interner for relation names and variable names.
     pub interner: Rodeo,
+    /// Monotonically increasing counter for generating fresh variable names.
     pub var_counter: usize,
     /// When inside a relative clause, holds the bound variable from the
     /// enclosing description. ke'a resolves to this variable directly.

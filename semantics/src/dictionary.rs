@@ -1,6 +1,12 @@
-// Include the perfect hash map generated at compile time
+//! Jbovlaste dictionary: compile-time perfect hash map of gismu/lujvo arities.
+//!
+//! The PHF map is generated at build time by `build.rs` from the jbovlaste XML
+//! export. Provides O(1) arity lookup with zero runtime allocation.
+
+// Include the perfect hash map generated at compile time by build.rs.
 include!(concat!(env!("OUT_DIR"), "/generated_dictionary.rs"));
 
+/// Interface to the compile-time jbovlaste arity dictionary.
 pub struct JbovlasteSchema;
 
 impl JbovlasteSchema {

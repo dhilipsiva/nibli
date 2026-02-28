@@ -1,25 +1,36 @@
-// parser/src/lib.rs
-//
-// WASM component entry point. Pipeline:
-//   1. Lex (Logos DFA)
-//   2. Preprocess (metalinguistic resolution)
-//   3. Parse (recursive descent)
-//   4. Flatten (tree AST → index-based WIT buffer)
+//! Lojban parser WASM component.
+//!
+//! Entry point for the `parser-component` WIT world. Implements the full
+//! text-to-flat-buffer pipeline:
+//!
+//! 1. **Lex** — Logos DFA tokenizer ([`lexer::tokenize`])
+//! 2. **Preprocess** — Metalinguistic resolution: si/sa/su/zo/zoi/zei ([`preprocessor::preprocess`])
+//! 3. **Parse** — Recursive descent with per-sentence error recovery ([`grammar::parse_tokens_to_ast`])
+//! 4. **Flatten** — Tree AST → index-based WIT buffer ([`Flattener`])
+//!
+//! The arena allocator (`bumpalo::Bump`) is created per `parse_text()` call and
+//! freed in one shot after flattening.
 
+/// Lojban AST types (arena-allocated tree nodes).
 pub mod ast;
 #[allow(warnings)]
 mod bindings;
+/// Recursive descent parser producing an arena-allocated AST.
 pub mod grammar;
+/// Logos-based lexer with post-lex compound cmavo correction.
 pub mod lexer;
+/// Metalinguistic preprocessor (si/sa/su/zo/zoi/zei resolution).
 pub mod preprocessor;
 
 use bindings::exports::lojban::nesy::parser::Guest;
 use bindings::lojban::nesy::ast_types as wit;
 use bindings::lojban::nesy::error_types::NibliError;
 
+/// WIT component implementation for the `parser` interface.
 struct ParserComponent;
 
 impl Guest for ParserComponent {
+    /// Parse Lojban text through the full pipeline: lex → preprocess → parse → flatten.
     fn parse_text(input: String) -> Result<wit::ParseResult, NibliError> {
         // 1. Lex into morphological classification stream
         let raw_tokens = crate::lexer::tokenize(&input);

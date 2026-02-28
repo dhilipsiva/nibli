@@ -1,7 +1,20 @@
+//! Semantics WASM component: flat AST buffer → FOL logic buffer.
+//!
+//! Entry point for the `semantics-component` WIT world. Compiles the parser's
+//! flat AST buffer into a flat First-Order Logic buffer via the [`SemanticCompiler`],
+//! then flattens the tree-structured [`LogicalForm`] IR into the WIT-compatible
+//! index-based [`LogicBuffer`].
+//!
+//! The flattener expands `Biconditional` and `Xor` IR nodes into primitive
+//! `And`/`Or`/`Not` nodes (sharing sub-tree indices for zero-cost duplication).
+
 #[allow(warnings)]
 pub mod bindings;
+/// Compile-time PHF dictionary for gismu/lujvo arity lookup.
 pub mod dictionary;
+/// First-Order Logic IR types (`LogicalTerm`, `LogicalForm`).
 pub mod ir;
+/// Semantic compiler: AST → FOL logic form tree.
 pub mod semantic;
 
 use bindings::exports::lojban::nesy::semantics::Guest;
@@ -11,9 +24,12 @@ use bindings::lojban::nesy::logic_types::{LogicBuffer, LogicNode, LogicalTerm as
 use ir::{LogicalForm, LogicalTerm};
 use semantic::SemanticCompiler;
 
+/// WIT component implementation for the `semantics` interface.
 struct SemanticsComponent;
 
 impl Guest for SemanticsComponent {
+    /// Compile an AST buffer into an FOL logic buffer.
+    /// Compiles only root sentences (rel clause bodies are referenced by index).
     fn compile_buffer(ast: AstBuffer) -> Result<LogicBuffer, NibliError> {
         let mut compiler = SemanticCompiler::new();
         let mut logic_forms = Vec::with_capacity(ast.roots.len());
@@ -47,6 +63,11 @@ impl Guest for SemanticsComponent {
     }
 }
 
+/// Recursively flatten a [`LogicalForm`] tree into the flat `nodes` array.
+///
+/// Returns the index of the root node in the array. String interning keys
+/// are resolved to `String` at this boundary for WIT serialization.
+/// `Biconditional` and `Xor` are expanded into primitive `And`/`Or`/`Not`.
 fn flatten_form(form: &LogicalForm, nodes: &mut Vec<LogicNode>, interner: &lasso::Rodeo) -> u32 {
     match form {
         LogicalForm::Predicate { relation, args } => {

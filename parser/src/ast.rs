@@ -1,15 +1,17 @@
-// parser/src/ast.rs — Lojban AST types
-//
-// Covers I6 constructs:
-//   1. .i sentence separator
-//   2. fa/fe/fi/fo/fu place tags
-//   3. na/naku negation
-//   4. poi/noi relative clauses
-//   5. be/bei sumti raising
-//   6. ke/ke'e tanru grouping
-//   7. je/ja/jo/ju connectives
-//   8. ku/vau/ku'o/kei terminators
-// Plus: se/te/ve/xe conversion, lo/le/la gadri, ro quantifier, extended pro-sumti
+//! Lojban abstract syntax tree types.
+//!
+//! Arena-allocated (`bumpalo`) AST nodes produced by the recursive-descent parser.
+//! All tree references use `&'arena T` instead of `Box<T>`, batching allocations
+//! into contiguous arena chunks and freeing them in one shot after flattening.
+//!
+//! Covers Lojban constructs:
+//!   - `.i` sentence separator, `fa`/`fe`/`fi`/`fo`/`fu` place tags
+//!   - `na`/`naku` negation, `poi`/`noi`/`voi` relative clauses
+//!   - `be`/`bei` sumti raising, `ke`/`ke'e` tanru grouping
+//!   - `je`/`ja`/`jo`/`ju` connectives, `se`/`te`/`ve`/`xe` conversion
+//!   - `lo`/`le`/`la` gadri, `ro` universal quantifier, numeric quantifiers
+//!   - Abstractions (`nu`/`du'u`/`ka`/`ni`/`si'o`), tense (`pu`/`ca`/`ba`)
+//!   - Deontic attitudinals (`ei`/`e'e`), quoted literals, number sumti
 
 // ─── Enums for grammatical markers ───────────────────────────────
 

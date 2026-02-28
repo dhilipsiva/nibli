@@ -1,106 +1,200 @@
+/// Nibli WIT (WebAssembly Interface Types) definition.
+///
+/// Defines the component boundaries for the Nibli symbolic reasoning engine:
+///   - `ast-types`: Flat-buffer AST produced by the Lojban parser
+///   - `logic-types`: First-Order Logic IR consumed by the reasoner
+///   - `error-types`: Structured error variants shared across all components
+///   - `parser` / `semantics` / `reasoning` / `engine`: Component interfaces
+///   - `compute-backend`: Host-provided external predicate evaluation
+///
+/// All cross-component data uses flat index-based arrays (`u32` pointers into
+/// parallel lists) — no heap pointers cross WASM boundaries.
 package lojban:nesy@0.1.0;
 
+/// Flat-buffer AST types produced by the Lojban parser.
+///
+/// The parser emits three parallel arrays (`selbris`, `sumtis`, `sentences`)
+/// with `u32` indices serving as cross-references. This avoids pointer-based
+/// trees across WASM component boundaries.
 interface ast-types {
+    /// Index into the `selbris` array of an `ast-buffer`.
     type selbri-id = u32;
+    /// Index into the `sumtis` array of an `ast-buffer`.
     type sumti-id = u32;
 
+    /// Explicit argument-place tag (FA selma'o): fa=x1, fe=x2, fi=x3, fo=x4, fu=x5.
     enum place-tag { fa, fe, fi, fo, fu }
+    /// BAI modal tag — each maps to an underlying gismu:
+    /// ria=rinka (cause), nii=nibli (entailment), mui=mukti (motivation),
+    /// kiu=krinu (reason), pio=pilno (tool), bai=basti (replace).
     enum bai-tag { ria, nii, mui, kiu, pio, bai }
+    /// Modal tag: either a fixed BAI shortcut or a fi'o custom modal.
     variant modal-tag {
+        /// One of the six built-in BAI cmavo.
         fixed(bai-tag),
+        /// fi'o + selbri [+ fe'u]: user-defined modal via a selbri reference.
         fio(selbri-id),
     }
+    /// SE-series conversion: permutes the x1 place with another.
+    /// se=x1↔x2, te=x1↔x3, ve=x1↔x4, xe=x1↔x5.
     enum conversion { se, te, ve, xe }
+    /// Logical connective shared by selbri and sumti connectives.
+    /// je=AND(∧), ja=OR(∨), jo=IFF(↔), ju=XOR(⊕).
     enum connective { je, ja, jo, ju }
+    /// Gadri (descriptor): determines how a description is quantified.
+    /// lo=veridical(∃), le=referential, la=named, ro-lo=universal veridical(∀),
+    /// ro-le=universal referential(∀).
     enum gadri { lo, le, la, ro-lo, ro-le }
+    /// Abstraction kind (NU selma'o): reifies a bridi into a 1-place selbri.
+    /// nu=event, duhu=proposition, ka=property, ni=quantity, siho=concept.
     enum abstraction-kind { nu, duhu, ka, ni, siho }
+    /// Relative clause type: poi=restrictive, noi=non-restrictive, voi=non-veridical.
     enum rel-clause-kind { poi, noi, voi }
 
+    /// A relative clause attached to a sumti.
     record rel-clause {
         kind: rel-clause-kind,
+        /// Index into the `sentences` array for the clause body.
         body-sentence: u32,
     }
 
+    /// A sumti (argument term) in a bridi. Variants cover pro-sumti, descriptions,
+    /// names, literals, tagged arguments, connectives, and quantified descriptions.
     variant sumti {
+        /// Pro-sumti: mi, do, ko'a..ko'u, da/de/di, ti/ta/tu, ri/ra/ru, zo'e, ma.
         pro-sumti(string),
+        /// Gadri + selbri description: lo/le/la/ro-lo/ro-le + selbri reference.
         description(tuple<gadri, selbri-id>),
+        /// Proper name (la + cmevla).
         name(string),
+        /// Quoted literal text (from zo/zoi/lu..li'u).
         quoted-literal(string),
+        /// Explicit unspecified (zo'e): fills an argument slot with "something".
         unspecified,
+        /// Place-tagged sumti: fa/fe/fi/fo/fu + inner sumti.
         tagged(tuple<place-tag, sumti-id>),
+        /// Modal-tagged sumti: BAI or fi'o tag + inner sumti.
         modal-tagged(tuple<modal-tag, sumti-id>),
+        /// Sumti with a relative clause restriction: inner sumti + poi/noi/voi clause.
         restricted(tuple<sumti-id, rel-clause>),
+        /// Numeric literal: li + PA digits (e.g., li bi = 8).
         number(f64),
-        /// Sumti connective: left .e/.a/.o/.u [nai] right
-        /// Fields: (left-sumti-id, connective, right-negated, right-sumti-id)
+        /// Sumti connective: left .e/.a/.o/.u [nai] right.
+        /// Fields: (left-sumti-id, connective, right-negated, right-sumti-id).
         connected(tuple<sumti-id, connective, bool, sumti-id>),
-        /// Numeric quantifier + description: PA lo/le selbri [ku]
-        /// Fields: (count, gadri, selbri-id)
+        /// Numeric quantifier + description: PA lo/le selbri [ku].
+        /// Fields: (count, gadri, selbri-id). Example: "re lo gerku" = exactly 2 dogs.
         quantified-description(tuple<u32, gadri, selbri-id>),
     }
 
+    /// A selbri (predicate/relation) in a bridi. Variants cover root words, tanru
+    /// composition, conversion, negation, grouping, bound arguments, connectives,
+    /// and abstractions.
     variant selbri {
+        /// Single root word (gismu or lujvo). Payload: the word string.
         root(string),
+        /// Compound word from zei-gluing. Payload: list of component strings.
         compound(list<string>),
+        /// Tanru: modifier + head (right-grouping). Fields: (modifier-id, head-id).
         tanru(tuple<selbri-id, selbri-id>),
+        /// SE-conversion applied to a selbri. Fields: (conversion, inner-id).
         converted(tuple<conversion, selbri-id>),
+        /// Bridi negation: na + selbri. Payload: inner selbri-id.
         negated(selbri-id),
+        /// Explicit grouping: ke + selbri [+ ke'e]. Payload: inner selbri-id.
         grouped(selbri-id),
+        /// Selbri with bound arguments: selbri + be sumti (bei sumti)* [be'o].
+        /// Fields: (core-selbri-id, list of argument sumti-ids).
         with-args(tuple<selbri-id, list<sumti-id>>),
+        /// Selbri connective: left (je|ja|jo|ju) right.
+        /// Fields: (left-id, connective, right-id).
         connected(tuple<selbri-id, connective, selbri-id>),
-        /// Abstraction: inner bridi lives in sentences[u32].
+        /// Abstraction: (nu|du'u|ka|ni|si'o) + bridi [+ kei].
+        /// Inner bridi lives in sentences[u32].
         /// Arity is 1 (x1 = reified entity: event/proposition/property/quantity/concept).
         abstraction(tuple<abstraction-kind, u32>),
     }
 
+    /// Tense marker (PU selma'o): pu=past, ca=present, ba=future.
     enum tense { pu, ca, ba }
 
+    /// Deontic attitudinal (UI selma'o subset): ei=obligation, ehe=permission.
     enum attitudinal { ei, ehe }
 
+    /// A single bridi (predication): the core unit of Lojban meaning.
     record bridi {
+        /// Index of the main predicate in the `selbris` array.
         relation: selbri-id,
+        /// Terms appearing before the selbri (head position).
         head-terms: list<sumti-id>,
+        /// Terms appearing after the selbri (tail position).
         tail-terms: list<sumti-id>,
+        /// Whether sentence-level negation (na) is present.
         negated: bool,
+        /// Optional tense marker (pu/ca/ba).
         tense: option<tense>,
+        /// Optional deontic attitudinal (ei/e'e).
         attitudinal: option<attitudinal>,
     }
 
+    /// Sentence-level connective for compound sentences.
     variant sentence-connective {
+        /// Forethought conditional: ganai A gi B (if A then B).
         ganai-gi,
+        /// Forethought conjunction: ge A gi B (both A and B).
         ge-gi,
+        /// Forethought disjunction: ga A gi B (either A or B).
         ga-gi,
-        /// Afterthought: .i [na] (je|ja|jo|ju) [nai]
-        /// Fields: (left-negated, connective, right-negated)
+        /// Afterthought: .i [na] (je|ja|jo|ju) [nai].
+        /// Fields: (left-negated, connective, right-negated).
         afterthought(tuple<bool, connective, bool>),
     }
 
+    /// A complete sentence: either a simple bridi or a connective joining two sentences.
     variant sentence {
+        /// A single predication.
         simple(bridi),
-        connected(tuple<sentence-connective, u32, u32>), // Pointers to other sentences
+        /// Connected sentences. Fields: (connective, left-sentence-idx, right-sentence-idx).
+        connected(tuple<sentence-connective, u32, u32>),
     }
 
+    /// Flat-buffer AST: three parallel arrays with u32 cross-references.
+    /// This is the parser's output, consumed by the semantics compiler.
     record ast-buffer {
+        /// All selbri nodes in the parse.
         selbris: list<selbri>,
+        /// All sumti nodes in the parse.
         sumtis: list<sumti>,
+        /// All sentence nodes in the parse.
         sentences: list<sentence>,
+        /// Indices of top-level (root) sentences in the `sentences` array.
         roots: list<u32>,
     }
 
+    /// A parser error with source location.
     record parse-error {
+        /// Human-readable error description.
         message: string,
+        /// 1-based line number where the error occurred.
         line: u32,
+        /// 1-based column number where the error occurred.
         column: u32,
     }
 
+    /// Parser output: partial AST buffer plus any errors encountered.
+    /// Errors are non-fatal — the parser recovers per-sentence (skips to next `.i`).
     record parse-result {
+        /// Successfully parsed portion of the input.
         buffer: ast-buffer,
+        /// Parse errors (one per failed sentence).
         errors: list<parse-error>,
     }
 }
 
+/// Structured error types shared across all Nibli components.
 interface error-types {
     /// Structured error type for the Nibli engine pipeline.
+    /// Each variant identifies the pipeline stage that produced the error.
     variant nibli-error {
         /// Parse error with source location.
         syntax(syntax-detail),
@@ -112,42 +206,74 @@ interface error-types {
         backend(tuple<string, string>),
     }
 
+    /// Detail record for syntax (parse) errors.
     record syntax-detail {
+        /// Human-readable error description.
         message: string,
+        /// 1-based line number.
         line: u32,
+        /// 1-based column number.
         column: u32,
     }
 }
 
+/// First-Order Logic intermediate representation types.
+///
+/// The semantics compiler transforms the parser's AST into this flat logic
+/// buffer. The reasoning engine consumes it to assert facts or check queries
+/// against the egglog e-graph.
 interface logic-types {
+    /// A term in a logical formula: variable, constant, description reference,
+    /// unspecified placeholder, or numeric literal.
     variant logical-term {
+        /// A bound or free variable (e.g., Skolem variables, universally quantified vars).
         variable(string),
+        /// A ground constant (e.g., entity names from `la`).
         constant(string),
+        /// An opaque description reference (from `le`/`la` gadri).
         description(string),
+        /// Unspecified placeholder (from `zo'e`).
         unspecified,
+        /// Numeric literal (from `li` + PA).
         number(f64),
     }
 
+    /// A node in the flat logic graph. Each variant corresponds to an FOL constructor.
+    /// Nodes reference children by `u32` index into the `logic-buffer.nodes` array.
     variant logic-node {
+        /// Ground or quantified predicate. Fields: (relation-name, argument-terms).
         predicate(tuple<string, list<logical-term>>),
         /// A predicate dispatched to an external compute backend for evaluation.
         compute-node(tuple<string, list<logical-term>>),
+        /// Conjunction: left ∧ right. Fields: (left-node-id, right-node-id).
         and-node(tuple<u32, u32>),
+        /// Disjunction: left ∨ right. Fields: (left-node-id, right-node-id).
         or-node(tuple<u32, u32>),
+        /// Negation: ¬inner. Payload: inner-node-id.
         not-node(u32),
+        /// Existential quantifier: ∃var. body. Fields: (variable-name, body-node-id).
         exists-node(tuple<string, u32>),
+        /// Universal quantifier: ∀var. body. Fields: (variable-name, body-node-id).
         for-all-node(tuple<string, u32>),
+        /// Past tense wrapper (pu). Payload: inner-node-id.
         past-node(u32),
+        /// Present tense wrapper (ca). Payload: inner-node-id.
         present-node(u32),
+        /// Future tense wrapper (ba). Payload: inner-node-id.
         future-node(u32),
+        /// Deontic obligation wrapper (ei/bilga). Payload: inner-node-id.
         obligatory-node(u32),
+        /// Deontic permission wrapper (e'e/curmi). Payload: inner-node-id.
         permitted-node(u32),
         /// Exactly N entities satisfy the body: Count(variable-name, count, body-node-id)
         count-node(tuple<string, u32, u32>),
     }
 
+    /// Flat-buffer FOL formula: a list of logic nodes with u32 cross-references.
     record logic-buffer {
+        /// All logic nodes in the formula.
         nodes: list<logic-node>,
+        /// Indices of top-level (root) formula nodes.
         roots: list<u32>,
     }
 
@@ -206,30 +332,55 @@ interface logic-types {
     }
 }
 
+/// Lojban text → flat AST buffer.
+///
+/// Lexes, preprocesses (si/sa/su/zo/zoi/zei), parses via recursive descent,
+/// and flattens the tree AST into a WIT-compatible flat buffer.
 interface parser {
     use ast-types.{parse-result};
     use error-types.{nibli-error};
+    /// Parse Lojban text into a flat AST buffer.
+    /// Returns partial results on per-sentence parse errors (recovery via `.i` skip).
     parse-text: func(input: string) -> result<parse-result, nibli-error>;
 }
 
+/// Flat AST buffer → FOL logic buffer.
+///
+/// Compiles Lojban AST structures into First-Order Logic formulas:
+/// Skolemization, universal rule compilation, quantifier scoping,
+/// connective expansion, and abstraction reification.
 interface semantics {
     use ast-types.{ast-buffer};
     use logic-types.{logic-buffer};
     use error-types.{nibli-error};
+    /// Compile an AST buffer into an FOL logic buffer.
     compile-buffer: func(ast: ast-buffer) -> result<logic-buffer, nibli-error>;
 }
 
+/// Host-provided external predicate evaluation.
+///
+/// The reasoning engine calls this interface when it encounters a predicate
+/// registered for compute dispatch (e.g., `tenfa`, `dugri`). The host
+/// connects to an external TCP backend or evaluates built-in arithmetic.
 interface compute-backend {
     use logic-types.{logical-term};
     use error-types.{nibli-error};
     /// Evaluate whether a computed predicate holds for fully-ground arguments.
+    /// Returns true/false for the relation applied to the given argument terms.
     evaluate: func(relation: string, args: list<logical-term>) -> result<bool, nibli-error>;
 }
 
+/// FOL assertion and query engine backed by egglog e-graph equality saturation.
+///
+/// Provides a stateful knowledge base resource that supports fact assertion,
+/// entailment queries, proof trace generation, and witness extraction.
 interface reasoning {
     use logic-types.{logic-buffer, witness-binding, proof-trace};
     use error-types.{nibli-error};
 
+    /// A stateful knowledge base backed by an egglog e-graph.
+    /// Supports asserting FOL facts, querying entailment, extracting witnesses,
+    /// and generating proof traces.
     resource knowledge-base {
         /// Create a fresh KB with FOL schema loaded.
         constructor();
@@ -247,18 +398,31 @@ interface reasoning {
     }
 }
 
-// --- Component Worlds ---
+/// Component worlds define the import/export boundaries for each WASM module.
+/// Each world is compiled into a separate .wasm component via `cargo component build`.
+
+/// Parser component: no imports, exports the `parser` interface.
 world parser-component { export parser; }
+/// Semantics component: no imports, exports the `semantics` interface.
 world semantics-component { export semantics; }
+/// Reasoning component: imports `compute-backend` for external predicate
+/// evaluation, exports the `reasoning` interface.
 world reasoning-component {
     import compute-backend;
     export reasoning;
 }
 
+/// High-level engine interface that chains parser → semantics → reasoning.
+///
+/// Provides a `session` resource with text-level assert/query methods that
+/// internally orchestrate the full pipeline. This is the primary API for
+/// end users (e.g., the REPL runner).
 interface engine {
     use logic-types.{logical-term, witness-binding, proof-trace};
     use error-types.{nibli-error};
 
+    /// A user-facing session that wraps the full pipeline.
+    /// Internally creates a parser → semantics → reasoning chain with a fresh KB.
     resource session {
         /// Create a new session (internally creates a fresh KB).
         constructor();
@@ -281,6 +445,8 @@ interface engine {
     }
 }
 
+/// Orchestrator component world: imports all sub-components, exports the engine.
+/// This is the world that `wac plug` fuses into the final composite WASM binary.
 world engine-pipeline {
     import parser;
     import semantics;

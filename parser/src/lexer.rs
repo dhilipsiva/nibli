@@ -1,5 +1,22 @@
+//! Lojban lexer built on the Logos DFA engine.
+//!
+//! Produces a stream of [`LojbanToken`] variants from raw Lojban text.
+//! Morphological classes (gismu, lujvo, cmevla, cmavo) are distinguished by
+//! regex patterns. Two post-lex correction passes handle edge cases:
+//!
+//! 1. **Compound cmavo reclassification** — Logos greedily matches CVC prefixes
+//!    of compound cmavo (e.g., "ganai") as Cmevla. A post-lex pass merges them
+//!    back into single Cmavo tokens when not preceded by a pause.
+//!
+//! 2. **Sumti connective `nai` fix** — Fused forms like ".enai" are split into
+//!    separate Cmavo("e") + Cmavo("nai") tokens for the parser.
+
 use logos::Logos;
 
+/// Lojban token types produced by the Logos-based lexer.
+///
+/// The lexer recognizes five morphological classes plus metalinguistic operators.
+/// Whitespace is skipped; explicit pauses (`.`) are preserved as tokens.
 #[derive(Logos, Debug, PartialEq, Clone)]
 #[logos(skip r"[ \t\n\f]+")] // Whitespace is ignored, but explicit pauses (.) are not
 pub enum LojbanToken {

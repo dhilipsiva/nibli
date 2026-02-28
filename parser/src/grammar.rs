@@ -1,30 +1,35 @@
-// parser/src/grammar.rs — Recursive descent parser for Lojban
-//
-// Operates on the preprocessed NormalizedToken stream.
-// Grammar (subset of CLL, expanded incrementally):
-//
-//   text        → sentence (.i sentence)*
-//   sentence    → tense? terms? cu? tense? selbri tail? vau?
-//   tail        → terms
-//   terms       → term+
-//   term        → place_tag sumti | modal_tag sumti | sumti
-//   modal_tag   → bai_tag | fi'o selbri fe'u?
-//   bai_tag     → ri'a | ni'i | mu'i | ki'u | pi'o | ba'i
-//   sumti       → la_name | description | pro_sumti | quoted
-//                | sumti rel_clause
-//   la_name     → la cmevla+
-//   quantified_desc → su'o? PA* (lo|le) selbri ku?
-//   description → ro? (lo|le) selbri ku?
-//   rel_clause  → (poi|noi) sentence ku'o?
-//   selbri      → na? selbri_conn
-//   selbri_conn → selbri_2 ((je|ja|jo|ju) selbri_2)*
-//   selbri_2    → conversion? tanru
-//   tanru       → tanru_unit+   (right-grouping)
-//   tanru_unit  → brivla | ke selbri ke'e? | tanru_unit be_clause
-//   be_clause   → be sumti (bei sumti)* be'o?
-//   brivla      → gismu | lujvo | compound
-//   conversion  → se | te | ve | xe
-//   place_tag   → fa | fe | fi | fo | fu
+//! Recursive descent parser for Lojban.
+//!
+//! Operates on the preprocessed [`NormalizedToken`] stream (after lexing and
+//! metalinguistic resolution). Produces an arena-allocated AST with per-sentence
+//! error recovery (on failure, skips to next `.i` boundary and continues parsing).
+//!
+//! # Grammar (subset of CLL, expanded incrementally)
+//!
+//! ```text
+//! text        → sentence (.i sentence)*
+//! sentence    → tense? terms? cu? tense? selbri tail? vau?
+//! tail        → terms
+//! terms       → term+
+//! term        → place_tag sumti | modal_tag sumti | sumti
+//! modal_tag   → bai_tag | fi'o selbri fe'u?
+//! bai_tag     → ri'a | ni'i | mu'i | ki'u | pi'o | ba'i
+//! sumti       → la_name | description | pro_sumti | quoted
+//!              | sumti rel_clause
+//! la_name     → la cmevla+
+//! quantified_desc → su'o? PA* (lo|le) selbri ku?
+//! description → ro? (lo|le) selbri ku?
+//! rel_clause  → (poi|noi) sentence ku'o?
+//! selbri      → na? selbri_conn
+//! selbri_conn → selbri_2 ((je|ja|jo|ju) selbri_2)*
+//! selbri_2    → conversion? tanru
+//! tanru       → tanru_unit+   (right-grouping)
+//! tanru_unit  → brivla | ke selbri ke'e? | tanru_unit be_clause
+//! be_clause   → be sumti (bei sumti)* be'o?
+//! brivla      → gismu | lujvo | compound
+//! conversion  → se | te | ve | xe
+//! place_tag   → fa | fe | fi | fo | fu
+//! ```
 
 use crate::ast::*;
 use crate::lexer::LojbanToken;

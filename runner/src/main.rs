@@ -1,3 +1,20 @@
+//! Nibli native host runner: Wasmtime WASI P2 host + interactive REPL.
+//!
+//! Loads the fused WASM engine component, provides the `compute-backend` host
+//! implementation (built-in arithmetic + external TCP backend), and runs an
+//! interactive REPL (reedline-based) with these prefixes:
+//!
+//! - **(bare text)** — Assert Lojban facts
+//! - **`?`** — Query entailment (TRUE/FALSE)
+//! - **`??`** — Query with witness extraction (find satisfying bindings)
+//! - **`?!`** — Query with proof trace (indented proof tree)
+//! - **`:debug`** — Compile to logic s-expression without asserting
+//! - **`:assert`** — Assert ground facts directly (bypasses Lojban parsing)
+//! - **`:compute`** — Register predicates for compute dispatch
+//! - **`:backend`** — Show/change external compute backend address
+//! - **`:reset`** — Clear the knowledge base
+//! - **`:fuel`** / **`:memory`** — Show/set WASM execution limits
+
 use anyhow::Result;
 use reedline::{DefaultPrompt, Reedline, Signal};
 use serde::{Deserialize, Serialize};
@@ -10,12 +27,14 @@ use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiVie
 
 // ── JSON Lines protocol types ──
 
+/// Request sent to the external compute backend over TCP + JSON Lines.
 #[derive(Serialize)]
 struct ComputeRequest {
     relation: String,
     args: Vec<ComputeArg>,
 }
 
+/// A logical term serialized for the JSON Lines compute backend protocol.
 #[derive(Serialize, Clone, Debug)]
 #[serde(tag = "type", content = "value")]
 enum ComputeArg {
@@ -31,6 +50,7 @@ enum ComputeArg {
     Number(f64),
 }
 
+/// Response received from the external compute backend.
 #[derive(Deserialize)]
 struct ComputeResponse {
     result: Option<bool>,
@@ -39,6 +59,8 @@ struct ComputeResponse {
 
 // ── Host state ──
 
+/// Wasmtime host state: WASI context, resource table, memory limits,
+/// and optional external compute backend TCP connection.
 struct HostState {
     ctx: WasiCtx,
     table: ResourceTable,

@@ -1,12 +1,17 @@
-// parser/src/preprocessor.rs
-//
-// Consumes the raw lexical stream and resolves metalinguistic operations:
-//   si  — erase preceding word
-//   sa  — erase backward to matching selma'o class
-//   su  — erase entire discourse
-//   zo  — quote next word
-//   zoi — quote delimited text
-//   zei — glue adjacent words into compound
+//! Metalinguistic preprocessor for the Lojban token stream.
+//!
+//! Sits between the lexer and parser, resolving metalinguistic operations
+//! in a single O(n) pass over the token stream:
+//!
+//! - **`si`** — erase preceding word
+//! - **`sa`** — erase backward to matching selma'o (grammatical class)
+//! - **`su`** — erase entire discourse
+//! - **`zo`** — quote next word (produces opaque `Quoted` token)
+//! - **`zoi`** — quote delimited text (zero-copy slice from original input)
+//! - **`zei`** — glue adjacent words into a compound (`Glued` token)
+//!
+//! The `sa` erasure uses a 28-class selma'o classification table to find the
+//! backward erasure boundary. Unclassified tokens fall back to single-word erase.
 
 use crate::lexer::LojbanToken;
 
