@@ -24,7 +24,8 @@ mod bindings;
 use crate::bindings::exports::lojban::nesy::reasoning::{Guest, GuestKnowledgeBase};
 use crate::bindings::lojban::nesy::error_types::NibliError;
 use crate::bindings::lojban::nesy::logic_types::{
-    LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofStep, ProofTrace, WitnessBinding,
+    FactSummary, LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofStep, ProofTrace,
+    WitnessBinding,
 };
 use egglog::EGraph;
 use std::cell::RefCell;
@@ -58,6 +59,15 @@ struct UniversalRuleRecord {
     pattern_var_names: Vec<String>,
 }
 
+/// Registry entry for a single asserted fact, supporting retraction and rebuild.
+#[derive(Clone)]
+struct FactRecord {
+    id: u64,
+    buffer: LogicBuffer,
+    label: String,
+    retracted: bool,
+}
+
 /// All mutable KB state behind a single RefCell.
 struct KnowledgeBaseInner {
     egraph: EGraph,
@@ -69,6 +79,12 @@ struct KnowledgeBaseInner {
     asserted_sexps: HashSet<String>,
     /// Compiled universal rule templates (for backward-chaining provenance).
     universal_rules: Vec<UniversalRuleRecord>,
+    /// Monotonically increasing fact ID counter.
+    fact_counter: u64,
+    /// Registry of all asserted facts (including retracted ones, for ID stability).
+    fact_registry: Vec<FactRecord>,
+    /// Suppresses diagnostic prints during rebuild replay.
+    rebuilding: bool,
 }
 
 impl KnowledgeBaseInner {
@@ -81,6 +97,9 @@ impl KnowledgeBaseInner {
             skolem_fn_registry: Vec::new(),
             asserted_sexps: HashSet::new(),
             universal_rules: Vec::new(),
+            fact_counter: 0,
+            fact_registry: Vec::new(),
+            rebuilding: false,
         }
     }
 
@@ -92,6 +111,15 @@ impl KnowledgeBaseInner {
         self.skolem_fn_registry.clear();
         self.asserted_sexps.clear();
         self.universal_rules.clear();
+        self.fact_counter = 0;
+        self.fact_registry.clear();
+        self.rebuilding = false;
+    }
+
+    fn fresh_fact_id(&mut self) -> u64 {
+        let id = self.fact_counter;
+        self.fact_counter += 1;
+        id
     }
 
     fn fresh_skolem(&mut self) -> String {
@@ -282,95 +310,163 @@ impl Guest for ReasoningComponent {
     type KnowledgeBase = KnowledgeBase;
 }
 
+/// Process a logic buffer into the egglog e-graph without recording in the fact registry.
+/// Used by both initial assertion and rebuild-on-retract replay.
+fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) -> Result<(), String> {
+    for &root_id in &logic.roots {
+        // Phase 1: Collect existential variables for Skolemization.
+        let mut skolem_subs = HashMap::new();
+        let mut enclosing_universals = Vec::new();
+        collect_exists_for_skolem(
+            logic,
+            root_id,
+            &mut skolem_subs,
+            &mut enclosing_universals,
+            &mut inner.skolem_counter,
+        );
+
+        // Log Skolem substitutions (suppressed during rebuild)
+        if !inner.rebuilding && !skolem_subs.is_empty() {
+            let mapping: Vec<String> = skolem_subs
+                .iter()
+                .map(|(v, sk)| {
+                    if sk.starts_with(SKDEP_PREFIX) {
+                        format!("{} ↦ {}(∀-dependent)", v, &sk[SKDEP_PREFIX.len()..])
+                    } else {
+                        format!("{} ↦ {}", v, sk)
+                    }
+                })
+                .collect();
+            println!(
+                "[Skolem] {} variable(s) → {}",
+                skolem_subs.len(),
+                mapping.join(", ")
+            );
+        }
+
+        // Phase 2: Dispatch based on formula structure
+        let is_forall = matches!(
+            &logic.nodes[root_id as usize],
+            LogicNode::ForAllNode(_)
+        );
+
+        if is_forall {
+            // ═══ NATIVE RULE PATH ═══
+            for sk in skolem_subs.values() {
+                if !sk.starts_with(SKDEP_PREFIX) {
+                    inner.note_entity(sk);
+                }
+            }
+            collect_and_note_constants(logic, root_id, inner);
+            compile_forall_to_rule(logic, root_id, &skolem_subs, inner)?;
+        } else {
+            // ═══ GROUND FORMULA PATH ═══
+            for sk in skolem_subs.values() {
+                if !sk.starts_with(SKDEP_PREFIX) {
+                    inner.note_entity(sk);
+                }
+            }
+            collect_and_note_constants(logic, root_id, inner);
+
+            let raw_subs: HashMap<String, String> = skolem_subs
+                .iter()
+                .filter(|(_, v)| !v.starts_with(SKDEP_PREFIX))
+                .map(|(k, v)| (k.clone(), format!("(Const \"{}\")", v)))
+                .collect();
+            let sexp = reconstruct_sexp_with_subs(logic, root_id, &raw_subs);
+            // Record as user-asserted fact for provenance tracking
+            inner.asserted_sexps.insert(sexp.clone());
+            let command = format!("(IsTrue {})", sexp);
+            inner
+                .egraph
+                .parse_and_run_program(None, &command)
+                .map_err(|e| format!("Failed to assert fact: {}", e))?;
+        }
+
+        // Phase 3: Generate extra witnesses for Count quantifiers (n > 1)
+        generate_count_extra_witnesses(logic, root_id, &skolem_subs, inner);
+
+        // Run rules to fixpoint
+        inner.egraph.parse_and_run_program(None, "(run 100)").ok();
+    }
+
+    Ok(())
+}
+
 /// Internal methods that return `Result<_, String>` for use by both the WIT boundary and tests.
 impl KnowledgeBase {
     /// Assert FOL facts from a logic buffer into the egglog e-graph.
-    ///
-    /// Ground predicates are asserted as `(IsTrue (Pred "rel" ...))` facts.
-    /// Universal quantifiers (`ForAll`) are compiled into native egglog rewrite rules
-    /// via [`compile_forall_to_rule`]. Existential variables are Skolemized
-    /// (dependent Skolems under universals use `SkolemFn`).
-    fn assert_fact_inner(&self, logic: LogicBuffer) -> Result<(), String> {
+    /// Stores the buffer in the fact registry and returns a unique fact ID.
+    fn assert_fact_inner(&self, logic: LogicBuffer, label: String) -> Result<u64, String> {
         let mut inner = self.inner.borrow_mut();
+        let id = inner.fresh_fact_id();
+        inner.fact_registry.push(FactRecord {
+            id,
+            buffer: logic.clone(),
+            label,
+            retracted: false,
+        });
+        process_assertion(&mut inner, &logic)?;
+        Ok(id)
+    }
 
-        for &root_id in &logic.roots {
-            // Phase 1: Collect existential variables for Skolemization.
-            let mut skolem_subs = HashMap::new();
-            let mut enclosing_universals = Vec::new();
-            collect_exists_for_skolem(
-                &logic,
-                root_id,
-                &mut skolem_subs,
-                &mut enclosing_universals,
-                &mut inner.skolem_counter,
-            );
-
-            // Log Skolem substitutions
-            if !skolem_subs.is_empty() {
-                let mapping: Vec<String> = skolem_subs
-                    .iter()
-                    .map(|(v, sk)| {
-                        if sk.starts_with(SKDEP_PREFIX) {
-                            format!("{} ↦ {}(∀-dependent)", v, &sk[SKDEP_PREFIX.len()..])
-                        } else {
-                            format!("{} ↦ {}", v, sk)
-                        }
-                    })
-                    .collect();
-                println!(
-                    "[Skolem] {} variable(s) → {}",
-                    skolem_subs.len(),
-                    mapping.join(", ")
-                );
+    /// Retract a previously asserted fact by its ID. Triggers a full KB rebuild
+    /// from remaining (non-retracted) facts.
+    fn retract_fact_inner(&self, id: u64) -> Result<(), String> {
+        let mut inner = self.inner.borrow_mut();
+        let record = inner.fact_registry.iter_mut().find(|r| r.id == id);
+        match record {
+            None => Err(format!("Fact #{} not found", id)),
+            Some(r) if r.retracted => Ok(()), // idempotent
+            Some(r) => {
+                r.retracted = true;
+                Self::rebuild_inner(&mut inner)
             }
-
-            // Phase 2: Dispatch based on formula structure
-            let is_forall = matches!(
-                &logic.nodes[root_id as usize],
-                LogicNode::ForAllNode(_)
-            );
-
-            if is_forall {
-                // ═══ NATIVE RULE PATH ═══
-                for sk in skolem_subs.values() {
-                    if !sk.starts_with(SKDEP_PREFIX) {
-                        inner.note_entity(sk);
-                    }
-                }
-                collect_and_note_constants(&logic, root_id, &mut inner);
-                compile_forall_to_rule(&logic, root_id, &skolem_subs, &mut inner)?;
-            } else {
-                // ═══ GROUND FORMULA PATH ═══
-                for sk in skolem_subs.values() {
-                    if !sk.starts_with(SKDEP_PREFIX) {
-                        inner.note_entity(sk);
-                    }
-                }
-                collect_and_note_constants(&logic, root_id, &mut inner);
-
-                let raw_subs: HashMap<String, String> = skolem_subs
-                    .iter()
-                    .filter(|(_, v)| !v.starts_with(SKDEP_PREFIX))
-                    .map(|(k, v)| (k.clone(), format!("(Const \"{}\")", v)))
-                    .collect();
-                let sexp = reconstruct_sexp_with_subs(&logic, root_id, &raw_subs);
-                // Record as user-asserted fact for provenance tracking
-                inner.asserted_sexps.insert(sexp.clone());
-                let command = format!("(IsTrue {})", sexp);
-                inner
-                    .egraph
-                    .parse_and_run_program(None, &command)
-                    .map_err(|e| format!("Failed to assert fact: {}", e))?;
-            }
-
-            // Phase 3: Generate extra witnesses for Count quantifiers (n > 1)
-            generate_count_extra_witnesses(&logic, root_id, &skolem_subs, &mut inner);
-
-            // Run rules to fixpoint
-            inner.egraph.parse_and_run_program(None, "(run 100)").ok();
         }
+    }
 
+    /// Rebuild the egraph from all non-retracted facts.
+    /// Preserves fact_registry and fact_counter; resets all derived state.
+    fn rebuild_inner(inner: &mut KnowledgeBaseInner) -> Result<(), String> {
+        // Reset egraph and derived state
+        inner.egraph = make_fresh_egraph();
+        inner.skolem_counter = 0;
+        inner.known_entities.clear();
+        inner.known_rules.clear();
+        inner.skolem_fn_registry.clear();
+        inner.asserted_sexps.clear();
+        inner.universal_rules.clear();
+
+        // Collect non-retracted buffers (clone to avoid borrow conflict)
+        let buffers: Vec<LogicBuffer> = inner
+            .fact_registry
+            .iter()
+            .filter(|r| !r.retracted)
+            .map(|r| r.buffer.clone())
+            .collect();
+
+        // Replay with diagnostic output suppressed
+        inner.rebuilding = true;
+        for buf in &buffers {
+            process_assertion(inner, buf)?;
+        }
+        inner.rebuilding = false;
         Ok(())
+    }
+
+    /// List all active (non-retracted) facts in the KB.
+    fn list_facts_inner(&self) -> Result<Vec<FactSummary>, String> {
+        let inner = self.inner.borrow();
+        Ok(inner
+            .fact_registry
+            .iter()
+            .filter(|r| !r.retracted)
+            .map(|r| FactSummary {
+                id: r.id,
+                label: r.label.clone(),
+                root_count: r.buffer.roots.len() as u32,
+            })
+            .collect())
     }
 
     /// Check whether all root formulas in the logic buffer are entailed by the KB.
@@ -461,12 +557,14 @@ impl GuestKnowledgeBase for KnowledgeBase {
         }
     }
 
-    fn assert_fact(&self, logic: LogicBuffer) -> Result<(), NibliError> {
-        self.assert_fact_inner(logic).map_err(NibliError::Reasoning)
+    fn assert_fact(&self, logic: LogicBuffer, label: String) -> Result<u64, NibliError> {
+        self.assert_fact_inner(logic, label)
+            .map_err(NibliError::Reasoning)
     }
 
     fn query_entailment(&self, logic: LogicBuffer) -> Result<bool, NibliError> {
-        self.query_entailment_inner(logic).map_err(NibliError::Reasoning)
+        self.query_entailment_inner(logic)
+            .map_err(NibliError::Reasoning)
     }
 
     fn query_find(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, NibliError> {
@@ -484,6 +582,15 @@ impl GuestKnowledgeBase for KnowledgeBase {
     fn reset(&self) -> Result<(), NibliError> {
         self.inner.borrow_mut().reset();
         Ok(())
+    }
+
+    fn retract_fact(&self, id: u64) -> Result<(), NibliError> {
+        self.retract_fact_inner(id)
+            .map_err(NibliError::Reasoning)
+    }
+
+    fn list_facts(&self) -> Result<Vec<FactSummary>, NibliError> {
+        self.list_facts_inner().map_err(NibliError::Reasoning)
     }
 }
 
@@ -1724,15 +1831,19 @@ fn compile_forall_to_rule(
             );
 
             if !inner.known_rules.insert(rule.clone()) {
-                println!(
-                    "[Rule] ∀{} already present, skipping",
-                    universals.join(",")
-                );
+                if !inner.rebuilding {
+                    println!(
+                        "[Rule] ∀{} already present, skipping",
+                        universals.join(",")
+                    );
+                }
             } else {
-                println!(
-                    "[Rule] Compiled ∀{} to native egglog rule",
-                    universals.join(",")
-                );
+                if !inner.rebuilding {
+                    println!(
+                        "[Rule] Compiled ∀{} to native egglog rule",
+                        universals.join(",")
+                    );
+                }
                 inner
                     .egraph
                     .parse_and_run_program(None, &rule)
@@ -1787,15 +1898,19 @@ fn compile_forall_to_rule(
             );
 
             if !inner.known_rules.insert(rule.clone()) {
-                println!(
-                    "[Rule] bare ∀{} already present, skipping",
-                    universals.join(",")
-                );
+                if !inner.rebuilding {
+                    println!(
+                        "[Rule] bare ∀{} already present, skipping",
+                        universals.join(",")
+                    );
+                }
             } else {
-                println!(
-                    "[Rule] Compiled bare ∀{} with InDomain trigger",
-                    universals.join(",")
-                );
+                if !inner.rebuilding {
+                    println!(
+                        "[Rule] Compiled bare ∀{} with InDomain trigger",
+                        universals.join(",")
+                    );
+                }
                 inner
                     .egraph
                     .parse_and_run_program(None, &rule)
@@ -2197,7 +2312,7 @@ mod tests {
     }
 
     fn assert_buf(kb: &KnowledgeBase, buf: LogicBuffer) {
-        kb.assert_fact_inner(buf).unwrap();
+        kb.assert_fact_inner(buf, String::new()).unwrap();
     }
 
     fn query(kb: &KnowledgeBase, buf: LogicBuffer) -> bool {
@@ -4258,5 +4373,115 @@ mod tests {
             ],
         );
         assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+    }
+
+    // ─── Fact Registry / Retraction Tests ────────────────────────────
+
+    #[test]
+    fn test_retract_basic() {
+        let kb = new_kb();
+        let id = kb.assert_fact_inner(make_assertion("alis", "gerku"), "la alis gerku".into()).unwrap();
+        assert!(query(&kb, make_query("alis", "gerku")));
+        kb.retract_fact_inner(id).unwrap();
+        assert!(!query(&kb, make_query("alis", "gerku")));
+    }
+
+    #[test]
+    fn test_retract_preserves_other_facts() {
+        let kb = new_kb();
+        let id1 = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new()).unwrap();
+        let _id2 = kb.assert_fact_inner(make_assertion("bob", "mlatu"), String::new()).unwrap();
+        kb.retract_fact_inner(id1).unwrap();
+        assert!(!query(&kb, make_query("alis", "gerku")));
+        assert!(query(&kb, make_query("bob", "mlatu")));
+    }
+
+    #[test]
+    fn test_retract_derived_facts_gone() {
+        let kb = new_kb();
+        let base_id = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new()).unwrap();
+        let _rule_id = kb.assert_fact_inner(make_universal("gerku", "danlu"), String::new()).unwrap();
+        // "alis danlu" should be derivable via the rule
+        assert!(query(&kb, make_query("alis", "danlu")));
+        kb.retract_fact_inner(base_id).unwrap();
+        // After retracting the base fact, "alis danlu" should no longer hold
+        assert!(!query(&kb, make_query("alis", "danlu")));
+    }
+
+    #[test]
+    fn test_retract_rule_preserves_base_facts() {
+        let kb = new_kb();
+        let _base_id = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new()).unwrap();
+        let rule_id = kb.assert_fact_inner(make_universal("gerku", "danlu"), String::new()).unwrap();
+        assert!(query(&kb, make_query("alis", "danlu")));
+        kb.retract_fact_inner(rule_id).unwrap();
+        // Base fact preserved
+        assert!(query(&kb, make_query("alis", "gerku")));
+        // Derived fact gone (rule retracted)
+        assert!(!query(&kb, make_query("alis", "danlu")));
+    }
+
+    #[test]
+    fn test_retract_and_reassert_new_id() {
+        let kb = new_kb();
+        let id1 = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new()).unwrap();
+        kb.retract_fact_inner(id1).unwrap();
+        let id2 = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new()).unwrap();
+        assert!(id2 > id1);
+        assert!(query(&kb, make_query("alis", "gerku")));
+    }
+
+    #[test]
+    fn test_retract_nonexistent_errors() {
+        let kb = new_kb();
+        assert!(kb.retract_fact_inner(999).is_err());
+    }
+
+    #[test]
+    fn test_retract_idempotent() {
+        let kb = new_kb();
+        let id = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new()).unwrap();
+        kb.retract_fact_inner(id).unwrap();
+        kb.retract_fact_inner(id).unwrap(); // second retract is no-op
+        assert!(!query(&kb, make_query("alis", "gerku")));
+    }
+
+    #[test]
+    fn test_list_facts_empty() {
+        let kb = new_kb();
+        let facts = kb.list_facts_inner().unwrap();
+        assert!(facts.is_empty());
+    }
+
+    #[test]
+    fn test_list_facts_after_assert() {
+        let kb = new_kb();
+        kb.assert_fact_inner(make_assertion("alis", "gerku"), "la alis gerku".into()).unwrap();
+        let facts = kb.list_facts_inner().unwrap();
+        assert_eq!(facts.len(), 1);
+        assert_eq!(facts[0].label, "la alis gerku");
+        assert_eq!(facts[0].root_count, 1);
+    }
+
+    #[test]
+    fn test_list_facts_excludes_retracted() {
+        let kb = new_kb();
+        let id = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new()).unwrap();
+        kb.assert_fact_inner(make_assertion("bob", "mlatu"), "bob mlatu".into()).unwrap();
+        kb.retract_fact_inner(id).unwrap();
+        let facts = kb.list_facts_inner().unwrap();
+        assert_eq!(facts.len(), 1);
+        assert_eq!(facts[0].id, 1); // bob's fact
+        assert_eq!(facts[0].label, "bob mlatu");
+    }
+
+    #[test]
+    fn test_reset_clears_registry() {
+        let kb = new_kb();
+        kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new()).unwrap();
+        kb.inner.borrow_mut().reset();
+        let facts = kb.list_facts_inner().unwrap();
+        assert!(facts.is_empty());
+        assert!(!query(&kb, make_query("alis", "gerku")));
     }
 }

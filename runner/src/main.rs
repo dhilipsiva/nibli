@@ -10,6 +10,8 @@
 //! - **`?!`** — Query with proof trace (indented proof tree)
 //! - **`:debug`** — Compile to logic s-expression without asserting
 //! - **`:assert`** — Assert ground facts directly (bypasses Lojban parsing)
+//! - **`:retract`** — Retract a fact by ID (triggers KB rebuild)
+//! - **`:facts`** — List all active facts in the KB
 //! - **`:compute`** — Register predicates for compute dispatch
 //! - **`:backend`** — Show/change external compute backend address
 //! - **`:reset`** — Clear the knowledge base
@@ -422,7 +424,7 @@ fn main() -> Result<()> {
     let prompt = DefaultPrompt::default();
 
     println!(
-        "Ready. Commands: :quit :reset :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :help"
+        "Ready. Commands: :quit :reset :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :help"
     );
     println!("Prefix '?' for queries, '?!' for proof trace, '??' for find, plain text for assertions.\n");
 
@@ -469,6 +471,25 @@ fn main() -> Result<()> {
                         }
                         continue;
                     }
+                    ":facts" => {
+                        refuel(&mut store, fuel_budget);
+                        match session.call_list_facts(&mut store, session_handle) {
+                            Ok(Ok(facts)) => {
+                                if facts.is_empty() {
+                                    println!("[Facts] Knowledge base is empty.");
+                                } else {
+                                    println!("[Facts] {} active fact(s):", facts.len());
+                                    for f in &facts {
+                                        let roots_label = if f.root_count == 1 { "root" } else { "roots" };
+                                        println!("  #{}: {} ({} {})", f.id, f.label, f.root_count, roots_label);
+                                    }
+                                }
+                            }
+                            Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
+                            Err(e) => println!("{}", format_host_error(&e)),
+                        }
+                        continue;
+                    }
                     ":help" | ":h" => {
                         println!("  <text>              Assert Lojban as fact");
                         println!("  ? <text>            Query entailment (true/false)");
@@ -477,6 +498,8 @@ fn main() -> Result<()> {
                         println!("  :debug <text>       Show compiled logic tree");
                         println!("  :compute <name>     Register predicate for compute dispatch");
                         println!("  :assert <rel> <args..> Assert a ground fact directly");
+                        println!("  :retract <id>       Retract a fact by ID (rebuilds KB)");
+                        println!("  :facts              List all active facts in the KB");
                         println!("  :backend [host:port] Show or set compute backend address");
                         println!("  :fuel [amount]      Show or set WASM fuel budget per command");
                         println!("  :memory [mb]        Show or set WASM memory limit in MB");
@@ -574,8 +597,9 @@ fn main() -> Result<()> {
                                 &relation,
                                 &args,
                             ) {
-                                Ok(Ok(())) => println!(
-                                    "[Assert] Fact {}({}) inserted.",
+                                Ok(Ok(fact_id)) => println!(
+                                    "[Fact #{}] {}({}) asserted.",
+                                    fact_id,
                                     relation,
                                     display_args.join(", ")
                                 ),
@@ -584,6 +608,19 @@ fn main() -> Result<()> {
                             }
                         }
                         Err(e) => println!("[Error] {}", e),
+                    }
+                } else if let Some(retract_arg) = input.strip_prefix(":retract ") {
+                    let arg = retract_arg.trim();
+                    match arg.parse::<u64>() {
+                        Ok(id) => {
+                            refuel(&mut store, fuel_budget);
+                            match session.call_retract_fact(&mut store, session_handle, id) {
+                                Ok(Ok(())) => println!("[Retract] Fact #{} retracted. KB rebuilt.", id),
+                                Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
+                                Err(e) => println!("{}", format_host_error(&e)),
+                            }
+                        }
+                        Err(_) => println!("[Host] Usage: :retract <fact-id>"),
                     }
                 } else if let Some(find_text) = input.strip_prefix("??") {
                     let text = find_text.trim();
@@ -643,7 +680,7 @@ fn main() -> Result<()> {
                 } else {
                     refuel(&mut store, fuel_budget);
                     match session.call_assert_text(&mut store, session_handle, input) {
-                        Ok(Ok(n)) => println!("[Assert] {} fact(s) inserted.", n),
+                        Ok(Ok(fact_id)) => println!("[Fact #{}] Asserted.", fact_id),
                         Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                         Err(e) => println!("{}", format_host_error(&e)),
                     }

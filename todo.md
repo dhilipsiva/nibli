@@ -6,13 +6,6 @@ Single-phase backlog ordered by severity: soundness bugs first, then safety, the
 
 ## Capability Gaps
 
-### C2. Non-monotonic reasoning / belief revision
-
-Retraction + justification tracking (TMS-style). egglog doesn't natively support retraction — needs wrapper layer. Required for any evolving knowledge base (legal corpus where statutes get amended/repealed, biology with hypothesis revision).
-
-**Crate:** reasoning (new subsystem)
-**Complexity:** very high
-
 ### C3. Temporal reasoning in e-graph
 
 Encode Past/Present/Future in egglog schema with inference rules. Currently tense is stripped at assertion and transparent at query — asserting `pu mi klama` and querying `ba mi klama` returns TRUE (wrong).

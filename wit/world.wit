@@ -330,6 +330,19 @@ interface logic-types {
         steps: list<proof-step>,
         root: u32,
     }
+
+    /// Unique identifier for a stored fact in the knowledge base.
+    type fact-id = u64;
+
+    /// Summary of an active fact in the knowledge base.
+    record fact-summary {
+        /// Unique fact identifier (assigned at assertion time).
+        id: fact-id,
+        /// Human-readable label (Lojban source text or ":assert rel args" form).
+        label: string,
+        /// Number of root formulas in this fact's logic buffer.
+        root-count: u32,
+    }
 }
 
 /// Lojban text → flat AST buffer.
@@ -375,17 +388,17 @@ interface compute-backend {
 /// Provides a stateful knowledge base resource that supports fact assertion,
 /// entailment queries, proof trace generation, and witness extraction.
 interface reasoning {
-    use logic-types.{logic-buffer, witness-binding, proof-trace};
+    use logic-types.{logic-buffer, witness-binding, proof-trace, fact-id, fact-summary};
     use error-types.{nibli-error};
 
     /// A stateful knowledge base backed by an egglog e-graph.
     /// Supports asserting FOL facts, querying entailment, extracting witnesses,
-    /// and generating proof traces.
+    /// generating proof traces, and non-monotonic retraction via rebuild.
     resource knowledge-base {
         /// Create a fresh KB with FOL schema loaded.
         constructor();
-        /// Assert FOL facts into this KB.
-        assert-fact: func(logic: logic-buffer) -> result<_, nibli-error>;
+        /// Assert FOL facts into this KB. Returns a fact ID for later retraction.
+        assert-fact: func(logic: logic-buffer, label: string) -> result<fact-id, nibli-error>;
         /// Query whether FOL formula is entailed by this KB.
         query-entailment: func(logic: logic-buffer) -> result<bool, nibli-error>;
         /// Query with proof trace: returns result + proof tree.
@@ -393,8 +406,12 @@ interface reasoning {
         /// Query with witness extraction: returns all satisfying binding sets
         /// for existential variables. Each inner list is one complete assignment.
         query-find: func(logic: logic-buffer) -> result<list<list<witness-binding>>, nibli-error>;
-        /// Reset this KB to fresh state (clear all facts, Skolems, rules).
+        /// Reset this KB to fresh state (clear all facts, Skolems, rules, fact registry).
         reset: func() -> result<_, nibli-error>;
+        /// Retract a previously asserted fact by its ID. Triggers KB rebuild from remaining facts.
+        retract-fact: func(id: fact-id) -> result<_, nibli-error>;
+        /// List all active (non-retracted) facts in the KB.
+        list-facts: func() -> result<list<fact-summary>, nibli-error>;
     }
 }
 
@@ -418,7 +435,7 @@ world reasoning-component {
 /// internally orchestrate the full pipeline. This is the primary API for
 /// end users (e.g., the REPL runner).
 interface engine {
-    use logic-types.{logical-term, witness-binding, proof-trace};
+    use logic-types.{logical-term, witness-binding, proof-trace, fact-id, fact-summary};
     use error-types.{nibli-error};
 
     /// A user-facing session that wraps the full pipeline.
@@ -426,8 +443,8 @@ interface engine {
     resource session {
         /// Create a new session (internally creates a fresh KB).
         constructor();
-        /// Assert Lojban text as facts.
-        assert-text: func(input: string) -> result<u32, nibli-error>;
+        /// Assert Lojban text as facts. Returns a fact ID for later retraction.
+        assert-text: func(input: string) -> result<fact-id, nibli-error>;
         /// Query whether Lojban text is entailed.
         query-text: func(input: string) -> result<bool, nibli-error>;
         /// Query Lojban text with proof trace.
@@ -441,7 +458,11 @@ interface engine {
         /// Register a predicate name for external computation dispatch.
         register-compute-predicate: func(name: string);
         /// Assert a ground fact directly into the KB (bypasses Lojban parsing).
-        assert-fact: func(relation: string, args: list<logical-term>) -> result<_, nibli-error>;
+        assert-fact: func(relation: string, args: list<logical-term>) -> result<fact-id, nibli-error>;
+        /// Retract a previously asserted fact by its ID.
+        retract-fact: func(id: fact-id) -> result<_, nibli-error>;
+        /// List all active (non-retracted) facts.
+        list-facts: func() -> result<list<fact-summary>, nibli-error>;
     }
 }
 

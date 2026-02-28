@@ -25,7 +25,7 @@ use bindings::lojban::nesy::ast_types::{
 };
 use bindings::lojban::nesy::error_types::{NibliError, SyntaxDetail};
 use bindings::lojban::nesy::logic_types::{
-    LogicBuffer, LogicNode, LogicalTerm, ProofTrace, WitnessBinding,
+    FactSummary, LogicBuffer, LogicNode, LogicalTerm, ProofTrace, WitnessBinding,
 };
 use bindings::lojban::nesy::{parser, semantics};
 use bindings::lojban::nesy::reasoning::KnowledgeBase;
@@ -437,7 +437,7 @@ impl GuestSession for Session {
         }
     }
 
-    fn assert_text(&self, input: String) -> Result<u32, NibliError> {
+    fn assert_text(&self, input: String) -> Result<u64, NibliError> {
         let (mut buf, new_last, warnings) =
             compile_pipeline(&input, &self.last_relation.borrow())?;
         // Abort entire assertion if any sentence failed to parse.
@@ -454,9 +454,9 @@ impl GuestSession for Session {
             }));
         }
         transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
-        self.kb.assert_fact(&buf)?;
+        let fact_id = self.kb.assert_fact(&buf, &input)?;
         *self.last_relation.borrow_mut() = new_last;
-        Ok(buf.roots.len() as u32)
+        Ok(fact_id)
     }
 
     fn query_text(&self, input: String) -> Result<bool, NibliError> {
@@ -496,7 +496,7 @@ impl GuestSession for Session {
         self.compute_predicates.borrow_mut().insert(name);
     }
 
-    fn assert_fact(&self, relation: String, args: Vec<LogicalTerm>) -> Result<(), NibliError> {
+    fn assert_fact(&self, relation: String, args: Vec<LogicalTerm>) -> Result<u64, NibliError> {
         // Store a minimal snapshot for go'i: just a Root selbri
         *self.last_relation.borrow_mut() = Some(SelbriSnapshot {
             selbris: vec![Selbri::Root(relation.clone())],
@@ -504,12 +504,21 @@ impl GuestSession for Session {
             sentences: vec![],
             root: 0,
         });
+        let label = format!(":assert {}", relation);
         let nodes = vec![LogicNode::Predicate((relation, args))];
         let buf = LogicBuffer {
             nodes,
             roots: vec![0],
         };
-        self.kb.assert_fact(&buf)
+        self.kb.assert_fact(&buf, &label)
+    }
+
+    fn retract_fact(&self, id: u64) -> Result<(), NibliError> {
+        self.kb.retract_fact(id)
+    }
+
+    fn list_facts(&self) -> Result<Vec<FactSummary>, NibliError> {
+        self.kb.list_facts()
     }
 }
 

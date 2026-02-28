@@ -48,7 +48,7 @@ just test
 
 ```
 ~/nibli〉lo gerku cu barda
-[Assert] 1 fact(s) inserted.
+[Fact #1] Asserted.
 
 ~/nibli〉? lo gerku cu barda
 [Query] TRUE
@@ -57,7 +57,15 @@ just test
 [Logic] (Count "_v0" 2 (And (Pred "gerku" ...) (Pred "barda" ...)))
 
 ~/nibli〉:assert tenfa 8 2 3
-[Assert] tenfa(8, 2, 3)
+[Fact #2] tenfa(8, 2, 3) asserted.
+
+~/nibli〉:facts
+[Facts] 2 active fact(s):
+  #1: lo gerku cu barda (1 root(s))
+  #2: :assert tenfa (1 root(s))
+
+~/nibli〉:retract 1
+[Retract] Fact #1 retracted. KB rebuilt.
 
 ~/nibli〉:reset
 [Reset] Knowledge base cleared.
@@ -101,6 +109,7 @@ just test
 - External compute backend: generic TCP client with JSON Lines protocol, lazy connect, auto-reconnect
 - Compute result auto-ingestion: successful compute results automatically cached in the KB as ground predicates (closes reason→compute→reason loop)
 - Direct fact assertion: `assert-fact` WIT method + `:assert` REPL command for programmatic fact injection bypassing Lojban parsing
+- Non-monotonic reasoning: per-fact retraction via fact registry + rebuild-on-retract (egglog is append-only); each assertion gets a unique `FactId`; retraction marks fact withdrawn, rebuilds egraph from surviving base facts; `:retract <id>` and `:facts` REPL commands
 - Existential witness extraction: `query-find` returns all satisfying entity bindings for existential variables (`??` REPL prefix)
 - Proof trace generation: `query-entailment-with-proof` returns proof tree showing which rule/axiom was applied at each step (15 proof rule variants: conjunction, disjunction, negation, modal, exists-witness, forall-verified, count, predicate-check, compute-check, asserted, derived, etc.) — `?!` REPL prefix
 - Multi-hop derivation provenance: proof traces reconstruct causal chains through universal rules (e.g., `gerku → danlu → xanlu`) via backward-chaining pattern matching; `Asserted` leaves distinguish ground truths from `Derived` nodes showing which rule produced each intermediate conclusion

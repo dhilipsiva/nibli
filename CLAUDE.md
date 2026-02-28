@@ -95,7 +95,7 @@ Before every commit, always:
 
 ## Current Status
 
-Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator).
+Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator) + C2 (non-monotonic reasoning / belief revision).
 
 **Implemented features:**
 - Lexer + recursive-descent parser (gismu, cmavo, cmevla, lujvo)
@@ -142,5 +142,6 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - WASI capability sandboxing: replaced `inherit_stdio()` with `inherit_stdout().inherit_stderr()` — WASM components get only stdout/stderr (for diagnostic prints), no stdin, no filesystem, no network, no env vars
 - Clone-free Jo/Ju connectives: added `Biconditional` and `Xor` variants to `LogicalForm` IR — each operand stored once, expansion to And/Or/Not happens during flattening where operands are u32 indices (zero-cost copy); eliminated 6 deep `.clone()` calls across 3 compilation sites
 - Arena-allocated parser AST: bumpalo `Bump` arena replaces all `Box<T>` with `&'arena T` in AST types; 24 heap allocations per parse batched into contiguous arena chunks; arena created per `parse_text()` call, freed in one shot after flattening; enables memory reuse via `Bump::reset()` for batch corpus processing
+- Non-monotonic reasoning / belief revision: fact registry with per-assertion FactId (u64), FactRecord stores cloned LogicBuffer + label + retracted flag; retraction marks fact withdrawn then rebuilds egraph from surviving base facts (sound because all derived facts recomputed); `retract-fact` and `list-facts` WIT methods on both `knowledge-base` and `session` resources; REPL `:retract <id>` and `:facts` commands; idempotent retraction; `rebuilding` flag suppresses diagnostic prints during replay
 
-**Next up:** C2 (Non-monotonic reasoning / belief revision)
+**Next up:** C3 (Temporal reasoning in e-graph)
