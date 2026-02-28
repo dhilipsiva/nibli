@@ -3876,4 +3876,387 @@ mod tests {
         // cross-entity should NOT conjoin
         assert!(!egraph_has_conjunction(&kb, "gerku", "alis", "mlatu", "bob"));
     }
+
+    // ─── KB Reset Tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_kb_reset_clears_facts() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert!(query(&kb, make_query("alis", "gerku")));
+
+        // Reset the knowledge base
+        kb.inner.borrow_mut().reset();
+
+        // After reset, previously asserted fact should no longer hold
+        assert!(!query(&kb, make_query("alis", "gerku")));
+    }
+
+    #[test]
+    fn test_kb_reset_clears_rules() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert!(query(&kb, make_query("alis", "danlu")));
+
+        kb.inner.borrow_mut().reset();
+
+        // After reset, re-assert the fact but not the rule
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        // Rule should not exist anymore
+        assert!(!query(&kb, make_query("alis", "danlu")));
+    }
+
+    #[test]
+    fn test_kb_reset_resets_skolem_counter() {
+        let kb = new_kb();
+        // Assert a universal to trigger Skolem generation
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        let counter_before = kb.inner.borrow().skolem_counter;
+        assert!(counter_before > 0);
+
+        kb.inner.borrow_mut().reset();
+        assert_eq!(kb.inner.borrow().skolem_counter, 0);
+    }
+
+    // ─── Empty buffer / edge case tests ──────────────────────────
+
+    #[test]
+    fn test_query_with_no_facts() {
+        let kb = new_kb();
+        assert!(!query(&kb, make_query("alis", "gerku")));
+    }
+
+    #[test]
+    fn test_assert_and_query_same_fact_twice() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        // Should still hold and not cause issues
+        assert!(query(&kb, make_query("alis", "gerku")));
+    }
+
+    // ─── Disjunction query tests ─────────────────────────────────
+
+    #[test]
+    fn test_disjunction_left_true() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+
+        let mut nodes = Vec::new();
+        let left = pred(
+            &mut nodes,
+            "gerku",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let right = pred(
+            &mut nodes,
+            "mlatu",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let root = or(&mut nodes, left, right);
+        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+    }
+
+    #[test]
+    fn test_disjunction_right_true() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "mlatu"));
+
+        let mut nodes = Vec::new();
+        let left = pred(
+            &mut nodes,
+            "gerku",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let right = pred(
+            &mut nodes,
+            "mlatu",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let root = or(&mut nodes, left, right);
+        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+    }
+
+    #[test]
+    fn test_disjunction_both_false() {
+        let kb = new_kb();
+
+        let mut nodes = Vec::new();
+        let left = pred(
+            &mut nodes,
+            "gerku",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let right = pred(
+            &mut nodes,
+            "mlatu",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let root = or(&mut nodes, left, right);
+        assert!(!query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+    }
+
+    // ─── Double negation tests ───────────────────────────────────
+
+    #[test]
+    fn test_double_negation_elimination() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+
+        // Query Not(Not(gerku(alis))) → should be TRUE
+        let mut nodes = Vec::new();
+        let inner = pred(
+            &mut nodes,
+            "gerku",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let neg1 = not(&mut nodes, inner);
+        let root = not(&mut nodes, neg1);
+        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+    }
+
+    // ─── Tense wrapper tests ─────────────────────────────────────
+
+    fn past(nodes: &mut Vec<LogicNode>, inner: u32) -> u32 {
+        let id = nodes.len() as u32;
+        nodes.push(LogicNode::PastNode(inner));
+        id
+    }
+
+    #[test]
+    fn test_past_tense_wrapper_assert_query() {
+        let kb = new_kb();
+        let mut a_nodes = Vec::new();
+        let inner = pred(
+            &mut a_nodes,
+            "klama",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let root = past(&mut a_nodes, inner);
+        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![root] });
+
+        // Query same tense wrapper
+        let mut q_nodes = Vec::new();
+        let q_inner = pred(
+            &mut q_nodes,
+            "klama",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let q_root = past(&mut q_nodes, q_inner);
+        assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+    }
+
+    #[test]
+    fn test_tense_transparent_query() {
+        // Assert Past(klama(alis)), query klama(alis) without tense → TRUE (pass-through)
+        let kb = new_kb();
+        let mut a_nodes = Vec::new();
+        let inner = pred(
+            &mut a_nodes,
+            "klama",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let root = past(&mut a_nodes, inner);
+        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![root] });
+
+        assert!(query(&kb, make_query("alis", "klama")));
+    }
+
+    // ─── Multiple roots test ─────────────────────────────────────
+
+    #[test]
+    fn test_assert_multiple_roots() {
+        let kb = new_kb();
+        let mut nodes = Vec::new();
+        let r1 = pred(
+            &mut nodes,
+            "gerku",
+            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+        );
+        let r2 = pred(
+            &mut nodes,
+            "mlatu",
+            vec![LogicalTerm::Constant("bob".into()), LogicalTerm::Unspecified],
+        );
+        assert_buf(&kb, LogicBuffer { nodes, roots: vec![r1, r2] });
+
+        assert!(query(&kb, make_query("alis", "gerku")));
+        assert!(query(&kb, make_query("bob", "mlatu")));
+    }
+
+    // ─── Count quantifier test ───────────────────────────────────
+
+    fn count(nodes: &mut Vec<LogicNode>, var: &str, cnt: u32, body: u32) -> u32 {
+        let id = nodes.len() as u32;
+        nodes.push(LogicNode::CountNode((var.to_string(), cnt, body)));
+        id
+    }
+
+    #[test]
+    fn test_count_exact_match() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_assertion("bob", "gerku"));
+
+        // Count(x, 2, gerku(x, _)) → exactly 2 dogs
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "gerku",
+            vec![LogicalTerm::Variable("x".into()), LogicalTerm::Unspecified],
+        );
+        let root = count(&mut nodes, "x", 2, body);
+        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+    }
+
+    #[test]
+    fn test_count_mismatch() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+
+        // Count(x, 2, gerku(x, _)) → only 1 dog, not 2
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "gerku",
+            vec![LogicalTerm::Variable("x".into()), LogicalTerm::Unspecified],
+        );
+        let root = count(&mut nodes, "x", 2, body);
+        assert!(!query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+    }
+
+    // ─── Compute builtin arithmetic tests ────────────────────────
+
+    #[test]
+    fn test_compute_pilji_correct() {
+        let kb = new_kb();
+        let buf = make_compute_query("pilji", 6.0, 2.0, 3.0);
+        assert!(query(&kb, buf));
+    }
+
+    #[test]
+    fn test_compute_pilji_incorrect() {
+        let kb = new_kb();
+        let buf = make_compute_query("pilji", 7.0, 2.0, 3.0);
+        assert!(!query(&kb, buf));
+    }
+
+    #[test]
+    fn test_compute_sumji_correct() {
+        let kb = new_kb();
+        let buf = make_compute_query("sumji", 5.0, 2.0, 3.0);
+        assert!(query(&kb, buf));
+    }
+
+    #[test]
+    fn test_compute_sumji_incorrect() {
+        let kb = new_kb();
+        let buf = make_compute_query("sumji", 6.0, 2.0, 3.0);
+        assert!(!query(&kb, buf));
+    }
+
+    #[test]
+    fn test_compute_dilcu_correct() {
+        let kb = new_kb();
+        let buf = make_compute_query("dilcu", 2.0, 6.0, 3.0);
+        assert!(query(&kb, buf));
+    }
+
+    #[test]
+    fn test_compute_dilcu_incorrect() {
+        let kb = new_kb();
+        let buf = make_compute_query("dilcu", 3.0, 6.0, 3.0);
+        assert!(!query(&kb, buf));
+    }
+
+    // ─── Numerical comparison predicate tests ────────────────────
+
+    #[test]
+    fn test_zmadu_greater_than() {
+        let kb = new_kb();
+        assert!(query(&kb, make_numeric_query("zmadu", 5.0, 3.0)));
+    }
+
+    #[test]
+    fn test_zmadu_not_greater() {
+        let kb = new_kb();
+        assert!(!query(&kb, make_numeric_query("zmadu", 3.0, 5.0)));
+    }
+
+    #[test]
+    fn test_mleca_less_than() {
+        let kb = new_kb();
+        assert!(query(&kb, make_numeric_query("mleca", 3.0, 5.0)));
+    }
+
+    #[test]
+    fn test_dunli_equal() {
+        let kb = new_kb();
+        assert!(query(&kb, make_numeric_query("dunli", 5.0, 5.0)));
+    }
+
+    #[test]
+    fn test_dunli_not_equal() {
+        let kb = new_kb();
+        assert!(!query(&kb, make_numeric_query("dunli", 5.0, 3.0)));
+    }
+
+    // ─── Assert fact with various term types ──────────────────────
+
+    #[test]
+    fn test_assert_fact_with_number_terms() {
+        let kb = new_kb();
+        let mut nodes = Vec::new();
+        let root = pred(
+            &mut nodes,
+            "pilji",
+            vec![
+                LogicalTerm::Number(6.0),
+                LogicalTerm::Number(2.0),
+                LogicalTerm::Number(3.0),
+            ],
+        );
+        assert_buf(&kb, LogicBuffer { nodes, roots: vec![root] });
+
+        // Query the same fact back
+        let mut q_nodes = Vec::new();
+        let q_root = pred(
+            &mut q_nodes,
+            "pilji",
+            vec![
+                LogicalTerm::Number(6.0),
+                LogicalTerm::Number(2.0),
+                LogicalTerm::Number(3.0),
+            ],
+        );
+        assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+    }
+
+    #[test]
+    fn test_assert_fact_with_description_terms() {
+        let kb = new_kb();
+        let mut nodes = Vec::new();
+        let root = pred(
+            &mut nodes,
+            "nelci",
+            vec![
+                LogicalTerm::Constant("bob".to_string()),
+                LogicalTerm::Description("lo_gerku".to_string()),
+            ],
+        );
+        assert_buf(&kb, LogicBuffer { nodes, roots: vec![root] });
+
+        // Query back
+        let mut q_nodes = Vec::new();
+        let q_root = pred(
+            &mut q_nodes,
+            "nelci",
+            vec![
+                LogicalTerm::Constant("bob".to_string()),
+                LogicalTerm::Description("lo_gerku".to_string()),
+            ],
+        );
+        assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+    }
 }

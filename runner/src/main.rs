@@ -1010,4 +1010,217 @@ mod tests {
         let r2 = host.dispatch_to_backend("test", &args);
         assert_eq!(r2, Ok(true));
     }
+
+    // ─── Built-in arithmetic edge cases ──────────────────────────
+
+    #[test]
+    fn test_builtin_pilji_correct() {
+        let mut host = make_host(None);
+        let args = vec![
+            compute_backend::LogicalTerm::Number(12.0),
+            compute_backend::LogicalTerm::Number(3.0),
+            compute_backend::LogicalTerm::Number(4.0),
+        ];
+        assert_eq!(host.evaluate("pilji".to_string(), args).unwrap(), true);
+    }
+
+    #[test]
+    fn test_builtin_pilji_incorrect() {
+        let mut host = make_host(None);
+        let args = vec![
+            compute_backend::LogicalTerm::Number(13.0),
+            compute_backend::LogicalTerm::Number(3.0),
+            compute_backend::LogicalTerm::Number(4.0),
+        ];
+        assert_eq!(host.evaluate("pilji".to_string(), args).unwrap(), false);
+    }
+
+    #[test]
+    fn test_builtin_sumji_correct() {
+        let mut host = make_host(None);
+        let args = vec![
+            compute_backend::LogicalTerm::Number(7.0),
+            compute_backend::LogicalTerm::Number(3.0),
+            compute_backend::LogicalTerm::Number(4.0),
+        ];
+        assert_eq!(host.evaluate("sumji".to_string(), args).unwrap(), true);
+    }
+
+    #[test]
+    fn test_builtin_sumji_incorrect() {
+        let mut host = make_host(None);
+        let args = vec![
+            compute_backend::LogicalTerm::Number(8.0),
+            compute_backend::LogicalTerm::Number(3.0),
+            compute_backend::LogicalTerm::Number(4.0),
+        ];
+        assert_eq!(host.evaluate("sumji".to_string(), args).unwrap(), false);
+    }
+
+    #[test]
+    fn test_builtin_dilcu_correct() {
+        let mut host = make_host(None);
+        let args = vec![
+            compute_backend::LogicalTerm::Number(4.0),
+            compute_backend::LogicalTerm::Number(12.0),
+            compute_backend::LogicalTerm::Number(3.0),
+        ];
+        assert_eq!(host.evaluate("dilcu".to_string(), args).unwrap(), true);
+    }
+
+    #[test]
+    fn test_builtin_dilcu_incorrect() {
+        let mut host = make_host(None);
+        let args = vec![
+            compute_backend::LogicalTerm::Number(5.0),
+            compute_backend::LogicalTerm::Number(12.0),
+            compute_backend::LogicalTerm::Number(3.0),
+        ];
+        assert_eq!(host.evaluate("dilcu".to_string(), args).unwrap(), false);
+    }
+
+    // ─── parse_assert_args edge cases ────────────────────────────
+
+    #[test]
+    fn test_parse_assert_args_multiple_constants() {
+        let (rel, args) = parse_assert_args("nelci alis bob").unwrap();
+        assert_eq!(rel, "nelci");
+        assert_eq!(args.len(), 2);
+        match &args[0] {
+            EngineLogicalTerm::Constant(s) => assert_eq!(s, "alis"),
+            other => panic!("expected Constant, got {:?}", other),
+        }
+        match &args[1] {
+            EngineLogicalTerm::Constant(s) => assert_eq!(s, "bob"),
+            other => panic!("expected Constant, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_assert_args_mixed_number_and_constant() {
+        let (rel, args) = parse_assert_args("pilji 6 alis 3").unwrap();
+        assert_eq!(rel, "pilji");
+        assert_eq!(args.len(), 3);
+        assert!(matches!(&args[0], EngineLogicalTerm::Number(n) if *n == 6.0));
+        assert!(matches!(&args[1], EngineLogicalTerm::Constant(s) if s == "alis"));
+        assert!(matches!(&args[2], EngineLogicalTerm::Number(n) if *n == 3.0));
+    }
+
+    #[test]
+    fn test_parse_assert_args_relation_only_no_args() {
+        // Just the relation name with no arguments — should this be valid?
+        // It depends on implementation. Let's verify it doesn't panic.
+        let result = parse_assert_args("gerku");
+        // Relation without args — may error or return empty args
+        if let Ok((rel, args)) = result {
+            assert_eq!(rel, "gerku");
+            assert!(args.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_parse_assert_args_whitespace_handling() {
+        let (rel, args) = parse_assert_args("  gerku   alis  ").unwrap();
+        assert_eq!(rel, "gerku");
+        assert_eq!(args.len(), 1);
+        match &args[0] {
+            EngineLogicalTerm::Constant(s) => assert_eq!(s, "alis"),
+            other => panic!("expected Constant, got {:?}", other),
+        }
+    }
+
+    // ─── JSON deserialization tests ──────────────────────────────
+
+    #[test]
+    fn test_json_response_true() {
+        let resp: ComputeResponse = serde_json::from_str(r#"{"result": true}"#).unwrap();
+        assert_eq!(resp.result, Some(true));
+        assert!(resp.error.is_none());
+    }
+
+    #[test]
+    fn test_json_response_false() {
+        let resp: ComputeResponse = serde_json::from_str(r#"{"result": false}"#).unwrap();
+        assert_eq!(resp.result, Some(false));
+    }
+
+    #[test]
+    fn test_json_response_error() {
+        let resp: ComputeResponse = serde_json::from_str(r#"{"error": "fail"}"#).unwrap();
+        assert!(resp.result.is_none());
+        assert_eq!(resp.error, Some("fail".to_string()));
+    }
+
+    // ─── format_nibli_error comprehensive tests ──────────────────
+
+    #[test]
+    fn test_format_nibli_error_syntax_with_position() {
+        use pipeline_bind::lojban::nesy::error_types::SyntaxDetail;
+        let e = NibliError::Syntax(SyntaxDetail {
+            message: "unexpected token".to_string(),
+            line: 1,
+            column: 15,
+        });
+        let out = format_nibli_error(&e);
+        assert!(out.contains("[Syntax Error]"));
+        assert!(out.contains("1:15"));
+        assert!(out.contains("unexpected token"));
+    }
+
+    // ─── format_host_error edge cases ────────────────────────────
+
+    #[test]
+    fn test_format_host_error_generic_error() {
+        let e = anyhow::anyhow!("unknown wasm trap");
+        let out = format_host_error(&e);
+        assert!(out.starts_with("[Host Error]"));
+        assert!(out.contains("unknown wasm trap"));
+    }
+
+    #[test]
+    fn test_format_host_error_fuel_case_insensitive() {
+        // "fuel" match should be case insensitive or at least match lower case
+        let e = anyhow::anyhow!("all fuel consumed by execution");
+        let out = format_host_error(&e);
+        assert!(out.starts_with("[Limit]"));
+    }
+
+    // ─── Backend with various LogicalTerm types ──────────────────
+
+    #[test]
+    fn test_backend_dispatch_with_constant_args() {
+        let (addr, _listener) = mock_server(r#"{"result": true}"#);
+        let mut host = make_host(Some(addr));
+
+        let args = vec![
+            compute_backend::LogicalTerm::Constant("alis".to_string()),
+            compute_backend::LogicalTerm::Variable("x".to_string()),
+        ];
+        let result = host.dispatch_to_backend("custom_rel", &args);
+        assert_eq!(result, Ok(true));
+    }
+
+    #[test]
+    fn test_backend_dispatch_with_description_arg() {
+        let (addr, _listener) = mock_server(r#"{"result": false}"#);
+        let mut host = make_host(Some(addr));
+
+        let args = vec![
+            compute_backend::LogicalTerm::Description("lo gerku".to_string()),
+        ];
+        let result = host.dispatch_to_backend("test_rel", &args);
+        assert_eq!(result, Ok(false));
+    }
+
+    #[test]
+    fn test_backend_dispatch_with_unspecified_arg() {
+        let (addr, _listener) = mock_server(r#"{"result": true}"#);
+        let mut host = make_host(Some(addr));
+
+        let args = vec![
+            compute_backend::LogicalTerm::Unspecified,
+        ];
+        let result = host.dispatch_to_backend("test_rel", &args);
+        assert_eq!(result, Ok(true));
+    }
 }

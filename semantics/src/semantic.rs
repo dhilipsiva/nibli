@@ -2494,4 +2494,504 @@ mod tests {
             other => panic!("expected Predicate, got {:?}", other),
         }
     }
+
+    // ─── Tense wrapper tests ──────────────────────────────────
+
+    #[test]
+    fn test_tense_pu_produces_past() {
+        // pu mi klama → Past(klama(mi, ...))
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![Sumti::ProSumti("mi".into())];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: Some(Tense::Pu),
+            attitudinal: None,
+        };
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+        assert!(matches!(form, LogicalForm::Past(_)));
+    }
+
+    #[test]
+    fn test_tense_ca_produces_present() {
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![Sumti::ProSumti("mi".into())];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: Some(Tense::Ca),
+            attitudinal: None,
+        };
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+        assert!(matches!(form, LogicalForm::Present(_)));
+    }
+
+    #[test]
+    fn test_tense_ba_produces_future() {
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![Sumti::ProSumti("mi".into())];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: Some(Tense::Ba),
+            attitudinal: None,
+        };
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+        assert!(matches!(form, LogicalForm::Future(_)));
+    }
+
+    // ─── Attitudinal tests ────────────────────────────────────
+
+    #[test]
+    fn test_attitudinal_ei_produces_obligatory() {
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![Sumti::ProSumti("mi".into())];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: Some(Attitudinal::Ei),
+        };
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+        assert!(matches!(form, LogicalForm::Obligatory(_)));
+    }
+
+    #[test]
+    fn test_attitudinal_ehe_produces_permitted() {
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![Sumti::ProSumti("mi".into())];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: Some(Attitudinal::Ehe),
+        };
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+        assert!(matches!(form, LogicalForm::Permitted(_)));
+    }
+
+    // ─── Negation test ────────────────────────────────────────
+
+    #[test]
+    fn test_bridi_negation_produces_not() {
+        // na mi klama → Not(klama(mi, ...))
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![Sumti::ProSumti("mi".into())];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: true,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+        assert!(matches!(form, LogicalForm::Not(_)));
+    }
+
+    // ─── Conversion SE tests ──────────────────────────────────
+
+    #[test]
+    fn test_se_conversion_swaps_args() {
+        // se prami mi do → prami(do, mi, ...) (x1↔x2 swapped)
+        let selbris = vec![
+            Selbri::Root("prami".into()),
+            Selbri::Converted((Conversion::Se, 0)),
+        ];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),
+            Sumti::ProSumti("do".into()),
+        ];
+        let bridi = Bridi {
+            relation: 1,
+            head_terms: vec![0],
+            tail_terms: vec![1],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        match &form {
+            LogicalForm::Predicate { relation, args } => {
+                assert_eq!(resolve(&compiler, relation), "prami");
+                // After se-conversion: x1 and x2 are swapped
+                // head=mi goes to x1 position, tail=do goes to x2 position
+                // se swaps these: mi→x2, do→x1
+                assert_eq!(args.len(), 2);
+            }
+            other => panic!("expected Predicate, got {:?}", other),
+        }
+    }
+
+    // ─── Unspecified sumti (zo'e) test ────────────────────────
+
+    #[test]
+    fn test_zo_e_compiles_to_unspecified() {
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![Sumti::Unspecified];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+        match &form {
+            LogicalForm::Predicate { args, .. } => {
+                assert!(matches!(args[0], LogicalTerm::Unspecified));
+            }
+            other => panic!("expected Predicate, got {:?}", other),
+        }
+    }
+
+    // ─── Name (la cmevla) test ────────────────────────────────
+
+    #[test]
+    fn test_la_name_compiles_to_constant() {
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![Sumti::Name("alis".into())];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        match &form {
+            LogicalForm::Predicate { args, .. } => {
+                match &args[0] {
+                    LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "alis"),
+                    other => panic!("expected Constant, got {:?}", other),
+                }
+            }
+            other => panic!("expected Predicate, got {:?}", other),
+        }
+    }
+
+    // ─── Number sumti (li PA) test ────────────────────────────
+
+    #[test]
+    fn test_number_sumti_compiles_to_number() {
+        let selbris = vec![Selbri::Root("namcu".into())];
+        let sumtis = vec![Sumti::Number(42.0)];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+        match &form {
+            LogicalForm::Predicate { args, .. } => {
+                assert!(matches!(args[0], LogicalTerm::Number(n) if n == 42.0));
+            }
+            other => panic!("expected Predicate, got {:?}", other),
+        }
+    }
+
+    // ─── Quoted literal test ──────────────────────────────────
+
+    #[test]
+    fn test_quoted_literal_compiles_to_constant() {
+        let selbris = vec![Selbri::Root("valsi".into())];
+        let sumtis = vec![Sumti::QuotedLiteral("coi".into())];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        match &form {
+            LogicalForm::Predicate { args, .. } => {
+                match &args[0] {
+                    LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "coi"),
+                    other => panic!("expected Constant, got {:?}", other),
+                }
+            }
+            other => panic!("expected Predicate, got {:?}", other),
+        }
+    }
+
+    // ─── Selbri connective tests ──────────────────────────────
+
+    #[test]
+    fn test_selbri_connective_je_produces_and() {
+        // mi klama je sutra → And(klama(mi,...), sutra(mi,...))
+        let selbris = vec![
+            Selbri::Root("klama".into()),
+            Selbri::Root("sutra".into()),
+            Selbri::Connected((0, Connective::Je, 1)),
+        ];
+        let sumtis = vec![Sumti::ProSumti("mi".into())];
+        let bridi = Bridi {
+            relation: 2,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+        assert!(matches!(form, LogicalForm::And(_, _)));
+    }
+
+    #[test]
+    fn test_selbri_connective_ja_produces_or() {
+        let selbris = vec![
+            Selbri::Root("klama".into()),
+            Selbri::Root("sutra".into()),
+            Selbri::Connected((0, Connective::Ja, 1)),
+        ];
+        let sumtis = vec![Sumti::ProSumti("mi".into())];
+        let bridi = Bridi {
+            relation: 2,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+        assert!(matches!(form, LogicalForm::Or(_, _)));
+    }
+
+    #[test]
+    fn test_selbri_connective_jo_produces_biconditional() {
+        let selbris = vec![
+            Selbri::Root("klama".into()),
+            Selbri::Root("sutra".into()),
+            Selbri::Connected((0, Connective::Jo, 1)),
+        ];
+        let sumtis = vec![Sumti::ProSumti("mi".into())];
+        let bridi = Bridi {
+            relation: 2,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+        assert!(matches!(form, LogicalForm::Biconditional(_, _)));
+    }
+
+    #[test]
+    fn test_selbri_connective_ju_produces_xor() {
+        let selbris = vec![
+            Selbri::Root("klama".into()),
+            Selbri::Root("sutra".into()),
+            Selbri::Connected((0, Connective::Ju, 1)),
+        ];
+        let sumtis = vec![Sumti::ProSumti("mi".into())];
+        let bridi = Bridi {
+            relation: 2,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+        assert!(matches!(form, LogicalForm::Xor(_, _)));
+    }
+
+    // ─── Arity from dictionary ────────────────────────────────
+
+    #[test]
+    fn test_known_gismu_gets_correct_arity() {
+        // klama has arity 5, so Pred should have 5 arg slots
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![Sumti::ProSumti("mi".into())];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+        match &form {
+            LogicalForm::Predicate { args, .. } => {
+                assert_eq!(args.len(), 5, "klama should have 5 argument slots");
+            }
+            other => panic!("expected Predicate, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_unknown_gismu_defaults_to_arity_2() {
+        // An unrecognized word should default to arity 2
+        let selbris = vec![Selbri::Root("xyzzy".into())];
+        let sumtis = vec![Sumti::ProSumti("mi".into())];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, _) = compile_one(selbris, sumtis, bridi);
+        match &form {
+            LogicalForm::Predicate { args, .. } => {
+                assert_eq!(args.len(), 2, "unknown word should default to arity 2");
+            }
+            other => panic!("expected Predicate, got {:?}", other),
+        }
+    }
+
+    // ─── Sentence connective tests ────────────────────────────
+
+    #[test]
+    fn test_sentence_connective_ge_gi_produces_and() {
+        // ge mi klama gi do sutra → And(klama(mi,...), sutra(do,...))
+        let selbris = vec![
+            Selbri::Root("klama".into()),
+            Selbri::Root("sutra".into()),
+        ];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),
+            Sumti::ProSumti("do".into()),
+        ];
+        let sentences = vec![
+            Sentence::Connected((
+                SentenceConnective::GeGi,
+                1, // left sentence idx
+                2, // right sentence idx
+            )),
+            Sentence::Simple(Bridi {
+                relation: 0,
+                head_terms: vec![0],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+            Sentence::Simple(Bridi {
+                relation: 1,
+                head_terms: vec![1],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+        ];
+        let (form, _) = compile_sentence_full(selbris, sumtis, sentences);
+        assert!(matches!(form, LogicalForm::And(_, _)));
+    }
+
+    // ─── Fresh variable generation ────────────────────────────
+
+    #[test]
+    fn test_fresh_vars_are_unique() {
+        let mut compiler = SemanticCompiler::new();
+        let v1 = compiler.fresh_var();
+        let v2 = compiler.fresh_var();
+        let v3 = compiler.fresh_var();
+        assert_ne!(v1, v2);
+        assert_ne!(v2, v3);
+        assert_ne!(v1, v3);
+        assert_eq!(compiler.interner.resolve(&v1), "_v0");
+        assert_eq!(compiler.interner.resolve(&v2), "_v1");
+        assert_eq!(compiler.interner.resolve(&v3), "_v2");
+    }
+
+    // ─── BAI tag gismu mapping ────────────────────────────────
+
+    #[test]
+    fn test_bai_to_gismu_mapping() {
+        assert_eq!(SemanticCompiler::bai_to_gismu(&BaiTag::Ria), "rinka");
+        assert_eq!(SemanticCompiler::bai_to_gismu(&BaiTag::Nii), "nibli");
+        assert_eq!(SemanticCompiler::bai_to_gismu(&BaiTag::Mui), "mukti");
+        assert_eq!(SemanticCompiler::bai_to_gismu(&BaiTag::Kiu), "krinu");
+        assert_eq!(SemanticCompiler::bai_to_gismu(&BaiTag::Pio), "pilno");
+        assert_eq!(SemanticCompiler::bai_to_gismu(&BaiTag::Bai), "basti");
+    }
+
+    // ─── inject_variable into conjunction ─────────────────────
+
+    #[test]
+    fn test_inject_variable_into_and() {
+        let mut compiler = SemanticCompiler::new();
+        let rel1 = compiler.interner.get_or_intern("gerku");
+        let rel2 = compiler.interner.get_or_intern("barda");
+        let var = compiler.interner.get_or_intern("_v0");
+        let form = LogicalForm::And(
+            Box::new(LogicalForm::Predicate {
+                relation: rel1,
+                args: vec![LogicalTerm::Unspecified],
+            }),
+            Box::new(LogicalForm::Predicate {
+                relation: rel2,
+                args: vec![LogicalTerm::Unspecified],
+            }),
+        );
+        let injected = SemanticCompiler::inject_variable(form, var);
+        match injected {
+            LogicalForm::And(left, right) => {
+                // inject_variable fills the FIRST unspecified in the first predicate found
+                match left.as_ref() {
+                    LogicalForm::Predicate { args, .. } => {
+                        assert!(matches!(args[0], LogicalTerm::Variable(_)));
+                    }
+                    other => panic!("expected Predicate, got {:?}", other),
+                }
+                match right.as_ref() {
+                    LogicalForm::Predicate { args, .. } => {
+                        assert!(matches!(args[0], LogicalTerm::Variable(_)));
+                    }
+                    other => panic!("expected Predicate, got {:?}", other),
+                }
+            }
+            other => panic!("expected And, got {:?}", other),
+        }
+    }
+
+    // ─── No-arg predicate ─────────────────────────────────────
+
+    #[test]
+    fn test_predicate_with_no_explicit_args() {
+        // Just "klama" alone → should produce a Predicate with all-Unspecified args
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis: Vec<Sumti> = vec![];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        match &form {
+            LogicalForm::Predicate { relation, args } => {
+                assert_eq!(resolve(&compiler, relation), "klama");
+                // All args should be Unspecified
+                for arg in args {
+                    assert!(matches!(arg, LogicalTerm::Unspecified));
+                }
+            }
+            other => panic!("expected Predicate, got {:?}", other),
+        }
+    }
 }

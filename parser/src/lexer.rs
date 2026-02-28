@@ -349,4 +349,174 @@ mod tests {
         assert_eq!(tokens[1], (LojbanToken::Lujvo, "jbobau"));
         assert_eq!(tokens[2], (LojbanToken::Gismu, "tavla"));
     }
+
+    // ─── Empty / whitespace input ─────────────────────────────
+
+    #[test]
+    fn test_empty_input() {
+        let tokens = tokenize("");
+        assert!(tokens.is_empty());
+    }
+
+    #[test]
+    fn test_whitespace_only() {
+        let tokens = tokenize("   \t  \n  ");
+        assert!(tokens.is_empty());
+    }
+
+    // ─── Single token types ───────────────────────────────────
+
+    #[test]
+    fn test_single_cmavo() {
+        let tokens = tokenize("mi");
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0], (LojbanToken::Cmavo, "mi"));
+    }
+
+    #[test]
+    fn test_single_gismu() {
+        let tokens = tokenize("klama");
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0], (LojbanToken::Gismu, "klama"));
+    }
+
+    #[test]
+    fn test_single_pause() {
+        let tokens = tokenize(".");
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0], (LojbanToken::Pause, "."));
+    }
+
+    // ─── Metalinguistic operator tokens ───────────────────────
+
+    #[test]
+    fn test_metalinguistic_tokens() {
+        let tokens = tokenize("si sa su zo zoi zei");
+        assert_eq!(tokens[0], (LojbanToken::EraseWord, "si"));
+        assert_eq!(tokens[1], (LojbanToken::EraseClass, "sa"));
+        assert_eq!(tokens[2], (LojbanToken::EraseStream, "su"));
+        assert_eq!(tokens[3], (LojbanToken::QuoteNext, "zo"));
+        assert_eq!(tokens[4], (LojbanToken::QuoteDelimited, "zoi"));
+        assert_eq!(tokens[5], (LojbanToken::GlueWords, "zei"));
+    }
+
+    // ─── Cmevla recognition ──────────────────────────────────
+
+    #[test]
+    fn test_cmevla_standalone() {
+        // ".alis." is a name: pause + consonant-ending + pause
+        let tokens = tokenize(".alis.");
+        assert_eq!(tokens[0], (LojbanToken::Pause, "."));
+        assert_eq!(tokens[1], (LojbanToken::Cmevla, "alis"));
+        assert_eq!(tokens[2], (LojbanToken::Pause, "."));
+    }
+
+    #[test]
+    fn test_cmevla_in_sentence() {
+        let tokens = tokenize("la .alis. cu klama");
+        assert_eq!(tokens[0], (LojbanToken::Cmavo, "la"));
+        assert_eq!(tokens[1], (LojbanToken::Pause, "."));
+        assert_eq!(tokens[2], (LojbanToken::Cmevla, "alis"));
+        assert_eq!(tokens[3], (LojbanToken::Pause, "."));
+        assert_eq!(tokens[4], (LojbanToken::Cmavo, "cu"));
+        assert_eq!(tokens[5], (LojbanToken::Gismu, "klama"));
+    }
+
+    // ─── Compound cmavo: contiguity edge cases ────────────────
+
+    #[test]
+    fn test_compound_cmavo_with_space_not_merged() {
+        // "ga nai" spaced → two separate tokens, NOT "ganai"
+        let tokens = tokenize("ga nai");
+        assert_eq!(tokens[0], (LojbanToken::Cmavo, "ga"));
+        assert_eq!(tokens[1], (LojbanToken::Cmavo, "nai"));
+    }
+
+    #[test]
+    fn test_real_cmevla_after_pause_not_reclassified() {
+        // ".djan." preceded by pause → stays as Cmevla
+        let tokens = tokenize("la .djan. cu klama");
+        assert_eq!(tokens[0], (LojbanToken::Cmavo, "la"));
+        assert_eq!(tokens[1], (LojbanToken::Pause, "."));
+        assert_eq!(tokens[2], (LojbanToken::Cmevla, "djan"));
+        assert_eq!(tokens[3], (LojbanToken::Pause, "."));
+    }
+
+    // ─── Multiple compound cmavo in sequence ──────────────────
+
+    #[test]
+    fn test_multiple_compounds_in_sentence() {
+        let tokens = tokenize("ganai mi klama gi gonai do sutra gi lo mlatu");
+        assert_eq!(tokens[0], (LojbanToken::Cmavo, "ganai"));
+        // Find gonai
+        let gonai_tok = tokens.iter().find(|(_, s)| *s == "gonai");
+        assert_eq!(gonai_tok, Some(&(LojbanToken::Cmavo, "gonai")));
+    }
+
+    // ─── Gismu morphology edge cases ──────────────────────────
+
+    #[test]
+    fn test_ccvcv_gismu() {
+        // "blanu" is CCVCV pattern
+        let tokens = tokenize("blanu");
+        assert_eq!(tokens[0], (LojbanToken::Gismu, "blanu"));
+    }
+
+    #[test]
+    fn test_cvccv_gismu() {
+        // "klama" is CVCCV pattern
+        let tokens = tokenize("klama");
+        assert_eq!(tokens[0], (LojbanToken::Gismu, "klama"));
+    }
+
+    // ─── Multi-vowel cmavo ────────────────────────────────────
+
+    #[test]
+    fn test_multi_vowel_cmavo() {
+        // "iu" and "ai" are multi-vowel cmavo
+        let tokens = tokenize("ui iu ai");
+        assert_eq!(tokens[0].0, LojbanToken::Cmavo);
+        assert_eq!(tokens[1].0, LojbanToken::Cmavo);
+        assert_eq!(tokens[2].0, LojbanToken::Cmavo);
+    }
+
+    // ─── Full sentence tokenization ───────────────────────────
+
+    #[test]
+    fn test_full_sentence_token_types() {
+        let tokens = tokenize("mi klama lo zarci");
+        assert_eq!(tokens.len(), 4);
+        assert_eq!(tokens[0], (LojbanToken::Cmavo, "mi"));
+        assert_eq!(tokens[1], (LojbanToken::Gismu, "klama"));
+        assert_eq!(tokens[2], (LojbanToken::Cmavo, "lo"));
+        assert_eq!(tokens[3], (LojbanToken::Gismu, "zarci"));
+    }
+
+    #[test]
+    fn test_sentence_with_cu_separator() {
+        let tokens = tokenize("lo gerku cu klama lo zarci");
+        assert_eq!(tokens.len(), 6);
+        assert_eq!(tokens[0], (LojbanToken::Cmavo, "lo"));
+        assert_eq!(tokens[1], (LojbanToken::Gismu, "gerku"));
+        assert_eq!(tokens[2], (LojbanToken::Cmavo, "cu"));
+        assert_eq!(tokens[3], (LojbanToken::Gismu, "klama"));
+    }
+
+    #[test]
+    fn test_sentence_separator_i() {
+        let tokens = tokenize("mi klama .i do sutra");
+        // .i is tokenized as Pause(".") + Cmavo("i")
+        let i_tok = tokens.iter().find(|(t, s)| *t == LojbanToken::Cmavo && *s == "i");
+        assert!(i_tok.is_some());
+    }
+
+    // ─── Apostrophe in cmavo ──────────────────────────────────
+
+    #[test]
+    fn test_apostrophe_cmavo() {
+        let tokens = tokenize("du'u si'o e'e");
+        assert_eq!(tokens[0], (LojbanToken::Cmavo, "du'u"));
+        assert_eq!(tokens[1], (LojbanToken::Cmavo, "si'o"));
+        assert_eq!(tokens[2], (LojbanToken::Cmavo, "e'e"));
+    }
 }

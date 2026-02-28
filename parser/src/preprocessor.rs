@@ -428,4 +428,279 @@ mod tests {
         assert_eq!(result[8], NormalizedToken::Standard(LojbanToken::Cmavo, "cu"));
         assert_eq!(result[9], NormalizedToken::Standard(LojbanToken::Gismu, "sutra"));
     }
+
+    // ─── si (erase word) tests ─────────────────────────────────
+
+    #[test]
+    fn test_si_erases_preceding_word() {
+        // "mi klama si prami do" → "mi prami do"
+        let tokens = vec![
+            (LojbanToken::Cmavo, "mi"),
+            (LojbanToken::Gismu, "klama"),
+            (LojbanToken::EraseWord, "si"),
+            (LojbanToken::Gismu, "prami"),
+            (LojbanToken::Cmavo, "do"),
+        ];
+        let input = "mi klama si prami do";
+        let result = preprocess(tokens.into_iter(), input);
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Cmavo, "mi"));
+        assert_eq!(result[1], NormalizedToken::Standard(LojbanToken::Gismu, "prami"));
+        assert_eq!(result[2], NormalizedToken::Standard(LojbanToken::Cmavo, "do"));
+    }
+
+    #[test]
+    fn test_si_at_beginning_does_nothing() {
+        // "si klama" → "klama" (si with empty output just has no effect)
+        let tokens = vec![
+            (LojbanToken::EraseWord, "si"),
+            (LojbanToken::Gismu, "klama"),
+        ];
+        let input = "si klama";
+        let result = preprocess(tokens.into_iter(), input);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Gismu, "klama"));
+    }
+
+    #[test]
+    fn test_double_si_erases_two_words() {
+        // "mi do si si klama" → "mi klama" (two si erases two words)
+        let tokens = vec![
+            (LojbanToken::Cmavo, "mi"),
+            (LojbanToken::Cmavo, "do"),
+            (LojbanToken::EraseWord, "si"),
+            (LojbanToken::EraseWord, "si"),
+            (LojbanToken::Gismu, "klama"),
+        ];
+        let input = "mi do si si klama";
+        let result = preprocess(tokens.into_iter(), input);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Gismu, "klama"));
+    }
+
+    // ─── su (erase stream) tests ──────────────────────────────
+
+    #[test]
+    fn test_su_erases_entire_discourse() {
+        // "mi klama do su lo gerku cu sutra" → "lo gerku cu sutra"
+        let tokens = vec![
+            (LojbanToken::Cmavo, "mi"),
+            (LojbanToken::Gismu, "klama"),
+            (LojbanToken::Cmavo, "do"),
+            (LojbanToken::EraseStream, "su"),
+            (LojbanToken::Cmavo, "lo"),
+            (LojbanToken::Gismu, "gerku"),
+            (LojbanToken::Cmavo, "cu"),
+            (LojbanToken::Gismu, "sutra"),
+        ];
+        let input = "mi klama do su lo gerku cu sutra";
+        let result = preprocess(tokens.into_iter(), input);
+        assert_eq!(result.len(), 4);
+        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Cmavo, "lo"));
+        assert_eq!(result[1], NormalizedToken::Standard(LojbanToken::Gismu, "gerku"));
+        assert_eq!(result[2], NormalizedToken::Standard(LojbanToken::Cmavo, "cu"));
+        assert_eq!(result[3], NormalizedToken::Standard(LojbanToken::Gismu, "sutra"));
+    }
+
+    #[test]
+    fn test_su_on_empty_output() {
+        // "su klama" → "klama" (su clears empty buffer, no effect)
+        let tokens = vec![
+            (LojbanToken::EraseStream, "su"),
+            (LojbanToken::Gismu, "klama"),
+        ];
+        let input = "su klama";
+        let result = preprocess(tokens.into_iter(), input);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Gismu, "klama"));
+    }
+
+    // ─── zo (quote next) tests ────────────────────────────────
+
+    #[test]
+    fn test_zo_quotes_next_word() {
+        // "zo klama cu selbri" → Quoted("klama"), cu, selbri
+        let tokens = vec![
+            (LojbanToken::QuoteNext, "zo"),
+            (LojbanToken::Gismu, "klama"),
+            (LojbanToken::Cmavo, "cu"),
+            (LojbanToken::Gismu, "selbri"),
+        ];
+        let input = "zo klama cu selbri";
+        let result = preprocess(tokens.into_iter(), input);
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0], NormalizedToken::Quoted("klama"));
+        assert_eq!(result[1], NormalizedToken::Standard(LojbanToken::Cmavo, "cu"));
+    }
+
+    #[test]
+    fn test_zo_at_end_of_stream() {
+        // "mi zo" → just "mi" (zo at end has no next token to quote)
+        let tokens = vec![
+            (LojbanToken::Cmavo, "mi"),
+            (LojbanToken::QuoteNext, "zo"),
+        ];
+        let input = "mi zo";
+        let result = preprocess(tokens.into_iter(), input);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Cmavo, "mi"));
+    }
+
+    // ─── zei (glue words) tests ───────────────────────────────
+
+    #[test]
+    fn test_zei_glues_two_words() {
+        // "skami zei pilno" → Glued(["skami", "pilno"])
+        let tokens = vec![
+            (LojbanToken::Gismu, "skami"),
+            (LojbanToken::GlueWords, "zei"),
+            (LojbanToken::Gismu, "pilno"),
+        ];
+        let input = "skami zei pilno";
+        let result = preprocess(tokens.into_iter(), input);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], NormalizedToken::Glued(vec!["skami", "pilno"]));
+    }
+
+    #[test]
+    fn test_zei_chains_three_words() {
+        // "skami zei pilno zei tadni" → Glued(["skami", "pilno", "tadni"])
+        let tokens = vec![
+            (LojbanToken::Gismu, "skami"),
+            (LojbanToken::GlueWords, "zei"),
+            (LojbanToken::Gismu, "pilno"),
+            (LojbanToken::GlueWords, "zei"),
+            (LojbanToken::Gismu, "tadni"),
+        ];
+        let input = "skami zei pilno zei tadni";
+        let result = preprocess(tokens.into_iter(), input);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], NormalizedToken::Glued(vec!["skami", "pilno", "tadni"]));
+    }
+
+    #[test]
+    fn test_zei_at_beginning_no_previous() {
+        // "zei klama" → no previous token, zei is no-op; klama remains in stream
+        let tokens = vec![
+            (LojbanToken::GlueWords, "zei"),
+            (LojbanToken::Gismu, "klama"),
+        ];
+        let input = "zei klama";
+        let result = preprocess(tokens.into_iter(), input);
+        // zei pops nothing (output is empty), if-let fails, klama stays in stream
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Gismu, "klama"));
+    }
+
+    // ─── sa edge cases ────────────────────────────────────────
+
+    #[test]
+    fn test_sa_at_end_of_stream() {
+        // "mi klama sa" → sa peeks but nothing follows
+        let tokens = vec![
+            (LojbanToken::Cmavo, "mi"),
+            (LojbanToken::Gismu, "klama"),
+            (LojbanToken::EraseClass, "sa"),
+        ];
+        let input = "mi klama sa";
+        let result = preprocess(tokens.into_iter(), input);
+        // sa at end: peek returns None, nothing happens
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Cmavo, "mi"));
+        assert_eq!(result[1], NormalizedToken::Standard(LojbanToken::Gismu, "klama"));
+    }
+
+    #[test]
+    fn test_sa_with_unclassifiable_next_token() {
+        // "mi klama sa .djan." → pause/cmevla after sa; cmevla has Cmevla class
+        // but test with a pause token which gets classified as None
+        let tokens = vec![
+            (LojbanToken::Cmavo, "mi"),
+            (LojbanToken::Gismu, "klama"),
+            (LojbanToken::EraseClass, "sa"),
+            (LojbanToken::Pause, "."),
+            (LojbanToken::Gismu, "sutra"),
+        ];
+        let input = "mi klama sa . sutra";
+        let result = preprocess(tokens.into_iter(), input);
+        // Pause has no selmaho classification → fallback to single-word erase
+        // Removes "klama", then ". sutra" continues
+        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Cmavo, "mi"));
+        assert_eq!(result[1], NormalizedToken::Standard(LojbanToken::Pause, "."));
+        assert_eq!(result[2], NormalizedToken::Standard(LojbanToken::Gismu, "sutra"));
+    }
+
+    // ─── classify_selmaho edge cases ──────────────────────────
+
+    #[test]
+    fn test_classify_selmaho_glued_is_brivla() {
+        let tok = NormalizedToken::Glued(vec!["skami", "pilno"]);
+        assert_eq!(classify_selmaho(&tok), Some(Selmaho::Brivla));
+    }
+
+    #[test]
+    fn test_classify_selmaho_quoted_is_none() {
+        let tok = NormalizedToken::Quoted("anything");
+        assert_eq!(classify_selmaho(&tok), None);
+    }
+
+    #[test]
+    fn test_classify_selmaho_cmevla() {
+        let tok = NormalizedToken::Standard(LojbanToken::Cmevla, "djan");
+        assert_eq!(classify_selmaho(&tok), Some(Selmaho::Cmevla));
+    }
+
+    #[test]
+    fn test_classify_cmavo_attitudinals_as_na() {
+        // ei and e'e are treated as NA-class for erasure purposes
+        assert_eq!(classify_cmavo("ei"), Some(Selmaho::NA));
+        assert_eq!(classify_cmavo("e'e"), Some(Selmaho::NA));
+    }
+
+    #[test]
+    fn test_classify_cmavo_pro_sumti() {
+        assert_eq!(classify_cmavo("mi"), Some(Selmaho::COI));
+        assert_eq!(classify_cmavo("do"), Some(Selmaho::COI));
+        assert_eq!(classify_cmavo("ko"), Some(Selmaho::COI));
+        assert_eq!(classify_cmavo("ti"), Some(Selmaho::COI));
+        assert_eq!(classify_cmavo("ta"), Some(Selmaho::COI));
+        assert_eq!(classify_cmavo("tu"), Some(Selmaho::COI));
+        assert_eq!(classify_cmavo("ri"), Some(Selmaho::COI));
+        assert_eq!(classify_cmavo("zo'e"), Some(Selmaho::COI));
+    }
+
+    // ─── Empty input ──────────────────────────────────────────
+
+    #[test]
+    fn test_preprocess_empty_input() {
+        let tokens: Vec<(LojbanToken, &str)> = vec![];
+        let result = preprocess(tokens.into_iter(), "");
+        assert!(result.is_empty());
+    }
+
+    // ─── Combined operations ──────────────────────────────────
+
+    #[test]
+    fn test_si_followed_by_sa() {
+        // "mi do si klama sa gerku" → "mi" then si removes "do", then "klama",
+        // then sa looks for Brivla class (gerku), finds "klama" at position 1, truncates
+        let tokens = vec![
+            (LojbanToken::Cmavo, "mi"),
+            (LojbanToken::Cmavo, "do"),
+            (LojbanToken::EraseWord, "si"),
+            (LojbanToken::Gismu, "klama"),
+            (LojbanToken::EraseClass, "sa"),
+            (LojbanToken::Gismu, "gerku"),
+        ];
+        let input = "mi do si klama sa gerku";
+        let result = preprocess(tokens.into_iter(), input);
+        // After si: [mi]
+        // After "klama": [mi, klama]
+        // sa peeks "gerku" (Brivla), walks back, finds "klama" (Brivla) at idx 1
+        // Truncates to idx 1: [mi]
+        // Then gerku is added: [mi, gerku]
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Cmavo, "mi"));
+        assert_eq!(result[1], NormalizedToken::Standard(LojbanToken::Gismu, "gerku"));
+    }
 }

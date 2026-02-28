@@ -1084,6 +1084,195 @@ mod tests {
             })
         }));
     }
+
+    // ─── extract_head_relation additional tests ──────────────────
+
+    #[test]
+    fn test_extract_head_relation_compound() {
+        let selbris = vec![Selbri::Compound(vec!["skami".to_string(), "pilno".to_string()])];
+        // Compound returns the last part as head relation
+        let result = extract_head_relation(&selbris, 0);
+        // Compound should return Some with the joined name or last element
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_extract_head_relation_with_args() {
+        // WithArgs wraps a core selbri — head relation should come from core
+        let selbris = vec![
+            Selbri::Root("prami".to_string()),
+            Selbri::WithArgs((0, vec![])),
+        ];
+        assert_eq!(extract_head_relation(&selbris, 1), Some("prami".to_string()));
+    }
+
+    #[test]
+    fn test_extract_head_relation_deeply_nested() {
+        // Negated(Converted(Te, Root("klama")))
+        let selbris = vec![
+            Selbri::Root("klama".to_string()),            // 0
+            Selbri::Converted((Conversion::Te, 0)),       // 1
+            Selbri::Negated(1),                            // 2
+        ];
+        assert_eq!(extract_head_relation(&selbris, 2), Some("klama".to_string()));
+    }
+
+    // ─── Snapshot extract edge cases ─────────────────────────────
+
+    #[test]
+    fn test_snapshot_compound_selbri() {
+        let ast = make_ast(
+            vec![Selbri::Compound(vec!["skami".to_string(), "pilno".to_string()])],
+            0, vec![0],
+        );
+        let snap = extract_selbri_snapshot(&ast, 0);
+        assert_eq!(snap.selbris.len(), 1);
+        assert!(matches!(&snap.selbris[0], Selbri::Compound(parts) if parts.len() == 2));
+    }
+
+    #[test]
+    fn test_snapshot_tanru() {
+        // sutra klama → Tanru(Root("sutra"), Root("klama"))
+        let ast = make_ast(
+            vec![
+                Selbri::Root("sutra".to_string()),  // 0
+                Selbri::Root("klama".to_string()),  // 1
+                Selbri::Tanru((0, 1)),              // 2
+            ],
+            2, vec![0],
+        );
+        let snap = extract_selbri_snapshot(&ast, 2);
+        assert_eq!(snap.selbris.len(), 3);
+        assert!(matches!(&snap.selbris[snap.root as usize], Selbri::Tanru(_)));
+    }
+
+    // ─── graft rebase additional tests ───────────────────────────
+
+    #[test]
+    fn test_graft_into_empty_buffer() {
+        let mut ast = AstBuffer {
+            selbris: vec![],
+            sumtis: vec![],
+            sentences: vec![],
+            roots: vec![],
+        };
+        let snap = SelbriSnapshot {
+            selbris: vec![Selbri::Root("klama".to_string())],
+            sumtis: vec![],
+            sentences: vec![],
+            root: 0,
+        };
+        let grafted = graft_snapshot(&mut ast, &snap);
+        assert_eq!(grafted, 0);
+        assert_eq!(ast.selbris.len(), 1);
+        assert!(matches!(&ast.selbris[0], Selbri::Root(n) if n == "klama"));
+    }
+
+    #[test]
+    fn test_graft_tanru_rebases_indices() {
+        let mut ast = AstBuffer {
+            selbris: vec![
+                Selbri::Root("existing1".to_string()),
+                Selbri::Root("existing2".to_string()),
+            ],
+            sumtis: vec![],
+            sentences: vec![],
+            roots: vec![],
+        };
+        let snap = SelbriSnapshot {
+            selbris: vec![
+                Selbri::Root("sutra".to_string()),   // 0
+                Selbri::Root("klama".to_string()),   // 1
+                Selbri::Tanru((0, 1)),               // 2
+            ],
+            sumtis: vec![],
+            sentences: vec![],
+            root: 2,
+        };
+        let grafted = graft_snapshot(&mut ast, &snap);
+        // Base offset = 2 (two existing selbris)
+        assert_eq!(grafted, 4); // snap.root(2) + base(2)
+        assert_eq!(ast.selbris.len(), 5);
+        // Tanru indices should be rebased: (0+2, 1+2) = (2, 3)
+        assert!(matches!(&ast.selbris[4], Selbri::Tanru((2, 3))));
+    }
+
+    // ─── go'i edge cases ─────────────────────────────────────────
+
+    #[test]
+    fn test_resolve_go_i_cross_call_tanru() {
+        // Previous call had "sutra klama" → snapshot preserves Tanru
+        let snap = SelbriSnapshot {
+            selbris: vec![
+                Selbri::Root("sutra".to_string()),
+                Selbri::Root("klama".to_string()),
+                Selbri::Tanru((0, 1)),
+            ],
+            sumtis: vec![],
+            sentences: vec![],
+            root: 2,
+        };
+        let mut ast = make_ast(
+            vec![Selbri::Root("go'i".to_string())],
+            0, vec![0],
+        );
+        let result = resolve_go_i(&mut ast, &Some(snap)).unwrap();
+        let go_i_rel = bridi_relation(&ast, 0);
+        assert!(matches!(&ast.selbris[go_i_rel as usize], Selbri::Tanru(_)));
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_resolve_go_i_no_go_i_in_ast() {
+        // All sentences have non-go'i selbri — should return the last relation without error
+        let mut ast = make_ast(
+            vec![Selbri::Root("klama".to_string())],
+            0, vec![0],
+        );
+        let result = resolve_go_i(&mut ast, &None);
+        // Should succeed (no go'i to resolve)
+        assert!(result.is_ok());
+    }
+
+    // ─── Multiple go'i in sequence ───────────────────────────────
+
+    #[test]
+    fn test_resolve_go_i_two_go_i_in_sequence() {
+        // klama, go'i, go'i → both go'i should resolve to klama
+        let mut ast = AstBuffer {
+            selbris: vec![
+                Selbri::Root("klama".to_string()),  // 0
+                Selbri::Root("go'i".to_string()),   // 1
+                Selbri::Root("go'i".to_string()),   // 2
+            ],
+            sumtis: vec![
+                Sumti::ProSumti("mi".to_string()),
+                Sumti::ProSumti("do".to_string()),
+                Sumti::ProSumti("ko'a".to_string()),
+            ],
+            sentences: vec![
+                Sentence::Simple(Bridi {
+                    relation: 0, head_terms: vec![0], tail_terms: vec![],
+                    negated: false, tense: None, attitudinal: None,
+                }),
+                Sentence::Simple(Bridi {
+                    relation: 1, head_terms: vec![1], tail_terms: vec![],
+                    negated: false, tense: None, attitudinal: None,
+                }),
+                Sentence::Simple(Bridi {
+                    relation: 2, head_terms: vec![2], tail_terms: vec![],
+                    negated: false, tense: None, attitudinal: None,
+                }),
+            ],
+            roots: vec![0, 1, 2],
+        };
+        let result = resolve_go_i(&mut ast, &None).unwrap();
+        // First go'i resolves to klama (idx 0)
+        assert_eq!(bridi_relation(&ast, 1), 0);
+        // Second go'i also resolves to klama (idx 0)
+        assert_eq!(bridi_relation(&ast, 2), 0);
+        assert!(result.is_some());
+    }
 }
 
 bindings::export!(EnginePipeline with_types_in bindings);

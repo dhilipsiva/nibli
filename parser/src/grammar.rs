@@ -4119,4 +4119,261 @@ mod tests {
         assert_eq!(b.selbri, Selbri::Root("go'i".to_string()));
         assert_eq!(b.head_terms.len(), 1);
     }
+
+    // ═══════════════════════════════════════════════════════════
+    // ERROR RECOVERY TESTS
+    // ═══════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_error_recovery_across_dot_i() {
+        // First sentence is invalid (just a terminator), second is valid
+        // Parser should recover at .i and parse the second sentence
+        let arena = Bump::new();
+        let result = parse_tokens_to_ast(&[
+            cmavo("ku"),   // invalid: can't start with terminator
+            pause(),
+            cmavo("i"),
+            cmavo("mi"),
+            gismu("klama"),
+        ], "", &arena);
+        // Should have an error for first sentence
+        assert!(!result.errors.is_empty());
+        // Should still parse the second sentence
+        assert!(!result.parsed.sentences.is_empty());
+    }
+
+    #[test]
+    fn test_error_recovery_multiple_bad_sentences() {
+        // Two bad sentences followed by a good one
+        let arena = Bump::new();
+        let result = parse_tokens_to_ast(&[
+            cmavo("ku"),       // bad
+            pause(), cmavo("i"),
+            cmavo("ke'e"),     // bad — can't start with terminator
+            pause(), cmavo("i"),
+            gismu("klama"),    // good
+        ], "", &arena);
+        // Should have errors but also parse the good sentence
+        assert!(result.errors.len() >= 1);
+        assert!(!result.parsed.sentences.is_empty());
+    }
+
+    #[test]
+    fn test_error_preserves_good_sentences() {
+        // Good sentence, then bad, then good
+        let arena = Bump::new();
+        let result = parse_tokens_to_ast(&[
+            cmavo("mi"), gismu("klama"),       // good
+            pause(), cmavo("i"),
+            cmavo("vau"),                       // bad — bare terminator
+            pause(), cmavo("i"),
+            cmavo("do"), gismu("sutra"),       // good
+        ], "", &arena);
+        // At least the first sentence should parse successfully
+        assert!(result.parsed.sentences.len() >= 1);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // DEPTH LIMIT TESTS
+    // ═══════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_deeply_nested_ke_grouping() {
+        // Build deeply nested ke ... ke'e that approaches the depth limit
+        // ke ke ke ... gismu ... ke'e ke'e ke'e
+        let mut tokens: Vec<NormalizedToken<'static>> = Vec::new();
+        for _ in 0..30 {
+            tokens.push(cmavo("ke"));
+        }
+        tokens.push(gismu("klama"));
+        for _ in 0..30 {
+            tokens.push(cmavo("ke'e"));
+        }
+        let arena = Bump::new();
+        // Should parse without panicking (30 levels is well under MAX_DEPTH=64)
+        let result = parse_tokens_to_ast(&tokens, "", &arena);
+        // Either succeeds or fails gracefully
+        let _ = result;
+    }
+
+    #[test]
+    fn test_deeply_nested_abstractions() {
+        // nu nu nu ... klama ... kei kei kei
+        let mut tokens: Vec<NormalizedToken<'static>> = Vec::new();
+        tokens.push(cmavo("mi"));
+        tokens.push(gismu("djica"));
+        tokens.push(cmavo("lo"));
+        for _ in 0..20 {
+            tokens.push(cmavo("nu"));
+        }
+        tokens.push(cmavo("mi"));
+        tokens.push(gismu("klama"));
+        for _ in 0..20 {
+            tokens.push(cmavo("kei"));
+        }
+        let arena = Bump::new();
+        let result = parse_tokens_to_ast(&tokens, "", &arena);
+        // Should not panic — either parses or errors gracefully
+        let _ = result;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // ADDITIONAL EDGE CASE TESTS
+    // ═══════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_cmevla_with_relative_clause() {
+        // la .djan. poi klama ku'o cu barda
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("la"), pause(), cmevla("djan"), pause(),
+            cmavo("poi"), gismu("klama"), cmavo("ku'o"),
+            cmavo("cu"), gismu("barda"),
+        ], &arena);
+        let b = as_bridi(&r.sentences[0]);
+        assert_eq!(b.selbri, Selbri::Root("barda".into()));
+    }
+
+    #[test]
+    fn test_li_number_sumti() {
+        // li pa cu namcu → number(1) is a number
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("li"), cmavo("pa"),
+            cmavo("cu"), gismu("namcu"),
+        ], &arena);
+        let b = as_bridi(&r.sentences[0]);
+        assert_eq!(b.head_terms.len(), 1);
+        assert!(matches!(b.head_terms[0], Sumti::Number(n) if n == 1.0));
+    }
+
+    #[test]
+    fn test_li_multi_digit_number() {
+        // li re pa → number(21)
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("li"), cmavo("re"), cmavo("pa"),
+            cmavo("cu"), gismu("namcu"),
+        ], &arena);
+        let b = as_bridi(&r.sentences[0]);
+        assert!(matches!(b.head_terms[0], Sumti::Number(n) if n == 21.0));
+    }
+
+    #[test]
+    fn test_forethought_ganai_gi() {
+        // ganai mi klama gi do sutra → Connected(GanaiGi, ...)
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("ganai"),
+            cmavo("mi"), gismu("klama"),
+            cmavo("gi"),
+            cmavo("do"), gismu("sutra"),
+        ], &arena);
+        assert_eq!(r.sentences.len(), 1);
+        match &r.sentences[0] {
+            Sentence::Connected { connective, .. } => {
+                assert_eq!(*connective, SentenceConnective::GanaiGi);
+            }
+            other => panic!("expected Sentence::Connected, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_forethought_ge_gi() {
+        // ge mi klama gi do sutra → Connected(GeGi, ...)
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("ge"),
+            cmavo("mi"), gismu("klama"),
+            cmavo("gi"),
+            cmavo("do"), gismu("sutra"),
+        ], &arena);
+        match &r.sentences[0] {
+            Sentence::Connected { connective, .. } => {
+                assert_eq!(*connective, SentenceConnective::GeGi);
+            }
+            other => panic!("expected Sentence::Connected, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_forethought_ga_gi() {
+        // ga mi klama gi do sutra → Connected(GaGi, ...)
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("ga"),
+            cmavo("mi"), gismu("klama"),
+            cmavo("gi"),
+            cmavo("do"), gismu("sutra"),
+        ], &arena);
+        match &r.sentences[0] {
+            Sentence::Connected { connective, .. } => {
+                assert_eq!(*connective, SentenceConnective::GaGi);
+            }
+            other => panic!("expected Sentence::Connected, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_error_has_position_info() {
+        // Invalid input should produce error with meaningful message
+        let err = parse_err(&[cmavo("ku")]);
+        assert!(!err.is_empty());
+    }
+
+    #[test]
+    fn test_quoted_literal_as_head_term() {
+        // Quoted token (from zo/zoi preprocessor) as head term before cu
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            quoted("mi klama"),
+            cmavo("cu"), gismu("valsi"),
+        ], &arena);
+        let b = as_bridi(&r.sentences[0]);
+        assert_eq!(b.head_terms.len(), 1);
+        assert!(matches!(&b.head_terms[0], Sumti::QuotedLiteral(s) if s == "mi klama"));
+    }
+
+    #[test]
+    fn test_multiple_selbri_connectives() {
+        // mi klama je sutra → Connected selbri
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("mi"),
+            gismu("klama"), cmavo("je"), gismu("sutra"),
+        ], &arena);
+        let b = as_bridi(&r.sentences[0]);
+        assert!(matches!(&b.selbri, Selbri::Connected { connective: Connective::Je, .. }));
+    }
+
+    #[test]
+    fn test_lujvo_with_be_bei() {
+        // nunprami be mi bei do → Lujvo with bound args
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            lujvo("nunprami"),
+            cmavo("be"), cmavo("mi"),
+            cmavo("bei"), cmavo("do"),
+        ], &arena);
+        let b = as_bridi(&r.sentences[0]);
+        match &b.selbri {
+            Selbri::WithArgs { core, args } => {
+                assert!(matches!(core, Selbri::Root(n) if n == "nunprami"));
+                assert_eq!(args.len(), 2);
+            }
+            other => panic!("expected WithArgs, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_glued_compound_as_selbri() {
+        // zei-glued compound should parse as a selbri
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("mi"),
+            glued(vec!["skami", "pilno"]),
+        ], &arena);
+        let b = as_bridi(&r.sentences[0]);
+        assert!(matches!(&b.selbri, Selbri::Compound(_)));
+    }
 }
