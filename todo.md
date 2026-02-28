@@ -6,12 +6,6 @@ Single-phase backlog ordered by severity: soundness bugs first, then safety, the
 
 ## Capability Gaps
 
-### C4. Event semantics (Neo-Davidsonian)
-
-Structured events with named roles, temporal ordering, causal links. Resolves tanru intersective fallacy.
-
-**Complexity:** research-grade
-
 ### C5. Description term opacity (`le` vs `lo`)
 
 Currently `le` and `la` both produce `LogicalTerm::Description` — a non-quantified opaque token. Matters for belief contexts and intensional reasoning.

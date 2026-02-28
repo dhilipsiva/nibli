@@ -87,7 +87,7 @@ just test
 
 - Gadri descriptions (`lo`/`le`/`la`), universal (`ro lo`/`ro le`), numeric quantifiers (`PA lo`/`su'o lo`)
 - Place tags (`fa`/`fe`/`fi`/`fo`/`fu`), BAI modal tags (`ri'a`, `ni'i`, `mu'i`, `ki'u`, `pi'o`, `ba'i`), `fi'o`...`fe'u`
-- Selbri: root, tanru, conversion (`se`/`te`/`ve`/`xe`), negation (`na`), grouping (`ke`...`ke'e`), compounds (`zei`), `be`...`bei`...`be'o`, lujvo (compound brivla)
+- Selbri: root, tanru (Neo-Davidsonian event decomposition — shared event variable resolves intersective fallacy), conversion (`se`/`te`/`ve`/`xe`), negation (`na`), grouping (`ke`...`ke'e`), compounds (`zei`), `be`...`bei`...`be'o`, lujvo (compound brivla)
 - Relative clauses (`poi`/`noi`/`voi`) with `ke'a`, implicit variable injection, clause stacking
 - Sumti connectives (`.e`/`.a`/`.o`/`.u` + `nai`), selbri connectives (`je`/`ja`/`jo`/`ju`)
 - Sentence connectives (forethought: `ge`...`gi`, `ga`...`gi`, `ganai`...`gi`; afterthought: `.i je`/`ja`/`jo`/`ju` with `na`/`nai`)
@@ -115,6 +115,7 @@ just test
 - Multi-hop derivation provenance: proof traces reconstruct causal chains through universal rules (e.g., `gerku → danlu → xanlu`) via backward-chaining pattern matching; `Asserted` leaves distinguish ground truths from `Derived` nodes showing which rule produced each intermediate conclusion
 - Parser error recovery: per-sentence recovery skips to next `.i` on parse failure, continues parsing remaining sentences; errors include exact line:column positions
 - Temporal reasoning: `Past`/`Present`/`Future` operators in egglog schema; strict tense discrimination (asserting `pu mi klama` does not entail `ba mi klama`); temporal lifting of universal rules (timeless rules like `∀x. gerku(x) → danlu(x)` automatically fire on tensed premises); temporal conjunction elimination and introduction
+- Neo-Davidsonian event semantics: every predication decomposes into event type predicate + role predicates (`klama(e) ∧ klama_x1(e, alis) ∧ klama_x2(e, paris)`); tanru share event variable between modifier and head, resolving the intersective fallacy
 - Guarded conjunction introduction: `And(A, B)` derived when both A, B are atomic predicates sharing an `InDomain` entity (prevents combinatorial explosion)
 - Typed WIT error variants: shared `nibli-error` variant (`syntax`/`semantic`/`reasoning`/`backend`) across all interfaces; syntax errors carry line:column positions; structured REPL error output
 - WASM fuel limits: per-command execution budget prevents unbounded computation; configurable via `NIBLI_FUEL` env var or `:fuel` REPL command

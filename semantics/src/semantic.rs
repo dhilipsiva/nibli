@@ -70,6 +70,8 @@ pub struct SemanticCompiler {
     /// Accumulated semantic errors (e.g., ambiguous inject_variable).
     /// Checked after compilation; if non-empty, compile_buffer returns error.
     pub errors: Vec<String>,
+    /// Monotonically increasing counter for generating fresh event variable names.
+    event_counter: usize,
 }
 
 impl SemanticCompiler {
@@ -82,12 +84,19 @@ impl SemanticCompiler {
             ka_open_var: None,
             ma_vars: Vec::new(),
             errors: Vec::new(),
+            event_counter: 0,
         }
     }
 
     fn fresh_var(&mut self) -> lasso::Spur {
         let v = format!("_v{}", self.var_counter);
         self.var_counter += 1;
+        self.interner.get_or_intern(&v)
+    }
+
+    fn fresh_event_var(&mut self) -> lasso::Spur {
+        let v = format!("_ev{}", self.event_counter);
+        self.event_counter += 1;
         self.interner.get_or_intern(&v)
     }
 
@@ -293,7 +302,8 @@ impl SemanticCompiler {
                         // No ke'a — use heuristic injection as fallback.
                         // inject_variable fills the first Unspecified slot in
                         // each predicate it can reach.
-                        let unspec_count = Self::count_unspecified_predicates(&rel_body);
+                        let unspec_count =
+                            Self::count_unspecified_predicates(&rel_body, &self.interner);
                         if unspec_count > 1 {
                             // Ambiguous injection — reject rather than silently produce wrong FOL.
                             self.errors.push(format!(
@@ -303,7 +313,8 @@ impl SemanticCompiler {
                                 unspec_count
                             ));
                         }
-                        last.restrictor = Some(Self::inject_variable(rel_body, last.var));
+                        last.restrictor =
+                            Some(Self::inject_variable(rel_body, last.var, &self.interner));
                     }
                 }
 
@@ -328,10 +339,22 @@ impl SemanticCompiler {
     }
 
     /// Count how many predicates in a formula have at least one Unspecified slot.
-    fn count_unspecified_predicates(form: &LogicalForm) -> usize {
+    fn count_unspecified_predicates(form: &LogicalForm, interner: &Rodeo) -> usize {
         match form {
-            LogicalForm::Predicate { args, .. } => {
-                if args.iter().any(|a| matches!(a, LogicalTerm::Unspecified)) {
+            LogicalForm::Predicate { relation, args } => {
+                let rel_name = interner.resolve(relation);
+                // For event role predicates (_xN), only count _x1 roles as injection targets
+                if rel_name.contains("_x") {
+                    if rel_name.ends_with("_x1")
+                        && args.len() >= 2
+                        && matches!(&args[1], LogicalTerm::Unspecified)
+                    {
+                        1
+                    } else {
+                        0
+                    }
+                } else if args.iter().any(|a| matches!(a, LogicalTerm::Unspecified)) {
+                    // Non-role predicates: original behavior
                     1
                 } else {
                     0
@@ -341,7 +364,8 @@ impl SemanticCompiler {
             | LogicalForm::Or(l, r)
             | LogicalForm::Biconditional(l, r)
             | LogicalForm::Xor(l, r) => {
-                Self::count_unspecified_predicates(l) + Self::count_unspecified_predicates(r)
+                Self::count_unspecified_predicates(l, interner)
+                    + Self::count_unspecified_predicates(r, interner)
             }
             LogicalForm::Not(inner)
             | LogicalForm::Exists(_, inner)
@@ -350,79 +374,93 @@ impl SemanticCompiler {
             | LogicalForm::Present(inner)
             | LogicalForm::Future(inner)
             | LogicalForm::Obligatory(inner)
-            | LogicalForm::Permitted(inner) => Self::count_unspecified_predicates(inner),
-            LogicalForm::Count { body, .. } => Self::count_unspecified_predicates(body),
+            | LogicalForm::Permitted(inner) => {
+                Self::count_unspecified_predicates(inner, interner)
+            }
+            LogicalForm::Count { body, .. } => {
+                Self::count_unspecified_predicates(body, interner)
+            }
         }
     }
 
     /// Heuristic variable injection for relative clauses without explicit ke'a.
     ///
-    /// Recurses through the entire formula tree and replaces the first
-    /// Unspecified slot in each Predicate with the bound variable.
+    /// For event-decomposed forms, only injects into `_x1` role predicates
+    /// (the x1 place = the referent). Other role predicates (_x2, _x3, etc.)
+    /// and type predicates are left unchanged.
     ///
-    /// Known limitation: when the rel clause contains descriptions (lo/le),
-    /// the restrictor predicates from those descriptions will also get the
-    /// variable injected. Use explicit ke'a for precise control.
-    fn inject_variable(form: LogicalForm, var: lasso::Spur) -> LogicalForm {
+    /// For non-event predicates, uses original behavior: replaces the first
+    /// Unspecified slot.
+    fn inject_variable(form: LogicalForm, var: lasso::Spur, interner: &Rodeo) -> LogicalForm {
         match form {
             LogicalForm::Predicate { relation, mut args } => {
-                let first_unspec = args
-                    .iter()
-                    .position(|a| matches!(a, LogicalTerm::Unspecified));
-                if let Some(idx) = first_unspec {
-                    args[idx] = LogicalTerm::Variable(var);
-                } else if args.is_empty() {
-                    args.push(LogicalTerm::Variable(var));
+                let rel_name = interner.resolve(&relation);
+                if rel_name.contains("_x") {
+                    // Event role predicate: only inject into _x1
+                    if rel_name.ends_with("_x1") && args.len() >= 2 {
+                        if matches!(&args[1], LogicalTerm::Unspecified) {
+                            args[1] = LogicalTerm::Variable(var);
+                        }
+                    }
+                    // Skip _x2, _x3, etc. — don't inject ke'a there
+                } else {
+                    // Non-role predicate (including 1-ary type predicates): original behavior
+                    let first_unspec = args
+                        .iter()
+                        .position(|a| matches!(a, LogicalTerm::Unspecified));
+                    if let Some(idx) = first_unspec {
+                        args[idx] = LogicalTerm::Variable(var);
+                    } else if args.is_empty() {
+                        args.push(LogicalTerm::Variable(var));
+                    }
                 }
                 LogicalForm::Predicate { relation, args }
             }
             LogicalForm::And(l, r) => LogicalForm::And(
-                Box::new(Self::inject_variable(*l, var)),
-                Box::new(Self::inject_variable(*r, var)),
+                Box::new(Self::inject_variable(*l, var, interner)),
+                Box::new(Self::inject_variable(*r, var, interner)),
             ),
             LogicalForm::Or(l, r) => LogicalForm::Or(
-                Box::new(Self::inject_variable(*l, var)),
-                Box::new(Self::inject_variable(*r, var)),
+                Box::new(Self::inject_variable(*l, var, interner)),
+                Box::new(Self::inject_variable(*r, var, interner)),
             ),
             LogicalForm::Biconditional(l, r) => LogicalForm::Biconditional(
-                Box::new(Self::inject_variable(*l, var)),
-                Box::new(Self::inject_variable(*r, var)),
+                Box::new(Self::inject_variable(*l, var, interner)),
+                Box::new(Self::inject_variable(*r, var, interner)),
             ),
             LogicalForm::Xor(l, r) => LogicalForm::Xor(
-                Box::new(Self::inject_variable(*l, var)),
-                Box::new(Self::inject_variable(*r, var)),
+                Box::new(Self::inject_variable(*l, var, interner)),
+                Box::new(Self::inject_variable(*r, var, interner)),
             ),
             LogicalForm::Not(inner) => {
-                LogicalForm::Not(Box::new(Self::inject_variable(*inner, var)))
+                LogicalForm::Not(Box::new(Self::inject_variable(*inner, var, interner)))
             }
             LogicalForm::Exists(v, body) => {
-                LogicalForm::Exists(v, Box::new(Self::inject_variable(*body, var)))
+                LogicalForm::Exists(v, Box::new(Self::inject_variable(*body, var, interner)))
             }
             LogicalForm::ForAll(v, body) => {
-                LogicalForm::ForAll(v, Box::new(Self::inject_variable(*body, var)))
+                LogicalForm::ForAll(v, Box::new(Self::inject_variable(*body, var, interner)))
             }
             LogicalForm::Past(inner) => {
-                LogicalForm::Past(Box::new(Self::inject_variable(*inner, var)))
+                LogicalForm::Past(Box::new(Self::inject_variable(*inner, var, interner)))
             }
             LogicalForm::Present(inner) => {
-                LogicalForm::Present(Box::new(Self::inject_variable(*inner, var)))
+                LogicalForm::Present(Box::new(Self::inject_variable(*inner, var, interner)))
             }
             LogicalForm::Future(inner) => {
-                LogicalForm::Future(Box::new(Self::inject_variable(*inner, var)))
+                LogicalForm::Future(Box::new(Self::inject_variable(*inner, var, interner)))
             }
             LogicalForm::Obligatory(inner) => {
-                LogicalForm::Obligatory(Box::new(Self::inject_variable(*inner, var)))
+                LogicalForm::Obligatory(Box::new(Self::inject_variable(*inner, var, interner)))
             }
             LogicalForm::Permitted(inner) => {
-                LogicalForm::Permitted(Box::new(Self::inject_variable(*inner, var)))
+                LogicalForm::Permitted(Box::new(Self::inject_variable(*inner, var, interner)))
             }
-            LogicalForm::Count { var: v, count, body } => {
-                LogicalForm::Count {
-                    var: v,
-                    count,
-                    body: Box::new(Self::inject_variable(*body, var)),
-                }
-            }
+            LogicalForm::Count { var: v, count, body } => LogicalForm::Count {
+                var: v,
+                count,
+                body: Box::new(Self::inject_variable(*body, var, interner)),
+            },
         }
     }
 
@@ -440,6 +478,37 @@ impl SemanticCompiler {
         fitted
     }
 
+    // ─── Event Decomposition (Neo-Davidsonian) ─────────────────
+
+    /// Decompose a predication into Neo-Davidsonian event structure:
+    /// `relation(a1, a2, ...)` → `∃e. relation(e) ∧ relation_x1(e, a1) ∧ relation_x2(e, a2) ∧ ...`
+    /// All role predicates are emitted (including Unspecified/zo'e) so that
+    /// inject_variable can still find and fill x1 slots for relative clauses.
+    fn event_decompose(&mut self, relation: &str, args: &[LogicalTerm]) -> LogicalForm {
+        let ev = self.fresh_event_var();
+        let ev_term = LogicalTerm::Variable(ev);
+
+        // Type predicate: relation(e)
+        let type_pred = LogicalForm::Predicate {
+            relation: self.interner.get_or_intern(relation),
+            args: vec![ev_term.clone()],
+        };
+
+        // Role predicates: relation_xN(e, argN) for each arg
+        let mut form = type_pred;
+        for (i, arg) in args.iter().enumerate() {
+            let role_name = format!("{}_x{}", relation, i + 1);
+            let role_pred = LogicalForm::Predicate {
+                relation: self.interner.get_or_intern(&role_name),
+                args: vec![ev_term.clone(), arg.clone()],
+            };
+            form = LogicalForm::And(Box::new(form), Box::new(role_pred));
+        }
+
+        // Wrap in ∃e
+        LogicalForm::Exists(ev, Box::new(form))
+    }
+
     // ─── Selbri Application ──────────────────────────────────────
 
     fn apply_selbri(
@@ -453,33 +522,63 @@ impl SemanticCompiler {
         match &selbris[selbri_id as usize] {
             Selbri::Root(g) => {
                 let arity = JbovlasteSchema::get_arity_or_default(g.as_str());
-                LogicalForm::Predicate {
-                    relation: self.interner.get_or_intern(g.as_str()),
-                    args: Self::fit_args(args, arity),
-                }
+                let fitted = Self::fit_args(args, arity);
+                self.event_decompose(g.as_str(), &fitted)
             }
 
             Selbri::Tanru((mod_id, head_id)) => {
+                let mod_name = self.get_selbri_head_name(*mod_id, selbris);
+                let head_name = self.get_selbri_head_name(*head_id, selbris);
                 let mod_arity = self.get_selbri_arity(*mod_id, selbris);
                 let head_arity = self.get_selbri_arity(*head_id, selbris);
 
                 // Tanru semantics: modifier and head share ONLY x1 (the referent).
-                // "sutra gerku" = "is-fast(x1) ∧ is-dog(x1, ...)" — the modifier's
-                // remaining places (x2..xN) are independent of the head's places.
+                // Neo-Davidsonian: modifier and head share the SAME event variable.
+                // "sutra gerku" = ∃e. gerku(e) ∧ gerku_x1(e, x1) ∧ sutra_x1(e, x1)
                 let mut mod_args = vec![LogicalTerm::Unspecified; mod_arity];
                 if !args.is_empty() && mod_arity > 0 {
                     mod_args[0] = args[0].clone();
                 }
+                let head_args = Self::fit_args(args, head_arity);
 
-                let left = self.apply_selbri(*mod_id, &mod_args, selbris, sumtis, sentences);
-                let right = self.apply_selbri(
-                    *head_id,
-                    &Self::fit_args(args, head_arity),
-                    selbris,
-                    sumtis,
-                    sentences,
-                );
-                LogicalForm::And(Box::new(left), Box::new(right))
+                // Shared event variable
+                let ev = self.fresh_event_var();
+                let ev_term = LogicalTerm::Variable(ev);
+
+                // Head type predicate: head(e)
+                let type_pred = LogicalForm::Predicate {
+                    relation: self.interner.get_or_intern(&head_name),
+                    args: vec![ev_term.clone()],
+                };
+                let mut form = type_pred;
+
+                // Head role predicates
+                for (i, arg) in head_args.iter().enumerate() {
+                    if matches!(arg, LogicalTerm::Unspecified) {
+                        continue;
+                    }
+                    let role = format!("{}_x{}", head_name, i + 1);
+                    let role_pred = LogicalForm::Predicate {
+                        relation: self.interner.get_or_intern(&role),
+                        args: vec![ev_term.clone(), arg.clone()],
+                    };
+                    form = LogicalForm::And(Box::new(form), Box::new(role_pred));
+                }
+
+                // Modifier role predicates (share event, x1 only typically)
+                for (i, arg) in mod_args.iter().enumerate() {
+                    if matches!(arg, LogicalTerm::Unspecified) {
+                        continue;
+                    }
+                    let role = format!("{}_x{}", mod_name, i + 1);
+                    let role_pred = LogicalForm::Predicate {
+                        relation: self.interner.get_or_intern(&role),
+                        args: vec![ev_term.clone(), arg.clone()],
+                    };
+                    form = LogicalForm::And(Box::new(form), Box::new(role_pred));
+                }
+
+                LogicalForm::Exists(ev, Box::new(form))
             }
 
             Selbri::Converted((conv, inner_id)) => {
@@ -611,10 +710,8 @@ impl SemanticCompiler {
             Selbri::Compound(parts) => {
                 let head = parts.last().map(|s| s.as_str()).unwrap_or("unknown");
                 let arity = JbovlasteSchema::get_arity_or_default(head);
-                LogicalForm::Predicate {
-                    relation: self.interner.get_or_intern(head),
-                    args: Self::fit_args(args, arity),
-                }
+                let fitted = Self::fit_args(args, arity);
+                self.event_decompose(head, &fitted)
             }
 
             Selbri::Abstraction((kind, body_sentence_idx)) => {
@@ -1013,6 +1110,65 @@ mod tests {
         compiler.interner.resolve(spur).to_string()
     }
 
+    /// Helper: collect all (relation_name, args) pairs from a LogicalForm tree.
+    fn collect_predicates(
+        form: &LogicalForm,
+        compiler: &SemanticCompiler,
+    ) -> Vec<(String, Vec<LogicalTerm>)> {
+        let mut result = Vec::new();
+        collect_predicates_inner(form, compiler, &mut result);
+        result
+    }
+
+    fn collect_predicates_inner(
+        form: &LogicalForm,
+        compiler: &SemanticCompiler,
+        result: &mut Vec<(String, Vec<LogicalTerm>)>,
+    ) {
+        match form {
+            LogicalForm::Predicate { relation, args } => {
+                result.push((resolve(compiler, relation), args.clone()));
+            }
+            LogicalForm::And(l, r) | LogicalForm::Or(l, r) | LogicalForm::Biconditional(l, r)
+            | LogicalForm::Xor(l, r) => {
+                collect_predicates_inner(l, compiler, result);
+                collect_predicates_inner(r, compiler, result);
+            }
+            LogicalForm::Not(inner)
+            | LogicalForm::Exists(_, inner)
+            | LogicalForm::ForAll(_, inner)
+            | LogicalForm::Past(inner)
+            | LogicalForm::Present(inner)
+            | LogicalForm::Future(inner)
+            | LogicalForm::Obligatory(inner)
+            | LogicalForm::Permitted(inner) => {
+                collect_predicates_inner(inner, compiler, result);
+            }
+            LogicalForm::Count { body, .. } => {
+                collect_predicates_inner(body, compiler, result);
+            }
+        }
+    }
+
+    /// Helper: check if form contains a predicate with given name.
+    fn has_pred(form: &LogicalForm, name: &str, compiler: &SemanticCompiler) -> bool {
+        collect_predicates(form, compiler)
+            .iter()
+            .any(|(n, _)| n == name)
+    }
+
+    /// Helper: get the args of the first predicate with given name.
+    fn get_pred_args(
+        form: &LogicalForm,
+        name: &str,
+        compiler: &SemanticCompiler,
+    ) -> Option<Vec<LogicalTerm>> {
+        collect_predicates(form, compiler)
+            .into_iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, args)| args)
+    }
+
     // ─── Sumti connective expansion tests ────────────────────────
 
     #[test]
@@ -1039,28 +1195,23 @@ mod tests {
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
 
-        // Should be And(klama(mi, ...), klama(do, ...))
+        // Should be And(klama_event(mi), klama_event(do))
+        // Each side is an event-decomposed form (Exists wrapping type+role preds)
         match &form {
             LogicalForm::And(left, right) => {
-                match left.as_ref() {
-                    LogicalForm::Predicate { relation, args } => {
-                        assert_eq!(resolve(&compiler, relation), "klama");
-                        match &args[0] {
-                            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "mi"),
-                            other => panic!("expected Constant(mi), got {:?}", other),
-                        }
-                    }
-                    other => panic!("expected left Predicate, got {:?}", other),
+                // Left: event-decomposed klama with mi in x1
+                assert!(has_pred(left, "klama", &compiler), "left should have klama type pred");
+                let x1_args = get_pred_args(left, "klama_x1", &compiler).unwrap();
+                match &x1_args[1] {
+                    LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "mi"),
+                    other => panic!("expected Constant(mi) in klama_x1, got {:?}", other),
                 }
-                match right.as_ref() {
-                    LogicalForm::Predicate { relation, args } => {
-                        assert_eq!(resolve(&compiler, relation), "klama");
-                        match &args[0] {
-                            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "do"),
-                            other => panic!("expected Constant(do), got {:?}", other),
-                        }
-                    }
-                    other => panic!("expected right Predicate, got {:?}", other),
+                // Right: event-decomposed klama with do in x1
+                assert!(has_pred(right, "klama", &compiler), "right should have klama type pred");
+                let x1_args_r = get_pred_args(right, "klama_x1", &compiler).unwrap();
+                match &x1_args_r[1] {
+                    LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "do"),
+                    other => panic!("expected Constant(do) in klama_x1, got {:?}", other),
                 }
             }
             other => panic!("expected And, got {:?}", other),
@@ -1163,31 +1314,25 @@ mod tests {
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
 
-        // Should be And(klama(mi), Not(klama(do)))
+        // Should be And(klama_event(mi), Not(klama_event(do)))
         match &form {
             LogicalForm::And(left, right) => {
-                // Left: klama(mi, ...)
-                match left.as_ref() {
-                    LogicalForm::Predicate { relation, args } => {
-                        assert_eq!(resolve(&compiler, relation), "klama");
-                        match &args[0] {
-                            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "mi"),
-                            other => panic!("expected Constant(mi), got {:?}", other),
-                        }
-                    }
-                    other => panic!("expected left Predicate, got {:?}", other),
+                // Left: event-decomposed klama with mi in x1
+                assert!(has_pred(left, "klama", &compiler), "left should have klama type pred");
+                let x1_args = get_pred_args(left, "klama_x1", &compiler).unwrap();
+                match &x1_args[1] {
+                    LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "mi"),
+                    other => panic!("expected Constant(mi) in klama_x1, got {:?}", other),
                 }
-                // Right: Not(klama(do, ...))
+                // Right: Not(klama_event(do))
                 match right.as_ref() {
-                    LogicalForm::Not(inner) => match inner.as_ref() {
-                        LogicalForm::Predicate { relation, args } => {
-                            assert_eq!(resolve(&compiler, relation), "klama");
-                            match &args[0] {
-                                LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "do"),
-                                other => panic!("expected Constant(do), got {:?}", other),
-                            }
+                    LogicalForm::Not(inner) => {
+                        assert!(has_pred(inner, "klama", &compiler), "Not body should have klama type pred");
+                        let x1_args_r = get_pred_args(inner, "klama_x1", &compiler).unwrap();
+                        match &x1_args_r[1] {
+                            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "do"),
+                            other => panic!("expected Constant(do) in klama_x1, got {:?}", other),
                         }
-                        other => panic!("expected Predicate inside Not, got {:?}", other),
                     }
                     other => panic!("expected Not, got {:?}", other),
                 }
@@ -1343,29 +1488,16 @@ mod tests {
             vec![Sumti::ProSumti("mi".into())],
         );
 
-        // Should be Exists(_v0, And(duhu(_v0), And(klama(mi,...), barda(_v0,...))))
+        // Should be Exists(_v0, And(duhu(_v0), And(klama_event, barda_event)))
+        // With event decomposition, klama and barda are wrapped in Exists
         match &form {
-            LogicalForm::Exists(var, body) => {
+            LogicalForm::Exists(var, _body) => {
                 assert!(resolve(&compiler, var).starts_with("_v"));
-                // The body should contain "duhu" predicate
-                fn find_predicate_name(form: &LogicalForm, compiler: &SemanticCompiler) -> Vec<String> {
-                    match form {
-                        LogicalForm::Predicate { relation, .. } => {
-                            vec![compiler.interner.resolve(relation).to_string()]
-                        }
-                        LogicalForm::And(l, r) => {
-                            let mut names = find_predicate_name(l, compiler);
-                            names.extend(find_predicate_name(r, compiler));
-                            names
-                        }
-                        _ => vec![],
-                    }
-                }
-                let names = find_predicate_name(body, &compiler);
-                assert!(names.contains(&"duhu".to_string()),
-                    "expected 'duhu' predicate in {:?}", names);
-                assert!(names.contains(&"klama".to_string()),
-                    "expected 'klama' predicate in {:?}", names);
+                // Use the recursive helpers that descend into Exists
+                assert!(has_pred(&form, "duhu", &compiler),
+                    "expected 'duhu' predicate");
+                assert!(has_pred(&form, "klama", &compiler),
+                    "expected 'klama' type predicate");
             }
             other => panic!("expected Exists, got {:?}", other),
         }
@@ -1381,38 +1513,27 @@ mod tests {
             vec![Sumti::ProSumti("ce'u".into())],
         );
 
-        // Should be Exists(_v0, And(ka(_v0), And(melbi(_v0,...), barda(_v0,...))))
+        // Should be Exists(_v0, And(ka(_v0), And(melbi_event, barda_event)))
         // The key: ce'u resolves to _v0, which is the same as the description variable
+        // With events, melbi_x1 role pred has (ev, _v0) — the bound var
         match &form {
-            LogicalForm::Exists(var, body) => {
+            LogicalForm::Exists(var, _body) => {
                 let var_name = resolve(&compiler, var);
-                // Find the ka predicate's arg and melbi's arg — they should both use var
-                fn collect_pred_args(form: &LogicalForm, compiler: &SemanticCompiler) -> Vec<(String, String)> {
-                    match form {
-                        LogicalForm::Predicate { relation, args } => {
-                            let rel = compiler.interner.resolve(relation).to_string();
-                            let arg0 = match &args[0] {
-                                LogicalTerm::Variable(v) => compiler.interner.resolve(v).to_string(),
-                                LogicalTerm::Constant(c) => compiler.interner.resolve(c).to_string(),
-                                other => format!("{:?}", other),
-                            };
-                            vec![(rel, arg0)]
-                        }
-                        LogicalForm::And(l, r) => {
-                            let mut v = collect_pred_args(l, compiler);
-                            v.extend(collect_pred_args(r, compiler));
-                            v
-                        }
-                        _ => vec![],
-                    }
-                }
-                let args = collect_pred_args(body, &compiler);
-                let ka_arg = args.iter().find(|(r, _)| r == "ka").map(|(_, a)| a.clone());
-                let melbi_arg = args.iter().find(|(r, _)| r == "melbi").map(|(_, a)| a.clone());
-
-                assert_eq!(ka_arg.as_deref(), Some(var_name.as_str()),
+                // ka type pred should reference the description variable
+                let ka_args = get_pred_args(&form, "ka", &compiler).unwrap();
+                let ka_arg0 = match &ka_args[0] {
+                    LogicalTerm::Variable(v) => resolve(&compiler, v),
+                    other => panic!("expected Variable for ka arg, got {:?}", other),
+                };
+                assert_eq!(ka_arg0, var_name,
                     "ka predicate arg should be the quantified variable");
-                assert_eq!(melbi_arg.as_deref(), Some(var_name.as_str()),
+                // melbi_x1 role pred should have the same variable as its entity arg
+                let melbi_x1_args = get_pred_args(&form, "melbi_x1", &compiler).unwrap();
+                let melbi_entity = match &melbi_x1_args[1] {
+                    LogicalTerm::Variable(v) => resolve(&compiler, v),
+                    other => panic!("expected Variable for melbi_x1 entity, got {:?}", other),
+                };
+                assert_eq!(melbi_entity, var_name,
                     "ce'u should resolve to the same variable as ka's entity");
             }
             other => panic!("expected Exists, got {:?}", other),
@@ -1428,18 +1549,10 @@ mod tests {
         );
 
         match &form {
-            LogicalForm::Exists(_, body) => {
-                fn has_predicate(form: &LogicalForm, name: &str, compiler: &SemanticCompiler) -> bool {
-                    match form {
-                        LogicalForm::Predicate { relation, .. } => {
-                            compiler.interner.resolve(relation) == name
-                        }
-                        LogicalForm::And(l, r) => has_predicate(l, name, compiler) || has_predicate(r, name, compiler),
-                        _ => false,
-                    }
-                }
-                assert!(has_predicate(body, "ni", &compiler), "expected 'ni' predicate");
-                assert!(has_predicate(body, "gleki", &compiler), "expected 'gleki' predicate");
+            LogicalForm::Exists(_, _) => {
+                // Use the recursive helpers that descend into Exists
+                assert!(has_pred(&form, "ni", &compiler), "expected 'ni' predicate");
+                assert!(has_pred(&form, "gleki", &compiler), "expected 'gleki' type predicate");
             }
             other => panic!("expected Exists, got {:?}", other),
         }
@@ -1454,18 +1567,10 @@ mod tests {
         );
 
         match &form {
-            LogicalForm::Exists(_, body) => {
-                fn has_predicate(form: &LogicalForm, name: &str, compiler: &SemanticCompiler) -> bool {
-                    match form {
-                        LogicalForm::Predicate { relation, .. } => {
-                            compiler.interner.resolve(relation) == name
-                        }
-                        LogicalForm::And(l, r) => has_predicate(l, name, compiler) || has_predicate(r, name, compiler),
-                        _ => false,
-                    }
-                }
-                assert!(has_predicate(body, "siho", &compiler), "expected 'siho' predicate");
-                assert!(has_predicate(body, "klama", &compiler), "expected 'klama' predicate");
+            LogicalForm::Exists(_, _) => {
+                // Use the recursive helpers that descend into Exists
+                assert!(has_pred(&form, "siho", &compiler), "expected 'siho' predicate");
+                assert!(has_pred(&form, "klama", &compiler), "expected 'klama' type predicate");
             }
             other => panic!("expected Exists, got {:?}", other),
         }
@@ -1480,18 +1585,10 @@ mod tests {
         );
 
         match &form {
-            LogicalForm::Exists(_, body) => {
-                fn has_predicate(form: &LogicalForm, name: &str, compiler: &SemanticCompiler) -> bool {
-                    match form {
-                        LogicalForm::Predicate { relation, .. } => {
-                            compiler.interner.resolve(relation) == name
-                        }
-                        LogicalForm::And(l, r) => has_predicate(l, name, compiler) || has_predicate(r, name, compiler),
-                        _ => false,
-                    }
-                }
-                assert!(has_predicate(body, "nu", &compiler), "expected 'nu' predicate");
-                assert!(has_predicate(body, "klama", &compiler), "expected 'klama' predicate");
+            LogicalForm::Exists(_, _) => {
+                // Use the recursive helpers that descend into Exists
+                assert!(has_pred(&form, "nu", &compiler), "expected 'nu' predicate");
+                assert!(has_pred(&form, "klama", &compiler), "expected 'klama' type predicate");
             }
             other => panic!("expected Exists, got {:?}", other),
         }
@@ -1514,17 +1611,17 @@ mod tests {
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
 
         // ce'u outside ka should become a Variable (not Constant)
-        match &form {
-            LogicalForm::Predicate { args, .. } => {
-                match &args[0] {
-                    LogicalTerm::Variable(v) => {
-                        assert!(resolve(&compiler, v).starts_with("_v"),
-                            "ce'u outside ka should be fresh variable, got: {}", resolve(&compiler, v));
-                    }
-                    other => panic!("expected Variable for ce'u, got {:?}", other),
-                }
+        // With event decomposition, form is Exists(ev, And(type_pred, role_preds...))
+        assert!(matches!(&form, LogicalForm::Exists(_, _)), "expected Exists, got {:?}", form);
+        // Check the melbi_x1 role predicate has a Variable for ce'u
+        let x1_args = get_pred_args(&form, "melbi_x1", &compiler)
+            .expect("expected melbi_x1 role predicate");
+        match &x1_args[1] {
+            LogicalTerm::Variable(v) => {
+                assert!(resolve(&compiler, v).starts_with("_v"),
+                    "ce'u outside ka should be fresh variable, got: {}", resolve(&compiler, v));
             }
-            other => panic!("expected Predicate, got {:?}", other),
+            other => panic!("expected Variable for ce'u in melbi_x1, got {:?}", other),
         }
     }
 
@@ -1554,30 +1651,17 @@ mod tests {
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
 
-        // Should be And(klama(mi, ...), rinka(do, mi, ...))
-        match &form {
-            LogicalForm::And(left, right) => {
-                // Left: klama(mi, ...)
-                match left.as_ref() {
-                    LogicalForm::Predicate { relation, args } => {
-                        assert_eq!(resolve(&compiler, relation), "klama");
-                        assert_eq!(args[0], LogicalTerm::Constant(compiler.interner.get("mi").unwrap()));
-                    }
-                    other => panic!("expected Predicate(klama), got {:?}", other),
-                }
-                // Right: rinka(do, mi, ...)
-                match right.as_ref() {
-                    LogicalForm::Predicate { relation, args } => {
-                        assert_eq!(resolve(&compiler, relation), "rinka");
-                        // x1 = tagged sumti (do), x2 = main x1 (mi)
-                        assert_eq!(args[0], LogicalTerm::Constant(compiler.interner.get("do").unwrap()));
-                        assert_eq!(args[1], LogicalTerm::Constant(compiler.interner.get("mi").unwrap()));
-                    }
-                    other => panic!("expected Predicate(rinka), got {:?}", other),
-                }
-            }
-            other => panic!("expected And(klama, rinka), got {:?}", other),
-        }
+        // klama is event-decomposed, rinka is a flat modal Predicate
+        assert!(has_pred(&form, "klama", &compiler), "expected klama type predicate");
+        assert!(has_pred(&form, "klama_x1", &compiler), "expected klama_x1 role");
+        // Check klama_x1 has mi
+        let klama_x1 = get_pred_args(&form, "klama_x1", &compiler).unwrap();
+        assert_eq!(klama_x1[1], LogicalTerm::Constant(compiler.interner.get("mi").unwrap()));
+        // rinka is a flat Predicate (modal tags are not event-decomposed)
+        let rinka_args = get_pred_args(&form, "rinka", &compiler).unwrap();
+        // x1 = tagged sumti (do), x2 = main x1 (mi)
+        assert_eq!(rinka_args[0], LogicalTerm::Constant(compiler.interner.get("do").unwrap()));
+        assert_eq!(rinka_args[1], LogicalTerm::Constant(compiler.interner.get("mi").unwrap()));
     }
 
     #[test]
@@ -1604,21 +1688,16 @@ mod tests {
             attitudinal: None,
         };
 
-        let (form, _compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
 
-        // Should be ∃x.(forca(x) ∧ And(citka(mi,...), pilno(x, mi,...)))
+        // Should be ∃x.(forca_event(x) ∧ And(citka_event, pilno_event))
         // The outermost is Exists wrapping the description's quantifier
         match &form {
-            LogicalForm::Exists(_, body) => {
-                match body.as_ref() {
-                    LogicalForm::And(restrictor, inner_and) => {
-                        // restrictor = forca(x, ...)
-                        assert!(matches!(restrictor.as_ref(), LogicalForm::Predicate { .. }));
-                        // inner_and = And(citka(...), pilno(...))
-                        assert!(matches!(inner_and.as_ref(), LogicalForm::And(_, _)));
-                    }
-                    other => panic!("expected And(forca_restrictor, And(citka, pilno)), got {:?}", other),
-                }
+            LogicalForm::Exists(_, _) => {
+                // Check all expected predicates exist (recursive through Exists)
+                assert!(has_pred(&form, "forca", &compiler), "expected forca restrictor type pred");
+                assert!(has_pred(&form, "citka", &compiler), "expected citka type pred");
+                assert!(has_pred(&form, "pilno", &compiler), "expected pilno type pred");
             }
             other => panic!("expected Exists wrapping modal conjunction, got {:?}", other),
         }
@@ -1650,25 +1729,13 @@ mod tests {
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
 
-        match &form {
-            LogicalForm::And(left, right) => {
-                match left.as_ref() {
-                    LogicalForm::Predicate { relation, .. } => {
-                        assert_eq!(resolve(&compiler, relation), "klama");
-                    }
-                    other => panic!("expected klama predicate, got {:?}", other),
-                }
-                match right.as_ref() {
-                    LogicalForm::Predicate { relation, args } => {
-                        assert_eq!(resolve(&compiler, relation), "zbasu");
-                        assert_eq!(args[0], LogicalTerm::Constant(compiler.interner.get("do").unwrap()));
-                        assert_eq!(args[1], LogicalTerm::Constant(compiler.interner.get("mi").unwrap()));
-                    }
-                    other => panic!("expected zbasu predicate, got {:?}", other),
-                }
-            }
-            other => panic!("expected And(klama, zbasu), got {:?}", other),
-        }
+        // klama is event-decomposed, zbasu is a flat modal Predicate
+        assert!(has_pred(&form, "klama", &compiler), "expected klama type predicate");
+        assert!(has_pred(&form, "zbasu", &compiler), "expected zbasu modal predicate");
+        // zbasu is flat: zbasu(do, mi, ...)
+        let zbasu_args = get_pred_args(&form, "zbasu", &compiler).unwrap();
+        assert_eq!(zbasu_args[0], LogicalTerm::Constant(compiler.interner.get("do").unwrap()));
+        assert_eq!(zbasu_args[1], LogicalTerm::Constant(compiler.interner.get("mi").unwrap()));
     }
 
     #[test]
@@ -1693,35 +1760,10 @@ mod tests {
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
 
-        // Outermost should be And(And(klama, rinka), pilno)
-        match &form {
-            LogicalForm::And(inner_and, pilno) => {
-                match inner_and.as_ref() {
-                    LogicalForm::And(klama, rinka) => {
-                        match klama.as_ref() {
-                            LogicalForm::Predicate { relation, .. } => {
-                                assert_eq!(resolve(&compiler, relation), "klama");
-                            }
-                            other => panic!("expected klama, got {:?}", other),
-                        }
-                        match rinka.as_ref() {
-                            LogicalForm::Predicate { relation, .. } => {
-                                assert_eq!(resolve(&compiler, relation), "rinka");
-                            }
-                            other => panic!("expected rinka, got {:?}", other),
-                        }
-                    }
-                    other => panic!("expected And(klama, rinka), got {:?}", other),
-                }
-                match pilno.as_ref() {
-                    LogicalForm::Predicate { relation, .. } => {
-                        assert_eq!(resolve(&compiler, relation), "pilno");
-                    }
-                    other => panic!("expected pilno, got {:?}", other),
-                }
-            }
-            other => panic!("expected nested And, got {:?}", other),
-        }
+        // All three predicates should be present as event-decomposed forms
+        assert!(has_pred(&form, "klama", &compiler), "expected klama type predicate");
+        assert!(has_pred(&form, "rinka", &compiler), "expected rinka type predicate");
+        assert!(has_pred(&form, "pilno", &compiler), "expected pilno type predicate");
     }
 
     // ─── Numeric quantifier tests ──────────────────────────────────
@@ -1751,28 +1793,15 @@ mod tests {
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
 
-        // Should be Count { var: _v0, count: 2, body: And(gerku(_v0,...), barda(_v0,...)) }
+        // Should be Count { var: _v0, count: 2, body: And(gerku_event, barda_event) }
+        // With event decomposition, restrictor and predicate are event-wrapped
         match &form {
             LogicalForm::Count { var, count, body } => {
                 assert_eq!(*count, 2);
                 assert!(resolve(&compiler, var).starts_with("_v"));
-                match body.as_ref() {
-                    LogicalForm::And(restrictor, pred) => {
-                        match restrictor.as_ref() {
-                            LogicalForm::Predicate { relation, .. } => {
-                                assert_eq!(resolve(&compiler, relation), "gerku");
-                            }
-                            other => panic!("expected gerku restrictor, got {:?}", other),
-                        }
-                        match pred.as_ref() {
-                            LogicalForm::Predicate { relation, .. } => {
-                                assert_eq!(resolve(&compiler, relation), "barda");
-                            }
-                            other => panic!("expected barda predicate, got {:?}", other),
-                        }
-                    }
-                    other => panic!("expected And body, got {:?}", other),
-                }
+                // The body should contain both gerku and barda type predicates
+                assert!(has_pred(body, "gerku", &compiler), "expected gerku restrictor type pred");
+                assert!(has_pred(body, "barda", &compiler), "expected barda type pred");
             }
             other => panic!("expected Count, got {:?}", other),
         }
@@ -1945,7 +1974,7 @@ mod tests {
 
     #[test]
     fn test_da_produces_exists() {
-        // da prami mi → ∃da. prami(da, mi, ...)
+        // da prami mi → ∃da. event_decomposed_prami(da, mi, ...)
         let selbris = vec![Selbri::Root("prami".into())];
         let sumtis = vec![
             Sumti::ProSumti("da".into()), // 0
@@ -1962,23 +1991,23 @@ mod tests {
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
 
-        // Outermost should be Exists wrapping the predicate
+        // Outermost should be Exists(da, ...) wrapping the event form
         match &form {
-            LogicalForm::Exists(var, body) => {
+            LogicalForm::Exists(var, _body) => {
                 assert_eq!(resolve(&compiler, var), "da");
-                match body.as_ref() {
-                    LogicalForm::Predicate { relation, args } => {
-                        assert_eq!(resolve(&compiler, relation), "prami");
-                        match &args[0] {
-                            LogicalTerm::Variable(v) => assert_eq!(resolve(&compiler, v), "da"),
-                            other => panic!("expected Variable(da), got {:?}", other),
-                        }
-                        match &args[1] {
-                            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "mi"),
-                            other => panic!("expected Constant(mi), got {:?}", other),
-                        }
-                    }
-                    other => panic!("expected Predicate inside Exists, got {:?}", other),
+                // Inside should have prami type pred and role preds
+                assert!(has_pred(&form, "prami", &compiler), "expected prami type predicate");
+                // prami_x1 should have Variable(da)
+                let x1_args = get_pred_args(&form, "prami_x1", &compiler).unwrap();
+                match &x1_args[1] {
+                    LogicalTerm::Variable(v) => assert_eq!(resolve(&compiler, v), "da"),
+                    other => panic!("expected Variable(da) in prami_x1, got {:?}", other),
+                }
+                // prami_x2 should have Constant(mi)
+                let x2_args = get_pred_args(&form, "prami_x2", &compiler).unwrap();
+                match &x2_args[1] {
+                    LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "mi"),
+                    other => panic!("expected Constant(mi) in prami_x2, got {:?}", other),
                 }
             }
             other => panic!("expected Exists, got {:?}", other),
@@ -1987,7 +2016,7 @@ mod tests {
 
     #[test]
     fn test_da_de_both_produce_nested_exists() {
-        // da prami de → ∃da. ∃de. prami(da, de, ...)
+        // da prami de → ∃da. ∃de. event_decomposed_prami(da, de, ...)
         let selbris = vec![Selbri::Root("prami".into())];
         let sumtis = vec![
             Sumti::ProSumti("da".into()), // 0
@@ -2004,18 +2033,19 @@ mod tests {
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
 
-        // Should be Exists(da/de, Exists(da/de, Predicate))
+        // Should be Exists(da/de, Exists(da/de, Exists(ev, ...)))
         match &form {
             LogicalForm::Exists(v1, inner) => {
                 let name1 = resolve(&compiler, v1);
                 match inner.as_ref() {
-                    LogicalForm::Exists(v2, body) => {
+                    LogicalForm::Exists(v2, _body) => {
                         let name2 = resolve(&compiler, v2);
                         // Both da and de should appear (order may vary)
                         let mut names = vec![name1, name2];
                         names.sort();
                         assert_eq!(names, vec!["da", "de"]);
-                        assert!(matches!(body.as_ref(), LogicalForm::Predicate { .. }));
+                        // The body is now an event-decomposed form (Exists wrapping event)
+                        assert!(has_pred(&form, "prami", &compiler), "expected prami type predicate");
                     }
                     other => panic!("expected nested Exists, got {:?}", other),
                 }
@@ -2026,7 +2056,7 @@ mod tests {
 
     #[test]
     fn test_da_repeated_wraps_once() {
-        // da prami da → ∃da. prami(da, da, ...) (only one Exists)
+        // da prami da → ∃da. event_decomposed_prami(da, da, ...) (only one entity Exists)
         let selbris = vec![Selbri::Root("prami".into())];
         let sumtis = vec![
             Sumti::ProSumti("da".into()), // 0
@@ -2043,12 +2073,19 @@ mod tests {
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
 
-        // Should be Exists(da, Predicate) — NOT Exists(da, Exists(da, ...))
+        // Should be Exists(da, Exists(ev, ...)) — NOT Exists(da, Exists(da, ...))
         match &form {
             LogicalForm::Exists(var, body) => {
                 assert_eq!(resolve(&compiler, var), "da");
-                assert!(matches!(body.as_ref(), LogicalForm::Predicate { .. }),
-                    "expected single Exists wrapping Predicate, got nested: {:?}", body);
+                // The body should be the event Exists, not another da Exists
+                match body.as_ref() {
+                    LogicalForm::Exists(ev_var, _) => {
+                        // The inner Exists should be for an event variable, not da again
+                        assert!(resolve(&compiler, ev_var).starts_with("_ev"),
+                            "expected event variable inside, got: {}", resolve(&compiler, ev_var));
+                    }
+                    other => panic!("expected Exists(ev, ...) inside Exists(da, ...), got {:?}", other),
+                }
             }
             other => panic!("expected Exists, got {:?}", other),
         }
@@ -2124,7 +2161,7 @@ mod tests {
 
     #[test]
     fn test_ma_produces_exists() {
-        // ma klama → ∃_v0. klama(_v0, ...)
+        // ma klama → ∃_v0. event_decomposed_klama(_v0, ...)
         // Each `ma` gets a fresh variable (independent query unknowns).
         let selbris = vec![Selbri::Root("klama".into())];
         let sumtis = vec![
@@ -2141,20 +2178,18 @@ mod tests {
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
 
-        // Outermost should be Exists wrapping the predicate
+        // Outermost should be Exists wrapping the event form
         match &form {
-            LogicalForm::Exists(var, body) => {
+            LogicalForm::Exists(var, _body) => {
                 // ma now generates a fresh variable (_v0), not "ma"
                 assert!(resolve(&compiler, var).starts_with("_v"));
-                match body.as_ref() {
-                    LogicalForm::Predicate { relation, args } => {
-                        assert_eq!(resolve(&compiler, relation), "klama");
-                        match &args[0] {
-                            LogicalTerm::Variable(v) => assert_eq!(v, var),
-                            other => panic!("expected Variable, got {:?}", other),
-                        }
-                    }
-                    other => panic!("expected Predicate inside Exists, got {:?}", other),
+                // klama type pred should exist inside
+                assert!(has_pred(&form, "klama", &compiler), "expected klama type predicate");
+                // klama_x1 should reference the ma variable
+                let x1_args = get_pred_args(&form, "klama_x1", &compiler).unwrap();
+                match &x1_args[1] {
+                    LogicalTerm::Variable(v) => assert_eq!(v, var),
+                    other => panic!("expected Variable in klama_x1, got {:?}", other),
                 }
             }
             other => panic!("expected Exists, got {:?}", other),
@@ -2163,7 +2198,7 @@ mod tests {
 
     #[test]
     fn test_two_ma_produce_independent_exists() {
-        // ma nelci ma → ∃_v1. ∃_v0. nelci(_v0, _v1, ...)
+        // ma nelci ma → ∃_v1. ∃_v0. event_decomposed_nelci(_v0, _v1, ...)
         // Two `ma` tokens must produce two *different* variables,
         // each wrapped in its own ∃.
         let selbris = vec![Selbri::Root("nelci".into())];
@@ -2182,26 +2217,23 @@ mod tests {
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
 
-        // Should be ∃v1.(∃v0.(nelci(v0, v1, ...)))
+        // Should be ∃v1.(∃v0.(Exists(ev, nelci_event(v0, v1, ...))))
         match &form {
             LogicalForm::Exists(var1, inner) => {
                 assert!(resolve(&compiler, var1).starts_with("_v"));
                 match inner.as_ref() {
-                    LogicalForm::Exists(var0, body) => {
+                    LogicalForm::Exists(var0, _body) => {
                         assert!(resolve(&compiler, var0).starts_with("_v"));
                         // The two variables must be different
                         assert_ne!(var0, var1, "two ma should produce different variables");
-                        match body.as_ref() {
-                            LogicalForm::Predicate { args, .. } => {
-                                // First arg should be one var, second should be the other
-                                match (&args[0], &args[1]) {
-                                    (LogicalTerm::Variable(a), LogicalTerm::Variable(b)) => {
-                                        assert_ne!(a, b, "args should reference different vars");
-                                    }
-                                    other => panic!("expected two Variables, got {:?}", other),
-                                }
+                        // Check that nelci_x1 and nelci_x2 reference different variables
+                        let x1_args = get_pred_args(&form, "nelci_x1", &compiler).unwrap();
+                        let x2_args = get_pred_args(&form, "nelci_x2", &compiler).unwrap();
+                        match (&x1_args[1], &x2_args[1]) {
+                            (LogicalTerm::Variable(a), LogicalTerm::Variable(b)) => {
+                                assert_ne!(a, b, "args should reference different vars");
                             }
-                            other => panic!("expected Predicate, got {:?}", other),
+                            other => panic!("expected two Variables in role preds, got {:?}", other),
                         }
                     }
                     other => panic!("expected inner Exists, got {:?}", other),
@@ -2273,20 +2305,15 @@ mod tests {
     }
 
     #[test]
-    fn test_inject_variable_nested_description_produces_error() {
+    fn test_inject_variable_nested_description_no_error_with_events() {
         // lo gerku poi lo mlatu cu barda
-        // Rel clause body has 2 predicates with unspecified slots:
-        //   mlatu(?) from the inner description + barda(?) from the main predicate.
-        // This should produce a semantic error.
+        // With event decomposition, the description variable fills the _x1 role slot,
+        // so there is only 1 unspecified _x1 role (not 2). No ambiguity error.
         //
         // Buffer layout:
         //   selbris: [0: gerku, 1: mlatu, 2: barda]
         //   sumtis:  [0: Description(Lo, 0), 1: Description(Lo, 1), 2: Restricted(0, poi body=1)]
         //   sentences: [0: Simple(barda, head=[2]), 1: Simple(barda, head=[1])]
-        //
-        // The rel clause body sentence (1) is: "lo mlatu cu barda"
-        //   → barda(lo_mlatu, ...) where lo_mlatu introduces ∃x.(mlatu(x) ∧ barda(x, ...))
-        //   But mlatu has unspecified slot AND barda has unspecified slot
         let selbris = vec![
             Selbri::Root("gerku".into()), // 0
             Selbri::Root("mlatu".into()), // 1
@@ -2323,18 +2350,10 @@ mod tests {
         ];
 
         let (_form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
-        // Should have exactly one error about ambiguous injection
-        assert_eq!(compiler.errors.len(), 1, "Expected 1 error, got: {:?}", compiler.errors);
-        assert!(
-            compiler.errors[0].contains("ambiguous"),
-            "Error should mention 'ambiguous': {}",
-            compiler.errors[0]
-        );
-        assert!(
-            compiler.errors[0].contains("ke'a"),
-            "Error should mention ke'a: {}",
-            compiler.errors[0]
-        );
+        // With event decomposition, the description variable fills _x1 roles,
+        // so inject_variable finds at most 1 unspecified _x1 target — no error.
+        assert!(compiler.errors.is_empty(),
+            "Expected no errors with event decomposition, got: {:?}", compiler.errors);
     }
 
     #[test]
@@ -2387,9 +2406,10 @@ mod tests {
     }
 
     #[test]
-    fn test_inject_variable_error_message_contains_count() {
-        // Verify the error message contains the actual predicate count.
-        // Same setup as test_inject_variable_nested_description_produces_error
+    fn test_inject_variable_no_error_with_event_decomposition() {
+        // With event decomposition, the description variable fills _x1 role slots,
+        // so nested descriptions no longer produce ambiguity errors.
+        // Same setup as test_inject_variable_nested_description_no_error_with_events
         let selbris = vec![
             Selbri::Root("gerku".into()),
             Selbri::Root("mlatu".into()),
@@ -2426,13 +2446,9 @@ mod tests {
         ];
 
         let (_, compiler) = compile_sentence_full(selbris, sumtis, sentences);
-        assert!(!compiler.errors.is_empty());
-        // Should contain "2 predicates" (the mlatu restrictor + the barda predicate)
-        assert!(
-            compiler.errors[0].contains("predicates"),
-            "Error should mention 'predicates': {}",
-            compiler.errors[0]
-        );
+        // With event decomposition, no ambiguity error is produced
+        assert!(compiler.errors.is_empty(),
+            "Expected no errors with event decomposition, got: {:?}", compiler.errors);
     }
 
     #[test]
@@ -2443,7 +2459,10 @@ mod tests {
             relation: rel,
             args: vec![LogicalTerm::Unspecified],
         };
-        assert_eq!(SemanticCompiler::count_unspecified_predicates(&form), 1);
+        assert_eq!(
+            SemanticCompiler::count_unspecified_predicates(&form, &compiler.interner),
+            1
+        );
     }
 
     #[test]
@@ -2455,7 +2474,10 @@ mod tests {
             relation: rel,
             args: vec![LogicalTerm::Variable(var)],
         };
-        assert_eq!(SemanticCompiler::count_unspecified_predicates(&form), 0);
+        assert_eq!(
+            SemanticCompiler::count_unspecified_predicates(&form, &compiler.interner),
+            0
+        );
     }
 
     #[test]
@@ -2473,7 +2495,10 @@ mod tests {
                 args: vec![LogicalTerm::Unspecified],
             }),
         );
-        assert_eq!(SemanticCompiler::count_unspecified_predicates(&form), 2);
+        assert_eq!(
+            SemanticCompiler::count_unspecified_predicates(&form, &compiler.interner),
+            2
+        );
     }
 
     #[test]
@@ -2485,7 +2510,7 @@ mod tests {
             relation: rel,
             args: vec![LogicalTerm::Unspecified, LogicalTerm::Unspecified],
         };
-        let injected = SemanticCompiler::inject_variable(form, var);
+        let injected = SemanticCompiler::inject_variable(form, var, &compiler.interner);
         match injected {
             LogicalForm::Predicate { args, .. } => {
                 assert!(matches!(args[0], LogicalTerm::Variable(_)));
@@ -2621,15 +2646,23 @@ mod tests {
             attitudinal: None,
         };
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
-        match &form {
-            LogicalForm::Predicate { relation, args } => {
-                assert_eq!(resolve(&compiler, relation), "prami");
-                // After se-conversion: x1 and x2 are swapped
-                // head=mi goes to x1 position, tail=do goes to x2 position
-                // se swaps these: mi→x2, do→x1
-                assert_eq!(args.len(), 2);
-            }
-            other => panic!("expected Predicate, got {:?}", other),
+        // With event decomposition, form is Exists(ev, And(prami(ev), prami_x1(ev, ...), prami_x2(ev, ...)))
+        // After se-conversion: x1 and x2 are swapped
+        // head=mi goes to x1 position, tail=do goes to x2 position
+        // se swaps these: mi→x2, do→x1
+        assert!(matches!(&form, LogicalForm::Exists(_, _)), "expected Exists, got {:?}", form);
+        assert!(has_pred(&form, "prami", &compiler), "expected prami type predicate");
+        // Check prami_x1 has do (originally x2, swapped to x1)
+        let x1_args = get_pred_args(&form, "prami_x1", &compiler).unwrap();
+        match &x1_args[1] {
+            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "do"),
+            other => panic!("expected Constant(do) in prami_x1 after se-swap, got {:?}", other),
+        }
+        // Check prami_x2 has mi (originally x1, swapped to x2)
+        let x2_args = get_pred_args(&form, "prami_x2", &compiler).unwrap();
+        match &x2_args[1] {
+            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "mi"),
+            other => panic!("expected Constant(mi) in prami_x2 after se-swap, got {:?}", other),
         }
     }
 
@@ -2647,13 +2680,193 @@ mod tests {
             tense: None,
             attitudinal: None,
         };
-        let (form, _) = compile_one(selbris, sumtis, bridi);
-        match &form {
-            LogicalForm::Predicate { args, .. } => {
-                assert!(matches!(args[0], LogicalTerm::Unspecified));
-            }
-            other => panic!("expected Predicate, got {:?}", other),
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        // With event decomposition, form is Exists(ev, And(klama(ev), klama_x1(ev, zo'e), ...))
+        assert!(matches!(&form, LogicalForm::Exists(_, _)), "expected Exists, got {:?}", form);
+        // Check that klama_x1 has Unspecified (zo'e) in its entity arg
+        let x1_args = get_pred_args(&form, "klama_x1", &compiler)
+            .expect("expected klama_x1 role predicate");
+        assert!(matches!(x1_args[1], LogicalTerm::Unspecified),
+            "expected Unspecified in klama_x1, got {:?}", x1_args[1]);
+    }
+
+    // ─── Event decomposition (Neo-Davidsonian) tests ──────────
+
+    #[test]
+    fn test_event_decompose_basic() {
+        // mi klama → ∃e. klama(e) ∧ klama_x1(e, mi) ∧ klama_x2(e, zo'e) ∧ ...
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![Sumti::ProSumti("mi".into())];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+
+        // Top level should be Exists (event variable)
+        assert!(matches!(&form, LogicalForm::Exists(_, _)));
+        // Type predicate exists
+        assert!(has_pred(&form, "klama", &compiler));
+        // x1 role has Constant("mi")
+        let x1 = get_pred_args(&form, "klama_x1", &compiler).unwrap();
+        assert_eq!(x1[1], LogicalTerm::Constant(compiler.interner.get("mi").unwrap()));
+        // Event variable is shared between type and role predicates
+        let type_args = get_pred_args(&form, "klama", &compiler).unwrap();
+        assert!(matches!(&type_args[0], LogicalTerm::Variable(_)));
+        assert_eq!(type_args[0], x1[0], "event var should be shared");
+    }
+
+    #[test]
+    fn test_event_decompose_all_roles_emitted() {
+        // klama has arity 5, all roles should be emitted
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![Sumti::ProSumti("mi".into())];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+
+        for i in 1..=5 {
+            let role = format!("klama_x{}", i);
+            assert!(has_pred(&form, &role, &compiler), "expected {} role", role);
         }
+        // No x6 for a 5-arity predicate
+        assert!(!has_pred(&form, "klama_x6", &compiler));
+    }
+
+    #[test]
+    fn test_event_tanru_shared_event() {
+        // sutra gerku → ∃e. gerku(e) ∧ gerku_x1(e, x1) ∧ sutra_x1(e, x1)
+        // modifier and head share the SAME event variable
+        let selbris = vec![
+            Selbri::Root("sutra".into()),      // 0
+            Selbri::Root("gerku".into()),       // 1
+            Selbri::Tanru((0, 1)),              // 2
+        ];
+        let sumtis = vec![Sumti::ProSumti("mi".into())];
+        let bridi = Bridi {
+            relation: 2,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+
+        // Should have head type predicate
+        assert!(has_pred(&form, "gerku", &compiler));
+        // Should have head x1 role
+        assert!(has_pred(&form, "gerku_x1", &compiler));
+        // Should have modifier x1 role (NOT a full sutra predicate)
+        assert!(has_pred(&form, "sutra_x1", &compiler));
+
+        // Both roles should share the same event variable
+        let gerku_x1 = get_pred_args(&form, "gerku_x1", &compiler).unwrap();
+        let sutra_x1 = get_pred_args(&form, "sutra_x1", &compiler).unwrap();
+        assert_eq!(gerku_x1[0], sutra_x1[0], "event var should be shared between head and modifier");
+
+        // Both x1 entity args should be mi
+        let mi = LogicalTerm::Constant(compiler.interner.get("mi").unwrap());
+        assert_eq!(gerku_x1[1], mi);
+        assert_eq!(sutra_x1[1], mi);
+    }
+
+    #[test]
+    fn test_event_tanru_no_intersective_fallacy() {
+        // barda gerku → NOT And(barda(x1), gerku(x1, ...))
+        // Instead: ∃e. gerku(e) ∧ gerku_x1(e, x1) ∧ barda_x1(e, x1)
+        // The modifier "barda" is event-bound, not a standalone predication
+        let selbris = vec![
+            Selbri::Root("barda".into()),      // 0
+            Selbri::Root("gerku".into()),       // 1
+            Selbri::Tanru((0, 1)),              // 2
+        ];
+        let sumtis = vec![Sumti::ProSumti("mi".into())];
+        let bridi = Bridi {
+            relation: 2,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+
+        // There should be NO standalone "barda" type predicate
+        // Only "barda_x1" role predicate (event-bound modifier)
+        let preds = collect_predicates(&form, &compiler);
+        let barda_preds: Vec<_> = preds.iter().filter(|(n, _)| n == "barda").collect();
+        assert!(barda_preds.is_empty(), "should NOT have standalone barda predicate, got {:?}", barda_preds);
+        assert!(has_pred(&form, "barda_x1", &compiler), "should have event-bound barda_x1 role");
+    }
+
+    #[test]
+    fn test_event_decompose_with_quantifier() {
+        // lo gerku cu klama → ∃x. (∃e1. gerku(e1) ∧ gerku_x1(e1, x)) ∧ (∃e2. klama(e2) ∧ klama_x1(e2, x) ∧ ...)
+        let selbris = vec![
+            Selbri::Root("gerku".into()),       // 0
+            Selbri::Root("klama".into()),       // 1
+        ];
+        let sumtis = vec![
+            Sumti::Description((Gadri::Lo, 0)), // 0: lo gerku
+        ];
+        let bridi = Bridi {
+            relation: 1,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+
+        // Outer Exists for the description variable
+        assert!(matches!(&form, LogicalForm::Exists(_, _)));
+        // Both gerku and klama predicates exist
+        assert!(has_pred(&form, "gerku", &compiler));
+        assert!(has_pred(&form, "klama", &compiler));
+        // Both have x1 roles
+        assert!(has_pred(&form, "gerku_x1", &compiler));
+        assert!(has_pred(&form, "klama_x1", &compiler));
+    }
+
+    #[test]
+    fn test_event_conversion_se() {
+        // mi se prami do → prami(do, mi, ...) with se-swapped args
+        // Event form: ∃e. prami(e) ∧ prami_x1(e, do) ∧ prami_x2(e, mi)
+        let selbris = vec![
+            Selbri::Root("prami".into()),       // 0
+            Selbri::Converted((Conversion::Se, 0)), // 1
+        ];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),       // 0
+            Sumti::ProSumti("do".into()),        // 1
+        ];
+        let bridi = Bridi {
+            relation: 1,
+            head_terms: vec![0],
+            tail_terms: vec![1],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+
+        // se swaps x1 and x2: mi goes to x2, do goes to x1
+        let x1 = get_pred_args(&form, "prami_x1", &compiler).unwrap();
+        let x2 = get_pred_args(&form, "prami_x2", &compiler).unwrap();
+        assert_eq!(x1[1], LogicalTerm::Constant(compiler.interner.get("do").unwrap()));
+        assert_eq!(x2[1], LogicalTerm::Constant(compiler.interner.get("mi").unwrap()));
     }
 
     // ─── Name (la cmevla) test ────────────────────────────────
@@ -2671,14 +2884,13 @@ mod tests {
             attitudinal: None,
         };
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
-        match &form {
-            LogicalForm::Predicate { args, .. } => {
-                match &args[0] {
-                    LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "alis"),
-                    other => panic!("expected Constant, got {:?}", other),
-                }
-            }
-            other => panic!("expected Predicate, got {:?}", other),
+        // With event decomposition, form is Exists(ev, And(klama(ev), klama_x1(ev, alis), ...))
+        assert!(matches!(&form, LogicalForm::Exists(_, _)), "expected Exists, got {:?}", form);
+        let x1_args = get_pred_args(&form, "klama_x1", &compiler)
+            .expect("expected klama_x1 role predicate");
+        match &x1_args[1] {
+            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "alis"),
+            other => panic!("expected Constant(alis), got {:?}", other),
         }
     }
 
@@ -2696,13 +2908,13 @@ mod tests {
             tense: None,
             attitudinal: None,
         };
-        let (form, _) = compile_one(selbris, sumtis, bridi);
-        match &form {
-            LogicalForm::Predicate { args, .. } => {
-                assert!(matches!(args[0], LogicalTerm::Number(n) if n == 42.0));
-            }
-            other => panic!("expected Predicate, got {:?}", other),
-        }
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        // With event decomposition, form is Exists(ev, And(namcu(ev), namcu_x1(ev, 42.0), ...))
+        assert!(matches!(&form, LogicalForm::Exists(_, _)), "expected Exists, got {:?}", form);
+        let x1_args = get_pred_args(&form, "namcu_x1", &compiler)
+            .expect("expected namcu_x1 role predicate");
+        assert!(matches!(x1_args[1], LogicalTerm::Number(n) if n == 42.0),
+            "expected Number(42.0) in namcu_x1, got {:?}", x1_args[1]);
     }
 
     // ─── Quoted literal test ──────────────────────────────────
@@ -2720,14 +2932,13 @@ mod tests {
             attitudinal: None,
         };
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
-        match &form {
-            LogicalForm::Predicate { args, .. } => {
-                match &args[0] {
-                    LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "coi"),
-                    other => panic!("expected Constant, got {:?}", other),
-                }
-            }
-            other => panic!("expected Predicate, got {:?}", other),
+        // With event decomposition, form is Exists(ev, And(valsi(ev), valsi_x1(ev, coi), ...))
+        assert!(matches!(&form, LogicalForm::Exists(_, _)), "expected Exists, got {:?}", form);
+        let x1_args = get_pred_args(&form, "valsi_x1", &compiler)
+            .expect("expected valsi_x1 role predicate");
+        match &x1_args[1] {
+            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "coi"),
+            other => panic!("expected Constant(coi), got {:?}", other),
         }
     }
 
@@ -2818,7 +3029,7 @@ mod tests {
 
     #[test]
     fn test_known_gismu_gets_correct_arity() {
-        // klama has arity 5, so Pred should have 5 arg slots
+        // klama has arity 5, so there should be 5 role predicates (klama_x1..klama_x5)
         let selbris = vec![Selbri::Root("klama".into())];
         let sumtis = vec![Sumti::ProSumti("mi".into())];
         let bridi = Bridi {
@@ -2829,18 +3040,20 @@ mod tests {
             tense: None,
             attitudinal: None,
         };
-        let (form, _) = compile_one(selbris, sumtis, bridi);
-        match &form {
-            LogicalForm::Predicate { args, .. } => {
-                assert_eq!(args.len(), 5, "klama should have 5 argument slots");
-            }
-            other => panic!("expected Predicate, got {:?}", other),
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        // With event decomposition, check that all 5 role predicates exist
+        assert!(matches!(&form, LogicalForm::Exists(_, _)), "expected Exists, got {:?}", form);
+        assert!(has_pred(&form, "klama", &compiler), "expected klama type predicate");
+        for i in 1..=5 {
+            let role = format!("klama_x{}", i);
+            assert!(has_pred(&form, &role, &compiler),
+                "klama should have role predicate {}", role);
         }
     }
 
     #[test]
     fn test_unknown_gismu_defaults_to_arity_2() {
-        // An unrecognized word should default to arity 2
+        // An unrecognized word should default to arity 2 → 2 role predicates
         let selbris = vec![Selbri::Root("xyzzy".into())];
         let sumtis = vec![Sumti::ProSumti("mi".into())];
         let bridi = Bridi {
@@ -2851,13 +3064,15 @@ mod tests {
             tense: None,
             attitudinal: None,
         };
-        let (form, _) = compile_one(selbris, sumtis, bridi);
-        match &form {
-            LogicalForm::Predicate { args, .. } => {
-                assert_eq!(args.len(), 2, "unknown word should default to arity 2");
-            }
-            other => panic!("expected Predicate, got {:?}", other),
-        }
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        // With event decomposition, check that there are 2 role predicates
+        assert!(matches!(&form, LogicalForm::Exists(_, _)), "expected Exists, got {:?}", form);
+        assert!(has_pred(&form, "xyzzy", &compiler), "expected xyzzy type predicate");
+        assert!(has_pred(&form, "xyzzy_x1", &compiler), "expected xyzzy_x1 role");
+        assert!(has_pred(&form, "xyzzy_x2", &compiler), "expected xyzzy_x2 role");
+        // Should NOT have xyzzy_x3
+        assert!(!has_pred(&form, "xyzzy_x3", &compiler),
+            "unknown word should default to arity 2, but found xyzzy_x3");
     }
 
     // ─── Sentence connective tests ────────────────────────────
@@ -2946,7 +3161,7 @@ mod tests {
                 args: vec![LogicalTerm::Unspecified],
             }),
         );
-        let injected = SemanticCompiler::inject_variable(form, var);
+        let injected = SemanticCompiler::inject_variable(form, var, &compiler.interner);
         match injected {
             LogicalForm::And(left, right) => {
                 // inject_variable fills the FIRST unspecified in the first predicate found
@@ -2971,7 +3186,7 @@ mod tests {
 
     #[test]
     fn test_predicate_with_no_explicit_args() {
-        // Just "klama" alone → should produce a Predicate with all-Unspecified args
+        // Just "klama" alone → should produce event-decomposed form with all Unspecified role args
         let selbris = vec![Selbri::Root("klama".into())];
         let sumtis: Vec<Sumti> = vec![];
         let bridi = Bridi {
@@ -2983,15 +3198,16 @@ mod tests {
             attitudinal: None,
         };
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
-        match &form {
-            LogicalForm::Predicate { relation, args } => {
-                assert_eq!(resolve(&compiler, relation), "klama");
-                // All args should be Unspecified
-                for arg in args {
-                    assert!(matches!(arg, LogicalTerm::Unspecified));
-                }
-            }
-            other => panic!("expected Predicate, got {:?}", other),
+        // With event decomposition, should be Exists(ev, And(klama(ev), klama_x1(ev, zo'e), ...))
+        assert!(matches!(&form, LogicalForm::Exists(_, _)), "expected Exists, got {:?}", form);
+        assert!(has_pred(&form, "klama", &compiler), "expected klama type predicate");
+        // All role predicates should have Unspecified in entity position
+        for i in 1..=5 {
+            let role = format!("klama_x{}", i);
+            let role_args = get_pred_args(&form, &role, &compiler)
+                .unwrap_or_else(|| panic!("expected {} role predicate", role));
+            assert!(matches!(role_args[1], LogicalTerm::Unspecified),
+                "expected Unspecified in {}, got {:?}", role, role_args[1]);
         }
     }
 }

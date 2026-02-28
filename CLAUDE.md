@@ -95,13 +95,13 @@ Before every commit, always:
 
 ## Current Status
 
-Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator) + C2 (non-monotonic reasoning / belief revision) + C3 (temporal reasoning in e-graph).
+Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator) + C2 (non-monotonic reasoning / belief revision) + C3 (temporal reasoning in e-graph) + C4 (event semantics — Neo-Davidsonian).
 
 **Implemented features:**
 - Lexer + recursive-descent parser (gismu, cmavo, cmevla, lujvo)
 - Gadri descriptions (lo/le/la), universal (ro lo/ro le), numeric quantifiers (PA lo/le, su'o lo)
 - Place tags (fa/fe/fi/fo/fu), BAI modal tags (ri'a, ni'i, mu'i, ki'u, pi'o, ba'i), fi'o...fe'u
-- Selbri: root, tanru, conversion (se/te/ve/xe), negation (na), grouping (ke...ke'e), compounds (zei), be...bei...be'o
+- Selbri: root, tanru (Neo-Davidsonian event decomposition — shared event variable resolves intersective fallacy), conversion (se/te/ve/xe), negation (na), grouping (ke...ke'e), compounds (zei), be...bei...be'o
 - Relative clauses (poi/noi/voi) with ke'a, implicit variable injection (ambiguous cases with nested descriptions rejected as error — requires explicit ke'a), clause stacking
 - Sumti connectives (.e/.a/.o/.u + nai), selbri connectives (je/ja/jo/ju)
 - Sentence connectives (forethought: ge...gi, ga...gi, ganai...gi; afterthought: .i je/ja/jo/ju with na/nai)
@@ -145,4 +145,6 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - Non-monotonic reasoning / belief revision: fact registry with per-assertion FactId (u64), FactRecord stores cloned LogicBuffer + label + retracted flag; retraction marks fact withdrawn then rebuilds egraph from surviving base facts (sound because all derived facts recomputed); `retract-fact` and `list-facts` WIT methods on both `knowledge-base` and `session` resources; REPL `:retract <id>` and `:facts` commands; idempotent retraction; `rebuilding` flag suppresses diagnostic prints during replay
 - Temporal reasoning in e-graph: `Past`/`Present`/`Future` constructors in egglog `Formula` datatype; tense wrappers preserved end-to-end (assertion, query, rule compilation, proof tracing, witness extraction); tense conjunction elimination rules; temporal entity extraction for guarded conjunction introduction; temporal lifting of universal rules (timeless rules automatically fire on tensed premises to derive tensed conclusions); tense-aware backward-chaining provenance; strict tense discrimination (Past ≠ Future ≠ bare)
 
-**Next up:** C4 (Event semantics — Neo-Davidsonian)
+- Neo-Davidsonian event semantics: every predication decomposes into event type predicate + Lojban-native role predicates (`klama(e) ∧ klama_x1(e, alis) ∧ klama_x2(e, paris)`); fresh `_ev0`, `_ev1` event variables separate from entity `_v0` variables; tanru share event variable between modifier and head (`sutra gerku` → `∃e. gerku(e) ∧ gerku_x1(e, x) ∧ sutra_x1(e, x)`), resolving the intersective fallacy; `event_decompose()` method on SemanticCompiler produces `∃e. type(e) ∧ role_x1(e, a1) ∧ ...`; all role predicates emitted (including Unspecified/zo'e) for inject_variable compatibility; `inject_variable` and `count_unspecified_predicates` updated to only target `_x1` role predicates; recursive selbri (Converted/Negated/Grouped/Connected/WithArgs) get event decomposition automatically via delegation; abstraction inner forms (`nu`/`du'u`/`ka`/`ni`/`si'o`) event-decomposed naturally through `compile_sentence`
+
+**Next up:** C5 (Description term opacity — `le` vs `lo`)
