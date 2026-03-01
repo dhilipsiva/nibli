@@ -6,13 +6,6 @@ Single-phase backlog ordered by severity: soundness bugs first, then safety, the
 
 ## Capability Gaps
 
-### C5. Description term opacity (`le` vs `lo`)
-
-Currently `le` and `la` both produce `LogicalTerm::Description` — a non-quantified opaque token. Matters for belief contexts and intensional reasoning.
-
-**Crate:** semantics/semantic.rs, reasoning schema
-**Complexity:** high
-
 ### C6. Module / namespace system
 
 Domain-prefixed predicates for multi-domain KBs. Essential when combining astrophysics + chemistry ontologies or multiple legal codes.

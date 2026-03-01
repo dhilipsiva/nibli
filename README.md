@@ -85,7 +85,7 @@ just test
 
 ## Lojban Coverage
 
-- Gadri descriptions (`lo`/`le`/`la`), universal (`ro lo`/`ro le`), numeric quantifiers (`PA lo`/`su'o lo`)
+- Gadri descriptions with opacity: `lo` (veridical ∃), `le` (referential opaque rigid designator), `la` (proper name → Constant); universal `ro lo` (veridical restrictor) / `ro le` (opaque le-domain restrictor); numeric quantifiers `PA lo` / `PA le` / `su'o lo`
 - Place tags (`fa`/`fe`/`fi`/`fo`/`fu`), BAI modal tags (`ri'a`, `ni'i`, `mu'i`, `ki'u`, `pi'o`, `ba'i`), `fi'o`...`fe'u`
 - Selbri: root, tanru (Neo-Davidsonian event decomposition — shared event variable resolves intersective fallacy), conversion (`se`/`te`/`ve`/`xe`), negation (`na`), grouping (`ke`...`ke'e`), compounds (`zei`), `be`...`bei`...`be'o`, lujvo (compound brivla)
 - Relative clauses (`poi`/`noi`/`voi`) with `ke'a`, implicit variable injection, clause stacking

@@ -95,7 +95,7 @@ Before every commit, always:
 
 ## Current Status
 
-Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator) + C2 (non-monotonic reasoning / belief revision) + C3 (temporal reasoning in e-graph) + C4 (event semantics — Neo-Davidsonian).
+Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator) + C2 (non-monotonic reasoning / belief revision) + C3 (temporal reasoning in e-graph) + C4 (event semantics — Neo-Davidsonian) + C5 (description term opacity — `le` vs `lo`).
 
 **Implemented features:**
 - Lexer + recursive-descent parser (gismu, cmavo, cmevla, lujvo)
@@ -147,4 +147,6 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 
 - Neo-Davidsonian event semantics: every predication decomposes into event type predicate + Lojban-native role predicates (`klama(e) ∧ klama_x1(e, alis) ∧ klama_x2(e, paris)`); fresh `_ev0`, `_ev1` event variables separate from entity `_v0` variables; tanru share event variable between modifier and head (`sutra gerku` → `∃e. gerku(e) ∧ gerku_x1(e, x) ∧ sutra_x1(e, x)`), resolving the intersective fallacy; `event_decompose()` method on SemanticCompiler produces `∃e. type(e) ∧ role_x1(e, a1) ∧ ...`; all role predicates emitted (including Unspecified/zo'e) for inject_variable compatibility; `inject_variable` and `count_unspecified_predicates` updated to only target `_x1` role predicates; recursive selbri (Converted/Negated/Grouped/Connected/WithArgs) get event decomposition automatically via delegation; abstraction inner forms (`nu`/`du'u`/`ka`/`ni`/`si'o`) event-decomposed naturally through `compile_sentence`
 
-**Next up:** C5 (Description term opacity — `le` vs `lo`)
+- Description term opacity (`le` vs `lo`): `la` gadri now compiles to `Constant` (like proper names), `le` stays as opaque `Description` rigid designator; `Description` terms now get `InDomain` membership in the egglog e-graph, enabling conjunction introduction and universal rule participation; `ro le` uses opaque `le_domain_{name}` restrictor (distinct from veridical `gerku` restrictor of `ro lo`); `PA le` similarly uses opaque domain restrictor; `known_descriptions` tracking in reasoning engine separate from `known_entities`; all three query functions (entailment check, proof trace, witness extraction) enumerate both `Const` and `Desc` domain members; `QuantifierKind::UniversalLe` and `ExactCountLe` variants preserve gadri distinction through quantifier closure
+
+**Next up:** C6 (Module / namespace system)

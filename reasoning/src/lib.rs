@@ -73,6 +73,8 @@ struct KnowledgeBaseInner {
     egraph: EGraph,
     skolem_counter: usize,
     known_entities: HashSet<String>,
+    /// Known description terms (from `le` gadri), tracked separately for InDomain.
+    known_descriptions: HashSet<String>,
     known_rules: HashSet<String>,
     skolem_fn_registry: Vec<SkolemFnEntry>,
     /// Ground facts directly asserted by the user (for provenance tracking).
@@ -93,6 +95,7 @@ impl KnowledgeBaseInner {
             egraph: make_fresh_egraph(),
             skolem_counter: 0,
             known_entities: HashSet::new(),
+            known_descriptions: HashSet::new(),
             known_rules: HashSet::new(),
             skolem_fn_registry: Vec::new(),
             asserted_sexps: HashSet::new(),
@@ -107,6 +110,7 @@ impl KnowledgeBaseInner {
         self.egraph = make_fresh_egraph();
         self.skolem_counter = 0;
         self.known_entities.clear();
+        self.known_descriptions.clear();
         self.known_rules.clear();
         self.skolem_fn_registry.clear();
         self.asserted_sexps.clear();
@@ -128,16 +132,39 @@ impl KnowledgeBaseInner {
         sk
     }
 
-    fn get_known_entities(&self) -> Vec<String> {
-        self.known_entities.iter().cloned().collect()
-    }
-
     fn note_entity(&mut self, name: &str) {
         let is_new = self.known_entities.insert(name.to_string());
         if is_new {
             let cmd = format!("(InDomain (Const \"{}\"))", name);
             self.egraph.parse_and_run_program(None, &cmd).ok();
         }
+    }
+
+    fn note_description(&mut self, name: &str) {
+        let is_new = self.known_descriptions.insert(name.to_string());
+        if is_new {
+            let cmd = format!("(InDomain (Desc \"{}\"))", name);
+            self.egraph.parse_and_run_program(None, &cmd).ok();
+        }
+    }
+
+    /// Return all known domain members as (s-expression, LogicalTerm) pairs.
+    /// Includes both Const entities and Desc description terms.
+    fn all_domain_members(&self) -> Vec<(String, LogicalTerm)> {
+        let mut members = Vec::new();
+        for e in &self.known_entities {
+            members.push((
+                format!("(Const \"{}\")", e),
+                LogicalTerm::Constant(e.clone()),
+            ));
+        }
+        for d in &self.known_descriptions {
+            members.push((
+                format!("(Desc \"{}\")", d),
+                LogicalTerm::Description(d.clone()),
+            ));
+        }
+        members
     }
 }
 
@@ -317,17 +344,7 @@ fn build_skolem_fn_sexp(base_name: &str, pattern_var_names: &[String]) -> String
 }
 
 /// Build a ground SkolemFn s-expression with a Const entity argument.
-fn build_ground_skolem_fn(base_name: &str, entities: &[String]) -> String {
-    assert_eq!(
-        entities.len(),
-        1,
-        "SkolemFn currently supports dep_count=1, got {}",
-        entities.len()
-    );
-    format!("(SkolemFn \"{}\" (Const \"{}\"))", base_name, entities[0])
-}
-
-/// Generate cartesian product of entities with given arity.
+/// Generate cartesian product of s-expression strings with given arity.
 fn cartesian_product(entities: &[String], dep_count: usize) -> Vec<Vec<String>> {
     if dep_count == 0 {
         return vec![vec![]];
@@ -477,6 +494,7 @@ impl KnowledgeBase {
         inner.egraph = make_fresh_egraph();
         inner.skolem_counter = 0;
         inner.known_entities.clear();
+        inner.known_descriptions.clear();
         inner.known_rules.clear();
         inner.skolem_fn_registry.clear();
         inner.asserted_sexps.clear();
@@ -832,11 +850,11 @@ fn check_formula_holds(
         LogicNode::ObligatoryNode(inner_node)
         | LogicNode::PermittedNode(inner_node) => check_formula_holds(buffer, *inner_node, subs, inner, tense),
         LogicNode::ExistsNode((v, body)) => {
-            // 1. Check if any known entity satisfies the body
-            let entities = inner.get_known_entities();
-            for entity in &entities {
+            // 1. Check if any known domain member (Const or Desc) satisfies the body
+            let members = inner.all_domain_members();
+            for (sexp, _) in &members {
                 let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
+                new_subs.insert(v.clone(), sexp.clone());
                 if check_formula_holds(buffer, *body, &new_subs, inner, tense)? {
                     return Ok(true);
                 }
@@ -844,9 +862,11 @@ fn check_formula_holds(
             // 2. Try SkolemFn witnesses from the registry
             let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
             for entry in &entries {
-                let combos = cartesian_product(&entities, entry.dep_count);
+                // SkolemFn deps can be any domain member
+                let dep_sexps: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
+                let combos = cartesian_product(&dep_sexps, entry.dep_count);
                 for combo in &combos {
-                    let witness_sexp = build_ground_skolem_fn(&entry.base_name, combo);
+                    let witness_sexp = build_skolem_fn_sexp(&entry.base_name, combo);
                     let mut new_subs = subs.clone();
                     new_subs.insert(v.clone(), witness_sexp);
                     if check_formula_holds(buffer, *body, &new_subs, inner, tense)? {
@@ -857,13 +877,13 @@ fn check_formula_holds(
             Ok(false)
         }
         LogicNode::ForAllNode((v, body)) => {
-            let entities = inner.get_known_entities();
-            if entities.is_empty() {
+            let members = inner.all_domain_members();
+            if members.is_empty() {
                 return Ok(true);
             }
-            for entity in &entities {
+            for (sexp, _) in &members {
                 let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
+                new_subs.insert(v.clone(), sexp.clone());
                 if !check_formula_holds(buffer, *body, &new_subs, inner, tense)? {
                     return Ok(false);
                 }
@@ -871,11 +891,11 @@ fn check_formula_holds(
             Ok(true)
         }
         LogicNode::CountNode((v, count, body)) => {
-            let entities = inner.get_known_entities();
+            let members = inner.all_domain_members();
             let mut satisfying = 0u32;
-            for entity in &entities {
+            for (sexp, _) in &members {
                 let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
+                new_subs.insert(v.clone(), sexp.clone());
                 if check_formula_holds(buffer, *body, &new_subs, inner, tense)? {
                     satisfying += 1;
                 }
@@ -961,14 +981,14 @@ fn find_witnesses(
         LogicNode::ExistsNode((v, body)) => {
             let mut results = Vec::new();
 
-            // 1. Try each known entity as a witness
-            let entities = inner.get_known_entities();
-            for entity in &entities {
+            // 1. Try all known domain members (Const + Desc) as witnesses
+            let members = inner.all_domain_members();
+            for (sexp, _) in &members {
                 let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
+                new_subs.insert(v.clone(), sexp.clone());
                 let sub_results = find_witnesses(buffer, *body, &new_subs, inner, tense)?;
                 for mut bindings in sub_results {
-                    bindings.push((v.clone(), format!("(Const \"{}\")", entity)));
+                    bindings.push((v.clone(), sexp.clone()));
                     results.push(bindings);
                 }
             }
@@ -976,9 +996,10 @@ fn find_witnesses(
             // 2. Try SkolemFn witnesses from the registry
             let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
             for entry in &entries {
-                let combos = cartesian_product(&entities, entry.dep_count);
+                let dep_sexps: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
+                let combos = cartesian_product(&dep_sexps, entry.dep_count);
                 for combo in &combos {
-                    let witness_sexp = build_ground_skolem_fn(&entry.base_name, combo);
+                    let witness_sexp = build_skolem_fn_sexp(&entry.base_name, combo);
                     let mut new_subs = subs.clone();
                     new_subs.insert(v.clone(), witness_sexp.clone());
                     let sub_results = find_witnesses(buffer, *body, &new_subs, inner, tense)?;
@@ -1283,20 +1304,17 @@ fn check_formula_holds_traced(
             Ok((result, idx))
         }
         LogicNode::ExistsNode((v, body)) => {
-            // 1. Try known entities
-            let entities = inner.get_known_entities();
-            for entity in &entities {
+            // 1. Try all known domain members (Const + Desc)
+            let members = inner.all_domain_members();
+            for (sexp, term) in &members {
                 let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
+                new_subs.insert(v.clone(), sexp.clone());
                 let (holds, body_idx) =
                     check_formula_holds_traced(buffer, *body, &new_subs, inner, steps, tense)?;
                 if holds {
                     let idx = steps.len() as u32;
                     steps.push(ProofStep {
-                        rule: ProofRule::ExistsWitness((
-                            v.clone(),
-                            LogicalTerm::Constant(entity.clone()),
-                        )),
+                        rule: ProofRule::ExistsWitness((v.clone(), term.clone())),
                         holds: true,
                         children: vec![body_idx],
                     });
@@ -1306,9 +1324,10 @@ fn check_formula_holds_traced(
             // 2. Try SkolemFn witnesses
             let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
             for entry in &entries {
-                let combos = cartesian_product(&entities, entry.dep_count);
+                let dep_sexps: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
+                let combos = cartesian_product(&dep_sexps, entry.dep_count);
                 for combo in &combos {
-                    let witness_sexp = build_ground_skolem_fn(&entry.base_name, combo);
+                    let witness_sexp = build_skolem_fn_sexp(&entry.base_name, combo);
                     let mut new_subs = subs.clone();
                     new_subs.insert(v.clone(), witness_sexp.clone());
                     let (holds, body_idx) =
@@ -1336,8 +1355,8 @@ fn check_formula_holds_traced(
             Ok((false, idx))
         }
         LogicNode::ForAllNode((v, body)) => {
-            let entities = inner.get_known_entities();
-            if entities.is_empty() {
+            let members = inner.all_domain_members();
+            if members.is_empty() {
                 let idx = steps.len() as u32;
                 steps.push(ProofStep {
                     rule: ProofRule::ForallVacuous,
@@ -1348,24 +1367,22 @@ fn check_formula_holds_traced(
             }
             let mut child_indices = Vec::new();
             let mut entity_terms = Vec::new();
-            for entity in &entities {
+            for (sexp, term) in &members {
                 let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
+                new_subs.insert(v.clone(), sexp.clone());
                 let (holds, body_idx) =
                     check_formula_holds_traced(buffer, *body, &new_subs, inner, steps, tense)?;
                 if !holds {
                     let idx = steps.len() as u32;
                     steps.push(ProofStep {
-                        rule: ProofRule::ForallCounterexample(LogicalTerm::Constant(
-                            entity.clone(),
-                        )),
+                        rule: ProofRule::ForallCounterexample(term.clone()),
                         holds: false,
                         children: vec![body_idx],
                     });
                     return Ok((false, idx));
                 }
                 child_indices.push(body_idx);
-                entity_terms.push(LogicalTerm::Constant(entity.clone()));
+                entity_terms.push(term.clone());
             }
             let idx = steps.len() as u32;
             steps.push(ProofStep {
@@ -1376,11 +1393,11 @@ fn check_formula_holds_traced(
             Ok((true, idx))
         }
         LogicNode::CountNode((v, count, body)) => {
-            let entities = inner.get_known_entities();
+            let members = inner.all_domain_members();
             let mut satisfying = 0u32;
-            for entity in &entities {
+            for (sexp, _) in &members {
                 let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), format!("(Const \"{}\")", entity));
+                new_subs.insert(v.clone(), sexp.clone());
                 if check_formula_holds(buffer, *body, &new_subs, inner, tense)? {
                     satisfying += 1;
                 }
@@ -1638,13 +1655,15 @@ fn flatten_consequent(
     }
 }
 
-/// Note all Const terms found in the formula as known entities.
+/// Note all Const and Desc terms found in the formula as known domain members.
 fn collect_and_note_constants(buffer: &LogicBuffer, node_id: u32, inner: &mut KnowledgeBaseInner) {
     match &buffer.nodes[node_id as usize] {
         LogicNode::Predicate((_, args)) | LogicNode::ComputeNode((_, args)) => {
             for arg in args {
-                if let LogicalTerm::Constant(c) = arg {
-                    inner.note_entity(c);
+                match arg {
+                    LogicalTerm::Constant(c) => inner.note_entity(c),
+                    LogicalTerm::Description(d) => inner.note_description(d),
+                    _ => {}
                 }
             }
         }
@@ -4809,5 +4828,121 @@ mod tests {
         let facts = kb.list_facts_inner().unwrap();
         assert!(facts.is_empty());
         assert!(!query(&kb, make_query("alis", "gerku")));
+    }
+
+    // ─── C5: Description term opacity tests ──────────────────────
+
+    /// Helper: make an assertion with a Description term in x1.
+    fn make_desc_assertion(desc_name: &str, predicate: &str) -> LogicBuffer {
+        let mut nodes = Vec::new();
+        let root = pred(
+            &mut nodes,
+            predicate,
+            vec![
+                LogicalTerm::Description(desc_name.to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        LogicBuffer { nodes, roots: vec![root] }
+    }
+
+    /// Helper: make a query with a Description term in x1.
+    fn make_desc_query(desc_name: &str, predicate: &str) -> LogicBuffer {
+        make_desc_assertion(desc_name, predicate)
+    }
+
+    #[test]
+    fn test_desc_gets_indomain() {
+        // Assert a fact with Description term → Desc should be in InDomain
+        let kb = new_kb();
+        assert_buf(&kb, make_desc_assertion("gerku", "sutra"));
+        let inner = kb.inner.borrow();
+        assert!(
+            inner.known_descriptions.contains("gerku"),
+            "expected 'gerku' in known_descriptions"
+        );
+    }
+
+    #[test]
+    fn test_desc_conjunction_introduction() {
+        // Two facts about same Desc term → conjunction should be derivable
+        let kb = new_kb();
+        assert_buf(&kb, make_desc_assertion("gerku", "danlu"));
+        assert_buf(&kb, make_desc_assertion("gerku", "sutra"));
+
+        // Query And(danlu(Desc "gerku"), sutra(Desc "gerku"))
+        let mut nodes = Vec::new();
+        let p1 = pred(
+            &mut nodes,
+            "danlu",
+            vec![
+                LogicalTerm::Description("gerku".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let p2 = pred(
+            &mut nodes,
+            "sutra",
+            vec![
+                LogicalTerm::Description("gerku".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let root = and(&mut nodes, p1, p2);
+        assert!(
+            query(&kb, LogicBuffer { nodes, roots: vec![root] }),
+            "conjunction of two Desc-term facts should hold via conjunction introduction"
+        );
+    }
+
+    #[test]
+    fn test_desc_does_not_trigger_rule_without_restrictor() {
+        // Assert sutra(Desc "gerku") (but NOT gerku(Desc "gerku"))
+        // Assert rule: ro lo gerku cu danlu (∀x. gerku(x) → danlu(x))
+        // Query danlu(Desc "gerku") → should FAIL (the restrictor isn't satisfied)
+        let kb = new_kb();
+        assert_buf(&kb, make_desc_assertion("gerku", "sutra"));
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert!(
+            !query(&kb, make_desc_query("gerku", "danlu")),
+            "universal rule should NOT fire without restrictor being satisfied for Desc term"
+        );
+    }
+
+    #[test]
+    fn test_desc_triggers_rule_when_restrictor_satisfied() {
+        // Assert gerku(Desc "gerku") AND sutra(Desc "gerku")
+        // Assert rule: ro lo gerku cu danlu
+        // Query danlu(Desc "gerku") → should SUCCEED
+        let kb = new_kb();
+        assert_buf(&kb, make_desc_assertion("gerku", "gerku"));
+        assert_buf(&kb, make_desc_assertion("gerku", "sutra"));
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert!(
+            query(&kb, make_desc_query("gerku", "danlu")),
+            "universal rule should fire when restrictor IS satisfied for Desc term"
+        );
+    }
+
+    #[test]
+    fn test_desc_exists_witness() {
+        // Assert sutra(Desc "gerku") → ∃x. sutra(x) should find Desc "gerku" as witness
+        let kb = new_kb();
+        assert_buf(&kb, make_desc_assertion("gerku", "sutra"));
+
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "sutra",
+            vec![
+                LogicalTerm::Variable("x".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let root = exists(&mut nodes, "x", body);
+        assert!(
+            query(&kb, LogicBuffer { nodes, roots: vec![root] }),
+            "existential query should find Desc term as witness"
+        );
     }
 }

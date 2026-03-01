@@ -27,12 +27,16 @@ use lasso::Rodeo;
 /// The kind of quantifier introduced by a gadri description.
 #[derive(Debug, Clone)]
 enum QuantifierKind {
-    /// lo → ∃x
+    /// lo → ∃x (veridical existential, restrictor = selbri predicate)
     Existential,
-    /// ro lo → ∀x
+    /// ro lo → ∀x (veridical universal, restrictor = selbri predicate)
     Universal,
-    /// PA lo → exactly N entities satisfy
+    /// ro le → ∀x (referential universal, restrictor = opaque le_domain predicate)
+    UniversalLe,
+    /// PA lo → exactly N (veridical, restrictor = selbri predicate)
     ExactCount(u32),
+    /// PA le → exactly N (referential, restrictor = opaque le_domain predicate)
+    ExactCountLe(u32),
 }
 
 /// Tracks a quantifier introduced by a description (lo/le/ro lo/ro le/PA lo),
@@ -152,6 +156,23 @@ impl SemanticCompiler {
         }
     }
 
+    /// Build an opaque le-domain restrictor predicate: `le_domain_{name}(var)`.
+    /// This is a raw 1-ary predicate (no event decomposition) representing
+    /// the speaker's referent set for a `le` description.
+    fn build_le_domain_restrictor(
+        &mut self,
+        desc_id: u32,
+        var: lasso::Spur,
+        selbris: &[Selbri],
+    ) -> LogicalForm {
+        let head_name = self.get_selbri_head_name(desc_id, selbris);
+        let domain_name = format!("le_domain_{}", head_name);
+        LogicalForm::Predicate {
+            relation: self.interner.get_or_intern(&domain_name),
+            args: vec![LogicalTerm::Variable(var)],
+        }
+    }
+
     // ─── Sumti Resolution ────────────────────────────────────────
 
     fn resolve_sumti(
@@ -217,8 +238,8 @@ impl SemanticCompiler {
                         )
                     }
 
-                    // Universal: ro lo → ∀x, ro le → ∀x
-                    Gadri::RoLo | Gadri::RoLe => {
+                    // Universal veridical: ro lo → ∀x with veridical restrictor
+                    Gadri::RoLo => {
                         let var = self.fresh_var();
                         (
                             LogicalTerm::Variable(var),
@@ -231,8 +252,31 @@ impl SemanticCompiler {
                         )
                     }
 
-                    // le/la: non-quantified specific referent
-                    _ => {
+                    // Universal referential: ro le → ∀x with opaque le-domain restrictor
+                    Gadri::RoLe => {
+                        let var = self.fresh_var();
+                        (
+                            LogicalTerm::Variable(var),
+                            vec![QuantifierEntry {
+                                var,
+                                desc_id: *desc_id,
+                                restrictor: None,
+                                kind: QuantifierKind::UniversalLe,
+                            }],
+                        )
+                    }
+
+                    // la + selbri: treat selbri head as a proper name (Constant)
+                    Gadri::La => {
+                        let name = self.get_selbri_head_name(*desc_id, selbris);
+                        (
+                            LogicalTerm::Constant(self.interner.get_or_intern(name)),
+                            vec![],
+                        )
+                    }
+
+                    // le: referential description — opaque rigid designator (Description)
+                    Gadri::Le => {
                         let desc_str = self.get_selbri_head_name(*desc_id, selbris);
                         (
                             LogicalTerm::Description(self.interner.get_or_intern(desc_str)),
@@ -242,15 +286,19 @@ impl SemanticCompiler {
                 }
             }
 
-            Sumti::QuantifiedDescription((count, _gadri, desc_id)) => {
+            Sumti::QuantifiedDescription((count, gadri, desc_id)) => {
                 let var = self.fresh_var();
+                let kind = match gadri {
+                    Gadri::Le => QuantifierKind::ExactCountLe(*count),
+                    _ => QuantifierKind::ExactCount(*count),
+                };
                 (
                     LogicalTerm::Variable(var),
                     vec![QuantifierEntry {
                         var,
                         desc_id: *desc_id,
                         restrictor: None,
-                        kind: QuantifierKind::ExactCount(*count),
+                        kind,
                     }],
                 )
             }
@@ -681,6 +729,37 @@ impl SemanticCompiler {
                                 body: Box::new(body),
                             };
                         }
+                        QuantifierKind::UniversalLe => {
+                            // ∀x. (le_domain_P(x) → body)
+                            let le_restrictor =
+                                self.build_le_domain_restrictor(entry.desc_id, entry.var, selbris);
+                            let mut body = LogicalForm::Or(
+                                Box::new(LogicalForm::Not(Box::new(le_restrictor))),
+                                Box::new(form),
+                            );
+                            if let Some(rel_restrictor) = entry.restrictor {
+                                body = LogicalForm::Or(
+                                    Box::new(LogicalForm::Not(Box::new(rel_restrictor))),
+                                    Box::new(body),
+                                );
+                            }
+                            form = LogicalForm::ForAll(entry.var, Box::new(body));
+                        }
+                        QuantifierKind::ExactCountLe(n) => {
+                            // Count(x, n, le_domain_P(x) ∧ body)
+                            let le_restrictor =
+                                self.build_le_domain_restrictor(entry.desc_id, entry.var, selbris);
+                            let mut body =
+                                LogicalForm::And(Box::new(le_restrictor), Box::new(form));
+                            if let Some(rel_restrictor) = entry.restrictor {
+                                body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
+                            }
+                            form = LogicalForm::Count {
+                                var: entry.var,
+                                count: n,
+                                body: Box::new(body),
+                            };
+                        }
                     }
                 }
 
@@ -955,6 +1034,41 @@ impl SemanticCompiler {
                 QuantifierKind::ExactCount(n) => {
                     // Count(x, n, restrictor ∧ body)
                     let mut body = LogicalForm::And(Box::new(desc_restrictor), Box::new(final_form));
+
+                    if let Some(rel_restrictor) = entry.restrictor {
+                        body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
+                    }
+
+                    final_form = LogicalForm::Count {
+                        var: entry.var,
+                        count: n,
+                        body: Box::new(body),
+                    };
+                }
+                QuantifierKind::UniversalLe => {
+                    // ∀x. (le_domain_P(x) → body)
+                    let le_restrictor =
+                        self.build_le_domain_restrictor(entry.desc_id, entry.var, selbris);
+                    let mut body = LogicalForm::Or(
+                        Box::new(LogicalForm::Not(Box::new(le_restrictor))),
+                        Box::new(final_form),
+                    );
+
+                    if let Some(rel_restrictor) = entry.restrictor {
+                        body = LogicalForm::Or(
+                            Box::new(LogicalForm::Not(Box::new(rel_restrictor))),
+                            Box::new(body),
+                        );
+                    }
+
+                    final_form = LogicalForm::ForAll(entry.var, Box::new(body));
+                }
+                QuantifierKind::ExactCountLe(n) => {
+                    // Count(x, n, le_domain_P(x) ∧ body)
+                    let le_restrictor =
+                        self.build_le_domain_restrictor(entry.desc_id, entry.var, selbris);
+                    let mut body =
+                        LogicalForm::And(Box::new(le_restrictor), Box::new(final_form));
 
                     if let Some(rel_restrictor) = entry.restrictor {
                         body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
@@ -3209,5 +3323,161 @@ mod tests {
             assert!(matches!(role_args[1], LogicalTerm::Unspecified),
                 "expected Unspecified in {}, got {:?}", role, role_args[1]);
         }
+    }
+
+    // ─── C5: Description term opacity tests ──────────────────────
+
+    #[test]
+    fn test_la_gadri_compiles_to_constant() {
+        // la gerku cu barda → Constant("gerku") in x1 role predicate
+        let selbris = vec![
+            Selbri::Root("gerku".into()),
+            Selbri::Root("barda".into()),
+        ];
+        let sumtis = vec![Sumti::Description((Gadri::La, 0))];
+        let bridi = Bridi {
+            relation: 1,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let args = get_pred_args(&form, "barda_x1", &compiler)
+            .expect("expected barda_x1 role predicate");
+        // x1 arg (index 1 after event) should be Constant("gerku")
+        match &args[1] {
+            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "gerku"),
+            other => panic!("expected Constant(gerku), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_le_description_stays_description() {
+        // le gerku cu barda → Description("gerku") in x1 role predicate
+        let selbris = vec![
+            Selbri::Root("gerku".into()),
+            Selbri::Root("barda".into()),
+        ];
+        let sumtis = vec![Sumti::Description((Gadri::Le, 0))];
+        let bridi = Bridi {
+            relation: 1,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let args = get_pred_args(&form, "barda_x1", &compiler)
+            .expect("expected barda_x1 role predicate");
+        match &args[1] {
+            LogicalTerm::Description(d) => assert_eq!(resolve(&compiler, d), "gerku"),
+            other => panic!("expected Description(gerku), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ro_le_uses_opaque_domain_restrictor() {
+        // ro le gerku cu sutra → ForAll(_v0, Or(Not(le_domain_gerku(_v0)), ...))
+        let selbris = vec![
+            Selbri::Root("gerku".into()),
+            Selbri::Root("sutra".into()),
+        ];
+        let sumtis = vec![Sumti::Description((Gadri::RoLe, 0))];
+        let bridi = Bridi {
+            relation: 1,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        // Must be ForAll at the top
+        assert!(matches!(&form, LogicalForm::ForAll(_, _)),
+            "expected ForAll, got {:?}", form);
+        // The restrictor should be le_domain_gerku (not gerku)
+        assert!(has_pred(&form, "le_domain_gerku", &compiler),
+            "expected opaque le_domain_gerku restrictor");
+        assert!(!has_pred(&form, "gerku", &compiler),
+            "veridical gerku should NOT appear as restrictor for ro le");
+    }
+
+    #[test]
+    fn test_ro_lo_still_veridical() {
+        // ro lo gerku cu sutra → ForAll with veridical gerku restrictor
+        let selbris = vec![
+            Selbri::Root("gerku".into()),
+            Selbri::Root("sutra".into()),
+        ];
+        let sumtis = vec![Sumti::Description((Gadri::RoLo, 0))];
+        let bridi = Bridi {
+            relation: 1,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(matches!(&form, LogicalForm::ForAll(_, _)),
+            "expected ForAll, got {:?}", form);
+        // The restrictor should use veridical gerku (event-decomposed)
+        assert!(has_pred(&form, "gerku", &compiler),
+            "expected veridical gerku restrictor for ro lo");
+        assert!(!has_pred(&form, "le_domain_gerku", &compiler),
+            "le_domain_gerku should NOT appear for ro lo");
+    }
+
+    #[test]
+    fn test_pa_le_uses_opaque_domain_restrictor() {
+        // re le gerku cu sutra → Count with le_domain_gerku restrictor
+        let selbris = vec![
+            Selbri::Root("gerku".into()),
+            Selbri::Root("sutra".into()),
+        ];
+        let sumtis = vec![Sumti::QuantifiedDescription((2, Gadri::Le, 0))];
+        let bridi = Bridi {
+            relation: 1,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(matches!(&form, LogicalForm::Count { count: 2, .. }),
+            "expected Count(2), got {:?}", form);
+        assert!(has_pred(&form, "le_domain_gerku", &compiler),
+            "expected opaque le_domain_gerku restrictor for PA le");
+        assert!(!has_pred(&form, "gerku", &compiler),
+            "veridical gerku should NOT appear for PA le");
+    }
+
+    #[test]
+    fn test_pa_lo_still_veridical() {
+        // re lo gerku cu sutra → Count with veridical gerku restrictor
+        let selbris = vec![
+            Selbri::Root("gerku".into()),
+            Selbri::Root("sutra".into()),
+        ];
+        let sumtis = vec![Sumti::QuantifiedDescription((2, Gadri::Lo, 0))];
+        let bridi = Bridi {
+            relation: 1,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(matches!(&form, LogicalForm::Count { count: 2, .. }),
+            "expected Count(2), got {:?}", form);
+        assert!(has_pred(&form, "gerku", &compiler),
+            "expected veridical gerku restrictor for PA lo");
+        assert!(!has_pred(&form, "le_domain_gerku", &compiler),
+            "le_domain_gerku should NOT appear for PA lo");
     }
 }
