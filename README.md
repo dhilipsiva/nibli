@@ -119,6 +119,7 @@ just test
 - Guarded conjunction introduction: `And(A, B)` derived when both A, B are atomic predicates sharing an `InDomain` entity (prevents combinatorial explosion)
 - Typed WIT error variants: shared `nibli-error` variant (`syntax`/`semantic`/`reasoning`/`backend`) across all interfaces; syntax errors carry line:column positions; structured REPL error output
 - WASM fuel limits: per-command execution budget prevents unbounded computation; configurable via `NIBLI_FUEL` env var or `:fuel` REPL command
+- Configurable saturation run bound: egglog iteration limit tunable via `NIBLI_RUN_BOUND` env var (default 100) or `:saturate` REPL command; diagnostic warnings replace silent error swallowing
 
 ## Compute Backend
 

@@ -520,6 +520,14 @@ impl GuestSession for Session {
     fn list_facts(&self) -> Result<Vec<FactSummary>, NibliError> {
         self.kb.list_facts()
     }
+
+    fn set_run_bound(&self, n: u32) {
+        self.kb.set_run_bound(n);
+    }
+
+    fn get_run_bound(&self) -> u32 {
+        self.kb.get_run_bound()
+    }
 }
 
 // ─── S-expression reconstruction ───

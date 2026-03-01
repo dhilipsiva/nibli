@@ -412,6 +412,10 @@ interface reasoning {
         retract-fact: func(id: fact-id) -> result<_, nibli-error>;
         /// List all active (non-retracted) facts in the KB.
         list-facts: func() -> result<list<fact-summary>, nibli-error>;
+        /// Set the egglog saturation iteration bound (default: 100).
+        set-run-bound: func(n: u32);
+        /// Get the current egglog saturation iteration bound.
+        get-run-bound: func() -> u32;
     }
 }
 
@@ -463,6 +467,10 @@ interface engine {
         retract-fact: func(id: fact-id) -> result<_, nibli-error>;
         /// List all active (non-retracted) facts.
         list-facts: func() -> result<list<fact-summary>, nibli-error>;
+        /// Set the egglog saturation iteration bound (default: 100).
+        set-run-bound: func(n: u32);
+        /// Get the current egglog saturation iteration bound.
+        get-run-bound: func() -> u32;
     }
 }
 

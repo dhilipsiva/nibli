@@ -87,6 +87,9 @@ struct KnowledgeBaseInner {
     fact_registry: Vec<FactRecord>,
     /// Suppresses diagnostic prints during rebuild replay.
     rebuilding: bool,
+    /// Maximum egglog saturation iterations per `(run N)` call. Default 100.
+    /// This is a configuration parameter preserved across reset/rebuild.
+    run_bound: u32,
 }
 
 impl KnowledgeBaseInner {
@@ -103,6 +106,7 @@ impl KnowledgeBaseInner {
             fact_counter: 0,
             fact_registry: Vec::new(),
             rebuilding: false,
+            run_bound: 100,
         }
     }
 
@@ -145,6 +149,17 @@ impl KnowledgeBaseInner {
         if is_new {
             let cmd = format!("(InDomain (Desc \"{}\"))", name);
             self.egraph.parse_and_run_program(None, &cmd).ok();
+        }
+    }
+
+    /// Run egglog equality saturation up to `run_bound` iterations.
+    /// Logs a warning on failure (unless suppressed during rebuild replay).
+    fn run_saturation(&mut self) {
+        let cmd = format!("(run {})", self.run_bound);
+        if let Err(e) = self.egraph.parse_and_run_program(None, &cmd) {
+            if !self.rebuilding {
+                eprintln!("[Saturate] Warning: {}", e);
+            }
         }
     }
 
@@ -459,7 +474,7 @@ fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) -> Res
         generate_count_extra_witnesses(logic, root_id, &skolem_subs, inner);
 
         // Run rules to fixpoint
-        inner.egraph.parse_and_run_program(None, "(run 100)").ok();
+        inner.run_saturation();
     }
 
     Ok(())
@@ -542,11 +557,19 @@ impl KnowledgeBase {
             .collect())
     }
 
+    fn set_run_bound_inner(&self, n: u32) {
+        self.inner.borrow_mut().run_bound = n;
+    }
+
+    fn get_run_bound_inner(&self) -> u32 {
+        self.inner.borrow().run_bound
+    }
+
     /// Check whether all root formulas in the logic buffer are entailed by the KB.
-    /// Runs egglog saturation (up to 100 iterations) before checking.
+    /// Runs egglog saturation (up to `run_bound` iterations) before checking.
     fn query_entailment_inner(&self, logic: LogicBuffer) -> Result<bool, String> {
         let mut inner = self.inner.borrow_mut();
-        inner.egraph.parse_and_run_program(None, "(run 100)").ok();
+        inner.run_saturation();
         for &root_id in &logic.roots {
             let subs = HashMap::new();
             if !check_formula_holds(&logic, root_id, &subs, &mut inner, None)? {
@@ -560,7 +583,7 @@ impl KnowledgeBase {
     /// Returns one `Vec<WitnessBinding>` per satisfying assignment.
     fn query_find_inner(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, String> {
         let mut inner = self.inner.borrow_mut();
-        inner.egraph.parse_and_run_program(None, "(run 100)").ok();
+        inner.run_saturation();
         let mut result_sets: Option<Vec<Vec<(String, String)>>> = None;
         for &root_id in &logic.roots {
             let subs = HashMap::new();
@@ -595,7 +618,7 @@ impl KnowledgeBase {
         logic: LogicBuffer,
     ) -> Result<(bool, ProofTrace), String> {
         let mut inner = self.inner.borrow_mut();
-        inner.egraph.parse_and_run_program(None, "(run 100)").ok();
+        inner.run_saturation();
         let mut steps: Vec<ProofStep> = Vec::new();
         let mut root_children: Vec<u32> = Vec::new();
         let mut all_hold = true;
@@ -664,6 +687,14 @@ impl GuestKnowledgeBase for KnowledgeBase {
 
     fn list_facts(&self) -> Result<Vec<FactSummary>, NibliError> {
         self.list_facts_inner().map_err(NibliError::Reasoning)
+    }
+
+    fn set_run_bound(&self, n: u32) {
+        self.set_run_bound_inner(n);
+    }
+
+    fn get_run_bound(&self) -> u32 {
+        self.get_run_bound_inner()
     }
 }
 
@@ -941,7 +972,11 @@ fn check_formula_holds(
                     // Ingest ground fact into KB for future reasoning
                     if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
                         let cmd = format!("(IsTrue {})", sexp);
-                        inner.egraph.parse_and_run_program(None, &cmd).ok();
+                        if let Err(e) = inner.egraph.parse_and_run_program(None, &cmd) {
+                            if !inner.rebuilding {
+                                eprintln!("[Ingest] Warning: {}", e);
+                            }
+                        }
                     }
                 }
                 return Ok(result);
@@ -952,7 +987,11 @@ fn check_formula_holds(
                     // Ingest ground fact into KB for future reasoning
                     if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
                         let cmd = format!("(IsTrue {})", sexp);
-                        inner.egraph.parse_and_run_program(None, &cmd).ok();
+                        if let Err(e) = inner.egraph.parse_and_run_program(None, &cmd) {
+                            if !inner.rebuilding {
+                                eprintln!("[Ingest] Warning: {}", e);
+                            }
+                        }
                     }
                 }
                 return Ok(result);
@@ -1481,7 +1520,11 @@ fn check_formula_holds_traced(
                 if result {
                     if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
                         let cmd = format!("(IsTrue {})", sexp);
-                        inner.egraph.parse_and_run_program(None, &cmd).ok();
+                        if let Err(e) = inner.egraph.parse_and_run_program(None, &cmd) {
+                            if !inner.rebuilding {
+                                eprintln!("[Ingest] Warning: {}", e);
+                            }
+                        }
                     }
                 }
                 let idx = steps.len() as u32;
@@ -1497,7 +1540,11 @@ fn check_formula_holds_traced(
                 if result {
                     if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
                         let cmd = format!("(IsTrue {})", sexp);
-                        inner.egraph.parse_and_run_program(None, &cmd).ok();
+                        if let Err(e) = inner.egraph.parse_and_run_program(None, &cmd) {
+                            if !inner.rebuilding {
+                                eprintln!("[Ingest] Warning: {}", e);
+                            }
+                        }
                     }
                 }
                 let idx = steps.len() as u32;
@@ -1982,9 +2029,13 @@ fn compile_forall_to_rule(
                     // Record xorlo presupposition as asserted for provenance
                     inner.asserted_sexps.insert(presup.clone());
                     let cmd = format!("(IsTrue {})", presup);
-                    inner.egraph.parse_and_run_program(None, &cmd).ok();
+                    if let Err(e) = inner.egraph.parse_and_run_program(None, &cmd) {
+                        if !inner.rebuilding {
+                            eprintln!("[Xorlo] Warning: {}", e);
+                        }
+                    }
                 }
-                inner.egraph.parse_and_run_program(None, "(run 100)").ok();
+                inner.run_saturation();
 
                 // ── Temporal lifting: compile Past/Present/Future variants ──
                 compile_temporal_lifted_rules(inner, &bare_condition_sexps, &bare_conclusion_sexps, &pattern_var_names)?;
@@ -5050,5 +5101,55 @@ mod tests {
             query(&kb, LogicBuffer { nodes, roots: vec![root] }),
             "existential query should find Desc term as witness"
         );
+    }
+
+    // ─── Run Bound / Saturation Tests ────────────────────────────────
+
+    #[test]
+    fn test_run_bound_default() {
+        let kb = new_kb();
+        assert_eq!(kb.get_run_bound_inner(), 100);
+    }
+
+    #[test]
+    fn test_run_bound_configurable() {
+        let kb = new_kb();
+        kb.set_run_bound_inner(5);
+        assert_eq!(kb.get_run_bound_inner(), 5);
+        kb.set_run_bound_inner(200);
+        assert_eq!(kb.get_run_bound_inner(), 200);
+    }
+
+    #[test]
+    fn test_run_bound_preserved_across_reset() {
+        let kb = new_kb();
+        kb.set_run_bound_inner(42);
+        kb.inner.borrow_mut().reset();
+        assert_eq!(
+            kb.get_run_bound_inner(),
+            42,
+            "run_bound should survive reset (it's config, not derived state)"
+        );
+    }
+
+    #[test]
+    fn test_run_saturation_helper() {
+        // Assert a fact and a rule, then verify run_saturation drives derivation
+        let kb = new_kb();
+        // Assert: gerku(alis)
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+
+        // Assert: ∀x. ¬gerku(x) ∨ danlu(x) (i.e., gerku → danlu)
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+
+        // Query: danlu(alis) — should be derived via saturation
+        assert!(
+            query(&kb, make_query("alis", "danlu")),
+            "saturation should derive danlu(alis) from gerku(alis) and universal rule"
+        );
+
+        // Now set run_bound to 0 and verify it's stored
+        kb.set_run_bound_inner(0);
+        assert_eq!(kb.get_run_bound_inner(), 0);
     }
 }
