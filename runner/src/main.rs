@@ -242,6 +242,7 @@ fn format_rule(rule: &ProofRule, result: bool) -> String {
         ProofRule::Derived((label, sexp)) => {
             format!("Derived ({}): {} → {}", label, sexp, tag)
         }
+        ProofRule::ProofRef(sexp) => format!("(proved above): {} → {}", sexp, tag),
     }
 }
 

@@ -316,6 +316,9 @@ interface logic-types {
         /// Derived via universal rule saturation. Payload: (rule-label, conclusion-sexp).
         /// Children: proof traces of each premise that triggered the rule.
         derived(tuple<string, string>),
+        /// Reference to an already-proved fact. Payload: sexp that was proved.
+        /// No children — the full proof was shown at its first occurrence.
+        proof-ref(string),
     }
 
     /// A single step in a proof trace.

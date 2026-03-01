@@ -620,12 +620,13 @@ impl KnowledgeBase {
         let mut inner = self.inner.borrow_mut();
         inner.run_saturation();
         let mut steps: Vec<ProofStep> = Vec::new();
+        let mut memo: HashMap<String, u32> = HashMap::new();
         let mut root_children: Vec<u32> = Vec::new();
         let mut all_hold = true;
         for &root_id in &logic.roots {
             let subs = HashMap::new();
             let (holds, step_idx) =
-                check_formula_holds_traced(&logic, root_id, &subs, &mut inner, &mut steps, None)?;
+                check_formula_holds_traced(&logic, root_id, &subs, &mut inner, &mut steps, None, &mut memo)?;
             root_children.push(step_idx);
             if !holds {
                 all_hold = false;
@@ -1115,6 +1116,7 @@ fn try_backward_chain_traced(
     inner: &mut KnowledgeBaseInner,
     steps: &mut Vec<ProofStep>,
     depth: usize,
+    memo: &mut HashMap<String, u32>,
 ) -> Option<u32> {
     // Snapshot rules to avoid borrow conflict with mutable egglog access
     let rules: Vec<UniversalRuleRecord> = inner.universal_rules.clone();
@@ -1225,7 +1227,7 @@ fn try_backward_chain_traced(
                 let mut child_indices = Vec::new();
                 for cond_sexp in &condition_sexps {
                     let child_idx =
-                        trace_predicate_provenance(cond_sexp, inner, steps, depth + 1);
+                        trace_predicate_provenance(cond_sexp, inner, steps, depth + 1, memo);
                     child_indices.push(child_idx);
                 }
 
@@ -1244,13 +1246,26 @@ fn try_backward_chain_traced(
 }
 
 /// Trace the provenance of a predicate fact known to be in egglog.
-/// Returns the proof step index.
+/// Returns the proof step index. Uses `memo` to avoid re-deriving
+/// the same sub-proof (turns the proof tree into a DAG).
 fn trace_predicate_provenance(
     sexp: &str,
     inner: &mut KnowledgeBaseInner,
     steps: &mut Vec<ProofStep>,
     depth: usize,
+    memo: &mut HashMap<String, u32>,
 ) -> u32 {
+    // Check memo — if already proved, emit lightweight reference
+    if memo.contains_key(sexp) {
+        let idx = steps.len() as u32;
+        steps.push(ProofStep {
+            rule: ProofRule::ProofRef(sexp.to_string()),
+            holds: true,
+            children: vec![],
+        });
+        return idx;
+    }
+
     // 1. Was this fact directly asserted?
     if inner.asserted_sexps.contains(sexp) {
         let idx = steps.len() as u32;
@@ -1259,12 +1274,14 @@ fn trace_predicate_provenance(
             holds: true,
             children: vec![],
         });
+        memo.insert(sexp.to_string(), idx);
         return idx;
     }
 
     // 2. Try backward-chaining through universal rules
     if depth < MAX_BACKWARD_CHAIN_DEPTH {
-        if let Some(idx) = try_backward_chain_traced(sexp, inner, steps, depth) {
+        if let Some(idx) = try_backward_chain_traced(sexp, inner, steps, depth, memo) {
+            memo.insert(sexp.to_string(), idx);
             return idx;
         }
     }
@@ -1276,12 +1293,13 @@ fn trace_predicate_provenance(
         holds: true,
         children: vec![],
     });
+    memo.insert(sexp.to_string(), idx);
     idx
 }
 
 /// Like `check_formula_holds` but builds a proof trace as it recurses.
 /// Returns (result, step_index) where step_index is the index of this
-/// step in the `steps` Vec.
+/// step in the `steps` Vec. Uses `memo` to deduplicate predicate proofs.
 fn check_formula_holds_traced(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -1289,11 +1307,12 @@ fn check_formula_holds_traced(
     inner: &mut KnowledgeBaseInner,
     steps: &mut Vec<ProofStep>,
     tense: Option<&str>,
+    memo: &mut HashMap<String, u32>,
 ) -> Result<(bool, u32), String> {
     match &buffer.nodes[node_id as usize] {
         LogicNode::AndNode((l, r)) => {
-            let (l_result, l_idx) = check_formula_holds_traced(buffer, *l, subs, inner, steps, tense)?;
-            let (r_result, r_idx) = check_formula_holds_traced(buffer, *r, subs, inner, steps, tense)?;
+            let (l_result, l_idx) = check_formula_holds_traced(buffer, *l, subs, inner, steps, tense, memo)?;
+            let (r_result, r_idx) = check_formula_holds_traced(buffer, *r, subs, inner, steps, tense, memo)?;
             let result = l_result && r_result;
             let idx = steps.len() as u32;
             steps.push(ProofStep {
@@ -1321,7 +1340,7 @@ fn check_formula_holds_traced(
                 Err(_) => {}
             }
             // Fallback: try left then right
-            let (l_result, l_idx) = check_formula_holds_traced(buffer, *l, subs, inner, steps, tense)?;
+            let (l_result, l_idx) = check_formula_holds_traced(buffer, *l, subs, inner, steps, tense, memo)?;
             if l_result {
                 let idx = steps.len() as u32;
                 steps.push(ProofStep {
@@ -1331,7 +1350,7 @@ fn check_formula_holds_traced(
                 });
                 return Ok((true, idx));
             }
-            let (r_result, r_idx) = check_formula_holds_traced(buffer, *r, subs, inner, steps, tense)?;
+            let (r_result, r_idx) = check_formula_holds_traced(buffer, *r, subs, inner, steps, tense, memo)?;
             if r_result {
                 let idx = steps.len() as u32;
                 steps.push(ProofStep {
@@ -1352,7 +1371,7 @@ fn check_formula_holds_traced(
         }
         LogicNode::NotNode(inner_node) => {
             let (inner_result, inner_idx) =
-                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, tense)?;
+                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, tense, memo)?;
             let result = !inner_result;
             let idx = steps.len() as u32;
             steps.push(ProofStep {
@@ -1365,7 +1384,7 @@ fn check_formula_holds_traced(
         // Temporal nodes: set tense context for inner formula
         LogicNode::PastNode(inner_node) => {
             let (result, child_idx) =
-                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, Some("Past"))?;
+                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, Some("Past"), memo)?;
             let idx = steps.len() as u32;
             steps.push(ProofStep {
                 rule: ProofRule::ModalPassthrough("past".to_string()),
@@ -1376,7 +1395,7 @@ fn check_formula_holds_traced(
         }
         LogicNode::PresentNode(inner_node) => {
             let (result, child_idx) =
-                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, Some("Present"))?;
+                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, Some("Present"), memo)?;
             let idx = steps.len() as u32;
             steps.push(ProofStep {
                 rule: ProofRule::ModalPassthrough("present".to_string()),
@@ -1387,7 +1406,7 @@ fn check_formula_holds_traced(
         }
         LogicNode::FutureNode(inner_node) => {
             let (result, child_idx) =
-                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, Some("Future"))?;
+                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, Some("Future"), memo)?;
             let idx = steps.len() as u32;
             steps.push(ProofStep {
                 rule: ProofRule::ModalPassthrough("future".to_string()),
@@ -1399,7 +1418,7 @@ fn check_formula_holds_traced(
         // Deontic nodes: remain transparent, pass through current tense
         LogicNode::ObligatoryNode(inner_node) => {
             let (result, child_idx) =
-                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, tense)?;
+                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, tense, memo)?;
             let idx = steps.len() as u32;
             steps.push(ProofStep {
                 rule: ProofRule::ModalPassthrough("obligatory".to_string()),
@@ -1410,7 +1429,7 @@ fn check_formula_holds_traced(
         }
         LogicNode::PermittedNode(inner_node) => {
             let (result, child_idx) =
-                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, tense)?;
+                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, tense, memo)?;
             let idx = steps.len() as u32;
             steps.push(ProofStep {
                 rule: ProofRule::ModalPassthrough("permitted".to_string()),
@@ -1426,7 +1445,7 @@ fn check_formula_holds_traced(
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), sexp.clone());
                 let (holds, body_idx) =
-                    check_formula_holds_traced(buffer, *body, &new_subs, inner, steps, tense)?;
+                    check_formula_holds_traced(buffer, *body, &new_subs, inner, steps, tense, memo)?;
                 if holds {
                     let idx = steps.len() as u32;
                     steps.push(ProofStep {
@@ -1447,7 +1466,7 @@ fn check_formula_holds_traced(
                     let mut new_subs = subs.clone();
                     new_subs.insert(v.clone(), witness_sexp.clone());
                     let (holds, body_idx) =
-                        check_formula_holds_traced(buffer, *body, &new_subs, inner, steps, tense)?;
+                        check_formula_holds_traced(buffer, *body, &new_subs, inner, steps, tense, memo)?;
                     if holds {
                         let idx = steps.len() as u32;
                         steps.push(ProofStep {
@@ -1487,7 +1506,7 @@ fn check_formula_holds_traced(
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), sexp.clone());
                 let (holds, body_idx) =
-                    check_formula_holds_traced(buffer, *body, &new_subs, inner, steps, tense)?;
+                    check_formula_holds_traced(buffer, *body, &new_subs, inner, steps, tense, memo)?;
                 if !holds {
                     let idx = steps.len() as u32;
                     steps.push(ProofStep {
@@ -1561,7 +1580,7 @@ fn check_formula_holds_traced(
             match inner.egraph.parse_and_run_program(None, &command) {
                 Ok(_) => {
                     // Trace provenance: asserted → derived → fallback
-                    let idx = trace_predicate_provenance(&wrapped, inner, steps, 0);
+                    let idx = trace_predicate_provenance(&wrapped, inner, steps, 0, memo);
                     Ok((true, idx))
                 }
                 Err(e) => {
@@ -5818,6 +5837,111 @@ mod tests {
         assert!(
             has_modal,
             "proof trace should contain a ModalPassthrough(past) step"
+        );
+    }
+
+    // ---- Proof trace memoization tests ----
+
+    #[test]
+    fn test_proof_memo_deduplication() {
+        // Multi-hop event-decomposed trace should use ProofRef for repeated sub-proofs.
+        // Without memoization: mlatu base facts appear 12× in a 2-hop 3-role chain.
+        // With memoization: repeated sexps get ProofRef nodes instead.
+        let kb = new_kb();
+        assert_buf(&kb, make_temporal_event_assertion("bob", "mlatu", present));
+        assert_buf(&kb, make_event_universal("mlatu", "danlu"));
+        assert_buf(&kb, make_event_universal("danlu", "jmive"));
+
+        let (holds, trace) = kb
+            .query_entailment_with_proof_inner(make_temporal_event_query("bob", "jmive", present))
+            .unwrap();
+        assert!(holds, "Present(jmive(bob)) should hold");
+
+        // Count ProofRef steps — should be present due to repeated condition proofs
+        let proof_ref_count = trace
+            .steps
+            .iter()
+            .filter(|step| matches!(&step.rule, ProofRule::ProofRef(_)))
+            .count();
+        assert!(
+            proof_ref_count > 0,
+            "2-hop event-decomposed trace should have ProofRef nodes for deduplicated sub-proofs, got {}",
+            proof_ref_count
+        );
+
+        // With memoization, condition proofs that repeat across different
+        // conclusion derivations get ProofRef instead of full re-expansion.
+        // The ExistsNode witness search also generates overhead (failed candidates),
+        // but the key improvement is visible in the successful derivation path.
+        assert!(
+            proof_ref_count >= 3,
+            "2-hop event trace should have at least 3 ProofRef nodes (deduplicated conditions), got {}",
+            proof_ref_count
+        );
+    }
+
+    #[test]
+    fn test_proof_memo_correctness() {
+        // Memoized trace still reports the correct result and contains proper Derived + Asserted steps.
+        let kb = new_kb();
+        assert_buf(&kb, make_temporal_event_assertion("alis", "gerku", past));
+        assert_buf(&kb, make_event_universal("gerku", "danlu"));
+
+        let (holds, trace) = kb
+            .query_entailment_with_proof_inner(make_temporal_event_query("alis", "danlu", past))
+            .unwrap();
+        assert!(holds, "Past(danlu(alis)) should hold");
+
+        // Should still have Derived steps from the rule application
+        let derived_count = trace
+            .steps
+            .iter()
+            .filter(|step| matches!(&step.rule, ProofRule::Derived(_)))
+            .count();
+        assert!(
+            derived_count >= 1,
+            "should have at least 1 Derived step from gerku→danlu rule, got {}",
+            derived_count
+        );
+
+        // First occurrence of base facts should be Asserted or egglog PredicateCheck (not ProofRef)
+        let has_asserted_or_egglog = trace.steps.iter().any(|step| {
+            matches!(&step.rule, ProofRule::Asserted(_))
+                || matches!(&step.rule, ProofRule::PredicateCheck((m, _)) if m == "egglog")
+        });
+        assert!(
+            has_asserted_or_egglog,
+            "first occurrence of base facts should be Asserted or egglog, not ProofRef"
+        );
+    }
+
+    #[test]
+    fn test_proof_memo_single_hop_no_unnecessary_refs() {
+        // Single-hop with one entity: each condition sexp is unique,
+        // so no ProofRef should be needed.
+        let kb = new_kb();
+        assert_buf(&kb, make_temporal_event_assertion("alis", "gerku", past));
+        assert_buf(&kb, make_event_universal("gerku", "danlu"));
+
+        let (holds, trace) = kb
+            .query_entailment_with_proof_inner(make_temporal_event_query("alis", "danlu", past))
+            .unwrap();
+        assert!(holds, "Past(danlu(alis)) should hold");
+
+        // In a single-hop scenario, conditions are gerku(e), gerku_x1(e, alis), gerku_x2(e, zo'e)
+        // These are all unique sexps, so no ProofRef should be needed for condition proofs.
+        // ProofRef may still appear if the same fact is checked multiple times through
+        // different paths, but the count should be very low.
+        let proof_ref_count = trace
+            .steps
+            .iter()
+            .filter(|step| matches!(&step.rule, ProofRule::ProofRef(_)))
+            .count();
+        // Allow a small number — the point is it's not the cubic blowup
+        assert!(
+            proof_ref_count <= 3,
+            "single-hop trace should have very few ProofRef nodes (unique conditions), got {}",
+            proof_ref_count
         );
     }
 }
