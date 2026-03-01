@@ -95,7 +95,7 @@ Before every commit, always:
 
 ## Current Status
 
-Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator) + C2 (non-monotonic reasoning / belief revision) + C3 (temporal reasoning in e-graph) + C4 (event semantics — Neo-Davidsonian) + C5 (description term opacity — `le` vs `lo`).
+Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator) + C2 (non-monotonic reasoning / belief revision) + C3 (temporal reasoning in e-graph) + C4 (event semantics — Neo-Davidsonian) + C5 (description term opacity — `le` vs `lo`) + SkolemFn multi-dependency.
 
 **Implemented features:**
 - Lexer + recursive-descent parser (gismu, cmavo, cmevla, lujvo)
@@ -110,7 +110,7 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - Quoted literals (lu...li'u), number sumti (li + PA)
 - Skolemization (independent + dependent under ∀ via SkolemFn)
 - All universals compile to native egglog rules with O(K) hash-join matching + xorlo presupposition Skolems (restrictor domain guaranteed non-empty)
-- SkolemFn constructor for dependent Skolems (∀x. P(x) → ∃y. R(x,y))
+- SkolemFn constructor for dependent Skolems with multi-dependency support: single dep `(SkolemFn "sk_N" dep)`, multi-dep via `DepPair` nesting `(SkolemFn "sk_N" (DepPair dep0 dep1))` — handles `∀x.∀y. → ∃z.` patterns
 - egglog e-graph reasoning with structural rewrites + inference rules
 - Count quantifier (exactly N) for numeric descriptions
 - da/de/di existential quantifier closure (bare logic variables now properly wrapped in ∃)
@@ -149,4 +149,4 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 
 - Description term opacity (`le` vs `lo`): `la` gadri now compiles to `Constant` (like proper names), `le` stays as opaque `Description` rigid designator; `Description` terms now get `InDomain` membership in the egglog e-graph, enabling conjunction introduction and universal rule participation; `ro le` uses opaque `le_domain_{name}` restrictor (distinct from veridical `gerku` restrictor of `ro lo`); `PA le` similarly uses opaque domain restrictor; `known_descriptions` tracking in reasoning engine separate from `known_entities`; all three query functions (entailment check, proof trace, witness extraction) enumerate both `Const` and `Desc` domain members; `QuantifierKind::UniversalLe` and `ExactCountLe` variants preserve gadri distinction through quantifier closure
 
-**Next up:** C6 (Module / namespace system)
+**Next up:** See `todo.md` for deferred items (async compute backend, e-graph cycle detection)
