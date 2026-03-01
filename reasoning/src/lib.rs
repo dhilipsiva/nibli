@@ -1121,8 +1121,75 @@ fn try_backward_chain_traced(
 
     for rule in &rules {
         for conclusion_template in &rule.conclusion_templates {
-            if let Some(bindings) = sexp_match(conclusion_template, sexp, &rule.pattern_var_names)
+            if let Some(mut bindings) = sexp_match(conclusion_template, sexp, &rule.pattern_var_names)
             {
+                // Resolve unbound event pattern variables (ev__* vars that appear
+                // in conditions but not in conclusions, so weren't bound by sexp_match).
+                let unbound_event_vars: Vec<String> = rule
+                    .pattern_var_names
+                    .iter()
+                    .filter(|pv| pv.starts_with("ev__") && !bindings.contains_key(pv.as_str()))
+                    .cloned()
+                    .collect();
+
+                if !unbound_event_vars.is_empty() {
+                    // Build candidate witness list: domain members + SkolemFn witnesses
+                    let members = inner.all_domain_members();
+                    let member_sexps: Vec<String> =
+                        members.iter().map(|(s, _)| s.clone()).collect();
+                    let mut candidates: Vec<String> = member_sexps.clone();
+                    let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
+                    for entry in &entries {
+                        let combos = cartesian_product(&member_sexps, entry.dep_count);
+                        for combo in &combos {
+                            candidates.push(build_skolem_fn_sexp(&entry.base_name, combo));
+                        }
+                    }
+
+                    // Try to find event bindings that make all conditions hold
+                    let mut found = false;
+                    if unbound_event_vars.len() == 1 {
+                        let ev_var = &unbound_event_vars[0];
+                        for candidate in &candidates {
+                            bindings.insert(ev_var.clone(), candidate.clone());
+                            let all_hold = rule.condition_templates.iter().all(|ct| {
+                                let cs = sexp_substitute(ct, &bindings);
+                                let cmd = format!("(check (IsTrue {}))", cs);
+                                inner.egraph.parse_and_run_program(None, &cmd).is_ok()
+                            });
+                            if all_hold {
+                                found = true;
+                                break;
+                            }
+                            bindings.remove(ev_var.as_str());
+                        }
+                    } else {
+                        // Multiple unbound event vars: try cartesian product
+                        let combos =
+                            cartesian_product(&candidates, unbound_event_vars.len());
+                        for combo in &combos {
+                            for (i, ev_var) in unbound_event_vars.iter().enumerate() {
+                                bindings.insert(ev_var.clone(), combo[i].clone());
+                            }
+                            let all_hold = rule.condition_templates.iter().all(|ct| {
+                                let cs = sexp_substitute(ct, &bindings);
+                                let cmd = format!("(check (IsTrue {}))", cs);
+                                inner.egraph.parse_and_run_program(None, &cmd).is_ok()
+                            });
+                            if all_hold {
+                                found = true;
+                                break;
+                            }
+                            for ev_var in &unbound_event_vars {
+                                bindings.remove(ev_var.as_str());
+                            }
+                        }
+                    }
+                    if !found {
+                        continue;
+                    }
+                }
+
                 // Verify all conditions hold in egglog with the bound variables
                 let mut all_conditions_hold = true;
                 let mut condition_sexps = Vec::new();
@@ -1682,12 +1749,54 @@ fn decompose_implication(buffer: &LogicBuffer, body_id: u32) -> Option<(Vec<u32>
 }
 
 /// Flatten nested And nodes into individual atom node IDs.
+#[allow(dead_code)]
 fn flatten_conjuncts(buffer: &LogicBuffer, node_id: u32) -> Vec<u32> {
     match &buffer.nodes[node_id as usize] {
         LogicNode::AndNode((l, r)) => {
             let mut result = flatten_conjuncts(buffer, *l);
             result.extend(flatten_conjuncts(buffer, *r));
             result
+        }
+        _ => vec![node_id],
+    }
+}
+
+/// Collect existential variable names from condition-side nodes.
+/// These variables should become egglog pattern variables (not dependent Skolems)
+/// because condition-side ∃ means "if there exists any term satisfying..."
+fn collect_condition_exists(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    exists_vars: &mut HashSet<String>,
+) {
+    match &buffer.nodes[node_id as usize] {
+        LogicNode::ExistsNode((v, body)) => {
+            exists_vars.insert(v.clone());
+            collect_condition_exists(buffer, *body, exists_vars);
+        }
+        LogicNode::AndNode((l, r)) => {
+            collect_condition_exists(buffer, *l, exists_vars);
+            collect_condition_exists(buffer, *r, exists_vars);
+        }
+        _ => {}
+    }
+}
+
+/// Like `flatten_conjuncts` but also strips Exists wrappers for condition-side
+/// existential variables, exposing inner predicate atoms for egglog rule matching.
+fn flatten_conjuncts_through_exists(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    condition_exists: &HashSet<String>,
+) -> Vec<u32> {
+    match &buffer.nodes[node_id as usize] {
+        LogicNode::AndNode((l, r)) => {
+            let mut result = flatten_conjuncts_through_exists(buffer, *l, condition_exists);
+            result.extend(flatten_conjuncts_through_exists(buffer, *r, condition_exists));
+            result
+        }
+        LogicNode::ExistsNode((v, body)) if condition_exists.contains(v.as_str()) => {
+            flatten_conjuncts_through_exists(buffer, *body, condition_exists)
         }
         _ => vec![node_id],
     }
@@ -1908,23 +2017,24 @@ fn compile_forall_to_rule(
     let inner_body_id = current;
 
     // 2. Build pattern variable map: "_v0" -> "x__v0"
-    let pattern_vars: HashMap<String, String> = universals
+    let mut pattern_vars: HashMap<String, String> = universals
         .iter()
         .enumerate()
         .map(|(i, v)| (v.clone(), format!("x__v{}", i)))
         .collect();
 
-    let ground_skolems: HashMap<String, String> = skolem_subs
+    let mut ground_skolems: HashMap<String, String> = skolem_subs
         .iter()
         .filter(|(_, v)| !v.starts_with(SKDEP_PREFIX))
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
 
+    // Entity-only pattern var names (used as SkolemFn dependencies — event vars excluded)
     let pattern_var_names: Vec<String> = universals
         .iter()
         .map(|v| pattern_vars[v].clone())
         .collect();
-    let dependent_skolems: HashMap<String, (String, Vec<String>)> = skolem_subs
+    let mut dependent_skolems: HashMap<String, (String, Vec<String>)> = skolem_subs
         .iter()
         .filter_map(|(k, v)| {
             v.strip_prefix(SKDEP_PREFIX).map(|base| {
@@ -1933,24 +2043,57 @@ fn compile_forall_to_rule(
         })
         .collect();
 
-    // Register dependent Skolems for query-side witness enumeration
-    if !dependent_skolems.is_empty() {
-        for (_, (base, pvars)) in &dependent_skolems {
-            if !inner.skolem_fn_registry.iter().any(|e| e.base_name == *base) {
-                inner.skolem_fn_registry.push(SkolemFnEntry {
-                    base_name: base.clone(),
-                    dep_count: pvars.len(),
-                });
-            }
-        }
-    }
-
     // 3. Decompose inner body
     match decompose_implication(buffer, inner_body_id) {
         Some((condition_ids, consequent_id)) => {
+            // ── Condition-side existentials become pattern variables ──
+            // In ∀x. [∃e. P(e,x)] → [∃e'. Q(e',x)]:
+            //   condition-side ∃e = "match any existing term" → egglog pattern variable
+            //   conclusion-side ∃e' = "create new witness" → SkolemFn (stays in dependent_skolems)
+            let mut condition_exists_vars: HashSet<String> = HashSet::new();
+            for &cid in &condition_ids {
+                collect_condition_exists(buffer, cid, &mut condition_exists_vars);
+            }
+            for var in &condition_exists_vars {
+                dependent_skolems.remove(var);
+                ground_skolems.remove(var);
+                let pvar = format!("ev__{}", var);
+                pattern_vars.insert(var.clone(), pvar);
+            }
+
+            // Register only conclusion-side dependent Skolems for query-side witness enumeration
+            // (condition-side existentials are now pattern variables, not SkolemFn)
+            if !dependent_skolems.is_empty() {
+                for (_, (base, pvars)) in &dependent_skolems {
+                    if !inner.skolem_fn_registry.iter().any(|e| e.base_name == *base) {
+                        inner.skolem_fn_registry.push(SkolemFnEntry {
+                            base_name: base.clone(),
+                            dep_count: pvars.len(),
+                        });
+                    }
+                }
+            }
+
+            // Build extended pattern_var_names including event pattern variables
+            // (for backward-chaining provenance and temporal lifting)
+            let all_pattern_var_names: Vec<String> = {
+                let mut names = pattern_var_names.clone();
+                for var in &condition_exists_vars {
+                    if let Some(pvar) = pattern_vars.get(var) {
+                        names.push(pvar.clone());
+                    }
+                }
+                names
+            };
+
+            // Flatten conditions through Exists wrappers for condition-side existentials
             let mut all_conditions = Vec::new();
             for cid in &condition_ids {
-                all_conditions.extend(flatten_conjuncts(buffer, *cid));
+                all_conditions.extend(flatten_conjuncts_through_exists(
+                    buffer,
+                    *cid,
+                    &condition_exists_vars,
+                ));
             }
 
             let bare_condition_sexps: Vec<String> = all_conditions
@@ -2007,7 +2150,7 @@ fn compile_forall_to_rule(
                     label,
                     condition_templates: bare_condition_sexps.clone(),
                     conclusion_templates: bare_conclusion_sexps.clone(),
-                    pattern_var_names: pattern_var_names.clone(),
+                    pattern_var_names: all_pattern_var_names.clone(),
                 });
 
                 // ── xorlo presupposition: assert restrictor domain is non-empty ──
@@ -2024,6 +2167,12 @@ fn compile_forall_to_rule(
                 for (k, v) in &ground_skolems {
                     xp_subs.entry(k.clone()).or_insert_with(|| format!("(Const \"{}\")", v));
                 }
+                // Add fresh Skolem constants for condition-side event variables
+                for var in &condition_exists_vars {
+                    let ev_sk = inner.fresh_skolem();
+                    inner.note_entity(&ev_sk);
+                    xp_subs.insert(var.clone(), format!("(Const \"{}\")", ev_sk));
+                }
                 for &cid in &all_conditions {
                     let presup = reconstruct_sexp_with_subs(buffer, cid, &xp_subs);
                     // Record xorlo presupposition as asserted for provenance
@@ -2038,10 +2187,22 @@ fn compile_forall_to_rule(
                 inner.run_saturation();
 
                 // ── Temporal lifting: compile Past/Present/Future variants ──
-                compile_temporal_lifted_rules(inner, &bare_condition_sexps, &bare_conclusion_sexps, &pattern_var_names)?;
+                compile_temporal_lifted_rules(inner, &bare_condition_sexps, &bare_conclusion_sexps, &all_pattern_var_names)?;
             }
         }
         None => {
+            // Register dependent Skolems for bare rules (no condition/conclusion split)
+            if !dependent_skolems.is_empty() {
+                for (_, (base, pvars)) in &dependent_skolems {
+                    if !inner.skolem_fn_registry.iter().any(|e| e.base_name == *base) {
+                        inner.skolem_fn_registry.push(SkolemFnEntry {
+                            base_name: base.clone(),
+                            dep_count: pvars.len(),
+                        });
+                    }
+                }
+            }
+
             let body_sexp =
                 reconstruct_rule_sexp(buffer, inner_body_id, &pattern_vars, &ground_skolems, &dependent_skolems);
 
@@ -5151,5 +5312,512 @@ mod tests {
         // Now set run_bound to 0 and verify it's stored
         kb.set_run_bound_inner(0);
         assert_eq!(kb.get_run_bound_inner(), 0);
+    }
+
+    // ─── Event-decomposed universal rule tests ──────────────────────
+
+    /// Build an event-decomposed ground assertion:
+    ///   Exists(_ev0, And(P(_ev0), P_x1(_ev0, entity)))
+    fn make_event_assertion(entity: &str, predicate: &str) -> LogicBuffer {
+        let mut nodes = Vec::new();
+        let p_type = pred(
+            &mut nodes,
+            predicate,
+            vec![LogicalTerm::Variable("_ev0".to_string())],
+        );
+        let p_role = pred(
+            &mut nodes,
+            &format!("{}_x1", predicate),
+            vec![
+                LogicalTerm::Variable("_ev0".to_string()),
+                LogicalTerm::Constant(entity.to_string()),
+            ],
+        );
+        let p_and = and(&mut nodes, p_type, p_role);
+        let root = exists(&mut nodes, "_ev0", p_and);
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
+    }
+
+    /// Build an event-decomposed universal rule:
+    ///   ForAll(_v0, Or(
+    ///     Not(Exists(_ev0, And(P(_ev0), P_x1(_ev0, _v0)))),
+    ///     Exists(_ev1, And(Q(_ev1), Q_x1(_ev1, _v0)))
+    ///   ))
+    fn make_event_universal(restrictor: &str, consequent: &str) -> LogicBuffer {
+        let mut nodes = Vec::new();
+        // Condition: Exists(_ev0, And(P(_ev0), P_x1(_ev0, _v0)))
+        let p_type = pred(
+            &mut nodes,
+            restrictor,
+            vec![LogicalTerm::Variable("_ev0".to_string())],
+        );
+        let p_role = pred(
+            &mut nodes,
+            &format!("{}_x1", restrictor),
+            vec![
+                LogicalTerm::Variable("_ev0".to_string()),
+                LogicalTerm::Variable("_v0".to_string()),
+            ],
+        );
+        let p_and = and(&mut nodes, p_type, p_role);
+        let p_exists = exists(&mut nodes, "_ev0", p_and);
+
+        // Consequent: Exists(_ev1, And(Q(_ev1), Q_x1(_ev1, _v0)))
+        let q_type = pred(
+            &mut nodes,
+            consequent,
+            vec![LogicalTerm::Variable("_ev1".to_string())],
+        );
+        let q_role = pred(
+            &mut nodes,
+            &format!("{}_x1", consequent),
+            vec![
+                LogicalTerm::Variable("_ev1".to_string()),
+                LogicalTerm::Variable("_v0".to_string()),
+            ],
+        );
+        let q_and = and(&mut nodes, q_type, q_role);
+        let q_exists = exists(&mut nodes, "_ev1", q_and);
+
+        // Implication: Or(Not(p_exists), q_exists)
+        let neg = not(&mut nodes, p_exists);
+        let disj = or(&mut nodes, neg, q_exists);
+        let root = forall(&mut nodes, "_v0", disj);
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
+    }
+
+    /// Build an event-decomposed existential query (same structure as assertion).
+    fn make_event_query(entity: &str, predicate: &str) -> LogicBuffer {
+        make_event_assertion(entity, predicate)
+    }
+
+    #[test]
+    fn test_event_decomposed_rule_fires() {
+        let kb = new_kb();
+        assert_buf(&kb, make_event_assertion("alis", "gerku"));
+        assert_buf(&kb, make_event_universal("gerku", "danlu"));
+        assert!(
+            query(&kb, make_event_query("alis", "danlu")),
+            "event-decomposed rule should derive danlu(alis) from gerku(alis)"
+        );
+    }
+
+    #[test]
+    fn test_event_decomposed_rule_selective() {
+        let kb = new_kb();
+        assert_buf(&kb, make_event_assertion("alis", "gerku"));
+        assert_buf(&kb, make_event_assertion("bob", "mlatu"));
+        assert_buf(&kb, make_event_universal("gerku", "danlu"));
+        assert!(
+            query(&kb, make_event_query("alis", "danlu")),
+            "danlu(alis) should hold (alis is a gerku)"
+        );
+        assert!(
+            !query(&kb, make_event_query("bob", "danlu")),
+            "danlu(bob) should NOT hold (bob is a mlatu, not gerku)"
+        );
+    }
+
+    #[test]
+    fn test_event_decomposed_entity_after_rule() {
+        let kb = new_kb();
+        // Add rule first, then fact — should still fire after saturation
+        assert_buf(&kb, make_event_universal("gerku", "danlu"));
+        assert_buf(&kb, make_event_assertion("alis", "gerku"));
+        assert!(
+            query(&kb, make_event_query("alis", "danlu")),
+            "rule should fire even when added before fact"
+        );
+    }
+
+    #[test]
+    fn test_event_decomposed_temporal_rule() {
+        let kb = new_kb();
+        // Assert: Past(Exists(_ev0, And(gerku(_ev0), gerku_x1(_ev0, alis))))
+        let mut a_nodes = Vec::new();
+        let p_type = pred(
+            &mut a_nodes,
+            "gerku",
+            vec![LogicalTerm::Variable("_ev0".to_string())],
+        );
+        let p_role = pred(
+            &mut a_nodes,
+            "gerku_x1",
+            vec![
+                LogicalTerm::Variable("_ev0".to_string()),
+                LogicalTerm::Constant("alis".to_string()),
+            ],
+        );
+        let p_and = and(&mut a_nodes, p_type, p_role);
+        let p_exists = exists(&mut a_nodes, "_ev0", p_and);
+        let a_root = past(&mut a_nodes, p_exists);
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes: a_nodes,
+                roots: vec![a_root],
+            },
+        );
+
+        // Add timeless rule: ro lo gerku ku danlu (event-decomposed)
+        assert_buf(&kb, make_event_universal("gerku", "danlu"));
+
+        // Query: Past(Exists(_ev0, And(danlu(_ev0), danlu_x1(_ev0, alis))))
+        let mut q_nodes = Vec::new();
+        let q_type = pred(
+            &mut q_nodes,
+            "danlu",
+            vec![LogicalTerm::Variable("_ev0".to_string())],
+        );
+        let q_role = pred(
+            &mut q_nodes,
+            "danlu_x1",
+            vec![
+                LogicalTerm::Variable("_ev0".to_string()),
+                LogicalTerm::Constant("alis".to_string()),
+            ],
+        );
+        let q_and = and(&mut q_nodes, q_type, q_role);
+        let q_exists = exists(&mut q_nodes, "_ev0", q_and);
+        let q_root = past(&mut q_nodes, q_exists);
+        assert!(
+            query(
+                &kb,
+                LogicBuffer {
+                    nodes: q_nodes,
+                    roots: vec![q_root],
+                }
+            ),
+            "temporal lifting should derive Past(danlu(alis)) from Past(gerku(alis)) and timeless rule"
+        );
+    }
+
+    #[test]
+    fn test_event_decomposed_multi_hop() {
+        let kb = new_kb();
+        assert_buf(&kb, make_event_assertion("alis", "gerku"));
+        assert_buf(&kb, make_event_universal("gerku", "danlu"));
+        assert_buf(&kb, make_event_universal("danlu", "xanlu"));
+        assert!(
+            query(&kb, make_event_query("alis", "xanlu")),
+            "multi-hop: gerku→danlu→xanlu should derive xanlu(alis)"
+        );
+    }
+
+    #[test]
+    fn test_event_decomposed_proof_trace() {
+        let kb = new_kb();
+        assert_buf(&kb, make_event_assertion("alis", "gerku"));
+        assert_buf(&kb, make_event_universal("gerku", "danlu"));
+
+        // Query with proof trace
+        let (holds, trace) = kb
+            .query_entailment_with_proof_inner(make_event_query("alis", "danlu"))
+            .unwrap();
+        assert!(holds, "entailment should hold for derived event-decomposed fact");
+
+        // Check that the proof trace contains a Derived step
+        let has_derived = trace.steps.iter().any(|step| {
+            matches!(&step.rule, ProofRule::Derived(_))
+        });
+        assert!(
+            has_derived,
+            "proof trace should contain at least one Derived step for rule-derived fact"
+        );
+    }
+
+    #[test]
+    fn test_event_decomposed_xorlo() {
+        let kb = new_kb();
+        // Only add the rule (no ground facts) — xorlo presupposition should
+        // create Skolem constants that make the restrictor domain non-empty
+        assert_buf(&kb, make_event_universal("gerku", "danlu"));
+
+        // The xorlo presupposition should have created event + entity Skolems
+        // such that gerku(sk_ev) and gerku_x1(sk_ev, sk_entity) hold.
+        // Query: exists something that is a gerku (via xorlo presupposition)
+        let mut q_nodes = Vec::new();
+        let q_type = pred(
+            &mut q_nodes,
+            "gerku",
+            vec![LogicalTerm::Variable("_ev0".to_string())],
+        );
+        let q_role = pred(
+            &mut q_nodes,
+            "gerku_x1",
+            vec![
+                LogicalTerm::Variable("_ev0".to_string()),
+                LogicalTerm::Variable("_v0".to_string()),
+            ],
+        );
+        let q_and = and(&mut q_nodes, q_type, q_role);
+        let q_ev = exists(&mut q_nodes, "_ev0", q_and);
+        let q_root = exists(&mut q_nodes, "_v0", q_ev);
+        assert!(
+            query(
+                &kb,
+                LogicBuffer {
+                    nodes: q_nodes,
+                    roots: vec![q_root],
+                }
+            ),
+            "xorlo presupposition should make ∃x.∃e. gerku(e)∧gerku_x1(e,x) hold"
+        );
+    }
+
+    // ─── Zoo Ontology integration tests (REPL demo scenarios) ───────
+
+    /// Build a temporal event-decomposed assertion:
+    ///   Tense(Exists(_ev0, And(P(_ev0), P_x1(_ev0, entity))))
+    /// where tense_fn wraps the inner Exists with Past/Present/Future.
+    fn make_temporal_event_assertion(
+        entity: &str,
+        predicate: &str,
+        tense_fn: fn(&mut Vec<LogicNode>, u32) -> u32,
+    ) -> LogicBuffer {
+        let mut nodes = Vec::new();
+        let p_type = pred(
+            &mut nodes,
+            predicate,
+            vec![LogicalTerm::Variable("_ev0".to_string())],
+        );
+        let p_role = pred(
+            &mut nodes,
+            &format!("{}_x1", predicate),
+            vec![
+                LogicalTerm::Variable("_ev0".to_string()),
+                LogicalTerm::Constant(entity.to_string()),
+            ],
+        );
+        let p_and = and(&mut nodes, p_type, p_role);
+        let p_exists = exists(&mut nodes, "_ev0", p_and);
+        let root = tense_fn(&mut nodes, p_exists);
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
+    }
+
+    /// Build a temporal event-decomposed query (same structure as temporal assertion).
+    fn make_temporal_event_query(
+        entity: &str,
+        predicate: &str,
+        tense_fn: fn(&mut Vec<LogicNode>, u32) -> u32,
+    ) -> LogicBuffer {
+        make_temporal_event_assertion(entity, predicate, tense_fn)
+    }
+
+    #[test]
+    fn test_zoo_multi_hop_temporal_past() {
+        // REPL: pu la .alis. gerku → ro lo gerku cu danlu → ro lo danlu cu jmive
+        // Query: ?! pu la .alis. jmive → TRUE
+        let kb = new_kb();
+        assert_buf(&kb, make_temporal_event_assertion("alis", "gerku", past));
+        assert_buf(&kb, make_event_universal("gerku", "danlu"));
+        assert_buf(&kb, make_event_universal("danlu", "jmive"));
+        assert!(
+            query(&kb, make_temporal_event_query("alis", "jmive", past)),
+            "multi-hop temporal: Past(gerku→danlu→jmive) should derive Past(jmive(alis))"
+        );
+    }
+
+    #[test]
+    fn test_zoo_multi_hop_temporal_present() {
+        // REPL: ca la .bob. mlatu → ro lo mlatu cu danlu → ro lo danlu cu jmive
+        // Query: ?! ca la .bob. jmive → TRUE
+        let kb = new_kb();
+        assert_buf(&kb, make_temporal_event_assertion("bob", "mlatu", present));
+        assert_buf(&kb, make_event_universal("mlatu", "danlu"));
+        assert_buf(&kb, make_event_universal("danlu", "jmive"));
+        assert!(
+            query(&kb, make_temporal_event_query("bob", "jmive", present)),
+            "multi-hop temporal: Present(mlatu→danlu→jmive) should derive Present(jmive(bob))"
+        );
+    }
+
+    #[test]
+    fn test_zoo_tense_discrimination() {
+        // Assert Past(gerku(alis)), derive Past(jmive(alis))
+        // Query Present(jmive(alis)) → FALSE (strict tense discrimination)
+        let kb = new_kb();
+        assert_buf(&kb, make_temporal_event_assertion("alis", "gerku", past));
+        assert_buf(&kb, make_event_universal("gerku", "danlu"));
+        assert_buf(&kb, make_event_universal("danlu", "jmive"));
+
+        // Past query should succeed
+        assert!(
+            query(&kb, make_temporal_event_query("alis", "jmive", past)),
+            "Past(jmive(alis)) should hold"
+        );
+        // Present query should FAIL — alice was a dog in the past, not present
+        assert!(
+            !query(&kb, make_temporal_event_query("alis", "jmive", present)),
+            "Present(jmive(alis)) should NOT hold — wrong tense"
+        );
+    }
+
+    #[test]
+    fn test_zoo_mixed_tenses() {
+        // REPL demo: two entities with different tenses
+        // pu la .alis. gerku + ca la .bob. mlatu + rules
+        let kb = new_kb();
+        assert_buf(&kb, make_temporal_event_assertion("alis", "gerku", past));
+        assert_buf(&kb, make_temporal_event_assertion("bob", "mlatu", present));
+        assert_buf(&kb, make_event_universal("gerku", "danlu"));
+        assert_buf(&kb, make_event_universal("mlatu", "danlu"));
+        assert_buf(&kb, make_event_universal("danlu", "jmive"));
+
+        // Each entity derivable only in its own tense
+        assert!(query(&kb, make_temporal_event_query("alis", "jmive", past)));
+        assert!(query(&kb, make_temporal_event_query("bob", "jmive", present)));
+        // Cross-tense queries fail
+        assert!(!query(&kb, make_temporal_event_query("alis", "jmive", present)));
+        assert!(!query(&kb, make_temporal_event_query("bob", "jmive", past)));
+    }
+
+    #[test]
+    fn test_zoo_witness_extraction_event_decomposed() {
+        // REPL: ?? ma danlu — find witnesses after event-decomposed derivation
+        let kb = new_kb();
+        assert_buf(&kb, make_event_assertion("alis", "gerku"));
+        assert_buf(&kb, make_event_assertion("bob", "gerku"));
+        assert_buf(&kb, make_event_universal("gerku", "danlu"));
+
+        // Query: ∃_v0. ∃_ev0. danlu(_ev0) ∧ danlu_x1(_ev0, _v0)
+        let mut q_nodes = Vec::new();
+        let q_type = pred(
+            &mut q_nodes,
+            "danlu",
+            vec![LogicalTerm::Variable("_ev0".to_string())],
+        );
+        let q_role = pred(
+            &mut q_nodes,
+            "danlu_x1",
+            vec![
+                LogicalTerm::Variable("_ev0".to_string()),
+                LogicalTerm::Variable("_v0".to_string()),
+            ],
+        );
+        let q_and = and(&mut q_nodes, q_type, q_role);
+        let q_ev = exists(&mut q_nodes, "_ev0", q_and);
+        let q_root = exists(&mut q_nodes, "_v0", q_ev);
+        let results = query_find(
+            &kb,
+            LogicBuffer {
+                nodes: q_nodes,
+                roots: vec![q_root],
+            },
+        );
+
+        // Should find witnesses for both alis and bob
+        assert!(
+            !results.is_empty(),
+            "should find witnesses for danlu after event-decomposed derivation"
+        );
+        // Extract entity bindings (filter to _v0 which is the entity variable)
+        let entity_witnesses: Vec<String> = results
+            .iter()
+            .filter_map(|bindings| {
+                bindings.iter().find_map(|b| {
+                    if b.variable == "_v0" {
+                        match &b.term {
+                            LogicalTerm::Constant(c) => Some(c.clone()),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect();
+        assert!(
+            entity_witnesses.contains(&"alis".to_string()),
+            "alis should be a witness for danlu"
+        );
+        assert!(
+            entity_witnesses.contains(&"bob".to_string()),
+            "bob should be a witness for danlu"
+        );
+    }
+
+    #[test]
+    fn test_zoo_retraction_with_event_decomposition() {
+        // REPL demo: retract alice's fact, bob should survive
+        let kb = new_kb();
+        assert_buf(&kb, make_event_universal("gerku", "danlu"));
+        assert_buf(&kb, make_event_universal("mlatu", "danlu"));
+        assert_buf(&kb, make_event_universal("danlu", "jmive"));
+
+        let alis_id = kb
+            .assert_fact_inner(
+                make_temporal_event_assertion("alis", "gerku", past),
+                "pu la .alis. gerku".into(),
+            )
+            .unwrap();
+        let _bob_id = kb
+            .assert_fact_inner(
+                make_temporal_event_assertion("bob", "mlatu", present),
+                "ca la .bob. mlatu".into(),
+            )
+            .unwrap();
+
+        // Both should hold before retraction
+        assert!(query(&kb, make_temporal_event_query("alis", "jmive", past)));
+        assert!(query(&kb, make_temporal_event_query("bob", "jmive", present)));
+
+        // Retract alice's assertion
+        kb.retract_fact_inner(alis_id).unwrap();
+
+        // Alice's derivation should be gone
+        assert!(
+            !query(&kb, make_temporal_event_query("alis", "jmive", past)),
+            "after retracting alis's gerku fact, Past(jmive(alis)) should be FALSE"
+        );
+        // Bob's derivation should still hold
+        assert!(
+            query(&kb, make_temporal_event_query("bob", "jmive", present)),
+            "bob's Present(jmive(bob)) should still hold after retracting alis"
+        );
+    }
+
+    #[test]
+    fn test_zoo_proof_trace_multi_hop_temporal() {
+        // REPL: ?! pu la .alis. jmive — proof trace for multi-hop temporal derivation
+        let kb = new_kb();
+        assert_buf(&kb, make_temporal_event_assertion("alis", "gerku", past));
+        assert_buf(&kb, make_event_universal("gerku", "danlu"));
+        assert_buf(&kb, make_event_universal("danlu", "jmive"));
+
+        let (holds, trace) = kb
+            .query_entailment_with_proof_inner(make_temporal_event_query("alis", "jmive", past))
+            .unwrap();
+        assert!(holds, "Past(jmive(alis)) should hold with proof trace");
+
+        // Proof should contain Derived steps (from rule application)
+        let derived_count = trace
+            .steps
+            .iter()
+            .filter(|step| matches!(&step.rule, ProofRule::Derived(_)))
+            .count();
+        assert!(
+            derived_count >= 2,
+            "multi-hop derivation should have at least 2 Derived steps (gerku→danlu, danlu→jmive), got {}",
+            derived_count
+        );
+
+        // Proof should contain a ModalPassthrough for past tense
+        let has_modal = trace.steps.iter().any(|step| {
+            matches!(&step.rule, ProofRule::ModalPassthrough(t) if t == "past")
+        });
+        assert!(
+            has_modal,
+            "proof trace should contain a ModalPassthrough(past) step"
+        );
     }
 }
