@@ -1,10 +1,10 @@
 [workspace]
 members = [
-    "parser",
-    "semantics",
-    "reasoning", 
-    "runner", 
-    "orchestrator"
+    "gerna",
+    "smuni",
+    "logji",
+    "gasnu",
+    "lasna"
 ]
 resolver = "2"
 

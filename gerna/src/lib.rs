@@ -1,6 +1,6 @@
-//! Lojban parser WASM component.
+//! Lojban gerna (grammar/parser) WASM component.
 //!
-//! Entry point for the `parser-component` WIT world. Implements the full
+//! Entry point for the `gerna-component` WIT world. Implements the full
 //! text-to-flat-buffer pipeline:
 //!
 //! 1. **Lex** — Logos DFA tokenizer ([`lexer::tokenize`])
@@ -22,14 +22,14 @@ pub mod lexer;
 /// Metalinguistic preprocessor (si/sa/su/zo/zoi/zei resolution).
 pub mod preprocessor;
 
-use bindings::exports::lojban::nesy::parser::Guest;
+use bindings::exports::lojban::nesy::gerna::Guest;
 use bindings::lojban::nesy::ast_types as wit;
 use bindings::lojban::nesy::error_types::NibliError;
 
-/// WIT component implementation for the `parser` interface.
-struct ParserComponent;
+/// WIT component implementation for the `gerna` interface.
+struct GernaComponent;
 
-impl Guest for ParserComponent {
+impl Guest for GernaComponent {
     /// Parse Lojban text through the full pipeline: lex → preprocess → parse → flatten.
     fn parse_text(input: String) -> Result<wit::ParseResult, NibliError> {
         // 1. Lex into morphological classification stream
@@ -373,7 +373,7 @@ impl Flattener {
     }
 }
 
-bindings::export!(ParserComponent with_types_in bindings);
+bindings::export!(GernaComponent with_types_in bindings);
 
 // Add these tests to parser/src/lib.rs or a new integration test file.
 // They test the Flattener, not just the grammar parser.

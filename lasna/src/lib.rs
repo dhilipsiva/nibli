@@ -1,6 +1,6 @@
-//! Orchestrator WASM component: chains parser → semantics → reasoning.
+//! Lasna (fasten/orchestrator) WASM component: chains gerna → smuni → logji.
 //!
-//! Entry point for the `engine-pipeline` WIT world. Provides a high-level
+//! Entry point for the `lasna-pipeline` WIT world. Provides a high-level
 //! [`Session`] resource that accepts Lojban text and internally orchestrates
 //! the full pipeline:
 //!
@@ -19,7 +19,7 @@
 #[allow(warnings)]
 mod bindings;
 
-use bindings::exports::lojban::nesy::engine::{Guest, GuestSession};
+use bindings::exports::lojban::nesy::lasna::{Guest, GuestSession};
 use bindings::lojban::nesy::ast_types::{
     AstBuffer, Bridi, ModalTag, RelClause, Selbri, Sentence, Sumti,
 };
@@ -27,17 +27,17 @@ use bindings::lojban::nesy::error_types::{NibliError, SyntaxDetail};
 use bindings::lojban::nesy::logic_types::{
     FactSummary, LogicBuffer, LogicNode, LogicalTerm, ProofTrace, WitnessBinding,
 };
-use bindings::lojban::nesy::{parser, semantics};
-use bindings::lojban::nesy::reasoning::KnowledgeBase;
+use bindings::lojban::nesy::{gerna, smuni};
+use bindings::lojban::nesy::logji::KnowledgeBase;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-/// WIT component implementation for the `engine` interface.
-struct EnginePipeline;
+/// WIT component implementation for the `lasna` interface.
+struct LasnaPipeline;
 
-/// A user-facing session wrapping the full parser → semantics → reasoning pipeline.
+/// A user-facing session wrapping the full gerna → smuni → logji pipeline.
 ///
 /// Maintains a knowledge base, compute predicate registry, and go'i pro-bridi
 /// anaphora state. All state is behind `RefCell` for interior mutability
@@ -368,7 +368,7 @@ fn compile_pipeline(
     text: &str,
     last_snapshot: &Option<SelbriSnapshot>,
 ) -> Result<(LogicBuffer, Option<SelbriSnapshot>, Vec<String>), NibliError> {
-    let parse_result = parser::parse_text(text)?;
+    let parse_result = gerna::parse_text(text)?;
 
     // Collect per-sentence parse errors as warning strings
     let parse_warnings: Vec<String> = parse_result
@@ -392,7 +392,7 @@ fn compile_pipeline(
     let last_selbri_id = resolve_go_i(&mut ast, last_snapshot)
         .map_err(|e| NibliError::Semantic(e))?;
     let new_snapshot = last_selbri_id.map(|id| extract_selbri_snapshot(&ast, id));
-    let buf = semantics::compile_buffer(&ast)?;
+    let buf = smuni::compile_buffer(&ast)?;
     Ok((buf, new_snapshot, parse_warnings))
 }
 
@@ -424,7 +424,7 @@ fn debug_sexp(buffer: &LogicBuffer) -> String {
 
 // ─── WIT exports ───
 
-impl Guest for EnginePipeline {
+impl Guest for LasnaPipeline {
     type Session = Session;
 }
 
@@ -1292,4 +1292,4 @@ mod tests {
     }
 }
 
-bindings::export!(EnginePipeline with_types_in bindings);
+bindings::export!(LasnaPipeline with_types_in bindings);

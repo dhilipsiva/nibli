@@ -1,19 +1,22 @@
 [package]
-name = "parser"
+name = "smuni"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bumpalo = "3"
-logos = "0.16.1"
+lasso = "0.7.3"
+phf = "0.13.1"
 wit-bindgen-rt = "0.44.0"
+
+[build-dependencies]
+phf_codegen = "0.13.1"
 
 [package.metadata.component]
 package = "lojban:nesy"
 
 [package.metadata.component.target]
 path = "../wit/world.wit"
-world = "parser-component"
+world = "smuni-component"
 
 [lib]
 crate-type = ["cdylib", "lib"]

@@ -1,367 +1,112 @@
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  NIBLI :: KNOWLEDGE BASE PRELUDE :: v0.1
-  lo xanri fanta bitmu — The Hallucination Firewall
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-
-── SELF-DESCRIPTION ──────────────────────────────────
-
+# ni'o la .nibli.
 la .nibli. cu logji ciste
-⊢ GROUND  nibli ∈ logic-system
-⊢         Nibli. Is. A logic system.
-
 la .nibli. cu birti ciste
-⊢ GROUND  nibli ∈ certainty-system
-⊢         Nibli. Is. A certainty system.
-
 la .nibli. cu skami ciste
-⊢ GROUND  nibli ∈ computer-system
-⊢         Nibli. Is. A computer system.
 
-
-── FOUNDATIONAL AXIOMS ───────────────────────────────
-
+# ni'o lo jicmu logji
 ro lo birti cu se krinu
-⊢ AXIOM   ∀x. certain(x) → justified(x)
-⊢         All certainties. Have. Justification. No exceptions.
-
 ro lo se krinu cu logji
-⊢ AXIOM   ∀x. justified(x) → logical(x)
-⊢         All justifications. Are. Logical. Nothing unjustified passes.
-
 ro lo logji cu na xanri
-⊢ AXIOM   ∀x. logical(x) → ¬imaginary(x)
-⊢         Nothing logical. Is. Imaginary. This is the guarantee.
 
-
-── ANIMAL TAXONOMY ───────────────────────────────────
-
+# ni'o lo danlu klesi
 ro lo gerku cu danlu
-⊢ RULE    ∀x. dog(x) → animal(x)
-⊢         Every dog. Is. An animal.
-
 ro lo mlatu cu danlu
-⊢ RULE    ∀x. cat(x) → animal(x)
-⊢         Every cat. Is. An animal.
-
 ro lo cipni cu danlu
-⊢ RULE    ∀x. bird(x) → animal(x)
-⊢         Every bird. Is. An animal.
-
 ro lo finpe cu danlu
-⊢ RULE    ∀x. fish(x) → animal(x)
-⊢         Every fish. Is. An animal.
-
 ro lo since cu danlu
-⊢ RULE    ∀x. snake(x) → animal(x)
-⊢         Every snake. Is. An animal.
-
 ro lo cribe cu danlu
-⊢ RULE    ∀x. bear(x) → animal(x)
-⊢         Every bear. Is. An animal.
-
 ro lo xirma cu danlu
-⊢ RULE    ∀x. horse(x) → animal(x)
-⊢         Every horse. Is. An animal.
-
 ro lo bakni cu danlu
-⊢ RULE    ∀x. bovine(x) → animal(x)
-⊢         Every bovine. Is. An animal.
-
 ro lo kumte cu danlu
-⊢ RULE    ∀x. camel(x) → animal(x)
-⊢         Every camel. Is. An animal.
-
 ro lo ratcu cu danlu
-⊢ RULE    ∀x. rat(x) → animal(x)
-⊢         Every rat. Is. An animal.
-
 ro lo mabru cu danlu
-⊢ RULE    ∀x. mammal(x) → animal(x)
-⊢         Every mammal. Is. An animal.
-
 ro lo respa cu danlu
-⊢ RULE    ∀x. reptile(x) → animal(x)
-⊢         Every reptile. Is. An animal.
-
 ro lo insekto cu danlu
-⊢ RULE    ∀x. insect(x) → animal(x)
-⊢         Every insect. Is. An animal.
 
-
-── LIVING THINGS HIERARCHY ───────────────────────────
-
+# ni'o lo jmive klesi
 ro lo danlu cu jmive
-⊢ RULE    ∀x. animal(x) → alive(x)
-⊢         Every animal. Is. Alive.
-
 ro lo tricu cu jmive
-⊢ RULE    ∀x. tree(x) → alive(x)
-⊢         Every tree. Is. Alive.
-
 ro lo spati cu jmive
-⊢ RULE    ∀x. plant(x) → alive(x)
-⊢         Every plant. Is. Alive.
-
 ro lo since cu jmive
-⊢ RULE    ∀x. snake(x) → alive(x)
-⊢         Every snake. Is. Alive. Redundant. Derivable via animal chain.
 
-
-── PEOPLE TAXONOMY ───────────────────────────────────
-
+# ni'o lo prenu klesi
 ro lo prenu cu jmive
-⊢ RULE    ∀x. person(x) → alive(x)
-⊢         Every person. Is. Alive.
-
 ro lo nanmu cu prenu
-⊢ RULE    ∀x. man(x) → person(x)
-⊢         Every man. Is. A person.
-
 ro lo ninmu cu prenu
-⊢ RULE    ∀x. woman(x) → person(x)
-⊢         Every woman. Is. A person.
-
 ro lo verba cu prenu
-⊢ RULE    ∀x. child(x) → person(x)
-⊢         Every child. Is. A person.
-
 ro lo nakni cu nanmu
-⊢ RULE    ∀x. male(x) → man(x)
-⊢         Every male. Is. A man.
-
 ro lo fetsi cu ninmu
-⊢ RULE    ∀x. female(x) → woman(x)
-⊢         Every female. Is. A woman.
 
-
-── PERSON PROPERTIES ─────────────────────────────────
-
+# ni'o lo prenu se ckaji
 ro lo prenu cu menli se ponse
-⊢ RULE    ∀x. person(x) → possesses-mind(x)
-⊢         Every person. Possesses. A mind.
-
 ro lo prenu cu bangu se ponse
-⊢ RULE    ∀x. person(x) → possesses-language(x)
-⊢         Every person. Possesses. Language.
 
-
-── PROPERTIES AND ATTRIBUTES ─────────────────────────
-
+# ni'o lo se ckaji je skari
 ro lo barda cu se ckaji
-⊢ RULE    ∀x. big(x) → has-property(x)
-⊢         Bigness. Is. A property.
-
 ro lo cmalu cu se ckaji
-⊢ RULE    ∀x. small(x) → has-property(x)
-⊢         Smallness. Is. A property.
-
 ro lo sutra cu se ckaji
-⊢ RULE    ∀x. fast(x) → has-property(x)
-⊢         Fastness. Is. A property.
-
 ro lo masno cu se ckaji
-⊢ RULE    ∀x. slow(x) → has-property(x)
-⊢         Slowness. Is. A property.
-
 ro lo xunre cu skari
-⊢ RULE    ∀x. red(x) → colour(x)
-⊢         Red. Is. A colour.
-
 ro lo blanu cu skari
-⊢ RULE    ∀x. blue(x) → colour(x)
-⊢         Blue. Is. A colour.
-
 ro lo pelxu cu skari
-⊢ RULE    ∀x. yellow(x) → colour(x)
-⊢         Yellow. Is. A colour.
-
 ro lo crino cu skari
-⊢ RULE    ∀x. green(x) → colour(x)
-⊢         Green. Is. A colour.
-
 ro lo grusi cu skari
-⊢ RULE    ∀x. grey(x) → colour(x)
-⊢         Grey. Is. A colour.
 
-
-── PROFESSIONS ───────────────────────────────────────
-
+# ni'o lo seljibri
 ro lo ctuca cu prenu
-⊢ RULE    ∀x. teacher(x) → person(x)
-⊢         Every teacher. Is. A person.
-
 ro lo mikce cu prenu
-⊢ RULE    ∀x. doctor(x) → person(x)
-⊢         Every doctor. Is. A person.
-
 ro lo flaselcu'u cu prenu
-⊢ RULE    ∀x. lawyer(x) → person(x)
-⊢         Every lawyer. Is. A person.
 
-
-── BUILDINGS ─────────────────────────────────────────
-
+# ni'o lo dinju
 ro lo zdani cu dinju
-⊢ RULE    ∀x. home(x) → building(x)
-⊢         Every home. Is. A building.
-
 ro lo briju cu dinju
-⊢ RULE    ∀x. office(x) → building(x)
-⊢         Every office. Is. A building.
-
 ro lo ckule cu dinju
-⊢ RULE    ∀x. school(x) → building(x)
-⊢         Every school. Is. A building.
-
 ro lo mikce zdani cu dinju
-⊢ RULE    ∀x. hospital(x) → building(x)
-⊢         Every hospital. Is. A building.
 
-
-── VEHICLES ──────────────────────────────────────────
-
+# ni'o lo marce
 ro lo karce cu marce
-⊢ RULE    ∀x. car(x) → vehicle(x)
-⊢         Every car. Is. A vehicle.
-
 ro lo trene cu marce
-⊢ RULE    ∀x. train(x) → vehicle(x)
-⊢         Every train. Is. A vehicle.
-
 ro lo vinji cu marce
-⊢ RULE    ∀x. airplane(x) → vehicle(x)
-⊢         Every airplane. Is. A vehicle.
 
-
-── FOOD ──────────────────────────────────────────────
-
+# ni'o lo cidja
 ro lo ladru cu cidja
-⊢ RULE    ∀x. milk(x) → food(x)
-⊢         All milk. Is. Food.
-
 ro lo grute cu cidja
-⊢ RULE    ∀x. fruit(x) → food(x)
-⊢         All fruit. Is. Food.
-
 ro lo nanba cu cidja
-⊢ RULE    ∀x. bread(x) → food(x)
-⊢         All bread. Is. Food.
-
 ro lo rectu cu cidja
-⊢ RULE    ∀x. meat(x) → food(x)
-⊢         All meat. Is. Food.
 
-
-── SUBSTANCES ────────────────────────────────────────
-
+# ni'o lo litki
 ro lo djacu cu litki
-⊢ RULE    ∀x. water(x) → liquid(x)
-⊢         All water. Is. Liquid.
-
 ro lo ladru cu litki
-⊢ RULE    ∀x. milk(x) → liquid(x)
-⊢         All milk. Is. Liquid.
 
-
-── LIGHT SOURCES ─────────────────────────────────────
-
+# ni'o lo gusni
 ro lo solri cu gusni
-⊢ RULE    ∀x. sun(x) → luminous(x)
-⊢         The sun. Is. Luminous.
-
 ro lo fagri cu gusni
-⊢ RULE    ∀x. fire(x) → luminous(x)
-⊢         All fire. Is. Luminous.
 
-
-── PROFESSIONAL PURPOSE ──────────────────────────────
-
+# ni'o lo seljibri se zukte
 ro lo ctuca cu se djica lo nu tadni
-⊢ RULE    ∀x. teacher(x) → desires(x, ∃e. learning(e))
-⊢         Every teacher. Desires. Learning. That is their purpose.
-
 ro lo mikce cu se djica lo nu kanro
-⊢ RULE    ∀x. doctor(x) → desires(x, ∃e. health(e))
-⊢         Every doctor. Desires. Health. That is their purpose.
-
 ro lo flaselcu'u cu se djica lo nu javni
-⊢ RULE    ∀x. lawyer(x) → desires(x, ∃e. rules(e))
-⊢         Every lawyer. Desires. Rules. That is their purpose.
 
-
-── COMMON SENSE ──────────────────────────────────────
-
+# ni'o lo sampu logji
 ro lo barda danlu cu sutra
-⊢ RULE    ∀x. big-animal(x) → fast(x)
-⊢         Every big animal. Is. Fast. Common sense heuristic.
-
 ro lo cmalu danlu cu masno
-⊢ RULE    ∀x. small-animal(x) → slow(x)
-⊢         Every small animal. Is. Slow. Common sense heuristic.
 
-
-── THE FIREWALL AXIOMS ───────────────────────────────
-
+# ni'o lo xanri fanta logji
 ro lo xanri cu na birti
-⊢ AXIOM   ∀x. imaginary(x) → ¬certain(x)
-⊢         Nothing imaginary. Is. Certain. This is non-negotiable.
-
 ro lo birti cu na xanri
-⊢ AXIOM   ∀x. certain(x) → ¬imaginary(x)
-⊢         Nothing certain. Is. Imaginary. The converse holds.
-
 ro lo logji birti cu se nibli
-⊢ AXIOM   ∀x. logical-certainty(x) → derived(x)
-⊢         Every logical certainty. Is. Derived. No exceptions. No approximations.
 
-
-── LAW AND OBLIGATION ────────────────────────────────
-
+# ni'o lo flalu je bilga
 ro lo flalu cu javni
-⊢ RULE    ∀x. law(x) → rule(x)
-⊢         Every law. Is. A rule.
-
 ro lo javni cu se bilga
-⊢ RULE    ∀x. rule(x) → obligatory(x)
-⊢         Every rule. Creates. Obligation.
-
 ro lo se bilga cu se curmi na se fanta
-⊢ RULE    ∀x. obligatory(x) → permitted(x) ∧ ¬blocked(x)
-⊢         Obligations. Are. Permitted. And cannot be blocked.
 
-
-── DATA SOVEREIGNTY ──────────────────────────────────
-
+# ni'o lo datni turni
 ro lo datni cu se ponse
-⊢ RULE    ∀x. data(x) → owned(x)
-⊢         All data. Has. An owner.
-
 ro lo se ponse datni cu se kurji
-⊢ RULE    ∀x. owned-data(x) → protected(x)
-⊢         All owned data. Requires. Protection.
-
 ro lo se kurji datni cu se fanta lo na se curmi
-⊢ RULE    ∀x. protected-data(x) → blocked(x, ¬permitted)
-⊢         Protected data. Blocks. The unauthorised. No one passes without permission.
 
-
-── THE DECLARATION ───────────────────────────────────
-
+# ni'o lo se cusku
 lo xanri fanta bitmu cu se zbasu fi lo logji
-⊢ GROUND  hallucination-firewall BUILT-FROM logic
-⊢         The hallucination firewall. Is built. From logic. Nothing else.
-
 lo xanri fanta bitmu cu birti ciste
-⊢ GROUND  hallucination-firewall ∈ certainty-system
-⊢         The hallucination firewall. Is. A certainty system.
-
 lo xanri fanta bitmu cu na xanri ciste
-⊢ GROUND  hallucination-firewall ∈ ¬imaginary-system
-⊢         The hallucination firewall. Is not. An imaginary system. End of file.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  ro lo birti cu se krinu — Every certainty has a reason.
-  ro lo se krinu cu logji — Every reason is logical.
-  ro lo logji cu na xanri — Nothing logical is imaginary.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -19,11 +19,11 @@ ni'o mu lo ueb.asemblii. pagbu cu se lasna fi lo WIT jupku'a .ije se zbasu fi lo
 
 | pagbu | se zukte |
 |-------|----------|
-| **parser** | lo lojbo cusku → AST → WIT pagbu kampu |
-| **semantics** | lo AST pagbu kampu → FOL logji pagbu kampu |
-| **reasoning** | lo FOL logji pagbu → egglog dunli satci .e se jivna |
-| **orchestrator** | lasna: parser → semantics → reasoning |
-| **runner** | lo samciste Wasmtime .e lo REPL .e lo TCP jikca ciste |
+| **gerna** | lo lojbo cusku → AST → WIT pagbu kampu |
+| **smuni** | lo AST pagbu kampu → FOL logji pagbu kampu |
+| **logji** | lo FOL logji pagbu → egglog dunli satci .e se jivna |
+| **lasna** | lasna: gerna → smuni → logji |
+| **gasnu** | lo samciste Wasmtime .e lo REPL .e lo TCP jikca ciste |
 
 ## ni'o lo cfari
 

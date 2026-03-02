@@ -14,27 +14,27 @@ clean-wasm:
 # Compiles the discrete WebAssembly components and fuses them
 build-wasm: clean-wasm
     @echo "Building WASI components ({{wasi_target}})..."
-    cargo component build --release --target {{wasi_target}} -p parser -p semantics -p reasoning -p orchestrator
+    cargo component build --release --target {{wasi_target}} -p gerna -p smuni -p logji -p lasna
     @echo "Fusing components with WAC..."
-    wac plug {{wasm_dir}}/orchestrator.wasm \
-        --plug {{wasm_dir}}/parser.wasm \
-        --plug {{wasm_dir}}/semantics.wasm \
-        --plug {{wasm_dir}}/reasoning.wasm \
-        -o {{wasm_dir}}/engine-pipeline.wasm
+    wac plug {{wasm_dir}}/lasna.wasm \
+        --plug {{wasm_dir}}/gerna.wasm \
+        --plug {{wasm_dir}}/smuni.wasm \
+        --plug {{wasm_dir}}/logji.wasm \
+        -o {{wasm_dir}}/lasna-pipeline.wasm
 
-# Compiles the native Wasmtime host runner
-build-runner:
-    @echo "Building native host runner..."
-    cargo build --release -p runner
+# Compiles the native Wasmtime host gasnu
+build-gasnu:
+    @echo "Building native host gasnu..."
+    cargo build --release -p gasnu
 
 # Executes the full pipeline: Builds WASM modules, then boots the native REPL
 run: build-wasm
     @echo "Launching Neuro-Symbolic Engine..."
-    cargo run --release -p runner
+    cargo run --release -p gasnu
 
-# Run parser unit tests only (bypasses cdylib linker issues)
-test-parser:
-    cargo test -p parser --lib -- --nocapture
+# Run gerna unit tests only (bypasses cdylib linker issues)
+test-gerna:
+    cargo test -p gerna --lib -- --nocapture
 
 # Run all unit tests across workspace
 test:
@@ -46,11 +46,19 @@ backend:
 
 # Full pipeline with compute backend auto-configured
 run-with-backend: build-wasm
-    NIBLI_COMPUTE_ADDR=127.0.0.1:5555 cargo run --release -p runner
+    NIBLI_COMPUTE_ADDR=127.0.0.1:5555 cargo run --release -p gasnu
 
 # Run Python backend tests
 test-backend:
     python3 -m pytest python/test_nibli_backend.py -v 2>/dev/null || python3 -m unittest python.test_nibli_backend -v 2>/dev/null || python3 python/test_nibli_backend.py
+
+# Classify Lojban readme — deterministic translation to FOL + English
+classify:
+    python3 python/lojban_classifier.py readme.lojban
+
+# Run Lojban classifier tests
+test-classifier:
+    python3 -m pytest python/test_classifier.py -v 2>/dev/null || python3 python/test_classifier.py
 
 # Wipes all compilation artifacts
 clean:

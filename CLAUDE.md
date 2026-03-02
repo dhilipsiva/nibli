@@ -20,10 +20,10 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 |---------|-------------|
 | `just run` | Full pipeline: clean WASM -> build components -> fuse with wac -> launch REPL |
 | `just test` | Run all unit tests (`cargo test --lib -- --nocapture --test-threads=1`) |
-| `just test-parser` | Run parser tests only |
+| `just test-gerna` | Run gerna (parser) tests only |
 | `just test-backend` | Run Python backend tests |
 | `just build-wasm` | Build WASM components + fuse with wac |
-| `just build-runner` | Build native Wasmtime host runner |
+| `just build-gasnu` | Build native Wasmtime host gasnu (runner) |
 | `just backend` | Start the Python reference compute backend (port 5555) |
 | `just run-with-backend` | Build + run with `NIBLI_COMPUTE_ADDR=127.0.0.1:5555` |
 | `just clean` | `cargo clean` |
@@ -33,11 +33,11 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 - **Regenerate WIT bindings:** `cargo component build` (bindings appear in each crate's `src/bindings.rs`)
   - Note: full build fails on `io-extras` crate (`#![feature]` on stable). Bindings still generate successfully before the failure.
 - **REPL uses reedline** — does not work with piped stdin
-- Reasoning tests require `--test-threads=1` (shared global state: EGRAPH, KNOWN_ENTITIES). The Justfile handles this.
+- Logji (reasoning) tests require `--test-threads=1` (shared global state: EGRAPH, KNOWN_ENTITIES). The Justfile handles this.
 
 ## Compute Backend
 
-The runner acts as a TCP client to an external compute backend server via JSON Lines protocol.
+The gasnu (runner) acts as a TCP client to an external compute backend server via JSON Lines protocol.
 
 - **Env var:** `NIBLI_COMPUTE_ADDR=host:port` — configures the backend address at startup
 - **REPL command:** `:backend [host:port]` — show or change backend address at runtime
@@ -48,25 +48,27 @@ The runner acts as a TCP client to an external compute backend server via JSON L
 
 ## Architecture
 
-5 WASM component crates + 1 native host:
+5 WASM component crates + 1 native host (all crate names are Lojban gismu):
 
-| Crate | Role | Key files |
-|-------|------|-----------|
-| `parser` | Lojban text -> AST -> flat WIT buffer | `grammar.rs`, `ast.rs`, `lib.rs` (flattener), `lexer.rs` |
-| `semantics` | Flat AST buffer -> FOL logic IR -> flat WIT logic buffer | `semantic.rs`, `ir.rs`, `lib.rs` (flattener) |
-| `reasoning` | FOL logic buffer -> egglog e-graph assert/query | `lib.rs` (single file, all logic) |
-| `orchestrator` | Glue: chains parser -> semantics -> reasoning | `lib.rs` |
-| `runner` | Native Wasmtime host, REPL, external compute backend TCP client | `main.rs` |
-| `python/` | Reference compute backend server (TCP + JSON Lines) | `nibli_backend.py` |
+| Crate | Lojban meaning | Role | Key files |
+|-------|---------------|------|-----------|
+| `gerna` | grammar | Lojban text -> AST -> flat WIT buffer | `grammar.rs`, `ast.rs`, `lib.rs` (flattener), `lexer.rs` |
+| `smuni` | meaning | Flat AST buffer -> FOL logic IR -> flat WIT logic buffer | `semantic.rs`, `ir.rs`, `lib.rs` (flattener) |
+| `logji` | logic | FOL logic buffer -> egglog e-graph assert/query | `lib.rs` (single file, all logic) |
+| `lasna` | fasten/connect | Glue: chains gerna -> smuni -> logji | `lib.rs` |
+| `gasnu` | agent/doer | Native Wasmtime host, REPL, external compute backend TCP client | `main.rs` |
+| `python/` | — | Reference compute backend server (TCP + JSON Lines) | `nibli_backend.py` |
 
-- **WIT interfaces:** `wit/world.wit` defines `ast-types` (parser output), `logic-types` (FOL IR), `parser`, `semantics`, `reasoning`, `compute-backend`, `engine`. `cargo component build` regenerates `src/bindings.rs` in each crate.
+- **WIT interfaces:** `wit/world.wit` defines `ast-types` (gerna output), `logic-types` (FOL IR), `gerna`, `smuni`, `logji`, `compute-backend`, `lasna`. `cargo component build` regenerates `src/bindings.rs` in each crate.
+- **WIT worlds:** `gerna-component`, `smuni-component`, `logji-component`, `lasna-pipeline`.
+- **Rust structs:** `GernaComponent`, `SmuniComponent`, `LogjiComponent`, `LasnaPipeline`.
 - **Cross-component data:** Flat index-based arrays (`AstBuffer`, `LogicBuffer`) with `u32` indices — no pointers across WASM boundaries.
 
 ## Code Conventions
 
-- Parser tests use `as_bridi(&r.sentences[0])` helper to unwrap `Sentence::Simple`
+- Gerna (parser) tests use `as_bridi(&r.sentences[0])` helper to unwrap `Sentence::Simple`
 - Grammar tests use `parse_ok()` / `parse_err()` + token constructors `cmavo()`, `gismu()`
-- Semantics tests use `compile_one(selbris, sumtis, bridi)` helper returning `(LogicalForm, SemanticCompiler)`
+- Smuni (semantics) tests use `compile_one(selbris, sumtis, bridi)` helper returning `(LogicalForm, SemanticCompiler)`
 - `resolve(&compiler, &spur)` helper to get string from interner in tests
 - Connective enums (Je/Ja/Jo/Ju) are shared between selbri and sumti connectives
 - BAI tags map to underlying gismu: ri'a->rinka, ni'i->nibli, mu'i->mukti, ki'u->krinu, pi'o->pilno, ba'i->basti
@@ -98,7 +100,7 @@ Before every commit, always:
 Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator) + C2 (non-monotonic reasoning / belief revision) + C3 (temporal reasoning in e-graph) + C4 (event semantics — Neo-Davidsonian) + C5 (description term opacity — `le` vs `lo`) + SkolemFn multi-dependency + e-graph saturation safety (configurable run bound, diagnostic warnings, `:saturate` REPL command) + event-decomposed universal rule compilation fix (condition-side ∃ as pattern variables) + proof trace memoization (DAG deduplication via ProofRef).
 
 **Implemented features:**
-- Lexer + recursive-descent parser (gismu, cmavo, cmevla, lujvo)
+- Lexer + recursive-descent gerna/parser (gismu, cmavo, cmevla, lujvo)
 - Gadri descriptions (lo/le/la), universal (ro lo/ro le), numeric quantifiers (PA lo/le, su'o lo)
 - Place tags (fa/fe/fi/fo/fu), BAI modal tags (ri'a, ni'i, mu'i, ki'u, pi'o, ba'i), fi'o...fe'u
 - Selbri: root, tanru (Neo-Davidsonian event decomposition — shared event variable resolves intersective fallacy), conversion (se/te/ve/xe), negation (na), grouping (ke...ke'e), compounds (zei), be...bei...be'o
@@ -114,13 +116,13 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - egglog e-graph reasoning with structural rewrites + inference rules
 - Count quantifier (exactly N) for numeric descriptions
 - da/de/di existential quantifier closure (bare logic variables now properly wrapped in ∃)
-- Host-managed WIT resources: `resource knowledge-base` (reasoning) + `resource session` (engine interface)
-- KnowledgeBase uses `RefCell` (not `Mutex`) — single-threaded WASI, no global state
+- Host-managed WIT resources: `resource knowledge-base` (logji) + `resource session` (lasna interface)
+- KnowledgeBase uses `RefCell` (not `Mutex`) — single-threaded WASI, no global state in logji
 - Numerical comparison predicates: zmadu (>), mleca (<), dunli (==) evaluated at query time on Num terms
-- Computation dispatch WIT protocol: `compute-backend` interface, `ComputeNode` IR variant, predicate registry in orchestrator
+- Computation dispatch WIT protocol: `compute-backend` interface, `ComputeNode` IR variant, predicate registry in lasna
 - Built-in arithmetic evaluation: pilji (multiply), sumji (add), dilcu (divide) with query-time dispatch fallback chain
-- Host-provided compute backend with wasmtime linker integration
-- Generic external compute backend: TCP + JSON Lines client in runner, lazy connect, auto-reconnect
+- Host-provided compute backend with wasmtime linker integration in gasnu
+- Generic external compute backend: TCP + JSON Lines client in gasnu, lazy connect, auto-reconnect
 - Python reference backend server: pilji, sumji, dilcu, tenfa (exponentiation), dugri (logarithm)
 - Compute result auto-ingestion: successful compute dispatch results automatically asserted into egglog KB as ground predicates
 - Direct fact assertion: `assert-fact` WIT method on session resource bypasses Lojban parsing for trusted programmatic injection
@@ -129,29 +131,29 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - Bidirectional material conditional rewrite enables modus ponens/tollens on sentence connectives (ganai...gi)
 - Deontic attitudinals: ei (obligation/should), e'e (competence/permission/may) — sentence-level modifiers, transparent wrapper nodes in reasoning
 - Lujvo morphological recognition: Logos regex `[a-z']{5}[a-z']*[aeiou]` captures 6+ char brivla; longest-match prevents cmavo prefix theft; PHF dictionary handles arity lookup
-- Observative sentences & go'i pro-bridi: parser accepts sentences without explicit selbri (inserts implicit `go'i`), orchestrator resolves go'i via `SelbriSnapshot` deep-clone preserving full selbri structure (negation, conversion, tanru, be/bei args, abstractions) across calls
+- Observative sentences & go'i pro-bridi: gerna accepts sentences without explicit selbri (inserts implicit `go'i`), lasna resolves go'i via `SelbriSnapshot` deep-clone preserving full selbri structure (negation, conversion, tanru, be/bei args, abstractions) across calls
 - Metalinguistic `sa` construct-class erasure: proper selma'o classification (28 classes) with backward-walk to matching grammatical class; graceful fallback to single-word erase for unclassified cmavo
-- Existential witness extraction: `query-find` WIT method + `find_witnesses` reasoning function returns all satisfying binding sets for existential variables; `ma` question pro-sumti compiles to existential variable (like da/de/di); REPL `??` prefix for find queries
+- Existential witness extraction: `query-find` WIT method + `find_witnesses` logji function returns all satisfying binding sets for existential variables; `ma` question pro-sumti compiles to existential variable (like da/de/di); REPL `??` prefix for find queries
 - Proof trace generation: `check_formula_holds_traced` builds proof tree as it recurses, recording which rule/axiom was applied at each step (15 proof rule variants); `query-entailment-with-proof` / `query-text-with-proof` WIT methods; REPL `?!` prefix for traced queries with indented tree output
 - Multi-hop derivation provenance: backward-chaining reconstruction traces derived facts through universal rule chains (e.g., `gerku(alis) → danlu(alis) → xanlu(alis)`); `UniversalRuleRecord` captures rule templates at compilation time; s-expression pattern matching unifies conclusion templates against queried facts; `Asserted(sexp)` leaf nodes distinguish ground truths from `Derived(label, sexp)` nodes with recursive children; depth-limited (10) with graceful fallback to opaque `PredicateCheck`; zero overhead on egglog saturation hot path
-- Parser error recovery: per-sentence recovery (skip to next `.i` on parse failure, continue parsing remaining sentences); `ParseResult` carries both partial results and errors; exact line:column reporting via pointer arithmetic on token `&str` slices; WIT `parse-error` and `parse-result` types; orchestrator surfaces parse warnings
+- Gerna error recovery: per-sentence recovery (skip to next `.i` on parse failure, continue parsing remaining sentences); `ParseResult` carries both partial results and errors; exact line:column reporting via pointer arithmetic on token `&str` slices; WIT `parse-error` and `parse-result` types; lasna surfaces parse warnings
 - WASM fuel limits: Wasmtime fuel-based execution limits prevent unbounded computation; per-command refuel in REPL; configurable via `NIBLI_FUEL` env var or `:fuel` REPL command; friendly `[Limit]` message on fuel exhaustion
 - WASM memory limits: Wasmtime `StoreLimits` caps WASM linear memory growth; configurable via `NIBLI_MEMORY_MB` env var (default 512 MB) or `:memory` REPL command; prevents adversarial e-graph growth from crashing host
 - Configurable saturation run bound: egglog `(run N)` iteration limit configurable via `NIBLI_RUN_BOUND` env var (default 100) or `:saturate` REPL command; `set-run-bound`/`get-run-bound` WIT methods on KB and session resources; `run_saturation()` helper replaces 5 hardcoded `(run 100)` calls; diagnostic warnings on egglog errors (compute ingestion, xorlo presuppositions) replace silent `.ok()` swallowing; run bound preserved across KB reset/rebuild
 - Guarded conjunction introduction: egglog rule derives `And(A, B)` when both A, B are atomic `Pred` forms sharing an `InDomain` entity; `PredHasEntity` helper relation extracts entities from argument positions x1-x3; prevents combinatorial explosion by excluding `(Zoe)` and non-entity terms
-- WIT typed error variants: shared `nibli-error` variant (syntax/semantic/reasoning/backend) replaces `Result<_, String>` across all 14 WIT functions; `syntax-detail` record carries line:column; orchestrator propagates via `?`; runner pattern-matches for structured `[Syntax Error]`/`[Semantic Error]`/`[Reasoning Error]`/`[Backend Error]` REPL output
+- WIT typed error variants: shared `nibli-error` variant (syntax/semantic/reasoning/backend) replaces `Result<_, String>` across all 14 WIT functions; `syntax-detail` record carries line:column; lasna propagates via `?`; gasnu pattern-matches for structured `[Syntax Error]`/`[Semantic Error]`/`[Reasoning Error]`/`[Backend Error]` REPL output
 - WASI capability sandboxing: replaced `inherit_stdio()` with `inherit_stdout().inherit_stderr()` — WASM components get only stdout/stderr (for diagnostic prints), no stdin, no filesystem, no network, no env vars
 - Clone-free Jo/Ju connectives: added `Biconditional` and `Xor` variants to `LogicalForm` IR — each operand stored once, expansion to And/Or/Not happens during flattening where operands are u32 indices (zero-cost copy); eliminated 6 deep `.clone()` calls across 3 compilation sites
-- Arena-allocated parser AST: bumpalo `Bump` arena replaces all `Box<T>` with `&'arena T` in AST types; 24 heap allocations per parse batched into contiguous arena chunks; arena created per `parse_text()` call, freed in one shot after flattening; enables memory reuse via `Bump::reset()` for batch corpus processing
-- Non-monotonic reasoning / belief revision: fact registry with per-assertion FactId (u64), FactRecord stores cloned LogicBuffer + label + retracted flag; retraction marks fact withdrawn then rebuilds egraph from surviving base facts (sound because all derived facts recomputed); `retract-fact` and `list-facts` WIT methods on both `knowledge-base` and `session` resources; REPL `:retract <id>` and `:facts` commands; idempotent retraction; `rebuilding` flag suppresses diagnostic prints during replay
+- Arena-allocated gerna AST: bumpalo `Bump` arena replaces all `Box<T>` with `&'arena T` in AST types; 24 heap allocations per parse batched into contiguous arena chunks; arena created per `parse_text()` call, freed in one shot after flattening; enables memory reuse via `Bump::reset()` for batch corpus processing
+- Non-monotonic reasoning / belief revision: fact registry with per-assertion FactId (u64), FactRecord stores cloned LogicBuffer + label + retracted flag; retraction marks fact withdrawn then rebuilds e-graph from surviving base facts (sound because all derived facts recomputed); `retract-fact` and `list-facts` WIT methods on both `knowledge-base` and `session` resources; REPL `:retract <id>` and `:facts` commands; idempotent retraction; `rebuilding` flag suppresses diagnostic prints during replay
 - Temporal reasoning in e-graph: `Past`/`Present`/`Future` constructors in egglog `Formula` datatype; tense wrappers preserved end-to-end (assertion, query, rule compilation, proof tracing, witness extraction); tense conjunction elimination rules; temporal entity extraction for guarded conjunction introduction; temporal lifting of universal rules (timeless rules automatically fire on tensed premises to derive tensed conclusions); tense-aware backward-chaining provenance; strict tense discrimination (Past ≠ Future ≠ bare)
 
 - Neo-Davidsonian event semantics: every predication decomposes into event type predicate + Lojban-native role predicates (`klama(e) ∧ klama_x1(e, alis) ∧ klama_x2(e, paris)`); fresh `_ev0`, `_ev1` event variables separate from entity `_v0` variables; tanru share event variable between modifier and head (`sutra gerku` → `∃e. gerku(e) ∧ gerku_x1(e, x) ∧ sutra_x1(e, x)`), resolving the intersective fallacy; `event_decompose()` method on SemanticCompiler produces `∃e. type(e) ∧ role_x1(e, a1) ∧ ...`; all role predicates emitted (including Unspecified/zo'e) for inject_variable compatibility; `inject_variable` and `count_unspecified_predicates` updated to only target `_x1` role predicates; recursive selbri (Converted/Negated/Grouped/Connected/WithArgs) get event decomposition automatically via delegation; abstraction inner forms (`nu`/`du'u`/`ka`/`ni`/`si'o`) event-decomposed naturally through `compile_sentence`
 
-- Description term opacity (`le` vs `lo`): `la` gadri now compiles to `Constant` (like proper names), `le` stays as opaque `Description` rigid designator; `Description` terms now get `InDomain` membership in the egglog e-graph, enabling conjunction introduction and universal rule participation; `ro le` uses opaque `le_domain_{name}` restrictor (distinct from veridical `gerku` restrictor of `ro lo`); `PA le` similarly uses opaque domain restrictor; `known_descriptions` tracking in reasoning engine separate from `known_entities`; all three query functions (entailment check, proof trace, witness extraction) enumerate both `Const` and `Desc` domain members; `QuantifierKind::UniversalLe` and `ExactCountLe` variants preserve gadri distinction through quantifier closure
+- Description term opacity (`le` vs `lo`): `la` gadri now compiles to `Constant` (like proper names), `le` stays as opaque `Description` rigid designator; `Description` terms now get `InDomain` membership in the egglog e-graph, enabling conjunction introduction and universal rule participation; `ro le` uses opaque `le_domain_{name}` restrictor (distinct from veridical `gerku` restrictor of `ro lo`); `PA le` similarly uses opaque domain restrictor; `known_descriptions` tracking in logji engine separate from `known_entities`; all three query functions (entailment check, proof trace, witness extraction) enumerate both `Const` and `Desc` domain members; `QuantifierKind::UniversalLe` and `ExactCountLe` variants preserve gadri distinction through quantifier closure
 
 - Event-decomposed universal rule compilation: condition-side existential variables (from Neo-Davidsonian event decomposition in universal rule antecedents) are compiled as egglog pattern variables instead of dependent Skolem functions; `collect_condition_exists` identifies condition-side ∃ variables after `decompose_implication`; `flatten_conjuncts_through_exists` strips Exists wrappers to expose individual predicate atoms for egglog hash-join matching; conclusion-side ∃ variables correctly remain as `SkolemFn` for canonical witness creation; xorlo presupposition generates fresh Skolem constants for event variables; backward-chaining provenance enumerates domain member witnesses for unbound event pattern variables in condition templates; enables multi-hop temporal reasoning with event semantics (e.g., `pu gerku(alis) + ∀gerku→danlu + ∀danlu→jmive` derives `pu jmive(alis)`)
 
-- Proof trace memoization: `HashMap<String, u32>` memo table threaded through `trace_predicate_provenance`, `try_backward_chain_traced`, and `check_formula_holds_traced` deduplicates repeated sub-proof derivations; when the same predicate sexp has already been proved, subsequent requests emit a lightweight `ProofRef(sexp)` WIT variant instead of re-expanding the full derivation tree; eliminates cubic blowup in Neo-Davidsonian event-decomposed multi-hop proof traces where 3 role predicates per concept independently re-derive the same chain; `proof-ref` variant added to WIT `proof-rule`; runner displays `(proved above): <sexp>` for memoized references; memo created fresh per `query_entailment_with_proof_inner` call (no cross-query leakage)
+- Proof trace memoization: `HashMap<String, u32>` memo table threaded through `trace_predicate_provenance`, `try_backward_chain_traced`, and `check_formula_holds_traced` deduplicates repeated sub-proof derivations; when the same predicate sexp has already been proved, subsequent requests emit a lightweight `ProofRef(sexp)` WIT variant instead of re-expanding the full derivation tree; eliminates cubic blowup in Neo-Davidsonian event-decomposed multi-hop proof traces where 3 role predicates per concept independently re-derive the same chain; `proof-ref` variant added to WIT `proof-rule`; gasnu displays `(proved above): <sexp>` for memoized references; memo created fresh per `query_entailment_with_proof_inner` call (no cross-query leakage)
 
 **Next up:** See `todo.md` for deferred items (async compute backend)

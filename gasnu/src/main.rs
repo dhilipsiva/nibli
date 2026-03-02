@@ -1,4 +1,4 @@
-//! Nibli native host runner: Wasmtime WASI P2 host + interactive REPL.
+//! Nibli gasnu (agent/runner): Wasmtime WASI P2 host + interactive REPL.
 //!
 //! Loads the fused WASM engine component, provides the `compute-backend` host
 //! implementation (built-in arithmetic + external TCP backend), and runs an
@@ -183,7 +183,7 @@ impl WasiView for HostState {
 }
 
 mod pipeline_bind {
-    wasmtime::component::bindgen!({ path: "../wit/world.wit", world: "engine-pipeline" });
+    wasmtime::component::bindgen!({ path: "../wit/world.wit", world: "lasna-pipeline" });
 }
 
 use pipeline_bind::lojban::nesy::compute_backend;
@@ -419,12 +419,12 @@ fn main() -> Result<()> {
 
     println!("Loading fused WebAssembly Component...");
     let pipeline_comp =
-        Component::from_file(&engine, "target/wasm32-wasip2/release/engine-pipeline.wasm")?;
+        Component::from_file(&engine, "target/wasm32-wasip2/release/lasna-pipeline.wasm")?;
     let pipeline =
-        pipeline_bind::EnginePipeline::instantiate(&mut store, &pipeline_comp, &linker)?;
+        pipeline_bind::LasnaPipeline::instantiate(&mut store, &pipeline_comp, &linker)?;
 
     // Get the exported engine interface and create a session
-    let engine_iface = pipeline.lojban_nesy_engine();
+    let engine_iface = pipeline.lojban_nesy_lasna();
     let session = engine_iface.session();
     let session_handle = session.call_constructor(&mut store)?;
 

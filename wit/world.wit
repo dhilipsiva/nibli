@@ -4,7 +4,7 @@
 ///   - `ast-types`: Flat-buffer AST produced by the Lojban parser
 ///   - `logic-types`: First-Order Logic IR consumed by the reasoner
 ///   - `error-types`: Structured error variants shared across all components
-///   - `parser` / `semantics` / `reasoning` / `engine`: Component interfaces
+///   - `gerna` / `smuni` / `logji` / `lasna`: Component interfaces
 ///   - `compute-backend`: Host-provided external predicate evaluation
 ///
 /// All cross-component data uses flat index-based arrays (`u32` pointers into
@@ -352,7 +352,7 @@ interface logic-types {
 ///
 /// Lexes, preprocesses (si/sa/su/zo/zoi/zei), parses via recursive descent,
 /// and flattens the tree AST into a WIT-compatible flat buffer.
-interface parser {
+interface gerna {
     use ast-types.{parse-result};
     use error-types.{nibli-error};
     /// Parse Lojban text into a flat AST buffer.
@@ -365,7 +365,7 @@ interface parser {
 /// Compiles Lojban AST structures into First-Order Logic formulas:
 /// Skolemization, universal rule compilation, quantifier scoping,
 /// connective expansion, and abstraction reification.
-interface semantics {
+interface smuni {
     use ast-types.{ast-buffer};
     use logic-types.{logic-buffer};
     use error-types.{nibli-error};
@@ -390,7 +390,7 @@ interface compute-backend {
 ///
 /// Provides a stateful knowledge base resource that supports fact assertion,
 /// entailment queries, proof trace generation, and witness extraction.
-interface reasoning {
+interface logji {
     use logic-types.{logic-buffer, witness-binding, proof-trace, fact-id, fact-summary};
     use error-types.{nibli-error};
 
@@ -425,28 +425,28 @@ interface reasoning {
 /// Component worlds define the import/export boundaries for each WASM module.
 /// Each world is compiled into a separate .wasm component via `cargo component build`.
 
-/// Parser component: no imports, exports the `parser` interface.
-world parser-component { export parser; }
-/// Semantics component: no imports, exports the `semantics` interface.
-world semantics-component { export semantics; }
-/// Reasoning component: imports `compute-backend` for external predicate
-/// evaluation, exports the `reasoning` interface.
-world reasoning-component {
+/// Gerna component: no imports, exports the `gerna` interface.
+world gerna-component { export gerna; }
+/// Smuni component: no imports, exports the `smuni` interface.
+world smuni-component { export smuni; }
+/// Logji component: imports `compute-backend` for external predicate
+/// evaluation, exports the `logji` interface.
+world logji-component {
     import compute-backend;
-    export reasoning;
+    export logji;
 }
 
-/// High-level engine interface that chains parser → semantics → reasoning.
+/// High-level lasna interface that chains gerna → smuni → logji.
 ///
 /// Provides a `session` resource with text-level assert/query methods that
 /// internally orchestrate the full pipeline. This is the primary API for
-/// end users (e.g., the REPL runner).
-interface engine {
+/// end users (e.g., the REPL gasnu).
+interface lasna {
     use logic-types.{logical-term, witness-binding, proof-trace, fact-id, fact-summary};
     use error-types.{nibli-error};
 
     /// A user-facing session that wraps the full pipeline.
-    /// Internally creates a parser → semantics → reasoning chain with a fresh KB.
+    /// Internally creates a gerna → smuni → logji chain with a fresh KB.
     resource session {
         /// Create a new session (internally creates a fresh KB).
         constructor();
@@ -477,13 +477,13 @@ interface engine {
     }
 }
 
-/// Orchestrator component world: imports all sub-components, exports the engine.
+/// Lasna component world: imports all sub-components, exports the lasna interface.
 /// This is the world that `wac plug` fuses into the final composite WASM binary.
-world engine-pipeline {
-    import parser;
-    import semantics;
-    import reasoning;
+world lasna-pipeline {
+    import gerna;
+    import smuni;
+    import logji;
     import compute-backend;
-    export engine;
+    export lasna;
 }
 

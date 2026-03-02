@@ -1,6 +1,6 @@
-//! Semantics WASM component: flat AST buffer → FOL logic buffer.
+//! Smuni (meaning/semantics) WASM component: flat AST buffer → FOL logic buffer.
 //!
-//! Entry point for the `semantics-component` WIT world. Compiles the parser's
+//! Entry point for the `smuni-component` WIT world. Compiles the gerna's
 //! flat AST buffer into a flat First-Order Logic buffer via the [`SemanticCompiler`],
 //! then flattens the tree-structured [`LogicalForm`] IR into the WIT-compatible
 //! index-based [`LogicBuffer`].
@@ -17,17 +17,17 @@ pub mod ir;
 /// Semantic compiler: AST → FOL logic form tree.
 pub mod semantic;
 
-use bindings::exports::lojban::nesy::semantics::Guest;
+use bindings::exports::lojban::nesy::smuni::Guest;
 use bindings::lojban::nesy::ast_types::AstBuffer;
 use bindings::lojban::nesy::error_types::NibliError;
 use bindings::lojban::nesy::logic_types::{LogicBuffer, LogicNode, LogicalTerm as WitTerm};
 use ir::{LogicalForm, LogicalTerm};
 use semantic::SemanticCompiler;
 
-/// WIT component implementation for the `semantics` interface.
-struct SemanticsComponent;
+/// WIT component implementation for the `smuni` interface.
+struct SmuniComponent;
 
-impl Guest for SemanticsComponent {
+impl Guest for SmuniComponent {
     /// Compile an AST buffer into an FOL logic buffer.
     /// Compiles only root sentences (rel clause bodies are referenced by index).
     fn compile_buffer(ast: AstBuffer) -> Result<LogicBuffer, NibliError> {
@@ -202,4 +202,4 @@ fn flatten_form(form: &LogicalForm, nodes: &mut Vec<LogicNode>, interner: &lasso
     }
 }
 
-bindings::export!(SemanticsComponent with_types_in bindings);
+bindings::export!(SmuniComponent with_types_in bindings);

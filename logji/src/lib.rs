@@ -1,4 +1,4 @@
-//! Reasoning engine: FOL assertion and query via egglog e-graph equality saturation.
+//! Logji (logic/reasoning) engine: FOL assertion and query via egglog e-graph equality saturation.
 //!
 //! This is the core inference component of Nibli. It maintains a stateful knowledge
 //! base backed by an egglog e-graph and provides:
@@ -21,7 +21,7 @@
 #[allow(warnings)]
 mod bindings;
 
-use crate::bindings::exports::lojban::nesy::reasoning::{Guest, GuestKnowledgeBase};
+use crate::bindings::exports::lojban::nesy::logji::{Guest, GuestKnowledgeBase};
 use crate::bindings::lojban::nesy::error_types::NibliError;
 use crate::bindings::lojban::nesy::logic_types::{
     FactSummary, LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofStep, ProofTrace,
@@ -391,9 +391,9 @@ fn cartesian_product(entities: &[String], dep_count: usize) -> Vec<Vec<String>> 
 
 // ─── WIT Export Implementation ────────────────────────────────────
 
-struct ReasoningComponent;
+struct LogjiComponent;
 
-impl Guest for ReasoningComponent {
+impl Guest for LogjiComponent {
     type KnowledgeBase = KnowledgeBase;
 }
 
@@ -2667,7 +2667,7 @@ fn generate_count_extra_witnesses(
     }
 }
 
-bindings::export!(ReasoningComponent with_types_in bindings);
+bindings::export!(LogjiComponent with_types_in bindings);
 
 #[cfg(test)]
 mod tests {
