@@ -1,0 +1,103 @@
+ni'o la .nibli. e lo crdt cu kakne lo nu kansa gasnu
+ni'o lo crdt cu ciste lo nu jmina datni fi lo se tcidu
+ni'o lo logji ciste cu se zbasu fi lo crdt datni
+
+ni'o lo nabmi cu se krinu lo nu lo crdt na kakne lo nu lasna lo logji ciste
+ni'o lo egraph cu se galfi ca lo nu lo logji javni cu se pilno
+ni'o ganai re skami cu jmina lo logji datni gi lo egraph na se lasna
+
+ni'o lo se sidbo cu ckini lo nu zbasu lo logji ciste fi lo crdt datni
+ni'o lo crdt cu jmina lo lojbo bridi fi lo se tcidu
+ni'o lo logji ciste cu se zbasu fi lo crdt datni ca lo nu lo crdt cu se galfi
+ni'o lo logji ciste cu spofu se zbasu ca lo nu lo crdt cu se galfi
+
+ni'o lo crdt cu curmi lo nu re prenu cu jmina lo lojbo bridi
+ni'o ganai lo se jmina cu na logji mapti gi la .nibli. cu facki lo nabmi
+ni'o lo nabmi cu se krinu lo nu lo se jmina cu na mapti
+
+ni'o lo crdt cu se pilno fi lo dioxus ciste
+ni'o lo gasnu na djuno lo du'u lo crdt cu zasti
+ni'o lo gasnu cu te benji lo lojbo bridi po lo crdt
+
+ni'o lo se sidbo cu zmadu lo nu pilno lo jadni skami ciste
+ni'o lo crdt cu curmi lo nu lo datni cu zvati lo skami pe lo pilno
+ni'o na sarcu lo nu pilno lo jadni skami ciste
+
+# ── CRDT + E-Graph Architecture ──────────────────────────────────
+#
+# Integrating a Conflict-Free Replicated Data Type (CRDT) into a
+# local-first Dioxus application powered by a WebAssembly logic
+# engine is an exceptionally forward-thinking architecture. It
+# completely bypasses the need for a centralized, authoritative
+# cloud database, aligning perfectly with a privacy-first,
+# zero-latency system.
+#
+# However, merging CRDTs with a deterministic First-Order Logic
+# theorem prover creates a severe mechanical friction point:
+# You cannot synchronize an e-graph.
+#
+# ── The Architectural Trap: State vs. Derivation ─────────────────
+#
+# CRDTs (like Automerge, Yjs, or Rust's native Loro) are designed
+# to merge text, JSON, or tree structures commutatively.
+#
+# The reasoning engine (egglog) operates on an e-graph, which
+# dynamically merges equivalence classes as rules fire. If Device A
+# asserts a Lojban sentence and Device B asserts a different
+# sentence, you cannot merge their raw Wasm memory states or their
+# serialized e-graphs. The structural rewrite paths would collide
+# catastrophically.
+#
+# ── The Solution: The "Materialized View" Pattern ────────────────
+#
+# To make this work, you must strictly decouple the Authoritative
+# State from the Logical Projection.
+#
+# Layer 1: The CRDT Append-Only Log (Authoritative State)
+#   The CRDT does not store the logic graph. It only stores the
+#   timeline of Lojban document edits, asserted facts, and metadata
+#   (e.g., source PDF bounding boxes). This is the state that
+#   synchronizes across the network via the Dioxus app.
+#
+# Layer 2: The Replay Engine (Wasm Boundary)
+#   When the Dioxus app detects a CRDT sync event from another
+#   device, it does not attempt to mutate the existing Wasm session.
+#   It passes the appended Lojban assertions across the WASI
+#   boundary into the lasna orchestrator.
+#
+# Layer 3: The Ephemeral E-Graph (Logical Projection)
+#   The Knowledge Base inside egglog is treated as a purely
+#   ephemeral, deterministically derived "Materialized View" of
+#   the CRDT log.
+#
+# ── How CRDTs Supercharge Tier 5 Features ────────────────────────
+#
+# By enforcing this separation, the CRDT natively solves several
+# of the hardest problems on the roadmap:
+#
+# * Free Non-Monotonic Reasoning: A retraction is just a new
+#   operation appended to the log. The Dioxus app updates the text,
+#   and Nibli incrementally invalidates the downstream inferences
+#   tied to that specific CRDT operation ID.
+#
+# * The Multi-Agent Hypothesis Sandbox: CRDTs natively support
+#   branching and merging. Scientist A and Scientist B can fork the
+#   workspace, assert conflicting Lojban axioms, and work locally.
+#   When they merge their branches, the CRDT handles the text merge
+#   flawlessly.
+#
+# * Deterministic Contradiction Detection: When the merge happens,
+#   Nibli reads the unified CRDT state. If the merged Lojban
+#   assertions violate FOL (e.g., P(x) AND NOT P(x)), Nibli's
+#   e-graph immediately detects the paradox and halts, allowing the
+#   Dioxus UI to highlight the exact lines from the merged CRDT
+#   state that caused the logical collapse.
+#
+# ── Implementation Mandate ───────────────────────────────────────
+#
+# Because both Dioxus and Nibli are built in Rust, avoid
+# JavaScript-based CRDTs. Integrate a native Rust CRDT library
+# like loro or automerge-rs directly into the Dioxus client state.
+# The Wasmtime host (gasnu/src/main.rs) should remain completely
+# unaware of the CRDT's existence; it should only receive linear,
+# flattened text streams or discrete AST assertions from the host UI.
