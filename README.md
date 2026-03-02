@@ -1,50 +1,50 @@
-# Nibli
+# nibli
 
-**A Zero-Hallucination Symbolic Reasoning Engine**
+**lo na xanri ke logji birti ciste**
 
-Nibli is a deterministic theorem prover compiled to WebAssembly (WASI P2). It compiles Lojban natural language syntax into First-Order Logic and performs inference via egglog e-graph equality saturation. Every conclusion is formally derived — no hallucination, no approximation.
+ni'o la .nibli. cu logji birti ciste noi se zbasu fi lo ueb.asemblii. (WASI P2) .i la .nibli. cu fanva lo lojbo se cusku fi lo pamoi mekso logji .ije cu logji jalge fi la .eglOg. ke dunli satci ciste .i ro jalge cu se krinu lo logji — noda se xanri .i noda se jibni
 
-> *nibli* (Lojban): x1 logically necessitates/entails x2 under rules x3.
+> *nibli* (lojbo): x1 logji nibli lo du'u x2 kei fi lo javni be x3
 
-## Pipeline
+## ni'o lo pruce
 
 ```
-Lojban text ──→ Lexer ──→ Parser (AST) ──→ Semantics (FOL IR) ──→ Reasoning (egglog e-graph)
-                 │            │                    │                        │
-                logos     recursive            Skolemization         equality saturation
-              tokenizer    descent           SkolemFn witnesses      native egglog rules
+lo lojbo cusku ──→ lo valsi cpacu ──→ lo gerna ciste (AST) ──→ lo smuni ciste (FOL IR) ──→ lo logji ciste (egglog)
+                        │                   │                         │                            │
+                      logos              ke'a jmina               Skolem se cuxna          dunli satci
+                    pagbu cpana        gerna tcidu             SkolemFn se birti        egglog javni
 ```
 
-5 WASM components composed via WIT interfaces into a single fused binary:
+ni'o mu lo ueb.asemblii. pagbu cu se lasna fi lo WIT jupku'a .ije se zbasu fi lo pa jukpa fasnu:
 
-| Component | Role |
-|-----------|------|
-| **parser** | Lojban text → AST → flat WIT buffer |
-| **semantics** | AST buffer → FOL logic IR → flat WIT logic buffer |
-| **reasoning** | FOL logic buffer → egglog e-graph assert/query, compute dispatch |
-| **orchestrator** | Chains parser → semantics → reasoning, compute predicate registry |
-| **runner** | Native Wasmtime host, REPL, external compute backend TCP client |
+| pagbu | se zukte |
+|-------|----------|
+| **parser** | lo lojbo cusku → AST → WIT pagbu kampu |
+| **semantics** | lo AST pagbu kampu → FOL logji pagbu kampu |
+| **reasoning** | lo FOL logji pagbu → egglog dunli satci .e se jivna |
+| **orchestrator** | lasna: parser → semantics → reasoning |
+| **runner** | lo samciste Wasmtime .e lo REPL .e lo TCP jikca ciste |
 
-## Quick Start
+## ni'o lo cfari
 
-### Prerequisites
+### se nitcu
 
-- [Nix](https://nixos.org/download.html) (all tooling — rustc, cargo-component, wac, just, wasmtime — comes from `flake.nix`)
+- [Nix](https://nixos.org/download.html) (ro tutci — rustc, cargo-component, wac, just, wasmtime — se zbasu fi lo `flake.nix`)
 
-### Build & Run
+### zbasu je gasnu
 
 ```bash
-# Enter the dev shell
+# ko nerkla lo tutci canlu
 nix --extra-experimental-features 'nix-command flakes' develop
 
-# Build components, fuse into a single engine, and launch the REPL
+# ko zbasu ro pagbu .ije lasna .ije cfari lo REPL
 just run
 
-# Run all unit tests
+# ko troci ro cipra
 just test
 ```
 
-### REPL Usage
+### lo REPL se pilno
 
 ```
 ~/nibli〉lo gerku cu barda
@@ -53,16 +53,31 @@ just test
 ~/nibli〉? lo gerku cu barda
 [Query] TRUE
 
+~/nibli〉ro lo gerku cu danlu
+[Fact #2] Asserted.
+
+~/nibli〉? la .alis. gerku .ije ? la .alis. danlu
+[Query] TRUE
+
+~/nibli〉?! la .alis. danlu
+[Proof]
+  Derived (gerku → danlu): (Pred "danlu" (Cons (Const "alis") (Nil))) → TRUE
+    Asserted: (Pred "gerku" (Cons (Const "alis") (Nil))) → TRUE
+
+~/nibli〉?? da gerku
+[Witnesses] da = alis
+
 ~/nibli〉:debug re lo gerku cu barda
 [Logic] (Count "_v0" 2 (And (Pred "gerku" ...) (Pred "barda" ...)))
 
 ~/nibli〉:assert tenfa 8 2 3
-[Fact #2] tenfa(8, 2, 3) asserted.
+[Fact #3] tenfa(8, 2, 3) asserted.
 
 ~/nibli〉:facts
-[Facts] 2 active fact(s):
+[Facts] 3 active fact(s):
   #1: lo gerku cu barda (1 root(s))
-  #2: :assert tenfa (1 root(s))
+  #2: ro lo gerku cu danlu (1 root(s))
+  #3: :assert tenfa (1 root(s))
 
 ~/nibli〉:retract 1
 [Retract] Fact #1 retracted. KB rebuilt.
@@ -71,79 +86,78 @@ just test
 [Reset] Knowledge base cleared.
 ```
 
-## Tech Stack
+## ni'o lo skami tutci
 
-- **Language:** Rust (stable)
-- **WASM:** WASI Preview 2 Component Model (cargo-component + wac)
-- **Runtime:** Wasmtime
-- **Logic Engine:** egglog (equality saturation)
-- **Lexer:** Logos
-- **Dictionary:** Perfect Hash Function (PHF) baked into binary
-- **Dev Environment:** Nix flake
-- **Compute Backend:** TCP + JSON Lines (generic protocol, any language)
-- **Task Runner:** Just
+- **bangu:** Rust (stabli)
+- **ueb.asemblii.:** WASI Preview 2 Component Model (cargo-component + wac)
+- **se gasnu:** Wasmtime
+- **logji ciste:** egglog (dunli satci)
+- **valsi cpacu:** Logos
+- **vlaste:** Perfect Hash Function (PHF) noi se zbasu nenri lo fasnu
+- **tutci canlu:** Nix flake
+- **skami jikca:** TCP + JSON Lines (sampu protokol, ro bangu ka'e pilno)
+- **fasnu gasnu:** Just
 
-## Lojban Coverage
+## ni'o lo lojbo se smuni
 
-- Gadri descriptions with opacity: `lo` (veridical ∃), `le` (referential opaque rigid designator), `la` (proper name → Constant); universal `ro lo` (veridical restrictor) / `ro le` (opaque le-domain restrictor); numeric quantifiers `PA lo` / `PA le` / `su'o lo`
-- Place tags (`fa`/`fe`/`fi`/`fo`/`fu`), BAI modal tags (`ri'a`, `ni'i`, `mu'i`, `ki'u`, `pi'o`, `ba'i`), `fi'o`...`fe'u`
-- Selbri: root, tanru (Neo-Davidsonian event decomposition — shared event variable resolves intersective fallacy), conversion (`se`/`te`/`ve`/`xe`), negation (`na`), grouping (`ke`...`ke'e`), compounds (`zei`), `be`...`bei`...`be'o`, lujvo (compound brivla)
-- Relative clauses (`poi`/`noi`/`voi`) with `ke'a`, implicit variable injection, clause stacking
-- Sumti connectives (`.e`/`.a`/`.o`/`.u` + `nai`), selbri connectives (`je`/`ja`/`jo`/`ju`)
-- Sentence connectives (forethought: `ge`...`gi`, `ga`...`gi`, `ganai`...`gi`; afterthought: `.i je`/`ja`/`jo`/`ju` with `na`/`nai`)
-- Abstractions (`nu`, `du'u`, `ka` with `ce'u`, `ni`, `si'o`)
-- Tense (`pu`/`ca`/`ba`) with temporal discrimination in e-graph, deontic attitudinals (`ei`/`e'e`)
-- Observative sentences (implicit `go'i` pro-bridi), explicit `go'i` as selbri
-- Question pro-sumti `ma` — compiles to existential variable for witness extraction
-- Quoted literals (`lu`...`li'u`), number sumti (`li` + PA)
+- lo gadri ke se smuni: `lo` (fatci da poi), `le` (lo se smuni poi mi jinvi), `la` (cmene → Constant); `ro lo` / `ro le` (ro da poi); `PA lo` / `PA le` / `su'o lo`
+- lo sumti stuzi cmavo (`fa`/`fe`/`fi`/`fo`/`fu`), BAI tcita (`ri'a`, `ni'i`, `mu'i`, `ki'u`, `pi'o`, `ba'i`), `fi'o`...`fe'u`
+- lo selbri: jicmu, tanru (Neo-Davidsonian nu'i ciste — lo nu fasnu ka'e se pilno fi lo ka cpacu lo drata intersektiv xlali), nunfanva (`se`/`te`/`ve`/`xe`), natfe (`na`), girzu (`ke`...`ke'e`), lujvo (`zei`), `be`...`bei`...`be'o`
+- lo poi/noi/voi ke'a pe lo sumti, joi lo ka jmina lo se smuni
+- lo sumti jo'u (`.e`/`.a`/`.o`/`.u` + `nai`), lo selbri jo'u (`je`/`ja`/`jo`/`ju`)
+- lo bridi jo'u (lidne: `ge`...`gi`, `ga`...`gi`, `ganai`...`gi`; jersi: `.i je`/`ja`/`jo`/`ju` joi `na`/`nai`)
+- lo nu'a (`nu`, `du'u`, `ka` joi `ce'u`, `ni`, `si'o`)
+- lo tcika (`pu`/`ca`/`ba`) joi lo dunli satci ke tcika javni, lo ei/e'e ke deontic cinmo
+- lo na se cusku bridi (zilkai `go'i`), lo go'i selbri
+- lo `ma` preti sumti — se fanva fi lo da poi se jivna
+- lo lu...li'u se cusku, lo li + PA namcu sumti
 
-## Reasoning
+## ni'o lo logji ciste
 
-- Skolemization (independent + multi-dependency dependent under `∀` via `SkolemFn` + `DepPair` constructors)
-- All universals compile to native egglog rules (O(K) hash-join matching, zero Herbrand overhead)
-- egglog e-graph with structural rewrites (commutativity, associativity, De Morgan, double negation) + inference rules (conjunction elimination/introduction, disjunctive syllogism, modus ponens/tollens)
-- Count quantifier (exactly N) for numeric descriptions
-- Numerical comparison predicates: `zmadu` (>), `mleca` (<), `dunli` (==) on `Num` terms
-- Computation dispatch: `compute-backend` WIT protocol for external evaluation, `ComputeNode` IR variant
-- Built-in arithmetic: `pilji` (multiply), `sumji` (add), `dilcu` (divide) with host-provided compute backend
-- External compute backend: generic TCP client with JSON Lines protocol, lazy connect, auto-reconnect
-- Compute result auto-ingestion: successful compute results automatically cached in the KB as ground predicates (closes reason→compute→reason loop)
-- Direct fact assertion: `assert-fact` WIT method + `:assert` REPL command for programmatic fact injection bypassing Lojban parsing
-- Non-monotonic reasoning: per-fact retraction via fact registry + rebuild-on-retract (egglog is append-only); each assertion gets a unique `FactId`; retraction marks fact withdrawn, rebuilds egraph from surviving base facts; `:retract <id>` and `:facts` REPL commands
-- Existential witness extraction: `query-find` returns all satisfying entity bindings for existential variables (`??` REPL prefix)
-- Proof trace generation: `query-entailment-with-proof` returns proof tree showing which rule/axiom was applied at each step (15 proof rule variants: conjunction, disjunction, negation, modal, exists-witness, forall-verified, count, predicate-check, compute-check, asserted, derived, etc.) — `?!` REPL prefix
-- Multi-hop derivation provenance: proof traces reconstruct causal chains through universal rules (e.g., `gerku → danlu → xanlu`) via backward-chaining pattern matching; `Asserted` leaves distinguish ground truths from `Derived` nodes showing which rule produced each intermediate conclusion
-- Parser error recovery: per-sentence recovery skips to next `.i` on parse failure, continues parsing remaining sentences; errors include exact line:column positions
-- Temporal reasoning: `Past`/`Present`/`Future` operators in egglog schema; strict tense discrimination (asserting `pu mi klama` does not entail `ba mi klama`); temporal lifting of universal rules (timeless rules like `∀x. gerku(x) → danlu(x)` automatically fire on tensed premises); temporal conjunction elimination and introduction
-- Neo-Davidsonian event semantics: every predication decomposes into event type predicate + role predicates (`klama(e) ∧ klama_x1(e, alis) ∧ klama_x2(e, paris)`); tanru share event variable between modifier and head, resolving the intersective fallacy
-- Guarded conjunction introduction: `And(A, B)` derived when both A, B are atomic predicates sharing an `InDomain` entity (prevents combinatorial explosion)
-- Typed WIT error variants: shared `nibli-error` variant (`syntax`/`semantic`/`reasoning`/`backend`) across all interfaces; syntax errors carry line:column positions; structured REPL error output
-- WASM fuel limits: per-command execution budget prevents unbounded computation; configurable via `NIBLI_FUEL` env var or `:fuel` REPL command
-- Configurable saturation run bound: egglog iteration limit tunable via `NIBLI_RUN_BOUND` env var (default 100) or `:saturate` REPL command; diagnostic warnings replace silent error swallowing
+- Skolem nunfanva (zilkai + se nitcu poi se jibni lo `ro` fi la SkolemFn + DepPair)
+- ro lo `ro` javni cu se fanva fi lo egglog javni (O(K) hash-join, noda Herbrand)
+- egglog dunli satci ciste joi lo gerna nunfanva (fatbydu'i, te fatbydu'i, de Morgan, re natfe basti) joi lo logji javni (je se vimcu, ja sisku, ganai ponse, ganai natfe)
+- lo namcu jivna: `zmadu` (>), `mleca` (<), `dunli` (==) fi lo `Num`
+- lo skami jikca: `compute-backend` WIT protokol, `ComputeNode` IR klesi
+- lo slabu namcu: `pilji` (pi'i), `sumji` (su'i), `dilcu` (fe'i) joi lo skami jikca
+- lo TCP jikca: sampu JSON Lines protokol, lazni jikca, ri jikca
+- lo skami jalge se jmina: lo jalge cu se jmina fi lo se slabu fatci (se krinu → skami → se krinu pruce)
+- lo fatci se jmina: `assert-fact` WIT fasnu + `:assert` REPL fasnu
+- lo na monotoni logji: lo fatci se vimcu fi lo fatci liste + ri zbasu (egglog cu jmina selte'i); `:retract <id>` .e `:facts` REPL fasnu
+- lo se birti se sisku: `query-find` cu se benji ro lo se birti sumti (`??` REPL lidne)
+- lo krinu ciste: `query-entailment-with-proof` cu se benji lo krinu tricu (15 krinu klesi) — `?!` REPL lidne
+- lo krefu nibli krinu: lo krinu tricu cu ri sisku fi lo `ro` javni; `Asserted` ke jicmu fatci cu se jinvi drata lo `Derived` ke se nibli jalge
+- lo gerna ri zbasu: lo bridi poi se fliba cu se srera .ije cfari lo jersi bridi; lo se srera cu se cusku lo rajypau linsi stuzi
+- lo tcika logji: `Past`/`Present`/`Future` fi lo egglog; lo tcika javni cu jmina lo tcika fi lo jicmu javni
+- lo Neo-Davidsonian nu'i smuni: ro bridi cu se pagbu fi lo nu fasnu klesi + lo se zukte sumti; lo tanru cu te pilno lo nu fasnu ka'e
+- lo junri je se jmina: `And(A, B)` se nibli ze'a lo re bridi cu pilno lo simxu `InDomain` sumti (se fanta lo cmalu explosi)
+- lo WIT srera klesi: `nibli-error` (`syntax`/`semantic`/`reasoning`/`backend`); lo gerna srera cu se cusku lo linsi stuzi
+- lo WASM se banro: lo REPL fasnu se banro; `NIBLI_FUEL` .e `:fuel` REPL fasnu
+- lo satci se banro: egglog krefu banro; `NIBLI_RUN_BOUND` (100 zilkai) .e `:saturate` REPL fasnu
 
-## Compute Backend
+## ni'o lo skami jikca
 
-The runner connects to an external compute backend over TCP using a JSON Lines protocol. Any process (Python, Node.js, Rust, another WASM module) can serve as a backend.
+ni'o la .nibli. cu jikca lo drata skami jikca fi lo TCP joi JSON Lines protokol .i ro pruce (Python, Node.js, Rust, drata) ka'e se pilno
 
 ```bash
-# Terminal 1: Start the Python reference backend
+# lo pamoi skami canlu: ko cfari lo Python jikca
 just backend
 
-# Terminal 2: Launch the engine with backend configured
+# lo remoi skami canlu: ko cfari la .nibli. joi lo jikca
 just run-with-backend
 
-# In the REPL:
-:compute tenfa                      # register tenfa for compute dispatch
-li bi tenfa li re li ci             # assert: 8 = 2^3
-? li bi tenfa li re li ci           # query: TRUE (dispatched to Python)
+# lo REPL nenri:
+:compute tenfa                      # ko jmina lo tenfa fi lo skami jikca
+li bi tenfa li re li ci             # ko cusku: 8 = 2^3
+? li bi tenfa li re li ci           # ko preti: JETNU (se skami fi lo Python)
 ```
 
-Set `NIBLI_COMPUTE_ADDR=host:port` or use `:backend host:port` in the REPL. Without a backend, built-in arithmetic still works.
+ni'o ko se pilno lo `NIBLI_COMPUTE_ADDR=host:port` a lo `:backend host:port` fi lo REPL .i vi lo na jikca lo slabu namcu ciste cu se pilno
 
-## Roadmap
+## ni'o lo midju platu
 
-See `todo.md` for the full phased roadmap (Phases 1-5), dependency graph, and technical debt tracker.
+ni'o ko viska lo `todo.md` fi lo roldza platu (pagbu 1-5) .e lo se zukte .e lo skami srera liste
 
-## License
+## ni'o lo javni se curmi
 
-See `LICENSE` for details.
+ni'o ko viska lo `LICENSE` fi lo se cusku
