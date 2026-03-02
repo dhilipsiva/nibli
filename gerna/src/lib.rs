@@ -22,9 +22,9 @@ pub mod lexer;
 /// Metalinguistic preprocessor (si/sa/su/zo/zoi/zei resolution).
 pub mod preprocessor;
 
-use bindings::exports::lojban::nesy::gerna::Guest;
-use bindings::lojban::nesy::ast_types as wit;
-use bindings::lojban::nesy::error_types::NibliError;
+use bindings::exports::lojban::nibli::gerna::Guest;
+use bindings::lojban::nibli::ast_types as wit;
+use bindings::lojban::nibli::error_types::NibliError;
 
 /// WIT component implementation for the `gerna` interface.
 struct GernaComponent;
@@ -96,7 +96,7 @@ impl Flattener {
 
     // ─── Sentence Flattening ────────────────────────────────
     fn push_sentence(&mut self, sentence: &ast::Sentence<'_>) -> u32 {
-        use bindings::lojban::nesy::ast_types::{
+        use bindings::lojban::nibli::ast_types::{
             Sentence as WasmSentence, SentenceConnective as WasmConn,
         };
 
@@ -115,17 +115,17 @@ impl Flattener {
                 }
 
                 let tense = bridi.tense.map(|t| match t {
-                    ast::Tense::Pu => bindings::lojban::nesy::ast_types::Tense::Pu,
-                    ast::Tense::Ca => bindings::lojban::nesy::ast_types::Tense::Ca,
-                    ast::Tense::Ba => bindings::lojban::nesy::ast_types::Tense::Ba,
+                    ast::Tense::Pu => bindings::lojban::nibli::ast_types::Tense::Pu,
+                    ast::Tense::Ca => bindings::lojban::nibli::ast_types::Tense::Ca,
+                    ast::Tense::Ba => bindings::lojban::nibli::ast_types::Tense::Ba,
                 });
 
                 let attitudinal = bridi.attitudinal.map(|a| match a {
-                    ast::Attitudinal::Ei => bindings::lojban::nesy::ast_types::Attitudinal::Ei,
-                    ast::Attitudinal::Ehe => bindings::lojban::nesy::ast_types::Attitudinal::Ehe,
+                    ast::Attitudinal::Ei => bindings::lojban::nibli::ast_types::Attitudinal::Ei,
+                    ast::Attitudinal::Ehe => bindings::lojban::nibli::ast_types::Attitudinal::Ehe,
                 });
 
-                let flat_bridi = bindings::lojban::nesy::ast_types::Bridi {
+                let flat_bridi = bindings::lojban::nibli::ast_types::Bridi {
                     relation,
                     head_terms,
                     tail_terms,
@@ -138,7 +138,7 @@ impl Flattener {
                 // Push the flat_bridi wrapped in the Simple enum variant
                 self.buffer
                     .sentences
-                    .push(bindings::lojban::nesy::ast_types::Sentence::Simple(
+                    .push(bindings::lojban::nibli::ast_types::Sentence::Simple(
                         flat_bridi,
                     ));
                 idx
@@ -382,7 +382,7 @@ bindings::export!(GernaComponent with_types_in bindings);
 mod flattener_tests {
     use bumpalo::Bump;
     use crate::ast::*;
-    use crate::bindings::lojban::nesy::ast_types as wit;
+    use crate::bindings::lojban::nibli::ast_types as wit;
 
     // Re-use the Flattener (it's private, so these tests must live in lib.rs
     // or you must make Flattener pub(crate)).
@@ -586,7 +586,7 @@ mod flattener_tests {
     /// Abstraction kind is preserved through flattening
     #[test]
     fn test_abstraction_kind_flattening() {
-        use crate::bindings::lojban::nesy::ast_types as wit;
+        use crate::bindings::lojban::nibli::ast_types as wit;
 
         for (kind, wit_kind) in [
             (AbstractionKind::Nu, wit::AbstractionKind::Nu),
@@ -633,7 +633,7 @@ mod flattener_tests {
     /// Sumti::Connected flattens to wit::Sumti::Connected with correct indices
     #[test]
     fn test_connected_sumti_flattening() {
-        use crate::bindings::lojban::nesy::ast_types as wit;
+        use crate::bindings::lojban::nibli::ast_types as wit;
 
         // mi .e do klama → head: [Connected(mi, Je, false, do)], selbri: klama
         let arena = Bump::new();
@@ -688,7 +688,7 @@ mod flattener_tests {
     /// Negated sumti connective flattens correctly
     #[test]
     fn test_connected_sumti_negated_flattening() {
-        use crate::bindings::lojban::nesy::ast_types as wit;
+        use crate::bindings::lojban::nibli::ast_types as wit;
 
         // mi .e nai do klama
         let arena = Bump::new();
@@ -721,7 +721,7 @@ mod flattener_tests {
     /// Chained connected sumti flattens with correct nesting
     #[test]
     fn test_chained_connected_sumti_flattening() {
-        use crate::bindings::lojban::nesy::ast_types as wit;
+        use crate::bindings::lojban::nibli::ast_types as wit;
 
         // mi .e (do .a di) → right-associative nesting
         let arena = Bump::new();

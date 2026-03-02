@@ -12,7 +12,7 @@ wit-bindgen-rt = "0.44.0"
 phf_codegen = "0.13.1"
 
 [package.metadata.component]
-package = "lojban:nesy"
+package = "lojban:nibli"
 
 [package.metadata.component.target]
 path = "../wit/world.wit"

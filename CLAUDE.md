@@ -9,7 +9,7 @@ Nibli is a deterministic theorem prover compiled to WebAssembly (WASI P2). It co
 - **OS:** Ubuntu on WSL2 (accessed from Windows via `\\wsl.localhost\Ubuntu\...`)
 - **Dev shell:** Nix flake — all tools (rustc, cargo-component, wac, just, wasmtime) come from `flake.nix`
 - **Enter dev shell:** `nix develop --extra-experimental-features nix-command --extra-experimental-features flakes`
-- **Run commands from Windows side:** `wsl -d Ubuntu -e bash -lc "cd ~/projects/dhilipsiva/lojban_nesy_engine && nix ... develop --command bash -c '<CMD>'"`
+- **Run commands from Windows side:** `wsl -d Ubuntu -e bash -lc "cd ~/projects/dhilipsiva/nibli && nix ... develop --command bash -c '<CMD>'"`
 - **Set `CARGO_INCREMENTAL=0`** if running cargo from Windows side (filesystem lock issues)
 
 ## Build & Test
@@ -155,5 +155,7 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - Event-decomposed universal rule compilation: condition-side existential variables (from Neo-Davidsonian event decomposition in universal rule antecedents) are compiled as egglog pattern variables instead of dependent Skolem functions; `collect_condition_exists` identifies condition-side ∃ variables after `decompose_implication`; `flatten_conjuncts_through_exists` strips Exists wrappers to expose individual predicate atoms for egglog hash-join matching; conclusion-side ∃ variables correctly remain as `SkolemFn` for canonical witness creation; xorlo presupposition generates fresh Skolem constants for event variables; backward-chaining provenance enumerates domain member witnesses for unbound event pattern variables in condition templates; enables multi-hop temporal reasoning with event semantics (e.g., `pu gerku(alis) + ∀gerku→danlu + ∀danlu→jmive` derives `pu jmive(alis)`)
 
 - Proof trace memoization: `HashMap<String, u32>` memo table threaded through `trace_predicate_provenance`, `try_backward_chain_traced`, and `check_formula_holds_traced` deduplicates repeated sub-proof derivations; when the same predicate sexp has already been proved, subsequent requests emit a lightweight `ProofRef(sexp)` WIT variant instead of re-expanding the full derivation tree; eliminates cubic blowup in Neo-Davidsonian event-decomposed multi-hop proof traces where 3 role predicates per concept independently re-derive the same chain; `proof-ref` variant added to WIT `proof-rule`; gasnu displays `(proved above): <sexp>` for memoized references; memo created fresh per `query_entailment_with_proof_inner` call (no cross-query leakage)
+
+- REPL `:load <filepath>` command: batch-loads a `.lojban` file into the knowledge base; reads file line by line, skips blank lines and `#` comment lines, asserts each remaining line via `call_assert_text`; per-line refueling prevents fuel exhaustion on large files; reports per-line fact IDs or errors with line numbers; final summary shows asserted/skipped/errors counts; use with `readme.lojban` ontological prelude to bootstrap the KB
 
 **Next up:** See `todo.md` for deferred items (async compute backend)

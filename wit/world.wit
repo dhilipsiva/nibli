@@ -9,7 +9,7 @@
 ///
 /// All cross-component data uses flat index-based arrays (`u32` pointers into
 /// parallel lists) — no heap pointers cross WASM boundaries.
-package lojban:nesy@0.1.0;
+package lojban:nibli@0.1.0;
 
 /// Flat-buffer AST types produced by the Lojban parser.
 ///

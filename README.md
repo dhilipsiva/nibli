@@ -82,6 +82,12 @@ just test
 ~/nibli〉:retract 1
 [Retract] Fact #1 retracted. KB rebuilt.
 
+~/nibli〉:load readme.lojban
+[Fact #1] la .nibli. cu logji ciste
+[Fact #2] la .nibli. cu birti ciste
+...
+[Load] Done: 82 asserted, 31 skipped, 0 errors
+
 ~/nibli〉:reset
 [Reset] Knowledge base cleared.
 ```
@@ -134,6 +140,7 @@ just test
 - lo WIT srera klesi: `nibli-error` (`syntax`/`semantic`/`reasoning`/`backend`); lo gerna srera cu se cusku lo linsi stuzi
 - lo WASM se banro: lo REPL fasnu se banro; `NIBLI_FUEL` .e `:fuel` REPL fasnu
 - lo satci se banro: egglog krefu banro; `NIBLI_RUN_BOUND` (100 zilkai) .e `:saturate` REPL fasnu
+- lo tcana se samtci: `:load <datnyvei>` cu jmina ro bridi fi lo `.lojban` datnyvei; lo `#` lerpoi cu se vimcu
 
 ## ni'o lo skami jikca
 

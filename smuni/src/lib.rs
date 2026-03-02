@@ -17,10 +17,10 @@ pub mod ir;
 /// Semantic compiler: AST → FOL logic form tree.
 pub mod semantic;
 
-use bindings::exports::lojban::nesy::smuni::Guest;
-use bindings::lojban::nesy::ast_types::AstBuffer;
-use bindings::lojban::nesy::error_types::NibliError;
-use bindings::lojban::nesy::logic_types::{LogicBuffer, LogicNode, LogicalTerm as WitTerm};
+use bindings::exports::lojban::nibli::smuni::Guest;
+use bindings::lojban::nibli::ast_types::AstBuffer;
+use bindings::lojban::nibli::error_types::NibliError;
+use bindings::lojban::nibli::logic_types::{LogicBuffer, LogicNode, LogicalTerm as WitTerm};
 use ir::{LogicalForm, LogicalTerm};
 use semantic::SemanticCompiler;
 

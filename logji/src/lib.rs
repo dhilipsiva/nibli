@@ -21,9 +21,9 @@
 #[allow(warnings)]
 mod bindings;
 
-use crate::bindings::exports::lojban::nesy::logji::{Guest, GuestKnowledgeBase};
-use crate::bindings::lojban::nesy::error_types::NibliError;
-use crate::bindings::lojban::nesy::logic_types::{
+use crate::bindings::exports::lojban::nibli::logji::{Guest, GuestKnowledgeBase};
+use crate::bindings::lojban::nibli::error_types::NibliError;
+use crate::bindings::lojban::nibli::logic_types::{
     FactSummary, LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofStep, ProofTrace,
     WitnessBinding,
 };
@@ -811,7 +811,7 @@ fn resolve_args_for_dispatch(
 /// On native (non-wasm32) targets, returns Err (backend unavailable).
 #[cfg(target_arch = "wasm32")]
 fn dispatch_to_backend(rel: &str, args: &[LogicalTerm]) -> Result<bool, String> {
-    crate::bindings::lojban::nesy::compute_backend::evaluate(rel, args)
+    crate::bindings::lojban::nibli::compute_backend::evaluate(rel, args)
         .map_err(|e| format!("{}", e))
 }
 
@@ -2672,7 +2672,7 @@ bindings::export!(LogjiComponent with_types_in bindings);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bindings::lojban::nesy::logic_types::{
+    use crate::bindings::lojban::nibli::logic_types::{
         LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofTrace,
     };
 

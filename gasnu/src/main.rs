@@ -9,6 +9,7 @@
 //! - **`??`** — Query with witness extraction (find satisfying bindings)
 //! - **`?!`** — Query with proof trace (indented proof tree)
 //! - **`:debug`** — Compile to logic s-expression without asserting
+//! - **`:load`** — Load a `.lojban` file (assert each line, skip `#` comments)
 //! - **`:assert`** — Assert ground facts directly (bypasses Lojban parsing)
 //! - **`:retract`** — Retract a fact by ID (triggers KB rebuild)
 //! - **`:facts`** — List all active facts in the KB
@@ -21,8 +22,10 @@
 use anyhow::Result;
 use reedline::{DefaultPrompt, Reedline, Signal};
 use serde::{Deserialize, Serialize};
+use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
+use std::path::Path;
 use std::time::Duration;
 use wasmtime::component::{Component, HasSelf, Linker};
 use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder};
@@ -186,10 +189,10 @@ mod pipeline_bind {
     wasmtime::component::bindgen!({ path: "../wit/world.wit", world: "lasna-pipeline" });
 }
 
-use pipeline_bind::lojban::nesy::compute_backend;
-use pipeline_bind::lojban::nesy::error_types::NibliError;
-use pipeline_bind::lojban::nesy::logic_types::LogicalTerm as EngineLogicalTerm;
-use pipeline_bind::lojban::nesy::logic_types::{ProofRule, ProofStep, ProofTrace};
+use pipeline_bind::lojban::nibli::compute_backend;
+use pipeline_bind::lojban::nibli::error_types::NibliError;
+use pipeline_bind::lojban::nibli::logic_types::LogicalTerm as EngineLogicalTerm;
+use pipeline_bind::lojban::nibli::logic_types::{ProofRule, ProofStep, ProofTrace};
 
 /// Format a LogicalTerm from the engine bindings for display.
 fn format_term(term: &EngineLogicalTerm) -> String {
@@ -424,7 +427,7 @@ fn main() -> Result<()> {
         pipeline_bind::LasnaPipeline::instantiate(&mut store, &pipeline_comp, &linker)?;
 
     // Get the exported engine interface and create a session
-    let engine_iface = pipeline.lojban_nesy_lasna();
+    let engine_iface = pipeline.lojban_nibli_lasna();
     let session = engine_iface.session();
     let session_handle = session.call_constructor(&mut store)?;
 
@@ -439,7 +442,7 @@ fn main() -> Result<()> {
     let prompt = DefaultPrompt::default();
 
     println!(
-        "Ready. Commands: :quit :reset :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :saturate [n] :help"
+        "Ready. Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :saturate [n] :help"
     );
     println!("Prefix '?' for queries, '?!' for proof trace, '??' for find, plain text for assertions.\n");
 
@@ -515,6 +518,7 @@ fn main() -> Result<()> {
                         println!("  ?! <text>           Query with proof trace");
                         println!("  ?? <text>           Find witnesses (answer variables)");
                         println!("  :debug <text>       Show compiled logic tree");
+                        println!("  :load <filepath>    Load a .lojban file (assert each line)");
                         println!("  :compute <name>     Register predicate for compute dispatch");
                         println!("  :assert <rel> <args..> Assert a ground fact directly");
                         println!("  :retract <id>       Retract a fact by ID (rebuilds KB)");
@@ -654,6 +658,63 @@ fn main() -> Result<()> {
                         }
                         Err(_) => println!("[Host] Usage: :retract <fact-id>"),
                     }
+                } else if let Some(load_arg) = input.strip_prefix(":load ") {
+                    let filepath = load_arg.trim();
+                    if filepath.is_empty() {
+                        println!("[Host] Usage: :load <filepath>");
+                        continue;
+                    }
+                    let path = Path::new(filepath);
+                    if !path.exists() {
+                        println!("[Load] File not found: {}", filepath);
+                        continue;
+                    }
+                    let file = match File::open(path) {
+                        Ok(f) => f,
+                        Err(e) => {
+                            println!("[Load] Cannot open file: {}", e);
+                            continue;
+                        }
+                    };
+                    let reader = BufReader::new(file);
+                    let mut asserted = 0u32;
+                    let mut skipped = 0u32;
+                    let mut errors = 0u32;
+                    for (line_num, line_result) in reader.lines().enumerate() {
+                        let line = match line_result {
+                            Ok(l) => l,
+                            Err(e) => {
+                                println!("[Load] Read error at line {}: {}", line_num + 1, e);
+                                errors += 1;
+                                continue;
+                            }
+                        };
+                        let trimmed = line.trim();
+                        // Skip blank lines and comments (lines starting with #)
+                        if trimmed.is_empty() || trimmed.starts_with('#') {
+                            skipped += 1;
+                            continue;
+                        }
+                        refuel(&mut store, fuel_budget);
+                        match session.call_assert_text(&mut store, session_handle, trimmed) {
+                            Ok(Ok(fact_id)) => {
+                                println!("[Fact #{}] {}", fact_id, trimmed);
+                                asserted += 1;
+                            }
+                            Ok(Err(e)) => {
+                                println!("[Load] line {}: {}", line_num + 1, format_nibli_error(&e));
+                                errors += 1;
+                            }
+                            Err(e) => {
+                                println!("[Load] line {}: {}", line_num + 1, format_host_error(&e));
+                                errors += 1;
+                            }
+                        }
+                    }
+                    println!(
+                        "[Load] Done: {} asserted, {} skipped, {} errors",
+                        asserted, skipped, errors
+                    );
                 } else if let Some(find_text) = input.strip_prefix("??") {
                     let text = find_text.trim();
                     if text.is_empty() {
@@ -872,7 +933,7 @@ mod tests {
 
     #[test]
     fn test_format_nibli_error_syntax() {
-        use pipeline_bind::lojban::nesy::error_types::SyntaxDetail;
+        use pipeline_bind::lojban::nibli::error_types::SyntaxDetail;
         let e = NibliError::Syntax(SyntaxDetail {
             message: "expected selbri or terms".to_string(),
             line: 3,
@@ -1224,7 +1285,7 @@ mod tests {
 
     #[test]
     fn test_format_nibli_error_syntax_with_position() {
-        use pipeline_bind::lojban::nesy::error_types::SyntaxDetail;
+        use pipeline_bind::lojban::nibli::error_types::SyntaxDetail;
         let e = NibliError::Syntax(SyntaxDetail {
             message: "unexpected token".to_string(),
             line: 1,

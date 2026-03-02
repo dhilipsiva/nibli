@@ -19,16 +19,16 @@
 #[allow(warnings)]
 mod bindings;
 
-use bindings::exports::lojban::nesy::lasna::{Guest, GuestSession};
-use bindings::lojban::nesy::ast_types::{
+use bindings::exports::lojban::nibli::lasna::{Guest, GuestSession};
+use bindings::lojban::nibli::ast_types::{
     AstBuffer, Bridi, ModalTag, RelClause, Selbri, Sentence, Sumti,
 };
-use bindings::lojban::nesy::error_types::{NibliError, SyntaxDetail};
-use bindings::lojban::nesy::logic_types::{
+use bindings::lojban::nibli::error_types::{NibliError, SyntaxDetail};
+use bindings::lojban::nibli::logic_types::{
     FactSummary, LogicBuffer, LogicNode, LogicalTerm, ProofTrace, WitnessBinding,
 };
-use bindings::lojban::nesy::{gerna, smuni};
-use bindings::lojban::nesy::logji::KnowledgeBase;
+use bindings::lojban::nibli::{gerna, smuni};
+use bindings::lojban::nibli::logji::KnowledgeBase;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -667,7 +667,7 @@ fn write_term(out: &mut String, term: &LogicalTerm) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bindings::lojban::nesy::ast_types::{Bridi, Conversion, Sumti};
+    use bindings::lojban::nibli::ast_types::{Bridi, Conversion, Sumti};
 
     // Helper: build a minimal AstBuffer with a single simple sentence
     fn make_ast(

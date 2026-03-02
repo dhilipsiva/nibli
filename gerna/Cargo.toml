@@ -9,7 +9,7 @@ logos = "0.16.1"
 wit-bindgen-rt = "0.44.0"
 
 [package.metadata.component]
-package = "lojban:nesy"
+package = "lojban:nibli"
 
 [package.metadata.component.target]
 path = "../wit/world.wit"

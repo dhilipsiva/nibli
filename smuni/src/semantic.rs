@@ -16,7 +16,7 @@
 //! - **String interning**: all relation names and variable names use [`lasso::Rodeo`]
 //!   for zero-copy comparison and deduplication.
 
-use crate::bindings::lojban::nesy::ast_types::{
+use crate::bindings::lojban::nibli::ast_types::{
     AbstractionKind, Attitudinal, BaiTag, Bridi, Connective, Conversion, Gadri, ModalTag,
     PlaceTag, Selbri, Sentence, SentenceConnective, Sumti, Tense,
 };
@@ -1192,7 +1192,7 @@ impl SemanticCompiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bindings::lojban::nesy::ast_types::{
+    use crate::bindings::lojban::nibli::ast_types::{
         Bridi, Connective, Gadri, RelClause, RelClauseKind, Selbri, Sentence,
         SentenceConnective, Sumti,
     };
