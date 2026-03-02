@@ -7,3 +7,6 @@ parser/src/bindings.rs
 semantics/src/bindings.rs
 reasoning/src/bindings.rs
 orchestrator/src/bindings.rs
+
+# Book drafts (private)
+book/
