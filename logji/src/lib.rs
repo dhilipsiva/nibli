@@ -1,13 +1,12 @@
-//! Logji (logic/reasoning) engine: FOL assertion and query via egglog e-graph equality saturation.
+//! Logji (logic/reasoning) engine: FOL assertion and query via demand-driven backward-chaining.
 //!
 //! This is the core inference component of Nibli. It maintains a stateful knowledge
-//! base backed by an egglog e-graph and provides:
+//! base with a fact index and backward-chaining rule engine:
 //!
-//! - **Fact assertion** — Ground predicates asserted as `(IsTrue (Pred "rel" ...))` facts.
-//!   Universal quantifiers compile to native egglog rewrite rules with O(K) hash-join matching.
+//! - **Fact assertion** — Ground predicates stored in `asserted_sexps` HashSet.
+//!   Universal quantifiers compile to `UniversalRuleRecord` templates for backward-chaining.
 //! - **Entailment queries** — Recursive formula checking via [`check_formula_holds`] with
-//!   structural rewrites (commutativity, De Morgan, double negation) and inference rules
-//!   (conjunction elimination/introduction, disjunctive syllogism, modus ponens/tollens).
+//!   demand-driven backward-chaining through universal rules.
 //! - **Proof traces** — [`check_formula_holds_traced`] builds a proof tree recording which
 //!   rule/axiom was applied at each step (15 proof rule variants). Multi-hop derivation
 //!   provenance traces derived facts through universal rule chains via backward-chaining.
@@ -27,7 +26,6 @@ use crate::bindings::lojban::nibli::logic_types::{
     FactSummary, LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofStep, ProofTrace,
     WitnessBinding,
 };
-use egglog::EGraph;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
@@ -70,7 +68,6 @@ struct FactRecord {
 
 /// All mutable KB state behind a single RefCell.
 struct KnowledgeBaseInner {
-    egraph: EGraph,
     skolem_counter: usize,
     known_entities: HashSet<String>,
     /// Event Skolem constants (from `_ev*` variables). Tracked for witness search
@@ -91,15 +88,13 @@ struct KnowledgeBaseInner {
     fact_registry: Vec<FactRecord>,
     /// Suppresses diagnostic prints during rebuild replay.
     rebuilding: bool,
-    /// Maximum egglog saturation iterations per `(run N)` call. Default 100.
-    /// This is a configuration parameter preserved across reset/rebuild.
+    /// Configuration parameter preserved across reset/rebuild (kept for WIT API compatibility).
     run_bound: u32,
 }
 
 impl KnowledgeBaseInner {
     fn new() -> Self {
         Self {
-            egraph: make_fresh_egraph(),
             skolem_counter: 0,
             known_entities: HashSet::new(),
             known_event_entities: HashSet::new(),
@@ -116,7 +111,6 @@ impl KnowledgeBaseInner {
     }
 
     fn reset(&mut self) {
-        self.egraph = make_fresh_egraph();
         self.skolem_counter = 0;
         self.known_entities.clear();
         self.known_event_entities.clear();
@@ -143,11 +137,7 @@ impl KnowledgeBaseInner {
     }
 
     fn note_entity(&mut self, name: &str) {
-        let is_new = self.known_entities.insert(name.to_string());
-        if is_new {
-            let cmd = format!("(InDomain (Const \"{}\"))", name);
-            self.egraph.parse_and_run_program(None, &cmd).ok();
-        }
+        self.known_entities.insert(name.to_string());
     }
 
     /// Track an event Skolem constant for witness search and proof tracing,
@@ -157,22 +147,7 @@ impl KnowledgeBaseInner {
     }
 
     fn note_description(&mut self, name: &str) {
-        let is_new = self.known_descriptions.insert(name.to_string());
-        if is_new {
-            let cmd = format!("(InDomain (Desc \"{}\"))", name);
-            self.egraph.parse_and_run_program(None, &cmd).ok();
-        }
-    }
-
-    /// Run egglog equality saturation up to `run_bound` iterations.
-    /// Logs a warning on failure (unless suppressed during rebuild replay).
-    fn run_saturation(&mut self) {
-        let cmd = format!("(run {})", self.run_bound);
-        if let Err(e) = self.egraph.parse_and_run_program(None, &cmd) {
-            if !self.rebuilding {
-                eprintln!("[Saturate] Warning: {}", e);
-            }
-        }
+        self.known_descriptions.insert(name.to_string());
     }
 
     /// Return all known domain members as (s-expression, LogicalTerm) pairs.
@@ -207,167 +182,7 @@ pub struct KnowledgeBase {
     inner: RefCell<KnowledgeBaseInner>,
 }
 
-/// The egglog schema and inference rules, shared between init and reset.
-const SCHEMA: &str = r#"
-    ;; ═══════════════════════════════════════════════════
-    ;; Lojban NeSy Engine — FOL Schema & Rules
-    ;; Phase 7: Native egglog rules for universals
-    ;; ═══════════════════════════════════════════════════
-
-    ;; Atomic Terms
-    ;; SkolemFn: dependent Skolem witness — (SkolemFn "sk_N" dep_term)
-    ;; For single dependency: dep_term is a plain Term (Var in rules, Const in ground)
-    ;; For multi-dependency: dep_term is nested DepPair, e.g. (DepPair dep0 dep1)
-    (datatype Term
-        (Var String)
-        (Const String)
-        (Desc String)
-        (Zoe)
-        (Num i64)
-        (SkolemFn String Term)
-        (DepPair Term Term)
-    )
-
-    ;; Argument list (Cons/Nil encoding)
-    (datatype TermList
-        (Nil)
-        (Cons Term TermList)
-    )
-
-    ;; Logical Formulae
-    (datatype Formula
-        (Pred String TermList)
-        (And Formula Formula)
-        (Or Formula Formula)
-        (Not Formula)
-        (Exists String Formula)
-        (ForAll String Formula)
-        (Implies Formula Formula)
-        (Past Formula)
-        (Present Formula)
-        (Future Formula)
-    )
-
-    ;; Ground-truth relation: "this formula is known true"
-    (relation IsTrue (Formula))
-    ;; Domain tracking: "this term is a known entity"
-    (relation InDomain (Term))
-
-    ;; ── Structural rewrites ──────────────────────────
-    ;; Commutativity
-    (rewrite (And a b) (And b a))
-    (rewrite (Or a b) (Or b a))
-
-    ;; Associativity
-    (rewrite (And (And a b) c) (And a (And b c)))
-    (rewrite (Or (Or a b) c) (Or a (Or b c)))
-
-    ;; Double negation elimination
-    (rewrite (Not (Not a)) a)
-
-    ;; De Morgan's laws
-    (rewrite (Not (And a b)) (Or (Not a) (Not b)))
-    (rewrite (Not (Or a b)) (And (Not a) (Not b)))
-
-    ;; Material conditional (bidirectional)
-    (rewrite (Implies a b) (Or (Not a) b))
-    (rewrite (Or (Not a) b) (Implies a b))
-
-    ;; ── Inference rules ──────────────────────────────
-    ;; Conjunction elimination
-    (rule ((IsTrue (And a b))) ((IsTrue a) (IsTrue b)))
-
-    ;; Disjunctive syllogism
-    (rule ((IsTrue (Or a b)) (IsTrue (Not a))) ((IsTrue b)))
-    (rule ((IsTrue (Or a b)) (IsTrue (Not b))) ((IsTrue a)))
-
-    ;; Modus ponens via implication
-    (rule ((IsTrue (Implies a b)) (IsTrue a)) ((IsTrue b)))
-
-    ;; Modus tollens
-    (rule ((IsTrue (Implies a b)) (IsTrue (Not b))) ((IsTrue (Not a))))
-
-    ;; ∀-distribution over ∧
-    (rule ((IsTrue (ForAll v (And A B))))
-          ((IsTrue (And (ForAll v A) (ForAll v B)))))
-
-    ;; ── Conjunction introduction (guarded) ─────────────
-    ;; Helper: extract InDomain entities from predicate argument positions.
-    ;; Only fires for terms already in InDomain (named entities, Skolem constants),
-    ;; so (Zoe) and other non-entity terms are naturally excluded.
-    (relation PredHasEntity (Formula Term))
-
-    ;; Position x1
-    (rule ((IsTrue (Pred r (Cons t rest))) (InDomain t))
-          ((PredHasEntity (Pred r (Cons t rest)) t)))
-
-    ;; Position x2
-    (rule ((IsTrue (Pred r (Cons a1 (Cons t rest)))) (InDomain t))
-          ((PredHasEntity (Pred r (Cons a1 (Cons t rest))) t)))
-
-    ;; Position x3
-    (rule ((IsTrue (Pred r (Cons a1 (Cons a2 (Cons t rest))))) (InDomain t))
-          ((PredHasEntity (Pred r (Cons a1 (Cons a2 (Cons t rest)))) t)))
-
-    ;; Introduction: derive And(A,B) when both A,B are atomic Pred forms
-    ;; sharing at least one InDomain entity (any argument position).
-    (rule ((IsTrue (Pred r1 args1)) (IsTrue (Pred r2 args2))
-           (PredHasEntity (Pred r1 args1) t) (PredHasEntity (Pred r2 args2) t))
-          ((IsTrue (And (Pred r1 args1) (Pred r2 args2)))))
-
-    ;; ── Temporal conjunction elimination ─────────────
-    ;; Past(A ∧ B) → Past(A) ∧ Past(B)
-    (rule ((IsTrue (Past (And a b)))) ((IsTrue (Past a)) (IsTrue (Past b))))
-    ;; Present(A ∧ B) → Present(A) ∧ Present(B)
-    (rule ((IsTrue (Present (And a b)))) ((IsTrue (Present a)) (IsTrue (Present b))))
-    ;; Future(A ∧ B) → Future(A) ∧ Future(B)
-    (rule ((IsTrue (Future (And a b)))) ((IsTrue (Future a)) (IsTrue (Future b))))
-
-    ;; ── Temporal entity extraction (for conjunction introduction under tense) ──
-    ;; Past predicates
-    (rule ((IsTrue (Past (Pred r (Cons t rest)))) (InDomain t))
-          ((PredHasEntity (Past (Pred r (Cons t rest))) t)))
-    (rule ((IsTrue (Past (Pred r (Cons a1 (Cons t rest))))) (InDomain t))
-          ((PredHasEntity (Past (Pred r (Cons a1 (Cons t rest)))) t)))
-    (rule ((IsTrue (Past (Pred r (Cons a1 (Cons a2 (Cons t rest)))))) (InDomain t))
-          ((PredHasEntity (Past (Pred r (Cons a1 (Cons a2 (Cons t rest))))) t)))
-    ;; Present predicates
-    (rule ((IsTrue (Present (Pred r (Cons t rest)))) (InDomain t))
-          ((PredHasEntity (Present (Pred r (Cons t rest))) t)))
-    (rule ((IsTrue (Present (Pred r (Cons a1 (Cons t rest))))) (InDomain t))
-          ((PredHasEntity (Present (Pred r (Cons a1 (Cons t rest)))) t)))
-    (rule ((IsTrue (Present (Pred r (Cons a1 (Cons a2 (Cons t rest)))))) (InDomain t))
-          ((PredHasEntity (Present (Pred r (Cons a1 (Cons a2 (Cons t rest))))) t)))
-    ;; Future predicates
-    (rule ((IsTrue (Future (Pred r (Cons t rest)))) (InDomain t))
-          ((PredHasEntity (Future (Pred r (Cons t rest))) t)))
-    (rule ((IsTrue (Future (Pred r (Cons a1 (Cons t rest))))) (InDomain t))
-          ((PredHasEntity (Future (Pred r (Cons a1 (Cons t rest)))) t)))
-    (rule ((IsTrue (Future (Pred r (Cons a1 (Cons a2 (Cons t rest)))))) (InDomain t))
-          ((PredHasEntity (Future (Pred r (Cons a1 (Cons a2 (Cons t rest))))) t)))
-
-    ;; Temporal conjunction introduction (same tense)
-    (rule ((IsTrue (Past (Pred r1 args1))) (IsTrue (Past (Pred r2 args2)))
-           (PredHasEntity (Past (Pred r1 args1)) t) (PredHasEntity (Past (Pred r2 args2)) t))
-          ((IsTrue (Past (And (Pred r1 args1) (Pred r2 args2))))))
-    (rule ((IsTrue (Present (Pred r1 args1))) (IsTrue (Present (Pred r2 args2)))
-           (PredHasEntity (Present (Pred r1 args1)) t) (PredHasEntity (Present (Pred r2 args2)) t))
-          ((IsTrue (Present (And (Pred r1 args1) (Pred r2 args2))))))
-    (rule ((IsTrue (Future (Pred r1 args1))) (IsTrue (Future (Pred r2 args2)))
-           (PredHasEntity (Future (Pred r1 args1)) t) (PredHasEntity (Future (Pred r2 args2)) t))
-          ((IsTrue (Future (And (Pred r1 args1) (Pred r2 args2))))))
-"#;
-
-/// Create a fresh EGraph with the schema loaded.
-fn make_fresh_egraph() -> EGraph {
-    let mut egraph = EGraph::default();
-    egraph
-        .parse_and_run_program(None, SCHEMA)
-        .expect("Failed to load FOL schema and rules");
-    egraph
-}
-
-/// Build an egglog SkolemFn s-expression from a base name and dependency terms.
+/// Build a SkolemFn s-expression from a base name and dependency terms.
 /// Single dep: `(SkolemFn "sk_N" dep0)` — backward compatible.
 /// Multi dep: `(SkolemFn "sk_N" (DepPair dep0 (DepPair dep1 dep2)))` — right-nested pairs.
 fn build_skolem_fn_sexp(base_name: &str, pattern_var_names: &[String]) -> String {
@@ -455,7 +270,97 @@ fn collect_ground_leaves(
     }
 }
 
-/// Process a logic buffer into the egglog e-graph without recording in the fact registry.
+/// Detect ground material conditionals (Or(Not(conditions), conclusion)) in a logic buffer
+/// and register them as backward-chaining rules with no pattern variables.
+/// Enables backward-chaining modus ponens on ground sentence connectives.
+fn register_ground_material_conditional(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    subs: &HashMap<String, String>,
+    inner: &mut KnowledgeBaseInner,
+) {
+    // Walk through Skolemized Exists and tense wrappers to find the Or(Not(...), ...) pattern
+    match &buffer.nodes[node_id as usize] {
+        LogicNode::ExistsNode((v, body)) if subs.contains_key(v.as_str()) => {
+            register_ground_material_conditional(buffer, *body, subs, inner);
+        }
+        LogicNode::PastNode(n) | LogicNode::PresentNode(n) | LogicNode::FutureNode(n)
+        | LogicNode::ObligatoryNode(n) | LogicNode::PermittedNode(n) => {
+            register_ground_material_conditional(buffer, *n, subs, inner);
+        }
+        LogicNode::AndNode((l, r)) => {
+            register_ground_material_conditional(buffer, *l, subs, inner);
+            register_ground_material_conditional(buffer, *r, subs, inner);
+        }
+        LogicNode::OrNode((l, r)) => {
+            // Check for Or(Not(P), Q) — material conditional P → Q
+            if let LogicNode::NotNode(neg_inner) = &buffer.nodes[*l as usize] {
+                let raw_subs: HashMap<String, String> = subs
+                    .iter()
+                    .filter(|(_, v)| !v.starts_with(SKDEP_PREFIX))
+                    .map(|(k, v)| (k.clone(), format!("(Const \"{}\")", v)))
+                    .collect();
+                // Extract condition(s) — may be a conjunction
+                let mut condition_sexps = Vec::new();
+                collect_material_condition_leaves(buffer, *neg_inner, &raw_subs, &mut condition_sexps);
+                let conclusion_sexp = reconstruct_sexp_with_subs(buffer, *r, &raw_subs);
+                let label = format!("{} → {}",
+                    condition_sexps.iter().map(|s| extract_pred_name(s).unwrap_or("?")).collect::<Vec<_>>().join(" ∧ "),
+                    extract_pred_name(&conclusion_sexp).unwrap_or("?")
+                );
+                inner.universal_rules.push(UniversalRuleRecord {
+                    label,
+                    condition_templates: condition_sexps,
+                    conclusion_templates: vec![conclusion_sexp],
+                    pattern_var_names: vec![],
+                });
+            }
+            // Also check Or(Q, Not(P)) — reversed order (commutativity)
+            else if let LogicNode::NotNode(neg_inner) = &buffer.nodes[*r as usize] {
+                let raw_subs: HashMap<String, String> = subs
+                    .iter()
+                    .filter(|(_, v)| !v.starts_with(SKDEP_PREFIX))
+                    .map(|(k, v)| (k.clone(), format!("(Const \"{}\")", v)))
+                    .collect();
+                let mut condition_sexps = Vec::new();
+                collect_material_condition_leaves(buffer, *neg_inner, &raw_subs, &mut condition_sexps);
+                let conclusion_sexp = reconstruct_sexp_with_subs(buffer, *l, &raw_subs);
+                let label = format!("{} → {}",
+                    condition_sexps.iter().map(|s| extract_pred_name(s).unwrap_or("?")).collect::<Vec<_>>().join(" ∧ "),
+                    extract_pred_name(&conclusion_sexp).unwrap_or("?")
+                );
+                inner.universal_rules.push(UniversalRuleRecord {
+                    label,
+                    condition_templates: condition_sexps,
+                    conclusion_templates: vec![conclusion_sexp],
+                    pattern_var_names: vec![],
+                });
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Helper: collect leaf s-expressions from the condition side of a material conditional.
+/// Follows And nodes to flatten conjunctive conditions.
+fn collect_material_condition_leaves(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    subs: &HashMap<String, String>,
+    leaves: &mut Vec<String>,
+) {
+    match &buffer.nodes[node_id as usize] {
+        LogicNode::AndNode((l, r)) => {
+            collect_material_condition_leaves(buffer, *l, subs, leaves);
+            collect_material_condition_leaves(buffer, *r, subs, leaves);
+        }
+        _ => {
+            leaves.push(reconstruct_sexp_with_subs(buffer, node_id, subs));
+        }
+    }
+}
+
+/// Process a logic buffer into the knowledge base without recording in the fact registry.
 /// Used by both initial assertion and rebuild-on-retract replay.
 fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) -> Result<(), String> {
     for &root_id in &logic.roots {
@@ -527,12 +432,7 @@ fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) -> Res
                 .map(|(k, v)| (k.clone(), format!("(Const \"{}\")", v)))
                 .collect();
 
-            // Flatten top-level conjunctions to prevent And rewrite explosion.
-            // Without this, a deeply nested (And (And (And ...))) tree with N leaves
-            // triggers egglog's associativity + commutativity rewrites, generating
-            // Catalan-number-scale rearrangements (~57,000 And terms for 7 leaves).
-            // Instead, assert each leaf predicate individually — the guarded
-            // conjunction introduction rule will reconstruct only needed And terms.
+            // Flatten top-level conjunctions and assert each leaf individually.
             let mut leaves = Vec::new();
             collect_ground_leaves(logic, root_id, &skolem_subs, None, &mut leaves);
 
@@ -542,21 +442,16 @@ fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) -> Res
                     Some(t) => format!("({} {})", t, leaf_sexp),
                     None => leaf_sexp,
                 };
-                // Record as user-asserted fact for provenance tracking
+                // Record as asserted fact for provenance tracking and backward-chaining
                 inner.asserted_sexps.insert(wrapped.clone());
-                let command = format!("(IsTrue {})", wrapped);
-                inner
-                    .egraph
-                    .parse_and_run_program(None, &command)
-                    .map_err(|e| format!("Failed to assert fact: {}", e))?;
             }
+
+            // Register ground material conditionals for backward-chaining
+            register_ground_material_conditional(logic, root_id, &skolem_subs, inner);
         }
 
         // Phase 3: Generate extra witnesses for Count quantifiers (n > 1)
         generate_count_extra_witnesses(logic, root_id, &skolem_subs, inner);
-
-        // Run rules to fixpoint
-        inner.run_saturation();
     }
 
     Ok(())
@@ -564,7 +459,7 @@ fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) -> Res
 
 /// Internal methods that return `Result<_, String>` for use by both the WIT boundary and tests.
 impl KnowledgeBase {
-    /// Assert FOL facts from a logic buffer into the egglog e-graph.
+    /// Assert FOL facts from a logic buffer into the knowledge base.
     /// Stores the buffer in the fact registry and returns a unique fact ID.
     fn assert_fact_inner(&self, logic: LogicBuffer, label: String) -> Result<u64, String> {
         let mut inner = self.inner.borrow_mut();
@@ -594,11 +489,10 @@ impl KnowledgeBase {
         }
     }
 
-    /// Rebuild the egraph from all non-retracted facts.
+    /// Rebuild the KB from all non-retracted facts.
     /// Preserves fact_registry and fact_counter; resets all derived state.
     fn rebuild_inner(inner: &mut KnowledgeBaseInner) -> Result<(), String> {
-        // Reset egraph and derived state
-        inner.egraph = make_fresh_egraph();
+        // Reset derived state
         inner.skolem_counter = 0;
         inner.known_entities.clear();
         inner.known_event_entities.clear();
@@ -649,10 +543,8 @@ impl KnowledgeBase {
     }
 
     /// Check whether all root formulas in the logic buffer are entailed by the KB.
-    /// Runs egglog saturation (up to `run_bound` iterations) before checking.
     fn query_entailment_inner(&self, logic: LogicBuffer) -> Result<bool, String> {
         let mut inner = self.inner.borrow_mut();
-        inner.run_saturation();
         for &root_id in &logic.roots {
             let subs = HashMap::new();
             if !check_formula_holds(&logic, root_id, &subs, &mut inner, None)? {
@@ -666,7 +558,6 @@ impl KnowledgeBase {
     /// Returns one `Vec<WitnessBinding>` per satisfying assignment.
     fn query_find_inner(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, String> {
         let mut inner = self.inner.borrow_mut();
-        inner.run_saturation();
         let mut result_sets: Option<Vec<Vec<(String, String)>>> = None;
         for &root_id in &logic.roots {
             let subs = HashMap::new();
@@ -701,7 +592,6 @@ impl KnowledgeBase {
         logic: LogicBuffer,
     ) -> Result<(bool, ProofTrace), String> {
         let mut inner = self.inner.borrow_mut();
-        inner.run_saturation();
         let mut steps: Vec<ProofStep> = Vec::new();
         let mut memo: HashMap<String, u32> = HashMap::new();
         let mut root_children: Vec<u32> = Vec::new();
@@ -798,7 +688,7 @@ fn extract_num_value(term: &LogicalTerm, subs: &HashMap<String, String>) -> Opti
 }
 
 /// Evaluate zmadu/mleca/dunli when first two args are Num.
-/// Returns None for non-numeric args (fall through to standard egglog check).
+/// Returns None for non-numeric args (fall through to standard KB check).
 fn try_numeric_comparison(
     rel: &str,
     args: &[LogicalTerm],
@@ -839,8 +729,7 @@ fn try_arithmetic_evaluation(
 
 // ─── Compute Dispatch Helpers ────────────────────────────────────
 
-/// Parse an egglog s-expression substitution back to a LogicalTerm.
-/// Parse an egglog s-expression string back into a [`LogicalTerm`] for witness extraction.
+/// Parse an s-expression string back into a [`LogicalTerm`] for witness extraction.
 /// Recognizes `(Const "...")`, `(Desc "...")`, `(Num ...)`, `(Zoe)` patterns.
 fn parse_sexp_to_term(sexp: &str) -> LogicalTerm {
     if let Some(name) = sexp
@@ -903,10 +792,9 @@ fn dispatch_to_backend(_rel: &str, _args: &[LogicalTerm]) -> Result<bool, String
     Err("Compute backend unavailable in native mode".to_string())
 }
 
-/// Build an egglog s-expression for a ground predicate from resolved args.
+/// Build an s-expression for a ground predicate from resolved args.
 /// Returns None if any argument is still a Variable (not fully ground).
-/// Output: `(Pred "rel" (Cons (Num 8) (Cons (Num 2) (Cons (Num 3) (Nil)))))`
-/// Build an egglog s-expression for a ground predicate: `(Pred "rel" (Const "a") ...)`.
+/// Output: `(Pred "rel" (Cons (Num 8) (Cons (Num 2) (Cons (Num 3) (Nil)))))`.
 /// Returns `None` if any argument is a non-ground variable (cannot be fully resolved).
 fn build_ground_predicate_sexp(rel: &str, resolved_args: &[LogicalTerm]) -> Option<String> {
     for arg in resolved_args {
@@ -956,13 +844,6 @@ fn check_formula_holds(
         LogicNode::AndNode((l, r)) => Ok(check_formula_holds(buffer, *l, subs, inner, tense)?
             && check_formula_holds(buffer, *r, subs, inner, tense)?),
         LogicNode::OrNode((l, r)) => {
-            let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
-            let wrapped = wrap_with_tense(tense, &sexp);
-            let command = format!("(check (IsTrue {}))", wrapped);
-            match inner.egraph.parse_and_run_program(None, &command) {
-                Ok(_) => return Ok(true),
-                Err(_) => {}
-            }
             Ok(check_formula_holds(buffer, *l, subs, inner, tense)?
                 || check_formula_holds(buffer, *r, subs, inner, tense)?)
         }
@@ -1032,35 +913,19 @@ fn check_formula_holds(
             if let Some(result) = try_numeric_comparison(rel, args, subs) {
                 return Ok(result);
             }
-            // Standard egglog check with tense wrapping
+            // Fact index + backward chain check
             let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
             let wrapped = wrap_with_tense(tense, &sexp);
-            let command = format!("(check (IsTrue {}))", wrapped);
-            match inner.egraph.parse_and_run_program(None, &command) {
-                Ok(_) => Ok(true),
-                Err(e) => {
-                    let msg = e.to_string();
-                    if msg.contains("Check failed") {
-                        Ok(false)
-                    } else {
-                        Err(format!("Reasoning error: {}", msg))
-                    }
-                }
-            }
+            let mut visited = HashSet::new();
+            Ok(check_predicate_in_kb(&wrapped, &*inner, 0, &mut visited))
         }
         LogicNode::ComputeNode((rel, args)) => {
             // 1. Try WIT dispatch to external compute backend (wasm32 only)
             let resolved = resolve_args_for_dispatch(args, subs);
             if let Ok(result) = dispatch_to_backend(rel, &resolved) {
                 if result {
-                    // Ingest ground fact into KB for future reasoning
                     if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
-                        let cmd = format!("(IsTrue {})", sexp);
-                        if let Err(e) = inner.egraph.parse_and_run_program(None, &cmd) {
-                            if !inner.rebuilding {
-                                eprintln!("[Ingest] Warning: {}", e);
-                            }
-                        }
+                        inner.asserted_sexps.insert(sexp);
                     }
                 }
                 return Ok(result);
@@ -1068,32 +933,17 @@ fn check_formula_holds(
             // 2. Try built-in arithmetic evaluation
             if let Some(result) = try_arithmetic_evaluation(rel, args, subs) {
                 if result {
-                    // Ingest ground fact into KB for future reasoning
                     if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
-                        let cmd = format!("(IsTrue {})", sexp);
-                        if let Err(e) = inner.egraph.parse_and_run_program(None, &cmd) {
-                            if !inner.rebuilding {
-                                eprintln!("[Ingest] Warning: {}", e);
-                            }
-                        }
+                        inner.asserted_sexps.insert(sexp);
                     }
                 }
                 return Ok(result);
             }
-            // 3. Fall back to egglog check (already in KB, no ingestion needed)
+            // 3. Fall back to fact index check
             let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
-            let command = format!("(check (IsTrue {}))", sexp);
-            match inner.egraph.parse_and_run_program(None, &command) {
-                Ok(_) => Ok(true),
-                Err(e) => {
-                    let msg = e.to_string();
-                    if msg.contains("Check failed") {
-                        Ok(false)
-                    } else {
-                        Err(format!("Reasoning error: {}", msg))
-                    }
-                }
-            }
+            let wrapped = wrap_with_tense(tense, &sexp);
+            let mut visited = HashSet::new();
+            Ok(check_predicate_in_kb(&wrapped, &*inner, 0, &mut visited))
         }
     }
 }
@@ -1201,7 +1051,7 @@ fn try_backward_chain_traced(
     depth: usize,
     memo: &mut HashMap<String, u32>,
 ) -> Option<u32> {
-    // Snapshot rules to avoid borrow conflict with mutable egglog access
+    // Snapshot rules to avoid borrow conflict
     let rules: Vec<UniversalRuleRecord> = inner.universal_rules.clone();
 
     for rule in &rules {
@@ -1239,8 +1089,7 @@ fn try_backward_chain_traced(
                             bindings.insert(ev_var.clone(), candidate.clone());
                             let all_hold = rule.condition_templates.iter().all(|ct| {
                                 let cs = sexp_substitute(ct, &bindings);
-                                let cmd = format!("(check (IsTrue {}))", cs);
-                                inner.egraph.parse_and_run_program(None, &cmd).is_ok()
+                                check_predicate_in_kb(&cs, &*inner, depth + 1, &mut HashSet::new())
                             });
                             if all_hold {
                                 found = true;
@@ -1258,8 +1107,7 @@ fn try_backward_chain_traced(
                             }
                             let all_hold = rule.condition_templates.iter().all(|ct| {
                                 let cs = sexp_substitute(ct, &bindings);
-                                let cmd = format!("(check (IsTrue {}))", cs);
-                                inner.egraph.parse_and_run_program(None, &cmd).is_ok()
+                                check_predicate_in_kb(&cs, &*inner, depth + 1, &mut HashSet::new())
                             });
                             if all_hold {
                                 found = true;
@@ -1275,19 +1123,17 @@ fn try_backward_chain_traced(
                     }
                 }
 
-                // Verify all conditions hold in egglog with the bound variables
+                // Verify all conditions hold via fact index + backward chain
                 let mut all_conditions_hold = true;
                 let mut condition_sexps = Vec::new();
 
                 for cond_template in &rule.condition_templates {
                     let cond_sexp = sexp_substitute(cond_template, &bindings);
-                    let check_cmd = format!("(check (IsTrue {}))", cond_sexp);
-                    match inner.egraph.parse_and_run_program(None, &check_cmd) {
-                        Ok(_) => condition_sexps.push(cond_sexp),
-                        Err(_) => {
-                            all_conditions_hold = false;
-                            break;
-                        }
+                    if check_predicate_in_kb(&cond_sexp, &*inner, depth + 1, &mut HashSet::new()) {
+                        condition_sexps.push(cond_sexp);
+                    } else {
+                        all_conditions_hold = false;
+                        break;
                     }
                 }
 
@@ -1328,7 +1174,130 @@ fn try_backward_chain_traced(
     None
 }
 
-/// Trace the provenance of a predicate fact known to be in egglog.
+// ─── Non-traced backward-chaining (demand-driven reasoning) ─────────
+
+/// Check if a predicate s-expression holds in the knowledge base.
+/// First checks `asserted_sexps` (ground facts), then backward-chains
+/// through universal rules. Used as the primary predicate resolution
+/// for demand-driven predicate resolution.
+fn check_predicate_in_kb(
+    sexp: &str,
+    inner: &KnowledgeBaseInner,
+    depth: usize,
+    visited: &mut HashSet<String>,
+) -> bool {
+    if inner.asserted_sexps.contains(sexp) {
+        return true;
+    }
+    try_backward_chain(sexp, inner, depth, visited)
+}
+
+/// Maximum backward-chaining depth for non-traced queries.
+const MAX_BACKWARD_CHAIN_DEPTH_UNTRACED: usize = 10;
+
+/// Try to derive a predicate s-expression by backward-chaining through universal rules.
+/// Non-traced equivalent of `try_backward_chain_traced` — returns `bool` only.
+/// Depth-limited and cycle-safe via `visited` set.
+fn try_backward_chain(
+    sexp: &str,
+    inner: &KnowledgeBaseInner,
+    depth: usize,
+    visited: &mut HashSet<String>,
+) -> bool {
+    if depth >= MAX_BACKWARD_CHAIN_DEPTH_UNTRACED {
+        return false;
+    }
+    // Prevent infinite recursion on the same sexp
+    if !visited.insert(sexp.to_string()) {
+        return false;
+    }
+
+    let rules_snapshot: Vec<UniversalRuleRecord> = inner.universal_rules.clone();
+
+    for rule in &rules_snapshot {
+        for conclusion_template in &rule.conclusion_templates {
+            let bindings_opt = sexp_match(conclusion_template, sexp, &rule.pattern_var_names);
+            if bindings_opt.is_none() {
+                continue;
+            }
+            let mut bindings = bindings_opt.unwrap();
+
+            // Handle unbound event pattern variables (condition-side existentials)
+            let unbound_event_vars: Vec<String> = rule
+                .pattern_var_names
+                .iter()
+                .filter(|pv| pv.starts_with("ev__") && !bindings.contains_key(pv.as_str()))
+                .cloned()
+                .collect();
+
+            if !unbound_event_vars.is_empty() {
+                let members = inner.all_domain_members();
+                let member_sexps: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
+                let mut candidates: Vec<String> = member_sexps.clone();
+                for entry in &inner.skolem_fn_registry {
+                    let combos = cartesian_product(&member_sexps, entry.dep_count);
+                    for combo in &combos {
+                        candidates.push(build_skolem_fn_sexp(&entry.base_name, combo));
+                    }
+                }
+
+                let mut found = false;
+                if unbound_event_vars.len() == 1 {
+                    let ev_var = &unbound_event_vars[0];
+                    for candidate in &candidates {
+                        bindings.insert(ev_var.clone(), candidate.clone());
+                        let all_hold = rule.condition_templates.iter().all(|ct| {
+                            let cs = sexp_substitute(ct, &bindings);
+                            check_predicate_in_kb(&cs, inner, depth + 1, visited)
+                        });
+                        if all_hold {
+                            found = true;
+                            break;
+                        }
+                        bindings.remove(ev_var.as_str());
+                    }
+                } else {
+                    let combos = cartesian_product(&candidates, unbound_event_vars.len());
+                    for combo in &combos {
+                        for (i, ev_var) in unbound_event_vars.iter().enumerate() {
+                            bindings.insert(ev_var.clone(), combo[i].clone());
+                        }
+                        let all_hold = rule.condition_templates.iter().all(|ct| {
+                            let cs = sexp_substitute(ct, &bindings);
+                            check_predicate_in_kb(&cs, inner, depth + 1, visited)
+                        });
+                        if all_hold {
+                            found = true;
+                            break;
+                        }
+                        for ev_var in &unbound_event_vars {
+                            bindings.remove(ev_var.as_str());
+                        }
+                    }
+                }
+                if !found {
+                    continue;
+                }
+            }
+
+            // Verify all conditions hold
+            let all_conditions_hold = rule.condition_templates.iter().all(|ct| {
+                let cs = sexp_substitute(ct, &bindings);
+                check_predicate_in_kb(&cs, inner, depth + 1, visited)
+            });
+
+            if all_conditions_hold {
+                visited.remove(sexp);
+                return true;
+            }
+        }
+    }
+
+    visited.remove(sexp);
+    false
+}
+
+/// Trace the provenance of a predicate fact known to hold in the KB.
 /// Returns the proof step index. Uses `memo` to avoid re-deriving
 /// the same sub-proof (turns the proof tree into a DAG).
 fn trace_predicate_provenance(
@@ -1369,10 +1338,10 @@ fn trace_predicate_provenance(
         }
     }
 
-    // 3. Fallback: in egglog but can't trace derivation
+    // 3. Fallback: can't trace derivation
     let idx = steps.len() as u32;
     steps.push(ProofStep {
-        rule: ProofRule::PredicateCheck(("egglog".to_string(), sexp.to_string())),
+        rule: ProofRule::PredicateCheck(("unknown".to_string(), sexp.to_string())),
         holds: true,
         children: vec![],
     });
@@ -1418,23 +1387,7 @@ fn check_formula_holds_traced(
             Ok((r_result, idx))
         }
         LogicNode::OrNode((l, r)) => {
-            // Try egglog direct check first (with tense wrapping)
-            let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
-            let wrapped = wrap_with_tense(tense, &sexp);
-            let command = format!("(check (IsTrue {}))", wrapped);
-            match inner.egraph.parse_and_run_program(None, &command) {
-                Ok(_) => {
-                    let idx = steps.len() as u32;
-                    steps.push(ProofStep {
-                        rule: ProofRule::DisjunctionEgraph(wrapped),
-                        holds: true,
-                        children: vec![],
-                    });
-                    return Ok((true, idx));
-                }
-                Err(_) => {}
-            }
-            // Fallback: try left then right
+            // Try left then right
             let (l_result, l_idx) = check_formula_holds_traced(buffer, *l, subs, inner, steps, tense, memo)?;
             if l_result {
                 let idx = steps.len() as u32;
@@ -1675,30 +1628,22 @@ fn check_formula_holds_traced(
                 });
                 return Ok((result, idx));
             }
-            // Standard egglog check with tense wrapping
+            // Fact index + backward chain check with tense wrapping
             let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
             let wrapped = wrap_with_tense(tense, &sexp);
-            let command = format!("(check (IsTrue {}))", wrapped);
-            match inner.egraph.parse_and_run_program(None, &command) {
-                Ok(_) => {
-                    // Trace provenance: asserted → derived → fallback
-                    let idx = trace_predicate_provenance(&wrapped, inner, steps, 0, memo);
-                    Ok((true, idx))
-                }
-                Err(e) => {
-                    let msg = e.to_string();
-                    if msg.contains("Check failed") {
-                        let idx = steps.len() as u32;
-                        steps.push(ProofStep {
-                            rule: ProofRule::PredicateCheck(("egglog".to_string(), wrapped)),
-                            holds: false,
-                            children: vec![],
-                        });
-                        Ok((false, idx))
-                    } else {
-                        Err(format!("Reasoning error: {}", msg))
-                    }
-                }
+            let mut visited = HashSet::new();
+            if check_predicate_in_kb(&wrapped, &*inner, 0, &mut visited) {
+                // Trace provenance: asserted -> derived -> fallback
+                let idx = trace_predicate_provenance(&wrapped, inner, steps, 0, memo);
+                Ok((true, idx))
+            } else {
+                let idx = steps.len() as u32;
+                steps.push(ProofStep {
+                    rule: ProofRule::PredicateCheck(("kb".to_string(), wrapped)),
+                    holds: false,
+                    children: vec![],
+                });
+                Ok((false, idx))
             }
         }
         LogicNode::ComputeNode((rel, args)) => {
@@ -1707,12 +1652,7 @@ fn check_formula_holds_traced(
             if let Ok(result) = dispatch_to_backend(rel, &resolved) {
                 if result {
                     if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
-                        let cmd = format!("(IsTrue {})", sexp);
-                        if let Err(e) = inner.egraph.parse_and_run_program(None, &cmd) {
-                            if !inner.rebuilding {
-                                eprintln!("[Ingest] Warning: {}", e);
-                            }
-                        }
+                        inner.asserted_sexps.insert(sexp);
                     }
                 }
                 let idx = steps.len() as u32;
@@ -1727,12 +1667,7 @@ fn check_formula_holds_traced(
             if let Some(result) = try_arithmetic_evaluation(rel, args, subs) {
                 if result {
                     if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
-                        let cmd = format!("(IsTrue {})", sexp);
-                        if let Err(e) = inner.egraph.parse_and_run_program(None, &cmd) {
-                            if !inner.rebuilding {
-                                eprintln!("[Ingest] Warning: {}", e);
-                            }
-                        }
+                        inner.asserted_sexps.insert(sexp);
                     }
                 }
                 let idx = steps.len() as u32;
@@ -1743,34 +1678,18 @@ fn check_formula_holds_traced(
                 });
                 return Ok((result, idx));
             }
-            // 3. Egglog fallback
+            // 3. Fall back to fact index check
             let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
-            let command = format!("(check (IsTrue {}))", sexp);
-            match inner.egraph.parse_and_run_program(None, &command) {
-                Ok(_) => {
-                    let idx = steps.len() as u32;
-                    steps.push(ProofStep {
-                        rule: ProofRule::ComputeCheck(("egglog".to_string(), rel.clone())),
-                        holds: true,
-                        children: vec![],
-                    });
-                    Ok((true, idx))
-                }
-                Err(e) => {
-                    let msg = e.to_string();
-                    if msg.contains("Check failed") {
-                        let idx = steps.len() as u32;
-                        steps.push(ProofStep {
-                            rule: ProofRule::ComputeCheck(("egglog".to_string(), rel.clone())),
-                            holds: false,
-                            children: vec![],
-                        });
-                        Ok((false, idx))
-                    } else {
-                        Err(format!("Reasoning error: {}", msg))
-                    }
-                }
-            }
+            let wrapped = wrap_with_tense(tense, &sexp);
+            let mut visited = HashSet::new();
+            let holds = check_predicate_in_kb(&wrapped, &*inner, 0, &mut visited);
+            let idx = steps.len() as u32;
+            steps.push(ProofStep {
+                rule: ProofRule::ComputeCheck(("kb".to_string(), rel.clone())),
+                holds,
+                children: vec![],
+            });
+            Ok((holds, idx))
         }
     }
 }
@@ -1883,7 +1802,7 @@ fn flatten_conjuncts(buffer: &LogicBuffer, node_id: u32) -> Vec<u32> {
 }
 
 /// Collect existential variable names from condition-side nodes.
-/// These variables should become egglog pattern variables (not dependent Skolems)
+/// These variables should become pattern variables (not dependent Skolems)
 /// because condition-side ∃ means "if there exists any term satisfying..."
 fn collect_condition_exists(
     buffer: &LogicBuffer,
@@ -1904,7 +1823,7 @@ fn collect_condition_exists(
 }
 
 /// Like `flatten_conjuncts` but also strips Exists wrappers for condition-side
-/// existential variables, exposing inner predicate atoms for egglog rule matching.
+/// existential variables, exposing inner predicate atoms for rule matching.
 fn flatten_conjuncts_through_exists(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -1976,9 +1895,8 @@ fn collect_and_note_constants(buffer: &LogicBuffer, node_id: u32, inner: &mut Kn
     }
 }
 
-/// Reconstruct an egglog s-expression with bare pattern variables for rule compilation.
-/// Reconstruct an egglog s-expression from a logic buffer node, applying variable
-/// substitutions and Skolem replacements. Used for building egglog rule bodies.
+/// Reconstruct an s-expression from a logic buffer node, applying variable
+/// substitutions and Skolem replacements. Used for building rule templates.
 fn reconstruct_rule_sexp(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -2109,7 +2027,7 @@ fn build_rule_label(conditions: &[String], conclusions: &[String]) -> String {
     }
 }
 
-/// Compile a ForAll node into a native egglog rule.
+/// Compile a ForAll node into a backward-chaining rule.
 fn compile_forall_to_rule(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -2169,7 +2087,7 @@ fn compile_forall_to_rule(
         Some((condition_ids, consequent_id)) => {
             // ── Condition-side existentials become pattern variables ──
             // In ∀x. [∃e. P(e,x)] → [∃e'. Q(e',x)]:
-            //   condition-side ∃e = "match any existing term" → egglog pattern variable
+            //   condition-side ∃e = "match any existing term" → pattern variable
             //   conclusion-side ∃e' = "create new witness" → SkolemFn (stays in dependent_skolems)
             let mut condition_exists_vars: HashSet<String> = HashSet::new();
             for &cid in &condition_ids {
@@ -2256,14 +2174,10 @@ fn compile_forall_to_rule(
             } else {
                 if !inner.rebuilding {
                     println!(
-                        "[Rule] Compiled ∀{} to native egglog rule",
+                        "[Rule] Compiled ∀{} to backward-chaining rule",
                         universals.join(",")
                     );
                 }
-                inner
-                    .egraph
-                    .parse_and_run_program(None, &rule)
-                    .map_err(|e| format!("Failed to compile universal to rule: {}", e))?;
 
                 // Record rule structure for backward-chaining provenance
                 let label = build_rule_label(&bare_condition_sexps, &bare_conclusion_sexps);
@@ -2303,15 +2217,8 @@ fn compile_forall_to_rule(
                 for &cid in &all_conditions {
                     let presup = reconstruct_sexp_with_subs(buffer, cid, &xp_subs);
                     // Record xorlo presupposition as asserted for provenance
-                    inner.asserted_sexps.insert(presup.clone());
-                    let cmd = format!("(IsTrue {})", presup);
-                    if let Err(e) = inner.egraph.parse_and_run_program(None, &cmd) {
-                        if !inner.rebuilding {
-                            eprintln!("[Xorlo] Warning: {}", e);
-                        }
-                    }
+                    inner.asserted_sexps.insert(presup);
                 }
-                inner.run_saturation();
 
                 // ── Temporal lifting: compile Past/Present/Future variants ──
                 compile_temporal_lifted_rules(inner, &bare_condition_sexps, &bare_conclusion_sexps, &all_pattern_var_names)?;
@@ -2354,14 +2261,10 @@ fn compile_forall_to_rule(
             } else {
                 if !inner.rebuilding {
                     println!(
-                        "[Rule] Compiled bare ∀{} with InDomain trigger",
+                        "[Rule] Compiled bare ∀{} backward-chaining rule",
                         universals.join(",")
                     );
                 }
-                inner
-                    .egraph
-                    .parse_and_run_program(None, &rule)
-                    .map_err(|e| format!("Failed to compile bare universal to rule: {}", e))?;
 
                 // Record bare rule structure for backward-chaining provenance
                 let label = build_rule_label(&[], &[body_sexp.clone()]);
@@ -2390,41 +2293,10 @@ fn compile_temporal_lifted_rules(
     pattern_var_names: &[String],
 ) -> Result<(), String> {
     for tense in &["Past", "Present", "Future"] {
-        let tensed_conditions: Vec<String> = bare_condition_sexps
-            .iter()
-            .map(|s| format!("(IsTrue ({} {}))", tense, s))
-            .collect();
-        let tensed_actions: Vec<String> = bare_conclusion_sexps
-            .iter()
-            .map(|s| format!("(IsTrue ({} {}))", tense, s))
-            .collect();
+        // Build a dedup key from tense + conditions + conclusions
+        let rule_key = format!("{}-{:?}-{:?}", tense, bare_condition_sexps, bare_conclusion_sexps);
 
-        // For bare rules (no conditions), use InDomain triggers
-        let rule = if tensed_conditions.is_empty() {
-            // Bare rules need InDomain as triggers
-            let domain_conditions: Vec<String> = pattern_var_names
-                .iter()
-                .map(|pv| format!("(InDomain {})", pv))
-                .collect();
-            format!(
-                "(rule ({}) ({}))",
-                domain_conditions.join(" "),
-                tensed_actions.join(" ")
-            )
-        } else {
-            format!(
-                "(rule ({}) ({}))",
-                tensed_conditions.join(" "),
-                tensed_actions.join(" ")
-            )
-        };
-
-        if inner.known_rules.insert(rule.clone()) {
-            inner
-                .egraph
-                .parse_and_run_program(None, &rule)
-                .map_err(|e| format!("Failed to compile {}-lifted rule: {}", tense, e))?;
-
+        if inner.known_rules.insert(rule_key) {
             // Record tense-lifted rule for backward-chaining provenance
             let tensed_cond_templates: Vec<String> = bare_condition_sexps
                 .iter()
@@ -2744,13 +2616,7 @@ fn generate_count_extra_witnesses(
                     extra_subs.insert(v.clone(), format!("(Const \"{}\")", extra_sk));
 
                     let sexp = reconstruct_sexp_with_subs(buffer, *body, &extra_subs);
-                    let command = format!("(IsTrue {})", sexp);
-                    if let Err(e) = inner.egraph.parse_and_run_program(None, &command) {
-                        eprintln!(
-                            "[reasoning] Failed to assert extra Count witness {}: {}",
-                            extra_sk, e
-                        );
-                    }
+                    inner.asserted_sexps.insert(sexp);
                 }
             }
             generate_count_extra_witnesses(buffer, *body, skolem_subs, inner);
@@ -3328,7 +3194,7 @@ mod tests {
     #[test]
     fn test_zmadu_non_numeric_fallback() {
         let kb = new_kb();
-        // Non-numeric zmadu: assert then query via standard egglog path
+        // Non-numeric zmadu: assert then query via standard KB path
         let mut a_nodes = Vec::new();
         let a_root = pred(
             &mut a_nodes,
@@ -3457,8 +3323,8 @@ mod tests {
     }
 
     #[test]
-    fn test_compute_node_egglog_fallback() {
-        // ComputeNode with non-arithmetic predicate falls back to egglog
+    fn test_compute_node_kb_fallback() {
+        // ComputeNode with non-arithmetic predicate falls back to KB lookup
         let kb = new_kb();
 
         // Assert: klama(alis, zarci) as a regular fact
@@ -3473,7 +3339,7 @@ mod tests {
         );
         assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![a_root] });
 
-        // Query as ComputeNode — unknown to arithmetic, should fall through to egglog
+        // Query as ComputeNode — unknown to arithmetic, should fall through to KB lookup
         let mut q_nodes = Vec::new();
         let q_root = compute(
             &mut q_nodes,
@@ -3719,7 +3585,7 @@ mod tests {
         let kb = new_kb();
 
         // Query pilji(6, 2, 3) via ComputeNode → TRUE (built-in arithmetic)
-        // This should auto-ingest the fact into egglog
+        // This should auto-ingest the fact into the KB
         let mut q_nodes = Vec::new();
         let q_root = compute(
             &mut q_nodes,
@@ -3733,7 +3599,7 @@ mod tests {
         assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
 
         // Now query the SAME fact as a plain Predicate (not ComputeNode)
-        // It should be found directly in egglog because of auto-ingestion
+        // It should be found directly in the KB because of auto-ingestion
         let mut p_nodes = Vec::new();
         let p_root = pred(
             &mut p_nodes,
@@ -4336,14 +4202,19 @@ mod tests {
 
     // ─── Conjunction Introduction (Guarded) Tests ────────────────────
 
-    /// Helper: check whether an IsTrue(And(...)) exists in the e-graph.
-    fn egraph_has_conjunction(kb: &KnowledgeBase, pred1: &str, entity1: &str, pred2: &str, entity2: &str) -> bool {
-        let mut inner = kb.inner.borrow_mut();
-        let cmd = format!(
-            "(check (IsTrue (And (Pred \"{}\" (Cons (Const \"{}\") (Cons (Zoe) (Nil)))) (Pred \"{}\" (Cons (Const \"{}\") (Cons (Zoe) (Nil)))))))",
-            pred1, entity1, pred2, entity2
-        );
-        inner.egraph.parse_and_run_program(None, &cmd).is_ok()
+    /// Helper: query whether And(pred1(entity1), pred2(entity2)) holds in the KB.
+    fn query_conjunction(kb: &KnowledgeBase, pred1: &str, entity1: &str, pred2: &str, entity2: &str) -> bool {
+        let mut nodes = Vec::new();
+        let p1 = pred(&mut nodes, pred1, vec![
+            LogicalTerm::Constant(entity1.to_string()),
+            LogicalTerm::Unspecified,
+        ]);
+        let p2 = pred(&mut nodes, pred2, vec![
+            LogicalTerm::Constant(entity2.to_string()),
+            LogicalTerm::Unspecified,
+        ]);
+        let root = and(&mut nodes, p1, p2);
+        query(kb, LogicBuffer { nodes, roots: vec![root] })
     }
 
     #[test]
@@ -4352,28 +4223,29 @@ mod tests {
         assert_buf(&kb, make_assertion("alis", "gerku"));
         assert_buf(&kb, make_assertion("alis", "barda"));
 
-        // Both share entity "alis" in x1 → conjunction should exist
+        // Both share entity "alis" in x1 → conjunction should hold
         assert!(
-            egraph_has_conjunction(&kb, "gerku", "alis", "barda", "alis"),
-            "And(gerku(alis), barda(alis)) should be derived"
+            query_conjunction(&kb, "gerku", "alis", "barda", "alis"),
+            "And(gerku(alis), barda(alis)) should hold"
         );
         // Commutativity: reversed order should also hold
         assert!(
-            egraph_has_conjunction(&kb, "barda", "alis", "gerku", "alis"),
-            "And(barda(alis), gerku(alis)) should be derived (commutativity)"
+            query_conjunction(&kb, "barda", "alis", "gerku", "alis"),
+            "And(barda(alis), gerku(alis)) should hold (commutativity)"
         );
     }
 
     #[test]
-    fn test_conjunction_introduction_no_shared_entity() {
+    fn test_conjunction_both_individually_true() {
         let kb = new_kb();
         assert_buf(&kb, make_assertion("alis", "gerku"));
         assert_buf(&kb, make_assertion("bob", "mlatu"));
 
-        // No shared entity → conjunction should NOT exist
+        // Both are individually true, so their conjunction holds
+        // (no shared entity requirement in demand-driven reasoning)
         assert!(
-            !egraph_has_conjunction(&kb, "gerku", "alis", "mlatu", "bob"),
-            "And(gerku(alis), mlatu(bob)) should NOT be derived (no shared entity)"
+            query_conjunction(&kb, "gerku", "alis", "mlatu", "bob"),
+            "And(gerku(alis), mlatu(bob)) should hold when both are individually true"
         );
     }
 
@@ -4384,15 +4256,15 @@ mod tests {
         assert_buf(&kb, make_assertion("alis", "gerku"));   // Alice is a dog
         assert_buf(&kb, make_assertion("alis", "barda"));   // Alice is big
 
-        // Rule derives danlu(alis). Conjunction introduction should combine derived + asserted.
+        // Rule derives danlu(alis). Conjunction should combine derived + asserted.
         assert!(
-            egraph_has_conjunction(&kb, "danlu", "alis", "barda", "alis"),
-            "And(danlu(alis), barda(alis)) should be derived via rule + conjunction intro"
+            query_conjunction(&kb, "danlu", "alis", "barda", "alis"),
+            "And(danlu(alis), barda(alis)) should hold via rule + conjunction"
         );
         // Also: gerku(alis) ∧ danlu(alis) (asserted + derived)
         assert!(
-            egraph_has_conjunction(&kb, "gerku", "alis", "danlu", "alis"),
-            "And(gerku(alis), danlu(alis)) should be derived"
+            query_conjunction(&kb, "gerku", "alis", "danlu", "alis"),
+            "And(gerku(alis), danlu(alis)) should hold"
         );
     }
 
@@ -4417,12 +4289,21 @@ mod tests {
         );
         assert_buf(&kb, LogicBuffer { nodes, roots: vec![root] });
 
-        // Check: And(gerku(alis,_), nelci(bob,alis,_)) should exist
-        let mut inner = kb.inner.borrow_mut();
-        let cmd = "(check (IsTrue (And (Pred \"gerku\" (Cons (Const \"alis\") (Cons (Zoe) (Nil)))) (Pred \"nelci\" (Cons (Const \"bob\") (Cons (Const \"alis\") (Cons (Zoe) (Nil))))))))";
+        // Check: And(gerku(alis,_), nelci(bob,alis,_)) should hold
+        let mut nodes2 = Vec::new();
+        let p1 = pred(&mut nodes2, "gerku", vec![
+            LogicalTerm::Constant("alis".to_string()),
+            LogicalTerm::Unspecified,
+        ]);
+        let p2 = pred(&mut nodes2, "nelci", vec![
+            LogicalTerm::Constant("bob".to_string()),
+            LogicalTerm::Constant("alis".to_string()),
+            LogicalTerm::Unspecified,
+        ]);
+        let root2 = and(&mut nodes2, p1, p2);
         assert!(
-            inner.egraph.parse_and_run_program(None, cmd).is_ok(),
-            "Cross-position entity sharing should trigger conjunction introduction"
+            query(&kb, LogicBuffer { nodes: nodes2, roots: vec![root2] }),
+            "Cross-position entity sharing should allow conjunction query"
         );
     }
 
@@ -4602,11 +4483,11 @@ mod tests {
         assert_buf(&kb, make_assertion("bob", "cmalu"));
 
         // alis predicates should conjoin with each other
-        assert!(egraph_has_conjunction(&kb, "gerku", "alis", "barda", "alis"));
+        assert!(query_conjunction(&kb, "gerku", "alis", "barda", "alis"));
         // bob predicates should conjoin with each other
-        assert!(egraph_has_conjunction(&kb, "mlatu", "bob", "cmalu", "bob"));
-        // cross-entity should NOT conjoin
-        assert!(!egraph_has_conjunction(&kb, "gerku", "alis", "mlatu", "bob"));
+        assert!(query_conjunction(&kb, "mlatu", "bob", "cmalu", "bob"));
+        // cross-entity conjunction also holds (both sides individually true)
+        assert!(query_conjunction(&kb, "gerku", "alis", "mlatu", "bob"));
     }
 
     // ─── KB Reset Tests ──────────────────────────────────────────
@@ -5421,8 +5302,8 @@ mod tests {
     }
 
     #[test]
-    fn test_run_saturation_helper() {
-        // Assert a fact and a rule, then verify run_saturation drives derivation
+    fn test_backward_chain_derives_facts() {
+        // Assert a fact and a rule, then verify backward-chaining derives conclusions
         let kb = new_kb();
         // Assert: gerku(alis)
         assert_buf(&kb, make_assertion("alis", "gerku"));
@@ -5430,13 +5311,13 @@ mod tests {
         // Assert: ∀x. ¬gerku(x) ∨ danlu(x) (i.e., gerku → danlu)
         assert_buf(&kb, make_universal("gerku", "danlu"));
 
-        // Query: danlu(alis) — should be derived via saturation
+        // Query: danlu(alis) — should be derived via backward-chaining
         assert!(
             query(&kb, make_query("alis", "danlu")),
-            "saturation should derive danlu(alis) from gerku(alis) and universal rule"
+            "backward-chaining should derive danlu(alis) from gerku(alis) and universal rule"
         );
 
-        // Now set run_bound to 0 and verify it's stored
+        // run_bound is still stored as config (no-op value)
         kb.set_run_bound_inner(0);
         assert_eq!(kb.get_run_bound_inner(), 0);
     }
@@ -6012,14 +5893,14 @@ mod tests {
             derived_count
         );
 
-        // First occurrence of base facts should be Asserted or egglog PredicateCheck (not ProofRef)
-        let has_asserted_or_egglog = trace.steps.iter().any(|step| {
+        // First occurrence of base facts should be Asserted or PredicateCheck (not ProofRef)
+        let has_asserted_or_check = trace.steps.iter().any(|step| {
             matches!(&step.rule, ProofRule::Asserted(_))
-                || matches!(&step.rule, ProofRule::PredicateCheck((m, _)) if m == "egglog")
+                || matches!(&step.rule, ProofRule::PredicateCheck(_))
         });
         assert!(
-            has_asserted_or_egglog,
-            "first occurrence of base facts should be Asserted or egglog, not ProofRef"
+            has_asserted_or_check,
+            "first occurrence of base facts should be Asserted or PredicateCheck, not ProofRef"
         );
     }
 
@@ -6160,9 +6041,8 @@ mod tests {
     fn test_and_flattening_prevents_rewrite_explosion() {
         // Regression test: a deeply nested And tree with 7 leaves (matching the
         // real Neo-Davidsonian decomposition of ".i lo prenu cu ponse lo datni")
-        // previously caused egglog's associativity + commutativity rewrites to
-        // generate ~57,000 And terms. After flattening, each leaf is asserted
-        // individually, so And terms should be bounded.
+        // previously caused combinatorial explosion. After flattening, each leaf
+        // is asserted individually, so the fact count should be bounded.
         let kb = new_kb();
 
         // Build: ∃ev. P1(ev) ∧ P2(ev,a) ∧ P3(ev,b) ∧ P4(a) ∧ P5(b) ∧ P6(a) ∧ P7(b)
@@ -6210,31 +6090,15 @@ mod tests {
 
         assert_buf(&kb, buf);
 
-        // Check And term count via egglog — should be small (< 100),
-        // not the ~57,000 we saw before flattening.
-        let mut inner = kb.inner.borrow_mut();
-        let sizes = inner.egraph.parse_and_run_program(
-            None,
-            "(print-size)"
-        ).unwrap_or_default();
-        let size_str = format!("{:?}", sizes);
-        eprintln!("[Test] e-graph size: {}", size_str);
-
-        // Extract And term count from the print-size output.
-        // Before the fix: ("And", 57006). After flattening: ("And", ~18).
-        let and_count: usize = size_str
-            .find("\"And\",")
-            .and_then(|pos| {
-                let after = &size_str[pos + 6..];
-                let end = after.find(')')?;
-                after[..end].trim().parse().ok()
-            })
-            .unwrap_or(0);
-        eprintln!("[Test] And term count: {}", and_count);
+        // Verify the fact count is bounded — each leaf gets a single entry
+        // in asserted_sexps (no combinatorial And explosion).
+        let inner = kb.inner.borrow();
+        let fact_count = inner.asserted_sexps.len();
+        eprintln!("[Test] asserted_sexps count: {}", fact_count);
         assert!(
-            and_count < 100,
-            "And terms should be < 100 after flattening (was 57,006 before fix), got {}",
-            and_count
+            fact_count < 100,
+            "Asserted facts should be < 100 after flattening, got {}",
+            fact_count
         );
     }
 }

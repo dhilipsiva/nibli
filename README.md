@@ -2,17 +2,17 @@
 
 **lo na xanri ke logji birti ciste**
 
-ni'o la .nibli. cu logji birti ciste noi se zbasu fi lo ueb.asemblii. (WASI P2) .i la .nibli. cu fanva lo lojbo se cusku fi lo pamoi mekso logji .ije cu logji jalge fi la .eglOg. ke dunli satci ciste .i ro jalge cu se krinu lo logji — noda se xanri .i noda se jibni
+ni'o la .nibli. cu logji birti ciste noi se zbasu fi lo ueb.asemblii. (WASI P2) .i la .nibli. cu fanva lo lojbo se cusku fi lo pamoi mekso logji .ije cu logji jalge fi lo se nitcu ke jersi sisku ciste .i ro jalge cu se krinu lo logji — noda se xanri .i noda se jibni
 
 > *nibli* (lojbo): x1 logji nibli lo du'u x2 kei fi lo javni be x3
 
 ## ni'o lo pruce
 
 ```
-lo lojbo cusku ──→ lo valsi cpacu ──→ lo gerna ciste (AST) ──→ lo smuni ciste (FOL IR) ──→ lo logji ciste (egglog)
+lo lojbo cusku ──→ lo valsi cpacu ──→ lo gerna ciste (AST) ──→ lo smuni ciste (FOL IR) ──→ lo logji ciste (jersi sisku)
                         │                   │                         │                            │
-                      logos              ke'a jmina               Skolem se cuxna          dunli satci
-                    pagbu cpana        gerna tcidu             SkolemFn se birti        egglog javni
+                      logos              ke'a jmina               Skolem se cuxna          se nitcu jersi sisku
+                    pagbu cpana        gerna tcidu             SkolemFn se birti        fatci vlaste + javni
 ```
 
 ni'o mu lo ueb.asemblii. pagbu cu se lasna fi lo WIT jupku'a .ije se zbasu fi lo pa jukpa fasnu:
@@ -21,7 +21,7 @@ ni'o mu lo ueb.asemblii. pagbu cu se lasna fi lo WIT jupku'a .ije se zbasu fi lo
 |-------|----------|
 | **gerna** | lo lojbo cusku → AST → WIT pagbu kampu |
 | **smuni** | lo AST pagbu kampu → FOL logji pagbu kampu |
-| **logji** | lo FOL logji pagbu → egglog dunli satci .e se jivna |
+| **logji** | lo FOL logji pagbu → se nitcu jersi sisku .e se jivna |
 | **lasna** | lasna: gerna → smuni → logji |
 | **gasnu** | lo samciste Wasmtime .e lo REPL .e lo TCP jikca ciste |
 
@@ -97,7 +97,7 @@ just test
 - **bangu:** Rust (stabli)
 - **ueb.asemblii.:** WASI Preview 2 Component Model (cargo-component + wac)
 - **se gasnu:** Wasmtime
-- **logji ciste:** egglog (dunli satci)
+- **logji ciste:** se nitcu jersi sisku (backward-chaining) joi fatci vlaste (fact index)
 - **valsi cpacu:** Logos
 - **vlaste:** Perfect Hash Function (PHF) noi se zbasu nenri lo fasnu
 - **tutci canlu:** Nix flake
@@ -121,25 +121,25 @@ just test
 ## ni'o lo logji ciste
 
 - Skolem nunfanva (zilkai + se nitcu poi se jibni lo `ro` fi la SkolemFn + DepPair)
-- ro lo `ro` javni cu se fanva fi lo egglog javni (O(K) hash-join, noda Herbrand)
-- egglog dunli satci ciste joi lo gerna nunfanva (fatbydu'i, te fatbydu'i, de Morgan, re natfe basti) joi lo logji javni (je se vimcu, ja sisku, ganai ponse, ganai natfe)
+- ro lo `ro` javni cu se fanva fi lo jersi sisku javni (UniversalRuleRecord)
+- se nitcu jersi sisku ciste joi lo fatci vlaste (asserted_sexps) joi lo javni se sisku
 - lo namcu jivna: `zmadu` (>), `mleca` (<), `dunli` (==) fi lo `Num`
 - lo skami jikca: `compute-backend` WIT protokol, `ComputeNode` IR klesi
 - lo slabu namcu: `pilji` (pi'i), `sumji` (su'i), `dilcu` (fe'i) joi lo skami jikca
 - lo TCP jikca: sampu JSON Lines protokol, lazni jikca, ri jikca
 - lo skami jalge se jmina: lo jalge cu se jmina fi lo se slabu fatci (se krinu → skami → se krinu pruce)
 - lo fatci se jmina: `assert-fact` WIT fasnu + `:assert` REPL fasnu
-- lo na monotoni logji: lo fatci se vimcu fi lo fatci liste + ri zbasu (egglog cu jmina selte'i); `:retract <id>` .e `:facts` REPL fasnu
+- lo na monotoni logji: lo fatci se vimcu fi lo fatci liste + ri zbasu; `:retract <id>` .e `:facts` REPL fasnu
 - lo se birti se sisku: `query-find` cu se benji ro lo se birti sumti (`??` REPL lidne)
 - lo krinu ciste: `query-entailment-with-proof` cu se benji lo krinu tricu (15 krinu klesi) — `?!` REPL lidne
 - lo krefu nibli krinu: lo krinu tricu cu ri sisku fi lo `ro` javni; `Asserted` ke jicmu fatci cu se jinvi drata lo `Derived` ke se nibli jalge
 - lo gerna ri zbasu: lo bridi poi se fliba cu se srera .ije cfari lo jersi bridi; lo se srera cu se cusku lo rajypau linsi stuzi
-- lo tcika logji: `Past`/`Present`/`Future` fi lo egglog; lo tcika javni cu jmina lo tcika fi lo jicmu javni
+- lo tcika logji: `Past`/`Present`/`Future` fi lo fatci vlaste; lo tcika javni cu jmina lo tcika fi lo jicmu javni
 - lo Neo-Davidsonian nu'i smuni: ro bridi cu se pagbu fi lo nu fasnu klesi + lo se zukte sumti; lo tanru cu te pilno lo nu fasnu ka'e
 - lo junri je se jmina: `And(A, B)` se nibli ze'a lo re bridi cu pilno lo simxu `InDomain` sumti (se fanta lo cmalu explosi)
 - lo WIT srera klesi: `nibli-error` (`syntax`/`semantic`/`reasoning`/`backend`); lo gerna srera cu se cusku lo linsi stuzi
 - lo WASM se banro: lo REPL fasnu se banro; `NIBLI_FUEL` .e `:fuel` REPL fasnu
-- lo satci se banro: egglog krefu banro; `NIBLI_RUN_BOUND` (100 zilkai) .e `:saturate` REPL fasnu
+- lo satci se banro: `NIBLI_RUN_BOUND` (100 zilkai) .e `:saturate` REPL fasnu (WIT API se ponse)
 - lo tcana se samtci: `:load <datnyvei>` cu jmina ro bridi fi lo `.lojban` datnyvei; lo `#` lerpoi cu se vimcu
 
 ## ni'o lo skami jikca
