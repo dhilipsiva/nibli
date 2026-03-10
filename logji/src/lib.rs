@@ -173,13 +173,6 @@ impl KnowledgeBaseInner {
                 eprintln!("[Saturate] Warning: {}", e);
             }
         }
-        if !self.rebuilding {
-            // Print e-graph size after saturation for diagnostics
-            let num_facts = self.egraph.parse_and_run_program(None, "(print-size)")
-                .map(|v| format!("{:?}", v))
-                .unwrap_or_else(|_| "?".to_string());
-            eprintln!("[Saturate] e-graph size after run({}): {}", self.run_bound, num_facts);
-        }
     }
 
     /// Return all known domain members as (s-expression, LogicalTerm) pairs.
@@ -422,6 +415,46 @@ impl Guest for LogjiComponent {
     type KnowledgeBase = KnowledgeBase;
 }
 
+/// Collect leaf node IDs from a ground conjunction tree in the LogicBuffer.
+/// Descends through And nodes (flattening), Skolemized Exists nodes (stripped),
+/// and deontic wrappers (transparent). Tracks tense context (Past/Present/Future)
+/// so each leaf can be wrapped appropriately.
+/// Everything else (Pred, Or, Not, etc.) is a leaf.
+fn collect_ground_leaves(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    subs: &HashMap<String, String>,
+    tense: Option<&str>,
+    leaves: &mut Vec<(u32, Option<String>)>,
+) {
+    match &buffer.nodes[node_id as usize] {
+        LogicNode::AndNode((l, r)) => {
+            collect_ground_leaves(buffer, *l, subs, tense, leaves);
+            collect_ground_leaves(buffer, *r, subs, tense, leaves);
+        }
+        LogicNode::ExistsNode((v, body)) if subs.contains_key(v.as_str()) => {
+            // Skolemized existential — descend through it
+            collect_ground_leaves(buffer, *body, subs, tense, leaves);
+        }
+        LogicNode::PastNode(inner) => {
+            collect_ground_leaves(buffer, *inner, subs, Some("Past"), leaves);
+        }
+        LogicNode::PresentNode(inner) => {
+            collect_ground_leaves(buffer, *inner, subs, Some("Present"), leaves);
+        }
+        LogicNode::FutureNode(inner) => {
+            collect_ground_leaves(buffer, *inner, subs, Some("Future"), leaves);
+        }
+        LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) => {
+            // Deontic wrappers are transparent
+            collect_ground_leaves(buffer, *inner, subs, tense, leaves);
+        }
+        _ => {
+            leaves.push((node_id, tense.map(|t| t.to_string())));
+        }
+    }
+}
+
 /// Process a logic buffer into the egglog e-graph without recording in the fact registry.
 /// Used by both initial assertion and rebuild-on-retract replay.
 fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) -> Result<(), String> {
@@ -493,14 +526,30 @@ fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) -> Res
                 .filter(|(_, v)| !v.starts_with(SKDEP_PREFIX))
                 .map(|(k, v)| (k.clone(), format!("(Const \"{}\")", v)))
                 .collect();
-            let sexp = reconstruct_sexp_with_subs(logic, root_id, &raw_subs);
-            // Record as user-asserted fact for provenance tracking
-            inner.asserted_sexps.insert(sexp.clone());
-            let command = format!("(IsTrue {})", sexp);
-            inner
-                .egraph
-                .parse_and_run_program(None, &command)
-                .map_err(|e| format!("Failed to assert fact: {}", e))?;
+
+            // Flatten top-level conjunctions to prevent And rewrite explosion.
+            // Without this, a deeply nested (And (And (And ...))) tree with N leaves
+            // triggers egglog's associativity + commutativity rewrites, generating
+            // Catalan-number-scale rearrangements (~57,000 And terms for 7 leaves).
+            // Instead, assert each leaf predicate individually — the guarded
+            // conjunction introduction rule will reconstruct only needed And terms.
+            let mut leaves = Vec::new();
+            collect_ground_leaves(logic, root_id, &skolem_subs, None, &mut leaves);
+
+            for (leaf_id, tense) in &leaves {
+                let leaf_sexp = reconstruct_sexp_with_subs(logic, *leaf_id, &raw_subs);
+                let wrapped = match tense {
+                    Some(t) => format!("({} {})", t, leaf_sexp),
+                    None => leaf_sexp,
+                };
+                // Record as user-asserted fact for provenance tracking
+                inner.asserted_sexps.insert(wrapped.clone());
+                let command = format!("(IsTrue {})", wrapped);
+                inner
+                    .egraph
+                    .parse_and_run_program(None, &command)
+                    .map_err(|e| format!("Failed to assert fact: {}", e))?;
+            }
         }
 
         // Phase 3: Generate extra witnesses for Count quantifiers (n > 1)
@@ -652,17 +701,7 @@ impl KnowledgeBase {
         logic: LogicBuffer,
     ) -> Result<(bool, ProofTrace), String> {
         let mut inner = self.inner.borrow_mut();
-        eprintln!("[Diag] query_with_proof: running saturation...");
         inner.run_saturation();
-        eprintln!("[Diag] saturation done. entities={}, events={}, descs={}, rules={}, skolem_fns={}",
-            inner.known_entities.len(),
-            inner.known_event_entities.len(),
-            inner.known_descriptions.len(),
-            inner.universal_rules.len(),
-            inner.skolem_fn_registry.len(),
-        );
-        eprintln!("[Diag] domain members total: {}", inner.all_domain_members().len());
-        eprintln!("[Diag] starting traced formula check...");
         let mut steps: Vec<ProofStep> = Vec::new();
         let mut memo: HashMap<String, u32> = HashMap::new();
         let mut root_children: Vec<u32> = Vec::new();
@@ -676,7 +715,6 @@ impl KnowledgeBase {
                 all_hold = false;
             }
         }
-        eprintln!("[Diag] traced check done. steps={}, hold={}", steps.len(), all_hold);
         let root = if root_children.len() == 1 {
             root_children[0]
         } else {
@@ -6114,5 +6152,89 @@ mod tests {
             .query_entailment_with_proof_inner(make_event_assertion("prenu_sk", "zukte"))
             .unwrap();
         assert!(holds2, "proof-traced multi-hop should hold for zukte(prenu_sk)");
+    }
+
+    // ─── And flattening regression test ────
+
+    #[test]
+    fn test_and_flattening_prevents_rewrite_explosion() {
+        // Regression test: a deeply nested And tree with 7 leaves (matching the
+        // real Neo-Davidsonian decomposition of ".i lo prenu cu ponse lo datni")
+        // previously caused egglog's associativity + commutativity rewrites to
+        // generate ~57,000 And terms. After flattening, each leaf is asserted
+        // individually, so And terms should be bounded.
+        let kb = new_kb();
+
+        // Build: ∃ev. P1(ev) ∧ P2(ev,a) ∧ P3(ev,b) ∧ P4(a) ∧ P5(b) ∧ P6(a) ∧ P7(b)
+        // This simulates a 2-arg predicate with xorlo restrictors.
+        let mut nodes = Vec::new();
+        let p1 = pred(&mut nodes, "ponse", vec![LogicalTerm::Variable("_ev0".into())]);
+        let p2 = pred(&mut nodes, "ponse_x1", vec![
+            LogicalTerm::Variable("_ev0".into()),
+            LogicalTerm::Variable("_v0".into()),
+        ]);
+        let p3 = pred(&mut nodes, "ponse_x2", vec![
+            LogicalTerm::Variable("_ev0".into()),
+            LogicalTerm::Variable("_v1".into()),
+        ]);
+        let p4 = pred(&mut nodes, "prenu", vec![LogicalTerm::Variable("_v0".into())]);
+        let p5 = pred(&mut nodes, "datni", vec![LogicalTerm::Variable("_v1".into())]);
+        let p6 = pred(&mut nodes, "prenu_x1", vec![
+            LogicalTerm::Variable("_ev1".into()),
+            LogicalTerm::Variable("_v0".into()),
+        ]);
+        let p7 = pred(&mut nodes, "datni_x1", vec![
+            LogicalTerm::Variable("_ev2".into()),
+            LogicalTerm::Variable("_v1".into()),
+        ]);
+
+        // Build deeply nested And tree (7 leaves, 6 And nodes)
+        let a1 = and(&mut nodes, p1, p2);
+        let a2 = and(&mut nodes, a1, p3);
+        let a3 = and(&mut nodes, a2, p4);
+        let a4 = and(&mut nodes, a3, p5);
+        let a5 = and(&mut nodes, a4, p6);
+        let a6 = and(&mut nodes, a5, p7);
+
+        // Wrap in existentials (these will be Skolemized)
+        let e0 = exists(&mut nodes, "_ev0", a6);
+        let e1 = exists(&mut nodes, "_ev1", e0);
+        let e2 = exists(&mut nodes, "_ev2", e1);
+        let e3 = exists(&mut nodes, "_v0", e2);
+        let root = exists(&mut nodes, "_v1", e3);
+
+        let buf = LogicBuffer {
+            nodes,
+            roots: vec![root],
+        };
+
+        assert_buf(&kb, buf);
+
+        // Check And term count via egglog — should be small (< 100),
+        // not the ~57,000 we saw before flattening.
+        let mut inner = kb.inner.borrow_mut();
+        let sizes = inner.egraph.parse_and_run_program(
+            None,
+            "(print-size)"
+        ).unwrap_or_default();
+        let size_str = format!("{:?}", sizes);
+        eprintln!("[Test] e-graph size: {}", size_str);
+
+        // Extract And term count from the print-size output.
+        // Before the fix: ("And", 57006). After flattening: ("And", ~18).
+        let and_count: usize = size_str
+            .find("\"And\",")
+            .and_then(|pos| {
+                let after = &size_str[pos + 6..];
+                let end = after.find(')')?;
+                after[..end].trim().parse().ok()
+            })
+            .unwrap_or(0);
+        eprintln!("[Test] And term count: {}", and_count);
+        assert!(
+            and_count < 100,
+            "And terms should be < 100 after flattening (was 57,006 before fix), got {}",
+            and_count
+        );
     }
 }
