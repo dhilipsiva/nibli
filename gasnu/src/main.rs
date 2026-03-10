@@ -422,9 +422,10 @@ fn main() -> Result<()> {
     store.set_fuel(fuel_budget)?;
     store.limiter(|state| &mut state.limits);
 
-    println!("Loading fused WebAssembly Component...");
-    let pipeline_comp =
-        Component::from_file(&engine, "target/wasm32-wasip2/release/lasna-pipeline.wasm")?;
+    let wasm_path = std::env::var("NIBLI_WASM_PATH")
+        .unwrap_or_else(|_| "target/wasm32-wasip2/debug/lasna-pipeline.wasm".to_string());
+    println!("Loading fused WebAssembly Component from {}...", wasm_path);
+    let pipeline_comp = Component::from_file(&engine, &wasm_path)?;
     let pipeline =
         pipeline_bind::LasnaPipeline::instantiate(&mut store, &pipeline_comp, &linker)?;
 

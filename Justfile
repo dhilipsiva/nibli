@@ -8,10 +8,11 @@ export RUST_BACKTRACE := "full"
 # The default target executes the full build-and-run pipeline
 default: run
 
-# Remove stale WASM artifacts to guarantee fresh compilation
+# Remove stale WASM artifacts (both debug and release) to guarantee fresh compilation
 clean-wasm:
     @echo "Removing stale WASM artifacts..."
-    rm -f {{wasm_dir}}/*.wasm
+    rm -f target/wasm32-wasip2/debug/*.wasm
+    rm -f target/wasm32-wasip2/release/*.wasm
 
 # Compiles the discrete WebAssembly components and fuses them
 build-wasm: clean-wasm
@@ -32,7 +33,7 @@ build-gasnu:
 # Executes the full pipeline: Builds WASM modules, then boots the native REPL
 run: build-wasm
     @echo "Launching Neuro-Symbolic Engine..."
-    cargo run -p gasnu
+    NIBLI_WASM_PATH={{wasm_dir}}/lasna-pipeline.wasm cargo run -p gasnu
 
 # Build the native Linux binary (no WASM, full backtraces)
 build-native:
@@ -58,7 +59,7 @@ backend:
 
 # Full pipeline with compute backend auto-configured
 run-with-backend: build-wasm
-    NIBLI_COMPUTE_ADDR=127.0.0.1:5555 cargo run -p gasnu
+    NIBLI_COMPUTE_ADDR=127.0.0.1:5555 NIBLI_WASM_PATH={{wasm_dir}}/lasna-pipeline.wasm cargo run -p gasnu
 
 # Run Python backend tests
 test-backend:
