@@ -1,7 +1,9 @@
 set shell := ["bash", "-c"]
 
 wasi_target := "wasm32-wasip2"
-wasm_dir := "target/" + wasi_target + "/release"
+wasm_dir := "target/" + wasi_target + "/debug"
+
+export RUST_BACKTRACE := "full"
 
 # The default target executes the full build-and-run pipeline
 default: run
@@ -14,7 +16,7 @@ clean-wasm:
 # Compiles the discrete WebAssembly components and fuses them
 build-wasm: clean-wasm
     @echo "Building WASI components ({{wasi_target}})..."
-    cargo component build --release --target {{wasi_target}} -p gerna -p smuni -p logji -p lasna
+    cargo component build --target {{wasi_target}} -p gerna -p smuni -p logji -p lasna
     @echo "Fusing components with WAC..."
     wac plug {{wasm_dir}}/lasna.wasm \
         --plug {{wasm_dir}}/gerna.wasm \
@@ -25,12 +27,12 @@ build-wasm: clean-wasm
 # Compiles the native Wasmtime host gasnu
 build-gasnu:
     @echo "Building native host gasnu..."
-    cargo build --release -p gasnu
+    cargo build -p gasnu
 
 # Executes the full pipeline: Builds WASM modules, then boots the native REPL
 run: build-wasm
     @echo "Launching Neuro-Symbolic Engine..."
-    RUST_BACKTRACE=full cargo run --release -p gasnu
+    cargo run -p gasnu
 
 # Run gerna unit tests only (bypasses cdylib linker issues)
 test-gerna:
@@ -46,7 +48,7 @@ backend:
 
 # Full pipeline with compute backend auto-configured
 run-with-backend: build-wasm
-    NIBLI_COMPUTE_ADDR=127.0.0.1:5555 cargo run --release -p gasnu
+    NIBLI_COMPUTE_ADDR=127.0.0.1:5555 cargo run -p gasnu
 
 # Run Python backend tests
 test-backend:

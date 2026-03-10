@@ -1487,16 +1487,20 @@ fn check_formula_holds_traced(
             Ok((result, idx))
         }
         LogicNode::ExistsNode((v, body)) => {
-            // 1. Try all known domain members (Const + Desc)
+            // Pre-screen witnesses using the cheap non-traced path before
+            // building expensive proof trees.  This turns O(M^D) expensive
+            // traced calls into O(M^D) cheap boolean checks + O(1) trace.
             let members = inner.all_domain_members();
+
+            // 1. Try all known domain members (Const + Desc)
             for (sexp, term) in &members {
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), sexp.clone());
-                // Save steps length so we can discard failed-branch steps
-                let steps_checkpoint = steps.len();
-                let (holds, body_idx) =
-                    check_formula_holds_traced(buffer, *body, &new_subs, inner, steps, tense, memo)?;
-                if holds {
+                // Cheap boolean check first — no ProofStep allocation
+                if check_formula_holds(buffer, *body, &new_subs, inner, tense)? {
+                    // Witness found — now trace only the successful path
+                    let (_, body_idx) =
+                        check_formula_holds_traced(buffer, *body, &new_subs, inner, steps, tense, memo)?;
                     let idx = steps.len() as u32;
                     steps.push(ProofStep {
                         rule: ProofRule::ExistsWitness((v.clone(), term.clone())),
@@ -1505,9 +1509,6 @@ fn check_formula_holds_traced(
                     });
                     return Ok((true, idx));
                 }
-                // Discard orphaned steps from failed candidate to prevent
-                // memory accumulation across many failed witness attempts
-                steps.truncate(steps_checkpoint);
             }
             // 2. Try SkolemFn witnesses
             let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
@@ -1518,10 +1519,11 @@ fn check_formula_holds_traced(
                     let witness_sexp = build_skolem_fn_sexp(&entry.base_name, combo);
                     let mut new_subs = subs.clone();
                     new_subs.insert(v.clone(), witness_sexp.clone());
-                    let steps_checkpoint = steps.len();
-                    let (holds, body_idx) =
-                        check_formula_holds_traced(buffer, *body, &new_subs, inner, steps, tense, memo)?;
-                    if holds {
+                    // Cheap boolean check first
+                    if check_formula_holds(buffer, *body, &new_subs, inner, tense)? {
+                        // Witness found — now trace only the successful path
+                        let (_, body_idx) =
+                            check_formula_holds_traced(buffer, *body, &new_subs, inner, steps, tense, memo)?;
                         let idx = steps.len() as u32;
                         steps.push(ProofStep {
                             rule: ProofRule::ExistsWitness((
@@ -1533,7 +1535,6 @@ fn check_formula_holds_traced(
                         });
                         return Ok((true, idx));
                     }
-                    steps.truncate(steps_checkpoint);
                 }
             }
             let idx = steps.len() as u32;
