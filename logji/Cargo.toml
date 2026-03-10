@@ -14,4 +14,4 @@ path = "../wit/world.wit"
 world = "logji-component"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "lib"]

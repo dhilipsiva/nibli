@@ -1,0 +1,10 @@
+[package]
+name = "nibli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gerna = { path = "../gerna" }
+smuni = { path = "../smuni" }
+logji = { path = "../logji" }
+reedline = "0.45.0"

@@ -34,6 +34,16 @@ run: build-wasm
     @echo "Launching Neuro-Symbolic Engine..."
     cargo run -p gasnu
 
+# Build the native Linux binary (no WASM, full backtraces)
+build-native:
+    @echo "Building native nibli binary..."
+    cargo build -p nibli
+
+# Run the native REPL (no WASM sandbox — unlimited memory, full Rust backtraces)
+run-native: build-native
+    @echo "Launching Native Neuro-Symbolic Engine..."
+    cargo run -p nibli
+
 # Run gerna unit tests only (bypasses cdylib linker issues)
 test-gerna:
     cargo test -p gerna --lib -- --nocapture

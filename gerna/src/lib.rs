@@ -14,7 +14,7 @@
 /// Lojban AST types (arena-allocated tree nodes).
 pub mod ast;
 #[allow(warnings)]
-mod bindings;
+pub mod bindings;
 /// Recursive descent parser producing an arena-allocated AST.
 pub mod grammar;
 /// Logos-based lexer with post-lex compound cmavo correction.
@@ -373,6 +373,15 @@ impl Flattener {
     }
 }
 
+/// Public API for native (non-WASM) callers.
+/// Wraps the internal `GernaComponent::parse_text` pipeline.
+pub fn parse_text_native(
+    input: String,
+) -> Result<wit::ParseResult, NibliError> {
+    <GernaComponent as Guest>::parse_text(input)
+}
+
+#[cfg(target_arch = "wasm32")]
 bindings::export!(GernaComponent with_types_in bindings);
 
 // Add these tests to parser/src/lib.rs or a new integration test file.

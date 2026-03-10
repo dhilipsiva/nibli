@@ -1292,4 +1292,5 @@ mod tests {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 bindings::export!(LasnaPipeline with_types_in bindings);

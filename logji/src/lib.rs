@@ -18,7 +18,7 @@
 //! The knowledge base uses `RefCell` (not `Mutex`) — single-threaded WASI, no global state.
 
 #[allow(warnings)]
-mod bindings;
+pub mod bindings;
 
 use crate::bindings::exports::lojban::nibli::logji::{Guest, GuestKnowledgeBase};
 use crate::bindings::lojban::nibli::error_types::NibliError;
@@ -2642,6 +2642,7 @@ fn generate_count_extra_witnesses(
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 bindings::export!(LogjiComponent with_types_in bindings);
 
 #[cfg(test)]

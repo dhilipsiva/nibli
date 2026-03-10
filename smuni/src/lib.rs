@@ -202,4 +202,13 @@ fn flatten_form(form: &LogicalForm, nodes: &mut Vec<LogicNode>, interner: &lasso
     }
 }
 
+/// Public API for native (non-WASM) callers.
+/// Wraps the internal `SmuniComponent::compile_buffer` pipeline.
+pub fn compile_buffer_native(
+    ast: AstBuffer,
+) -> Result<LogicBuffer, NibliError> {
+    <SmuniComponent as Guest>::compile_buffer(ast)
+}
+
+#[cfg(target_arch = "wasm32")]
 bindings::export!(SmuniComponent with_types_in bindings);
