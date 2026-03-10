@@ -795,7 +795,47 @@ fn parse_assert_args(input: &str) -> Result<(String, Vec<logji_logic::LogicalTer
 // MAIN + REPL LOOP
 // ═══════════════════════════════════════════════════════════════════════
 
+fn run_test_book() {
+    eprintln!("[test-book] Starting book example test...");
+    let mut session = Session::new();
+
+    let commands = vec![
+        (".i lo prenu cu ponse lo datni", "assert1"),
+        (".i ro lo prenu poi ponse lo datni cu bilga lo nu curmi", "assert2"),
+        ("?! lo prenu cu bilga lo nu curmi", "proof-query"),
+    ];
+
+    for (input, label) in &commands {
+        eprintln!("\n[test-book] === {label}: {input} ===");
+        let trimmed = input.trim();
+
+        if let Some(text) = trimmed.strip_prefix("?!") {
+            let text = text.trim();
+            eprintln!("[test-book] Calling query_text_with_proof...");
+            match session.query_text_with_proof(text) {
+                Ok((holds, trace)) => {
+                    println!("Result: {}", if holds { "TRUE" } else { "FALSE" });
+                    println!("{}", format_proof_trace(&trace));
+                }
+                Err(e) => println!("Error: {}", format_error(&e)),
+            }
+        } else {
+            match session.assert_text(trimmed) {
+                Ok(fact_id) => println!("[Fact #{fact_id}] Asserted."),
+                Err(e) => println!("Error: {}", format_error(&e)),
+            }
+        }
+    }
+    eprintln!("[test-book] Done.");
+}
+
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--test-book") {
+        run_test_book();
+        return;
+    }
+
     println!("==================================================");
     println!(" Nibli Native REPL - Direct Rust (no WASM)        ");
     println!("==================================================");

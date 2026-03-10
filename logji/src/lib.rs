@@ -222,6 +222,55 @@ fn cartesian_product(entities: &[String], dep_count: usize) -> Vec<Vec<String>> 
     result
 }
 
+/// Cartesian product of multiple candidate sets (one per variable position).
+/// Unlike `cartesian_product` which uses the same set for all positions,
+/// this takes a separate Vec per position — used after per-variable pre-filtering.
+fn multi_cartesian_product(sets: &[Vec<String>]) -> Vec<Vec<String>> {
+    if sets.is_empty() {
+        return vec![vec![]];
+    }
+    let mut result: Vec<Vec<String>> = vec![vec![]];
+    for set in sets {
+        if set.is_empty() {
+            return vec![]; // No solutions if any variable has zero feasible candidates
+        }
+        let mut next = Vec::new();
+        for combo in &result {
+            for item in set {
+                let mut extended = combo.clone();
+                extended.push(item.clone());
+                next.push(extended);
+            }
+        }
+        result = next;
+    }
+    result
+}
+
+// ─── Thread-local predicate result cache ─────────────────────────────
+
+use std::cell::Cell;
+
+thread_local! {
+    /// Cache for backward-chain predicate results within a single query.
+    /// Maps ground predicate s-expression → holds (true/false).
+    /// Cleared at the start of each query to avoid stale results.
+    static PRED_CACHE: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
+    /// Flag to enable/disable predicate caching (disabled during assertion replay).
+    static PRED_CACHE_ENABLED: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Clear the predicate result cache. Call at the start of each query.
+fn clear_pred_cache() {
+    PRED_CACHE.with(|c| c.borrow_mut().clear());
+    PRED_CACHE_ENABLED.with(|e| e.set(true));
+}
+
+/// Disable predicate caching (e.g., during assertion processing).
+fn disable_pred_cache() {
+    PRED_CACHE_ENABLED.with(|e| e.set(false));
+}
+
 // ─── WIT Export Implementation ────────────────────────────────────
 
 struct LogjiComponent;
@@ -544,6 +593,7 @@ impl KnowledgeBase {
 
     /// Check whether all root formulas in the logic buffer are entailed by the KB.
     fn query_entailment_inner(&self, logic: LogicBuffer) -> Result<bool, String> {
+        clear_pred_cache();
         let mut inner = self.inner.borrow_mut();
         for &root_id in &logic.roots {
             let subs = HashMap::new();
@@ -557,6 +607,7 @@ impl KnowledgeBase {
     /// Find all satisfying binding sets for existential variables in the query formula.
     /// Returns one `Vec<WitnessBinding>` per satisfying assignment.
     fn query_find_inner(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, String> {
+        clear_pred_cache();
         let mut inner = self.inner.borrow_mut();
         let mut result_sets: Option<Vec<Vec<(String, String)>>> = None;
         for &root_id in &logic.roots {
@@ -591,6 +642,7 @@ impl KnowledgeBase {
         &self,
         logic: LogicBuffer,
     ) -> Result<(bool, ProofTrace), String> {
+        clear_pred_cache();
         let mut inner = self.inner.borrow_mut();
         let mut steps: Vec<ProofStep> = Vec::new();
         let mut memo: HashMap<String, u32> = HashMap::new();
@@ -1072,50 +1124,68 @@ fn try_backward_chain_traced(
                     let members = inner.all_domain_members();
                     let member_sexps: Vec<String> =
                         members.iter().map(|(s, _)| s.clone()).collect();
-                    let mut candidates: Vec<String> = member_sexps.clone();
+                    let mut all_candidates: Vec<String> = member_sexps.clone();
                     let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
                     for entry in &entries {
                         let combos = cartesian_product(&member_sexps, entry.dep_count);
                         for combo in &combos {
-                            candidates.push(build_skolem_fn_sexp(&entry.base_name, combo));
+                            all_candidates.push(build_skolem_fn_sexp(&entry.base_name, combo));
                         }
                     }
 
-                    // Try to find event bindings that make all conditions hold
-                    let mut found = false;
-                    if unbound_event_vars.len() == 1 {
-                        let ev_var = &unbound_event_vars[0];
-                        for candidate in &candidates {
-                            bindings.insert(ev_var.clone(), candidate.clone());
-                            let all_hold = rule.condition_templates.iter().all(|ct| {
-                                let cs = sexp_substitute(ct, &bindings);
-                                check_predicate_in_kb(&cs, &*inner, depth + 1, &mut HashSet::new())
-                            });
-                            if all_hold {
-                                found = true;
-                                break;
-                            }
-                            bindings.remove(ev_var.as_str());
+                    // Per-variable pre-filtering (same as try_backward_chain)
+                    let mut per_var_candidates: Vec<Vec<String>> = Vec::new();
+                    for ev_var in &unbound_event_vars {
+                        let single_var_conditions: Vec<&String> = rule
+                            .condition_templates
+                            .iter()
+                            .filter(|ct| {
+                                ct.contains(ev_var.as_str())
+                                    && unbound_event_vars
+                                        .iter()
+                                        .all(|other| other == ev_var || !ct.contains(other.as_str()))
+                            })
+                            .collect();
+
+                        if single_var_conditions.is_empty() {
+                            per_var_candidates.push(all_candidates.clone());
+                        } else {
+                            let filtered: Vec<String> = all_candidates
+                                .iter()
+                                .filter(|candidate| {
+                                    let mut test_bindings = bindings.clone();
+                                    test_bindings.insert(ev_var.clone(), (*candidate).clone());
+                                    single_var_conditions.iter().all(|ct| {
+                                        let cs = sexp_substitute(ct, &test_bindings);
+                                        check_predicate_in_kb(&cs, &*inner, depth + 1, &mut HashSet::new())
+                                    })
+                                })
+                                .cloned()
+                                .collect();
+                            per_var_candidates.push(filtered);
                         }
-                    } else {
-                        // Multiple unbound event vars: try cartesian product
-                        let combos =
-                            cartesian_product(&candidates, unbound_event_vars.len());
-                        for combo in &combos {
-                            for (i, ev_var) in unbound_event_vars.iter().enumerate() {
-                                bindings.insert(ev_var.clone(), combo[i].clone());
-                            }
-                            let all_hold = rule.condition_templates.iter().all(|ct| {
-                                let cs = sexp_substitute(ct, &bindings);
-                                check_predicate_in_kb(&cs, &*inner, depth + 1, &mut HashSet::new())
-                            });
-                            if all_hold {
-                                found = true;
-                                break;
-                            }
-                            for ev_var in &unbound_event_vars {
-                                bindings.remove(ev_var.as_str());
-                            }
+                    }
+
+                    if per_var_candidates.iter().any(|pvc| pvc.is_empty()) {
+                        continue;
+                    }
+
+                    let combos = multi_cartesian_product(&per_var_candidates);
+                    let mut found = false;
+                    for combo in &combos {
+                        for (i, ev_var) in unbound_event_vars.iter().enumerate() {
+                            bindings.insert(ev_var.clone(), combo[i].clone());
+                        }
+                        let all_hold = rule.condition_templates.iter().all(|ct| {
+                            let cs = sexp_substitute(ct, &bindings);
+                            check_predicate_in_kb(&cs, &*inner, depth + 1, &mut HashSet::new())
+                        });
+                        if all_hold {
+                            found = true;
+                            break;
+                        }
+                        for ev_var in &unbound_event_vars {
+                            bindings.remove(ev_var.as_str());
                         }
                     }
                     if !found {
@@ -1178,8 +1248,8 @@ fn try_backward_chain_traced(
 
 /// Check if a predicate s-expression holds in the knowledge base.
 /// First checks `asserted_sexps` (ground facts), then backward-chains
-/// through universal rules. Used as the primary predicate resolution
-/// for demand-driven predicate resolution.
+/// through universal rules. Results are cached in the thread-local
+/// `PRED_CACHE` to avoid redundant derivation attempts.
 fn check_predicate_in_kb(
     sexp: &str,
     inner: &KnowledgeBaseInner,
@@ -1189,7 +1259,25 @@ fn check_predicate_in_kb(
     if inner.asserted_sexps.contains(sexp) {
         return true;
     }
-    try_backward_chain(sexp, inner, depth, visited)
+    // Check the predicate result cache (avoids redundant backward-chain attempts)
+    let cached = PRED_CACHE_ENABLED.with(|e| {
+        if e.get() {
+            PRED_CACHE.with(|c| c.borrow().get(sexp).copied())
+        } else {
+            None
+        }
+    });
+    if let Some(result) = cached {
+        return result;
+    }
+    let result = try_backward_chain(sexp, inner, depth, visited);
+    // Cache the result
+    PRED_CACHE_ENABLED.with(|e| {
+        if e.get() {
+            PRED_CACHE.with(|c| c.borrow_mut().insert(sexp.to_string(), result));
+        }
+    });
+    result
 }
 
 /// Maximum backward-chaining depth for non-traced queries.
@@ -1198,6 +1286,12 @@ const MAX_BACKWARD_CHAIN_DEPTH_UNTRACED: usize = 10;
 /// Try to derive a predicate s-expression by backward-chaining through universal rules.
 /// Non-traced equivalent of `try_backward_chain_traced` — returns `bool` only.
 /// Depth-limited and cycle-safe via `visited` set.
+///
+/// When a rule has unbound event pattern variables (condition-side existentials from
+/// Neo-Davidsonian event decomposition), uses per-variable pre-filtering to avoid
+/// exponential cartesian product explosion. For each unbound variable, conditions
+/// that only involve that one variable are used to filter candidates BEFORE computing
+/// the cross-product.
 fn try_backward_chain(
     sexp: &str,
     inner: &KnowledgeBaseInner,
@@ -1233,46 +1327,75 @@ fn try_backward_chain(
             if !unbound_event_vars.is_empty() {
                 let members = inner.all_domain_members();
                 let member_sexps: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
-                let mut candidates: Vec<String> = member_sexps.clone();
+                let mut all_candidates: Vec<String> = member_sexps.clone();
                 for entry in &inner.skolem_fn_registry {
                     let combos = cartesian_product(&member_sexps, entry.dep_count);
                     for combo in &combos {
-                        candidates.push(build_skolem_fn_sexp(&entry.base_name, combo));
+                        all_candidates.push(build_skolem_fn_sexp(&entry.base_name, combo));
                     }
                 }
 
-                let mut found = false;
-                if unbound_event_vars.len() == 1 {
-                    let ev_var = &unbound_event_vars[0];
-                    for candidate in &candidates {
-                        bindings.insert(ev_var.clone(), candidate.clone());
-                        let all_hold = rule.condition_templates.iter().all(|ct| {
-                            let cs = sexp_substitute(ct, &bindings);
-                            check_predicate_in_kb(&cs, inner, depth + 1, visited)
-                        });
-                        if all_hold {
-                            found = true;
-                            break;
-                        }
-                        bindings.remove(ev_var.as_str());
+                // Per-variable pre-filtering: for each unbound event var, filter
+                // candidates using conditions that ONLY involve that one unbound var
+                // (all others are already bound). This dramatically reduces the
+                // cartesian product from O(C^N) to O(F1 × F2 × ... × FN) where
+                // Fi << C for each variable.
+                let mut per_var_candidates: Vec<Vec<String>> = Vec::new();
+                for ev_var in &unbound_event_vars {
+                    // Find conditions that reference this var but NO other unbound event var
+                    let single_var_conditions: Vec<&String> = rule
+                        .condition_templates
+                        .iter()
+                        .filter(|ct| {
+                            ct.contains(ev_var.as_str())
+                                && unbound_event_vars
+                                    .iter()
+                                    .all(|other| other == ev_var || !ct.contains(other.as_str()))
+                        })
+                        .collect();
+
+                    if single_var_conditions.is_empty() {
+                        // No single-variable conditions → can't pre-filter
+                        per_var_candidates.push(all_candidates.clone());
+                    } else {
+                        let filtered: Vec<String> = all_candidates
+                            .iter()
+                            .filter(|candidate| {
+                                let mut test_bindings = bindings.clone();
+                                test_bindings.insert(ev_var.clone(), (*candidate).clone());
+                                single_var_conditions.iter().all(|ct| {
+                                    let cs = sexp_substitute(ct, &test_bindings);
+                                    check_predicate_in_kb(&cs, inner, depth + 1, visited)
+                                })
+                            })
+                            .cloned()
+                            .collect();
+                        per_var_candidates.push(filtered);
                     }
-                } else {
-                    let combos = cartesian_product(&candidates, unbound_event_vars.len());
-                    for combo in &combos {
-                        for (i, ev_var) in unbound_event_vars.iter().enumerate() {
-                            bindings.insert(ev_var.clone(), combo[i].clone());
-                        }
-                        let all_hold = rule.condition_templates.iter().all(|ct| {
-                            let cs = sexp_substitute(ct, &bindings);
-                            check_predicate_in_kb(&cs, inner, depth + 1, visited)
-                        });
-                        if all_hold {
-                            found = true;
-                            break;
-                        }
-                        for ev_var in &unbound_event_vars {
-                            bindings.remove(ev_var.as_str());
-                        }
+                }
+
+                // If any variable has zero feasible candidates, this rule can't fire
+                if per_var_candidates.iter().any(|pvc| pvc.is_empty()) {
+                    continue;
+                }
+
+                // Search the filtered cartesian product for a satisfying assignment
+                let combos = multi_cartesian_product(&per_var_candidates);
+                let mut found = false;
+                for combo in &combos {
+                    for (i, ev_var) in unbound_event_vars.iter().enumerate() {
+                        bindings.insert(ev_var.clone(), combo[i].clone());
+                    }
+                    let all_hold = rule.condition_templates.iter().all(|ct| {
+                        let cs = sexp_substitute(ct, &bindings);
+                        check_predicate_in_kb(&cs, inner, depth + 1, visited)
+                    });
+                    if all_hold {
+                        found = true;
+                        break;
+                    }
+                    for ev_var in &unbound_event_vars {
+                        bindings.remove(ev_var.as_str());
                     }
                 }
                 if !found {
