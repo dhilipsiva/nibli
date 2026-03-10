@@ -101,11 +101,11 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 
 **Implemented features:**
 - Lexer + recursive-descent gerna/parser (gismu, cmavo, cmevla, lujvo)
-- Gadri descriptions (lo/le/la), universal (ro lo/ro le), numeric quantifiers (PA lo/le, su'o lo)
+- Gadri descriptions (lo/le/la), universal (ro lo/ro le), numeric quantifiers (PA lo/le, su'o lo); description selbri supports se-conversion (`lo se krinu`), tanru (`lo sutra gerku`), and na negation (`lo na se curmi`)
 - Place tags (fa/fe/fi/fo/fu), BAI modal tags (ri'a, ni'i, mu'i, ki'u, pi'o, ba'i), fi'o...fe'u
-- Selbri: root, tanru (Neo-Davidsonian event decomposition — shared event variable resolves intersective fallacy), conversion (se/te/ve/xe), negation (na), grouping (ke...ke'e), compounds (zei), be...bei...be'o
+- Selbri: root, tanru (Neo-Davidsonian event decomposition — shared event variable resolves intersective fallacy), conversion (se/te/ve/xe — works both at selbri level and within tanru units for tight binding: `menli se ponse`), negation (na), grouping (ke...ke'e), compounds (zei), be...bei...be'o
 - Relative clauses (poi/noi/voi) with ke'a, implicit variable injection (ambiguous cases with nested descriptions rejected as error — requires explicit ke'a), clause stacking
-- Sumti connectives (.e/.a/.o/.u + nai), selbri connectives (je/ja/jo/ju)
+- Sumti connectives (.e/.a/.o/.u + nai), selbri connectives (je/ja/jo/ju + na negation on right operand: `je na se fanta`)
 - Sentence connectives (forethought: ge...gi, ga...gi, ganai...gi; afterthought: .i je/ja/jo/ju with na/nai)
 - Abstractions (nu, du'u, ka with ce'u, ni, si'o)
 - Tense (pu/ca/ba), deontic attitudinals (ei/e'e)

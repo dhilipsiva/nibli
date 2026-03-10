@@ -1374,4 +1374,36 @@ mod pipeline_tests {
         // Format should be "line:col: message"
         assert!(msg.contains(':'), "error display should contain line:col separator");
     }
+
+    /// Verify every non-blank, non-comment line in readme.lojban parses cleanly.
+    /// This is a regression test: if the parser breaks any readme line, this fails.
+    #[test]
+    fn pipeline_readme_lojban_all_lines_parse() {
+        let readme = include_str!("../../readme.lojban");
+        let mut failures = Vec::new();
+
+        for (line_num, line) in readme.lines().enumerate() {
+            let trimmed = line.trim();
+            // Skip blank lines and # comments
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            let arena = Bump::new();
+            let result = parse_result(trimmed, &arena);
+            if !result.errors.is_empty() {
+                failures.push(format!(
+                    "line {}: {:?} → {:?}",
+                    line_num + 1,
+                    trimmed,
+                    result.errors
+                ));
+            }
+        }
+
+        assert!(
+            failures.is_empty(),
+            "readme.lojban parse failures:\n{}",
+            failures.join("\n")
+        );
+    }
 }

@@ -463,6 +463,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         let mut attitudinal = self.try_parse_attitudinal();
 
         let head_terms = self.parse_terms();
+        while self.eat_pause() {}
         self.eat_cmavo("cu");
 
         // Tense can also appear mid-sentence: "mi pu klama" / "mi cu pu klama"
@@ -944,7 +945,22 @@ impl<'a, 'arena> Parser<'a, 'arena> {
     }
 
     fn try_parse_selbri_for_description(&mut self) -> Option<Selbri<'arena>> {
-        self.try_parse_tanru()
+        // Support na negation in descriptions: "lo na gerku", "lo na se curmi"
+        let saved = self.save();
+        let negated = self.eat_cmavo("na");
+
+        if let Some(tanru) = self.try_parse_tanru() {
+            if negated {
+                Some(Selbri::Negated(self.arena.alloc(tanru)))
+            } else {
+                Some(tanru)
+            }
+        } else {
+            if negated {
+                self.restore(saved);
+            }
+            None
+        }
     }
 
     fn try_parse_pro_sumti(&mut self) -> Option<Sumti<'arena>> {
@@ -1032,9 +1048,18 @@ impl<'a, 'arena> Parser<'a, 'arena> {
             };
             self.pos += 1;
 
-            let right = self
+            // Support na negation after connective: "je na se fanta"
+            let neg_right = self.eat_cmavo("na");
+
+            let right_base = self
                 .try_parse_selbri_2()
                 .ok_or_else(|| self.error("expected selbri after connective"))?;
+
+            let right = if neg_right {
+                Selbri::Negated(self.arena.alloc(right_base))
+            } else {
+                right_base
+            };
 
             left = Selbri::Connected {
                 left: self.arena.alloc(left),
@@ -1171,6 +1196,19 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         if self.peek_is_cmavo("go'i") {
             self.pos += 1;
             return Some(Selbri::Root("go'i".to_string()));
+        }
+
+        // Conversion within tanru: se/te/ve/xe + brivla (tight binding).
+        // Enables tanru like "menli se ponse" → Tanru(menli, Converted(Se, ponse))
+        // and descriptions like "lo se krinu" → Description(Lo, Converted(Se, krinu))
+        {
+            let saved = self.save();
+            if let Some(conv) = self.try_parse_conversion() {
+                if let Some(inner) = self.try_parse_tanru_unit_base() {
+                    return Some(Selbri::Converted(conv, self.arena.alloc(inner)));
+                }
+                self.restore(saved);
+            }
         }
 
         None
@@ -4375,5 +4413,388 @@ mod tests {
         ], &arena);
         let b = as_bridi(&r.sentences[0]);
         assert!(matches!(&b.selbri, Selbri::Compound(_)));
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // SE CONVERSION WITHIN TANRU UNITS (tight binding)
+    // ═══════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_tanru_with_se_conversion_in_tail() {
+        // menli se ponse → Tanru(menli, Converted(Se, ponse))
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("mi"),
+            gismu("menli"),
+            cmavo("se"),
+            gismu("ponse"),
+        ], &arena);
+        match &as_bridi(&r.sentences[0]).selbri {
+            Selbri::Tanru(m, h) => {
+                assert_eq!(**m, Selbri::Root("menli".into()));
+                match h {
+                    Selbri::Converted(Conversion::Se, inner) => {
+                        assert_eq!(**inner, Selbri::Root("ponse".into()));
+                    }
+                    other => panic!("expected Converted(Se, ponse), got {:?}", other),
+                }
+            }
+            other => panic!("expected Tanru, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_description_with_se_conversion() {
+        // lo se krinu → Description(Lo, Converted(Se, krinu))
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("mi"),
+            gismu("nelci"),
+            cmavo("lo"),
+            cmavo("se"),
+            gismu("krinu"),
+        ], &arena);
+        match &as_bridi(&r.sentences[0]).tail_terms[0] {
+            Sumti::Description { gadri, inner } => {
+                assert_eq!(*gadri, Gadri::Lo);
+                match inner {
+                    Selbri::Converted(Conversion::Se, inner_s) => {
+                        assert_eq!(**inner_s, Selbri::Root("krinu".into()));
+                    }
+                    other => panic!("expected Converted(Se, krinu), got {:?}", other),
+                }
+            }
+            other => panic!("expected Lo description, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_description_with_se_tanru() {
+        // ro lo se ponse datni → Description(RoLo, Tanru(Converted(Se, ponse), datni))
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("ro"),
+            cmavo("lo"),
+            cmavo("se"),
+            gismu("ponse"),
+            gismu("datni"),
+            cmavo("cu"),
+            cmavo("se"),
+            gismu("kurji"),
+        ], &arena);
+        let b = as_bridi(&r.sentences[0]);
+        match &b.head_terms[0] {
+            Sumti::Description { gadri, inner } => {
+                assert_eq!(*gadri, Gadri::RoLo);
+                match inner {
+                    Selbri::Tanru(m, h) => {
+                        match m {
+                            Selbri::Converted(Conversion::Se, inner_s) => {
+                                assert_eq!(**inner_s, Selbri::Root("ponse".into()));
+                            }
+                            other => panic!("expected Converted(Se, ponse), got {:?}", other),
+                        }
+                        assert_eq!(**h, Selbri::Root("datni".into()));
+                    }
+                    other => panic!("expected Tanru, got {:?}", other),
+                }
+            }
+            other => panic!("expected Description with RoLo, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_three_word_tanru_with_se_middle() {
+        // ro lo se kurji datni cu se fanta lo na se curmi
+        // description: ro lo se kurji datni → Description(RoLo, Tanru(Converted(Se, kurji), datni))
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("ro"),
+            cmavo("lo"),
+            cmavo("se"),
+            gismu("kurji"),
+            gismu("datni"),
+            cmavo("cu"),
+            cmavo("se"),
+            gismu("fanta"),
+            cmavo("lo"),
+            cmavo("na"),
+            cmavo("se"),
+            gismu("curmi"),
+        ], &arena);
+        let b = as_bridi(&r.sentences[0]);
+        // Verify the description: ro lo se kurji datni
+        match &b.head_terms[0] {
+            Sumti::Description { gadri, inner } => {
+                assert_eq!(*gadri, Gadri::RoLo);
+                match inner {
+                    Selbri::Tanru(m, h) => {
+                        assert!(matches!(m, Selbri::Converted(Conversion::Se, _)));
+                        assert_eq!(**h, Selbri::Root("datni".into()));
+                    }
+                    other => panic!("expected Tanru, got {:?}", other),
+                }
+            }
+            other => panic!("expected Description with RoLo, got {:?}", other),
+        }
+        // Verify selbri: se fanta
+        match &b.selbri {
+            Selbri::Converted(Conversion::Se, inner) => {
+                assert_eq!(**inner, Selbri::Root("fanta".into()));
+            }
+            other => panic!("expected Converted(Se, fanta), got {:?}", other),
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // PAUSE EATING BEFORE CU
+    // ═══════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_pause_before_cu_la_description() {
+        // la .nibli. cu logji ciste — pause after gismu-as-name before cu
+        // "nibli" is a gismu (vowel ending), so la nibli → La description
+        // trailing pause(s) should be eaten before cu
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("la"),
+            pause(),
+            gismu("nibli"),
+            pause(),
+            cmavo("cu"),
+            gismu("logji"),
+            gismu("ciste"),
+        ], &arena);
+        let b = as_bridi(&r.sentences[0]);
+        // la nibli → Description with La gadri
+        match &b.head_terms[0] {
+            Sumti::Description { gadri: Gadri::La, inner } => {
+                assert_eq!(**inner, Selbri::Root("nibli".into()));
+            }
+            other => panic!("expected La description for nibli, got {:?}", other),
+        }
+        // selbri: logji ciste → Tanru
+        assert!(matches!(&b.selbri, Selbri::Tanru(_, _)));
+    }
+
+    #[test]
+    fn test_pause_before_cu_name() {
+        // la .alis. cu klama — cmevla name with pauses before cu
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("la"),
+            pause(),
+            cmevla("alis"),
+            pause(),
+            cmavo("cu"),
+            gismu("klama"),
+        ], &arena);
+        let b = as_bridi(&r.sentences[0]);
+        match &b.head_terms[0] {
+            Sumti::Name(n) => assert_eq!(n, "alis"),
+            other => panic!("expected Name, got {:?}", other),
+        }
+        assert_eq!(b.selbri, Selbri::Root("klama".into()));
+    }
+
+    #[test]
+    fn test_multiple_pauses_before_cu() {
+        // mi ... cu klama — multiple pauses before cu
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("mi"),
+            pause(),
+            pause(),
+            pause(),
+            cmavo("cu"),
+            gismu("klama"),
+        ], &arena);
+        let b = as_bridi(&r.sentences[0]);
+        assert_eq!(b.selbri, Selbri::Root("klama".into()));
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // NA NEGATION IN DESCRIPTIONS
+    // ═══════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_lo_na_description() {
+        // lo na gerku → Description(Lo, Negated(gerku))
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("mi"),
+            gismu("nelci"),
+            cmavo("lo"),
+            cmavo("na"),
+            gismu("gerku"),
+        ], &arena);
+        match &as_bridi(&r.sentences[0]).tail_terms[0] {
+            Sumti::Description { gadri, inner } => {
+                assert_eq!(*gadri, Gadri::Lo);
+                match inner {
+                    Selbri::Negated(inner_s) => {
+                        assert_eq!(**inner_s, Selbri::Root("gerku".into()));
+                    }
+                    other => panic!("expected Negated(gerku), got {:?}", other),
+                }
+            }
+            other => panic!("expected Lo description, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lo_na_se_conversion_description() {
+        // lo na se curmi → Description(Lo, Negated(Converted(Se, curmi)))
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("mi"),
+            gismu("nelci"),
+            cmavo("lo"),
+            cmavo("na"),
+            cmavo("se"),
+            gismu("curmi"),
+        ], &arena);
+        match &as_bridi(&r.sentences[0]).tail_terms[0] {
+            Sumti::Description { gadri, inner } => {
+                assert_eq!(*gadri, Gadri::Lo);
+                match inner {
+                    Selbri::Negated(neg_inner) => {
+                        match neg_inner {
+                            Selbri::Converted(Conversion::Se, conv_inner) => {
+                                assert_eq!(**conv_inner, Selbri::Root("curmi".into()));
+                            }
+                            other => panic!("expected Converted(Se, curmi), got {:?}", other),
+                        }
+                    }
+                    other => panic!("expected Negated, got {:?}", other),
+                }
+            }
+            other => panic!("expected Lo description, got {:?}", other),
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // FULL readme.lojban SENTENCES (regression tests)
+    // ═══════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_readme_la_nibli_cu_logji_ciste() {
+        // "la .nibli. cu logji ciste" — line 2 of readme.lojban
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("la"),
+            pause(),
+            gismu("nibli"),
+            pause(),
+            cmavo("cu"),
+            gismu("logji"),
+            gismu("ciste"),
+        ], &arena);
+        assert_eq!(r.sentences.len(), 1);
+    }
+
+    #[test]
+    fn test_readme_ro_lo_se_krinu_cu_logji() {
+        // "ro lo se krinu cu logji" — line 8 of readme.lojban
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("ro"),
+            cmavo("lo"),
+            cmavo("se"),
+            gismu("krinu"),
+            cmavo("cu"),
+            gismu("logji"),
+        ], &arena);
+        assert_eq!(r.sentences.len(), 1);
+    }
+
+    #[test]
+    fn test_readme_ro_lo_prenu_cu_menli_se_ponse() {
+        // "ro lo prenu cu menli se ponse" — line 41 of readme.lojban
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("ro"),
+            cmavo("lo"),
+            gismu("prenu"),
+            cmavo("cu"),
+            gismu("menli"),
+            cmavo("se"),
+            gismu("ponse"),
+        ], &arena);
+        let b = as_bridi(&r.sentences[0]);
+        // selbri: menli se ponse → Tanru(menli, Converted(Se, ponse))
+        match &b.selbri {
+            Selbri::Tanru(m, h) => {
+                assert_eq!(**m, Selbri::Root("menli".into()));
+                assert!(matches!(h, Selbri::Converted(Conversion::Se, _)));
+            }
+            other => panic!("expected Tanru, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_readme_ro_lo_se_bilga_cu_se_curmi_je_na_se_fanta() {
+        // "ro lo se bilga cu se curmi je na se fanta" — line 102 of readme.lojban
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("ro"),
+            cmavo("lo"),
+            cmavo("se"),
+            gismu("bilga"),
+            cmavo("cu"),
+            cmavo("se"),
+            gismu("curmi"),
+            cmavo("je"),
+            cmavo("na"),
+            cmavo("se"),
+            gismu("fanta"),
+        ], &arena);
+        assert_eq!(r.sentences.len(), 1);
+    }
+
+    #[test]
+    fn test_readme_ro_lo_se_ponse_datni_cu_se_kurji() {
+        // "ro lo se ponse datni cu se kurji" — line 106 of readme.lojban
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("ro"),
+            cmavo("lo"),
+            cmavo("se"),
+            gismu("ponse"),
+            gismu("datni"),
+            cmavo("cu"),
+            cmavo("se"),
+            gismu("kurji"),
+        ], &arena);
+        assert_eq!(r.sentences.len(), 1);
+    }
+
+    #[test]
+    fn test_readme_se_kurji_datni_cu_se_fanta_lo_na_se_curmi() {
+        // "ro lo se kurji datni cu se fanta lo na se curmi" — line 107 of readme.lojban
+        let arena = Bump::new();
+        let r = parse_ok(&[
+            cmavo("ro"),
+            cmavo("lo"),
+            cmavo("se"),
+            gismu("kurji"),
+            gismu("datni"),
+            cmavo("cu"),
+            cmavo("se"),
+            gismu("fanta"),
+            cmavo("lo"),
+            cmavo("na"),
+            cmavo("se"),
+            gismu("curmi"),
+        ], &arena);
+        let b = as_bridi(&r.sentences[0]);
+        // tail term: lo na se curmi → Description(Lo, Negated(Converted(Se, curmi)))
+        match &b.tail_terms[0] {
+            Sumti::Description { gadri, inner } => {
+                assert_eq!(*gadri, Gadri::Lo);
+                assert!(matches!(inner, Selbri::Negated(_)));
+            }
+            other => panic!("expected Lo description, got {:?}", other),
+        }
     }
 }
