@@ -1339,15 +1339,27 @@ fn check_formula_holds_traced(
     match &buffer.nodes[node_id as usize] {
         LogicNode::AndNode((l, r)) => {
             let (l_result, l_idx) = check_formula_holds_traced(buffer, *l, subs, inner, steps, tense, memo)?;
+            // Short-circuit: if left side fails, skip right side entirely.
+            // This prevents exponential blowup when nested existentials try
+            // many candidate bindings — wrong candidates fail fast at the
+            // first predicate instead of recursing into all remaining branches.
+            if !l_result {
+                let idx = steps.len() as u32;
+                steps.push(ProofStep {
+                    rule: ProofRule::Conjunction,
+                    holds: false,
+                    children: vec![l_idx],
+                });
+                return Ok((false, idx));
+            }
             let (r_result, r_idx) = check_formula_holds_traced(buffer, *r, subs, inner, steps, tense, memo)?;
-            let result = l_result && r_result;
             let idx = steps.len() as u32;
             steps.push(ProofStep {
                 rule: ProofRule::Conjunction,
-                holds: result,
+                holds: r_result,
                 children: vec![l_idx, r_idx],
             });
-            Ok((result, idx))
+            Ok((r_result, idx))
         }
         LogicNode::OrNode((l, r)) => {
             // Try egglog direct check first (with tense wrapping)
@@ -1471,6 +1483,8 @@ fn check_formula_holds_traced(
             for (sexp, term) in &members {
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), sexp.clone());
+                // Save steps length so we can discard failed-branch steps
+                let steps_checkpoint = steps.len();
                 let (holds, body_idx) =
                     check_formula_holds_traced(buffer, *body, &new_subs, inner, steps, tense, memo)?;
                 if holds {
@@ -1482,6 +1496,9 @@ fn check_formula_holds_traced(
                     });
                     return Ok((true, idx));
                 }
+                // Discard orphaned steps from failed candidate to prevent
+                // memory accumulation across many failed witness attempts
+                steps.truncate(steps_checkpoint);
             }
             // 2. Try SkolemFn witnesses
             let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
@@ -1492,6 +1509,7 @@ fn check_formula_holds_traced(
                     let witness_sexp = build_skolem_fn_sexp(&entry.base_name, combo);
                     let mut new_subs = subs.clone();
                     new_subs.insert(v.clone(), witness_sexp.clone());
+                    let steps_checkpoint = steps.len();
                     let (holds, body_idx) =
                         check_formula_holds_traced(buffer, *body, &new_subs, inner, steps, tense, memo)?;
                     if holds {
@@ -1506,6 +1524,7 @@ fn check_formula_holds_traced(
                         });
                         return Ok((true, idx));
                     }
+                    steps.truncate(steps_checkpoint);
                 }
             }
             let idx = steps.len() as u32;
