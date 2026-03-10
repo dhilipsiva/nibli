@@ -373,6 +373,7 @@ fn main() -> Result<()> {
     let mut config = Config::new();
     config.wasm_component_model(true);
     config.consume_fuel(true);
+    config.debug_info(true);
     let engine = Engine::new(&config)?;
 
     let mut linker = Linker::new(&engine);
