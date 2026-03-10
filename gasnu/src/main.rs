@@ -373,7 +373,8 @@ fn main() -> Result<()> {
     let mut config = Config::new();
     config.wasm_component_model(true);
     config.consume_fuel(true);
-    config.debug_info(true);
+    // Note: debug_info(true) triggers a Cranelift assertion failure
+    // (value_is_real) on our WASM module — WASM debug symbols not supported.
     let engine = Engine::new(&config)?;
 
     let mut linker = Linker::new(&engine);

@@ -173,6 +173,13 @@ impl KnowledgeBaseInner {
                 eprintln!("[Saturate] Warning: {}", e);
             }
         }
+        if !self.rebuilding {
+            // Print e-graph size after saturation for diagnostics
+            let num_facts = self.egraph.parse_and_run_program(None, "(print-size)")
+                .map(|v| format!("{:?}", v))
+                .unwrap_or_else(|_| "?".to_string());
+            eprintln!("[Saturate] e-graph size after run({}): {}", self.run_bound, num_facts);
+        }
     }
 
     /// Return all known domain members as (s-expression, LogicalTerm) pairs.
@@ -645,7 +652,17 @@ impl KnowledgeBase {
         logic: LogicBuffer,
     ) -> Result<(bool, ProofTrace), String> {
         let mut inner = self.inner.borrow_mut();
+        eprintln!("[Diag] query_with_proof: running saturation...");
         inner.run_saturation();
+        eprintln!("[Diag] saturation done. entities={}, events={}, descs={}, rules={}, skolem_fns={}",
+            inner.known_entities.len(),
+            inner.known_event_entities.len(),
+            inner.known_descriptions.len(),
+            inner.universal_rules.len(),
+            inner.skolem_fn_registry.len(),
+        );
+        eprintln!("[Diag] domain members total: {}", inner.all_domain_members().len());
+        eprintln!("[Diag] starting traced formula check...");
         let mut steps: Vec<ProofStep> = Vec::new();
         let mut memo: HashMap<String, u32> = HashMap::new();
         let mut root_children: Vec<u32> = Vec::new();
@@ -659,6 +676,7 @@ impl KnowledgeBase {
                 all_hold = false;
             }
         }
+        eprintln!("[Diag] traced check done. steps={}, hold={}", steps.len(), all_hold);
         let root = if root_children.len() == 1 {
             root_children[0]
         } else {
