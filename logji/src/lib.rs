@@ -73,6 +73,10 @@ struct KnowledgeBaseInner {
     egraph: EGraph,
     skolem_counter: usize,
     known_entities: HashSet<String>,
+    /// Event Skolem constants (from `_ev*` variables). Tracked for witness search
+    /// and proof tracing, but NOT registered in the e-graph's InDomain relation
+    /// to prevent quadratic blowup in guarded conjunction introduction.
+    known_event_entities: HashSet<String>,
     /// Known description terms (from `le` gadri), tracked separately for InDomain.
     known_descriptions: HashSet<String>,
     known_rules: HashSet<String>,
@@ -98,6 +102,7 @@ impl KnowledgeBaseInner {
             egraph: make_fresh_egraph(),
             skolem_counter: 0,
             known_entities: HashSet::new(),
+            known_event_entities: HashSet::new(),
             known_descriptions: HashSet::new(),
             known_rules: HashSet::new(),
             skolem_fn_registry: Vec::new(),
@@ -114,6 +119,7 @@ impl KnowledgeBaseInner {
         self.egraph = make_fresh_egraph();
         self.skolem_counter = 0;
         self.known_entities.clear();
+        self.known_event_entities.clear();
         self.known_descriptions.clear();
         self.known_rules.clear();
         self.skolem_fn_registry.clear();
@@ -144,6 +150,12 @@ impl KnowledgeBaseInner {
         }
     }
 
+    /// Track an event Skolem constant for witness search and proof tracing,
+    /// without registering it in the e-graph's InDomain relation.
+    fn note_event_entity(&mut self, name: &str) {
+        self.known_event_entities.insert(name.to_string());
+    }
+
     fn note_description(&mut self, name: &str) {
         let is_new = self.known_descriptions.insert(name.to_string());
         if is_new {
@@ -168,6 +180,12 @@ impl KnowledgeBaseInner {
     fn all_domain_members(&self) -> Vec<(String, LogicalTerm)> {
         let mut members = Vec::new();
         for e in &self.known_entities {
+            members.push((
+                format!("(Const \"{}\")", e),
+                LogicalTerm::Constant(e.clone()),
+            ));
+        }
+        for e in &self.known_event_entities {
             members.push((
                 format!("(Const \"{}\")", e),
                 LogicalTerm::Constant(e.clone()),
@@ -439,18 +457,26 @@ fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) -> Res
 
         if is_forall {
             // ═══ NATIVE RULE PATH ═══
-            for sk in skolem_subs.values() {
+            for (var, sk) in &skolem_subs {
                 if !sk.starts_with(SKDEP_PREFIX) {
-                    inner.note_entity(sk);
+                    if var.starts_with("_ev") {
+                        inner.note_event_entity(sk);
+                    } else {
+                        inner.note_entity(sk);
+                    }
                 }
             }
             collect_and_note_constants(logic, root_id, inner);
             compile_forall_to_rule(logic, root_id, &skolem_subs, inner)?;
         } else {
             // ═══ GROUND FORMULA PATH ═══
-            for sk in skolem_subs.values() {
+            for (var, sk) in &skolem_subs {
                 if !sk.starts_with(SKDEP_PREFIX) {
-                    inner.note_entity(sk);
+                    if var.starts_with("_ev") {
+                        inner.note_event_entity(sk);
+                    } else {
+                        inner.note_entity(sk);
+                    }
                 }
             }
             collect_and_note_constants(logic, root_id, inner);
@@ -519,6 +545,7 @@ impl KnowledgeBase {
         inner.egraph = make_fresh_egraph();
         inner.skolem_counter = 0;
         inner.known_entities.clear();
+        inner.known_event_entities.clear();
         inner.known_descriptions.clear();
         inner.known_rules.clear();
         inner.skolem_fn_registry.clear();
@@ -2186,10 +2213,16 @@ fn compile_forall_to_rule(
                 for (k, v) in &ground_skolems {
                     xp_subs.entry(k.clone()).or_insert_with(|| format!("(Const \"{}\")", v));
                 }
-                // Add fresh Skolem constants for condition-side event variables
+                // Add fresh Skolem constants for condition-side existential variables.
+                // Event variables (_ev*) are tracked as event entities (not InDomain)
+                // to prevent quadratic blowup in guarded conjunction introduction.
                 for var in &condition_exists_vars {
                     let ev_sk = inner.fresh_skolem();
-                    inner.note_entity(&ev_sk);
+                    if var.starts_with("_ev") {
+                        inner.note_event_entity(&ev_sk);
+                    } else {
+                        inner.note_entity(&ev_sk);
+                    }
                     xp_subs.insert(var.clone(), format!("(Const \"{}\")", ev_sk));
                 }
                 for &cid in &all_conditions {
@@ -5943,5 +5976,106 @@ mod tests {
             "single-hop trace should have very few ProofRef nodes (unique conditions), got {}",
             proof_ref_count
         );
+    }
+
+    // ─── Book example regression test (event Skolem InDomain blowup) ────
+
+    /// Build a 2-argument event-decomposed assertion:
+    ///   ∃ev0. P(ev0) ∧ P_x1(ev0, entity1) ∧ P_x2(ev0, entity2)
+    /// This models sentences like "lo prenu cu ponse lo datni" where both
+    /// the subject and object are concrete entities.
+    fn make_event_assertion_2arg(
+        entity1: &str,
+        entity2: &str,
+        predicate: &str,
+    ) -> LogicBuffer {
+        let mut nodes = Vec::new();
+        let p_type = pred(
+            &mut nodes,
+            predicate,
+            vec![LogicalTerm::Variable("_ev0".to_string())],
+        );
+        let p_role1 = pred(
+            &mut nodes,
+            &format!("{}_x1", predicate),
+            vec![
+                LogicalTerm::Variable("_ev0".to_string()),
+                LogicalTerm::Constant(entity1.to_string()),
+            ],
+        );
+        let p_role2 = pred(
+            &mut nodes,
+            &format!("{}_x2", predicate),
+            vec![
+                LogicalTerm::Variable("_ev0".to_string()),
+                LogicalTerm::Constant(entity2.to_string()),
+            ],
+        );
+        let a1 = and(&mut nodes, p_type, p_role1);
+        let a2 = and(&mut nodes, a1, p_role2);
+        let root = exists(&mut nodes, "_ev0", a2);
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
+    }
+
+    #[test]
+    fn test_book_example_no_oom() {
+        // Regression test for the book example that was crashing with OOM:
+        //   .i lo prenu cu ponse lo datni
+        //   .i ro lo prenu poi ponse lo datni cu bilga lo nu curmi
+        //   ?! lo prenu cu bilga lo nu curmi
+        //
+        // The crash was caused by event Skolem constants being registered in
+        // the e-graph's InDomain relation, causing O(N²) blowup in guarded
+        // conjunction introduction. With 2-arg predicates and universal rules,
+        // each event constant linked ~6 predicates → C(6,2)=15 conjunctions
+        // → commutativity doubled them → exponential growth.
+        //
+        // This test models the scenario with multiple entities and predicates
+        // to verify no memory explosion occurs.
+        let kb = new_kb();
+
+        // Assert: "A person possesses data"
+        // ∃ev0. ponse(ev0) ∧ ponse_x1(ev0, prenu_sk) ∧ ponse_x2(ev0, datni_sk)
+        assert_buf(&kb, make_event_assertion_2arg("prenu_sk", "datni_sk", "ponse"));
+
+        // Also assert the gadri decompositions (what `lo prenu` and `lo datni` produce):
+        // ∃ev1. prenu(ev1) ∧ prenu_x1(ev1, prenu_sk)
+        assert_buf(&kb, make_event_assertion("prenu_sk", "prenu"));
+        // ∃ev2. datni(ev2) ∧ datni_x1(ev2, datni_sk)
+        assert_buf(&kb, make_event_assertion("datni_sk", "datni"));
+
+        // Assert universal rule: "Every person who possesses data is obligated"
+        // This is simplified as: ∀x. prenu(x) → bilga(x)
+        assert_buf(&kb, make_event_universal("prenu", "bilga"));
+
+        // Add another universal rule to increase e-graph pressure
+        assert_buf(&kb, make_event_universal("bilga", "zukte"));
+
+        // Query: "A person is obligated" — should hold via prenu→bilga derivation
+        assert!(
+            query(&kb, make_event_assertion("prenu_sk", "bilga")),
+            "prenu_sk should be derived as bilga via universal rule"
+        );
+
+        // Query with proof trace — this is what was crashing before the fix
+        let (holds, _trace) = kb
+            .query_entailment_with_proof_inner(make_event_assertion("prenu_sk", "bilga"))
+            .unwrap();
+        assert!(holds, "proof-traced query should hold for bilga(prenu_sk)");
+
+        // Multi-hop: prenu→bilga→zukte
+        assert!(
+            query(&kb, make_event_assertion("prenu_sk", "zukte")),
+            "multi-hop prenu→bilga→zukte should derive zukte(prenu_sk)"
+        );
+
+        // Proof trace for multi-hop should complete without OOM
+        let (holds2, _trace2) = kb
+            .query_entailment_with_proof_inner(make_event_assertion("prenu_sk", "zukte"))
+            .unwrap();
+        assert!(holds2, "proof-traced multi-hop should hold for zukte(prenu_sk)");
     }
 }
