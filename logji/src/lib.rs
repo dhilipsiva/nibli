@@ -71,7 +71,7 @@ struct KnowledgeBaseInner {
     skolem_counter: usize,
     known_entities: HashSet<String>,
     /// Event Skolem constants (from `_ev*` variables). Tracked for witness search
-    /// and proof tracing, but NOT registered in the e-graph's InDomain relation
+    /// and proof tracing, but NOT registered in `known_entities`
     /// to prevent quadratic blowup in guarded conjunction introduction.
     known_event_entities: HashSet<String>,
     /// Known description terms (from `le` gadri), tracked separately for InDomain.
@@ -141,7 +141,7 @@ impl KnowledgeBaseInner {
     }
 
     /// Track an event Skolem constant for witness search and proof tracing,
-    /// without registering it in the e-graph's InDomain relation.
+    /// without registering it in `known_entities`.
     fn note_event_entity(&mut self, name: &str) {
         self.known_event_entities.insert(name.to_string());
     }
@@ -6109,7 +6109,7 @@ mod tests {
         //   ?! lo prenu cu bilga lo nu curmi
         //
         // The crash was caused by event Skolem constants being registered in
-        // the e-graph's InDomain relation, causing O(N²) blowup in guarded
+        // `known_entities`, causing O(N²) blowup in guarded
         // conjunction introduction. With 2-arg predicates and universal rules,
         // each event constant linked ~6 predicates → C(6,2)=15 conjunctions
         // → commutativity doubled them → exponential growth.
@@ -6132,7 +6132,7 @@ mod tests {
         // This is simplified as: ∀x. prenu(x) → bilga(x)
         assert_buf(&kb, make_event_universal("prenu", "bilga"));
 
-        // Add another universal rule to increase e-graph pressure
+        // Add another universal rule to increase backward-chaining depth
         assert_buf(&kb, make_event_universal("bilga", "zukte"));
 
         // Query: "A person is obligated" — should hold via prenu→bilga derivation

@@ -200,7 +200,7 @@ interface error-types {
         syntax(syntax-detail),
         /// Semantic compilation error.
         semantic(string),
-        /// Reasoning engine error (egglog assertion/query failure).
+        /// Reasoning engine error (assertion/query failure).
         reasoning(string),
         /// Compute backend error. Fields: (kind, message).
         backend(tuple<string, string>),
@@ -221,7 +221,7 @@ interface error-types {
 ///
 /// The semantics compiler transforms the parser's AST into this flat logic
 /// buffer. The reasoning engine consumes it to assert facts or check queries
-/// against the egglog e-graph.
+/// against the indexed fact store.
 interface logic-types {
     /// A term in a logical formula: variable, constant, description reference,
     /// unspecified placeholder, or numeric literal.
@@ -287,8 +287,8 @@ interface logic-types {
     variant proof-rule {
         /// Both conjuncts checked. Children: [left, right].
         conjunction,
-        /// Entire disjunction found in e-graph. Payload: sexp checked.
-        disjunction-egraph(string),
+        /// Disjunction checked in fact store. Payload: sexp checked.
+        disjunction-check(string),
         /// One disjunct checked. Payload: "left" or "right". Children: [winner].
         disjunction-intro(string),
         /// Inner formula failed. Children: [inner-attempt].
@@ -386,7 +386,7 @@ interface compute-backend {
     evaluate: func(relation: string, args: list<logical-term>) -> result<bool, nibli-error>;
 }
 
-/// FOL assertion and query engine backed by egglog e-graph equality saturation.
+/// FOL assertion and query engine backed by demand-driven backward chaining.
 ///
 /// Provides a stateful knowledge base resource that supports fact assertion,
 /// entailment queries, proof trace generation, and witness extraction.
@@ -394,7 +394,7 @@ interface logji {
     use logic-types.{logic-buffer, witness-binding, proof-trace, fact-id, fact-summary};
     use error-types.{nibli-error};
 
-    /// A stateful knowledge base backed by an egglog e-graph.
+    /// A stateful knowledge base backed by an indexed fact store.
     /// Supports asserting FOL facts, querying entailment, extracting witnesses,
     /// generating proof traces, and non-monotonic retraction via rebuild.
     resource knowledge-base {
@@ -415,9 +415,9 @@ interface logji {
         retract-fact: func(id: fact-id) -> result<_, nibli-error>;
         /// List all active (non-retracted) facts in the KB.
         list-facts: func() -> result<list<fact-summary>, nibli-error>;
-        /// Set the egglog saturation iteration bound (default: 100).
+        /// Set the run bound (default: 100).
         set-run-bound: func(n: u32);
-        /// Get the current egglog saturation iteration bound.
+        /// Get the current run bound.
         get-run-bound: func() -> u32;
     }
 }
@@ -470,9 +470,9 @@ interface lasna {
         retract-fact: func(id: fact-id) -> result<_, nibli-error>;
         /// List all active (non-retracted) facts.
         list-facts: func() -> result<list<fact-summary>, nibli-error>;
-        /// Set the egglog saturation iteration bound (default: 100).
+        /// Set the run bound (default: 100).
         set-run-bound: func(n: u32);
-        /// Get the current egglog saturation iteration bound.
+        /// Get the current run bound.
         get-run-bound: func() -> u32;
     }
 }

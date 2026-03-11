@@ -7,7 +7,7 @@
 //! 1. **Parse** — Lojban text → flat AST buffer (with error recovery)
 //! 2. **Compute node injection** — Rewrites registered predicates to `ComputeNode` IR
 //! 3. **Compile** — AST buffer → FOL logic buffer
-//! 4. **Assert/Query** — FOL logic buffer → egglog e-graph
+//! 4. **Assert/Query** — FOL logic buffer → indexed fact store
 //!
 //! Also handles:
 //! - **go'i pro-bridi resolution** — Replaces `go'i` with a deep clone of the

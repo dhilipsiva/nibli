@@ -97,7 +97,7 @@ Before every commit, always:
 
 ## Current Status
 
-Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator) + C2 (non-monotonic reasoning / belief revision) + C3 (temporal reasoning) + C4 (event semantics — Neo-Davidsonian) + C5 (description term opacity — `le` vs `lo`) + SkolemFn multi-dependency + event-decomposed universal rule compilation fix (condition-side ∃ as pattern variables) + proof trace memoization (DAG deduplication via ProofRef) + **egglog removal** (replaced e-graph equality saturation with demand-driven backward-chaining over indexed fact store).
+Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator) + C2 (non-monotonic reasoning / belief revision) + C3 (temporal reasoning) + C4 (event semantics — Neo-Davidsonian) + C5 (description term opacity — `le` vs `lo`) + SkolemFn multi-dependency + event-decomposed universal rule compilation fix (condition-side ∃ as pattern variables) + proof trace memoization (DAG deduplication via ProofRef) + **egglog removal** (replaced egglog equality saturation with demand-driven backward-chaining over indexed fact store).
 
 **Implemented features:**
 - Lexer + recursive-descent gerna/parser (gismu, cmavo, cmevla, lujvo)
@@ -113,7 +113,7 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - Skolemization (independent + dependent under ∀ via SkolemFn)
 - All universals compile to backward-chaining rule templates (UniversalRuleRecord) + xorlo presupposition Skolems (restrictor domain guaranteed non-empty)
 - SkolemFn constructor for dependent Skolems with multi-dependency support: single dep `(SkolemFn "sk_N" dep)`, multi-dep via `DepPair` nesting `(SkolemFn "sk_N" (DepPair dep0 dep1))` — handles `∀x.∀y. → ∃z.` patterns
-- Demand-driven backward-chaining reasoning engine (replaced egglog e-graph): indexed fact store (asserted_sexps HashSet) + UniversalRuleRecord templates for backward-chaining; ground material conditionals (Or(Not(P),Q)) auto-registered as zero-variable rules for modus ponens
+- Demand-driven backward-chaining reasoning engine (replaced egglog): indexed fact store (asserted_sexps HashSet) + UniversalRuleRecord templates for backward-chaining; ground material conditionals (Or(Not(P),Q)) auto-registered as zero-variable rules for modus ponens
 - Count quantifier (exactly N) for numeric descriptions
 - da/de/di existential quantifier closure (bare logic variables now properly wrapped in ∃)
 - Host-managed WIT resources: `resource knowledge-base` (logji) + `resource session` (lasna interface)

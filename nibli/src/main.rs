@@ -547,8 +547,8 @@ fn format_rule(rule: &logji_logic::ProofRule, result: bool) -> String {
     let tag = if result { "TRUE" } else { "FALSE" };
     match rule {
         logji_logic::ProofRule::Conjunction => format!("Conjunction -> {}", tag),
-        logji_logic::ProofRule::DisjunctionEgraph(s) => {
-            format!("Disjunction (e-graph: {}) -> {}", s, tag)
+        logji_logic::ProofRule::DisjunctionCheck(s) => {
+            format!("Disjunction (check: {}) -> {}", s, tag)
         }
         logji_logic::ProofRule::DisjunctionIntro(side) => {
             format!("Disjunction ({}) -> {}", side, tag)

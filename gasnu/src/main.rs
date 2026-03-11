@@ -17,7 +17,7 @@
 //! - **`:backend`** — Show/change external compute backend address
 //! - **`:reset`** — Clear the knowledge base
 //! - **`:fuel`** / **`:memory`** — Show/set WASM execution limits
-//! - **`:saturate`** — Show/set egglog saturation run bound (iterations)
+//! - **`:saturate`** — Show/set run bound (iterations)
 
 use anyhow::Result;
 use reedline::{DefaultPrompt, Reedline, Signal};
@@ -216,7 +216,7 @@ fn format_rule(rule: &ProofRule, result: bool) -> String {
     let tag = if result { "TRUE" } else { "FALSE" };
     match rule {
         ProofRule::Conjunction => format!("Conjunction → {}", tag),
-        ProofRule::DisjunctionEgraph(s) => format!("Disjunction (e-graph: {}) → {}", s, tag),
+        ProofRule::DisjunctionCheck(s) => format!("Disjunction (check: {}) → {}", s, tag),
         ProofRule::DisjunctionIntro(side) => format!("Disjunction ({}) → {}", side, tag),
         ProofRule::Negation => format!("Negation → {}", tag),
         ProofRule::ModalPassthrough(kind) => format!("Modal ({}) → {}", kind, tag),
@@ -529,7 +529,7 @@ fn main() -> Result<()> {
                         println!("  :backend [host:port] Show or set compute backend address");
                         println!("  :fuel [amount]      Show or set WASM fuel budget per command");
                         println!("  :memory [mb]        Show or set WASM memory limit in MB");
-                        println!("  :saturate [n]       Show or set egglog saturation run bound");
+                        println!("  :saturate [n]       Show or set run bound");
                         println!("  :reset              Clear all facts (fresh KB)");
                         println!("  :quit               Exit");
                         continue;
@@ -955,9 +955,9 @@ mod tests {
 
     #[test]
     fn test_format_nibli_error_reasoning() {
-        let e = NibliError::Reasoning("egglog assertion failed".to_string());
+        let e = NibliError::Reasoning("assertion failed".to_string());
         let out = format_nibli_error(&e);
-        assert_eq!(out, "[Reasoning Error] egglog assertion failed");
+        assert_eq!(out, "[Reasoning Error] assertion failed");
     }
 
     #[test]

@@ -124,7 +124,7 @@ Current coverage of Lojban grammar, semantics, and reasoning in Nibli.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| `pu` (past) | Done | Full e-graph temporal reasoning |
+| `pu` (past) | Done | Full temporal reasoning |
 | `ca` (present) | Done | Strict tense discrimination |
 | `ba` (future) | Done | Temporal lifting of timeless rules |
 | `punai` `canai` `banai` | Done | Tense negation |
@@ -216,10 +216,10 @@ Current coverage of Lojban grammar, semantics, and reasoning in Nibli.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| egglog e-graph equality saturation | Done | |
+| Demand-driven backward-chaining inference | Done | |
 | Skolemization (independent) | Done | Fresh `Const` terms |
 | Skolemization (dependent/SkolemFn) | Done | Multi-dependency via DepPair |
-| Native egglog rules for universals | Done | O(K) hash-join matching |
+| Backward-chaining rule templates for universals | Done | O(K) pattern matching |
 | Event-decomposed rule compilation | Done | Condition-side exists as pattern vars |
 | Structural rewrites | Done | Commutativity, De Morgan, double negation |
 | Conjunction elimination/introduction | Done | Guarded by entity domain |
@@ -230,7 +230,7 @@ Current coverage of Lojban grammar, semantics, and reasoning in Nibli.
 | Proof trace generation | Done | 16 proof rule variants |
 | Proof trace memoization | Done | DAG deduplication via ProofRef |
 | Backward-chaining provenance | Done | Multi-hop derivation tracing |
-| Non-monotonic belief revision | Done | Fact retraction + egraph rebuild |
+| Non-monotonic belief revision | Done | Fact retraction + fact store rebuild |
 | Temporal lifting of rules | Done | Timeless rules fire on tensed premises |
 | Tense conjunction elimination | Done | Past(A and B) -> Past(A) and Past(B) |
 | Compute dispatch | Done | TCP + JSON Lines backend |
