@@ -2865,9 +2865,9 @@ dependencies = [
 name = "nibli-engine"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "wasmtime",
- "wasmtime-wasi",
+ "gerna",
+ "logji",
+ "smuni",
 ]
 
 [[package]]

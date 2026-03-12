@@ -25,9 +25,63 @@ struct MutationRoot;
 
 #[Object]
 impl MutationRoot {
-    /// Placeholder — will be extended in Step 4
-    async fn ping(&self) -> bool {
-        true
+    async fn assert_text(
+        &self,
+        ctx: &async_graphql::Context<'_>,
+        input: String,
+    ) -> AssertResult {
+        let engine = ctx.data::<Arc<Mutex<NibliEngine>>>().unwrap();
+        let engine = engine.lock().unwrap();
+        match engine.assert_text(&input) {
+            Ok(fact_id) => AssertResult {
+                fact_id: Some(fact_id),
+                error: None,
+            },
+            Err(e) => AssertResult {
+                fact_id: None,
+                error: Some(e),
+            },
+        }
+    }
+
+    async fn query_text(
+        &self,
+        ctx: &async_graphql::Context<'_>,
+        input: String,
+    ) -> QueryResult {
+        let engine = ctx.data::<Arc<Mutex<NibliEngine>>>().unwrap();
+        let engine = engine.lock().unwrap();
+        match engine.query_text(&input) {
+            Ok(holds) => QueryResult {
+                holds: Some(holds),
+                error: None,
+            },
+            Err(e) => QueryResult {
+                holds: None,
+                error: Some(e),
+            },
+        }
+    }
+
+    async fn query_text_with_proof(
+        &self,
+        ctx: &async_graphql::Context<'_>,
+        input: String,
+    ) -> ProofQueryResult {
+        let engine = ctx.data::<Arc<Mutex<NibliEngine>>>().unwrap();
+        let engine = engine.lock().unwrap();
+        match engine.query_text_with_proof(&input) {
+            Ok((holds, trace)) => ProofQueryResult {
+                holds: Some(holds),
+                proof_trace: Some(trace),
+                error: None,
+            },
+            Err(e) => ProofQueryResult {
+                holds: None,
+                proof_trace: None,
+                error: Some(e),
+            },
+        }
     }
 }
 
@@ -36,13 +90,32 @@ struct StatusResult {
     ready: bool,
 }
 
+#[derive(async_graphql::SimpleObject)]
+struct AssertResult {
+    fact_id: Option<u64>,
+    error: Option<String>,
+}
+
+#[derive(async_graphql::SimpleObject)]
+struct QueryResult {
+    holds: Option<bool>,
+    error: Option<String>,
+}
+
+#[derive(async_graphql::SimpleObject)]
+struct ProofQueryResult {
+    holds: Option<bool>,
+    proof_trace: Option<String>,
+    error: Option<String>,
+}
+
 // ── Main ──
 
 #[tokio::main]
 async fn main() -> Result<()> {
     println!("Nibli GraphQL Server starting...");
 
-    let engine_state = Arc::new(Mutex::new(NibliEngine::new()?));
+    let engine_state = Arc::new(Mutex::new(NibliEngine::new()));
 
     let schema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
         .data(engine_state)

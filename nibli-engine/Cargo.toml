@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-wasmtime = { version = "41.0.3", features = ["component-model"] }
-wasmtime-wasi = "41.0.3"
-anyhow = "1"
+gerna = { path = "../gerna" }
+smuni = { path = "../smuni" }
+logji = { path = "../logji" }

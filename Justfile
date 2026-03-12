@@ -81,9 +81,9 @@ classify:
 test-classifier:
     python3 -m pytest python/test_classifier.py -v 2>/dev/null || python3 python/test_classifier.py
 
-# Start GraphQL API server for Transparency Triad
+# Start GraphQL API server for Transparency Triad (native — no WASM)
 server:
-    NIBLI_WASM_PATH={{wasm_dir}}/lasna-pipeline.wasm cargo run -p nibli-server {{cargo_profile_flag}}
+    cargo run -p nibli-server {{cargo_profile_flag}}
 
 # Launch Transparency Triad web UI (dev server with hot-reload)
 ui:
