@@ -109,6 +109,20 @@ body {
     border-color: #e94560;
 }
 
+.translate-error {
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: #7f1d1d;
+    color: #f87171;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.translate-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
 .translate-btn {
     margin-top: 8px;
     padding: 8px 24px;

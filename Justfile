@@ -82,8 +82,9 @@ test-classifier:
     python3 -m pytest python/test_classifier.py -v 2>/dev/null || python3 python/test_classifier.py
 
 # Start GraphQL API server for Transparency Triad (native — no WASM)
+# Auto-detects Windows host IP for Ollama (running as Windows desktop app)
 server:
-    cargo run -p nibli-server {{cargo_profile_flag}}
+    NIBLI_OLLAMA_URL="http://$(ip route | grep default | awk '{print $3}'):11434" cargo run -p nibli-server {{cargo_profile_flag}}
 
 # Launch Transparency Triad web UI (dev server with hot-reload)
 ui:

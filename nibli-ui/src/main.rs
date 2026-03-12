@@ -364,6 +364,8 @@ fn SourceTabs() -> Element {
     let mut active_tab = use_signal(|| ActiveTab::Source);
     let mut source_text = use_signal(|| String::new());
     let mut lojban_text = use_signal(|| String::new());
+    let mut translating = use_signal(|| false);
+    let mut translate_error = use_signal(|| Option::<String>::None);
     let back_translation = use_memo(move || {
         let text = lojban_text.read();
         if text.is_empty() {
@@ -372,6 +374,34 @@ fn SourceTabs() -> Element {
             smuni_dictionary::back_translate(&text)
         }
     });
+
+    let on_translate = move |_: Event<MouseData>| {
+        let text = source_text.read().clone();
+        if text.trim().is_empty() || *translating.read() {
+            return;
+        }
+        translating.set(true);
+        translate_error.set(None);
+
+        spawn(async move {
+            let query = r#"mutation($input: String!) { translateToLojban(input: $input) { lojban error } }"#;
+            match graphql_mutate(query, &text).await {
+                Ok(data) => {
+                    let r = &data["translateToLojban"];
+                    if let Some(err) = r["error"].as_str() {
+                        translate_error.set(Some(err.to_string()));
+                    } else if let Some(lojban) = r["lojban"].as_str() {
+                        lojban_text.set(lojban.to_string());
+                        active_tab.set(ActiveTab::Lojban);
+                    }
+                }
+                Err(e) => {
+                    translate_error.set(Some(e));
+                }
+            }
+            translating.set(false);
+        });
+    };
 
     rsx! {
         div { class: "tabs-container",
@@ -401,7 +431,15 @@ fn SourceTabs() -> Element {
                             value: "{source_text}",
                             oninput: move |e| source_text.set(e.value()),
                         }
-                        button { class: "translate-btn", "Translate" }
+                        if let Some(err) = translate_error.read().as_ref() {
+                            div { class: "translate-error", "{err}" }
+                        }
+                        button {
+                            class: "translate-btn",
+                            onclick: on_translate,
+                            disabled: *translating.read(),
+                            if *translating.read() { "Translating..." } else { "Translate" }
+                        }
                     },
                     ActiveTab::Lojban => rsx! {
                         textarea {

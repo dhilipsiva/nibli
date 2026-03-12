@@ -8,6 +8,55 @@ use tower_http::cors::CorsLayer;
 
 use nibli_engine::NibliEngine;
 
+// ── Ollama types ──
+
+#[derive(serde::Serialize)]
+struct OllamaChatRequest {
+    model: String,
+    messages: Vec<OllamaMessage>,
+    stream: bool,
+    options: OllamaOptions,
+}
+
+#[derive(serde::Serialize)]
+struct OllamaMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(serde::Serialize)]
+struct OllamaOptions {
+    temperature: f64,
+}
+
+#[derive(serde::Deserialize)]
+struct OllamaChatResponse {
+    message: OllamaResponseMessage,
+}
+
+#[derive(serde::Deserialize)]
+struct OllamaResponseMessage {
+    content: String,
+}
+
+const LOJBAN_SYSTEM_PROMPT: &str = r#"You are a Lojban translator. Translate the user's English text into grammatically correct Lojban.
+
+Rules:
+- Output ONLY the Lojban translation, nothing else. No explanations, no notes.
+- Use standard Lojban grammar: [sumti] [selbri] [sumti] structure
+- Use gadri: "lo" for veridical descriptions, "le" for non-veridical
+- Wrap names in dots as cmevla: "Adam" → ".adam."
+- Use "cu" to separate sumti from selbri when needed
+- Use tense markers: "pu" (past), "ca" (present), "ba" (future)
+
+Examples:
+- "The dog goes to the market" → "lo gerku cu klama lo zarci"
+- "I love you" → "mi prami do"
+- "Adam sees the cat" → "la .adam. viska lo mlatu"
+- "The big dog runs" → "lo barda gerku cu bajra"
+- "I ate the food" → "mi pu citka lo cidja"
+"#;
+
 // ── GraphQL schema ──
 
 struct QueryRoot;
@@ -21,10 +70,63 @@ impl QueryRoot {
     }
 }
 
+struct OllamaConfig {
+    url: String,
+    model: String,
+}
+
 struct MutationRoot;
 
 #[Object]
 impl MutationRoot {
+    async fn translate_to_lojban(
+        &self,
+        ctx: &async_graphql::Context<'_>,
+        input: String,
+    ) -> TranslateResult {
+        let config = ctx.data::<Arc<OllamaConfig>>().unwrap();
+        let client = reqwest::Client::new();
+        let req = OllamaChatRequest {
+            model: config.model.clone(),
+            messages: vec![
+                OllamaMessage {
+                    role: "system".to_string(),
+                    content: LOJBAN_SYSTEM_PROMPT.to_string(),
+                },
+                OllamaMessage {
+                    role: "user".to_string(),
+                    content: format!("Translate to Lojban: {}", input),
+                },
+            ],
+            stream: false,
+            options: OllamaOptions { temperature: 0.3 },
+        };
+        let url = format!("{}/api/chat", config.url);
+        match client.post(&url).json(&req).send().await {
+            Ok(resp) => match resp.json::<OllamaChatResponse>().await {
+                Ok(chat) => TranslateResult {
+                    lojban: Some(chat.message.content.trim().to_string()),
+                    error: None,
+                },
+                Err(e) => TranslateResult {
+                    lojban: None,
+                    error: Some(format!("Failed to parse Ollama response: {}", e)),
+                },
+            },
+            Err(e) => {
+                let msg = if e.is_connect() {
+                    "Connection refused — is Ollama running? (ollama serve)".to_string()
+                } else {
+                    format!("Ollama request failed: {}", e)
+                };
+                TranslateResult {
+                    lojban: None,
+                    error: Some(msg),
+                }
+            }
+        }
+    }
+
     async fn assert_text(
         &self,
         ctx: &async_graphql::Context<'_>,
@@ -91,6 +193,12 @@ struct StatusResult {
 }
 
 #[derive(async_graphql::SimpleObject)]
+struct TranslateResult {
+    lojban: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(async_graphql::SimpleObject)]
 struct AssertResult {
     fact_id: Option<u64>,
     error: Option<String>,
@@ -117,8 +225,22 @@ async fn main() -> Result<()> {
 
     let engine_state = Arc::new(Mutex::new(NibliEngine::new()));
 
+    let ollama_url = std::env::var("NIBLI_OLLAMA_URL")
+        .unwrap_or_else(|_| "http://localhost:11434".to_string());
+    let ollama_model = std::env::var("NIBLI_OLLAMA_MODEL")
+        .unwrap_or_else(|_| "qwen3-coder:30b".to_string());
+    println!(
+        "Ollama config: url={}, model={}",
+        ollama_url, ollama_model
+    );
+    let ollama_config = Arc::new(OllamaConfig {
+        url: ollama_url,
+        model: ollama_model,
+    });
+
     let schema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
         .data(engine_state)
+        .data(ollama_config)
         .finish();
 
     let port: u16 = std::env::var("NIBLI_SERVER_PORT")
