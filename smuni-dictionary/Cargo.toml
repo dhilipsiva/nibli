@@ -1,0 +1,10 @@
+[package]
+name = "smuni-dictionary"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+phf = "0.13.1"
+
+[build-dependencies]
+phf_codegen = "0.13.1"

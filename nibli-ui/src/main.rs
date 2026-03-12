@@ -364,6 +364,14 @@ fn SourceTabs() -> Element {
     let mut active_tab = use_signal(|| ActiveTab::Source);
     let mut source_text = use_signal(|| String::new());
     let mut lojban_text = use_signal(|| String::new());
+    let back_translation = use_memo(move || {
+        let text = lojban_text.read();
+        if text.is_empty() {
+            String::new()
+        } else {
+            smuni_dictionary::back_translate(&text)
+        }
+    });
 
     rsx! {
         div { class: "tabs-container",
@@ -405,7 +413,11 @@ fn SourceTabs() -> Element {
                     },
                     ActiveTab::BackTranslation => rsx! {
                         pre { class: "back-translation",
-                            "Back-translation will appear here..."
+                            if back_translation.read().is_empty() {
+                                "Type Lojban text in the Lojban tab to see back-translation..."
+                            } else {
+                                "{back_translation}"
+                            }
                         }
                     },
                 }

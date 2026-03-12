@@ -9,6 +9,7 @@ members = [
     "nibli-ui",
     "nibli-engine",
     "nibli-server",
+    "smuni-dictionary",
 ]
 resolver = "2"
 

@@ -2894,6 +2894,7 @@ dependencies = [
  "gloo-timers",
  "serde",
  "serde_json",
+ "smuni-dictionary",
 ]
 
 [[package]]
@@ -3975,6 +3976,14 @@ dependencies = [
  "phf",
  "phf_codegen",
  "wit-bindgen-rt",
+]
+
+[[package]]
+name = "smuni-dictionary"
+version = "0.1.0"
+dependencies = [
+ "phf",
+ "phf_codegen",
 ]
 
 [[package]]
