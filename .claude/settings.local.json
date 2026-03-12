@@ -29,7 +29,8 @@
       "Bash(xargs head -200)",
       "WebFetch(domain:lojban.github.io)",
       "WebFetch(domain:mw-live.lojban.org)",
-      "WebFetch(domain:lojban.org)"
+      "WebFetch(domain:lojban.org)",
+      "WebSearch"
     ]
   }
 }
