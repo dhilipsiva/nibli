@@ -1,0 +1,199 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+/* Row 1: main content (85%) */
+.main-row {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+}
+
+.col-tabs {
+    width: 50%;
+    border-right: 1px solid #333;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.col-proof {
+    width: 50%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* Tabs */
+.tabs-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.tab-bar {
+    display: flex;
+    gap: 2px;
+    padding: 8px 8px 0;
+    background: #16213e;
+    flex-shrink: 0;
+}
+
+.tab {
+    padding: 8px 16px;
+    border: none;
+    background: #1a1a2e;
+    color: #888;
+    cursor: pointer;
+    border-radius: 6px 6px 0 0;
+    font-size: 14px;
+    transition: background 0.15s, color 0.15s;
+}
+
+.tab:hover {
+    color: #ccc;
+}
+
+.tab.active {
+    background: #0f3460;
+    color: #e94560;
+    font-weight: 600;
+}
+
+.tab-content {
+    flex: 1;
+    padding: 12px;
+    background: #16213e;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* Source textarea */
+.source-input,
+.lojban-input {
+    flex: 1;
+    width: 100%;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 12px;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 14px;
+    resize: none;
+    min-height: 0;
+}
+
+.source-input:focus,
+.lojban-input:focus {
+    outline: none;
+    border-color: #e94560;
+}
+
+.translate-btn {
+    margin-top: 8px;
+    padding: 8px 24px;
+    background: #e94560;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.translate-btn:hover {
+    background: #c73e54;
+}
+
+/* Back-translation */
+.back-translation {
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 14px;
+    color: #aaa;
+    white-space: pre-wrap;
+    padding: 12px;
+}
+
+/* Proof panel */
+.proof-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #555;
+    font-size: 16px;
+    background: #12121f;
+}
+
+/* Row 2: query bar (15%) */
+.query-row {
+    height: 15vh;
+    border-top: 1px solid #333;
+    background: #0d0d1a;
+    padding: 12px;
+    display: flex;
+    align-items: center;
+}
+
+.query-bar {
+    display: flex;
+    width: 100%;
+    gap: 8px;
+}
+
+.query-input {
+    flex: 1;
+    padding: 10px 14px;
+    background: #1a1a2e;
+    color: #4ade80;
+    border: 1px solid #333;
+    border-radius: 4px;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 14px;
+}
+
+.query-input:focus {
+    outline: none;
+    border-color: #4ade80;
+}
+
+.query-input::placeholder {
+    color: #555;
+}
+
+.query-btn {
+    padding: 10px 24px;
+    background: #4ade80;
+    color: #0d0d1a;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.query-btn:hover {
+    background: #3bc96e;
+}
