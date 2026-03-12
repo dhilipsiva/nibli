@@ -81,6 +81,10 @@ classify:
 test-classifier:
     python3 -m pytest python/test_classifier.py -v 2>/dev/null || python3 python/test_classifier.py
 
+# Launch Transparency Triad web UI (dev server with hot-reload)
+ui:
+    cd nibli-ui && dx serve
+
 # Wipes all compilation artifacts
 clean:
     cargo clean

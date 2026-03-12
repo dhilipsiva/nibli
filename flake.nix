@@ -50,6 +50,9 @@
             # Native build dependencies
             pkg-config
             openssl
+
+            # Dioxus web (dx CLI for dev server)
+            dioxus-cli
           ];
           shellHook = ''
             echo "=================================================="

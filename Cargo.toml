@@ -5,7 +5,8 @@ members = [
     "logji",
     "gasnu",
     "lasna",
-    "nibli"
+    "nibli",
+    "nibli-ui",
 ]
 resolver = "2"
 
