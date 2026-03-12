@@ -26,6 +26,8 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | `just build-gasnu` | Build native Wasmtime host gasnu (runner) |
 | `just backend` | Start the Python reference compute backend (port 5555) |
 | `just run-with-backend` | Build + run with `NIBLI_COMPUTE_ADDR=127.0.0.1:5555` |
+| `just server` | Start GraphQL API server for Transparency Triad (port 8081) |
+| `just ui` | Launch Transparency Triad web UI dev server (Dioxus, port 8080) |
 | `just clean` | `cargo clean` |
 
 **Important:**
@@ -48,7 +50,7 @@ The gasnu (runner) acts as a TCP client to an external compute backend server vi
 
 ## Architecture
 
-5 WASM component crates + 1 native host (all crate names are Lojban gismu):
+5 WASM component crates + native hosts + Transparency Triad UI:
 
 | Crate | Lojban meaning | Role | Key files |
 |-------|---------------|------|-----------|
@@ -57,6 +59,9 @@ The gasnu (runner) acts as a TCP client to an external compute backend server vi
 | `logji` | logic | FOL logic buffer -> backward-chaining assert/query | `lib.rs` (single file, all logic) |
 | `lasna` | fasten/connect | Glue: chains gerna -> smuni -> logji | `lib.rs` |
 | `gasnu` | agent/doer | Native Wasmtime host, REPL, external compute backend TCP client | `main.rs` |
+| `nibli-engine` | — | Wasmtime engine wrapper library (shared by nibli-server) | `lib.rs` |
+| `nibli-server` | — | GraphQL API server (async-graphql + axum, port 8081) | `main.rs` |
+| `nibli-ui` | — | Dioxus web UI for Transparency Triad (browser, port 8080) | `main.rs` |
 | `python/` | — | Reference compute backend server (TCP + JSON Lines) | `nibli_backend.py` |
 
 - **WIT interfaces:** `wit/world.wit` defines `ast-types` (gerna output), `logic-types` (FOL IR), `gerna`, `smuni`, `logji`, `compute-backend`, `lasna`. `cargo component build` regenerates `src/bindings.rs` in each crate.
@@ -82,6 +87,7 @@ When analyzing or searching the codebase:
 ## Known Issues
 
 - `cargo component build` fails on `io-extras` crate — pre-existing, unrelated to our changes. Bindings generate before the failure.
+- **rustc 1.93.1 ICE in `check_mod_deathness`** — `wasmtime::component::bindgen!` macro triggers compiler panic in library crates (not binary crates like gasnu). Workaround: `#![allow(dead_code)]` at crate root in nibli-engine.
 
 ## Roadmap
 

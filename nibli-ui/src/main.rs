@@ -1,14 +1,63 @@
 use dioxus::prelude::*;
+use gloo_net::http::Request;
+use serde::Deserialize;
 
 fn main() {
     dioxus::launch(App);
 }
+
+const GRAPHQL_URL: &str = "http://localhost:8081/graphql";
 
 #[derive(Clone, Copy, PartialEq)]
 enum ActiveTab {
     Source,
     Lojban,
     BackTranslation,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum ConnectionStatus {
+    Checking,
+    Connected,
+    Disconnected,
+}
+
+#[derive(Deserialize)]
+struct GraphQLResponse {
+    data: Option<StatusData>,
+}
+
+#[derive(Deserialize)]
+struct StatusData {
+    status: StatusResult,
+}
+
+#[derive(Deserialize)]
+struct StatusResult {
+    ready: bool,
+}
+
+async fn check_server_status() -> ConnectionStatus {
+    let body = serde_json::json!({"query": "{ status { ready } }"});
+    match Request::post(GRAPHQL_URL)
+        .header("Content-Type", "application/json")
+        .body(body.to_string())
+    {
+        Ok(req) => match req.send().await {
+            Ok(resp) => match resp.json::<GraphQLResponse>().await {
+                Ok(gql) => {
+                    if gql.data.map_or(false, |d| d.status.ready) {
+                        ConnectionStatus::Connected
+                    } else {
+                        ConnectionStatus::Disconnected
+                    }
+                }
+                Err(_) => ConnectionStatus::Disconnected,
+            },
+            Err(_) => ConnectionStatus::Disconnected,
+        },
+        Err(_) => ConnectionStatus::Disconnected,
+    }
 }
 
 #[component]
@@ -25,9 +74,33 @@ fn App() -> Element {
                 }
             }
             div { class: "query-row",
+                StatusBadge {}
                 QueryBar {}
             }
         }
+    }
+}
+
+#[component]
+fn StatusBadge() -> Element {
+    let mut status = use_signal(|| ConnectionStatus::Checking);
+
+    use_future(move || async move {
+        loop {
+            let result = check_server_status().await;
+            status.set(result);
+            gloo_timers::future::sleep(std::time::Duration::from_secs(5)).await;
+        }
+    });
+
+    let (label, class) = match *status.read() {
+        ConnectionStatus::Checking => ("Checking...", "status-badge checking"),
+        ConnectionStatus::Connected => ("Connected", "status-badge connected"),
+        ConnectionStatus::Disconnected => ("Disconnected", "status-badge disconnected"),
+    };
+
+    rsx! {
+        span { class: "{class}", "{label}" }
     }
 }
 

@@ -7,6 +7,8 @@ members = [
     "lasna",
     "nibli",
     "nibli-ui",
+    "nibli-engine",
+    "nibli-server",
 ]
 resolver = "2"
 

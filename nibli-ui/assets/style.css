@@ -197,3 +197,28 @@ body {
 .query-btn:hover {
     background: #3bc96e;
 }
+
+/* Status badge */
+.status-badge {
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.status-badge.connected {
+    background: #065f46;
+    color: #4ade80;
+}
+
+.status-badge.disconnected {
+    background: #7f1d1d;
+    color: #f87171;
+}
+
+.status-badge.checking {
+    background: #78350f;
+    color: #fbbf24;
+}
