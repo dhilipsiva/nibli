@@ -644,13 +644,6 @@ impl NibliEngine {
             .map_err(|e| format_logji_error(&e))
     }
 
-    pub fn query_text(&self, text: &str) -> Result<bool, String> {
-        let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
-        self.kb
-            .query_entailment(buf)
-            .map_err(|e| format_logji_error(&e))
-    }
-
     pub fn query_text_with_proof(&self, text: &str) -> Result<(bool, String, String), String> {
         let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
         let (holds, trace) = self

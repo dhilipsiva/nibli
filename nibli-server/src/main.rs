@@ -153,36 +153,15 @@ impl MutationRoot {
     ) -> QueryResult {
         let engine = ctx.data::<Arc<Mutex<NibliEngine>>>().unwrap();
         let engine = engine.lock().unwrap();
-        match engine.query_text(&input) {
-            Ok(holds) => QueryResult {
-                holds: Some(holds),
-                kb_status: None,
-                error: None,
-            },
-            Err(e) => QueryResult {
-                holds: None,
-                kb_status: None,
-                error: Some(e),
-            },
-        }
-    }
-
-    async fn query_text_with_proof(
-        &self,
-        ctx: &async_graphql::Context<'_>,
-        input: String,
-    ) -> ProofQueryResult {
-        let engine = ctx.data::<Arc<Mutex<NibliEngine>>>().unwrap();
-        let engine = engine.lock().unwrap();
         match engine.query_text_with_proof(&input) {
-            Ok((holds, trace, json)) => ProofQueryResult {
+            Ok((holds, trace, json)) => QueryResult {
                 holds: Some(holds),
                 proof_trace: Some(trace),
                 proof_trace_json: Some(json),
                 kb_status: None,
                 error: None,
             },
-            Err(e) => ProofQueryResult {
+            Err(e) => QueryResult {
                 holds: None,
                 proof_trace: None,
                 proof_trace_json: None,
@@ -203,40 +182,15 @@ impl MutationRoot {
         let engine = engine.lock().unwrap();
         engine.reset();
         let kb_status = assert_kb_lines(&engine, &kb);
-        match engine.query_text(&query) {
-            Ok(holds) => QueryResult {
-                holds: Some(holds),
-                kb_status: Some(kb_status),
-                error: None,
-            },
-            Err(e) => QueryResult {
-                holds: None,
-                kb_status: Some(kb_status),
-                error: Some(e),
-            },
-        }
-    }
-
-    /// Reset the engine, assert all KB lines, then run a proof query.
-    async fn query_with_kb_proof(
-        &self,
-        ctx: &async_graphql::Context<'_>,
-        kb: String,
-        query: String,
-    ) -> ProofQueryResult {
-        let engine = ctx.data::<Arc<Mutex<NibliEngine>>>().unwrap();
-        let engine = engine.lock().unwrap();
-        engine.reset();
-        let kb_status = assert_kb_lines(&engine, &kb);
         match engine.query_text_with_proof(&query) {
-            Ok((holds, trace, json)) => ProofQueryResult {
+            Ok((holds, trace, json)) => QueryResult {
                 holds: Some(holds),
                 proof_trace: Some(trace),
                 proof_trace_json: Some(json),
                 kb_status: Some(kb_status),
                 error: None,
             },
-            Err(e) => ProofQueryResult {
+            Err(e) => QueryResult {
                 holds: None,
                 proof_trace: None,
                 proof_trace_json: None,
@@ -329,13 +283,6 @@ struct KbStatusGql {
 
 #[derive(async_graphql::SimpleObject)]
 struct QueryResult {
-    holds: Option<bool>,
-    kb_status: Option<KbStatusGql>,
-    error: Option<String>,
-}
-
-#[derive(async_graphql::SimpleObject)]
-struct ProofQueryResult {
     holds: Option<bool>,
     proof_trace: Option<String>,
     proof_trace_json: Option<String>,

@@ -5,9 +5,8 @@
 //! interactive REPL (reedline-based) with these prefixes:
 //!
 //! - **(bare text)** — Assert Lojban facts
-//! - **`?`** — Query entailment (TRUE/FALSE)
+//! - **`?`** — Query with proof trace
 //! - **`??`** — Query with witness extraction (find satisfying bindings)
-//! - **`?!`** — Query with proof trace (indented proof tree)
 //! - **`:debug`** — Compile to logic s-expression without asserting
 //! - **`:load`** — Load a `.lojban` file (assert each line, skip `#` comments)
 //! - **`:assert`** — Assert ground facts directly (bypasses Lojban parsing)
@@ -522,8 +521,7 @@ fn main() -> Result<()> {
                     }
                     ":help" | ":h" => {
                         println!("  <text>              Assert Lojban as fact");
-                        println!("  ? <text>            Query entailment (true/false)");
-                        println!("  ?! <text>           Query with proof trace");
+                        println!("  ? <text>            Query with proof trace");
                         println!("  ?? <text>           Find witnesses (answer variables)");
                         println!("  :debug <text>       Show compiled logic tree");
                         println!("  :load <filepath>    Load a .lojban file (assert each line)");
@@ -749,22 +747,6 @@ fn main() -> Result<()> {
                         Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                         Err(e) => println!("{}", format_host_error(&e)),
                     }
-                } else if let Some(proof_text) = input.strip_prefix("?!") {
-                    let text = proof_text.trim();
-                    if text.is_empty() {
-                        println!("[Host] Usage: ?! <lojban query>");
-                        continue;
-                    }
-                    refuel(&mut store, fuel_budget);
-                    match session.call_query_text_with_proof(&mut store, session_handle, text) {
-                        Ok(Ok((result, trace))) => {
-                            let tag = if result { "TRUE" } else { "FALSE" };
-                            println!("[Proof] {}", tag);
-                            print!("{}", format_proof_trace(&trace));
-                        }
-                        Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
-                        Err(e) => println!("{}", format_host_error(&e)),
-                    }
                 } else if let Some(query_text) = input.strip_prefix('?') {
                     let text = query_text.trim();
                     if text.is_empty() {
@@ -772,9 +754,12 @@ fn main() -> Result<()> {
                         continue;
                     }
                     refuel(&mut store, fuel_budget);
-                    match session.call_query_text(&mut store, session_handle, text) {
-                        Ok(Ok(true)) => println!("[Query] TRUE"),
-                        Ok(Ok(false)) => println!("[Query] FALSE"),
+                    match session.call_query_text_with_proof(&mut store, session_handle, text) {
+                        Ok(Ok((result, trace))) => {
+                            let tag = if result { "TRUE" } else { "FALSE" };
+                            println!("[Query] {}", tag);
+                            print!("{}", format_proof_trace(&trace));
+                        }
                         Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                         Err(e) => println!("{}", format_host_error(&e)),
                     }

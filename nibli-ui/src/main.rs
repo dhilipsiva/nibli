@@ -8,6 +8,11 @@ fn main() {
 }
 
 const GRAPHQL_URL: &str = "http://localhost:8081/graphql";
+const MAX_OUTPUT_ENTRIES: usize = 200;
+
+const DEFAULT_SOURCE: &str = "All dogs are animals.\nAll animals eat.\nAdam is a dog.";
+const DEFAULT_LOJBAN: &str = "ro lo gerku cu danlu\nro lo danlu cu citka\nla .adam. cu gerku";
+const DEFAULT_QUERY: &str = "la .adam. cu citka";
 
 // ── Types ──
 
@@ -148,56 +153,14 @@ fn parse_kb_status(data: &serde_json::Value) -> Option<KbStatus> {
 }
 
 async fn execute_query(kb: &str, query_text: &str) -> OutputEntry {
-    let gql = r#"mutation($kb: String!, $query: String!) { queryWithKb(kb: $kb, query: $query) { holds error kbStatus { asserted errors skipped lineResults { lineNumber text success factId error } } } }"#;
+    let gql = r#"mutation($kb: String!, $query: String!) { queryWithKb(kb: $kb, query: $query) { holds proofTrace proofTraceJson error kbStatus { asserted errors skipped lineResults { lineNumber text success factId error } } } }"#;
     match graphql_mutate_kb(gql, kb, query_text).await {
         Ok(data) => {
             let r = &data["queryWithKb"];
             let kb_status = parse_kb_status(r);
             if let Some(err) = r["error"].as_str() {
                 OutputEntry {
-                    input: format!("? {}", query_text),
-                    result: err.to_string(),
-                    is_error: true,
-                    proof_trace: None,
-                    proof_trace_data: None,
-                    kb_status,
-                }
-            } else {
-                let holds = r["holds"].as_bool().unwrap_or(false);
-                OutputEntry {
-                    input: format!("? {}", query_text),
-                    result: if holds {
-                        "TRUE".to_string()
-                    } else {
-                        "FALSE".to_string()
-                    },
-                    is_error: false,
-                    proof_trace: None,
-                    proof_trace_data: None,
-                    kb_status,
-                }
-            }
-        }
-        Err(e) => OutputEntry {
-            input: format!("? {}", query_text),
-            result: e,
-            is_error: true,
-            proof_trace: None,
-            proof_trace_data: None,
-            kb_status: None,
-        },
-    }
-}
-
-async fn execute_proof_query(kb: &str, query_text: &str) -> OutputEntry {
-    let gql = r#"mutation($kb: String!, $query: String!) { queryWithKbProof(kb: $kb, query: $query) { holds proofTrace proofTraceJson error kbStatus { asserted errors skipped lineResults { lineNumber text success factId error } } } }"#;
-    match graphql_mutate_kb(gql, kb, query_text).await {
-        Ok(data) => {
-            let r = &data["queryWithKbProof"];
-            let kb_status = parse_kb_status(r);
-            if let Some(err) = r["error"].as_str() {
-                OutputEntry {
-                    input: format!("?! {}", query_text),
+                    input: query_text.to_string(),
                     result: err.to_string(),
                     is_error: true,
                     proof_trace: None,
@@ -211,7 +174,7 @@ async fn execute_proof_query(kb: &str, query_text: &str) -> OutputEntry {
                     .as_str()
                     .and_then(ProofTrace::from_json);
                 OutputEntry {
-                    input: format!("?! {}", query_text),
+                    input: query_text.to_string(),
                     result: if holds {
                         "TRUE".to_string()
                     } else {
@@ -225,7 +188,7 @@ async fn execute_proof_query(kb: &str, query_text: &str) -> OutputEntry {
             }
         }
         Err(e) => OutputEntry {
-            input: format!("?! {}", query_text),
+            input: query_text.to_string(),
             result: e,
             is_error: true,
             proof_trace: None,
@@ -239,28 +202,53 @@ async fn execute_proof_query(kb: &str, query_text: &str) -> OutputEntry {
 
 #[component]
 fn App() -> Element {
-    let output_log: Signal<Vec<OutputEntry>> = use_signal(Vec::new);
+    let mut output_log: Signal<Vec<OutputEntry>> = use_signal(Vec::new);
     let proof_text: Signal<Option<String>> = use_signal(|| None);
     let proof_data: Signal<Option<ProofTrace>> = use_signal(|| None);
-    let lojban_text: Signal<String> = use_signal(|| String::new());
+    let lojban_text: Signal<String> = use_signal(|| DEFAULT_LOJBAN.to_string());
     let kb_status: Signal<Option<KbStatus>> = use_signal(|| None);
+    let is_busy: Signal<bool> = use_signal(|| false);
+
+    let on_global_keydown = move |e: KeyboardEvent| {
+        if e.modifiers().ctrl() {
+            match e.key() {
+                Key::Character(ref c) if c == "l" => {
+                    e.prevent_default();
+                    output_log.set(vec![]);
+                }
+                Key::Character(ref c) if c == "k" => {
+                    e.prevent_default();
+                    spawn(async move {
+                        let _ = document::eval("document.getElementById('query-input').focus()").await;
+                    });
+                }
+                Key::Character(ref c) if c == "o" => {
+                    e.prevent_default();
+                    spawn(async move {
+                        let _ = document::eval("document.getElementById('lojban-file-input').click()").await;
+                    });
+                }
+                _ => {}
+            }
+        }
+    };
 
     rsx! {
         document::Link { rel: "stylesheet", href: asset!("/assets/style.css") }
-        div { class: "app",
+        div { class: "app", tabindex: "0", onkeydown: on_global_keydown,
             div { class: "main-row",
                 div { class: "col-tabs",
                     SourceTabs { lojban_text, kb_status }
                 }
                 div { class: "col-proof",
-                    ProofPanel { proof_text, proof_data }
+                    ProofPanel { proof_text, proof_data, is_busy }
                 }
             }
             div { class: "query-row",
                 div { class: "query-section",
                     div { class: "query-header",
                         StatusBadge {}
-                        QueryBar { output_log, proof_text, proof_data, lojban_text, kb_status }
+                        QueryBar { output_log, proof_text, proof_data, lojban_text, kb_status, is_busy }
                     }
                     OutputLog { output_log }
                 }
@@ -357,31 +345,22 @@ fn QueryBar(
     proof_data: Signal<Option<ProofTrace>>,
     lojban_text: Signal<String>,
     kb_status: Signal<Option<KbStatus>>,
+    is_busy: Signal<bool>,
 ) -> Element {
-    let mut query_text = use_signal(|| String::new());
-    let mut submitting = use_signal(|| false);
+    let mut query_text = use_signal(|| DEFAULT_QUERY.to_string());
 
     let mut do_submit = move || {
         let text = query_text.read().clone();
-        if text.trim().is_empty() || *submitting.read() {
+        if text.trim().is_empty() || *is_busy.read() {
             return;
         }
-        submitting.set(true);
+        is_busy.set(true);
         query_text.set(String::new());
 
         spawn(async move {
             let kb = lojban_text.read().clone();
             let trimmed = text.trim();
-
-            // Determine if this is a proof query (?!) or regular query (?)
-            let entry = if let Some(q) = trimmed.strip_prefix("?!") {
-                execute_proof_query(&kb, q.trim()).await
-            } else if let Some(q) = trimmed.strip_prefix('?') {
-                execute_query(&kb, q.trim()).await
-            } else {
-                // No prefix — treat as regular query (query bar is query-only)
-                execute_query(&kb, trimmed).await
-            };
+            let entry = execute_query(&kb, trimmed).await;
 
             if let Some(ref trace) = entry.proof_trace {
                 proof_text.set(Some(trace.clone()));
@@ -390,8 +369,25 @@ fn QueryBar(
                 proof_data.set(Some(data.clone()));
             }
             kb_status.set(entry.kb_status.clone());
-            output_log.write().push(entry);
-            submitting.set(false);
+
+            // Push entry and cap at MAX_OUTPUT_ENTRIES
+            {
+                let mut log = output_log.write();
+                log.push(entry);
+                if log.len() > MAX_OUTPUT_ENTRIES {
+                    let drain_count = log.len() - MAX_OUTPUT_ENTRIES;
+                    log.drain(0..drain_count);
+                }
+            }
+
+            is_busy.set(false);
+
+            // Auto-scroll output log to bottom
+            spawn(async move {
+                let _ = document::eval(
+                    "const el = document.getElementById('output-log'); if (el) el.scrollTop = el.scrollHeight;"
+                ).await;
+            });
         });
     };
 
@@ -405,22 +401,26 @@ fn QueryBar(
         }
     };
 
+    let busy = *is_busy.read();
+    let btn_class = if busy { "query-btn btn-busy" } else { "query-btn" };
+
     rsx! {
         div { class: "query-bar",
             input {
+                id: "query-input",
                 class: "query-input",
                 r#type: "text",
-                placeholder: "Enter Lojban query (use ?! prefix for proof trace)...",
+                placeholder: "Enter Lojban query \u{2014} Ctrl+K focus",
                 value: "{query_text}",
                 oninput: move |e| query_text.set(e.value()),
                 onkeydown: on_keydown,
-                disabled: *submitting.read(),
+                disabled: busy,
             }
             button {
-                class: "query-btn",
+                class: "{btn_class}",
                 onclick: submit_click,
-                disabled: *submitting.read(),
-                if *submitting.read() { "..." } else { "Query" }
+                disabled: busy,
+                if busy { "\u{23F3}" } else { "Run" }
             }
         }
     }
@@ -429,17 +429,60 @@ fn QueryBar(
 #[component]
 fn OutputLog(output_log: Signal<Vec<OutputEntry>>) -> Element {
     let entries = output_log.read();
+    let is_empty = entries.is_empty();
 
     rsx! {
-        div { class: "output-log",
-            for (i, entry) in entries.iter().enumerate() {
-                div {
-                    key: "{i}",
-                    class: if entry.is_error { "output-entry output-error" } else { "output-entry" },
-                    span { class: "output-input", "> {entry.input}" }
-                    span { class: "output-result", "  {entry.result}" }
+        div { class: "output-log-container",
+            if !is_empty {
+                div { class: "output-log-header",
+                    button {
+                        class: "output-clear-btn",
+                        onclick: move |_| output_log.set(vec![]),
+                        "Clear"
+                        kbd { class: "kbd-hint", "Ctrl+L" }
+                    }
                 }
             }
+            div { id: "output-log", class: "output-log",
+                for (i, entry) in entries.iter().enumerate() {
+                    div {
+                        key: "{i}",
+                        class: if entry.is_error { "output-entry output-error" } else { "output-entry" },
+                        span { class: "output-input", "> {entry.input}" }
+                        if entry.is_error {
+                            ErrorDisplay { message: entry.result.clone() }
+                        } else {
+                            span { class: "output-result", "  {entry.result}" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Parses error strings for known prefixes and renders with distinct icons/colors.
+#[component]
+fn ErrorDisplay(message: String) -> Element {
+    let (icon, css_class, body) =
+        if let Some(rest) = message.strip_prefix("[Syntax Error]") {
+            ("\u{1F524}", "error-syntax", rest.trim())
+        } else if let Some(rest) = message.strip_prefix("[Semantic Error]") {
+            ("\u{1F517}", "error-semantic", rest.trim())
+        } else if let Some(rest) = message.strip_prefix("[Reasoning Error]") {
+            ("\u{1F50D}", "error-reasoning", rest.trim())
+        } else if let Some(rest) = message.strip_prefix("[Backend Error]") {
+            ("\u{2699}\u{FE0F}", "error-backend", rest.trim())
+        } else if let Some(rest) = message.strip_prefix("[Limit]") {
+            ("\u{23F1}\u{FE0F}", "error-limit", rest.trim())
+        } else {
+            ("\u{274C}", "error-generic", message.as_str())
+        };
+
+    rsx! {
+        span { class: "output-error-display {css_class}",
+            span { class: "error-icon", "{icon}" }
+            span { class: "error-message", "  {body}" }
         }
     }
 }
@@ -447,7 +490,7 @@ fn OutputLog(output_log: Signal<Vec<OutputEntry>>) -> Element {
 #[component]
 fn SourceTabs(lojban_text: Signal<String>, kb_status: Signal<Option<KbStatus>>) -> Element {
     let mut active_tab = use_signal(|| ActiveTab::Source);
-    let mut source_text = use_signal(|| String::new());
+    let mut source_text = use_signal(|| DEFAULT_SOURCE.to_string());
     let mut translating = use_signal(|| false);
     let mut translate_error = use_signal(|| Option::<String>::None);
     let back_translation = use_memo(move || {
@@ -519,7 +562,7 @@ fn SourceTabs(lojban_text: Signal<String>, kb_status: Signal<Option<KbStatus>>) 
                             div { class: "translate-error", "{err}" }
                         }
                         button {
-                            class: "translate-btn",
+                            class: if *translating.read() { "translate-btn btn-busy" } else { "translate-btn" },
                             onclick: on_translate,
                             disabled: *translating.read(),
                             if *translating.read() { "Translating..." } else { "Translate" }
@@ -539,6 +582,7 @@ fn SourceTabs(lojban_text: Signal<String>, kb_status: Signal<Option<KbStatus>>) 
                                     });
                                 },
                                 "Load .lojban"
+                                kbd { class: "kbd-hint", "Ctrl+O" }
                             }
                             button {
                                 class: "toolbar-btn",
@@ -602,13 +646,19 @@ fn SourceTabs(lojban_text: Signal<String>, kb_status: Signal<Option<KbStatus>>) 
 fn ProofPanel(
     proof_text: Signal<Option<String>>,
     proof_data: Signal<Option<ProofTrace>>,
+    is_busy: Signal<bool>,
 ) -> Element {
     let text = proof_text.read();
     let data = proof_data.read();
+    let busy = *is_busy.read();
 
     rsx! {
         div { class: "proof-panel",
-            if let Some(trace_data) = data.as_ref() {
+            if busy {
+                div { class: "proof-placeholder proof-busy",
+                    "Running query\u{2026}"
+                }
+            } else if let Some(trace_data) = data.as_ref() {
                 div { class: "proof-tree-container",
                     ProofTreeView { trace: trace_data.clone() }
                 }
@@ -616,7 +666,12 @@ fn ProofPanel(
                 pre { class: "proof-trace", "{trace}" }
             } else {
                 div { class: "proof-placeholder",
-                    "Run a ?! query to see proof trace"
+                    "No proof trace yet."
+                    br {}
+                    span { class: "proof-hint", "Run a query to see the proof trace" }
+                    br {}
+                    span { class: "proof-hint", "Example: " }
+                    code { class: "proof-hint-code", "la .adam. cu citka" }
                 }
             }
         }

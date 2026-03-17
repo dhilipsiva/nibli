@@ -166,15 +166,16 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 
 - REPL `:load <filepath>` command: batch-loads a `.lojban` file into the knowledge base; reads file line by line, skips blank lines and `#` comment lines, asserts each remaining line via `call_assert_text`; per-line refueling prevents fuel exhaustion on large files; reports per-line fact IDs or errors with line numbers; final summary shows asserted/skipped/errors counts; use with `readme.lojban` ontological prelude to bootstrap the KB
 
-**Transparency Triad UI (Steps 1-8 of 10 complete):**
+**Transparency Triad UI (Steps 1-9 of 10 complete):**
 - Step 1: Workspace scaffolding + Dioxus web app (nibli-ui crate, dx serve)
 - Step 2: Two-row layout with tabs (Source/Lojban/Back-translation) + query bar + proof panel
 - Step 3: GraphQL backend server (nibli-server + nibli-engine, native Rust — no WASM)
-- Step 4: Assert/query commands via query bar (assert, `?` query, `?!` proof query)
+- Step 4: Assert/query commands via query bar (unified proof-query only, no separate simple query)
 - Step 5: smuni-dictionary crate with PHF glosses + robotic back-translation (10,521 entries)
 - Step 6: Ollama integration — English→Lojban translation via server proxy (qwen3-coder:30b default)
 - Step 7: Proof trace visualization with human-readable s-expression formatting
 - Step 8: Fact management — KB status bar with per-line validation, .lojban file loading, clear button; Ollama temperature fixed to 0.0
+- Step 9: UI polish — keyboard shortcuts (Ctrl+L/K/O), loading spinners, structured error display, output log improvements (cap/clear/auto-scroll), proof tree connectors, default example syllogism; unified query/proof across entire stack (engine, server, REPL, UI)
 
 **UI query semantics:** Every query resets the engine, re-asserts the full Lojban tab text as the KB, then runs the query. The query bar is pure queries only (no assertions). The Lojban tab is the single source of truth.
 
