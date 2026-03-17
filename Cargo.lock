@@ -2957,9 +2957,17 @@ version = "0.1.0"
 dependencies = [
  "gerna",
  "logji",
- "serde",
+ "nibli-protocol",
  "serde_json",
  "smuni",
+]
+
+[[package]]
+name = "nibli-protocol"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -2985,6 +2993,7 @@ dependencies = [
  "dioxus",
  "gloo-net",
  "gloo-timers",
+ "nibli-protocol",
  "serde",
  "serde_json",
  "smuni-dictionary",

@@ -7,5 +7,5 @@ edition = "2024"
 gerna = { path = "../gerna" }
 smuni = { path = "../smuni" }
 logji = { path = "../logji" }
-serde = { version = "1", features = ["derive"] }
+nibli-protocol = { path = "../nibli-protocol" }
 serde_json = "1"

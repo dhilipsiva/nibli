@@ -4,7 +4,7 @@
 
 use std::collections::HashSet;
 
-use serde::Serialize;
+use nibli_protocol::{ProofTrace as ProofTraceJson, ProofStep as ProofStepJson, ProofRule as ProofRuleJson, LogicalTerm as LogicalTermJson};
 
 // ─── Type aliases for each crate's WIT-generated types ──────────────
 
@@ -462,68 +462,8 @@ fn format_proof_trace(trace: &logji_logic::ProofTrace) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// PROOF TRACE JSON SERIALIZATION
+// PROOF TRACE CONVERSION (WIT types → nibli-protocol wire types)
 // ═══════════════════════════════════════════════════════════════════════
-
-#[derive(Serialize)]
-pub struct ProofTraceJson {
-    pub steps: Vec<ProofStepJson>,
-    pub root: u32,
-}
-
-#[derive(Serialize)]
-pub struct ProofStepJson {
-    pub rule: ProofRuleJson,
-    pub holds: bool,
-    pub children: Vec<u32>,
-}
-
-#[derive(Serialize)]
-pub struct LogicalTermJson {
-    pub kind: String,
-    pub value: Option<String>,
-    pub number: Option<f64>,
-}
-
-#[derive(Serialize)]
-#[serde(tag = "type")]
-pub enum ProofRuleJson {
-    #[serde(rename = "conjunction")]
-    Conjunction,
-    #[serde(rename = "disjunction_check")]
-    DisjunctionCheck { detail: String },
-    #[serde(rename = "disjunction_intro")]
-    DisjunctionIntro { side: String },
-    #[serde(rename = "negation")]
-    Negation,
-    #[serde(rename = "modal_passthrough")]
-    ModalPassthrough { kind: String },
-    #[serde(rename = "exists_witness")]
-    ExistsWitness {
-        var: String,
-        term: LogicalTermJson,
-    },
-    #[serde(rename = "exists_failed")]
-    ExistsFailed,
-    #[serde(rename = "forall_vacuous")]
-    ForallVacuous,
-    #[serde(rename = "forall_verified")]
-    ForallVerified { entities: Vec<LogicalTermJson> },
-    #[serde(rename = "forall_counterexample")]
-    ForallCounterexample { entity: LogicalTermJson },
-    #[serde(rename = "count_result")]
-    CountResult { expected: u32, actual: u32 },
-    #[serde(rename = "predicate_check")]
-    PredicateCheck { method: String, detail: String },
-    #[serde(rename = "compute_check")]
-    ComputeCheck { method: String, detail: String },
-    #[serde(rename = "asserted")]
-    Asserted { sexp: String },
-    #[serde(rename = "derived")]
-    Derived { label: String, sexp: String },
-    #[serde(rename = "proof_ref")]
-    ProofRef { sexp: String },
-}
 
 fn term_to_json(term: &logji_logic::LogicalTerm) -> LogicalTermJson {
     match term {
@@ -618,7 +558,7 @@ fn proof_trace_to_json(trace: &logji_logic::ProofTrace) -> String {
             .collect(),
         root: trace.root,
     };
-    serde_json::to_string(&json_trace).unwrap_or_default()
+    json_trace.to_json()
 }
 
 // ═══════════════════════════════════════════════════════════════════════

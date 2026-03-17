@@ -8,6 +8,7 @@ members = [
     "nibli",
     "nibli-ui",
     "nibli-engine",
+    "nibli-protocol",
     "nibli-server",
     "smuni-dictionary",
 ]

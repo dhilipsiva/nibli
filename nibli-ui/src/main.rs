@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 use gloo_net::http::Request;
+use nibli_protocol::{ProofRule, ProofTrace};
 use serde::Deserialize;
 
 fn main() {
@@ -30,139 +31,7 @@ struct OutputEntry {
     result: String,
     is_error: bool,
     proof_trace: Option<String>,
-    proof_trace_data: Option<ProofTraceData>,
-}
-
-// ── Proof trace JSON types ──
-
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-struct ProofTraceData {
-    steps: Vec<ProofStepData>,
-    root: u32,
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-struct ProofStepData {
-    rule: ProofRuleData,
-    holds: bool,
-    children: Vec<u32>,
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-struct LogicalTermData {
-    kind: String,
-    value: Option<String>,
-    number: Option<f64>,
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-#[serde(tag = "type")]
-enum ProofRuleData {
-    #[serde(rename = "conjunction")]
-    Conjunction,
-    #[serde(rename = "disjunction_check")]
-    DisjunctionCheck { detail: String },
-    #[serde(rename = "disjunction_intro")]
-    DisjunctionIntro { side: String },
-    #[serde(rename = "negation")]
-    Negation,
-    #[serde(rename = "modal_passthrough")]
-    ModalPassthrough { kind: String },
-    #[serde(rename = "exists_witness")]
-    ExistsWitness { var: String, term: LogicalTermData },
-    #[serde(rename = "exists_failed")]
-    ExistsFailed,
-    #[serde(rename = "forall_vacuous")]
-    ForallVacuous,
-    #[serde(rename = "forall_verified")]
-    ForallVerified { entities: Vec<LogicalTermData> },
-    #[serde(rename = "forall_counterexample")]
-    ForallCounterexample { entity: LogicalTermData },
-    #[serde(rename = "count_result")]
-    CountResult { expected: u32, actual: u32 },
-    #[serde(rename = "predicate_check")]
-    PredicateCheck { method: String, detail: String },
-    #[serde(rename = "compute_check")]
-    ComputeCheck { method: String, detail: String },
-    #[serde(rename = "asserted")]
-    Asserted { sexp: String },
-    #[serde(rename = "derived")]
-    Derived { label: String, sexp: String },
-    #[serde(rename = "proof_ref")]
-    ProofRef { sexp: String },
-}
-
-// ── Proof rule display helpers ──
-
-impl ProofRuleData {
-    fn icon(&self) -> &'static str {
-        match self {
-            Self::Conjunction => "∧",
-            Self::DisjunctionCheck { .. } | Self::DisjunctionIntro { .. } => "∨",
-            Self::Negation => "¬",
-            Self::ModalPassthrough { .. } => "◷",
-            Self::ExistsWitness { .. } => "∃",
-            Self::ExistsFailed => "∃",
-            Self::ForallVacuous | Self::ForallVerified { .. } | Self::ForallCounterexample { .. } => "∀",
-            Self::CountResult { .. } => "#",
-            Self::PredicateCheck { .. } => "⊢",
-            Self::ComputeCheck { .. } => "⊢",
-            Self::Asserted { .. } => "▣",
-            Self::Derived { .. } => "⊢",
-            Self::ProofRef { .. } => "↑",
-        }
-    }
-
-    fn label(&self) -> String {
-        match self {
-            Self::Conjunction => "Conjunction".to_string(),
-            Self::DisjunctionCheck { detail } => format!("Disjunction Check: {}", detail),
-            Self::DisjunctionIntro { side } => format!("Disjunction Intro: {}", side),
-            Self::Negation => "Negation".to_string(),
-            Self::ModalPassthrough { kind } => format!("{}", kind),
-            Self::ExistsWitness { var, term } => format!("Witness: {} = {}", var, format_term(term)),
-            Self::ExistsFailed => "No witness found".to_string(),
-            Self::ForallVacuous => "Vacuously true".to_string(),
-            Self::ForallVerified { entities } => {
-                let names: Vec<String> = entities.iter().map(format_term).collect();
-                format!("Verified: [{}]", names.join(", "))
-            }
-            Self::ForallCounterexample { entity } => format!("Counterexample: {}", format_term(entity)),
-            Self::CountResult { expected, actual } => format!("Count: expected {}, got {}", expected, actual),
-            Self::PredicateCheck { method, detail } => format!("Predicate ({}): {}", method, detail),
-            Self::ComputeCheck { method, detail } => format!("Compute ({}): {}", method, detail),
-            Self::Asserted { sexp } => format!("Asserted: {}", sexp),
-            Self::Derived { label, sexp } => format!("Derived ({}): {}", label, sexp),
-            Self::ProofRef { sexp } => format!("(proved above): {}", sexp),
-        }
-    }
-
-    fn css_class(&self) -> &'static str {
-        match self {
-            Self::Asserted { .. } => "proof-asserted",
-            Self::Derived { .. } => "proof-derived",
-            Self::ProofRef { .. } => "proof-ref",
-            Self::ExistsWitness { .. } | Self::ModalPassthrough { .. } => "proof-exists",
-            Self::ExistsFailed | Self::ForallCounterexample { .. } => "proof-failed",
-            Self::Negation => "proof-negation",
-            Self::PredicateCheck { .. } | Self::ComputeCheck { .. } => "proof-check",
-            Self::Conjunction => "proof-conjunction",
-            Self::DisjunctionCheck { .. } | Self::DisjunctionIntro { .. } => "proof-derived",
-            Self::ForallVacuous | Self::ForallVerified { .. } => "proof-exists",
-            Self::CountResult { .. } => "proof-check",
-        }
-    }
-}
-
-fn format_term(term: &LogicalTermData) -> String {
-    match term.kind.as_str() {
-        "constant" => term.value.clone().unwrap_or_default(),
-        "number" => term.number.map(|n| format!("{}", n)).unwrap_or_default(),
-        "variable" => term.value.clone().unwrap_or("?".to_string()),
-        "skolem" => term.value.clone().unwrap_or("sk?".to_string()),
-        "description" => format!("le_{}", term.value.as_deref().unwrap_or("?")),
-        _ => format!("({})", term.kind),
-    }
+    proof_trace_data: Option<ProofTrace>,
 }
 
 // ── GraphQL helpers ──
@@ -307,7 +176,7 @@ async fn execute_proof_query(kb: &str, query_text: &str) -> OutputEntry {
                 let trace = r["proofTrace"].as_str().map(|s| s.to_string());
                 let trace_data = r["proofTraceJson"]
                     .as_str()
-                    .and_then(|s| serde_json::from_str::<ProofTraceData>(s).ok());
+                    .and_then(ProofTrace::from_json);
                 OutputEntry {
                     input: format!("?! {}", query_text),
                     result: if holds {
@@ -337,7 +206,7 @@ async fn execute_proof_query(kb: &str, query_text: &str) -> OutputEntry {
 fn App() -> Element {
     let output_log: Signal<Vec<OutputEntry>> = use_signal(Vec::new);
     let proof_text: Signal<Option<String>> = use_signal(|| None);
-    let proof_data: Signal<Option<ProofTraceData>> = use_signal(|| None);
+    let proof_data: Signal<Option<ProofTrace>> = use_signal(|| None);
     let lojban_text: Signal<String> = use_signal(|| String::new());
 
     rsx! {
@@ -391,7 +260,7 @@ fn StatusBadge() -> Element {
 fn QueryBar(
     output_log: Signal<Vec<OutputEntry>>,
     proof_text: Signal<Option<String>>,
-    proof_data: Signal<Option<ProofTraceData>>,
+    proof_data: Signal<Option<ProofTrace>>,
     lojban_text: Signal<String>,
 ) -> Element {
     let mut query_text = use_signal(|| String::new());
@@ -586,7 +455,7 @@ fn SourceTabs(lojban_text: Signal<String>) -> Element {
 #[component]
 fn ProofPanel(
     proof_text: Signal<Option<String>>,
-    proof_data: Signal<Option<ProofTraceData>>,
+    proof_data: Signal<Option<ProofTrace>>,
 ) -> Element {
     let text = proof_text.read();
     let data = proof_data.read();
@@ -609,7 +478,7 @@ fn ProofPanel(
 }
 
 #[component]
-fn ProofTreeView(trace: ProofTraceData) -> Element {
+fn ProofTreeView(trace: ProofTrace) -> Element {
     let root_idx = trace.root as usize;
     if root_idx >= trace.steps.len() {
         return rsx! { div { class: "proof-error", "Invalid proof trace: root index out of bounds" } };
@@ -623,7 +492,7 @@ fn ProofTreeView(trace: ProofTraceData) -> Element {
 }
 
 #[component]
-fn ProofNodeView(trace: ProofTraceData, step_idx: u32, depth: u32) -> Element {
+fn ProofNodeView(trace: ProofTrace, step_idx: u32, depth: u32) -> Element {
     let idx = step_idx as usize;
     if idx >= trace.steps.len() {
         return rsx! { span { class: "proof-error", "?" } };
@@ -642,7 +511,7 @@ fn ProofNodeView(trace: ProofTraceData, step_idx: u32, depth: u32) -> Element {
     let result_label = if holds { "TRUE" } else { "FALSE" };
 
     // ProofRef is a leaf node — render inline, no expand
-    if matches!(rule, ProofRuleData::ProofRef { .. }) {
+    if matches!(rule, ProofRule::ProofRef { .. }) {
         return rsx! {
             div { class: "proof-node proof-ref-node",
                 span { class: "proof-icon proof-ref", "{icon}" }

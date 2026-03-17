@@ -7,6 +7,7 @@ edition = "2024"
 dioxus = { version = "0.7.3", features = ["web"] }
 gloo-net = { version = "0.6", features = ["http"] }
 gloo-timers = { version = "0.3", features = ["futures"] }
+nibli-protocol = { path = "../nibli-protocol" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 smuni-dictionary = { path = "../smuni-dictionary" }
