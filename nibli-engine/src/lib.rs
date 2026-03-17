@@ -4,7 +4,7 @@
 
 use std::collections::HashSet;
 
-use nibli_protocol::{ProofTrace as ProofTraceJson, ProofStep as ProofStepJson, ProofRule as ProofRuleJson, LogicalTerm as LogicalTermJson};
+use nibli_protocol::{humanize_sexp, ProofTrace as ProofTraceJson, ProofStep as ProofStepJson, ProofRule as ProofRuleJson, LogicalTerm as LogicalTermJson};
 
 // ─── Type aliases for each crate's WIT-generated types ──────────────
 
@@ -423,17 +423,19 @@ fn format_rule(rule: &logji_logic::ProofRule, result: bool) -> String {
             format!("Count: expected={}, actual={} -> {}", expected, actual, tag)
         }
         logji_logic::ProofRule::PredicateCheck((method, detail)) => {
-            format!("{}: {} -> {}", method, detail, tag)
+            format!("{}: {} -> {}", method, humanize_sexp(detail), tag)
         }
         logji_logic::ProofRule::ComputeCheck((method, detail)) => {
-            format!("Compute ({}): {} -> {}", method, detail, tag)
+            format!("Compute ({}): {} -> {}", method, humanize_sexp(detail), tag)
         }
-        logji_logic::ProofRule::Asserted(sexp) => format!("Asserted: {} -> {}", sexp, tag),
+        logji_logic::ProofRule::Asserted(sexp) => {
+            format!("Asserted: {} -> {}", humanize_sexp(sexp), tag)
+        }
         logji_logic::ProofRule::Derived((label, sexp)) => {
-            format!("Derived ({}): {} -> {}", label, sexp, tag)
+            format!("Derived ({}): {} -> {}", label, humanize_sexp(sexp), tag)
         }
         logji_logic::ProofRule::ProofRef(sexp) => {
-            format!("(proved above): {} -> {}", sexp, tag)
+            format!("(proved above): {} -> {}", humanize_sexp(sexp), tag)
         }
     }
 }

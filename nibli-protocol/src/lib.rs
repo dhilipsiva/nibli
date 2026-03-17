@@ -78,6 +78,365 @@ impl ProofTrace {
     }
 }
 
+// ── S-expression humanizer ──
+
+/// Parse and humanize a logji s-expression into readable notation.
+///
+/// Converts internal representations like:
+///   `(Pred "danlu" (Cons (SkolemFn "sk_1" (Const "adam")) (Nil)))` → `danlu(sk_1(adam))`
+///   `(Past (Pred "klama" (Cons (Const "adam") (Nil))))` → `[past] klama(adam)`
+///   `(Const "adam")` → `adam`
+pub fn humanize_sexp(sexp: &str) -> String {
+    let tokens = tokenize_sexp(sexp);
+    let mut pos = 0;
+    match parse_sexp_node(&tokens, &mut pos) {
+        Some(node) => format_sexp_node(&node),
+        None => sexp.to_string(),
+    }
+}
+
+enum SexpNode {
+    Atom(String),
+    List(Vec<SexpNode>),
+}
+
+fn tokenize_sexp(s: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut chars = s.chars().peekable();
+    while let Some(&c) = chars.peek() {
+        match c {
+            '(' => {
+                tokens.push("(".to_string());
+                chars.next();
+            }
+            ')' => {
+                tokens.push(")".to_string());
+                chars.next();
+            }
+            '"' => {
+                chars.next();
+                let mut buf = String::new();
+                while let Some(&ch) = chars.peek() {
+                    if ch == '"' {
+                        chars.next();
+                        break;
+                    }
+                    buf.push(ch);
+                    chars.next();
+                }
+                tokens.push(format!("\"{}\"", buf));
+            }
+            c if c.is_whitespace() => {
+                chars.next();
+            }
+            _ => {
+                let mut word = String::new();
+                while let Some(&ch) = chars.peek() {
+                    if ch == '(' || ch == ')' || ch == '"' || ch.is_whitespace() {
+                        break;
+                    }
+                    word.push(ch);
+                    chars.next();
+                }
+                tokens.push(word);
+            }
+        }
+    }
+    tokens
+}
+
+fn parse_sexp_node(tokens: &[String], pos: &mut usize) -> Option<SexpNode> {
+    if *pos >= tokens.len() {
+        return None;
+    }
+    if tokens[*pos] == "(" {
+        *pos += 1;
+        let mut children = Vec::new();
+        while *pos < tokens.len() && tokens[*pos] != ")" {
+            if let Some(child) = parse_sexp_node(tokens, pos) {
+                children.push(child);
+            } else {
+                break;
+            }
+        }
+        if *pos < tokens.len() {
+            *pos += 1; // skip )
+        }
+        Some(SexpNode::List(children))
+    } else {
+        let tok = tokens[*pos].clone();
+        *pos += 1;
+        Some(SexpNode::Atom(tok))
+    }
+}
+
+fn unquote(s: &str) -> &str {
+    s.strip_prefix('"')
+        .and_then(|s| s.strip_suffix('"'))
+        .unwrap_or(s)
+}
+
+fn format_sexp_node(node: &SexpNode) -> String {
+    match node {
+        SexpNode::Atom(s) => unquote(s).to_string(),
+        SexpNode::List(children) => {
+            if children.is_empty() {
+                return "()".to_string();
+            }
+            let tag = match &children[0] {
+                SexpNode::Atom(s) => s.as_str(),
+                _ => return format_sexp_generic(children),
+            };
+            match tag {
+                "Pred" => format_sexp_pred(children),
+                "Const" => format_sexp_extract(children),
+                "Var" => {
+                    if children.len() < 2 {
+                        "?".to_string()
+                    } else {
+                        format!("?{}", format_sexp_node(&children[1]))
+                    }
+                }
+                "Num" => format_sexp_num(children),
+                "Desc" => {
+                    if children.len() < 2 {
+                        "le ?".to_string()
+                    } else {
+                        format!("le {}", format_sexp_node(&children[1]))
+                    }
+                }
+                "Zoe" => "_".to_string(),
+                "Nil" => String::new(),
+                "Cons" => {
+                    let items = collect_cons_items(children);
+                    items
+                        .iter()
+                        .map(|n| format_sexp_node(n))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                }
+                "SkolemFn" => {
+                    if children.len() < 3 {
+                        "sk?".to_string()
+                    } else {
+                        let name = format_sexp_node(&children[1]);
+                        let dep = format_sexp_node(&children[2]);
+                        format!("{}({})", name, dep)
+                    }
+                }
+                "DepPair" => {
+                    if children.len() < 3 {
+                        "?".to_string()
+                    } else {
+                        format!(
+                            "{}, {}",
+                            format_sexp_node(&children[1]),
+                            format_sexp_node(&children[2])
+                        )
+                    }
+                }
+                "Past" | "Present" | "Future" | "Obligatory" | "Permitted" => {
+                    let label = tag.to_lowercase();
+                    if children.len() < 2 {
+                        label
+                    } else {
+                        format!("[{}] {}", label, format_sexp_node(&children[1]))
+                    }
+                }
+                "Or" => format_sexp_binop("∨", children),
+                "And" => format_sexp_binop("∧", children),
+                "Not" => {
+                    if children.len() < 2 {
+                        "¬?".to_string()
+                    } else {
+                        format!("¬{}", format_sexp_node(&children[1]))
+                    }
+                }
+                _ => format_sexp_generic(children),
+            }
+        }
+    }
+}
+
+fn format_sexp_pred(children: &[SexpNode]) -> String {
+    if children.len() < 3 {
+        return "?pred".to_string();
+    }
+    let name = format_sexp_node(&children[1]);
+    let args = collect_cons_list(&children[2]);
+    if args.is_empty() {
+        name
+    } else {
+        let formatted: Vec<String> = args.iter().map(|a| format_sexp_node(a)).collect();
+        format!("{}({})", name, formatted.join(", "))
+    }
+}
+
+fn format_sexp_extract(children: &[SexpNode]) -> String {
+    if children.len() < 2 {
+        "?".to_string()
+    } else {
+        format_sexp_node(&children[1])
+    }
+}
+
+fn format_sexp_num(children: &[SexpNode]) -> String {
+    if children.len() < 2 {
+        return "0".to_string();
+    }
+    match &children[1] {
+        SexpNode::Atom(s) => {
+            if let Ok(n) = s.parse::<f64>() {
+                if n == (n as i64) as f64 {
+                    format!("{}", n as i64)
+                } else {
+                    format!("{}", n)
+                }
+            } else {
+                s.clone()
+            }
+        }
+        n => format_sexp_node(n),
+    }
+}
+
+fn collect_cons_list(node: &SexpNode) -> Vec<&SexpNode> {
+    match node {
+        SexpNode::List(children) => {
+            if children.is_empty() {
+                return vec![];
+            }
+            let tag = match &children[0] {
+                SexpNode::Atom(s) => s.as_str(),
+                _ => return vec![node],
+            };
+            match tag {
+                "Cons" if children.len() >= 3 => {
+                    let mut result = vec![&children[1]];
+                    result.extend(collect_cons_list(&children[2]));
+                    result
+                }
+                "Nil" => vec![],
+                _ => vec![node],
+            }
+        }
+        _ => vec![node],
+    }
+}
+
+fn collect_cons_items(children: &[SexpNode]) -> Vec<&SexpNode> {
+    if children.len() < 3 {
+        return vec![];
+    }
+    let mut result = vec![&children[1]];
+    result.extend(collect_cons_list(&children[2]));
+    result
+}
+
+fn format_sexp_binop(op: &str, children: &[SexpNode]) -> String {
+    if children.len() < 3 {
+        return op.to_string();
+    }
+    format!(
+        "({} {} {})",
+        format_sexp_node(&children[1]),
+        op,
+        format_sexp_node(&children[2])
+    )
+}
+
+fn format_sexp_generic(children: &[SexpNode]) -> String {
+    let parts: Vec<String> = children.iter().map(format_sexp_node).collect();
+    format!("({})", parts.join(" "))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_humanize_simple_pred() {
+        assert_eq!(
+            humanize_sexp(r#"(Pred "gerku" (Cons (Const "adam") (Nil)))"#),
+            "gerku(adam)"
+        );
+    }
+
+    #[test]
+    fn test_humanize_skolem() {
+        assert_eq!(
+            humanize_sexp(r#"(Pred "danlu" (Cons (SkolemFn "sk_1" (Const "adam")) (Nil)))"#),
+            "danlu(sk_1(adam))"
+        );
+    }
+
+    #[test]
+    fn test_humanize_tense() {
+        assert_eq!(
+            humanize_sexp(r#"(Past (Pred "klama" (Cons (Const "adam") (Nil))))"#),
+            "[past] klama(adam)"
+        );
+    }
+
+    #[test]
+    fn test_humanize_multi_arg() {
+        assert_eq!(
+            humanize_sexp(
+                r#"(Pred "klama" (Cons (Const "adam") (Cons (Const "paris") (Nil))))"#
+            ),
+            "klama(adam, paris)"
+        );
+    }
+
+    #[test]
+    fn test_humanize_zoe() {
+        assert_eq!(
+            humanize_sexp(r#"(Pred "klama" (Cons (Const "adam") (Cons (Zoe) (Nil))))"#),
+            "klama(adam, _)"
+        );
+    }
+
+    #[test]
+    fn test_humanize_number() {
+        assert_eq!(
+            humanize_sexp(r#"(Pred "pilji" (Cons (Num 3) (Cons (Num 4) (Nil))))"#),
+            "pilji(3, 4)"
+        );
+    }
+
+    #[test]
+    fn test_humanize_desc() {
+        assert_eq!(
+            humanize_sexp(r#"(Pred "klama" (Cons (Desc "gerku") (Nil)))"#),
+            "klama(le gerku)"
+        );
+    }
+
+    #[test]
+    fn test_humanize_negation() {
+        assert_eq!(
+            humanize_sexp(r#"(Not (Pred "gerku" (Cons (Const "adam") (Nil))))"#),
+            "¬gerku(adam)"
+        );
+    }
+
+    #[test]
+    fn test_humanize_dep_pair_skolem() {
+        assert_eq!(
+            humanize_sexp(
+                r#"(SkolemFn "sk_2" (DepPair (Const "adam") (Const "bob")))"#
+            ),
+            "sk_2(adam, bob)"
+        );
+    }
+
+    #[test]
+    fn test_humanize_fallback() {
+        // Plain string that isn't an s-expression
+        assert_eq!(humanize_sexp("hello"), "hello");
+    }
+}
+
 // ── Display helpers ──
 
 impl LogicalTerm {
@@ -129,11 +488,17 @@ impl ProofRule {
             }
             Self::ForallCounterexample { entity } => format!("Counterexample: {}", entity.display()),
             Self::CountResult { expected, actual } => format!("Count: expected {}, got {}", expected, actual),
-            Self::PredicateCheck { method, detail } => format!("Predicate ({}): {}", method, detail),
-            Self::ComputeCheck { method, detail } => format!("Compute ({}): {}", method, detail),
-            Self::Asserted { sexp } => format!("Asserted: {}", sexp),
-            Self::Derived { label, sexp } => format!("Derived ({}): {}", label, sexp),
-            Self::ProofRef { sexp } => format!("(proved above): {}", sexp),
+            Self::PredicateCheck { method, detail } => {
+                format!("Predicate ({}): {}", method, humanize_sexp(detail))
+            }
+            Self::ComputeCheck { method, detail } => {
+                format!("Compute ({}): {}", method, humanize_sexp(detail))
+            }
+            Self::Asserted { sexp } => format!("Asserted: {}", humanize_sexp(sexp)),
+            Self::Derived { label, sexp } => {
+                format!("Derived ({}): {}", label, humanize_sexp(sexp))
+            }
+            Self::ProofRef { sexp } => format!("(proved above): {}", humanize_sexp(sexp)),
         }
     }
 

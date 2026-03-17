@@ -20,6 +20,7 @@
 //! - **`:saturate`** — Show/set run bound (iterations)
 
 use anyhow::Result;
+use nibli_protocol::humanize_sexp;
 use reedline::{DefaultPrompt, Reedline, Signal};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -236,16 +237,20 @@ fn format_rule(rule: &ProofRule, result: bool) -> String {
             format!("Count: expected={}, actual={} → {}", expected, actual, tag)
         }
         ProofRule::PredicateCheck((method, detail)) => {
-            format!("{}: {} → {}", method, detail, tag)
+            format!("{}: {} → {}", method, humanize_sexp(detail), tag)
         }
         ProofRule::ComputeCheck((method, detail)) => {
-            format!("Compute ({}): {} → {}", method, detail, tag)
+            format!("Compute ({}): {} → {}", method, humanize_sexp(detail), tag)
         }
-        ProofRule::Asserted(sexp) => format!("Asserted: {} → {}", sexp, tag),
+        ProofRule::Asserted(sexp) => {
+            format!("Asserted: {} → {}", humanize_sexp(sexp), tag)
+        }
         ProofRule::Derived((label, sexp)) => {
-            format!("Derived ({}): {} → {}", label, sexp, tag)
+            format!("Derived ({}): {} → {}", label, humanize_sexp(sexp), tag)
         }
-        ProofRule::ProofRef(sexp) => format!("(proved above): {} → {}", sexp, tag),
+        ProofRule::ProofRef(sexp) => {
+            format!("(proved above): {} → {}", humanize_sexp(sexp), tag)
+        }
     }
 }
 
