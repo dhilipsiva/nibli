@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use gloo_net::http::Request;
-use nibli_protocol::{ProofRule, ProofTrace};
+use nibli_protocol::{KbStatus, ProofRule, ProofTrace};
 use serde::Deserialize;
 
 fn main() {
@@ -32,6 +32,7 @@ struct OutputEntry {
     is_error: bool,
     proof_trace: Option<String>,
     proof_trace_data: Option<ProofTrace>,
+    kb_status: Option<KbStatus>,
 }
 
 // ── GraphQL helpers ──
@@ -120,11 +121,38 @@ async fn graphql_post(body: &serde_json::Value) -> Result<serde_json::Value, Str
 // ── Query execution ──
 // Every query resets the engine, re-asserts the Lojban tab as the KB, then queries.
 
+fn parse_kb_status(data: &serde_json::Value) -> Option<KbStatus> {
+    let s = data.get("kbStatus")?;
+    if s.is_null() {
+        return None;
+    }
+    Some(KbStatus {
+        asserted: s["asserted"].as_u64().unwrap_or(0) as u32,
+        errors: s["errors"].as_u64().unwrap_or(0) as u32,
+        skipped: s["skipped"].as_u64().unwrap_or(0) as u32,
+        line_results: s["lineResults"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .map(|lr| nibli_protocol::LineResult {
+                        line_number: lr["lineNumber"].as_u64().unwrap_or(0) as u32,
+                        text: lr["text"].as_str().unwrap_or("").to_string(),
+                        success: lr["success"].as_bool().unwrap_or(false),
+                        fact_id: lr["factId"].as_u64(),
+                        error: lr["error"].as_str().map(|s| s.to_string()),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+    })
+}
+
 async fn execute_query(kb: &str, query_text: &str) -> OutputEntry {
-    let gql = r#"mutation($kb: String!, $query: String!) { queryWithKb(kb: $kb, query: $query) { holds error } }"#;
+    let gql = r#"mutation($kb: String!, $query: String!) { queryWithKb(kb: $kb, query: $query) { holds error kbStatus { asserted errors skipped lineResults { lineNumber text success factId error } } } }"#;
     match graphql_mutate_kb(gql, kb, query_text).await {
         Ok(data) => {
             let r = &data["queryWithKb"];
+            let kb_status = parse_kb_status(r);
             if let Some(err) = r["error"].as_str() {
                 OutputEntry {
                     input: format!("? {}", query_text),
@@ -132,6 +160,7 @@ async fn execute_query(kb: &str, query_text: &str) -> OutputEntry {
                     is_error: true,
                     proof_trace: None,
                     proof_trace_data: None,
+                    kb_status,
                 }
             } else {
                 let holds = r["holds"].as_bool().unwrap_or(false);
@@ -145,6 +174,7 @@ async fn execute_query(kb: &str, query_text: &str) -> OutputEntry {
                     is_error: false,
                     proof_trace: None,
                     proof_trace_data: None,
+                    kb_status,
                 }
             }
         }
@@ -154,15 +184,17 @@ async fn execute_query(kb: &str, query_text: &str) -> OutputEntry {
             is_error: true,
             proof_trace: None,
             proof_trace_data: None,
+            kb_status: None,
         },
     }
 }
 
 async fn execute_proof_query(kb: &str, query_text: &str) -> OutputEntry {
-    let gql = r#"mutation($kb: String!, $query: String!) { queryWithKbProof(kb: $kb, query: $query) { holds proofTrace proofTraceJson error } }"#;
+    let gql = r#"mutation($kb: String!, $query: String!) { queryWithKbProof(kb: $kb, query: $query) { holds proofTrace proofTraceJson error kbStatus { asserted errors skipped lineResults { lineNumber text success factId error } } } }"#;
     match graphql_mutate_kb(gql, kb, query_text).await {
         Ok(data) => {
             let r = &data["queryWithKbProof"];
+            let kb_status = parse_kb_status(r);
             if let Some(err) = r["error"].as_str() {
                 OutputEntry {
                     input: format!("?! {}", query_text),
@@ -170,6 +202,7 @@ async fn execute_proof_query(kb: &str, query_text: &str) -> OutputEntry {
                     is_error: true,
                     proof_trace: None,
                     proof_trace_data: None,
+                    kb_status,
                 }
             } else {
                 let holds = r["holds"].as_bool().unwrap_or(false);
@@ -187,6 +220,7 @@ async fn execute_proof_query(kb: &str, query_text: &str) -> OutputEntry {
                     is_error: false,
                     proof_trace: trace,
                     proof_trace_data: trace_data,
+                    kb_status,
                 }
             }
         }
@@ -196,6 +230,7 @@ async fn execute_proof_query(kb: &str, query_text: &str) -> OutputEntry {
             is_error: true,
             proof_trace: None,
             proof_trace_data: None,
+            kb_status: None,
         },
     }
 }
@@ -208,13 +243,14 @@ fn App() -> Element {
     let proof_text: Signal<Option<String>> = use_signal(|| None);
     let proof_data: Signal<Option<ProofTrace>> = use_signal(|| None);
     let lojban_text: Signal<String> = use_signal(|| String::new());
+    let kb_status: Signal<Option<KbStatus>> = use_signal(|| None);
 
     rsx! {
         document::Link { rel: "stylesheet", href: asset!("/assets/style.css") }
         div { class: "app",
             div { class: "main-row",
                 div { class: "col-tabs",
-                    SourceTabs { lojban_text }
+                    SourceTabs { lojban_text, kb_status }
                 }
                 div { class: "col-proof",
                     ProofPanel { proof_text, proof_data }
@@ -224,10 +260,68 @@ fn App() -> Element {
                 div { class: "query-section",
                     div { class: "query-header",
                         StatusBadge {}
-                        QueryBar { output_log, proof_text, proof_data, lojban_text }
+                        QueryBar { output_log, proof_text, proof_data, lojban_text, kb_status }
                     }
                     OutputLog { output_log }
                 }
+            }
+        }
+    }
+}
+
+#[component]
+fn KbStatusBar(kb_status: Signal<Option<KbStatus>>) -> Element {
+    let status = kb_status.read();
+    let Some(ref s) = *status else {
+        return rsx! {};
+    };
+
+    let status_class = if s.errors > 0 {
+        "kb-status-bar kb-status-warn"
+    } else {
+        "kb-status-bar kb-status-ok"
+    };
+
+    let summary_text = format!(
+        "{} asserted, {} error{}{}",
+        s.asserted,
+        s.errors,
+        if s.errors != 1 { "s" } else { "" },
+        if s.skipped > 0 {
+            format!(", {} skipped", s.skipped)
+        } else {
+            String::new()
+        }
+    );
+
+    let has_errors = s.errors > 0;
+
+    rsx! {
+        div { class: "{status_class}",
+            if has_errors {
+                details { class: "kb-status-details",
+                    summary { class: "kb-status-summary", "{summary_text}" }
+                    div { class: "kb-line-results",
+                        for lr in s.line_results.iter() {
+                            div {
+                                key: "{lr.line_number}",
+                                class: if lr.success { "kb-line-result kb-line-ok" } else { "kb-line-result kb-line-error" },
+                                span { class: "kb-line-num", "L{lr.line_number}" }
+                                if lr.success {
+                                    span { class: "kb-line-icon", "✓" }
+                                } else {
+                                    span { class: "kb-line-icon", "✗" }
+                                }
+                                span { class: "kb-line-text", "{lr.text}" }
+                                if let Some(ref err) = lr.error {
+                                    span { class: "kb-line-err", "{err}" }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                span { class: "kb-status-summary", "{summary_text}" }
             }
         }
     }
@@ -262,6 +356,7 @@ fn QueryBar(
     proof_text: Signal<Option<String>>,
     proof_data: Signal<Option<ProofTrace>>,
     lojban_text: Signal<String>,
+    kb_status: Signal<Option<KbStatus>>,
 ) -> Element {
     let mut query_text = use_signal(|| String::new());
     let mut submitting = use_signal(|| false);
@@ -294,6 +389,7 @@ fn QueryBar(
             if let Some(ref data) = entry.proof_trace_data {
                 proof_data.set(Some(data.clone()));
             }
+            kb_status.set(entry.kb_status.clone());
             output_log.write().push(entry);
             submitting.set(false);
         });
@@ -349,7 +445,7 @@ fn OutputLog(output_log: Signal<Vec<OutputEntry>>) -> Element {
 }
 
 #[component]
-fn SourceTabs(lojban_text: Signal<String>) -> Element {
+fn SourceTabs(lojban_text: Signal<String>, kb_status: Signal<Option<KbStatus>>) -> Element {
     let mut active_tab = use_signal(|| ActiveTab::Source);
     let mut source_text = use_signal(|| String::new());
     let mut translating = use_signal(|| false);
@@ -430,12 +526,62 @@ fn SourceTabs(lojban_text: Signal<String>) -> Element {
                         }
                     },
                     ActiveTab::Lojban => rsx! {
+                        div { class: "lojban-toolbar",
+                            button {
+                                class: "toolbar-btn",
+                                onclick: move |_| {
+                                    spawn(async move {
+                                        let res = document::eval(r#"
+                                            document.getElementById('lojban-file-input').click();
+                                            return '';
+                                        "#);
+                                        let _ = res.await;
+                                    });
+                                },
+                                "Load .lojban"
+                            }
+                            button {
+                                class: "toolbar-btn",
+                                onclick: move |_| {
+                                    lojban_text.set(String::new());
+                                    kb_status.set(None);
+                                },
+                                "Clear"
+                            }
+                            input {
+                                r#type: "file",
+                                accept: ".lojban,.txt",
+                                style: "display: none",
+                                id: "lojban-file-input",
+                                onchange: move |_| {
+                                    spawn(async move {
+                                        let res = document::eval(r#"
+                                            const input = document.getElementById('lojban-file-input');
+                                            const file = input.files[0];
+                                            if (!file) return '';
+                                            const text = await file.text();
+                                            input.value = '';
+                                            return text;
+                                        "#);
+                                        if let Ok(val) = res.await {
+                                            if let Some(text) = val.as_str() {
+                                                if !text.is_empty() {
+                                                    lojban_text.set(text.to_string());
+                                                    kb_status.set(None);
+                                                }
+                                            }
+                                        }
+                                    });
+                                },
+                            }
+                        }
                         textarea {
                             class: "lojban-input",
                             placeholder: "Enter Lojban facts and rules (one per line)...",
                             value: "{lojban_text}",
                             oninput: move |e| lojban_text.set(e.value()),
                         }
+                        KbStatusBar { kb_status }
                     },
                     ActiveTab::BackTranslation => rsx! {
                         pre { class: "back-translation",

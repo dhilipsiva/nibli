@@ -475,3 +475,104 @@ details[open].proof-node > summary::before {
 .output-result {
     color: #4ade80;
 }
+
+/* Lojban toolbar */
+.lojban-toolbar {
+    display: flex;
+    gap: 8px;
+    padding: 6px 8px;
+    flex-shrink: 0;
+}
+
+.toolbar-btn {
+    padding: 4px 12px;
+    background: #2a2a4a;
+    color: #ccc;
+    border: 1px solid #444;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.toolbar-btn:hover {
+    background: #3a3a5a;
+    color: #fff;
+}
+
+/* KB status bar */
+.kb-status-bar {
+    padding: 6px 10px;
+    font-size: 12px;
+    flex-shrink: 0;
+    border-top: 1px solid #333;
+}
+
+.kb-status-ok {
+    color: #4ade80;
+}
+
+.kb-status-warn {
+    color: #fbbf24;
+}
+
+.kb-status-summary {
+    cursor: default;
+    font-weight: 500;
+}
+
+.kb-status-details > summary {
+    cursor: pointer;
+    font-weight: 500;
+    list-style: none;
+}
+
+.kb-status-details > summary::before {
+    content: "▸ ";
+}
+
+.kb-status-details[open] > summary::before {
+    content: "▾ ";
+}
+
+.kb-line-results {
+    max-height: 150px;
+    overflow-y: auto;
+    margin-top: 4px;
+    padding-left: 8px;
+}
+
+.kb-line-result {
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+    padding: 1px 0;
+    font-size: 11px;
+    font-family: monospace;
+}
+
+.kb-line-num {
+    color: #888;
+    min-width: 32px;
+}
+
+.kb-line-ok .kb-line-icon {
+    color: #4ade80;
+}
+
+.kb-line-error .kb-line-icon {
+    color: #f87171;
+}
+
+.kb-line-text {
+    color: #ccc;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 300px;
+}
+
+.kb-line-err {
+    color: #f87171;
+    font-size: 10px;
+    margin-left: 4px;
+}

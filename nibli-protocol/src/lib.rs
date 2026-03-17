@@ -64,6 +64,25 @@ pub enum ProofRule {
     ProofRef { sexp: String },
 }
 
+// ── KB status wire types ──
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LineResult {
+    pub line_number: u32,
+    pub text: String,
+    pub success: bool,
+    pub fact_id: Option<u64>,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct KbStatus {
+    pub asserted: u32,
+    pub errors: u32,
+    pub skipped: u32,
+    pub line_results: Vec<LineResult>,
+}
+
 // ── Serialization helper ──
 
 impl ProofTrace {

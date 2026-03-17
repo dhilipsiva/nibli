@@ -99,7 +99,7 @@ impl MutationRoot {
                 },
             ],
             stream: false,
-            options: OllamaOptions { temperature: 0.3 },
+            options: OllamaOptions { temperature: 0.0 },
         };
         let url = format!("{}/api/chat", config.url);
         match client.post(&url).json(&req).send().await {
@@ -156,10 +156,12 @@ impl MutationRoot {
         match engine.query_text(&input) {
             Ok(holds) => QueryResult {
                 holds: Some(holds),
+                kb_status: None,
                 error: None,
             },
             Err(e) => QueryResult {
                 holds: None,
+                kb_status: None,
                 error: Some(e),
             },
         }
@@ -177,12 +179,14 @@ impl MutationRoot {
                 holds: Some(holds),
                 proof_trace: Some(trace),
                 proof_trace_json: Some(json),
+                kb_status: None,
                 error: None,
             },
             Err(e) => ProofQueryResult {
                 holds: None,
                 proof_trace: None,
                 proof_trace_json: None,
+                kb_status: None,
                 error: Some(e),
             },
         }
@@ -198,26 +202,16 @@ impl MutationRoot {
         let engine = ctx.data::<Arc<Mutex<NibliEngine>>>().unwrap();
         let engine = engine.lock().unwrap();
         engine.reset();
-        // Assert each non-empty, non-comment line
-        for line in kb.lines() {
-            let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with('#') {
-                continue;
-            }
-            if let Err(e) = engine.assert_text(trimmed) {
-                return QueryResult {
-                    holds: None,
-                    error: Some(format!("KB assertion failed: {}", e)),
-                };
-            }
-        }
+        let kb_status = assert_kb_lines(&engine, &kb);
         match engine.query_text(&query) {
             Ok(holds) => QueryResult {
                 holds: Some(holds),
+                kb_status: Some(kb_status),
                 error: None,
             },
             Err(e) => QueryResult {
                 holds: None,
+                kb_status: Some(kb_status),
                 error: Some(e),
             },
         }
@@ -233,35 +227,69 @@ impl MutationRoot {
         let engine = ctx.data::<Arc<Mutex<NibliEngine>>>().unwrap();
         let engine = engine.lock().unwrap();
         engine.reset();
-        // Assert each non-empty, non-comment line
-        for line in kb.lines() {
-            let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with('#') {
-                continue;
-            }
-            if let Err(e) = engine.assert_text(trimmed) {
-                return ProofQueryResult {
-                    holds: None,
-                    proof_trace: None,
-                    proof_trace_json: None,
-                    error: Some(format!("KB assertion failed: {}", e)),
-                };
-            }
-        }
+        let kb_status = assert_kb_lines(&engine, &kb);
         match engine.query_text_with_proof(&query) {
             Ok((holds, trace, json)) => ProofQueryResult {
                 holds: Some(holds),
                 proof_trace: Some(trace),
                 proof_trace_json: Some(json),
+                kb_status: Some(kb_status),
                 error: None,
             },
             Err(e) => ProofQueryResult {
                 holds: None,
                 proof_trace: None,
                 proof_trace_json: None,
+                kb_status: Some(kb_status),
                 error: Some(e),
             },
         }
+    }
+}
+
+/// Assert all non-blank, non-comment lines from KB text, collecting per-line results.
+fn assert_kb_lines(engine: &NibliEngine, kb: &str) -> KbStatusGql {
+    let mut line_results = Vec::new();
+    let mut asserted = 0u32;
+    let mut errors = 0u32;
+    let mut skipped = 0u32;
+
+    for (i, line) in kb.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            skipped += 1;
+            continue;
+        }
+        let line_number = (i + 1) as u32;
+        match engine.assert_text(trimmed) {
+            Ok(fact_id) => {
+                asserted += 1;
+                line_results.push(LineResultGql {
+                    line_number,
+                    text: trimmed.to_string(),
+                    success: true,
+                    fact_id: Some(fact_id),
+                    error: None,
+                });
+            }
+            Err(e) => {
+                errors += 1;
+                line_results.push(LineResultGql {
+                    line_number,
+                    text: trimmed.to_string(),
+                    success: false,
+                    fact_id: None,
+                    error: Some(e),
+                });
+            }
+        }
+    }
+
+    KbStatusGql {
+        asserted,
+        errors,
+        skipped,
+        line_results,
     }
 }
 
@@ -283,8 +311,26 @@ struct AssertResult {
 }
 
 #[derive(async_graphql::SimpleObject)]
+struct LineResultGql {
+    line_number: u32,
+    text: String,
+    success: bool,
+    fact_id: Option<u64>,
+    error: Option<String>,
+}
+
+#[derive(async_graphql::SimpleObject)]
+struct KbStatusGql {
+    asserted: u32,
+    errors: u32,
+    skipped: u32,
+    line_results: Vec<LineResultGql>,
+}
+
+#[derive(async_graphql::SimpleObject)]
 struct QueryResult {
     holds: Option<bool>,
+    kb_status: Option<KbStatusGql>,
     error: Option<String>,
 }
 
@@ -293,6 +339,7 @@ struct ProofQueryResult {
     holds: Option<bool>,
     proof_trace: Option<String>,
     proof_trace_json: Option<String>,
+    kb_status: Option<KbStatusGql>,
     error: Option<String>,
 }
 
