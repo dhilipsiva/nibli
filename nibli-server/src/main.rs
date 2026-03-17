@@ -173,14 +173,92 @@ impl MutationRoot {
         let engine = ctx.data::<Arc<Mutex<NibliEngine>>>().unwrap();
         let engine = engine.lock().unwrap();
         match engine.query_text_with_proof(&input) {
-            Ok((holds, trace)) => ProofQueryResult {
+            Ok((holds, trace, json)) => ProofQueryResult {
                 holds: Some(holds),
                 proof_trace: Some(trace),
+                proof_trace_json: Some(json),
                 error: None,
             },
             Err(e) => ProofQueryResult {
                 holds: None,
                 proof_trace: None,
+                proof_trace_json: None,
+                error: Some(e),
+            },
+        }
+    }
+
+    /// Reset the engine, assert all KB lines, then run a query.
+    async fn query_with_kb(
+        &self,
+        ctx: &async_graphql::Context<'_>,
+        kb: String,
+        query: String,
+    ) -> QueryResult {
+        let engine = ctx.data::<Arc<Mutex<NibliEngine>>>().unwrap();
+        let engine = engine.lock().unwrap();
+        engine.reset();
+        // Assert each non-empty, non-comment line
+        for line in kb.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            if let Err(e) = engine.assert_text(trimmed) {
+                return QueryResult {
+                    holds: None,
+                    error: Some(format!("KB assertion failed: {}", e)),
+                };
+            }
+        }
+        match engine.query_text(&query) {
+            Ok(holds) => QueryResult {
+                holds: Some(holds),
+                error: None,
+            },
+            Err(e) => QueryResult {
+                holds: None,
+                error: Some(e),
+            },
+        }
+    }
+
+    /// Reset the engine, assert all KB lines, then run a proof query.
+    async fn query_with_kb_proof(
+        &self,
+        ctx: &async_graphql::Context<'_>,
+        kb: String,
+        query: String,
+    ) -> ProofQueryResult {
+        let engine = ctx.data::<Arc<Mutex<NibliEngine>>>().unwrap();
+        let engine = engine.lock().unwrap();
+        engine.reset();
+        // Assert each non-empty, non-comment line
+        for line in kb.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            if let Err(e) = engine.assert_text(trimmed) {
+                return ProofQueryResult {
+                    holds: None,
+                    proof_trace: None,
+                    proof_trace_json: None,
+                    error: Some(format!("KB assertion failed: {}", e)),
+                };
+            }
+        }
+        match engine.query_text_with_proof(&query) {
+            Ok((holds, trace, json)) => ProofQueryResult {
+                holds: Some(holds),
+                proof_trace: Some(trace),
+                proof_trace_json: Some(json),
+                error: None,
+            },
+            Err(e) => ProofQueryResult {
+                holds: None,
+                proof_trace: None,
+                proof_trace_json: None,
                 error: Some(e),
             },
         }
@@ -214,6 +292,7 @@ struct QueryResult {
 struct ProofQueryResult {
     holds: Option<bool>,
     proof_trace: Option<String>,
+    proof_trace_json: Option<String>,
     error: Option<String>,
 }
 

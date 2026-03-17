@@ -2957,6 +2957,8 @@ version = "0.1.0"
 dependencies = [
  "gerna",
  "logji",
+ "serde",
+ "serde_json",
  "smuni",
 ]
 

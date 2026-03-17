@@ -30,6 +30,139 @@ struct OutputEntry {
     result: String,
     is_error: bool,
     proof_trace: Option<String>,
+    proof_trace_data: Option<ProofTraceData>,
+}
+
+// ── Proof trace JSON types ──
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+struct ProofTraceData {
+    steps: Vec<ProofStepData>,
+    root: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+struct ProofStepData {
+    rule: ProofRuleData,
+    holds: bool,
+    children: Vec<u32>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+struct LogicalTermData {
+    kind: String,
+    value: Option<String>,
+    number: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(tag = "type")]
+enum ProofRuleData {
+    #[serde(rename = "conjunction")]
+    Conjunction,
+    #[serde(rename = "disjunction_check")]
+    DisjunctionCheck { detail: String },
+    #[serde(rename = "disjunction_intro")]
+    DisjunctionIntro { side: String },
+    #[serde(rename = "negation")]
+    Negation,
+    #[serde(rename = "modal_passthrough")]
+    ModalPassthrough { kind: String },
+    #[serde(rename = "exists_witness")]
+    ExistsWitness { var: String, term: LogicalTermData },
+    #[serde(rename = "exists_failed")]
+    ExistsFailed,
+    #[serde(rename = "forall_vacuous")]
+    ForallVacuous,
+    #[serde(rename = "forall_verified")]
+    ForallVerified { entities: Vec<LogicalTermData> },
+    #[serde(rename = "forall_counterexample")]
+    ForallCounterexample { entity: LogicalTermData },
+    #[serde(rename = "count_result")]
+    CountResult { expected: u32, actual: u32 },
+    #[serde(rename = "predicate_check")]
+    PredicateCheck { method: String, detail: String },
+    #[serde(rename = "compute_check")]
+    ComputeCheck { method: String, detail: String },
+    #[serde(rename = "asserted")]
+    Asserted { sexp: String },
+    #[serde(rename = "derived")]
+    Derived { label: String, sexp: String },
+    #[serde(rename = "proof_ref")]
+    ProofRef { sexp: String },
+}
+
+// ── Proof rule display helpers ──
+
+impl ProofRuleData {
+    fn icon(&self) -> &'static str {
+        match self {
+            Self::Conjunction => "∧",
+            Self::DisjunctionCheck { .. } | Self::DisjunctionIntro { .. } => "∨",
+            Self::Negation => "¬",
+            Self::ModalPassthrough { .. } => "◷",
+            Self::ExistsWitness { .. } => "∃",
+            Self::ExistsFailed => "∃",
+            Self::ForallVacuous | Self::ForallVerified { .. } | Self::ForallCounterexample { .. } => "∀",
+            Self::CountResult { .. } => "#",
+            Self::PredicateCheck { .. } => "⊢",
+            Self::ComputeCheck { .. } => "⊢",
+            Self::Asserted { .. } => "▣",
+            Self::Derived { .. } => "⊢",
+            Self::ProofRef { .. } => "↑",
+        }
+    }
+
+    fn label(&self) -> String {
+        match self {
+            Self::Conjunction => "Conjunction".to_string(),
+            Self::DisjunctionCheck { detail } => format!("Disjunction Check: {}", detail),
+            Self::DisjunctionIntro { side } => format!("Disjunction Intro: {}", side),
+            Self::Negation => "Negation".to_string(),
+            Self::ModalPassthrough { kind } => format!("{}", kind),
+            Self::ExistsWitness { var, term } => format!("Witness: {} = {}", var, format_term(term)),
+            Self::ExistsFailed => "No witness found".to_string(),
+            Self::ForallVacuous => "Vacuously true".to_string(),
+            Self::ForallVerified { entities } => {
+                let names: Vec<String> = entities.iter().map(format_term).collect();
+                format!("Verified: [{}]", names.join(", "))
+            }
+            Self::ForallCounterexample { entity } => format!("Counterexample: {}", format_term(entity)),
+            Self::CountResult { expected, actual } => format!("Count: expected {}, got {}", expected, actual),
+            Self::PredicateCheck { method, detail } => format!("Predicate ({}): {}", method, detail),
+            Self::ComputeCheck { method, detail } => format!("Compute ({}): {}", method, detail),
+            Self::Asserted { sexp } => format!("Asserted: {}", sexp),
+            Self::Derived { label, sexp } => format!("Derived ({}): {}", label, sexp),
+            Self::ProofRef { sexp } => format!("(proved above): {}", sexp),
+        }
+    }
+
+    fn css_class(&self) -> &'static str {
+        match self {
+            Self::Asserted { .. } => "proof-asserted",
+            Self::Derived { .. } => "proof-derived",
+            Self::ProofRef { .. } => "proof-ref",
+            Self::ExistsWitness { .. } | Self::ModalPassthrough { .. } => "proof-exists",
+            Self::ExistsFailed | Self::ForallCounterexample { .. } => "proof-failed",
+            Self::Negation => "proof-negation",
+            Self::PredicateCheck { .. } | Self::ComputeCheck { .. } => "proof-check",
+            Self::Conjunction => "proof-conjunction",
+            Self::DisjunctionCheck { .. } | Self::DisjunctionIntro { .. } => "proof-derived",
+            Self::ForallVacuous | Self::ForallVerified { .. } => "proof-exists",
+            Self::CountResult { .. } => "proof-check",
+        }
+    }
+}
+
+fn format_term(term: &LogicalTermData) -> String {
+    match term.kind.as_str() {
+        "constant" => term.value.clone().unwrap_or_default(),
+        "number" => term.number.map(|n| format!("{}", n)).unwrap_or_default(),
+        "variable" => term.value.clone().unwrap_or("?".to_string()),
+        "skolem" => term.value.clone().unwrap_or("sk?".to_string()),
+        "description" => format!("le_{}", term.value.as_deref().unwrap_or("?")),
+        _ => format!("({})", term.kind),
+    }
 }
 
 // ── GraphQL helpers ──
@@ -75,6 +208,22 @@ async fn graphql_mutate(query: &str, input: &str) -> Result<serde_json::Value, S
         "query": query,
         "variables": { "input": input }
     });
+    graphql_post(&body).await
+}
+
+async fn graphql_mutate_kb(
+    query: &str,
+    kb: &str,
+    q: &str,
+) -> Result<serde_json::Value, String> {
+    let body = serde_json::json!({
+        "query": query,
+        "variables": { "kb": kb, "query": q }
+    });
+    graphql_post(&body).await
+}
+
+async fn graphql_post(body: &serde_json::Value) -> Result<serde_json::Value, String> {
     let req = Request::post(GRAPHQL_URL)
         .header("Content-Type", "application/json")
         .body(body.to_string())
@@ -99,75 +248,26 @@ async fn graphql_mutate(query: &str, input: &str) -> Result<serde_json::Value, S
     gql.data.ok_or_else(|| "No data in response".to_string())
 }
 
-// ── Command execution ──
+// ── Query execution ──
+// Every query resets the engine, re-asserts the Lojban tab as the KB, then queries.
 
-async fn execute_command(input: &str) -> OutputEntry {
-    let trimmed = input.trim();
-    if trimmed.is_empty() {
-        return OutputEntry {
-            input: input.to_string(),
-            result: String::new(),
-            is_error: false,
-            proof_trace: None,
-        };
-    }
-
-    if let Some(text) = trimmed.strip_prefix("?!") {
-        execute_proof_query(trimmed, text.trim()).await
-    } else if let Some(text) = trimmed.strip_prefix('?') {
-        execute_query(trimmed, text.trim()).await
-    } else {
-        execute_assert(trimmed).await
-    }
-}
-
-async fn execute_assert(text: &str) -> OutputEntry {
-    let query = r#"mutation($input: String!) { assertText(input: $input) { factId error } }"#;
-    match graphql_mutate(query, text).await {
+async fn execute_query(kb: &str, query_text: &str) -> OutputEntry {
+    let gql = r#"mutation($kb: String!, $query: String!) { queryWithKb(kb: $kb, query: $query) { holds error } }"#;
+    match graphql_mutate_kb(gql, kb, query_text).await {
         Ok(data) => {
-            let r = &data["assertText"];
+            let r = &data["queryWithKb"];
             if let Some(err) = r["error"].as_str() {
                 OutputEntry {
-                    input: text.to_string(),
+                    input: format!("? {}", query_text),
                     result: err.to_string(),
                     is_error: true,
                     proof_trace: None,
-                }
-            } else {
-                let fact_id = r["factId"].as_u64().unwrap_or(0);
-                OutputEntry {
-                    input: text.to_string(),
-                    result: format!("Fact #{} asserted", fact_id),
-                    is_error: false,
-                    proof_trace: None,
-                }
-            }
-        }
-        Err(e) => OutputEntry {
-            input: text.to_string(),
-            result: e,
-            is_error: true,
-            proof_trace: None,
-        },
-    }
-}
-
-async fn execute_query(display_input: &str, text: &str) -> OutputEntry {
-    let query = r#"mutation($input: String!) { queryText(input: $input) { holds error } }"#;
-    match graphql_mutate(query, text).await {
-        Ok(data) => {
-            let r = &data["queryText"];
-            if let Some(err) = r["error"].as_str() {
-                OutputEntry {
-                    input: display_input.to_string(),
-                    result: err.to_string(),
-                    is_error: true,
-                    proof_trace: None,
+                    proof_trace_data: None,
                 }
             } else {
                 let holds = r["holds"].as_bool().unwrap_or(false);
                 OutputEntry {
-                    input: display_input.to_string(),
+                    input: format!("? {}", query_text),
                     result: if holds {
                         "TRUE".to_string()
                     } else {
@@ -175,35 +275,41 @@ async fn execute_query(display_input: &str, text: &str) -> OutputEntry {
                     },
                     is_error: false,
                     proof_trace: None,
+                    proof_trace_data: None,
                 }
             }
         }
         Err(e) => OutputEntry {
-            input: display_input.to_string(),
+            input: format!("? {}", query_text),
             result: e,
             is_error: true,
             proof_trace: None,
+            proof_trace_data: None,
         },
     }
 }
 
-async fn execute_proof_query(display_input: &str, text: &str) -> OutputEntry {
-    let query = r#"mutation($input: String!) { queryTextWithProof(input: $input) { holds proofTrace error } }"#;
-    match graphql_mutate(query, text).await {
+async fn execute_proof_query(kb: &str, query_text: &str) -> OutputEntry {
+    let gql = r#"mutation($kb: String!, $query: String!) { queryWithKbProof(kb: $kb, query: $query) { holds proofTrace proofTraceJson error } }"#;
+    match graphql_mutate_kb(gql, kb, query_text).await {
         Ok(data) => {
-            let r = &data["queryTextWithProof"];
+            let r = &data["queryWithKbProof"];
             if let Some(err) = r["error"].as_str() {
                 OutputEntry {
-                    input: display_input.to_string(),
+                    input: format!("?! {}", query_text),
                     result: err.to_string(),
                     is_error: true,
                     proof_trace: None,
+                    proof_trace_data: None,
                 }
             } else {
                 let holds = r["holds"].as_bool().unwrap_or(false);
                 let trace = r["proofTrace"].as_str().map(|s| s.to_string());
+                let trace_data = r["proofTraceJson"]
+                    .as_str()
+                    .and_then(|s| serde_json::from_str::<ProofTraceData>(s).ok());
                 OutputEntry {
-                    input: display_input.to_string(),
+                    input: format!("?! {}", query_text),
                     result: if holds {
                         "TRUE".to_string()
                     } else {
@@ -211,14 +317,16 @@ async fn execute_proof_query(display_input: &str, text: &str) -> OutputEntry {
                     },
                     is_error: false,
                     proof_trace: trace,
+                    proof_trace_data: trace_data,
                 }
             }
         }
         Err(e) => OutputEntry {
-            input: display_input.to_string(),
+            input: format!("?! {}", query_text),
             result: e,
             is_error: true,
             proof_trace: None,
+            proof_trace_data: None,
         },
     }
 }
@@ -229,23 +337,25 @@ async fn execute_proof_query(display_input: &str, text: &str) -> OutputEntry {
 fn App() -> Element {
     let output_log: Signal<Vec<OutputEntry>> = use_signal(Vec::new);
     let proof_text: Signal<Option<String>> = use_signal(|| None);
+    let proof_data: Signal<Option<ProofTraceData>> = use_signal(|| None);
+    let lojban_text: Signal<String> = use_signal(|| String::new());
 
     rsx! {
         document::Link { rel: "stylesheet", href: asset!("/assets/style.css") }
         div { class: "app",
             div { class: "main-row",
                 div { class: "col-tabs",
-                    SourceTabs {}
+                    SourceTabs { lojban_text }
                 }
                 div { class: "col-proof",
-                    ProofPanel { proof_text }
+                    ProofPanel { proof_text, proof_data }
                 }
             }
             div { class: "query-row",
                 div { class: "query-section",
                     div { class: "query-header",
                         StatusBadge {}
-                        QueryBar { output_log, proof_text }
+                        QueryBar { output_log, proof_text, proof_data, lojban_text }
                     }
                     OutputLog { output_log }
                 }
@@ -278,11 +388,16 @@ fn StatusBadge() -> Element {
 }
 
 #[component]
-fn QueryBar(output_log: Signal<Vec<OutputEntry>>, proof_text: Signal<Option<String>>) -> Element {
+fn QueryBar(
+    output_log: Signal<Vec<OutputEntry>>,
+    proof_text: Signal<Option<String>>,
+    proof_data: Signal<Option<ProofTraceData>>,
+    lojban_text: Signal<String>,
+) -> Element {
     let mut query_text = use_signal(|| String::new());
     let mut submitting = use_signal(|| false);
 
-    let submit = move |_: Event<MouseData>| {
+    let mut do_submit = move || {
         let text = query_text.read().clone();
         if text.trim().is_empty() || *submitting.read() {
             return;
@@ -291,32 +406,37 @@ fn QueryBar(output_log: Signal<Vec<OutputEntry>>, proof_text: Signal<Option<Stri
         query_text.set(String::new());
 
         spawn(async move {
-            let entry = execute_command(&text).await;
+            let kb = lojban_text.read().clone();
+            let trimmed = text.trim();
+
+            // Determine if this is a proof query (?!) or regular query (?)
+            let entry = if let Some(q) = trimmed.strip_prefix("?!") {
+                execute_proof_query(&kb, q.trim()).await
+            } else if let Some(q) = trimmed.strip_prefix('?') {
+                execute_query(&kb, q.trim()).await
+            } else {
+                // No prefix — treat as regular query (query bar is query-only)
+                execute_query(&kb, trimmed).await
+            };
+
             if let Some(ref trace) = entry.proof_trace {
                 proof_text.set(Some(trace.clone()));
+            }
+            if let Some(ref data) = entry.proof_trace_data {
+                proof_data.set(Some(data.clone()));
             }
             output_log.write().push(entry);
             submitting.set(false);
         });
     };
 
+    let submit_click = move |_: Event<MouseData>| {
+        do_submit();
+    };
+
     let on_keydown = move |e: KeyboardEvent| {
         if e.key() == Key::Enter {
-            let text = query_text.read().clone();
-            if text.trim().is_empty() || *submitting.read() {
-                return;
-            }
-            submitting.set(true);
-            query_text.set(String::new());
-
-            spawn(async move {
-                let entry = execute_command(&text).await;
-                if let Some(ref trace) = entry.proof_trace {
-                    proof_text.set(Some(trace.clone()));
-                }
-                output_log.write().push(entry);
-                submitting.set(false);
-            });
+            do_submit();
         }
     };
 
@@ -325,7 +445,7 @@ fn QueryBar(output_log: Signal<Vec<OutputEntry>>, proof_text: Signal<Option<Stri
             input {
                 class: "query-input",
                 r#type: "text",
-                placeholder: "Assert facts or query with ? prefix...",
+                placeholder: "Enter Lojban query (use ?! prefix for proof trace)...",
                 value: "{query_text}",
                 oninput: move |e| query_text.set(e.value()),
                 onkeydown: on_keydown,
@@ -333,7 +453,7 @@ fn QueryBar(output_log: Signal<Vec<OutputEntry>>, proof_text: Signal<Option<Stri
             }
             button {
                 class: "query-btn",
-                onclick: submit,
+                onclick: submit_click,
                 disabled: *submitting.read(),
                 if *submitting.read() { "..." } else { "Query" }
             }
@@ -360,10 +480,9 @@ fn OutputLog(output_log: Signal<Vec<OutputEntry>>) -> Element {
 }
 
 #[component]
-fn SourceTabs() -> Element {
+fn SourceTabs(lojban_text: Signal<String>) -> Element {
     let mut active_tab = use_signal(|| ActiveTab::Source);
     let mut source_text = use_signal(|| String::new());
-    let mut lojban_text = use_signal(|| String::new());
     let mut translating = use_signal(|| false);
     let mut translate_error = use_signal(|| Option::<String>::None);
     let back_translation = use_memo(move || {
@@ -444,7 +563,7 @@ fn SourceTabs() -> Element {
                     ActiveTab::Lojban => rsx! {
                         textarea {
                             class: "lojban-input",
-                            placeholder: "Lojban translation will appear here...",
+                            placeholder: "Enter Lojban facts and rules (one per line)...",
                             value: "{lojban_text}",
                             oninput: move |e| lojban_text.set(e.value()),
                         }
@@ -465,16 +584,100 @@ fn SourceTabs() -> Element {
 }
 
 #[component]
-fn ProofPanel(proof_text: Signal<Option<String>>) -> Element {
+fn ProofPanel(
+    proof_text: Signal<Option<String>>,
+    proof_data: Signal<Option<ProofTraceData>>,
+) -> Element {
     let text = proof_text.read();
+    let data = proof_data.read();
 
     rsx! {
         div { class: "proof-panel",
-            if let Some(trace) = text.as_ref() {
+            if let Some(trace_data) = data.as_ref() {
+                div { class: "proof-tree-container",
+                    ProofTreeView { trace: trace_data.clone() }
+                }
+            } else if let Some(trace) = text.as_ref() {
                 pre { class: "proof-trace", "{trace}" }
             } else {
                 div { class: "proof-placeholder",
                     "Run a ?! query to see proof trace"
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn ProofTreeView(trace: ProofTraceData) -> Element {
+    let root_idx = trace.root as usize;
+    if root_idx >= trace.steps.len() {
+        return rsx! { div { class: "proof-error", "Invalid proof trace: root index out of bounds" } };
+    }
+
+    rsx! {
+        div { class: "proof-tree",
+            ProofNodeView { trace: trace.clone(), step_idx: trace.root, depth: 0 }
+        }
+    }
+}
+
+#[component]
+fn ProofNodeView(trace: ProofTraceData, step_idx: u32, depth: u32) -> Element {
+    let idx = step_idx as usize;
+    if idx >= trace.steps.len() {
+        return rsx! { span { class: "proof-error", "?" } };
+    }
+
+    let step = &trace.steps[idx];
+    let rule = &step.rule;
+    let holds = step.holds;
+    let children = &step.children;
+    let css_class = rule.css_class();
+    let icon = rule.icon();
+    let label = rule.label();
+    let auto_open = depth < 3;
+
+    let result_class = if holds { "proof-result-true" } else { "proof-result-false" };
+    let result_label = if holds { "TRUE" } else { "FALSE" };
+
+    // ProofRef is a leaf node — render inline, no expand
+    if matches!(rule, ProofRuleData::ProofRef { .. }) {
+        return rsx! {
+            div { class: "proof-node proof-ref-node",
+                span { class: "proof-icon proof-ref", "{icon}" }
+                span { class: "proof-label proof-ref", "{label}" }
+            }
+        };
+    }
+
+    if children.is_empty() {
+        // Leaf node — no details/summary needed
+        rsx! {
+            div { class: "proof-node proof-leaf {css_class}",
+                span { class: "proof-icon", "{icon}" }
+                span { class: "proof-label", "{label}" }
+                span { class: "proof-result {result_class}", "{result_label}" }
+            }
+        }
+    } else {
+        // Branch node — use details/summary
+        rsx! {
+            details { class: "proof-node {css_class}", open: auto_open,
+                summary { class: "proof-summary",
+                    span { class: "proof-icon", "{icon}" }
+                    span { class: "proof-label", "{label}" }
+                    span { class: "proof-result {result_class}", "{result_label}" }
+                }
+                div { class: "proof-children",
+                    for child_idx in children.iter() {
+                        ProofNodeView {
+                            key: "{child_idx}",
+                            trace: trace.clone(),
+                            step_idx: *child_idx,
+                            depth: depth + 1,
+                        }
+                    }
                 }
             }
         }

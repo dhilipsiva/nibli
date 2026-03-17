@@ -178,6 +178,174 @@ body {
     line-height: 1.5;
 }
 
+/* Proof tree container */
+.proof-tree-container {
+    flex: 1;
+    padding: 12px;
+    overflow: auto;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.proof-tree {
+    padding: 4px 0;
+}
+
+.proof-error {
+    color: #f87171;
+    padding: 8px;
+}
+
+/* Proof node — shared */
+.proof-node {
+    margin: 2px 0;
+    border-left: 2px solid #333;
+    padding-left: 12px;
+}
+
+.proof-leaf {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 0 3px 12px;
+}
+
+.proof-ref-node {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 0 3px 12px;
+    border-left-color: #ffc107;
+}
+
+/* Details/summary styling */
+details.proof-node > summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 0;
+    user-select: none;
+}
+
+details.proof-node > summary::-webkit-details-marker {
+    display: none;
+}
+
+details.proof-node > summary::before {
+    content: "▸";
+    color: #666;
+    font-size: 11px;
+    width: 12px;
+    flex-shrink: 0;
+    transition: transform 0.15s;
+}
+
+details[open].proof-node > summary::before {
+    content: "▾";
+}
+
+.proof-children {
+    margin-left: 8px;
+}
+
+/* Icon */
+.proof-icon {
+    font-weight: 700;
+    flex-shrink: 0;
+    width: 16px;
+    text-align: center;
+}
+
+/* Label */
+.proof-label {
+    color: #ccc;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 600px;
+}
+
+/* Result badges */
+.proof-result {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.proof-result-true {
+    background: #065f46;
+    color: #4ade80;
+}
+
+.proof-result-false {
+    background: #7f1d1d;
+    color: #f87171;
+}
+
+/* Color classes by rule type — border-left + icon color */
+.proof-asserted {
+    border-left-color: #4caf50;
+}
+.proof-asserted .proof-icon {
+    color: #4caf50;
+}
+
+.proof-derived {
+    border-left-color: #2196f3;
+}
+.proof-derived .proof-icon {
+    color: #2196f3;
+}
+
+.proof-ref {
+    border-left-color: #ffc107;
+}
+.proof-ref-node .proof-icon,
+.proof-ref-node .proof-label {
+    color: #ffc107;
+}
+
+.proof-exists {
+    border-left-color: #ff9800;
+}
+.proof-exists .proof-icon {
+    color: #ff9800;
+}
+
+.proof-failed {
+    border-left-color: #f44336;
+}
+.proof-failed .proof-icon {
+    color: #f44336;
+}
+
+.proof-negation {
+    border-left-color: #e91e63;
+}
+.proof-negation .proof-icon {
+    color: #e91e63;
+}
+
+.proof-check {
+    border-left-color: #9e9e9e;
+}
+.proof-check .proof-icon {
+    color: #9e9e9e;
+}
+
+.proof-conjunction {
+    border-left-color: #4caf50;
+}
+.proof-conjunction .proof-icon {
+    color: #4caf50;
+}
+
 /* Row 2: query section */
 .query-row {
     height: 30vh;

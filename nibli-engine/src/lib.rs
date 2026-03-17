@@ -4,6 +4,8 @@
 
 use std::collections::HashSet;
 
+use serde::Serialize;
+
 // ─── Type aliases for each crate's WIT-generated types ──────────────
 
 mod gerna_ast {
@@ -460,6 +462,166 @@ fn format_proof_trace(trace: &logji_logic::ProofTrace) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// PROOF TRACE JSON SERIALIZATION
+// ═══════════════════════════════════════════════════════════════════════
+
+#[derive(Serialize)]
+pub struct ProofTraceJson {
+    pub steps: Vec<ProofStepJson>,
+    pub root: u32,
+}
+
+#[derive(Serialize)]
+pub struct ProofStepJson {
+    pub rule: ProofRuleJson,
+    pub holds: bool,
+    pub children: Vec<u32>,
+}
+
+#[derive(Serialize)]
+pub struct LogicalTermJson {
+    pub kind: String,
+    pub value: Option<String>,
+    pub number: Option<f64>,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "type")]
+pub enum ProofRuleJson {
+    #[serde(rename = "conjunction")]
+    Conjunction,
+    #[serde(rename = "disjunction_check")]
+    DisjunctionCheck { detail: String },
+    #[serde(rename = "disjunction_intro")]
+    DisjunctionIntro { side: String },
+    #[serde(rename = "negation")]
+    Negation,
+    #[serde(rename = "modal_passthrough")]
+    ModalPassthrough { kind: String },
+    #[serde(rename = "exists_witness")]
+    ExistsWitness {
+        var: String,
+        term: LogicalTermJson,
+    },
+    #[serde(rename = "exists_failed")]
+    ExistsFailed,
+    #[serde(rename = "forall_vacuous")]
+    ForallVacuous,
+    #[serde(rename = "forall_verified")]
+    ForallVerified { entities: Vec<LogicalTermJson> },
+    #[serde(rename = "forall_counterexample")]
+    ForallCounterexample { entity: LogicalTermJson },
+    #[serde(rename = "count_result")]
+    CountResult { expected: u32, actual: u32 },
+    #[serde(rename = "predicate_check")]
+    PredicateCheck { method: String, detail: String },
+    #[serde(rename = "compute_check")]
+    ComputeCheck { method: String, detail: String },
+    #[serde(rename = "asserted")]
+    Asserted { sexp: String },
+    #[serde(rename = "derived")]
+    Derived { label: String, sexp: String },
+    #[serde(rename = "proof_ref")]
+    ProofRef { sexp: String },
+}
+
+fn term_to_json(term: &logji_logic::LogicalTerm) -> LogicalTermJson {
+    match term {
+        logji_logic::LogicalTerm::Constant(s) => LogicalTermJson {
+            kind: "constant".to_string(),
+            value: Some(s.clone()),
+            number: None,
+        },
+        logji_logic::LogicalTerm::Variable(s) => LogicalTermJson {
+            kind: "variable".to_string(),
+            value: Some(s.clone()),
+            number: None,
+        },
+        logji_logic::LogicalTerm::Description(s) => LogicalTermJson {
+            kind: "description".to_string(),
+            value: Some(s.clone()),
+            number: None,
+        },
+        logji_logic::LogicalTerm::Number(n) => LogicalTermJson {
+            kind: "number".to_string(),
+            value: None,
+            number: Some(*n),
+        },
+        logji_logic::LogicalTerm::Unspecified => LogicalTermJson {
+            kind: "unspecified".to_string(),
+            value: None,
+            number: None,
+        },
+    }
+}
+
+fn rule_to_json(rule: &logji_logic::ProofRule) -> ProofRuleJson {
+    match rule {
+        logji_logic::ProofRule::Conjunction => ProofRuleJson::Conjunction,
+        logji_logic::ProofRule::DisjunctionCheck(s) => ProofRuleJson::DisjunctionCheck {
+            detail: s.clone(),
+        },
+        logji_logic::ProofRule::DisjunctionIntro(s) => ProofRuleJson::DisjunctionIntro {
+            side: s.clone(),
+        },
+        logji_logic::ProofRule::Negation => ProofRuleJson::Negation,
+        logji_logic::ProofRule::ModalPassthrough(s) => ProofRuleJson::ModalPassthrough {
+            kind: s.clone(),
+        },
+        logji_logic::ProofRule::ExistsWitness((var, term)) => ProofRuleJson::ExistsWitness {
+            var: var.clone(),
+            term: term_to_json(term),
+        },
+        logji_logic::ProofRule::ExistsFailed => ProofRuleJson::ExistsFailed,
+        logji_logic::ProofRule::ForallVacuous => ProofRuleJson::ForallVacuous,
+        logji_logic::ProofRule::ForallVerified(entities) => ProofRuleJson::ForallVerified {
+            entities: entities.iter().map(term_to_json).collect(),
+        },
+        logji_logic::ProofRule::ForallCounterexample(term) => {
+            ProofRuleJson::ForallCounterexample {
+                entity: term_to_json(term),
+            }
+        }
+        logji_logic::ProofRule::CountResult((expected, actual)) => ProofRuleJson::CountResult {
+            expected: *expected,
+            actual: *actual,
+        },
+        logji_logic::ProofRule::PredicateCheck((method, detail)) => {
+            ProofRuleJson::PredicateCheck {
+                method: method.clone(),
+                detail: detail.clone(),
+            }
+        }
+        logji_logic::ProofRule::ComputeCheck((method, detail)) => ProofRuleJson::ComputeCheck {
+            method: method.clone(),
+            detail: detail.clone(),
+        },
+        logji_logic::ProofRule::Asserted(sexp) => ProofRuleJson::Asserted { sexp: sexp.clone() },
+        logji_logic::ProofRule::Derived((label, sexp)) => ProofRuleJson::Derived {
+            label: label.clone(),
+            sexp: sexp.clone(),
+        },
+        logji_logic::ProofRule::ProofRef(sexp) => ProofRuleJson::ProofRef { sexp: sexp.clone() },
+    }
+}
+
+fn proof_trace_to_json(trace: &logji_logic::ProofTrace) -> String {
+    let json_trace = ProofTraceJson {
+        steps: trace
+            .steps
+            .iter()
+            .map(|step| ProofStepJson {
+                rule: rule_to_json(&step.rule),
+                holds: step.holds,
+                children: step.children.clone(),
+            })
+            .collect(),
+        root: trace.root,
+    };
+    serde_json::to_string(&json_trace).unwrap_or_default()
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // ENGINE WRAPPER
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -528,6 +690,11 @@ impl NibliEngine {
         Ok(logji_buf)
     }
 
+    /// Reset the knowledge base, clearing all facts and rules.
+    pub fn reset(&self) {
+        self.kb.reset().ok();
+    }
+
     pub fn assert_text(&self, text: &str) -> Result<u64, String> {
         let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
         self.kb
@@ -542,12 +709,14 @@ impl NibliEngine {
             .map_err(|e| format_logji_error(&e))
     }
 
-    pub fn query_text_with_proof(&self, text: &str) -> Result<(bool, String), String> {
+    pub fn query_text_with_proof(&self, text: &str) -> Result<(bool, String, String), String> {
         let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
         let (holds, trace) = self
             .kb
             .query_entailment_with_proof(buf)
             .map_err(|e| format_logji_error(&e))?;
-        Ok((holds, format_proof_trace(&trace)))
+        let formatted = format_proof_trace(&trace);
+        let json = proof_trace_to_json(&trace);
+        Ok((holds, formatted, json))
     }
 }
