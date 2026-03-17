@@ -52,32 +52,34 @@ just test
 
 ~/nibli〉? lo gerku cu barda
 [Query] TRUE
+  Asserted: gerku(sk_0) & barda(sk_0) → TRUE
 
 ~/nibli〉ro lo gerku cu danlu
 [Fact #2] Asserted.
 
-~/nibli〉? la .alis. gerku .ije ? la .alis. danlu
-[Query] TRUE
+~/nibli〉la .adam. cu gerku
+[Fact #3] Asserted.
 
-~/nibli〉?! la .alis. danlu
-[Proof]
-  Derived (gerku → danlu): (Pred "danlu" (Cons (Const "alis") (Nil))) → TRUE
-    Asserted: (Pred "gerku" (Cons (Const "alis") (Nil))) → TRUE
+~/nibli〉? la .adam. cu danlu
+[Query] TRUE
+  Derived (gerku → danlu): danlu(adam) → TRUE
+    Asserted: gerku(adam) → TRUE
 
 ~/nibli〉?? da gerku
-[Witnesses] da = alis
+[Witnesses] da = adam
 
 ~/nibli〉:debug re lo gerku cu barda
 [Logic] (Count "_v0" 2 (And (Pred "gerku" ...) (Pred "barda" ...)))
 
 ~/nibli〉:assert tenfa 8 2 3
-[Fact #3] tenfa(8, 2, 3) asserted.
+[Fact #4] tenfa(8, 2, 3) asserted.
 
 ~/nibli〉:facts
-[Facts] 3 active fact(s):
+[Facts] 4 active fact(s):
   #1: lo gerku cu barda (1 root(s))
   #2: ro lo gerku cu danlu (1 root(s))
-  #3: :assert tenfa (1 root(s))
+  #3: la .adam. cu gerku (1 root(s))
+  #4: :assert tenfa (1 root(s))
 
 ~/nibli〉:retract 1
 [Retract] Fact #1 retracted. KB rebuilt.
@@ -90,6 +92,28 @@ just test
 
 ~/nibli〉:reset
 [Reset] Knowledge base cleared.
+```
+
+### lo Transparency Triad UI
+
+ni'o la .nibli. cu se pilno lo ueb. tcana noi se zbasu fi la Dioxus .ije lo GraphQL jikca:
+
+```bash
+# lo pamoi skami canlu: ko cfari lo GraphQL jikca (port 8081)
+just server
+
+# lo remoi skami canlu: ko cfari lo ueb. tcana (port 8080)
+just ui
+```
+
+ni'o lo ueb. tcana cu se pilno lo stateless KB: ro preti cu ri zbasu lo KB fi lo Lojban tcita .ije cu preti. lo munje se cusku:
+
+```
+ro lo gerku cu danlu          # ro da poi gerku cu danlu
+ro lo danlu cu citka          # ro da poi danlu cu citka
+la .adam. cu gerku            # la .adam. cu gerku
+
+preti: la .adam. cu citka     # → JETNU (TRUE) + krinu tricu (proof tree)
 ```
 
 ## ni'o lo skami tutci

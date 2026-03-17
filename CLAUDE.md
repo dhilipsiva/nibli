@@ -19,9 +19,12 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | Command | What it does |
 |---------|-------------|
 | `just run` | Full pipeline: clean WASM -> build components -> fuse with wac -> launch REPL |
+| `just check` | Fast type-check all workspace crates (`cargo check --workspace`) |
 | `just test` | Run all unit tests (`cargo test --lib -- --nocapture --test-threads=1`) |
+| `just test-engine` | Run nibli-engine integration tests (full pipeline: parse → compile → reason) |
 | `just test-gerna` | Run gerna (parser) tests only |
 | `just test-backend` | Run Python backend tests |
+| `just test-all` | Run every test suite (unit + integration + Python) |
 | `just build-wasm` | Build WASM components + fuse with wac |
 | `just build-gasnu` | Build native Wasmtime host gasnu (runner) |
 | `just backend` | Start the Python reference compute backend (port 5555) |
@@ -166,7 +169,7 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 
 - REPL `:load <filepath>` command: batch-loads a `.lojban` file into the knowledge base; reads file line by line, skips blank lines and `#` comment lines, asserts each remaining line via `call_assert_text`; per-line refueling prevents fuel exhaustion on large files; reports per-line fact IDs or errors with line numbers; final summary shows asserted/skipped/errors counts; use with `readme.lojban` ontological prelude to bootstrap the KB
 
-**Transparency Triad UI (Steps 1-9 of 10 complete):**
+**Transparency Triad UI (Steps 1-10 of 10 complete):**
 - Step 1: Workspace scaffolding + Dioxus web app (nibli-ui crate, dx serve)
 - Step 2: Two-row layout with tabs (Source/Lojban/Back-translation) + query bar + proof panel
 - Step 3: GraphQL backend server (nibli-server + nibli-engine, native Rust — no WASM)
@@ -176,6 +179,7 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - Step 7: Proof trace visualization with human-readable s-expression formatting
 - Step 8: Fact management — KB status bar with per-line validation, .lojban file loading, clear button; Ollama temperature fixed to 0.0
 - Step 9: UI polish — keyboard shortcuts (Ctrl+L/K/O), loading spinners, structured error display, output log improvements (cap/clear/auto-scroll), proof tree connectors, default example syllogism; unified query/proof across entire stack (engine, server, REPL, UI)
+- Step 10: Integration tests (16 tests via nibli-engine), Justfile targets (check, test-engine, test-all), README documentation (updated REPL examples, added Transparency Triad UI section)
 
 **UI query semantics:** Every query resets the engine, re-asserts the full Lojban tab text as the KB, then runs the query. The query bar is pure queries only (no assertions). The Lojban tab is the single source of truth.
 

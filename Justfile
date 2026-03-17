@@ -53,6 +53,10 @@ run-native: build-native
     @echo "Launching Native Neuro-Symbolic Engine ({{profile}})..."
     cargo run -p nibli {{cargo_profile_flag}}
 
+# Fast type-check all workspace crates (no codegen)
+check:
+    cargo check --workspace
+
 # Run gerna unit tests only (bypasses cdylib linker issues)
 test-gerna:
     cargo test -p gerna --lib -- --nocapture
@@ -60,6 +64,10 @@ test-gerna:
 # Run all unit tests across workspace
 test:
     cargo test --lib -- --nocapture --test-threads=1
+
+# Run nibli-engine integration tests (full pipeline: parse → compile → reason)
+test-engine:
+    cargo test -p nibli-engine --test integration -- --nocapture --test-threads=1
 
 # Start the Python reference compute backend
 backend:
@@ -89,6 +97,9 @@ server:
 # Launch Transparency Triad web UI (dev server with hot-reload)
 ui:
     cd nibli-ui && dx serve
+
+# Run every test suite (unit + integration + Python)
+test-all: test test-engine test-backend test-classifier
 
 # Wipes all compilation artifacts
 clean:
