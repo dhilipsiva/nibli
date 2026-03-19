@@ -1922,6 +1922,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "nibli-protocol",
+ "nibli-store",
+ "postcard",
  "reedline",
  "serde",
  "serde_json",

@@ -20,6 +20,7 @@
 
 use anyhow::Result;
 use nibli_protocol::humanize_sexp;
+use nibli_store::{NibliStore, StoredAssertion, StoredLogicalTerm as StoredTerm};
 use reedline::{DefaultPrompt, Reedline, Signal};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -341,6 +342,52 @@ fn parse_assert_args(input: &str) -> std::result::Result<(String, Vec<EngineLogi
     Ok((relation, args))
 }
 
+/// Convert a WIT LogicalTerm to a StoredTerm for persistence.
+fn wit_term_to_stored(t: &EngineLogicalTerm) -> StoredTerm {
+    match t {
+        EngineLogicalTerm::Variable(v) => StoredTerm::Variable(v.clone()),
+        EngineLogicalTerm::Constant(c) => StoredTerm::Constant(c.clone()),
+        EngineLogicalTerm::Description(d) => StoredTerm::Description(d.clone()),
+        EngineLogicalTerm::Unspecified => StoredTerm::Unspecified,
+        EngineLogicalTerm::Number(n) => StoredTerm::Number(*n),
+    }
+}
+
+/// Convert a StoredTerm back to a WIT LogicalTerm for replay.
+fn stored_term_to_wit(t: &StoredTerm) -> EngineLogicalTerm {
+    match t {
+        StoredTerm::Variable(v) => EngineLogicalTerm::Variable(v.clone()),
+        StoredTerm::Constant(c) => EngineLogicalTerm::Constant(c.clone()),
+        StoredTerm::Description(d) => EngineLogicalTerm::Description(d.clone()),
+        StoredTerm::Unspecified => EngineLogicalTerm::Unspecified,
+        StoredTerm::Number(n) => EngineLogicalTerm::Number(*n),
+    }
+}
+
+/// Persist a text assertion to the store (if configured).
+fn persist_text(nibli_store: &mut Option<NibliStore>, fact_id: u64, text: &str) {
+    if let Some(s) = nibli_store.as_mut() {
+        let assertion = StoredAssertion::Text(text.to_string());
+        if let Ok(payload) = postcard::to_allocvec(&assertion) {
+            let _ = s.insert_fact(fact_id, text.to_string(), payload);
+        }
+    }
+}
+
+/// Persist a direct assertion to the store (if configured).
+fn persist_direct(nibli_store: &mut Option<NibliStore>, fact_id: u64, relation: &str, args: &[EngineLogicalTerm]) {
+    if let Some(s) = nibli_store.as_mut() {
+        let assertion = StoredAssertion::Direct {
+            relation: relation.to_string(),
+            args: args.iter().map(wit_term_to_stored).collect(),
+        };
+        let label = format!(":assert {} {}", relation, args.iter().map(|a| format_term(a)).collect::<Vec<_>>().join(" "));
+        if let Ok(payload) = postcard::to_allocvec(&assertion) {
+            let _ = s.insert_fact(fact_id, label, payload);
+        }
+    }
+}
+
 fn refuel(store: &mut Store<HostState>, budget: u64) {
     let _ = store.set_fuel(budget);
 }
@@ -445,11 +492,86 @@ fn main() -> Result<()> {
             .ok();
     }
 
+    // ── Persistent store (optional) ──
+    let db_path = std::env::var("NIBLI_DB_PATH").ok();
+    let mut nibli_store: Option<NibliStore> = match &db_path {
+        Some(p) => {
+            match NibliStore::open(Path::new(p), "gasnu-local".to_string()) {
+                Ok(s) => {
+                    println!("Persistent store: {}", p);
+                    Some(s)
+                }
+                Err(e) => {
+                    println!("[Store] Failed to open {}: {} (running without persistence)", p, e);
+                    None
+                }
+            }
+        }
+        None => None,
+    };
+
+    // Replay persisted facts into WASM session
+    if let Some(ref s) = nibli_store {
+        match s.all_active_facts() {
+            Ok(facts) if !facts.is_empty() => {
+                println!("[Store] Replaying {} persisted facts...", facts.len());
+                let mut replayed = 0u32;
+                let mut replay_errors = 0u32;
+                for fact in &facts {
+                    let assertion: StoredAssertion = match postcard::from_bytes(&fact.payload) {
+                        Ok(a) => a,
+                        Err(e) => {
+                            println!("[Store] Fact #{} deserialize error: {}", fact.id, e);
+                            replay_errors += 1;
+                            continue;
+                        }
+                    };
+                    refuel(&mut store, fuel_budget);
+                    match assertion {
+                        StoredAssertion::Text(ref text) => {
+                            match session.call_assert_text(&mut store, session_handle, text) {
+                                Ok(Ok(_)) => replayed += 1,
+                                Ok(Err(e)) => {
+                                    println!("[Store] Replay fact #{}: {}", fact.id, format_nibli_error(&e));
+                                    replay_errors += 1;
+                                }
+                                Err(e) => {
+                                    println!("[Store] Replay fact #{}: {}", fact.id, format_host_error(&e));
+                                    replay_errors += 1;
+                                }
+                            }
+                        }
+                        StoredAssertion::Direct { ref relation, ref args } => {
+                            let wit_args: Vec<EngineLogicalTerm> = args.iter().map(stored_term_to_wit).collect();
+                            match session.call_assert_fact(&mut store, session_handle, relation, &wit_args) {
+                                Ok(Ok(_)) => replayed += 1,
+                                Ok(Err(e)) => {
+                                    println!("[Store] Replay fact #{}: {}", fact.id, format_nibli_error(&e));
+                                    replay_errors += 1;
+                                }
+                                Err(e) => {
+                                    println!("[Store] Replay fact #{}: {}", fact.id, format_host_error(&e));
+                                    replay_errors += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+                if replay_errors > 0 {
+                    println!("[Store] Replay: {} ok, {} errors", replayed, replay_errors);
+                } else {
+                    println!("[Store] Replay complete ({} facts)", replayed);
+                }
+            }
+            _ => {}
+        }
+    }
+
     let mut line_editor = Reedline::create();
     let prompt = DefaultPrompt::default();
 
     println!(
-        "Ready. Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :saturate [n] :help"
+        "Ready. Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :saturate [n] :db :help"
     );
     println!("Prefix '?' for queries, '?!' for proof trace, '??' for find, plain text for assertions.\n");
 
@@ -467,9 +589,26 @@ fn main() -> Result<()> {
                     ":reset" | ":r" => {
                         refuel(&mut store, fuel_budget);
                         match session.call_reset_kb(&mut store, session_handle) {
-                            Ok(Ok(())) => println!("[Reset] Knowledge base cleared."),
+                            Ok(Ok(())) => {
+                                if let Some(s) = nibli_store.as_mut() {
+                                    let _ = s.clear();
+                                }
+                                println!("[Reset] Knowledge base cleared.");
+                            }
                             Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                             Err(e) => println!("{}", format_host_error(&e)),
+                        }
+                        continue;
+                    }
+                    ":db" => {
+                        match &nibli_store {
+                            Some(s) => {
+                                let active = s.active_fact_count().unwrap_or(0);
+                                let total = s.total_fact_count().unwrap_or(0);
+                                println!("[Store] {} (node: {})", db_path.as_deref().unwrap_or("?"), s.node_id());
+                                println!("[Store] {} active facts, {} total (including retracted)", active, total);
+                            }
+                            None => println!("[Store] No persistent store configured. Set NIBLI_DB_PATH env var."),
                         }
                         continue;
                     }
@@ -533,6 +672,7 @@ fn main() -> Result<()> {
                         println!("  :fuel [amount]      Show or set WASM fuel budget per command");
                         println!("  :memory [mb]        Show or set WASM memory limit in MB");
                         println!("  :saturate [n]       Show or set run bound");
+                        println!("  :db                 Show persistent store info");
                         println!("  :reset              Clear all facts (fresh KB)");
                         println!("  :quit               Exit");
                         continue;
@@ -639,12 +779,15 @@ fn main() -> Result<()> {
                                 &relation,
                                 &args,
                             ) {
-                                Ok(Ok(fact_id)) => println!(
-                                    "[Fact #{}] {}({}) asserted.",
-                                    fact_id,
-                                    relation,
-                                    display_args.join(", ")
-                                ),
+                                Ok(Ok(fact_id)) => {
+                                    persist_direct(&mut nibli_store, fact_id, &relation, &args);
+                                    println!(
+                                        "[Fact #{}] {}({}) asserted.",
+                                        fact_id,
+                                        relation,
+                                        display_args.join(", ")
+                                    );
+                                }
                                 Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                                 Err(e) => println!("{}", format_host_error(&e)),
                             }
@@ -657,7 +800,12 @@ fn main() -> Result<()> {
                         Ok(id) => {
                             refuel(&mut store, fuel_budget);
                             match session.call_retract_fact(&mut store, session_handle, id) {
-                                Ok(Ok(())) => println!("[Retract] Fact #{} retracted. KB rebuilt.", id),
+                                Ok(Ok(())) => {
+                                    if let Some(s) = nibli_store.as_mut() {
+                                        let _ = s.retract_fact(id);
+                                    }
+                                    println!("[Retract] Fact #{} retracted. KB rebuilt.", id);
+                                }
                                 Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                                 Err(e) => println!("{}", format_host_error(&e)),
                             }
@@ -704,6 +852,7 @@ fn main() -> Result<()> {
                         refuel(&mut store, fuel_budget);
                         match session.call_assert_text(&mut store, session_handle, trimmed) {
                             Ok(Ok(fact_id)) => {
+                                persist_text(&mut nibli_store, fact_id, trimmed);
                                 println!("[Fact #{}] {}", fact_id, trimmed);
                                 asserted += 1;
                             }
@@ -766,7 +915,10 @@ fn main() -> Result<()> {
                 } else {
                     refuel(&mut store, fuel_budget);
                     match session.call_assert_text(&mut store, session_handle, input) {
-                        Ok(Ok(fact_id)) => println!("[Fact #{}] Asserted.", fact_id),
+                        Ok(Ok(fact_id)) => {
+                            persist_text(&mut nibli_store, fact_id, input);
+                            println!("[Fact #{}] Asserted.", fact_id);
+                        }
                         Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                         Err(e) => println!("{}", format_host_error(&e)),
                     }

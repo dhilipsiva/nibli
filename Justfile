@@ -98,8 +98,16 @@ server:
 ui:
     cd nibli-ui && dx serve
 
-# Run every test suite (unit + integration + Python)
-test-all: test test-engine test-backend test-classifier
+# Run nibli-store unit tests
+test-store:
+    cargo test -p nibli-store -- --nocapture
+
+# Run REPL with persistent storage
+run-persist: build-wasm
+    NIBLI_DB_PATH=nibli.redb NIBLI_WASM_PATH={{wasm_dir}}/lasna-pipeline.wasm cargo run -p gasnu {{cargo_profile_flag}}
+
+# Run every test suite (unit + integration + Python + store)
+test-all: test test-engine test-store test-backend test-classifier
 
 # Wipes all compilation artifacts
 clean:
