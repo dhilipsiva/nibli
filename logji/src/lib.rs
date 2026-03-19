@@ -29,6 +29,62 @@ use crate::bindings::lojban::nibli::logic_types::{
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
+// ─── S-Expression String Interner ─────────────────────────────────
+
+/// Lightweight string interner for s-expression deduplication.
+/// Stores unique strings once and returns u32 keys for O(1) equality checks.
+/// Resolves keys back to &str in O(1) via index lookup.
+struct SexpInterner {
+    strings: Vec<String>,
+    lookup: HashMap<String, u32>,
+}
+
+impl SexpInterner {
+    fn new() -> Self {
+        Self {
+            strings: Vec::new(),
+            lookup: HashMap::new(),
+        }
+    }
+
+    /// Intern a string, returning its unique key. Deduplicates on insert.
+    fn intern(&mut self, s: &str) -> u32 {
+        if let Some(&key) = self.lookup.get(s) {
+            return key;
+        }
+        let key = self.strings.len() as u32;
+        self.lookup.insert(s.to_string(), key);
+        self.strings.push(s.to_string());
+        key
+    }
+
+    /// Intern an owned string, avoiding a copy if it's new.
+    fn intern_owned(&mut self, s: String) -> u32 {
+        if let Some(&key) = self.lookup.get(&s) {
+            return key;
+        }
+        let key = self.strings.len() as u32;
+        self.strings.push(s.clone());
+        self.lookup.insert(s, key);
+        key
+    }
+
+    /// Resolve a key back to its string. Panics on invalid key.
+    fn resolve(&self, key: u32) -> &str {
+        &self.strings[key as usize]
+    }
+
+    /// Check if a string is already interned, returning its key if so.
+    fn get(&self, s: &str) -> Option<u32> {
+        self.lookup.get(s).copied()
+    }
+
+    fn clear(&mut self) {
+        self.strings.clear();
+        self.lookup.clear();
+    }
+}
+
 // ─── Knowledge Base State ────────────────────────────────────────
 
 /// Registry entry for a SkolemFn created by native rule compilation.
@@ -49,10 +105,10 @@ const SKDEP_PREFIX: &str = "__skdep__";
 struct UniversalRuleRecord {
     /// Human-readable label, e.g. "gerku → danlu"
     label: String,
-    /// S-expression templates for the rule's conditions (without `(IsTrue ...)` wrapper).
-    condition_templates: Vec<String>,
-    /// S-expression templates for the rule's conclusions (without `(IsTrue ...)` wrapper).
-    conclusion_templates: Vec<String>,
+    /// Interned s-expression keys for the rule's conditions.
+    condition_templates: Vec<u32>,
+    /// Interned s-expression keys for the rule's conclusions.
+    conclusion_templates: Vec<u32>,
     /// Pattern variable names used in templates, e.g. ["x__v0"].
     pattern_var_names: Vec<String>,
 }
@@ -68,6 +124,8 @@ struct FactRecord {
 
 /// All mutable KB state behind a single RefCell.
 struct KnowledgeBaseInner {
+    /// S-expression string interner — deduplicates all sexp strings.
+    interner: SexpInterner,
     skolem_counter: usize,
     known_entities: HashSet<String>,
     /// Event Skolem constants (from `_ev*` variables). Tracked for witness search
@@ -78,8 +136,8 @@ struct KnowledgeBaseInner {
     known_descriptions: HashSet<String>,
     known_rules: HashSet<String>,
     skolem_fn_registry: Vec<SkolemFnEntry>,
-    /// Ground facts directly asserted by the user (for provenance tracking).
-    asserted_sexps: HashSet<String>,
+    /// Ground facts as interned s-expression keys.
+    asserted_sexps: HashSet<u32>,
     /// Compiled universal rule templates indexed by conclusion predicate name.
     /// Each predicate name maps to the rules whose conclusion templates mention it.
     universal_rules: HashMap<String, Vec<UniversalRuleRecord>>,
@@ -96,6 +154,7 @@ struct KnowledgeBaseInner {
 impl KnowledgeBaseInner {
     fn new() -> Self {
         Self {
+            interner: SexpInterner::new(),
             skolem_counter: 0,
             known_entities: HashSet::new(),
             known_event_entities: HashSet::new(),
@@ -112,6 +171,7 @@ impl KnowledgeBaseInner {
     }
 
     fn reset(&mut self) {
+        self.interner.clear();
         self.skolem_counter = 0;
         self.known_entities.clear();
         self.known_event_entities.clear();
@@ -358,12 +418,7 @@ fn register_ground_material_conditional(
                     condition_sexps.iter().map(|s| extract_pred_name(s).unwrap_or("?")).collect::<Vec<_>>().join(" ∧ "),
                     extract_pred_name(&conclusion_sexp).unwrap_or("?")
                 );
-                add_universal_rule(&mut inner.universal_rules,UniversalRuleRecord {
-                    label,
-                    condition_templates: condition_sexps,
-                    conclusion_templates: vec![conclusion_sexp],
-                    pattern_var_names: vec![],
-                });
+                register_rule(inner, label, condition_sexps, vec![conclusion_sexp], vec![]);
             }
             // Also check Or(Q, Not(P)) — reversed order (commutativity)
             else if let LogicNode::NotNode(neg_inner) = &buffer.nodes[*r as usize] {
@@ -379,12 +434,7 @@ fn register_ground_material_conditional(
                     condition_sexps.iter().map(|s| extract_pred_name(s).unwrap_or("?")).collect::<Vec<_>>().join(" ∧ "),
                     extract_pred_name(&conclusion_sexp).unwrap_or("?")
                 );
-                add_universal_rule(&mut inner.universal_rules,UniversalRuleRecord {
-                    label,
-                    condition_templates: condition_sexps,
-                    conclusion_templates: vec![conclusion_sexp],
-                    pattern_var_names: vec![],
-                });
+                register_rule(inner, label, condition_sexps, vec![conclusion_sexp], vec![]);
             }
         }
         _ => {}
@@ -493,7 +543,7 @@ fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) -> Res
                     None => leaf_sexp,
                 };
                 // Record as asserted fact for provenance tracking and backward-chaining
-                inner.asserted_sexps.insert(wrapped.clone());
+                assert_sexp(wrapped.clone(), inner);
             }
 
             // Register ground material conditionals for backward-chaining
@@ -559,7 +609,8 @@ impl KnowledgeBase {
     /// Rebuild the KB from all non-retracted facts.
     /// Preserves fact_registry and fact_counter; resets all derived state.
     fn rebuild_inner(inner: &mut KnowledgeBaseInner) -> Result<(), String> {
-        // Reset derived state
+        // Reset derived state (interner too — all interned keys become invalid)
+        inner.interner.clear();
         inner.skolem_counter = 0;
         inner.known_entities.clear();
         inner.known_event_entities.clear();
@@ -1001,7 +1052,7 @@ fn check_formula_holds(
             if let Ok(result) = dispatch_to_backend(rel, &resolved) {
                 if result {
                     if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
-                        inner.asserted_sexps.insert(sexp);
+                        assert_sexp(sexp, inner);
                     }
                 }
                 return Ok(result);
@@ -1010,7 +1061,7 @@ fn check_formula_holds(
             if let Some(result) = try_arithmetic_evaluation(rel, args, subs) {
                 if result {
                     if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
-                        inner.asserted_sexps.insert(sexp);
+                        assert_sexp(sexp, inner);
                     }
                 }
                 return Ok(result);
@@ -1131,11 +1182,13 @@ fn try_backward_chain_traced(
     let rules: Vec<UniversalRuleRecord> = collect_matching_rules(sexp, &inner.universal_rules);
 
     for rule in &rules {
-        for conclusion_template in &rule.conclusion_templates {
+        // Resolve interned template keys to strings for pattern matching
+        let conclusion_strs: Vec<String> = rule.conclusion_templates.iter().map(|&k| inner.interner.resolve(k).to_string()).collect();
+        let condition_strs: Vec<String> = rule.condition_templates.iter().map(|&k| inner.interner.resolve(k).to_string()).collect();
+
+        for conclusion_template in &conclusion_strs {
             if let Some(mut bindings) = sexp_match(conclusion_template, sexp, &rule.pattern_var_names)
             {
-                // Resolve unbound event pattern variables (ev__* vars that appear
-                // in conditions but not in conclusions, so weren't bound by sexp_match).
                 let unbound_event_vars: Vec<String> = rule
                     .pattern_var_names
                     .iter()
@@ -1144,7 +1197,6 @@ fn try_backward_chain_traced(
                     .collect();
 
                 if !unbound_event_vars.is_empty() {
-                    // Build candidate witness list: domain members + SkolemFn witnesses
                     let members = inner.all_domain_members();
                     let member_sexps: Vec<String> =
                         members.iter().map(|(s, _)| s.clone()).collect();
@@ -1157,11 +1209,9 @@ fn try_backward_chain_traced(
                         }
                     }
 
-                    // Per-variable pre-filtering (same as try_backward_chain)
                     let mut per_var_candidates: Vec<Vec<String>> = Vec::new();
                     for ev_var in &unbound_event_vars {
-                        let single_var_conditions: Vec<&String> = rule
-                            .condition_templates
+                        let single_var_conditions: Vec<&String> = condition_strs
                             .iter()
                             .filter(|ct| {
                                 ct.contains(ev_var.as_str())
@@ -1200,7 +1250,7 @@ fn try_backward_chain_traced(
                         for (i, ev_var) in unbound_event_vars.iter().enumerate() {
                             bindings.insert(ev_var.clone(), combo[i].clone());
                         }
-                        let all_hold = rule.condition_templates.iter().all(|ct| {
+                        let all_hold = condition_strs.iter().all(|ct| {
                             let cs = sexp_substitute(ct, &bindings);
                             check_predicate_in_kb(&cs, &*inner, depth + 1, &mut HashSet::new())
                         });
@@ -1221,7 +1271,7 @@ fn try_backward_chain_traced(
                 let mut all_conditions_hold = true;
                 let mut condition_sexps = Vec::new();
 
-                for cond_template in &rule.condition_templates {
+                for cond_template in &condition_strs {
                     let cond_sexp = sexp_substitute(cond_template, &bindings);
                     if check_predicate_in_kb(&cond_sexp, &*inner, depth + 1, &mut HashSet::new()) {
                         condition_sexps.push(cond_sexp);
@@ -1280,7 +1330,7 @@ fn check_predicate_in_kb(
     depth: usize,
     visited: &mut HashSet<String>,
 ) -> bool {
-    if inner.asserted_sexps.contains(sexp) {
+    if sexp_is_asserted(sexp, inner) {
         return true;
     }
     // Check the predicate result cache (avoids redundant backward-chain attempts)
@@ -1333,7 +1383,11 @@ fn try_backward_chain(
     let rules_snapshot = collect_matching_rules(sexp, &inner.universal_rules);
 
     for rule in &rules_snapshot {
-        for conclusion_template in &rule.conclusion_templates {
+        // Resolve interned template keys to strings for pattern matching
+        let conclusion_strs: Vec<String> = rule.conclusion_templates.iter().map(|&k| inner.interner.resolve(k).to_string()).collect();
+        let condition_strs: Vec<String> = rule.condition_templates.iter().map(|&k| inner.interner.resolve(k).to_string()).collect();
+
+        for conclusion_template in &conclusion_strs {
             let bindings_opt = sexp_match(conclusion_template, sexp, &rule.pattern_var_names);
             if bindings_opt.is_none() {
                 continue;
@@ -1359,16 +1413,9 @@ fn try_backward_chain(
                     }
                 }
 
-                // Per-variable pre-filtering: for each unbound event var, filter
-                // candidates using conditions that ONLY involve that one unbound var
-                // (all others are already bound). This dramatically reduces the
-                // cartesian product from O(C^N) to O(F1 × F2 × ... × FN) where
-                // Fi << C for each variable.
                 let mut per_var_candidates: Vec<Vec<String>> = Vec::new();
                 for ev_var in &unbound_event_vars {
-                    // Find conditions that reference this var but NO other unbound event var
-                    let single_var_conditions: Vec<&String> = rule
-                        .condition_templates
+                    let single_var_conditions: Vec<&String> = condition_strs
                         .iter()
                         .filter(|ct| {
                             ct.contains(ev_var.as_str())
@@ -1410,7 +1457,7 @@ fn try_backward_chain(
                     for (i, ev_var) in unbound_event_vars.iter().enumerate() {
                         bindings.insert(ev_var.clone(), combo[i].clone());
                     }
-                    let all_hold = rule.condition_templates.iter().all(|ct| {
+                    let all_hold = condition_strs.iter().all(|ct| {
                         let cs = sexp_substitute(ct, &bindings);
                         check_predicate_in_kb(&cs, inner, depth + 1, visited)
                     });
@@ -1428,7 +1475,7 @@ fn try_backward_chain(
             }
 
             // Verify all conditions hold
-            let all_conditions_hold = rule.condition_templates.iter().all(|ct| {
+            let all_conditions_hold = condition_strs.iter().all(|ct| {
                 let cs = sexp_substitute(ct, &bindings);
                 check_predicate_in_kb(&cs, inner, depth + 1, visited)
             });
@@ -1466,7 +1513,7 @@ fn trace_predicate_provenance(
     }
 
     // 1. Was this fact directly asserted?
-    if inner.asserted_sexps.contains(sexp) {
+    if sexp_is_asserted(sexp, inner) {
         let idx = steps.len() as u32;
         steps.push(ProofStep {
             rule: ProofRule::Asserted(sexp.to_string()),
@@ -1800,7 +1847,7 @@ fn check_formula_holds_traced(
             if let Ok(result) = dispatch_to_backend(rel, &resolved) {
                 if result {
                     if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
-                        inner.asserted_sexps.insert(sexp);
+                        assert_sexp(sexp, inner);
                     }
                 }
                 let idx = steps.len() as u32;
@@ -1815,7 +1862,7 @@ fn check_formula_holds_traced(
             if let Some(result) = try_arithmetic_evaluation(rel, args, subs) {
                 if result {
                     if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
-                        inner.asserted_sexps.insert(sexp);
+                        assert_sexp(sexp, inner);
                     }
                 }
                 let idx = steps.len() as u32;
@@ -2185,31 +2232,66 @@ fn collect_matching_rules(sexp: &str, rules: &HashMap<String, Vec<UniversalRuleR
             result.extend(matching.iter().cloned());
         }
     }
-    // Always include fallback rules (rules without extractable predicate names).
     if let Some(fallback) = rules.get("__fallback__") {
         result.extend(fallback.iter().cloned());
     }
     result
 }
 
+/// Resolve an interned key to its string and look up in asserted_sexps.
+fn sexp_is_asserted(sexp: &str, inner: &KnowledgeBaseInner) -> bool {
+    inner.interner.get(sexp).is_some_and(|key| inner.asserted_sexps.contains(&key))
+}
+
+/// Intern a vec of s-expression strings, returning interned keys.
+fn intern_vec(strings: &[String], interner: &mut SexpInterner) -> Vec<u32> {
+    strings.iter().map(|s| interner.intern(s)).collect()
+}
+
+/// Create and register a universal rule from string templates.
+/// Interns the templates, builds the rule, and indexes it.
+fn register_rule(
+    inner: &mut KnowledgeBaseInner,
+    label: String,
+    condition_strings: Vec<String>,
+    conclusion_strings: Vec<String>,
+    pattern_var_names: Vec<String>,
+) {
+    let cond_keys = intern_vec(&condition_strings, &mut inner.interner);
+    let concl_keys = intern_vec(&conclusion_strings, &mut inner.interner);
+    let rule = UniversalRuleRecord {
+        label,
+        condition_templates: cond_keys,
+        conclusion_templates: concl_keys,
+        pattern_var_names,
+    };
+    add_universal_rule(&mut inner.universal_rules, rule, &inner.interner);
+}
+
+/// Intern a string and insert into asserted_sexps.
+fn assert_sexp(sexp: String, inner: &mut KnowledgeBaseInner) {
+    let key = inner.interner.intern_owned(sexp);
+    inner.asserted_sexps.insert(key);
+}
+
 /// Add a universal rule to the predicate-indexed rule map.
 /// Indexes the rule by each conclusion template's predicate name.
-fn add_universal_rule(rules: &mut HashMap<String, Vec<UniversalRuleRecord>>, rule: UniversalRuleRecord) {
-    // Collect unique predicate names from conclusion templates.
+/// Resolves interned conclusion keys via the interner to extract predicate names.
+fn add_universal_rule(rules: &mut HashMap<String, Vec<UniversalRuleRecord>>, rule: UniversalRuleRecord, interner: &SexpInterner) {
     let mut indexed = false;
-    for concl in &rule.conclusion_templates {
-        if let Some(pred_name) = extract_pred_name_deep(concl) {
+    for &concl_key in &rule.conclusion_templates {
+        let concl_str = interner.resolve(concl_key);
+        if let Some(pred_name) = extract_pred_name_deep(concl_str) {
             rules.entry(pred_name.to_string()).or_default().push(rule.clone());
             indexed = true;
         }
     }
-    // Fallback: if no predicate name could be extracted, index under "__fallback__".
     if !indexed {
         rules.entry("__fallback__".to_string()).or_default().push(rule);
     }
 }
 
-/// Build a human-readable rule label from condition/conclusion templates.
+/// Build a human-readable rule label from condition/conclusion template strings.
 fn build_rule_label(conditions: &[String], conclusions: &[String]) -> String {
     let cond_names: Vec<&str> = conditions
         .iter()
@@ -2380,12 +2462,7 @@ fn compile_forall_to_rule(
 
                 // Record rule structure for backward-chaining provenance
                 let label = build_rule_label(&bare_condition_sexps, &bare_conclusion_sexps);
-                add_universal_rule(&mut inner.universal_rules,UniversalRuleRecord {
-                    label,
-                    condition_templates: bare_condition_sexps.clone(),
-                    conclusion_templates: bare_conclusion_sexps.clone(),
-                    pattern_var_names: all_pattern_var_names.clone(),
-                });
+                register_rule(inner, label, bare_condition_sexps.clone(), bare_conclusion_sexps.clone(), all_pattern_var_names.clone());
 
                 // ── xorlo presupposition: assert restrictor domain is non-empty ──
                 // In Lojban, `ro lo P cu Q` presupposes at least one P exists.
@@ -2416,7 +2493,7 @@ fn compile_forall_to_rule(
                 for &cid in &all_conditions {
                     let presup = reconstruct_sexp_with_subs(buffer, cid, &xp_subs);
                     // Record xorlo presupposition as asserted for provenance
-                    inner.asserted_sexps.insert(presup);
+                    assert_sexp(presup, inner);
                 }
 
                 // ── Temporal lifting: compile Past/Present/Future variants ──
@@ -2467,12 +2544,7 @@ fn compile_forall_to_rule(
 
                 // Record bare rule structure for backward-chaining provenance
                 let label = build_rule_label(&[], &[body_sexp.clone()]);
-                add_universal_rule(&mut inner.universal_rules,UniversalRuleRecord {
-                    label,
-                    condition_templates: vec![],
-                    conclusion_templates: vec![body_sexp.clone()],
-                    pattern_var_names: pattern_var_names.clone(),
-                });
+                register_rule(inner, label, vec![], vec![body_sexp.clone()], pattern_var_names.clone());
 
                 // ── Temporal lifting: compile Past/Present/Future variants ──
                 compile_temporal_lifted_rules(inner, &[], &[body_sexp], &pattern_var_names)?;
@@ -2506,12 +2578,7 @@ fn compile_temporal_lifted_rules(
                 .map(|s| format!("({} {})", tense, s))
                 .collect();
             let label = build_rule_label(&tensed_cond_templates, &tensed_concl_templates);
-            add_universal_rule(&mut inner.universal_rules,UniversalRuleRecord {
-                label,
-                condition_templates: tensed_cond_templates,
-                conclusion_templates: tensed_concl_templates,
-                pattern_var_names: pattern_var_names.to_vec(),
-            });
+            register_rule(inner, label, tensed_cond_templates, tensed_concl_templates, pattern_var_names.to_vec());
         }
     }
     Ok(())
@@ -2815,7 +2882,7 @@ fn generate_count_extra_witnesses(
                     extra_subs.insert(v.clone(), format!("(Const \"{}\")", extra_sk));
 
                     let sexp = reconstruct_sexp_with_subs(buffer, *body, &extra_subs);
-                    inner.asserted_sexps.insert(sexp);
+                    assert_sexp(sexp, inner);
                 }
             }
             generate_count_extra_witnesses(buffer, *body, skolem_subs, inner);
