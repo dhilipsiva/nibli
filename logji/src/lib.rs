@@ -1455,6 +1455,151 @@ fn try_backward_chain_traced(
         }
     }
 
+    // ── Lazy tense lifting (traced) ──
+    if let Some((tense, inner_sexp)) = strip_tense_wrapper(sexp) {
+        let bare_rules = collect_matching_rules(inner_sexp, &inner.universal_rules);
+        for rule in &bare_rules {
+            for concl_tree in &rule.conclusion_trees {
+                let bindings_opt = concl_tree.match_against(inner_sexp);
+                if bindings_opt.is_none() {
+                    continue;
+                }
+                let mut bindings = bindings_opt.unwrap();
+
+                // Handle unbound event pattern variables
+                let unbound_event_vars: Vec<String> = rule
+                    .pattern_var_names
+                    .iter()
+                    .filter(|pv| pv.starts_with("ev__") && !bindings.contains_key(pv.as_str()))
+                    .cloned()
+                    .collect();
+
+                if !unbound_event_vars.is_empty() {
+                    let members = inner.all_domain_members();
+                    let member_sexps: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
+                    let mut all_candidates: Vec<String> = member_sexps.clone();
+                    let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
+                    for entry in &entries {
+                        let combos = cartesian_product(&member_sexps, entry.dep_count);
+                        for combo in &combos {
+                            all_candidates.push(build_skolem_fn_sexp(&entry.base_name, combo));
+                        }
+                    }
+
+                    let mut per_var_candidates: Vec<Vec<String>> = Vec::new();
+                    for ev_var in &unbound_event_vars {
+                        let single_var_cond_indices: Vec<usize> = rule.condition_trees
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, ct)| {
+                                ct.contains_var(ev_var)
+                                    && unbound_event_vars
+                                        .iter()
+                                        .all(|other| other == ev_var || !ct.contains_var(other))
+                            })
+                            .map(|(i, _)| i)
+                            .collect();
+
+                        if single_var_cond_indices.is_empty() {
+                            per_var_candidates.push(all_candidates.clone());
+                        } else {
+                            let filtered: Vec<String> = all_candidates
+                                .iter()
+                                .filter(|candidate| {
+                                    let mut test_bindings = bindings.clone();
+                                    test_bindings.insert(ev_var.clone(), (*candidate).clone());
+                                    single_var_cond_indices.iter().all(|&idx| {
+                                        let bare_cs = rule.condition_trees[idx].substitute(&test_bindings);
+                                        let tensed_cs = wrap_tense(tense, &bare_cs);
+                                        check_predicate_in_kb(&tensed_cs, &*inner, depth + 1, &mut HashSet::new())
+                                    })
+                                })
+                                .cloned()
+                                .collect();
+                            per_var_candidates.push(filtered);
+                        }
+                    }
+
+                    if per_var_candidates.iter().any(|pvc| pvc.is_empty()) {
+                        continue;
+                    }
+
+                    let combos = multi_cartesian_product(&per_var_candidates);
+                    let mut found = false;
+                    for combo in &combos {
+                        for (i, ev_var) in unbound_event_vars.iter().enumerate() {
+                            bindings.insert(ev_var.clone(), combo[i].clone());
+                        }
+                        let all_hold = rule.condition_trees.iter().all(|ct| {
+                            let bare_cs = ct.substitute(&bindings);
+                            let tensed_cs = wrap_tense(tense, &bare_cs);
+                            check_predicate_in_kb(&tensed_cs, &*inner, depth + 1, &mut HashSet::new())
+                        });
+                        if all_hold {
+                            found = true;
+                            break;
+                        }
+                        for ev_var in &unbound_event_vars {
+                            bindings.remove(ev_var.as_str());
+                        }
+                    }
+                    if !found {
+                        continue;
+                    }
+                }
+
+                // Check all conditions with tense wrapper applied
+                let mut all_conditions_hold = true;
+                let mut condition_sexps = Vec::new();
+                for cond_tree in &rule.condition_trees {
+                    let bare_cs = cond_tree.substitute(&bindings);
+                    let tensed_cs = wrap_tense(tense, &bare_cs);
+                    if check_predicate_in_kb(&tensed_cs, &*inner, depth + 1, &mut HashSet::new()) {
+                        condition_sexps.push(tensed_cs);
+                    } else {
+                        all_conditions_hold = false;
+                        break;
+                    }
+                }
+
+                if !all_conditions_hold {
+                    continue;
+                }
+
+                if rule.condition_trees.is_empty() {
+                    let idx = steps.len() as u32;
+                    steps.push(ProofStep {
+                        rule: ProofRule::Derived((
+                            format!("{} [{}]", rule.label, tense),
+                            sexp.to_string(),
+                        )),
+                        holds: true,
+                        children: vec![],
+                    });
+                    return Some(idx);
+                }
+
+                let mut child_indices = Vec::new();
+                for cond_sexp in &condition_sexps {
+                    let child_idx =
+                        trace_predicate_provenance(cond_sexp, inner, steps, depth + 1, memo);
+                    child_indices.push(child_idx);
+                }
+
+                let idx = steps.len() as u32;
+                steps.push(ProofStep {
+                    rule: ProofRule::Derived((
+                        format!("{} [{}]", rule.label, tense),
+                        sexp.to_string(),
+                    )),
+                    holds: true,
+                    children: child_indices,
+                });
+                return Some(idx);
+            }
+        }
+    }
+
     None
 }
 
@@ -1619,6 +1764,116 @@ fn try_backward_chain(
             if all_conditions_hold {
                 visited.remove(sexp);
                 return true;
+            }
+        }
+    }
+
+    // ── Lazy tense lifting ──
+    // If the queried sexp is tense-wrapped (e.g., (Past (Pred "danlu" ...))),
+    // try bare (untensed) rules with tense applied to conditions on-the-fly.
+    if let Some((tense, inner_sexp)) = strip_tense_wrapper(sexp) {
+        let bare_rules = collect_matching_rules(inner_sexp, &inner.universal_rules);
+        for rule in &bare_rules {
+            for concl_tree in &rule.conclusion_trees {
+                let bindings_opt = concl_tree.match_against(inner_sexp);
+                if bindings_opt.is_none() {
+                    continue;
+                }
+                let mut bindings = bindings_opt.unwrap();
+
+                // Handle unbound event pattern variables (same as main block)
+                let unbound_event_vars: Vec<String> = rule
+                    .pattern_var_names
+                    .iter()
+                    .filter(|pv| pv.starts_with("ev__") && !bindings.contains_key(pv.as_str()))
+                    .cloned()
+                    .collect();
+
+                if !unbound_event_vars.is_empty() {
+                    let members = inner.all_domain_members();
+                    let member_sexps: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
+                    let mut all_candidates: Vec<String> = member_sexps.clone();
+                    for entry in &inner.skolem_fn_registry {
+                        let combos = cartesian_product(&member_sexps, entry.dep_count);
+                        for combo in &combos {
+                            all_candidates.push(build_skolem_fn_sexp(&entry.base_name, combo));
+                        }
+                    }
+
+                    // Per-variable pre-filtering with tense wrapping
+                    let mut per_var_candidates: Vec<Vec<String>> = Vec::new();
+                    for ev_var in &unbound_event_vars {
+                        let single_var_cond_indices: Vec<usize> = rule.condition_trees
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, ct)| {
+                                ct.contains_var(ev_var)
+                                    && unbound_event_vars
+                                        .iter()
+                                        .all(|other| other == ev_var || !ct.contains_var(other))
+                            })
+                            .map(|(i, _)| i)
+                            .collect();
+
+                        if single_var_cond_indices.is_empty() {
+                            per_var_candidates.push(all_candidates.clone());
+                        } else {
+                            let filtered: Vec<String> = all_candidates
+                                .iter()
+                                .filter(|candidate| {
+                                    let mut test_bindings = bindings.clone();
+                                    test_bindings.insert(ev_var.clone(), (*candidate).clone());
+                                    single_var_cond_indices.iter().all(|&idx| {
+                                        let bare_cs = rule.condition_trees[idx].substitute(&test_bindings);
+                                        let tensed_cs = wrap_tense(tense, &bare_cs);
+                                        check_predicate_in_kb(&tensed_cs, inner, depth + 1, visited)
+                                    })
+                                })
+                                .cloned()
+                                .collect();
+                            per_var_candidates.push(filtered);
+                        }
+                    }
+
+                    if per_var_candidates.iter().any(|pvc| pvc.is_empty()) {
+                        continue;
+                    }
+
+                    let combos = multi_cartesian_product(&per_var_candidates);
+                    let mut found = false;
+                    for combo in &combos {
+                        for (i, ev_var) in unbound_event_vars.iter().enumerate() {
+                            bindings.insert(ev_var.clone(), combo[i].clone());
+                        }
+                        let all_hold = rule.condition_trees.iter().all(|ct| {
+                            let bare_cs = ct.substitute(&bindings);
+                            let tensed_cs = wrap_tense(tense, &bare_cs);
+                            check_predicate_in_kb(&tensed_cs, inner, depth + 1, visited)
+                        });
+                        if all_hold {
+                            found = true;
+                            break;
+                        }
+                        for ev_var in &unbound_event_vars {
+                            bindings.remove(ev_var.as_str());
+                        }
+                    }
+                    if !found {
+                        continue;
+                    }
+                }
+
+                // Check all conditions with tense wrapper applied
+                let all_conditions_hold = rule.condition_trees.iter().all(|ct| {
+                    let bare_cs = ct.substitute(&bindings);
+                    let tensed_cs = wrap_tense(tense, &bare_cs);
+                    check_predicate_in_kb(&tensed_cs, inner, depth + 1, visited)
+                });
+
+                if all_conditions_hold {
+                    visited.remove(sexp);
+                    return true;
+                }
             }
         }
     }
@@ -2655,8 +2910,7 @@ fn compile_forall_to_rule(
                     assert_sexp(presup, inner);
                 }
 
-                // ── Temporal lifting: compile Past/Present/Future variants ──
-                compile_temporal_lifted_rules(inner, &bare_condition_sexps, &bare_conclusion_sexps, &all_pattern_var_names)?;
+                // Tense-lifted variants now generated lazily during backward chaining.
             }
         }
         None => {
@@ -2705,8 +2959,7 @@ fn compile_forall_to_rule(
                 let label = build_rule_label(&[], &[body_sexp.clone()]);
                 register_rule(inner, label, vec![], vec![body_sexp.clone()], pattern_var_names.clone());
 
-                // ── Temporal lifting: compile Past/Present/Future variants ──
-                compile_temporal_lifted_rules(inner, &[], &[body_sexp], &pattern_var_names)?;
+                // Tense-lifted variants now generated lazily during backward chaining.
             }
         }
     }
@@ -2716,31 +2969,27 @@ fn compile_forall_to_rule(
 
 /// Compile Past/Present/Future variants of a universal rule.
 /// For each tense T, wraps all conditions and conclusions with T(...).
-fn compile_temporal_lifted_rules(
-    inner: &mut KnowledgeBaseInner,
-    bare_condition_sexps: &[String],
-    bare_conclusion_sexps: &[String],
-    pattern_var_names: &[String],
-) -> Result<(), String> {
-    for tense in &["Past", "Present", "Future"] {
-        // Build a dedup key from tense + conditions + conclusions
-        let rule_key = format!("{}-{:?}-{:?}", tense, bare_condition_sexps, bare_conclusion_sexps);
+// Tense-lifted rules are now generated lazily during backward chaining.
+// See `strip_tense_wrapper` and the tense-lifting logic in `try_backward_chain`
+// and `try_backward_chain_traced`.
 
-        if inner.known_rules.insert(rule_key) {
-            // Record tense-lifted rule for backward-chaining provenance
-            let tensed_cond_templates: Vec<String> = bare_condition_sexps
-                .iter()
-                .map(|s| format!("({} {})", tense, s))
-                .collect();
-            let tensed_concl_templates: Vec<String> = bare_conclusion_sexps
-                .iter()
-                .map(|s| format!("({} {})", tense, s))
-                .collect();
-            let label = build_rule_label(&tensed_cond_templates, &tensed_concl_templates);
-            register_rule(inner, label, tensed_cond_templates, tensed_concl_templates, pattern_var_names.to_vec());
+/// Strip a tense wrapper from an s-expression, returning (tense_name, inner_sexp).
+/// e.g., `(Past (Pred "danlu" ...))` → `Some(("Past", "(Pred \"danlu\" ...)"))`
+fn strip_tense_wrapper(sexp: &str) -> Option<(&str, &str)> {
+    for tense in &["Past", "Present", "Future"] {
+        let prefix = format!("({} ", tense);
+        if let Some(rest) = sexp.strip_prefix(&prefix) {
+            if let Some(inner) = rest.strip_suffix(')') {
+                return Some((tense, inner));
+            }
         }
     }
-    Ok(())
+    None
+}
+
+/// Wrap an s-expression string with a tense.
+fn wrap_tense(tense: &str, sexp: &str) -> String {
+    format!("({} {})", tense, sexp)
 }
 
 // ─── S-Expression Pattern Matching (for backward-chaining provenance) ────
