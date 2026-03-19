@@ -146,8 +146,14 @@ impl SexpTree {
     /// Returns bindings mapping variable names to matched sub-expression strings.
     fn match_against(&self, concrete: &str) -> Option<HashMap<String, String>> {
         let conc_tokens = sexp_tokenize(concrete);
+        self.match_against_tokens(&conc_tokens)
+    }
+
+    /// Match against pre-tokenized concrete sexp (avoids re-tokenization when
+    /// multiple rules are tried against the same query).
+    fn match_against_tokens(&self, conc_tokens: &[String]) -> Option<HashMap<String, String>> {
         let mut bindings = HashMap::new();
-        let (_, end) = self.match_tokens(&conc_tokens, 0, &mut bindings)?;
+        let (_, end) = self.match_tokens(conc_tokens, 0, &mut bindings)?;
         if end == conc_tokens.len() {
             Some(bindings)
         } else {
@@ -206,14 +212,30 @@ impl SexpTree {
 
     /// Substitute bindings into this tree, producing an s-expression string.
     fn substitute(&self, bindings: &HashMap<String, String>) -> String {
+        let mut buf = String::new();
+        self.substitute_into(&mut buf, bindings);
+        buf
+    }
+
+    /// Write substituted s-expression into a buffer (avoids per-level allocation).
+    fn substitute_into(&self, buf: &mut String, bindings: &HashMap<String, String>) {
         match self {
             SexpTree::Var(name) => {
-                bindings.get(name.as_str()).cloned().unwrap_or_else(|| name.clone())
+                match bindings.get(name.as_str()) {
+                    Some(val) => buf.push_str(val),
+                    None => buf.push_str(name),
+                }
             }
-            SexpTree::Atom(atom) => atom.clone(),
+            SexpTree::Atom(atom) => buf.push_str(atom),
             SexpTree::List(children) => {
-                let inner: Vec<String> = children.iter().map(|c| c.substitute(bindings)).collect();
-                format!("({})", inner.join(" "))
+                buf.push('(');
+                for (i, child) in children.iter().enumerate() {
+                    if i > 0 {
+                        buf.push(' ');
+                    }
+                    child.substitute_into(buf, bindings);
+                }
+                buf.push(')');
             }
         }
     }
@@ -286,6 +308,9 @@ struct KnowledgeBaseInner {
     rebuilding: bool,
     /// Configuration parameter preserved across reset/rebuild (kept for WIT API compatibility).
     run_bound: u32,
+    /// Cached domain members — invalidated when entities/descriptions change.
+    domain_members_cache: Vec<(String, LogicalTerm)>,
+    domain_members_dirty: bool,
 }
 
 impl KnowledgeBaseInner {
@@ -305,6 +330,8 @@ impl KnowledgeBaseInner {
             fact_registry: HashMap::new(),
             rebuilding: false,
             run_bound: 100,
+            domain_members_cache: Vec::new(),
+            domain_members_dirty: true,
         }
     }
 
@@ -322,6 +349,8 @@ impl KnowledgeBaseInner {
         self.fact_counter = 0;
         self.fact_registry.clear();
         self.rebuilding = false;
+        self.domain_members_cache.clear();
+        self.domain_members_dirty = true;
     }
 
     fn fresh_fact_id(&mut self) -> u64 {
@@ -337,22 +366,31 @@ impl KnowledgeBaseInner {
     }
 
     fn note_entity(&mut self, name: &str) {
-        self.known_entities.insert(name.to_string());
+        if self.known_entities.insert(name.to_string()) {
+            self.domain_members_dirty = true;
+        }
     }
 
     /// Track an event Skolem constant for witness search and proof tracing,
     /// without registering it in `known_entities`.
     fn note_event_entity(&mut self, name: &str) {
-        self.known_event_entities.insert(name.to_string());
+        if self.known_event_entities.insert(name.to_string()) {
+            self.domain_members_dirty = true;
+        }
     }
 
     fn note_description(&mut self, name: &str) {
-        self.known_descriptions.insert(name.to_string());
+        if self.known_descriptions.insert(name.to_string()) {
+            self.domain_members_dirty = true;
+        }
     }
 
     /// Return all known domain members as (s-expression, LogicalTerm) pairs.
-    /// Includes both Const entities and Desc description terms.
-    fn all_domain_members(&self) -> Vec<(String, LogicalTerm)> {
+    /// Ensure the domain members cache is up-to-date. Call before any query.
+    fn ensure_domain_members_cached(&mut self) {
+        if !self.domain_members_dirty {
+            return;
+        }
         let mut members = Vec::new();
         for e in &self.known_entities {
             members.push((
@@ -372,7 +410,13 @@ impl KnowledgeBaseInner {
                 LogicalTerm::Description(d.clone()),
             ));
         }
-        members
+        self.domain_members_cache = members;
+        self.domain_members_dirty = false;
+    }
+
+    /// Return cached domain members. Panics if cache is dirty — call ensure_domain_members_cached() first.
+    fn all_domain_members(&self) -> &[(String, LogicalTerm)] {
+        &self.domain_members_cache
     }
 }
 
@@ -810,9 +854,10 @@ impl KnowledgeBase {
     fn query_entailment_inner(&self, logic: LogicBuffer) -> Result<bool, String> {
         clear_pred_cache();
         let mut inner = self.inner.borrow_mut();
+        inner.ensure_domain_members_cached();
         for &root_id in &logic.roots {
-            let subs = HashMap::new();
-            if !check_formula_holds(&logic, root_id, &subs, &mut inner, None)? {
+            let mut subs = HashMap::new();
+            if !check_formula_holds(&logic, root_id, &mut subs, &mut inner, None)? {
                 return Ok(false);
             }
         }
@@ -824,10 +869,11 @@ impl KnowledgeBase {
     fn query_find_inner(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, String> {
         clear_pred_cache();
         let mut inner = self.inner.borrow_mut();
+        inner.ensure_domain_members_cached();
         let mut result_sets: Option<Vec<Vec<(String, String)>>> = None;
         for &root_id in &logic.roots {
-            let subs = HashMap::new();
-            let witnesses = find_witnesses(&logic, root_id, &subs, &mut inner, None)?;
+            let mut subs = HashMap::new();
+            let witnesses = find_witnesses(&logic, root_id, &mut subs, &mut inner, None)?;
             match result_sets {
                 None => result_sets = Some(witnesses),
                 Some(ref _prev) => {
@@ -859,14 +905,15 @@ impl KnowledgeBase {
     ) -> Result<(bool, ProofTrace), String> {
         clear_pred_cache();
         let mut inner = self.inner.borrow_mut();
+        inner.ensure_domain_members_cached();
         let mut steps: Vec<ProofStep> = Vec::new();
         let mut memo: HashMap<String, u32> = HashMap::new();
         let mut root_children: Vec<u32> = Vec::new();
         let mut all_hold = true;
         for &root_id in &logic.roots {
-            let subs = HashMap::new();
+            let mut subs = HashMap::new();
             let (holds, step_idx) =
-                check_formula_holds_traced(&logic, root_id, &subs, &mut inner, &mut steps, None, &mut memo)?;
+                check_formula_holds_traced(&logic, root_id, &mut subs, &mut inner, &mut steps, None, &mut memo)?;
             root_children.push(step_idx);
             if !holds {
                 all_hold = false;
@@ -1103,7 +1150,7 @@ fn wrap_with_tense(tense: Option<&str>, sexp: &str) -> String {
 fn check_formula_holds(
     buffer: &LogicBuffer,
     node_id: u32,
-    subs: &HashMap<String, String>,
+    subs: &mut HashMap<String, String>,
     inner: &mut KnowledgeBaseInner,
     tense: Option<&str>,
 ) -> Result<bool, String> {
@@ -1115,63 +1162,87 @@ fn check_formula_holds(
                 || check_formula_holds(buffer, *r, subs, inner, tense)?)
         }
         LogicNode::NotNode(inner_node) => Ok(!check_formula_holds(buffer, *inner_node, subs, inner, tense)?),
-        // Temporal nodes: set tense context for inner formula
         LogicNode::PastNode(inner_node) => check_formula_holds(buffer, *inner_node, subs, inner, Some("Past")),
         LogicNode::PresentNode(inner_node) => check_formula_holds(buffer, *inner_node, subs, inner, Some("Present")),
         LogicNode::FutureNode(inner_node) => check_formula_holds(buffer, *inner_node, subs, inner, Some("Future")),
-        // Deontic nodes: remain transparent, pass through current tense
         LogicNode::ObligatoryNode(inner_node)
         | LogicNode::PermittedNode(inner_node) => check_formula_holds(buffer, *inner_node, subs, inner, tense),
         LogicNode::ExistsNode((v, body)) => {
-            // 1. Check if any known domain member (Const or Desc) satisfies the body
-            let members = inner.all_domain_members();
-            for (sexp, _) in &members {
-                let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), sexp.clone());
-                if check_formula_holds(buffer, *body, &new_subs, inner, tense)? {
+            let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
+            let v_key = v.clone();
+            let prev = subs.remove(&v_key);
+            for (member_sexp, _) in &members {
+                subs.insert(v_key.clone(), member_sexp.clone());
+                if check_formula_holds(buffer, *body, subs, inner, tense)? {
+                    // Restore previous binding before returning
+                    match prev {
+                        Some(p) => { subs.insert(v_key, p); }
+                        None => { subs.remove(&v_key); }
+                    }
                     return Ok(true);
                 }
             }
-            // 2. Try SkolemFn witnesses from the registry
+            // Try SkolemFn witnesses
             let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
             for entry in &entries {
-                // SkolemFn deps can be any domain member
                 let dep_sexps: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
                 let combos = cartesian_product(&dep_sexps, entry.dep_count);
                 for combo in &combos {
                     let witness_sexp = build_skolem_fn_sexp(&entry.base_name, combo);
-                    let mut new_subs = subs.clone();
-                    new_subs.insert(v.clone(), witness_sexp);
-                    if check_formula_holds(buffer, *body, &new_subs, inner, tense)? {
+                    subs.insert(v_key.clone(), witness_sexp);
+                    if check_formula_holds(buffer, *body, subs, inner, tense)? {
+                        match prev {
+                            Some(p) => { subs.insert(v_key, p); }
+                            None => { subs.remove(&v_key); }
+                        }
                         return Ok(true);
                     }
                 }
             }
+            // Restore previous binding
+            match prev {
+                Some(p) => { subs.insert(v_key, p); }
+                None => { subs.remove(&v_key); }
+            }
             Ok(false)
         }
         LogicNode::ForAllNode((v, body)) => {
-            let members = inner.all_domain_members();
+            let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
             if members.is_empty() {
                 return Ok(true);
             }
-            for (sexp, _) in &members {
-                let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), sexp.clone());
-                if !check_formula_holds(buffer, *body, &new_subs, inner, tense)? {
+            let v_key = v.clone();
+            let prev = subs.remove(&v_key);
+            for (member_sexp, _) in &members {
+                subs.insert(v_key.clone(), member_sexp.clone());
+                if !check_formula_holds(buffer, *body, subs, inner, tense)? {
+                    match prev {
+                        Some(p) => { subs.insert(v_key, p); }
+                        None => { subs.remove(&v_key); }
+                    }
                     return Ok(false);
                 }
+            }
+            match prev {
+                Some(p) => { subs.insert(v_key, p); }
+                None => { subs.remove(&v_key); }
             }
             Ok(true)
         }
         LogicNode::CountNode((v, count, body)) => {
-            let members = inner.all_domain_members();
+            let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
             let mut satisfying = 0u32;
-            for (sexp, _) in &members {
-                let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), sexp.clone());
-                if check_formula_holds(buffer, *body, &new_subs, inner, tense)? {
+            let v_key = v.clone();
+            let prev = subs.remove(&v_key);
+            for (member_sexp, _) in &members {
+                subs.insert(v_key.clone(), member_sexp.clone());
+                if check_formula_holds(buffer, *body, subs, inner, tense)? {
                     satisfying += 1;
                 }
+            }
+            match prev {
+                Some(p) => { subs.insert(v_key, p); }
+                None => { subs.remove(&v_key); }
             }
             Ok(satisfying == *count)
         }
@@ -1223,7 +1294,7 @@ fn check_formula_holds(
 fn find_witnesses(
     buffer: &LogicBuffer,
     node_id: u32,
-    subs: &HashMap<String, String>,
+    subs: &mut HashMap<String, String>,
     inner: &mut KnowledgeBaseInner,
     tense: Option<&str>,
 ) -> Result<Vec<Vec<(String, String)>>, String> {
@@ -1232,11 +1303,11 @@ fn find_witnesses(
             let mut results = Vec::new();
 
             // 1. Try all known domain members (Const + Desc) as witnesses
-            let members = inner.all_domain_members();
+            let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
             for (sexp, _) in &members {
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), sexp.clone());
-                let sub_results = find_witnesses(buffer, *body, &new_subs, inner, tense)?;
+                let sub_results = find_witnesses(buffer, *body, &mut new_subs, inner, tense)?;
                 for mut bindings in sub_results {
                     bindings.push((v.clone(), sexp.clone()));
                     results.push(bindings);
@@ -1252,7 +1323,7 @@ fn find_witnesses(
                     let witness_sexp = build_skolem_fn_sexp(&entry.base_name, combo);
                     let mut new_subs = subs.clone();
                     new_subs.insert(v.clone(), witness_sexp.clone());
-                    let sub_results = find_witnesses(buffer, *body, &new_subs, inner, tense)?;
+                    let sub_results = find_witnesses(buffer, *body, &mut new_subs, inner, tense)?;
                     for mut bindings in sub_results {
                         bindings.push((v.clone(), witness_sexp.clone()));
                         results.push(bindings);
@@ -1275,7 +1346,7 @@ fn find_witnesses(
                 for (k, v) in &left_bindings {
                     merged_subs.insert(k.clone(), v.clone());
                 }
-                let right_results = find_witnesses(buffer, *r, &merged_subs, inner, tense)?;
+                let right_results = find_witnesses(buffer, *r, &mut merged_subs, inner, tense)?;
                 for right_bindings in right_results {
                     let mut combined = left_bindings.clone();
                     combined.extend(right_bindings);
@@ -1320,11 +1391,12 @@ fn try_backward_chain_traced(
 ) -> Option<u32> {
     // Snapshot rules to avoid borrow conflict
     let rules = collect_matching_rules(sexp, &inner.universal_rules);
+    // Pre-tokenize concrete sexp once for all rule matching attempts
+    let sexp_tokens = sexp_tokenize(sexp);
 
     for rule in &rules {
-        // Use pre-parsed trees for structural matching (no re-tokenization)
         for concl_tree in &rule.conclusion_trees {
-            if let Some(mut bindings) = concl_tree.match_against(sexp)
+            if let Some(mut bindings) = concl_tree.match_against_tokens(&sexp_tokens)
             {
                 let unbound_event_vars: Vec<String> = rule
                     .pattern_var_names
@@ -1458,9 +1530,10 @@ fn try_backward_chain_traced(
     // ── Lazy tense lifting (traced) ──
     if let Some((tense, inner_sexp)) = strip_tense_wrapper(sexp) {
         let bare_rules = collect_matching_rules(inner_sexp, &inner.universal_rules);
+        let inner_tokens = sexp_tokenize(inner_sexp);
         for rule in &bare_rules {
             for concl_tree in &rule.conclusion_trees {
-                let bindings_opt = concl_tree.match_against(inner_sexp);
+                let bindings_opt = concl_tree.match_against_tokens(&inner_tokens);
                 if bindings_opt.is_none() {
                     continue;
                 }
@@ -1666,11 +1739,11 @@ fn try_backward_chain(
     }
 
     let rules_snapshot = collect_matching_rules(sexp, &inner.universal_rules);
+    let sexp_tokens = sexp_tokenize(sexp);
 
     for rule in &rules_snapshot {
-        // Use pre-parsed trees for structural matching (no re-tokenization)
         for concl_tree in &rule.conclusion_trees {
-            let bindings_opt = concl_tree.match_against(sexp);
+            let bindings_opt = concl_tree.match_against_tokens(&sexp_tokens);
             if bindings_opt.is_none() {
                 continue;
             }
@@ -1773,9 +1846,10 @@ fn try_backward_chain(
     // try bare (untensed) rules with tense applied to conditions on-the-fly.
     if let Some((tense, inner_sexp)) = strip_tense_wrapper(sexp) {
         let bare_rules = collect_matching_rules(inner_sexp, &inner.universal_rules);
+        let inner_tokens = sexp_tokenize(inner_sexp);
         for rule in &bare_rules {
             for concl_tree in &rule.conclusion_trees {
-                let bindings_opt = concl_tree.match_against(inner_sexp);
+                let bindings_opt = concl_tree.match_against_tokens(&inner_tokens);
                 if bindings_opt.is_none() {
                     continue;
                 }
@@ -1940,7 +2014,7 @@ fn trace_predicate_provenance(
 fn check_formula_holds_traced(
     buffer: &LogicBuffer,
     node_id: u32,
-    subs: &HashMap<String, String>,
+    subs: &mut HashMap<String, String>,
     inner: &mut KnowledgeBaseInner,
     steps: &mut Vec<ProofStep>,
     tense: Option<&str>,
@@ -2075,17 +2149,17 @@ fn check_formula_holds_traced(
             // Pre-screen witnesses using the cheap non-traced path before
             // building expensive proof trees.  This turns O(M^D) expensive
             // traced calls into O(M^D) cheap boolean checks + O(1) trace.
-            let members = inner.all_domain_members();
+            let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
 
             // 1. Try all known domain members (Const + Desc)
             for (sexp, term) in &members {
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), sexp.clone());
                 // Cheap boolean check first — no ProofStep allocation
-                if check_formula_holds(buffer, *body, &new_subs, inner, tense)? {
+                if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)? {
                     // Witness found — now trace only the successful path
                     let (_, body_idx) =
-                        check_formula_holds_traced(buffer, *body, &new_subs, inner, steps, tense, memo)?;
+                        check_formula_holds_traced(buffer, *body, &mut new_subs, inner, steps, tense, memo)?;
                     let idx = steps.len() as u32;
                     steps.push(ProofStep {
                         rule: ProofRule::ExistsWitness((v.clone(), term.clone())),
@@ -2105,10 +2179,10 @@ fn check_formula_holds_traced(
                     let mut new_subs = subs.clone();
                     new_subs.insert(v.clone(), witness_sexp.clone());
                     // Cheap boolean check first
-                    if check_formula_holds(buffer, *body, &new_subs, inner, tense)? {
+                    if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)? {
                         // Witness found — now trace only the successful path
                         let (_, body_idx) =
-                            check_formula_holds_traced(buffer, *body, &new_subs, inner, steps, tense, memo)?;
+                            check_formula_holds_traced(buffer, *body, &mut new_subs, inner, steps, tense, memo)?;
                         let idx = steps.len() as u32;
                         steps.push(ProofStep {
                             rule: ProofRule::ExistsWitness((
@@ -2131,7 +2205,7 @@ fn check_formula_holds_traced(
             Ok((false, idx))
         }
         LogicNode::ForAllNode((v, body)) => {
-            let members = inner.all_domain_members();
+            let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
             if members.is_empty() {
                 let idx = steps.len() as u32;
                 steps.push(ProofStep {
@@ -2147,7 +2221,7 @@ fn check_formula_holds_traced(
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), sexp.clone());
                 let (holds, body_idx) =
-                    check_formula_holds_traced(buffer, *body, &new_subs, inner, steps, tense, memo)?;
+                    check_formula_holds_traced(buffer, *body, &mut new_subs, inner, steps, tense, memo)?;
                 if !holds {
                     let idx = steps.len() as u32;
                     steps.push(ProofStep {
@@ -2169,12 +2243,12 @@ fn check_formula_holds_traced(
             Ok((true, idx))
         }
         LogicNode::CountNode((v, count, body)) => {
-            let members = inner.all_domain_members();
+            let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
             let mut satisfying = 0u32;
             for (sexp, _) in &members {
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), sexp.clone());
-                if check_formula_holds(buffer, *body, &new_subs, inner, tense)? {
+                if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)? {
                     satisfying += 1;
                 }
             }
