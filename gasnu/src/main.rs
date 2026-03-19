@@ -664,6 +664,7 @@ fn main() -> Result<()> {
                         println!("  ?? <text>           Find witnesses (answer variables)");
                         println!("  :debug <text>       Show compiled logic tree");
                         println!("  :load <filepath>    Load a .lojban file (assert each line)");
+                        println!("  :dump <filepath>    Export KB as a .lojban file");
                         println!("  :compute <name>     Register predicate for compute dispatch");
                         println!("  :assert <rel> <args..> Assert a ground fact directly");
                         println!("  :retract <id>       Retract a fact by ID (rebuilds KB)");
@@ -870,6 +871,37 @@ fn main() -> Result<()> {
                         "[Load] Done: {} asserted, {} skipped, {} errors",
                         asserted, skipped, errors
                     );
+                } else if let Some(dump_arg) = input.strip_prefix(":dump ") {
+                    let filepath = dump_arg.trim();
+                    if filepath.is_empty() {
+                        println!("[Host] Usage: :dump <filepath>");
+                        continue;
+                    }
+                    // Get facts from WASM session (works with or without persistent store)
+                    refuel(&mut store, fuel_budget);
+                    match session.call_list_facts(&mut store, session_handle) {
+                        Ok(Ok(facts)) => {
+                            if facts.is_empty() {
+                                println!("[Dump] Knowledge base is empty — nothing to dump.");
+                            } else {
+                                match File::create(filepath) {
+                                    Ok(mut file) => {
+                                        let mut written = 0u32;
+                                        for f in &facts {
+                                            // The label is the original Lojban text (or :assert form)
+                                            if writeln!(file, "{}", f.label).is_ok() {
+                                                written += 1;
+                                            }
+                                        }
+                                        println!("[Dump] Wrote {} facts to {}", written, filepath);
+                                    }
+                                    Err(e) => println!("[Dump] Cannot create file: {}", e),
+                                }
+                            }
+                        }
+                        Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
+                        Err(e) => println!("{}", format_host_error(&e)),
+                    }
                 } else if let Some(find_text) = input.strip_prefix("??") {
                     let text = find_text.trim();
                     if text.is_empty() {
