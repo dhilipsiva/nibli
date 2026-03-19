@@ -487,6 +487,29 @@ impl NibliStore {
         let table = rtxn.open_table(FACTS_TABLE)?;
         Ok(table.len()? as usize)
     }
+
+    /// Merge facts from another redb file using 2P-Set semantics.
+    pub fn merge_from_file(&mut self, path: &Path) -> Result<MergeResult, StoreError> {
+        let remote = NibliStore::open(path, "remote".to_string())?;
+        let remote_facts = remote.export_all()?;
+        self.merge_remote(remote_facts)
+    }
+
+    /// Export all facts (including retracted) to a new redb file.
+    pub fn export_to_file(&self, path: &Path) -> Result<usize, StoreError> {
+        let facts = self.export_all()?;
+        let target = NibliStore::open(path, self.node_id.clone())?;
+        let txn = target.db.begin_write()?;
+        {
+            let mut table = txn.open_table(FACTS_TABLE)?;
+            for fact in &facts {
+                let bytes = postcard::to_allocvec(fact)?;
+                table.insert(fact.id, bytes.as_slice())?;
+            }
+        }
+        txn.commit()?;
+        Ok(facts.len())
+    }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────
@@ -820,5 +843,83 @@ mod tests {
         assert_eq!(store.total_fact_count().unwrap(), 3);
 
         cleanup(&path);
+    }
+
+    #[test]
+    fn test_export_to_file() {
+        let src_path = temp_db_path("export_src");
+        let dst_path = temp_db_path("export_dst");
+        cleanup(&src_path);
+        cleanup(&dst_path);
+
+        let mut store = NibliStore::open(&src_path, "node-a".into()).unwrap();
+        store.insert_fact(1, "a".into(), vec![10]).unwrap();
+        store.insert_fact(2, "b".into(), vec![20]).unwrap();
+        store.retract_fact(2).unwrap();
+
+        let count = store.export_to_file(&dst_path).unwrap();
+        assert_eq!(count, 2); // includes retracted
+
+        let dst = NibliStore::open(&dst_path, "node-b".into()).unwrap();
+        assert_eq!(dst.total_fact_count().unwrap(), 2);
+        assert_eq!(dst.active_fact_count().unwrap(), 1);
+
+        cleanup(&src_path);
+        cleanup(&dst_path);
+    }
+
+    #[test]
+    fn test_merge_from_file() {
+        let local_path = temp_db_path("merge_file_local");
+        let remote_path = temp_db_path("merge_file_remote");
+        cleanup(&local_path);
+        cleanup(&remote_path);
+
+        // Local has fact 1
+        let mut local = NibliStore::open(&local_path, "node-a".into()).unwrap();
+        local.insert_fact(1, "local fact".into(), vec![1]).unwrap();
+
+        // Remote has facts 2 and 3
+        let mut remote = NibliStore::open(&remote_path, "node-b".into()).unwrap();
+        remote.insert_fact(2, "remote fact 2".into(), vec![2]).unwrap();
+        remote.insert_fact(3, "remote fact 3".into(), vec![3]).unwrap();
+        drop(remote);
+
+        // Merge remote into local
+        let result = local.merge_from_file(&remote_path).unwrap();
+        assert_eq!(result.added, 2);
+        assert_eq!(result.tombstoned, 0);
+
+        let active = local.all_active_facts().unwrap();
+        assert_eq!(active.len(), 3);
+
+        cleanup(&local_path);
+        cleanup(&remote_path);
+    }
+
+    #[test]
+    fn test_merge_from_file_tombstone() {
+        let local_path = temp_db_path("merge_file_tomb_local");
+        let remote_path = temp_db_path("merge_file_tomb_remote");
+        cleanup(&local_path);
+        cleanup(&remote_path);
+
+        // Both have fact 1, but remote retracted it
+        let mut local = NibliStore::open(&local_path, "node-a".into()).unwrap();
+        local.insert_fact(1, "shared".into(), vec![1]).unwrap();
+
+        let mut remote = NibliStore::open(&remote_path, "node-b".into()).unwrap();
+        remote.insert_fact(1, "shared".into(), vec![1]).unwrap();
+        remote.retract_fact(1).unwrap();
+        drop(remote);
+
+        let result = local.merge_from_file(&remote_path).unwrap();
+        assert_eq!(result.tombstoned, 1);
+
+        let active = local.all_active_facts().unwrap();
+        assert!(active.is_empty());
+
+        cleanup(&local_path);
+        cleanup(&remote_path);
     }
 }

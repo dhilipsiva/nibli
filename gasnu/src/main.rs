@@ -674,6 +674,8 @@ fn main() -> Result<()> {
                         println!("  :memory [mb]        Show or set WASM memory limit in MB");
                         println!("  :saturate [n]       Show or set run bound");
                         println!("  :db                 Show persistent store info");
+                        println!("  :merge <redb-file>  Merge facts from another store (CRDT)");
+                        println!("  :export <redb-file> Export store to a new redb file");
                         println!("  :reset              Clear all facts (fresh KB)");
                         println!("  :quit               Exit");
                         continue;
@@ -901,6 +903,75 @@ fn main() -> Result<()> {
                         }
                         Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                         Err(e) => println!("{}", format_host_error(&e)),
+                    }
+                } else if let Some(merge_arg) = input.strip_prefix(":merge ") {
+                    let filepath = merge_arg.trim();
+                    if filepath.is_empty() {
+                        println!("[Host] Usage: :merge <redb-filepath>");
+                        continue;
+                    }
+                    match nibli_store.as_mut() {
+                        None => println!("[Merge] No persistent store. Set NIBLI_DB_PATH to enable."),
+                        Some(s) => {
+                            let merge_path = Path::new(filepath);
+                            if !merge_path.exists() {
+                                println!("[Merge] File not found: {}", filepath);
+                                continue;
+                            }
+                            match s.merge_from_file(merge_path) {
+                                Ok(result) => {
+                                    println!("[Merge] {} added, {} tombstoned from {}", result.added, result.tombstoned, filepath);
+                                    if result.added > 0 || result.tombstoned > 0 {
+                                        // Rebuild WASM session from merged store
+                                        refuel(&mut store, fuel_budget);
+                                        let _ = session.call_reset_kb(&mut store, session_handle);
+                                        match s.all_active_facts() {
+                                            Ok(facts) => {
+                                                let mut replayed = 0u32;
+                                                for fact in &facts {
+                                                    let assertion: StoredAssertion = match postcard::from_bytes(&fact.payload) {
+                                                        Ok(a) => a,
+                                                        Err(_) => continue,
+                                                    };
+                                                    refuel(&mut store, fuel_budget);
+                                                    match &assertion {
+                                                        StoredAssertion::Text(text) => {
+                                                            if session.call_assert_text(&mut store, session_handle, text).is_ok() {
+                                                                replayed += 1;
+                                                            }
+                                                        }
+                                                        StoredAssertion::Direct { relation, args } => {
+                                                            let wit_args: Vec<EngineLogicalTerm> = args.iter().map(stored_term_to_wit).collect();
+                                                            if session.call_assert_fact(&mut store, session_handle, relation, &wit_args).is_ok() {
+                                                                replayed += 1;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                println!("[Merge] KB rebuilt with {} facts", replayed);
+                                            }
+                                            Err(e) => println!("[Merge] Replay error: {}", e),
+                                        }
+                                    }
+                                }
+                                Err(e) => println!("[Merge] Error: {}", e),
+                            }
+                        }
+                    }
+                } else if let Some(export_arg) = input.strip_prefix(":export ") {
+                    let filepath = export_arg.trim();
+                    if filepath.is_empty() {
+                        println!("[Host] Usage: :export <redb-filepath>");
+                        continue;
+                    }
+                    match nibli_store.as_ref() {
+                        None => println!("[Export] No persistent store. Set NIBLI_DB_PATH to enable."),
+                        Some(s) => {
+                            match s.export_to_file(Path::new(filepath)) {
+                                Ok(count) => println!("[Export] {} facts exported to {}", count, filepath),
+                                Err(e) => println!("[Export] Error: {}", e),
+                            }
+                        }
                     }
                 } else if let Some(find_text) = input.strip_prefix("??") {
                     let text = find_text.trim();
