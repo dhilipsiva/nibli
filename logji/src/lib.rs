@@ -28,6 +28,7 @@ use crate::bindings::lojban::nibli::logic_types::{
 };
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 // ─── S-Expression String Interner ─────────────────────────────────
 
@@ -143,7 +144,8 @@ struct KnowledgeBaseInner {
     predicate_facts: HashMap<String, HashSet<u32>>,
     /// Compiled universal rule templates indexed by conclusion predicate name.
     /// Each predicate name maps to the rules whose conclusion templates mention it.
-    universal_rules: HashMap<String, Vec<UniversalRuleRecord>>,
+    /// Rc-wrapped to avoid cloning rule records during backward-chain snapshots.
+    universal_rules: HashMap<String, Vec<Rc<UniversalRuleRecord>>>,
     /// Monotonically increasing fact ID counter.
     fact_counter: u64,
     /// Registry of all asserted facts (including retracted ones, for ID stability).
@@ -1185,7 +1187,7 @@ fn try_backward_chain_traced(
     memo: &mut HashMap<String, u32>,
 ) -> Option<u32> {
     // Snapshot rules to avoid borrow conflict
-    let rules: Vec<UniversalRuleRecord> = collect_matching_rules(sexp, &inner.universal_rules);
+    let rules = collect_matching_rules(sexp, &inner.universal_rules);
 
     for rule in &rules {
         // Resolve interned template keys to strings for pattern matching
@@ -2231,15 +2233,15 @@ fn extract_pred_name_deep(sexp: &str) -> Option<&str> {
 
 /// Collect all rules that might match a queried s-expression.
 /// Looks up by predicate name + always includes fallback rules.
-fn collect_matching_rules(sexp: &str, rules: &HashMap<String, Vec<UniversalRuleRecord>>) -> Vec<UniversalRuleRecord> {
+fn collect_matching_rules(sexp: &str, rules: &HashMap<String, Vec<Rc<UniversalRuleRecord>>>) -> Vec<Rc<UniversalRuleRecord>> {
     let mut result = Vec::new();
     if let Some(pred_name) = extract_pred_name_deep(sexp) {
         if let Some(matching) = rules.get(pred_name) {
-            result.extend(matching.iter().cloned());
+            result.extend(matching.iter().map(Rc::clone));
         }
     }
     if let Some(fallback) = rules.get("__fallback__") {
-        result.extend(fallback.iter().cloned());
+        result.extend(fallback.iter().map(Rc::clone));
     }
     result
 }
@@ -2300,17 +2302,18 @@ fn facts_for_predicate<'a>(pred: &str, inner: &'a KnowledgeBaseInner) -> Option<
 /// Add a universal rule to the predicate-indexed rule map.
 /// Indexes the rule by each conclusion template's predicate name.
 /// Resolves interned conclusion keys via the interner to extract predicate names.
-fn add_universal_rule(rules: &mut HashMap<String, Vec<UniversalRuleRecord>>, rule: UniversalRuleRecord, interner: &SexpInterner) {
+fn add_universal_rule(rules: &mut HashMap<String, Vec<Rc<UniversalRuleRecord>>>, rule: UniversalRuleRecord, interner: &SexpInterner) {
+    let rc = Rc::new(rule);
     let mut indexed = false;
-    for &concl_key in &rule.conclusion_templates {
+    for &concl_key in &rc.conclusion_templates {
         let concl_str = interner.resolve(concl_key);
         if let Some(pred_name) = extract_pred_name_deep(concl_str) {
-            rules.entry(pred_name.to_string()).or_default().push(rule.clone());
+            rules.entry(pred_name.to_string()).or_default().push(Rc::clone(&rc));
             indexed = true;
         }
     }
     if !indexed {
-        rules.entry("__fallback__".to_string()).or_default().push(rule);
+        rules.entry("__fallback__".to_string()).or_default().push(rc);
     }
 }
 
