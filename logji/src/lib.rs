@@ -100,6 +100,134 @@ struct SkolemFnEntry {
 /// A dependent Skolem is an ∃ variable nested under a ∀.
 const SKDEP_PREFIX: &str = "__skdep__";
 
+// ─── Structural S-Expression Tree ─────────────────────────────────
+
+/// Pre-parsed s-expression tree for structural pattern matching.
+/// Eliminates repeated string tokenization during backward chaining.
+#[derive(Clone, Debug)]
+enum SexpTree {
+    /// A literal atom (e.g., `Pred`, `"gerku"`, `Const`, `Nil`).
+    Atom(String),
+    /// A parenthesized list of sub-expressions.
+    List(Vec<SexpTree>),
+    /// A pattern variable (e.g., `x__v0`) — matches any complete sub-expression.
+    Var(String),
+}
+
+impl SexpTree {
+    /// Parse an s-expression string into a tree, marking pattern variables.
+    fn parse(s: &str, var_names: &[String]) -> Self {
+        let tokens = sexp_tokenize(s);
+        let (tree, _) = Self::parse_tokens(&tokens, 0, var_names);
+        tree
+    }
+
+    fn parse_tokens(tokens: &[String], pos: usize, var_names: &[String]) -> (Self, usize) {
+        if pos >= tokens.len() {
+            return (SexpTree::Atom(String::new()), pos);
+        }
+        if tokens[pos] == "(" {
+            let mut children = Vec::new();
+            let mut i = pos + 1;
+            while i < tokens.len() && tokens[i] != ")" {
+                let (child, next) = Self::parse_tokens(tokens, i, var_names);
+                children.push(child);
+                i = next;
+            }
+            (SexpTree::List(children), i + 1) // skip ")"
+        } else if var_names.contains(&tokens[pos]) {
+            (SexpTree::Var(tokens[pos].clone()), pos + 1)
+        } else {
+            (SexpTree::Atom(tokens[pos].clone()), pos + 1)
+        }
+    }
+
+    /// Match this tree (as pattern) against a concrete s-expression string.
+    /// Returns bindings mapping variable names to matched sub-expression strings.
+    fn match_against(&self, concrete: &str) -> Option<HashMap<String, String>> {
+        let conc_tokens = sexp_tokenize(concrete);
+        let mut bindings = HashMap::new();
+        let (_, end) = self.match_tokens(&conc_tokens, 0, &mut bindings)?;
+        if end == conc_tokens.len() {
+            Some(bindings)
+        } else {
+            None
+        }
+    }
+
+    fn match_tokens(
+        &self,
+        tokens: &[String],
+        pos: usize,
+        bindings: &mut HashMap<String, String>,
+    ) -> Option<((), usize)> {
+        if pos >= tokens.len() {
+            return None;
+        }
+        match self {
+            SexpTree::Var(name) => {
+                // Match a complete sub-expression
+                let (end, sub_sexp) = extract_sexp_at(tokens, pos)?;
+                if let Some(existing) = bindings.get(name.as_str()) {
+                    if *existing != sub_sexp {
+                        return None;
+                    }
+                } else {
+                    bindings.insert(name.clone(), sub_sexp);
+                }
+                Some(((), end))
+            }
+            SexpTree::Atom(atom) => {
+                if &tokens[pos] == atom {
+                    Some(((), pos + 1))
+                } else {
+                    None
+                }
+            }
+            SexpTree::List(children) => {
+                if tokens[pos] != "(" {
+                    return None;
+                }
+                let mut ci = pos + 1;
+                for child in children {
+                    if ci >= tokens.len() {
+                        return None;
+                    }
+                    let (_, next) = child.match_tokens(tokens, ci, bindings)?;
+                    ci = next;
+                }
+                if ci >= tokens.len() || tokens[ci] != ")" {
+                    return None;
+                }
+                Some(((), ci + 1))
+            }
+        }
+    }
+
+    /// Substitute bindings into this tree, producing an s-expression string.
+    fn substitute(&self, bindings: &HashMap<String, String>) -> String {
+        match self {
+            SexpTree::Var(name) => {
+                bindings.get(name.as_str()).cloned().unwrap_or_else(|| name.clone())
+            }
+            SexpTree::Atom(atom) => atom.clone(),
+            SexpTree::List(children) => {
+                let inner: Vec<String> = children.iter().map(|c| c.substitute(bindings)).collect();
+                format!("({})", inner.join(" "))
+            }
+        }
+    }
+
+    /// Check if this tree contains a given variable name.
+    fn contains_var(&self, var: &str) -> bool {
+        match self {
+            SexpTree::Var(name) => name == var,
+            SexpTree::Atom(_) => false,
+            SexpTree::List(children) => children.iter().any(|c| c.contains_var(var)),
+        }
+    }
+}
+
 /// Records the structure of a compiled universal rule for backward-chaining provenance.
 /// Templates use bare pattern variables (e.g., `x__v0`) instead of bound values.
 #[derive(Clone)]
@@ -110,6 +238,10 @@ struct UniversalRuleRecord {
     condition_templates: Vec<u32>,
     /// Interned s-expression keys for the rule's conclusions.
     conclusion_templates: Vec<u32>,
+    /// Pre-parsed condition templates for structural matching.
+    condition_trees: Vec<SexpTree>,
+    /// Pre-parsed conclusion templates for structural matching.
+    conclusion_trees: Vec<SexpTree>,
     /// Pattern variable names used in templates, e.g. ["x__v0"].
     pattern_var_names: Vec<String>,
 }
@@ -1190,12 +1322,9 @@ fn try_backward_chain_traced(
     let rules = collect_matching_rules(sexp, &inner.universal_rules);
 
     for rule in &rules {
-        // Resolve interned template keys to strings for pattern matching
-        let conclusion_strs: Vec<String> = rule.conclusion_templates.iter().map(|&k| inner.interner.resolve(k).to_string()).collect();
-        let condition_strs: Vec<String> = rule.condition_templates.iter().map(|&k| inner.interner.resolve(k).to_string()).collect();
-
-        for conclusion_template in &conclusion_strs {
-            if let Some(mut bindings) = sexp_match(conclusion_template, sexp, &rule.pattern_var_names)
+        // Use pre-parsed trees for structural matching (no re-tokenization)
+        for concl_tree in &rule.conclusion_trees {
+            if let Some(mut bindings) = concl_tree.match_against(sexp)
             {
                 let unbound_event_vars: Vec<String> = rule
                     .pattern_var_names
@@ -1219,17 +1348,20 @@ fn try_backward_chain_traced(
 
                     let mut per_var_candidates: Vec<Vec<String>> = Vec::new();
                     for ev_var in &unbound_event_vars {
-                        let single_var_conditions: Vec<&String> = condition_strs
+                        // Use structural contains_var instead of string contains
+                        let single_var_cond_indices: Vec<usize> = rule.condition_trees
                             .iter()
-                            .filter(|ct| {
-                                ct.contains(ev_var.as_str())
+                            .enumerate()
+                            .filter(|(_, ct)| {
+                                ct.contains_var(ev_var)
                                     && unbound_event_vars
                                         .iter()
-                                        .all(|other| other == ev_var || !ct.contains(other.as_str()))
+                                        .all(|other| other == ev_var || !ct.contains_var(other))
                             })
+                            .map(|(i, _)| i)
                             .collect();
 
-                        if single_var_conditions.is_empty() {
+                        if single_var_cond_indices.is_empty() {
                             per_var_candidates.push(all_candidates.clone());
                         } else {
                             let filtered: Vec<String> = all_candidates
@@ -1237,8 +1369,8 @@ fn try_backward_chain_traced(
                                 .filter(|candidate| {
                                     let mut test_bindings = bindings.clone();
                                     test_bindings.insert(ev_var.clone(), (*candidate).clone());
-                                    single_var_conditions.iter().all(|ct| {
-                                        let cs = sexp_substitute(ct, &test_bindings);
+                                    single_var_cond_indices.iter().all(|&idx| {
+                                        let cs = rule.condition_trees[idx].substitute(&test_bindings);
                                         check_predicate_in_kb(&cs, &*inner, depth + 1, &mut HashSet::new())
                                     })
                                 })
@@ -1258,8 +1390,8 @@ fn try_backward_chain_traced(
                         for (i, ev_var) in unbound_event_vars.iter().enumerate() {
                             bindings.insert(ev_var.clone(), combo[i].clone());
                         }
-                        let all_hold = condition_strs.iter().all(|ct| {
-                            let cs = sexp_substitute(ct, &bindings);
+                        let all_hold = rule.condition_trees.iter().all(|ct| {
+                            let cs = ct.substitute(&bindings);
                             check_predicate_in_kb(&cs, &*inner, depth + 1, &mut HashSet::new())
                         });
                         if all_hold {
@@ -1279,8 +1411,8 @@ fn try_backward_chain_traced(
                 let mut all_conditions_hold = true;
                 let mut condition_sexps = Vec::new();
 
-                for cond_template in &condition_strs {
-                    let cond_sexp = sexp_substitute(cond_template, &bindings);
+                for cond_tree in &rule.condition_trees {
+                    let cond_sexp = cond_tree.substitute(&bindings);
                     if check_predicate_in_kb(&cond_sexp, &*inner, depth + 1, &mut HashSet::new()) {
                         condition_sexps.push(cond_sexp);
                     } else {
@@ -1391,12 +1523,9 @@ fn try_backward_chain(
     let rules_snapshot = collect_matching_rules(sexp, &inner.universal_rules);
 
     for rule in &rules_snapshot {
-        // Resolve interned template keys to strings for pattern matching
-        let conclusion_strs: Vec<String> = rule.conclusion_templates.iter().map(|&k| inner.interner.resolve(k).to_string()).collect();
-        let condition_strs: Vec<String> = rule.condition_templates.iter().map(|&k| inner.interner.resolve(k).to_string()).collect();
-
-        for conclusion_template in &conclusion_strs {
-            let bindings_opt = sexp_match(conclusion_template, sexp, &rule.pattern_var_names);
+        // Use pre-parsed trees for structural matching (no re-tokenization)
+        for concl_tree in &rule.conclusion_trees {
+            let bindings_opt = concl_tree.match_against(sexp);
             if bindings_opt.is_none() {
                 continue;
             }
@@ -1423,18 +1552,19 @@ fn try_backward_chain(
 
                 let mut per_var_candidates: Vec<Vec<String>> = Vec::new();
                 for ev_var in &unbound_event_vars {
-                    let single_var_conditions: Vec<&String> = condition_strs
+                    let single_var_cond_indices: Vec<usize> = rule.condition_trees
                         .iter()
-                        .filter(|ct| {
-                            ct.contains(ev_var.as_str())
+                        .enumerate()
+                        .filter(|(_, ct)| {
+                            ct.contains_var(ev_var)
                                 && unbound_event_vars
                                     .iter()
-                                    .all(|other| other == ev_var || !ct.contains(other.as_str()))
+                                    .all(|other| other == ev_var || !ct.contains_var(other))
                         })
+                        .map(|(i, _)| i)
                         .collect();
 
-                    if single_var_conditions.is_empty() {
-                        // No single-variable conditions → can't pre-filter
+                    if single_var_cond_indices.is_empty() {
                         per_var_candidates.push(all_candidates.clone());
                     } else {
                         let filtered: Vec<String> = all_candidates
@@ -1442,8 +1572,8 @@ fn try_backward_chain(
                             .filter(|candidate| {
                                 let mut test_bindings = bindings.clone();
                                 test_bindings.insert(ev_var.clone(), (*candidate).clone());
-                                single_var_conditions.iter().all(|ct| {
-                                    let cs = sexp_substitute(ct, &test_bindings);
+                                single_var_cond_indices.iter().all(|&idx| {
+                                    let cs = rule.condition_trees[idx].substitute(&test_bindings);
                                     check_predicate_in_kb(&cs, inner, depth + 1, visited)
                                 })
                             })
@@ -1453,20 +1583,18 @@ fn try_backward_chain(
                     }
                 }
 
-                // If any variable has zero feasible candidates, this rule can't fire
                 if per_var_candidates.iter().any(|pvc| pvc.is_empty()) {
                     continue;
                 }
 
-                // Search the filtered cartesian product for a satisfying assignment
                 let combos = multi_cartesian_product(&per_var_candidates);
                 let mut found = false;
                 for combo in &combos {
                     for (i, ev_var) in unbound_event_vars.iter().enumerate() {
                         bindings.insert(ev_var.clone(), combo[i].clone());
                     }
-                    let all_hold = condition_strs.iter().all(|ct| {
-                        let cs = sexp_substitute(ct, &bindings);
+                    let all_hold = rule.condition_trees.iter().all(|ct| {
+                        let cs = ct.substitute(&bindings);
                         check_predicate_in_kb(&cs, inner, depth + 1, visited)
                     });
                     if all_hold {
@@ -1483,8 +1611,8 @@ fn try_backward_chain(
             }
 
             // Verify all conditions hold
-            let all_conditions_hold = condition_strs.iter().all(|ct| {
-                let cs = sexp_substitute(ct, &bindings);
+            let all_conditions_hold = rule.condition_trees.iter().all(|ct| {
+                let cs = ct.substitute(&bindings);
                 check_predicate_in_kb(&cs, inner, depth + 1, visited)
             });
 
@@ -2274,10 +2402,15 @@ fn register_rule(
 ) {
     let cond_keys = intern_vec(&condition_strings, &mut inner.interner);
     let concl_keys = intern_vec(&conclusion_strings, &mut inner.interner);
+    // Pre-parse templates into structural trees for fast matching.
+    let condition_trees: Vec<SexpTree> = condition_strings.iter().map(|s| SexpTree::parse(s, &pattern_var_names)).collect();
+    let conclusion_trees: Vec<SexpTree> = conclusion_strings.iter().map(|s| SexpTree::parse(s, &pattern_var_names)).collect();
     let rule = UniversalRuleRecord {
         label,
         condition_templates: cond_keys,
         conclusion_templates: concl_keys,
+        condition_trees,
+        conclusion_trees,
         pattern_var_names,
     };
     add_universal_rule(&mut inner.universal_rules, rule, &inner.interner);
@@ -2690,106 +2823,6 @@ fn extract_sexp_at(tokens: &[String], start: usize) -> Option<(usize, String)> {
     } else {
         Some((start + 1, tokens[start].clone()))
     }
-}
-
-/// Match one s-expression element starting at `(pi, ci)`.
-/// Returns `(new_pi, new_ci)` — the positions right after the matched element.
-/// Does NOT tail-recurse beyond the single matched element.
-fn sexp_match_one(
-    pat: &[String],
-    pi: usize,
-    conc: &[String],
-    ci: usize,
-    var_names: &[String],
-    bindings: &mut HashMap<String, String>,
-) -> Option<(usize, usize)> {
-    if pi >= pat.len() || ci >= conc.len() {
-        return None;
-    }
-
-    let pt = &pat[pi];
-
-    // If pattern token is a variable name, match a complete sub-expression
-    if var_names.contains(pt) {
-        let (sub_end, sub_sexp) = extract_sexp_at(conc, ci)?;
-        if let Some(existing) = bindings.get(pt.as_str()) {
-            if *existing != sub_sexp {
-                return None;
-            }
-        } else {
-            bindings.insert(pt.clone(), sub_sexp);
-        }
-        return Some((pi + 1, sub_end));
-    }
-
-    // Both are "(" — match parenthesized sub-expressions element by element
-    if pt == "(" && conc[ci] == "(" {
-        let mut pj = pi + 1;
-        let mut cj = ci + 1;
-        loop {
-            if pj >= pat.len() || cj >= conc.len() {
-                return None;
-            }
-            if pat[pj] == ")" && conc[cj] == ")" {
-                return Some((pj + 1, cj + 1));
-            }
-            if pat[pj] == ")" || conc[cj] == ")" {
-                return None;
-            }
-            let (new_pj, new_cj) =
-                sexp_match_one(pat, pj, conc, cj, var_names, bindings)?;
-            pj = new_pj;
-            cj = new_cj;
-        }
-    }
-
-    // Literal match
-    if pt == &conc[ci] {
-        Some((pi + 1, ci + 1))
-    } else {
-        None
-    }
-}
-
-/// Match a template s-expression against a concrete s-expression.
-/// Pattern variables in `var_names` (e.g., "x__v0") match complete sub-expressions.
-/// Returns bindings mapping variable names to their matched sub-expressions.
-fn sexp_match(
-    pattern: &str,
-    concrete: &str,
-    var_names: &[String],
-) -> Option<HashMap<String, String>> {
-    let pat_tokens = sexp_tokenize(pattern);
-    let conc_tokens = sexp_tokenize(concrete);
-    let mut bindings = HashMap::new();
-    let (pe, ce) = sexp_match_one(&pat_tokens, 0, &conc_tokens, 0, var_names, &mut bindings)?;
-    if pe == pat_tokens.len() && ce == conc_tokens.len() {
-        Some(bindings)
-    } else {
-        None
-    }
-}
-
-/// Substitute pattern variable names in a template with their bound values.
-fn sexp_substitute(template: &str, bindings: &HashMap<String, String>) -> String {
-    let tokens = sexp_tokenize(template);
-    let mut result_tokens: Vec<String> = Vec::new();
-    for token in &tokens {
-        if let Some(replacement) = bindings.get(token.as_str()) {
-            result_tokens.extend(sexp_tokenize(replacement));
-        } else {
-            result_tokens.push(token.clone());
-        }
-    }
-    // Reconstruct s-expression string with proper spacing
-    let mut out = String::new();
-    for (i, token) in result_tokens.iter().enumerate() {
-        if i > 0 && token != ")" && result_tokens[i - 1] != "(" {
-            out.push(' ');
-        }
-        out.push_str(token);
-    }
-    out
 }
 
 // ─── S-Expression Reconstruction ─────────────────────────────────
@@ -4473,22 +4506,24 @@ mod tests {
 
     #[test]
     fn test_sexp_pattern_matching() {
-        // Test the s-expression pattern matcher directly
+        // Test the structural s-expression pattern matcher
         let var_names = vec!["x__v0".to_string()];
 
-        // Simple predicate match
+        // Simple predicate match via SexpTree
         let pattern = r#"(Pred "gerku" (Cons x__v0 (Cons (Zoe) (Nil))))"#;
         let concrete = r#"(Pred "gerku" (Cons (Const "alis") (Cons (Zoe) (Nil))))"#;
-        let bindings = sexp_match(pattern, concrete, &var_names).unwrap();
+        let tree = SexpTree::parse(pattern, &var_names);
+        let bindings = tree.match_against(concrete).unwrap();
         assert_eq!(bindings.get("x__v0").unwrap(), r#"(Const "alis")"#);
 
         // Non-matching predicate name
         let wrong = r#"(Pred "mlatu" (Cons (Const "alis") (Cons (Zoe) (Nil))))"#;
-        assert!(sexp_match(pattern, wrong, &var_names).is_none());
+        assert!(tree.match_against(wrong).is_none());
 
-        // Substitution
+        // Substitution via SexpTree
         let template = r#"(Pred "danlu" (Cons x__v0 (Cons (Zoe) (Nil))))"#;
-        let result = sexp_substitute(template, &bindings);
+        let template_tree = SexpTree::parse(template, &var_names);
+        let result = template_tree.substitute(&bindings);
         assert!(result.contains(r#"Const "alis""#));
         assert!(result.contains("danlu"));
     }
