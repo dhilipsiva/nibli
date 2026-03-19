@@ -429,14 +429,14 @@ pub struct KnowledgeBase {
 /// Build a SkolemFn s-expression from a base name and dependency terms.
 /// Single dep: `(SkolemFn "sk_N" dep0)` — backward compatible.
 /// Multi dep: `(SkolemFn "sk_N" (DepPair dep0 (DepPair dep1 dep2)))` — right-nested pairs.
-fn build_skolem_fn_sexp(base_name: &str, pattern_var_names: &[String]) -> String {
-    let dep_term = match pattern_var_names.len() {
+fn build_skolem_fn_sexp(base_name: &str, deps: &[&str]) -> String {
+    let dep_term = match deps.len() {
         0 => "(Zoe)".to_string(),
-        1 => pattern_var_names[0].clone(),
+        1 => deps[0].to_string(),
         _ => {
             // Right-nested DepPair encoding: [a, b, c] → (DepPair a (DepPair b c))
-            let mut acc = pattern_var_names.last().unwrap().clone();
-            for dep in pattern_var_names[..pattern_var_names.len() - 1].iter().rev() {
+            let mut acc = deps.last().unwrap().to_string();
+            for dep in deps[..deps.len() - 1].iter().rev() {
                 acc = format!("(DepPair {} {})", dep, acc);
             }
             acc
@@ -447,48 +447,108 @@ fn build_skolem_fn_sexp(base_name: &str, pattern_var_names: &[String]) -> String
 
 /// Build a ground SkolemFn s-expression with a Const entity argument.
 /// Generate cartesian product of s-expression strings with given arity.
-fn cartesian_product(entities: &[String], dep_count: usize) -> Vec<Vec<String>> {
-    if dep_count == 0 {
-        return vec![vec![]];
-    }
-    let mut result: Vec<Vec<String>> = vec![vec![]];
-    for _ in 0..dep_count {
-        let mut next = Vec::new();
-        for combo in &result {
-            for entity in entities {
-                let mut extended = combo.clone();
-                extended.push(entity.clone());
-                next.push(extended);
-            }
-        }
-        result = next;
-    }
-    result
+/// Lazy cartesian product iterator: yields one combination at a time.
+/// Avoids materializing all M^N combinations in memory — stops at first match.
+struct CartesianProduct<'a> {
+    entities: &'a [String],
+    dep_count: usize,
+    indices: Vec<usize>,
+    done: bool,
 }
 
-/// Cartesian product of multiple candidate sets (one per variable position).
-/// Unlike `cartesian_product` which uses the same set for all positions,
-/// this takes a separate Vec per position — used after per-variable pre-filtering.
-fn multi_cartesian_product(sets: &[Vec<String>]) -> Vec<Vec<String>> {
-    if sets.is_empty() {
-        return vec![vec![]];
-    }
-    let mut result: Vec<Vec<String>> = vec![vec![]];
-    for set in sets {
-        if set.is_empty() {
-            return vec![]; // No solutions if any variable has zero feasible candidates
+impl<'a> CartesianProduct<'a> {
+    fn new(entities: &'a [String], dep_count: usize) -> Self {
+        let done = dep_count > 0 && entities.is_empty();
+        Self {
+            entities,
+            dep_count,
+            indices: vec![0; dep_count],
+            done,
         }
-        let mut next = Vec::new();
-        for combo in &result {
-            for item in set {
-                let mut extended = combo.clone();
-                extended.push(item.clone());
-                next.push(extended);
+    }
+}
+
+impl<'a> Iterator for CartesianProduct<'a> {
+    type Item = Vec<&'a str>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done {
+            return None;
+        }
+        if self.dep_count == 0 {
+            self.done = true;
+            return Some(vec![]);
+        }
+        let combo: Vec<&str> = self.indices.iter().map(|&i| self.entities[i].as_str()).collect();
+        // Advance indices (odometer-style, rightmost first)
+        let mut carry = true;
+        for i in (0..self.dep_count).rev() {
+            if carry {
+                self.indices[i] += 1;
+                if self.indices[i] >= self.entities.len() {
+                    self.indices[i] = 0;
+                } else {
+                    carry = false;
+                }
             }
         }
-        result = next;
+        if carry {
+            self.done = true;
+        }
+        Some(combo)
     }
-    result
+}
+
+/// Lazy multi-set cartesian product iterator: one combination at a time.
+/// Each set can have a different size (used after per-variable pre-filtering).
+struct MultiCartesianProduct<'a> {
+    sets: &'a [Vec<String>],
+    indices: Vec<usize>,
+    done: bool,
+}
+
+impl<'a> MultiCartesianProduct<'a> {
+    fn new(sets: &'a [Vec<String>]) -> Self {
+        let done = sets.iter().any(|s| s.is_empty());
+        Self {
+            sets,
+            indices: vec![0; sets.len()],
+            done,
+        }
+    }
+}
+
+impl<'a> Iterator for MultiCartesianProduct<'a> {
+    type Item = Vec<&'a str>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done || self.sets.is_empty() {
+            if self.sets.is_empty() && !self.done {
+                self.done = true;
+                return Some(vec![]);
+            }
+            return None;
+        }
+        let combo: Vec<&str> = self.indices.iter().enumerate()
+            .map(|(set_idx, &item_idx)| self.sets[set_idx][item_idx].as_str())
+            .collect();
+        // Advance indices
+        let mut carry = true;
+        for i in (0..self.sets.len()).rev() {
+            if carry {
+                self.indices[i] += 1;
+                if self.indices[i] >= self.sets[i].len() {
+                    self.indices[i] = 0;
+                } else {
+                    carry = false;
+                }
+            }
+        }
+        if carry {
+            self.done = true;
+        }
+        Some(combo)
+    }
 }
 
 // ─── Thread-local predicate result cache ─────────────────────────────
@@ -1186,9 +1246,8 @@ fn check_formula_holds(
             let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
             for entry in &entries {
                 let dep_sexps: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
-                let combos = cartesian_product(&dep_sexps, entry.dep_count);
-                for combo in &combos {
-                    let witness_sexp = build_skolem_fn_sexp(&entry.base_name, combo);
+                for combo in CartesianProduct::new(&dep_sexps, entry.dep_count) {
+                    let witness_sexp = build_skolem_fn_sexp(&entry.base_name, &combo);
                     subs.insert(v_key.clone(), witness_sexp);
                     if check_formula_holds(buffer, *body, subs, inner, tense)? {
                         match prev {
@@ -1318,9 +1377,8 @@ fn find_witnesses(
             let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
             for entry in &entries {
                 let dep_sexps: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
-                let combos = cartesian_product(&dep_sexps, entry.dep_count);
-                for combo in &combos {
-                    let witness_sexp = build_skolem_fn_sexp(&entry.base_name, combo);
+                for combo in CartesianProduct::new(&dep_sexps, entry.dep_count) {
+                    let witness_sexp = build_skolem_fn_sexp(&entry.base_name, &combo);
                     let mut new_subs = subs.clone();
                     new_subs.insert(v.clone(), witness_sexp.clone());
                     let sub_results = find_witnesses(buffer, *body, &mut new_subs, inner, tense)?;
@@ -1412,9 +1470,8 @@ fn try_backward_chain_traced(
                     let mut all_candidates: Vec<String> = member_sexps.clone();
                     let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
                     for entry in &entries {
-                        let combos = cartesian_product(&member_sexps, entry.dep_count);
-                        for combo in &combos {
-                            all_candidates.push(build_skolem_fn_sexp(&entry.base_name, combo));
+                        for combo in CartesianProduct::new(&member_sexps, entry.dep_count) {
+                            all_candidates.push(build_skolem_fn_sexp(&entry.base_name, &combo));
                         }
                     }
 
@@ -1456,11 +1513,10 @@ fn try_backward_chain_traced(
                         continue;
                     }
 
-                    let combos = multi_cartesian_product(&per_var_candidates);
                     let mut found = false;
-                    for combo in &combos {
+                    for combo in MultiCartesianProduct::new(&per_var_candidates) {
                         for (i, ev_var) in unbound_event_vars.iter().enumerate() {
-                            bindings.insert(ev_var.clone(), combo[i].clone());
+                            bindings.insert(ev_var.clone(), combo[i].to_string());
                         }
                         let all_hold = rule.condition_trees.iter().all(|ct| {
                             let cs = ct.substitute(&bindings);
@@ -1553,9 +1609,8 @@ fn try_backward_chain_traced(
                     let mut all_candidates: Vec<String> = member_sexps.clone();
                     let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
                     for entry in &entries {
-                        let combos = cartesian_product(&member_sexps, entry.dep_count);
-                        for combo in &combos {
-                            all_candidates.push(build_skolem_fn_sexp(&entry.base_name, combo));
+                        for combo in CartesianProduct::new(&member_sexps, entry.dep_count) {
+                            all_candidates.push(build_skolem_fn_sexp(&entry.base_name, &combo));
                         }
                     }
 
@@ -1597,11 +1652,10 @@ fn try_backward_chain_traced(
                         continue;
                     }
 
-                    let combos = multi_cartesian_product(&per_var_candidates);
                     let mut found = false;
-                    for combo in &combos {
+                    for combo in MultiCartesianProduct::new(&per_var_candidates) {
                         for (i, ev_var) in unbound_event_vars.iter().enumerate() {
-                            bindings.insert(ev_var.clone(), combo[i].clone());
+                            bindings.insert(ev_var.clone(), combo[i].to_string());
                         }
                         let all_hold = rule.condition_trees.iter().all(|ct| {
                             let bare_cs = ct.substitute(&bindings);
@@ -1762,9 +1816,8 @@ fn try_backward_chain(
                 let member_sexps: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
                 let mut all_candidates: Vec<String> = member_sexps.clone();
                 for entry in &inner.skolem_fn_registry {
-                    let combos = cartesian_product(&member_sexps, entry.dep_count);
-                    for combo in &combos {
-                        all_candidates.push(build_skolem_fn_sexp(&entry.base_name, combo));
+                    for combo in CartesianProduct::new(&member_sexps, entry.dep_count) {
+                        all_candidates.push(build_skolem_fn_sexp(&entry.base_name, &combo));
                     }
                 }
 
@@ -1805,11 +1858,10 @@ fn try_backward_chain(
                     continue;
                 }
 
-                let combos = multi_cartesian_product(&per_var_candidates);
                 let mut found = false;
-                for combo in &combos {
+                for combo in MultiCartesianProduct::new(&per_var_candidates) {
                     for (i, ev_var) in unbound_event_vars.iter().enumerate() {
-                        bindings.insert(ev_var.clone(), combo[i].clone());
+                        bindings.insert(ev_var.clone(), combo[i].to_string());
                     }
                     let all_hold = rule.condition_trees.iter().all(|ct| {
                         let cs = ct.substitute(&bindings);
@@ -1868,9 +1920,8 @@ fn try_backward_chain(
                     let member_sexps: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
                     let mut all_candidates: Vec<String> = member_sexps.clone();
                     for entry in &inner.skolem_fn_registry {
-                        let combos = cartesian_product(&member_sexps, entry.dep_count);
-                        for combo in &combos {
-                            all_candidates.push(build_skolem_fn_sexp(&entry.base_name, combo));
+                        for combo in CartesianProduct::new(&member_sexps, entry.dep_count) {
+                            all_candidates.push(build_skolem_fn_sexp(&entry.base_name, &combo));
                         }
                     }
 
@@ -1913,11 +1964,10 @@ fn try_backward_chain(
                         continue;
                     }
 
-                    let combos = multi_cartesian_product(&per_var_candidates);
                     let mut found = false;
-                    for combo in &combos {
+                    for combo in MultiCartesianProduct::new(&per_var_candidates) {
                         for (i, ev_var) in unbound_event_vars.iter().enumerate() {
-                            bindings.insert(ev_var.clone(), combo[i].clone());
+                            bindings.insert(ev_var.clone(), combo[i].to_string());
                         }
                         let all_hold = rule.condition_trees.iter().all(|ct| {
                             let bare_cs = ct.substitute(&bindings);
@@ -2173,9 +2223,8 @@ fn check_formula_holds_traced(
             let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
             for entry in &entries {
                 let dep_sexps: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
-                let combos = cartesian_product(&dep_sexps, entry.dep_count);
-                for combo in &combos {
-                    let witness_sexp = build_skolem_fn_sexp(&entry.base_name, combo);
+                for combo in CartesianProduct::new(&dep_sexps, entry.dep_count) {
+                    let witness_sexp = build_skolem_fn_sexp(&entry.base_name, &combo);
                     let mut new_subs = subs.clone();
                     new_subs.insert(v.clone(), witness_sexp.clone());
                     // Cheap boolean check first
@@ -2575,7 +2624,8 @@ fn reconstruct_rule_sexp(
                         } else if let Some(sk) = ground_skolems.get(v.as_str()) {
                             format!("(Const \"{}\")", sk)
                         } else if let Some((base, pvars)) = dependent_skolems.get(v.as_str()) {
-                            build_skolem_fn_sexp(base, pvars)
+                            let pvar_refs: Vec<&str> = pvars.iter().map(|s| s.as_str()).collect();
+                            build_skolem_fn_sexp(base, &pvar_refs)
                         } else {
                             format!("(Var \"{}\")", v)
                         }
