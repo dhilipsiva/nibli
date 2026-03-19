@@ -138,6 +138,9 @@ struct KnowledgeBaseInner {
     skolem_fn_registry: Vec<SkolemFnEntry>,
     /// Ground facts as interned s-expression keys.
     asserted_sexps: HashSet<u32>,
+    /// Secondary index: predicate name → set of interned sexp keys containing that predicate.
+    /// Enables predicate-scoped enumeration without scanning all facts.
+    predicate_facts: HashMap<String, HashSet<u32>>,
     /// Compiled universal rule templates indexed by conclusion predicate name.
     /// Each predicate name maps to the rules whose conclusion templates mention it.
     universal_rules: HashMap<String, Vec<UniversalRuleRecord>>,
@@ -162,6 +165,7 @@ impl KnowledgeBaseInner {
             known_rules: HashSet::new(),
             skolem_fn_registry: Vec::new(),
             asserted_sexps: HashSet::new(),
+            predicate_facts: HashMap::new(),
             universal_rules: HashMap::new(),
             fact_counter: 0,
             fact_registry: HashMap::new(),
@@ -179,6 +183,7 @@ impl KnowledgeBaseInner {
         self.known_rules.clear();
         self.skolem_fn_registry.clear();
         self.asserted_sexps.clear();
+        self.predicate_facts.clear();
         self.universal_rules.clear();
         self.fact_counter = 0;
         self.fact_registry.clear();
@@ -618,6 +623,7 @@ impl KnowledgeBase {
         inner.known_rules.clear();
         inner.skolem_fn_registry.clear();
         inner.asserted_sexps.clear();
+        inner.predicate_facts.clear();
         inner.universal_rules.clear();
 
         // Collect non-retracted buffers ordered by ID (clone to avoid borrow conflict)
@@ -2240,6 +2246,13 @@ fn collect_matching_rules(sexp: &str, rules: &HashMap<String, Vec<UniversalRuleR
 
 /// Resolve an interned key to its string and look up in asserted_sexps.
 fn sexp_is_asserted(sexp: &str, inner: &KnowledgeBaseInner) -> bool {
+    // Fast path: check predicate index first for early exit.
+    // If the predicate has no facts at all, skip the interner lookup.
+    if let Some(pred_name) = extract_pred_name_deep(sexp) {
+        if !inner.predicate_facts.contains_key(pred_name) {
+            return false;
+        }
+    }
     inner.interner.get(sexp).is_some_and(|key| inner.asserted_sexps.contains(&key))
 }
 
@@ -2268,10 +2281,20 @@ fn register_rule(
     add_universal_rule(&mut inner.universal_rules, rule, &inner.interner);
 }
 
-/// Intern a string and insert into asserted_sexps.
+/// Intern a string and insert into asserted_sexps + predicate index.
 fn assert_sexp(sexp: String, inner: &mut KnowledgeBaseInner) {
+    // Extract predicate name before interning (for secondary index).
+    let pred_name = extract_pred_name_deep(&sexp).map(|s| s.to_string());
     let key = inner.interner.intern_owned(sexp);
     inner.asserted_sexps.insert(key);
+    if let Some(name) = pred_name {
+        inner.predicate_facts.entry(name).or_default().insert(key);
+    }
+}
+
+/// Get all asserted sexp keys for a given predicate name.
+fn facts_for_predicate<'a>(pred: &str, inner: &'a KnowledgeBaseInner) -> Option<&'a HashSet<u32>> {
+    inner.predicate_facts.get(pred)
 }
 
 /// Add a universal rule to the predicate-indexed rule map.
