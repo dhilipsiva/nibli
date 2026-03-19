@@ -1,0 +1,9 @@
+[package]
+name = "nibli-store"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+redb = "2"
+postcard = { version = "1", features = ["alloc"] }
+serde = { version = "1", features = ["derive"] }

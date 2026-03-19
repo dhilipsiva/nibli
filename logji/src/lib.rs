@@ -80,12 +80,13 @@ struct KnowledgeBaseInner {
     skolem_fn_registry: Vec<SkolemFnEntry>,
     /// Ground facts directly asserted by the user (for provenance tracking).
     asserted_sexps: HashSet<String>,
-    /// Compiled universal rule templates (for backward-chaining provenance).
-    universal_rules: Vec<UniversalRuleRecord>,
+    /// Compiled universal rule templates indexed by conclusion predicate name.
+    /// Each predicate name maps to the rules whose conclusion templates mention it.
+    universal_rules: HashMap<String, Vec<UniversalRuleRecord>>,
     /// Monotonically increasing fact ID counter.
     fact_counter: u64,
     /// Registry of all asserted facts (including retracted ones, for ID stability).
-    fact_registry: Vec<FactRecord>,
+    fact_registry: HashMap<u64, FactRecord>,
     /// Suppresses diagnostic prints during rebuild replay.
     rebuilding: bool,
     /// Configuration parameter preserved across reset/rebuild (kept for WIT API compatibility).
@@ -102,9 +103,9 @@ impl KnowledgeBaseInner {
             known_rules: HashSet::new(),
             skolem_fn_registry: Vec::new(),
             asserted_sexps: HashSet::new(),
-            universal_rules: Vec::new(),
+            universal_rules: HashMap::new(),
             fact_counter: 0,
-            fact_registry: Vec::new(),
+            fact_registry: HashMap::new(),
             rebuilding: false,
             run_bound: 100,
         }
@@ -357,7 +358,7 @@ fn register_ground_material_conditional(
                     condition_sexps.iter().map(|s| extract_pred_name(s).unwrap_or("?")).collect::<Vec<_>>().join(" ∧ "),
                     extract_pred_name(&conclusion_sexp).unwrap_or("?")
                 );
-                inner.universal_rules.push(UniversalRuleRecord {
+                add_universal_rule(&mut inner.universal_rules,UniversalRuleRecord {
                     label,
                     condition_templates: condition_sexps,
                     conclusion_templates: vec![conclusion_sexp],
@@ -378,7 +379,7 @@ fn register_ground_material_conditional(
                     condition_sexps.iter().map(|s| extract_pred_name(s).unwrap_or("?")).collect::<Vec<_>>().join(" ∧ "),
                     extract_pred_name(&conclusion_sexp).unwrap_or("?")
                 );
-                inner.universal_rules.push(UniversalRuleRecord {
+                add_universal_rule(&mut inner.universal_rules,UniversalRuleRecord {
                     label,
                     condition_templates: condition_sexps,
                     conclusion_templates: vec![conclusion_sexp],
@@ -513,7 +514,7 @@ impl KnowledgeBase {
     fn assert_fact_inner(&self, logic: LogicBuffer, label: String) -> Result<u64, String> {
         let mut inner = self.inner.borrow_mut();
         let id = inner.fresh_fact_id();
-        inner.fact_registry.push(FactRecord {
+        inner.fact_registry.insert(id, FactRecord {
             id,
             buffer: logic.clone(),
             label,
@@ -523,12 +524,29 @@ impl KnowledgeBase {
         Ok(id)
     }
 
+    /// Assert a fact with a pre-assigned ID. Used for replay from persistent store.
+    /// Advances the internal counter past the given ID.
+    pub fn assert_fact_with_id(&self, logic: LogicBuffer, label: String, id: u64) -> Result<(), String> {
+        let mut inner = self.inner.borrow_mut();
+        // Advance counter past the provided ID.
+        if id >= inner.fact_counter {
+            inner.fact_counter = id + 1;
+        }
+        inner.fact_registry.insert(id, FactRecord {
+            id,
+            buffer: logic.clone(),
+            label,
+            retracted: false,
+        });
+        process_assertion(&mut inner, &logic)?;
+        Ok(())
+    }
+
     /// Retract a previously asserted fact by its ID. Triggers a full KB rebuild
     /// from remaining (non-retracted) facts.
     fn retract_fact_inner(&self, id: u64) -> Result<(), String> {
         let mut inner = self.inner.borrow_mut();
-        let record = inner.fact_registry.iter_mut().find(|r| r.id == id);
-        match record {
+        match inner.fact_registry.get_mut(&id) {
             None => Err(format!("Fact #{} not found", id)),
             Some(r) if r.retracted => Ok(()), // idempotent
             Some(r) => {
@@ -551,12 +569,16 @@ impl KnowledgeBase {
         inner.asserted_sexps.clear();
         inner.universal_rules.clear();
 
-        // Collect non-retracted buffers (clone to avoid borrow conflict)
-        let buffers: Vec<LogicBuffer> = inner
+        // Collect non-retracted buffers ordered by ID (clone to avoid borrow conflict)
+        let mut entries: Vec<(&u64, &FactRecord)> = inner
             .fact_registry
             .iter()
-            .filter(|r| !r.retracted)
-            .map(|r| r.buffer.clone())
+            .filter(|(_, r)| !r.retracted)
+            .collect();
+        entries.sort_by_key(|(id, _)| **id);
+        let buffers: Vec<LogicBuffer> = entries
+            .iter()
+            .map(|(_, r)| r.buffer.clone())
             .collect();
 
         // Replay with diagnostic output suppressed
@@ -571,16 +593,18 @@ impl KnowledgeBase {
     /// List all active (non-retracted) facts in the KB.
     fn list_facts_inner(&self) -> Result<Vec<FactSummary>, String> {
         let inner = self.inner.borrow();
-        Ok(inner
+        let mut facts: Vec<FactSummary> = inner
             .fact_registry
-            .iter()
+            .values()
             .filter(|r| !r.retracted)
             .map(|r| FactSummary {
                 id: r.id,
                 label: r.label.clone(),
                 root_count: r.buffer.roots.len() as u32,
             })
-            .collect())
+            .collect();
+        facts.sort_by_key(|f| f.id);
+        Ok(facts)
     }
 
     fn set_run_bound_inner(&self, n: u32) {
@@ -1104,7 +1128,7 @@ fn try_backward_chain_traced(
     memo: &mut HashMap<String, u32>,
 ) -> Option<u32> {
     // Snapshot rules to avoid borrow conflict
-    let rules: Vec<UniversalRuleRecord> = inner.universal_rules.clone();
+    let rules: Vec<UniversalRuleRecord> = collect_matching_rules(sexp, &inner.universal_rules);
 
     for rule in &rules {
         for conclusion_template in &rule.conclusion_templates {
@@ -1306,7 +1330,7 @@ fn try_backward_chain(
         return false;
     }
 
-    let rules_snapshot: Vec<UniversalRuleRecord> = inner.universal_rules.clone();
+    let rules_snapshot = collect_matching_rules(sexp, &inner.universal_rules);
 
     for rule in &rules_snapshot {
         for conclusion_template in &rule.conclusion_templates {
@@ -2134,6 +2158,57 @@ fn extract_pred_name(sexp: &str) -> Option<&str> {
     Some(&rest[..end])
 }
 
+/// Extract predicate name from an s-expression, handling tense/deontic wrappers.
+/// e.g., `(Past (Pred "gerku" ...))` → `"gerku"`, `(Pred "danlu" ...)` → `"danlu"`.
+fn extract_pred_name_deep(sexp: &str) -> Option<&str> {
+    // Try direct first.
+    if let Some(name) = extract_pred_name(sexp) {
+        return Some(name);
+    }
+    // Try stripping tense/deontic wrappers.
+    for prefix in &["(Past ", "(Present ", "(Future ", "(Obligation ", "(Permission "] {
+        if let Some(rest) = sexp.strip_prefix(prefix) {
+            if let Some(inner) = rest.strip_suffix(')') {
+                return extract_pred_name(inner);
+            }
+        }
+    }
+    None
+}
+
+/// Collect all rules that might match a queried s-expression.
+/// Looks up by predicate name + always includes fallback rules.
+fn collect_matching_rules(sexp: &str, rules: &HashMap<String, Vec<UniversalRuleRecord>>) -> Vec<UniversalRuleRecord> {
+    let mut result = Vec::new();
+    if let Some(pred_name) = extract_pred_name_deep(sexp) {
+        if let Some(matching) = rules.get(pred_name) {
+            result.extend(matching.iter().cloned());
+        }
+    }
+    // Always include fallback rules (rules without extractable predicate names).
+    if let Some(fallback) = rules.get("__fallback__") {
+        result.extend(fallback.iter().cloned());
+    }
+    result
+}
+
+/// Add a universal rule to the predicate-indexed rule map.
+/// Indexes the rule by each conclusion template's predicate name.
+fn add_universal_rule(rules: &mut HashMap<String, Vec<UniversalRuleRecord>>, rule: UniversalRuleRecord) {
+    // Collect unique predicate names from conclusion templates.
+    let mut indexed = false;
+    for concl in &rule.conclusion_templates {
+        if let Some(pred_name) = extract_pred_name_deep(concl) {
+            rules.entry(pred_name.to_string()).or_default().push(rule.clone());
+            indexed = true;
+        }
+    }
+    // Fallback: if no predicate name could be extracted, index under "__fallback__".
+    if !indexed {
+        rules.entry("__fallback__".to_string()).or_default().push(rule);
+    }
+}
+
 /// Build a human-readable rule label from condition/conclusion templates.
 fn build_rule_label(conditions: &[String], conclusions: &[String]) -> String {
     let cond_names: Vec<&str> = conditions
@@ -2305,7 +2380,7 @@ fn compile_forall_to_rule(
 
                 // Record rule structure for backward-chaining provenance
                 let label = build_rule_label(&bare_condition_sexps, &bare_conclusion_sexps);
-                inner.universal_rules.push(UniversalRuleRecord {
+                add_universal_rule(&mut inner.universal_rules,UniversalRuleRecord {
                     label,
                     condition_templates: bare_condition_sexps.clone(),
                     conclusion_templates: bare_conclusion_sexps.clone(),
@@ -2392,7 +2467,7 @@ fn compile_forall_to_rule(
 
                 // Record bare rule structure for backward-chaining provenance
                 let label = build_rule_label(&[], &[body_sexp.clone()]);
-                inner.universal_rules.push(UniversalRuleRecord {
+                add_universal_rule(&mut inner.universal_rules,UniversalRuleRecord {
                     label,
                     condition_templates: vec![],
                     conclusion_templates: vec![body_sexp.clone()],
@@ -2431,7 +2506,7 @@ fn compile_temporal_lifted_rules(
                 .map(|s| format!("({} {})", tense, s))
                 .collect();
             let label = build_rule_label(&tensed_cond_templates, &tensed_concl_templates);
-            inner.universal_rules.push(UniversalRuleRecord {
+            add_universal_rule(&mut inner.universal_rules,UniversalRuleRecord {
                 label,
                 condition_templates: tensed_cond_templates,
                 conclusion_templates: tensed_concl_templates,

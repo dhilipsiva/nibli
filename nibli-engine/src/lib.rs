@@ -2,9 +2,12 @@
 //! No WASM, no Wasmtime — full stack traces for debugging.
 #![allow(dead_code)]
 
+use std::cell::RefCell;
 use std::collections::HashSet;
+use std::path::Path;
 
 use nibli_protocol::{humanize_sexp, ProofTrace as ProofTraceJson, ProofStep as ProofStepJson, ProofRule as ProofRuleJson, LogicalTerm as LogicalTermJson};
+use nibli_store::{NibliStore, StoredLogicBuffer, StoredLogicNode, StoredLogicalTerm};
 
 // ─── Type aliases for each crate's WIT-generated types ──────────────
 
@@ -567,22 +570,151 @@ fn proof_trace_to_json(trace: &logji_logic::ProofTrace) -> String {
 // ENGINE WRAPPER
 // ═══════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════
+// STORE CONVERSIONS: logji <-> nibli-store mirror types
+// ═══════════════════════════════════════════════════════════════════════
+
+fn term_to_stored(t: &logji_logic::LogicalTerm) -> StoredLogicalTerm {
+    match t {
+        logji_logic::LogicalTerm::Variable(v) => StoredLogicalTerm::Variable(v.clone()),
+        logji_logic::LogicalTerm::Constant(c) => StoredLogicalTerm::Constant(c.clone()),
+        logji_logic::LogicalTerm::Description(d) => StoredLogicalTerm::Description(d.clone()),
+        logji_logic::LogicalTerm::Unspecified => StoredLogicalTerm::Unspecified,
+        logji_logic::LogicalTerm::Number(n) => StoredLogicalTerm::Number(*n),
+    }
+}
+
+fn term_from_stored(t: &StoredLogicalTerm) -> logji_logic::LogicalTerm {
+    match t {
+        StoredLogicalTerm::Variable(v) => logji_logic::LogicalTerm::Variable(v.clone()),
+        StoredLogicalTerm::Constant(c) => logji_logic::LogicalTerm::Constant(c.clone()),
+        StoredLogicalTerm::Description(d) => logji_logic::LogicalTerm::Description(d.clone()),
+        StoredLogicalTerm::Unspecified => logji_logic::LogicalTerm::Unspecified,
+        StoredLogicalTerm::Number(n) => logji_logic::LogicalTerm::Number(*n),
+    }
+}
+
+fn node_to_stored(n: &logji_logic::LogicNode) -> StoredLogicNode {
+    match n {
+        logji_logic::LogicNode::Predicate((rel, args)) => {
+            StoredLogicNode::Predicate(rel.clone(), args.iter().map(term_to_stored).collect())
+        }
+        logji_logic::LogicNode::ComputeNode((rel, args)) => {
+            StoredLogicNode::ComputeNode(rel.clone(), args.iter().map(term_to_stored).collect())
+        }
+        logji_logic::LogicNode::AndNode((l, r)) => StoredLogicNode::And(*l, *r),
+        logji_logic::LogicNode::OrNode((l, r)) => StoredLogicNode::Or(*l, *r),
+        logji_logic::LogicNode::NotNode(id) => StoredLogicNode::Not(*id),
+        logji_logic::LogicNode::ExistsNode((v, b)) => StoredLogicNode::Exists(v.clone(), *b),
+        logji_logic::LogicNode::ForAllNode((v, b)) => StoredLogicNode::ForAll(v.clone(), *b),
+        logji_logic::LogicNode::PastNode(id) => StoredLogicNode::Past(*id),
+        logji_logic::LogicNode::PresentNode(id) => StoredLogicNode::Present(*id),
+        logji_logic::LogicNode::FutureNode(id) => StoredLogicNode::Future(*id),
+        logji_logic::LogicNode::ObligatoryNode(id) => StoredLogicNode::Obligatory(*id),
+        logji_logic::LogicNode::PermittedNode(id) => StoredLogicNode::Permitted(*id),
+        logji_logic::LogicNode::CountNode((v, c, b)) => StoredLogicNode::Count(v.clone(), *c, *b),
+    }
+}
+
+fn node_from_stored(n: &StoredLogicNode) -> logji_logic::LogicNode {
+    match n {
+        StoredLogicNode::Predicate(rel, args) => {
+            logji_logic::LogicNode::Predicate((rel.clone(), args.iter().map(term_from_stored).collect()))
+        }
+        StoredLogicNode::ComputeNode(rel, args) => {
+            logji_logic::LogicNode::ComputeNode((rel.clone(), args.iter().map(term_from_stored).collect()))
+        }
+        StoredLogicNode::And(l, r) => logji_logic::LogicNode::AndNode((*l, *r)),
+        StoredLogicNode::Or(l, r) => logji_logic::LogicNode::OrNode((*l, *r)),
+        StoredLogicNode::Not(id) => logji_logic::LogicNode::NotNode(*id),
+        StoredLogicNode::Exists(v, b) => logji_logic::LogicNode::ExistsNode((v.clone(), *b)),
+        StoredLogicNode::ForAll(v, b) => logji_logic::LogicNode::ForAllNode((v.clone(), *b)),
+        StoredLogicNode::Past(id) => logji_logic::LogicNode::PastNode(*id),
+        StoredLogicNode::Present(id) => logji_logic::LogicNode::PresentNode(*id),
+        StoredLogicNode::Future(id) => logji_logic::LogicNode::FutureNode(*id),
+        StoredLogicNode::Obligatory(id) => logji_logic::LogicNode::ObligatoryNode(*id),
+        StoredLogicNode::Permitted(id) => logji_logic::LogicNode::PermittedNode(*id),
+        StoredLogicNode::Count(v, c, b) => logji_logic::LogicNode::CountNode((v.clone(), *c, *b)),
+    }
+}
+
+fn buf_to_stored(buf: &logji_logic::LogicBuffer) -> StoredLogicBuffer {
+    StoredLogicBuffer {
+        nodes: buf.nodes.iter().map(node_to_stored).collect(),
+        roots: buf.roots.clone(),
+    }
+}
+
+fn buf_from_stored(stored: &StoredLogicBuffer) -> logji_logic::LogicBuffer {
+    logji_logic::LogicBuffer {
+        nodes: stored.nodes.iter().map(node_from_stored).collect(),
+        roots: stored.roots.clone(),
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// ENGINE WRAPPER
+// ═══════════════════════════════════════════════════════════════════════
+
 pub struct NibliEngine {
     kb: logji::KnowledgeBase,
     compute_predicates: HashSet<String>,
+    store: RefCell<Option<NibliStore>>,
 }
 
 impl NibliEngine {
+    fn default_compute_predicates() -> HashSet<String> {
+        let mut preds = HashSet::new();
+        preds.insert("pilji".to_string());
+        preds.insert("sumji".to_string());
+        preds.insert("dilcu".to_string());
+        preds
+    }
+
+    /// Create an engine without persistence (existing behavior).
     pub fn new() -> Self {
-        let mut compute_preds = HashSet::new();
-        compute_preds.insert("pilji".to_string());
-        compute_preds.insert("sumji".to_string());
-        compute_preds.insert("dilcu".to_string());
         println!("Native engine ready");
         NibliEngine {
             kb: logji::KnowledgeBase::new(),
-            compute_predicates: compute_preds,
+            compute_predicates: Self::default_compute_predicates(),
+            store: RefCell::new(None),
         }
+    }
+
+    /// Create an engine with disk persistence at the given path.
+    /// Replays all persisted facts into the in-memory KB on open.
+    pub fn open(db_path: &Path) -> Result<Self, String> {
+        let store = NibliStore::open(db_path, "local".to_string())
+            .map_err(|e| format!("Store error: {e}"))?;
+        let engine = NibliEngine {
+            kb: logji::KnowledgeBase::new(),
+            compute_predicates: Self::default_compute_predicates(),
+            store: RefCell::new(Some(store)),
+        };
+        engine.replay_from_store()?;
+        println!("Native engine ready (persistent: {})", db_path.display());
+        Ok(engine)
+    }
+
+    /// Replay all persisted facts into the in-memory KB.
+    fn replay_from_store(&self) -> Result<(), String> {
+        let store = self.store.borrow();
+        let store = store.as_ref().unwrap();
+        let facts = store
+            .all_active_facts()
+            .map_err(|e| format!("Store error: {e}"))?;
+        for fact in &facts {
+            let stored_buf: StoredLogicBuffer =
+                postcard::from_bytes(&fact.payload).map_err(|e| format!("Deserialize error: {e}"))?;
+            let buf = buf_from_stored(&stored_buf);
+            self.kb
+                .assert_fact_with_id(buf, fact.label.clone(), fact.id)
+                .map_err(|e| format!("Replay error: {e}"))?;
+        }
+        if !facts.is_empty() {
+            println!("[Store] Replayed {} persisted facts", facts.len());
+        }
+        Ok(())
     }
 
     fn compile_text(
@@ -635,13 +767,29 @@ impl NibliEngine {
     /// Reset the knowledge base, clearing all facts and rules.
     pub fn reset(&self) {
         self.kb.reset().ok();
+        if let Ok(mut store) = self.store.try_borrow_mut() {
+            if let Some(s) = store.as_mut() {
+                let _ = s.clear();
+            }
+        }
     }
 
     pub fn assert_text(&self, text: &str) -> Result<u64, String> {
         let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
-        self.kb
+        // Assert to logji first (get fact_id), then persist to store.
+        let stored_buf = buf_to_stored(&buf);
+        let fact_id = self.kb
             .assert_fact(buf, text.to_string())
-            .map_err(|e| format_logji_error(&e))
+            .map_err(|e| format_logji_error(&e))?;
+        if let Ok(mut store) = self.store.try_borrow_mut() {
+            if let Some(s) = store.as_mut() {
+                let payload = postcard::to_allocvec(&stored_buf)
+                    .map_err(|e| format!("Serialize error: {e}"))?;
+                s.insert_fact(fact_id, text.to_string(), payload)
+                    .map_err(|e| format!("Store error: {e}"))?;
+            }
+        }
+        Ok(fact_id)
     }
 
     pub fn query_text_with_proof(&self, text: &str) -> Result<(bool, String, String), String> {

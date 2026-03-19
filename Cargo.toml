@@ -11,6 +11,7 @@ members = [
     "nibli-protocol",
     "nibli-server",
     "smuni-dictionary",
+    "nibli-store",
 ]
 resolver = "2"
 

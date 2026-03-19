@@ -8,6 +8,8 @@ gerna = { path = "../gerna" }
 smuni = { path = "../smuni" }
 logji = { path = "../logji" }
 nibli-protocol = { path = "../nibli-protocol" }
+nibli-store = { path = "../nibli-store" }
+postcard = { version = "1", features = ["alloc"] }
 serde_json = "1"
 
 [dev-dependencies]
