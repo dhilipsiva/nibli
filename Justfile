@@ -110,6 +110,26 @@ run-persist: build-wasm
 test-tavla:
     cargo test -p tavla -- --nocapture --test-threads=1
 
+# Start WebRTC signaling server on port 9090
+signal:
+    cargo run -p tavla {{cargo_profile_flag}} -- --name signal --listen 127.0.0.1:9999 --signal-server 9090 --transport tcp
+
+# Gossip node A over TCP
+gossip-tcp-a:
+    cargo run -p tavla {{cargo_profile_flag}} -- --name alis --listen 127.0.0.1:7001 --transport tcp
+
+# Gossip node B over TCP, peers with A
+gossip-tcp-b:
+    cargo run -p tavla {{cargo_profile_flag}} -- --name bob --listen 127.0.0.1:7002 --peer 127.0.0.1:7001 --transport tcp
+
+# Gossip node A over WebRTC (requires signaling server + webrtc-transport feature)
+gossip-webrtc-a:
+    cargo run -p tavla --features webrtc-transport {{cargo_profile_flag}} -- --name alis --transport webrtc --signal http://127.0.0.1:9090
+
+# Gossip node B over WebRTC (requires signaling server + webrtc-transport feature)
+gossip-webrtc-b:
+    cargo run -p tavla --features webrtc-transport {{cargo_profile_flag}} -- --name bob --transport webrtc --signal http://127.0.0.1:9090 --peer alis
+
 # Run every test suite (unit + integration + Python + store + tavla)
 test-all: test test-engine test-store test-tavla test-backend test-classifier
 

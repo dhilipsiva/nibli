@@ -1,26 +1,18 @@
-//! Two-node gossip smoke test.
+//! Gossip integration tests.
 //!
-//! This is the foundational test: two nibli nodes, gossip propagation,
-//! independent verification. The grammar is the gatekeeper.
+//! Tests CRDT log, vector clocks, anti-entropy sync,
+//! retraction tombstones, KB rebuild, and epidemic propagation.
 
-use tavla::GossipNode;
+use tavla::{GossipNode, TrustPolicy, VectorClock};
+
+// ─── Basic gossip (from Prompt 1) ────────────────────────────────
 
 /// Two-node gossip: assert on A, ingest on B, query B.
-///
-/// 1. Node A asserts "ro lo gerku cu danlu" (all dogs are animals)
-/// 2. Node A asserts "la .adam. cu gerku" (Adam is a dog)
-/// 3. Node A creates envelopes for both
-/// 4. Node B ingests both envelopes
-/// 5. Node B queries "la .adam. cu danlu" → TRUE (derived via backward chaining)
-/// 6. Node B queries "la .adam. cu mlatu" → FALSE (no evidence)
-/// 7. Proof trace from step 5 contains "Derived"
 #[test]
 fn two_node_gossip_propagation() {
-    // ── Create two nodes ──
     let mut node_a = GossipNode::new("alis");
     let mut node_b = GossipNode::new("bob");
 
-    // ── Node A asserts facts ──
     let env1 = node_a
         .assert_local("ro lo gerku cu danlu")
         .expect("Node A should assert universal rule");
@@ -29,54 +21,31 @@ fn two_node_gossip_propagation() {
         .assert_local("la .adam. cu gerku")
         .expect("Node A should assert ground fact");
 
-    // Verify Node A has 2 envelopes in its log.
     assert_eq!(node_a.log_size(), 2, "Node A should have 2 envelopes");
 
-    // ── Node B ingests both envelopes ──
     let result1 = node_b
         .ingest(env1)
         .expect("Node B should ingest envelope 1");
-    assert!(
-        result1.fact_id.is_some(),
-        "Ingesting Lojban assertion should produce a fact ID"
-    );
+    assert!(result1.fact_id.is_some());
 
     let result2 = node_b
         .ingest(env2)
         .expect("Node B should ingest envelope 2");
-    assert!(
-        result2.fact_id.is_some(),
-        "Ingesting Lojban assertion should produce a fact ID"
-    );
+    assert!(result2.fact_id.is_some());
 
-    // Verify Node B has 2 envelopes in its log.
     assert_eq!(node_b.log_size(), 2, "Node B should have 2 envelopes");
 
-    // ── Node B queries "la .adam. cu danlu" → should be TRUE ──
-    let (holds, proof_text, _proof_json) = node_b
+    let (holds, proof_text, _) = node_b
         .query_with_proof("la .adam. cu danlu")
         .expect("Node B should be able to query");
-    assert!(
-        holds,
-        "Node B should derive 'adam is an animal' via backward chaining"
-    );
-
-    // ── Proof trace should contain "Derived" ──
-    assert!(
-        proof_text.contains("Derived"),
-        "Proof trace should show derived reasoning, got:\n{}",
-        proof_text
-    );
+    assert!(holds, "Node B should derive 'adam is an animal'");
+    assert!(proof_text.contains("Derived"));
     println!("Proof trace for 'la .adam. cu danlu':\n{}", proof_text);
 
-    // ── Node B queries "la .adam. cu mlatu" → should be FALSE ──
-    let (holds, _proof_text, _proof_json) = node_b
+    let (holds, _, _) = node_b
         .query_with_proof("la .adam. cu mlatu")
         .expect("Node B should be able to query");
-    assert!(
-        !holds,
-        "Node B should NOT derive 'adam is a cat' — no evidence"
-    );
+    assert!(!holds, "Node B should NOT derive 'adam is a cat'");
 }
 
 /// Dedup test: ingesting the same envelope twice should be idempotent.
@@ -89,16 +58,11 @@ fn dedup_prevents_double_ingest() {
         .assert_local("la .adam. cu gerku")
         .expect("Should assert");
 
-    // Ingest once.
     let r1 = node_b.ingest(env.clone()).expect("First ingest");
     assert!(r1.fact_id.is_some());
 
-    // Ingest same envelope again — should be deduped.
     let r2 = node_b.ingest(env).expect("Second ingest (dedup)");
-    assert!(
-        r2.fact_id.is_none(),
-        "Duplicate envelope should be skipped (no new fact)"
-    );
+    assert!(r2.fact_id.is_none(), "Duplicate should be skipped");
 
     assert_eq!(node_b.log_size(), 1, "Log should have 1 envelope, not 2");
 }
@@ -109,26 +73,15 @@ fn vector_clock_merge_on_ingest() {
     let mut node_a = GossipNode::new("alis");
     let mut node_b = GossipNode::new("bob");
 
-    // A asserts two facts — its clock should be alis:2.
     let _env1 = node_a.assert_local("la .adam. cu gerku").unwrap();
     let env2 = node_a.assert_local("la .adam. cu danlu").unwrap();
 
-    // B's clock is empty before ingest.
-    assert!(
-        node_b.get_clock().entries.is_empty(),
-        "B's clock should be empty"
-    );
+    assert!(node_b.get_clock().entries.is_empty());
 
-    // B ingests A's second envelope (clock carries alis:2).
     node_b.ingest(env2).unwrap();
 
-    // B's clock should now have alis >= 2.
     let b_alis = node_b.get_clock().entries.get("alis").copied().unwrap_or(0);
-    assert!(
-        b_alis >= 2,
-        "After ingest, B's clock for alis should be >= 2, got {}",
-        b_alis
-    );
+    assert!(b_alis >= 2, "B's clock for alis should be >= 2, got {b_alis}");
 }
 
 /// Invalid Lojban should be rejected by gerna on ingest.
@@ -137,9 +90,6 @@ fn invalid_lojban_rejected_on_ingest() {
     let _node_a = GossipNode::new("alis");
     let mut node_b = GossipNode::new("bob");
 
-    // Create an envelope manually with invalid Lojban.
-    // We can't use assert_local because it would fail on node_a too.
-    // Instead, craft a raw envelope.
     let bad_envelope = tavla::Envelope {
         id: "bad123".to_string(),
         author: "alis".to_string(),
@@ -149,12 +99,448 @@ fn invalid_lojban_rejected_on_ingest() {
         topics: vec![],
         timestamp: "2026-03-20T00:00:00Z".to_string(),
         sig: vec![],
+        quarantined: false,
     };
 
     let result = node_b.ingest(bad_envelope);
+    assert!(result.is_err(), "Invalid Lojban should be rejected: {:?}", result);
+}
+
+// ─── CRDT log tests ──────────────────────────────────────────────
+
+/// OR-Set CRDT: retraction creates tombstone, active_assertions excludes it.
+#[test]
+fn crdt_retraction_tombstones() {
+    let mut node = GossipNode::new("alis");
+
+    let env1 = node.assert_local("la .adam. cu gerku").unwrap();
+    let env2 = node.assert_local("la .adam. cu danlu").unwrap();
+
+    assert_eq!(node.active_count(), 2);
+
+    // Retract the first assertion.
+    let tombstone = node.retract_local(&env1.id).unwrap();
+    assert!(matches!(tombstone.op, tavla::GossipOp::Retract(_)));
+
+    // CRDT log has 3 envelopes (2 assertions + 1 retraction).
+    assert_eq!(node.log_size(), 3);
+    // But only 1 active assertion remains.
+    assert_eq!(node.active_count(), 1);
+
+    // The retracted fact should no longer be in the KB.
+    // After rebuild, only "la .adam. cu danlu" survives.
+    let (holds, _, _) = node.query_with_proof("la .adam. cu danlu").unwrap();
+    assert!(holds, "Non-retracted fact should still hold");
+}
+
+/// Retraction propagates via ingest.
+#[test]
+fn retraction_propagates_to_peer() {
+    let mut node_a = GossipNode::new("alis");
+    let mut node_b = GossipNode::new("bob");
+
+    // A asserts and B ingests.
+    let env1 = node_a.assert_local("la .adam. cu gerku").unwrap();
+    node_b.ingest(env1.clone()).unwrap();
+
+    assert_eq!(node_b.active_count(), 1);
+
+    // A retracts and B ingests the tombstone.
+    let tombstone = node_a.retract_local(&env1.id).unwrap();
+    let result = node_b.ingest(tombstone).unwrap();
+    assert!(result.was_retraction);
+
+    // B should have 0 active assertions after retraction.
+    assert_eq!(node_b.active_count(), 0);
+}
+
+/// KB rebuild from CRDT log restores consistent state.
+#[test]
+fn kb_rebuild_from_crdt_log() {
+    let mut node = GossipNode::new("alis");
+
+    node.assert_local("ro lo gerku cu danlu").unwrap();
+    node.assert_local("la .adam. cu gerku").unwrap();
+
+    // Verify derivation works.
+    let (holds, _, _) = node.query_with_proof("la .adam. cu danlu").unwrap();
+    assert!(holds);
+
+    // Reset KB (simulating corruption or restart).
+    node.reset();
+    let (holds, _, _) = node.query_with_proof("la .adam. cu danlu").unwrap();
+    assert!(!holds, "KB should be empty after reset");
+
+    // Rebuild from CRDT log.
+    node.rebuild_kb();
+    let (holds, _, _) = node.query_with_proof("la .adam. cu danlu").unwrap();
+    assert!(holds, "KB should be restored after rebuild");
+}
+
+// ─── Vector clock dominance ──────────────────────────────────────
+
+/// VectorClock::dominates — correct causal ordering.
+#[test]
+fn vector_clock_dominates() {
+    let mut a = VectorClock::new();
+    let mut b = VectorClock::new();
+
+    // Empty clocks dominate each other.
+    assert!(a.dominates(&b));
+    assert!(b.dominates(&a));
+
+    a.tick("alis");
+    // a={alis:1} dominates b={} — we've seen everything b has.
+    assert!(a.dominates(&b));
+    // b={} does NOT dominate a={alis:1} — b hasn't seen alis's event.
+    assert!(!b.dominates(&a));
+
+    b.tick("bob");
+    // a={alis:1} vs b={bob:1} — neither dominates (concurrent).
+    assert!(!a.dominates(&b));
+    assert!(!b.dominates(&a));
+
+    a.merge(&b);
+    // a={alis:1, bob:1} dominates b={bob:1}.
+    assert!(a.dominates(&b));
+}
+
+// ─── Sync diff ───────────────────────────────────────────────────
+
+/// sync_diff returns envelopes the peer hasn't seen.
+#[test]
+fn sync_diff_returns_missing_envelopes() {
+    let mut node_a = GossipNode::new("alis");
+    let mut node_b = GossipNode::new("bob");
+
+    // A asserts 3 facts.
+    node_a.assert_local("la .adam. cu gerku").unwrap();
+    node_a.assert_local("la .adam. cu danlu").unwrap();
+    node_a.assert_local("la .adam. cu mlatu").unwrap();
+
+    // B has seen nothing — empty clock.
+    let diff = node_a.sync_diff(node_b.get_clock());
+    assert_eq!(diff.len(), 3, "B should need all 3 envelopes");
+
+    // B ingests the first two via sync.
+    node_b.ingest(diff[0].clone()).unwrap();
+    node_b.ingest(diff[1].clone()).unwrap();
+
+    // Now B has a partial clock. Ask A for the remaining diff.
+    let diff2 = node_a.sync_diff(node_b.get_clock());
+    assert_eq!(diff2.len(), 1, "B should need only 1 more envelope");
+}
+
+/// Sync diff respects causal order (lower clock sum first).
+#[test]
+fn sync_diff_causal_order() {
+    let mut node_a = GossipNode::new("alis");
+    let mut node_b = GossipNode::new("bob");
+
+    // A asserts facts in order.
+    let _e1 = node_a.assert_local("la .adam. cu gerku").unwrap();
+    let _e2 = node_a.assert_local("la .adam. cu danlu").unwrap();
+
+    // B asserts something independently.
+    let _e3 = node_b.assert_local("la .adam. cu mlatu").unwrap();
+
+    // Merge A's log into B's CRDT.
+    let peer_clock = VectorClock::new(); // pretend peer has nothing
+    let diff = node_a.sync_diff(&peer_clock);
+
+    // Should be in causal order: e1 (clock sum 1) before e2 (clock sum 2).
+    assert!(diff[0].clock.sum() <= diff[1].clock.sum());
+}
+
+// ─── 3-node epidemic gossip ──────────────────────────────────────
+
+/// Three-node epidemic gossip: A↔B↔C (A does NOT peer with C).
+///
+/// Phase 1: A asserts facts → propagate A→B→C
+/// Phase 2: "Kill" B (simulate by not using it), A and C assert independently
+/// Phase 3: "Restart" B, sync from both A and C → B gets everything
+#[test]
+fn three_node_epidemic_gossip() {
+    let mut node_a = GossipNode::new("alis");
+    let mut node_b = GossipNode::new("bob");
+    let mut node_c = GossipNode::new("carol");
+
+    // ── Phase 1: A asserts, propagates A→B→C ──
+
+    let rule = node_a.assert_local("ro lo gerku cu danlu").unwrap();
+    let fact_a = node_a.assert_local("la .adam. cu gerku").unwrap();
+
+    // B ingests from A (A↔B link).
+    node_b.ingest(rule.clone()).unwrap();
+    node_b.ingest(fact_a.clone()).unwrap();
+
+    // B verifies derivation.
+    let (holds, _, _) = node_b.query_with_proof("la .adam. cu danlu").unwrap();
+    assert!(holds, "B should derive 'adam is danlu' after syncing from A");
+
+    // C ingests from B (B↔C link) — epidemic: A→B→C.
+    // B sends its sync_diff to C.
+    let diff_b_to_c = node_b.sync_diff(node_c.get_clock());
+    assert_eq!(diff_b_to_c.len(), 2, "B should send 2 envelopes to C");
+    for env in diff_b_to_c {
+        node_c.ingest(env).unwrap();
+    }
+
+    // C verifies derivation — facts propagated A→B→C.
+    let (holds, _, _) = node_c.query_with_proof("la .adam. cu danlu").unwrap();
+    assert!(holds, "C should derive 'adam is danlu' via epidemic A→B→C");
+
+    // ── Phase 2: "Kill" B. A and C assert independently. ──
+
+    // A asserts more.
+    let fact_a2 = node_a.assert_local("la .adam. cu mlatu").unwrap();
+
+    // C asserts independently.
+    let fact_c = node_c.assert_local("la .adam. cu finpe").unwrap();
+
+    // B is "dead" — doesn't see any of these.
+    assert_eq!(node_b.log_size(), 2, "B hasn't seen new facts");
+
+    // ── Phase 3: "Restart" B. Sync from both A and C. ──
+
+    // B syncs from A.
+    let diff_a_to_b = node_a.sync_diff(node_b.get_clock());
     assert!(
-        result.is_err(),
-        "Invalid Lojban should be rejected by gerna: {:?}",
-        result
+        diff_a_to_b.len() >= 1,
+        "A should have at least 1 new envelope for B"
     );
+    for env in diff_a_to_b {
+        node_b.ingest(env).unwrap();
+    }
+
+    // B syncs from C.
+    let diff_c_to_b = node_c.sync_diff(node_b.get_clock());
+    assert!(
+        diff_c_to_b.len() >= 1,
+        "C should have at least 1 new envelope for B"
+    );
+    for env in diff_c_to_b {
+        node_b.ingest(env).unwrap();
+    }
+
+    // B should now have ALL facts from A, B's own, and C.
+    // A: rule, fact_a, fact_a2 (3 envelopes)
+    // C: fact_c (1 envelope)
+    // B originally had: rule, fact_a (2 envelopes)
+    // After sync: rule, fact_a, fact_a2, fact_c (4 envelopes)
+    assert_eq!(
+        node_b.log_size(),
+        4,
+        "B should have 4 envelopes after syncing from both A and C"
+    );
+
+    // B can query all the facts.
+    let (holds, _, _) = node_b.query_with_proof("la .adam. cu mlatu").unwrap();
+    assert!(holds, "B should have A's new fact 'adam is mlatu'");
+
+    let (holds, _, _) = node_b.query_with_proof("la .adam. cu finpe").unwrap();
+    assert!(holds, "B should have C's fact 'adam is finpe'");
+
+    // The original derivation should still work.
+    let (holds, _, _) = node_b.query_with_proof("la .adam. cu danlu").unwrap();
+    assert!(holds, "B should still derive 'adam is danlu'");
+
+    println!("3-node epidemic gossip: A→B→C propagation + partition recovery verified");
+}
+
+/// Retraction across 3 nodes: A retracts, B and C see tombstone.
+#[test]
+fn three_node_retraction_propagation() {
+    let mut node_a = GossipNode::new("alis");
+    let mut node_b = GossipNode::new("bob");
+    let mut node_c = GossipNode::new("carol");
+
+    // A asserts, B and C ingest.
+    let env = node_a.assert_local("la .adam. cu gerku").unwrap();
+    let env_id = env.id.clone();
+    node_b.ingest(env.clone()).unwrap();
+    node_c.ingest(env).unwrap();
+
+    assert_eq!(node_b.active_count(), 1);
+    assert_eq!(node_c.active_count(), 1);
+
+    // A retracts.
+    let tombstone = node_a.retract_local(&env_id).unwrap();
+
+    // B ingests tombstone directly (A↔B link).
+    node_b.ingest(tombstone.clone()).unwrap();
+    assert_eq!(node_b.active_count(), 0, "B should have 0 active after retraction");
+
+    // C gets tombstone from B (B↔C link, epidemic).
+    let diff = node_b.sync_diff(node_c.get_clock());
+    for e in diff {
+        node_c.ingest(e).unwrap();
+    }
+    assert_eq!(node_c.active_count(), 0, "C should have 0 active after retraction");
+}
+
+/// CRDT log merge is idempotent — merging the same log twice changes nothing.
+#[test]
+fn crdt_merge_idempotent() {
+    let mut log_a = tavla::CrdtLog::new();
+    let mut log_b = tavla::CrdtLog::new();
+
+    let env = tavla::Envelope {
+        id: "test123".to_string(),
+        author: "alis".to_string(),
+        clock: VectorClock::new(),
+        op: tavla::GossipOp::AssertLojban("la .adam. cu gerku".to_string()),
+        stance: tavla::EpistemicStance::Deduced,
+        topics: vec!["gerku".to_string()],
+        timestamp: "2026-03-20T00:00:00Z".to_string(),
+        sig: vec![],
+        quarantined: false,
+    };
+
+    log_a.insert(env.clone());
+    log_b.insert(env);
+
+    // Merge B into A — should add nothing (already present).
+    let new = log_a.merge(&log_b);
+    assert!(new.is_empty(), "Merging duplicate log should add nothing");
+    assert_eq!(log_a.len(), 1);
+}
+
+// ─── Trust as knowledge ─────────────────────────────────────────
+
+/// TrustRequired: rejects untrusted, accepts after :trust, rejects after :distrust.
+#[test]
+fn trust_required_lifecycle() {
+    let mut node_a = GossipNode::with_policy("alis", TrustPolicy::TrustRequired);
+    let mut node_b = GossipNode::new("bob");
+
+    // B asserts a fact.
+    let env = node_b.assert_local("la .adam. cu gerku").unwrap();
+
+    // A rejects — B is untrusted.
+    let result = node_a.ingest(env.clone()).unwrap();
+    assert!(result.was_rejected, "A should reject B's envelope (untrusted)");
+    assert!(result.fact_id.is_none());
+    assert_eq!(node_a.active_count(), 0);
+
+    // A trusts B.
+    node_a.trust("bob").unwrap();
+
+    // Now A should accept B's envelope.
+    let result2 = node_a.ingest(env.clone()).unwrap();
+    assert!(!result2.was_rejected, "A should accept B's envelope after trust");
+    assert!(result2.fact_id.is_some());
+    assert_eq!(node_a.active_count(), 2); // trust assertion + bob's fact
+
+    // A distrusts B.
+    node_a.distrust("bob").unwrap();
+
+    // Verify the trust assertion is gone.
+    let trusts = node_a.trust_list();
+    assert!(trusts.is_empty(), "No trust assertions after distrust");
+
+    // New facts from B should be rejected again.
+    let env2 = node_b.assert_local("la .adam. cu danlu").unwrap();
+    let result3 = node_a.ingest(env2).unwrap();
+    assert!(result3.was_rejected, "A should reject B again after distrust");
+}
+
+/// QuarantineUntrusted: accepts but quarantines untrusted envelopes.
+#[test]
+fn quarantine_untrusted_policy() {
+    let mut node_a = GossipNode::with_policy("alis", TrustPolicy::QuarantineUntrusted);
+    let mut node_b = GossipNode::new("bob");
+
+    let env = node_b.assert_local("la .adam. cu gerku").unwrap();
+
+    // A quarantines — B is untrusted.
+    let result = node_a.ingest(env).unwrap();
+    assert!(result.was_quarantined, "Should be quarantined");
+    assert!(!result.was_rejected, "Should NOT be rejected");
+    assert!(result.fact_id.is_none(), "Quarantined facts not in KB");
+
+    // Verify quarantine counts.
+    assert_eq!(node_a.quarantined_count(), 1);
+    assert_eq!(node_a.active_count(), 0);
+
+    // CRDT log has the envelope.
+    assert_eq!(node_a.log_size(), 1);
+
+    // A trusts B — quarantined envelopes should be promoted.
+    node_a.trust("bob").unwrap();
+    node_a.reevaluate_quarantine();
+
+    // Now the quarantined fact should be active.
+    assert_eq!(node_a.quarantined_count(), 0);
+    assert_eq!(node_a.active_count(), 2); // trust + bob's fact
+
+    // The fact should now be in the KB.
+    let (holds, _, _) = node_a.query_with_proof("la .adam. cu gerku").unwrap();
+    assert!(holds, "Promoted fact should be queryable");
+}
+
+/// AcceptAll: accepts everything regardless of trust.
+#[test]
+fn accept_all_policy() {
+    let mut node_a = GossipNode::with_policy("alis", TrustPolicy::AcceptAll);
+    let mut node_b = GossipNode::new("bob");
+
+    let env = node_b.assert_local("la .adam. cu gerku").unwrap();
+
+    let result = node_a.ingest(env).unwrap();
+    assert!(!result.was_rejected);
+    assert!(!result.was_quarantined);
+    assert!(result.fact_id.is_some());
+}
+
+/// Self-authored envelopes always trusted regardless of policy.
+#[test]
+fn self_trust_always() {
+    let mut node = GossipNode::with_policy("alis", TrustPolicy::TrustRequired);
+
+    // Self-asserted should work.
+    let result = node.assert_local("la .adam. cu gerku");
+    assert!(result.is_ok(), "Self-asserted should always work");
+    assert_eq!(node.active_count(), 1);
+}
+
+/// Trust list shows lacri assertions.
+#[test]
+fn trust_list_shows_lacri() {
+    let mut node = GossipNode::new("alis");
+
+    node.trust("bob").unwrap();
+    node.trust_topic("carol", "gerku").unwrap();
+
+    let trusts = node.trust_list();
+    assert_eq!(trusts.len(), 2);
+    assert!(trusts.iter().any(|t| t.contains("bob")));
+    assert!(trusts.iter().any(|t| t.contains("carol")));
+}
+
+/// Distrust removes trust and triggers re-evaluation.
+#[test]
+fn distrust_revokes_and_reevaluates() {
+    let mut node_a = GossipNode::with_policy("alis", TrustPolicy::QuarantineUntrusted);
+    let mut node_b = GossipNode::new("bob");
+
+    // Trust bob first.
+    node_a.trust("bob").unwrap();
+
+    // Bob's fact accepted (trusted).
+    let env = node_b.assert_local("la .adam. cu gerku").unwrap();
+    let result = node_a.ingest(env).unwrap();
+    assert!(!result.was_quarantined);
+    assert!(result.fact_id.is_some());
+
+    // Now distrust bob — his facts should be quarantined on rebuild.
+    node_a.distrust("bob").unwrap();
+
+    // After distrust + rebuild, bob's fact is quarantined.
+    // The distrust method already calls rebuild_kb.
+    // Bob's fact is now from an untrusted source.
+    // We need to reevaluate.
+    node_a.reevaluate_quarantine();
+
+    assert_eq!(node_a.quarantined_count(), 1, "Bob's fact should be quarantined after distrust");
 }
