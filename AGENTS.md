@@ -48,7 +48,7 @@ The gasnu (runner) acts as a TCP client to an external compute backend server vi
 
 ## Architecture
 
-5 WASM component crates + 1 native host (all crate names are Lojban gismu):
+5 WASM component crates + native hosts + gossip daemon (all crate names are Lojban gismu):
 
 | Crate | Lojban meaning | Role | Key files |
 |-------|---------------|------|-----------|
@@ -57,6 +57,7 @@ The gasnu (runner) acts as a TCP client to an external compute backend server vi
 | `logji` | logic | FOL logic buffer -> backward-chaining assert/query | `lib.rs` (single file, all logic) |
 | `lasna` | fasten/connect | Glue: chains gerna -> smuni -> logji | `lib.rs` |
 | `gasnu` | agent/doer | Native Wasmtime host, REPL, external compute backend TCP client | `main.rs` |
+| `tavla` | talk | Gossip daemon: federated knowledge propagation over TCP/WebRTC | `lib.rs`, `main.rs` |
 | `python/` | — | Reference compute backend server (TCP + JSON Lines) | `nibli_backend.py` |
 
 - **WIT interfaces:** `wit/world.wit` defines `ast-types` (gerna output), `logic-types` (FOL IR), `gerna`, `smuni`, `logji`, `compute-backend`, `lasna`. `cargo component build` regenerates `src/bindings.rs` in each crate.

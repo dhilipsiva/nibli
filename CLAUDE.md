@@ -24,7 +24,8 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | `just test-engine` | Run nibli-engine integration tests (full pipeline: parse → compile → reason) |
 | `just test-gerna` | Run gerna (parser) tests only |
 | `just test-backend` | Run Python backend tests |
-| `just test-all` | Run every test suite (unit + integration + Python) |
+| `just test-tavla` | Run tavla gossip tests |
+| `just test-all` | Run every test suite (unit + integration + Python + tavla) |
 | `just build-wasm` | Build WASM components + fuse with wac |
 | `just build-gasnu` | Build native Wasmtime host gasnu (runner) |
 | `just backend` | Start the Python reference compute backend (port 5555) |
@@ -62,12 +63,13 @@ The gasnu (runner) acts as a TCP client to an external compute backend server vi
 | `logji` | logic | FOL logic buffer -> backward-chaining assert/query | `lib.rs` (single file, all logic) |
 | `lasna` | fasten/connect | Glue: chains gerna -> smuni -> logji | `lib.rs` |
 | `gasnu` | agent/doer | Native Wasmtime host, REPL, external compute backend TCP client | `main.rs` |
-| `nibli-engine` | — | Wasmtime engine wrapper library (shared by nibli-server) | `lib.rs` |
+| `nibli-engine` | — | Wasmtime engine wrapper library (shared by nibli-server, tavla) | `lib.rs` |
 | `nibli-server` | — | GraphQL API server (async-graphql + axum, port 8081) | `main.rs` |
 | `nibli-ui` | — | Dioxus web UI for Transparency Triad (browser, port 8080) | `main.rs` |
+| `tavla` | talk | Gossip daemon: federated knowledge propagation over TCP/WebRTC | `lib.rs`, `main.rs` |
 | `python/` | — | Reference compute backend server (TCP + JSON Lines) | `nibli_backend.py` |
 
-- **WIT interfaces:** `wit/world.wit` defines `ast-types` (gerna output), `logic-types` (FOL IR), `gerna`, `smuni`, `logji`, `compute-backend`, `lasna`. `cargo component build` regenerates `src/bindings.rs` in each crate.
+- **WIT interfaces:** `wit/world.wit` defines `ast-types` (gerna output), `logic-types` (FOL IR), `gerna`, `smuni`, `logji`, `compute-backend`, `lasna`. `wit/gossip.wit` defines gossip protocol types (agent identity, vector clocks, envelopes, trust, transport). `cargo component build` regenerates `src/bindings.rs` in each crate.
 - **WIT worlds:** `gerna-component`, `smuni-component`, `logji-component`, `lasna-pipeline`.
 - **Rust structs:** `GernaComponent`, `SmuniComponent`, `LogjiComponent`, `LasnaPipeline`.
 - **Cross-component data:** Flat index-based arrays (`AstBuffer`, `LogicBuffer`) with `u32` indices — no pointers across WASM boundaries.

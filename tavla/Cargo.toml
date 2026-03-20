@@ -1,0 +1,18 @@
+[package]
+name = "tavla"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "tavla"
+path = "src/main.rs"
+
+[dependencies]
+nibli-engine = { path = "../nibli-engine" }
+nibli-protocol = { path = "../nibli-protocol" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+chrono = "0.4"
+
+[dev-dependencies]

@@ -106,8 +106,12 @@ test-store:
 run-persist: build-wasm
     NIBLI_DB_PATH=nibli.redb NIBLI_WASM_PATH={{wasm_dir}}/lasna-pipeline.wasm cargo run -p gasnu {{cargo_profile_flag}}
 
-# Run every test suite (unit + integration + Python + store)
-test-all: test test-engine test-store test-backend test-classifier
+# Run tavla gossip tests
+test-tavla:
+    cargo test -p tavla -- --nocapture --test-threads=1
+
+# Run every test suite (unit + integration + Python + store + tavla)
+test-all: test test-engine test-store test-tavla test-backend test-classifier
 
 # Wipes all compilation artifacts
 clean:

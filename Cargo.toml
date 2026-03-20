@@ -12,6 +12,7 @@ members = [
     "nibli-server",
     "smuni-dictionary",
     "nibli-store",
+    "tavla",
 ]
 resolver = "2"
 

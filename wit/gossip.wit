@@ -1,0 +1,440 @@
+/// Nibli Gossip Protocol — Federated Knowledge Network for LLM Agents
+///
+/// lo tcana jikca protokol — lo fatri ke se slabu ke logji ciste
+///
+/// This WIT interface defines the gossip layer that turns nibli from a
+/// single-node reasoning engine into a federated knowledge network where
+/// any LLM agent (any model, any provider) can assert, query, and
+/// propagate formally-verified beliefs across a distributed graph.
+///
+/// Design principles:
+///   1. CRDT append-only log is the authoritative state (sync assertions, not KBs)
+///   2. Each node's KB is an ephemeral materialized view rebuilt from the log
+///   3. Lojban is the wire format — every message compiles to verifiable FOL
+///   4. Trust is a first-class predicate, not an infrastructure concern
+///   5. Any LLM can write — the formal grammar is the only gatekeeper
+///
+/// Architecture: The "Materialized View" pattern from ideas/crdt-egraph-architecture.lojban
+///   Layer 1: CRDT append-only log (gossip-log) — syncs across nodes
+///   Layer 2: Replay engine — rebuilds KB from log on sync events
+///   Layer 3: Ephemeral KB — local backward-chaining over materialized state
+///
+package lojban:nibli-gossip@0.1.0;
+
+// ─── Identity ────────────────────────────────────────────────────
+
+/// Agent identity and cryptographic provenance.
+///
+/// Every LLM agent in the network has a unique identity. The identity
+/// is decoupled from the model — the same agent-id can back different
+/// LLMs over time (swap Claude for Llama, the identity persists).
+interface agent-types {
+    /// Unique agent identifier. Opaque string — could be a DID, a
+    /// public key fingerprint, or a human-readable name. The gossip
+    /// layer is agnostic; trust predicates resolve credibility.
+    ///
+    /// Examples: "did:key:z6Mkf5...", "fitness-agent-01", "alis" (Lojban name)
+    type agent-id = string;
+
+    /// Ed25519 signature over the canonical form of a gossip envelope.
+    /// Prevents tampering in transit. Verification key is the agent-id
+    /// (when agent-id is a public key fingerprint) or resolved via a
+    /// separate key registry.
+    type signature = list<u8>;
+
+    /// Agent capability declaration — what this agent can do.
+    /// Broadcast at join time; peers use this for routing.
+    record agent-manifest {
+        /// This agent's unique identity.
+        id: agent-id,
+        /// Human-readable label (e.g., "dhilipsiva's fitness agent").
+        label: string,
+        /// Lojban selbri prefixes this agent subscribes to.
+        /// Empty list = subscribe to everything (promiscuous mode).
+        /// Example: ["xadni", "cidja", "kanro"] for a fitness/nutrition agent.
+        subscriptions: list<string>,
+        /// Lojban selbri prefixes this agent is authoritative for.
+        /// Other agents MAY weight these assertions higher.
+        /// Example: ["kelci", "jivna"] for a gaming strategy agent.
+        authorities: list<string>,
+        /// Model metadata (informational, not trusted).
+        model-hint: option<string>,
+    }
+}
+
+// ─── Causal Ordering ─────────────────────────────────────────────
+
+/// Vector clock for causal ordering of gossip messages.
+///
+/// Each agent maintains a monotonically increasing counter. The vector
+/// clock is the set of all known agent counters. This gives us:
+///   - Causal ordering (if A caused B, B's clock dominates A's)
+///   - Concurrent detection (neither dominates → conflict)
+///   - No global coordinator needed
+interface causal-types {
+    use agent-types.{agent-id};
+
+    /// Single entry in a vector clock: (agent-id, logical-timestamp).
+    record clock-entry {
+        agent: agent-id,
+        counter: u64,
+    }
+
+    /// Vector clock — sparse representation (only agents that have
+    /// contributed to the causal history).
+    type vector-clock = list<clock-entry>;
+
+    /// Causal relationship between two vector clocks.
+    enum causal-order {
+        /// A happened-before B.
+        before,
+        /// B happened-before A.
+        after,
+        /// A and B are concurrent (no causal relationship).
+        concurrent,
+        /// A and B are identical.
+        equal,
+    }
+}
+
+// ─── Gossip Messages ─────────────────────────────────────────────
+
+/// The gossip envelope: the unit of federation.
+///
+/// Every message on the wire is a signed envelope containing a Lojban
+/// utterance, the asserting agent's identity, a vector clock, and
+/// optional metadata. The envelope is the CRDT element — the append-only
+/// log is a grow-only set of envelopes, merged by set union on sync.
+interface gossip-types {
+    use agent-types.{agent-id, signature};
+    use causal-types.{vector-clock};
+
+    /// Unique identifier for a gossip message. Content-addressed hash
+    /// of the canonical envelope (excluding signature).
+    /// SHA-256 hex string — deterministic, collision-resistant.
+    type envelope-id = string;
+
+    /// The kind of gossip operation.
+    /// Maps directly to nibli's existing KB operations.
+    variant gossip-op {
+        /// Assert a Lojban sentence as fact.
+        /// Payload: raw Lojban text (will be parsed by receiving node's gerna).
+        assert-lojban(string),
+
+        /// Assert a ground fact directly (bypasses parsing).
+        /// Fields: (relation-name, argument-terms as strings).
+        assert-direct(tuple<string, list<string>>),
+
+        /// Retract a previously asserted envelope by its ID.
+        retract(envelope-id),
+
+        /// Query (request for information, not stored in log).
+        /// Payload: Lojban query text. Response via gossip-response.
+        query(string),
+
+        /// Witness query (find all satisfying bindings).
+        /// Payload: Lojban text with ma/da variables.
+        query-find(string),
+    }
+
+    /// Epistemic confidence marker — maps to Lojban evidentials.
+    /// Determines how receiving agents should weight this assertion.
+    enum epistemic-stance {
+        /// ja'o — deduced from evidence (highest confidence).
+        deduced,
+        /// ba'a — expected based on experience.
+        expected,
+        /// pe'i — opinion (lowest confidence, still formally verifiable).
+        opinion,
+        /// ti'e — hearsay (received from another agent, relayed).
+        hearsay,
+    }
+
+    /// A signed gossip envelope — the atomic unit of federation.
+    record envelope {
+        /// Content-addressed ID of this envelope.
+        id: envelope-id,
+        /// The agent that authored this message.
+        author: agent-id,
+        /// Vector clock at time of authoring.
+        clock: vector-clock,
+        /// The operation (assert, retract, query).
+        op: gossip-op,
+        /// Epistemic stance — how confident is the author?
+        stance: epistemic-stance,
+        /// Topic tags (Lojban selbri roots) for routing/filtering.
+        /// Extracted from the Lojban text or manually specified.
+        topics: list<string>,
+        /// Wall-clock timestamp (informational, not authoritative).
+        /// ISO 8601 string. Causal ordering uses vector clocks, not wall time.
+        timestamp: string,
+        /// Ed25519 signature over canonical(id, author, clock, op, stance, topics, timestamp).
+        sig: signature,
+    }
+
+    /// Response to a gossip query (not stored in the log).
+    record gossip-response {
+        /// The envelope-id of the query this responds to.
+        in-reply-to: envelope-id,
+        /// The responding agent.
+        responder: agent-id,
+        /// Whether the query holds in the responder's local KB.
+        holds: bool,
+        /// Proof trace (JSON-serialized nibli proof tree).
+        /// Empty string if holds=false.
+        proof-json: string,
+        /// Witness bindings (for query-find). Each inner list is one
+        /// complete variable assignment.
+        witnesses: list<list<string>>,
+    }
+
+    /// Contradiction detected during gossip ingestion.
+    record contradiction {
+        /// The envelope that caused the contradiction.
+        incoming: envelope-id,
+        /// The existing envelope(s) that conflict.
+        existing: list<envelope-id>,
+        /// Human-readable description of the logical conflict.
+        description: string,
+        /// Proof traces showing the contradiction.
+        proof-json: string,
+    }
+}
+
+// ─── Trust Layer ─────────────────────────────────────────────────
+
+/// Trust predicates — first-class facts in the KB.
+///
+/// Trust is not infrastructure. Trust is knowledge. "Alice trusts Bob
+/// on matters of fitness" is a Lojban assertion like any other:
+///   la .alis. cu lacri la .bob. lo ka xadni
+///
+/// The gossip layer evaluates trust predicates at ingestion time to
+/// decide whether to accept, quarantine, or reject incoming envelopes.
+interface trust-types {
+    use agent-types.{agent-id};
+
+    /// Trust policy for ingesting gossip from other agents.
+    enum trust-policy {
+        /// Accept all assertions (promiscuous — useful for bootstrapping).
+        accept-all,
+        /// Accept only from agents with explicit trust predicates in KB.
+        trust-required,
+        /// Accept all but quarantine untrusted (available for query but
+        /// marked as unverified — the agent can still reason over them
+        /// but proof traces will show the epistemic gap).
+        quarantine-untrusted,
+    }
+
+    /// Trust evaluation result for a single envelope.
+    enum trust-verdict {
+        /// Agent is trusted for this topic — assert into KB.
+        trusted,
+        /// Agent is not trusted — quarantine (queryable but flagged).
+        quarantined,
+        /// Agent is explicitly distrusted — reject and do not store.
+        rejected,
+        /// No trust information available — apply default policy.
+        unknown,
+    }
+
+    /// Trust query: does agent X trust agent Y on topic Z?
+    /// Compiled internally to: la X cu lacri la Y lo ka Z
+    record trust-query {
+        truster: agent-id,
+        trustee: agent-id,
+        /// Optional topic restriction (Lojban selbri root).
+        /// None = general trust.
+        topic: option<string>,
+    }
+}
+
+// ─── Gossip Node Interface ───────────────────────────────────────
+
+/// The gossip node: a nibli engine + CRDT log + peer connections.
+///
+/// This is the main interface that any LLM agent implements to join
+/// the federated network. It wraps a lasna session with gossip
+/// capabilities: peer discovery, envelope exchange, trust evaluation,
+/// and contradiction detection.
+interface gossip-node {
+    use agent-types.{agent-id, agent-manifest};
+    use causal-types.{vector-clock};
+    use gossip-types.{envelope, envelope-id, gossip-response, contradiction};
+    use trust-types.{trust-policy, trust-verdict};
+
+    /// A gossip-capable nibli node.
+    /// Internally holds: lasna session + CRDT append-only log + peer table.
+    resource node {
+        /// Create a new gossip node with the given identity and trust policy.
+        constructor(manifest: agent-manifest, policy: trust-policy);
+
+        // ── Local Operations (same as lasna session, but logged) ────
+
+        /// Assert Lojban text locally. Creates a signed envelope,
+        /// appends to local log, asserts into local KB, and queues
+        /// for gossip propagation to peers.
+        assert-local: func(lojban: string) -> result<envelope-id, string>;
+
+        /// Query local KB. Does NOT gossip — local only.
+        query-local: func(lojban: string) -> result<gossip-response, string>;
+
+        /// Query with proof trace (local KB only).
+        query-local-with-proof: func(lojban: string) -> result<gossip-response, string>;
+
+        /// Witness query (local KB only).
+        query-find-local: func(lojban: string) -> result<gossip-response, string>;
+
+        /// Retract a locally-authored envelope. Propagates retraction to peers.
+        retract-local: func(id: envelope-id) -> result<_, string>;
+
+        // ── Gossip Operations ───────────────────────────────────────
+
+        /// Receive an envelope from a peer. The node will:
+        /// 1. Verify signature
+        /// 2. Check vector clock for causal ordering
+        /// 3. Evaluate trust policy
+        /// 4. Parse Lojban via gerna (reject if unparseable)
+        /// 5. Compile to FOL via smuni
+        /// 6. Check for contradictions against existing KB
+        /// 7. Assert into local KB (or quarantine)
+        /// 8. Append to local CRDT log
+        /// Returns the trust verdict and any contradictions detected.
+        ingest: func(env: envelope) -> result<tuple<trust-verdict, list<contradiction>>, string>;
+
+        /// Bulk ingest: receive multiple envelopes (e.g., on initial sync).
+        /// Envelopes are causally sorted by vector clock before ingestion.
+        /// Returns per-envelope results.
+        ingest-batch: func(envs: list<envelope>) -> result<list<tuple<trust-verdict, list<contradiction>>>, string>;
+
+        /// Produce all envelopes this node has that the peer is missing.
+        /// Input: the peer's vector clock (their current causal frontier).
+        /// Output: envelopes the peer hasn't seen, causally ordered.
+        /// This is the core anti-entropy mechanism.
+        sync-diff: func(peer-clock: vector-clock) -> result<list<envelope>, string>;
+
+        /// Get this node's current vector clock (causal frontier).
+        get-clock: func() -> vector-clock;
+
+        /// Get this node's manifest.
+        get-manifest: func() -> agent-manifest;
+
+        // ── Federated Query (gossip-based) ──────────────────────────
+
+        /// Query the network: broadcast a query to all peers, collect
+        /// responses, merge proof traces. Returns the best response
+        /// (highest trust, strongest proof).
+        ///
+        /// This is the "ask the collective" operation.
+        /// Internally creates a query envelope, gossips it, waits for
+        /// responses (with timeout), and returns merged results.
+        query-network: func(lojban: string, timeout-ms: u32) -> result<list<gossip-response>, string>;
+
+        // ── Introspection ───────────────────────────────────────────
+
+        /// List all envelopes in the local log, optionally filtered by topic.
+        list-log: func(topic-filter: option<string>) -> result<list<envelope>, string>;
+
+        /// List all contradictions detected so far.
+        list-contradictions: func() -> result<list<contradiction>, string>;
+
+        /// Get the count of envelopes in the local log.
+        log-size: func() -> u64;
+
+        /// Get the count of active facts in the local KB (materialized view).
+        kb-size: func() -> u64;
+
+        /// List known peers (agent-ids that have contributed envelopes).
+        list-peers: func() -> list<agent-id>;
+    }
+}
+
+// ─── Transport Interface (host-provided) ─────────────────────────
+
+/// Transport abstraction: the host provides the network layer.
+///
+/// The gossip protocol is transport-agnostic. The WASM component
+/// defines WHAT to send; the host decides HOW to send it.
+///
+/// Primary transport: WebRTC DataChannels (P2P, NAT-traversing, browser-native).
+/// Fallback: TCP direct connect (LAN, server-to-server).
+///
+/// WebRTC gives us:
+///   - NAT traversal (STUN/TURN) — nodes behind home routers can peer
+///   - Browser-native — nibli-ui (Dioxus WASM) gossips from a browser tab
+///   - True P2P — no central relay, no server, no authority
+///   - Encrypted by default (DTLS) — no separate TLS layer needed
+///   - DataChannels — reliable ordered delivery, perfect for JSON Lines
+///
+/// The host implements this interface. On native (gasnu/tavla), it uses
+/// webrtc-rs or libdatachannel. In browser (nibli-ui), it uses the
+/// browser's RTCPeerConnection API directly.
+interface gossip-transport {
+    use gossip-types.{envelope};
+    use gossip-types.{gossip-response};
+    use agent-types.{agent-id};
+
+    /// Send an envelope to a specific peer via their DataChannel.
+    send-to: func(peer: agent-id, env: envelope) -> result<_, string>;
+
+    /// Broadcast an envelope to all connected peers.
+    broadcast: func(env: envelope) -> result<_, string>;
+
+    /// Send a query response to the requesting peer.
+    respond: func(peer: agent-id, response: gossip-response) -> result<_, string>;
+
+    /// Initiate a WebRTC peer connection using a signaling offer.
+    /// The signaling layer (how offers/answers exchange) is out of scope —
+    /// could be a simple HTTP relay, a shared document, QR code, or even
+    /// manual copy-paste. The transport only handles the DataChannel.
+    connect-peer: func(peer: agent-id, signal-offer: string) -> result<string, string>;
+
+    /// Accept an incoming peer connection from a signaling answer.
+    accept-peer: func(peer: agent-id, signal-answer: string) -> result<_, string>;
+
+    /// List currently connected peers.
+    list-peers: func() -> list<agent-id>;
+}
+
+// ─── Crypto Interface (host-provided) ────────────────────────────
+
+/// Cryptographic operations provided by the host.
+///
+/// The WASM sandbox cannot access system randomness or key storage.
+/// The host provides signing and verification so that agent identity
+/// is rooted in the host's key management (hardware tokens, OS keychain, etc).
+interface gossip-crypto {
+    use agent-types.{agent-id, signature};
+
+    /// Sign a canonical byte string with this node's private key.
+    sign: func(data: list<u8>) -> result<signature, string>;
+
+    /// Verify a signature against the claimed author's public key.
+    verify: func(author: agent-id, data: list<u8>, sig: signature) -> result<bool, string>;
+}
+
+// ─── Component Worlds ────────────────────────────────────────────
+
+/// Gossip node world: the full federated nibli agent.
+///
+/// Imports the existing lasna pipeline (for parsing, semantics, reasoning)
+/// plus host-provided transport and crypto.
+/// Exports the gossip-node interface.
+///
+/// This is what gets compiled to WASM and loaded by the gossip host.
+world gossip-component {
+    /// The full reasoning pipeline (gerna → smuni → logji → lasna).
+    import gerna;
+    import smuni;
+    import logji;
+    import compute-backend;
+
+    /// Host-provided network transport.
+    import gossip-transport;
+
+    /// Host-provided cryptographic operations.
+    import gossip-crypto;
+
+    /// The gossip node API.
+    export gossip-node;
+}

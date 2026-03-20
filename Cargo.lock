@@ -515,8 +515,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fac4744fb15ae8337dc853fee7fb3f4e48c0fbaa23d0afe49c447b4fab126118"
 dependencies = [
  "iana-time-zone",
+ "js-sys",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "windows-link",
 ]
 
@@ -4425,6 +4427,18 @@ name = "target-lexicon"
 version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
+
+[[package]]
+name = "tavla"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "nibli-engine",
+ "nibli-protocol",
+ "serde",
+ "serde_json",
+ "sha2",
+]
 
 [[package]]
 name = "tempfile"
