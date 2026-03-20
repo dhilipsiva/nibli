@@ -1249,6 +1249,76 @@ fn build_ground_predicate_sexp(rel: &str, resolved_args: &[LogicalTerm]) -> Opti
     Some(format!("(Pred \"{}\" {})", rel, args_str))
 }
 
+// ─── Batch Compute Evaluation ────────────────────────────────────
+
+/// Batch-evaluate a ComputeNode predicate over all domain members by substituting
+/// `var` with each member's s-expression. Tries built-in arithmetic first (zero
+/// boundary crossing), then batch-dispatches remaining to the compute backend.
+///
+/// Returns `Some(results)` if evaluation succeeded for ALL members.
+/// Returns `None` if any backend request failed — caller should fall back to sequential.
+/// Auto-ingests true results into the KB fact store.
+fn batch_evaluate_compute_for_members(
+    rel: &str,
+    args: &[LogicalTerm],
+    var: &str,
+    members: &[(String, LogicalTerm)],
+    subs: &HashMap<String, String>,
+    inner: &mut KnowledgeBaseInner,
+) -> Option<Vec<bool>> {
+    let mut results = vec![false; members.len()];
+    let mut pending: Vec<(usize, Vec<LogicalTerm>)> = Vec::new();
+
+    for (i, (member_sexp, _)) in members.iter().enumerate() {
+        let mut s = subs.clone();
+        s.insert(var.to_string(), member_sexp.clone());
+
+        // Try arithmetic first (zero overhead, no boundary crossing)
+        if let Some(r) = try_arithmetic_evaluation(rel, args, &s) {
+            results[i] = r;
+            if r {
+                let resolved = resolve_args_for_dispatch(args, &s);
+                if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
+                    assert_sexp(sexp, inner);
+                }
+            }
+        } else {
+            let resolved = resolve_args_for_dispatch(args, &s);
+            pending.push((i, resolved));
+        }
+    }
+
+    if pending.is_empty() {
+        return Some(results); // All resolved via arithmetic
+    }
+
+    // Batch dispatch remaining (non-arithmetic) requests — 1 boundary crossing for N predicates
+    let requests: Vec<ComputeRequest> = pending
+        .iter()
+        .map(|(_, resolved)| ComputeRequest {
+            relation: rel.to_string(),
+            args: resolved.clone(),
+        })
+        .collect();
+    let batch_results = dispatch_batch_to_backend(&requests);
+
+    for (batch_idx, result) in batch_results.into_iter().enumerate() {
+        let member_idx = pending[batch_idx].0;
+        match result {
+            Ok(r) => {
+                results[member_idx] = r;
+                if r {
+                    if let Some(sexp) = build_ground_predicate_sexp(rel, &pending[batch_idx].1) {
+                        assert_sexp(sexp, inner);
+                    }
+                }
+            }
+            Err(_) => return None, // Any failure → fall back to sequential
+        }
+    }
+    Some(results)
+}
+
 // ─── Query Decomposition ─────────────────────────────────────────
 
 /// Wrap an s-expression with a temporal operator if a tense context is active.
@@ -1288,6 +1358,17 @@ fn check_formula_holds(
         | LogicNode::PermittedNode(inner_node) => check_formula_holds(buffer, *inner_node, subs, inner, tense),
         LogicNode::ExistsNode((v, body)) => {
             let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
+            // Fast path: batch dispatch when body is a ComputeNode
+            if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
+                if let Some(batch_results) = batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner) {
+                    if batch_results.iter().any(|r| *r) {
+                        return Ok(true);
+                    }
+                    // No witness among known members — continue to SkolemFn witnesses below
+                } else {
+                    // Batch dispatch failed — fall through to sequential
+                }
+            }
             let v_key = v.clone();
             let prev = subs.remove(&v_key);
             for (member_sexp, _) in &members {
@@ -1329,6 +1410,13 @@ fn check_formula_holds(
             if members.is_empty() {
                 return Ok(true);
             }
+            // Fast path: batch dispatch when body is a ComputeNode
+            if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
+                if let Some(batch_results) = batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner) {
+                    return Ok(batch_results.iter().all(|r| *r));
+                }
+                // Batch dispatch failed — fall through to sequential
+            }
             let v_key = v.clone();
             let prev = subs.remove(&v_key);
             for (member_sexp, _) in &members {
@@ -1349,6 +1437,14 @@ fn check_formula_holds(
         }
         LogicNode::CountNode((v, count, body)) => {
             let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
+            // Fast path: batch dispatch when body is a ComputeNode
+            if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
+                if let Some(batch_results) = batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner) {
+                    let satisfying = batch_results.iter().filter(|r| **r).count() as u32;
+                    return Ok(satisfying == *count);
+                }
+                // Batch dispatch failed — fall through to sequential
+            }
             let mut satisfying = 0u32;
             let v_key = v.clone();
             let prev = subs.remove(&v_key);
@@ -2260,6 +2356,27 @@ fn check_formula_holds_traced(
             // traced calls into O(M^D) cheap boolean checks + O(1) trace.
             let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
 
+            // Fast path: batch pre-screen when body is a ComputeNode
+            if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
+                if let Some(batch_results) = batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner) {
+                    if let Some(winner_idx) = batch_results.iter().position(|r| *r) {
+                        // Witness found — trace only the successful path
+                        let mut new_subs = subs.clone();
+                        new_subs.insert(v.clone(), members[winner_idx].0.clone());
+                        let (_, body_idx) =
+                            check_formula_holds_traced(buffer, *body, &mut new_subs, inner, steps, tense, memo)?;
+                        let idx = steps.len() as u32;
+                        steps.push(ProofStep {
+                            rule: ProofRule::ExistsWitness((v.clone(), members[winner_idx].1.clone())),
+                            holds: true,
+                            children: vec![body_idx],
+                        });
+                        return Ok((true, idx));
+                    }
+                    // No witness among known members — continue to SkolemFn witnesses below
+                }
+            }
+
             // 1. Try all known domain members (Const + Desc)
             for (sexp, term) in &members {
                 let mut new_subs = subs.clone();
@@ -2323,6 +2440,45 @@ fn check_formula_holds_traced(
                 });
                 return Ok((true, idx));
             }
+            // Fast path: batch pre-screen when body is a ComputeNode.
+            // Determines pass/fail for all members in one batch dispatch,
+            // then generates proof steps only for the relevant outcome.
+            if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
+                if let Some(batch_results) = batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner) {
+                    if let Some(fail_idx) = batch_results.iter().position(|r| !*r) {
+                        // Counterexample found — trace only the failing member
+                        let mut new_subs = subs.clone();
+                        new_subs.insert(v.clone(), members[fail_idx].0.clone());
+                        let (_, body_idx) =
+                            check_formula_holds_traced(buffer, *body, &mut new_subs, inner, steps, tense, memo)?;
+                        let idx = steps.len() as u32;
+                        steps.push(ProofStep {
+                            rule: ProofRule::ForallCounterexample(members[fail_idx].1.clone()),
+                            holds: false,
+                            children: vec![body_idx],
+                        });
+                        return Ok((false, idx));
+                    }
+                    // All passed — trace each member for the proof tree
+                    let mut child_indices = Vec::new();
+                    let mut entity_terms = Vec::new();
+                    for (sexp, term) in &members {
+                        let mut new_subs = subs.clone();
+                        new_subs.insert(v.clone(), sexp.clone());
+                        let (_, body_idx) =
+                            check_formula_holds_traced(buffer, *body, &mut new_subs, inner, steps, tense, memo)?;
+                        child_indices.push(body_idx);
+                        entity_terms.push(term.clone());
+                    }
+                    let idx = steps.len() as u32;
+                    steps.push(ProofStep {
+                        rule: ProofRule::ForallVerified(entity_terms),
+                        holds: true,
+                        children: child_indices,
+                    });
+                    return Ok((true, idx));
+                }
+            }
             let mut child_indices = Vec::new();
             let mut entity_terms = Vec::new();
             for (sexp, term) in &members {
@@ -2352,6 +2508,20 @@ fn check_formula_holds_traced(
         }
         LogicNode::CountNode((v, count, body)) => {
             let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
+            // Fast path: batch pre-screen when body is a ComputeNode
+            if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
+                if let Some(batch_results) = batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner) {
+                    let satisfying = batch_results.iter().filter(|r| **r).count() as u32;
+                    let result = satisfying == *count;
+                    let idx = steps.len() as u32;
+                    steps.push(ProofStep {
+                        rule: ProofRule::CountResult((*count, satisfying)),
+                        holds: result,
+                        children: vec![],
+                    });
+                    return Ok((result, idx));
+                }
+            }
             let mut satisfying = 0u32;
             for (sexp, _) in &members {
                 let mut new_subs = subs.clone();
