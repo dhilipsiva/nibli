@@ -4,7 +4,7 @@
 //! retraction tombstones, KB rebuild, epidemic propagation,
 //! trust-as-knowledge, and contradiction detection.
 
-use tavla::{GossipNode, TrustPolicy, VectorClock};
+use tavla::{EpistemicStance, GossipNode, TrustPolicy, VectorClock};
 
 // ─── Basic gossip (from Prompt 1) ────────────────────────────────
 
@@ -611,6 +611,114 @@ fn no_contradiction_on_compatible_facts() {
         0,
         "Compatible facts should not trigger contradictions"
     );
+}
+
+// ─── Epistemic stances ───────────────────────────────────────
+
+/// Local assertion defaults to Deduced (ja'o).
+#[test]
+fn local_assertion_defaults_to_deduced() {
+    let mut node = GossipNode::new("alis");
+    let env = node.assert_local("la .adam. cu gerku").unwrap();
+    assert_eq!(env.stance, EpistemicStance::Deduced);
+    assert_eq!(env.stance.cmavo(), "ja'o");
+}
+
+/// Assert with explicit stance (Expected / ba'a).
+#[test]
+fn assert_with_expected_stance() {
+    let mut node = GossipNode::new("alis");
+    let env = node
+        .assert_local_with_stance("lo trena cu clira", EpistemicStance::Expected)
+        .unwrap();
+    assert_eq!(env.stance, EpistemicStance::Expected);
+    assert_eq!(env.stance.cmavo(), "ba'a");
+}
+
+/// Assert with Opinion stance (pe'i).
+#[test]
+fn assert_with_opinion_stance() {
+    let mut node = GossipNode::new("alis");
+    let env = node
+        .assert_local_with_stance("lo gerku cu melbi", EpistemicStance::Opinion)
+        .unwrap();
+    assert_eq!(env.stance, EpistemicStance::Opinion);
+    assert_eq!(env.stance.cmavo(), "pe'i");
+}
+
+/// Confidence ordering: Deduced > Expected > Opinion > Hearsay.
+#[test]
+fn stance_confidence_ordering() {
+    assert!(EpistemicStance::Deduced.confidence() > EpistemicStance::Expected.confidence());
+    assert!(EpistemicStance::Expected.confidence() > EpistemicStance::Opinion.confidence());
+    assert!(EpistemicStance::Opinion.confidence() > EpistemicStance::Hearsay.confidence());
+}
+
+/// Epistemic sources track author and stance from CRDT log.
+#[test]
+fn epistemic_sources_from_crdt_log() {
+    let mut node_a = GossipNode::new("alis");
+    let mut node_b = GossipNode::new("bob");
+
+    // A asserts as Deduced.
+    let env_a = node_a.assert_local("la .adam. cu gerku").unwrap();
+
+    // B asserts the same fact as Expected.
+    let env_b = node_b
+        .assert_local_with_stance("la .adam. cu gerku", EpistemicStance::Expected)
+        .unwrap();
+
+    // Create a node C that ingests both.
+    let mut node_c = GossipNode::new("carol");
+    node_c.ingest_from(env_a, Some("alis")).unwrap();
+    node_c.ingest_from(env_b, Some("bob")).unwrap();
+
+    let sources = node_c.epistemic_sources("la .adam. cu gerku");
+    assert_eq!(sources.len(), 2, "Should have 2 sources");
+
+    // Find A's source — should be Deduced, via alis.
+    let src_a = sources.iter().find(|s| s.author == "alis").unwrap();
+    assert_eq!(src_a.stance, EpistemicStance::Deduced);
+    assert_eq!(src_a.via.as_deref(), Some("alis"));
+
+    // Find B's source — should be Expected, via bob.
+    let src_b = sources.iter().find(|s| s.author == "bob").unwrap();
+    assert_eq!(src_b.stance, EpistemicStance::Expected);
+    assert_eq!(src_b.via.as_deref(), Some("bob"));
+
+    // Strongest source should be A (Deduced > Expected).
+    let strongest = GossipNode::strongest_source(&sources).unwrap();
+    assert_eq!(strongest.author, "alis");
+    assert_eq!(strongest.stance, EpistemicStance::Deduced);
+}
+
+/// Self-authored assertions have no relay (via = None).
+#[test]
+fn self_authored_has_no_relay() {
+    let mut node = GossipNode::new("alis");
+    node.assert_local("la .adam. cu gerku").unwrap();
+
+    let sources = node.epistemic_sources("la .adam. cu gerku");
+    assert_eq!(sources.len(), 1);
+    assert_eq!(sources[0].author, "alis");
+    assert!(sources[0].via.is_none(), "Self-authored should have no relay");
+}
+
+/// Ingested envelope tracks relay provenance.
+#[test]
+fn ingest_tracks_relay_via() {
+    let mut node_a = GossipNode::new("alis");
+    let mut node_b = GossipNode::new("bob");
+
+    let env = node_a.assert_local("la .adam. cu gerku").unwrap();
+
+    // B ingests from A (relayed via "alis" peer connection).
+    node_b.ingest_from(env, Some("alis")).unwrap();
+
+    let sources = node_b.epistemic_sources("la .adam. cu gerku");
+    assert_eq!(sources.len(), 1);
+    assert_eq!(sources[0].author, "alis");
+    assert_eq!(sources[0].via.as_deref(), Some("alis"));
 }
 
 /// Distrust removes trust and triggers re-evaluation.

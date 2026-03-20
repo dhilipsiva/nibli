@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::transport::{InboundMessage, Transport};
-use crate::{GossipNode, GossipOp, TrustPolicy, WireMessage};
+use crate::{EpistemicStance, GossipNode, GossipOp, TrustPolicy, WireMessage};
 
 /// Run the interactive REPL.
 pub async fn run_repl(
@@ -40,8 +40,10 @@ pub async fn run_repl(
     });
 
     println!("[tavla] REPL ready. Commands:");
-    println!("  <lojban>         — assert and broadcast");
-    println!("  ?<query>         — query local KB with proof");
+    println!("  <lojban>         — assert (ja'o deduced) and broadcast");
+    println!("  ~<lojban>        — assert (ba'a expected) and broadcast");
+    println!("  ?~<lojban>       — assert (pe'i opinion) and broadcast");
+    println!("  ?<query>         — query local KB with proof + epistemic sources");
     println!("  :peers           — list connected peers");
     println!("  :sync <peer>     — request sync from peer");
     println!("  :log             — show CRDT log");
@@ -139,8 +141,9 @@ async fn handle_command(
                         }
                     };
                     println!(
-                        "  {} {} by {} [{}...]",
+                        "  {} [{}] {} by {} [{}...]",
                         status,
+                        env.stance,
                         op_str,
                         env.author,
                         &env.id[..12.min(env.id.len())]
@@ -306,22 +309,72 @@ async fn handle_command(
             }
         }
     } else if let Some(query) = line.strip_prefix('?') {
-        let query = query.trim();
-        match node.query_with_proof(query) {
-            Ok((holds, proof, _json)) => {
-                println!(
-                    "  {} → {}",
-                    query,
-                    if holds { "TRUE" } else { "FALSE" }
-                );
-                if holds {
-                    println!("{proof}");
+        // Query — but NOT "?~" which is opinion prefix.
+        if query.starts_with('~') {
+            // ?~ = Opinion assertion prefix.
+            let text = query[1..].trim();
+            if text.is_empty() {
+                println!("  usage: ?~<lojban> — assert as opinion (pe'i)");
+                return;
+            }
+            match node.assert_local_with_stance(text, EpistemicStance::Opinion) {
+                Ok(envelope) => {
+                    let msg = WireMessage::Envelope(envelope);
+                    if let Err(e) = transport.broadcast(&msg).await {
+                        eprintln!("[tavla] broadcast error: {e}");
+                    }
+                }
+                Err(e) => println!("[tavla] assert error: {e}"),
+            }
+        } else {
+            let query = query.trim();
+            match node.query_with_proof(query) {
+                Ok((holds, proof, _json)) => {
+                    println!(
+                        "  {} → {}",
+                        query,
+                        if holds { "JETNU (TRUE)" } else { "JITFA (FALSE)" }
+                    );
+                    if holds {
+                        // Show epistemic sources.
+                        let sources = node.epistemic_sources(query);
+                        if !sources.is_empty() {
+                            let formatted: Vec<String> = sources
+                                .iter()
+                                .map(GossipNode::format_source)
+                                .collect();
+                            println!("  Sources: {}", formatted.join(", "));
+                            if let Some(strongest) = GossipNode::strongest_source(&sources) {
+                                println!(
+                                    "  Strongest: {}",
+                                    GossipNode::format_source(strongest)
+                                );
+                            }
+                        }
+                        println!("{proof}");
+                    }
+                }
+                Err(e) => println!("  query error: {e}"),
+            }
+        }
+    } else if let Some(text) = line.strip_prefix('~') {
+        // ~ = Expected assertion prefix (ba'a).
+        let text = text.trim();
+        if text.is_empty() {
+            println!("  usage: ~<lojban> — assert as expected (ba'a)");
+            return;
+        }
+        match node.assert_local_with_stance(text, EpistemicStance::Expected) {
+            Ok(envelope) => {
+                let msg = WireMessage::Envelope(envelope);
+                if let Err(e) = transport.broadcast(&msg).await {
+                    eprintln!("[tavla] broadcast error: {e}");
                 }
             }
-            Err(e) => println!("  query error: {e}"),
+            Err(e) => println!("[tavla] assert error: {e}"),
         }
     } else {
-        // Assert Lojban and broadcast.
+        // Bare text = Deduced assertion (ja'o).
         match node.assert_local(line) {
             Ok(envelope) => {
                 let msg = WireMessage::Envelope(envelope);
@@ -354,7 +407,7 @@ async fn handle_inbound(
                 let _ = transport.send_to(p, &forward_msg).await;
             }
 
-            match node.ingest(envelope) {
+            match node.ingest_from(envelope, Some(&peer_id)) {
                 Ok(_result) => {}
                 Err(e) => {
                     eprintln!("[tavla] ✗ rejected from {peer_id}: {e}");
@@ -377,7 +430,7 @@ async fn handle_inbound(
                 "[tavla] ← {peer_id}: sync_response ({count} envelopes)"
             );
             for envelope in envelopes {
-                if let Err(e) = node.ingest(envelope) {
+                if let Err(e) = node.ingest_from(envelope, Some(&peer_id)) {
                     eprintln!("[tavla] ✗ sync ingest error: {e}");
                 }
             }

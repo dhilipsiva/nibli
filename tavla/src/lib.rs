@@ -83,7 +83,7 @@ pub enum GossipOp {
 }
 
 /// Epistemic confidence — maps to Lojban evidentials.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum EpistemicStance {
     /// ja'o — deduced from evidence (highest confidence).
     Deduced,
@@ -93,6 +93,46 @@ pub enum EpistemicStance {
     Opinion,
     /// ti'e — hearsay (relayed from another agent).
     Hearsay,
+}
+
+impl EpistemicStance {
+    /// Lojban evidential cmavo for this stance.
+    pub fn cmavo(&self) -> &'static str {
+        match self {
+            EpistemicStance::Deduced => "ja'o",
+            EpistemicStance::Expected => "ba'a",
+            EpistemicStance::Opinion => "pe'i",
+            EpistemicStance::Hearsay => "ti'e",
+        }
+    }
+
+    /// Confidence rank (higher = more confident). Used for "strongest source" selection.
+    pub fn confidence(&self) -> u8 {
+        match self {
+            EpistemicStance::Deduced => 4,
+            EpistemicStance::Expected => 3,
+            EpistemicStance::Opinion => 2,
+            EpistemicStance::Hearsay => 1,
+        }
+    }
+}
+
+impl std::fmt::Display for EpistemicStance {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.cmavo())
+    }
+}
+
+/// Epistemic source — how we know a fact.
+/// Tracks the original author, their stance, and who relayed it to us.
+#[derive(Clone, Debug)]
+pub struct EpistemicSource {
+    /// The original author of the assertion.
+    pub author: AgentId,
+    /// The stance the author used (ja'o, ba'a, pe'i, ti'e).
+    pub stance: EpistemicStance,
+    /// Who relayed this to us (None if self-authored or direct from author).
+    pub via: Option<AgentId>,
 }
 
 /// Trust policy for inbound envelope filtering.
@@ -399,6 +439,8 @@ pub struct GossipNode {
     contradictions: Vec<Contradiction>,
     /// Counter for contradiction IDs.
     contradiction_counter: usize,
+    /// Tracks which peer relayed each envelope to us (envelope_id → peer_id).
+    received_via: HashMap<EnvelopeId, AgentId>,
 }
 
 impl GossipNode {
@@ -413,6 +455,7 @@ impl GossipNode {
             trust_policy: TrustPolicy::AcceptAll,
             contradictions: Vec::new(),
             contradiction_counter: 0,
+            received_via: HashMap::new(),
         }
     }
 
@@ -426,6 +469,7 @@ impl GossipNode {
             trust_policy: policy,
             contradictions: Vec::new(),
             contradiction_counter: 0,
+            received_via: HashMap::new(),
         }
     }
 
@@ -591,10 +635,19 @@ impl GossipNode {
 
     // ─── Core operations ─────────────────────────────────────────
 
-    /// Assert Lojban text locally. Creates a signed envelope,
-    /// appends to the CRDT log, and asserts into the local KB.
-    /// Checks for contradictions before asserting (paraconsistent — asserts anyway).
+    /// Assert Lojban text locally with default stance (Deduced / ja'o).
     pub fn assert_local(&mut self, lojban: &str) -> Result<Envelope, String> {
+        self.assert_local_with_stance(lojban, EpistemicStance::Deduced)
+    }
+
+    /// Assert Lojban text locally with a specific epistemic stance.
+    /// Creates a signed envelope, appends to the CRDT log, and asserts into the local KB.
+    /// Checks for contradictions before asserting (paraconsistent — asserts anyway).
+    pub fn assert_local_with_stance(
+        &mut self,
+        lojban: &str,
+        stance: EpistemicStance,
+    ) -> Result<Envelope, String> {
         // Check for contradiction before asserting.
         let has_contradiction = self.check_contradiction(lojban);
 
@@ -606,7 +659,6 @@ impl GossipNode {
 
         let topics = extract_topics(lojban);
         let timestamp = chrono::Utc::now().to_rfc3339();
-        let stance = EpistemicStance::Deduced;
         let op = GossipOp::AssertLojban(lojban.to_string());
 
         let id = Envelope::compute_id(
@@ -651,8 +703,9 @@ impl GossipNode {
         }
 
         println!(
-            "[tavla] {} asserted: {:?} (fact #{}, envelope {}...)",
+            "[tavla] {} asserted [{}]: {:?} (fact #{}, envelope {}...)",
             self.agent_id,
+            envelope.stance,
             lojban,
             fact_id,
             &id[..12]
@@ -711,7 +764,12 @@ impl GossipNode {
         Ok(envelope)
     }
 
-    /// Ingest an envelope from a peer.
+    /// Ingest an envelope (no relay tracking).
+    pub fn ingest(&mut self, envelope: Envelope) -> Result<IngestResult, String> {
+        self.ingest_from(envelope, None)
+    }
+
+    /// Ingest an envelope from a peer, tracking who relayed it.
     ///
     /// 1. Dedup via CRDT log
     /// 2. Merge vector clock
@@ -719,7 +777,11 @@ impl GossipNode {
     /// 4. Insert into CRDT log
     /// 5. If assertion: parse and compile via gerna → smuni → logji
     /// 6. If retraction: apply tombstone and rebuild KB
-    pub fn ingest(&mut self, envelope: Envelope) -> Result<IngestResult, String> {
+    pub fn ingest_from(
+        &mut self,
+        envelope: Envelope,
+        via: Option<&str>,
+    ) -> Result<IngestResult, String> {
         // Dedup via CRDT log.
         if self.crdt_log.contains(&envelope.id) {
             return Ok(IngestResult {
@@ -761,10 +823,10 @@ impl GossipNode {
                 // Accept into CRDT log but mark as quarantined.
                 let mut quarantined_env = envelope.clone();
                 quarantined_env.quarantined = true;
-                return self.ingest_inner(quarantined_env, true);
+                return self.ingest_inner(quarantined_env, true, via);
             }
             TrustVerdict::Trusted => {
-                return self.ingest_inner(envelope, false);
+                return self.ingest_inner(envelope, false, via);
             }
         }
     }
@@ -774,6 +836,7 @@ impl GossipNode {
         &mut self,
         envelope: Envelope,
         quarantined: bool,
+        via: Option<&str>,
     ) -> Result<IngestResult, String> {
         // Process the operation.
         let (fact_id, was_retraction, contradiction_id) = match &envelope.op {
@@ -792,8 +855,8 @@ impl GossipNode {
                     let has_contradiction = self.check_contradiction(text);
                     let fid = self.engine.assert_text(text)?;
                     println!(
-                        "[tavla] {} ← {}: {:?} (accepted, fact #{})",
-                        self.agent_id, envelope.author, text, fid
+                        "[tavla] {} ← {} [{}]: {:?} (accepted, fact #{})",
+                        self.agent_id, envelope.author, envelope.stance, text, fid
                     );
                     let cid = if has_contradiction {
                         self.contradiction_counter += 1;
@@ -835,6 +898,10 @@ impl GossipNode {
                     envelope.author,
                     &target_id[..12.min(target_id.len())]
                 );
+                if let Some(relay) = via {
+                    self.received_via
+                        .insert(envelope.id.clone(), relay.to_string());
+                }
                 self.crdt_log.insert(envelope.clone());
                 self.rebuild_kb();
                 return Ok(IngestResult {
@@ -849,6 +916,10 @@ impl GossipNode {
         };
 
         let id = envelope.id.clone();
+        // Track relay provenance.
+        if let Some(relay) = via {
+            self.received_via.insert(id.clone(), relay.to_string());
+        }
         self.crdt_log.insert(envelope);
 
         Ok(IngestResult {
@@ -1022,6 +1093,57 @@ impl GossipNode {
     /// Get the count of unresolved contradictions.
     pub fn unresolved_contradiction_count(&self) -> usize {
         self.contradictions.iter().filter(|c| !c.resolved).count()
+    }
+
+    // ─── Epistemic provenance ────────────────────────────────────
+
+    /// Get epistemic sources for a given Lojban assertion text.
+    /// Scans the CRDT log for active envelopes matching this text
+    /// and returns their epistemic provenance.
+    pub fn epistemic_sources(&self, text: &str) -> Vec<EpistemicSource> {
+        self.crdt_log
+            .active_assertions()
+            .iter()
+            .filter_map(|env| {
+                match &env.op {
+                    GossipOp::AssertLojban(t) if t == text => {
+                        // Determine our local perspective:
+                        // - Self-authored: use envelope's stance, no relay.
+                        // - From peer: stance is Hearsay from our perspective,
+                        //   but we preserve the author's original stance for display.
+                        let via = if env.author == self.agent_id {
+                            None
+                        } else {
+                            // Who relayed it? Check received_via.
+                            // If not in received_via, we got it directly from the author.
+                            self.received_via.get(&env.id).cloned()
+                        };
+                        Some(EpistemicSource {
+                            author: env.author.clone(),
+                            stance: env.stance.clone(),
+                            via,
+                        })
+                    }
+                    _ => None,
+                }
+            })
+            .collect()
+    }
+
+    /// Format epistemic provenance for a single source.
+    pub fn format_source(source: &EpistemicSource) -> String {
+        match &source.via {
+            Some(relay) => format!(
+                "{} {}←{}",
+                source.stance, relay, source.author
+            ),
+            None => format!("{} {}", source.stance, source.author),
+        }
+    }
+
+    /// Get the strongest (highest-confidence) source from a list.
+    pub fn strongest_source(sources: &[EpistemicSource]) -> Option<&EpistemicSource> {
+        sources.iter().max_by_key(|s| s.stance.confidence())
     }
 }
 
