@@ -116,6 +116,22 @@ la .adam. cu gerku            # la .adam. cu gerku
 preti: la .adam. cu citka     # → JETNU (TRUE) + krinu tricu (proof tree)
 ```
 
+### lo tavla ke fatri ciste (gossip network)
+
+ni'o la .nibli. cu se pilno lo fatri ke logji ciste noi se pilno lo OR-Set CRDT joi lo vector clock:
+
+```bash
+# ko cfari lo tavla nolraitcu (hub) fi lo TCP
+just gossip-hub
+
+# ko cfari lo LLM tavla agent (se jikca fi la Claude)
+just agent-fitness
+just agent-nutrition
+just agent-rights
+```
+
+ni'o lo ueb. tcana cu se pilno lo Network tcita noi se jarco lo tavla ciste: lo agent jenmi, lo se cusku liste, lo na mapti liste (contradictions), lo nu cusku fi lo gossip network.
+
 ## ni'o lo skami tutci
 
 - **bangu:** Rust (stabli)

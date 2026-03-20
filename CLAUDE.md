@@ -185,4 +185,12 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 
 **UI query semantics:** Every query resets the engine, re-asserts the full Lojban tab text as the KB, then runs the query. The query bar is pure queries only (no assertions). The Lojban tab is the single source of truth.
 
-**Next up:** See `todo.md` for deferred items (async compute backend)
+**Gossip Network Integration (Prompts 7-10):**
+- Prompt 7: Training data pipeline — `nibli-validate` binary for batch Lojban validation; `generate_training_data.py` (5 balanced domains, Anthropic API, gerna gate); `training_stats.py` (pass rate analysis, HuggingFace export)
+- Prompt 8: Fine-tuning pipeline — `nibli_model.py` (QLoRA on Qwen2.5-7B, train/eval/refine/push commands)
+- Prompt 9: LLM gossip agent — `nibli_agent.py` (TCP JSON Lines client for tavla, Claude API / local model, gerna gate with 3 retries, auto-gossip mode, epistemic stances)
+- Prompt 10: Network visualization — gossip types in nibli-protocol; nibli-server embeds GossipNode with GraphQL queries (networkSnapshot, agentEnvelopes, envelopeDetail, gossipEvents) and mutations (gossipAssert, resolveContradiction); nibli-ui Network tab with agent cards (stance distribution bars), envelope list, event feed, contradictions panel, gossip assertion bar with stance selector; auto-refresh every 3 seconds
+
+**Note:** rustc 1.93.1 ICE prevents compiling nibli-server (async-graphql + `check_type_wf` panic). The original server (before gossip changes) also ICEs. nibli-ui compiles and type-checks cleanly. All 30 tavla tests pass.
+
+**Next up:** See `todo.md` for deferred items (async compute backend, WebRTC DataChannel in browser)

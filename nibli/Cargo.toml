@@ -7,4 +7,13 @@ edition = "2024"
 gerna = { path = "../gerna" }
 smuni = { path = "../smuni" }
 logji = { path = "../logji" }
+nibli-engine = { path = "../nibli-engine" }
 reedline = "0.45.0"
+
+[[bin]]
+name = "nibli"
+path = "src/main.rs"
+
+[[bin]]
+name = "nibli-validate"
+path = "src/bin/validate.rs"

@@ -21,6 +21,7 @@ enum ActiveTab {
     Source,
     Lojban,
     BackTranslation,
+    Network,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -121,6 +122,131 @@ async fn graphql_post(body: &serde_json::Value) -> Result<serde_json::Value, Str
         }
     }
     gql.data.ok_or_else(|| "No data in response".to_string())
+}
+
+// ── Network types ──
+
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NetworkSnapshotData {
+    agents: Vec<AgentData>,
+    envelopes: Vec<EnvelopeData>,
+    contradictions: Vec<ContradictionData>,
+    peers: Vec<String>,
+    local_agent: String,
+    total_facts: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentData {
+    name: String,
+    envelope_count: u32,
+    stance_counts: StanceCountsData,
+    topics: Vec<String>,
+    is_local: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+struct StanceCountsData {
+    deduced: u32,
+    expected: u32,
+    opinion: u32,
+    hearsay: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EnvelopeData {
+    id: String,
+    author: String,
+    lojban: Option<String>,
+    stance: String,
+    topics: Vec<String>,
+    timestamp: String,
+    is_retraction: bool,
+    is_quarantined: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ContradictionData {
+    id: u32,
+    envelope_id: String,
+    assertion: String,
+    author: String,
+    resolved: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GossipEventData {
+    kind: String,
+    envelope_id: Option<String>,
+    author: Option<String>,
+    lojban: Option<String>,
+    stance: Option<String>,
+    timestamp: Option<String>,
+    #[allow(dead_code)]
+    peer_id: Option<String>,
+    #[allow(dead_code)]
+    connected: Option<bool>,
+    #[allow(dead_code)]
+    contradiction_id: Option<u32>,
+    #[allow(dead_code)]
+    assertion: Option<String>,
+}
+
+async fn fetch_network_snapshot() -> Result<NetworkSnapshotData, String> {
+    let gql = r#"{ networkSnapshot { agents { name envelopeCount stanceCounts { deduced expected opinion hearsay } topics isLocal } envelopes { id author lojban stance topics timestamp isRetraction isQuarantined } contradictions { id envelopeId assertion author resolved } peers localAgent totalFacts } }"#;
+    let body = serde_json::json!({"query": gql});
+    let data = graphql_post(&body).await?;
+    let snap = &data["networkSnapshot"];
+    serde_json::from_value(snap.clone()).map_err(|e| format!("Parse error: {}", e))
+}
+
+async fn fetch_gossip_events(limit: u32) -> Result<Vec<GossipEventData>, String> {
+    let gql = format!(
+        r#"{{ gossipEvents(limit: {}) {{ kind envelopeId author lojban stance timestamp peerId connected contradictionId assertion }} }}"#,
+        limit
+    );
+    let body = serde_json::json!({"query": gql});
+    let data = graphql_post(&body).await?;
+    let events = &data["gossipEvents"];
+    serde_json::from_value(events.clone()).map_err(|e| format!("Parse error: {}", e))
+}
+
+async fn gossip_assert(lojban: &str, stance: &str) -> Result<String, String> {
+    let gql = r#"mutation($lojban: String!, $stance: String) { gossipAssert(lojban: $lojban, stance: $stance) { envelopeId error } }"#;
+    let body = serde_json::json!({
+        "query": gql,
+        "variables": { "lojban": lojban, "stance": stance }
+    });
+    let data = graphql_post(&body).await?;
+    let r = &data["gossipAssert"];
+    if let Some(err) = r["error"].as_str() {
+        Err(err.to_string())
+    } else {
+        Ok(r["envelopeId"]
+            .as_str()
+            .unwrap_or("unknown")
+            .to_string())
+    }
+}
+
+async fn resolve_contradiction_api(id: u32) -> Result<(), String> {
+    let gql = r#"mutation($id: Int!) { resolveContradiction(id: $id) { success error } }"#;
+    let body = serde_json::json!({
+        "query": gql,
+        "variables": { "id": id }
+    });
+    let data = graphql_post(&body).await?;
+    let r = &data["resolveContradiction"];
+    if let Some(err) = r["error"].as_str() {
+        Err(err.to_string())
+    } else {
+        Ok(())
+    }
 }
 
 // ── Query execution ──
@@ -233,12 +359,15 @@ fn App() -> Element {
         }
     };
 
+    let network_snapshot: Signal<Option<NetworkSnapshotData>> = use_signal(|| None);
+    let active_tab: Signal<ActiveTab> = use_signal(|| ActiveTab::Source);
+
     rsx! {
         document::Link { rel: "stylesheet", href: asset!("/assets/style.css") }
         div { class: "app", tabindex: "0", onkeydown: on_global_keydown,
             div { class: "main-row",
                 div { class: "col-tabs",
-                    SourceTabs { lojban_text, kb_status }
+                    SourceTabs { lojban_text, kb_status, active_tab, network_snapshot }
                 }
                 div { class: "col-proof",
                     ProofPanel { proof_text, proof_data, is_busy }
@@ -488,8 +617,12 @@ fn ErrorDisplay(message: String) -> Element {
 }
 
 #[component]
-fn SourceTabs(lojban_text: Signal<String>, kb_status: Signal<Option<KbStatus>>) -> Element {
-    let mut active_tab = use_signal(|| ActiveTab::Source);
+fn SourceTabs(
+    lojban_text: Signal<String>,
+    kb_status: Signal<Option<KbStatus>>,
+    active_tab: Signal<ActiveTab>,
+    network_snapshot: Signal<Option<NetworkSnapshotData>>,
+) -> Element {
     let mut source_text = use_signal(|| DEFAULT_SOURCE.to_string());
     let mut translating = use_signal(|| false);
     let mut translate_error = use_signal(|| Option::<String>::None);
@@ -547,6 +680,11 @@ fn SourceTabs(lojban_text: Signal<String>, kb_status: Signal<Option<KbStatus>>) 
                     class: if *active_tab.read() == ActiveTab::BackTranslation { "tab active" } else { "tab" },
                     onclick: move |_| active_tab.set(ActiveTab::BackTranslation),
                     "Back-translation"
+                }
+                button {
+                    class: if *active_tab.read() == ActiveTab::Network { "tab active" } else { "tab" },
+                    onclick: move |_| active_tab.set(ActiveTab::Network),
+                    "Network"
                 }
             }
             div { class: "tab-content",
@@ -636,6 +774,391 @@ fn SourceTabs(lojban_text: Signal<String>, kb_status: Signal<Option<KbStatus>>) 
                             }
                         }
                     },
+                    ActiveTab::Network => rsx! {
+                        NetworkView { network_snapshot }
+                    },
+                }
+            }
+        }
+    }
+}
+
+// ── Network components ──
+
+#[component]
+fn NetworkView(network_snapshot: Signal<Option<NetworkSnapshotData>>) -> Element {
+    let mut loading = use_signal(|| false);
+    let mut error_msg = use_signal(|| Option::<String>::None);
+    let mut gossip_input = use_signal(|| String::new());
+    let mut gossip_stance = use_signal(|| "Deduced".to_string());
+    let mut gossip_busy = use_signal(|| false);
+    let mut selected_agent = use_signal(|| Option::<String>::None);
+    let mut events: Signal<Vec<GossipEventData>> = use_signal(Vec::new);
+
+    // Auto-refresh network snapshot every 3 seconds
+    use_future(move || async move {
+        loop {
+            loading.set(true);
+            match fetch_network_snapshot().await {
+                Ok(snap) => {
+                    network_snapshot.set(Some(snap));
+                    error_msg.set(None);
+                }
+                Err(e) => {
+                    error_msg.set(Some(e));
+                }
+            }
+            // Also fetch events
+            if let Ok(ev) = fetch_gossip_events(20).await {
+                events.set(ev);
+            }
+            loading.set(false);
+            gloo_timers::future::sleep(std::time::Duration::from_secs(3)).await;
+        }
+    });
+
+    let do_gossip_assert = move |_: Event<MouseData>| {
+        let text = gossip_input.read().clone();
+        let stance = gossip_stance.read().clone();
+        if text.trim().is_empty() || *gossip_busy.read() {
+            return;
+        }
+        gossip_busy.set(true);
+        spawn(async move {
+            match gossip_assert(&text, &stance).await {
+                Ok(_id) => {
+                    gossip_input.set(String::new());
+                    // Refresh snapshot immediately
+                    if let Ok(snap) = fetch_network_snapshot().await {
+                        network_snapshot.set(Some(snap));
+                    }
+                }
+                Err(e) => {
+                    error_msg.set(Some(format!("Assert failed: {}", e)));
+                }
+            }
+            gossip_busy.set(false);
+        });
+    };
+
+    let snapshot = network_snapshot.read();
+
+    rsx! {
+        div { class: "network-container",
+            // Gossip assert bar
+            div { class: "gossip-bar",
+                input {
+                    class: "gossip-input",
+                    r#type: "text",
+                    placeholder: "Assert Lojban into gossip network...",
+                    value: "{gossip_input}",
+                    oninput: move |e| gossip_input.set(e.value()),
+                    onkeydown: move |e: KeyboardEvent| {
+                        if e.key() == Key::Enter {
+                            let text = gossip_input.read().clone();
+                            let stance = gossip_stance.read().clone();
+                            if text.trim().is_empty() || *gossip_busy.read() {
+                                return;
+                            }
+                            gossip_busy.set(true);
+                            spawn(async move {
+                                match gossip_assert(&text, &stance).await {
+                                    Ok(_) => {
+                                        gossip_input.set(String::new());
+                                        if let Ok(snap) = fetch_network_snapshot().await {
+                                            network_snapshot.set(Some(snap));
+                                        }
+                                    }
+                                    Err(e) => error_msg.set(Some(format!("Assert failed: {}", e))),
+                                }
+                                gossip_busy.set(false);
+                            });
+                        }
+                    },
+                    disabled: *gossip_busy.read(),
+                }
+                select {
+                    class: "gossip-stance-select",
+                    value: "{gossip_stance}",
+                    onchange: move |e| gossip_stance.set(e.value()),
+                    option { value: "Deduced", "ja'o (deduced)" }
+                    option { value: "Expected", "ba'a (expected)" }
+                    option { value: "Opinion", "pe'i (opinion)" }
+                    option { value: "Hearsay", "ti'e (hearsay)" }
+                }
+                button {
+                    class: if *gossip_busy.read() { "gossip-btn btn-busy" } else { "gossip-btn" },
+                    onclick: do_gossip_assert,
+                    disabled: *gossip_busy.read(),
+                    if *gossip_busy.read() { "..." } else { "Assert" }
+                }
+            }
+            if let Some(ref err) = *error_msg.read() {
+                div { class: "network-error", "{err}" }
+            }
+            if let Some(ref snap) = *snapshot {
+                // Summary bar
+                div { class: "network-summary",
+                    span { class: "network-stat",
+                        strong { "{snap.agents.len()}" }
+                        " agents"
+                    }
+                    span { class: "network-stat",
+                        strong { "{snap.total_facts}" }
+                        " active facts"
+                    }
+                    span { class: "network-stat",
+                        strong { "{snap.envelopes.len()}" }
+                        " envelopes"
+                    }
+                    span { class: "network-stat",
+                        strong { "{snap.contradictions.iter().filter(|c| !c.resolved).count()}" }
+                        " contradictions"
+                    }
+                    if *loading.read() {
+                        span { class: "network-refresh", "..." }
+                    }
+                }
+                div { class: "network-panels",
+                    // Agent list
+                    div { class: "network-panel",
+                        div { class: "panel-header", "Agents" }
+                        div { class: "agent-list",
+                            for agent in snap.agents.iter() {
+                                AgentCard {
+                                    key: "{agent.name}",
+                                    agent: agent.clone(),
+                                    selected: *selected_agent.read() == Some(agent.name.clone()),
+                                    on_select: move |name: String| {
+                                        let current = selected_agent.read().clone();
+                                        if current == Some(name.clone()) {
+                                            selected_agent.set(None);
+                                        } else {
+                                            selected_agent.set(Some(name));
+                                        }
+                                    },
+                                }
+                            }
+                        }
+                    }
+                    // Envelopes / Events
+                    div { class: "network-panel network-panel-wide",
+                        div { class: "panel-header",
+                            if let Some(ref agent_name) = *selected_agent.read() {
+                                "Envelopes from {agent_name}"
+                            } else {
+                                "Recent Events"
+                            }
+                        }
+                        div { class: "envelope-list",
+                            if let Some(ref agent_name) = *selected_agent.read() {
+                                for env in snap.envelopes.iter().filter(|e| &e.author == agent_name.as_str()) {
+                                    EnvelopeCard { key: "{env.id}", envelope: env.clone() }
+                                }
+                            } else {
+                                for event in events.read().iter() {
+                                    EventCard { key: "{event.timestamp:?}-{event.kind}", event: event.clone() }
+                                }
+                                if events.read().is_empty() {
+                                    div { class: "network-empty", "No events yet. Assert Lojban above to create gossip." }
+                                }
+                            }
+                        }
+                    }
+                }
+                // Contradictions
+                if !snap.contradictions.is_empty() {
+                    ContradictionsPanel { contradictions: snap.contradictions.clone(), network_snapshot }
+                }
+            } else {
+                div { class: "network-empty",
+                    "Connecting to gossip network..."
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn AgentCard(agent: AgentData, selected: bool, on_select: EventHandler<String>) -> Element {
+    let total = agent.stance_counts.deduced + agent.stance_counts.expected
+        + agent.stance_counts.opinion + agent.stance_counts.hearsay;
+    let card_class = if selected { "agent-card agent-card-selected" } else if agent.is_local { "agent-card agent-card-local" } else { "agent-card" };
+    let name = agent.name.clone();
+
+    rsx! {
+        div {
+            class: "{card_class}",
+            onclick: move |_| on_select.call(name.clone()),
+            div { class: "agent-name",
+                if agent.is_local {
+                    span { class: "agent-local-badge", "LOCAL" }
+                }
+                "{agent.name}"
+            }
+            div { class: "agent-stats",
+                span { class: "agent-stat", "{agent.envelope_count} env" }
+                if total > 0 {
+                    span { class: "stance-bar",
+                        if agent.stance_counts.deduced > 0 {
+                            span {
+                                class: "stance-segment stance-deduced",
+                                style: "width: {(agent.stance_counts.deduced as f64 / total as f64 * 100.0) as u32}%",
+                                title: "ja'o (deduced): {agent.stance_counts.deduced}",
+                            }
+                        }
+                        if agent.stance_counts.expected > 0 {
+                            span {
+                                class: "stance-segment stance-expected",
+                                style: "width: {(agent.stance_counts.expected as f64 / total as f64 * 100.0) as u32}%",
+                                title: "ba'a (expected): {agent.stance_counts.expected}",
+                            }
+                        }
+                        if agent.stance_counts.opinion > 0 {
+                            span {
+                                class: "stance-segment stance-opinion",
+                                style: "width: {(agent.stance_counts.opinion as f64 / total as f64 * 100.0) as u32}%",
+                                title: "pe'i (opinion): {agent.stance_counts.opinion}",
+                            }
+                        }
+                        if agent.stance_counts.hearsay > 0 {
+                            span {
+                                class: "stance-segment stance-hearsay",
+                                style: "width: {(agent.stance_counts.hearsay as f64 / total as f64 * 100.0) as u32}%",
+                                title: "ti'e (hearsay): {agent.stance_counts.hearsay}",
+                            }
+                        }
+                    }
+                }
+            }
+            if !agent.topics.is_empty() {
+                div { class: "agent-topics",
+                    for topic in agent.topics.iter().take(5) {
+                        span { class: "topic-tag", "{topic}" }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn EnvelopeCard(envelope: EnvelopeData) -> Element {
+    let short_id = &envelope.id[..12.min(envelope.id.len())];
+    let stance_class = match envelope.stance.as_str() {
+        "ja'o" => "stance-badge stance-deduced",
+        "ba'a" => "stance-badge stance-expected",
+        "pe'i" => "stance-badge stance-opinion",
+        "ti'e" => "stance-badge stance-hearsay",
+        _ => "stance-badge",
+    };
+    let card_class = if envelope.is_quarantined {
+        "envelope-card envelope-quarantined"
+    } else if envelope.is_retraction {
+        "envelope-card envelope-retraction"
+    } else {
+        "envelope-card"
+    };
+
+    rsx! {
+        div { class: "{card_class}",
+            div { class: "envelope-header",
+                span { class: "envelope-id", "{short_id}..." }
+                span { class: "{stance_class}", "{envelope.stance}" }
+                span { class: "envelope-author", "{envelope.author}" }
+                if envelope.is_quarantined {
+                    span { class: "quarantine-badge", "QUARANTINED" }
+                }
+                if envelope.is_retraction {
+                    span { class: "retraction-badge", "RETRACTED" }
+                }
+            }
+            if let Some(ref lojban) = envelope.lojban {
+                div { class: "envelope-lojban", "{lojban}" }
+            }
+            if !envelope.topics.is_empty() {
+                div { class: "envelope-topics",
+                    for topic in envelope.topics.iter() {
+                        span { class: "topic-tag", "{topic}" }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn EventCard(event: GossipEventData) -> Element {
+    let (icon, label) = match event.kind.as_str() {
+        "envelope" => (">>", format!(
+            "{} {} [{}]",
+            event.author.as_deref().unwrap_or("?"),
+            event.lojban.as_deref().unwrap_or(""),
+            event.stance.as_deref().unwrap_or("?"),
+        )),
+        "contradiction" => ("!!", format!(
+            "Contradiction: {}",
+            event.assertion.as_deref().unwrap_or("?"),
+        )),
+        "peer_change" => ("--", format!(
+            "Peer {} {}",
+            event.peer_id.as_deref().unwrap_or("?"),
+            if event.connected.unwrap_or(false) { "connected" } else { "disconnected" },
+        )),
+        "sync" => ("<>", format!(
+            "Sync with {}",
+            event.peer_id.as_deref().unwrap_or("?"),
+        )),
+        _ => ("??", event.kind.clone()),
+    };
+
+    rsx! {
+        div { class: "event-card",
+            span { class: "event-icon", "{icon}" }
+            span { class: "event-label", "{label}" }
+        }
+    }
+}
+
+#[component]
+fn ContradictionsPanel(
+    contradictions: Vec<ContradictionData>,
+    network_snapshot: Signal<Option<NetworkSnapshotData>>,
+) -> Element {
+    let unresolved: Vec<&ContradictionData> = contradictions.iter().filter(|c| !c.resolved).collect();
+    if unresolved.is_empty() {
+        return rsx! {};
+    }
+
+    rsx! {
+        div { class: "contradictions-panel",
+            div { class: "panel-header contradictions-header",
+                "Contradictions ({unresolved.len()})"
+            }
+            for c in unresolved.iter() {
+                div { class: "contradiction-card",
+                    div { class: "contradiction-info",
+                        span { class: "contradiction-id", "#{c.id}" }
+                        span { class: "contradiction-author", "{c.author}" }
+                        span { class: "contradiction-assertion", "{c.assertion}" }
+                    }
+                    {
+                        let cid = c.id;
+                        rsx! {
+                            button {
+                                class: "contradiction-resolve-btn",
+                                onclick: move |_| {
+                                    spawn(async move {
+                                        let _ = resolve_contradiction_api(cid).await;
+                                        if let Ok(snap) = fetch_network_snapshot().await {
+                                            network_snapshot.set(Some(snap));
+                                        }
+                                    });
+                                },
+                                "Resolve"
+                            }
+                        }
+                    }
                 }
             }
         }

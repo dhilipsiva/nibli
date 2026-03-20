@@ -133,6 +133,78 @@ gossip-webrtc-b:
 # Run every test suite (unit + integration + Python + store + tavla)
 test-all: test test-engine test-store test-tavla test-backend test-classifier
 
+# Build the nibli-validate binary (batch Lojban validation via stdin)
+build-validate:
+    cargo build -p nibli --bin nibli-validate {{cargo_profile_flag}}
+
+# Generate training data (requires ANTHROPIC_API_KEY env var)
+generate-training: build-validate
+    python3 python/generate_training_data.py --output data/training_raw.jsonl
+
+# Resume training data generation from existing file
+generate-training-resume: build-validate
+    python3 python/generate_training_data.py --output data/training_raw.jsonl --resume
+
+# Dry run: test validation pipeline without API calls
+generate-training-dry: build-validate
+    python3 python/generate_training_data.py --dry-run
+
+# Show training data statistics
+training-stats:
+    python3 python/training_stats.py data/training_raw.jsonl
+
+# Export valid pairs to HuggingFace-compatible format
+export-hf:
+    python3 python/training_stats.py data/training_raw.jsonl --export-hf data/nibli-lojban-dataset.jsonl
+
+# Fine-tune Qwen2.5-7B-Instruct on nibli-lojban dataset (QLoRA)
+model-train: build-validate
+    python3 python/nibli_model.py train --data data/training_raw.jsonl
+
+# Evaluate fine-tuned model — gerna pass rate is the key metric
+model-eval: build-validate
+    python3 python/nibli_model.py eval --model models/nibli-lojban-7b
+
+# Flywheel: add gerna-valid alternative translations back to training data
+model-refine:
+    python3 python/nibli_model.py refine --model models/nibli-lojban-7b --data data/training_raw.jsonl
+
+# Push adapter weights to HuggingFace Hub
+model-push:
+    python3 python/nibli_model.py push --model models/nibli-lojban-7b --repo dhilipsiva/nibli-lojban-7b
+
+# ─── LLM Gossip Agents ───────────────────────────────────────────
+
+# Run an LLM gossip agent (interactive mode, uses Claude API fallback)
+# Usage: just agent name=fitness domain=xadni
+agent name="agent" domain="" peer="127.0.0.1:7001":
+    python3 python/nibli_agent.py --name {{name}} --peer {{peer}} --use-api \
+        {{ if domain != "" { "--domain " + domain } else { "" } }}
+
+# Run an LLM gossip agent in auto-gossip mode
+# Usage: just agent-auto name=fitness domain=xadni topic="fitness and exercise"
+agent-auto name="agent" domain="" peer="127.0.0.1:7001" topic="" interval="30":
+    python3 python/nibli_agent.py --name {{name}} --peer {{peer}} --use-api \
+        --auto-gossip --interval {{interval}} \
+        {{ if domain != "" { "--domain " + domain } else { "" } }} \
+        {{ if topic != "" { "--topic '" + topic + "'" } else { "" } }}
+
+# Run a gossip hub node for agents to connect to (TCP on port 7777)
+gossip-hub:
+    cargo run -p tavla {{cargo_profile_flag}} -- --name hub --listen 127.0.0.1:7777 --transport tcp
+
+# Demo: fitness agent (connect to hub on 7777)
+agent-fitness:
+    python3 python/nibli_agent.py --name fitness-agent --domain xadni --peer 127.0.0.1:7777 --use-api
+
+# Demo: nutrition agent (connect to hub on 7777)
+agent-nutrition:
+    python3 python/nibli_agent.py --name nutrition-agent --domain cidja --peer 127.0.0.1:7777 --use-api
+
+# Demo: rights agent (connect to hub on 7777)
+agent-rights:
+    python3 python/nibli_agent.py --name rights-agent --domain krali --peer 127.0.0.1:7777 --use-api
+
 # Wipes all compilation artifacts
 clean:
     cargo clean

@@ -3490,6 +3490,7 @@ version = "0.1.0"
 dependencies = [
  "gerna",
  "logji",
+ "nibli-engine",
  "reedline",
  "smuni",
 ]
@@ -3524,9 +3525,11 @@ dependencies = [
  "async-graphql-axum",
  "axum",
  "nibli-engine",
+ "nibli-protocol",
  "reqwest",
  "serde",
  "serde_json",
+ "tavla",
  "tokio",
  "tower-http",
 ]

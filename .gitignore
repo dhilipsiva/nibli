@@ -11,3 +11,9 @@ lasna/src/bindings.rs
 # Book drafts (private)
 book/
 *__pycache__*
+
+# Training data (generated, large)
+data/
+
+# Model weights (large)
+models/

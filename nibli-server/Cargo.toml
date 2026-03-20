@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 nibli-engine = { path = "../nibli-engine" }
+nibli-protocol = { path = "../nibli-protocol" }
+tavla = { path = "../tavla" }
 axum = "0.8"
 async-graphql = "7"
 async-graphql-axum = "7"
