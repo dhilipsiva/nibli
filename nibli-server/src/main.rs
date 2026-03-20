@@ -5,13 +5,15 @@ use anyhow::Result;
 use async_graphql::{EmptySubscription, Object, Schema};
 use async_graphql_axum::GraphQL;
 use axum::Router;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::TcpStream;
 use tower_http::cors::CorsLayer;
 
 use nibli_engine::NibliEngine;
 use nibli_protocol::{
     ContradictionSummary, EnvelopeSummary, GossipEvent, NetworkAgent, NetworkSnapshot, StanceCounts,
 };
-use tavla::{EpistemicStance, GossipNode, GossipOp};
+use tavla::{EpistemicStance, GossipNode, GossipOp, WireMessage};
 
 // ── Ollama types ──
 
@@ -691,6 +693,17 @@ async fn main() -> Result<()> {
 
     println!("Gossip agent: {}", gossip_agent);
 
+    // Connect to gossip hub if NIBLI_GOSSIP_HUB is set.
+    if let Ok(hub_addr) = std::env::var("NIBLI_GOSSIP_HUB") {
+        let gs = gossip_state.clone();
+        let ge = gossip_events.clone();
+        let es = engine_state.clone();
+        let agent = gossip_agent.clone();
+        tokio::spawn(async move {
+            gossip_hub_listener(&hub_addr, &agent, gs, ge, es).await;
+        });
+    }
+
     let ollama_url = std::env::var("NIBLI_OLLAMA_URL")
         .unwrap_or_else(|_| "http://localhost:11434".to_string());
     let ollama_model = std::env::var("NIBLI_OLLAMA_MODEL")
@@ -737,4 +750,101 @@ async fn graphql_playground() -> impl axum::response::IntoResponse {
     axum::response::Html(async_graphql::http::playground_source(
         async_graphql::http::GraphQLPlaygroundConfig::new("/graphql"),
     ))
+}
+
+/// Connect to the gossip hub as a peer, receive envelopes, ingest into GossipNode + engine.
+async fn gossip_hub_listener(
+    addr: &str,
+    agent_name: &str,
+    gossip_state: Arc<Mutex<GossipNode>>,
+    gossip_events: Arc<Mutex<Vec<GossipEvent>>>,
+    engine_state: Arc<Mutex<NibliEngine>>,
+) {
+    // Connect with retry.
+    let stream = loop {
+        match TcpStream::connect(addr).await {
+            Ok(s) => break s,
+            Err(e) => {
+                eprintln!("[gossip] Connect to hub {addr} failed: {e}, retrying in 3s...");
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            }
+        }
+    };
+
+    // Handshake: send our name.
+    let (read_half, mut write_half) = stream.into_split();
+    let hello = format!("{agent_name}\n");
+    if write_half.write_all(hello.as_bytes()).await.is_err() {
+        eprintln!("[gossip] Handshake failed");
+        return;
+    }
+    println!("[gossip] Connected to hub at {addr}");
+
+    // Read JSON Lines from hub.
+    let mut reader = BufReader::new(read_half);
+    let mut line = String::new();
+    loop {
+        line.clear();
+        match reader.read_line(&mut line).await {
+            Ok(0) => {
+                eprintln!("[gossip] Hub disconnected");
+                break;
+            }
+            Ok(_) => {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                match serde_json::from_str::<WireMessage>(trimmed) {
+                    Ok(WireMessage::Envelope(env)) => {
+                        let author = env.author.clone();
+                        let lojban = match &env.op {
+                            GossipOp::AssertLojban(text) => Some(text.clone()),
+                            _ => None,
+                        };
+
+                        // Ingest into GossipNode.
+                        {
+                            let mut node = gossip_state.lock().unwrap();
+                            let _ = node.ingest(env.clone());
+                        }
+
+                        // Record event.
+                        {
+                            let mut events = gossip_events.lock().unwrap();
+                            events.push(GossipEvent::NewEnvelope {
+                                envelope_id: env.id.clone(),
+                                author: author.clone(),
+                                lojban: lojban.clone(),
+                                stance: format!("{}", env.stance),
+                                topics: env.topics.clone(),
+                                timestamp: env.timestamp.clone(),
+                            });
+                            // Cap event log.
+                            if events.len() > 200 {
+                                events.drain(..100);
+                            }
+                        }
+
+                        // Assert Lojban into engine KB.
+                        if let Some(text) = lojban {
+                            let engine = engine_state.lock().unwrap();
+                            match engine.assert_text(&text) {
+                                Ok(id) => println!("[gossip] {author}: \"{text}\" → fact #{id}"),
+                                Err(e) => eprintln!("[gossip] {author}: assert error: {e}"),
+                            }
+                        }
+                    }
+                    Ok(_) => {} // Ignore sync messages.
+                    Err(e) => {
+                        eprintln!("[gossip] Bad JSON: {e}");
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("[gossip] Read error: {e}");
+                break;
+            }
+        }
+    }
 }

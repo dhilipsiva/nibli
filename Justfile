@@ -94,6 +94,10 @@ test-classifier:
 server:
     NIBLI_OLLAMA_URL="http://$(ip route | grep default | awk '{print $3}'):11434" cargo run -p nibli-server {{cargo_profile_flag}}
 
+# Start GraphQL API server connected to gossip hub (sees agent gossip in UI)
+server-gossip:
+    NIBLI_GOSSIP_HUB=127.0.0.1:7777 NIBLI_OLLAMA_URL="http://$(ip route | grep default | awk '{print $3}'):11434" cargo run -p nibli-server {{cargo_profile_flag}}
+
 # Launch Transparency Triad web UI (dev server with hot-reload)
 ui:
     cd nibli-ui && dx serve
@@ -209,6 +213,36 @@ agent-rights:
 # Usage: just agent-fitness-ollama model=gemma3:27b
 agent-fitness-ollama model="qwen3:30b":
     cargo run -p nibli-agent {{cargo_profile_flag}} -- --name fitness-agent --domain xadni --peer 127.0.0.1:7777 --provider ollama --model "{{model}}" --ollama-url "http://$(ip route | grep default | awk '{print $3}'):11434"
+
+# Auto-gossip: Ollama fitness agent (generates + reacts, 45s interval)
+agent-auto-ollama model="qwen3:30b" interval="45" topic="fitness and exercise":
+    cargo run -p nibli-agent {{cargo_profile_flag}} -- --name ollama-fitness --domain xadni --peer 127.0.0.1:7777 --provider ollama --model "{{model}}" --ollama-url "http://$(ip route | grep default | awk '{print $3}'):11434" --auto-gossip --interval {{interval}} --topic "{{topic}}"
+
+# Auto-gossip: Ollama nutrition agent (generates + reacts, 45s interval)
+agent-auto-ollama-nutrition model="qwen3:30b" interval="45" topic="nutrition and healthy eating":
+    cargo run -p nibli-agent {{cargo_profile_flag}} -- --name ollama-nutrition --domain cidja --peer 127.0.0.1:7777 --provider ollama --model "{{model}}" --ollama-url "http://$(ip route | grep default | awk '{print $3}'):11434" --auto-gossip --interval {{interval}} --topic "{{topic}}"
+
+# Auto-gossip: Claude fitness agent (generates + reacts, 45s interval)
+agent-auto-claude interval="45" topic="fitness and exercise":
+    cargo run -p nibli-agent {{cargo_profile_flag}} -- --name claude-fitness --domain xadni --peer 127.0.0.1:7777 --provider anthropic --auto-gossip --interval {{interval}} --topic "{{topic}}"
+
+# ─── Domain Knowledge Agents ─────────────────────────────────────
+
+# GDPR agent with persistent KB (interactive, connect to hub on 7777)
+agent-gdpr model="qwen3:30b":
+    cargo run -p nibli-agent {{cargo_profile_flag}} -- --name gdpr-agent --domain gdpr --peer 127.0.0.1:7777 --db-path gdpr-agent.redb --seed gdpr.lojban --provider ollama --model "{{model}}" --ollama-url "http://$(ip route | grep default | awk '{print $3}'):11434"
+
+# Drug interaction agent with persistent KB (interactive, connect to hub on 7777)
+agent-drug model="qwen3:30b":
+    cargo run -p nibli-agent {{cargo_profile_flag}} -- --name drug-agent --domain xukmi --peer 127.0.0.1:7777 --db-path drug-agent.redb --seed drug-interactions.lojban --provider ollama --model "{{model}}" --ollama-url "http://$(ip route | grep default | awk '{print $3}'):11434"
+
+# Auto-gossip: GDPR agent (generates + reacts, 60s interval)
+agent-auto-gdpr model="qwen3:30b" interval="60":
+    cargo run -p nibli-agent {{cargo_profile_flag}} -- --name gdpr-auto --domain gdpr --peer 127.0.0.1:7777 --db-path gdpr-auto.redb --seed gdpr.lojban --provider ollama --model "{{model}}" --ollama-url "http://$(ip route | grep default | awk '{print $3}'):11434" --auto-gossip --interval {{interval}} --topic "data protection and privacy"
+
+# Auto-gossip: Drug interaction agent (generates + reacts, 60s interval)
+agent-auto-drug model="qwen3:30b" interval="60":
+    cargo run -p nibli-agent {{cargo_profile_flag}} -- --name drug-auto --domain xukmi --peer 127.0.0.1:7777 --db-path drug-auto.redb --seed drug-interactions.lojban --provider ollama --model "{{model}}" --ollama-url "http://$(ip route | grep default | awk '{print $3}'):11434" --auto-gossip --interval {{interval}} --topic "drug interactions and medicine"
 
 # Wipes all compilation artifacts
 clean:

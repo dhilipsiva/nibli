@@ -1,5 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
+use std::path::Path;
 
 use chrono::Utc;
 use clap::{Parser, ValueEnum};
@@ -48,14 +49,90 @@ Examples:
 
 /no_think"#;
 
-const GENERATE_PROMPT: &str = r#"Generate a single factual English sentence about the given topic. Keep it simple, declarative, and suitable for formal logic representation. Output ONLY the sentence, nothing else.
+const GENERATE_PROMPT: &str = r#"Generate a single VERY SIMPLE factual English sentence about the given topic. Use ONLY basic concepts from this list: dog, cat, animal, person, food, water, body, strong, healthy, good, bad, fast, slow, big, small, run, eat, drink, see, love, go, try, want, able, tired, sick, pain, act.
 
-Examples for topic "fitness":
-- "Regular exercise strengthens the heart"
-- "Athletes need adequate protein"
-- "Swimming is a low-impact exercise"
+The sentence MUST be a simple subject-predicate structure like "X is Y" or "X does Y". No abstract concepts (vitamins, nutrients, molecules). No compound subjects. No relative clauses.
+
+Output ONLY the sentence, nothing else.
+
+Examples:
+- "Strong people run fast"
+- "Good food is healthy"
+- "Every person eats food"
+- "The big dog runs"
+- "Tired people are slow"
+- "Healthy people are strong"
 
 /no_think"#;
+
+const REACT_PROMPT: &str = r#"You received a Lojban logic assertion from another agent. Generate a single VERY SIMPLE related English sentence. Use ONLY basic concepts: dog, cat, animal, person, food, water, body, strong, healthy, good, bad, fast, slow, big, small, run, eat, drink, see, love, go, try, want, able, tired, sick, pain, act.
+
+The sentence MUST be a simple "X is Y" or "X does Y" structure. No abstract concepts. No compound subjects. Output ONLY the sentence.
+
+Examples:
+- If you receive something about dogs → "Every dog is an animal"
+- If you receive something about running → "Fast people run"
+- If you receive something about food → "Good food is healthy"
+- If you receive something about health → "Healthy people are strong"
+
+/no_think"#;
+
+const GENERATE_PROMPT_GDPR: &str = r#"Generate a single VERY SIMPLE factual English sentence about data protection or privacy rules. Use ONLY these concepts: person, data, organization, protect, permit, obligate, need, consent, delete, access, inform, report, breach, system, accurate, safe.
+
+The sentence MUST be a simple "X must Y" or "X can Y" or "X is Y" structure. No compound subjects. No jargon.
+
+Output ONLY the sentence, nothing else. Each sentence should be DIFFERENT from the last.
+
+Examples:
+- "Every person can access their data"
+- "Organizations must protect data"
+- "Data must be accurate"
+- "Breaches must be reported"
+- "Consent is needed for data use"
+- "People can delete their data"
+- "Organizations must inform people about data use"
+- "Data systems must be safe"
+
+/no_think"#;
+
+const REACT_PROMPT_GDPR: &str = r#"You received a Lojban logic assertion about data protection. Generate a single VERY SIMPLE related English sentence about data privacy. Use ONLY concepts: person, data, organization, protect, permit, obligate, need, consent, delete, access, inform, report, breach, system, accurate, safe.
+
+Simple "X must Y" or "X can Y" or "X is Y" structure. Output ONLY the sentence. Make it DIFFERENT from what you received.
+
+/no_think"#;
+
+const GENERATE_PROMPT_DRUG: &str = r#"Generate a single VERY SIMPLE factual English sentence about drugs, chemicals, or medicine. Use ONLY these concepts: chemical, drug, medicine, dangerous, harm, help, person, sick, healthy, pain, blood, need, use, caution, strong, body, bad, good.
+
+The sentence MUST be a simple "X is Y" or "X does Y" structure. No compound subjects. No specific drug names. Each sentence should be DIFFERENT from the last.
+
+Output ONLY the sentence, nothing else.
+
+Examples:
+- "Sick people need medicine"
+- "Dangerous chemicals harm the body"
+- "Good medicine helps sick people"
+- "Blood chemicals can be dangerous"
+- "Strong medicine needs caution"
+- "Pain chemicals help the body"
+- "Healthy people are strong"
+- "Bad chemicals harm people"
+
+/no_think"#;
+
+const REACT_PROMPT_DRUG: &str = r#"You received a Lojban logic assertion about drugs or chemicals. Generate a single VERY SIMPLE related English sentence. Use ONLY concepts: chemical, drug, medicine, dangerous, harm, help, person, sick, healthy, pain, blood, need, use, caution, strong, body, bad, good.
+
+Simple "X is Y" or "X does Y" structure. Output ONLY the sentence. Make it DIFFERENT from what you received.
+
+/no_think"#;
+
+/// Select domain-specific prompts based on domain name.
+fn domain_prompts(domain: Option<&str>) -> (&'static str, &'static str, &'static str) {
+    match domain {
+        Some("gdpr") => (GENERATE_PROMPT_GDPR, REACT_PROMPT_GDPR, TRANSLATE_PROMPT),
+        Some("xukmi") => (GENERATE_PROMPT_DRUG, REACT_PROMPT_DRUG, TRANSLATE_PROMPT),
+        _ => (GENERATE_PROMPT, REACT_PROMPT, TRANSLATE_PROMPT),
+    }
+}
 
 /// Domain topic tags for gossip envelopes.
 fn domain_topics(domain: &str) -> Vec<String> {
@@ -66,6 +143,8 @@ fn domain_topics(domain: &str) -> Vec<String> {
         "krali" => vec!["krali", "turni", "flalu"],
         "gerku" => vec!["gerku", "danlu", "mabru"],
         "skami" => vec!["skami", "datni", "ciste"],
+        "gdpr"  => vec!["datni", "curmi", "bilga", "prenu"],
+        "xukmi" => vec!["xukmi", "ckape", "bilma", "kanro"],
         _ => vec![],
     }
     .into_iter()
@@ -146,6 +225,14 @@ struct Cli {
     /// Max number of auto-gossip assertions (unlimited if unset).
     #[arg(long)]
     count: Option<u32>,
+
+    /// Path to redb database for persistent KB storage.
+    #[arg(long)]
+    db_path: Option<String>,
+
+    /// Path to a .lojban seed file to load on startup.
+    #[arg(long)]
+    seed: Option<String>,
 }
 
 // ── LLM abstraction ──
@@ -157,15 +244,17 @@ enum LlmClient {
     Anthropic {
         translator: AnthropicAgent,
         generator: AnthropicAgent,
+        reactor: AnthropicAgent,
     },
     Ollama {
         translator: OllamaAgent,
         generator: OllamaAgent,
+        reactor: OllamaAgent,
     },
 }
 
 impl LlmClient {
-    fn new_anthropic(model: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    fn new_anthropic(model: &str, gen_prompt: &str, react_prompt: &str, trans_prompt: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let client = anthropic::Client::new(
             std::env::var("ANTHROPIC_API_KEY")
                 .expect("ANTHROPIC_API_KEY must be set"),
@@ -173,22 +262,29 @@ impl LlmClient {
 
         let translator = client
             .agent(model)
-            .preamble(TRANSLATE_PROMPT)
+            .preamble(trans_prompt)
             .temperature(0.0)
             .max_tokens(256)
             .build();
 
         let generator = client
             .agent(model)
-            .preamble(GENERATE_PROMPT)
+            .preamble(gen_prompt)
             .temperature(0.9)
             .max_tokens(256)
             .build();
 
-        Ok(LlmClient::Anthropic { translator, generator })
+        let reactor = client
+            .agent(model)
+            .preamble(react_prompt)
+            .temperature(0.7)
+            .max_tokens(256)
+            .build();
+
+        Ok(LlmClient::Anthropic { translator, generator, reactor })
     }
 
-    fn new_ollama(url: &str, model: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    fn new_ollama(url: &str, model: &str, gen_prompt: &str, react_prompt: &str, trans_prompt: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let client = ollama::Client::builder()
             .api_key(rig::client::Nothing)
             .base_url(url)
@@ -196,19 +292,26 @@ impl LlmClient {
 
         let translator = client
             .agent(model)
-            .preamble(TRANSLATE_PROMPT)
+            .preamble(trans_prompt)
             .temperature(0.0)
             .max_tokens(256)
             .build();
 
         let generator = client
             .agent(model)
-            .preamble(GENERATE_PROMPT)
+            .preamble(gen_prompt)
             .temperature(0.9)
             .max_tokens(256)
             .build();
 
-        Ok(LlmClient::Ollama { translator, generator })
+        let reactor = client
+            .agent(model)
+            .preamble(react_prompt)
+            .temperature(0.7)
+            .max_tokens(256)
+            .build();
+
+        Ok(LlmClient::Ollama { translator, generator, reactor })
     }
 
     async fn translate(&self, english: &str) -> Result<String, String> {
@@ -224,6 +327,15 @@ impl LlmClient {
         let result = match self {
             LlmClient::Anthropic { generator, .. } => generator.prompt(&prompt).await,
             LlmClient::Ollama { generator, .. } => generator.prompt(&prompt).await,
+        };
+        result.map(|s| clean_llm_output(s.trim())).map_err(|e| e.to_string())
+    }
+
+    async fn react(&self, received_lojban: &str) -> Result<String, String> {
+        let prompt = format!("Received Lojban assertion: {received_lojban}");
+        let result = match self {
+            LlmClient::Anthropic { reactor, .. } => reactor.prompt(&prompt).await,
+            LlmClient::Ollama { reactor, .. } => reactor.prompt(&prompt).await,
         };
         result.map(|s| clean_llm_output(s.trim())).map_err(|e| e.to_string())
     }
@@ -447,6 +559,82 @@ fn display_inbound(agent_name: &str, msg: &WireMessage) {
     }
 }
 
+/// Ingest a received envelope into the local KB, then react with a related fact.
+/// `known_facts` tracks content we've already seen to prevent echo chambers.
+async fn handle_inbound(
+    msg: &WireMessage,
+    llm: &LlmClient,
+    engine: &NibliEngine,
+    agent_name: &str,
+    clock: &mut VectorClock,
+    stance: EpistemicStance,
+    extra_topics: &[String],
+    conn: &mut GossipConnection,
+    gossiped: &mut u32,
+    failed: &mut u32,
+    known_facts: &mut HashSet<String>,
+) {
+    display_inbound(agent_name, msg);
+
+    // Only react to Lojban assertions from other agents.
+    let lojban = match msg {
+        WireMessage::Envelope(env) if env.author != agent_name => {
+            match &env.op {
+                GossipOp::AssertLojban(text) => Some(text.clone()),
+                _ => None,
+            }
+        }
+        _ => None,
+    };
+
+    let Some(lojban) = lojban else { return };
+
+    // Skip if we've already seen this exact content.
+    if !known_facts.insert(lojban.clone()) {
+        println!("[{agent_name}] Already known, skipping reaction");
+        return;
+    }
+
+    // Ingest into local KB.
+    match engine.assert_text(&lojban) {
+        Ok(id) => {
+            println!("[{agent_name}] Ingested into KB (fact #{id})");
+        }
+        Err(e) => {
+            println!("[{agent_name}] Ingest failed: {e}");
+        }
+    }
+
+    // React: generate a related English sentence, translate, validate, gossip.
+    match llm.react(&lojban).await {
+        Ok(english) => {
+            println!("[{agent_name}] Reacting to gossip: \"{english}\"");
+            match translate_validate_gossip(
+                llm, engine, &english, agent_name,
+                clock, stance, extra_topics,
+            ).await {
+                Some(env) => {
+                    // Track our own output to avoid self-echo.
+                    if let GossipOp::AssertLojban(ref text) = env.op {
+                        known_facts.insert(text.clone());
+                    }
+                    let short_id = &env.id[..12];
+                    if let Err(e) = conn.send_envelope(&env).await {
+                        eprintln!("[{agent_name}] Send failed: {e}");
+                    } else {
+                        println!("[{agent_name}] Reacted (envelope {short_id}...)");
+                        *gossiped += 1;
+                    }
+                }
+                None => { *failed += 1; }
+            }
+        }
+        Err(e) => {
+            eprintln!("[{agent_name}] React error: {e}");
+        }
+    }
+}
+
 // ── Main ──
 
 #[tokio::main]
@@ -459,24 +647,68 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Provider::Ollama => "ollama",
     });
 
+    // Select domain-specific prompts.
+    let (gen_prompt, react_prompt, trans_prompt) = domain_prompts(cli.domain.as_deref());
+
     // Create LLM client.
     let llm = match &cli.provider {
         Provider::Anthropic => {
             let model = cli.model.as_deref()
                 .unwrap_or(anthropic::completion::CLAUDE_4_SONNET);
             println!("[{}] Model: {model}", cli.name);
-            LlmClient::new_anthropic(model)?
+            LlmClient::new_anthropic(model, gen_prompt, react_prompt, trans_prompt)?
         }
         Provider::Ollama => {
-            let model = cli.model.as_deref().unwrap_or("qwen3-coder:30b");
+            let model = cli.model.as_deref().unwrap_or("qwen3:30b");
             println!("[{}] Model: {model} ({})", cli.name, cli.ollama_url);
-            LlmClient::new_ollama(&cli.ollama_url, model)?
+            LlmClient::new_ollama(&cli.ollama_url, model, gen_prompt, react_prompt, trans_prompt)?
         }
     };
 
-    // Create validation engine.
-    let engine = NibliEngine::new();
+    // Check if DB already exists (before open creates it).
+    let db_existed = cli.db_path.as_ref().map(|p| Path::new(p).exists()).unwrap_or(false);
+
+    // Create validation engine (with optional persistence).
+    let engine = if let Some(ref db) = cli.db_path {
+        let e = NibliEngine::open(Path::new(db))
+            .unwrap_or_else(|e| panic!("Failed to open DB at {}: {}", db, e));
+        println!("[{}] Persistent KB at {db}", cli.name);
+        e
+    } else {
+        NibliEngine::new()
+    };
     println!("[{}] Gerna validation engine ready", cli.name);
+
+    // Load seed file if provided (skip if DB already existed).
+    if let Some(ref seed_path) = cli.seed {
+        if db_existed {
+            println!("[{}] DB already has facts, skipping seed", cli.name);
+        } else {
+            let content = std::fs::read_to_string(seed_path)
+                .unwrap_or_else(|e| panic!("Failed to read seed {}: {}", seed_path, e));
+            let mut asserted = 0u32;
+            let mut skipped = 0u32;
+            let mut errors = 0u32;
+            for (i, line) in content.lines().enumerate() {
+                let trimmed = line.trim();
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    skipped += 1;
+                    continue;
+                }
+                match engine.assert_text(trimmed) {
+                    Ok(id) => {
+                        println!("[{}] Seed #{id}: {trimmed}", cli.name);
+                        asserted += 1;
+                    }
+                    Err(e) => {
+                        eprintln!("[{}] Seed line {} error: {e}", cli.name, i + 1);
+                        errors += 1;
+                    }
+                }
+            }
+            println!("[{}] Seed loaded: {asserted} asserted, {skipped} skipped, {errors} errors", cli.name);
+        }
+    }
 
     // Vector clock.
     let mut clock = VectorClock { entries: HashMap::new() };
@@ -492,9 +724,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut conn = GossipConnection::connect(&cli.name, &cli.peer, inbound_tx).await?;
     println!("[{}] Connected to gossip hub at {}", cli.name, cli.peer);
 
-    // Stats.
+    // Stats + dedup set.
     let mut gossiped: u32 = 0;
     let mut failed: u32 = 0;
+    let mut known_facts: HashSet<String> = HashSet::new();
 
     if cli.auto_gossip {
         // ── Auto-gossip mode ──
@@ -525,6 +758,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 &mut clock, stance.clone(), &extra_topics,
                             ).await {
                                 Some(env) => {
+                                    if let GossipOp::AssertLojban(ref text) = env.op {
+                                        known_facts.insert(text.clone());
+                                    }
                                     let short_id = &env.id[..12];
                                     if let Err(e) = conn.send_envelope(&env).await {
                                         eprintln!("[{}] Send failed: {e}", cli.name);
@@ -543,7 +779,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 Some(msg) = inbound_rx.recv() => {
-                    display_inbound(&cli.name, &msg);
+                    handle_inbound(
+                        &msg, &llm, &engine, &cli.name,
+                        &mut clock, stance.clone(), &extra_topics,
+                        &mut conn, &mut gossiped, &mut failed,
+                        &mut known_facts,
+                    ).await;
                 }
             }
         }
@@ -582,6 +823,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         ":status" => {
                             println!("  Gossiped: {gossiped}, Failed: {failed}");
+                            println!("  Known facts: {}", known_facts.len());
                             println!("  Clock: {:?}", clock.entries);
                         }
                         english => {
@@ -591,6 +833,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 &mut clock, stance.clone(), &extra_topics,
                             ).await {
                                 Some(env) => {
+                                    if let GossipOp::AssertLojban(ref text) = env.op {
+                                        known_facts.insert(text.clone());
+                                    }
                                     let short_id = &env.id[..12];
                                     if let Err(e) = conn.send_envelope(&env).await {
                                         eprintln!("[{}] Send failed: {e}", cli.name);
@@ -607,7 +852,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 Some(msg) = inbound_rx.recv() => {
-                    display_inbound(&cli.name, &msg);
+                    handle_inbound(
+                        &msg, &llm, &engine, &cli.name,
+                        &mut clock, stance.clone(), &extra_topics,
+                        &mut conn, &mut gossiped, &mut failed,
+                        &mut known_facts,
+                    ).await;
                 }
             }
         }

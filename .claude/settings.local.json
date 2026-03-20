@@ -30,7 +30,11 @@
       "WebFetch(domain:lojban.github.io)",
       "WebFetch(domain:mw-live.lojban.org)",
       "WebFetch(domain:lojban.org)",
-      "WebSearch"
+      "WebSearch",
+      "WebFetch(domain:rig.rs)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:crates.io)",
+      "WebFetch(domain:docs.rig.rs)"
     ]
   }
 }

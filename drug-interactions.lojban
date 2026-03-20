@@ -1,0 +1,70 @@
+# ni'o lo xukmi misno javni (Drug Interaction Knowledge Base)
+# Drug interaction rules encoded in Lojban for formal reasoning
+
+# ─── Drug definitions ─────────────────────────────────────────────
+
+# Aspirin is a chemical
+la .aspirin. cu xukmi
+
+# Warfarin is a chemical
+la .varfarin. cu xukmi
+
+# Ibuprofen is a chemical
+la .ibuprofn. cu xukmi
+
+# Metformin is a chemical
+la .metformn. cu xukmi
+
+# Insulin is a chemical
+la .insulin. cu xukmi
+
+# ─── Drug properties ──────────────────────────────────────────────
+
+# Aspirin is a blood chemical (anticoagulant)
+la .aspirin. cu ciblu xukmi
+
+# Warfarin is a blood chemical
+la .varfarin. cu ciblu xukmi
+
+# Ibuprofen reduces pain
+la .ibuprofn. cu cortu xukmi
+
+# ─── Universal rules ─────────────────────────────────────────────
+
+# Every blood chemical is dangerous
+ro lo ciblu xukmi cu ckape
+
+# Every dangerous chemical needs caution
+ro lo ckape xukmi cu se bilga
+
+# Every sick person needs a chemical
+ro lo bilma prenu cu nitcu lo xukmi
+
+# A healthy person does not need chemicals
+lo kanro prenu cu na nitcu lo xukmi
+
+# Every harmful chemical is bad
+ro lo xrani xukmi cu xlali
+
+# Every good chemical helps sick people
+ro lo xamgu xukmi cu sidju lo bilma prenu
+
+# ─── Patient scenario ────────────────────────────────────────────
+
+# Alice is a person
+la .alis. cu prenu
+
+# Alice is sick
+la .alis. cu bilma
+
+# Alice uses aspirin
+la .alis. cu pilno la .aspirin.
+
+# Alice uses warfarin
+la .alis. cu pilno la .varfarin.
+
+# Bob is a person
+la .bob. cu prenu
+
+# Bob is healthy
+la .bob. cu kanro

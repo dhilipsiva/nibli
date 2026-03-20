@@ -1,0 +1,100 @@
+# ni'o lo datni kurji javni (GDPR Knowledge Base)
+# Data Protection Regulation — encoded in Lojban for formal reasoning
+
+# ─── Article 4: Definitions ───────────────────────────────────────
+
+# Personal data relates to a person
+ro lo datni poi prenu cu se ponse
+ro lo se ponse datni cu selpli datni
+
+# Categories of personal data
+ro lo cmene cu selpli datni
+ro lo lerfu judri cu selpli datni
+ro lo samymri judri cu selpli datni
+ro lo cupra datni cu selpli datni
+
+# Sensitive data is personal data
+ro lo kanro datni cu selpli datni
+ro lo lijda datni cu selpli datni
+ro lo natmi datni cu selpli datni
+
+# ─── Article 5: Data Processing Principles ────────────────────────
+
+# All personal data processing requires a legal basis
+ro lo selpli datni cu se bilga lo nu javni selcru
+
+# All personal data must be accurate
+ro lo selpli datni cu se bilga lo nu drani
+
+# All personal data must be protected
+ro lo selpli datni cu se bilga lo nu marbi
+
+# Data minimisation: only necessary data may be collected
+ro lo selpli datni cu se bilga lo nu sarcu
+
+# ─── Article 6: Lawful Basis for Processing ───────────────────────
+
+# Consent is a legal basis
+ro lo zanru cu javni selcru
+
+# Contract is a legal basis
+ro lo nupre cu javni selcru
+
+# Legal obligation is a legal basis
+ro lo flalu bilga cu javni selcru
+
+# ─── Article 7: Conditions for Consent ────────────────────────────
+
+# Consent must be freely given
+ro lo zanru cu se bilga lo nu na se fanta
+
+# Consent must be specific
+ro lo zanru cu se bilga lo nu satci
+
+# Consent can be withdrawn
+ro lo zanru cu se curmi lo nu vimcu
+
+# ─── Article 13-14: Information Requirements ──────────────────────
+
+# Data controllers must inform data subjects
+ro lo datni turni cu se bilga lo nu djuno se cusku
+
+# ─── Article 15: Right of Access ──────────────────────────────────
+
+# Data subjects have the right to access their data
+ro lo prenu cu se curmi lo nu datni facki
+
+# ─── Article 17: Right to Erasure ─────────────────────────────────
+
+# Data subjects can request deletion
+ro lo prenu cu se curmi lo nu datni vimcu
+
+# ─── Article 25: Data Protection by Design ────────────────────────
+
+# Systems must implement data protection by design
+ro lo skami ciste cu se bilga lo nu marbi zbasu
+
+# ─── Article 33: Breach Notification ──────────────────────────────
+
+# Data breaches must be reported
+ro lo datni jarco cu se bilga lo nu notci
+
+# ─── Scenario: MedCorp processes health data ──────────────────────
+
+# MedCorp is a data controller
+la .medkorp. cu datni turni
+
+# MedCorp processes health data
+la .medkorp. cu se ponse lo kanro datni
+
+# MedCorp has patient Alice
+la .alis. cu prenu
+
+# MedCorp stores Alice's health record
+la .medkorp. cu se ponse lo kanro datni poi la .alis. cu se ponse
+
+# MedCorp obtained consent from Alice
+la .alis. cu zanru
+
+# MedCorp is a computer system
+la .medkorp. cu skami ciste

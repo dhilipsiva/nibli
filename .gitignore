@@ -11,6 +11,8 @@ lasna/src/bindings.rs
 # Book drafts (private)
 book/
 *__pycache__*
+.venv/
+*.redb
 
 # Training data (generated, large)
 data/
