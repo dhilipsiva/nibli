@@ -86,6 +86,100 @@ impl SexpInterner {
     }
 }
 
+// ─── Columnar Fact Store ─────────────────────────────────────────
+
+/// Sorted u32 vector for columnar fact storage.
+///
+/// Stores interned s-expression keys in sorted order for:
+/// - O(log n) membership test via binary search (cache-friendly)
+/// - 4 bytes per entry (vs ~32 bytes for HashSet<u32>)
+/// - Future SIMD batch membership via aligned u32 scans
+/// - Merge-join subset check for ∀ verification
+///
+/// Insert is O(n) due to shift, but assertions are infrequent
+/// compared to queries in a demand-driven backward-chaining engine.
+#[derive(Clone)]
+struct SortedU32Vec {
+    data: Vec<u32>,
+}
+
+impl SortedU32Vec {
+    fn new() -> Self {
+        Self { data: Vec::new() }
+    }
+
+    /// Insert a key, maintaining sorted order. Returns true if newly added.
+    fn insert(&mut self, val: u32) -> bool {
+        match self.data.binary_search(&val) {
+            Ok(_) => false, // already present
+            Err(pos) => {
+                self.data.insert(pos, val);
+                true
+            }
+        }
+    }
+
+    /// O(log n) membership test via binary search.
+    fn contains(&self, val: &u32) -> bool {
+        self.data.binary_search(val).is_ok()
+    }
+
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    fn clear(&mut self) {
+        self.data.clear();
+    }
+
+    /// Merge-join subset check: is every element in `self` also in `other`?
+    /// Both vectors are sorted, so this is O(n + m) with no allocations.
+    /// Useful for ∀ verification: "every x in predicate A is also in predicate B".
+    #[allow(dead_code)]
+    fn is_subset_of(&self, other: &SortedU32Vec) -> bool {
+        let mut j = 0;
+        for &val in &self.data {
+            while j < other.data.len() && other.data[j] < val {
+                j += 1;
+            }
+            if j >= other.data.len() || other.data[j] != val {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Merge-join intersection: returns elements present in both sorted vectors.
+    /// O(n + m) with a single output allocation. Useful for SIMD batch membership.
+    #[allow(dead_code)]
+    fn intersection(&self, other: &SortedU32Vec) -> SortedU32Vec {
+        let mut result = Vec::new();
+        let (mut i, mut j) = (0, 0);
+        while i < self.data.len() && j < other.data.len() {
+            match self.data[i].cmp(&other.data[j]) {
+                std::cmp::Ordering::Less => i += 1,
+                std::cmp::Ordering::Greater => j += 1,
+                std::cmp::Ordering::Equal => {
+                    result.push(self.data[i]);
+                    i += 1;
+                    j += 1;
+                }
+            }
+        }
+        SortedU32Vec { data: result }
+    }
+}
+
+impl Default for SortedU32Vec {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ─── Knowledge Base State ────────────────────────────────────────
 
 /// Registry entry for a SkolemFn created by native rule compilation.
@@ -291,11 +385,12 @@ struct KnowledgeBaseInner {
     known_descriptions: HashSet<String>,
     known_rules: HashSet<String>,
     skolem_fn_registry: Vec<SkolemFnEntry>,
-    /// Ground facts as interned s-expression keys.
-    asserted_sexps: HashSet<u32>,
-    /// Secondary index: predicate name → set of interned sexp keys containing that predicate.
-    /// Enables predicate-scoped enumeration without scanning all facts.
-    predicate_facts: HashMap<String, HashSet<u32>>,
+    /// Ground facts as interned s-expression keys (sorted columnar storage).
+    /// Binary search for O(log n) membership, 4 bytes per entry.
+    asserted_sexps: SortedU32Vec,
+    /// Columnar index: predicate name → sorted interned sexp keys.
+    /// Enables predicate-scoped enumeration and merge-join subset checks.
+    predicate_facts: HashMap<String, SortedU32Vec>,
     /// Compiled universal rule templates indexed by conclusion predicate name.
     /// Each predicate name maps to the rules whose conclusion templates mention it.
     /// Rc-wrapped to avoid cloning rule records during backward-chain snapshots.
@@ -323,8 +418,8 @@ impl KnowledgeBaseInner {
             known_descriptions: HashSet::new(),
             known_rules: HashSet::new(),
             skolem_fn_registry: Vec::new(),
-            asserted_sexps: HashSet::new(),
-            predicate_facts: HashMap::new(),
+            asserted_sexps: SortedU32Vec::new(),
+            predicate_facts: HashMap::new(), // values are SortedU32Vec via Default
             universal_rules: HashMap::new(),
             fact_counter: 0,
             fact_registry: HashMap::new(),
@@ -3036,7 +3131,7 @@ fn assert_sexp(sexp: String, inner: &mut KnowledgeBaseInner) {
 }
 
 /// Get all asserted sexp keys for a given predicate name.
-fn facts_for_predicate<'a>(pred: &str, inner: &'a KnowledgeBaseInner) -> Option<&'a HashSet<u32>> {
+fn facts_for_predicate<'a>(pred: &str, inner: &'a KnowledgeBaseInner) -> Option<&'a SortedU32Vec> {
     inner.predicate_facts.get(pred)
 }
 

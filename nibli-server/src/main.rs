@@ -99,7 +99,7 @@ impl MutationRoot {
                 },
             ],
             stream: false,
-            options: OllamaOptions { temperature: 0.0 },
+            options: OllamaOptions { temperature: 0.3 },
         };
         let url = format!("{}/api/chat", config.url);
         match client.post(&url).json(&req).send().await {
