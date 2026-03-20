@@ -1,6 +1,3 @@
-// Workaround: rustc 1.93.1 ICE in `check_type_wf` — async-graphql proc macros trigger compiler panic.
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -92,7 +89,7 @@ impl QueryRoot {
         node.log()
             .iter()
             .filter(|e| e.author == agent)
-            .map(envelope_to_gql)
+            .map(|e| envelope_to_gql(e))
             .collect()
     }
 
@@ -103,7 +100,7 @@ impl QueryRoot {
         node.log()
             .iter()
             .find(|e| e.id.starts_with(&id_prefix))
-            .map(envelope_to_gql)
+            .map(|e| envelope_to_gql(e))
     }
 
     /// Get the gossip event log (most recent events).

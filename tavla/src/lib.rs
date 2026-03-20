@@ -183,7 +183,7 @@ pub struct Envelope {
 
 impl Envelope {
     /// Compute content-addressed ID from canonical fields.
-    fn compute_id(
+    pub fn compute_id(
         author: &str,
         clock: &VectorClock,
         op: &GossipOp,

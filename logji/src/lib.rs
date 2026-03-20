@@ -28,7 +28,7 @@ use crate::bindings::lojban::nibli::logic_types::{
 };
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
+use std::sync::Arc;
 
 // ─── S-Expression String Interner ─────────────────────────────────
 
@@ -394,7 +394,7 @@ struct KnowledgeBaseInner {
     /// Compiled universal rule templates indexed by conclusion predicate name.
     /// Each predicate name maps to the rules whose conclusion templates mention it.
     /// Rc-wrapped to avoid cloning rule records during backward-chain snapshots.
-    universal_rules: HashMap<String, Vec<Rc<UniversalRuleRecord>>>,
+    universal_rules: HashMap<String, Vec<Arc<UniversalRuleRecord>>>,
     /// Monotonically increasing fact ID counter.
     fact_counter: u64,
     /// Registry of all asserted facts (including retracted ones, for ID stability).
@@ -3064,15 +3064,15 @@ fn extract_pred_name_deep(sexp: &str) -> Option<&str> {
 
 /// Collect all rules that might match a queried s-expression.
 /// Looks up by predicate name + always includes fallback rules.
-fn collect_matching_rules(sexp: &str, rules: &HashMap<String, Vec<Rc<UniversalRuleRecord>>>) -> Vec<Rc<UniversalRuleRecord>> {
+fn collect_matching_rules(sexp: &str, rules: &HashMap<String, Vec<Arc<UniversalRuleRecord>>>) -> Vec<Arc<UniversalRuleRecord>> {
     let mut result = Vec::new();
     if let Some(pred_name) = extract_pred_name_deep(sexp) {
         if let Some(matching) = rules.get(pred_name) {
-            result.extend(matching.iter().map(Rc::clone));
+            result.extend(matching.iter().map(Arc::clone));
         }
     }
     if let Some(fallback) = rules.get("__fallback__") {
-        result.extend(fallback.iter().map(Rc::clone));
+        result.extend(fallback.iter().map(Arc::clone));
     }
     result
 }
@@ -3138,13 +3138,13 @@ fn facts_for_predicate<'a>(pred: &str, inner: &'a KnowledgeBaseInner) -> Option<
 /// Add a universal rule to the predicate-indexed rule map.
 /// Indexes the rule by each conclusion template's predicate name.
 /// Resolves interned conclusion keys via the interner to extract predicate names.
-fn add_universal_rule(rules: &mut HashMap<String, Vec<Rc<UniversalRuleRecord>>>, rule: UniversalRuleRecord, interner: &SexpInterner) {
-    let rc = Rc::new(rule);
+fn add_universal_rule(rules: &mut HashMap<String, Vec<Arc<UniversalRuleRecord>>>, rule: UniversalRuleRecord, interner: &SexpInterner) {
+    let rc = Arc::new(rule);
     let mut indexed = false;
     for &concl_key in &rc.conclusion_templates {
         let concl_str = interner.resolve(concl_key);
         if let Some(pred_name) = extract_pred_name_deep(concl_str) {
-            rules.entry(pred_name.to_string()).or_default().push(Rc::clone(&rc));
+            rules.entry(pred_name.to_string()).or_default().push(Arc::clone(&rc));
             indexed = true;
         }
     }

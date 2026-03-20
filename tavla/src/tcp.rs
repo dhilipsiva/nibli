@@ -60,15 +60,18 @@ impl TcpTransport {
             loop {
                 match listener.accept().await {
                     Ok((stream, addr)) => {
-                        let peer_id = addr.to_string();
-                        println!("[tavla] + incoming connection from {peer_id}");
-                        Self::register_peer_stream(
-                            peer_id,
-                            stream,
-                            peers2.clone(),
-                            inbound_tx2.clone(),
-                        )
-                        .await;
+                        let addr_str = addr.to_string();
+                        println!("[tavla] + incoming connection from {addr_str}");
+                        let peers3 = peers2.clone();
+                        let inbound_tx3 = inbound_tx2.clone();
+                        // Spawn so we don't block the accept loop while
+                        // waiting for the handshake line.
+                        tokio::spawn(async move {
+                            Self::accept_with_handshake(
+                                stream, addr_str, peers3, inbound_tx3,
+                            )
+                            .await;
+                        });
                     }
                     Err(e) => {
                         eprintln!("[tavla] accept error: {e}");
@@ -90,6 +93,40 @@ impl TcpTransport {
         }
 
         Ok(transport)
+    }
+
+    /// Read the first line from an incoming connection as the peer name,
+    /// then register the stream.  Falls back to the socket address if the
+    /// handshake times out or fails.
+    async fn accept_with_handshake(
+        stream: TcpStream,
+        addr: String,
+        peers: Arc<Mutex<HashMap<String, PeerHandle>>>,
+        inbound_tx: mpsc::UnboundedSender<InboundMessage>,
+    ) {
+        let (read_half, write_half) = stream.into_split();
+        let mut reader = BufReader::new(read_half);
+        let mut first_line = String::new();
+
+        // Give the peer 5 seconds to send its name.
+        let peer_id = match tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            reader.read_line(&mut first_line),
+        )
+        .await
+        {
+            Ok(Ok(n)) if n > 0 => {
+                let name = first_line.trim().to_string();
+                if name.is_empty() { addr } else {
+                    println!("[tavla] + peer identified as {name}");
+                    name
+                }
+            }
+            _ => addr,
+        };
+
+        // Reconstruct stream parts for register_peer_stream_split.
+        Self::register_peer_stream_split(peer_id, reader, write_half, peers, inbound_tx).await;
     }
 
     /// Connect to a peer with retry (3 attempts, 3s backoff).
@@ -138,7 +175,18 @@ impl TcpTransport {
         inbound_tx: mpsc::UnboundedSender<InboundMessage>,
     ) {
         let (read_half, write_half) = stream.into_split();
+        let reader = BufReader::new(read_half);
+        Self::register_peer_stream_split(peer_id, reader, write_half, peers, inbound_tx).await;
+    }
 
+    /// Register pre-split reader/writer (used after handshake consumes the first line).
+    async fn register_peer_stream_split(
+        peer_id: String,
+        reader: BufReader<tokio::net::tcp::OwnedReadHalf>,
+        write_half: tokio::net::tcp::OwnedWriteHalf,
+        peers: Arc<Mutex<HashMap<String, PeerHandle>>>,
+        inbound_tx: mpsc::UnboundedSender<InboundMessage>,
+    ) {
         // Writer task: drains the per-peer channel and writes to the stream.
         let (write_tx, mut write_rx) = mpsc::unbounded_channel::<Vec<u8>>();
         let peer_id_w = peer_id.clone();
@@ -167,7 +215,7 @@ impl TcpTransport {
         let peers_r = peers.clone();
         let peer_id_r = peer_id.clone();
         tokio::spawn(async move {
-            let mut reader = BufReader::new(read_half);
+            let mut reader = reader;
             let mut line = String::new();
             loop {
                 line.clear();

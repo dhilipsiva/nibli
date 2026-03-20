@@ -717,6 +717,11 @@ impl NibliEngine {
         Ok(())
     }
 
+    /// Validate Lojban text without asserting — returns Ok if it parses and compiles.
+    pub fn validate(&self, text: &str) -> Result<(), String> {
+        self.compile_text(text).map(|_| ()).map_err(|e| format_error(&e))
+    }
+
     fn compile_text(
         &self,
         input: &str,

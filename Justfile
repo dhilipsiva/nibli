@@ -175,16 +175,16 @@ model-push:
 
 # ─── LLM Gossip Agents ───────────────────────────────────────────
 
-# Run an LLM gossip agent (interactive mode, uses Claude API fallback)
+# Run an LLM gossip agent (interactive mode)
 # Usage: just agent name=fitness domain=xadni
-agent name="agent" domain="" peer="127.0.0.1:7001":
-    python3 python/nibli_agent.py --name {{name}} --peer {{peer}} --use-api \
+agent name="agent" domain="" peer="127.0.0.1:7001" provider="anthropic":
+    cargo run -p nibli-agent {{cargo_profile_flag}} -- --name {{name}} --peer {{peer}} --provider {{provider}} \
         {{ if domain != "" { "--domain " + domain } else { "" } }}
 
 # Run an LLM gossip agent in auto-gossip mode
 # Usage: just agent-auto name=fitness domain=xadni topic="fitness and exercise"
-agent-auto name="agent" domain="" peer="127.0.0.1:7001" topic="" interval="30":
-    python3 python/nibli_agent.py --name {{name}} --peer {{peer}} --use-api \
+agent-auto name="agent" domain="" peer="127.0.0.1:7001" provider="anthropic" topic="" interval="30":
+    cargo run -p nibli-agent {{cargo_profile_flag}} -- --name {{name}} --peer {{peer}} --provider {{provider}} \
         --auto-gossip --interval {{interval}} \
         {{ if domain != "" { "--domain " + domain } else { "" } }} \
         {{ if topic != "" { "--topic '" + topic + "'" } else { "" } }}
@@ -195,15 +195,20 @@ gossip-hub:
 
 # Demo: fitness agent (connect to hub on 7777)
 agent-fitness:
-    python3 python/nibli_agent.py --name fitness-agent --domain xadni --peer 127.0.0.1:7777 --use-api
+    cargo run -p nibli-agent {{cargo_profile_flag}} -- --name fitness-agent --domain xadni --peer 127.0.0.1:7777
 
 # Demo: nutrition agent (connect to hub on 7777)
 agent-nutrition:
-    python3 python/nibli_agent.py --name nutrition-agent --domain cidja --peer 127.0.0.1:7777 --use-api
+    cargo run -p nibli-agent {{cargo_profile_flag}} -- --name nutrition-agent --domain cidja --peer 127.0.0.1:7777
 
 # Demo: rights agent (connect to hub on 7777)
 agent-rights:
-    python3 python/nibli_agent.py --name rights-agent --domain krali --peer 127.0.0.1:7777 --use-api
+    cargo run -p nibli-agent {{cargo_profile_flag}} -- --name rights-agent --domain krali --peer 127.0.0.1:7777
+
+# Demo: fitness agent with Ollama (connect to hub on 7777, auto-detects Windows host IP)
+# Usage: just agent-fitness-ollama model=gemma3:27b
+agent-fitness-ollama model="qwen3:30b":
+    cargo run -p nibli-agent {{cargo_profile_flag}} -- --name fitness-agent --domain xadni --peer 127.0.0.1:7777 --provider ollama --model "{{model}}" --ollama-url "http://$(ip route | grep default | awk '{print $3}'):11434"
 
 # Wipes all compilation artifacts
 clean:

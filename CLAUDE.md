@@ -92,7 +92,7 @@ When analyzing or searching the codebase:
 ## Known Issues
 
 - `cargo component build` fails on `io-extras` crate — pre-existing, unrelated to our changes. Bindings generate before the failure.
-- **rustc 1.93.1 ICE in `check_mod_deathness`** — `wasmtime::component::bindgen!` macro triggers compiler panic in library crates (not binary crates like gasnu). Workaround: `#![allow(dead_code)]` at crate root in nibli-engine.
+- **rustc ICE in `check_mod_deathness`** — `wasmtime::component::bindgen!` macro triggers compiler panic in library crates (not binary crates like gasnu). Workaround: `#![allow(dead_code)]` at crate root in nibli-engine. Fixed in rustc 1.94.0 (updated via flake).
 
 ## Roadmap
 
@@ -191,6 +191,6 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - Prompt 9: LLM gossip agent — `nibli_agent.py` (TCP JSON Lines client for tavla, Claude API / local model, gerna gate with 3 retries, auto-gossip mode, epistemic stances)
 - Prompt 10: Network visualization — gossip types in nibli-protocol; nibli-server embeds GossipNode with GraphQL queries (networkSnapshot, agentEnvelopes, envelopeDetail, gossipEvents) and mutations (gossipAssert, resolveContradiction); nibli-ui Network tab with agent cards (stance distribution bars), envelope list, event feed, contradictions panel, gossip assertion bar with stance selector; auto-refresh every 3 seconds
 
-**Note:** rustc 1.93.1 ICE prevents compiling nibli-server (async-graphql + `check_type_wf` panic). The original server (before gossip changes) also ICEs. nibli-ui compiles and type-checks cleanly. All 30 tavla tests pass.
+All crates compile cleanly with rustc 1.94.0. All 30 tavla tests pass.
 
 **Next up:** See `todo.md` for deferred items (async compute backend, WebRTC DataChannel in browser)
