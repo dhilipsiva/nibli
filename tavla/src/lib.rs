@@ -177,6 +177,27 @@ pub struct IngestResult {
     pub was_quarantined: bool,
     /// True if the envelope was rejected by trust policy.
     pub was_rejected: bool,
+    /// Contradiction detected when asserting this envelope.
+    pub contradiction: Option<usize>,
+}
+
+/// A detected contradiction — two assertions that negate each other.
+/// Paraconsistent: both assertions remain in the KB. The user resolves
+/// by retracting one side.
+#[derive(Clone, Debug)]
+pub struct Contradiction {
+    /// Sequential ID for REPL display.
+    pub id: usize,
+    /// The envelope that triggered the contradiction.
+    pub envelope_id: EnvelopeId,
+    /// The Lojban text that was asserted (the new assertion).
+    pub assertion: String,
+    /// The author who made the contradicting assertion.
+    pub author: AgentId,
+    /// When the contradiction was detected.
+    pub detected_at: String,
+    /// Whether the user has resolved this contradiction.
+    pub resolved: bool,
 }
 
 /// Extract topic tags from Lojban text.
@@ -374,6 +395,10 @@ pub struct GossipNode {
     crdt_log: CrdtLog,
     /// Trust policy for inbound envelope filtering.
     pub trust_policy: TrustPolicy,
+    /// Detected contradictions (paraconsistent — both sides kept).
+    contradictions: Vec<Contradiction>,
+    /// Counter for contradiction IDs.
+    contradiction_counter: usize,
 }
 
 impl GossipNode {
@@ -386,6 +411,8 @@ impl GossipNode {
             clock: VectorClock::new(),
             crdt_log: CrdtLog::new(),
             trust_policy: TrustPolicy::AcceptAll,
+            contradictions: Vec::new(),
+            contradiction_counter: 0,
         }
     }
 
@@ -397,6 +424,8 @@ impl GossipNode {
             clock: VectorClock::new(),
             crdt_log: CrdtLog::new(),
             trust_policy: policy,
+            contradictions: Vec::new(),
+            contradiction_counter: 0,
         }
     }
 
@@ -533,11 +562,42 @@ impl GossipNode {
             .collect()
     }
 
+    // ─── Contradiction detection ────────────────────────────────
+
+    /// Generate the Lojban negation of a sentence by toggling `na`.
+    /// Returns None if the text doesn't contain a recognizable `cu` pattern.
+    fn negate_lojban(text: &str) -> Option<String> {
+        if text.contains(" cu na ") {
+            Some(text.replacen(" cu na ", " cu ", 1))
+        } else if text.contains(" cu ") {
+            Some(text.replacen(" cu ", " cu na ", 1))
+        } else {
+            None
+        }
+    }
+
+    /// Check if asserting this Lojban text would contradict an existing assertion.
+    /// Uses syntactic negation: toggles `na` in selbri and checks if the opposite
+    /// form exists in the CRDT log's active assertions.
+    fn check_contradiction(&self, text: &str) -> bool {
+        let negated = match Self::negate_lojban(text) {
+            Some(n) => n,
+            None => return false,
+        };
+        self.crdt_log.active_assertions().iter().any(|env| {
+            matches!(&env.op, GossipOp::AssertLojban(t) if t == &negated)
+        })
+    }
+
     // ─── Core operations ─────────────────────────────────────────
 
     /// Assert Lojban text locally. Creates a signed envelope,
     /// appends to the CRDT log, and asserts into the local KB.
+    /// Checks for contradictions before asserting (paraconsistent — asserts anyway).
     pub fn assert_local(&mut self, lojban: &str) -> Result<Envelope, String> {
+        // Check for contradiction before asserting.
+        let has_contradiction = self.check_contradiction(lojban);
+
         // Assert into engine first — if gerna rejects, fail before creating envelope.
         let fact_id = self.engine.assert_text(lojban)?;
 
@@ -565,12 +625,30 @@ impl GossipNode {
             op,
             stance,
             topics,
-            timestamp,
+            timestamp: timestamp.clone(),
             sig: Vec::new(),
             quarantined: false,
         };
 
         self.crdt_log.insert(envelope.clone());
+
+        // Record contradiction if detected (paraconsistent — both sides kept).
+        if has_contradiction {
+            self.contradiction_counter += 1;
+            let contradiction = Contradiction {
+                id: self.contradiction_counter,
+                envelope_id: id.clone(),
+                assertion: lojban.to_string(),
+                author: self.agent_id.clone(),
+                detected_at: timestamp,
+                resolved: false,
+            };
+            println!(
+                "[tavla] ⚡ contradiction #{}: {:?} contradicts existing KB",
+                contradiction.id, lojban
+            );
+            self.contradictions.push(contradiction);
+        }
 
         println!(
             "[tavla] {} asserted: {:?} (fact #{}, envelope {}...)",
@@ -650,6 +728,7 @@ impl GossipNode {
                 was_retraction: false,
                 was_quarantined: false,
                 was_rejected: false,
+                contradiction: None,
             });
         }
 
@@ -675,6 +754,7 @@ impl GossipNode {
                     was_retraction: false,
                     was_quarantined: false,
                     was_rejected: true,
+                    contradiction: None,
                 });
             }
             TrustVerdict::Quarantined => {
@@ -696,24 +776,46 @@ impl GossipNode {
         quarantined: bool,
     ) -> Result<IngestResult, String> {
         // Process the operation.
-        let (fact_id, was_retraction) = match &envelope.op {
+        let (fact_id, was_retraction, contradiction_id) = match &envelope.op {
             GossipOp::AssertLojban(text) => {
                 if self.crdt_log.is_tombstoned(&envelope.id) {
-                    (None, false)
+                    (None, false, None)
                 } else if quarantined {
                     println!(
                         "[tavla] {} ← {}: {:?} [Quarantined]",
                         self.agent_id, envelope.author, text
                     );
                     // Quarantined: add to CRDT log but NOT to KB.
-                    (None, false)
+                    (None, false, None)
                 } else {
+                    // Check for contradiction before asserting.
+                    let has_contradiction = self.check_contradiction(text);
                     let fid = self.engine.assert_text(text)?;
                     println!(
                         "[tavla] {} ← {}: {:?} (accepted, fact #{})",
                         self.agent_id, envelope.author, text, fid
                     );
-                    (Some(fid), false)
+                    let cid = if has_contradiction {
+                        self.contradiction_counter += 1;
+                        let contradiction = Contradiction {
+                            id: self.contradiction_counter,
+                            envelope_id: envelope.id.clone(),
+                            assertion: text.clone(),
+                            author: envelope.author.clone(),
+                            detected_at: chrono::Utc::now().to_rfc3339(),
+                            resolved: false,
+                        };
+                        println!(
+                            "[tavla] ⚡ contradiction #{}: {:?} from {} contradicts existing KB",
+                            contradiction.id, text, envelope.author
+                        );
+                        let id = contradiction.id;
+                        self.contradictions.push(contradiction);
+                        Some(id)
+                    } else {
+                        None
+                    };
+                    (Some(fid), false, cid)
                 }
             }
             GossipOp::AssertDirect { relation, args } => {
@@ -724,7 +826,7 @@ impl GossipNode {
                     relation,
                     args.join(", ")
                 );
-                (None, false)
+                (None, false, None)
             }
             GossipOp::Retract(target_id) => {
                 println!(
@@ -741,6 +843,7 @@ impl GossipNode {
                     was_retraction: true,
                     was_quarantined: quarantined,
                     was_rejected: false,
+                    contradiction: None,
                 });
             }
         };
@@ -754,6 +857,7 @@ impl GossipNode {
             was_retraction,
             was_quarantined: quarantined,
             was_rejected: false,
+            contradiction: contradiction_id,
         })
     }
 
@@ -886,6 +990,38 @@ impl GossipNode {
     /// Reset the engine KB (does NOT clear the CRDT log).
     pub fn reset(&mut self) {
         self.engine.reset();
+    }
+
+    // ─── Contradiction detection ─────────────────────────────────
+
+    /// Get all detected contradictions.
+    pub fn contradictions(&self) -> &[Contradiction] {
+        &self.contradictions
+    }
+
+    /// Get unresolved contradictions.
+    pub fn unresolved_contradictions(&self) -> Vec<&Contradiction> {
+        self.contradictions.iter().filter(|c| !c.resolved).collect()
+    }
+
+    /// Resolve a contradiction by ID (mark as acknowledged).
+    pub fn resolve_contradiction(&mut self, id: usize) -> Result<(), String> {
+        match self.contradictions.iter_mut().find(|c| c.id == id) {
+            Some(c) => {
+                if c.resolved {
+                    Err(format!("contradiction #{id} already resolved"))
+                } else {
+                    c.resolved = true;
+                    Ok(())
+                }
+            }
+            None => Err(format!("contradiction #{id} not found")),
+        }
+    }
+
+    /// Get the count of unresolved contradictions.
+    pub fn unresolved_contradiction_count(&self) -> usize {
+        self.contradictions.iter().filter(|c| !c.resolved).count()
     }
 }
 

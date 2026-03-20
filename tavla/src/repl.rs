@@ -52,6 +52,8 @@ pub async fn run_repl(
     println!("  :distrust <peer> — revoke trust for a peer");
     println!("  :trustlist       — show all trust assertions");
     println!("  :policy [mode]   — show or set trust policy");
+    println!("  :contradictions  — show detected contradictions");
+    println!("  :resolve <id>    — resolve a contradiction");
     println!("  :quit            — exit");
     print!("tavla> ");
     use std::io::Write;
@@ -255,6 +257,43 @@ async fn handle_command(
                             println!("  options: accept-all, trust-required, quarantine-untrusted");
                         }
                     }
+                }
+            }
+            ":contradictions" => {
+                let contras = node.contradictions();
+                if contras.is_empty() {
+                    println!("  (no contradictions detected)");
+                } else {
+                    let unresolved = node.unresolved_contradiction_count();
+                    println!(
+                        "  {} contradiction(s) ({} unresolved)",
+                        contras.len(),
+                        unresolved
+                    );
+                    for c in contras {
+                        let status = if c.resolved { "✓" } else { "⚡" };
+                        println!(
+                            "  {} #{}: {:?} by {} [{}...]",
+                            status,
+                            c.id,
+                            c.assertion,
+                            c.author,
+                            &c.envelope_id[..12.min(c.envelope_id.len())]
+                        );
+                    }
+                }
+            }
+            ":resolve" => {
+                if arg.is_empty() {
+                    println!("  usage: :resolve <contradiction-id>");
+                    return;
+                }
+                match arg.parse::<usize>() {
+                    Ok(id) => match node.resolve_contradiction(id) {
+                        Ok(()) => println!("  contradiction #{id} resolved"),
+                        Err(e) => println!("  {e}"),
+                    },
+                    Err(_) => println!("  invalid ID: {arg}"),
                 }
             }
             ":quit" => {

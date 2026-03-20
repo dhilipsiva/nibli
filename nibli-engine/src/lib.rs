@@ -802,4 +802,14 @@ impl NibliEngine {
         let json = proof_trace_to_json(&trace);
         Ok((holds, formatted, json))
     }
+
+    /// Check if a Lojban query holds in the KB (simple boolean check).
+    pub fn query_holds(&self, text: &str) -> Result<bool, String> {
+        let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
+        let (holds, _trace) = self
+            .kb
+            .query_entailment_with_proof(buf)
+            .map_err(|e| format_logji_error(&e))?;
+        Ok(holds)
+    }
 }

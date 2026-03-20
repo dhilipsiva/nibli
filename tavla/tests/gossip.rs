@@ -1,7 +1,8 @@
 //! Gossip integration tests.
 //!
 //! Tests CRDT log, vector clocks, anti-entropy sync,
-//! retraction tombstones, KB rebuild, and epidemic propagation.
+//! retraction tombstones, KB rebuild, epidemic propagation,
+//! trust-as-knowledge, and contradiction detection.
 
 use tavla::{GossipNode, TrustPolicy, VectorClock};
 
@@ -516,6 +517,100 @@ fn trust_list_shows_lacri() {
     assert_eq!(trusts.len(), 2);
     assert!(trusts.iter().any(|t| t.contains("bob")));
     assert!(trusts.iter().any(|t| t.contains("carol")));
+}
+
+// ─── Contradiction detection ─────────────────────────────────
+
+/// Contradiction detected when asserting a fact whose negation is already in KB.
+#[test]
+fn contradiction_detected_on_negation() {
+    let mut node = GossipNode::new("alis");
+
+    // Assert a positive fact.
+    node.assert_local("lo gerku cu barda").unwrap();
+
+    // Assert the negation — should detect contradiction but still assert (paraconsistent).
+    node.assert_local("lo gerku cu na barda").unwrap();
+
+    // Both assertions should be in the KB.
+    assert_eq!(node.active_count(), 2);
+
+    // A contradiction should have been detected.
+    assert_eq!(
+        node.unresolved_contradiction_count(),
+        1,
+        "Should detect 1 contradiction"
+    );
+
+    let contras = node.contradictions();
+    assert_eq!(contras.len(), 1);
+    assert_eq!(contras[0].assertion, "lo gerku cu na barda");
+    assert!(!contras[0].resolved);
+}
+
+/// Two nodes assert contradictory facts, both detect contradiction on ingest.
+#[test]
+fn two_node_contradiction_on_ingest() {
+    let mut node_a = GossipNode::new("alis");
+    let mut node_b = GossipNode::new("bob");
+
+    // A asserts positive.
+    let env_a = node_a.assert_local("lo gerku cu barda").unwrap();
+    // B asserts negative.
+    let env_b = node_b.assert_local("lo gerku cu na barda").unwrap();
+
+    // A ingests B's negation — should detect contradiction.
+    let result_a = node_a.ingest(env_b).unwrap();
+    assert!(
+        result_a.contradiction.is_some(),
+        "A should detect contradiction from B's assertion"
+    );
+    assert_eq!(node_a.unresolved_contradiction_count(), 1);
+
+    // B ingests A's positive — should detect contradiction.
+    let result_b = node_b.ingest(env_a).unwrap();
+    assert!(
+        result_b.contradiction.is_some(),
+        "B should detect contradiction from A's assertion"
+    );
+    assert_eq!(node_b.unresolved_contradiction_count(), 1);
+}
+
+/// Resolve a contradiction by ID.
+#[test]
+fn resolve_contradiction() {
+    let mut node = GossipNode::new("alis");
+
+    node.assert_local("lo gerku cu barda").unwrap();
+    node.assert_local("lo gerku cu na barda").unwrap();
+
+    assert_eq!(node.unresolved_contradiction_count(), 1);
+
+    // Resolve.
+    node.resolve_contradiction(1).unwrap();
+    assert_eq!(node.unresolved_contradiction_count(), 0);
+
+    // All contradictions still tracked (but resolved).
+    assert_eq!(node.contradictions().len(), 1);
+    assert!(node.contradictions()[0].resolved);
+
+    // Double resolve should error.
+    assert!(node.resolve_contradiction(1).is_err());
+}
+
+/// No contradiction when asserting non-contradictory facts.
+#[test]
+fn no_contradiction_on_compatible_facts() {
+    let mut node = GossipNode::new("alis");
+
+    node.assert_local("lo gerku cu barda").unwrap();
+    node.assert_local("lo mlatu cu cmalu").unwrap();
+
+    assert_eq!(
+        node.unresolved_contradiction_count(),
+        0,
+        "Compatible facts should not trigger contradictions"
+    );
 }
 
 /// Distrust removes trust and triggers re-evaluation.
