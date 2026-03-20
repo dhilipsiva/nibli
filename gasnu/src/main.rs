@@ -274,49 +274,86 @@ fn format_proof_trace(trace: &ProofTrace) -> String {
     out
 }
 
+/// Try built-in arithmetic evaluation for a single predicate.
+/// Returns Some(bool) for pilji/sumji/dilcu with 3+ numeric args.
+fn try_builtin_arithmetic(
+    relation: &str,
+    args: &[compute_backend::LogicalTerm],
+) -> Option<bool> {
+    use compute_backend::LogicalTerm;
+    let extract_num = |t: &LogicalTerm| -> Option<i64> {
+        if let LogicalTerm::Number(n) = t {
+            Some(*n as i64)
+        } else {
+            None
+        }
+    };
+    if args.len() >= 3 {
+        if let (Some(x1), Some(x2), Some(x3)) =
+            (extract_num(&args[0]), extract_num(&args[1]), extract_num(&args[2]))
+        {
+            return match relation {
+                "pilji" => Some(x1 == x2 * x3),
+                "sumji" => Some(x1 == x2 + x3),
+                "dilcu" => {
+                    if x3 == 0 {
+                        Some(false)
+                    } else {
+                        Some(x1 == x2 / x3)
+                    }
+                }
+                _ => None,
+            };
+        }
+    }
+    None
+}
+
 impl compute_backend::Host for HostState {
     fn evaluate(
         &mut self,
         relation: String,
         args: Vec<compute_backend::LogicalTerm>,
     ) -> std::result::Result<bool, NibliError> {
-        use compute_backend::LogicalTerm;
-
-        // Extract i64 from a LogicalTerm::Number
-        let extract_num = |t: &LogicalTerm| -> Option<i64> {
-            if let LogicalTerm::Number(n) = t {
-                Some(*n as i64)
-            } else {
-                None
-            }
-        };
-
         // 1. Built-in arithmetic predicates: x1 = op(x2, x3) — zero overhead
-        if args.len() >= 3 {
-            if let (Some(x1), Some(x2), Some(x3)) =
-                (extract_num(&args[0]), extract_num(&args[1]), extract_num(&args[2]))
-            {
-                let result = match relation.as_str() {
-                    "pilji" => Some(x1 == x2 * x3),
-                    "sumji" => Some(x1 == x2 + x3),
-                    "dilcu" => {
-                        if x3 == 0 {
-                            Some(false)
-                        } else {
-                            Some(x1 == x2 / x3)
-                        }
-                    }
-                    _ => None,
-                };
-                if let Some(r) = result {
-                    return Ok(r);
-                }
-            }
+        if let Some(r) = try_builtin_arithmetic(&relation, &args) {
+            return Ok(r);
         }
 
         // 2. Forward to external backend (if configured)
         self.dispatch_to_backend(&relation, &args)
             .map_err(|msg| NibliError::Backend((relation, msg)))
+    }
+
+    fn evaluate_batch(
+        &mut self,
+        requests: Vec<compute_backend::ComputeRequest>,
+    ) -> Vec<compute_backend::ComputeResult> {
+        requests
+            .into_iter()
+            .map(|req| {
+                match self.evaluate(req.relation, req.args) {
+                    Ok(b) => compute_backend::ComputeResult::Ok(b),
+                    Err(NibliError::Backend((_, msg))) => compute_backend::ComputeResult::Err(msg),
+                    Err(e) => compute_backend::ComputeResult::Err(format!("{:?}", e)),
+                }
+            })
+            .collect()
+    }
+
+    fn check_membership(
+        &mut self,
+        relation: String,
+        _args: Vec<compute_backend::LogicalTerm>,
+        _place_index: u32,
+    ) -> std::result::Result<Vec<compute_backend::LogicalTerm>, NibliError> {
+        // Built-in arithmetic: infinite domain, not enumerable
+        if matches!(relation.as_str(), "pilji" | "sumji" | "dilcu") {
+            return Ok(vec![]);
+        }
+        // External backend: not yet supported for membership queries.
+        // Returns empty — logji falls back to KB domain enumeration.
+        Ok(vec![])
     }
 }
 

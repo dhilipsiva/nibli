@@ -378,12 +378,47 @@ interface smuni {
 /// The reasoning engine calls this interface when it encounters a predicate
 /// registered for compute dispatch (e.g., `tenfa`, `dugri`). The host
 /// connects to an external TCP backend or evaluates built-in arithmetic.
+///
+/// Supports single evaluation, batch evaluation (amortises WASM boundary
+/// crossings and TCP round trips), and membership queries (for ∀/∃ over
+/// computed predicates).
 interface compute-backend {
     use logic-types.{logical-term};
     use error-types.{nibli-error};
+
+    /// A single compute request: relation name + argument terms.
+    record compute-request {
+        relation: string,
+        args: list<logical-term>,
+    }
+
+    /// Result of a single compute evaluation within a batch.
+    variant compute-result {
+        /// Evaluation succeeded with a boolean result.
+        ok(bool),
+        /// Evaluation failed with an error message.
+        err(string),
+    }
+
     /// Evaluate whether a computed predicate holds for fully-ground arguments.
     /// Returns true/false for the relation applied to the given argument terms.
     evaluate: func(relation: string, args: list<logical-term>) -> result<bool, nibli-error>;
+
+    /// Evaluate a batch of compute requests in one cross-component call.
+    /// Returns results in the same order as the input requests.
+    /// Each result is independent — one failure does not affect others.
+    evaluate-batch: func(requests: list<compute-request>) -> list<compute-result>;
+
+    /// Enumerate domain members satisfying a computed predicate at a given place.
+    /// Returns all ground terms `t` such that the predicate holds when `t` is
+    /// substituted at `place-index` (0-based) with the other args fixed.
+    /// Used for existential/universal quantification over computed predicates.
+    /// Returns empty list if enumeration is not supported (e.g., infinite domains).
+    check-membership: func(
+        relation: string,
+        args: list<logical-term>,
+        place-index: u32,
+    ) -> result<list<logical-term>, nibli-error>;
 }
 
 /// FOL assertion and query engine backed by demand-driven backward chaining.

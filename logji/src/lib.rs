@@ -1166,6 +1166,65 @@ fn dispatch_to_backend(_rel: &str, _args: &[LogicalTerm]) -> Result<bool, String
     Err("Compute backend unavailable in native mode".to_string())
 }
 
+/// A single compute request for batch dispatch.
+struct ComputeRequest {
+    relation: String,
+    args: Vec<LogicalTerm>,
+}
+
+/// Dispatch a batch of compute predicates to the WIT compute-backend import.
+/// Returns results in the same order as the input requests.
+/// Each result is independent — one failure does not affect others.
+#[cfg(target_arch = "wasm32")]
+fn dispatch_batch_to_backend(requests: &[ComputeRequest]) -> Vec<Result<bool, String>> {
+    use crate::bindings::lojban::nibli::compute_backend as cb;
+    let wit_requests: Vec<cb::ComputeRequest> = requests
+        .iter()
+        .map(|r| cb::ComputeRequest {
+            relation: r.relation.clone(),
+            args: r.args.clone(),
+        })
+        .collect();
+    let results = cb::evaluate_batch(&wit_requests);
+    results
+        .into_iter()
+        .map(|r| match r {
+            cb::ComputeResult::Ok(b) => Ok(b),
+            cb::ComputeResult::Err(msg) => Err(msg),
+        })
+        .collect()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn dispatch_batch_to_backend(requests: &[ComputeRequest]) -> Vec<Result<bool, String>> {
+    requests
+        .iter()
+        .map(|_| Err("Compute backend unavailable in native mode".to_string()))
+        .collect()
+}
+
+/// Query the compute backend for domain members satisfying a predicate at a given place.
+/// Returns ground terms that can fill the `place_index` slot while other args are fixed.
+/// Returns empty Vec if enumeration is not supported (e.g., infinite arithmetic domains).
+#[cfg(target_arch = "wasm32")]
+fn dispatch_check_membership(
+    rel: &str,
+    args: &[LogicalTerm],
+    place_index: u32,
+) -> Result<Vec<LogicalTerm>, String> {
+    crate::bindings::lojban::nibli::compute_backend::check_membership(rel, args, place_index)
+        .map_err(|e| format!("{}", e))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn dispatch_check_membership(
+    _rel: &str,
+    _args: &[LogicalTerm],
+    _place_index: u32,
+) -> Result<Vec<LogicalTerm>, String> {
+    Ok(vec![]) // Native mode: no external membership, fall back to KB enumeration
+}
+
 /// Build an s-expression for a ground predicate from resolved args.
 /// Returns None if any argument is still a Variable (not fully ground).
 /// Output: `(Pred "rel" (Cons (Num 8) (Cons (Num 2) (Cons (Num 3) (Nil)))))`.
