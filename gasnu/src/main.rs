@@ -130,6 +130,55 @@ impl HostState {
         }
     }
 
+    /// Pipeline-dispatch a batch of pre-serialized JSON Lines requests.
+    /// Writes all requests in one burst (single flush), then reads all responses in order.
+    /// Eliminates N-1 TCP round trips compared to sequential dispatch.
+    fn try_dispatch_batch(
+        &mut self,
+        requests: &[(usize, String)],
+    ) -> std::result::Result<Vec<compute_backend::ComputeResult>, String> {
+        self.connect_backend()?;
+        let reader = self
+            .backend_conn
+            .as_mut()
+            .ok_or("No backend connection")?;
+
+        // Write all requests in one burst
+        for (_, payload) in requests {
+            reader
+                .get_mut()
+                .write_all(payload.as_bytes())
+                .map_err(|e| format!("Backend batch write: {}", e))?;
+        }
+        reader
+            .get_mut()
+            .flush()
+            .map_err(|e| format!("Backend batch flush: {}", e))?;
+
+        // Read all responses in order
+        let mut results = Vec::with_capacity(requests.len());
+        for _ in 0..requests.len() {
+            let mut line = String::new();
+            reader
+                .read_line(&mut line)
+                .map_err(|e| format!("Backend batch read: {}", e))?;
+
+            let resp: ComputeResponse = serde_json::from_str(&line)
+                .map_err(|e| format!("Backend batch response parse: {}", e))?;
+
+            if let Some(err) = resp.error {
+                results.push(compute_backend::ComputeResult::Err(err));
+            } else if let Some(result) = resp.result {
+                results.push(compute_backend::ComputeResult::Ok(result));
+            } else {
+                results.push(compute_backend::ComputeResult::Err(
+                    "Backend returned neither result nor error".to_string(),
+                ));
+            }
+        }
+        Ok(results)
+    }
+
     fn try_dispatch(&mut self, payload: &str) -> std::result::Result<bool, String> {
         self.connect_backend()?;
         let reader = self
@@ -329,16 +378,68 @@ impl compute_backend::Host for HostState {
         &mut self,
         requests: Vec<compute_backend::ComputeRequest>,
     ) -> Vec<compute_backend::ComputeResult> {
-        requests
-            .into_iter()
-            .map(|req| {
-                match self.evaluate(req.relation, req.args) {
-                    Ok(b) => compute_backend::ComputeResult::Ok(b),
-                    Err(NibliError::Backend((_, msg))) => compute_backend::ComputeResult::Err(msg),
-                    Err(e) => compute_backend::ComputeResult::Err(format!("{:?}", e)),
+        let mut results = vec![compute_backend::ComputeResult::Err(String::new()); requests.len()];
+        let mut pending: Vec<(usize, String)> = Vec::new(); // (original_index, json_line)
+
+        // 1. Resolve arithmetic locally, collect external requests
+        for (i, req) in requests.iter().enumerate() {
+            if let Some(r) = try_builtin_arithmetic(&req.relation, &req.args) {
+                results[i] = compute_backend::ComputeResult::Ok(r);
+            } else {
+                let json_req = ComputeRequest {
+                    relation: req.relation.clone(),
+                    args: req.args.iter().map(term_to_arg).collect(),
+                };
+                match serde_json::to_string(&json_req) {
+                    Ok(mut line) => {
+                        line.push('\n');
+                        pending.push((i, line));
+                    }
+                    Err(e) => {
+                        results[i] = compute_backend::ComputeResult::Err(format!("Serialize: {}", e));
+                    }
                 }
-            })
-            .collect()
+            }
+        }
+
+        if pending.is_empty() {
+            return results;
+        }
+
+        // 2. Pipeline: write ALL requests in one burst, then read ALL responses
+        if self.backend_addr.is_none() {
+            for (i, _) in &pending {
+                results[*i] = compute_backend::ComputeResult::Err(
+                    "No compute backend configured".to_string(),
+                );
+            }
+            return results;
+        }
+
+        // Try pipelined dispatch, on failure drop connection and retry once
+        match self.try_dispatch_batch(&pending) {
+            Ok(batch_results) => {
+                for ((i, _), result) in pending.iter().zip(batch_results) {
+                    results[*i] = result;
+                }
+            }
+            Err(_first_err) => {
+                self.backend_conn = None;
+                match self.try_dispatch_batch(&pending) {
+                    Ok(batch_results) => {
+                        for ((i, _), result) in pending.iter().zip(batch_results) {
+                            results[*i] = result;
+                        }
+                    }
+                    Err(e) => {
+                        for (i, _) in &pending {
+                            results[*i] = compute_backend::ComputeResult::Err(e.clone());
+                        }
+                    }
+                }
+            }
+        }
+        results
     }
 
     fn check_membership(
