@@ -671,6 +671,10 @@ struct KnowledgeBaseInner {
     /// Columnar index: predicate name → sorted interned sexp keys.
     /// Enables predicate-scoped enumeration and merge-join subset checks.
     predicate_facts: HashMap<String, SortedU32Vec>,
+    /// Typed ground facts — parallel store (dual-write during migration).
+    typed_facts: HashSet<StoredFact>,
+    /// Typed predicate index: relation name → set of StoredFacts.
+    typed_predicate_facts: HashMap<String, HashSet<StoredFact>>,
     /// Compiled universal rule templates indexed by conclusion predicate name.
     /// Each predicate name maps to the rules whose conclusion templates mention it.
     /// Rc-wrapped to avoid cloning rule records during backward-chain snapshots.
@@ -699,7 +703,9 @@ impl KnowledgeBaseInner {
             known_rules: HashSet::new(),
             skolem_fn_registry: Vec::new(),
             asserted_sexps: SortedU32Vec::new(),
-            predicate_facts: HashMap::new(), // values are SortedU32Vec via Default
+            predicate_facts: HashMap::new(),
+            typed_facts: HashSet::new(),
+            typed_predicate_facts: HashMap::new(),
             universal_rules: HashMap::new(),
             fact_counter: 0,
             fact_registry: HashMap::new(),
@@ -720,6 +726,8 @@ impl KnowledgeBaseInner {
         self.skolem_fn_registry.clear();
         self.asserted_sexps.clear();
         self.predicate_facts.clear();
+        self.typed_facts.clear();
+        self.typed_predicate_facts.clear();
         self.universal_rules.clear();
         self.fact_counter = 0;
         self.fact_registry.clear();
@@ -1191,6 +1199,13 @@ fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) -> Res
                 assert_sexp(wrapped.clone(), inner);
             }
 
+            // Dual-write: also assert into typed fact store.
+            let mut typed_leaves = Vec::new();
+            collect_ground_facts(logic, root_id, &skolem_subs, None, &mut typed_leaves);
+            for fact in typed_leaves {
+                assert_typed_fact(fact, inner);
+            }
+
             // Register ground material conditionals for backward-chaining
             register_ground_material_conditional(logic, root_id, &skolem_subs, inner);
         }
@@ -1279,6 +1294,8 @@ impl KnowledgeBase {
         inner.skolem_fn_registry.clear();
         inner.asserted_sexps.clear();
         inner.predicate_facts.clear();
+        inner.typed_facts.clear();
+        inner.typed_predicate_facts.clear();
         inner.universal_rules.clear();
 
         // Collect non-retracted buffers ordered by ID (clone to avoid borrow conflict)

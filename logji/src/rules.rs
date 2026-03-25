@@ -475,6 +475,13 @@ pub(super) fn assert_sexp(sexp: String, inner: &mut KnowledgeBaseInner) {
     }
 }
 
+/// Assert a typed fact into the parallel typed fact store.
+pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner) {
+    let rel = fact.relation().to_string();
+    inner.typed_predicate_facts.entry(rel).or_default().insert(fact.clone());
+    inner.typed_facts.insert(fact);
+}
+
 pub(super) fn facts_for_predicate<'a>(
     pred: &str,
     inner: &'a KnowledgeBaseInner,
