@@ -155,7 +155,7 @@ fn main() {
                         continue;
                     }
                     match engine.compile_debug(text) {
-                        Ok(sexp) => println!("[Logic] {}", sexp),
+                        Ok(debug_output) => println!("[Logic] {}", debug_output),
                         Err(e) => println!("{}", e),
                     }
                 } else if let Some(compute_name) = input.strip_prefix(":compute ") {

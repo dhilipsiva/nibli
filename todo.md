@@ -4,11 +4,11 @@ Ordered by impact, priority, and dependency. Items within each tier can be tackl
 
 ## Tier 1: Remaining S-Expression Cleanup (Medium Effort)
 
-The sexp fact store has been replaced with typed StoredFact storage. Untraced queries use structural unification. Remaining sexp code is used only by the traced proof path and compile-debug output.
+The legacy fact store has been replaced with typed StoredFact storage. Untraced queries use structural unification. Remaining legacy representation code is used only by the traced proof path and compile-debug output.
 
-1. **Migrate traced backward-chaining to typed path** — `try_backward_chain_traced()` and `trace_predicate_provenance()` still use SexpTree matching and reconstruct sexp strings for ProofRule payloads. Migrate to use typed `StoredFact` matching (reuse `unify_facts()` / `substitute_fact()`) and `StoredFact::to_display_string()` for ProofRule string payloads. This would allow removing `SexpTree`, `SexpInterner`, `sexp_tokenize()`, and the sexp backward-chaining code entirely.
+1. **Migrate traced backward-chaining to typed path** — `try_backward_chain_traced()` and `trace_predicate_provenance()` still use LegacyPatternTree matching and reconstruct representation strings for ProofRule payloads. Migrate to use typed `StoredFact` matching (reuse `unify_facts()` / `substitute_fact()`) and `StoredFact::to_display_string()` for ProofRule string payloads. This would allow removing `LegacyPatternTree`, `LegacyInterner`, `legacy_tokenize()`, and the legacy backward-chaining code entirely.
 
-2. **Remove duplicate sexp reconstruction** — `lasna/src/lib.rs` and `nibli-engine/src/lib.rs` both have `reconstruct_sexp()` / `write_sexp()` / `write_term()`. Consolidate or replace with typed display for `compile-debug` output.
+2. **Remove duplicate representation reconstruction** — `lasna/src/lib.rs` and `nibli-engine/src/lib.rs` both have `reconstruct_repr()` / `write_repr()` / `write_term()`. Consolidate or replace with typed display for `compile-debug` output.
 
 ## Tier 2: Remove Egglog-Era Vestiges (Low Effort, High Cleanup Value)
 
@@ -26,7 +26,7 @@ These are leftover from the egglog (equality saturation) architecture that was f
 
 ## Tier 5: Maintainability (Medium Impact, Medium Priority)
 
-11. **Consolidate duplicated formatting logic** — Three areas of duplication: (a) proof tree formatting in both `nibli-protocol/src/lib.rs` and `gasnu/src/main.rs`; (b) error formatting repeated 3x in `nibli-engine/src/lib.rs` (`format_gerna_error`, `format_smuni_error`, `format_logji_error` are nearly identical); (c) term serialization (`write_term`/`write_term_list`) duplicated between `lasna/src/lib.rs` and `nibli-engine/src/lib.rs`. Consolidate to `nibli-protocol` or a shared utility. Note: item 5 (sexp removal) partially addresses (c).
+11. **Consolidate duplicated formatting logic** — Three areas of duplication: (a) proof tree formatting in both `nibli-protocol/src/lib.rs` and `gasnu/src/main.rs`; (b) error formatting repeated 3x in `nibli-engine/src/lib.rs` (`format_gerna_error`, `format_smuni_error`, `format_logji_error` are nearly identical); (c) term serialization (`write_term`/`write_term_list`) duplicated between `lasna/src/lib.rs` and `nibli-engine/src/lib.rs`. Consolidate to `nibli-protocol` or a shared utility. Note: item 5 (representation removal) partially addresses (c).
 
 12. **Split god files** — `logji/src/lib.rs` (5,430 lines) and `gerna/src/grammar.rs` (4,471 lines) are too large for a single file. Split logji into `kb.rs`, `assertion.rs`, `query.rs`, `witness.rs`, `proof.rs`. Split grammar into per-construct modules (selbri, sumti, sentence, description, connective). No behavioral change, pure refactor.
 

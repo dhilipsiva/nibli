@@ -17,7 +17,7 @@
 //!
 //! The knowledge base uses `RefCell` (not `Mutex`) — single-threaded WASI, no global state.
 
-// Workaround: rustc 1.94.0 ICE in dead code analysis triggered by sexp removal.
+// Workaround: rustc 1.94.0 ICE in dead code analysis triggered by legacy code removal.
 #![allow(dead_code)]
 
 #[allow(warnings)]
@@ -51,7 +51,7 @@ use rules::*;
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum GroundTerm {
     /// Named constant (e.g., "adam", "paris", "sk_0").
-    /// Also used for Skolem constants — the sexp format does not distinguish them.
+    /// Also used for Skolem constants — the internal format does not distinguish them.
     Constant(String),
     /// Floating-point number stored as bit pattern for Hash/Eq.
     Number(u64),
@@ -316,12 +316,12 @@ pub fn substitute_term(
 /// Stores unique strings once and returns u32 keys for O(1) equality checks.
 /// Resolves keys back to &str in O(1) via index lookup.
 #[derive(Clone)]
-struct SexpInterner {
+struct LegacyInterner {
     strings: Vec<String>,
     lookup: HashMap<String, u32>,
 }
 
-impl SexpInterner {
+impl LegacyInterner {
     fn new() -> Self {
         Self {
             strings: Vec::new(),
@@ -380,11 +380,11 @@ impl SexpInterner {
 /// Insert is O(n) due to shift, but assertions are infrequent
 /// compared to queries in a demand-driven backward-chaining engine.
 #[derive(Clone)]
-struct SortedU32Vec {
+struct LegacySortedVec {
     data: Vec<u32>,
 }
 
-impl SortedU32Vec {
+impl LegacySortedVec {
     fn new() -> Self {
         Self { data: Vec::new() }
     }
@@ -421,7 +421,7 @@ impl SortedU32Vec {
     /// Both vectors are sorted, so this is O(n + m) with no allocations.
     /// Useful for ∀ verification: "every x in predicate A is also in predicate B".
     #[allow(dead_code)]
-    fn is_subset_of(&self, other: &SortedU32Vec) -> bool {
+    fn is_subset_of(&self, other: &LegacySortedVec) -> bool {
         let mut j = 0;
         for &val in &self.data {
             while j < other.data.len() && other.data[j] < val {
@@ -437,7 +437,7 @@ impl SortedU32Vec {
     /// Merge-join intersection: returns elements present in both sorted vectors.
     /// O(n + m) with a single output allocation. Useful for SIMD batch membership.
     #[allow(dead_code)]
-    fn intersection(&self, other: &SortedU32Vec) -> SortedU32Vec {
+    fn intersection(&self, other: &LegacySortedVec) -> LegacySortedVec {
         let mut result = Vec::new();
         let (mut i, mut j) = (0, 0);
         while i < self.data.len() && j < other.data.len() {
@@ -451,11 +451,11 @@ impl SortedU32Vec {
                 }
             }
         }
-        SortedU32Vec { data: result }
+        LegacySortedVec { data: result }
     }
 }
 
-impl Default for SortedU32Vec {
+impl Default for LegacySortedVec {
     fn default() -> Self {
         Self::new()
     }
@@ -480,26 +480,26 @@ const SKDEP_PREFIX: &str = "__skdep__";
 /// Pre-parsed s-expression tree for structural pattern matching.
 /// Eliminates repeated string tokenization during backward chaining.
 #[derive(Clone, Debug)]
-enum SexpTree {
+enum LegacyPatternTree {
     /// A literal atom (e.g., `Pred`, `"gerku"`, `Const`, `Nil`).
     Atom(String),
     /// A parenthesized list of sub-expressions.
-    List(Vec<SexpTree>),
+    List(Vec<LegacyPatternTree>),
     /// A pattern variable (e.g., `x__v0`) — matches any complete sub-expression.
     Var(String),
 }
 
-impl SexpTree {
+impl LegacyPatternTree {
     /// Parse an s-expression string into a tree, marking pattern variables.
     fn parse(s: &str, var_names: &[String]) -> Self {
-        let tokens = sexp_tokenize(s);
+        let tokens = legacy_tokenize(s);
         let (tree, _) = Self::parse_tokens(&tokens, 0, var_names);
         tree
     }
 
     fn parse_tokens(tokens: &[String], pos: usize, var_names: &[String]) -> (Self, usize) {
         if pos >= tokens.len() {
-            return (SexpTree::Atom(String::new()), pos);
+            return (LegacyPatternTree::Atom(String::new()), pos);
         }
         if tokens[pos] == "(" {
             let mut children = Vec::new();
@@ -509,22 +509,22 @@ impl SexpTree {
                 children.push(child);
                 i = next;
             }
-            (SexpTree::List(children), i + 1) // skip ")"
+            (LegacyPatternTree::List(children), i + 1) // skip ")"
         } else if var_names.contains(&tokens[pos]) {
-            (SexpTree::Var(tokens[pos].clone()), pos + 1)
+            (LegacyPatternTree::Var(tokens[pos].clone()), pos + 1)
         } else {
-            (SexpTree::Atom(tokens[pos].clone()), pos + 1)
+            (LegacyPatternTree::Atom(tokens[pos].clone()), pos + 1)
         }
     }
 
     /// Match this tree (as pattern) against a concrete s-expression string.
     /// Returns bindings mapping variable names to matched sub-expression strings.
     fn match_against(&self, concrete: &str) -> Option<HashMap<String, String>> {
-        let conc_tokens = sexp_tokenize(concrete);
+        let conc_tokens = legacy_tokenize(concrete);
         self.match_against_tokens(&conc_tokens)
     }
 
-    /// Match against pre-tokenized concrete sexp (avoids re-tokenization when
+    /// Match against pre-tokenized concrete representation (avoids re-tokenization when
     /// multiple rules are tried against the same query).
     fn match_against_tokens(&self, conc_tokens: &[String]) -> Option<HashMap<String, String>> {
         let mut bindings = HashMap::new();
@@ -546,26 +546,26 @@ impl SexpTree {
             return None;
         }
         match self {
-            SexpTree::Var(name) => {
+            LegacyPatternTree::Var(name) => {
                 // Match a complete sub-expression
-                let (end, sub_sexp) = extract_sexp_at(tokens, pos)?;
+                let (end, sub_repr) = legacy_extract_at(tokens, pos)?;
                 if let Some(existing) = bindings.get(name.as_str()) {
-                    if *existing != sub_sexp {
+                    if *existing != sub_repr {
                         return None;
                     }
                 } else {
-                    bindings.insert(name.clone(), sub_sexp);
+                    bindings.insert(name.clone(), sub_repr);
                 }
                 Some(((), end))
             }
-            SexpTree::Atom(atom) => {
+            LegacyPatternTree::Atom(atom) => {
                 if &tokens[pos] == atom {
                     Some(((), pos + 1))
                 } else {
                     None
                 }
             }
-            SexpTree::List(children) => {
+            LegacyPatternTree::List(children) => {
                 if tokens[pos] != "(" {
                     return None;
                 }
@@ -595,12 +595,12 @@ impl SexpTree {
     /// Write substituted s-expression into a buffer (avoids per-level allocation).
     fn substitute_into(&self, buf: &mut String, bindings: &HashMap<String, String>) {
         match self {
-            SexpTree::Var(name) => match bindings.get(name.as_str()) {
+            LegacyPatternTree::Var(name) => match bindings.get(name.as_str()) {
                 Some(val) => buf.push_str(val),
                 None => buf.push_str(name),
             },
-            SexpTree::Atom(atom) => buf.push_str(atom),
-            SexpTree::List(children) => {
+            LegacyPatternTree::Atom(atom) => buf.push_str(atom),
+            LegacyPatternTree::List(children) => {
                 buf.push('(');
                 for (i, child) in children.iter().enumerate() {
                     if i > 0 {
@@ -616,9 +616,9 @@ impl SexpTree {
     /// Check if this tree contains a given variable name.
     fn contains_var(&self, var: &str) -> bool {
         match self {
-            SexpTree::Var(name) => name == var,
-            SexpTree::Atom(_) => false,
-            SexpTree::List(children) => children.iter().any(|c| c.contains_var(var)),
+            LegacyPatternTree::Var(name) => name == var,
+            LegacyPatternTree::Atom(_) => false,
+            LegacyPatternTree::List(children) => children.iter().any(|c| c.contains_var(var)),
         }
     }
 }
@@ -634,9 +634,9 @@ struct UniversalRuleRecord {
     /// Interned s-expression keys for the rule's conclusions.
     conclusion_templates: Vec<u32>,
     /// Pre-parsed condition templates for structural matching.
-    condition_trees: Vec<SexpTree>,
+    condition_trees: Vec<LegacyPatternTree>,
     /// Pre-parsed conclusion templates for structural matching.
-    conclusion_trees: Vec<SexpTree>,
+    conclusion_trees: Vec<LegacyPatternTree>,
     /// Typed condition templates (with PatternVar terms).
     typed_conditions: Vec<StoredFact>,
     /// Typed conclusion templates (with PatternVar terms).
@@ -657,8 +657,8 @@ struct FactRecord {
 /// All mutable KB state behind a single RefCell.
 #[derive(Clone)]
 struct KnowledgeBaseInner {
-    /// S-expression string interner — deduplicates all sexp strings.
-    interner: SexpInterner,
+    /// Legacy string interner — used only by traced proof path.
+    interner: LegacyInterner,
     skolem_counter: usize,
     known_entities: HashSet<String>,
     /// Event Skolem constants (from `_ev*` variables). Tracked for witness search
@@ -669,7 +669,7 @@ struct KnowledgeBaseInner {
     known_descriptions: HashSet<String>,
     known_rules: HashSet<String>,
     skolem_fn_registry: Vec<SkolemFnEntry>,
-    /// Typed ground facts — the fact store (replaced sexp-based SortedU32Vec).
+    /// Typed ground facts — the fact store (replaced legacy sorted vector).
     typed_facts: HashSet<StoredFact>,
     /// Typed predicate index: relation name → set of StoredFacts.
     typed_predicate_facts: HashMap<String, HashSet<StoredFact>>,
@@ -695,7 +695,7 @@ struct KnowledgeBaseInner {
 impl KnowledgeBaseInner {
     fn new() -> Self {
         Self {
-            interner: SexpInterner::new(),
+            interner: LegacyInterner::new(),
             skolem_counter: 0,
             known_entities: HashSet::new(),
             known_event_entities: HashSet::new(),
@@ -827,7 +827,7 @@ pub struct KnowledgeBase {
 /// Build a SkolemFn s-expression from a base name and dependency terms.
 /// Single dep: `(SkolemFn "sk_N" dep0)` — backward compatible.
 /// Multi dep: `(SkolemFn "sk_N" (DepPair dep0 (DepPair dep1 dep2)))` — right-nested pairs.
-fn build_skolem_fn_sexp(base_name: &str, deps: &[&str]) -> String {
+fn build_skolem_fn_repr(base_name: &str, deps: &[&str]) -> String {
     let dep_term = match deps.len() {
         0 => "(Zoe)".to_string(),
         1 => deps[0].to_string(),
@@ -1063,29 +1063,29 @@ fn register_ground_material_conditional(
                     .map(|(k, v)| (k.clone(), format!("(Const \"{}\")", v)))
                     .collect();
                 // Extract condition(s) — may be a conjunction
-                let mut condition_sexps = Vec::new();
+                let mut condition_reprs = Vec::new();
                 collect_material_condition_leaves(
                     buffer,
                     *neg_inner,
                     &raw_subs,
-                    &mut condition_sexps,
+                    &mut condition_reprs,
                 );
-                let conclusion_sexp = reconstruct_sexp_with_subs(buffer, *r, &raw_subs);
+                let conclusion_repr = reconstruct_repr_with_subs(buffer, *r, &raw_subs);
                 let label = format!(
                     "{} → {}",
-                    condition_sexps
+                    condition_reprs
                         .iter()
                         .map(|s| extract_pred_name(s).unwrap_or("?"))
                         .collect::<Vec<_>>()
                         .join(" ∧ "),
-                    extract_pred_name(&conclusion_sexp).unwrap_or("?")
+                    extract_pred_name(&conclusion_repr).unwrap_or("?")
                 );
                 // Build typed templates for this ground rule.
                 let mut typed_conds = Vec::new();
                 collect_ground_facts(buffer, *neg_inner, subs, None, &mut typed_conds);
                 let mut typed_concls = Vec::new();
                 collect_ground_facts(buffer, *r, subs, None, &mut typed_concls);
-                register_rule(inner, label, condition_sexps, vec![conclusion_sexp], vec![], typed_conds, typed_concls);
+                register_rule(inner, label, condition_reprs, vec![conclusion_repr], vec![], typed_conds, typed_concls);
             }
             // Also check Or(Q, Not(P)) — reversed order (commutativity)
             else if let LogicNode::NotNode(neg_inner) = &buffer.nodes[*r as usize] {
@@ -1094,28 +1094,28 @@ fn register_ground_material_conditional(
                     .filter(|(_, v)| !v.starts_with(SKDEP_PREFIX))
                     .map(|(k, v)| (k.clone(), format!("(Const \"{}\")", v)))
                     .collect();
-                let mut condition_sexps = Vec::new();
+                let mut condition_reprs = Vec::new();
                 collect_material_condition_leaves(
                     buffer,
                     *neg_inner,
                     &raw_subs,
-                    &mut condition_sexps,
+                    &mut condition_reprs,
                 );
-                let conclusion_sexp = reconstruct_sexp_with_subs(buffer, *l, &raw_subs);
+                let conclusion_repr = reconstruct_repr_with_subs(buffer, *l, &raw_subs);
                 let label = format!(
                     "{} → {}",
-                    condition_sexps
+                    condition_reprs
                         .iter()
                         .map(|s| extract_pred_name(s).unwrap_or("?"))
                         .collect::<Vec<_>>()
                         .join(" ∧ "),
-                    extract_pred_name(&conclusion_sexp).unwrap_or("?")
+                    extract_pred_name(&conclusion_repr).unwrap_or("?")
                 );
                 let mut typed_conds = Vec::new();
                 collect_ground_facts(buffer, *neg_inner, subs, None, &mut typed_conds);
                 let mut typed_concls = Vec::new();
                 collect_ground_facts(buffer, *l, subs, None, &mut typed_concls);
-                register_rule(inner, label, condition_sexps, vec![conclusion_sexp], vec![], typed_conds, typed_concls);
+                register_rule(inner, label, condition_reprs, vec![conclusion_repr], vec![], typed_conds, typed_concls);
             }
         }
         _ => {}
@@ -1136,7 +1136,7 @@ fn collect_material_condition_leaves(
             collect_material_condition_leaves(buffer, *r, subs, leaves);
         }
         _ => {
-            leaves.push(reconstruct_sexp_with_subs(buffer, node_id, subs));
+            leaves.push(reconstruct_repr_with_subs(buffer, node_id, subs));
         }
     }
 }
@@ -1384,9 +1384,9 @@ impl KnowledgeBase {
             .map(|bindings| {
                 bindings
                     .into_iter()
-                    .map(|(var, sexp)| WitnessBinding {
+                    .map(|(var, repr)| WitnessBinding {
                         variable: var,
-                        term: parse_sexp_to_term(&sexp),
+                        term: parse_repr_to_term(&repr),
                     })
                     .collect()
             })
@@ -3301,9 +3301,9 @@ mod tests {
         let root_step = &trace.steps[trace.root as usize];
         assert!(root_step.holds);
         assert!(matches!(&root_step.rule, ProofRule::Asserted(_)));
-        if let ProofRule::Asserted(sexp) = &root_step.rule {
-            assert!(sexp.contains("gerku"));
-            assert!(sexp.contains("alis"));
+        if let ProofRule::Asserted(fact) = &root_step.rule {
+            assert!(fact.contains("gerku"));
+            assert!(fact.contains("alis"));
         }
     }
 
@@ -3318,8 +3318,8 @@ mod tests {
         let root_step = &trace.steps[trace.root as usize];
         assert!(root_step.holds);
         assert!(matches!(&root_step.rule, ProofRule::Derived(_)));
-        if let ProofRule::Derived((label, sexp)) = &root_step.rule {
-            assert!(sexp.contains("danlu"));
+        if let ProofRule::Derived((label, fact)) = &root_step.rule {
+            assert!(fact.contains("danlu"));
             assert!(label.contains("gerku"));
             assert!(label.contains("danlu"));
         }
@@ -3391,14 +3391,14 @@ mod tests {
     }
 
     #[test]
-    fn test_sexp_pattern_matching() {
+    fn test_legacy_pattern_matching() {
         // Test the structural s-expression pattern matcher
         let var_names = vec!["x__v0".to_string()];
 
-        // Simple predicate match via SexpTree
+        // Simple predicate match via LegacyPatternTree
         let pattern = r#"(Pred "gerku" (Cons x__v0 (Cons (Zoe) (Nil))))"#;
         let concrete = r#"(Pred "gerku" (Cons (Const "alis") (Cons (Zoe) (Nil))))"#;
-        let tree = SexpTree::parse(pattern, &var_names);
+        let tree = LegacyPatternTree::parse(pattern, &var_names);
         let bindings = tree.match_against(concrete).unwrap();
         assert_eq!(bindings.get("x__v0").unwrap(), r#"(Const "alis")"#);
 
@@ -3406,9 +3406,9 @@ mod tests {
         let wrong = r#"(Pred "mlatu" (Cons (Const "alis") (Cons (Zoe) (Nil))))"#;
         assert!(tree.match_against(wrong).is_none());
 
-        // Substitution via SexpTree
+        // Substitution via LegacyPatternTree
         let template = r#"(Pred "danlu" (Cons x__v0 (Cons (Zoe) (Nil))))"#;
-        let template_tree = SexpTree::parse(template, &var_names);
+        let template_tree = LegacyPatternTree::parse(template, &var_names);
         let result = template_tree.substitute(&bindings);
         assert!(result.contains(r#"Const "alis""#));
         assert!(result.contains("danlu"));
@@ -5423,7 +5423,7 @@ mod tests {
     fn test_proof_memo_deduplication() {
         // Multi-hop event-decomposed trace should use ProofRef for repeated sub-proofs.
         // Without memoization: mlatu base facts appear 12× in a 2-hop 3-role chain.
-        // With memoization: repeated sexps get ProofRef nodes instead.
+        // With memoization: repeated facts get ProofRef nodes instead.
         let kb = new_kb();
         assert_buf(&kb, make_temporal_event_assertion("bob", "mlatu", present));
         assert_buf(&kb, make_event_universal("mlatu", "danlu"));
@@ -5494,7 +5494,7 @@ mod tests {
 
     #[test]
     fn test_proof_memo_single_hop_no_unnecessary_refs() {
-        // Single-hop with one entity: each condition sexp is unique,
+        // Single-hop with one entity: each condition is unique,
         // so no ProofRef should be needed.
         let kb = new_kb();
         assert_buf(&kb, make_temporal_event_assertion("alis", "gerku", past));
@@ -5506,7 +5506,7 @@ mod tests {
         assert!(holds, "Past(danlu(alis)) should hold");
 
         // In a single-hop scenario, conditions are gerku(e), gerku_x1(e, alis), gerku_x2(e, zo'e)
-        // These are all unique sexps, so no ProofRef should be needed for condition proofs.
+        // These are all unique facts, so no ProofRef should be needed for condition proofs.
         // ProofRef may still appear if the same fact is checked multiple times through
         // different paths, but the count should be very low.
         let proof_ref_count = trace

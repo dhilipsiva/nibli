@@ -434,12 +434,12 @@ fn rule_to_json(rule: &logji_logic::ProofRule) -> ProofRuleJson {
             method: method.clone(),
             detail: detail.clone(),
         },
-        logji_logic::ProofRule::Asserted(sexp) => ProofRuleJson::Asserted { sexp: sexp.clone() },
-        logji_logic::ProofRule::Derived((label, sexp)) => ProofRuleJson::Derived {
+        logji_logic::ProofRule::Asserted(fact) => ProofRuleJson::Asserted { fact: fact.clone() },
+        logji_logic::ProofRule::Derived((label, fact)) => ProofRuleJson::Derived {
             label: label.clone(),
-            sexp: sexp.clone(),
+            fact: fact.clone(),
         },
-        logji_logic::ProofRule::ProofRef(sexp) => ProofRuleJson::ProofRef { sexp: sexp.clone() },
+        logji_logic::ProofRule::ProofRef(fact) => ProofRuleJson::ProofRef { fact: fact.clone() },
     }
 }
 
@@ -466,13 +466,13 @@ pub fn display_term(term: &EngineLogicalTerm) -> String {
 // S-EXPRESSION RECONSTRUCTION (for debug output)
 // ═══════════════════════════════════════════════════════════════════════
 
-fn reconstruct_sexp(buffer: &logji_logic::LogicBuffer, node_id: u32) -> String {
+fn reconstruct_repr(buffer: &logji_logic::LogicBuffer, node_id: u32) -> String {
     let mut out = String::with_capacity(256);
-    write_sexp(&mut out, buffer, node_id);
+    write_repr(&mut out, buffer, node_id);
     out
 }
 
-fn write_sexp(out: &mut String, buffer: &logji_logic::LogicBuffer, node_id: u32) {
+fn write_repr(out: &mut String, buffer: &logji_logic::LogicBuffer, node_id: u32) {
     use std::fmt::Write as _;
 
     match &buffer.nodes[node_id as usize] {
@@ -492,60 +492,60 @@ fn write_sexp(out: &mut String, buffer: &logji_logic::LogicBuffer, node_id: u32)
         }
         logji_logic::LogicNode::AndNode((l, r)) => {
             out.push_str("(And ");
-            write_sexp(out, buffer, *l);
+            write_repr(out, buffer, *l);
             out.push(' ');
-            write_sexp(out, buffer, *r);
+            write_repr(out, buffer, *r);
             out.push(')');
         }
         logji_logic::LogicNode::OrNode((l, r)) => {
             out.push_str("(Or ");
-            write_sexp(out, buffer, *l);
+            write_repr(out, buffer, *l);
             out.push(' ');
-            write_sexp(out, buffer, *r);
+            write_repr(out, buffer, *r);
             out.push(')');
         }
         logji_logic::LogicNode::NotNode(inner) => {
             out.push_str("(Not ");
-            write_sexp(out, buffer, *inner);
+            write_repr(out, buffer, *inner);
             out.push(')');
         }
         logji_logic::LogicNode::ExistsNode((v, body)) => {
             out.push_str("(Exists \"");
             out.push_str(v);
             out.push_str("\" ");
-            write_sexp(out, buffer, *body);
+            write_repr(out, buffer, *body);
             out.push(')');
         }
         logji_logic::LogicNode::ForAllNode((v, body)) => {
             out.push_str("(ForAll \"");
             out.push_str(v);
             out.push_str("\" ");
-            write_sexp(out, buffer, *body);
+            write_repr(out, buffer, *body);
             out.push(')');
         }
         logji_logic::LogicNode::PastNode(inner) => {
             out.push_str("(Past ");
-            write_sexp(out, buffer, *inner);
+            write_repr(out, buffer, *inner);
             out.push(')');
         }
         logji_logic::LogicNode::PresentNode(inner) => {
             out.push_str("(Present ");
-            write_sexp(out, buffer, *inner);
+            write_repr(out, buffer, *inner);
             out.push(')');
         }
         logji_logic::LogicNode::FutureNode(inner) => {
             out.push_str("(Future ");
-            write_sexp(out, buffer, *inner);
+            write_repr(out, buffer, *inner);
             out.push(')');
         }
         logji_logic::LogicNode::ObligatoryNode(inner) => {
             out.push_str("(Obligatory ");
-            write_sexp(out, buffer, *inner);
+            write_repr(out, buffer, *inner);
             out.push(')');
         }
         logji_logic::LogicNode::PermittedNode(inner) => {
             out.push_str("(Permitted ");
-            write_sexp(out, buffer, *inner);
+            write_repr(out, buffer, *inner);
             out.push(')');
         }
         logji_logic::LogicNode::CountNode((v, count, body)) => {
@@ -554,7 +554,7 @@ fn write_sexp(out: &mut String, buffer: &logji_logic::LogicBuffer, node_id: u32)
             out.push_str("\" ");
             let _ = write!(out, "{}", count);
             out.push(' ');
-            write_sexp(out, buffer, *body);
+            write_repr(out, buffer, *body);
             out.push(')');
         }
     }
@@ -598,11 +598,11 @@ fn write_term(out: &mut String, term: &logji_logic::LogicalTerm) {
     }
 }
 
-fn debug_sexp(buffer: &logji_logic::LogicBuffer) -> String {
+fn debug_logic(buffer: &logji_logic::LogicBuffer) -> String {
     buffer
         .roots
         .iter()
-        .map(|&id| reconstruct_sexp(buffer, id))
+        .map(|&id| reconstruct_repr(buffer, id))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -905,7 +905,7 @@ impl NibliEngine {
 
     pub fn compile_debug(&self, text: &str) -> Result<String, String> {
         let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
-        Ok(debug_sexp(&buf))
+        Ok(debug_logic(&buf))
     }
 
     pub fn list_facts(&self) -> Result<Vec<EngineFactSummary>, String> {

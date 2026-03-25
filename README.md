@@ -211,7 +211,7 @@ ni'o lo ueb. tcana cu se pilno lo Network tcita noi se jarco lo tavla ciste: lo 
 
 - Skolem nunfanva (zilkai + se nitcu poi se jibni lo `ro` fi la SkolemFn + DepPair)
 - ro lo `ro` javni cu se fanva fi lo jersi sisku javni (UniversalRuleRecord)
-- se nitcu jersi sisku ciste joi lo fatci vlaste (asserted_sexps) joi lo javni se sisku
+- se nitcu jersi sisku ciste joi lo fatci vlaste (typed_facts) joi lo javni se sisku
 - lo namcu jivna: `zmadu` (>), `mleca` (<), `dunli` (==) fi lo `Num`
 - lo skami jikca: `compute-backend` WIT protokol, `ComputeNode` IR klesi
 - lo slabu namcu: `pilji` (pi'i), `sumji` (su'i), `dilcu` (fe'i) joi lo skami jikca

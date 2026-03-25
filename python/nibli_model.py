@@ -566,7 +566,7 @@ def compute_semantic_match(predictions, references, gerna_valid, validate_binary
 
     For each prediction that passes gerna: assert both prediction and reference
     into separate nibli-engine instances, extract asserted facts, compare.
-    This is a heuristic — structural sexp equality, not logical equivalence.
+    This is a heuristic — structural equality, not logical equivalence.
     """
     # Collect pairs where prediction passed gerna.
     to_check = []

@@ -195,7 +195,7 @@ pub(super) fn collect_and_note_constants(
     }
 }
 
-pub(super) fn reconstruct_rule_sexp(
+pub(super) fn reconstruct_rule_repr(
     buffer: &LogicBuffer,
     node_id: u32,
     pattern_vars: &HashMap<String, String>,
@@ -214,7 +214,7 @@ pub(super) fn reconstruct_rule_sexp(
                             format!("(Const \"{}\")", sk)
                         } else if let Some((base, pvars)) = dependent_skolems.get(v.as_str()) {
                             let pvar_refs: Vec<&str> = pvars.iter().map(|s| s.as_str()).collect();
-                            build_skolem_fn_sexp(base, &pvar_refs)
+                            build_skolem_fn_repr(base, &pvar_refs)
                         } else {
                             format!("(Var \"{}\")", v)
                         }
@@ -233,7 +233,7 @@ pub(super) fn reconstruct_rule_sexp(
                 || pattern_vars.contains_key(v.as_str())
                 || dependent_skolems.contains_key(v.as_str())
             {
-                reconstruct_rule_sexp(
+                reconstruct_rule_repr(
                     buffer,
                     *body,
                     pattern_vars,
@@ -244,7 +244,7 @@ pub(super) fn reconstruct_rule_sexp(
                 format!(
                     "(Exists \"{}\" {})",
                     v,
-                    reconstruct_rule_sexp(
+                    reconstruct_rule_repr(
                         buffer,
                         *body,
                         pattern_vars,
@@ -256,7 +256,7 @@ pub(super) fn reconstruct_rule_sexp(
         }
         LogicNode::ForAllNode((v, body)) => {
             if pattern_vars.contains_key(v.as_str()) {
-                reconstruct_rule_sexp(
+                reconstruct_rule_repr(
                     buffer,
                     *body,
                     pattern_vars,
@@ -267,7 +267,7 @@ pub(super) fn reconstruct_rule_sexp(
                 format!(
                     "(ForAll \"{}\" {})",
                     v,
-                    reconstruct_rule_sexp(
+                    reconstruct_rule_repr(
                         buffer,
                         *body,
                         pattern_vars,
@@ -280,21 +280,21 @@ pub(super) fn reconstruct_rule_sexp(
         LogicNode::AndNode((l, r)) => {
             format!(
                 "(And {} {})",
-                reconstruct_rule_sexp(buffer, *l, pattern_vars, ground_skolems, dependent_skolems),
-                reconstruct_rule_sexp(buffer, *r, pattern_vars, ground_skolems, dependent_skolems)
+                reconstruct_rule_repr(buffer, *l, pattern_vars, ground_skolems, dependent_skolems),
+                reconstruct_rule_repr(buffer, *r, pattern_vars, ground_skolems, dependent_skolems)
             )
         }
         LogicNode::OrNode((l, r)) => {
             format!(
                 "(Or {} {})",
-                reconstruct_rule_sexp(buffer, *l, pattern_vars, ground_skolems, dependent_skolems),
-                reconstruct_rule_sexp(buffer, *r, pattern_vars, ground_skolems, dependent_skolems)
+                reconstruct_rule_repr(buffer, *l, pattern_vars, ground_skolems, dependent_skolems),
+                reconstruct_rule_repr(buffer, *r, pattern_vars, ground_skolems, dependent_skolems)
             )
         }
         LogicNode::NotNode(inner) => {
             format!(
                 "(Not {})",
-                reconstruct_rule_sexp(
+                reconstruct_rule_repr(
                     buffer,
                     *inner,
                     pattern_vars,
@@ -305,16 +305,16 @@ pub(super) fn reconstruct_rule_sexp(
         }
         LogicNode::CountNode((v, count, body)) => {
             if *count == 0 {
-                let body_sexp = reconstruct_rule_sexp(
+                let body_repr = reconstruct_rule_repr(
                     buffer,
                     *body,
                     pattern_vars,
                     ground_skolems,
                     dependent_skolems,
                 );
-                format!("(ForAll \"{}\" (Not {}))", v, body_sexp)
+                format!("(ForAll \"{}\" (Not {}))", v, body_repr)
             } else if ground_skolems.contains_key(v.as_str()) {
-                reconstruct_rule_sexp(
+                reconstruct_rule_repr(
                     buffer,
                     *body,
                     pattern_vars,
@@ -322,20 +322,20 @@ pub(super) fn reconstruct_rule_sexp(
                     dependent_skolems,
                 )
             } else {
-                let body_sexp = reconstruct_rule_sexp(
+                let body_repr = reconstruct_rule_repr(
                     buffer,
                     *body,
                     pattern_vars,
                     ground_skolems,
                     dependent_skolems,
                 );
-                format!("(Exists \"{}\" {})", v, body_sexp)
+                format!("(Exists \"{}\" {})", v, body_repr)
             }
         }
         LogicNode::PastNode(inner) => {
             format!(
                 "(Past {})",
-                reconstruct_rule_sexp(
+                reconstruct_rule_repr(
                     buffer,
                     *inner,
                     pattern_vars,
@@ -347,7 +347,7 @@ pub(super) fn reconstruct_rule_sexp(
         LogicNode::PresentNode(inner) => {
             format!(
                 "(Present {})",
-                reconstruct_rule_sexp(
+                reconstruct_rule_repr(
                     buffer,
                     *inner,
                     pattern_vars,
@@ -359,7 +359,7 @@ pub(super) fn reconstruct_rule_sexp(
         LogicNode::FutureNode(inner) => {
             format!(
                 "(Future {})",
-                reconstruct_rule_sexp(
+                reconstruct_rule_repr(
                     buffer,
                     *inner,
                     pattern_vars,
@@ -369,7 +369,7 @@ pub(super) fn reconstruct_rule_sexp(
             )
         }
         LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) => {
-            reconstruct_rule_sexp(
+            reconstruct_rule_repr(
                 buffer,
                 *inner,
                 pattern_vars,
@@ -380,14 +380,14 @@ pub(super) fn reconstruct_rule_sexp(
     }
 }
 
-pub(super) fn extract_pred_name(sexp: &str) -> Option<&str> {
-    let rest = sexp.strip_prefix("(Pred \"")?;
+pub(super) fn extract_pred_name(fact_repr: &str) -> Option<&str> {
+    let rest = fact_repr.strip_prefix("(Pred \"")?;
     let end = rest.find('"')?;
     Some(&rest[..end])
 }
 
-pub(super) fn extract_pred_name_deep(sexp: &str) -> Option<&str> {
-    if let Some(name) = extract_pred_name(sexp) {
+pub(super) fn extract_pred_name_deep(fact_repr: &str) -> Option<&str> {
+    if let Some(name) = extract_pred_name(fact_repr) {
         return Some(name);
     }
     for prefix in &[
@@ -397,7 +397,7 @@ pub(super) fn extract_pred_name_deep(sexp: &str) -> Option<&str> {
         "(Obligation ",
         "(Permission ",
     ] {
-        if let Some(rest) = sexp.strip_prefix(prefix) {
+        if let Some(rest) = fact_repr.strip_prefix(prefix) {
             if let Some(inner) = rest.strip_suffix(')') {
                 return extract_pred_name(inner);
             }
@@ -407,11 +407,11 @@ pub(super) fn extract_pred_name_deep(sexp: &str) -> Option<&str> {
 }
 
 pub(super) fn collect_matching_rules(
-    sexp: &str,
+    fact_repr: &str,
     rules: &HashMap<String, Vec<Arc<UniversalRuleRecord>>>,
 ) -> Vec<Arc<UniversalRuleRecord>> {
     let mut result = Vec::new();
-    if let Some(pred_name) = extract_pred_name_deep(sexp) {
+    if let Some(pred_name) = extract_pred_name_deep(fact_repr) {
         if let Some(matching) = rules.get(pred_name) {
             result.extend(matching.iter().map(Arc::clone));
         }
@@ -422,9 +422,9 @@ pub(super) fn collect_matching_rules(
     result
 }
 
-pub(super) fn sexp_is_asserted(sexp: &str, inner: &KnowledgeBaseInner) -> bool {
-    // Delegate to typed store by parsing sexp into a StoredFact.
-    if let Some(fact) = parse_sexp_to_stored_fact(sexp) {
+pub(super) fn legacy_fact_is_asserted(fact_repr: &str, inner: &KnowledgeBaseInner) -> bool {
+    // Delegate to typed store by parsing fact_repr into a StoredFact.
+    if let Some(fact) = parse_repr_to_stored_fact(fact_repr) {
         if let Some(set) = inner.typed_predicate_facts.get(fact.relation()) {
             return set.contains(&fact);
         }
@@ -434,59 +434,59 @@ pub(super) fn sexp_is_asserted(sexp: &str, inner: &KnowledgeBaseInner) -> bool {
 
 /// Parse an s-expression string into a StoredFact for typed store lookup.
 /// Handles: (Pred "rel" (Cons term (Cons term (Nil)))), with optional tense wrappers.
-pub(super) fn parse_sexp_to_stored_fact(sexp: &str) -> Option<StoredFact> {
+pub(super) fn parse_repr_to_stored_fact(fact_repr: &str) -> Option<StoredFact> {
     // Strip tense wrapper if present.
     for tense in &["Past", "Present", "Future", "Obligatory", "Permitted"] {
         let prefix = format!("({} ", tense);
-        if let Some(rest) = sexp.strip_prefix(&prefix) {
+        if let Some(rest) = fact_repr.strip_prefix(&prefix) {
             if let Some(inner) = rest.strip_suffix(')') {
-                let bare = parse_bare_pred_sexp(inner)?;
+                let bare = parse_bare_pred_repr(inner)?;
                 return Some(StoredFact::with_tense(bare, Some(tense)));
             }
         }
     }
-    let bare = parse_bare_pred_sexp(sexp)?;
+    let bare = parse_bare_pred_repr(fact_repr)?;
     Some(StoredFact::Bare(bare))
 }
 
-/// Parse a bare (Pred "rel" args) sexp into a GroundFact.
-fn parse_bare_pred_sexp(sexp: &str) -> Option<GroundFact> {
-    let sexp = sexp.trim();
-    if !sexp.starts_with("(Pred \"") {
+/// Parse a bare (Pred "rel" args) fact_repr into a GroundFact.
+fn parse_bare_pred_repr(fact_repr: &str) -> Option<GroundFact> {
+    let fact_repr = fact_repr.trim();
+    if !fact_repr.starts_with("(Pred \"") {
         return None;
     }
     // Extract relation name: (Pred "name" rest)
-    let after_pred = &sexp[7..]; // skip `(Pred "`
+    let after_pred = &fact_repr[7..]; // skip `(Pred "`
     let quote_end = after_pred.find('"')?;
     let relation = after_pred[..quote_end].to_string();
     let args_start = quote_end + 2; // skip `" `
-    let args_sexp = &after_pred[args_start..after_pred.len() - 1]; // strip trailing )
-    let args = parse_cons_list(args_sexp);
+    let args_repr = &after_pred[args_start..after_pred.len() - 1]; // strip trailing )
+    let args = parse_arg_list(args_repr);
     Some(GroundFact::new(relation, args))
 }
 
-/// Parse a Cons-list sexp into Vec<GroundTerm>.
+/// Parse a Cons-list fact_repr into Vec<GroundTerm>.
 /// Handles: (Cons term (Cons term (Nil)))
-fn parse_cons_list(sexp: &str) -> Vec<GroundTerm> {
-    let sexp = sexp.trim();
-    if sexp == "(Nil)" || sexp.is_empty() {
+fn parse_arg_list(fact_repr: &str) -> Vec<GroundTerm> {
+    let fact_repr = fact_repr.trim();
+    if fact_repr == "(Nil)" || fact_repr.is_empty() {
         return Vec::new();
     }
-    if !sexp.starts_with("(Cons ") {
+    if !fact_repr.starts_with("(Cons ") {
         return Vec::new();
     }
-    let inner = &sexp[6..sexp.len() - 1]; // strip "(Cons " and ")"
+    let inner = &fact_repr[6..fact_repr.len() - 1]; // strip "(Cons " and ")"
     // Find the split point between the first term and the rest (balanced parens).
-    if let Some((term_str, rest_str)) = split_sexp_pair(inner) {
-        let mut args = vec![parse_sexp_to_ground_term(term_str)];
-        args.extend(parse_cons_list(rest_str));
+    if let Some((term_str, rest_str)) = split_repr_pair(inner) {
+        let mut args = vec![parse_repr_to_ground_term(term_str)];
+        args.extend(parse_arg_list(rest_str));
         args
     } else {
         Vec::new()
     }
 }
 
-fn intern_vec(strings: &[String], interner: &mut SexpInterner) -> Vec<u32> {
+fn intern_vec(strings: &[String], interner: &mut LegacyInterner) -> Vec<u32> {
     strings.iter().map(|s| interner.intern(s)).collect()
 }
 
@@ -501,13 +501,13 @@ pub(super) fn register_rule(
 ) {
     let cond_keys = intern_vec(&condition_strings, &mut inner.interner);
     let concl_keys = intern_vec(&conclusion_strings, &mut inner.interner);
-    let condition_trees: Vec<SexpTree> = condition_strings
+    let condition_trees: Vec<LegacyPatternTree> = condition_strings
         .iter()
-        .map(|s| SexpTree::parse(s, &pattern_var_names))
+        .map(|s| LegacyPatternTree::parse(s, &pattern_var_names))
         .collect();
-    let conclusion_trees: Vec<SexpTree> = conclusion_strings
+    let conclusion_trees: Vec<LegacyPatternTree> = conclusion_strings
         .iter()
-        .map(|s| SexpTree::parse(s, &pattern_var_names))
+        .map(|s| LegacyPatternTree::parse(s, &pattern_var_names))
         .collect();
     let rule = UniversalRuleRecord {
         label,
@@ -522,10 +522,10 @@ pub(super) fn register_rule(
     add_universal_rule(&mut inner.universal_rules, rule, &inner.interner);
 }
 
-/// Assert an sexp string by parsing it to a StoredFact and inserting into the typed store.
+/// Assert an fact_repr string by parsing it to a StoredFact and inserting into the typed store.
 /// LEGACY: still called from traced proof path. Will be removed when traced path is fully typed.
-pub(super) fn assert_sexp(sexp: String, inner: &mut KnowledgeBaseInner) {
-    if let Some(fact) = parse_sexp_to_stored_fact(&sexp) {
+pub(super) fn legacy_assert_repr(fact_repr: String, inner: &mut KnowledgeBaseInner) {
+    if let Some(fact) = parse_repr_to_stored_fact(&fact_repr) {
         assert_typed_fact(fact, inner);
     }
 }
@@ -541,7 +541,7 @@ pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner
 fn add_universal_rule(
     rules: &mut HashMap<String, Vec<Arc<UniversalRuleRecord>>>,
     rule: UniversalRuleRecord,
-    interner: &SexpInterner,
+    interner: &LegacyInterner,
 ) {
     let rc = Arc::new(rule);
     let mut indexed = false;
@@ -674,10 +674,10 @@ pub(super) fn compile_forall_to_rule(
                 ));
             }
 
-            let bare_condition_sexps: Vec<String> = all_conditions
+            let bare_condition_reprs: Vec<String> = all_conditions
                 .iter()
                 .map(|&cid| {
-                    reconstruct_rule_sexp(
+                    reconstruct_rule_repr(
                         buffer,
                         cid,
                         &pattern_vars,
@@ -686,16 +686,16 @@ pub(super) fn compile_forall_to_rule(
                     )
                 })
                 .collect();
-            let conditions_sexp: Vec<String> = bare_condition_sexps
+            let conditions_repr: Vec<String> = bare_condition_reprs
                 .iter()
                 .map(|s| format!("(IsTrue {})", s))
                 .collect();
 
             let consequent_atoms = flatten_consequent(buffer, consequent_id, skolem_subs);
-            let bare_conclusion_sexps: Vec<String> = consequent_atoms
+            let bare_conclusion_reprs: Vec<String> = consequent_atoms
                 .iter()
                 .map(|&aid| {
-                    reconstruct_rule_sexp(
+                    reconstruct_rule_repr(
                         buffer,
                         aid,
                         &pattern_vars,
@@ -704,15 +704,15 @@ pub(super) fn compile_forall_to_rule(
                     )
                 })
                 .collect();
-            let actions_sexp: Vec<String> = bare_conclusion_sexps
+            let actions_repr: Vec<String> = bare_conclusion_reprs
                 .iter()
                 .map(|s| format!("(IsTrue {})", s))
                 .collect();
 
             let rule = format!(
                 "(rule ({}) ({}))",
-                conditions_sexp.join(" "),
-                actions_sexp.join(" ")
+                conditions_repr.join(" "),
+                actions_repr.join(" ")
             );
 
             if !inner.known_rules.insert(rule.clone()) {
@@ -727,7 +727,7 @@ pub(super) fn compile_forall_to_rule(
                     );
                 }
 
-                let label = build_rule_label(&bare_condition_sexps, &bare_conclusion_sexps);
+                let label = build_rule_label(&bare_condition_reprs, &bare_conclusion_reprs);
 
                 // Build typed templates from the same condition/conclusion atoms.
                 let typed_conds: Vec<StoredFact> = all_conditions
@@ -750,8 +750,8 @@ pub(super) fn compile_forall_to_rule(
                 register_rule(
                     inner,
                     label,
-                    bare_condition_sexps.clone(),
-                    bare_conclusion_sexps.clone(),
+                    bare_condition_reprs.clone(),
+                    bare_conclusion_reprs.clone(),
                     all_pattern_var_names.clone(),
                     typed_conds,
                     typed_concls,
@@ -800,7 +800,7 @@ pub(super) fn compile_forall_to_rule(
                 }
             }
 
-            let body_sexp = reconstruct_rule_sexp(
+            let body_repr = reconstruct_rule_repr(
                 buffer,
                 inner_body_id,
                 &pattern_vars,
@@ -816,7 +816,7 @@ pub(super) fn compile_forall_to_rule(
             let rule = format!(
                 "(rule ({}) ((IsTrue {})))",
                 domain_conditions.join(" "),
-                body_sexp
+                body_repr
             );
 
             if !inner.known_rules.insert(rule.clone()) {
@@ -834,7 +834,7 @@ pub(super) fn compile_forall_to_rule(
                     );
                 }
 
-                let label = build_rule_label(&[], &[body_sexp.clone()]);
+                let label = build_rule_label(&[], &[body_repr.clone()]);
 
                 let typed_concls: Vec<StoredFact> = vec![inner_body_id]
                     .iter()
@@ -849,7 +849,7 @@ pub(super) fn compile_forall_to_rule(
                     inner,
                     label,
                     vec![],
-                    vec![body_sexp.clone()],
+                    vec![body_repr.clone()],
                     pattern_var_names.clone(),
                     vec![],
                     typed_concls,
@@ -861,10 +861,10 @@ pub(super) fn compile_forall_to_rule(
     Ok(())
 }
 
-pub(super) fn strip_tense_wrapper(sexp: &str) -> Option<(&str, &str)> {
+pub(super) fn strip_tense_wrapper(fact_repr: &str) -> Option<(&str, &str)> {
     for tense in &["Past", "Present", "Future"] {
         let prefix = format!("({} ", tense);
-        if let Some(rest) = sexp.strip_prefix(&prefix) {
+        if let Some(rest) = fact_repr.strip_prefix(&prefix) {
             if let Some(inner) = rest.strip_suffix(')') {
                 return Some((tense, inner));
             }
@@ -873,11 +873,11 @@ pub(super) fn strip_tense_wrapper(sexp: &str) -> Option<(&str, &str)> {
     None
 }
 
-pub(super) fn wrap_tense(tense: &str, sexp: &str) -> String {
-    format!("({} {})", tense, sexp)
+pub(super) fn wrap_tense(tense: &str, fact_repr: &str) -> String {
+    format!("({} {})", tense, fact_repr)
 }
 
-pub(super) fn sexp_tokenize(s: &str) -> Vec<String> {
+pub(super) fn legacy_tokenize(s: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut chars = s.chars().peekable();
     while let Some(&ch) = chars.peek() {
@@ -922,7 +922,7 @@ pub(super) fn sexp_tokenize(s: &str) -> Vec<String> {
     tokens
 }
 
-pub(super) fn extract_sexp_at(tokens: &[String], start: usize) -> Option<(usize, String)> {
+pub(super) fn legacy_extract_at(tokens: &[String], start: usize) -> Option<(usize, String)> {
     if start >= tokens.len() {
         return None;
     }
@@ -953,7 +953,7 @@ pub(super) fn extract_sexp_at(tokens: &[String], start: usize) -> Option<(usize,
     }
 }
 
-pub(super) fn reconstruct_sexp_with_subs(
+pub(super) fn reconstruct_repr_with_subs(
     buffer: &LogicBuffer,
     node_id: u32,
     subs: &HashMap<String, String>,
@@ -964,8 +964,8 @@ pub(super) fn reconstruct_sexp_with_subs(
             for arg in args.iter().rev() {
                 let term_str = match arg {
                     LogicalTerm::Variable(v) => {
-                        if let Some(raw_sexp) = subs.get(v.as_str()) {
-                            raw_sexp.clone()
+                        if let Some(raw_repr) = subs.get(v.as_str()) {
+                            raw_repr.clone()
                         } else {
                             format!("(Var \"{}\")", v)
                         }
@@ -981,74 +981,74 @@ pub(super) fn reconstruct_sexp_with_subs(
         }
         LogicNode::ExistsNode((v, body)) => {
             if subs.contains_key(v.as_str()) {
-                reconstruct_sexp_with_subs(buffer, *body, subs)
+                reconstruct_repr_with_subs(buffer, *body, subs)
             } else {
                 format!(
                     "(Exists \"{}\" {})",
                     v,
-                    reconstruct_sexp_with_subs(buffer, *body, subs)
+                    reconstruct_repr_with_subs(buffer, *body, subs)
                 )
             }
         }
         LogicNode::ForAllNode((v, body)) => {
             if subs.contains_key(v.as_str()) {
-                reconstruct_sexp_with_subs(buffer, *body, subs)
+                reconstruct_repr_with_subs(buffer, *body, subs)
             } else {
                 format!(
                     "(ForAll \"{}\" {})",
                     v,
-                    reconstruct_sexp_with_subs(buffer, *body, subs)
+                    reconstruct_repr_with_subs(buffer, *body, subs)
                 )
             }
         }
         LogicNode::AndNode((l, r)) => {
             format!(
                 "(And {} {})",
-                reconstruct_sexp_with_subs(buffer, *l, subs),
-                reconstruct_sexp_with_subs(buffer, *r, subs)
+                reconstruct_repr_with_subs(buffer, *l, subs),
+                reconstruct_repr_with_subs(buffer, *r, subs)
             )
         }
         LogicNode::OrNode((l, r)) => {
             format!(
                 "(Or {} {})",
-                reconstruct_sexp_with_subs(buffer, *l, subs),
-                reconstruct_sexp_with_subs(buffer, *r, subs)
+                reconstruct_repr_with_subs(buffer, *l, subs),
+                reconstruct_repr_with_subs(buffer, *r, subs)
             )
         }
         LogicNode::NotNode(inner) => {
-            format!("(Not {})", reconstruct_sexp_with_subs(buffer, *inner, subs))
+            format!("(Not {})", reconstruct_repr_with_subs(buffer, *inner, subs))
         }
         LogicNode::CountNode((v, count, body)) => {
             if *count == 0 {
-                let body_sexp = reconstruct_sexp_with_subs(buffer, *body, subs);
-                format!("(ForAll \"{}\" (Not {}))", v, body_sexp)
+                let body_repr = reconstruct_repr_with_subs(buffer, *body, subs);
+                format!("(ForAll \"{}\" (Not {}))", v, body_repr)
             } else if subs.contains_key(v.as_str()) {
-                reconstruct_sexp_with_subs(buffer, *body, subs)
+                reconstruct_repr_with_subs(buffer, *body, subs)
             } else {
-                let body_sexp = reconstruct_sexp_with_subs(buffer, *body, subs);
-                format!("(Exists \"{}\" {})", v, body_sexp)
+                let body_repr = reconstruct_repr_with_subs(buffer, *body, subs);
+                format!("(Exists \"{}\" {})", v, body_repr)
             }
         }
         LogicNode::PastNode(inner) => {
             format!(
                 "(Past {})",
-                reconstruct_sexp_with_subs(buffer, *inner, subs)
+                reconstruct_repr_with_subs(buffer, *inner, subs)
             )
         }
         LogicNode::PresentNode(inner) => {
             format!(
                 "(Present {})",
-                reconstruct_sexp_with_subs(buffer, *inner, subs)
+                reconstruct_repr_with_subs(buffer, *inner, subs)
             )
         }
         LogicNode::FutureNode(inner) => {
             format!(
                 "(Future {})",
-                reconstruct_sexp_with_subs(buffer, *inner, subs)
+                reconstruct_repr_with_subs(buffer, *inner, subs)
             )
         }
         LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) => {
-            reconstruct_sexp_with_subs(buffer, *inner, subs)
+            reconstruct_repr_with_subs(buffer, *inner, subs)
         }
     }
 }
@@ -1108,7 +1108,7 @@ pub(super) fn generate_count_extra_witnesses(
 /// `subs` maps variable names to either:
 ///   - Raw Skolem names (e.g., "sk_0") during assertion
 ///   - S-expression formatted values (e.g., `(Const "adam")`) during query
-/// This function handles both formats via `parse_sexp_to_ground_term()`.
+/// This function handles both formats via `parse_repr_to_ground_term()`.
 pub(super) fn build_ground_term(
     term: &LogicalTerm,
     subs: &HashMap<String, String>,
@@ -1121,7 +1121,7 @@ pub(super) fn build_ground_term(
                     GroundTerm::PatternVar(v.clone())
                 } else if sk.starts_with('(') {
                     // S-expression formatted value from query subs — parse it.
-                    parse_sexp_to_ground_term(sk)
+                    parse_repr_to_ground_term(sk)
                 } else {
                     // Raw Skolem constant name from assertion subs.
                     GroundTerm::Constant(sk.clone())
@@ -1140,52 +1140,52 @@ pub(super) fn build_ground_term(
 
 /// Parse an s-expression term string into a GroundTerm.
 /// Handles: (Const "name"), (Desc "name"), (Num N), (Zoe), (SkolemFn "name" dep), (DepPair a b)
-pub(super) fn parse_sexp_to_ground_term(sexp: &str) -> GroundTerm {
-    if let Some(rest) = sexp.strip_prefix("(Const \"") {
+pub(super) fn parse_repr_to_ground_term(fact_repr: &str) -> GroundTerm {
+    if let Some(rest) = fact_repr.strip_prefix("(Const \"") {
         if let Some(name) = rest.strip_suffix("\")") {
             return GroundTerm::Constant(name.to_string());
         }
     }
-    if let Some(rest) = sexp.strip_prefix("(Desc \"") {
+    if let Some(rest) = fact_repr.strip_prefix("(Desc \"") {
         if let Some(name) = rest.strip_suffix("\")") {
             return GroundTerm::Description(name.to_string());
         }
     }
-    if let Some(rest) = sexp.strip_prefix("(Num ") {
+    if let Some(rest) = fact_repr.strip_prefix("(Num ") {
         if let Some(num_str) = rest.strip_suffix(')') {
             if let Ok(n) = num_str.parse::<f64>() {
                 return GroundTerm::from_f64(n);
             }
         }
     }
-    if sexp == "(Zoe)" {
+    if fact_repr == "(Zoe)" {
         return GroundTerm::Unspecified;
     }
-    if let Some(rest) = sexp.strip_prefix("(SkolemFn \"") {
+    if let Some(rest) = fact_repr.strip_prefix("(SkolemFn \"") {
         // Parse (SkolemFn "name" dep)
         if let Some(quote_end) = rest.find("\" ") {
             let name = &rest[..quote_end];
             let dep_str = &rest[quote_end + 2..rest.len() - 1]; // strip trailing )
-            let dep = parse_sexp_to_ground_term(dep_str);
+            let dep = parse_repr_to_ground_term(dep_str);
             return GroundTerm::SkolemFn(name.to_string(), Box::new(dep));
         }
     }
-    if let Some(rest) = sexp.strip_prefix("(DepPair ") {
+    if let Some(rest) = fact_repr.strip_prefix("(DepPair ") {
         // Parse (DepPair a b) — need to find balanced split point
         if let Some(inner) = rest.strip_suffix(')') {
-            if let Some((a_str, b_str)) = split_sexp_pair(inner) {
-                let a = parse_sexp_to_ground_term(a_str);
-                let b = parse_sexp_to_ground_term(b_str);
+            if let Some((a_str, b_str)) = split_repr_pair(inner) {
+                let a = parse_repr_to_ground_term(a_str);
+                let b = parse_repr_to_ground_term(b_str);
                 return GroundTerm::DepPair(Box::new(a), Box::new(b));
             }
         }
     }
     // Fallback: bare string — likely a pattern variable name or Skolem constant
-    GroundTerm::Constant(sexp.to_string())
+    GroundTerm::Constant(fact_repr.to_string())
 }
 
 /// Split a pair of s-expressions at the top level (respecting balanced parens).
-fn split_sexp_pair(s: &str) -> Option<(&str, &str)> {
+fn split_repr_pair(s: &str) -> Option<(&str, &str)> {
     let mut depth = 0;
     for (i, c) in s.char_indices() {
         match c {
@@ -1235,14 +1235,14 @@ pub(super) fn build_stored_fact_from_node(
             build_stored_fact_from_node(buffer, *inner, subs, Some("Future"))
         }
         LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) => {
-            // Deontic wrappers are transparent — same as sexp path.
+            // Deontic wrappers are transparent — same as fact_repr path.
             build_stored_fact_from_node(buffer, *inner, subs, tense)
         }
         _ => None, // And/Or/Not/ForAll/Count — not a leaf fact.
     }
 }
 
-/// Collect leaf StoredFacts from an And-tree (typed equivalent of collect_ground_leaves + reconstruct_sexp).
+/// Collect leaf StoredFacts from an And-tree (typed equivalent of collect_ground_leaves + reconstruct_repr).
 pub(super) fn collect_ground_facts(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -1270,7 +1270,7 @@ pub(super) fn collect_ground_facts(
             collect_ground_facts(buffer, *inner, subs, Some("Future"), out);
         }
         LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) => {
-            // Deontic wrappers are transparent — same as sexp path.
+            // Deontic wrappers are transparent — same as fact_repr path.
             collect_ground_facts(buffer, *inner, subs, tense, out);
         }
         _ => {
@@ -1336,7 +1336,7 @@ pub(super) fn build_rule_template_fact(
 }
 
 /// Build a GroundTerm representing a SkolemFn with given dependencies.
-/// Typed equivalent of `build_skolem_fn_sexp()`.
+/// Typed equivalent of `build_skolem_fn_repr()`.
 pub(super) fn build_skolem_fn_term(base_name: &str, deps: &[GroundTerm]) -> GroundTerm {
     let dep_term = match deps.len() {
         0 => GroundTerm::Unspecified,

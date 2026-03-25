@@ -287,7 +287,7 @@ interface logic-types {
     variant proof-rule {
         /// Both conjuncts checked. Children: [left, right].
         conjunction,
-        /// Disjunction checked in fact store. Payload: sexp checked.
+        /// Disjunction checked in fact store. Payload: fact checked.
         disjunction-check(string),
         /// One disjunct checked. Payload: "left" or "right". Children: [winner].
         disjunction-intro(string),
@@ -307,16 +307,16 @@ interface logic-types {
         forall-counterexample(logical-term),
         /// Count check. Payload: (expected, actual).
         count-result(tuple<u32, u32>),
-        /// Predicate leaf checked. Payload: (method, sexp-or-detail).
+        /// Predicate leaf checked. Payload: (method, fact-or-detail).
         predicate-check(tuple<string, string>),
         /// Compute node checked. Payload: (method, relation-or-detail).
         compute-check(tuple<string, string>),
-        /// Directly asserted fact (ground truth). Payload: sexp that was asserted.
+        /// Directly asserted fact (ground truth). Payload: fact string that was asserted.
         asserted(string),
-        /// Derived via universal rule saturation. Payload: (rule-label, conclusion-sexp).
+        /// Derived via universal rule backward-chaining. Payload: (rule-label, conclusion-fact).
         /// Children: proof traces of each premise that triggered the rule.
         derived(tuple<string, string>),
-        /// Reference to an already-proved fact. Payload: sexp that was proved.
+        /// Reference to an already-proved fact. Payload: fact string that was proved.
         /// No children — the full proof was shown at its first occurrence.
         proof-ref(string),
     }

@@ -19,7 +19,7 @@
 //! - **`:saturate`** — Show/set run bound (iterations)
 
 use anyhow::Result;
-use nibli_protocol::humanize_sexp;
+use nibli_protocol::humanize_fact;
 use nibli_store::{NibliStore, StoredAssertion, StoredLogicalTerm as StoredTerm};
 use reedline::{DefaultPrompt, Reedline, Signal};
 use serde::{Deserialize, Serialize};
@@ -280,19 +280,19 @@ fn format_rule(rule: &ProofRule, result: bool) -> String {
             format!("Count: expected={}, actual={} → {}", expected, actual, tag)
         }
         ProofRule::PredicateCheck((method, detail)) => {
-            format!("{}: {} → {}", method, humanize_sexp(detail), tag)
+            format!("{}: {} → {}", method, humanize_fact(detail), tag)
         }
         ProofRule::ComputeCheck((method, detail)) => {
-            format!("Compute ({}): {} → {}", method, humanize_sexp(detail), tag)
+            format!("Compute ({}): {} → {}", method, humanize_fact(detail), tag)
         }
-        ProofRule::Asserted(sexp) => {
-            format!("Asserted: {} → {}", humanize_sexp(sexp), tag)
+        ProofRule::Asserted(fact) => {
+            format!("Fact: {} → {}", humanize_fact(fact), tag)
         }
-        ProofRule::Derived((label, sexp)) => {
-            format!("Derived ({}): {} → {}", label, humanize_sexp(sexp), tag)
+        ProofRule::Derived((label, fact)) => {
+            format!("Rule ({}): {} → {}", label, humanize_fact(fact), tag)
         }
-        ProofRule::ProofRef(sexp) => {
-            format!("(proved above): {} → {}", humanize_sexp(sexp), tag)
+        ProofRule::ProofRef(fact) => {
+            format!("(see above): {} → {}", humanize_fact(fact), tag)
         }
     }
 }
@@ -879,7 +879,7 @@ fn main() -> Result<()> {
                     }
                     refuel(&mut store, fuel_budget);
                     match session.call_compile_debug(&mut store, session_handle, text) {
-                        Ok(Ok(sexp)) => println!("[Logic] {}", sexp),
+                        Ok(Ok(debug_output)) => println!("[Logic] {}", debug_output),
                         Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                         Err(e) => println!("{}", format_host_error(&e)),
                     }

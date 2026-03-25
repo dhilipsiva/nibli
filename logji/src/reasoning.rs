@@ -1,9 +1,9 @@
 use super::*;
 
-pub(super) fn wrap_with_tense(tense: Option<&str>, sexp: &str) -> String {
+pub(super) fn wrap_with_tense(tense: Option<&str>, repr: &str) -> String {
     match tense {
-        Some(t) => format!("({} {})", t, sexp),
-        None => sexp.to_string(),
+        Some(t) => format!("({} {})", t, repr),
+        None => repr.to_string(),
     }
 }
 
@@ -51,8 +51,8 @@ pub(super) fn check_formula_holds(
             }
             let v_key = v.clone();
             let prev = subs.remove(&v_key);
-            for (member_sexp, _) in &members {
-                subs.insert(v_key.clone(), member_sexp.clone());
+            for (member_repr, _) in &members {
+                subs.insert(v_key.clone(), member_repr.clone());
                 if check_formula_holds(buffer, *body, subs, inner, tense)? {
                     match prev {
                         Some(p) => {
@@ -67,10 +67,10 @@ pub(super) fn check_formula_holds(
             }
             let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
             for entry in &entries {
-                let dep_sexps: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
-                for combo in CartesianProduct::new(&dep_sexps, entry.dep_count) {
-                    let witness_sexp = build_skolem_fn_sexp(&entry.base_name, &combo);
-                    subs.insert(v_key.clone(), witness_sexp);
+                let dep_reprs: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
+                for combo in CartesianProduct::new(&dep_reprs, entry.dep_count) {
+                    let witness_repr = build_skolem_fn_repr(&entry.base_name, &combo);
+                    subs.insert(v_key.clone(), witness_repr);
                     if check_formula_holds(buffer, *body, subs, inner, tense)? {
                         match prev {
                             Some(p) => {
@@ -108,8 +108,8 @@ pub(super) fn check_formula_holds(
             }
             let v_key = v.clone();
             let prev = subs.remove(&v_key);
-            for (member_sexp, _) in &members {
-                subs.insert(v_key.clone(), member_sexp.clone());
+            for (member_repr, _) in &members {
+                subs.insert(v_key.clone(), member_repr.clone());
                 if !check_formula_holds(buffer, *body, subs, inner, tense)? {
                     match prev {
                         Some(p) => {
@@ -145,8 +145,8 @@ pub(super) fn check_formula_holds(
             let mut satisfying = 0u32;
             let v_key = v.clone();
             let prev = subs.remove(&v_key);
-            for (member_sexp, _) in &members {
-                subs.insert(v_key.clone(), member_sexp.clone());
+            for (member_repr, _) in &members {
+                subs.insert(v_key.clone(), member_repr.clone());
                 if check_formula_holds(buffer, *body, subs, inner, tense)? {
                     satisfying += 1;
                 }
@@ -170,9 +170,9 @@ pub(super) fn check_formula_holds(
                 let mut visited = HashSet::new();
                 Ok(check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited))
             } else {
-                // Fallback to sexp path if typed build fails.
-                let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
-                let wrapped = wrap_with_tense(tense, &sexp);
+                // Fallback to fact_repr path if typed build fails.
+                let repr = reconstruct_repr_with_subs(buffer, node_id, subs);
+                let wrapped = wrap_with_tense(tense, &repr);
                 let mut visited = HashSet::new();
                 Ok(check_predicate_in_kb(&wrapped, &*inner, 0, &mut visited))
             }
@@ -200,8 +200,8 @@ pub(super) fn check_formula_holds(
                 let mut visited = HashSet::new();
                 Ok(check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited))
             } else {
-                let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
-                let wrapped = wrap_with_tense(tense, &sexp);
+                let repr = reconstruct_repr_with_subs(buffer, node_id, subs);
+                let wrapped = wrap_with_tense(tense, &repr);
                 let mut visited = HashSet::new();
                 Ok(check_predicate_in_kb(&wrapped, &*inner, 0, &mut visited))
             }
@@ -220,26 +220,26 @@ pub(super) fn find_witnesses(
         LogicNode::ExistsNode((v, body)) => {
             let mut results = Vec::new();
             let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
-            for (sexp, _) in &members {
+            for (fact_repr, _) in &members {
                 let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), sexp.clone());
+                new_subs.insert(v.clone(), fact_repr.clone());
                 let sub_results = find_witnesses(buffer, *body, &mut new_subs, inner, tense)?;
                 for mut bindings in sub_results {
-                    bindings.push((v.clone(), sexp.clone()));
+                    bindings.push((v.clone(), fact_repr.clone()));
                     results.push(bindings);
                 }
             }
 
             let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
             for entry in &entries {
-                let dep_sexps: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
-                for combo in CartesianProduct::new(&dep_sexps, entry.dep_count) {
-                    let witness_sexp = build_skolem_fn_sexp(&entry.base_name, &combo);
+                let dep_reprs: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
+                for combo in CartesianProduct::new(&dep_reprs, entry.dep_count) {
+                    let witness_repr = build_skolem_fn_repr(&entry.base_name, &combo);
                     let mut new_subs = subs.clone();
-                    new_subs.insert(v.clone(), witness_sexp.clone());
+                    new_subs.insert(v.clone(), witness_repr.clone());
                     let sub_results = find_witnesses(buffer, *body, &mut new_subs, inner, tense)?;
                     for mut bindings in sub_results {
-                        bindings.push((v.clone(), witness_sexp.clone()));
+                        bindings.push((v.clone(), witness_repr.clone()));
                         results.push(bindings);
                     }
                 }
@@ -291,18 +291,18 @@ pub(super) fn find_witnesses(
 const MAX_BACKWARD_CHAIN_DEPTH: usize = 10;
 
 pub(super) fn try_backward_chain_traced(
-    sexp: &str,
+    fact_repr: &str,
     inner: &mut KnowledgeBaseInner,
     steps: &mut Vec<ProofStep>,
     depth: usize,
     memo: &mut HashMap<String, u32>,
 ) -> Option<u32> {
-    let rules = collect_matching_rules(sexp, &inner.universal_rules);
-    let sexp_tokens = sexp_tokenize(sexp);
+    let rules = collect_matching_rules(fact_repr, &inner.universal_rules);
+    let repr_tokens = legacy_tokenize(fact_repr);
 
     for rule in &rules {
         for concl_tree in &rule.conclusion_trees {
-            if let Some(mut bindings) = concl_tree.match_against_tokens(&sexp_tokens) {
+            if let Some(mut bindings) = concl_tree.match_against_tokens(&repr_tokens) {
                 let unbound_event_vars: Vec<String> = rule
                     .pattern_var_names
                     .iter()
@@ -312,13 +312,13 @@ pub(super) fn try_backward_chain_traced(
 
                 if !unbound_event_vars.is_empty() {
                     let members = inner.all_domain_members();
-                    let member_sexps: Vec<String> =
+                    let member_reprs: Vec<String> =
                         members.iter().map(|(s, _)| s.clone()).collect();
-                    let mut all_candidates: Vec<String> = member_sexps.clone();
+                    let mut all_candidates: Vec<String> = member_reprs.clone();
                     let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
                     for entry in &entries {
-                        for combo in CartesianProduct::new(&member_sexps, entry.dep_count) {
-                            all_candidates.push(build_skolem_fn_sexp(&entry.base_name, &combo));
+                        for combo in CartesianProduct::new(&member_reprs, entry.dep_count) {
+                            all_candidates.push(build_skolem_fn_repr(&entry.base_name, &combo));
                         }
                     }
 
@@ -389,12 +389,12 @@ pub(super) fn try_backward_chain_traced(
                 }
 
                 let mut all_conditions_hold = true;
-                let mut condition_sexps = Vec::new();
+                let mut condition_reprs = Vec::new();
 
                 for cond_tree in &rule.condition_trees {
-                    let cond_sexp = cond_tree.substitute(&bindings);
-                    if check_predicate_in_kb(&cond_sexp, &*inner, depth + 1, &mut HashSet::new()) {
-                        condition_sexps.push(cond_sexp);
+                    let cond_repr = cond_tree.substitute(&bindings);
+                    if check_predicate_in_kb(&cond_repr, &*inner, depth + 1, &mut HashSet::new()) {
+                        condition_reprs.push(cond_repr);
                     } else {
                         all_conditions_hold = false;
                         break;
@@ -408,7 +408,7 @@ pub(super) fn try_backward_chain_traced(
                 if rule.condition_templates.is_empty() {
                     let idx = steps.len() as u32;
                     steps.push(ProofStep {
-                        rule: ProofRule::Derived((rule.label.clone(), sexp.to_string())),
+                        rule: ProofRule::Derived((rule.label.clone(), fact_repr.to_string())),
                         holds: true,
                         children: vec![],
                     });
@@ -416,15 +416,15 @@ pub(super) fn try_backward_chain_traced(
                 }
 
                 let mut child_indices = Vec::new();
-                for cond_sexp in &condition_sexps {
+                for cond_repr in &condition_reprs {
                     let child_idx =
-                        trace_predicate_provenance(cond_sexp, inner, steps, depth + 1, memo);
+                        trace_predicate_provenance(cond_repr, inner, steps, depth + 1, memo);
                     child_indices.push(child_idx);
                 }
 
                 let idx = steps.len() as u32;
                 steps.push(ProofStep {
-                    rule: ProofRule::Derived((rule.label.clone(), sexp.to_string())),
+                    rule: ProofRule::Derived((rule.label.clone(), fact_repr.to_string())),
                     holds: true,
                     children: child_indices,
                 });
@@ -433,9 +433,9 @@ pub(super) fn try_backward_chain_traced(
         }
     }
 
-    if let Some((tense, inner_sexp)) = strip_tense_wrapper(sexp) {
-        let bare_rules = collect_matching_rules(inner_sexp, &inner.universal_rules);
-        let inner_tokens = sexp_tokenize(inner_sexp);
+    if let Some((tense, inner_repr)) = strip_tense_wrapper(fact_repr) {
+        let bare_rules = collect_matching_rules(inner_repr, &inner.universal_rules);
+        let inner_tokens = legacy_tokenize(inner_repr);
         for rule in &bare_rules {
             for concl_tree in &rule.conclusion_trees {
                 let bindings_opt = concl_tree.match_against_tokens(&inner_tokens);
@@ -453,13 +453,13 @@ pub(super) fn try_backward_chain_traced(
 
                 if !unbound_event_vars.is_empty() {
                     let members = inner.all_domain_members();
-                    let member_sexps: Vec<String> =
+                    let member_reprs: Vec<String> =
                         members.iter().map(|(s, _)| s.clone()).collect();
-                    let mut all_candidates: Vec<String> = member_sexps.clone();
+                    let mut all_candidates: Vec<String> = member_reprs.clone();
                     let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
                     for entry in &entries {
-                        for combo in CartesianProduct::new(&member_sexps, entry.dep_count) {
-                            all_candidates.push(build_skolem_fn_sexp(&entry.base_name, &combo));
+                        for combo in CartesianProduct::new(&member_reprs, entry.dep_count) {
+                            all_candidates.push(build_skolem_fn_repr(&entry.base_name, &combo));
                         }
                     }
 
@@ -537,12 +537,12 @@ pub(super) fn try_backward_chain_traced(
                 }
 
                 let mut all_conditions_hold = true;
-                let mut condition_sexps = Vec::new();
+                let mut condition_reprs = Vec::new();
                 for cond_tree in &rule.condition_trees {
                     let bare_cs = cond_tree.substitute(&bindings);
                     let tensed_cs = wrap_tense(tense, &bare_cs);
                     if check_predicate_in_kb(&tensed_cs, &*inner, depth + 1, &mut HashSet::new()) {
-                        condition_sexps.push(tensed_cs);
+                        condition_reprs.push(tensed_cs);
                     } else {
                         all_conditions_hold = false;
                         break;
@@ -558,7 +558,7 @@ pub(super) fn try_backward_chain_traced(
                     steps.push(ProofStep {
                         rule: ProofRule::Derived((
                             format!("{} [{}]", rule.label, tense),
-                            sexp.to_string(),
+                            fact_repr.to_string(),
                         )),
                         holds: true,
                         children: vec![],
@@ -567,9 +567,9 @@ pub(super) fn try_backward_chain_traced(
                 }
 
                 let mut child_indices = Vec::new();
-                for cond_sexp in &condition_sexps {
+                for cond_repr in &condition_reprs {
                     let child_idx =
-                        trace_predicate_provenance(cond_sexp, inner, steps, depth + 1, memo);
+                        trace_predicate_provenance(cond_repr, inner, steps, depth + 1, memo);
                     child_indices.push(child_idx);
                 }
 
@@ -577,7 +577,7 @@ pub(super) fn try_backward_chain_traced(
                 steps.push(ProofStep {
                     rule: ProofRule::Derived((
                         format!("{} [{}]", rule.label, tense),
-                        sexp.to_string(),
+                        fact_repr.to_string(),
                     )),
                     holds: true,
                     children: child_indices,
@@ -591,17 +591,17 @@ pub(super) fn try_backward_chain_traced(
 }
 
 pub(super) fn check_predicate_in_kb(
-    sexp: &str,
+    fact_repr: &str,
     inner: &KnowledgeBaseInner,
     depth: usize,
     visited: &mut HashSet<String>,
 ) -> bool {
-    if sexp_is_asserted(sexp, inner) {
+    if legacy_fact_is_asserted(fact_repr, inner) {
         return true;
     }
     let cached = PRED_CACHE_ENABLED.with(|e| {
         if e.get() {
-            PRED_CACHE.with(|c| c.borrow().get(sexp).copied())
+            PRED_CACHE.with(|c| c.borrow().get(fact_repr).copied())
         } else {
             None
         }
@@ -609,10 +609,10 @@ pub(super) fn check_predicate_in_kb(
     if let Some(result) = cached {
         return result;
     }
-    let result = try_backward_chain(sexp, inner, depth, visited);
+    let result = try_backward_chain(fact_repr, inner, depth, visited);
     PRED_CACHE_ENABLED.with(|e| {
         if e.get() {
-            PRED_CACHE.with(|c| c.borrow_mut().insert(sexp.to_string(), result));
+            PRED_CACHE.with(|c| c.borrow_mut().insert(fact_repr.to_string(), result));
         }
     });
     result
@@ -621,7 +621,7 @@ pub(super) fn check_predicate_in_kb(
 const MAX_BACKWARD_CHAIN_DEPTH_UNTRACED: usize = 10;
 
 pub(super) fn try_backward_chain(
-    sexp: &str,
+    fact_repr: &str,
     inner: &KnowledgeBaseInner,
     depth: usize,
     visited: &mut HashSet<String>,
@@ -629,16 +629,16 @@ pub(super) fn try_backward_chain(
     if depth >= MAX_BACKWARD_CHAIN_DEPTH_UNTRACED {
         return false;
     }
-    if !visited.insert(sexp.to_string()) {
+    if !visited.insert(fact_repr.to_string()) {
         return false;
     }
 
-    let rules_snapshot = collect_matching_rules(sexp, &inner.universal_rules);
-    let sexp_tokens = sexp_tokenize(sexp);
+    let rules_snapshot = collect_matching_rules(fact_repr, &inner.universal_rules);
+    let repr_tokens = legacy_tokenize(fact_repr);
 
     for rule in &rules_snapshot {
         for concl_tree in &rule.conclusion_trees {
-            let bindings_opt = concl_tree.match_against_tokens(&sexp_tokens);
+            let bindings_opt = concl_tree.match_against_tokens(&repr_tokens);
             if bindings_opt.is_none() {
                 continue;
             }
@@ -653,11 +653,11 @@ pub(super) fn try_backward_chain(
 
             if !unbound_event_vars.is_empty() {
                 let members = inner.all_domain_members();
-                let member_sexps: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
-                let mut all_candidates: Vec<String> = member_sexps.clone();
+                let member_reprs: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
+                let mut all_candidates: Vec<String> = member_reprs.clone();
                 for entry in &inner.skolem_fn_registry {
-                    for combo in CartesianProduct::new(&member_sexps, entry.dep_count) {
-                        all_candidates.push(build_skolem_fn_sexp(&entry.base_name, &combo));
+                    for combo in CartesianProduct::new(&member_reprs, entry.dep_count) {
+                        all_candidates.push(build_skolem_fn_repr(&entry.base_name, &combo));
                     }
                 }
 
@@ -727,15 +727,15 @@ pub(super) fn try_backward_chain(
             });
 
             if all_conditions_hold {
-                visited.remove(sexp);
+                visited.remove(fact_repr);
                 return true;
             }
         }
     }
 
-    if let Some((tense, inner_sexp)) = strip_tense_wrapper(sexp) {
-        let bare_rules = collect_matching_rules(inner_sexp, &inner.universal_rules);
-        let inner_tokens = sexp_tokenize(inner_sexp);
+    if let Some((tense, inner_repr)) = strip_tense_wrapper(fact_repr) {
+        let bare_rules = collect_matching_rules(inner_repr, &inner.universal_rules);
+        let inner_tokens = legacy_tokenize(inner_repr);
         for rule in &bare_rules {
             for concl_tree in &rule.conclusion_trees {
                 let bindings_opt = concl_tree.match_against_tokens(&inner_tokens);
@@ -753,12 +753,12 @@ pub(super) fn try_backward_chain(
 
                 if !unbound_event_vars.is_empty() {
                     let members = inner.all_domain_members();
-                    let member_sexps: Vec<String> =
+                    let member_reprs: Vec<String> =
                         members.iter().map(|(s, _)| s.clone()).collect();
-                    let mut all_candidates: Vec<String> = member_sexps.clone();
+                    let mut all_candidates: Vec<String> = member_reprs.clone();
                     for entry in &inner.skolem_fn_registry {
-                        for combo in CartesianProduct::new(&member_sexps, entry.dep_count) {
-                            all_candidates.push(build_skolem_fn_sexp(&entry.base_name, &combo));
+                        for combo in CartesianProduct::new(&member_reprs, entry.dep_count) {
+                            all_candidates.push(build_skolem_fn_repr(&entry.base_name, &combo));
                         }
                     }
 
@@ -832,20 +832,20 @@ pub(super) fn try_backward_chain(
                 });
 
                 if all_conditions_hold {
-                    visited.remove(sexp);
+                    visited.remove(fact_repr);
                     return true;
                 }
             }
         }
     }
 
-    visited.remove(sexp);
+    visited.remove(fact_repr);
     false
 }
 
 // ─── Typed Backward-Chaining (Phase 4-5b) ────────────────────────
 //
-// These functions mirror the sexp-based backward-chaining above but
+// These functions mirror the fact_repr-based backward-chaining above but
 // operate on StoredFact/GroundTerm directly, avoiding all string ops.
 
 thread_local! {
@@ -917,7 +917,7 @@ fn stored_fact_contains_var(fact: &StoredFact, var: &str) -> bool {
     fact.inner().args.iter().any(|a| term_contains_var(a, var))
 }
 
-/// Typed backward-chaining — structural matching instead of sexp tokenization.
+/// Typed backward-chaining — structural matching instead of fact_repr tokenization.
 pub(super) fn try_backward_chain_typed(
     fact: &StoredFact,
     inner: &KnowledgeBaseInner,
@@ -941,7 +941,7 @@ pub(super) fn try_backward_chain_typed(
             }
             let mut bindings = bindings_opt.unwrap();
 
-            // Handle unbound event variables (same logic as sexp version).
+            // Handle unbound event variables (same logic as fact_repr version).
             let unbound_event_vars: Vec<String> = rule
                 .pattern_var_names
                 .iter()
@@ -955,13 +955,13 @@ pub(super) fn try_backward_chain_typed(
                 for entry in &inner.skolem_fn_registry {
                     for combo in CartesianProduct::new(
                         // CartesianProduct works with &[String] — need member names.
-                        // Reuse sexp domain members for candidate generation.
+                        // Reuse fact_repr domain members for candidate generation.
                         &inner.all_domain_members().iter().map(|(s, _)| s.clone()).collect::<Vec<_>>(),
                         entry.dep_count,
                     ) {
                         let dep_terms: Vec<GroundTerm> = combo
                             .iter()
-                            .map(|s| parse_sexp_to_ground_term(s))
+                            .map(|s| parse_repr_to_ground_term(s))
                             .collect();
                         all_candidates.push(build_skolem_fn_term(&entry.base_name, &dep_terms));
                     }
@@ -1067,7 +1067,7 @@ pub(super) fn try_backward_chain_typed(
                         ) {
                             let dep_terms: Vec<GroundTerm> = combo
                                 .iter()
-                                .map(|s| parse_sexp_to_ground_term(s))
+                                .map(|s| parse_repr_to_ground_term(s))
                                 .collect();
                             all_candidates.push(build_skolem_fn_term(&entry.base_name, &dep_terms));
                         }
@@ -1238,47 +1238,47 @@ impl<'a> Iterator for TypedMultiCartesian<'a> {
 // ─── End Typed Backward-Chaining ─────────────────────────────────
 
 pub(super) fn trace_predicate_provenance(
-    sexp: &str,
+    fact_repr: &str,
     inner: &mut KnowledgeBaseInner,
     steps: &mut Vec<ProofStep>,
     depth: usize,
     memo: &mut HashMap<String, u32>,
 ) -> u32 {
-    if memo.contains_key(sexp) {
+    if memo.contains_key(fact_repr) {
         let idx = steps.len() as u32;
         steps.push(ProofStep {
-            rule: ProofRule::ProofRef(sexp.to_string()),
+            rule: ProofRule::ProofRef(fact_repr.to_string()),
             holds: true,
             children: vec![],
         });
         return idx;
     }
 
-    if sexp_is_asserted(sexp, inner) {
+    if legacy_fact_is_asserted(fact_repr, inner) {
         let idx = steps.len() as u32;
         steps.push(ProofStep {
-            rule: ProofRule::Asserted(sexp.to_string()),
+            rule: ProofRule::Asserted(fact_repr.to_string()),
             holds: true,
             children: vec![],
         });
-        memo.insert(sexp.to_string(), idx);
+        memo.insert(fact_repr.to_string(), idx);
         return idx;
     }
 
     if depth < MAX_BACKWARD_CHAIN_DEPTH {
-        if let Some(idx) = try_backward_chain_traced(sexp, inner, steps, depth, memo) {
-            memo.insert(sexp.to_string(), idx);
+        if let Some(idx) = try_backward_chain_traced(fact_repr, inner, steps, depth, memo) {
+            memo.insert(fact_repr.to_string(), idx);
             return idx;
         }
     }
 
     let idx = steps.len() as u32;
     steps.push(ProofStep {
-        rule: ProofRule::PredicateCheck(("unknown".to_string(), sexp.to_string())),
+        rule: ProofRule::PredicateCheck(("unknown".to_string(), fact_repr.to_string())),
         holds: true,
         children: vec![],
     });
-    memo.insert(sexp.to_string(), idx);
+    memo.insert(fact_repr.to_string(), idx);
     idx
 }
 
@@ -1466,9 +1466,9 @@ pub(super) fn check_formula_holds_traced(
                 }
             }
 
-            for (sexp, term) in &members {
+            for (fact_repr, term) in &members {
                 let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), sexp.clone());
+                new_subs.insert(v.clone(), fact_repr.clone());
                 if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)? {
                     let (_, body_idx) = check_formula_holds_traced(
                         buffer,
@@ -1490,11 +1490,11 @@ pub(super) fn check_formula_holds_traced(
             }
             let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
             for entry in &entries {
-                let dep_sexps: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
-                for combo in CartesianProduct::new(&dep_sexps, entry.dep_count) {
-                    let witness_sexp = build_skolem_fn_sexp(&entry.base_name, &combo);
+                let dep_reprs: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
+                for combo in CartesianProduct::new(&dep_reprs, entry.dep_count) {
+                    let witness_repr = build_skolem_fn_repr(&entry.base_name, &combo);
                     let mut new_subs = subs.clone();
-                    new_subs.insert(v.clone(), witness_sexp.clone());
+                    new_subs.insert(v.clone(), witness_repr.clone());
                     if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)? {
                         let (_, body_idx) = check_formula_holds_traced(
                             buffer,
@@ -1509,7 +1509,7 @@ pub(super) fn check_formula_holds_traced(
                         steps.push(ProofStep {
                             rule: ProofRule::ExistsWitness((
                                 v.clone(),
-                                parse_sexp_to_term(&witness_sexp),
+                                parse_repr_to_term(&witness_repr),
                             )),
                             holds: true,
                             children: vec![body_idx],
@@ -1563,9 +1563,9 @@ pub(super) fn check_formula_holds_traced(
                     }
                     let mut child_indices = Vec::new();
                     let mut entity_terms = Vec::new();
-                    for (sexp, term) in &members {
+                    for (fact_repr, term) in &members {
                         let mut new_subs = subs.clone();
-                        new_subs.insert(v.clone(), sexp.clone());
+                        new_subs.insert(v.clone(), fact_repr.clone());
                         let (_, body_idx) = check_formula_holds_traced(
                             buffer,
                             *body,
@@ -1589,9 +1589,9 @@ pub(super) fn check_formula_holds_traced(
             }
             let mut child_indices = Vec::new();
             let mut entity_terms = Vec::new();
-            for (sexp, term) in &members {
+            for (fact_repr, term) in &members {
                 let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), sexp.clone());
+                new_subs.insert(v.clone(), fact_repr.clone());
                 let (holds, body_idx) = check_formula_holds_traced(
                     buffer,
                     *body,
@@ -1639,9 +1639,9 @@ pub(super) fn check_formula_holds_traced(
                 }
             }
             let mut satisfying = 0u32;
-            for (sexp, _) in &members {
+            for (fact_repr, _) in &members {
                 let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), sexp.clone());
+                new_subs.insert(v.clone(), fact_repr.clone());
                 if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)? {
                     satisfying += 1;
                 }
@@ -1679,8 +1679,8 @@ pub(super) fn check_formula_holds_traced(
                 });
                 return Ok((result, idx));
             }
-            let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
-            let wrapped = wrap_with_tense(tense, &sexp);
+            let repr = reconstruct_repr_with_subs(buffer, node_id, subs);
+            let wrapped = wrap_with_tense(tense, &repr);
             let mut visited = HashSet::new();
             if check_predicate_in_kb(&wrapped, &*inner, 0, &mut visited) {
                 let idx = trace_predicate_provenance(&wrapped, inner, steps, 0, memo);
@@ -1699,8 +1699,8 @@ pub(super) fn check_formula_holds_traced(
             let resolved = resolve_args_for_dispatch(args, subs);
             if let Ok(result) = dispatch_to_backend(rel, &resolved) {
                 if result {
-                    if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
-                        assert_sexp(sexp, inner);
+                    if let Some(fact_repr) = build_ground_predicate_repr(rel, &resolved) {
+                        legacy_assert_repr(fact_repr, inner);
                     }
                 }
                 let idx = steps.len() as u32;
@@ -1713,8 +1713,8 @@ pub(super) fn check_formula_holds_traced(
             }
             if let Some(result) = try_arithmetic_evaluation(rel, args, subs) {
                 if result {
-                    if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
-                        assert_sexp(sexp, inner);
+                    if let Some(fact_repr) = build_ground_predicate_repr(rel, &resolved) {
+                        legacy_assert_repr(fact_repr, inner);
                     }
                 }
                 let idx = steps.len() as u32;
@@ -1725,8 +1725,8 @@ pub(super) fn check_formula_holds_traced(
                 });
                 return Ok((result, idx));
             }
-            let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
-            let wrapped = wrap_with_tense(tense, &sexp);
+            let repr = reconstruct_repr_with_subs(buffer, node_id, subs);
+            let wrapped = wrap_with_tense(tense, &repr);
             let mut visited = HashSet::new();
             let holds = check_predicate_in_kb(&wrapped, &*inner, 0, &mut visited);
             let idx = steps.len() as u32;

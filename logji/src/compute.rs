@@ -53,28 +53,28 @@ pub(super) fn try_arithmetic_evaluation(
     }
 }
 
-pub(super) fn parse_sexp_to_term(sexp: &str) -> LogicalTerm {
-    if let Some(name) = sexp
+pub(super) fn parse_repr_to_term(fact_repr: &str) -> LogicalTerm {
+    if let Some(name) = fact_repr
         .strip_prefix("(Const \"")
         .and_then(|s| s.strip_suffix("\")"))
     {
         LogicalTerm::Constant(name.to_string())
-    } else if let Some(n) = sexp.strip_prefix("(Num ").and_then(|s| s.strip_suffix(')')) {
+    } else if let Some(n) = fact_repr.strip_prefix("(Num ").and_then(|s| s.strip_suffix(')')) {
         LogicalTerm::Number(n.parse::<f64>().unwrap_or(0.0))
-    } else if let Some(name) = sexp
+    } else if let Some(name) = fact_repr
         .strip_prefix("(Desc \"")
         .and_then(|s| s.strip_suffix("\")"))
     {
         LogicalTerm::Description(name.to_string())
-    } else if sexp == "(Zoe)" {
+    } else if fact_repr == "(Zoe)" {
         LogicalTerm::Unspecified
-    } else if let Some(name) = sexp
+    } else if let Some(name) = fact_repr
         .strip_prefix("(Var \"")
         .and_then(|s| s.strip_suffix("\")"))
     {
         LogicalTerm::Variable(name.to_string())
     } else {
-        LogicalTerm::Variable(sexp.to_string())
+        LogicalTerm::Variable(fact_repr.to_string())
     }
 }
 
@@ -86,7 +86,7 @@ pub(super) fn resolve_args_for_dispatch(
         .map(|a| match a {
             LogicalTerm::Variable(v) => {
                 if let Some(s) = subs.get(v.as_str()) {
-                    parse_sexp_to_term(s)
+                    parse_repr_to_term(s)
                 } else {
                     a.clone()
                 }
@@ -159,7 +159,7 @@ pub(super) fn dispatch_check_membership(
     Ok(vec![])
 }
 
-pub(super) fn build_ground_predicate_sexp(
+pub(super) fn build_ground_predicate_repr(
     rel: &str,
     resolved_args: &[LogicalTerm],
 ) -> Option<String> {
@@ -216,9 +216,9 @@ pub(super) fn batch_evaluate_compute_for_members(
     let mut results = vec![false; members.len()];
     let mut pending: Vec<(usize, Vec<LogicalTerm>)> = Vec::new();
 
-    for (i, (member_sexp, _)) in members.iter().enumerate() {
+    for (i, (member_repr, _)) in members.iter().enumerate() {
         let mut s = subs.clone();
-        s.insert(var.to_string(), member_sexp.clone());
+        s.insert(var.to_string(), member_repr.clone());
 
         if let Some(r) = try_arithmetic_evaluation(rel, args, &s) {
             results[i] = r;

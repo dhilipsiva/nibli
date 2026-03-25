@@ -456,11 +456,11 @@ fn transform_compute_nodes(buf: &mut LogicBuffer, compute_preds: &HashSet<String
         .collect();
 }
 
-fn debug_sexp(buffer: &LogicBuffer) -> String {
+fn debug_logic(buffer: &LogicBuffer) -> String {
     buffer
         .roots
         .iter()
-        .map(|&id| reconstruct_sexp(buffer, id))
+        .map(|&id| reconstruct_repr(buffer, id))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -522,7 +522,7 @@ impl GuestSession for Session {
     fn compile_debug(&self, input: String) -> Result<String, NibliError> {
         let (mut buf, _, _warnings) = compile_pipeline(&input, &self.last_relation.borrow())?;
         transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
-        Ok(debug_sexp(&buf))
+        Ok(debug_logic(&buf))
     }
 
     fn reset_kb(&self) -> Result<(), NibliError> {
@@ -572,13 +572,13 @@ impl GuestSession for Session {
 
 use std::fmt::Write;
 
-fn reconstruct_sexp(buffer: &LogicBuffer, node_id: u32) -> String {
+fn reconstruct_repr(buffer: &LogicBuffer, node_id: u32) -> String {
     let mut out = String::with_capacity(256);
-    write_sexp(&mut out, buffer, node_id);
+    write_repr(&mut out, buffer, node_id);
     out
 }
 
-fn write_sexp(out: &mut String, buffer: &LogicBuffer, node_id: u32) {
+fn write_repr(out: &mut String, buffer: &LogicBuffer, node_id: u32) {
     match &buffer.nodes[node_id as usize] {
         LogicNode::Predicate((rel, args)) => {
             out.push_str("(Pred \"");
@@ -596,60 +596,60 @@ fn write_sexp(out: &mut String, buffer: &LogicBuffer, node_id: u32) {
         }
         LogicNode::AndNode((l, r)) => {
             out.push_str("(And ");
-            write_sexp(out, buffer, *l);
+            write_repr(out, buffer, *l);
             out.push(' ');
-            write_sexp(out, buffer, *r);
+            write_repr(out, buffer, *r);
             out.push(')');
         }
         LogicNode::OrNode((l, r)) => {
             out.push_str("(Or ");
-            write_sexp(out, buffer, *l);
+            write_repr(out, buffer, *l);
             out.push(' ');
-            write_sexp(out, buffer, *r);
+            write_repr(out, buffer, *r);
             out.push(')');
         }
         LogicNode::NotNode(inner) => {
             out.push_str("(Not ");
-            write_sexp(out, buffer, *inner);
+            write_repr(out, buffer, *inner);
             out.push(')');
         }
         LogicNode::ExistsNode((v, body)) => {
             out.push_str("(Exists \"");
             out.push_str(v);
             out.push_str("\" ");
-            write_sexp(out, buffer, *body);
+            write_repr(out, buffer, *body);
             out.push(')');
         }
         LogicNode::ForAllNode((v, body)) => {
             out.push_str("(ForAll \"");
             out.push_str(v);
             out.push_str("\" ");
-            write_sexp(out, buffer, *body);
+            write_repr(out, buffer, *body);
             out.push(')');
         }
         LogicNode::PastNode(inner) => {
             out.push_str("(Past ");
-            write_sexp(out, buffer, *inner);
+            write_repr(out, buffer, *inner);
             out.push(')');
         }
         LogicNode::PresentNode(inner) => {
             out.push_str("(Present ");
-            write_sexp(out, buffer, *inner);
+            write_repr(out, buffer, *inner);
             out.push(')');
         }
         LogicNode::FutureNode(inner) => {
             out.push_str("(Future ");
-            write_sexp(out, buffer, *inner);
+            write_repr(out, buffer, *inner);
             out.push(')');
         }
         LogicNode::ObligatoryNode(inner) => {
             out.push_str("(Obligatory ");
-            write_sexp(out, buffer, *inner);
+            write_repr(out, buffer, *inner);
             out.push(')');
         }
         LogicNode::PermittedNode(inner) => {
             out.push_str("(Permitted ");
-            write_sexp(out, buffer, *inner);
+            write_repr(out, buffer, *inner);
             out.push(')');
         }
         LogicNode::CountNode((v, count, body)) => {
@@ -658,7 +658,7 @@ fn write_sexp(out: &mut String, buffer: &LogicBuffer, node_id: u32) {
             out.push_str("\" ");
             let _ = write!(out, "{}", count);
             out.push(' ');
-            write_sexp(out, buffer, *body);
+            write_repr(out, buffer, *body);
             out.push(')');
         }
     }

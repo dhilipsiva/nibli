@@ -57,11 +57,11 @@ pub enum ProofRule {
     #[serde(rename = "compute_check")]
     ComputeCheck { method: String, detail: String },
     #[serde(rename = "asserted")]
-    Asserted { sexp: String },
+    Asserted { #[serde(rename = "sexp")] fact: String },
     #[serde(rename = "derived")]
-    Derived { label: String, sexp: String },
+    Derived { label: String, #[serde(rename = "sexp")] fact: String },
     #[serde(rename = "proof_ref")]
-    ProofRef { sexp: String },
+    ProofRef { #[serde(rename = "sexp")] fact: String },
 }
 
 // ── KB status wire types ──
@@ -109,29 +109,29 @@ impl ProofTrace {
     }
 }
 
-// ── S-expression humanizer ──
+// ── Fact display humanizer ──
 
-/// Parse and humanize a logji s-expression into readable notation.
+/// Parse and humanize a logji internal representation into readable notation.
 ///
 /// Converts internal representations like:
-///   `(Pred "danlu" (Cons (SkolemFn "sk_1" (Const "adam")) (Nil)))` → `danlu(sk_1(adam))`
+///   `(Pred "danlu" (Cons (SkolemFn "sk_1" (Const "adam")) (Nil)))` → `danlu(#1(adam))`
 ///   `(Past (Pred "klama" (Cons (Const "adam") (Nil))))` → `[past] klama(adam)`
 ///   `(Const "adam")` → `adam`
-pub fn humanize_sexp(sexp: &str) -> String {
-    let tokens = tokenize_sexp(sexp);
+pub fn humanize_fact(input: &str) -> String {
+    let tokens = tokenize_repr(input);
     let mut pos = 0;
-    match parse_sexp_node(&tokens, &mut pos) {
-        Some(node) => format_sexp_node(&node),
-        None => sexp.to_string(),
+    match parse_fact_node(&tokens, &mut pos) {
+        Some(node) => format_fact_node(&node),
+        None => input.to_string(),
     }
 }
 
-enum SexpNode {
+enum FactNode {
     Atom(String),
-    List(Vec<SexpNode>),
+    List(Vec<FactNode>),
 }
 
-fn tokenize_sexp(s: &str) -> Vec<String> {
+fn tokenize_repr(s: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut chars = s.chars().peekable();
     while let Some(&c) = chars.peek() {
@@ -176,7 +176,7 @@ fn tokenize_sexp(s: &str) -> Vec<String> {
     tokens
 }
 
-fn parse_sexp_node(tokens: &[String], pos: &mut usize) -> Option<SexpNode> {
+fn parse_fact_node(tokens: &[String], pos: &mut usize) -> Option<FactNode> {
     if *pos >= tokens.len() {
         return None;
     }
@@ -184,7 +184,7 @@ fn parse_sexp_node(tokens: &[String], pos: &mut usize) -> Option<SexpNode> {
         *pos += 1;
         let mut children = Vec::new();
         while *pos < tokens.len() && tokens[*pos] != ")" {
-            if let Some(child) = parse_sexp_node(tokens, pos) {
+            if let Some(child) = parse_fact_node(tokens, pos) {
                 children.push(child);
             } else {
                 break;
@@ -193,11 +193,11 @@ fn parse_sexp_node(tokens: &[String], pos: &mut usize) -> Option<SexpNode> {
         if *pos < tokens.len() {
             *pos += 1; // skip )
         }
-        Some(SexpNode::List(children))
+        Some(FactNode::List(children))
     } else {
         let tok = tokens[*pos].clone();
         *pos += 1;
-        Some(SexpNode::Atom(tok))
+        Some(FactNode::Atom(tok))
     }
 }
 
@@ -207,42 +207,42 @@ fn unquote(s: &str) -> &str {
         .unwrap_or(s)
 }
 
-fn format_sexp_node(node: &SexpNode) -> String {
+fn format_fact_node(node: &FactNode) -> String {
     match node {
-        SexpNode::Atom(s) => unquote(s).to_string(),
-        SexpNode::List(children) => {
+        FactNode::Atom(s) => unquote(s).to_string(),
+        FactNode::List(children) => {
             if children.is_empty() {
                 return "()".to_string();
             }
             let tag = match &children[0] {
-                SexpNode::Atom(s) => s.as_str(),
-                _ => return format_sexp_generic(children),
+                FactNode::Atom(s) => s.as_str(),
+                _ => return format_fact_generic(children),
             };
             match tag {
-                "Pred" => format_sexp_pred(children),
-                "Const" => format_sexp_extract(children),
+                "Pred" => format_fact_pred(children),
+                "Const" => format_fact_extract(children),
                 "Var" => {
                     if children.len() < 2 {
                         "?".to_string()
                     } else {
-                        format!("?{}", format_sexp_node(&children[1]))
+                        format!("?{}", format_fact_node(&children[1]))
                     }
                 }
-                "Num" => format_sexp_num(children),
+                "Num" => format_fact_num(children),
                 "Desc" => {
                     if children.len() < 2 {
                         "le ?".to_string()
                     } else {
-                        format!("le {}", format_sexp_node(&children[1]))
+                        format!("le {}", format_fact_node(&children[1]))
                     }
                 }
                 "Zoe" => "_".to_string(),
                 "Nil" => String::new(),
                 "Cons" => {
-                    let items = collect_cons_items(children);
+                    let items = collect_arg_items(children);
                     items
                         .iter()
-                        .map(|n| format_sexp_node(n))
+                        .map(|n| format_fact_node(n))
                         .collect::<Vec<_>>()
                         .join(", ")
                 }
@@ -250,8 +250,8 @@ fn format_sexp_node(node: &SexpNode) -> String {
                     if children.len() < 3 {
                         "#?".to_string()
                     } else {
-                        let name = format_sexp_node(&children[1]);
-                        let dep = format_sexp_node(&children[2]);
+                        let name = format_fact_node(&children[1]);
+                        let dep = format_fact_node(&children[2]);
                         format!("{}({})", humanize_term(name), humanize_term(dep))
                     }
                 }
@@ -261,8 +261,8 @@ fn format_sexp_node(node: &SexpNode) -> String {
                     } else {
                         format!(
                             "{}, {}",
-                            format_sexp_node(&children[1]),
-                            format_sexp_node(&children[2])
+                            format_fact_node(&children[1]),
+                            format_fact_node(&children[2])
                         )
                     }
                 }
@@ -271,36 +271,36 @@ fn format_sexp_node(node: &SexpNode) -> String {
                     if children.len() < 2 {
                         label
                     } else {
-                        format!("[{}] {}", label, format_sexp_node(&children[1]))
+                        format!("[{}] {}", label, format_fact_node(&children[1]))
                     }
                 }
-                "Or" => format_sexp_binop("∨", children),
-                "And" => format_sexp_binop("∧", children),
+                "Or" => format_fact_binop("∨", children),
+                "And" => format_fact_binop("∧", children),
                 "Not" => {
                     if children.len() < 2 {
                         "¬?".to_string()
                     } else {
-                        format!("¬{}", format_sexp_node(&children[1]))
+                        format!("¬{}", format_fact_node(&children[1]))
                     }
                 }
-                _ => format_sexp_generic(children),
+                _ => format_fact_generic(children),
             }
         }
     }
 }
 
-fn format_sexp_pred(children: &[SexpNode]) -> String {
+fn format_fact_pred(children: &[FactNode]) -> String {
     if children.len() < 3 {
         return "?pred".to_string();
     }
-    let name = format_sexp_node(&children[1]);
-    let args = collect_cons_list(&children[2]);
+    let name = format_fact_node(&children[1]);
+    let args = collect_arg_list(&children[2]);
 
     // Collapse Neo-Davidsonian role predicates (e.g., "gerku_x1") into compact form.
     // "gerku_x1(sk_0, adam)" → "gerku.x1(adam)" (hide event variable)
     if let Some(base_and_role) = parse_role_predicate(&name) {
         let formatted: Vec<String> = args.iter()
-            .map(|a| humanize_term(format_sexp_node(a)))
+            .map(|a| humanize_term(format_fact_node(a)))
             .filter(|s| !is_event_skolem(s))  // hide event Skolem args
             .collect();
         if formatted.is_empty() {
@@ -310,7 +310,7 @@ fn format_sexp_pred(children: &[SexpNode]) -> String {
         }
     } else {
         let formatted: Vec<String> = args.iter()
-            .map(|a| humanize_term(format_sexp_node(a)))
+            .map(|a| humanize_term(format_fact_node(a)))
             .collect();
         if formatted.is_empty() {
             name
@@ -356,20 +356,20 @@ fn humanize_term(s: String) -> String {
     s
 }
 
-fn format_sexp_extract(children: &[SexpNode]) -> String {
+fn format_fact_extract(children: &[FactNode]) -> String {
     if children.len() < 2 {
         "?".to_string()
     } else {
-        humanize_term(format_sexp_node(&children[1]))
+        humanize_term(format_fact_node(&children[1]))
     }
 }
 
-fn format_sexp_num(children: &[SexpNode]) -> String {
+fn format_fact_num(children: &[FactNode]) -> String {
     if children.len() < 2 {
         return "0".to_string();
     }
     match &children[1] {
-        SexpNode::Atom(s) => {
+        FactNode::Atom(s) => {
             if let Ok(n) = s.parse::<f64>() {
                 if n == (n as i64) as f64 {
                     format!("{}", n as i64)
@@ -380,24 +380,24 @@ fn format_sexp_num(children: &[SexpNode]) -> String {
                 s.clone()
             }
         }
-        n => format_sexp_node(n),
+        n => format_fact_node(n),
     }
 }
 
-fn collect_cons_list(node: &SexpNode) -> Vec<&SexpNode> {
+fn collect_arg_list(node: &FactNode) -> Vec<&FactNode> {
     match node {
-        SexpNode::List(children) => {
+        FactNode::List(children) => {
             if children.is_empty() {
                 return vec![];
             }
             let tag = match &children[0] {
-                SexpNode::Atom(s) => s.as_str(),
+                FactNode::Atom(s) => s.as_str(),
                 _ => return vec![node],
             };
             match tag {
                 "Cons" if children.len() >= 3 => {
                     let mut result = vec![&children[1]];
-                    result.extend(collect_cons_list(&children[2]));
+                    result.extend(collect_arg_list(&children[2]));
                     result
                 }
                 "Nil" => vec![],
@@ -408,29 +408,29 @@ fn collect_cons_list(node: &SexpNode) -> Vec<&SexpNode> {
     }
 }
 
-fn collect_cons_items(children: &[SexpNode]) -> Vec<&SexpNode> {
+fn collect_arg_items(children: &[FactNode]) -> Vec<&FactNode> {
     if children.len() < 3 {
         return vec![];
     }
     let mut result = vec![&children[1]];
-    result.extend(collect_cons_list(&children[2]));
+    result.extend(collect_arg_list(&children[2]));
     result
 }
 
-fn format_sexp_binop(op: &str, children: &[SexpNode]) -> String {
+fn format_fact_binop(op: &str, children: &[FactNode]) -> String {
     if children.len() < 3 {
         return op.to_string();
     }
     format!(
         "({} {} {})",
-        format_sexp_node(&children[1]),
+        format_fact_node(&children[1]),
         op,
-        format_sexp_node(&children[2])
+        format_fact_node(&children[2])
     )
 }
 
-fn format_sexp_generic(children: &[SexpNode]) -> String {
-    let parts: Vec<String> = children.iter().map(format_sexp_node).collect();
+fn format_fact_generic(children: &[FactNode]) -> String {
+    let parts: Vec<String> = children.iter().map(format_fact_node).collect();
     format!("({})", parts.join(" "))
 }
 
@@ -441,7 +441,7 @@ mod tests {
     #[test]
     fn test_humanize_simple_pred() {
         assert_eq!(
-            humanize_sexp(r#"(Pred "gerku" (Cons (Const "adam") (Nil)))"#),
+            humanize_fact(r#"(Pred "gerku" (Cons (Const "adam") (Nil)))"#),
             "gerku(adam)"
         );
     }
@@ -449,7 +449,7 @@ mod tests {
     #[test]
     fn test_humanize_skolem() {
         assert_eq!(
-            humanize_sexp(r#"(Pred "danlu" (Cons (SkolemFn "sk_1" (Const "adam")) (Nil)))"#),
+            humanize_fact(r#"(Pred "danlu" (Cons (SkolemFn "sk_1" (Const "adam")) (Nil)))"#),
             "danlu(sk_1(adam))"
         );
     }
@@ -457,7 +457,7 @@ mod tests {
     #[test]
     fn test_humanize_tense() {
         assert_eq!(
-            humanize_sexp(r#"(Past (Pred "klama" (Cons (Const "adam") (Nil))))"#),
+            humanize_fact(r#"(Past (Pred "klama" (Cons (Const "adam") (Nil))))"#),
             "[past] klama(adam)"
         );
     }
@@ -465,7 +465,7 @@ mod tests {
     #[test]
     fn test_humanize_multi_arg() {
         assert_eq!(
-            humanize_sexp(r#"(Pred "klama" (Cons (Const "adam") (Cons (Const "paris") (Nil))))"#),
+            humanize_fact(r#"(Pred "klama" (Cons (Const "adam") (Cons (Const "paris") (Nil))))"#),
             "klama(adam, paris)"
         );
     }
@@ -473,7 +473,7 @@ mod tests {
     #[test]
     fn test_humanize_zoe() {
         assert_eq!(
-            humanize_sexp(r#"(Pred "klama" (Cons (Const "adam") (Cons (Zoe) (Nil))))"#),
+            humanize_fact(r#"(Pred "klama" (Cons (Const "adam") (Cons (Zoe) (Nil))))"#),
             "klama(adam, _)"
         );
     }
@@ -481,7 +481,7 @@ mod tests {
     #[test]
     fn test_humanize_number() {
         assert_eq!(
-            humanize_sexp(r#"(Pred "pilji" (Cons (Num 3) (Cons (Num 4) (Nil))))"#),
+            humanize_fact(r#"(Pred "pilji" (Cons (Num 3) (Cons (Num 4) (Nil))))"#),
             "pilji(3, 4)"
         );
     }
@@ -489,7 +489,7 @@ mod tests {
     #[test]
     fn test_humanize_desc() {
         assert_eq!(
-            humanize_sexp(r#"(Pred "klama" (Cons (Desc "gerku") (Nil)))"#),
+            humanize_fact(r#"(Pred "klama" (Cons (Desc "gerku") (Nil)))"#),
             "klama(le gerku)"
         );
     }
@@ -497,7 +497,7 @@ mod tests {
     #[test]
     fn test_humanize_negation() {
         assert_eq!(
-            humanize_sexp(r#"(Not (Pred "gerku" (Cons (Const "adam") (Nil))))"#),
+            humanize_fact(r#"(Not (Pred "gerku" (Cons (Const "adam") (Nil))))"#),
             "¬gerku(adam)"
         );
     }
@@ -505,7 +505,7 @@ mod tests {
     #[test]
     fn test_humanize_dep_pair_skolem() {
         assert_eq!(
-            humanize_sexp(r#"(SkolemFn "sk_2" (DepPair (Const "adam") (Const "bob")))"#),
+            humanize_fact(r#"(SkolemFn "sk_2" (DepPair (Const "adam") (Const "bob")))"#),
             "sk_2(adam, bob)"
         );
     }
@@ -513,7 +513,7 @@ mod tests {
     #[test]
     fn test_humanize_fallback() {
         // Plain string that isn't an s-expression
-        assert_eq!(humanize_sexp("hello"), "hello");
+        assert_eq!(humanize_fact("hello"), "hello");
     }
 
     #[test]
@@ -521,7 +521,7 @@ mod tests {
         let trace = ProofTrace {
             steps: vec![ProofStep {
                 rule: ProofRule::Asserted {
-                    sexp: r#"(Pred "gerku" (Cons (Const "adam") (Nil)))"#.to_string(),
+                    fact: r#"(Pred "gerku" (Cons (Const "adam") (Nil)))"#.to_string(),
                 },
                 holds: true,
                 children: vec![],
@@ -706,16 +706,16 @@ impl ProofRule {
                 format!("Count: expected {}, got {}", expected, actual)
             }
             Self::PredicateCheck { method, detail } => {
-                format!("Predicate ({}): {}", method, humanize_sexp(detail))
+                format!("Predicate ({}): {}", method, humanize_fact(detail))
             }
             Self::ComputeCheck { method, detail } => {
-                format!("Compute ({}): {}", method, humanize_sexp(detail))
+                format!("Compute ({}): {}", method, humanize_fact(detail))
             }
-            Self::Asserted { sexp } => format!("Asserted: {}", humanize_sexp(sexp)),
-            Self::Derived { label, sexp } => {
-                format!("Derived ({}): {}", label, humanize_sexp(sexp))
+            Self::Asserted { fact } => format!("Asserted: {}", humanize_fact(fact)),
+            Self::Derived { label, fact } => {
+                format!("Derived ({}): {}", label, humanize_fact(fact))
             }
-            Self::ProofRef { sexp } => format!("(proved above): {}", humanize_sexp(sexp)),
+            Self::ProofRef { fact } => format!("(proved above): {}", humanize_fact(fact)),
         }
     }
 
@@ -769,17 +769,17 @@ impl ProofRule {
                 format!("Count: expected={}, actual={} -> {}", expected, actual, tag)
             }
             Self::PredicateCheck { method, detail } => {
-                format!("{}: {} -> {}", method, humanize_sexp(detail), tag)
+                format!("{}: {} -> {}", method, humanize_fact(detail), tag)
             }
             Self::ComputeCheck { method, detail } => {
-                format!("Compute ({}): {} -> {}", method, humanize_sexp(detail), tag)
+                format!("Compute ({}): {} -> {}", method, humanize_fact(detail), tag)
             }
-            Self::Asserted { sexp } => format!("Fact: {} -> {}", humanize_sexp(sexp), tag),
-            Self::Derived { label, sexp } => {
-                format!("Rule ({}): {} -> {}", humanize_rule_label(label), humanize_sexp(sexp), tag)
+            Self::Asserted { fact } => format!("Fact: {} -> {}", humanize_fact(fact), tag),
+            Self::Derived { label, fact } => {
+                format!("Rule ({}): {} -> {}", humanize_rule_label(label), humanize_fact(fact), tag)
             }
-            Self::ProofRef { sexp } => {
-                format!("(see above): {} -> {}", humanize_sexp(sexp), tag)
+            Self::ProofRef { fact } => {
+                format!("(see above): {} -> {}", humanize_fact(fact), tag)
             }
         }
     }
