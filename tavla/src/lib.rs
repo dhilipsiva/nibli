@@ -11,6 +11,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
 use nibli_engine::NibliEngine;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -157,6 +158,15 @@ pub enum TrustVerdict {
     Quarantined,
 }
 
+/// Signature verification policy for inbound envelopes.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum SignaturePolicy {
+    /// Accept unsigned (empty sig) envelopes — transition period.
+    AcceptUnsigned,
+    /// Require valid ed25519 signature on every envelope.
+    RequireSigned,
+}
+
 /// A signed gossip envelope — the atomic unit of federation.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Envelope {
@@ -174,8 +184,11 @@ pub struct Envelope {
     pub topics: Vec<String>,
     /// Wall-clock timestamp (ISO 8601, informational).
     pub timestamp: String,
-    /// Signature placeholder (not verified yet).
+    /// Ed25519 signature over canonical_bytes().
     pub sig: Vec<u8>,
+    /// Author's ed25519 public key (32 bytes). Peers use this for verification.
+    #[serde(default)]
+    pub pub_key: Vec<u8>,
     /// True if this envelope was accepted but the author was untrusted.
     #[serde(default)]
     pub quarantined: bool,
@@ -202,6 +215,19 @@ impl Envelope {
         let bytes = serde_json::to_vec(&canonical).unwrap();
         let hash = Sha256::digest(&bytes);
         hex_encode(hash)
+    }
+
+    /// Returns the canonical bytes used for signing (same fields as compute_id).
+    pub fn canonical_bytes(&self) -> Vec<u8> {
+        let canonical = serde_json::json!({
+            "author": self.author,
+            "clock": self.clock,
+            "op": self.op,
+            "stance": self.stance,
+            "topics": self.topics,
+            "timestamp": self.timestamp,
+        });
+        serde_json::to_vec(&canonical).unwrap()
     }
 }
 
@@ -431,6 +457,12 @@ pub struct GossipNode {
     crdt_log: CrdtLog,
     /// Trust policy for inbound envelope filtering.
     pub trust_policy: TrustPolicy,
+    /// Signature verification policy.
+    pub sig_policy: SignaturePolicy,
+    /// Ed25519 signing key (auto-generated).
+    signing_key: SigningKey,
+    /// Known peer public keys (agent_id → verifying key).
+    peer_keys: HashMap<AgentId, VerifyingKey>,
     /// Detected contradictions (paraconsistent — both sides kept).
     contradictions: Vec<Contradiction>,
     /// Counter for contradiction IDs.
@@ -441,14 +473,20 @@ pub struct GossipNode {
 
 impl GossipNode {
     /// Create a new gossip node with the given agent identity.
-    /// Default trust policy: AcceptAll.
+    /// Auto-generates an ephemeral ed25519 keypair.
+    /// Default policies: AcceptAll trust, AcceptUnsigned signatures.
     pub fn new(agent_id: impl Into<String>) -> Self {
+        let mut rng = rand::thread_rng();
+        let signing_key = SigningKey::generate(&mut rng);
         GossipNode {
             agent_id: agent_id.into(),
             engine: NibliEngine::new(),
             clock: VectorClock::new(),
             crdt_log: CrdtLog::new(),
             trust_policy: TrustPolicy::AcceptAll,
+            sig_policy: SignaturePolicy::AcceptUnsigned,
+            signing_key,
+            peer_keys: HashMap::new(),
             contradictions: Vec::new(),
             contradiction_counter: 0,
             received_via: HashMap::new(),
@@ -457,16 +495,47 @@ impl GossipNode {
 
     /// Create a new gossip node with a specific trust policy.
     pub fn with_policy(agent_id: impl Into<String>, policy: TrustPolicy) -> Self {
+        let mut rng = rand::thread_rng();
+        let signing_key = SigningKey::generate(&mut rng);
         GossipNode {
             agent_id: agent_id.into(),
             engine: NibliEngine::new(),
             clock: VectorClock::new(),
             crdt_log: CrdtLog::new(),
             trust_policy: policy,
+            sig_policy: SignaturePolicy::AcceptUnsigned,
+            signing_key,
+            peer_keys: HashMap::new(),
             contradictions: Vec::new(),
             contradiction_counter: 0,
             received_via: HashMap::new(),
         }
+    }
+
+    /// Get this node's public key (for sharing with peers).
+    pub fn public_key(&self) -> VerifyingKey {
+        self.signing_key.verifying_key()
+    }
+
+    /// Get this node's public key as raw bytes (for wire protocol).
+    pub fn public_key_bytes(&self) -> Vec<u8> {
+        self.signing_key.verifying_key().to_bytes().to_vec()
+    }
+
+    /// Register a peer's public key for signature verification.
+    pub fn register_peer_key(&mut self, agent_id: &str, key: VerifyingKey) {
+        self.peer_keys.insert(agent_id.to_string(), key);
+    }
+
+    /// Register a peer's public key from raw bytes.
+    pub fn register_peer_key_bytes(&mut self, agent_id: &str, key_bytes: &[u8]) -> Result<(), String> {
+        let bytes: [u8; 32] = key_bytes
+            .try_into()
+            .map_err(|_| format!("invalid public key length: expected 32, got {}", key_bytes.len()))?;
+        let key = VerifyingKey::from_bytes(&bytes)
+            .map_err(|e| format!("invalid ed25519 public key: {e}"))?;
+        self.peer_keys.insert(agent_id.to_string(), key);
+        Ok(())
     }
 
     // ─── Trust as knowledge ──────────────────────────────────────
@@ -531,6 +600,53 @@ impl GossipNode {
                 }
             }
         }
+    }
+
+    // ─── Signature verification ─────────────────────────────────
+
+    /// Verify an envelope's ed25519 signature.
+    /// Returns Ok(()) if valid, Err(reason) if rejected.
+    fn verify_envelope_signature(&mut self, envelope: &Envelope) -> Result<(), String> {
+        // Self-authored envelopes are always trusted (signed by us).
+        if envelope.author == self.agent_id {
+            return Ok(());
+        }
+
+        // Empty signature: accept or reject based on policy.
+        if envelope.sig.is_empty() {
+            return match self.sig_policy {
+                SignaturePolicy::AcceptUnsigned => Ok(()),
+                SignaturePolicy::RequireSigned => Err("missing signature".to_string()),
+            };
+        }
+
+        // Parse the signature bytes.
+        let sig_bytes: [u8; 64] = envelope.sig.as_slice().try_into()
+            .map_err(|_| format!("invalid signature length: expected 64, got {}", envelope.sig.len()))?;
+        let signature = ed25519_dalek::Signature::from_bytes(&sig_bytes);
+
+        // Get the verifying key: prefer registered peer key, fall back to envelope's embedded key (TOFU).
+        let verifying_key = if let Some(key) = self.peer_keys.get(&envelope.author) {
+            *key
+        } else if !envelope.pub_key.is_empty() {
+            // TOFU: trust on first use — register the key from this envelope.
+            let key_bytes: [u8; 32] = envelope.pub_key.as_slice().try_into()
+                .map_err(|_| format!("invalid pub_key length: expected 32, got {}", envelope.pub_key.len()))?;
+            let key = VerifyingKey::from_bytes(&key_bytes)
+                .map_err(|e| format!("invalid ed25519 public key: {e}"))?;
+            self.peer_keys.insert(envelope.author.clone(), key);
+            key
+        } else {
+            return match self.sig_policy {
+                SignaturePolicy::AcceptUnsigned => Ok(()),
+                SignaturePolicy::RequireSigned => Err("signed but no public key available".to_string()),
+            };
+        };
+
+        // Verify signature against canonical bytes.
+        let canonical = envelope.canonical_bytes();
+        verifying_key.verify(&canonical, &signature)
+            .map_err(|_| "signature verification failed".to_string())
     }
 
     /// Assert trust: la .<me>. cu lacri la .<peer>.
@@ -680,7 +796,7 @@ impl GossipNode {
             &timestamp,
         );
 
-        let envelope = Envelope {
+        let mut envelope = Envelope {
             id: id.clone(),
             author: self.agent_id.clone(),
             clock: self.clock.clone(),
@@ -689,8 +805,12 @@ impl GossipNode {
             topics,
             timestamp: timestamp.clone(),
             sig: Vec::new(),
+            pub_key: self.public_key_bytes(),
             quarantined: false,
         };
+        // Sign the canonical form.
+        let sig = self.signing_key.sign(&envelope.canonical_bytes());
+        envelope.sig = sig.to_bytes().to_vec();
 
         self.crdt_log.insert(envelope.clone());
 
@@ -749,7 +869,7 @@ impl GossipNode {
             &timestamp,
         );
 
-        let envelope = Envelope {
+        let mut envelope = Envelope {
             id: id.clone(),
             author: self.agent_id.clone(),
             clock: self.clock.clone(),
@@ -758,8 +878,11 @@ impl GossipNode {
             topics,
             timestamp,
             sig: Vec::new(),
+            pub_key: self.public_key_bytes(),
             quarantined: false,
         };
+        let sig = self.signing_key.sign(&envelope.canonical_bytes());
+        envelope.sig = sig.to_bytes().to_vec();
 
         self.crdt_log.insert(envelope.clone());
         self.rebuild_kb();
@@ -801,6 +924,23 @@ impl GossipNode {
                 was_retraction: false,
                 was_quarantined: false,
                 was_rejected: false,
+                contradiction: None,
+            });
+        }
+
+        // Verify signature before any processing.
+        if let Err(reason) = self.verify_envelope_signature(&envelope) {
+            println!(
+                "[tavla] {} ✗ {}: signature rejected ({})",
+                self.agent_id, envelope.author, reason
+            );
+            return Ok(IngestResult {
+                envelope_id: envelope.id,
+                fact_id: None,
+                was_duplicate: false,
+                was_retraction: false,
+                was_quarantined: false,
+                was_rejected: true,
                 contradiction: None,
             });
         }

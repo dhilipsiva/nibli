@@ -116,6 +116,7 @@ fn invalid_lojban_rejected_on_ingest() {
         topics: vec![],
         timestamp: "2026-03-20T00:00:00Z".to_string(),
         sig: vec![],
+        pub_key: vec![],
         quarantined: false,
     };
 
@@ -472,6 +473,7 @@ fn crdt_merge_idempotent() {
         topics: vec!["gerku".to_string()],
         timestamp: "2026-03-20T00:00:00Z".to_string(),
         sig: vec![],
+        pub_key: vec![],
         quarantined: false,
     };
 
@@ -847,4 +849,91 @@ fn distrust_revokes_and_reevaluates() {
         1,
         "Bob's fact should be quarantined after distrust"
     );
+}
+
+// ─── Signature verification ─────────────────────────────────────
+
+/// Signed envelopes from known peers are accepted.
+#[test]
+fn signed_envelope_accepted_from_known_peer() {
+    let mut node_a = GossipNode::new("alis");
+    let mut node_b = GossipNode::new("bob");
+
+    // Register each other's public keys.
+    node_b.register_peer_key("alis", node_a.public_key());
+
+    // Alis asserts (auto-signed).
+    let env = node_a.assert_local("la .adam. cu gerku").unwrap();
+
+    // Bob ingests — should succeed (valid signature, known key).
+    let result = node_b.ingest(env).unwrap();
+    assert!(result.fact_id.is_some(), "signed envelope should be accepted");
+    assert!(!result.was_rejected);
+}
+
+/// Forged envelopes (wrong signature) are rejected when policy is RequireSigned.
+#[test]
+fn forged_envelope_rejected() {
+    let mut node_a = GossipNode::new("alis");
+    let mut node_b = GossipNode::new("bob");
+    node_b.sig_policy = tavla::SignaturePolicy::RequireSigned;
+
+    // Register alis's real public key.
+    node_b.register_peer_key("alis", node_a.public_key());
+
+    // Alis asserts (auto-signed with her key).
+    let mut env = node_a.assert_local("la .adam. cu gerku").unwrap();
+
+    // Tamper with the envelope content (change the text in the op).
+    env.op = tavla::GossipOp::AssertLojban("la .adam. cu mlatu".to_string());
+    // The sig is now invalid because canonical_bytes() changed.
+
+    let result = node_b.ingest(env).unwrap();
+    assert!(result.was_rejected, "forged envelope should be rejected");
+    assert!(result.fact_id.is_none());
+}
+
+/// Unsigned envelopes accepted under AcceptUnsigned policy (default).
+#[test]
+fn unsigned_envelope_accepted_under_accept_unsigned_policy() {
+    let mut node_b = GossipNode::new("bob");
+
+    let unsigned_env = tavla::Envelope {
+        id: "unsigned123".to_string(),
+        author: "alis".to_string(),
+        clock: tavla::VectorClock::new(),
+        op: tavla::GossipOp::AssertLojban("la .adam. cu gerku".to_string()),
+        stance: tavla::EpistemicStance::Deduced,
+        topics: vec!["gerku".to_string()],
+        timestamp: "2026-03-25T00:00:00Z".to_string(),
+        sig: vec![],
+        pub_key: vec![],
+        quarantined: false,
+    };
+
+    let result = node_b.ingest(unsigned_env).unwrap();
+    assert!(result.fact_id.is_some(), "unsigned should be accepted under AcceptUnsigned");
+}
+
+/// Unsigned envelopes rejected under RequireSigned policy.
+#[test]
+fn unsigned_envelope_rejected_under_require_signed_policy() {
+    let mut node_b = GossipNode::new("bob");
+    node_b.sig_policy = tavla::SignaturePolicy::RequireSigned;
+
+    let unsigned_env = tavla::Envelope {
+        id: "unsigned456".to_string(),
+        author: "alis".to_string(),
+        clock: tavla::VectorClock::new(),
+        op: tavla::GossipOp::AssertLojban("la .adam. cu gerku".to_string()),
+        stance: tavla::EpistemicStance::Deduced,
+        topics: vec!["gerku".to_string()],
+        timestamp: "2026-03-25T00:00:00Z".to_string(),
+        sig: vec![],
+        pub_key: vec![],
+        quarantined: false,
+    };
+
+    let result = node_b.ingest(unsigned_env).unwrap();
+    assert!(result.was_rejected, "unsigned should be rejected under RequireSigned");
 }

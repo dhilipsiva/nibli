@@ -208,6 +208,8 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 
 **Server hardening:** nibli-server has request timeouts (default 30s, `NIBLI_SERVER_REQUEST_TIMEOUT_SECS`) and rate limiting (default 50 req/s, `NIBLI_SERVER_RATE_LIMIT_RPS`) on GraphQL endpoints. Health/readiness/metrics endpoints are not rate limited. Rate limit rejections return HTTP 429. Timeouts return HTTP 408.
 
-All crates compile cleanly with rustc 1.94.0. All 30 tavla tests pass.
+**Gossip signature verification:** tavla envelopes are signed with ed25519 (auto-generated ephemeral keypair per `GossipNode`). On ingest, signatures are verified against registered peer keys or TOFU (trust on first use — public key embedded in envelope). `SignaturePolicy::AcceptUnsigned` (default) accepts legacy unsigned envelopes; `SignaturePolicy::RequireSigned` rejects them. Forged envelopes (tampered content) are rejected before trust evaluation.
+
+All crates compile cleanly with rustc 1.94.0. All 35 tavla tests pass.
 
 **Next up:** Deferred items remain outside the closed roadmap: async compute backend follow-up work, richer browser-side transport/UI controls, and book-polish passes tracked in their local notes.
