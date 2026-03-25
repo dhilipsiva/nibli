@@ -8,7 +8,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../jbovlaste-en.xml");
 
     let xml_path = "../jbovlaste-en.xml";
-    let content = fs::read_to_string(xml_path).expect("Failed to read jbovlaste-en.xml");
+    let content = fs::read_to_string(xml_path).ok();
 
     // Collect entries first (phf_codegen borrows value strings for the map's lifetime)
     let mut entries: Vec<(String, String)> = Vec::new();
@@ -16,18 +16,20 @@ fn main() {
     let mut lujvo_count: usize = 0;
     let mut cmavo_count: usize = 0;
 
-    for block in content.split("<valsi ") {
-        let word = extract_attribute(block, "word=\"");
-        let typ = extract_attribute(block, "type=\"");
+    if let Some(content) = content {
+        for block in content.split("<valsi ") {
+            let word = extract_attribute(block, "word=\"");
+            let typ = extract_attribute(block, "type=\"");
 
-        if word.is_empty() {
-            continue;
-        }
+            if word.is_empty() {
+                continue;
+            }
 
-        match typ {
-            "gismu" | "lujvo" => {
-                let arity =
-                    if let Some(&(_, a)) = CORE_GISMU_ARITIES.iter().find(|(w, _)| *w == word) {
+            match typ {
+                "gismu" | "lujvo" => {
+                    let arity = if let Some(&(_, a)) =
+                        CORE_GISMU_ARITIES.iter().find(|(w, _)| *w == word)
+                    {
                         a
                     } else if let Some(definition) = extract_definition(block) {
                         extract_arity(definition)
@@ -35,35 +37,55 @@ fn main() {
                         2
                     };
 
-                let gloss = extract_glossword(block).unwrap_or(word);
-                let escaped_gloss = escape_str(gloss);
-                let value = format!(
-                    "DictEntry {{ arity: Some({}), gloss: \"{}\" }}",
-                    arity, escaped_gloss
-                );
-                entries.push((word.to_string(), value));
+                    let gloss = extract_glossword(block).unwrap_or(word);
+                    let escaped_gloss = escape_str(gloss);
+                    let value = format!(
+                        "DictEntry {{ arity: Some({}), gloss: \"{}\" }}",
+                        arity, escaped_gloss
+                    );
+                    entries.push((word.to_string(), value));
 
-                match typ {
-                    "gismu" => gismu_count += 1,
-                    "lujvo" => lujvo_count += 1,
-                    _ => {}
+                    match typ {
+                        "gismu" => gismu_count += 1,
+                        "lujvo" => lujvo_count += 1,
+                        _ => {}
+                    }
                 }
+                "cmavo" | "cmavo-compound" => {
+                    let gloss = if let Some(&(_, g)) =
+                        CMAVO_GLOSS_OVERRIDES.iter().find(|(w, _)| *w == word)
+                    {
+                        g
+                    } else {
+                        extract_glossword(block).unwrap_or(word)
+                    };
+                    let escaped_gloss = escape_str(gloss);
+                    let value =
+                        format!("DictEntry {{ arity: None, gloss: \"{}\" }}", escaped_gloss);
+                    entries.push((word.to_string(), value));
+                    cmavo_count += 1;
+                }
+                _ => continue,
             }
-            "cmavo" | "cmavo-compound" => {
-                let gloss = if let Some(&(_, g)) =
-                    CMAVO_GLOSS_OVERRIDES.iter().find(|(w, _)| *w == word)
-                {
-                    g
-                } else {
-                    extract_glossword(block).unwrap_or(word)
-                };
-                let escaped_gloss = escape_str(gloss);
-                let value =
-                    format!("DictEntry {{ arity: None, gloss: \"{}\" }}", escaped_gloss);
-                entries.push((word.to_string(), value));
-                cmavo_count += 1;
-            }
-            _ => continue,
+        }
+    } else {
+        println!("cargo:warning=jbovlaste-en.xml not found, using fallback dictionary entries");
+        for (word, arity, gloss) in FALLBACK_GISMU_ENTRIES {
+            let value = format!(
+                "DictEntry {{ arity: Some({}), gloss: \"{}\" }}",
+                arity,
+                escape_str(gloss)
+            );
+            entries.push(((*word).to_string(), value));
+            gismu_count += 1;
+        }
+        for (word, gloss) in CMAVO_GLOSS_OVERRIDES {
+            let value = format!(
+                "DictEntry {{ arity: None, gloss: \"{}\" }}",
+                escape_str(gloss)
+            );
+            entries.push(((*word).to_string(), value));
+            cmavo_count += 1;
         }
     }
 
@@ -222,6 +244,60 @@ const CORE_GISMU_ARITIES: &[(&str, usize)] = &[
     ("xunre", 1),
     ("pelxu", 1),
     ("crino", 1),
+];
+
+/// Minimal fallback when the jbovlaste XML export is absent locally.
+const FALLBACK_GISMU_ENTRIES: &[(&str, usize, &str)] = &[
+    ("klama", 5, "come"),
+    ("ctuca", 5, "teach"),
+    ("ciska", 5, "write"),
+    ("mrilu", 5, "mail"),
+    ("bevri", 5, "carry"),
+    ("vecnu", 4, "sell"),
+    ("dunda", 3, "give"),
+    ("prami", 2, "love"),
+    ("gerku", 2, "dog"),
+    ("mlatu", 2, "cat"),
+    ("cmene", 3, "name"),
+    ("cusku", 3, "express"),
+    ("djuno", 4, "know"),
+    ("jimpe", 2, "understand"),
+    ("gasnu", 2, "do"),
+    ("penmi", 3, "meet"),
+    ("tavla", 4, "talk"),
+    ("catra", 2, "kill"),
+    ("citka", 2, "eat"),
+    ("pinxe", 2, "drink"),
+    ("cadzu", 3, "walk"),
+    ("bajra", 4, "run"),
+    ("viska", 3, "see"),
+    ("tirna", 3, "hear"),
+    ("nelci", 2, "like"),
+    ("djica", 3, "desire"),
+    ("nitcu", 3, "need"),
+    ("kakne", 2, "can"),
+    ("ckana", 2, "bed"),
+    ("zdani", 2, "home"),
+    ("zarci", 3, "market"),
+    ("bridi", 3, "predicate"),
+    ("jbena", 4, "born"),
+    ("morsi", 1, "dead"),
+    ("sutra", 2, "fast"),
+    ("melbi", 3, "beautiful"),
+    ("barda", 3, "big"),
+    ("cmalu", 3, "small"),
+    ("xamgu", 3, "good"),
+    ("xlali", 3, "bad"),
+    ("blanu", 1, "blue"),
+    ("xunre", 1, "red"),
+    ("pelxu", 1, "yellow"),
+    ("crino", 1, "green"),
+    ("prenu", 1, "person"),
+    ("pilji", 3, "multiply"),
+    ("sumji", 3, "sum"),
+    ("dilcu", 3, "divide"),
+    ("danlu", 2, "animal"),
+    ("jmive", 1, "live"),
 ];
 
 /// Hardcoded gloss overrides for common cmavo where jbovlaste glosses

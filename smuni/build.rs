@@ -8,49 +8,65 @@ fn main() {
     println!("cargo:rerun-if-changed=../jbovlaste-en.xml");
 
     let xml_path = "../jbovlaste-en.xml";
-    let content = fs::read_to_string(xml_path).expect("Failed to read jbovlaste-en.xml");
+    let content = fs::read_to_string(xml_path).ok();
 
     let mut map = phf_codegen::Map::new();
     let mut gismu_count: usize = 0;
     let mut lujvo_count: usize = 0;
     let mut override_count: usize = 0;
 
-    // Iterate through every <valsi> block, bypassing XML strictness
-    // (jbovlaste XML is riddled with formatting errors that crash strict parsers)
-    for block in content.split("<valsi ") {
-        let word = extract_attribute(block, "word=\"");
-        let typ = extract_attribute(block, "type=\"");
+    if let Some(content) = content {
+        // Iterate through every <valsi> block, bypassing XML strictness
+        // (jbovlaste XML is riddled with formatting errors that crash strict parsers)
+        for block in content.split("<valsi ") {
+            let word = extract_attribute(block, "word=\"");
+            let typ = extract_attribute(block, "type=\"");
 
-        if word.is_empty() || (typ != "gismu" && typ != "lujvo") {
-            continue;
+            if word.is_empty() || (typ != "gismu" && typ != "lujvo") {
+                continue;
+            }
+
+            // Check hardcoded overrides first (authoritative for core gismu)
+            let arity = if let Some(&known) = CORE_GISMU_ARITIES.iter().find(|(w, _)| *w == word) {
+                override_count += 1;
+                known.1
+            } else if let Some(definition) = extract_definition(block) {
+                extract_arity(definition)
+            } else {
+                // No definition found — default to 2 (most common arity)
+                2
+            };
+
+            let arity_str = match arity {
+                5 => "5",
+                4 => "4",
+                3 => "3",
+                2 => "2",
+                _ => "1",
+            };
+
+            map.entry(word.to_string(), arity_str);
+
+            match typ {
+                "gismu" => gismu_count += 1,
+                "lujvo" => lujvo_count += 1,
+                _ => {}
+            }
         }
-
-        // Check hardcoded overrides first (authoritative for core gismu)
-        let arity = if let Some(&known) = CORE_GISMU_ARITIES.iter().find(|(w, _)| *w == word) {
-            override_count += 1;
-            known.1
-        } else if let Some(definition) = extract_definition(block) {
-            extract_arity(definition)
-        } else {
-            // No definition found — default to 2 (most common arity)
-            2
-        };
-
-        let arity_str = match arity {
-            5 => "5",
-            4 => "4",
-            3 => "3",
-            2 => "2",
-            _ => "1",
-        };
-
-        map.entry(word.to_string(), arity_str);
-
-        match typ {
-            "gismu" => gismu_count += 1,
-            "lujvo" => lujvo_count += 1,
-            _ => {}
+    } else {
+        println!("cargo:warning=jbovlaste-en.xml not found, using fallback arity dictionary");
+        for (word, arity) in FALLBACK_ARITIES {
+            let arity_str = match arity {
+                5 => "5",
+                4 => "4",
+                3 => "3",
+                2 => "2",
+                _ => "1",
+            };
+            map.entry((*word).to_string(), arity_str);
+            gismu_count += 1;
         }
+        override_count = FALLBACK_ARITIES.len();
     }
 
     // Build-time diagnostics
@@ -194,4 +210,58 @@ const CORE_GISMU_ARITIES: &[(&str, usize)] = &[
     ("xunre", 1), // x1 is red
     ("pelxu", 1), // x1 is yellow
     ("crino", 1), // x1 is green
+];
+
+/// Minimal fallback when the jbovlaste XML export is absent locally.
+const FALLBACK_ARITIES: &[(&str, usize)] = &[
+    ("klama", 5),
+    ("ctuca", 5),
+    ("ciska", 5),
+    ("mrilu", 5),
+    ("bevri", 5),
+    ("vecnu", 4),
+    ("dunda", 3),
+    ("prami", 2),
+    ("gerku", 2),
+    ("mlatu", 2),
+    ("cmene", 3),
+    ("cusku", 3),
+    ("djuno", 4),
+    ("jimpe", 2),
+    ("gasnu", 2),
+    ("penmi", 3),
+    ("tavla", 4),
+    ("catra", 2),
+    ("citka", 2),
+    ("pinxe", 2),
+    ("cadzu", 3),
+    ("bajra", 4),
+    ("viska", 3),
+    ("tirna", 3),
+    ("nelci", 2),
+    ("djica", 3),
+    ("nitcu", 3),
+    ("kakne", 2),
+    ("ckana", 2),
+    ("zdani", 2),
+    ("zarci", 3),
+    ("bridi", 3),
+    ("jbena", 4),
+    ("morsi", 1),
+    ("sutra", 2),
+    ("melbi", 3),
+    ("barda", 3),
+    ("cmalu", 3),
+    ("xamgu", 3),
+    ("xlali", 3),
+    ("blanu", 1),
+    ("xunre", 1),
+    ("pelxu", 1),
+    ("crino", 1),
+    ("prenu", 1),
+    ("pilji", 3),
+    ("sumji", 3),
+    ("dilcu", 3),
+    ("danlu", 2),
+    ("jmive", 1),
 ];

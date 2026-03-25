@@ -71,8 +71,8 @@ struct QueryRoot;
 #[Object]
 impl QueryRoot {
     async fn status(&self, ctx: &async_graphql::Context<'_>) -> StatusResult {
-        let engine = ctx.data::<Arc<Mutex<NibliEngine>>>().unwrap();
-        let ok = engine.lock().is_ok();
+        let gossip = ctx.data::<Arc<Mutex<GossipNode>>>().unwrap();
+        let ok = gossip.lock().is_ok();
         StatusResult { ready: ok }
     }
 
@@ -85,7 +85,11 @@ impl QueryRoot {
     }
 
     /// Get all envelopes authored by a specific agent.
-    async fn agent_envelopes(&self, ctx: &async_graphql::Context<'_>, agent: String) -> Vec<EnvelopeSummaryGql> {
+    async fn agent_envelopes(
+        &self,
+        ctx: &async_graphql::Context<'_>,
+        agent: String,
+    ) -> Vec<EnvelopeSummaryGql> {
         let gossip = ctx.data::<Arc<Mutex<GossipNode>>>().unwrap();
         let node = gossip.lock().unwrap();
         node.log()
@@ -96,7 +100,11 @@ impl QueryRoot {
     }
 
     /// Get details of a specific envelope by ID prefix.
-    async fn envelope_detail(&self, ctx: &async_graphql::Context<'_>, id_prefix: String) -> Option<EnvelopeSummaryGql> {
+    async fn envelope_detail(
+        &self,
+        ctx: &async_graphql::Context<'_>,
+        id_prefix: String,
+    ) -> Option<EnvelopeSummaryGql> {
         let gossip = ctx.data::<Arc<Mutex<GossipNode>>>().unwrap();
         let node = gossip.lock().unwrap();
         node.log()
@@ -106,7 +114,11 @@ impl QueryRoot {
     }
 
     /// Get the gossip event log (most recent events).
-    async fn gossip_events(&self, ctx: &async_graphql::Context<'_>, limit: Option<u32>) -> Vec<GossipEventGql> {
+    async fn gossip_events(
+        &self,
+        ctx: &async_graphql::Context<'_>,
+        limit: Option<u32>,
+    ) -> Vec<GossipEventGql> {
         let events = ctx.data::<Arc<Mutex<Vec<GossipEvent>>>>().unwrap();
         let events = events.lock().unwrap();
         let limit = limit.unwrap_or(50) as usize;
@@ -171,15 +183,11 @@ impl MutationRoot {
         }
     }
 
-    async fn assert_text(
-        &self,
-        ctx: &async_graphql::Context<'_>,
-        input: String,
-    ) -> AssertResult {
-        let engine = ctx.data::<Arc<Mutex<NibliEngine>>>().unwrap();
-        let engine = engine.lock().unwrap();
-        match engine.assert_text(&input) {
-            Ok(fact_id) => AssertResult {
+    async fn assert_text(&self, ctx: &async_graphql::Context<'_>, input: String) -> AssertResult {
+        let gossip = ctx.data::<Arc<Mutex<GossipNode>>>().unwrap();
+        let mut node = gossip.lock().unwrap();
+        match node.assert_local_result(&input) {
+            Ok((fact_id, _envelope)) => AssertResult {
                 fact_id: Some(fact_id),
                 error: None,
             },
@@ -190,14 +198,10 @@ impl MutationRoot {
         }
     }
 
-    async fn query_text(
-        &self,
-        ctx: &async_graphql::Context<'_>,
-        input: String,
-    ) -> QueryResult {
-        let engine = ctx.data::<Arc<Mutex<NibliEngine>>>().unwrap();
-        let engine = engine.lock().unwrap();
-        match engine.query_text_with_proof(&input) {
+    async fn query_text(&self, ctx: &async_graphql::Context<'_>, input: String) -> QueryResult {
+        let gossip = ctx.data::<Arc<Mutex<GossipNode>>>().unwrap();
+        let node = gossip.lock().unwrap();
+        match node.query_with_proof(&input) {
             Ok((holds, trace, json)) => QueryResult {
                 holds: Some(holds),
                 proof_trace: Some(trace),
@@ -218,13 +222,11 @@ impl MutationRoot {
     /// Reset the engine, assert all KB lines, then run a query.
     async fn query_with_kb(
         &self,
-        ctx: &async_graphql::Context<'_>,
+        _ctx: &async_graphql::Context<'_>,
         kb: String,
         query: String,
     ) -> QueryResult {
-        let engine = ctx.data::<Arc<Mutex<NibliEngine>>>().unwrap();
-        let engine = engine.lock().unwrap();
-        engine.reset();
+        let engine = NibliEngine::new();
         let kb_status = assert_kb_lines(&engine, &kb);
         match engine.query_text_with_proof(&query) {
             Ok((holds, trace, json)) => QueryResult {
@@ -244,7 +246,7 @@ impl MutationRoot {
         }
     }
 
-    /// Assert Lojban into the gossip node and broadcast.
+    /// Assert Lojban into the gossip-backed authoritative knowledge state.
     async fn gossip_assert(
         &self,
         ctx: &async_graphql::Context<'_>,
@@ -262,17 +264,19 @@ impl MutationRoot {
             _ => EpistemicStance::Deduced,
         };
 
-        match node.assert_local_with_stance(&lojban, ep_stance) {
-            Ok(envelope) => {
-                let event = GossipEvent::NewEnvelope {
-                    envelope_id: envelope.id.clone(),
-                    author: envelope.author.clone(),
-                    lojban: Some(lojban),
-                    stance: format!("{}", envelope.stance),
-                    topics: envelope.topics.clone(),
-                    timestamp: envelope.timestamp.clone(),
-                };
-                events.lock().unwrap().push(event);
+        match node.assert_local_with_stance_result(&lojban, ep_stance) {
+            Ok((_fact_id, envelope)) => {
+                push_gossip_event(
+                    events,
+                    GossipEvent::NewEnvelope {
+                        envelope_id: envelope.id.clone(),
+                        author: envelope.author.clone(),
+                        lojban: Some(lojban),
+                        stance: format!("{}", envelope.stance),
+                        topics: envelope.topics.clone(),
+                        timestamp: envelope.timestamp.clone(),
+                    },
+                );
                 GossipAssertResult {
                     envelope_id: Some(envelope.id),
                     error: None,
@@ -294,8 +298,14 @@ impl MutationRoot {
         let gossip = ctx.data::<Arc<Mutex<GossipNode>>>().unwrap();
         let mut node = gossip.lock().unwrap();
         match node.resolve_contradiction(id as usize) {
-            Ok(()) => SimpleResult { success: true, error: None },
-            Err(e) => SimpleResult { success: false, error: Some(e) },
+            Ok(()) => SimpleResult {
+                success: true,
+                error: None,
+            },
+            Err(e) => SimpleResult {
+                success: false,
+                error: Some(e),
+            },
         }
     }
 }
@@ -309,9 +319,9 @@ fn build_network_snapshot(node: &GossipNode) -> NetworkSnapshot {
     let mut envelope_summaries = Vec::new();
     for env in &envelopes {
         // Track per-agent stats.
-        let entry = agent_map.entry(env.author.clone()).or_insert_with(|| {
-            (0, StanceCounts::default(), Vec::new())
-        });
+        let entry = agent_map
+            .entry(env.author.clone())
+            .or_insert_with(|| (0, StanceCounts::default(), Vec::new()));
         entry.0 += 1;
         match env.stance {
             EpistemicStance::Deduced => entry.1.deduced += 1,
@@ -399,74 +409,131 @@ fn envelope_to_gql(env: &tavla::Envelope) -> EnvelopeSummaryGql {
     }
 }
 
+fn envelope_display_text(env: &tavla::Envelope) -> Option<String> {
+    match &env.op {
+        GossipOp::AssertLojban(text) => Some(text.clone()),
+        GossipOp::AssertDirect { relation, args } => {
+            Some(format!("{}({})", relation, args.join(", ")))
+        }
+        GossipOp::Retract(_) => None,
+    }
+}
+
+fn push_gossip_event(events: &Arc<Mutex<Vec<GossipEvent>>>, event: GossipEvent) {
+    let mut events = events.lock().unwrap();
+    events.push(event);
+    if events.len() > 200 {
+        events.drain(..100);
+    }
+}
+
 fn event_to_gql(event: &GossipEvent) -> GossipEventGql {
     match event {
-        GossipEvent::NewEnvelope { envelope_id, author, lojban, stance, topics, timestamp } => {
-            GossipEventGql {
-                kind: "envelope".to_string(),
-                envelope_id: Some(envelope_id.clone()),
-                author: Some(author.clone()),
-                lojban: lojban.clone(),
-                stance: Some(stance.clone()),
-                topics: Some(topics.clone()),
-                timestamp: Some(timestamp.clone()),
-                peer_id: None,
-                connected: None,
-                envelope_count: None,
-                trusted: None,
-                from: None,
-                to: None,
-                contradiction_id: None,
-                assertion: None,
-                resolved: None,
-            }
-        }
-        GossipEvent::Contradiction { id, envelope_id, assertion, author } => {
-            GossipEventGql {
-                kind: "contradiction".to_string(),
-                contradiction_id: Some(*id as u32),
-                envelope_id: Some(envelope_id.clone()),
-                assertion: Some(assertion.clone()),
-                author: Some(author.clone()),
-                lojban: None, stance: None, topics: None, timestamp: None,
-                peer_id: None, connected: None, envelope_count: None,
-                trusted: None, from: None, to: None, resolved: None,
-            }
-        }
-        GossipEvent::PeerChange { peer_id, connected } => {
-            GossipEventGql {
-                kind: "peer_change".to_string(),
-                peer_id: Some(peer_id.clone()),
-                connected: Some(*connected),
-                envelope_id: None, author: None, lojban: None, stance: None,
-                topics: None, timestamp: None, envelope_count: None,
-                trusted: None, from: None, to: None, contradiction_id: None,
-                assertion: None, resolved: None,
-            }
-        }
-        GossipEvent::TrustChange { from, to, trusted } => {
-            GossipEventGql {
-                kind: "trust_change".to_string(),
-                from: Some(from.clone()),
-                to: Some(to.clone()),
-                trusted: Some(*trusted),
-                envelope_id: None, author: None, lojban: None, stance: None,
-                topics: None, timestamp: None, peer_id: None, connected: None,
-                envelope_count: None, contradiction_id: None, assertion: None,
-                resolved: None,
-            }
-        }
-        GossipEvent::Sync { peer_id, envelope_count } => {
-            GossipEventGql {
-                kind: "sync".to_string(),
-                peer_id: Some(peer_id.clone()),
-                envelope_count: Some(*envelope_count as u32),
-                envelope_id: None, author: None, lojban: None, stance: None,
-                topics: None, timestamp: None, connected: None,
-                trusted: None, from: None, to: None, contradiction_id: None,
-                assertion: None, resolved: None,
-            }
-        }
+        GossipEvent::NewEnvelope {
+            envelope_id,
+            author,
+            lojban,
+            stance,
+            topics,
+            timestamp,
+        } => GossipEventGql {
+            kind: "envelope".to_string(),
+            envelope_id: Some(envelope_id.clone()),
+            author: Some(author.clone()),
+            lojban: lojban.clone(),
+            stance: Some(stance.clone()),
+            topics: Some(topics.clone()),
+            timestamp: Some(timestamp.clone()),
+            peer_id: None,
+            connected: None,
+            envelope_count: None,
+            trusted: None,
+            from: None,
+            to: None,
+            contradiction_id: None,
+            assertion: None,
+            resolved: None,
+        },
+        GossipEvent::Contradiction {
+            id,
+            envelope_id,
+            assertion,
+            author,
+        } => GossipEventGql {
+            kind: "contradiction".to_string(),
+            contradiction_id: Some(*id as u32),
+            envelope_id: Some(envelope_id.clone()),
+            assertion: Some(assertion.clone()),
+            author: Some(author.clone()),
+            lojban: None,
+            stance: None,
+            topics: None,
+            timestamp: None,
+            peer_id: None,
+            connected: None,
+            envelope_count: None,
+            trusted: None,
+            from: None,
+            to: None,
+            resolved: None,
+        },
+        GossipEvent::PeerChange { peer_id, connected } => GossipEventGql {
+            kind: "peer_change".to_string(),
+            peer_id: Some(peer_id.clone()),
+            connected: Some(*connected),
+            envelope_id: None,
+            author: None,
+            lojban: None,
+            stance: None,
+            topics: None,
+            timestamp: None,
+            envelope_count: None,
+            trusted: None,
+            from: None,
+            to: None,
+            contradiction_id: None,
+            assertion: None,
+            resolved: None,
+        },
+        GossipEvent::TrustChange { from, to, trusted } => GossipEventGql {
+            kind: "trust_change".to_string(),
+            from: Some(from.clone()),
+            to: Some(to.clone()),
+            trusted: Some(*trusted),
+            envelope_id: None,
+            author: None,
+            lojban: None,
+            stance: None,
+            topics: None,
+            timestamp: None,
+            peer_id: None,
+            connected: None,
+            envelope_count: None,
+            contradiction_id: None,
+            assertion: None,
+            resolved: None,
+        },
+        GossipEvent::Sync {
+            peer_id,
+            envelope_count,
+        } => GossipEventGql {
+            kind: "sync".to_string(),
+            peer_id: Some(peer_id.clone()),
+            envelope_count: Some(*envelope_count as u32),
+            envelope_id: None,
+            author: None,
+            lojban: None,
+            stance: None,
+            topics: None,
+            timestamp: None,
+            connected: None,
+            trusted: None,
+            from: None,
+            to: None,
+            contradiction_id: None,
+            assertion: None,
+            resolved: None,
+        },
     }
 }
 
@@ -643,35 +710,47 @@ struct GossipEventGql {
 
 fn snapshot_to_gql(snap: &NetworkSnapshot) -> NetworkSnapshotGql {
     NetworkSnapshotGql {
-        agents: snap.agents.iter().map(|a| NetworkAgentGql {
-            name: a.name.clone(),
-            envelope_count: a.envelope_count,
-            stance_counts: StanceCountsGql {
-                deduced: a.stance_counts.deduced,
-                expected: a.stance_counts.expected,
-                opinion: a.stance_counts.opinion,
-                hearsay: a.stance_counts.hearsay,
-            },
-            topics: a.topics.clone(),
-            is_local: a.is_local,
-        }).collect(),
-        envelopes: snap.envelopes.iter().map(|e| EnvelopeSummaryGql {
-            id: e.id.clone(),
-            author: e.author.clone(),
-            lojban: e.lojban.clone(),
-            stance: e.stance.clone(),
-            topics: e.topics.clone(),
-            timestamp: e.timestamp.clone(),
-            is_retraction: e.is_retraction,
-            is_quarantined: e.is_quarantined,
-        }).collect(),
-        contradictions: snap.contradictions.iter().map(|c| ContradictionSummaryGql {
-            id: c.id as u32,
-            envelope_id: c.envelope_id.clone(),
-            assertion: c.assertion.clone(),
-            author: c.author.clone(),
-            resolved: c.resolved,
-        }).collect(),
+        agents: snap
+            .agents
+            .iter()
+            .map(|a| NetworkAgentGql {
+                name: a.name.clone(),
+                envelope_count: a.envelope_count,
+                stance_counts: StanceCountsGql {
+                    deduced: a.stance_counts.deduced,
+                    expected: a.stance_counts.expected,
+                    opinion: a.stance_counts.opinion,
+                    hearsay: a.stance_counts.hearsay,
+                },
+                topics: a.topics.clone(),
+                is_local: a.is_local,
+            })
+            .collect(),
+        envelopes: snap
+            .envelopes
+            .iter()
+            .map(|e| EnvelopeSummaryGql {
+                id: e.id.clone(),
+                author: e.author.clone(),
+                lojban: e.lojban.clone(),
+                stance: e.stance.clone(),
+                topics: e.topics.clone(),
+                timestamp: e.timestamp.clone(),
+                is_retraction: e.is_retraction,
+                is_quarantined: e.is_quarantined,
+            })
+            .collect(),
+        contradictions: snap
+            .contradictions
+            .iter()
+            .map(|c| ContradictionSummaryGql {
+                id: c.id as u32,
+                envelope_id: c.envelope_id.clone(),
+                assertion: c.assertion.clone(),
+                author: c.author.clone(),
+                resolved: c.resolved,
+            })
+            .collect(),
         peers: snap.peers.clone(),
         local_agent: snap.local_agent.clone(),
         total_facts: snap.total_facts,
@@ -684,10 +763,8 @@ fn snapshot_to_gql(snap: &NetworkSnapshot) -> NetworkSnapshotGql {
 async fn main() -> Result<()> {
     println!("Nibli GraphQL Server starting...");
 
-    let engine_state = Arc::new(Mutex::new(NibliEngine::new()));
-
-    let gossip_agent = std::env::var("NIBLI_GOSSIP_AGENT")
-        .unwrap_or_else(|_| "nibli-server".to_string());
+    let gossip_agent =
+        std::env::var("NIBLI_GOSSIP_AGENT").unwrap_or_else(|_| "nibli-server".to_string());
     let gossip_state = Arc::new(Mutex::new(GossipNode::new(&gossip_agent)));
     let gossip_events: Arc<Mutex<Vec<GossipEvent>>> = Arc::new(Mutex::new(Vec::new()));
 
@@ -697,28 +774,23 @@ async fn main() -> Result<()> {
     if let Ok(hub_addr) = std::env::var("NIBLI_GOSSIP_HUB") {
         let gs = gossip_state.clone();
         let ge = gossip_events.clone();
-        let es = engine_state.clone();
         let agent = gossip_agent.clone();
         tokio::spawn(async move {
-            gossip_hub_listener(&hub_addr, &agent, gs, ge, es).await;
+            gossip_hub_listener(&hub_addr, &agent, gs, ge).await;
         });
     }
 
-    let ollama_url = std::env::var("NIBLI_OLLAMA_URL")
-        .unwrap_or_else(|_| "http://localhost:11434".to_string());
-    let ollama_model = std::env::var("NIBLI_OLLAMA_MODEL")
-        .unwrap_or_else(|_| "qwen3-coder:30b".to_string());
-    println!(
-        "Ollama config: url={}, model={}",
-        ollama_url, ollama_model
-    );
+    let ollama_url =
+        std::env::var("NIBLI_OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+    let ollama_model =
+        std::env::var("NIBLI_OLLAMA_MODEL").unwrap_or_else(|_| "qwen3-coder:30b".to_string());
+    println!("Ollama config: url={}, model={}", ollama_url, ollama_model);
     let ollama_config = Arc::new(OllamaConfig {
         url: ollama_url,
         model: ollama_model,
     });
 
     let schema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
-        .data(engine_state)
         .data(ollama_config)
         .data(gossip_state)
         .data(gossip_events)
@@ -752,13 +824,12 @@ async fn graphql_playground() -> impl axum::response::IntoResponse {
     ))
 }
 
-/// Connect to the gossip hub as a peer, receive envelopes, ingest into GossipNode + engine.
+/// Connect to the gossip hub as a peer, receive envelopes, and ingest into GossipNode.
 async fn gossip_hub_listener(
     addr: &str,
     agent_name: &str,
     gossip_state: Arc<Mutex<GossipNode>>,
     gossip_events: Arc<Mutex<Vec<GossipEvent>>>,
-    engine_state: Arc<Mutex<NibliEngine>>,
 ) {
     // Connect with retry.
     let stream = loop {
@@ -798,40 +869,48 @@ async fn gossip_hub_listener(
                 match serde_json::from_str::<WireMessage>(trimmed) {
                     Ok(WireMessage::Envelope(env)) => {
                         let author = env.author.clone();
-                        let lojban = match &env.op {
-                            GossipOp::AssertLojban(text) => Some(text.clone()),
-                            _ => None,
+                        let display_text = envelope_display_text(&env);
+
+                        // Ingest into the authoritative gossip-backed KB.
+                        let ingest_result = {
+                            let mut node = gossip_state.lock().unwrap();
+                            node.ingest(env.clone())
                         };
 
-                        // Ingest into GossipNode.
-                        {
-                            let mut node = gossip_state.lock().unwrap();
-                            let _ = node.ingest(env.clone());
-                        }
+                        match ingest_result {
+                            Ok(result) => {
+                                if result.was_duplicate || result.was_rejected {
+                                    continue;
+                                }
 
-                        // Record event.
-                        {
-                            let mut events = gossip_events.lock().unwrap();
-                            events.push(GossipEvent::NewEnvelope {
-                                envelope_id: env.id.clone(),
-                                author: author.clone(),
-                                lojban: lojban.clone(),
-                                stance: format!("{}", env.stance),
-                                topics: env.topics.clone(),
-                                timestamp: env.timestamp.clone(),
-                            });
-                            // Cap event log.
-                            if events.len() > 200 {
-                                events.drain(..100);
+                                push_gossip_event(
+                                    &gossip_events,
+                                    GossipEvent::NewEnvelope {
+                                        envelope_id: env.id.clone(),
+                                        author: author.clone(),
+                                        lojban: display_text.clone(),
+                                        stance: format!("{}", env.stance),
+                                        topics: env.topics.clone(),
+                                        timestamp: env.timestamp.clone(),
+                                    },
+                                );
+
+                                if let (Some(id), Some(assertion)) =
+                                    (result.contradiction, display_text)
+                                {
+                                    push_gossip_event(
+                                        &gossip_events,
+                                        GossipEvent::Contradiction {
+                                            id,
+                                            envelope_id: env.id.clone(),
+                                            assertion,
+                                            author,
+                                        },
+                                    );
+                                }
                             }
-                        }
-
-                        // Assert Lojban into engine KB.
-                        if let Some(text) = lojban {
-                            let engine = engine_state.lock().unwrap();
-                            match engine.assert_text(&text) {
-                                Ok(id) => println!("[gossip] {author}: \"{text}\" → fact #{id}"),
-                                Err(e) => eprintln!("[gossip] {author}: assert error: {e}"),
+                            Err(e) => {
+                                eprintln!("[gossip] {author}: ingest error: {e}");
                             }
                         }
                     }
@@ -846,5 +925,373 @@ async fn gossip_hub_listener(
                 break;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_graphql::Request;
+    use tavla::TrustPolicy;
+    use tokio::sync::{mpsc, oneshot};
+    use tokio::time::{Duration, sleep, timeout};
+
+    type TestSchema = Schema<QueryRoot, MutationRoot, EmptySubscription>;
+
+    struct FakeHub {
+        addr: String,
+        outbound: mpsc::UnboundedSender<String>,
+        inbound: mpsc::UnboundedReceiver<String>,
+        handshake: oneshot::Receiver<String>,
+        task: tokio::task::JoinHandle<()>,
+    }
+
+    async fn start_fake_hub() -> FakeHub {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("fake hub should bind");
+        let addr = listener
+            .local_addr()
+            .expect("fake hub should have local addr")
+            .to_string();
+        let (outbound, mut outbound_rx) = mpsc::unbounded_channel::<String>();
+        let (inbound_tx, inbound) = mpsc::unbounded_channel::<String>();
+        let (handshake_tx, handshake) = oneshot::channel::<String>();
+
+        let task = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("fake hub should accept");
+            let (read_half, mut write_half) = stream.into_split();
+            let mut reader = BufReader::new(read_half);
+            let mut line = String::new();
+
+            match reader.read_line(&mut line).await {
+                Ok(0) | Err(_) => return,
+                Ok(_) => {
+                    let _ = handshake_tx.send(line.trim().to_string());
+                }
+            }
+
+            let read_task = tokio::spawn(async move {
+                let mut reader = reader;
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    match reader.read_line(&mut line).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(_) => {
+                            let trimmed = line.trim();
+                            if !trimmed.is_empty() {
+                                let _ = inbound_tx.send(trimmed.to_string());
+                            }
+                        }
+                    }
+                }
+            });
+
+            while let Some(message) = outbound_rx.recv().await {
+                let mut payload = message;
+                payload.push('\n');
+                if write_half.write_all(payload.as_bytes()).await.is_err() {
+                    break;
+                }
+                if write_half.flush().await.is_err() {
+                    break;
+                }
+            }
+
+            read_task.abort();
+        });
+
+        FakeHub {
+            addr,
+            outbound,
+            inbound,
+            handshake,
+            task,
+        }
+    }
+
+    fn build_test_schema(
+        gossip_state: Arc<Mutex<GossipNode>>,
+        gossip_events: Arc<Mutex<Vec<GossipEvent>>>,
+    ) -> TestSchema {
+        let ollama_config = Arc::new(OllamaConfig {
+            url: "http://localhost:11434".to_string(),
+            model: "test-model".to_string(),
+        });
+
+        Schema::build(QueryRoot, MutationRoot, EmptySubscription)
+            .data(ollama_config)
+            .data(gossip_state)
+            .data(gossip_events)
+            .finish()
+    }
+
+    async fn execute_json(schema: &TestSchema, query: String) -> serde_json::Value {
+        let response = schema.execute(Request::new(query)).await;
+        assert!(
+            response.errors.is_empty(),
+            "GraphQL execution should succeed: {:?}",
+            response.errors
+        );
+        response
+            .data
+            .into_json()
+            .expect("response data should convert to json")
+    }
+
+    fn gql_string(value: &str) -> String {
+        serde_json::to_string(value).expect("gql string should serialize")
+    }
+
+    async fn query_holds(schema: &TestSchema, input: &str) -> bool {
+        let query = format!(
+            "mutation {{ queryText(input: {}) {{ holds error }} }}",
+            gql_string(input)
+        );
+        let json = execute_json(schema, query).await;
+        json["queryText"]["holds"].as_bool().unwrap_or(false)
+    }
+
+    async fn wait_for_query_result(schema: &TestSchema, input: &str, expected: bool) -> bool {
+        for _ in 0..20 {
+            if query_holds(schema, input).await == expected {
+                return true;
+            }
+            sleep(Duration::from_millis(25)).await;
+        }
+        false
+    }
+
+    async fn wait_for_event_count(events: &Arc<Mutex<Vec<GossipEvent>>>, expected: usize) -> bool {
+        for _ in 0..20 {
+            if events.lock().unwrap().len() == expected {
+                return true;
+            }
+            sleep(Duration::from_millis(25)).await;
+        }
+        false
+    }
+
+    #[tokio::test]
+    async fn gossip_assert_should_affect_query_results() {
+        let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
+        let gossip_events = Arc::new(Mutex::new(Vec::new()));
+        let schema = build_test_schema(gossip_state, gossip_events);
+
+        let mutation = format!(
+            "mutation {{ gossipAssert(lojban: {}) {{ envelopeId error }} }}",
+            gql_string("la .adam. cu gerku")
+        );
+        let json = execute_json(&schema, mutation).await;
+        assert!(
+            json["gossipAssert"]["error"].is_null(),
+            "gossipAssert should succeed"
+        );
+
+        assert!(
+            wait_for_query_result(&schema, "la .adam. cu gerku", true).await,
+            "gossipAssert should make the asserted fact queryable through queryText"
+        );
+    }
+
+    #[tokio::test]
+    async fn remote_retraction_should_remove_query_results() {
+        let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
+        let gossip_events = Arc::new(Mutex::new(Vec::new()));
+        let schema = build_test_schema(gossip_state.clone(), gossip_events.clone());
+
+        let hub = start_fake_hub().await;
+        let hub_addr = hub.addr.clone();
+        let listener_events = gossip_events.clone();
+        let listener_handle = tokio::spawn(async move {
+            gossip_hub_listener(&hub_addr, "server", gossip_state, listener_events).await
+        });
+
+        let handshake = timeout(Duration::from_secs(1), hub.handshake)
+            .await
+            .expect("server should handshake with fake hub")
+            .expect("handshake should arrive");
+        assert_eq!(handshake, "server");
+
+        let mut remote = GossipNode::new("bob");
+        let asserted = remote
+            .assert_local("la .adam. cu gerku")
+            .expect("remote assert should succeed");
+        let tombstone = remote
+            .retract_local(&asserted.id)
+            .expect("remote retract should succeed");
+
+        hub.outbound
+            .send(
+                serde_json::to_string(&WireMessage::Envelope(asserted))
+                    .expect("assert envelope should serialize"),
+            )
+            .expect("hub should send assert envelope");
+
+        assert!(
+            wait_for_query_result(&schema, "la .adam. cu gerku", true).await,
+            "remote assertion should become queryable"
+        );
+
+        hub.outbound
+            .send(
+                serde_json::to_string(&WireMessage::Envelope(tombstone))
+                    .expect("tombstone should serialize"),
+            )
+            .expect("hub should send tombstone");
+
+        assert!(
+            wait_for_query_result(&schema, "la .adam. cu gerku", false).await,
+            "remote retraction should remove the fact from queryText results"
+        );
+
+        listener_handle.abort();
+        hub.task.abort();
+    }
+
+    #[tokio::test]
+    async fn gossip_assert_should_broadcast_to_connected_hub() {
+        let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
+        let gossip_events = Arc::new(Mutex::new(Vec::new()));
+        let schema = build_test_schema(gossip_state.clone(), gossip_events.clone());
+
+        let mut hub = start_fake_hub().await;
+        let hub_addr = hub.addr.clone();
+        let listener_handle = tokio::spawn(async move {
+            gossip_hub_listener(&hub_addr, "server", gossip_state, gossip_events).await
+        });
+
+        let handshake = timeout(Duration::from_secs(1), hub.handshake)
+            .await
+            .expect("server should handshake with fake hub")
+            .expect("handshake should arrive");
+        assert_eq!(handshake, "server");
+
+        let mutation = format!(
+            "mutation {{ gossipAssert(lojban: {}) {{ envelopeId error }} }}",
+            gql_string("la .adam. cu gerku")
+        );
+        let json = execute_json(&schema, mutation).await;
+        assert!(
+            json["gossipAssert"]["error"].is_null(),
+            "gossipAssert should succeed"
+        );
+
+        let broadcast = timeout(Duration::from_millis(500), hub.inbound.recv())
+            .await
+            .expect("connected hub should receive a broadcast after gossipAssert")
+            .expect("hub should receive an outbound message");
+        let message: WireMessage =
+            serde_json::from_str(&broadcast).expect("broadcast should be a valid wire message");
+        assert!(
+            matches!(message, WireMessage::Envelope(_)),
+            "gossipAssert should broadcast an envelope"
+        );
+
+        listener_handle.abort();
+        hub.task.abort();
+    }
+
+    #[tokio::test]
+    async fn duplicate_inbound_envelope_should_not_create_duplicate_events() {
+        let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
+        let gossip_events = Arc::new(Mutex::new(Vec::new()));
+        let schema = build_test_schema(gossip_state.clone(), gossip_events.clone());
+
+        let hub = start_fake_hub().await;
+        let hub_addr = hub.addr.clone();
+        let listener_events = gossip_events.clone();
+        let listener_handle = tokio::spawn(async move {
+            gossip_hub_listener(&hub_addr, "server", gossip_state, listener_events).await
+        });
+
+        let handshake = timeout(Duration::from_secs(1), hub.handshake)
+            .await
+            .expect("server should handshake with fake hub")
+            .expect("handshake should arrive");
+        assert_eq!(handshake, "server");
+
+        let mut remote = GossipNode::new("bob");
+        let asserted = remote
+            .assert_local("la .adam. cu gerku")
+            .expect("remote assert should succeed");
+        let payload = serde_json::to_string(&WireMessage::Envelope(asserted))
+            .expect("assert envelope should serialize");
+
+        hub.outbound
+            .send(payload.clone())
+            .expect("hub should send first copy");
+        assert!(
+            wait_for_event_count(&gossip_events, 1).await,
+            "first inbound envelope should produce one server event"
+        );
+
+        hub.outbound
+            .send(payload)
+            .expect("hub should send duplicate");
+        sleep(Duration::from_millis(100)).await;
+
+        assert_eq!(
+            gossip_events.lock().unwrap().len(),
+            1,
+            "duplicate inbound envelopes should not be logged as fresh events"
+        );
+        assert!(
+            wait_for_query_result(&schema, "la .adam. cu gerku", true).await,
+            "deduplicated inbound assertion should still be queryable"
+        );
+
+        listener_handle.abort();
+        hub.task.abort();
+    }
+
+    #[tokio::test]
+    async fn rejected_inbound_envelope_should_not_create_server_events() {
+        let gossip_state = Arc::new(Mutex::new(GossipNode::with_policy(
+            "server",
+            TrustPolicy::TrustRequired,
+        )));
+        let gossip_events = Arc::new(Mutex::new(Vec::new()));
+        let schema = build_test_schema(gossip_state.clone(), gossip_events.clone());
+
+        let hub = start_fake_hub().await;
+        let hub_addr = hub.addr.clone();
+        let listener_events = gossip_events.clone();
+        let listener_handle = tokio::spawn(async move {
+            gossip_hub_listener(&hub_addr, "server", gossip_state, listener_events).await
+        });
+
+        let handshake = timeout(Duration::from_secs(1), hub.handshake)
+            .await
+            .expect("server should handshake with fake hub")
+            .expect("handshake should arrive");
+        assert_eq!(handshake, "server");
+
+        let mut remote = GossipNode::new("bob");
+        let asserted = remote
+            .assert_local("la .adam. cu gerku")
+            .expect("remote assert should succeed");
+        hub.outbound
+            .send(
+                serde_json::to_string(&WireMessage::Envelope(asserted))
+                    .expect("assert envelope should serialize"),
+            )
+            .expect("hub should send assert envelope");
+
+        sleep(Duration::from_millis(100)).await;
+
+        assert_eq!(
+            gossip_events.lock().unwrap().len(),
+            0,
+            "rejected inbound envelopes should not be logged as accepted server events"
+        );
+        assert!(
+            wait_for_query_result(&schema, "la .adam. cu gerku", false).await,
+            "rejected inbound assertions must stay out of query results"
+        );
+
+        listener_handle.abort();
+        hub.task.abort();
     }
 }

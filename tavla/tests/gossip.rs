@@ -66,6 +66,19 @@ fn dedup_prevents_double_ingest() {
     assert!(r2.fact_id.is_none(), "Duplicate should be skipped");
 
     assert_eq!(node_b.log_size(), 1, "Log should have 1 envelope, not 2");
+    assert_eq!(
+        node_b.active_count(),
+        1,
+        "Duplicate ingest must not create extra active facts"
+    );
+
+    let (holds, _, _) = node_b
+        .query_with_proof("la .adam. cu gerku")
+        .expect("Deduplicated fact should remain queryable");
+    assert!(
+        holds,
+        "Duplicate ingest should leave one queryable fact, not zero or many"
+    );
 }
 
 /// Vector clock merge: after ingestion, B's clock should reflect A's state.
@@ -82,7 +95,10 @@ fn vector_clock_merge_on_ingest() {
     node_b.ingest(env2).unwrap();
 
     let b_alis = node_b.get_clock().entries.get("alis").copied().unwrap_or(0);
-    assert!(b_alis >= 2, "B's clock for alis should be >= 2, got {b_alis}");
+    assert!(
+        b_alis >= 2,
+        "B's clock for alis should be >= 2, got {b_alis}"
+    );
 }
 
 /// Invalid Lojban should be rejected by gerna on ingest.
@@ -104,7 +120,11 @@ fn invalid_lojban_rejected_on_ingest() {
     };
 
     let result = node_b.ingest(bad_envelope);
-    assert!(result.is_err(), "Invalid Lojban should be rejected: {:?}", result);
+    assert!(
+        result.is_err(),
+        "Invalid Lojban should be rejected: {:?}",
+        result
+    );
 }
 
 // ─── CRDT log tests ──────────────────────────────────────────────
@@ -153,6 +173,14 @@ fn retraction_propagates_to_peer() {
 
     // B should have 0 active assertions after retraction.
     assert_eq!(node_b.active_count(), 0);
+
+    let (holds, _, _) = node_b
+        .query_with_proof("la .adam. cu gerku")
+        .expect("Peer should still be queryable after retraction");
+    assert!(
+        !holds,
+        "Retracted remote fact should no longer hold in the peer KB"
+    );
 }
 
 /// KB rebuild from CRDT log restores consistent state.
@@ -277,7 +305,10 @@ fn three_node_epidemic_gossip() {
 
     // B verifies derivation.
     let (holds, _, _) = node_b.query_with_proof("la .adam. cu danlu").unwrap();
-    assert!(holds, "B should derive 'adam is danlu' after syncing from A");
+    assert!(
+        holds,
+        "B should derive 'adam is danlu' after syncing from A"
+    );
 
     // C ingests from B (B↔C link) — epidemic: A→B→C.
     // B sends its sync_diff to C.
@@ -370,14 +401,22 @@ fn three_node_retraction_propagation() {
 
     // B ingests tombstone directly (A↔B link).
     node_b.ingest(tombstone.clone()).unwrap();
-    assert_eq!(node_b.active_count(), 0, "B should have 0 active after retraction");
+    assert_eq!(
+        node_b.active_count(),
+        0,
+        "B should have 0 active after retraction"
+    );
 
     // C gets tombstone from B (B↔C link, epidemic).
     let diff = node_b.sync_diff(node_c.get_clock());
     for e in diff {
         node_c.ingest(e).unwrap();
     }
-    assert_eq!(node_c.active_count(), 0, "C should have 0 active after retraction");
+    assert_eq!(
+        node_c.active_count(),
+        0,
+        "C should have 0 active after retraction"
+    );
 }
 
 /// CRDT log merge is idempotent — merging the same log twice changes nothing.
@@ -420,7 +459,10 @@ fn trust_required_lifecycle() {
 
     // A rejects — B is untrusted.
     let result = node_a.ingest(env.clone()).unwrap();
-    assert!(result.was_rejected, "A should reject B's envelope (untrusted)");
+    assert!(
+        result.was_rejected,
+        "A should reject B's envelope (untrusted)"
+    );
     assert!(result.fact_id.is_none());
     assert_eq!(node_a.active_count(), 0);
 
@@ -429,7 +471,10 @@ fn trust_required_lifecycle() {
 
     // Now A should accept B's envelope.
     let result2 = node_a.ingest(env.clone()).unwrap();
-    assert!(!result2.was_rejected, "A should accept B's envelope after trust");
+    assert!(
+        !result2.was_rejected,
+        "A should accept B's envelope after trust"
+    );
     assert!(result2.fact_id.is_some());
     assert_eq!(node_a.active_count(), 2); // trust assertion + bob's fact
 
@@ -443,7 +488,10 @@ fn trust_required_lifecycle() {
     // New facts from B should be rejected again.
     let env2 = node_b.assert_local("la .adam. cu danlu").unwrap();
     let result3 = node_a.ingest(env2).unwrap();
-    assert!(result3.was_rejected, "A should reject B again after distrust");
+    assert!(
+        result3.was_rejected,
+        "A should reject B again after distrust"
+    );
 }
 
 /// QuarantineUntrusted: accepts but quarantines untrusted envelopes.
@@ -463,6 +511,14 @@ fn quarantine_untrusted_policy() {
     // Verify quarantine counts.
     assert_eq!(node_a.quarantined_count(), 1);
     assert_eq!(node_a.active_count(), 0);
+
+    let (holds, _, _) = node_a
+        .query_with_proof("la .adam. cu gerku")
+        .expect("Quarantined KB should still be queryable");
+    assert!(
+        !holds,
+        "Quarantined envelopes must stay out of the KB until trust promotes them"
+    );
 
     // CRDT log has the envelope.
     assert_eq!(node_a.log_size(), 1);
@@ -701,7 +757,10 @@ fn self_authored_has_no_relay() {
     let sources = node.epistemic_sources("la .adam. cu gerku");
     assert_eq!(sources.len(), 1);
     assert_eq!(sources[0].author, "alis");
-    assert!(sources[0].via.is_none(), "Self-authored should have no relay");
+    assert!(
+        sources[0].via.is_none(),
+        "Self-authored should have no relay"
+    );
 }
 
 /// Ingested envelope tracks relay provenance.
@@ -745,5 +804,9 @@ fn distrust_revokes_and_reevaluates() {
     // We need to reevaluate.
     node_a.reevaluate_quarantine();
 
-    assert_eq!(node_a.quarantined_count(), 1, "Bob's fact should be quarantined after distrust");
+    assert_eq!(
+        node_a.quarantined_count(),
+        1,
+        "Bob's fact should be quarantined after distrust"
+    );
 }

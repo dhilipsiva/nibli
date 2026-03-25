@@ -211,6 +211,8 @@ pub struct IngestResult {
     pub envelope_id: EnvelopeId,
     /// None if deduped, retraction, rejected, or unsupported op.
     pub fact_id: Option<u64>,
+    /// True if the envelope was already known and skipped.
+    pub was_duplicate: bool,
     /// True if this was a retraction tombstone.
     pub was_retraction: bool,
     /// True if the envelope was quarantined (untrusted author).
@@ -246,9 +248,7 @@ pub fn extract_topics(text: &str) -> Vec<String> {
     let mut topics = Vec::new();
     for word in text.split_whitespace() {
         let clean = word.trim_matches('.');
-        if clean.len() >= 5
-            && clean.chars().all(|c| c.is_ascii_lowercase() || c == '\'')
-        {
+        if clean.len() >= 5 && clean.chars().all(|c| c.is_ascii_lowercase() || c == '\'') {
             topics.push(clean.to_string());
         }
     }
@@ -322,9 +322,7 @@ impl CrdtLog {
                     return None;
                 }
                 match &env.op {
-                    GossipOp::AssertLojban(_) | GossipOp::AssertDirect { .. } => {
-                        Some(env)
-                    }
+                    GossipOp::AssertLojban(_) | GossipOp::AssertDirect { .. } => Some(env),
                     GossipOp::Retract(_) => None,
                 }
             })
@@ -344,9 +342,7 @@ impl CrdtLog {
                     return None;
                 }
                 match &env.op {
-                    GossipOp::AssertLojban(_) | GossipOp::AssertDirect { .. } => {
-                        Some(env)
-                    }
+                    GossipOp::AssertLojban(_) | GossipOp::AssertDirect { .. } => Some(env),
                     GossipOp::Retract(_) => None,
                 }
             })
@@ -598,9 +594,7 @@ impl GossipNode {
             .active_assertions()
             .iter()
             .filter_map(|env| match &env.op {
-                GossipOp::AssertLojban(text) if text.contains("lacri") => {
-                    Some(text.clone())
-                }
+                GossipOp::AssertLojban(text) if text.contains("lacri") => Some(text.clone()),
                 _ => None,
             })
             .collect()
@@ -628,9 +622,10 @@ impl GossipNode {
             Some(n) => n,
             None => return false,
         };
-        self.crdt_log.active_assertions().iter().any(|env| {
-            matches!(&env.op, GossipOp::AssertLojban(t) if t == &negated)
-        })
+        self.crdt_log
+            .active_assertions()
+            .iter()
+            .any(|env| matches!(&env.op, GossipOp::AssertLojban(t) if t == &negated))
     }
 
     // ─── Core operations ─────────────────────────────────────────
@@ -641,13 +636,28 @@ impl GossipNode {
     }
 
     /// Assert Lojban text locally with a specific epistemic stance.
-    /// Creates a signed envelope, appends to the CRDT log, and asserts into the local KB.
-    /// Checks for contradictions before asserting (paraconsistent — asserts anyway).
     pub fn assert_local_with_stance(
         &mut self,
         lojban: &str,
         stance: EpistemicStance,
     ) -> Result<Envelope, String> {
+        self.assert_local_with_stance_result(lojban, stance)
+            .map(|(_, envelope)| envelope)
+    }
+
+    /// Assert Lojban text locally with default stance and return both fact ID and envelope.
+    pub fn assert_local_result(&mut self, lojban: &str) -> Result<(u64, Envelope), String> {
+        self.assert_local_with_stance_result(lojban, EpistemicStance::Deduced)
+    }
+
+    /// Assert Lojban text locally with a specific stance and return both fact ID and envelope.
+    /// Creates a signed envelope, appends to the CRDT log, and asserts into the local KB.
+    /// Checks for contradictions before asserting (paraconsistent — asserts anyway).
+    pub fn assert_local_with_stance_result(
+        &mut self,
+        lojban: &str,
+        stance: EpistemicStance,
+    ) -> Result<(u64, Envelope), String> {
         // Check for contradiction before asserting.
         let has_contradiction = self.check_contradiction(lojban);
 
@@ -711,7 +721,7 @@ impl GossipNode {
             &id[..12]
         );
 
-        Ok(envelope)
+        Ok((fact_id, envelope))
     }
 
     /// Retract a previously asserted envelope by its ID.
@@ -787,6 +797,7 @@ impl GossipNode {
             return Ok(IngestResult {
                 envelope_id: envelope.id,
                 fact_id: None,
+                was_duplicate: true,
                 was_retraction: false,
                 was_quarantined: false,
                 was_rejected: false,
@@ -813,6 +824,7 @@ impl GossipNode {
                 return Ok(IngestResult {
                     envelope_id: id,
                     fact_id: None,
+                    was_duplicate: false,
                     was_retraction: false,
                     was_quarantined: false,
                     was_rejected: true,
@@ -907,6 +919,7 @@ impl GossipNode {
                 return Ok(IngestResult {
                     envelope_id: envelope.id,
                     fact_id: None,
+                    was_duplicate: false,
                     was_retraction: true,
                     was_quarantined: quarantined,
                     was_rejected: false,
@@ -925,6 +938,7 @@ impl GossipNode {
         Ok(IngestResult {
             envelope_id: id,
             fact_id,
+            was_duplicate: false,
             was_retraction,
             was_quarantined: quarantined,
             was_rejected: false,
@@ -954,9 +968,7 @@ impl GossipNode {
                 _ => {}
             }
         }
-        println!(
-            "[tavla] KB rebuilt from CRDT log ({count} active assertions, {errors} errors)"
-        );
+        println!("[tavla] KB rebuilt from CRDT log ({count} active assertions, {errors} errors)");
     }
 
     /// Re-evaluate quarantined envelopes after trust changes.
@@ -1133,10 +1145,7 @@ impl GossipNode {
     /// Format epistemic provenance for a single source.
     pub fn format_source(source: &EpistemicSource) -> String {
         match &source.via {
-            Some(relay) => format!(
-                "{} {}←{}",
-                source.stance, relay, source.author
-            ),
+            Some(relay) => format!("{} {}←{}", source.stance, relay, source.author),
             None => format!("{} {}", source.stance, source.author),
         }
     }
