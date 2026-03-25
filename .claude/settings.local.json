@@ -34,7 +34,8 @@
       "WebFetch(domain:rig.rs)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:crates.io)",
-      "WebFetch(domain:docs.rig.rs)"
+      "WebFetch(domain:docs.rig.rs)",
+      "Bash(wsl -d Ubuntu -e bash -lc 'cd ~/projects/dhilipsiva/nibli && git add tavla/tests/gossip.rs && git commit -m \"\"Fix two_node_gossip_propagation test: match actual proof text format:*)"
     ]
   }
 }
