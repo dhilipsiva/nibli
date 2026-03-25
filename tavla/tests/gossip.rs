@@ -40,8 +40,8 @@ fn two_node_gossip_propagation() {
         .query_with_proof("la .adam. cu danlu")
         .expect("Node B should be able to query");
     assert!(holds, "Node B should derive 'adam is an animal'");
-    assert!(proof_text.contains("Derived"));
     println!("Proof trace for 'la .adam. cu danlu':\n{}", proof_text);
+    assert!(proof_text.contains("Rule ("), "expected backward-chaining rule derivation in proof text:\n{}", proof_text);
 
     let (holds, _, _) = node_b
         .query_with_proof("la .adam. cu mlatu")
