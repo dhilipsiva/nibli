@@ -9,10 +9,6 @@ Order matters:
 
 ## Phase 1 - Distributed Correctness
 
-- [ ] 8. Add persistence and replay tests that span store plus engine.
-  Targets: `nibli-store/src/lib.rs`, `nibli-engine/tests/integration.rs`, `tavla/tests/gossip.rs`
-  Cover: open, assert, restart, replay, retract, restart, merge remote, rebuild, and query.
-
 ## Phase 2 - Runtime and Transport Hardening
 
 - [ ] 9. Move the server off blocking `std::sync::Mutex` in async request paths.

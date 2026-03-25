@@ -206,6 +206,44 @@ fn kb_rebuild_from_crdt_log() {
     assert!(holds, "KB should be restored after rebuild");
 }
 
+#[test]
+fn synced_retraction_survives_reset_and_rebuild() {
+    let mut node_a = GossipNode::new("alis");
+    let mut node_b = GossipNode::new("bob");
+
+    let env1 = node_a.assert_local("la .adam. cu gerku").unwrap();
+    let env2 = node_a.assert_local("la .adam. cu danlu").unwrap();
+    node_b.ingest(env1.clone()).unwrap();
+    node_b.ingest(env2).unwrap();
+
+    let tombstone = node_a.retract_local(&env1.id).unwrap();
+    node_b.ingest(tombstone).unwrap();
+
+    let (holds, _, _) = node_b.query_with_proof("la .adam. cu gerku").unwrap();
+    assert!(
+        !holds,
+        "Synced tombstone should retract the fact before rebuild"
+    );
+    let (holds, _, _) = node_b.query_with_proof("la .adam. cu danlu").unwrap();
+    assert!(
+        holds,
+        "Independent surviving facts should still hold before rebuild"
+    );
+
+    node_b.reset();
+    let (holds, _, _) = node_b.query_with_proof("la .adam. cu danlu").unwrap();
+    assert!(!holds, "Reset should empty the KB before replay");
+
+    node_b.rebuild_kb();
+    let (holds, _, _) = node_b.query_with_proof("la .adam. cu gerku").unwrap();
+    assert!(
+        !holds,
+        "Rebuild must not replay tombstoned facts from the synced CRDT log"
+    );
+    let (holds, _, _) = node_b.query_with_proof("la .adam. cu danlu").unwrap();
+    assert!(holds, "Rebuild should replay surviving synced assertions");
+}
+
 // ─── Vector clock dominance ──────────────────────────────────────
 
 /// VectorClock::dominates — correct causal ordering.

@@ -1119,6 +1119,35 @@ mod tests {
     }
 
     #[test]
+    fn test_merge_from_file_tombstone_survives_reopen() {
+        let local_path = temp_db_path("merge_file_tomb_reopen_local");
+        let remote_path = temp_db_path("merge_file_tomb_reopen_remote");
+        cleanup(&local_path);
+        cleanup(&remote_path);
+
+        {
+            let mut local = NibliStore::open(&local_path, "node-a".into()).unwrap();
+            local.insert_fact(1, "shared".into(), vec![1]).unwrap();
+
+            let mut remote = NibliStore::open(&remote_path, "node-b".into()).unwrap();
+            remote.insert_fact(1, "shared".into(), vec![1]).unwrap();
+            remote.retract_fact(1).unwrap();
+            drop(remote);
+
+            let result = local.merge_from_file(&remote_path).unwrap();
+            assert_eq!(result.tombstoned, 1);
+        }
+
+        let reopened = NibliStore::open(&local_path, "node-a".into()).unwrap();
+        assert_eq!(reopened.active_fact_count().unwrap(), 0);
+        let fact = reopened.get_fact(1).unwrap().unwrap();
+        assert!(fact.retracted, "Merged tombstone should survive reopen");
+
+        cleanup(&local_path);
+        cleanup(&remote_path);
+    }
+
+    #[test]
     fn test_export_all_backfills_predicates_from_legacy_index() {
         #[derive(Serialize)]
         struct LegacyStoredFactRecord {

@@ -4,6 +4,9 @@
 //! No WASM, no HTTP — exercises gerna+smuni+logji directly via Rust crate calls.
 
 use nibli_engine::NibliEngine;
+use nibli_store::NibliStore;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 /// Helper: create a fresh engine, assert multiple lines, return the engine.
 fn engine_with_facts(lines: &[&str]) -> NibliEngine {
@@ -14,6 +17,16 @@ fn engine_with_facts(lines: &[&str]) -> NibliEngine {
             .unwrap_or_else(|e| panic!("Failed to assert '{}': {}", line, e));
     }
     engine
+}
+
+fn temp_db_path(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join("nibli_engine_integration_tests");
+    fs::create_dir_all(&dir).unwrap();
+    dir.join(format!("{name}.redb"))
+}
+
+fn cleanup(path: &Path) {
+    let _ = fs::remove_file(path);
 }
 
 // ─── Basic assertion and query ──────────────────────────────────────
@@ -269,4 +282,115 @@ fn reset_then_reassert_replaces_previous_kb_contents() {
             .expect("New fact should be queryable"),
         "Facts asserted after reset should become the whole active KB"
     );
+}
+
+#[test]
+fn persistent_engine_replays_asserted_facts_after_reopen() {
+    let path = temp_db_path("replay_after_reopen");
+    cleanup(&path);
+
+    {
+        let engine = NibliEngine::open(&path).expect("Persistent engine should open");
+        engine
+            .assert_text("ro lo gerku cu danlu")
+            .expect("Rule should persist");
+        engine
+            .assert_text("la .adam. cu gerku")
+            .expect("Fact should persist");
+        assert!(
+            engine
+                .query_holds("la .adam. cu danlu")
+                .expect("Derived query should run before reopen")
+        );
+    }
+
+    {
+        let reopened = NibliEngine::open(&path).expect("Persistent engine should reopen");
+        assert!(
+            reopened
+                .query_holds("la .adam. cu danlu")
+                .expect("Derived query should run after reopen"),
+            "Reopened engine should replay persisted rule and fact"
+        );
+    }
+
+    cleanup(&path);
+}
+
+#[test]
+fn persistent_engine_honors_store_retractions_after_reopen() {
+    let path = temp_db_path("retract_then_reopen");
+    cleanup(&path);
+
+    let fact_id = {
+        let engine = NibliEngine::open(&path).expect("Persistent engine should open");
+        engine
+            .assert_text("la .adam. cu gerku")
+            .expect("Fact should persist")
+    };
+
+    {
+        let mut store = NibliStore::open(&path, "local".into()).expect("Store should open");
+        store
+            .retract_fact(fact_id)
+            .expect("Retracting persisted fact should succeed");
+    }
+
+    {
+        let reopened = NibliEngine::open(&path).expect("Persistent engine should reopen");
+        assert!(
+            !reopened
+                .query_holds("la .adam. cu gerku")
+                .expect("Query should run after reopen"),
+            "Retracted facts must not replay into the reopened engine"
+        );
+    }
+
+    cleanup(&path);
+}
+
+#[test]
+fn persistent_engine_queries_merged_remote_facts_after_reopen() {
+    let local_path = temp_db_path("merge_local");
+    let remote_path = temp_db_path("merge_remote");
+    cleanup(&local_path);
+    cleanup(&remote_path);
+
+    {
+        let local_engine = NibliEngine::open(&local_path).expect("Local engine should open");
+        local_engine
+            .assert_text("ro lo gerku cu danlu")
+            .expect("Local rule should persist");
+    }
+
+    {
+        let remote_engine = NibliEngine::open(&remote_path).expect("Remote engine should open");
+        remote_engine
+            .assert_text("la .skip. cu mlatu")
+            .expect("Remote dummy fact should persist");
+        remote_engine
+            .assert_text("la .adam. cu gerku")
+            .expect("Remote fact should persist");
+    }
+
+    {
+        let mut local_store =
+            NibliStore::open(&local_path, "local".into()).expect("Local store should open");
+        local_store
+            .merge_from_file(&remote_path)
+            .expect("Store merge should succeed");
+    }
+
+    {
+        let reopened = NibliEngine::open(&local_path).expect("Merged engine should reopen");
+        assert!(
+            reopened
+                .query_holds("la .adam. cu danlu")
+                .expect("Merged query should run after reopen"),
+            "Merged remote facts should replay into the reopened engine"
+        );
+    }
+
+    cleanup(&local_path);
+    cleanup(&remote_path);
 }
