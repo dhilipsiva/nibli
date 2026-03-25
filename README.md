@@ -114,7 +114,7 @@ just test
 ni'o la .nibli. cu se pilno lo ueb. tcana noi se zbasu fi la Dioxus .ije lo GraphQL jikca:
 
 ```bash
-# lo pamoi skami canlu: ko cfari lo GraphQL jikca (port 8081)
+# lo pamoi skami canlu: ko cfari lo GraphQL jikca (loopback 127.0.0.1:8081 by default)
 just server
 
 # lo remoi skami canlu: ko cfari lo ueb. tcana (port 8080)
@@ -130,6 +130,8 @@ la .adam. cu gerku            # la .adam. cu gerku
 
 preti: la .adam. cu citka     # → JETNU (TRUE) + krinu tricu (proof tree)
 ```
+
+ni'o lo UI status tcita cu se ciksi fi lo `GET /readyz` endpoint .i ri na'e troci lo GraphQL query pe'o lo nu cipra lo server ka canci .i lo Network tab cu jarco lo gossip state, cu curmi lo nu jmina lo gossip assertion, .e cu curmi lo nu sidju lo se cinri na mapti kei (resolve contradiction) .i lo `gossipRetract` mutce cu zvati lo GraphQL API ku'i na se pilno sepi'o lo tcana ca'o
 
 ### `nibli-server` guardrails
 
@@ -218,7 +220,7 @@ ni'o lo ueb. tcana cu se pilno lo Network tcita noi se jarco lo tavla ciste: lo 
 - lo fatci se jmina: `assert-fact` WIT fasnu + `:assert` REPL fasnu
 - lo na monotoni logji: lo fatci se vimcu fi lo fatci liste + ri zbasu; `:retract <id>` .e `:facts` REPL fasnu
 - lo se birti se sisku: `query-find` cu se benji ro lo se birti sumti (`??` REPL lidne)
-- lo krinu ciste: `query-entailment-with-proof` cu se benji lo krinu tricu (15 krinu klesi) — `?!` REPL lidne
+- lo krinu ciste: `query-entailment-with-proof` cu se benji lo krinu tricu (15 krinu klesi) — `?` REPL lidne
 - lo krefu nibli krinu: lo krinu tricu cu ri sisku fi lo `ro` javni; `Asserted` ke jicmu fatci cu se jinvi drata lo `Derived` ke se nibli jalge
 - lo gerna ri zbasu: lo bridi poi se fliba cu se srera .ije cfari lo jersi bridi; lo se srera cu se cusku lo rajypau linsi stuzi
 - lo tcika logji: `Past`/`Present`/`Future` fi lo fatci vlaste; lo tcika javni cu jmina lo tcika fi lo jicmu javni

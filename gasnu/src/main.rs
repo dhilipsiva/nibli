@@ -746,7 +746,7 @@ fn main() -> Result<()> {
         "Ready. Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :saturate [n] :db :help"
     );
     println!(
-        "Prefix '?' for queries, '?!' for proof trace, '??' for find, plain text for assertions.\n"
+        "Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.\n"
     );
 
     loop {

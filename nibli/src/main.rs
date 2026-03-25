@@ -41,14 +41,14 @@ fn run_test_book() {
             ".i ro lo prenu poi ponse lo datni cu bilga lo nu curmi",
             "assert2",
         ),
-        ("?! lo prenu cu bilga lo nu curmi", "proof-query"),
+        ("? lo prenu cu bilga lo nu curmi", "query-with-proof"),
     ];
 
     for (input, label) in &commands {
         eprintln!("\n[test-book] === {label}: {input} ===");
         let trimmed = input.trim();
 
-        if let Some(text) = trimmed.strip_prefix("?!") {
+        if let Some(text) = trimmed.strip_prefix('?') {
             let text = text.trim();
             eprintln!("[test-book] Calling query_text_with_proof...");
             match engine.query_text_with_proof(text) {
@@ -89,7 +89,7 @@ fn main() {
         "Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :help"
     );
     println!(
-        "Prefix '?' for queries, '?!' for proof trace, '??' for find, plain text for assertions.\n"
+        "Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.\n"
     );
 
     loop {
@@ -133,8 +133,7 @@ fn main() {
                     }
                     ":help" | ":h" => {
                         println!("  <text>              Assert Lojban as fact");
-                        println!("  ? <text>            Query entailment (true/false)");
-                        println!("  ?! <text>           Query with proof trace");
+                        println!("  ? <text>            Query with proof trace");
                         println!("  ?? <text>           Find witnesses (answer variables)");
                         println!("  :debug <text>       Show compiled logic tree");
                         println!("  :load <filepath>    Load a .lojban file (assert each line)");
@@ -283,21 +282,6 @@ fn main() {
                         }
                         Err(e) => println!("{}", e),
                     }
-                } else if let Some(proof_text) = input.strip_prefix("?!") {
-                    let text = proof_text.trim();
-                    if text.is_empty() {
-                        println!("[Host] Usage: ?! <lojban query>");
-                        continue;
-                    }
-
-                    match engine.query_text_with_proof(text) {
-                        Ok((result, trace, _json)) => {
-                            let tag = if result { "TRUE" } else { "FALSE" };
-                            println!("[Proof] {}", tag);
-                            print!("{}", trace);
-                        }
-                        Err(e) => println!("{}", e),
-                    }
                 } else if let Some(query_text) = input.strip_prefix('?') {
                     let text = query_text.trim();
                     if text.is_empty() {
@@ -305,9 +289,12 @@ fn main() {
                         continue;
                     }
 
-                    match engine.query_holds(text) {
-                        Ok(true) => println!("[Query] TRUE"),
-                        Ok(false) => println!("[Query] FALSE"),
+                    match engine.query_text_with_proof(text) {
+                        Ok((result, trace, _json)) => {
+                            let tag = if result { "TRUE" } else { "FALSE" };
+                            println!("[Query] {}", tag);
+                            print!("{}", trace);
+                        }
                         Err(e) => println!("{}", e),
                     }
                 } else {

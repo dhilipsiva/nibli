@@ -121,6 +121,8 @@ Before every commit, always:
 
 ## Current Status
 
+Roadmap status: Phase 1, Phase 2, and Phase 3 are complete. `todo.md` no longer contains open roadmap blockers; remaining work is deferred or incremental rather than required for production-readiness alignment.
+
 Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator) + C2 (non-monotonic reasoning / belief revision) + C3 (temporal reasoning) + C4 (event semantics — Neo-Davidsonian) + C5 (description term opacity — `le` vs `lo`) + SkolemFn multi-dependency + event-decomposed universal rule compilation fix (condition-side ∃ as pattern variables) + proof trace memoization (DAG deduplication via ProofRef) + **egglog removal** (replaced egglog equality saturation with demand-driven backward-chaining over indexed fact store).
 
 **Implemented features:**
@@ -158,7 +160,7 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - Observative sentences & go'i pro-bridi: gerna accepts sentences without explicit selbri (inserts implicit `go'i`), lasna resolves go'i via `SelbriSnapshot` deep-clone preserving full selbri structure (negation, conversion, tanru, be/bei args, abstractions) across calls
 - Metalinguistic `sa` construct-class erasure: proper selma'o classification (28 classes) with backward-walk to matching grammatical class; graceful fallback to single-word erase for unclassified cmavo
 - Existential witness extraction: `query-find` WIT method + `find_witnesses` logji function returns all satisfying binding sets for existential variables; `ma` question pro-sumti compiles to existential variable (like da/de/di); REPL `??` prefix for find queries
-- Proof trace generation: `check_formula_holds_traced` builds proof tree as it recurses, recording which rule/axiom was applied at each step (15 proof rule variants); `query-entailment-with-proof` / `query-text-with-proof` WIT methods; REPL `?!` prefix for traced queries with indented tree output
+- Proof trace generation: `check_formula_holds_traced` builds proof tree as it recurses, recording which rule/axiom was applied at each step (15 proof rule variants); `query-entailment-with-proof` / `query-text-with-proof` WIT methods; REPL `?` now always returns the traced query result with indented proof output
 - Multi-hop derivation provenance: backward-chaining traces derived facts through universal rule chains (e.g., `gerku(alis) → danlu(alis) → xanlu(alis)`); `UniversalRuleRecord` captures rule templates at compilation time; s-expression pattern matching unifies conclusion templates against queried facts; `Asserted(sexp)` leaf nodes distinguish ground truths from `Derived(label, sexp)` nodes with recursive children; depth-limited (10) with graceful fallback to opaque `PredicateCheck`
 - Gerna error recovery: per-sentence recovery (skip to next `.i` on parse failure, continue parsing remaining sentences); `ParseResult` carries both partial results and errors; exact line:column reporting via pointer arithmetic on token `&str` slices; WIT `parse-error` and `parse-result` types; lasna surfaces parse warnings
 - WASM fuel limits: Wasmtime fuel-based execution limits prevent unbounded computation; per-command refuel in REPL; configurable via `NIBLI_FUEL` env var or `:fuel` REPL command; friendly `[Limit]` message on fuel exhaustion
@@ -193,7 +195,7 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - Step 6: Ollama integration — English→Lojban translation via server proxy (qwen3-coder:30b default)
 - Step 7: Proof trace visualization with human-readable s-expression formatting
 - Step 8: Fact management — KB status bar with per-line validation, .lojban file loading, clear button; Ollama temperature fixed to 0.0
-- Step 9: UI polish — keyboard shortcuts (Ctrl+L/K/O), loading spinners, structured error display, output log improvements (cap/clear/auto-scroll), proof tree connectors, default example syllogism; unified query/proof across entire stack (engine, server, REPL, UI)
+- Step 9: UI polish — keyboard shortcuts (Ctrl+L/K/O plus Ctrl+Enter in the Source tab), loading spinners, structured error display, output log improvements (cap/clear/auto-scroll), proof tree connectors, default example syllogism; unified query/proof across entire stack (engine, server, REPL, UI)
 - Step 10: Integration tests (16 tests via nibli-engine), Justfile targets (check, test-engine, test-all), README documentation (updated REPL examples, added Transparency Triad UI section)
 
 **UI query semantics:** Every query resets the engine, re-asserts the full Lojban tab text as the KB, then runs the query. The query bar is pure queries only (no assertions). The Lojban tab is the single source of truth.
@@ -202,8 +204,8 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - Prompt 7: Training data pipeline — `nibli-validate` binary for batch Lojban validation; `generate_training_data.py` (5 balanced domains, Anthropic API, gerna gate); `training_stats.py` (pass rate analysis, HuggingFace export)
 - Prompt 8: Fine-tuning pipeline — `nibli_model.py` (QLoRA on Qwen2.5-7B, train/eval/refine/push commands)
 - Prompt 9: LLM gossip agent — `nibli_agent.py` (TCP JSON Lines client for tavla, Claude API / local model, gerna gate with 3 retries, auto-gossip mode, epistemic stances)
-- Prompt 10: Network visualization — gossip types in nibli-protocol; nibli-server embeds GossipNode with GraphQL queries (networkSnapshot, agentEnvelopes, envelopeDetail, gossipEvents) and mutations (gossipAssert, resolveContradiction); nibli-ui Network tab with agent cards (stance distribution bars), envelope list, event feed, contradictions panel, gossip assertion bar with stance selector; auto-refresh every 3 seconds
+- Prompt 10: Network visualization — gossip types in nibli-protocol; nibli-server embeds GossipNode with GraphQL queries (networkSnapshot, agentEnvelopes, envelopeDetail, gossipEvents) and mutations (gossipAssert, gossipRetract, resolveContradiction), plus `/healthz`, `/readyz`, and `/metrics`; nibli-ui Network tab with agent cards (stance distribution bars), envelope list, event feed, contradictions panel, gossip assertion bar with stance selector, and a status badge driven by `/readyz`; auto-refresh every 3 seconds. Retraction is still API-level, not yet a dedicated UI control.
 
 All crates compile cleanly with rustc 1.94.0. All 30 tavla tests pass.
 
-**Next up:** See `todo.md` for deferred items (async compute backend, WebRTC DataChannel in browser)
+**Next up:** Deferred items remain outside the closed roadmap: async compute backend follow-up work, richer browser-side transport/UI controls, and book-polish passes tracked in their local notes.

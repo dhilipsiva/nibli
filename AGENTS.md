@@ -114,7 +114,7 @@ Before every commit, always:
 
 ## Current Status
 
-Roadmap status: Phase 1 (distributed correctness) and Phase 2 (runtime and transport hardening) are complete. The next open work starts at Phase 3 in `todo.md`.
+Roadmap status: Phase 1, Phase 2, and Phase 3 are complete. The roadmap items in `todo.md` are finished; remaining work is now incremental feature work and deferred follow-ups rather than open roadmap blockers.
 
 Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator) + C2 (non-monotonic reasoning / belief revision) + C3 (temporal reasoning) + C4 (event semantics — Neo-Davidsonian) + C5 (description term opacity — `le` vs `lo`) + SkolemFn multi-dependency + event-decomposed universal rule compilation fix (condition-side ∃ as pattern variables) + proof trace memoization (DAG deduplication via ProofRef) + **egglog removal** (replaced egglog equality saturation with demand-driven backward-chaining over indexed fact store).
 
@@ -153,7 +153,7 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - Observative sentences & go'i pro-bridi: gerna accepts sentences without explicit selbri (inserts implicit `go'i`), lasna resolves go'i via `SelbriSnapshot` deep-clone preserving full selbri structure (negation, conversion, tanru, be/bei args, abstractions) across calls
 - Metalinguistic `sa` construct-class erasure: proper selma'o classification (28 classes) with backward-walk to matching grammatical class; graceful fallback to single-word erase for unclassified cmavo
 - Existential witness extraction: `query-find` WIT method + `find_witnesses` logji function returns all satisfying binding sets for existential variables; `ma` question pro-sumti compiles to existential variable (like da/de/di); REPL `??` prefix for find queries
-- Proof trace generation: `check_formula_holds_traced` builds proof tree as it recurses, recording which rule/axiom was applied at each step (15 proof rule variants); `query-entailment-with-proof` / `query-text-with-proof` WIT methods; REPL `?!` prefix for traced queries with indented tree output
+- Proof trace generation: `check_formula_holds_traced` builds proof tree as it recurses, recording which rule/axiom was applied at each step (15 proof rule variants); `query-entailment-with-proof` / `query-text-with-proof` WIT methods; REPL `?` prefix now always returns the traced query result with indented proof output
 - Multi-hop derivation provenance: backward-chaining traces derived facts through universal rule chains (e.g., `gerku(alis) → danlu(alis) → xanlu(alis)`); `UniversalRuleRecord` captures rule templates at compilation time; s-expression pattern matching unifies conclusion templates against queried facts; `Asserted(sexp)` leaf nodes distinguish ground truths from `Derived(label, sexp)` nodes with recursive children; depth-limited (10) with graceful fallback to opaque `PredicateCheck`
 - Gerna error recovery: per-sentence recovery (skip to next `.i` on parse failure, continue parsing remaining sentences); `ParseResult` carries both partial results and errors; exact line:column reporting via pointer arithmetic on token `&str` slices; WIT `parse-error` and `parse-result` types; lasna surfaces parse warnings
 - WASM fuel limits: Wasmtime fuel-based execution limits prevent unbounded computation; per-command refuel in REPL; configurable via `NIBLI_FUEL` env var or `:fuel` REPL command; friendly `[Limit]` message on fuel exhaustion
@@ -179,4 +179,6 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 
 - REPL `:load <filepath>` command: batch-loads a `.lojban` file into the knowledge base; reads file line by line, skips blank lines and `#` comment lines, asserts each remaining line via `call_assert_text`; per-line refueling prevents fuel exhaustion on large files; reports per-line fact IDs or errors with line numbers; final summary shows asserted/skipped/errors counts; use with `readme.lojban` ontological prelude to bootstrap the KB
 
-**Next up:** See `todo.md` for the remaining Phase 3 production-finish items.
+**Transparency Triad runtime notes:** `nibli-server` now exposes `/healthz`, `/readyz`, and `/metrics`; the UI status badge follows `/readyz` rather than inferring readiness from a GraphQL query. The Network tab exposes gossip assertion and contradiction resolution; the server also exposes `gossipRetract`, which is still API-level rather than a dedicated UI control.
+
+**Next up:** `todo.md` no longer carries open roadmap blockers. Deferred work lives in feature-specific notes, book revision notes, and normal issue/PR flow.

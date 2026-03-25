@@ -8,6 +8,7 @@ fn main() {
 }
 
 const GRAPHQL_URL: &str = "http://localhost:8081/graphql";
+const READY_URL: &str = "http://localhost:8081/readyz";
 const MAX_OUTPUT_ENTRIES: usize = 200;
 
 const DEFAULT_SOURCE: &str = "All dogs are animals.\nAll animals eat.\nAdam is a dog.";
@@ -27,7 +28,9 @@ enum ActiveTab {
 #[derive(Clone, Copy, PartialEq)]
 enum ConnectionStatus {
     Checking,
-    Connected,
+    Ready,
+    WaitingForPeer,
+    NotReady,
     Disconnected,
 }
 
@@ -49,30 +52,26 @@ struct GraphQLResponse {
     errors: Option<Vec<serde_json::Value>>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReadyResponse {
+    ready: bool,
+    require_gossip_peer: bool,
+    gossip_peer_count: usize,
+}
+
 async fn check_server_status() -> ConnectionStatus {
-    let body = serde_json::json!({"query": "{ status { ready } }"});
-    match Request::post(GRAPHQL_URL)
-        .header("Content-Type", "application/json")
-        .body(body.to_string())
-    {
-        Ok(req) => match req.send().await {
-            Ok(resp) => match resp.json::<GraphQLResponse>().await {
-                Ok(gql) => {
-                    let ready = gql
-                        .data
-                        .as_ref()
-                        .and_then(|d| d.get("status"))
-                        .and_then(|s| s.get("ready"))
-                        .and_then(|r| r.as_bool())
-                        .unwrap_or(false);
-                    if ready {
-                        ConnectionStatus::Connected
-                    } else {
-                        ConnectionStatus::Disconnected
-                    }
+    match Request::get(READY_URL).send().await {
+        Ok(resp) => match resp.json::<ReadyResponse>().await {
+            Ok(ready) => {
+                if ready.ready {
+                    ConnectionStatus::Ready
+                } else if ready.require_gossip_peer && ready.gossip_peer_count == 0 {
+                    ConnectionStatus::WaitingForPeer
+                } else {
+                    ConnectionStatus::NotReady
                 }
-                Err(_) => ConnectionStatus::Disconnected,
-            },
+            }
             Err(_) => ConnectionStatus::Disconnected,
         },
         Err(_) => ConnectionStatus::Disconnected,
@@ -452,7 +451,9 @@ fn StatusBadge() -> Element {
 
     let (label, class) = match *status.read() {
         ConnectionStatus::Checking => ("Checking...", "status-badge checking"),
-        ConnectionStatus::Connected => ("Connected", "status-badge connected"),
+        ConnectionStatus::Ready => ("Ready", "status-badge connected"),
+        ConnectionStatus::WaitingForPeer => ("Waiting for peer", "status-badge waiting"),
+        ConnectionStatus::NotReady => ("Not ready", "status-badge not-ready"),
         ConnectionStatus::Disconnected => ("Disconnected", "status-badge disconnected"),
     };
 
@@ -632,7 +633,7 @@ fn SourceTabs(
         }
     });
 
-    let on_translate = move |_: Event<MouseData>| {
+    let mut do_translate = move || {
         let text = source_text.read().clone();
         if text.trim().is_empty() || *translating.read() {
             return;
@@ -658,6 +659,10 @@ fn SourceTabs(
             }
             translating.set(false);
         });
+    };
+
+    let on_translate = move |_: Event<MouseData>| {
+        do_translate();
     };
 
     rsx! {
@@ -692,6 +697,12 @@ fn SourceTabs(
                             placeholder: "Enter English text...",
                             value: "{source_text}",
                             oninput: move |e| source_text.set(e.value()),
+                            onkeydown: move |e: KeyboardEvent| {
+                                if e.key() == Key::Enter && e.modifiers().ctrl() {
+                                    e.prevent_default();
+                                    do_translate();
+                                }
+                            },
                         }
                         if let Some(err) = translate_error.read().as_ref() {
                             div { class: "translate-error", "{err}" }
