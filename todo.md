@@ -2,7 +2,7 @@
 
 Ordered by impact, priority, and dependency. Items within each tier can be tackled in any order unless noted.
 
-## Tier 1: Remaining S-Expression Cleanup (Medium Effort)
+## Tier 1: Remaining Legacy Representation Cleanup (Medium Effort)
 
 The legacy fact store has been replaced with typed StoredFact storage. Untraced queries use structural unification. Remaining legacy representation code is used only by the traced proof path and compile-debug output.
 
