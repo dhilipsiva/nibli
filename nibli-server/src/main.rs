@@ -1,12 +1,19 @@
 use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_graphql::{EmptySubscription, Object, Schema};
-use async_graphql_axum::GraphQL;
-use axum::Router;
+use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
+use axum::extract::{DefaultBodyLimit, State};
+use axum::http::{HeaderValue, Method, StatusCode};
+use axum::response::IntoResponse;
+use axum::{Json, Router};
 use tokio::task;
 use tower_http::cors::CorsLayer;
+use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
+use tracing::{Level, error, info, warn};
 
 use nibli_engine::NibliEngine;
 use nibli_protocol::{
@@ -68,6 +75,363 @@ Examples:
 type SharedGossip = Arc<Mutex<GossipNode>>;
 type SharedEvents = Arc<Mutex<Vec<GossipEvent>>>;
 type SharedTransport = Option<Arc<dyn Transport>>;
+type SharedMetrics = Arc<ServerMetrics>;
+type SharedConfig = Arc<ServerConfig>;
+type AppSchema = Schema<QueryRoot, MutationRoot, EmptySubscription>;
+
+#[derive(Clone)]
+struct HttpState {
+    schema: Arc<AppSchema>,
+    gossip: SharedGossip,
+    events: SharedEvents,
+    transport: SharedTransport,
+    metrics: SharedMetrics,
+    config: SharedConfig,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LogFormat {
+    Pretty,
+    Json,
+}
+
+#[derive(Clone, Debug)]
+struct ServerConfig {
+    bind_addr: SocketAddr,
+    enable_playground: bool,
+    require_gossip_peer: bool,
+    max_request_bytes: usize,
+    max_gossip_events: usize,
+    cors_allowed_origins: Vec<String>,
+    log_format: LogFormat,
+    log_filter: String,
+}
+
+impl ServerConfig {
+    fn from_env() -> Result<Self> {
+        let bind_addr = if let Ok(bind) = std::env::var("NIBLI_SERVER_BIND") {
+            bind.parse::<SocketAddr>()
+                .with_context(|| format!("invalid NIBLI_SERVER_BIND value: {bind}"))?
+        } else {
+            let port = std::env::var("NIBLI_SERVER_PORT")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(8081);
+            SocketAddr::from(([127, 0, 0, 1], port))
+        };
+
+        let bind_is_loopback = bind_addr.ip().is_loopback();
+        let cors_allowed_origins =
+            Self::read_origins("NIBLI_SERVER_CORS_ALLOW_ORIGINS", bind_is_loopback);
+
+        Ok(Self {
+            bind_addr,
+            enable_playground: Self::read_bool("NIBLI_SERVER_ENABLE_PLAYGROUND")
+                .unwrap_or(bind_is_loopback),
+            require_gossip_peer: Self::read_bool("NIBLI_SERVER_REQUIRE_GOSSIP_PEER")
+                .unwrap_or(false),
+            max_request_bytes: Self::read_usize("NIBLI_SERVER_MAX_REQUEST_BYTES")
+                .unwrap_or(1_048_576),
+            max_gossip_events: Self::read_usize("NIBLI_SERVER_MAX_GOSSIP_EVENTS")
+                .unwrap_or(500)
+                .max(1),
+            cors_allowed_origins,
+            log_format: match std::env::var("NIBLI_SERVER_LOG_FORMAT")
+                .unwrap_or_else(|_| "pretty".to_string())
+                .to_ascii_lowercase()
+                .as_str()
+            {
+                "json" => LogFormat::Json,
+                _ => LogFormat::Pretty,
+            },
+            log_filter: std::env::var("NIBLI_SERVER_LOG")
+                .or_else(|_| std::env::var("RUST_LOG"))
+                .unwrap_or_else(|_| "info,tower_http=info".to_string()),
+        })
+    }
+
+    fn read_bool(name: &str) -> Option<bool> {
+        let value = std::env::var(name).ok()?;
+        match value.trim().to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => Some(true),
+            "0" | "false" | "no" | "off" => Some(false),
+            _ => None,
+        }
+    }
+
+    fn read_usize(name: &str) -> Option<usize> {
+        std::env::var(name).ok()?.trim().parse().ok()
+    }
+
+    fn read_origins(name: &str, loopback_defaults: bool) -> Vec<String> {
+        if let Ok(value) = std::env::var(name) {
+            return value
+                .split(',')
+                .map(str::trim)
+                .filter(|origin| !origin.is_empty())
+                .map(ToOwned::to_owned)
+                .collect();
+        }
+
+        if loopback_defaults {
+            vec![
+                "http://localhost:3000".to_string(),
+                "http://127.0.0.1:3000".to_string(),
+                "http://localhost:4173".to_string(),
+                "http://127.0.0.1:4173".to_string(),
+                "http://localhost:8080".to_string(),
+                "http://127.0.0.1:8080".to_string(),
+                "http://localhost:8081".to_string(),
+                "http://127.0.0.1:8081".to_string(),
+            ]
+        } else {
+            Vec::new()
+        }
+    }
+}
+
+#[derive(Default)]
+struct ServerMetrics {
+    http_requests_total: AtomicU64,
+    graphql_requests_total: AtomicU64,
+    graphql_failures_total: AtomicU64,
+    playground_requests_total: AtomicU64,
+    health_requests_total: AtomicU64,
+    readiness_requests_total: AtomicU64,
+    metrics_requests_total: AtomicU64,
+    gossip_events_total: AtomicU64,
+    gossip_events_dropped_total: AtomicU64,
+    gossip_envelopes_ingested_total: AtomicU64,
+    gossip_duplicate_envelopes_total: AtomicU64,
+    gossip_rejected_envelopes_total: AtomicU64,
+    gossip_broadcast_failures_total: AtomicU64,
+    transport_receive_errors_total: AtomicU64,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct HealthResponse {
+    status: &'static str,
+    service: &'static str,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct ReadyResponse {
+    ready: bool,
+    gossip_lock_ok: bool,
+    event_log_lock_ok: bool,
+    require_gossip_peer: bool,
+    gossip_peer_count: usize,
+    event_buffer_len: usize,
+    max_event_buffer_len: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ReadinessSnapshot {
+    ready: bool,
+    gossip_lock_ok: bool,
+    event_log_lock_ok: bool,
+    gossip_peer_count: usize,
+    event_buffer_len: usize,
+}
+
+fn init_tracing(config: &ServerConfig) {
+    let env_filter = tracing_subscriber::EnvFilter::try_new(config.log_filter.clone())
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+
+    let fmt = tracing_subscriber::fmt()
+        .with_env_filter(env_filter)
+        .with_target(false)
+        .with_thread_ids(true)
+        .with_file(false)
+        .with_line_number(false);
+
+    match config.log_format {
+        LogFormat::Pretty => {
+            fmt.compact().init();
+        }
+        LogFormat::Json => {
+            fmt.json().init();
+        }
+    }
+}
+
+fn readiness_snapshot(
+    gossip: &SharedGossip,
+    events: &SharedEvents,
+    transport: &SharedTransport,
+    config: &ServerConfig,
+) -> ReadinessSnapshot {
+    let gossip_lock_ok = gossip.lock().is_ok();
+    let (event_log_lock_ok, event_buffer_len) = match events.lock() {
+        Ok(events) => (true, events.len()),
+        Err(_) => (false, 0),
+    };
+    let gossip_peer_count = transport.as_ref().map_or(0, |transport| transport.peers().len());
+    let ready = gossip_lock_ok
+        && event_log_lock_ok
+        && (!config.require_gossip_peer || gossip_peer_count > 0);
+
+    ReadinessSnapshot {
+        ready,
+        gossip_lock_ok,
+        event_log_lock_ok,
+        gossip_peer_count,
+        event_buffer_len,
+    }
+}
+
+fn build_metrics_response(state: &HttpState) -> String {
+    let readiness = readiness_snapshot(
+        &state.gossip,
+        &state.events,
+        &state.transport,
+        state.config.as_ref(),
+    );
+
+    let mut lines = Vec::new();
+    lines.push("# TYPE nibli_http_requests_total counter".to_string());
+    lines.push(format!(
+        "nibli_http_requests_total {}",
+        state.metrics.http_requests_total.load(Ordering::Relaxed)
+    ));
+    lines.push("# TYPE nibli_graphql_requests_total counter".to_string());
+    lines.push(format!(
+        "nibli_graphql_requests_total {}",
+        state.metrics.graphql_requests_total.load(Ordering::Relaxed)
+    ));
+    lines.push("# TYPE nibli_graphql_failures_total counter".to_string());
+    lines.push(format!(
+        "nibli_graphql_failures_total {}",
+        state.metrics.graphql_failures_total.load(Ordering::Relaxed)
+    ));
+    lines.push("# TYPE nibli_playground_requests_total counter".to_string());
+    lines.push(format!(
+        "nibli_playground_requests_total {}",
+        state.metrics.playground_requests_total.load(Ordering::Relaxed)
+    ));
+    lines.push("# TYPE nibli_health_requests_total counter".to_string());
+    lines.push(format!(
+        "nibli_health_requests_total {}",
+        state.metrics.health_requests_total.load(Ordering::Relaxed)
+    ));
+    lines.push("# TYPE nibli_readiness_requests_total counter".to_string());
+    lines.push(format!(
+        "nibli_readiness_requests_total {}",
+        state.metrics.readiness_requests_total.load(Ordering::Relaxed)
+    ));
+    lines.push("# TYPE nibli_metrics_requests_total counter".to_string());
+    lines.push(format!(
+        "nibli_metrics_requests_total {}",
+        state.metrics.metrics_requests_total.load(Ordering::Relaxed)
+    ));
+    lines.push("# TYPE nibli_gossip_events_total counter".to_string());
+    lines.push(format!(
+        "nibli_gossip_events_total {}",
+        state.metrics.gossip_events_total.load(Ordering::Relaxed)
+    ));
+    lines.push("# TYPE nibli_gossip_events_dropped_total counter".to_string());
+    lines.push(format!(
+        "nibli_gossip_events_dropped_total {}",
+        state.metrics.gossip_events_dropped_total.load(Ordering::Relaxed)
+    ));
+    lines.push("# TYPE nibli_gossip_envelopes_ingested_total counter".to_string());
+    lines.push(format!(
+        "nibli_gossip_envelopes_ingested_total {}",
+        state
+            .metrics
+            .gossip_envelopes_ingested_total
+            .load(Ordering::Relaxed)
+    ));
+    lines.push("# TYPE nibli_gossip_duplicate_envelopes_total counter".to_string());
+    lines.push(format!(
+        "nibli_gossip_duplicate_envelopes_total {}",
+        state
+            .metrics
+            .gossip_duplicate_envelopes_total
+            .load(Ordering::Relaxed)
+    ));
+    lines.push("# TYPE nibli_gossip_rejected_envelopes_total counter".to_string());
+    lines.push(format!(
+        "nibli_gossip_rejected_envelopes_total {}",
+        state
+            .metrics
+            .gossip_rejected_envelopes_total
+            .load(Ordering::Relaxed)
+    ));
+    lines.push("# TYPE nibli_gossip_broadcast_failures_total counter".to_string());
+    lines.push(format!(
+        "nibli_gossip_broadcast_failures_total {}",
+        state
+            .metrics
+            .gossip_broadcast_failures_total
+            .load(Ordering::Relaxed)
+    ));
+    lines.push("# TYPE nibli_transport_receive_errors_total counter".to_string());
+    lines.push(format!(
+        "nibli_transport_receive_errors_total {}",
+        state
+            .metrics
+            .transport_receive_errors_total
+            .load(Ordering::Relaxed)
+    ));
+    lines.push("# TYPE nibli_gossip_event_buffer_len gauge".to_string());
+    lines.push(format!(
+        "nibli_gossip_event_buffer_len {}",
+        readiness.event_buffer_len
+    ));
+    lines.push("# TYPE nibli_gossip_event_buffer_capacity gauge".to_string());
+    lines.push(format!(
+        "nibli_gossip_event_buffer_capacity {}",
+        state.config.max_gossip_events
+    ));
+    lines.push("# TYPE nibli_gossip_peer_count gauge".to_string());
+    lines.push(format!(
+        "nibli_gossip_peer_count {}",
+        readiness.gossip_peer_count
+    ));
+    lines.push("# TYPE nibli_ready gauge".to_string());
+    lines.push(format!("nibli_ready {}", u8::from(readiness.ready)));
+
+    lines.join("\n") + "\n"
+}
+
+fn build_cors_layer(config: &ServerConfig) -> Option<CorsLayer> {
+    if config.cors_allowed_origins.is_empty() {
+        return None;
+    }
+
+    let mut invalid_origins = 0usize;
+    let origins: Vec<HeaderValue> = config
+        .cors_allowed_origins
+        .iter()
+        .filter_map(|origin| match HeaderValue::from_str(origin) {
+            Ok(origin) => Some(origin),
+            Err(_) => {
+                invalid_origins += 1;
+                None
+            }
+        })
+        .collect();
+
+    if invalid_origins > 0 {
+        warn!(
+            invalid_origins,
+            "ignoring invalid entries in NIBLI_SERVER_CORS_ALLOW_ORIGINS"
+        );
+    }
+
+    if origins.is_empty() {
+        warn!("no valid CORS origins configured; cross-origin requests remain disabled");
+        return None;
+    }
+
+    Some(
+        CorsLayer::new()
+            .allow_methods([Method::GET, Method::POST])
+            .allow_headers([axum::http::header::ACCEPT, axum::http::header::CONTENT_TYPE])
+            .allow_origin(origins),
+    )
+}
 
 async fn run_blocking<T, F>(f: F) -> T
 where
@@ -87,8 +451,14 @@ struct QueryRoot;
 impl QueryRoot {
     async fn status(&self, ctx: &async_graphql::Context<'_>) -> StatusResult {
         let gossip = ctx.data::<SharedGossip>().unwrap().clone();
-        run_blocking(move || StatusResult {
-            ready: gossip.lock().is_ok(),
+        let events = ctx.data::<SharedEvents>().unwrap().clone();
+        let transport = ctx.data::<SharedTransport>().unwrap().clone();
+        let config = ctx.data::<SharedConfig>().unwrap().clone();
+        run_blocking(move || {
+            let readiness = readiness_snapshot(&gossip, &events, &transport, config.as_ref());
+            StatusResult {
+                ready: readiness.ready,
+            }
         })
         .await
     }
@@ -318,6 +688,9 @@ impl MutationRoot {
         let gossip = ctx.data::<SharedGossip>().unwrap().clone();
         let events = ctx.data::<SharedEvents>().unwrap().clone();
         let transport = ctx.data::<SharedTransport>().unwrap().clone();
+        let metrics = ctx.data::<SharedMetrics>().unwrap().clone();
+        let config = ctx.data::<SharedConfig>().unwrap().clone();
+        let mutation_metrics = metrics.clone();
         let ep_stance = match stance.as_deref() {
             Some("Expected") | Some("ba'a") => EpistemicStance::Expected,
             Some("Opinion") | Some("pe'i") => EpistemicStance::Opinion,
@@ -336,6 +709,8 @@ impl MutationRoot {
 
             push_gossip_event(
                 &events,
+                &mutation_metrics,
+                config.max_gossip_events,
                 GossipEvent::NewEnvelope {
                     envelope_id: envelope.id.clone(),
                     author: envelope.author.clone(),
@@ -359,8 +734,12 @@ impl MutationRoot {
             }
         };
 
-        if let Err(e) =
-            broadcast_wire_message(transport, WireMessage::Envelope(envelope.clone())).await
+        if let Err(e) = broadcast_wire_message(
+            transport,
+            WireMessage::Envelope(envelope.clone()),
+            metrics.clone(),
+        )
+        .await
         {
             return GossipAssertResult {
                 envelope_id: Some(envelope.id),
@@ -383,6 +762,9 @@ impl MutationRoot {
         let gossip = ctx.data::<SharedGossip>().unwrap().clone();
         let events = ctx.data::<SharedEvents>().unwrap().clone();
         let transport = ctx.data::<SharedTransport>().unwrap().clone();
+        let metrics = ctx.data::<SharedMetrics>().unwrap().clone();
+        let config = ctx.data::<SharedConfig>().unwrap().clone();
+        let mutation_metrics = metrics.clone();
 
         let tombstone = match run_blocking(move || -> Result<tavla::Envelope, String> {
             let tombstone = match gossip.lock() {
@@ -410,6 +792,8 @@ impl MutationRoot {
 
             push_gossip_event(
                 &events,
+                &mutation_metrics,
+                config.max_gossip_events,
                 GossipEvent::NewEnvelope {
                     envelope_id: tombstone.id.clone(),
                     author: tombstone.author.clone(),
@@ -433,8 +817,12 @@ impl MutationRoot {
             }
         };
 
-        if let Err(e) =
-            broadcast_wire_message(transport, WireMessage::Envelope(tombstone.clone())).await
+        if let Err(e) = broadcast_wire_message(
+            transport,
+            WireMessage::Envelope(tombstone.clone()),
+            metrics.clone(),
+        )
+        .await
         {
             return GossipAssertResult {
                 envelope_id: Some(tombstone.id),
@@ -586,20 +974,36 @@ fn envelope_display_text(env: &tavla::Envelope) -> Option<String> {
     }
 }
 
-fn push_gossip_event(events: &SharedEvents, event: GossipEvent) {
+fn push_gossip_event(
+    events: &SharedEvents,
+    metrics: &SharedMetrics,
+    max_events: usize,
+    event: GossipEvent,
+) {
     let mut events = events.lock().unwrap();
     events.push(event);
-    if events.len() > 200 {
-        events.drain(..100);
+    metrics.gossip_events_total.fetch_add(1, Ordering::Relaxed);
+    if events.len() > max_events {
+        let overflow = events.len() - max_events;
+        events.drain(..overflow);
+        metrics
+            .gossip_events_dropped_total
+            .fetch_add(overflow as u64, Ordering::Relaxed);
     }
 }
 
 async fn broadcast_wire_message(
     transport: SharedTransport,
     msg: WireMessage,
+    metrics: SharedMetrics,
 ) -> Result<(), String> {
     match transport {
-        Some(transport) => transport.broadcast(&msg).await,
+        Some(transport) => transport.broadcast(&msg).await.map_err(|err| {
+            metrics
+                .gossip_broadcast_failures_total
+                .fetch_add(1, Ordering::Relaxed);
+            err
+        }),
         None => Ok(()),
     }
 }
@@ -934,18 +1338,155 @@ fn snapshot_to_gql(snap: &NetworkSnapshot) -> NetworkSnapshotGql {
     }
 }
 
+async fn graphql_handler(
+    State(state): State<HttpState>,
+    request: GraphQLRequest,
+) -> GraphQLResponse {
+    state
+        .metrics
+        .http_requests_total
+        .fetch_add(1, Ordering::Relaxed);
+    state
+        .metrics
+        .graphql_requests_total
+        .fetch_add(1, Ordering::Relaxed);
+
+    let response = state.schema.execute(request.into_inner()).await;
+    if !response.errors.is_empty() {
+        state
+            .metrics
+            .graphql_failures_total
+            .fetch_add(1, Ordering::Relaxed);
+    }
+    response.into()
+}
+
+async fn graphql_playground(State(state): State<HttpState>) -> impl IntoResponse {
+    state
+        .metrics
+        .http_requests_total
+        .fetch_add(1, Ordering::Relaxed);
+    state
+        .metrics
+        .playground_requests_total
+        .fetch_add(1, Ordering::Relaxed);
+
+    axum::response::Html(async_graphql::http::playground_source(
+        async_graphql::http::GraphQLPlaygroundConfig::new("/graphql"),
+    ))
+}
+
+async fn healthz(State(state): State<HttpState>) -> impl IntoResponse {
+    state
+        .metrics
+        .http_requests_total
+        .fetch_add(1, Ordering::Relaxed);
+    state
+        .metrics
+        .health_requests_total
+        .fetch_add(1, Ordering::Relaxed);
+
+    (
+        StatusCode::OK,
+        Json(HealthResponse {
+            status: "ok",
+            service: "nibli-server",
+        }),
+    )
+}
+
+async fn readyz(State(state): State<HttpState>) -> impl IntoResponse {
+    state
+        .metrics
+        .http_requests_total
+        .fetch_add(1, Ordering::Relaxed);
+    state
+        .metrics
+        .readiness_requests_total
+        .fetch_add(1, Ordering::Relaxed);
+
+    let readiness = readiness_snapshot(
+        &state.gossip,
+        &state.events,
+        &state.transport,
+        state.config.as_ref(),
+    );
+    let body = ReadyResponse {
+        ready: readiness.ready,
+        gossip_lock_ok: readiness.gossip_lock_ok,
+        event_log_lock_ok: readiness.event_log_lock_ok,
+        require_gossip_peer: state.config.require_gossip_peer,
+        gossip_peer_count: readiness.gossip_peer_count,
+        event_buffer_len: readiness.event_buffer_len,
+        max_event_buffer_len: state.config.max_gossip_events,
+    };
+
+    let status = if readiness.ready {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+
+    (status, Json(body))
+}
+
+async fn metrics_handler(State(state): State<HttpState>) -> impl IntoResponse {
+    state
+        .metrics
+        .http_requests_total
+        .fetch_add(1, Ordering::Relaxed);
+    state
+        .metrics
+        .metrics_requests_total
+        .fetch_add(1, Ordering::Relaxed);
+
+    (
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4")],
+        build_metrics_response(&state),
+    )
+}
+
+fn build_app(state: HttpState) -> Router {
+    let config = state.config.clone();
+    let trace_layer = TraceLayer::new_for_http()
+        .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+        .on_response(DefaultOnResponse::new().level(Level::INFO));
+
+    let mut app = Router::new()
+        .route("/healthz", axum::routing::get(healthz))
+        .route("/readyz", axum::routing::get(readyz))
+        .route("/metrics", axum::routing::get(metrics_handler))
+        .route("/graphql", axum::routing::post(graphql_handler));
+
+    if config.enable_playground {
+        app = app.route("/graphql", axum::routing::get(graphql_playground).post(graphql_handler));
+    }
+
+    if let Some(cors) = build_cors_layer(config.as_ref()) {
+        app = app.layer(cors);
+    }
+
+    app.layer(DefaultBodyLimit::max(config.max_request_bytes))
+        .layer(trace_layer)
+        .with_state(state)
+}
+
 // ── Main ──
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    println!("Nibli GraphQL Server starting...");
+    let config = Arc::new(ServerConfig::from_env()?);
+    init_tracing(config.as_ref());
+    info!("nibli-server starting");
 
     let gossip_agent =
         std::env::var("NIBLI_GOSSIP_AGENT").unwrap_or_else(|_| "nibli-server".to_string());
     let gossip_state: SharedGossip = Arc::new(Mutex::new(GossipNode::new(&gossip_agent)));
     let gossip_events: SharedEvents = Arc::new(Mutex::new(Vec::new()));
+    let metrics: SharedMetrics = Arc::new(ServerMetrics::default());
 
-    println!("Gossip agent: {}", gossip_agent);
+    info!(gossip_agent = %gossip_agent, "configured gossip agent");
 
     let gossip_transport = if let Ok(hub_addr) = std::env::var("NIBLI_GOSSIP_HUB") {
         Some(
@@ -954,6 +1495,8 @@ async fn main() -> Result<()> {
                 &gossip_agent,
                 gossip_state.clone(),
                 gossip_events.clone(),
+                metrics.clone(),
+                config.clone(),
             )
             .await
             .map_err(anyhow::Error::msg)?,
@@ -966,45 +1509,48 @@ async fn main() -> Result<()> {
         std::env::var("NIBLI_OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
     let ollama_model =
         std::env::var("NIBLI_OLLAMA_MODEL").unwrap_or_else(|_| "qwen3-coder:30b".to_string());
-    println!("Ollama config: url={}, model={}", ollama_url, ollama_model);
+    info!(ollama_url = %ollama_url, ollama_model = %ollama_model, "configured ollama client");
     let ollama_config = Arc::new(OllamaConfig {
         url: ollama_url,
         model: ollama_model,
     });
 
-    let schema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
+    let schema: Arc<AppSchema> = Arc::new(
+        Schema::build(QueryRoot, MutationRoot, EmptySubscription)
         .data(ollama_config)
-        .data(gossip_state)
-        .data(gossip_events)
-        .data(gossip_transport)
-        .finish();
+        .data(gossip_state.clone())
+        .data(gossip_events.clone())
+        .data(gossip_transport.clone())
+        .data(config.clone())
+        .data(metrics.clone())
+        .finish(),
+    );
 
-    let port: u16 = std::env::var("NIBLI_SERVER_PORT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(8081);
+    let app_state = HttpState {
+        schema: schema.clone(),
+        gossip: gossip_state,
+        events: gossip_events,
+        transport: gossip_transport,
+        metrics,
+        config: config.clone(),
+    };
+    let app = build_app(app_state);
 
-    let app = Router::new()
-        .route(
-            "/graphql",
-            axum::routing::get(graphql_playground).post_service(GraphQL::new(schema)),
-        )
-        .layer(CorsLayer::permissive());
-
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
-    println!(
-        "GraphQL server listening on http://localhost:{}/graphql",
-        port
+    let listener = tokio::net::TcpListener::bind(config.bind_addr)
+        .await
+        .with_context(|| format!("failed to bind {}", config.bind_addr))?;
+    info!(
+        bind_addr = %config.bind_addr,
+        enable_playground = config.enable_playground,
+        require_gossip_peer = config.require_gossip_peer,
+        max_request_bytes = config.max_request_bytes,
+        max_gossip_events = config.max_gossip_events,
+        cors_allowed_origins = ?config.cors_allowed_origins,
+        "server ready"
     );
 
     axum::serve(listener, app).await?;
     Ok(())
-}
-
-async fn graphql_playground() -> impl axum::response::IntoResponse {
-    axum::response::Html(async_graphql::http::playground_source(
-        async_graphql::http::GraphQLPlaygroundConfig::new("/graphql"),
-    ))
 }
 
 async fn attach_tcp_transport(
@@ -1012,13 +1558,16 @@ async fn attach_tcp_transport(
     agent_name: &str,
     gossip_state: SharedGossip,
     gossip_events: SharedEvents,
+    metrics: SharedMetrics,
+    config: SharedConfig,
 ) -> Result<Arc<dyn Transport>, String> {
     let transport: Arc<dyn Transport> = TcpTransport::client(addr, agent_name).await?;
-    println!("[gossip] Connected to transport peer at {addr}");
+    info!(peer = %addr, "connected to gossip transport peer");
 
     let listener_transport = transport.clone();
     tokio::spawn(async move {
-        gossip_transport_listener(listener_transport, gossip_state, gossip_events).await;
+        gossip_transport_listener(listener_transport, gossip_state, gossip_events, metrics, config)
+            .await;
     });
 
     Ok(transport)
@@ -1028,6 +1577,8 @@ async fn gossip_transport_listener(
     transport: Arc<dyn Transport>,
     gossip_state: SharedGossip,
     gossip_events: SharedEvents,
+    metrics: SharedMetrics,
+    config: SharedConfig,
 ) {
     loop {
         match transport.recv().await {
@@ -1037,11 +1588,16 @@ async fn gossip_transport_listener(
                     inbound,
                     gossip_state.clone(),
                     gossip_events.clone(),
+                    metrics.clone(),
+                    config.clone(),
                 )
                 .await;
             }
             Err(e) => {
-                eprintln!("[gossip] transport receive error: {e}");
+                metrics
+                    .transport_receive_errors_total
+                    .fetch_add(1, Ordering::Relaxed);
+                error!(error = %e, "gossip transport receive error");
                 break;
             }
         }
@@ -1053,6 +1609,8 @@ async fn handle_inbound_wire_message(
     inbound: InboundMessage,
     gossip_state: SharedGossip,
     gossip_events: SharedEvents,
+    metrics: SharedMetrics,
+    config: SharedConfig,
 ) {
     let InboundMessage { peer_id, message } = inbound;
     match message {
@@ -1063,14 +1621,25 @@ async fn handle_inbound_wire_message(
                 .into_iter()
                 .filter(|peer| peer != &peer_id)
             {
-                let _ = transport.send_to(&peer, &forwarded).await;
+                if let Err(err) = transport.send_to(&peer, &forwarded).await {
+                    metrics
+                        .gossip_broadcast_failures_total
+                        .fetch_add(1, Ordering::Relaxed);
+                    error!(peer = %peer, error = %err, "failed to forward envelope to peer");
+                }
             }
 
-            if let Err(e) =
-                ingest_envelope_from_peer(envelope, Some(peer_id), gossip_state, gossip_events)
-                    .await
+            if let Err(e) = ingest_envelope_from_peer(
+                envelope,
+                Some(peer_id),
+                gossip_state,
+                gossip_events,
+                metrics.clone(),
+                config.clone(),
+            )
+            .await
             {
-                eprintln!("[gossip] envelope ingest error: {e}");
+                error!(error = %e, "gossip envelope ingest error");
             }
         }
         WireMessage::SyncRequest { clock } => {
@@ -1088,10 +1657,15 @@ async fn handle_inbound_wire_message(
                     let count = missing.len();
                     let msg = WireMessage::SyncResponse { envelopes: missing };
                     if let Err(e) = transport.send_to(&peer_id, &msg).await {
-                        eprintln!("[gossip] sync response error to {peer_id}: {e}");
+                        metrics
+                            .gossip_broadcast_failures_total
+                            .fetch_add(1, Ordering::Relaxed);
+                        error!(peer_id = %peer_id, error = %e, "gossip sync response error");
                     } else {
                         push_gossip_event(
                             &gossip_events,
+                            &metrics,
+                            config.max_gossip_events,
                             GossipEvent::Sync {
                                 peer_id: peer_for_event,
                                 envelope_count: count,
@@ -1099,13 +1673,15 @@ async fn handle_inbound_wire_message(
                         );
                     }
                 }
-                Err(e) => eprintln!("[gossip] sync diff error for {peer_id}: {e}"),
+                Err(e) => error!(peer_id = %peer_id, error = %e, "gossip sync diff error"),
             }
         }
         WireMessage::SyncResponse { envelopes } => {
             let count = envelopes.len();
             push_gossip_event(
                 &gossip_events,
+                &metrics,
+                config.max_gossip_events,
                 GossipEvent::Sync {
                     peer_id: peer_id.clone(),
                     envelope_count: count,
@@ -1117,10 +1693,12 @@ async fn handle_inbound_wire_message(
                     Some(peer_id.clone()),
                     gossip_state.clone(),
                     gossip_events.clone(),
+                    metrics.clone(),
+                    config.clone(),
                 )
                 .await
                 {
-                    eprintln!("[gossip] sync ingest error from {peer_id}: {e}");
+                    error!(peer_id = %peer_id, error = %e, "gossip sync ingest error");
                 }
             }
         }
@@ -1132,6 +1710,8 @@ async fn ingest_envelope_from_peer(
     via_peer: Option<String>,
     gossip_state: SharedGossip,
     gossip_events: SharedEvents,
+    metrics: SharedMetrics,
+    config: SharedConfig,
 ) -> Result<(), String> {
     let author = envelope.author.clone();
     let display_text = envelope_display_text(&envelope);
@@ -1142,12 +1722,28 @@ async fn ingest_envelope_from_peer(
             Err(_) => return Err("gossip state lock poisoned".to_string()),
         };
 
-        if result.was_duplicate || result.was_rejected {
+        if result.was_duplicate {
+            metrics
+                .gossip_duplicate_envelopes_total
+                .fetch_add(1, Ordering::Relaxed);
             return Ok(());
         }
 
+        if result.was_rejected {
+            metrics
+                .gossip_rejected_envelopes_total
+                .fetch_add(1, Ordering::Relaxed);
+            return Ok(());
+        }
+
+        metrics
+            .gossip_envelopes_ingested_total
+            .fetch_add(1, Ordering::Relaxed);
+
         push_gossip_event(
             &gossip_events,
+            &metrics,
+            config.max_gossip_events,
             GossipEvent::NewEnvelope {
                 envelope_id: envelope.id.clone(),
                 author: author.clone(),
@@ -1161,6 +1757,8 @@ async fn ingest_envelope_from_peer(
         if let (Some(id), Some(assertion)) = (result.contradiction, display_text) {
             push_gossip_event(
                 &gossip_events,
+                &metrics,
+                config.max_gossip_events,
                 GossipEvent::Contradiction {
                     id,
                     envelope_id: envelope.id.clone(),
@@ -1179,10 +1777,13 @@ async fn ingest_envelope_from_peer(
 mod tests {
     use super::*;
     use async_graphql::Request;
+    use axum::body::{Body, to_bytes};
+    use axum::http::Request as HttpRequest;
     use tavla::TrustPolicy;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::sync::{mpsc, oneshot};
     use tokio::time::{Duration, sleep, timeout};
+    use tower::util::ServiceExt;
 
     type TestSchema = Schema<QueryRoot, MutationRoot, EmptySubscription>;
 
@@ -1275,6 +1876,8 @@ mod tests {
         gossip_state: Arc<Mutex<GossipNode>>,
         gossip_events: Arc<Mutex<Vec<GossipEvent>>>,
         gossip_transport: SharedTransport,
+        config: SharedConfig,
+        metrics: SharedMetrics,
     ) -> TestSchema {
         let ollama_config = Arc::new(OllamaConfig {
             url: "http://localhost:11434".to_string(),
@@ -1286,20 +1889,69 @@ mod tests {
             .data(gossip_state)
             .data(gossip_events)
             .data(gossip_transport)
+            .data(config)
+            .data(metrics)
             .finish()
+    }
+
+    fn test_server_config() -> SharedConfig {
+        Arc::new(ServerConfig {
+            bind_addr: SocketAddr::from(([127, 0, 0, 1], 8081)),
+            enable_playground: false,
+            require_gossip_peer: false,
+            max_request_bytes: 1_048_576,
+            max_gossip_events: 16,
+            cors_allowed_origins: Vec::new(),
+            log_format: LogFormat::Pretty,
+            log_filter: "info".to_string(),
+        })
+    }
+
+    fn build_test_http_state(
+        gossip_state: Arc<Mutex<GossipNode>>,
+        gossip_events: Arc<Mutex<Vec<GossipEvent>>>,
+        gossip_transport: SharedTransport,
+        config: SharedConfig,
+        metrics: SharedMetrics,
+    ) -> HttpState {
+        let schema = Arc::new(build_test_schema(
+            gossip_state.clone(),
+            gossip_events.clone(),
+            gossip_transport.clone(),
+            config.clone(),
+            metrics.clone(),
+        ));
+
+        HttpState {
+            schema,
+            gossip: gossip_state,
+            events: gossip_events,
+            transport: gossip_transport,
+            metrics,
+            config,
+        }
     }
 
     async fn start_server_transport(
         hub_addr: &str,
         gossip_state: Arc<Mutex<GossipNode>>,
         gossip_events: Arc<Mutex<Vec<GossipEvent>>>,
+        metrics: SharedMetrics,
+        config: SharedConfig,
     ) -> (Arc<dyn Transport>, tokio::task::JoinHandle<()>) {
         let transport: Arc<dyn Transport> = TcpTransport::client(hub_addr, "server")
             .await
             .expect("server transport should start");
         let listener_transport = transport.clone();
         let listener_handle = tokio::spawn(async move {
-            gossip_transport_listener(listener_transport, gossip_state, gossip_events).await;
+            gossip_transport_listener(
+                listener_transport,
+                gossip_state,
+                gossip_events,
+                metrics,
+                config,
+            )
+            .await;
         });
         (transport, listener_handle)
     }
@@ -1354,7 +2006,9 @@ mod tests {
     async fn gossip_assert_should_affect_query_results() {
         let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
         let gossip_events = Arc::new(Mutex::new(Vec::new()));
-        let schema = build_test_schema(gossip_state, gossip_events, None);
+        let config = test_server_config();
+        let metrics = Arc::new(ServerMetrics::default());
+        let schema = build_test_schema(gossip_state, gossip_events, None, config, metrics);
 
         let mutation = format!(
             "mutation {{ gossipAssert(lojban: {}) {{ envelopeId error }} }}",
@@ -1376,15 +2030,25 @@ mod tests {
     async fn remote_retraction_should_remove_query_results() {
         let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
         let gossip_events = Arc::new(Mutex::new(Vec::new()));
+        let config = test_server_config();
+        let metrics = Arc::new(ServerMetrics::default());
         let Some(hub) = start_fake_hub().await else {
             return;
         };
-        let (transport, listener_handle) =
-            start_server_transport(&hub.addr, gossip_state.clone(), gossip_events.clone()).await;
+        let (transport, listener_handle) = start_server_transport(
+            &hub.addr,
+            gossip_state.clone(),
+            gossip_events.clone(),
+            metrics.clone(),
+            config.clone(),
+        )
+        .await;
         let schema = build_test_schema(
             gossip_state.clone(),
             gossip_events.clone(),
             Some(transport.clone()),
+            config,
+            metrics,
         );
 
         let handshake = timeout(Duration::from_secs(1), hub.handshake)
@@ -1434,15 +2098,25 @@ mod tests {
     async fn gossip_assert_should_broadcast_to_connected_hub() {
         let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
         let gossip_events = Arc::new(Mutex::new(Vec::new()));
+        let config = test_server_config();
+        let metrics = Arc::new(ServerMetrics::default());
         let Some(mut hub) = start_fake_hub().await else {
             return;
         };
-        let (transport, listener_handle) =
-            start_server_transport(&hub.addr, gossip_state.clone(), gossip_events.clone()).await;
+        let (transport, listener_handle) = start_server_transport(
+            &hub.addr,
+            gossip_state.clone(),
+            gossip_events.clone(),
+            metrics.clone(),
+            config.clone(),
+        )
+        .await;
         let schema = build_test_schema(
             gossip_state.clone(),
             gossip_events.clone(),
             Some(transport.clone()),
+            config,
+            metrics,
         );
 
         let handshake = timeout(Duration::from_secs(1), hub.handshake)
@@ -1481,15 +2155,25 @@ mod tests {
     async fn gossip_retract_should_broadcast_tombstone_to_connected_hub() {
         let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
         let gossip_events = Arc::new(Mutex::new(Vec::new()));
+        let config = test_server_config();
+        let metrics = Arc::new(ServerMetrics::default());
         let Some(mut hub) = start_fake_hub().await else {
             return;
         };
-        let (transport, listener_handle) =
-            start_server_transport(&hub.addr, gossip_state.clone(), gossip_events.clone()).await;
+        let (transport, listener_handle) = start_server_transport(
+            &hub.addr,
+            gossip_state.clone(),
+            gossip_events.clone(),
+            metrics.clone(),
+            config.clone(),
+        )
+        .await;
         let schema = build_test_schema(
             gossip_state.clone(),
             gossip_events.clone(),
             Some(transport.clone()),
+            config,
+            metrics,
         );
 
         let handshake = timeout(Duration::from_secs(1), hub.handshake)
@@ -1553,15 +2237,25 @@ mod tests {
     async fn duplicate_inbound_envelope_should_not_create_duplicate_events() {
         let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
         let gossip_events = Arc::new(Mutex::new(Vec::new()));
+        let config = test_server_config();
+        let metrics = Arc::new(ServerMetrics::default());
         let Some(hub) = start_fake_hub().await else {
             return;
         };
-        let (transport, listener_handle) =
-            start_server_transport(&hub.addr, gossip_state.clone(), gossip_events.clone()).await;
+        let (transport, listener_handle) = start_server_transport(
+            &hub.addr,
+            gossip_state.clone(),
+            gossip_events.clone(),
+            metrics.clone(),
+            config.clone(),
+        )
+        .await;
         let schema = build_test_schema(
             gossip_state.clone(),
             gossip_events.clone(),
             Some(transport.clone()),
+            config,
+            metrics,
         );
 
         let handshake = timeout(Duration::from_secs(1), hub.handshake)
@@ -1612,15 +2306,25 @@ mod tests {
             TrustPolicy::TrustRequired,
         )));
         let gossip_events = Arc::new(Mutex::new(Vec::new()));
+        let config = test_server_config();
+        let metrics = Arc::new(ServerMetrics::default());
         let Some(hub) = start_fake_hub().await else {
             return;
         };
-        let (transport, listener_handle) =
-            start_server_transport(&hub.addr, gossip_state.clone(), gossip_events.clone()).await;
+        let (transport, listener_handle) = start_server_transport(
+            &hub.addr,
+            gossip_state.clone(),
+            gossip_events.clone(),
+            metrics.clone(),
+            config.clone(),
+        )
+        .await;
         let schema = build_test_schema(
             gossip_state.clone(),
             gossip_events.clone(),
             Some(transport.clone()),
+            config,
+            metrics,
         );
 
         let handshake = timeout(Duration::from_secs(1), hub.handshake)
@@ -1655,5 +2359,141 @@ mod tests {
         transport.shutdown().await;
         listener_handle.abort();
         hub.task.abort();
+    }
+
+    #[test]
+    fn gossip_event_buffer_should_be_bounded() {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let metrics = Arc::new(ServerMetrics::default());
+
+        for idx in 0..5 {
+            push_gossip_event(
+                &events,
+                &metrics,
+                3,
+                GossipEvent::Sync {
+                    peer_id: format!("peer-{idx}"),
+                    envelope_count: idx,
+                },
+            );
+        }
+
+        let events = events.lock().unwrap();
+        assert_eq!(events.len(), 3, "event buffer should keep only the newest items");
+        match &events[0] {
+            GossipEvent::Sync { peer_id, .. } => assert_eq!(peer_id, "peer-2"),
+            other => panic!("expected sync event, got {other:?}"),
+        }
+        assert_eq!(metrics.gossip_events_total.load(Ordering::Relaxed), 5);
+        assert_eq!(
+            metrics.gossip_events_dropped_total.load(Ordering::Relaxed),
+            2
+        );
+    }
+
+    #[test]
+    fn readiness_should_require_a_peer_when_config_demands_it() {
+        let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
+        let gossip_events = Arc::new(Mutex::new(Vec::new()));
+        let mut config = ServerConfig {
+            bind_addr: SocketAddr::from(([127, 0, 0, 1], 8081)),
+            enable_playground: false,
+            require_gossip_peer: true,
+            max_request_bytes: 1_048_576,
+            max_gossip_events: 16,
+            cors_allowed_origins: Vec::new(),
+            log_format: LogFormat::Pretty,
+            log_filter: "info".to_string(),
+        };
+
+        let readiness = readiness_snapshot(&gossip_state, &gossip_events, &None, &config);
+        assert!(!readiness.ready, "readiness should fail without a required gossip peer");
+
+        config.require_gossip_peer = false;
+        let readiness = readiness_snapshot(&gossip_state, &gossip_events, &None, &config);
+        assert!(readiness.ready, "readiness should pass when gossip peers are optional");
+    }
+
+    #[tokio::test]
+    async fn health_ready_and_metrics_endpoints_should_reflect_server_state() {
+        let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
+        let gossip_events = Arc::new(Mutex::new(Vec::new()));
+        let mut config = Arc::unwrap_or_clone(test_server_config());
+        config.require_gossip_peer = true;
+        config.max_gossip_events = 8;
+        let config = Arc::new(config);
+        let metrics = Arc::new(ServerMetrics::default());
+        let state = build_test_http_state(
+            gossip_state,
+            gossip_events,
+            None,
+            config.clone(),
+            metrics.clone(),
+        );
+        let app = build_app(state);
+
+        let health = app
+            .clone()
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/healthz")
+                    .body(Body::empty())
+                    .expect("health request should build"),
+            )
+            .await
+            .expect("health endpoint should respond");
+        assert_eq!(health.status(), StatusCode::OK);
+
+        let ready = app
+            .clone()
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/readyz")
+                    .body(Body::empty())
+                    .expect("ready request should build"),
+            )
+            .await
+            .expect("ready endpoint should respond");
+        assert_eq!(ready.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let ready_body = to_bytes(ready.into_body(), usize::MAX)
+            .await
+            .expect("ready body should read");
+        let ready_json: serde_json::Value =
+            serde_json::from_slice(&ready_body).expect("ready body should be valid json");
+        assert_eq!(ready_json["ready"], false);
+        assert_eq!(ready_json["require_gossip_peer"], true);
+        assert_eq!(ready_json["max_event_buffer_len"], 8);
+
+        let metrics_response = app
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/metrics")
+                    .body(Body::empty())
+                    .expect("metrics request should build"),
+            )
+            .await
+            .expect("metrics endpoint should respond");
+        assert_eq!(metrics_response.status(), StatusCode::OK);
+        let metrics_body = to_bytes(metrics_response.into_body(), usize::MAX)
+            .await
+            .expect("metrics body should read");
+        let metrics_text =
+            String::from_utf8(metrics_body.to_vec()).expect("metrics should be valid utf8");
+        assert!(
+            metrics_text.contains("nibli_health_requests_total 1"),
+            "metrics should expose health counter"
+        );
+        assert!(
+            metrics_text.contains("nibli_readiness_requests_total 1"),
+            "metrics should expose readiness counter"
+        );
+        assert!(
+            metrics_text.contains("nibli_metrics_requests_total 1"),
+            "metrics should expose metrics counter"
+        );
+        assert!(
+            metrics_text.contains("nibli_ready 0"),
+            "metrics should expose readiness gauge"
+        );
     }
 }

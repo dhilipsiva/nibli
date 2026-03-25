@@ -131,6 +131,38 @@ la .adam. cu gerku            # la .adam. cu gerku
 preti: la .adam. cu citka     # → JETNU (TRUE) + krinu tricu (proof tree)
 ```
 
+### `nibli-server` guardrails
+
+`nibli-server` now defaults to local-only development settings unless you opt into wider exposure:
+
+- default bind: `127.0.0.1:8081`
+- default GraphQL playground: enabled only on loopback binds
+- default CORS: no permissive wildcard; loopback binds get a small local allowlist (`localhost:3000`, `localhost:4173`, `localhost:8080`, `localhost:8081`, plus `127.0.0.1` equivalents)
+- request body limit: `1048576` bytes by default
+- gossip event buffer: bounded in memory; default cap `500`
+
+Operational endpoints:
+
+- `GET /healthz` — process liveness
+- `GET /readyz` — readiness, including optional gossip-peer requirement
+- `GET /metrics` — Prometheus-style counters and gauges
+- `POST /graphql` — GraphQL API
+- `GET /graphql` — GraphQL playground, only when enabled
+
+Useful environment variables:
+
+- `NIBLI_SERVER_BIND=host:port` — override the bind address
+- `NIBLI_SERVER_ENABLE_PLAYGROUND=true|false` — force playground on or off
+- `NIBLI_SERVER_CORS_ALLOW_ORIGINS=http://localhost:3000,...` — explicit CORS allowlist
+- `NIBLI_SERVER_MAX_REQUEST_BYTES=1048576` — request body cap
+- `NIBLI_SERVER_MAX_GOSSIP_EVENTS=500` — in-memory gossip event cap
+- `NIBLI_SERVER_REQUIRE_GOSSIP_PEER=true|false` — make readiness fail until at least one gossip peer is connected
+- `NIBLI_SERVER_LOG=info,tower_http=info` — tracing filter
+- `NIBLI_SERVER_LOG_FORMAT=pretty|json` — log output format
+- `NIBLI_GOSSIP_HUB=host:port` — attach the server to a `tavla` peer/hub
+
+For a network-facing deployment, set `NIBLI_SERVER_BIND` explicitly, set a real CORS allowlist, and disable the playground unless you want it exposed.
+
 ### lo tavla ke fatri ciste (gossip network)
 
 ni'o la .nibli. cu se pilno lo fatri ke logji ciste noi se pilno lo OR-Set CRDT joi lo vector clock:

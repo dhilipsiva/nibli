@@ -13,10 +13,6 @@ Order matters:
 
 ## Phase 3 - Maintainability and Production Finish
 
-- [ ] 15. Add production guardrails.
-  Targets: `nibli-server/src/main.rs`, runtime configuration, deployment docs
-  Add structured logs, metrics, health and readiness endpoints, bounded event storage, and non-permissive defaults for network-facing deployment.
-
 - [ ] 16. Reconcile docs, UI, and runtime behavior after the refactors.
   Targets: `README.md`, `AGENTS.md`, `CLAUDE.md`, `nibli-ui/src/main.rs`, `book/`
   The documented behavior, UI behavior, and runtime behavior should match exactly once the server and gossip path are fixed.
