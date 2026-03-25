@@ -4,8 +4,6 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 1: Pipeline Efficiency (Medium Effort, High Impact)
 
-4. **known_rules dedup key** — `HashSet<String>` uses full serialized rule as dedup key. Switch to structural hash of typed conditions/conclusions for O(1) dedup instead of O(k) string hashing.
-
 ## Tier 3: Architecture (High Effort, High Impact)
 
 8. **Shared WIT type packages** — Each crate (gerna, smuni, logji) generates independent copies of identical enum types via WIT bindings. `nibli-engine` has ~150 lines of exhaustive enum conversion (gerna→smuni, smuni→logji). A shared WIT package (`lojban:nibli-shared-types`) would define canonical types once. Eliminates all conversion code.

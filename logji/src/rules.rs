@@ -1,4 +1,14 @@
 use super::*;
+use std::hash::{Hash, Hasher};
+
+/// Compute a structural hash for rule dedup. `tag` distinguishes rule kinds.
+fn rule_dedup_hash(tag: u8, conditions: &[StoredFact], conclusions: &[StoredFact]) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    tag.hash(&mut hasher);
+    conditions.hash(&mut hasher);
+    conclusions.hash(&mut hasher);
+    hasher.finish()
+}
 
 /// Check if a GroundTerm represents a dependent Skolem placeholder.
 pub(super) fn is_skdep(gt: &GroundTerm) -> bool {
@@ -375,7 +385,7 @@ pub(super) fn compile_forall_to_rule(
                 })
                 .collect();
 
-            let dedup_key = format!("{:?} => {:?}", typed_conds, typed_concls);
+            let dedup_key = rule_dedup_hash(0, &typed_conds, &typed_concls);
             if !inner.known_rules.insert(dedup_key) {
                 if !inner.rebuilding {
                     println!("[Rule] ∀{} already present, skipping", universals.join(","));
@@ -449,7 +459,7 @@ pub(super) fn compile_forall_to_rule(
                 })
                 .collect();
 
-            let dedup_key = format!("bare {:?}", typed_concls);
+            let dedup_key = rule_dedup_hash(1, &[], &typed_concls);
             if !inner.known_rules.insert(dedup_key) {
                 if !inner.rebuilding {
                     println!(

@@ -380,7 +380,7 @@ struct KnowledgeBaseInner {
     known_event_entities: HashSet<String>,
     /// Known description terms (from `le` gadri), tracked separately for InDomain.
     known_descriptions: HashSet<String>,
-    known_rules: HashSet<String>,
+    known_rules: HashSet<u64>,
     skolem_fn_registry: Vec<SkolemFnEntry>,
     /// Typed ground facts — the canonical fact store.
     typed_facts: HashSet<StoredFact>,
