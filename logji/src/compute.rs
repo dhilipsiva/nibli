@@ -224,9 +224,6 @@ pub(super) fn batch_evaluate_compute_for_members(
             results[i] = r;
             if r {
                 let resolved = resolve_args_for_dispatch(args, &s);
-                if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
-                    assert_sexp(sexp, inner);
-                }
                 if let Some(fact) = build_ground_fact_from_resolved(rel, &resolved) {
                     assert_typed_fact(fact, inner);
                 }
@@ -256,9 +253,6 @@ pub(super) fn batch_evaluate_compute_for_members(
             Ok(r) => {
                 results[member_idx] = r;
                 if r {
-                    if let Some(sexp) = build_ground_predicate_sexp(rel, &pending[batch_idx].1) {
-                        assert_sexp(sexp, inner);
-                    }
                     if let Some(fact) = build_ground_fact_from_resolved(rel, &pending[batch_idx].1) {
                         assert_typed_fact(fact, inner);
                     }

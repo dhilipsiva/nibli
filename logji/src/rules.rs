@@ -423,15 +423,67 @@ pub(super) fn collect_matching_rules(
 }
 
 pub(super) fn sexp_is_asserted(sexp: &str, inner: &KnowledgeBaseInner) -> bool {
-    if let Some(pred_name) = extract_pred_name_deep(sexp) {
-        if !inner.predicate_facts.contains_key(pred_name) {
-            return false;
+    // Delegate to typed store by parsing sexp into a StoredFact.
+    if let Some(fact) = parse_sexp_to_stored_fact(sexp) {
+        if let Some(set) = inner.typed_predicate_facts.get(fact.relation()) {
+            return set.contains(&fact);
         }
     }
-    inner
-        .interner
-        .get(sexp)
-        .is_some_and(|key| inner.asserted_sexps.contains(&key))
+    false
+}
+
+/// Parse an s-expression string into a StoredFact for typed store lookup.
+/// Handles: (Pred "rel" (Cons term (Cons term (Nil)))), with optional tense wrappers.
+pub(super) fn parse_sexp_to_stored_fact(sexp: &str) -> Option<StoredFact> {
+    // Strip tense wrapper if present.
+    for tense in &["Past", "Present", "Future", "Obligatory", "Permitted"] {
+        let prefix = format!("({} ", tense);
+        if let Some(rest) = sexp.strip_prefix(&prefix) {
+            if let Some(inner) = rest.strip_suffix(')') {
+                let bare = parse_bare_pred_sexp(inner)?;
+                return Some(StoredFact::with_tense(bare, Some(tense)));
+            }
+        }
+    }
+    let bare = parse_bare_pred_sexp(sexp)?;
+    Some(StoredFact::Bare(bare))
+}
+
+/// Parse a bare (Pred "rel" args) sexp into a GroundFact.
+fn parse_bare_pred_sexp(sexp: &str) -> Option<GroundFact> {
+    let sexp = sexp.trim();
+    if !sexp.starts_with("(Pred \"") {
+        return None;
+    }
+    // Extract relation name: (Pred "name" rest)
+    let after_pred = &sexp[7..]; // skip `(Pred "`
+    let quote_end = after_pred.find('"')?;
+    let relation = after_pred[..quote_end].to_string();
+    let args_start = quote_end + 2; // skip `" `
+    let args_sexp = &after_pred[args_start..after_pred.len() - 1]; // strip trailing )
+    let args = parse_cons_list(args_sexp);
+    Some(GroundFact::new(relation, args))
+}
+
+/// Parse a Cons-list sexp into Vec<GroundTerm>.
+/// Handles: (Cons term (Cons term (Nil)))
+fn parse_cons_list(sexp: &str) -> Vec<GroundTerm> {
+    let sexp = sexp.trim();
+    if sexp == "(Nil)" || sexp.is_empty() {
+        return Vec::new();
+    }
+    if !sexp.starts_with("(Cons ") {
+        return Vec::new();
+    }
+    let inner = &sexp[6..sexp.len() - 1]; // strip "(Cons " and ")"
+    // Find the split point between the first term and the rest (balanced parens).
+    if let Some((term_str, rest_str)) = split_sexp_pair(inner) {
+        let mut args = vec![parse_sexp_to_ground_term(term_str)];
+        args.extend(parse_cons_list(rest_str));
+        args
+    } else {
+        Vec::new()
+    }
 }
 
 fn intern_vec(strings: &[String], interner: &mut SexpInterner) -> Vec<u32> {
@@ -470,12 +522,11 @@ pub(super) fn register_rule(
     add_universal_rule(&mut inner.universal_rules, rule, &inner.interner);
 }
 
+/// Assert an sexp string by parsing it to a StoredFact and inserting into the typed store.
+/// LEGACY: still called from traced proof path. Will be removed when traced path is fully typed.
 pub(super) fn assert_sexp(sexp: String, inner: &mut KnowledgeBaseInner) {
-    let pred_name = extract_pred_name_deep(&sexp).map(|s| s.to_string());
-    let key = inner.interner.intern_owned(sexp);
-    inner.asserted_sexps.insert(key);
-    if let Some(name) = pred_name {
-        inner.predicate_facts.entry(name).or_default().insert(key);
+    if let Some(fact) = parse_sexp_to_stored_fact(&sexp) {
+        assert_typed_fact(fact, inner);
     }
 }
 
@@ -486,12 +537,6 @@ pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner
     inner.typed_facts.insert(fact);
 }
 
-pub(super) fn facts_for_predicate<'a>(
-    pred: &str,
-    inner: &'a KnowledgeBaseInner,
-) -> Option<&'a SortedU32Vec> {
-    inner.predicate_facts.get(pred)
-}
 
 fn add_universal_rule(
     rules: &mut HashMap<String, Vec<Arc<UniversalRuleRecord>>>,
@@ -733,9 +778,6 @@ pub(super) fn compile_forall_to_rule(
                     xp_subs.insert(var.clone(), format!("(Const \"{}\")", ev_sk));
                 }
                 for &cid in &all_conditions {
-                    let presup = reconstruct_sexp_with_subs(buffer, cid, &xp_subs);
-                    assert_sexp(presup, inner);
-                    // Dual-write: also assert xorlo presupposition into typed store.
                     if let Some(fact) = build_stored_fact_from_node(buffer, cid, &xp_subs, None) {
                         assert_typed_fact(fact, inner);
                     }
@@ -1024,16 +1066,6 @@ pub(super) fn generate_count_extra_witnesses(
                     let extra_sk = inner.fresh_skolem();
                     inner.note_entity(&extra_sk);
 
-                    let mut extra_subs: HashMap<String, String> = skolem_subs
-                        .iter()
-                        .filter(|(_, sv)| !sv.starts_with(SKDEP_PREFIX))
-                        .map(|(k, sv)| (k.clone(), format!("(Const \"{}\")", sv)))
-                        .collect();
-                    extra_subs.insert(v.clone(), format!("(Const \"{}\")", extra_sk));
-
-                    let sexp = reconstruct_sexp_with_subs(buffer, *body, &extra_subs);
-                    assert_sexp(sexp, inner);
-                    // Dual-write to typed store.
                     let mut typed_extra_subs: HashMap<String, String> = skolem_subs
                         .iter()
                         .filter(|(_, sv)| !sv.starts_with(SKDEP_PREFIX))

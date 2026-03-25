@@ -2,21 +2,15 @@
 
 Ordered by impact, priority, and dependency. Items within each tier can be tackled in any order unless noted.
 
-## Tier 1: Remove S-Expression Layer (High Impact, High Priority)
+## Tier 1: Remaining S-Expression Cleanup (Medium Effort)
 
-S-expressions are a vestigial artifact from the egglog era. Now that the engine uses demand-driven backward-chaining, the entire sexp serialize/parse/tokenize/match cycle is unnecessary overhead. Replace with direct typed `LogicNode` storage and structural unification. This is the single highest-impact refactor — it removes an entire abstraction layer and eliminates a class of silent bugs (formatting changes in `write_sexp` breaking `match_against_tokens`).
+The sexp fact store has been replaced with typed StoredFact storage. Untraced queries use structural unification. Remaining sexp code is used only by the traced proof path and compile-debug output.
 
-2. **Replace `SexpInterner` + `SortedU32Vec` with typed fact store** — `asserted_sexps` currently stores interned sexp string keys. Replace with `HashSet<LogicNode>` (or a predicate-indexed `HashMap<String, Vec<LogicNode>>`). Remove `SexpInterner`, `SortedU32Vec`, `sexp_is_asserted()`, and `extract_pred_name_deep()`. Touches: `logji/src/lib.rs`, `logji/src/rules.rs`.
+1. **Migrate traced backward-chaining to typed path** — `try_backward_chain_traced()` and `trace_predicate_provenance()` still use SexpTree matching and reconstruct sexp strings for ProofRule payloads. Migrate to use typed `StoredFact` matching (reuse `unify_facts()` / `substitute_fact()`) and `StoredFact::to_display_string()` for ProofRule string payloads. This would allow removing `SexpTree`, `SexpInterner`, `sexp_tokenize()`, and the sexp backward-chaining code entirely.
 
-3. **Replace `SexpTree` pattern matching with structural unification** — `UniversalRuleRecord` stores `SexpTree` templates parsed from sexp strings. Replace with `LogicNode` templates containing a `PatternVar` variant. Implement `unify(template: &LogicNode, concrete: &LogicNode) -> Option<Bindings>` that walks both trees structurally. Remove `SexpTree`, `match_against_tokens()`, `sexp_tokenize()`, `extract_sexp_at()`, `substitute()`. Depends on: item 2. Touches: `logji/src/lib.rs`, `logji/src/reasoning.rs`, `logji/src/rules.rs`.
+2. **Remove duplicate sexp reconstruction** — `lasna/src/lib.rs` and `nibli-engine/src/lib.rs` both have `reconstruct_sexp()` / `write_sexp()` / `write_term()`. Consolidate or replace with typed display for `compile-debug` output.
 
-4. **Replace sexp-based backward-chaining with typed traversal** — `try_backward_chain()` and `check_predicate_in_kb()` currently take `&str` sexp arguments, tokenize them, and match against `SexpTree` templates. Refactor to take `&LogicNode` directly and use structural unification from item 5. Remove `sexp_tokenize()` calls in reasoning hot path. Depends on: items 2, 3. Touches: `logji/src/reasoning.rs`.
-
-5. **Remove `write_sexp` / `reconstruct_sexp` from assertion path** — `lasna` and `nibli-engine` both convert `LogicBuffer` nodes to sexp strings for assertion into logji. Instead, convert `LogicBuffer` → `LogicNode` directly (typed conversion, no string intermediary). Keep sexp formatting only for human-readable display (REPL output, proof trace rendering). Depends on: items 2-4. Touches: `lasna/src/lib.rs`, `nibli-engine/src/lib.rs`. Also eliminates the duplicated sexp reconstruction logic between these two crates.
-
-6. **Update proof traces to use typed nodes** — Proof trace steps currently record sexp strings. Store `LogicNode` references instead; serialize to string only at display time (REPL `?` output, GraphQL `proof-json`, UI proof panel). Depends on: items 2-5. Touches: `logji/src/reasoning.rs`, `gasnu/src/main.rs`, `nibli-server/src/main.rs`.
-
-## Tier 3: Remove Egglog-Era Vestiges (Low Effort, High Cleanup Value)
+## Tier 2: Remove Egglog-Era Vestiges (Low Effort, High Cleanup Value)
 
 These are leftover from the egglog (equality saturation) architecture that was fully replaced by demand-driven backward-chaining. None affect correctness today, but they add confusion and dead weight.
 

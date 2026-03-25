@@ -3,7 +3,7 @@
 //! This is the core inference component of Nibli. It maintains a stateful knowledge
 //! base with a fact index and backward-chaining rule engine:
 //!
-//! - **Fact assertion** — Ground predicates stored in `asserted_sexps` HashSet.
+//! - **Fact assertion** — Ground predicates stored as typed `StoredFact` in `typed_facts` HashSet.
 //!   Universal quantifiers compile to `UniversalRuleRecord` templates for backward-chaining.
 //! - **Entailment queries** — Recursive formula checking via [`check_formula_holds`] with
 //!   demand-driven backward-chaining through universal rules.
@@ -16,6 +16,9 @@
 //!   `compute-backend` WIT interface for external evaluation.
 //!
 //! The knowledge base uses `RefCell` (not `Mutex`) — single-threaded WASI, no global state.
+
+// Workaround: rustc 1.94.0 ICE in dead code analysis triggered by sexp removal.
+#![allow(dead_code)]
 
 #[allow(warnings)]
 pub mod bindings;
@@ -666,13 +669,7 @@ struct KnowledgeBaseInner {
     known_descriptions: HashSet<String>,
     known_rules: HashSet<String>,
     skolem_fn_registry: Vec<SkolemFnEntry>,
-    /// Ground facts as interned s-expression keys (sorted columnar storage).
-    /// Binary search for O(log n) membership, 4 bytes per entry.
-    asserted_sexps: SortedU32Vec,
-    /// Columnar index: predicate name → sorted interned sexp keys.
-    /// Enables predicate-scoped enumeration and merge-join subset checks.
-    predicate_facts: HashMap<String, SortedU32Vec>,
-    /// Typed ground facts — parallel store (dual-write during migration).
+    /// Typed ground facts — the fact store (replaced sexp-based SortedU32Vec).
     typed_facts: HashSet<StoredFact>,
     /// Typed predicate index: relation name → set of StoredFacts.
     typed_predicate_facts: HashMap<String, HashSet<StoredFact>>,
@@ -705,8 +702,6 @@ impl KnowledgeBaseInner {
             known_descriptions: HashSet::new(),
             known_rules: HashSet::new(),
             skolem_fn_registry: Vec::new(),
-            asserted_sexps: SortedU32Vec::new(),
-            predicate_facts: HashMap::new(),
             typed_facts: HashSet::new(),
             typed_predicate_facts: HashMap::new(),
             universal_rules: HashMap::new(),
@@ -728,8 +723,6 @@ impl KnowledgeBaseInner {
         self.known_descriptions.clear();
         self.known_rules.clear();
         self.skolem_fn_registry.clear();
-        self.asserted_sexps.clear();
-        self.predicate_facts.clear();
         self.typed_facts.clear();
         self.typed_predicate_facts.clear();
         self.universal_rules.clear();
@@ -1211,27 +1204,7 @@ fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) -> Res
             }
             collect_and_note_constants(logic, root_id, inner);
 
-            let raw_subs: HashMap<String, String> = skolem_subs
-                .iter()
-                .filter(|(_, v)| !v.starts_with(SKDEP_PREFIX))
-                .map(|(k, v)| (k.clone(), format!("(Const \"{}\")", v)))
-                .collect();
-
-            // Flatten top-level conjunctions and assert each leaf individually.
-            let mut leaves = Vec::new();
-            collect_ground_leaves(logic, root_id, &skolem_subs, None, &mut leaves);
-
-            for (leaf_id, tense) in &leaves {
-                let leaf_sexp = reconstruct_sexp_with_subs(logic, *leaf_id, &raw_subs);
-                let wrapped = match tense {
-                    Some(t) => format!("({} {})", t, leaf_sexp),
-                    None => leaf_sexp,
-                };
-                // Record as asserted fact for provenance tracking and backward-chaining
-                assert_sexp(wrapped.clone(), inner);
-            }
-
-            // Dual-write: also assert into typed fact store.
+            // Flatten top-level conjunctions and assert each leaf as a typed fact.
             let mut typed_leaves = Vec::new();
             collect_ground_facts(logic, root_id, &skolem_subs, None, &mut typed_leaves);
             for fact in typed_leaves {
@@ -1324,8 +1297,6 @@ impl KnowledgeBase {
         inner.known_descriptions.clear();
         inner.known_rules.clear();
         inner.skolem_fn_registry.clear();
-        inner.asserted_sexps.clear();
-        inner.predicate_facts.clear();
         inner.typed_facts.clear();
         inner.typed_predicate_facts.clear();
         inner.universal_rules.clear();
@@ -5738,10 +5709,10 @@ mod tests {
         assert_buf(&kb, buf);
 
         // Verify the fact count is bounded — each leaf gets a single entry
-        // in asserted_sexps (no combinatorial And explosion).
+        // in typed_facts (no combinatorial And explosion).
         let inner = kb.inner.borrow();
-        let fact_count = inner.asserted_sexps.len();
-        eprintln!("[Test] asserted_sexps count: {}", fact_count);
+        let fact_count = inner.typed_facts.len();
+        eprintln!("[Test] typed_facts count: {}", fact_count);
         assert!(
             fact_count < 100,
             "Asserted facts should be < 100 after flattening, got {}",

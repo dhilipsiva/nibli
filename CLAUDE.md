@@ -126,7 +126,7 @@ Before every commit, always:
 
 Roadmap status: Phase 1, Phase 2, and Phase 3 are complete. `todo.md` no longer contains open roadmap blockers; remaining work is deferred or incremental rather than required for production-readiness alignment.
 
-Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator) + C2 (non-monotonic reasoning / belief revision) + C3 (temporal reasoning) + C4 (event semantics — Neo-Davidsonian) + C5 (description term opacity — `le` vs `lo`) + SkolemFn multi-dependency + event-decomposed universal rule compilation fix (condition-side ∃ as pattern variables) + proof trace memoization (DAG deduplication via ProofRef) + **egglog removal** (replaced egglog equality saturation with demand-driven backward-chaining over indexed fact store).
+Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator) + C2 (non-monotonic reasoning / belief revision) + C3 (temporal reasoning) + C4 (event semantics — Neo-Davidsonian) + C5 (description term opacity — `le` vs `lo`) + SkolemFn multi-dependency + event-decomposed universal rule compilation fix (condition-side ∃ as pattern variables) + proof trace memoization (DAG deduplication via ProofRef) + **egglog removal** (replaced egglog equality saturation with demand-driven backward-chaining over indexed fact store) + **s-expression removal** (replaced sexp string interner + SortedU32Vec fact store with typed GroundTerm/GroundFact/StoredFact storage; untraced queries use structural unification via unify_facts(); sexp code retained only for proof trace display in the traced path).
 
 **Implemented features:**
 - Lexer + recursive-descent gerna/parser (gismu, cmavo, cmevla, lujvo)
@@ -142,7 +142,7 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - Skolemization (independent + dependent under ∀ via SkolemFn)
 - All universals compile to backward-chaining rule templates (UniversalRuleRecord) + xorlo presupposition Skolems (restrictor domain guaranteed non-empty)
 - SkolemFn constructor for dependent Skolems with multi-dependency support: single dep `(SkolemFn "sk_N" dep)`, multi-dep via `DepPair` nesting `(SkolemFn "sk_N" (DepPair dep0 dep1))` — handles `∀x.∀y. → ∃z.` patterns
-- Demand-driven backward-chaining reasoning engine (replaced egglog): indexed fact store (asserted_sexps HashSet) + UniversalRuleRecord templates for backward-chaining; ground material conditionals (Or(Not(P),Q)) auto-registered as zero-variable rules for modus ponens
+- Demand-driven backward-chaining reasoning engine (replaced egglog): typed fact store (HashSet<StoredFact> with predicate-indexed lookup) + UniversalRuleRecord templates with typed StoredFact conditions/conclusions for structural unification via unify_facts(); ground material conditionals (Or(Not(P),Q)) auto-registered as zero-variable rules for modus ponens
 - Count quantifier (exactly N) for numeric descriptions
 - da/de/di existential quantifier closure (bare logic variables now properly wrapped in ∃)
 - Host-managed WIT resources: `resource knowledge-base` (logji) + `resource session` (lasna interface)

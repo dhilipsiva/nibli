@@ -181,10 +181,6 @@ pub(super) fn check_formula_holds(
             let resolved = resolve_args_for_dispatch(args, subs);
             if let Ok(result) = dispatch_to_backend(rel, &resolved) {
                 if result {
-                    if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
-                        assert_sexp(sexp.clone(), inner);
-                    }
-                    // Also assert into typed store.
                     if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
                         assert_typed_fact(fact, inner);
                     }
@@ -193,9 +189,6 @@ pub(super) fn check_formula_holds(
             }
             if let Some(result) = try_arithmetic_evaluation(rel, args, subs) {
                 if result {
-                    if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
-                        assert_sexp(sexp.clone(), inner);
-                    }
                     if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
                         assert_typed_fact(fact, inner);
                     }
