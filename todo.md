@@ -2,13 +2,11 @@
 
 Ordered by impact, priority, and dependency. Items within each tier can be tackled in any order unless noted.
 
-## Tier 1: Remaining Legacy Representation Cleanup (Medium Effort)
+## Tier 1: Remaining Legacy Cleanup (Low Effort)
 
-The legacy fact store has been replaced with typed StoredFact storage. Untraced queries use structural unification. Remaining legacy representation code is used only by the traced proof path and compile-debug output.
+1. **Remove duplicate representation reconstruction** — `lasna/src/lib.rs` and `nibli-engine/src/lib.rs` both have `reconstruct_repr()` / `write_repr()` / `write_term()`. Used only by `compile-debug` output. Consolidate or replace with typed display.
 
-1. **Migrate traced backward-chaining to typed path** — `try_backward_chain_traced()` and `trace_predicate_provenance()` still use LegacyPatternTree matching and reconstruct representation strings for ProofRule payloads. Migrate to use typed `StoredFact` matching (reuse `unify_facts()` / `substitute_fact()`) and `StoredFact::to_display_string()` for ProofRule string payloads. This would allow removing `LegacyPatternTree`, `LegacyInterner`, `legacy_tokenize()`, and the legacy backward-chaining code entirely.
-
-2. **Remove duplicate representation reconstruction** — `lasna/src/lib.rs` and `nibli-engine/src/lib.rs` both have `reconstruct_repr()` / `write_repr()` / `write_term()`. Consolidate or replace with typed display for `compile-debug` output.
+2. **Remove remaining legacy types** — `LegacyPatternTree`, `LegacyInterner`, `LegacySortedVec`, `legacy_tokenize()` in logji are now dead code (backward-chaining fully migrated to typed). Delete them once `#![allow(dead_code)]` ICE workaround is resolved (or delete with the allow in place).
 
 ## Tier 2: Remove Egglog-Era Vestiges (Low Effort, High Cleanup Value)
 
