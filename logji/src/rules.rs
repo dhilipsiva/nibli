@@ -195,342 +195,38 @@ pub(super) fn collect_and_note_constants(
     }
 }
 
-pub(super) fn reconstruct_rule_repr(
-    buffer: &LogicBuffer,
-    node_id: u32,
-    pattern_vars: &HashMap<String, String>,
-    ground_skolems: &HashMap<String, String>,
-    dependent_skolems: &HashMap<String, (String, Vec<String>)>,
-) -> String {
-    match &buffer.nodes[node_id as usize] {
-        LogicNode::Predicate((rel, args)) | LogicNode::ComputeNode((rel, args)) => {
-            let mut args_str = String::from("(Nil)");
-            for arg in args.iter().rev() {
-                let term_str = match arg {
-                    LogicalTerm::Variable(v) => {
-                        if let Some(pvar) = pattern_vars.get(v.as_str()) {
-                            pvar.clone()
-                        } else if let Some(sk) = ground_skolems.get(v.as_str()) {
-                            format!("(Const \"{}\")", sk)
-                        } else if let Some((base, pvars)) = dependent_skolems.get(v.as_str()) {
-                            let pvar_refs: Vec<&str> = pvars.iter().map(|s| s.as_str()).collect();
-                            build_skolem_fn_repr(base, &pvar_refs)
-                        } else {
-                            format!("(Var \"{}\")", v)
-                        }
-                    }
-                    LogicalTerm::Constant(c) => format!("(Const \"{}\")", c),
-                    LogicalTerm::Description(d) => format!("(Desc \"{}\")", d),
-                    LogicalTerm::Unspecified => "(Zoe)".to_string(),
-                    LogicalTerm::Number(n) => format!("(Num {})", *n as i64),
-                };
-                args_str = format!("(Cons {} {})", term_str, args_str);
-            }
-            format!("(Pred \"{}\" {})", rel, args_str)
-        }
-        LogicNode::ExistsNode((v, body)) => {
-            if ground_skolems.contains_key(v.as_str())
-                || pattern_vars.contains_key(v.as_str())
-                || dependent_skolems.contains_key(v.as_str())
-            {
-                reconstruct_rule_repr(
-                    buffer,
-                    *body,
-                    pattern_vars,
-                    ground_skolems,
-                    dependent_skolems,
-                )
-            } else {
-                format!(
-                    "(Exists \"{}\" {})",
-                    v,
-                    reconstruct_rule_repr(
-                        buffer,
-                        *body,
-                        pattern_vars,
-                        ground_skolems,
-                        dependent_skolems
-                    )
-                )
-            }
-        }
-        LogicNode::ForAllNode((v, body)) => {
-            if pattern_vars.contains_key(v.as_str()) {
-                reconstruct_rule_repr(
-                    buffer,
-                    *body,
-                    pattern_vars,
-                    ground_skolems,
-                    dependent_skolems,
-                )
-            } else {
-                format!(
-                    "(ForAll \"{}\" {})",
-                    v,
-                    reconstruct_rule_repr(
-                        buffer,
-                        *body,
-                        pattern_vars,
-                        ground_skolems,
-                        dependent_skolems
-                    )
-                )
-            }
-        }
-        LogicNode::AndNode((l, r)) => {
-            format!(
-                "(And {} {})",
-                reconstruct_rule_repr(buffer, *l, pattern_vars, ground_skolems, dependent_skolems),
-                reconstruct_rule_repr(buffer, *r, pattern_vars, ground_skolems, dependent_skolems)
-            )
-        }
-        LogicNode::OrNode((l, r)) => {
-            format!(
-                "(Or {} {})",
-                reconstruct_rule_repr(buffer, *l, pattern_vars, ground_skolems, dependent_skolems),
-                reconstruct_rule_repr(buffer, *r, pattern_vars, ground_skolems, dependent_skolems)
-            )
-        }
-        LogicNode::NotNode(inner) => {
-            format!(
-                "(Not {})",
-                reconstruct_rule_repr(
-                    buffer,
-                    *inner,
-                    pattern_vars,
-                    ground_skolems,
-                    dependent_skolems
-                )
-            )
-        }
-        LogicNode::CountNode((v, count, body)) => {
-            if *count == 0 {
-                let body_repr = reconstruct_rule_repr(
-                    buffer,
-                    *body,
-                    pattern_vars,
-                    ground_skolems,
-                    dependent_skolems,
-                );
-                format!("(ForAll \"{}\" (Not {}))", v, body_repr)
-            } else if ground_skolems.contains_key(v.as_str()) {
-                reconstruct_rule_repr(
-                    buffer,
-                    *body,
-                    pattern_vars,
-                    ground_skolems,
-                    dependent_skolems,
-                )
-            } else {
-                let body_repr = reconstruct_rule_repr(
-                    buffer,
-                    *body,
-                    pattern_vars,
-                    ground_skolems,
-                    dependent_skolems,
-                );
-                format!("(Exists \"{}\" {})", v, body_repr)
-            }
-        }
-        LogicNode::PastNode(inner) => {
-            format!(
-                "(Past {})",
-                reconstruct_rule_repr(
-                    buffer,
-                    *inner,
-                    pattern_vars,
-                    ground_skolems,
-                    dependent_skolems
-                )
-            )
-        }
-        LogicNode::PresentNode(inner) => {
-            format!(
-                "(Present {})",
-                reconstruct_rule_repr(
-                    buffer,
-                    *inner,
-                    pattern_vars,
-                    ground_skolems,
-                    dependent_skolems
-                )
-            )
-        }
-        LogicNode::FutureNode(inner) => {
-            format!(
-                "(Future {})",
-                reconstruct_rule_repr(
-                    buffer,
-                    *inner,
-                    pattern_vars,
-                    ground_skolems,
-                    dependent_skolems
-                )
-            )
-        }
-        LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) => {
-            reconstruct_rule_repr(
-                buffer,
-                *inner,
-                pattern_vars,
-                ground_skolems,
-                dependent_skolems,
-            )
-        }
-    }
-}
-
-pub(super) fn extract_pred_name(fact_repr: &str) -> Option<&str> {
-    let rest = fact_repr.strip_prefix("(Pred \"")?;
-    let end = rest.find('"')?;
-    Some(&rest[..end])
-}
-
-pub(super) fn extract_pred_name_deep(fact_repr: &str) -> Option<&str> {
-    if let Some(name) = extract_pred_name(fact_repr) {
-        return Some(name);
-    }
-    for prefix in &[
-        "(Past ",
-        "(Present ",
-        "(Future ",
-        "(Obligation ",
-        "(Permission ",
-    ] {
-        if let Some(rest) = fact_repr.strip_prefix(prefix) {
-            if let Some(inner) = rest.strip_suffix(')') {
-                return extract_pred_name(inner);
-            }
-        }
-    }
-    None
-}
-
-pub(super) fn collect_matching_rules(
-    fact_repr: &str,
-    rules: &HashMap<String, Vec<Arc<UniversalRuleRecord>>>,
-) -> Vec<Arc<UniversalRuleRecord>> {
-    let mut result = Vec::new();
-    if let Some(pred_name) = extract_pred_name_deep(fact_repr) {
-        if let Some(matching) = rules.get(pred_name) {
-            result.extend(matching.iter().map(Arc::clone));
-        }
-    }
-    if let Some(fallback) = rules.get("__fallback__") {
-        result.extend(fallback.iter().map(Arc::clone));
-    }
-    result
-}
-
-pub(super) fn legacy_fact_is_asserted(fact_repr: &str, inner: &KnowledgeBaseInner) -> bool {
-    // Delegate to typed store by parsing fact_repr into a StoredFact.
-    if let Some(fact) = parse_repr_to_stored_fact(fact_repr) {
-        if let Some(set) = inner.typed_predicate_facts.get(fact.relation()) {
-            return set.contains(&fact);
-        }
-    }
-    false
-}
-
-/// Parse a legacy representation string into a StoredFact for typed store lookup.
-/// Handles: (Pred "rel" (Cons term (Cons term (Nil)))), with optional tense wrappers.
-pub(super) fn parse_repr_to_stored_fact(fact_repr: &str) -> Option<StoredFact> {
-    // Strip tense wrapper if present.
-    for tense in &["Past", "Present", "Future", "Obligatory", "Permitted"] {
-        let prefix = format!("({} ", tense);
-        if let Some(rest) = fact_repr.strip_prefix(&prefix) {
-            if let Some(inner) = rest.strip_suffix(')') {
-                let bare = parse_bare_pred_repr(inner)?;
-                return Some(StoredFact::with_tense(bare, Some(tense)));
-            }
-        }
-    }
-    let bare = parse_bare_pred_repr(fact_repr)?;
-    Some(StoredFact::Bare(bare))
-}
-
-/// Parse a bare (Pred "rel" args) fact_repr into a GroundFact.
-fn parse_bare_pred_repr(fact_repr: &str) -> Option<GroundFact> {
-    let fact_repr = fact_repr.trim();
-    if !fact_repr.starts_with("(Pred \"") {
-        return None;
-    }
-    // Extract relation name: (Pred "name" rest)
-    let after_pred = &fact_repr[7..]; // skip `(Pred "`
-    let quote_end = after_pred.find('"')?;
-    let relation = after_pred[..quote_end].to_string();
-    let args_start = quote_end + 2; // skip `" `
-    let args_repr = &after_pred[args_start..after_pred.len() - 1]; // strip trailing )
-    let args = parse_arg_list(args_repr);
-    Some(GroundFact::new(relation, args))
-}
-
-/// Parse a Cons-list fact_repr into Vec<GroundTerm>.
-/// Handles: (Cons term (Cons term (Nil)))
-fn parse_arg_list(fact_repr: &str) -> Vec<GroundTerm> {
-    let fact_repr = fact_repr.trim();
-    if fact_repr == "(Nil)" || fact_repr.is_empty() {
-        return Vec::new();
-    }
-    if !fact_repr.starts_with("(Cons ") {
-        return Vec::new();
-    }
-    let inner = &fact_repr[6..fact_repr.len() - 1]; // strip "(Cons " and ")"
-    // Find the split point between the first term and the rest (balanced parens).
-    if let Some((term_str, rest_str)) = split_repr_pair(inner) {
-        let mut args = vec![parse_repr_to_ground_term(term_str)];
-        args.extend(parse_arg_list(rest_str));
-        args
-    } else {
-        Vec::new()
-    }
-}
-
-fn intern_vec(strings: &[String], interner: &mut LegacyInterner) -> Vec<u32> {
-    strings.iter().map(|s| interner.intern(s)).collect()
-}
 
 pub(super) fn register_rule(
     inner: &mut KnowledgeBaseInner,
     label: String,
-    condition_strings: Vec<String>,
-    conclusion_strings: Vec<String>,
     pattern_var_names: Vec<String>,
     typed_conditions: Vec<StoredFact>,
     typed_conclusions: Vec<StoredFact>,
 ) {
-    let cond_keys = intern_vec(&condition_strings, &mut inner.interner);
-    let concl_keys = intern_vec(&conclusion_strings, &mut inner.interner);
-    let condition_trees: Vec<LegacyPatternTree> = condition_strings
-        .iter()
-        .map(|s| LegacyPatternTree::parse(s, &pattern_var_names))
-        .collect();
-    let conclusion_trees: Vec<LegacyPatternTree> = conclusion_strings
-        .iter()
-        .map(|s| LegacyPatternTree::parse(s, &pattern_var_names))
-        .collect();
     let rule = UniversalRuleRecord {
         label,
-        condition_templates: cond_keys,
-        conclusion_templates: concl_keys,
-        condition_trees,
-        conclusion_trees,
         typed_conditions,
         typed_conclusions,
         pattern_var_names,
     };
-    add_universal_rule(&mut inner.universal_rules, rule, &inner.interner);
-}
-
-/// Assert an fact_repr string by parsing it to a StoredFact and inserting into the typed store.
-/// LEGACY: still called from traced proof path. Will be removed when traced path is fully typed.
-pub(super) fn legacy_assert_repr(fact_repr: String, inner: &mut KnowledgeBaseInner) {
-    if let Some(fact) = parse_repr_to_stored_fact(&fact_repr) {
-        assert_typed_fact(fact, inner);
+    let rc = Arc::new(rule);
+    let mut indexed = false;
+    for concl in &rc.typed_conclusions {
+        inner.universal_rules
+            .entry(concl.relation().to_string())
+            .or_default()
+            .push(Arc::clone(&rc));
+        indexed = true;
+    }
+    if !indexed {
+        inner.universal_rules
+            .entry("__fallback__".to_string())
+            .or_default()
+            .push(rc);
     }
 }
 
-/// Assert a typed fact into the parallel typed fact store.
+/// Assert a typed fact into the fact store.
 pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner) {
     let rel = fact.relation().to_string();
     inner.typed_predicate_facts.entry(rel).or_default().insert(fact.clone());
@@ -538,46 +234,6 @@ pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner
 }
 
 
-fn add_universal_rule(
-    rules: &mut HashMap<String, Vec<Arc<UniversalRuleRecord>>>,
-    rule: UniversalRuleRecord,
-    interner: &LegacyInterner,
-) {
-    let rc = Arc::new(rule);
-    let mut indexed = false;
-    for &concl_key in &rc.conclusion_templates {
-        let concl_str = interner.resolve(concl_key);
-        if let Some(pred_name) = extract_pred_name_deep(concl_str) {
-            rules
-                .entry(pred_name.to_string())
-                .or_default()
-                .push(Arc::clone(&rc));
-            indexed = true;
-        }
-    }
-    if !indexed {
-        rules
-            .entry("__fallback__".to_string())
-            .or_default()
-            .push(rc);
-    }
-}
-
-fn build_rule_label(conditions: &[String], conclusions: &[String]) -> String {
-    let cond_names: Vec<&str> = conditions
-        .iter()
-        .filter_map(|s| extract_pred_name(s))
-        .collect();
-    let concl_names: Vec<&str> = conclusions
-        .iter()
-        .filter_map(|s| extract_pred_name(s))
-        .collect();
-    if cond_names.is_empty() {
-        format!("∀ → {}", concl_names.join(" ∧ "))
-    } else {
-        format!("{} → {}", cond_names.join(" ∧ "), concl_names.join(" ∧ "))
-    }
-}
 
 pub(super) fn compile_forall_to_rule(
     buffer: &LogicBuffer,
@@ -674,48 +330,27 @@ pub(super) fn compile_forall_to_rule(
                 ));
             }
 
-            let bare_condition_reprs: Vec<String> = all_conditions
-                .iter()
-                .map(|&cid| {
-                    reconstruct_rule_repr(
-                        buffer,
-                        cid,
-                        &pattern_vars,
-                        &ground_skolems,
-                        &dependent_skolems,
-                    )
-                })
-                .collect();
-            let conditions_repr: Vec<String> = bare_condition_reprs
-                .iter()
-                .map(|s| format!("(IsTrue {})", s))
-                .collect();
-
             let consequent_atoms = flatten_consequent(buffer, consequent_id, skolem_subs);
-            let bare_conclusion_reprs: Vec<String> = consequent_atoms
+
+            let typed_conds: Vec<StoredFact> = all_conditions
                 .iter()
-                .map(|&aid| {
-                    reconstruct_rule_repr(
-                        buffer,
-                        aid,
-                        &pattern_vars,
-                        &ground_skolems,
-                        &dependent_skolems,
+                .filter_map(|&cid| {
+                    build_rule_template_fact(
+                        buffer, cid, &pattern_vars, &ground_skolems, &dependent_skolems,
                     )
                 })
                 .collect();
-            let actions_repr: Vec<String> = bare_conclusion_reprs
+            let typed_concls: Vec<StoredFact> = consequent_atoms
                 .iter()
-                .map(|s| format!("(IsTrue {})", s))
+                .filter_map(|&aid| {
+                    build_rule_template_fact(
+                        buffer, aid, &pattern_vars, &ground_skolems, &dependent_skolems,
+                    )
+                })
                 .collect();
 
-            let rule = format!(
-                "(rule ({}) ({}))",
-                conditions_repr.join(" "),
-                actions_repr.join(" ")
-            );
-
-            if !inner.known_rules.insert(rule.clone()) {
+            let dedup_key = format!("{:?} => {:?}", typed_conds, typed_concls);
+            if !inner.known_rules.insert(dedup_key) {
                 if !inner.rebuilding {
                     println!("[Rule] ∀{} already present, skipping", universals.join(","));
                 }
@@ -727,31 +362,10 @@ pub(super) fn compile_forall_to_rule(
                     );
                 }
 
-                let label = build_rule_label(&bare_condition_reprs, &bare_conclusion_reprs);
-
-                // Build typed templates from the same condition/conclusion atoms.
-                let typed_conds: Vec<StoredFact> = all_conditions
-                    .iter()
-                    .filter_map(|&cid| {
-                        build_rule_template_fact(
-                            buffer, cid, &pattern_vars, &ground_skolems, &dependent_skolems,
-                        )
-                    })
-                    .collect();
-                let typed_concls: Vec<StoredFact> = consequent_atoms
-                    .iter()
-                    .filter_map(|&aid| {
-                        build_rule_template_fact(
-                            buffer, aid, &pattern_vars, &ground_skolems, &dependent_skolems,
-                        )
-                    })
-                    .collect();
-
+                let label = build_typed_rule_label(&typed_conds, &typed_concls);
                 register_rule(
                     inner,
                     label,
-                    bare_condition_reprs.clone(),
-                    bare_conclusion_reprs.clone(),
                     all_pattern_var_names.clone(),
                     typed_conds,
                     typed_concls,
@@ -761,12 +375,12 @@ pub(super) fn compile_forall_to_rule(
                 inner.note_entity(&xp_name);
                 let mut xp_subs: HashMap<String, String> = HashMap::new();
                 for v in &universals {
-                    xp_subs.insert(v.clone(), format!("(Const \"{}\")", xp_name));
+                    xp_subs.insert(v.clone(), xp_name.clone());
                 }
                 for (k, v) in &ground_skolems {
                     xp_subs
                         .entry(k.clone())
-                        .or_insert_with(|| format!("(Const \"{}\")", v));
+                        .or_insert_with(|| v.clone());
                 }
                 for var in &condition_exists_vars {
                     let ev_sk = inner.fresh_skolem();
@@ -775,7 +389,7 @@ pub(super) fn compile_forall_to_rule(
                     } else {
                         inner.note_entity(&ev_sk);
                     }
-                    xp_subs.insert(var.clone(), format!("(Const \"{}\")", ev_sk));
+                    xp_subs.insert(var.clone(), ev_sk);
                 }
                 for &cid in &all_conditions {
                     if let Some(fact) = build_stored_fact_from_node(buffer, cid, &xp_subs, None) {
@@ -800,26 +414,17 @@ pub(super) fn compile_forall_to_rule(
                 }
             }
 
-            let body_repr = reconstruct_rule_repr(
-                buffer,
-                inner_body_id,
-                &pattern_vars,
-                &ground_skolems,
-                &dependent_skolems,
-            );
-
-            let domain_conditions: Vec<String> = universals
+            let typed_concls: Vec<StoredFact> = vec![inner_body_id]
                 .iter()
-                .map(|v| format!("(InDomain {})", pattern_vars[v]))
+                .filter_map(|&aid| {
+                    build_rule_template_fact(
+                        buffer, aid, &pattern_vars, &ground_skolems, &dependent_skolems,
+                    )
+                })
                 .collect();
 
-            let rule = format!(
-                "(rule ({}) ((IsTrue {})))",
-                domain_conditions.join(" "),
-                body_repr
-            );
-
-            if !inner.known_rules.insert(rule.clone()) {
+            let dedup_key = format!("bare {:?}", typed_concls);
+            if !inner.known_rules.insert(dedup_key) {
                 if !inner.rebuilding {
                     println!(
                         "[Rule] bare ∀{} already present, skipping",
@@ -834,22 +439,10 @@ pub(super) fn compile_forall_to_rule(
                     );
                 }
 
-                let label = build_rule_label(&[], &[body_repr.clone()]);
-
-                let typed_concls: Vec<StoredFact> = vec![inner_body_id]
-                    .iter()
-                    .filter_map(|&aid| {
-                        build_rule_template_fact(
-                            buffer, aid, &pattern_vars, &ground_skolems, &dependent_skolems,
-                        )
-                    })
-                    .collect();
-
+                let label = build_typed_rule_label(&[], &typed_concls);
                 register_rule(
                     inner,
                     label,
-                    vec![],
-                    vec![body_repr.clone()],
                     pattern_var_names.clone(),
                     vec![],
                     typed_concls,
@@ -859,198 +452,6 @@ pub(super) fn compile_forall_to_rule(
     }
 
     Ok(())
-}
-
-pub(super) fn strip_tense_wrapper(fact_repr: &str) -> Option<(&str, &str)> {
-    for tense in &["Past", "Present", "Future"] {
-        let prefix = format!("({} ", tense);
-        if let Some(rest) = fact_repr.strip_prefix(&prefix) {
-            if let Some(inner) = rest.strip_suffix(')') {
-                return Some((tense, inner));
-            }
-        }
-    }
-    None
-}
-
-pub(super) fn wrap_tense(tense: &str, fact_repr: &str) -> String {
-    format!("({} {})", tense, fact_repr)
-}
-
-pub(super) fn legacy_tokenize(s: &str) -> Vec<String> {
-    let mut tokens = Vec::new();
-    let mut chars = s.chars().peekable();
-    while let Some(&ch) = chars.peek() {
-        match ch {
-            '(' => {
-                tokens.push("(".to_string());
-                chars.next();
-            }
-            ')' => {
-                tokens.push(")".to_string());
-                chars.next();
-            }
-            '"' => {
-                chars.next();
-                let mut quoted = String::from("\"");
-                while let Some(&c) = chars.peek() {
-                    chars.next();
-                    if c == '"' {
-                        break;
-                    }
-                    quoted.push(c);
-                }
-                quoted.push('"');
-                tokens.push(quoted);
-            }
-            c if c.is_whitespace() => {
-                chars.next();
-            }
-            _ => {
-                let mut atom = String::new();
-                while let Some(&c) = chars.peek() {
-                    if c == '(' || c == ')' || c == '"' || c.is_whitespace() {
-                        break;
-                    }
-                    atom.push(c);
-                    chars.next();
-                }
-                tokens.push(atom);
-            }
-        }
-    }
-    tokens
-}
-
-pub(super) fn legacy_extract_at(tokens: &[String], start: usize) -> Option<(usize, String)> {
-    if start >= tokens.len() {
-        return None;
-    }
-    if tokens[start] == "(" {
-        let mut depth = 1usize;
-        let mut end = start + 1;
-        while end < tokens.len() && depth > 0 {
-            if tokens[end] == "(" {
-                depth += 1;
-            } else if tokens[end] == ")" {
-                depth -= 1;
-            }
-            end += 1;
-        }
-        if depth != 0 {
-            return None;
-        }
-        let mut out = String::new();
-        for i in start..end {
-            if i > start && tokens[i] != ")" && tokens[i - 1] != "(" {
-                out.push(' ');
-            }
-            out.push_str(&tokens[i]);
-        }
-        Some((end, out))
-    } else {
-        Some((start + 1, tokens[start].clone()))
-    }
-}
-
-pub(super) fn reconstruct_repr_with_subs(
-    buffer: &LogicBuffer,
-    node_id: u32,
-    subs: &HashMap<String, String>,
-) -> String {
-    match &buffer.nodes[node_id as usize] {
-        LogicNode::Predicate((rel, args)) | LogicNode::ComputeNode((rel, args)) => {
-            let mut args_str = String::from("(Nil)");
-            for arg in args.iter().rev() {
-                let term_str = match arg {
-                    LogicalTerm::Variable(v) => {
-                        if let Some(raw_repr) = subs.get(v.as_str()) {
-                            raw_repr.clone()
-                        } else {
-                            format!("(Var \"{}\")", v)
-                        }
-                    }
-                    LogicalTerm::Constant(c) => format!("(Const \"{}\")", c),
-                    LogicalTerm::Description(d) => format!("(Desc \"{}\")", d),
-                    LogicalTerm::Unspecified => "(Zoe)".to_string(),
-                    LogicalTerm::Number(n) => format!("(Num {})", *n as i64),
-                };
-                args_str = format!("(Cons {} {})", term_str, args_str);
-            }
-            format!("(Pred \"{}\" {})", rel, args_str)
-        }
-        LogicNode::ExistsNode((v, body)) => {
-            if subs.contains_key(v.as_str()) {
-                reconstruct_repr_with_subs(buffer, *body, subs)
-            } else {
-                format!(
-                    "(Exists \"{}\" {})",
-                    v,
-                    reconstruct_repr_with_subs(buffer, *body, subs)
-                )
-            }
-        }
-        LogicNode::ForAllNode((v, body)) => {
-            if subs.contains_key(v.as_str()) {
-                reconstruct_repr_with_subs(buffer, *body, subs)
-            } else {
-                format!(
-                    "(ForAll \"{}\" {})",
-                    v,
-                    reconstruct_repr_with_subs(buffer, *body, subs)
-                )
-            }
-        }
-        LogicNode::AndNode((l, r)) => {
-            format!(
-                "(And {} {})",
-                reconstruct_repr_with_subs(buffer, *l, subs),
-                reconstruct_repr_with_subs(buffer, *r, subs)
-            )
-        }
-        LogicNode::OrNode((l, r)) => {
-            format!(
-                "(Or {} {})",
-                reconstruct_repr_with_subs(buffer, *l, subs),
-                reconstruct_repr_with_subs(buffer, *r, subs)
-            )
-        }
-        LogicNode::NotNode(inner) => {
-            format!("(Not {})", reconstruct_repr_with_subs(buffer, *inner, subs))
-        }
-        LogicNode::CountNode((v, count, body)) => {
-            if *count == 0 {
-                let body_repr = reconstruct_repr_with_subs(buffer, *body, subs);
-                format!("(ForAll \"{}\" (Not {}))", v, body_repr)
-            } else if subs.contains_key(v.as_str()) {
-                reconstruct_repr_with_subs(buffer, *body, subs)
-            } else {
-                let body_repr = reconstruct_repr_with_subs(buffer, *body, subs);
-                format!("(Exists \"{}\" {})", v, body_repr)
-            }
-        }
-        LogicNode::PastNode(inner) => {
-            format!(
-                "(Past {})",
-                reconstruct_repr_with_subs(buffer, *inner, subs)
-            )
-        }
-        LogicNode::PresentNode(inner) => {
-            format!(
-                "(Present {})",
-                reconstruct_repr_with_subs(buffer, *inner, subs)
-            )
-        }
-        LogicNode::FutureNode(inner) => {
-            format!(
-                "(Future {})",
-                reconstruct_repr_with_subs(buffer, *inner, subs)
-            )
-        }
-        LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) => {
-            reconstruct_repr_with_subs(buffer, *inner, subs)
-        }
-    }
 }
 
 pub(super) fn generate_count_extra_witnesses(

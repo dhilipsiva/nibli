@@ -4,11 +4,9 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 1: Dead Code Removal (Low Effort, High Cleanup Value)
 
-1. **Delete legacy types from logji** — `LegacyPatternTree`, `LegacyInterner`, `LegacySortedVec`, `legacy_tokenize()`, `legacy_extract_at()`, `intern_vec()`, `add_universal_rule()`, and legacy fields in `UniversalRuleRecord` (`condition_templates`, `conclusion_templates`, `condition_trees`, `conclusion_trees`) are all dead code. Backward-chaining is fully typed. Delete them and remove the `#![allow(dead_code)]` ICE workaround. ~320 lines.
+1. **Remove `run_bound` / `:saturate`** — `run_bound` field in `KnowledgeBaseInner`, `set-run-bound`/`get-run-bound` WIT methods, `NIBLI_RUN_BOUND` env var, `:saturate` REPL command. Value stored but never read during reasoning — pure egglog artifact. Touches: `wit/world.wit`, `logji/src/lib.rs`, `lasna/src/lib.rs`, `gasnu/src/main.rs`, CLAUDE.md.
 
-2. **Remove `run_bound` / `:saturate`** — `run_bound` field in `KnowledgeBaseInner`, `set-run-bound`/`get-run-bound` WIT methods, `NIBLI_RUN_BOUND` env var, `:saturate` REPL command. Value stored but never read during reasoning — pure egglog artifact. Touches: `wit/world.wit`, `logji/src/lib.rs`, `lasna/src/lib.rs`, `gasnu/src/main.rs`, CLAUDE.md.
-
-3. **Remove `check-membership` WIT method** — Defined in `wit/world.wit`, stub in gasnu (returns empty), `dispatch_check_membership()` in `logji/src/compute.rs` never called. Dead end-to-end.
+2. **Remove `check-membership` WIT method** — Defined in `wit/world.wit`, stub in gasnu (returns empty). Dead end-to-end.
 
 ## Tier 2: Pipeline Efficiency (Medium Effort, High Impact)
 

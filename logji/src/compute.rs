@@ -140,48 +140,6 @@ fn dispatch_batch_to_backend(requests: &[ComputeRequest]) -> Vec<Result<bool, St
         .collect()
 }
 
-#[cfg(target_arch = "wasm32")]
-pub(super) fn dispatch_check_membership(
-    rel: &str,
-    args: &[LogicalTerm],
-    place_index: u32,
-) -> Result<Vec<LogicalTerm>, String> {
-    crate::bindings::lojban::nibli::compute_backend::check_membership(rel, args, place_index)
-        .map_err(|e| format!("{}", e))
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub(super) fn dispatch_check_membership(
-    _rel: &str,
-    _args: &[LogicalTerm],
-    _place_index: u32,
-) -> Result<Vec<LogicalTerm>, String> {
-    Ok(vec![])
-}
-
-pub(super) fn build_ground_predicate_repr(
-    rel: &str,
-    resolved_args: &[LogicalTerm],
-) -> Option<String> {
-    for arg in resolved_args {
-        if matches!(arg, LogicalTerm::Variable(_)) {
-            return None;
-        }
-    }
-    let mut args_str = String::from("(Nil)");
-    for arg in resolved_args.iter().rev() {
-        let term_str = match arg {
-            LogicalTerm::Number(n) => format!("(Num {})", *n as i64),
-            LogicalTerm::Constant(c) => format!("(Const \"{}\")", c),
-            LogicalTerm::Description(d) => format!("(Desc \"{}\")", d),
-            LogicalTerm::Unspecified => "(Zoe)".to_string(),
-            LogicalTerm::Variable(_) => unreachable!(),
-        };
-        args_str = format!("(Cons {} {})", term_str, args_str);
-    }
-    Some(format!("(Pred \"{}\" {})", rel, args_str))
-}
-
 /// Build a typed StoredFact from resolved LogicalTerm arguments.
 pub(super) fn build_ground_fact_from_resolved(
     rel: &str,

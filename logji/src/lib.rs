@@ -17,8 +17,6 @@
 //!
 //! The knowledge base uses `RefCell` (not `Mutex`) — single-threaded WASI, no global state.
 
-// Workaround: rustc 1.94.0 ICE in dead code analysis triggered by legacy code removal.
-#![allow(dead_code)]
 
 #[allow(warnings)]
 pub mod bindings;
@@ -310,157 +308,6 @@ pub fn substitute_term(
     }
 }
 
-// ─── S-Expression String Interner ─────────────────────────────────
-
-/// Lightweight string interner for string deduplication.
-/// Stores unique strings once and returns u32 keys for O(1) equality checks.
-/// Resolves keys back to &str in O(1) via index lookup.
-#[derive(Clone)]
-struct LegacyInterner {
-    strings: Vec<String>,
-    lookup: HashMap<String, u32>,
-}
-
-impl LegacyInterner {
-    fn new() -> Self {
-        Self {
-            strings: Vec::new(),
-            lookup: HashMap::new(),
-        }
-    }
-
-    /// Intern a string, returning its unique key. Deduplicates on insert.
-    fn intern(&mut self, s: &str) -> u32 {
-        if let Some(&key) = self.lookup.get(s) {
-            return key;
-        }
-        let key = self.strings.len() as u32;
-        self.lookup.insert(s.to_string(), key);
-        self.strings.push(s.to_string());
-        key
-    }
-
-    /// Intern an owned string, avoiding a copy if it's new.
-    fn intern_owned(&mut self, s: String) -> u32 {
-        if let Some(&key) = self.lookup.get(&s) {
-            return key;
-        }
-        let key = self.strings.len() as u32;
-        self.strings.push(s.clone());
-        self.lookup.insert(s, key);
-        key
-    }
-
-    /// Resolve a key back to its string. Panics on invalid key.
-    fn resolve(&self, key: u32) -> &str {
-        &self.strings[key as usize]
-    }
-
-    /// Check if a string is already interned, returning its key if so.
-    fn get(&self, s: &str) -> Option<u32> {
-        self.lookup.get(s).copied()
-    }
-
-    fn clear(&mut self) {
-        self.strings.clear();
-        self.lookup.clear();
-    }
-}
-
-// ─── Columnar Fact Store ─────────────────────────────────────────
-
-/// Sorted u32 vector for columnar fact storage.
-///
-/// Stores interned interned keys in sorted order for:
-/// - O(log n) membership test via binary search (cache-friendly)
-/// - 4 bytes per entry (vs ~32 bytes for HashSet<u32>)
-/// - Future SIMD batch membership via aligned u32 scans
-/// - Merge-join subset check for ∀ verification
-///
-/// Insert is O(n) due to shift, but assertions are infrequent
-/// compared to queries in a demand-driven backward-chaining engine.
-#[derive(Clone)]
-struct LegacySortedVec {
-    data: Vec<u32>,
-}
-
-impl LegacySortedVec {
-    fn new() -> Self {
-        Self { data: Vec::new() }
-    }
-
-    /// Insert a key, maintaining sorted order. Returns true if newly added.
-    fn insert(&mut self, val: u32) -> bool {
-        match self.data.binary_search(&val) {
-            Ok(_) => false, // already present
-            Err(pos) => {
-                self.data.insert(pos, val);
-                true
-            }
-        }
-    }
-
-    /// O(log n) membership test via binary search.
-    fn contains(&self, val: &u32) -> bool {
-        self.data.binary_search(val).is_ok()
-    }
-
-    fn len(&self) -> usize {
-        self.data.len()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.data.is_empty()
-    }
-
-    fn clear(&mut self) {
-        self.data.clear();
-    }
-
-    /// Merge-join subset check: is every element in `self` also in `other`?
-    /// Both vectors are sorted, so this is O(n + m) with no allocations.
-    /// Useful for ∀ verification: "every x in predicate A is also in predicate B".
-    #[allow(dead_code)]
-    fn is_subset_of(&self, other: &LegacySortedVec) -> bool {
-        let mut j = 0;
-        for &val in &self.data {
-            while j < other.data.len() && other.data[j] < val {
-                j += 1;
-            }
-            if j >= other.data.len() || other.data[j] != val {
-                return false;
-            }
-        }
-        true
-    }
-
-    /// Merge-join intersection: returns elements present in both sorted vectors.
-    /// O(n + m) with a single output allocation. Useful for SIMD batch membership.
-    #[allow(dead_code)]
-    fn intersection(&self, other: &LegacySortedVec) -> LegacySortedVec {
-        let mut result = Vec::new();
-        let (mut i, mut j) = (0, 0);
-        while i < self.data.len() && j < other.data.len() {
-            match self.data[i].cmp(&other.data[j]) {
-                std::cmp::Ordering::Less => i += 1,
-                std::cmp::Ordering::Greater => j += 1,
-                std::cmp::Ordering::Equal => {
-                    result.push(self.data[i]);
-                    i += 1;
-                    j += 1;
-                }
-            }
-        }
-        LegacySortedVec { data: result }
-    }
-}
-
-impl Default for LegacySortedVec {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 // ─── Knowledge Base State ────────────────────────────────────────
 
 /// Registry entry for a SkolemFn created by native rule compilation.
@@ -475,151 +322,14 @@ struct SkolemFnEntry {
 /// A dependent Skolem is an ∃ variable nested under a ∀.
 const SKDEP_PREFIX: &str = "__skdep__";
 
-// ─── Structural S-Expression Tree ─────────────────────────────────
-
-/// Pre-parsed pattern tree for structural pattern matching.
-/// Eliminates repeated string tokenization during backward chaining.
-#[derive(Clone, Debug)]
-enum LegacyPatternTree {
-    /// A literal atom (e.g., `Pred`, `"gerku"`, `Const`, `Nil`).
-    Atom(String),
-    /// A parenthesized list of sub-expressions.
-    List(Vec<LegacyPatternTree>),
-    /// A pattern variable (e.g., `x__v0`) — matches any complete sub-expression.
-    Var(String),
-}
-
-impl LegacyPatternTree {
-    /// Parse an internal representation string into a tree, marking pattern variables.
-    fn parse(s: &str, var_names: &[String]) -> Self {
-        let tokens = legacy_tokenize(s);
-        let (tree, _) = Self::parse_tokens(&tokens, 0, var_names);
-        tree
-    }
-
-    fn parse_tokens(tokens: &[String], pos: usize, var_names: &[String]) -> (Self, usize) {
-        if pos >= tokens.len() {
-            return (LegacyPatternTree::Atom(String::new()), pos);
-        }
-        if tokens[pos] == "(" {
-            let mut children = Vec::new();
-            let mut i = pos + 1;
-            while i < tokens.len() && tokens[i] != ")" {
-                let (child, next) = Self::parse_tokens(tokens, i, var_names);
-                children.push(child);
-                i = next;
-            }
-            (LegacyPatternTree::List(children), i + 1) // skip ")"
-        } else if var_names.contains(&tokens[pos]) {
-            (LegacyPatternTree::Var(tokens[pos].clone()), pos + 1)
-        } else {
-            (LegacyPatternTree::Atom(tokens[pos].clone()), pos + 1)
-        }
-    }
-
-    /// Match this tree (as pattern) against a concrete internal representation string.
-    /// Returns bindings mapping variable names to matched sub-expression strings.
-    fn match_against(&self, concrete: &str) -> Option<HashMap<String, String>> {
-        let conc_tokens = legacy_tokenize(concrete);
-        self.match_against_tokens(&conc_tokens)
-    }
-
-    /// Match against pre-tokenized concrete representation (avoids re-tokenization when
-    /// multiple rules are tried against the same query).
-    fn match_against_tokens(&self, conc_tokens: &[String]) -> Option<HashMap<String, String>> {
-        let mut bindings = HashMap::new();
-        let (_, end) = self.match_tokens(conc_tokens, 0, &mut bindings)?;
-        if end == conc_tokens.len() {
-            Some(bindings)
-        } else {
-            None
-        }
-    }
-
-    fn match_tokens(
-        &self,
-        tokens: &[String],
-        pos: usize,
-        bindings: &mut HashMap<String, String>,
-    ) -> Option<((), usize)> {
-        if pos >= tokens.len() {
-            return None;
-        }
-        match self {
-            LegacyPatternTree::Var(name) => {
-                // Match a complete sub-expression
-                let (end, sub_repr) = legacy_extract_at(tokens, pos)?;
-                if let Some(existing) = bindings.get(name.as_str()) {
-                    if *existing != sub_repr {
-                        return None;
-                    }
-                } else {
-                    bindings.insert(name.clone(), sub_repr);
-                }
-                Some(((), end))
-            }
-            LegacyPatternTree::Atom(atom) => {
-                if &tokens[pos] == atom {
-                    Some(((), pos + 1))
-                } else {
-                    None
-                }
-            }
-            LegacyPatternTree::List(children) => {
-                if tokens[pos] != "(" {
-                    return None;
-                }
-                let mut ci = pos + 1;
-                for child in children {
-                    if ci >= tokens.len() {
-                        return None;
-                    }
-                    let (_, next) = child.match_tokens(tokens, ci, bindings)?;
-                    ci = next;
-                }
-                if ci >= tokens.len() || tokens[ci] != ")" {
-                    return None;
-                }
-                Some(((), ci + 1))
-            }
-        }
-    }
-
-    /// Substitute bindings into this tree, producing an internal representation string.
-    fn substitute(&self, bindings: &HashMap<String, String>) -> String {
-        let mut buf = String::new();
-        self.substitute_into(&mut buf, bindings);
-        buf
-    }
-
-    /// Write substituted representation into a buffer (avoids per-level allocation).
-    fn substitute_into(&self, buf: &mut String, bindings: &HashMap<String, String>) {
-        match self {
-            LegacyPatternTree::Var(name) => match bindings.get(name.as_str()) {
-                Some(val) => buf.push_str(val),
-                None => buf.push_str(name),
-            },
-            LegacyPatternTree::Atom(atom) => buf.push_str(atom),
-            LegacyPatternTree::List(children) => {
-                buf.push('(');
-                for (i, child) in children.iter().enumerate() {
-                    if i > 0 {
-                        buf.push(' ');
-                    }
-                    child.substitute_into(buf, bindings);
-                }
-                buf.push(')');
-            }
-        }
-    }
-
-    /// Check if this tree contains a given variable name.
-    fn contains_var(&self, var: &str) -> bool {
-        match self {
-            LegacyPatternTree::Var(name) => name == var,
-            LegacyPatternTree::Atom(_) => false,
-            LegacyPatternTree::List(children) => children.iter().any(|c| c.contains_var(var)),
-        }
+/// Build a human-readable rule label from typed conditions and conclusions.
+fn build_typed_rule_label(conditions: &[StoredFact], conclusions: &[StoredFact]) -> String {
+    let conds: Vec<String> = conditions.iter().map(|f| f.relation().to_string()).collect();
+    let concls: Vec<String> = conclusions.iter().map(|f| f.relation().to_string()).collect();
+    if conds.is_empty() {
+        concls.join(" ∧ ")
+    } else {
+        format!("{} → {}", conds.join(" ∧ "), concls.join(" ∧ "))
     }
 }
 
@@ -629,17 +339,9 @@ impl LegacyPatternTree {
 struct UniversalRuleRecord {
     /// Human-readable label, e.g. "gerku → danlu"
     label: String,
-    /// Interned interned keys for the rule's conditions.
-    condition_templates: Vec<u32>,
-    /// Interned interned keys for the rule's conclusions.
-    conclusion_templates: Vec<u32>,
-    /// Pre-parsed condition templates for structural matching.
-    condition_trees: Vec<LegacyPatternTree>,
-    /// Pre-parsed conclusion templates for structural matching.
-    conclusion_trees: Vec<LegacyPatternTree>,
-    /// Typed condition templates (with PatternVar terms).
+    /// Condition templates (with PatternVar terms for structural unification).
     typed_conditions: Vec<StoredFact>,
-    /// Typed conclusion templates (with PatternVar terms).
+    /// Conclusion templates (with PatternVar terms for structural unification).
     typed_conclusions: Vec<StoredFact>,
     /// Pattern variable names used in templates, e.g. ["x__v0"].
     pattern_var_names: Vec<String>,
@@ -657,8 +359,6 @@ struct FactRecord {
 /// All mutable KB state behind a single RefCell.
 #[derive(Clone)]
 struct KnowledgeBaseInner {
-    /// Legacy string interner — used only by traced proof path.
-    interner: LegacyInterner,
     skolem_counter: usize,
     known_entities: HashSet<String>,
     /// Event Skolem constants (from `_ev*` variables). Tracked for witness search
@@ -695,7 +395,6 @@ struct KnowledgeBaseInner {
 impl KnowledgeBaseInner {
     fn new() -> Self {
         Self {
-            interner: LegacyInterner::new(),
             skolem_counter: 0,
             known_entities: HashSet::new(),
             known_event_entities: HashSet::new(),
@@ -716,7 +415,6 @@ impl KnowledgeBaseInner {
     }
 
     fn reset(&mut self) {
-        self.interner.clear();
         self.skolem_counter = 0;
         self.known_entities.clear();
         self.known_event_entities.clear();
@@ -961,24 +659,14 @@ impl<'a> Iterator for MultiCartesianProduct<'a> {
 use std::cell::Cell;
 
 thread_local! {
-    /// Cache for backward-chain predicate results within a single query.
-    /// Maps ground predicate representation → holds (true/false).
-    /// Cleared at the start of each query to avoid stale results.
-    static PRED_CACHE: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
     /// Flag to enable/disable predicate caching (disabled during assertion replay).
     static PRED_CACHE_ENABLED: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Clear the predicate result cache. Call at the start of each query.
 fn clear_pred_cache() {
-    PRED_CACHE.with(|c| c.borrow_mut().clear());
     clear_typed_pred_cache();
     PRED_CACHE_ENABLED.with(|e| e.set(true));
-}
-
-/// Disable predicate caching (e.g., during assertion processing).
-fn disable_pred_cache() {
-    PRED_CACHE_ENABLED.with(|e| e.set(false));
 }
 
 // ─── WIT Export Implementation ────────────────────────────────────
@@ -989,49 +677,6 @@ impl Guest for LogjiComponent {
     type KnowledgeBase = KnowledgeBase;
 }
 
-/// Collect leaf node IDs from a ground conjunction tree in the LogicBuffer.
-/// Descends through And nodes (flattening), Skolemized Exists nodes (stripped),
-/// and deontic wrappers (transparent). Tracks tense context (Past/Present/Future)
-/// so each leaf can be wrapped appropriately.
-/// Everything else (Pred, Or, Not, etc.) is a leaf.
-fn collect_ground_leaves(
-    buffer: &LogicBuffer,
-    node_id: u32,
-    subs: &HashMap<String, String>,
-    tense: Option<&str>,
-    leaves: &mut Vec<(u32, Option<String>)>,
-) {
-    match &buffer.nodes[node_id as usize] {
-        LogicNode::AndNode((l, r)) => {
-            collect_ground_leaves(buffer, *l, subs, tense, leaves);
-            collect_ground_leaves(buffer, *r, subs, tense, leaves);
-        }
-        LogicNode::ExistsNode((v, body)) if subs.contains_key(v.as_str()) => {
-            // Skolemized existential — descend through it
-            collect_ground_leaves(buffer, *body, subs, tense, leaves);
-        }
-        LogicNode::PastNode(inner) => {
-            collect_ground_leaves(buffer, *inner, subs, Some("Past"), leaves);
-        }
-        LogicNode::PresentNode(inner) => {
-            collect_ground_leaves(buffer, *inner, subs, Some("Present"), leaves);
-        }
-        LogicNode::FutureNode(inner) => {
-            collect_ground_leaves(buffer, *inner, subs, Some("Future"), leaves);
-        }
-        LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) => {
-            // Deontic wrappers are transparent
-            collect_ground_leaves(buffer, *inner, subs, tense, leaves);
-        }
-        _ => {
-            leaves.push((node_id, tense.map(|t| t.to_string())));
-        }
-    }
-}
-
-/// Detect ground material conditionals (Or(Not(conditions), conclusion)) in a logic buffer
-/// and register them as backward-chaining rules with no pattern variables.
-/// Enables backward-chaining modus ponens on ground sentence connectives.
 fn register_ground_material_conditional(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -1057,87 +702,24 @@ fn register_ground_material_conditional(
         LogicNode::OrNode((l, r)) => {
             // Check for Or(Not(P), Q) — material conditional P → Q
             if let LogicNode::NotNode(neg_inner) = &buffer.nodes[*l as usize] {
-                let raw_subs: HashMap<String, String> = subs
-                    .iter()
-                    .filter(|(_, v)| !v.starts_with(SKDEP_PREFIX))
-                    .map(|(k, v)| (k.clone(), format!("(Const \"{}\")", v)))
-                    .collect();
-                // Extract condition(s) — may be a conjunction
-                let mut condition_reprs = Vec::new();
-                collect_material_condition_leaves(
-                    buffer,
-                    *neg_inner,
-                    &raw_subs,
-                    &mut condition_reprs,
-                );
-                let conclusion_repr = reconstruct_repr_with_subs(buffer, *r, &raw_subs);
-                let label = format!(
-                    "{} → {}",
-                    condition_reprs
-                        .iter()
-                        .map(|s| extract_pred_name(s).unwrap_or("?"))
-                        .collect::<Vec<_>>()
-                        .join(" ∧ "),
-                    extract_pred_name(&conclusion_repr).unwrap_or("?")
-                );
-                // Build typed templates for this ground rule.
                 let mut typed_conds = Vec::new();
                 collect_ground_facts(buffer, *neg_inner, subs, None, &mut typed_conds);
                 let mut typed_concls = Vec::new();
                 collect_ground_facts(buffer, *r, subs, None, &mut typed_concls);
-                register_rule(inner, label, condition_reprs, vec![conclusion_repr], vec![], typed_conds, typed_concls);
+                let label = build_typed_rule_label(&typed_conds, &typed_concls);
+                register_rule(inner, label, vec![], typed_conds, typed_concls);
             }
             // Also check Or(Q, Not(P)) — reversed order (commutativity)
             else if let LogicNode::NotNode(neg_inner) = &buffer.nodes[*r as usize] {
-                let raw_subs: HashMap<String, String> = subs
-                    .iter()
-                    .filter(|(_, v)| !v.starts_with(SKDEP_PREFIX))
-                    .map(|(k, v)| (k.clone(), format!("(Const \"{}\")", v)))
-                    .collect();
-                let mut condition_reprs = Vec::new();
-                collect_material_condition_leaves(
-                    buffer,
-                    *neg_inner,
-                    &raw_subs,
-                    &mut condition_reprs,
-                );
-                let conclusion_repr = reconstruct_repr_with_subs(buffer, *l, &raw_subs);
-                let label = format!(
-                    "{} → {}",
-                    condition_reprs
-                        .iter()
-                        .map(|s| extract_pred_name(s).unwrap_or("?"))
-                        .collect::<Vec<_>>()
-                        .join(" ∧ "),
-                    extract_pred_name(&conclusion_repr).unwrap_or("?")
-                );
                 let mut typed_conds = Vec::new();
                 collect_ground_facts(buffer, *neg_inner, subs, None, &mut typed_conds);
                 let mut typed_concls = Vec::new();
                 collect_ground_facts(buffer, *l, subs, None, &mut typed_concls);
-                register_rule(inner, label, condition_reprs, vec![conclusion_repr], vec![], typed_conds, typed_concls);
+                let label = build_typed_rule_label(&typed_conds, &typed_concls);
+                register_rule(inner, label, vec![], typed_conds, typed_concls);
             }
         }
         _ => {}
-    }
-}
-
-/// Helper: collect leaf representations from the condition side of a material conditional.
-/// Follows And nodes to flatten conjunctive conditions.
-fn collect_material_condition_leaves(
-    buffer: &LogicBuffer,
-    node_id: u32,
-    subs: &HashMap<String, String>,
-    leaves: &mut Vec<String>,
-) {
-    match &buffer.nodes[node_id as usize] {
-        LogicNode::AndNode((l, r)) => {
-            collect_material_condition_leaves(buffer, *l, subs, leaves);
-            collect_material_condition_leaves(buffer, *r, subs, leaves);
-        }
-        _ => {
-            leaves.push(reconstruct_repr_with_subs(buffer, node_id, subs));
-        }
     }
 }
 
@@ -1290,7 +872,6 @@ impl KnowledgeBase {
     /// Preserves fact_registry and fact_counter; resets all derived state.
     fn rebuild_inner(inner: &mut KnowledgeBaseInner) -> Result<(), String> {
         // Reset derived state (interner too — all interned keys become invalid)
-        inner.interner.clear();
         inner.skolem_counter = 0;
         inner.known_entities.clear();
         inner.known_event_entities.clear();
@@ -3388,30 +2969,6 @@ mod tests {
         let root_step = &trace.steps[trace.root as usize];
         assert!(root_step.holds);
         assert!(matches!(&root_step.rule, ProofRule::Asserted(_)));
-    }
-
-    #[test]
-    fn test_legacy_pattern_matching() {
-        // Test the structural pattern matcher
-        let var_names = vec!["x__v0".to_string()];
-
-        // Simple predicate match via LegacyPatternTree
-        let pattern = r#"(Pred "gerku" (Cons x__v0 (Cons (Zoe) (Nil))))"#;
-        let concrete = r#"(Pred "gerku" (Cons (Const "alis") (Cons (Zoe) (Nil))))"#;
-        let tree = LegacyPatternTree::parse(pattern, &var_names);
-        let bindings = tree.match_against(concrete).unwrap();
-        assert_eq!(bindings.get("x__v0").unwrap(), r#"(Const "alis")"#);
-
-        // Non-matching predicate name
-        let wrong = r#"(Pred "mlatu" (Cons (Const "alis") (Cons (Zoe) (Nil))))"#;
-        assert!(tree.match_against(wrong).is_none());
-
-        // Substitution via LegacyPatternTree
-        let template = r#"(Pred "danlu" (Cons x__v0 (Cons (Zoe) (Nil))))"#;
-        let template_tree = LegacyPatternTree::parse(template, &var_names);
-        let result = template_tree.substitute(&bindings);
-        assert!(result.contains(r#"Const "alis""#));
-        assert!(result.contains("danlu"));
     }
 
     // ─── Conjunction Introduction (Guarded) Tests ────────────────────
