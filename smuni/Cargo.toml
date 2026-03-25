@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+gerna = { path = "../gerna" }
 lasso = "0.7.3"
 phf = "0.13.1"
 wit-bindgen-rt = "0.44.0"

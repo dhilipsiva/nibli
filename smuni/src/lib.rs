@@ -208,5 +208,19 @@ pub fn compile_buffer_native(ast: AstBuffer) -> Result<LogicBuffer, NibliError> 
     <SmuniComponent as Guest>::compile_buffer(ast)
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// BRIDGE: accept gerna's AST types directly (for native callers like nibli-engine)
+// ═══════════════════════════════════════════════════════════════════════
+
+mod gerna_bridge;
+
+/// Compile a gerna-produced AST buffer into a logic buffer.
+/// Accepts gerna's WIT-generated types directly, converts internally.
+pub fn compile_from_gerna_ast(
+    ast: gerna::bindings::lojban::nibli::ast_types::AstBuffer,
+) -> Result<LogicBuffer, NibliError> {
+    compile_buffer_native(gerna_bridge::convert_ast_buffer(&ast))
+}
+
 #[cfg(target_arch = "wasm32")]
 bindings::export!(SmuniComponent with_types_in bindings);

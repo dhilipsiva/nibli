@@ -6,9 +6,7 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 3: Architecture (High Effort, High Impact)
 
-8. **Shared WIT type packages** — Each crate (gerna, smuni, logji) generates independent copies of identical enum types via WIT bindings. `nibli-engine` has ~150 lines of exhaustive enum conversion (gerna→smuni, smuni→logji). A shared WIT package (`lojban:nibli-shared-types`) would define canonical types once. Eliminates all conversion code.
-
-9. **SelbriSnapshot deep-clone optimization** — go'i resolution deep-clones entire selbri subtree + dependencies for every assertion/query (`lasna/src/lib.rs:94-106, 283-297`). ~150 lines of remapping logic. Replace with index offset mapping (add base offset to all indices in place) to avoid cloning. High impact for `:load` batch operations.
+8. **SelbriSnapshot deep-clone optimization** — go'i resolution deep-clones entire selbri subtree + dependencies for every assertion/query (`lasna/src/lib.rs:94-106, 283-297`). ~150 lines of remapping logic. Replace with index offset mapping (add base offset to all indices in place) to avoid cloning. High impact for `:load` batch operations.
 
 ## Tier 4: Correctness & Robustness
 

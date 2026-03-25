@@ -34,6 +34,8 @@ use std::sync::Arc;
 mod compute;
 mod reasoning;
 mod rules;
+/// Bridge: convert smuni's WIT logic types → logji's WIT logic types.
+pub mod smuni_bridge;
 
 use compute::*;
 use reasoning::*;
