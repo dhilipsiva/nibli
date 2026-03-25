@@ -1,45 +1,51 @@
 # Nibli — Technical Debt & Improvements
 
-Ordered by impact, priority, and dependency. Items within each tier can be tackled in any order unless noted.
+Ordered by impact, priority, and dependency.
 
-## Tier 1: Remaining Legacy Cleanup (Low Effort)
+## Tier 1: Dead Code Removal (Low Effort, High Cleanup Value)
 
-1. **Remove duplicate representation reconstruction** — `lasna/src/lib.rs` and `nibli-engine/src/lib.rs` both have `reconstruct_repr()` / `write_repr()` / `write_term()`. Used only by `compile-debug` output. Consolidate or replace with typed display.
+1. **Delete legacy types from logji** — `LegacyPatternTree`, `LegacyInterner`, `LegacySortedVec`, `legacy_tokenize()`, `legacy_extract_at()`, `intern_vec()`, `add_universal_rule()`, and legacy fields in `UniversalRuleRecord` (`condition_templates`, `conclusion_templates`, `condition_trees`, `conclusion_trees`) are all dead code. Backward-chaining is fully typed. Delete them and remove the `#![allow(dead_code)]` ICE workaround. ~320 lines.
 
-2. **Remove remaining legacy types** — `LegacyPatternTree`, `LegacyInterner`, `LegacySortedVec`, `legacy_tokenize()` in logji are now dead code (backward-chaining fully migrated to typed). Delete them once `#![allow(dead_code)]` ICE workaround is resolved (or delete with the allow in place).
+2. **Remove `run_bound` / `:saturate`** — `run_bound` field in `KnowledgeBaseInner`, `set-run-bound`/`get-run-bound` WIT methods, `NIBLI_RUN_BOUND` env var, `:saturate` REPL command. Value stored but never read during reasoning — pure egglog artifact. Touches: `wit/world.wit`, `logji/src/lib.rs`, `lasna/src/lib.rs`, `gasnu/src/main.rs`, CLAUDE.md.
 
-## Tier 2: Remove Egglog-Era Vestiges (Low Effort, High Cleanup Value)
+3. **Remove `check-membership` WIT method** — Defined in `wit/world.wit`, stub in gasnu (returns empty), `dispatch_check_membership()` in `logji/src/compute.rs` never called. Dead end-to-end.
 
-These are leftover from the egglog (equality saturation) architecture that was fully replaced by demand-driven backward-chaining. None affect correctness today, but they add confusion and dead weight.
+## Tier 2: Pipeline Efficiency (Medium Effort, High Impact)
 
-7. **Remove `run_bound` / `:saturate` entirely** — `run_bound` field in `KnowledgeBaseInner`, `set-run-bound`/`get-run-bound` WIT methods on both `knowledge-base` and `session` resources, `NIBLI_RUN_BOUND` env var in gasnu, `:saturate` REPL command, and associated tests. The value is stored but **never read** during reasoning — pure egglog-era artifact. Touches: `wit/world.wit`, `logji/src/lib.rs`, `lasna/src/lib.rs`, `gasnu/src/main.rs`. Also update CLAUDE.md to remove run_bound references.
+4. **Migrate `subs` HashMap from `String` to `GroundTerm`** — `check_formula_holds()`, `check_formula_holds_traced()`, and `find_witnesses()` all use `HashMap<String, String>` where values are legacy-formatted strings like `(Const "adam")`. Every predicate leaf parses these strings via `parse_repr_to_ground_term()`. Change to `HashMap<String, GroundTerm>` and build GroundTerms from domain members directly. Eliminates per-query string parsing overhead. Touches: `logji/src/reasoning.rs`, `logji/src/lib.rs`.
 
-8. **Remove `check-membership` WIT method** — Defined in `wit/world.wit` `compute-backend` interface, stub implementation in gasnu (returns empty), `dispatch_check_membership()` in `logji/src/compute.rs` is **never called** from anywhere. Dead code end-to-end. Touches: `wit/world.wit`, `logji/src/compute.rs`, `gasnu/src/main.rs`.
+5. **Consolidate compute node transform** — Identical `Predicate → ComputeNode` transform exists in `lasna/src/lib.rs:442` and `nibli-engine/src/lib.rs:293`. Called 5× per query in lasna alone. Merge into one function, call once after smuni compilation. ~20 lines saved + fewer node array iterations.
 
-9. **Remove `#![allow(dead_code)]` ICE workarounds and delete actually-dead code** — Crate-level `#![allow(dead_code)]` in `nibli-engine/src/lib.rs` and `tavla/src/lib.rs` were workarounds for rustc 1.93.1 ICE in `check_mod_deathness`. CLAUDE.md confirms this is fixed in rustc 1.94.0 (already in flake.nix). Remove the allows, then audit every dead code warning that surfaces: if the code is genuinely unused, delete it rather than suppressing the warning. Also audit item-level `#[allow(dead_code)]` across the workspace (gerna parser methods, logji `SortedU32Vec` utilities like `is_subset_of`/`intersection`, nibli-ui struct fields) — if the code has no callers and no concrete planned use, delete it.
+6. **Consolidate proof trace formatting** — Proof tree formatting in both `nibli-protocol/src/lib.rs` and `gasnu/src/main.rs`. Error formatting repeated 3× in `nibli-engine/src/lib.rs`. Term serialization (`write_term`/`write_term_list`) duplicated between `lasna` and `nibli-engine`. Consolidate to `nibli-protocol`. ~130 lines saved.
 
-## Tier 4: Correctness & Robustness (High Impact, Medium Priority)
+7. **Remove duplicate representation reconstruction** — `lasna/src/lib.rs` and `nibli-engine/src/lib.rs` both have `reconstruct_repr()` / `write_repr()` / `write_term()`. Used only by `compile-debug` output. Consolidate or replace with typed display.
 
-10. **CRDT tombstone conflict handling** — `tavla` merge doesn't handle tombstone conflicts correctly. If two nodes retract different envelopes, merging could resurrect retracted facts. Vector clock comparison also assumes missing agents at counter 0, which breaks under network partitions.
+## Tier 3: Architecture (High Effort, High Impact)
 
-## Tier 5: Maintainability (Medium Impact, Medium Priority)
+8. **Shared WIT type packages** — Each crate (gerna, smuni, logji) generates independent copies of identical enum types via WIT bindings. `nibli-engine` has ~150 lines of exhaustive enum conversion (gerna→smuni, smuni→logji). A shared WIT package (`lojban:nibli-shared-types`) would define canonical types once. Eliminates all conversion code.
 
-11. **Consolidate duplicated formatting logic** — Three areas of duplication: (a) proof tree formatting in both `nibli-protocol/src/lib.rs` and `gasnu/src/main.rs`; (b) error formatting repeated 3x in `nibli-engine/src/lib.rs` (`format_gerna_error`, `format_smuni_error`, `format_logji_error` are nearly identical); (c) term serialization (`write_term`/`write_term_list`) duplicated between `lasna/src/lib.rs` and `nibli-engine/src/lib.rs`. Consolidate to `nibli-protocol` or a shared utility. Note: item 5 (representation removal) partially addresses (c).
+9. **SelbriSnapshot deep-clone optimization** — go'i resolution deep-clones entire selbri subtree + dependencies for every assertion/query (`lasna/src/lib.rs:94-106, 283-297`). ~150 lines of remapping logic. Replace with index offset mapping (add base offset to all indices in place) to avoid cloning. High impact for `:load` batch operations.
 
-12. **Split god files** — `logji/src/lib.rs` (5,430 lines) and `gerna/src/grammar.rs` (4,471 lines) are too large for a single file. Split logji into `kb.rs`, `assertion.rs`, `query.rs`, `witness.rs`, `proof.rs`. Split grammar into per-construct modules (selbri, sumti, sentence, description, connective). No behavioral change, pure refactor.
+## Tier 4: Correctness & Robustness
 
-13. **Make hardcoded constants configurable** — Backward-chaining depth limit (10), UI GraphQL URL, MAX_OUTPUT_ENTRIES (200), polling intervals, and other hardcoded values should be configurable via env vars or REPL commands. Some already are (fuel, memory); the pattern is inconsistent.
+10. **CRDT tombstone conflict handling** — `tavla` merge doesn't handle tombstone conflicts correctly. If two nodes retract different envelopes, merging could resurrect retracted facts. Vector clock comparison assumes missing agents at counter 0, breaks under partitions.
 
-14. **WIT schema versioning** — No migration path for WIT interface evolution. Document versioning strategy and add version field to WIT world definitions.
+## Tier 5: Maintainability
 
-## Tier 6: Infrastructure & Deployment (Lower Impact, Lower Priority)
+11. **Split god files** — `logji/src/lib.rs` (~5000 lines) and `gerna/src/grammar.rs` (4,471 lines) are too large. Split logji into `kb.rs`, `assertion.rs`, `query.rs`, `witness.rs`, `proof.rs`. Split grammar into per-construct modules.
 
-15. **Fine-grained server locking** — Replace `Arc<Mutex<>>` around the entire gossip node with per-resource locks or `RwLock` to allow concurrent read queries.
+12. **Make hardcoded constants configurable** — Backward-chaining depth limit (10), UI GraphQL URL, MAX_OUTPUT_ENTRIES (200), polling intervals. Some already configurable (fuel, memory); pattern is inconsistent.
 
-16. **Runtime-configurable UI server URL** — `nibli-ui` hardcodes the GraphQL endpoint. Read from env or DOM config at runtime so deployment doesn't require recompilation.
+13. **WIT schema versioning** — No migration path for WIT interface evolution.
 
-17. **Guard `RefCell` usage against non-WASM misuse** — `RefCell` in WASM component crates is correct for single-threaded WASI but is a latent footgun if crates are used outside WASM. Add `#[cfg]` compile-time guards or document the constraint prominently.
+## Tier 6: Infrastructure & Deployment
 
-18. **Stale TCP connection cleanup in gasnu** — No idle timeout on compute backend connections. Long REPL sessions hold connections indefinitely. Add configurable idle timeout with auto-reconnect on next use.
+14. **Fine-grained server locking** — Replace `Arc<Mutex<>>` with per-resource locks or `RwLock`.
 
-19. **Gossip envelope expiration** — CRDT log is append-only with no expiration. Ancient envelopes stay forever. Add TTL or compaction strategy for long-running nodes.
+15. **Runtime-configurable UI server URL** — `nibli-ui` hardcodes the GraphQL endpoint.
+
+16. **Guard `RefCell` against non-WASM misuse** — Add `#[cfg]` compile-time guards.
+
+17. **Stale TCP connection cleanup in gasnu** — No idle timeout on compute backend connections.
+
+18. **Gossip envelope expiration** — CRDT log is append-only with no TTL.
