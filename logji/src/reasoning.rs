@@ -1235,6 +1235,361 @@ impl<'a> Iterator for TypedMultiCartesian<'a> {
     }
 }
 
+// ─── Typed Traced Backward-Chaining ──────────────────────────────
+//
+// Typed equivalents of trace_predicate_provenance() and try_backward_chain_traced()
+// that use StoredFact and unify_facts() instead of legacy string operations.
+
+/// Typed trace_predicate_provenance: check if fact holds and build proof step.
+pub(super) fn trace_predicate_provenance_typed(
+    fact: &StoredFact,
+    inner: &mut KnowledgeBaseInner,
+    steps: &mut Vec<ProofStep>,
+    depth: usize,
+    memo: &mut HashMap<StoredFact, u32>,
+) -> u32 {
+    let display = fact.to_display_string();
+
+    if let Some(&cached_idx) = memo.get(fact) {
+        let _ = cached_idx; // memo hit — emit ProofRef
+        let idx = steps.len() as u32;
+        steps.push(ProofStep {
+            rule: ProofRule::ProofRef(display),
+            holds: true,
+            children: vec![],
+        });
+        return idx;
+    }
+
+    if typed_fact_is_asserted(fact, inner) {
+        let idx = steps.len() as u32;
+        steps.push(ProofStep {
+            rule: ProofRule::Asserted(display),
+            holds: true,
+            children: vec![],
+        });
+        memo.insert(fact.clone(), idx);
+        return idx;
+    }
+
+    if depth < MAX_BACKWARD_CHAIN_DEPTH {
+        if let Some(idx) = try_backward_chain_traced_typed(fact, inner, steps, depth, memo) {
+            memo.insert(fact.clone(), idx);
+            return idx;
+        }
+    }
+
+    let idx = steps.len() as u32;
+    steps.push(ProofStep {
+        rule: ProofRule::PredicateCheck(("unknown".to_string(), display)),
+        holds: true,
+        children: vec![],
+    });
+    memo.insert(fact.clone(), idx);
+    idx
+}
+
+/// Typed try_backward_chain_traced: structural matching with proof step recording.
+pub(super) fn try_backward_chain_traced_typed(
+    fact: &StoredFact,
+    inner: &mut KnowledgeBaseInner,
+    steps: &mut Vec<ProofStep>,
+    depth: usize,
+    memo: &mut HashMap<StoredFact, u32>,
+) -> Option<u32> {
+    let rules_snapshot = collect_matching_rules_typed(fact, &inner.universal_rules);
+    let display = fact.to_display_string();
+
+    for rule in &rules_snapshot {
+        for typed_concl in &rule.typed_conclusions {
+            let bindings_opt = unify_facts(typed_concl, fact);
+            if bindings_opt.is_none() {
+                continue;
+            }
+            let mut bindings = bindings_opt.unwrap();
+
+            let unbound_event_vars: Vec<String> = rule
+                .pattern_var_names
+                .iter()
+                .filter(|pv| pv.starts_with("ev__") && !bindings.contains_key(pv.as_str()))
+                .cloned()
+                .collect();
+
+            if !unbound_event_vars.is_empty() {
+                let members = inner.all_typed_domain_members();
+                let mut all_candidates: Vec<GroundTerm> = members.to_vec();
+                for entry in &inner.skolem_fn_registry {
+                    for combo in CartesianProduct::new(
+                        &inner.all_domain_members().iter().map(|(s, _)| s.clone()).collect::<Vec<_>>(),
+                        entry.dep_count,
+                    ) {
+                        let dep_terms: Vec<GroundTerm> = combo
+                            .iter()
+                            .map(|s| parse_repr_to_ground_term(s))
+                            .collect();
+                        all_candidates.push(build_skolem_fn_term(&entry.base_name, &dep_terms));
+                    }
+                }
+
+                let mut per_var_candidates: Vec<Vec<GroundTerm>> = Vec::new();
+                for ev_var in &unbound_event_vars {
+                    let single_var_cond_indices: Vec<usize> = rule
+                        .typed_conditions
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, ct)| {
+                            stored_fact_contains_var(ct, ev_var)
+                                && unbound_event_vars
+                                    .iter()
+                                    .all(|other| other == ev_var || !stored_fact_contains_var(ct, other))
+                        })
+                        .map(|(i, _)| i)
+                        .collect();
+
+                    if single_var_cond_indices.is_empty() {
+                        per_var_candidates.push(all_candidates.clone());
+                    } else {
+                        let filtered: Vec<GroundTerm> = all_candidates
+                            .iter()
+                            .filter(|candidate| {
+                                let mut test_bindings = bindings.clone();
+                                test_bindings.insert(ev_var.clone(), (*candidate).clone());
+                                single_var_cond_indices.iter().all(|&idx| {
+                                    let cs = substitute_fact(&rule.typed_conditions[idx], &test_bindings);
+                                    check_predicate_in_kb_typed(&cs, &*inner, depth + 1, &mut HashSet::new())
+                                })
+                            })
+                            .cloned()
+                            .collect();
+                        per_var_candidates.push(filtered);
+                    }
+                }
+
+                if per_var_candidates.iter().any(|pvc| pvc.is_empty()) {
+                    continue;
+                }
+
+                let mut found = false;
+                for combo in TypedMultiCartesian::new(&per_var_candidates) {
+                    for (i, ev_var) in unbound_event_vars.iter().enumerate() {
+                        bindings.insert(ev_var.clone(), combo[i].clone());
+                    }
+                    let all_hold = rule.typed_conditions.iter().all(|ct| {
+                        let cs = substitute_fact(ct, &bindings);
+                        check_predicate_in_kb_typed(&cs, &*inner, depth + 1, &mut HashSet::new())
+                    });
+                    if all_hold {
+                        found = true;
+                        break;
+                    }
+                    for ev_var in &unbound_event_vars {
+                        bindings.remove(ev_var.as_str());
+                    }
+                }
+                if !found {
+                    continue;
+                }
+            }
+
+            // Check all conditions hold and collect their StoredFacts for provenance.
+            let mut all_conditions_hold = true;
+            let mut condition_facts = Vec::new();
+
+            for cond_template in &rule.typed_conditions {
+                let cond_fact = substitute_fact(cond_template, &bindings);
+                if check_predicate_in_kb_typed(&cond_fact, &*inner, depth + 1, &mut HashSet::new()) {
+                    condition_facts.push(cond_fact);
+                } else {
+                    all_conditions_hold = false;
+                    break;
+                }
+            }
+
+            if !all_conditions_hold {
+                continue;
+            }
+
+            if rule.typed_conditions.is_empty() {
+                let idx = steps.len() as u32;
+                steps.push(ProofStep {
+                    rule: ProofRule::Derived((rule.label.clone(), display.clone())),
+                    holds: true,
+                    children: vec![],
+                });
+                return Some(idx);
+            }
+
+            let mut child_indices = Vec::new();
+            for cond_fact in &condition_facts {
+                let child_idx = trace_predicate_provenance_typed(cond_fact, inner, steps, depth + 1, memo);
+                child_indices.push(child_idx);
+            }
+
+            let idx = steps.len() as u32;
+            steps.push(ProofStep {
+                rule: ProofRule::Derived((rule.label.clone(), display.clone())),
+                holds: true,
+                children: child_indices,
+            });
+            return Some(idx);
+        }
+    }
+
+    // Temporal lifting: if querying a tensed fact, try bare (timeless) rules.
+    if let Some(bare_fact) = strip_tense_from_fact(fact) {
+        let tense_label = match fact {
+            StoredFact::Past(_) => "past",
+            StoredFact::Present(_) => "present",
+            StoredFact::Future(_) => "future",
+            _ => "?",
+        };
+        let bare_rules = collect_matching_rules_typed(&bare_fact, &inner.universal_rules);
+        for rule in &bare_rules {
+            for typed_concl in &rule.typed_conclusions {
+                let bindings_opt = unify_facts(typed_concl, &bare_fact);
+                if bindings_opt.is_none() {
+                    continue;
+                }
+                let mut bindings = bindings_opt.unwrap();
+
+                let unbound_event_vars: Vec<String> = rule
+                    .pattern_var_names
+                    .iter()
+                    .filter(|pv| pv.starts_with("ev__") && !bindings.contains_key(pv.as_str()))
+                    .cloned()
+                    .collect();
+
+                if !unbound_event_vars.is_empty() {
+                    let members = inner.all_typed_domain_members();
+                    let mut all_candidates: Vec<GroundTerm> = members.to_vec();
+                    for entry in &inner.skolem_fn_registry {
+                        for combo in CartesianProduct::new(
+                            &inner.all_domain_members().iter().map(|(s, _)| s.clone()).collect::<Vec<_>>(),
+                            entry.dep_count,
+                        ) {
+                            let dep_terms: Vec<GroundTerm> = combo
+                                .iter()
+                                .map(|s| parse_repr_to_ground_term(s))
+                                .collect();
+                            all_candidates.push(build_skolem_fn_term(&entry.base_name, &dep_terms));
+                        }
+                    }
+
+                    let mut per_var_candidates: Vec<Vec<GroundTerm>> = Vec::new();
+                    for ev_var in &unbound_event_vars {
+                        let single_var_cond_indices: Vec<usize> = rule
+                            .typed_conditions
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, ct)| {
+                                stored_fact_contains_var(ct, ev_var)
+                                    && unbound_event_vars
+                                        .iter()
+                                        .all(|other| other == ev_var || !stored_fact_contains_var(ct, other))
+                            })
+                            .map(|(i, _)| i)
+                            .collect();
+
+                        if single_var_cond_indices.is_empty() {
+                            per_var_candidates.push(all_candidates.clone());
+                        } else {
+                            let filtered: Vec<GroundTerm> = all_candidates
+                                .iter()
+                                .filter(|candidate| {
+                                    let mut test_bindings = bindings.clone();
+                                    test_bindings.insert(ev_var.clone(), (*candidate).clone());
+                                    single_var_cond_indices.iter().all(|&idx| {
+                                        let bare_cs = substitute_fact(&rule.typed_conditions[idx], &test_bindings);
+                                        let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
+                                        check_predicate_in_kb_typed(&tensed_cs, &*inner, depth + 1, &mut HashSet::new())
+                                    })
+                                })
+                                .cloned()
+                                .collect();
+                            per_var_candidates.push(filtered);
+                        }
+                    }
+
+                    if per_var_candidates.iter().any(|pvc| pvc.is_empty()) {
+                        continue;
+                    }
+
+                    let mut found = false;
+                    for combo in TypedMultiCartesian::new(&per_var_candidates) {
+                        for (i, ev_var) in unbound_event_vars.iter().enumerate() {
+                            bindings.insert(ev_var.clone(), combo[i].clone());
+                        }
+                        let all_hold = rule.typed_conditions.iter().all(|ct| {
+                            let bare_cs = substitute_fact(ct, &bindings);
+                            let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
+                            check_predicate_in_kb_typed(&tensed_cs, &*inner, depth + 1, &mut HashSet::new())
+                        });
+                        if all_hold {
+                            found = true;
+                            break;
+                        }
+                        for ev_var in &unbound_event_vars {
+                            bindings.remove(ev_var.as_str());
+                        }
+                    }
+                    if !found {
+                        continue;
+                    }
+                }
+
+                let mut all_conditions_hold = true;
+                let mut condition_facts = Vec::new();
+                for cond_template in &rule.typed_conditions {
+                    let bare_cs = substitute_fact(cond_template, &bindings);
+                    let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
+                    if check_predicate_in_kb_typed(&tensed_cs, &*inner, depth + 1, &mut HashSet::new()) {
+                        condition_facts.push(tensed_cs);
+                    } else {
+                        all_conditions_hold = false;
+                        break;
+                    }
+                }
+
+                if !all_conditions_hold {
+                    continue;
+                }
+
+                if rule.typed_conditions.is_empty() {
+                    let idx = steps.len() as u32;
+                    steps.push(ProofStep {
+                        rule: ProofRule::Derived((
+                            format!("{} [{}]", rule.label, tense_label),
+                            display.clone(),
+                        )),
+                        holds: true,
+                        children: vec![],
+                    });
+                    return Some(idx);
+                }
+
+                let mut child_indices = Vec::new();
+                for cond_fact in &condition_facts {
+                    let child_idx = trace_predicate_provenance_typed(cond_fact, inner, steps, depth + 1, memo);
+                    child_indices.push(child_idx);
+                }
+
+                let idx = steps.len() as u32;
+                steps.push(ProofStep {
+                    rule: ProofRule::Derived((
+                        format!("{} [{}]", rule.label, tense_label),
+                        display.clone(),
+                    )),
+                    holds: true,
+                    children: child_indices,
+                });
+                return Some(idx);
+            }
+        }
+    }
+
+    None
+}
+
 // ─── End Typed Backward-Chaining ─────────────────────────────────
 
 pub(super) fn trace_predicate_provenance(
@@ -1289,7 +1644,7 @@ pub(super) fn check_formula_holds_traced(
     inner: &mut KnowledgeBaseInner,
     steps: &mut Vec<ProofStep>,
     tense: Option<&str>,
-    memo: &mut HashMap<String, u32>,
+    memo: &mut HashMap<StoredFact, u32>,
 ) -> Result<(bool, u32), String> {
     match &buffer.nodes[node_id as usize] {
         LogicNode::AndNode((l, r)) => {
@@ -1679,16 +2034,24 @@ pub(super) fn check_formula_holds_traced(
                 });
                 return Ok((result, idx));
             }
-            let repr = reconstruct_repr_with_subs(buffer, node_id, subs);
-            let wrapped = wrap_with_tense(tense, &repr);
-            let mut visited = HashSet::new();
-            if check_predicate_in_kb(&wrapped, &*inner, 0, &mut visited) {
-                let idx = trace_predicate_provenance(&wrapped, inner, steps, 0, memo);
-                Ok((true, idx))
+            if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
+                let mut visited = HashSet::new();
+                if check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited) {
+                    let idx = trace_predicate_provenance_typed(&fact, inner, steps, 0, memo);
+                    Ok((true, idx))
+                } else {
+                    let idx = steps.len() as u32;
+                    steps.push(ProofStep {
+                        rule: ProofRule::PredicateCheck(("kb".to_string(), fact.to_display_string())),
+                        holds: false,
+                        children: vec![],
+                    });
+                    Ok((false, idx))
+                }
             } else {
                 let idx = steps.len() as u32;
                 steps.push(ProofStep {
-                    rule: ProofRule::PredicateCheck(("kb".to_string(), wrapped)),
+                    rule: ProofRule::PredicateCheck(("build_failed".to_string(), String::new())),
                     holds: false,
                     children: vec![],
                 });
@@ -1699,8 +2062,8 @@ pub(super) fn check_formula_holds_traced(
             let resolved = resolve_args_for_dispatch(args, subs);
             if let Ok(result) = dispatch_to_backend(rel, &resolved) {
                 if result {
-                    if let Some(fact_repr) = build_ground_predicate_repr(rel, &resolved) {
-                        legacy_assert_repr(fact_repr, inner);
+                    if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
+                        assert_typed_fact(fact, inner);
                     }
                 }
                 let idx = steps.len() as u32;
@@ -1713,8 +2076,8 @@ pub(super) fn check_formula_holds_traced(
             }
             if let Some(result) = try_arithmetic_evaluation(rel, args, subs) {
                 if result {
-                    if let Some(fact_repr) = build_ground_predicate_repr(rel, &resolved) {
-                        legacy_assert_repr(fact_repr, inner);
+                    if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
+                        assert_typed_fact(fact, inner);
                     }
                 }
                 let idx = steps.len() as u32;
@@ -1725,10 +2088,13 @@ pub(super) fn check_formula_holds_traced(
                 });
                 return Ok((result, idx));
             }
-            let repr = reconstruct_repr_with_subs(buffer, node_id, subs);
-            let wrapped = wrap_with_tense(tense, &repr);
-            let mut visited = HashSet::new();
-            let holds = check_predicate_in_kb(&wrapped, &*inner, 0, &mut visited);
+            // Fallback: check typed store for compute predicate.
+            let holds = if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
+                let mut visited = HashSet::new();
+                check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited)
+            } else {
+                false
+            };
             let idx = steps.len() as u32;
             steps.push(ProofStep {
                 rule: ProofRule::ComputeCheck(("kb".to_string(), rel.clone())),

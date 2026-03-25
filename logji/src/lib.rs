@@ -1401,7 +1401,7 @@ impl KnowledgeBase {
         let mut inner = self.inner.borrow_mut();
         inner.ensure_domain_members_cached();
         let mut steps: Vec<ProofStep> = Vec::new();
-        let mut memo: HashMap<String, u32> = HashMap::new();
+        let mut memo: HashMap<StoredFact, u32> = HashMap::new();
         let mut root_children: Vec<u32> = Vec::new();
         let mut all_hold = true;
         for &root_id in &logic.roots {
