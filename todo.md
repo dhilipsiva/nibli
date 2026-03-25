@@ -9,10 +9,6 @@ Order matters:
 
 ## Phase 1 - Distributed Correctness
 
-- [ ] 6. Fix `nibli-store` index integrity.
-  Targets: `nibli-store/src/lib.rs`
-  `merge_remote`, `merge_from_file`, and `export_to_file` must rebuild or preserve `PREDICATE_INDEX_TABLE` so `facts_for_predicate` stays correct after sync and import/export.
-
 - [ ] 7. Fix numeric correctness in `gasnu`.
   Targets: `gasnu/src/main.rs`
   Stop truncating `f64` inputs to `i64` in built-in arithmetic. Fix both single and batch compute paths and add regression tests for fractional inputs.

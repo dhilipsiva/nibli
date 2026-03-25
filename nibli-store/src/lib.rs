@@ -4,9 +4,10 @@
 //! serialization. The store persists FactRecords to disk and supports
 //! 2P-Set CRDT merge semantics for multi-node replication.
 
+use std::collections::HashMap;
 use std::path::Path;
 
-use redb::{Database, ReadableTable, ReadableTableMetadata, TableDefinition};
+use redb::{Database, ReadableTable, ReadableTableMetadata, TableDefinition, WriteTransaction};
 use serde::{Deserialize, Serialize};
 
 // ─── redb table definitions ───────────────────────────────────────
@@ -70,6 +71,37 @@ pub struct StoredFactRecord {
     pub node_id: String,
     /// CRDT: monotonic logical clock for causal ordering.
     pub hlc_timestamp: u64,
+    /// Predicate names referenced by this fact for index rebuilds and sync.
+    #[serde(default)]
+    pub predicates: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct LegacyStoredFactRecord {
+    id: u64,
+    payload: Vec<u8>,
+    label: String,
+    retracted: bool,
+    node_id: String,
+    hlc_timestamp: u64,
+}
+
+fn decode_stored_fact_record(bytes: &[u8]) -> Result<StoredFactRecord, StoreError> {
+    match postcard::from_bytes(bytes) {
+        Ok(record) => Ok(record),
+        Err(_) => {
+            let legacy: LegacyStoredFactRecord = postcard::from_bytes(bytes)?;
+            Ok(StoredFactRecord {
+                id: legacy.id,
+                payload: legacy.payload,
+                label: legacy.label,
+                retracted: legacy.retracted,
+                node_id: legacy.node_id,
+                hlc_timestamp: legacy.hlc_timestamp,
+                predicates: Vec::new(),
+            })
+        }
+    }
 }
 
 /// Assertion type for gasnu (WASM host) persistence.
@@ -211,7 +243,7 @@ impl NibliStore {
             let mut max_hlc = 0u64;
             for entry in table.iter()? {
                 let (_, val) = entry?;
-                let record: StoredFactRecord = postcard::from_bytes(val.value())?;
+                let record = decode_stored_fact_record(val.value())?;
                 if record.hlc_timestamp > max_hlc {
                     max_hlc = record.hlc_timestamp;
                 }
@@ -226,6 +258,74 @@ impl NibliStore {
     fn tick(&mut self) -> u64 {
         self.hlc += 1;
         self.hlc
+    }
+
+    fn normalize_predicates<I, S>(predicates: I) -> Vec<String>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut normalized: Vec<String> = predicates
+            .into_iter()
+            .map(|pred| pred.as_ref().to_string())
+            .collect();
+        normalized.sort();
+        normalized.dedup();
+        normalized
+    }
+
+    fn rebuild_predicate_index(txn: &WriteTransaction) -> Result<(), StoreError> {
+        let mut index_entries: HashMap<String, Vec<u64>> = HashMap::new();
+        {
+            let facts = txn.open_table(FACTS_TABLE)?;
+            for entry in facts.iter()? {
+                let (_, val) = entry?;
+                let record = decode_stored_fact_record(val.value())?;
+                if record.retracted {
+                    continue;
+                }
+                for predicate in Self::normalize_predicates(record.predicates.iter()) {
+                    index_entries.entry(predicate).or_default().push(record.id);
+                }
+            }
+        }
+
+        let mut pred_idx = txn.open_table(PREDICATE_INDEX_TABLE)?;
+        let existing_keys: Vec<String> = pred_idx
+            .iter()?
+            .map(|e| e.map(|(k, _)| k.value().to_string()))
+            .collect::<Result<_, _>>()?;
+        for key in &existing_keys {
+            pred_idx.remove(key.as_str())?;
+        }
+
+        let mut predicates: Vec<String> = index_entries.keys().cloned().collect();
+        predicates.sort();
+        for predicate in &predicates {
+            let ids = index_entries.get(predicate).unwrap();
+            let idx_bytes = postcard::to_allocvec(ids)?;
+            pred_idx.insert(predicate.as_str(), idx_bytes.as_slice())?;
+        }
+
+        Ok(())
+    }
+
+    fn predicate_memberships_from_index(&self) -> Result<HashMap<u64, Vec<String>>, StoreError> {
+        let rtxn = self.db.begin_read()?;
+        let pred_idx = rtxn.open_table(PREDICATE_INDEX_TABLE)?;
+        let mut memberships: HashMap<u64, Vec<String>> = HashMap::new();
+        for entry in pred_idx.iter()? {
+            let (pred, val) = entry?;
+            let predicate = pred.value().to_string();
+            let ids: Vec<u64> = postcard::from_bytes(val.value())?;
+            for id in ids {
+                memberships.entry(id).or_default().push(predicate.clone());
+            }
+        }
+        for predicates in memberships.values_mut() {
+            *predicates = Self::normalize_predicates(predicates.iter());
+        }
+        Ok(memberships)
     }
 
     /// Insert a new fact record.
@@ -243,6 +343,7 @@ impl NibliStore {
             retracted: false,
             node_id: self.node_id.clone(),
             hlc_timestamp: ts,
+            predicates: Vec::new(),
         };
         let bytes = postcard::to_allocvec(&record)?;
 
@@ -263,33 +364,8 @@ impl NibliStore {
             if facts.remove(id)?.is_none() {
                 return Err(StoreError::NotFound(id));
             }
-
-            let mut pred_idx = txn.open_table(PREDICATE_INDEX_TABLE)?;
-            let pred_keys: Vec<String> = pred_idx
-                .iter()?
-                .map(|e| e.map(|(k, _)| k.value().to_string()))
-                .collect::<Result<_, _>>()?;
-            for key in &pred_keys {
-                let ids_opt: Option<Vec<u64>> = pred_idx
-                    .get(key.as_str())?
-                    .map(|g| postcard::from_bytes(g.value()))
-                    .transpose()?;
-                let Some(mut ids) = ids_opt else {
-                    continue;
-                };
-                let original_len = ids.len();
-                ids.retain(|existing| *existing != id);
-                if ids.len() == original_len {
-                    continue;
-                }
-                if ids.is_empty() {
-                    pred_idx.remove(key.as_str())?;
-                } else {
-                    let idx_bytes = postcard::to_allocvec(&ids)?;
-                    pred_idx.insert(key.as_str(), idx_bytes.as_slice())?;
-                }
-            }
         }
+        Self::rebuild_predicate_index(&txn)?;
         txn.commit()?;
         Ok(())
     }
@@ -310,6 +386,7 @@ impl NibliStore {
             retracted: false,
             node_id: self.node_id.clone(),
             hlc_timestamp: ts,
+            predicates: Self::normalize_predicates(predicates.iter()),
         };
         let bytes = postcard::to_allocvec(&record)?;
 
@@ -317,20 +394,8 @@ impl NibliStore {
         {
             let mut facts = txn.open_table(FACTS_TABLE)?;
             facts.insert(id, bytes.as_slice())?;
-
-            let mut pred_idx = txn.open_table(PREDICATE_INDEX_TABLE)?;
-            for pred in predicates {
-                let mut ids: Vec<u64> = match pred_idx.get(*pred)? {
-                    Some(existing) => postcard::from_bytes(existing.value())?,
-                    None => Vec::new(),
-                };
-                if !ids.contains(&id) {
-                    ids.push(id);
-                }
-                let idx_bytes = postcard::to_allocvec(&ids)?;
-                pred_idx.insert(*pred, idx_bytes.as_slice())?;
-            }
         }
+        Self::rebuild_predicate_index(&txn)?;
         txn.commit()?;
         Ok(())
     }
@@ -343,7 +408,7 @@ impl NibliStore {
             // Read first, drop the guard, then mutate.
             let record_opt: Option<StoredFactRecord> = table
                 .get(id)?
-                .map(|g| postcard::from_bytes(g.value()))
+                .map(|g| decode_stored_fact_record(g.value()))
                 .transpose()?;
             match record_opt {
                 Some(mut record) => {
@@ -357,6 +422,7 @@ impl NibliStore {
                 None => return Err(StoreError::NotFound(id)),
             }
         }
+        Self::rebuild_predicate_index(&txn)?;
         txn.commit()?;
         Ok(())
     }
@@ -368,7 +434,7 @@ impl NibliStore {
         let mut results = Vec::new();
         for entry in table.iter()? {
             let (_, val) = entry?;
-            let record: StoredFactRecord = postcard::from_bytes(val.value())?;
+            let record = decode_stored_fact_record(val.value())?;
             if !record.retracted {
                 results.push(record);
             }
@@ -382,7 +448,7 @@ impl NibliStore {
         let table = rtxn.open_table(FACTS_TABLE)?;
         match table.get(id)? {
             Some(val) => {
-                let record: StoredFactRecord = postcard::from_bytes(val.value())?;
+                let record = decode_stored_fact_record(val.value())?;
                 Ok(Some(record))
             }
             None => Ok(None),
@@ -416,7 +482,7 @@ impl NibliStore {
         let mut count = 0;
         for entry in table.iter()? {
             let (_, val) = entry?;
-            let record: StoredFactRecord = postcard::from_bytes(val.value())?;
+            let record = decode_stored_fact_record(val.value())?;
             if !record.retracted {
                 count += 1;
             }
@@ -467,12 +533,17 @@ impl NibliStore {
 
     /// Export all facts (including retracted) for CRDT sync.
     pub fn export_all(&self) -> Result<Vec<StoredFactRecord>, StoreError> {
+        let predicate_memberships = self.predicate_memberships_from_index()?;
         let rtxn = self.db.begin_read()?;
         let table = rtxn.open_table(FACTS_TABLE)?;
         let mut results = Vec::new();
         for entry in table.iter()? {
             let (_, val) = entry?;
-            let record: StoredFactRecord = postcard::from_bytes(val.value())?;
+            let mut record = decode_stored_fact_record(val.value())?;
+            if let Some(predicates) = predicate_memberships.get(&record.id) {
+                record.predicates =
+                    Self::normalize_predicates(record.predicates.iter().chain(predicates.iter()));
+            }
             results.push(record);
         }
         Ok(results)
@@ -499,7 +570,7 @@ impl NibliStore {
                 // Read first, drop the guard, then mutate.
                 let local_opt: Option<StoredFactRecord> = table
                     .get(remote.id)?
-                    .map(|g| postcard::from_bytes(g.value()))
+                    .map(|g| decode_stored_fact_record(g.value()))
                     .transpose()?;
 
                 match local_opt {
@@ -528,6 +599,7 @@ impl NibliStore {
                 }
             }
         }
+        Self::rebuild_predicate_index(&txn)?;
         txn.commit()?;
         Ok(result)
     }
@@ -564,6 +636,7 @@ impl NibliStore {
                 table.insert(fact.id, bytes.as_slice())?;
             }
         }
+        Self::rebuild_predicate_index(&txn)?;
         txn.commit()?;
         Ok(facts.len())
     }
@@ -743,6 +816,27 @@ mod tests {
     }
 
     #[test]
+    fn test_retract_removes_fact_from_predicate_index() {
+        let path = temp_db_path("pred_idx_retract");
+        cleanup(&path);
+
+        let mut store = NibliStore::open(&path, "node".into()).unwrap();
+        store
+            .insert_fact_with_predicates(1, "a".into(), vec![1], &["gerku"])
+            .unwrap();
+        store
+            .insert_fact_with_predicates(2, "b".into(), vec![2], &["gerku"])
+            .unwrap();
+
+        store.retract_fact(1).unwrap();
+
+        let gerku_ids = store.facts_for_predicate("gerku").unwrap();
+        assert_eq!(gerku_ids, vec![2]);
+
+        cleanup(&path);
+    }
+
+    #[test]
     fn test_serialization_roundtrip() {
         let buf = StoredLogicBuffer {
             nodes: vec![
@@ -821,6 +915,7 @@ mod tests {
             retracted: false,
             node_id: "remote-node".into(),
             hlc_timestamp: 100,
+            predicates: vec!["gerku".into()],
         }];
 
         let result = store.merge_remote(remote_facts).unwrap();
@@ -829,6 +924,7 @@ mod tests {
 
         let active = store.all_active_facts().unwrap();
         assert_eq!(active.len(), 2);
+        assert_eq!(store.facts_for_predicate("gerku").unwrap(), vec![2]);
 
         cleanup(&path);
     }
@@ -849,6 +945,7 @@ mod tests {
             retracted: true,
             node_id: "remote-node".into(),
             hlc_timestamp: 200,
+            predicates: vec!["gerku".into()],
         }];
 
         let result = store.merge_remote(remote_facts).unwrap();
@@ -865,6 +962,7 @@ mod tests {
             retracted: false,
             node_id: "another-node".into(),
             hlc_timestamp: 300,
+            predicates: vec!["gerku".into()],
         }];
         let result2 = store.merge_remote(remote_active).unwrap();
         assert_eq!(result2.added, 0);
@@ -873,6 +971,7 @@ mod tests {
         // Still retracted.
         let active = store.all_active_facts().unwrap();
         assert!(active.is_empty());
+        assert!(store.facts_for_predicate("gerku").unwrap().is_empty());
 
         cleanup(&path);
     }
@@ -929,8 +1028,12 @@ mod tests {
         cleanup(&dst_path);
 
         let mut store = NibliStore::open(&src_path, "node-a".into()).unwrap();
-        store.insert_fact(1, "a".into(), vec![10]).unwrap();
-        store.insert_fact(2, "b".into(), vec![20]).unwrap();
+        store
+            .insert_fact_with_predicates(1, "a".into(), vec![10], &["gerku"])
+            .unwrap();
+        store
+            .insert_fact_with_predicates(2, "b".into(), vec![20], &["mlatu"])
+            .unwrap();
         store.retract_fact(2).unwrap();
 
         let count = store.export_to_file(&dst_path).unwrap();
@@ -939,6 +1042,8 @@ mod tests {
         let dst = NibliStore::open(&dst_path, "node-b".into()).unwrap();
         assert_eq!(dst.total_fact_count().unwrap(), 2);
         assert_eq!(dst.active_fact_count().unwrap(), 1);
+        assert_eq!(dst.facts_for_predicate("gerku").unwrap(), vec![1]);
+        assert!(dst.facts_for_predicate("mlatu").unwrap().is_empty());
 
         cleanup(&src_path);
         cleanup(&dst_path);
@@ -953,15 +1058,17 @@ mod tests {
 
         // Local has fact 1
         let mut local = NibliStore::open(&local_path, "node-a".into()).unwrap();
-        local.insert_fact(1, "local fact".into(), vec![1]).unwrap();
+        local
+            .insert_fact_with_predicates(1, "local fact".into(), vec![1], &["gerku"])
+            .unwrap();
 
         // Remote has facts 2 and 3
         let mut remote = NibliStore::open(&remote_path, "node-b".into()).unwrap();
         remote
-            .insert_fact(2, "remote fact 2".into(), vec![2])
+            .insert_fact_with_predicates(2, "remote fact 2".into(), vec![2], &["danlu"])
             .unwrap();
         remote
-            .insert_fact(3, "remote fact 3".into(), vec![3])
+            .insert_fact_with_predicates(3, "remote fact 3".into(), vec![3], &["mlatu"])
             .unwrap();
         drop(remote);
 
@@ -972,6 +1079,9 @@ mod tests {
 
         let active = local.all_active_facts().unwrap();
         assert_eq!(active.len(), 3);
+        assert_eq!(local.facts_for_predicate("gerku").unwrap(), vec![1]);
+        assert_eq!(local.facts_for_predicate("danlu").unwrap(), vec![2]);
+        assert_eq!(local.facts_for_predicate("mlatu").unwrap(), vec![3]);
 
         cleanup(&local_path);
         cleanup(&remote_path);
@@ -986,10 +1096,14 @@ mod tests {
 
         // Both have fact 1, but remote retracted it
         let mut local = NibliStore::open(&local_path, "node-a".into()).unwrap();
-        local.insert_fact(1, "shared".into(), vec![1]).unwrap();
+        local
+            .insert_fact_with_predicates(1, "shared".into(), vec![1], &["gerku"])
+            .unwrap();
 
         let mut remote = NibliStore::open(&remote_path, "node-b".into()).unwrap();
-        remote.insert_fact(1, "shared".into(), vec![1]).unwrap();
+        remote
+            .insert_fact_with_predicates(1, "shared".into(), vec![1], &["gerku"])
+            .unwrap();
         remote.retract_fact(1).unwrap();
         drop(remote);
 
@@ -998,8 +1112,52 @@ mod tests {
 
         let active = local.all_active_facts().unwrap();
         assert!(active.is_empty());
+        assert!(local.facts_for_predicate("gerku").unwrap().is_empty());
 
         cleanup(&local_path);
         cleanup(&remote_path);
+    }
+
+    #[test]
+    fn test_export_all_backfills_predicates_from_legacy_index() {
+        #[derive(Serialize)]
+        struct LegacyStoredFactRecord {
+            id: u64,
+            payload: Vec<u8>,
+            label: String,
+            retracted: bool,
+            node_id: String,
+            hlc_timestamp: u64,
+        }
+
+        let path = temp_db_path("legacy_export_backfill");
+        cleanup(&path);
+
+        let store = NibliStore::open(&path, "node".into()).unwrap();
+        let legacy = LegacyStoredFactRecord {
+            id: 1,
+            payload: vec![42],
+            label: "legacy".into(),
+            retracted: false,
+            node_id: "node".into(),
+            hlc_timestamp: 1,
+        };
+        let legacy_bytes = postcard::to_allocvec(&legacy).unwrap();
+
+        let txn = store.db.begin_write().unwrap();
+        {
+            let mut facts = txn.open_table(FACTS_TABLE).unwrap();
+            facts.insert(1, legacy_bytes.as_slice()).unwrap();
+            let mut pred_idx = txn.open_table(PREDICATE_INDEX_TABLE).unwrap();
+            let idx_bytes = postcard::to_allocvec(&vec![1u64]).unwrap();
+            pred_idx.insert("gerku", idx_bytes.as_slice()).unwrap();
+        }
+        txn.commit().unwrap();
+
+        let exported = store.export_all().unwrap();
+        assert_eq!(exported.len(), 1);
+        assert_eq!(exported[0].predicates, vec!["gerku"]);
+
+        cleanup(&path);
     }
 }
