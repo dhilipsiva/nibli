@@ -2,11 +2,7 @@
 
 Ordered by impact, priority, and dependency.
 
-## Tier 1: Dead Code Removal (Low Effort, High Cleanup Value)
-
-1. **Remove `check-membership` WIT method** — Defined in `wit/world.wit`, stub in gasnu (returns empty). Dead end-to-end.
-
-## Tier 2: Pipeline Efficiency (Medium Effort, High Impact)
+## Tier 1: Pipeline Efficiency (Medium Effort, High Impact)
 
 4. **Migrate `subs` HashMap from `String` to `GroundTerm`** — `check_formula_holds()`, `check_formula_holds_traced()`, and `find_witnesses()` all use `HashMap<String, String>` where values are parenthesized strings like `(Const "adam")`. Every predicate leaf parses these strings via `parse_repr_to_ground_term()`. Change to `HashMap<String, GroundTerm>` and build GroundTerms from domain members directly. Eliminates per-query string parsing overhead. Touches: `logji/src/reasoning.rs`, `logji/src/lib.rs`.
 

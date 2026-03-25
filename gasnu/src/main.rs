@@ -435,20 +435,6 @@ impl compute_backend::Host for HostState {
         results
     }
 
-    fn check_membership(
-        &mut self,
-        relation: String,
-        _args: Vec<compute_backend::LogicalTerm>,
-        _place_index: u32,
-    ) -> std::result::Result<Vec<compute_backend::LogicalTerm>, NibliError> {
-        // Built-in arithmetic: infinite domain, not enumerable
-        if matches!(relation.as_str(), "pilji" | "sumji" | "dilcu") {
-            return Ok(vec![]);
-        }
-        // External backend: not yet supported for membership queries.
-        // Returns empty — logji falls back to KB domain enumeration.
-        Ok(vec![])
-    }
 }
 
 /// Parse a `:assert` command string into (relation, args).
