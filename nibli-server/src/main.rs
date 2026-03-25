@@ -8,6 +8,7 @@ use axum::Router;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
+use tokio::task;
 use tower_http::cors::CorsLayer;
 
 use nibli_engine::NibliEngine;
@@ -67,6 +68,18 @@ Examples:
 "#;
 
 type HubOutbound = Arc<Mutex<Option<mpsc::UnboundedSender<WireMessage>>>>;
+type SharedGossip = Arc<Mutex<GossipNode>>;
+type SharedEvents = Arc<Mutex<Vec<GossipEvent>>>;
+
+async fn run_blocking<T, F>(f: F) -> T
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    task::spawn_blocking(f)
+        .await
+        .expect("blocking server task should not panic")
+}
 
 // ── GraphQL schema ──
 
@@ -75,17 +88,31 @@ struct QueryRoot;
 #[Object]
 impl QueryRoot {
     async fn status(&self, ctx: &async_graphql::Context<'_>) -> StatusResult {
-        let gossip = ctx.data::<Arc<Mutex<GossipNode>>>().unwrap();
-        let ok = gossip.lock().is_ok();
-        StatusResult { ready: ok }
+        let gossip = ctx.data::<SharedGossip>().unwrap().clone();
+        run_blocking(move || StatusResult {
+            ready: gossip.lock().is_ok(),
+        })
+        .await
     }
 
     /// Get a snapshot of the gossip network state.
     async fn network_snapshot(&self, ctx: &async_graphql::Context<'_>) -> NetworkSnapshotGql {
-        let gossip = ctx.data::<Arc<Mutex<GossipNode>>>().unwrap();
-        let node = gossip.lock().unwrap();
-        let snapshot = build_network_snapshot(&node);
-        snapshot_to_gql(&snapshot)
+        let gossip = ctx.data::<SharedGossip>().unwrap().clone();
+        run_blocking(move || match gossip.lock() {
+            Ok(node) => {
+                let snapshot = build_network_snapshot(&node);
+                snapshot_to_gql(&snapshot)
+            }
+            Err(_) => NetworkSnapshotGql {
+                agents: Vec::new(),
+                envelopes: Vec::new(),
+                contradictions: Vec::new(),
+                peers: Vec::new(),
+                local_agent: String::new(),
+                total_facts: 0,
+            },
+        })
+        .await
     }
 
     /// Get all envelopes authored by a specific agent.
@@ -94,13 +121,17 @@ impl QueryRoot {
         ctx: &async_graphql::Context<'_>,
         agent: String,
     ) -> Vec<EnvelopeSummaryGql> {
-        let gossip = ctx.data::<Arc<Mutex<GossipNode>>>().unwrap();
-        let node = gossip.lock().unwrap();
-        node.log()
-            .iter()
-            .filter(|e| e.author == agent)
-            .map(|e| envelope_to_gql(e))
-            .collect()
+        let gossip = ctx.data::<SharedGossip>().unwrap().clone();
+        run_blocking(move || match gossip.lock() {
+            Ok(node) => node
+                .log()
+                .iter()
+                .filter(|e| e.author == agent)
+                .map(|env| envelope_to_gql(env))
+                .collect(),
+            Err(_) => Vec::new(),
+        })
+        .await
     }
 
     /// Get details of a specific envelope by ID prefix.
@@ -109,12 +140,16 @@ impl QueryRoot {
         ctx: &async_graphql::Context<'_>,
         id_prefix: String,
     ) -> Option<EnvelopeSummaryGql> {
-        let gossip = ctx.data::<Arc<Mutex<GossipNode>>>().unwrap();
-        let node = gossip.lock().unwrap();
-        node.log()
-            .iter()
-            .find(|e| e.id.starts_with(&id_prefix))
-            .map(|e| envelope_to_gql(e))
+        let gossip = ctx.data::<SharedGossip>().unwrap().clone();
+        run_blocking(move || match gossip.lock() {
+            Ok(node) => node
+                .log()
+                .iter()
+                .find(|e| e.id.starts_with(&id_prefix))
+                .map(|env| envelope_to_gql(env)),
+            Err(_) => None,
+        })
+        .await
     }
 
     /// Get the gossip event log (most recent events).
@@ -123,10 +158,13 @@ impl QueryRoot {
         ctx: &async_graphql::Context<'_>,
         limit: Option<u32>,
     ) -> Vec<GossipEventGql> {
-        let events = ctx.data::<Arc<Mutex<Vec<GossipEvent>>>>().unwrap();
-        let events = events.lock().unwrap();
         let limit = limit.unwrap_or(50) as usize;
-        events.iter().rev().take(limit).map(event_to_gql).collect()
+        let events = ctx.data::<SharedEvents>().unwrap().clone();
+        run_blocking(move || match events.lock() {
+            Ok(events) => events.iter().rev().take(limit).map(event_to_gql).collect(),
+            Err(_) => Vec::new(),
+        })
+        .await
     }
 }
 
@@ -188,39 +226,54 @@ impl MutationRoot {
     }
 
     async fn assert_text(&self, ctx: &async_graphql::Context<'_>, input: String) -> AssertResult {
-        let gossip = ctx.data::<Arc<Mutex<GossipNode>>>().unwrap();
-        let mut node = gossip.lock().unwrap();
-        match node.assert_local_result(&input) {
-            Ok((fact_id, _envelope)) => AssertResult {
-                fact_id: Some(fact_id),
-                error: None,
+        let gossip = ctx.data::<SharedGossip>().unwrap().clone();
+        run_blocking(move || match gossip.lock() {
+            Ok(mut node) => match node.assert_local_result(&input) {
+                Ok((fact_id, _envelope)) => AssertResult {
+                    fact_id: Some(fact_id),
+                    error: None,
+                },
+                Err(e) => AssertResult {
+                    fact_id: None,
+                    error: Some(e),
+                },
             },
-            Err(e) => AssertResult {
+            Err(_) => AssertResult {
                 fact_id: None,
-                error: Some(e),
+                error: Some("gossip state lock poisoned".to_string()),
             },
-        }
+        })
+        .await
     }
 
     async fn query_text(&self, ctx: &async_graphql::Context<'_>, input: String) -> QueryResult {
-        let gossip = ctx.data::<Arc<Mutex<GossipNode>>>().unwrap();
-        let node = gossip.lock().unwrap();
-        match node.query_with_proof(&input) {
-            Ok((holds, trace, json)) => QueryResult {
-                holds: Some(holds),
-                proof_trace: Some(trace),
-                proof_trace_json: Some(json),
-                kb_status: None,
-                error: None,
+        let gossip = ctx.data::<SharedGossip>().unwrap().clone();
+        run_blocking(move || match gossip.lock() {
+            Ok(node) => match node.query_with_proof(&input) {
+                Ok((holds, trace, json)) => QueryResult {
+                    holds: Some(holds),
+                    proof_trace: Some(trace),
+                    proof_trace_json: Some(json),
+                    kb_status: None,
+                    error: None,
+                },
+                Err(e) => QueryResult {
+                    holds: None,
+                    proof_trace: None,
+                    proof_trace_json: None,
+                    kb_status: None,
+                    error: Some(e),
+                },
             },
-            Err(e) => QueryResult {
+            Err(_) => QueryResult {
                 holds: None,
                 proof_trace: None,
                 proof_trace_json: None,
                 kb_status: None,
-                error: Some(e),
+                error: Some("gossip state lock poisoned".to_string()),
             },
-        }
+        })
+        .await
     }
 
     /// Reset the engine, assert all KB lines, then run a query.
@@ -230,24 +283,27 @@ impl MutationRoot {
         kb: String,
         query: String,
     ) -> QueryResult {
-        let engine = NibliEngine::new();
-        let kb_status = assert_kb_lines(&engine, &kb);
-        match engine.query_text_with_proof(&query) {
-            Ok((holds, trace, json)) => QueryResult {
-                holds: Some(holds),
-                proof_trace: Some(trace),
-                proof_trace_json: Some(json),
-                kb_status: Some(kb_status),
-                error: None,
-            },
-            Err(e) => QueryResult {
-                holds: None,
-                proof_trace: None,
-                proof_trace_json: None,
-                kb_status: Some(kb_status),
-                error: Some(e),
-            },
-        }
+        run_blocking(move || {
+            let engine = NibliEngine::new();
+            let kb_status = assert_kb_lines(&engine, &kb);
+            match engine.query_text_with_proof(&query) {
+                Ok((holds, trace, json)) => QueryResult {
+                    holds: Some(holds),
+                    proof_trace: Some(trace),
+                    proof_trace_json: Some(json),
+                    kb_status: Some(kb_status),
+                    error: None,
+                },
+                Err(e) => QueryResult {
+                    holds: None,
+                    proof_trace: None,
+                    proof_trace_json: None,
+                    kb_status: Some(kb_status),
+                    error: Some(e),
+                },
+            }
+        })
+        .await
     }
 
     /// Assert Lojban into the gossip-backed authoritative knowledge state.
@@ -257,49 +313,60 @@ impl MutationRoot {
         lojban: String,
         stance: Option<String>,
     ) -> GossipAssertResult {
-        let gossip = ctx.data::<Arc<Mutex<GossipNode>>>().unwrap();
-        let events = ctx.data::<Arc<Mutex<Vec<GossipEvent>>>>().unwrap();
-        let hub_outbound = ctx.data::<HubOutbound>().unwrap();
-        let mut node = gossip.lock().unwrap();
+        let gossip = ctx.data::<SharedGossip>().unwrap().clone();
+        let events = ctx.data::<SharedEvents>().unwrap().clone();
+        let hub_outbound = ctx.data::<HubOutbound>().unwrap().clone();
+        run_blocking(move || {
+            let ep_stance = match stance.as_deref() {
+                Some("Expected") | Some("ba'a") => EpistemicStance::Expected,
+                Some("Opinion") | Some("pe'i") => EpistemicStance::Opinion,
+                Some("Hearsay") | Some("ti'e") => EpistemicStance::Hearsay,
+                _ => EpistemicStance::Deduced,
+            };
 
-        let ep_stance = match stance.as_deref() {
-            Some("Expected") | Some("ba'a") => EpistemicStance::Expected,
-            Some("Opinion") | Some("pe'i") => EpistemicStance::Opinion,
-            Some("Hearsay") | Some("ti'e") => EpistemicStance::Hearsay,
-            _ => EpistemicStance::Deduced,
-        };
-
-        match node.assert_local_with_stance_result(&lojban, ep_stance) {
-            Ok((_fact_id, envelope)) => {
-                push_gossip_event(
-                    events,
-                    GossipEvent::NewEnvelope {
-                        envelope_id: envelope.id.clone(),
-                        author: envelope.author.clone(),
-                        lojban: Some(lojban),
-                        stance: format!("{}", envelope.stance),
-                        topics: envelope.topics.clone(),
-                        timestamp: envelope.timestamp.clone(),
-                    },
-                );
-                if let Err(e) =
-                    broadcast_wire_message(hub_outbound, WireMessage::Envelope(envelope.clone()))
-                {
+            let envelope = match gossip.lock() {
+                Ok(mut node) => match node.assert_local_with_stance_result(&lojban, ep_stance) {
+                    Ok((_fact_id, envelope)) => envelope,
+                    Err(e) => {
+                        return GossipAssertResult {
+                            envelope_id: None,
+                            error: Some(e),
+                        };
+                    }
+                },
+                Err(_) => {
                     return GossipAssertResult {
-                        envelope_id: Some(envelope.id),
-                        error: Some(format!("local assert succeeded, but broadcast failed: {e}")),
+                        envelope_id: None,
+                        error: Some("gossip state lock poisoned".to_string()),
                     };
                 }
-                GossipAssertResult {
+            };
+
+            push_gossip_event(
+                &events,
+                GossipEvent::NewEnvelope {
+                    envelope_id: envelope.id.clone(),
+                    author: envelope.author.clone(),
+                    lojban: Some(lojban),
+                    stance: format!("{}", envelope.stance),
+                    topics: envelope.topics.clone(),
+                    timestamp: envelope.timestamp.clone(),
+                },
+            );
+            if let Err(e) =
+                broadcast_wire_message(&hub_outbound, WireMessage::Envelope(envelope.clone()))
+            {
+                return GossipAssertResult {
                     envelope_id: Some(envelope.id),
-                    error: None,
-                }
+                    error: Some(format!("local assert succeeded, but broadcast failed: {e}")),
+                };
             }
-            Err(e) => GossipAssertResult {
-                envelope_id: None,
-                error: Some(e),
-            },
-        }
+            GossipAssertResult {
+                envelope_id: Some(envelope.id),
+                error: None,
+            }
+        })
+        .await
     }
 
     /// Retract a known envelope by ID prefix and broadcast the tombstone.
@@ -308,64 +375,81 @@ impl MutationRoot {
         ctx: &async_graphql::Context<'_>,
         envelope_id: String,
     ) -> GossipAssertResult {
-        let gossip = ctx.data::<Arc<Mutex<GossipNode>>>().unwrap();
-        let events = ctx.data::<Arc<Mutex<Vec<GossipEvent>>>>().unwrap();
-        let hub_outbound = ctx.data::<HubOutbound>().unwrap();
-        let mut node = gossip.lock().unwrap();
+        let gossip = ctx.data::<SharedGossip>().unwrap().clone();
+        let events = ctx.data::<SharedEvents>().unwrap().clone();
+        let hub_outbound = ctx.data::<HubOutbound>().unwrap().clone();
+        run_blocking(move || {
+            let tombstone = match gossip.lock() {
+                Ok(mut node) => {
+                    let matches: Vec<String> = node
+                        .log()
+                        .into_iter()
+                        .filter(|env| {
+                            env.id.starts_with(&envelope_id)
+                                && !node.crdt_log().is_tombstoned(&env.id)
+                        })
+                        .map(|env| env.id.clone())
+                        .collect();
 
-        let matches: Vec<String> = node
-            .log()
-            .into_iter()
-            .filter(|env| {
-                env.id.starts_with(&envelope_id) && !node.crdt_log().is_tombstoned(&env.id)
-            })
-            .map(|env| env.id.clone())
-            .collect();
-
-        match matches.as_slice() {
-            [] => GossipAssertResult {
-                envelope_id: None,
-                error: Some(format!("no envelope matching prefix '{envelope_id}'")),
-            },
-            [_, _, ..] => GossipAssertResult {
-                envelope_id: None,
-                error: Some(format!("ambiguous envelope prefix '{envelope_id}'")),
-            },
-            [target_id] => match node.retract_local(target_id) {
-                Ok(tombstone) => {
-                    push_gossip_event(
-                        events,
-                        GossipEvent::NewEnvelope {
-                            envelope_id: tombstone.id.clone(),
-                            author: tombstone.author.clone(),
-                            lojban: None,
-                            stance: format!("{}", tombstone.stance),
-                            topics: tombstone.topics.clone(),
-                            timestamp: tombstone.timestamp.clone(),
+                    match matches.as_slice() {
+                        [] => {
+                            return GossipAssertResult {
+                                envelope_id: None,
+                                error: Some(format!("no envelope matching prefix '{envelope_id}'")),
+                            };
+                        }
+                        [_, _, ..] => {
+                            return GossipAssertResult {
+                                envelope_id: None,
+                                error: Some(format!("ambiguous envelope prefix '{envelope_id}'")),
+                            };
+                        }
+                        [target_id] => match node.retract_local(target_id) {
+                            Ok(tombstone) => tombstone,
+                            Err(e) => {
+                                return GossipAssertResult {
+                                    envelope_id: None,
+                                    error: Some(e),
+                                };
+                            }
                         },
-                    );
-                    if let Err(e) = broadcast_wire_message(
-                        hub_outbound,
-                        WireMessage::Envelope(tombstone.clone()),
-                    ) {
-                        return GossipAssertResult {
-                            envelope_id: Some(tombstone.id),
-                            error: Some(format!(
-                                "local retraction succeeded, but broadcast failed: {e}"
-                            )),
-                        };
-                    }
-                    GossipAssertResult {
-                        envelope_id: Some(tombstone.id),
-                        error: None,
                     }
                 }
-                Err(e) => GossipAssertResult {
-                    envelope_id: None,
-                    error: Some(e),
+                Err(_) => {
+                    return GossipAssertResult {
+                        envelope_id: None,
+                        error: Some("gossip state lock poisoned".to_string()),
+                    };
+                }
+            };
+
+            push_gossip_event(
+                &events,
+                GossipEvent::NewEnvelope {
+                    envelope_id: tombstone.id.clone(),
+                    author: tombstone.author.clone(),
+                    lojban: None,
+                    stance: format!("{}", tombstone.stance),
+                    topics: tombstone.topics.clone(),
+                    timestamp: tombstone.timestamp.clone(),
                 },
-            },
-        }
+            );
+            if let Err(e) =
+                broadcast_wire_message(&hub_outbound, WireMessage::Envelope(tombstone.clone()))
+            {
+                return GossipAssertResult {
+                    envelope_id: Some(tombstone.id),
+                    error: Some(format!(
+                        "local retraction succeeded, but broadcast failed: {e}"
+                    )),
+                };
+            }
+            GossipAssertResult {
+                envelope_id: Some(tombstone.id),
+                error: None,
+            }
+        })
+        .await
     }
 
     /// Resolve a contradiction by ID.
@@ -374,18 +458,24 @@ impl MutationRoot {
         ctx: &async_graphql::Context<'_>,
         id: u32,
     ) -> SimpleResult {
-        let gossip = ctx.data::<Arc<Mutex<GossipNode>>>().unwrap();
-        let mut node = gossip.lock().unwrap();
-        match node.resolve_contradiction(id as usize) {
-            Ok(()) => SimpleResult {
-                success: true,
-                error: None,
+        let gossip = ctx.data::<SharedGossip>().unwrap().clone();
+        run_blocking(move || match gossip.lock() {
+            Ok(mut node) => match node.resolve_contradiction(id as usize) {
+                Ok(()) => SimpleResult {
+                    success: true,
+                    error: None,
+                },
+                Err(e) => SimpleResult {
+                    success: false,
+                    error: Some(e),
+                },
             },
-            Err(e) => SimpleResult {
+            Err(_) => SimpleResult {
                 success: false,
-                error: Some(e),
+                error: Some("gossip state lock poisoned".to_string()),
             },
-        }
+        })
+        .await
     }
 }
 
@@ -498,7 +588,7 @@ fn envelope_display_text(env: &tavla::Envelope) -> Option<String> {
     }
 }
 
-fn push_gossip_event(events: &Arc<Mutex<Vec<GossipEvent>>>, event: GossipEvent) {
+fn push_gossip_event(events: &SharedEvents, event: GossipEvent) {
     let mut events = events.lock().unwrap();
     events.push(event);
     if events.len() > 200 {
@@ -854,8 +944,8 @@ async fn main() -> Result<()> {
 
     let gossip_agent =
         std::env::var("NIBLI_GOSSIP_AGENT").unwrap_or_else(|_| "nibli-server".to_string());
-    let gossip_state = Arc::new(Mutex::new(GossipNode::new(&gossip_agent)));
-    let gossip_events: Arc<Mutex<Vec<GossipEvent>>> = Arc::new(Mutex::new(Vec::new()));
+    let gossip_state: SharedGossip = Arc::new(Mutex::new(GossipNode::new(&gossip_agent)));
+    let gossip_events: SharedEvents = Arc::new(Mutex::new(Vec::new()));
     let hub_outbound: HubOutbound = Arc::new(Mutex::new(None));
 
     println!("Gossip agent: {}", gossip_agent);
@@ -920,8 +1010,8 @@ async fn graphql_playground() -> impl axum::response::IntoResponse {
 async fn gossip_hub_listener(
     addr: &str,
     agent_name: &str,
-    gossip_state: Arc<Mutex<GossipNode>>,
-    gossip_events: Arc<Mutex<Vec<GossipEvent>>>,
+    gossip_state: SharedGossip,
+    gossip_events: SharedEvents,
     hub_outbound: HubOutbound,
 ) {
     // Connect with retry.
@@ -986,49 +1076,53 @@ async fn gossip_hub_listener(
                 match serde_json::from_str::<WireMessage>(trimmed) {
                     Ok(WireMessage::Envelope(env)) => {
                         let author = env.author.clone();
+                        let author_for_error = author.clone();
                         let display_text = envelope_display_text(&env);
+                        let gossip_state = gossip_state.clone();
+                        let gossip_events = gossip_events.clone();
 
-                        // Ingest into the authoritative gossip-backed KB.
-                        let ingest_result = {
-                            let mut node = gossip_state.lock().unwrap();
-                            node.ingest(env.clone())
-                        };
+                        match run_blocking(move || -> Result<(), String> {
+                            let result = match gossip_state.lock() {
+                                Ok(mut node) => node.ingest(env.clone())?,
+                                Err(_) => return Err("gossip state lock poisoned".to_string()),
+                            };
 
-                        match ingest_result {
-                            Ok(result) => {
-                                if result.was_duplicate || result.was_rejected {
-                                    continue;
-                                }
+                            if result.was_duplicate || result.was_rejected {
+                                return Ok(());
+                            }
 
+                            push_gossip_event(
+                                &gossip_events,
+                                GossipEvent::NewEnvelope {
+                                    envelope_id: env.id.clone(),
+                                    author: author.clone(),
+                                    lojban: display_text.clone(),
+                                    stance: format!("{}", env.stance),
+                                    topics: env.topics.clone(),
+                                    timestamp: env.timestamp.clone(),
+                                },
+                            );
+
+                            if let (Some(id), Some(assertion)) =
+                                (result.contradiction, display_text)
+                            {
                                 push_gossip_event(
                                     &gossip_events,
-                                    GossipEvent::NewEnvelope {
+                                    GossipEvent::Contradiction {
+                                        id,
                                         envelope_id: env.id.clone(),
-                                        author: author.clone(),
-                                        lojban: display_text.clone(),
-                                        stance: format!("{}", env.stance),
-                                        topics: env.topics.clone(),
-                                        timestamp: env.timestamp.clone(),
+                                        assertion,
+                                        author,
                                     },
                                 );
+                            }
 
-                                if let (Some(id), Some(assertion)) =
-                                    (result.contradiction, display_text)
-                                {
-                                    push_gossip_event(
-                                        &gossip_events,
-                                        GossipEvent::Contradiction {
-                                            id,
-                                            envelope_id: env.id.clone(),
-                                            assertion,
-                                            author,
-                                        },
-                                    );
-                                }
-                            }
-                            Err(e) => {
-                                eprintln!("[gossip] {author}: ingest error: {e}");
-                            }
+                            Ok(())
+                        })
+                        .await
+                        {
+                            Ok(()) => {}
+                            Err(e) => eprintln!("[gossip] {author_for_error}: ingest error: {e}"),
                         }
                     }
                     Ok(_) => {} // Ignore sync messages.
