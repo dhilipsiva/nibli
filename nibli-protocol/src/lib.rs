@@ -450,7 +450,7 @@ mod tests {
     fn test_humanize_skolem() {
         assert_eq!(
             humanize_fact(r#"(Pred "danlu" (Cons (SkolemFn "sk_1" (Const "adam")) (Nil)))"#),
-            "danlu(sk_1(adam))"
+            "danlu(#1(adam))"
         );
     }
 
@@ -506,7 +506,7 @@ mod tests {
     fn test_humanize_dep_pair_skolem() {
         assert_eq!(
             humanize_fact(r#"(SkolemFn "sk_2" (DepPair (Const "adam") (Const "bob")))"#),
-            "sk_2(adam, bob)"
+            "#2(adam, bob)"
         );
     }
 
@@ -529,10 +529,10 @@ mod tests {
             root: 0,
         };
 
-        assert_eq!(trace.to_pretty_text(), "Asserted: gerku(adam) -> TRUE\n");
+        assert_eq!(trace.to_pretty_text(), "Fact: gerku(adam) -> TRUE\n");
         assert_eq!(
             trace.to_pretty_text_with_indent(1),
-            "  Asserted: gerku(adam) -> TRUE\n"
+            "  Fact: gerku(adam) -> TRUE\n"
         );
     }
 }

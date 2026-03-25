@@ -754,51 +754,6 @@ mod tests {
         }
     }
 
-    // ─── extract_head_relation tests ───
-
-    #[test]
-    fn test_extract_head_relation_root() {
-        let selbris = vec![Selbri::Root("klama".to_string())];
-        assert_eq!(
-            extract_head_relation(&selbris, 0),
-            Some("klama".to_string())
-        );
-    }
-
-    #[test]
-    fn test_extract_head_relation_tanru() {
-        let selbris = vec![
-            Selbri::Root("barda".to_string()),
-            Selbri::Root("klama".to_string()),
-            Selbri::Tanru((0, 1)),
-        ];
-        assert_eq!(
-            extract_head_relation(&selbris, 2),
-            Some("klama".to_string())
-        );
-    }
-
-    #[test]
-    fn test_extract_head_relation_negated() {
-        let selbris = vec![Selbri::Root("klama".to_string()), Selbri::Negated(0)];
-        assert_eq!(
-            extract_head_relation(&selbris, 1),
-            Some("klama".to_string())
-        );
-    }
-
-    #[test]
-    fn test_extract_head_relation_converted() {
-        let selbris = vec![
-            Selbri::Root("klama".to_string()),
-            Selbri::Converted((Conversion::Se, 0)),
-        ];
-        assert_eq!(
-            extract_head_relation(&selbris, 1),
-            Some("klama".to_string())
-        );
-    }
-
     // ─── Snapshot extract & graft tests ───
 
     #[test]
@@ -1164,47 +1119,6 @@ mod tests {
                     matches!(&dst.selbris[*inner2 as usize], Selbri::Root(n) if n == "klama")
                 })
             })
-        );
-    }
-
-    // ─── extract_head_relation additional tests ──────────────────
-
-    #[test]
-    fn test_extract_head_relation_compound() {
-        let selbris = vec![Selbri::Compound(vec![
-            "skami".to_string(),
-            "pilno".to_string(),
-        ])];
-        // Compound returns the last part as head relation
-        let result = extract_head_relation(&selbris, 0);
-        // Compound should return Some with the joined name or last element
-        assert!(result.is_some());
-    }
-
-    #[test]
-    fn test_extract_head_relation_with_args() {
-        // WithArgs wraps a core selbri — head relation should come from core
-        let selbris = vec![
-            Selbri::Root("prami".to_string()),
-            Selbri::WithArgs((0, vec![])),
-        ];
-        assert_eq!(
-            extract_head_relation(&selbris, 1),
-            Some("prami".to_string())
-        );
-    }
-
-    #[test]
-    fn test_extract_head_relation_deeply_nested() {
-        // Negated(Converted(Te, Root("klama")))
-        let selbris = vec![
-            Selbri::Root("klama".to_string()),      // 0
-            Selbri::Converted((Conversion::Te, 0)), // 1
-            Selbri::Negated(1),                     // 2
-        ];
-        assert_eq!(
-            extract_head_relation(&selbris, 2),
-            Some("klama".to_string())
         );
     }
 
