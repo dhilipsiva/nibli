@@ -13,10 +13,6 @@ Order matters:
 
 ## Phase 3 - Maintainability and Production Finish
 
-- [ ] 14. Split the giant core files by subsystem.
-  Targets: `logji/src/lib.rs`, `gerna/src/grammar.rs`, `smuni/src/semantic.rs`
-  Do this only after Phases 1 and 2 are stable. Split by responsibility, not by arbitrary line count.
-
 - [ ] 15. Add production guardrails.
   Targets: `nibli-server/src/main.rs`, runtime configuration, deployment docs
   Add structured logs, metrics, health and readiness endpoints, bounded event storage, and non-permissive defaults for network-facing deployment.
