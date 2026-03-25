@@ -249,8 +249,19 @@ fn convert_logical_term_s2l(t: &smuni_logic::LogicalTerm) -> logji_logic::Logica
     }
 }
 
-fn convert_logic_node_s2l(n: &smuni_logic::LogicNode) -> logji_logic::LogicNode {
+fn convert_logic_node_s2l(
+    n: &smuni_logic::LogicNode,
+    compute_preds: &HashSet<String>,
+) -> logji_logic::LogicNode {
     match n {
+        smuni_logic::LogicNode::Predicate((rel, args))
+            if compute_preds.contains(rel.as_str()) =>
+        {
+            logji_logic::LogicNode::ComputeNode((
+                rel.clone(),
+                args.iter().map(convert_logical_term_s2l).collect(),
+            ))
+        }
         smuni_logic::LogicNode::Predicate((rel, args)) => logji_logic::LogicNode::Predicate((
             rel.clone(),
             args.iter().map(convert_logical_term_s2l).collect(),
@@ -279,31 +290,18 @@ fn convert_logic_node_s2l(n: &smuni_logic::LogicNode) -> logji_logic::LogicNode 
     }
 }
 
-fn convert_logic_buffer_s2l(buf: &smuni_logic::LogicBuffer) -> logji_logic::LogicBuffer {
+fn convert_logic_buffer_s2l(
+    buf: &smuni_logic::LogicBuffer,
+    compute_preds: &HashSet<String>,
+) -> logji_logic::LogicBuffer {
     logji_logic::LogicBuffer {
-        nodes: buf.nodes.iter().map(convert_logic_node_s2l).collect(),
+        nodes: buf
+            .nodes
+            .iter()
+            .map(|n| convert_logic_node_s2l(n, compute_preds))
+            .collect(),
         roots: buf.roots.clone(),
     }
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// COMPUTE NODE TRANSFORM
-// ═══════════════════════════════════════════════════════════════════════
-
-fn transform_compute_nodes(buf: &mut smuni_logic::LogicBuffer, compute_preds: &HashSet<String>) {
-    let nodes = std::mem::take(&mut buf.nodes);
-    buf.nodes = nodes
-        .into_iter()
-        .map(|node| match &node {
-            smuni_logic::LogicNode::Predicate((rel, _)) if compute_preds.contains(rel.as_str()) => {
-                let smuni_logic::LogicNode::Predicate(inner) = node else {
-                    unreachable!()
-                };
-                smuni_logic::LogicNode::ComputeNode(inner)
-            }
-            _ => node,
-        })
-        .collect();
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -817,9 +815,8 @@ impl NibliEngine {
         }
 
         let smuni_ast = convert_ast_buffer(&parse_result.buffer);
-        let mut smuni_buf = smuni::compile_buffer_native(smuni_ast).map_err(NibliError::Smuni)?;
-        transform_compute_nodes(&mut smuni_buf, &self.compute_predicates);
-        let logji_buf = convert_logic_buffer_s2l(&smuni_buf);
+        let smuni_buf = smuni::compile_buffer_native(smuni_ast).map_err(NibliError::Smuni)?;
+        let logji_buf = convert_logic_buffer_s2l(&smuni_buf, &self.compute_predicates);
         Ok(logji_buf)
     }
 
