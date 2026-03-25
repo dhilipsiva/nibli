@@ -241,8 +241,15 @@ pub(super) fn register_rule(
 
 /// Assert a typed fact into the fact store.
 pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner) {
-    let rel = fact.relation().to_string();
-    inner.typed_predicate_facts.entry(rel).or_default().insert(fact.clone());
+    let rel = fact.relation();
+    if let Some(set) = inner.typed_predicate_facts.get_mut(rel) {
+        set.insert(fact.clone());
+    } else {
+        let rel_owned = rel.to_string();
+        let mut set = HashSet::new();
+        set.insert(fact.clone());
+        inner.typed_predicate_facts.insert(rel_owned, set);
+    }
     inner.typed_facts.insert(fact);
 }
 
