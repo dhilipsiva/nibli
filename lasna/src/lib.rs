@@ -70,22 +70,6 @@ fn default_compute_predicates() -> HashSet<String> {
 
 // ─── go'i pro-bridi resolution ───
 
-/// Extract the head relation name from a selbri by recursive traversal.
-/// Used for `assert_fact` name tracking (not for go'i resolution).
-fn extract_head_relation(selbris: &[Selbri], id: usize) -> Option<String> {
-    match &selbris[id] {
-        Selbri::Root(name) => Some(name.clone()),
-        Selbri::Tanru((_, head_id)) => extract_head_relation(selbris, *head_id as usize),
-        Selbri::Converted((_, inner)) => extract_head_relation(selbris, *inner as usize),
-        Selbri::Negated(inner) => extract_head_relation(selbris, *inner as usize),
-        Selbri::Grouped(inner) => extract_head_relation(selbris, *inner as usize),
-        Selbri::WithArgs((core, _)) => extract_head_relation(selbris, *core as usize),
-        Selbri::Connected((left, _, _)) => extract_head_relation(selbris, *left as usize),
-        Selbri::Compound(parts) => parts.last().cloned(),
-        Selbri::Abstraction(_) => None,
-    }
-}
-
 // ─── Selbri snapshot: extract & graft subtrees for cross-call go'i ───
 
 /// Extract the self-contained subtree rooted at `root_id` from `ast`.

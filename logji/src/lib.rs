@@ -599,60 +599,7 @@ impl<'a> Iterator for CartesianProduct<'a> {
     }
 }
 
-/// Lazy multi-set cartesian product iterator: one combination at a time.
-/// Each set can have a different size (used after per-variable pre-filtering).
-struct MultiCartesianProduct<'a> {
-    sets: &'a [Vec<String>],
-    indices: Vec<usize>,
-    done: bool,
-}
 
-impl<'a> MultiCartesianProduct<'a> {
-    fn new(sets: &'a [Vec<String>]) -> Self {
-        let done = sets.iter().any(|s| s.is_empty());
-        Self {
-            sets,
-            indices: vec![0; sets.len()],
-            done,
-        }
-    }
-}
-
-impl<'a> Iterator for MultiCartesianProduct<'a> {
-    type Item = Vec<&'a str>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.done || self.sets.is_empty() {
-            if self.sets.is_empty() && !self.done {
-                self.done = true;
-                return Some(vec![]);
-            }
-            return None;
-        }
-        let combo: Vec<&str> = self
-            .indices
-            .iter()
-            .enumerate()
-            .map(|(set_idx, &item_idx)| self.sets[set_idx][item_idx].as_str())
-            .collect();
-        // Advance indices
-        let mut carry = true;
-        for i in (0..self.sets.len()).rev() {
-            if carry {
-                self.indices[i] += 1;
-                if self.indices[i] >= self.sets[i].len() {
-                    self.indices[i] = 0;
-                } else {
-                    carry = false;
-                }
-            }
-        }
-        if carry {
-            self.done = true;
-        }
-        Some(combo)
-    }
-}
 
 // ─── Thread-local predicate result cache ─────────────────────────────
 

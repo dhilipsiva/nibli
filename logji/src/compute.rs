@@ -107,6 +107,8 @@ pub(super) fn dispatch_to_backend(_rel: &str, _args: &[LogicalTerm]) -> Result<b
     Err("Compute backend unavailable in native mode".to_string())
 }
 
+/// Batch compute request (fields read only in WASM target).
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 struct ComputeRequest {
     relation: String,
     args: Vec<LogicalTerm>,
