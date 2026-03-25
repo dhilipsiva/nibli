@@ -9,10 +9,6 @@ Order matters:
 
 ## Phase 1 - Distributed Correctness
 
-- [ ] 4. Implement real outbound gossip from the server.
-  Targets: `nibli-server/src/main.rs`, `tavla/src/transport.rs`, `tavla/src/tcp.rs`
-  `gossip_assert` must actually transmit envelopes and tombstones to peers instead of only updating local state and events.
-
 - [ ] 5. Make `NibliEngine` persistence atomic.
   Targets: `nibli-engine/src/lib.rs`, `logji/src/lib.rs`, `nibli-store/src/lib.rs`
   Durable writes must be all-or-nothing. A store failure must not leave the in-memory KB mutated after returning an error.

@@ -31,3 +31,10 @@ pub trait Transport: Send + Sync {
     /// Shut down all connections.
     async fn shutdown(&self);
 }
+
+/// Serialize a wire message to JSON Lines bytes for transport.
+pub fn encode_json_lines(msg: &WireMessage) -> Result<Vec<u8>, String> {
+    let mut bytes = serde_json::to_vec(msg).map_err(|e| format!("serialize: {e}"))?;
+    bytes.push(b'\n');
+    Ok(bytes)
+}

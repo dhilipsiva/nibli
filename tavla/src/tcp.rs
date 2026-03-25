@@ -13,7 +13,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Mutex, mpsc};
 
 use crate::WireMessage;
-use crate::transport::{InboundMessage, Transport};
+use crate::transport::{InboundMessage, Transport, encode_json_lines};
 
 /// Per-peer writer handle.
 struct PeerHandle {
@@ -243,19 +243,12 @@ impl TcpTransport {
             peers_r.lock().await.remove(&peer_id_r);
         });
     }
-
-    /// Serialize a WireMessage to JSON Lines bytes.
-    fn encode(msg: &WireMessage) -> Result<Vec<u8>, String> {
-        let mut bytes = serde_json::to_vec(msg).map_err(|e| format!("serialize: {e}"))?;
-        bytes.push(b'\n');
-        Ok(bytes)
-    }
 }
 
 #[async_trait]
 impl Transport for TcpTransport {
     async fn send_to(&self, peer: &str, msg: &WireMessage) -> Result<(), String> {
-        let data = Self::encode(msg)?;
+        let data = encode_json_lines(msg)?;
         let peers = self.peers.lock().await;
         if let Some(handle) = peers.get(peer) {
             handle
@@ -268,7 +261,7 @@ impl Transport for TcpTransport {
     }
 
     async fn broadcast(&self, msg: &WireMessage) -> Result<(), String> {
-        let data = Self::encode(msg)?;
+        let data = encode_json_lines(msg)?;
         let peers = self.peers.lock().await;
         for (id, handle) in peers.iter() {
             if handle.tx.send(data.clone()).is_err() {

@@ -7,12 +7,14 @@ use async_graphql_axum::GraphQL;
 use axum::Router;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
+use tokio::sync::mpsc;
 use tower_http::cors::CorsLayer;
 
 use nibli_engine::NibliEngine;
 use nibli_protocol::{
     ContradictionSummary, EnvelopeSummary, GossipEvent, NetworkAgent, NetworkSnapshot, StanceCounts,
 };
+use tavla::transport::encode_json_lines;
 use tavla::{EpistemicStance, GossipNode, GossipOp, WireMessage};
 
 // ── Ollama types ──
@@ -63,6 +65,8 @@ Examples:
 - "The big dog runs" → "lo barda gerku cu bajra"
 - "I ate the food" → "mi pu citka lo cidja"
 "#;
+
+type HubOutbound = Arc<Mutex<Option<mpsc::UnboundedSender<WireMessage>>>>;
 
 // ── GraphQL schema ──
 
@@ -255,6 +259,7 @@ impl MutationRoot {
     ) -> GossipAssertResult {
         let gossip = ctx.data::<Arc<Mutex<GossipNode>>>().unwrap();
         let events = ctx.data::<Arc<Mutex<Vec<GossipEvent>>>>().unwrap();
+        let hub_outbound = ctx.data::<HubOutbound>().unwrap();
         let mut node = gossip.lock().unwrap();
 
         let ep_stance = match stance.as_deref() {
@@ -277,6 +282,14 @@ impl MutationRoot {
                         timestamp: envelope.timestamp.clone(),
                     },
                 );
+                if let Err(e) =
+                    broadcast_wire_message(hub_outbound, WireMessage::Envelope(envelope.clone()))
+                {
+                    return GossipAssertResult {
+                        envelope_id: Some(envelope.id),
+                        error: Some(format!("local assert succeeded, but broadcast failed: {e}")),
+                    };
+                }
                 GossipAssertResult {
                     envelope_id: Some(envelope.id),
                     error: None,
@@ -285,6 +298,72 @@ impl MutationRoot {
             Err(e) => GossipAssertResult {
                 envelope_id: None,
                 error: Some(e),
+            },
+        }
+    }
+
+    /// Retract a known envelope by ID prefix and broadcast the tombstone.
+    async fn gossip_retract(
+        &self,
+        ctx: &async_graphql::Context<'_>,
+        envelope_id: String,
+    ) -> GossipAssertResult {
+        let gossip = ctx.data::<Arc<Mutex<GossipNode>>>().unwrap();
+        let events = ctx.data::<Arc<Mutex<Vec<GossipEvent>>>>().unwrap();
+        let hub_outbound = ctx.data::<HubOutbound>().unwrap();
+        let mut node = gossip.lock().unwrap();
+
+        let matches: Vec<String> = node
+            .log()
+            .into_iter()
+            .filter(|env| {
+                env.id.starts_with(&envelope_id) && !node.crdt_log().is_tombstoned(&env.id)
+            })
+            .map(|env| env.id.clone())
+            .collect();
+
+        match matches.as_slice() {
+            [] => GossipAssertResult {
+                envelope_id: None,
+                error: Some(format!("no envelope matching prefix '{envelope_id}'")),
+            },
+            [_, _, ..] => GossipAssertResult {
+                envelope_id: None,
+                error: Some(format!("ambiguous envelope prefix '{envelope_id}'")),
+            },
+            [target_id] => match node.retract_local(target_id) {
+                Ok(tombstone) => {
+                    push_gossip_event(
+                        events,
+                        GossipEvent::NewEnvelope {
+                            envelope_id: tombstone.id.clone(),
+                            author: tombstone.author.clone(),
+                            lojban: None,
+                            stance: format!("{}", tombstone.stance),
+                            topics: tombstone.topics.clone(),
+                            timestamp: tombstone.timestamp.clone(),
+                        },
+                    );
+                    if let Err(e) = broadcast_wire_message(
+                        hub_outbound,
+                        WireMessage::Envelope(tombstone.clone()),
+                    ) {
+                        return GossipAssertResult {
+                            envelope_id: Some(tombstone.id),
+                            error: Some(format!(
+                                "local retraction succeeded, but broadcast failed: {e}"
+                            )),
+                        };
+                    }
+                    GossipAssertResult {
+                        envelope_id: Some(tombstone.id),
+                        error: None,
+                    }
+                }
+                Err(e) => GossipAssertResult {
+                    envelope_id: None,
+                    error: Some(e),
+                },
             },
         }
     }
@@ -424,6 +503,16 @@ fn push_gossip_event(events: &Arc<Mutex<Vec<GossipEvent>>>, event: GossipEvent) 
     events.push(event);
     if events.len() > 200 {
         events.drain(..100);
+    }
+}
+
+fn broadcast_wire_message(hub_outbound: &HubOutbound, msg: WireMessage) -> Result<(), String> {
+    let sender = hub_outbound.lock().unwrap().clone();
+    match sender {
+        Some(tx) => tx
+            .send(msg)
+            .map_err(|_| "gossip hub writer closed".to_string()),
+        None => Ok(()),
     }
 }
 
@@ -767,6 +856,7 @@ async fn main() -> Result<()> {
         std::env::var("NIBLI_GOSSIP_AGENT").unwrap_or_else(|_| "nibli-server".to_string());
     let gossip_state = Arc::new(Mutex::new(GossipNode::new(&gossip_agent)));
     let gossip_events: Arc<Mutex<Vec<GossipEvent>>> = Arc::new(Mutex::new(Vec::new()));
+    let hub_outbound: HubOutbound = Arc::new(Mutex::new(None));
 
     println!("Gossip agent: {}", gossip_agent);
 
@@ -774,9 +864,10 @@ async fn main() -> Result<()> {
     if let Ok(hub_addr) = std::env::var("NIBLI_GOSSIP_HUB") {
         let gs = gossip_state.clone();
         let ge = gossip_events.clone();
+        let ho = hub_outbound.clone();
         let agent = gossip_agent.clone();
         tokio::spawn(async move {
-            gossip_hub_listener(&hub_addr, &agent, gs, ge).await;
+            gossip_hub_listener(&hub_addr, &agent, gs, ge, ho).await;
         });
     }
 
@@ -794,6 +885,7 @@ async fn main() -> Result<()> {
         .data(ollama_config)
         .data(gossip_state)
         .data(gossip_events)
+        .data(hub_outbound)
         .finish();
 
     let port: u16 = std::env::var("NIBLI_SERVER_PORT")
@@ -830,6 +922,7 @@ async fn gossip_hub_listener(
     agent_name: &str,
     gossip_state: Arc<Mutex<GossipNode>>,
     gossip_events: Arc<Mutex<Vec<GossipEvent>>>,
+    hub_outbound: HubOutbound,
 ) {
     // Connect with retry.
     let stream = loop {
@@ -851,6 +944,29 @@ async fn gossip_hub_listener(
     }
     println!("[gossip] Connected to hub at {addr}");
 
+    let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel::<WireMessage>();
+    *hub_outbound.lock().unwrap() = Some(outbound_tx);
+
+    let writer_hub_outbound = hub_outbound.clone();
+    tokio::spawn(async move {
+        while let Some(message) = outbound_rx.recv().await {
+            match encode_json_lines(&message) {
+                Ok(bytes) => {
+                    if write_half.write_all(&bytes).await.is_err() {
+                        break;
+                    }
+                    if write_half.flush().await.is_err() {
+                        break;
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[gossip] encode error: {e}");
+                }
+            }
+        }
+        *writer_hub_outbound.lock().unwrap() = None;
+    });
+
     // Read JSON Lines from hub.
     let mut reader = BufReader::new(read_half);
     let mut line = String::new();
@@ -859,6 +975,7 @@ async fn gossip_hub_listener(
         match reader.read_line(&mut line).await {
             Ok(0) => {
                 eprintln!("[gossip] Hub disconnected");
+                *hub_outbound.lock().unwrap() = None;
                 break;
             }
             Ok(_) => {
@@ -922,6 +1039,7 @@ async fn gossip_hub_listener(
             }
             Err(e) => {
                 eprintln!("[gossip] Read error: {e}");
+                *hub_outbound.lock().unwrap() = None;
                 break;
             }
         }
@@ -1014,6 +1132,7 @@ mod tests {
     fn build_test_schema(
         gossip_state: Arc<Mutex<GossipNode>>,
         gossip_events: Arc<Mutex<Vec<GossipEvent>>>,
+        hub_outbound: HubOutbound,
     ) -> TestSchema {
         let ollama_config = Arc::new(OllamaConfig {
             url: "http://localhost:11434".to_string(),
@@ -1024,6 +1143,7 @@ mod tests {
             .data(ollama_config)
             .data(gossip_state)
             .data(gossip_events)
+            .data(hub_outbound)
             .finish()
     }
 
@@ -1077,7 +1197,8 @@ mod tests {
     async fn gossip_assert_should_affect_query_results() {
         let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
         let gossip_events = Arc::new(Mutex::new(Vec::new()));
-        let schema = build_test_schema(gossip_state, gossip_events);
+        let hub_outbound: HubOutbound = Arc::new(Mutex::new(None));
+        let schema = build_test_schema(gossip_state, gossip_events, hub_outbound);
 
         let mutation = format!(
             "mutation {{ gossipAssert(lojban: {}) {{ envelopeId error }} }}",
@@ -1099,13 +1220,26 @@ mod tests {
     async fn remote_retraction_should_remove_query_results() {
         let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
         let gossip_events = Arc::new(Mutex::new(Vec::new()));
-        let schema = build_test_schema(gossip_state.clone(), gossip_events.clone());
+        let hub_outbound: HubOutbound = Arc::new(Mutex::new(None));
+        let schema = build_test_schema(
+            gossip_state.clone(),
+            gossip_events.clone(),
+            hub_outbound.clone(),
+        );
 
         let hub = start_fake_hub().await;
         let hub_addr = hub.addr.clone();
         let listener_events = gossip_events.clone();
+        let listener_outbound = hub_outbound.clone();
         let listener_handle = tokio::spawn(async move {
-            gossip_hub_listener(&hub_addr, "server", gossip_state, listener_events).await
+            gossip_hub_listener(
+                &hub_addr,
+                "server",
+                gossip_state,
+                listener_events,
+                listener_outbound,
+            )
+            .await
         });
 
         let handshake = timeout(Duration::from_secs(1), hub.handshake)
@@ -1154,12 +1288,25 @@ mod tests {
     async fn gossip_assert_should_broadcast_to_connected_hub() {
         let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
         let gossip_events = Arc::new(Mutex::new(Vec::new()));
-        let schema = build_test_schema(gossip_state.clone(), gossip_events.clone());
+        let hub_outbound: HubOutbound = Arc::new(Mutex::new(None));
+        let schema = build_test_schema(
+            gossip_state.clone(),
+            gossip_events.clone(),
+            hub_outbound.clone(),
+        );
 
         let mut hub = start_fake_hub().await;
         let hub_addr = hub.addr.clone();
+        let listener_outbound = hub_outbound.clone();
         let listener_handle = tokio::spawn(async move {
-            gossip_hub_listener(&hub_addr, "server", gossip_state, gossip_events).await
+            gossip_hub_listener(
+                &hub_addr,
+                "server",
+                gossip_state,
+                gossip_events,
+                listener_outbound,
+            )
+            .await
         });
 
         let handshake = timeout(Duration::from_secs(1), hub.handshake)
@@ -1194,16 +1341,110 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gossip_retract_should_broadcast_tombstone_to_connected_hub() {
+        let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
+        let gossip_events = Arc::new(Mutex::new(Vec::new()));
+        let hub_outbound: HubOutbound = Arc::new(Mutex::new(None));
+        let schema = build_test_schema(
+            gossip_state.clone(),
+            gossip_events.clone(),
+            hub_outbound.clone(),
+        );
+
+        let mut hub = start_fake_hub().await;
+        let hub_addr = hub.addr.clone();
+        let listener_outbound = hub_outbound.clone();
+        let listener_handle = tokio::spawn(async move {
+            gossip_hub_listener(
+                &hub_addr,
+                "server",
+                gossip_state,
+                gossip_events,
+                listener_outbound,
+            )
+            .await
+        });
+
+        let handshake = timeout(Duration::from_secs(1), hub.handshake)
+            .await
+            .expect("server should handshake with fake hub")
+            .expect("handshake should arrive");
+        assert_eq!(handshake, "server");
+
+        let assert_mutation = format!(
+            "mutation {{ gossipAssert(lojban: {}) {{ envelopeId error }} }}",
+            gql_string("la .adam. cu gerku")
+        );
+        let asserted_json = execute_json(&schema, assert_mutation).await;
+        let asserted_id = asserted_json["gossipAssert"]["envelopeId"]
+            .as_str()
+            .expect("assert should return envelope id")
+            .to_string();
+
+        let _first_broadcast = timeout(Duration::from_millis(500), hub.inbound.recv())
+            .await
+            .expect("hub should receive asserted envelope")
+            .expect("hub should receive outbound assertion");
+
+        let retract_mutation = format!(
+            "mutation {{ gossipRetract(envelopeId: {}) {{ envelopeId error }} }}",
+            gql_string(&asserted_id)
+        );
+        let retract_json = execute_json(&schema, retract_mutation).await;
+        assert!(
+            retract_json["gossipRetract"]["error"].is_null(),
+            "gossipRetract should succeed"
+        );
+
+        let tombstone_broadcast = timeout(Duration::from_millis(500), hub.inbound.recv())
+            .await
+            .expect("hub should receive tombstone after gossipRetract")
+            .expect("hub should receive outbound tombstone");
+        let message: WireMessage = serde_json::from_str(&tombstone_broadcast)
+            .expect("tombstone broadcast should be a valid wire message");
+        assert!(
+            matches!(
+                message,
+                WireMessage::Envelope(tavla::Envelope {
+                    op: GossipOp::Retract(ref target_id),
+                    ..
+                }) if target_id == &asserted_id
+            ),
+            "gossipRetract should broadcast a tombstone targeting the asserted envelope"
+        );
+        assert!(
+            wait_for_query_result(&schema, "la .adam. cu gerku", false).await,
+            "local gossip retraction should remove the fact from query results"
+        );
+
+        listener_handle.abort();
+        hub.task.abort();
+    }
+
+    #[tokio::test]
     async fn duplicate_inbound_envelope_should_not_create_duplicate_events() {
         let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
         let gossip_events = Arc::new(Mutex::new(Vec::new()));
-        let schema = build_test_schema(gossip_state.clone(), gossip_events.clone());
+        let hub_outbound: HubOutbound = Arc::new(Mutex::new(None));
+        let schema = build_test_schema(
+            gossip_state.clone(),
+            gossip_events.clone(),
+            hub_outbound.clone(),
+        );
 
         let hub = start_fake_hub().await;
         let hub_addr = hub.addr.clone();
         let listener_events = gossip_events.clone();
+        let listener_outbound = hub_outbound.clone();
         let listener_handle = tokio::spawn(async move {
-            gossip_hub_listener(&hub_addr, "server", gossip_state, listener_events).await
+            gossip_hub_listener(
+                &hub_addr,
+                "server",
+                gossip_state,
+                listener_events,
+                listener_outbound,
+            )
+            .await
         });
 
         let handshake = timeout(Duration::from_secs(1), hub.handshake)
@@ -1253,13 +1494,26 @@ mod tests {
             TrustPolicy::TrustRequired,
         )));
         let gossip_events = Arc::new(Mutex::new(Vec::new()));
-        let schema = build_test_schema(gossip_state.clone(), gossip_events.clone());
+        let hub_outbound: HubOutbound = Arc::new(Mutex::new(None));
+        let schema = build_test_schema(
+            gossip_state.clone(),
+            gossip_events.clone(),
+            hub_outbound.clone(),
+        );
 
         let hub = start_fake_hub().await;
         let hub_addr = hub.addr.clone();
         let listener_events = gossip_events.clone();
+        let listener_outbound = hub_outbound.clone();
         let listener_handle = tokio::spawn(async move {
-            gossip_hub_listener(&hub_addr, "server", gossip_state, listener_events).await
+            gossip_hub_listener(
+                &hub_addr,
+                "server",
+                gossip_state,
+                listener_events,
+                listener_outbound,
+            )
+            .await
         });
 
         let handshake = timeout(Duration::from_secs(1), hub.handshake)
