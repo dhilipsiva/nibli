@@ -2,11 +2,7 @@
 
 Ordered by impact, priority, and dependency. Items within each tier can be tackled in any order unless noted.
 
-## Tier 1: Security & Reliability (High Impact, High Priority)
-
-1. **Fuzz testing for parser and reasoning engine** — No adversarial input testing exists. Lojban's recursive grammar and the backward-chaining engine are rich targets for pathological inputs. Add `cargo-fuzz` targets for `gerna::parse_text` and `logji` assertion/query paths. Depth guards (MAX_DEPTH=64) and fuel limits mitigate but don't replace structured fuzzing.
-
-## Tier 2: Remove S-Expression Layer (High Impact, High Priority)
+## Tier 1: Remove S-Expression Layer (High Impact, High Priority)
 
 S-expressions are a vestigial artifact from the egglog era. Now that the engine uses demand-driven backward-chaining, the entire sexp serialize/parse/tokenize/match cycle is unnecessary overhead. Replace with direct typed `LogicNode` storage and structural unification. This is the single highest-impact refactor — it removes an entire abstraction layer and eliminates a class of silent bugs (formatting changes in `write_sexp` breaking `match_against_tokens`).
 

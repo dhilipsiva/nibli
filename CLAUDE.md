@@ -33,6 +33,9 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | `just server` | Start GraphQL API server for Transparency Triad (port 8081) |
 | `just ui` | Launch Transparency Triad web UI dev server (Dioxus, port 8080) |
 | `just clean` | `cargo clean` |
+| `just fuzz-parse [SECS]` | Fuzz gerna parser (requires `cargo +nightly`). Pass seconds to limit run time. |
+| `just fuzz-assert [SECS]` | Fuzz nibli-engine assert_text (full pipeline) |
+| `just fuzz-query [SECS]` | Fuzz nibli-engine assert + query (stateful KB) |
 
 **Important:**
 - Always use `cargo test --lib` (NOT `cargo test`) — cdylib linker chokes on WIT export symbols containing `@`

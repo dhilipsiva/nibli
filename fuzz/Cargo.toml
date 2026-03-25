@@ -1,0 +1,32 @@
+[package]
+name = "nibli-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+gerna = { path = "../gerna" }
+nibli-engine = { path = "../nibli-engine" }
+
+# Prevent debug info from slowing fuzzer
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "fuzz_parse"
+path = "fuzz_targets/fuzz_parse.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_assert"
+path = "fuzz_targets/fuzz_assert.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_query"
+path = "fuzz_targets/fuzz_query.rs"
+doc = false

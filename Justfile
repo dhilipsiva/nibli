@@ -272,6 +272,20 @@ agent-auto-gdpr model="qwen3:30b" interval="60":
 agent-auto-drug model="qwen3:30b" interval="60":
     cargo run -p nibli-agent {{cargo_profile_flag}} -- --name drug-auto --domain xukmi --peer 127.0.0.1:7777 --db-path drug-auto.redb --seed drug-interactions.lojban --provider ollama --model "{{model}}" --ollama-url "http://$(ip route | grep default | awk '{print $3}'):11434" --auto-gossip --interval {{interval}} --topic "drug interactions and medicine"
 
+# ── Fuzz testing (requires cargo +nightly) ──────────────────────
+
+# Fuzz the gerna parser with arbitrary input
+fuzz-parse SECONDS="0":
+    cd fuzz && cargo +nightly fuzz run fuzz_parse -- -max_len=4096 {{ if SECONDS != "0" { "-max_total_time=" + SECONDS } else { "" } }}
+
+# Fuzz nibli-engine assert_text (full pipeline)
+fuzz-assert SECONDS="0":
+    cd fuzz && cargo +nightly fuzz run fuzz_assert -- -max_len=4096 {{ if SECONDS != "0" { "-max_total_time=" + SECONDS } else { "" } }}
+
+# Fuzz nibli-engine assert + query (stateful KB)
+fuzz-query SECONDS="0":
+    cd fuzz && cargo +nightly fuzz run fuzz_query -- -max_len=4096 {{ if SECONDS != "0" { "-max_total_time=" + SECONDS } else { "" } }}
+
 # Wipes all compilation artifacts
 clean:
     cargo clean

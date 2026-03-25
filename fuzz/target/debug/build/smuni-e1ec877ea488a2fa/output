@@ -1,0 +1,2 @@
+cargo:rerun-if-changed=../jbovlaste-en.xml
+cargo:warning=jbovlaste: 9303 entries (1342 gismu, 7961 lujvo, 44 from hardcoded overrides)
