@@ -763,21 +763,30 @@ impl NibliEngine {
 
     pub fn assert_text(&self, text: &str) -> Result<u64, String> {
         let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
-        // Assert to logji first (get fact_id), then persist to store.
-        let stored_buf = buf_to_stored(&buf);
-        let fact_id = self
-            .kb
-            .assert_fact(buf, text.to_string())
-            .map_err(|e| format_logji_error(&e))?;
-        if let Ok(mut store) = self.store.try_borrow_mut() {
-            if let Some(s) = store.as_mut() {
-                let payload = postcard::to_allocvec(&stored_buf)
-                    .map_err(|e| format!("Serialize error: {e}"))?;
-                s.insert_fact(fact_id, text.to_string(), payload)
-                    .map_err(|e| format!("Store error: {e}"))?;
+        let label = text.to_string();
+        let mut store = self
+            .store
+            .try_borrow_mut()
+            .map_err(|_| "Store error: persistence state is already borrowed".to_string())?;
+
+        if let Some(s) = store.as_mut() {
+            let payload = postcard::to_allocvec(&buf_to_stored(&buf))
+                .map_err(|e| format!("Serialize error: {e}"))?;
+            let fact_id = s.next_fact_id().map_err(|e| format!("Store error: {e}"))?;
+            s.insert_fact(fact_id, label.clone(), payload)
+                .map_err(|e| format!("Store error: {e}"))?;
+            if let Err(err) = self.kb.assert_fact_with_id(buf, label, fact_id) {
+                return match s.delete_fact(fact_id) {
+                    Ok(()) => Err(err),
+                    Err(rollback_err) => Err(format!("{err}; rollback failed: {rollback_err}")),
+                };
             }
+            Ok(fact_id)
+        } else {
+            self.kb
+                .assert_fact(buf, label)
+                .map_err(|e| format_logji_error(&e))
         }
-        Ok(fact_id)
     }
 
     pub fn query_text_with_proof(&self, text: &str) -> Result<(bool, String, String), String> {
@@ -799,5 +808,60 @@ impl NibliEngine {
             .query_entailment_with_proof(buf)
             .map_err(|e| format_logji_error(&e))?;
         Ok(holds)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NibliEngine;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    fn temp_db_path(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join("nibli_engine_tests");
+        fs::create_dir_all(&dir).unwrap();
+        dir.join(format!("{name}.redb"))
+    }
+
+    fn cleanup(path: &Path) {
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn persistent_assert_does_not_mutate_kb_when_store_is_unavailable() {
+        let path = temp_db_path("atomic_assert_store_busy");
+        cleanup(&path);
+
+        let engine = NibliEngine::open(&path).expect("Persistent engine should open");
+        let _borrow = engine.store.borrow();
+
+        let err = engine
+            .assert_text("lo gerku cu barda")
+            .expect_err("Store borrow conflict should abort assertion");
+        assert!(
+            err.contains("Store error"),
+            "Expected store error, got: {err}"
+        );
+        assert!(
+            !engine
+                .query_holds("lo gerku cu barda")
+                .expect("Query should still run"),
+            "Failed persistent assertions must not leak into the live KB"
+        );
+
+        drop(_borrow);
+        let store = engine.store.borrow();
+        let facts = store
+            .as_ref()
+            .unwrap()
+            .all_active_facts()
+            .expect("Store should remain empty");
+        assert!(
+            facts.is_empty(),
+            "Failed persistent assertions must not leak into the store"
+        );
+
+        drop(store);
+        cleanup(&path);
     }
 }

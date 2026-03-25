@@ -35,6 +35,7 @@ use std::sync::Arc;
 /// Lightweight string interner for s-expression deduplication.
 /// Stores unique strings once and returns u32 keys for O(1) equality checks.
 /// Resolves keys back to &str in O(1) via index lookup.
+#[derive(Clone)]
 struct SexpInterner {
     strings: Vec<String>,
     lookup: HashMap<String, u32>,
@@ -370,6 +371,7 @@ struct FactRecord {
 }
 
 /// All mutable KB state behind a single RefCell.
+#[derive(Clone)]
 struct KnowledgeBaseInner {
     /// S-expression string interner — deduplicates all sexp strings.
     interner: SexpInterner,
@@ -926,8 +928,10 @@ impl KnowledgeBase {
     /// Stores the buffer in the fact registry and returns a unique fact ID.
     fn assert_fact_inner(&self, logic: LogicBuffer, label: String) -> Result<u64, String> {
         let mut inner = self.inner.borrow_mut();
-        let id = inner.fresh_fact_id();
-        inner.fact_registry.insert(
+        let mut staged = inner.clone();
+        let id = staged.fresh_fact_id();
+        process_assertion(&mut staged, &logic)?;
+        staged.fact_registry.insert(
             id,
             FactRecord {
                 id,
@@ -936,7 +940,7 @@ impl KnowledgeBase {
                 retracted: false,
             },
         );
-        process_assertion(&mut inner, &logic)?;
+        *inner = staged;
         Ok(id)
     }
 
@@ -949,11 +953,13 @@ impl KnowledgeBase {
         id: u64,
     ) -> Result<(), String> {
         let mut inner = self.inner.borrow_mut();
+        let mut staged = inner.clone();
         // Advance counter past the provided ID.
-        if id >= inner.fact_counter {
-            inner.fact_counter = id + 1;
+        if id >= staged.fact_counter {
+            staged.fact_counter = id + 1;
         }
-        inner.fact_registry.insert(
+        process_assertion(&mut staged, &logic)?;
+        staged.fact_registry.insert(
             id,
             FactRecord {
                 id,
@@ -962,7 +968,7 @@ impl KnowledgeBase {
                 retracted: false,
             },
         );
-        process_assertion(&mut inner, &logic)?;
+        *inner = staged;
         Ok(())
     }
 

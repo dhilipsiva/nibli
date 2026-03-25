@@ -255,6 +255,45 @@ impl NibliStore {
         Ok(())
     }
 
+    /// Permanently remove a fact record. Used to roll back failed local assertions.
+    pub fn delete_fact(&mut self, id: u64) -> Result<(), StoreError> {
+        let txn = self.db.begin_write()?;
+        {
+            let mut facts = txn.open_table(FACTS_TABLE)?;
+            if facts.remove(id)?.is_none() {
+                return Err(StoreError::NotFound(id));
+            }
+
+            let mut pred_idx = txn.open_table(PREDICATE_INDEX_TABLE)?;
+            let pred_keys: Vec<String> = pred_idx
+                .iter()?
+                .map(|e| e.map(|(k, _)| k.value().to_string()))
+                .collect::<Result<_, _>>()?;
+            for key in &pred_keys {
+                let ids_opt: Option<Vec<u64>> = pred_idx
+                    .get(key.as_str())?
+                    .map(|g| postcard::from_bytes(g.value()))
+                    .transpose()?;
+                let Some(mut ids) = ids_opt else {
+                    continue;
+                };
+                let original_len = ids.len();
+                ids.retain(|existing| *existing != id);
+                if ids.len() == original_len {
+                    continue;
+                }
+                if ids.is_empty() {
+                    pred_idx.remove(key.as_str())?;
+                } else {
+                    let idx_bytes = postcard::to_allocvec(&ids)?;
+                    pred_idx.insert(key.as_str(), idx_bytes.as_slice())?;
+                }
+            }
+        }
+        txn.commit()?;
+        Ok(())
+    }
+
     /// Insert a fact with predicate index entries.
     pub fn insert_fact_with_predicates(
         &mut self,
@@ -357,6 +396,16 @@ impl NibliStore {
         match table.last()? {
             Some((key, _)) => Ok(Some(key.value())),
             None => Ok(None),
+        }
+    }
+
+    /// Return the next unused fact ID.
+    pub fn next_fact_id(&self) -> Result<u64, StoreError> {
+        match self.max_fact_id()? {
+            Some(id) => id
+                .checked_add(1)
+                .ok_or_else(|| StoreError::Io("fact ID space exhausted".to_string())),
+            None => Ok(0),
         }
     }
 
@@ -593,6 +642,25 @@ mod tests {
         store.insert_fact(3, "three".into(), vec![]).unwrap();
 
         assert_eq!(store.max_fact_id().unwrap(), Some(10));
+
+        cleanup(&path);
+    }
+
+    #[test]
+    fn test_next_fact_id_and_delete_fact() {
+        let path = temp_db_path("next_id_delete");
+        cleanup(&path);
+
+        let mut store = NibliStore::open(&path, "node".into()).unwrap();
+        assert_eq!(store.next_fact_id().unwrap(), 0);
+
+        store.insert_fact(0, "zero".into(), vec![0]).unwrap();
+        store.insert_fact(2, "two".into(), vec![2]).unwrap();
+        assert_eq!(store.next_fact_id().unwrap(), 3);
+
+        store.delete_fact(2).unwrap();
+        assert!(store.get_fact(2).unwrap().is_none());
+        assert_eq!(store.next_fact_id().unwrap(), 1);
 
         cleanup(&path);
     }

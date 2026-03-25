@@ -9,10 +9,6 @@ Order matters:
 
 ## Phase 1 - Distributed Correctness
 
-- [ ] 5. Make `NibliEngine` persistence atomic.
-  Targets: `nibli-engine/src/lib.rs`, `logji/src/lib.rs`, `nibli-store/src/lib.rs`
-  Durable writes must be all-or-nothing. A store failure must not leave the in-memory KB mutated after returning an error.
-
 - [ ] 6. Fix `nibli-store` index integrity.
   Targets: `nibli-store/src/lib.rs`
   `merge_remote`, `merge_from_file`, and `export_to_file` must rebuild or preserve `PREDICATE_INDEX_TABLE` so `facts_for_predicate` stays correct after sync and import/export.
