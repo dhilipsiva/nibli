@@ -1,15 +1,19 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use async_graphql::{EmptySubscription, Object, Schema};
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use axum::extract::{DefaultBodyLimit, State};
 use axum::http::{HeaderValue, Method, StatusCode};
+use axum::middleware::Next;
 use axum::response::IntoResponse;
 use axum::{Json, Router};
+use governor::{Quota, RateLimiter, clock::DefaultClock, state::{InMemoryState, NotKeyed}};
 use tokio::task;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
@@ -78,6 +82,7 @@ type SharedTransport = Option<Arc<dyn Transport>>;
 type SharedMetrics = Arc<ServerMetrics>;
 type SharedConfig = Arc<ServerConfig>;
 type AppSchema = Schema<QueryRoot, MutationRoot, EmptySubscription>;
+type SharedRateLimiter = Arc<RateLimiter<NotKeyed, InMemoryState, DefaultClock>>;
 
 #[derive(Clone)]
 struct HttpState {
@@ -87,6 +92,7 @@ struct HttpState {
     transport: SharedTransport,
     metrics: SharedMetrics,
     config: SharedConfig,
+    rate_limiter: SharedRateLimiter,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -103,6 +109,8 @@ struct ServerConfig {
     max_request_bytes: usize,
     max_gossip_events: usize,
     cors_allowed_origins: Vec<String>,
+    request_timeout_secs: u64,
+    rate_limit_rps: u32,
     log_format: LogFormat,
     log_filter: String,
 }
@@ -136,6 +144,14 @@ impl ServerConfig {
                 .unwrap_or(500)
                 .max(1),
             cors_allowed_origins,
+            request_timeout_secs: std::env::var("NIBLI_SERVER_REQUEST_TIMEOUT_SECS")
+                .ok()
+                .and_then(|s| s.trim().parse().ok())
+                .unwrap_or(30),
+            rate_limit_rps: std::env::var("NIBLI_SERVER_RATE_LIMIT_RPS")
+                .ok()
+                .and_then(|s| s.trim().parse().ok())
+                .unwrap_or(50),
             log_format: match std::env::var("NIBLI_SERVER_LOG_FORMAT")
                 .unwrap_or_else(|_| "pretty".to_string())
                 .to_ascii_lowercase()
@@ -206,6 +222,7 @@ struct ServerMetrics {
     gossip_rejected_envelopes_total: AtomicU64,
     gossip_broadcast_failures_total: AtomicU64,
     transport_receive_errors_total: AtomicU64,
+    rate_limit_rejections_total: AtomicU64,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -372,6 +389,14 @@ fn build_metrics_response(state: &HttpState) -> String {
         state
             .metrics
             .transport_receive_errors_total
+            .load(Ordering::Relaxed)
+    ));
+    lines.push("# TYPE nibli_rate_limit_rejections_total counter".to_string());
+    lines.push(format!(
+        "nibli_rate_limit_rejections_total {}",
+        state
+            .metrics
+            .rate_limit_rejections_total
             .load(Ordering::Relaxed)
     ));
     lines.push("# TYPE nibli_gossip_event_buffer_len gauge".to_string());
@@ -1447,27 +1472,76 @@ async fn metrics_handler(State(state): State<HttpState>) -> impl IntoResponse {
     )
 }
 
+async fn request_timeout_middleware(
+    State(state): State<HttpState>,
+    request: axum::extract::Request,
+    next: Next,
+) -> axum::response::Response {
+    let timeout_duration = Duration::from_secs(state.config.request_timeout_secs);
+    match tokio::time::timeout(timeout_duration, next.run(request)).await {
+        Ok(response) => response,
+        Err(_) => {
+            warn!("request timed out");
+            StatusCode::REQUEST_TIMEOUT.into_response()
+        }
+    }
+}
+
+async fn rate_limit_middleware(
+    State(state): State<HttpState>,
+    request: axum::extract::Request,
+    next: Next,
+) -> axum::response::Response {
+    match state.rate_limiter.check() {
+        Ok(_) => next.run(request).await,
+        Err(_) => {
+            state
+                .metrics
+                .rate_limit_rejections_total
+                .fetch_add(1, Ordering::Relaxed);
+            warn!("rate limit exceeded, rejecting request");
+            StatusCode::TOO_MANY_REQUESTS.into_response()
+        }
+    }
+}
+
 fn build_app(state: HttpState) -> Router {
     let config = state.config.clone();
     let trace_layer = TraceLayer::new_for_http()
         .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
         .on_response(DefaultOnResponse::new().level(Level::INFO));
 
-    let mut app = Router::new()
+    // GraphQL routes get rate limiting
+    let graphql_routes = if config.enable_playground {
+        axum::routing::get(graphql_playground).post(graphql_handler)
+    } else {
+        axum::routing::post(graphql_handler)
+    };
+
+    let graphql_router = Router::new()
+        .route("/graphql", graphql_routes)
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            rate_limit_middleware,
+        ));
+
+    // Health/readiness/metrics are not rate limited (monitoring must always be reachable)
+    let ops_router = Router::new()
         .route("/healthz", axum::routing::get(healthz))
         .route("/readyz", axum::routing::get(readyz))
-        .route("/metrics", axum::routing::get(metrics_handler))
-        .route("/graphql", axum::routing::post(graphql_handler));
+        .route("/metrics", axum::routing::get(metrics_handler));
 
-    if config.enable_playground {
-        app = app.route("/graphql", axum::routing::get(graphql_playground).post(graphql_handler));
-    }
+    let mut app = Router::new().merge(ops_router).merge(graphql_router);
 
     if let Some(cors) = build_cors_layer(config.as_ref()) {
         app = app.layer(cors);
     }
 
     app.layer(DefaultBodyLimit::max(config.max_request_bytes))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            request_timeout_middleware,
+        ))
         .layer(trace_layer)
         .with_state(state)
 }
@@ -1526,6 +1600,11 @@ async fn main() -> Result<()> {
         .finish(),
     );
 
+    let quota = Quota::per_second(
+        NonZeroU32::new(config.rate_limit_rps).expect("rate_limit_rps must be > 0"),
+    );
+    let rate_limiter: SharedRateLimiter = Arc::new(RateLimiter::direct(quota));
+
     let app_state = HttpState {
         schema: schema.clone(),
         gossip: gossip_state,
@@ -1533,6 +1612,7 @@ async fn main() -> Result<()> {
         transport: gossip_transport,
         metrics,
         config: config.clone(),
+        rate_limiter,
     };
     let app = build_app(app_state);
 
@@ -1545,6 +1625,8 @@ async fn main() -> Result<()> {
         require_gossip_peer = config.require_gossip_peer,
         max_request_bytes = config.max_request_bytes,
         max_gossip_events = config.max_gossip_events,
+        request_timeout_secs = config.request_timeout_secs,
+        rate_limit_rps = config.rate_limit_rps,
         cors_allowed_origins = ?config.cors_allowed_origins,
         "server ready"
     );
@@ -1902,6 +1984,8 @@ mod tests {
             max_request_bytes: 1_048_576,
             max_gossip_events: 16,
             cors_allowed_origins: Vec::new(),
+            request_timeout_secs: 30,
+            rate_limit_rps: 1000,
             log_format: LogFormat::Pretty,
             log_filter: "info".to_string(),
         })
@@ -1922,6 +2006,9 @@ mod tests {
             metrics.clone(),
         ));
 
+        let quota = Quota::per_second(NonZeroU32::new(1000).unwrap());
+        let rate_limiter: SharedRateLimiter = Arc::new(RateLimiter::direct(quota));
+
         HttpState {
             schema,
             gossip: gossip_state,
@@ -1929,6 +2016,7 @@ mod tests {
             transport: gossip_transport,
             metrics,
             config,
+            rate_limiter,
         }
     }
 
@@ -2402,6 +2490,8 @@ mod tests {
             max_request_bytes: 1_048_576,
             max_gossip_events: 16,
             cors_allowed_origins: Vec::new(),
+            request_timeout_secs: 30,
+            rate_limit_rps: 1000,
             log_format: LogFormat::Pretty,
             log_filter: "info".to_string(),
         };

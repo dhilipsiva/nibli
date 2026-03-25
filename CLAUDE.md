@@ -206,6 +206,8 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - Prompt 9: LLM gossip agent — `nibli_agent.py` (TCP JSON Lines client for tavla, Claude API / local model, gerna gate with 3 retries, auto-gossip mode, epistemic stances)
 - Prompt 10: Network visualization — gossip types in nibli-protocol; nibli-server embeds GossipNode with GraphQL queries (networkSnapshot, agentEnvelopes, envelopeDetail, gossipEvents) and mutations (gossipAssert, gossipRetract, resolveContradiction), plus `/healthz`, `/readyz`, and `/metrics`; nibli-ui Network tab with agent cards (stance distribution bars), envelope list, event feed, contradictions panel, gossip assertion bar with stance selector, and a status badge driven by `/readyz`; auto-refresh every 3 seconds. Retraction is still API-level, not yet a dedicated UI control.
 
+**Server hardening:** nibli-server has request timeouts (default 30s, `NIBLI_SERVER_REQUEST_TIMEOUT_SECS`) and rate limiting (default 50 req/s, `NIBLI_SERVER_RATE_LIMIT_RPS`) on GraphQL endpoints. Health/readiness/metrics endpoints are not rate limited. Rate limit rejections return HTTP 429. Timeouts return HTTP 408.
+
 All crates compile cleanly with rustc 1.94.0. All 30 tavla tests pass.
 
 **Next up:** Deferred items remain outside the closed roadmap: async compute backend follow-up work, richer browser-side transport/UI controls, and book-polish passes tracked in their local notes.
