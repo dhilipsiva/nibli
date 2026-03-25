@@ -165,17 +165,28 @@ pub(super) fn check_formula_holds(
             if let Some(result) = try_numeric_comparison(rel, args, subs) {
                 return Ok(result);
             }
-            let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
-            let wrapped = wrap_with_tense(tense, &sexp);
-            let mut visited = HashSet::new();
-            Ok(check_predicate_in_kb(&wrapped, &*inner, 0, &mut visited))
+            // Build typed fact and query typed store.
+            if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
+                let mut visited = HashSet::new();
+                Ok(check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited))
+            } else {
+                // Fallback to sexp path if typed build fails.
+                let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
+                let wrapped = wrap_with_tense(tense, &sexp);
+                let mut visited = HashSet::new();
+                Ok(check_predicate_in_kb(&wrapped, &*inner, 0, &mut visited))
+            }
         }
         LogicNode::ComputeNode((rel, args)) => {
             let resolved = resolve_args_for_dispatch(args, subs);
             if let Ok(result) = dispatch_to_backend(rel, &resolved) {
                 if result {
                     if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
-                        assert_sexp(sexp, inner);
+                        assert_sexp(sexp.clone(), inner);
+                    }
+                    // Also assert into typed store.
+                    if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
+                        assert_typed_fact(fact, inner);
                     }
                 }
                 return Ok(result);
@@ -183,15 +194,24 @@ pub(super) fn check_formula_holds(
             if let Some(result) = try_arithmetic_evaluation(rel, args, subs) {
                 if result {
                     if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
-                        assert_sexp(sexp, inner);
+                        assert_sexp(sexp.clone(), inner);
+                    }
+                    if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
+                        assert_typed_fact(fact, inner);
                     }
                 }
                 return Ok(result);
             }
-            let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
-            let wrapped = wrap_with_tense(tense, &sexp);
-            let mut visited = HashSet::new();
-            Ok(check_predicate_in_kb(&wrapped, &*inner, 0, &mut visited))
+            // Build typed fact and query typed store.
+            if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
+                let mut visited = HashSet::new();
+                Ok(check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited))
+            } else {
+                let sexp = reconstruct_sexp_with_subs(buffer, node_id, subs);
+                let wrapped = wrap_with_tense(tense, &sexp);
+                let mut visited = HashSet::new();
+                Ok(check_predicate_in_kb(&wrapped, &*inner, 0, &mut visited))
+            }
         }
     }
 }
@@ -829,6 +849,400 @@ pub(super) fn try_backward_chain(
     visited.remove(sexp);
     false
 }
+
+// ─── Typed Backward-Chaining (Phase 4-5b) ────────────────────────
+//
+// These functions mirror the sexp-based backward-chaining above but
+// operate on StoredFact/GroundTerm directly, avoiding all string ops.
+
+thread_local! {
+    static TYPED_PRED_CACHE: RefCell<HashMap<StoredFact, bool>> = RefCell::new(HashMap::new());
+}
+
+pub(super) fn clear_typed_pred_cache() {
+    TYPED_PRED_CACHE.with(|c| c.borrow_mut().clear());
+}
+
+/// Check if a typed fact is asserted in the typed fact store.
+pub(super) fn typed_fact_is_asserted(fact: &StoredFact, inner: &KnowledgeBaseInner) -> bool {
+    let rel = fact.relation();
+    if let Some(set) = inner.typed_predicate_facts.get(rel) {
+        set.contains(fact)
+    } else {
+        false
+    }
+}
+
+/// Collect rules whose conclusion templates match the given fact's relation name.
+fn collect_matching_rules_typed(
+    fact: &StoredFact,
+    universal_rules: &HashMap<String, Vec<Arc<UniversalRuleRecord>>>,
+) -> Vec<Arc<UniversalRuleRecord>> {
+    let rel = fact.relation();
+    universal_rules.get(rel).cloned().unwrap_or_default()
+}
+
+/// Check if a typed fact holds in the KB (direct assertion or backward-chaining).
+pub(super) fn check_predicate_in_kb_typed(
+    fact: &StoredFact,
+    inner: &KnowledgeBaseInner,
+    depth: usize,
+    visited: &mut HashSet<StoredFact>,
+) -> bool {
+    if typed_fact_is_asserted(fact, inner) {
+        return true;
+    }
+    let cached = PRED_CACHE_ENABLED.with(|e| {
+        if e.get() {
+            TYPED_PRED_CACHE.with(|c| c.borrow().get(fact).copied())
+        } else {
+            None
+        }
+    });
+    if let Some(result) = cached {
+        return result;
+    }
+    let result = try_backward_chain_typed(fact, inner, depth, visited);
+    PRED_CACHE_ENABLED.with(|e| {
+        if e.get() {
+            TYPED_PRED_CACHE.with(|c| c.borrow_mut().insert(fact.clone(), result));
+        }
+    });
+    result
+}
+
+/// Check if a StoredFact contains a specific pattern variable.
+fn stored_fact_contains_var(fact: &StoredFact, var: &str) -> bool {
+    fn term_contains_var(term: &GroundTerm, var: &str) -> bool {
+        match term {
+            GroundTerm::PatternVar(name) => name == var,
+            GroundTerm::SkolemFn(_, dep) => term_contains_var(dep, var),
+            GroundTerm::DepPair(a, b) => term_contains_var(a, var) || term_contains_var(b, var),
+            _ => false,
+        }
+    }
+    fact.inner().args.iter().any(|a| term_contains_var(a, var))
+}
+
+/// Typed backward-chaining — structural matching instead of sexp tokenization.
+pub(super) fn try_backward_chain_typed(
+    fact: &StoredFact,
+    inner: &KnowledgeBaseInner,
+    depth: usize,
+    visited: &mut HashSet<StoredFact>,
+) -> bool {
+    if depth >= MAX_BACKWARD_CHAIN_DEPTH_UNTRACED {
+        return false;
+    }
+    if !visited.insert(fact.clone()) {
+        return false;
+    }
+
+    let rules_snapshot = collect_matching_rules_typed(fact, &inner.universal_rules);
+
+    for rule in &rules_snapshot {
+        for typed_concl in &rule.typed_conclusions {
+            let bindings_opt = unify_facts(typed_concl, fact);
+            if bindings_opt.is_none() {
+                continue;
+            }
+            let mut bindings = bindings_opt.unwrap();
+
+            // Handle unbound event variables (same logic as sexp version).
+            let unbound_event_vars: Vec<String> = rule
+                .pattern_var_names
+                .iter()
+                .filter(|pv| pv.starts_with("ev__") && !bindings.contains_key(pv.as_str()))
+                .cloned()
+                .collect();
+
+            if !unbound_event_vars.is_empty() {
+                let members = inner.all_typed_domain_members();
+                let mut all_candidates: Vec<GroundTerm> = members.to_vec();
+                for entry in &inner.skolem_fn_registry {
+                    for combo in CartesianProduct::new(
+                        // CartesianProduct works with &[String] — need member names.
+                        // Reuse sexp domain members for candidate generation.
+                        &inner.all_domain_members().iter().map(|(s, _)| s.clone()).collect::<Vec<_>>(),
+                        entry.dep_count,
+                    ) {
+                        let dep_terms: Vec<GroundTerm> = combo
+                            .iter()
+                            .map(|s| parse_sexp_to_ground_term(s))
+                            .collect();
+                        all_candidates.push(build_skolem_fn_term(&entry.base_name, &dep_terms));
+                    }
+                }
+
+                let mut per_var_candidates: Vec<Vec<GroundTerm>> = Vec::new();
+                for ev_var in &unbound_event_vars {
+                    let single_var_cond_indices: Vec<usize> = rule
+                        .typed_conditions
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, ct)| {
+                            stored_fact_contains_var(ct, ev_var)
+                                && unbound_event_vars
+                                    .iter()
+                                    .all(|other| other == ev_var || !stored_fact_contains_var(ct, other))
+                        })
+                        .map(|(i, _)| i)
+                        .collect();
+
+                    if single_var_cond_indices.is_empty() {
+                        per_var_candidates.push(all_candidates.clone());
+                    } else {
+                        let filtered: Vec<GroundTerm> = all_candidates
+                            .iter()
+                            .filter(|candidate| {
+                                let mut test_bindings = bindings.clone();
+                                test_bindings.insert(ev_var.clone(), (*candidate).clone());
+                                single_var_cond_indices.iter().all(|&idx| {
+                                    let cs = substitute_fact(&rule.typed_conditions[idx], &test_bindings);
+                                    check_predicate_in_kb_typed(&cs, inner, depth + 1, visited)
+                                })
+                            })
+                            .cloned()
+                            .collect();
+                        per_var_candidates.push(filtered);
+                    }
+                }
+
+                if per_var_candidates.iter().any(|pvc| pvc.is_empty()) {
+                    continue;
+                }
+
+                let mut found = false;
+                for combo in TypedMultiCartesian::new(&per_var_candidates) {
+                    for (i, ev_var) in unbound_event_vars.iter().enumerate() {
+                        bindings.insert(ev_var.clone(), combo[i].clone());
+                    }
+                    let all_hold = rule.typed_conditions.iter().all(|ct| {
+                        let cs = substitute_fact(ct, &bindings);
+                        check_predicate_in_kb_typed(&cs, inner, depth + 1, visited)
+                    });
+                    if all_hold {
+                        found = true;
+                        break;
+                    }
+                    for ev_var in &unbound_event_vars {
+                        bindings.remove(ev_var.as_str());
+                    }
+                }
+                if !found {
+                    continue;
+                }
+            }
+
+            let all_conditions_hold = rule.typed_conditions.iter().all(|ct| {
+                let cs = substitute_fact(ct, &bindings);
+                check_predicate_in_kb_typed(&cs, inner, depth + 1, visited)
+            });
+
+            if all_conditions_hold {
+                visited.remove(fact);
+                return true;
+            }
+        }
+    }
+
+    // Temporal lifting: if querying a tensed fact, try bare (timeless) rules.
+    if let Some(bare_fact) = strip_tense_from_fact(fact) {
+        let bare_rules = collect_matching_rules_typed(&bare_fact, &inner.universal_rules);
+        for rule in &bare_rules {
+            for typed_concl in &rule.typed_conclusions {
+                let bindings_opt = unify_facts(typed_concl, &bare_fact);
+                if bindings_opt.is_none() {
+                    continue;
+                }
+                let mut bindings = bindings_opt.unwrap();
+
+                let unbound_event_vars: Vec<String> = rule
+                    .pattern_var_names
+                    .iter()
+                    .filter(|pv| pv.starts_with("ev__") && !bindings.contains_key(pv.as_str()))
+                    .cloned()
+                    .collect();
+
+                if !unbound_event_vars.is_empty() {
+                    let members = inner.all_typed_domain_members();
+                    let mut all_candidates: Vec<GroundTerm> = members.to_vec();
+                    for entry in &inner.skolem_fn_registry {
+                        for combo in CartesianProduct::new(
+                            &inner.all_domain_members().iter().map(|(s, _)| s.clone()).collect::<Vec<_>>(),
+                            entry.dep_count,
+                        ) {
+                            let dep_terms: Vec<GroundTerm> = combo
+                                .iter()
+                                .map(|s| parse_sexp_to_ground_term(s))
+                                .collect();
+                            all_candidates.push(build_skolem_fn_term(&entry.base_name, &dep_terms));
+                        }
+                    }
+
+                    let mut per_var_candidates: Vec<Vec<GroundTerm>> = Vec::new();
+                    for ev_var in &unbound_event_vars {
+                        let single_var_cond_indices: Vec<usize> = rule
+                            .typed_conditions
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, ct)| {
+                                stored_fact_contains_var(ct, ev_var)
+                                    && unbound_event_vars
+                                        .iter()
+                                        .all(|other| other == ev_var || !stored_fact_contains_var(ct, other))
+                            })
+                            .map(|(i, _)| i)
+                            .collect();
+
+                        if single_var_cond_indices.is_empty() {
+                            per_var_candidates.push(all_candidates.clone());
+                        } else {
+                            let filtered: Vec<GroundTerm> = all_candidates
+                                .iter()
+                                .filter(|candidate| {
+                                    let mut test_bindings = bindings.clone();
+                                    test_bindings.insert(ev_var.clone(), (*candidate).clone());
+                                    single_var_cond_indices.iter().all(|&idx| {
+                                        let bare_cs = substitute_fact(&rule.typed_conditions[idx], &test_bindings);
+                                        let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
+                                        check_predicate_in_kb_typed(&tensed_cs, inner, depth + 1, visited)
+                                    })
+                                })
+                                .cloned()
+                                .collect();
+                            per_var_candidates.push(filtered);
+                        }
+                    }
+
+                    if per_var_candidates.iter().any(|pvc| pvc.is_empty()) {
+                        continue;
+                    }
+
+                    let mut found = false;
+                    for combo in TypedMultiCartesian::new(&per_var_candidates) {
+                        for (i, ev_var) in unbound_event_vars.iter().enumerate() {
+                            bindings.insert(ev_var.clone(), combo[i].clone());
+                        }
+                        let all_hold = rule.typed_conditions.iter().all(|ct| {
+                            let bare_cs = substitute_fact(ct, &bindings);
+                            let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
+                            check_predicate_in_kb_typed(&tensed_cs, inner, depth + 1, visited)
+                        });
+                        if all_hold {
+                            found = true;
+                            break;
+                        }
+                        for ev_var in &unbound_event_vars {
+                            bindings.remove(ev_var.as_str());
+                        }
+                    }
+                    if !found {
+                        continue;
+                    }
+                }
+
+                let all_conditions_hold = rule.typed_conditions.iter().all(|ct| {
+                    let bare_cs = substitute_fact(ct, &bindings);
+                    let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
+                    check_predicate_in_kb_typed(&tensed_cs, inner, depth + 1, visited)
+                });
+
+                if all_conditions_hold {
+                    visited.remove(fact);
+                    return true;
+                }
+            }
+        }
+    }
+
+    visited.remove(fact);
+    false
+}
+
+/// Strip tense wrapper from a StoredFact, returning the bare fact.
+fn strip_tense_from_fact(fact: &StoredFact) -> Option<StoredFact> {
+    match fact {
+        StoredFact::Past(f) | StoredFact::Present(f) | StoredFact::Future(f) => {
+            Some(StoredFact::Bare(f.clone()))
+        }
+        _ => None,
+    }
+}
+
+/// Apply the tense of `source` to a bare fact.
+fn apply_tense_to_fact(fact: &StoredFact, source: &StoredFact) -> StoredFact {
+    match source {
+        StoredFact::Past(_) => match fact {
+            StoredFact::Bare(f) => StoredFact::Past(f.clone()),
+            other => other.clone(),
+        },
+        StoredFact::Present(_) => match fact {
+            StoredFact::Bare(f) => StoredFact::Present(f.clone()),
+            other => other.clone(),
+        },
+        StoredFact::Future(_) => match fact {
+            StoredFact::Bare(f) => StoredFact::Future(f.clone()),
+            other => other.clone(),
+        },
+        _ => fact.clone(),
+    }
+}
+
+/// Cartesian product over typed GroundTerm vectors.
+struct TypedMultiCartesian<'a> {
+    sets: &'a [Vec<GroundTerm>],
+    indices: Vec<usize>,
+    done: bool,
+}
+
+impl<'a> TypedMultiCartesian<'a> {
+    fn new(sets: &'a [Vec<GroundTerm>]) -> Self {
+        let done = sets.iter().any(|s| s.is_empty());
+        Self {
+            sets,
+            indices: vec![0; sets.len()],
+            done,
+        }
+    }
+}
+
+impl<'a> Iterator for TypedMultiCartesian<'a> {
+    type Item = Vec<GroundTerm>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done || self.sets.is_empty() {
+            if self.sets.is_empty() && !self.done {
+                self.done = true;
+                return Some(vec![]);
+            }
+            return None;
+        }
+        let combo: Vec<GroundTerm> = self
+            .indices
+            .iter()
+            .enumerate()
+            .map(|(set_idx, &item_idx)| self.sets[set_idx][item_idx].clone())
+            .collect();
+        let mut carry = true;
+        for i in (0..self.sets.len()).rev() {
+            if carry {
+                self.indices[i] += 1;
+                if self.indices[i] >= self.sets[i].len() {
+                    self.indices[i] = 0;
+                } else {
+                    carry = false;
+                }
+            }
+        }
+        if carry {
+            self.done = true;
+        }
+        Some(combo)
+    }
+}
+
+// ─── End Typed Backward-Chaining ─────────────────────────────────
 
 pub(super) fn trace_predicate_provenance(
     sexp: &str,

@@ -735,6 +735,10 @@ pub(super) fn compile_forall_to_rule(
                 for &cid in &all_conditions {
                     let presup = reconstruct_sexp_with_subs(buffer, cid, &xp_subs);
                     assert_sexp(presup, inner);
+                    // Dual-write: also assert xorlo presupposition into typed store.
+                    if let Some(fact) = build_stored_fact_from_node(buffer, cid, &xp_subs, None) {
+                        assert_typed_fact(fact, inner);
+                    }
                 }
             }
         }
@@ -1029,6 +1033,16 @@ pub(super) fn generate_count_extra_witnesses(
 
                     let sexp = reconstruct_sexp_with_subs(buffer, *body, &extra_subs);
                     assert_sexp(sexp, inner);
+                    // Dual-write to typed store.
+                    let mut typed_extra_subs: HashMap<String, String> = skolem_subs
+                        .iter()
+                        .filter(|(_, sv)| !sv.starts_with(SKDEP_PREFIX))
+                        .map(|(k, sv)| (k.clone(), sv.clone()))
+                        .collect();
+                    typed_extra_subs.insert(v.clone(), extra_sk.clone());
+                    if let Some(fact) = build_stored_fact_from_node(buffer, *body, &typed_extra_subs, None) {
+                        assert_typed_fact(fact, inner);
+                    }
                 }
             }
             generate_count_extra_witnesses(buffer, *body, skolem_subs, inner);
@@ -1059,7 +1073,10 @@ pub(super) fn generate_count_extra_witnesses(
 // bypassing the s-expression string layer entirely.
 
 /// Convert a LogicalTerm + Skolem substitutions to a GroundTerm.
-/// `subs` maps variable names to their Skolem constant names (e.g., "_v0" → "sk_0").
+/// `subs` maps variable names to either:
+///   - Raw Skolem names (e.g., "sk_0") during assertion
+///   - S-expression formatted values (e.g., `(Const "adam")`) during query
+/// This function handles both formats via `parse_sexp_to_ground_term()`.
 pub(super) fn build_ground_term(
     term: &LogicalTerm,
     subs: &HashMap<String, String>,
@@ -1070,8 +1087,12 @@ pub(super) fn build_ground_term(
                 if sk.starts_with(SKDEP_PREFIX) {
                     // Dependent Skolem — left as a variable (handled by rule compilation)
                     GroundTerm::PatternVar(v.clone())
+                } else if sk.starts_with('(') {
+                    // S-expression formatted value from query subs — parse it.
+                    parse_sexp_to_ground_term(sk)
                 } else {
-                    GroundTerm::SkolemConst(sk.clone())
+                    // Raw Skolem constant name from assertion subs.
+                    GroundTerm::Constant(sk.clone())
                 }
             } else {
                 // Unsubstituted variable — either a pattern var in rules or an error.
@@ -1083,6 +1104,68 @@ pub(super) fn build_ground_term(
         LogicalTerm::Unspecified => GroundTerm::Unspecified,
         LogicalTerm::Number(n) => GroundTerm::from_f64(*n),
     }
+}
+
+/// Parse an s-expression term string into a GroundTerm.
+/// Handles: (Const "name"), (Desc "name"), (Num N), (Zoe), (SkolemFn "name" dep), (DepPair a b)
+pub(super) fn parse_sexp_to_ground_term(sexp: &str) -> GroundTerm {
+    if let Some(rest) = sexp.strip_prefix("(Const \"") {
+        if let Some(name) = rest.strip_suffix("\")") {
+            return GroundTerm::Constant(name.to_string());
+        }
+    }
+    if let Some(rest) = sexp.strip_prefix("(Desc \"") {
+        if let Some(name) = rest.strip_suffix("\")") {
+            return GroundTerm::Description(name.to_string());
+        }
+    }
+    if let Some(rest) = sexp.strip_prefix("(Num ") {
+        if let Some(num_str) = rest.strip_suffix(')') {
+            if let Ok(n) = num_str.parse::<f64>() {
+                return GroundTerm::from_f64(n);
+            }
+        }
+    }
+    if sexp == "(Zoe)" {
+        return GroundTerm::Unspecified;
+    }
+    if let Some(rest) = sexp.strip_prefix("(SkolemFn \"") {
+        // Parse (SkolemFn "name" dep)
+        if let Some(quote_end) = rest.find("\" ") {
+            let name = &rest[..quote_end];
+            let dep_str = &rest[quote_end + 2..rest.len() - 1]; // strip trailing )
+            let dep = parse_sexp_to_ground_term(dep_str);
+            return GroundTerm::SkolemFn(name.to_string(), Box::new(dep));
+        }
+    }
+    if let Some(rest) = sexp.strip_prefix("(DepPair ") {
+        // Parse (DepPair a b) — need to find balanced split point
+        if let Some(inner) = rest.strip_suffix(')') {
+            if let Some((a_str, b_str)) = split_sexp_pair(inner) {
+                let a = parse_sexp_to_ground_term(a_str);
+                let b = parse_sexp_to_ground_term(b_str);
+                return GroundTerm::DepPair(Box::new(a), Box::new(b));
+            }
+        }
+    }
+    // Fallback: bare string — likely a pattern variable name or Skolem constant
+    GroundTerm::Constant(sexp.to_string())
+}
+
+/// Split a pair of s-expressions at the top level (respecting balanced parens).
+fn split_sexp_pair(s: &str) -> Option<(&str, &str)> {
+    let mut depth = 0;
+    for (i, c) in s.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            ' ' if depth == 0 && i > 0 => {
+                return Some((&s[..i], &s[i + 1..]));
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Build a StoredFact from a Predicate/ComputeNode in a LogicBuffer.
@@ -1119,11 +1202,9 @@ pub(super) fn build_stored_fact_from_node(
         LogicNode::FutureNode(inner) => {
             build_stored_fact_from_node(buffer, *inner, subs, Some("Future"))
         }
-        LogicNode::ObligatoryNode(inner) => {
-            build_stored_fact_from_node(buffer, *inner, subs, Some("Obligatory"))
-        }
-        LogicNode::PermittedNode(inner) => {
-            build_stored_fact_from_node(buffer, *inner, subs, Some("Permitted"))
+        LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) => {
+            // Deontic wrappers are transparent — same as sexp path.
+            build_stored_fact_from_node(buffer, *inner, subs, tense)
         }
         _ => None, // And/Or/Not/ForAll/Count — not a leaf fact.
     }
@@ -1156,11 +1237,9 @@ pub(super) fn collect_ground_facts(
         LogicNode::FutureNode(inner) => {
             collect_ground_facts(buffer, *inner, subs, Some("Future"), out);
         }
-        LogicNode::ObligatoryNode(inner) => {
-            collect_ground_facts(buffer, *inner, subs, Some("Obligatory"), out);
-        }
-        LogicNode::PermittedNode(inner) => {
-            collect_ground_facts(buffer, *inner, subs, Some("Permitted"), out);
+        LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) => {
+            // Deontic wrappers are transparent — same as sexp path.
+            collect_ground_facts(buffer, *inner, subs, tense, out);
         }
         _ => {
             if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {

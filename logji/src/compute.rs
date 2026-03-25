@@ -182,6 +182,29 @@ pub(super) fn build_ground_predicate_sexp(
     Some(format!("(Pred \"{}\" {})", rel, args_str))
 }
 
+/// Build a typed StoredFact from resolved LogicalTerm arguments.
+pub(super) fn build_ground_fact_from_resolved(
+    rel: &str,
+    resolved_args: &[LogicalTerm],
+) -> Option<StoredFact> {
+    for arg in resolved_args {
+        if matches!(arg, LogicalTerm::Variable(_)) {
+            return None;
+        }
+    }
+    let args: Vec<GroundTerm> = resolved_args
+        .iter()
+        .map(|arg| match arg {
+            LogicalTerm::Number(n) => GroundTerm::from_f64(*n),
+            LogicalTerm::Constant(c) => GroundTerm::Constant(c.clone()),
+            LogicalTerm::Description(d) => GroundTerm::Description(d.clone()),
+            LogicalTerm::Unspecified => GroundTerm::Unspecified,
+            LogicalTerm::Variable(_) => unreachable!(),
+        })
+        .collect();
+    Some(StoredFact::Bare(GroundFact::new(rel, args)))
+}
+
 pub(super) fn batch_evaluate_compute_for_members(
     rel: &str,
     args: &[LogicalTerm],
@@ -203,6 +226,9 @@ pub(super) fn batch_evaluate_compute_for_members(
                 let resolved = resolve_args_for_dispatch(args, &s);
                 if let Some(sexp) = build_ground_predicate_sexp(rel, &resolved) {
                     assert_sexp(sexp, inner);
+                }
+                if let Some(fact) = build_ground_fact_from_resolved(rel, &resolved) {
+                    assert_typed_fact(fact, inner);
                 }
             }
         } else {
@@ -232,6 +258,9 @@ pub(super) fn batch_evaluate_compute_for_members(
                 if r {
                     if let Some(sexp) = build_ground_predicate_sexp(rel, &pending[batch_idx].1) {
                         assert_sexp(sexp, inner);
+                    }
+                    if let Some(fact) = build_ground_fact_from_resolved(rel, &pending[batch_idx].1) {
+                        assert_typed_fact(fact, inner);
                     }
                 }
             }

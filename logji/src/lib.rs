@@ -47,7 +47,8 @@ use rules::*;
 /// Implements Hash/Eq for direct use in HashSet-based fact stores.
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum GroundTerm {
-    /// Named constant (e.g., "adam", "paris").
+    /// Named constant (e.g., "adam", "paris", "sk_0").
+    /// Also used for Skolem constants — the sexp format does not distinguish them.
     Constant(String),
     /// Floating-point number stored as bit pattern for Hash/Eq.
     Number(u64),
@@ -55,8 +56,6 @@ pub enum GroundTerm {
     Description(String),
     /// Unspecified argument (zo'e).
     Unspecified,
-    /// Independent Skolem constant (e.g., "sk_0").
-    SkolemConst(String),
     /// Dependent Skolem function (e.g., SkolemFn("sk_1", Constant("adam"))).
     SkolemFn(String, Box<GroundTerm>),
     /// Multi-dependency pairing for SkolemFn with multiple universals.
@@ -93,7 +92,6 @@ impl GroundTerm {
             }
             GroundTerm::Description(s) => format!("le {s}"),
             GroundTerm::Unspecified => "_".to_string(),
-            GroundTerm::SkolemConst(s) => s.clone(),
             GroundTerm::SkolemFn(name, dep) => {
                 format!("{name}({})", dep.to_display_string())
             }
@@ -250,7 +248,6 @@ fn unify_terms(
         GroundTerm::Number(a) => matches!(concrete, GroundTerm::Number(b) if a == b),
         GroundTerm::Description(a) => matches!(concrete, GroundTerm::Description(b) if a == b),
         GroundTerm::Unspecified => matches!(concrete, GroundTerm::Unspecified),
-        GroundTerm::SkolemConst(a) => matches!(concrete, GroundTerm::SkolemConst(b) if a == b),
         GroundTerm::SkolemFn(name_a, dep_a) => {
             if let GroundTerm::SkolemFn(name_b, dep_b) = concrete {
                 name_a == name_b && unify_terms(dep_a, dep_b, bindings)
@@ -982,6 +979,7 @@ thread_local! {
 /// Clear the predicate result cache. Call at the start of each query.
 fn clear_pred_cache() {
     PRED_CACHE.with(|c| c.borrow_mut().clear());
+    clear_typed_pred_cache();
     PRED_CACHE_ENABLED.with(|e| e.set(true));
 }
 
