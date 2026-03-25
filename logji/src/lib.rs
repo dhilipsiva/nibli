@@ -637,6 +637,10 @@ struct UniversalRuleRecord {
     condition_trees: Vec<SexpTree>,
     /// Pre-parsed conclusion templates for structural matching.
     conclusion_trees: Vec<SexpTree>,
+    /// Typed condition templates (with PatternVar terms).
+    typed_conditions: Vec<StoredFact>,
+    /// Typed conclusion templates (with PatternVar terms).
+    typed_conclusions: Vec<StoredFact>,
     /// Pattern variable names used in templates, e.g. ["x__v0"].
     pattern_var_names: Vec<String>,
 }
@@ -689,6 +693,8 @@ struct KnowledgeBaseInner {
     run_bound: u32,
     /// Cached domain members — invalidated when entities/descriptions change.
     domain_members_cache: Vec<(String, LogicalTerm)>,
+    /// Typed domain members cache (parallel to domain_members_cache).
+    typed_domain_members_cache: Vec<GroundTerm>,
     domain_members_dirty: bool,
 }
 
@@ -712,6 +718,7 @@ impl KnowledgeBaseInner {
             rebuilding: false,
             run_bound: 100,
             domain_members_cache: Vec::new(),
+            typed_domain_members_cache: Vec::new(),
             domain_members_dirty: true,
         }
     }
@@ -733,6 +740,7 @@ impl KnowledgeBaseInner {
         self.fact_registry.clear();
         self.rebuilding = false;
         self.domain_members_cache.clear();
+        self.typed_domain_members_cache.clear();
         self.domain_members_dirty = true;
     }
 
@@ -793,13 +801,30 @@ impl KnowledgeBaseInner {
                 LogicalTerm::Description(d.clone()),
             ));
         }
+        let mut typed_members = Vec::new();
+        for e in &self.known_entities {
+            typed_members.push(GroundTerm::Constant(e.clone()));
+        }
+        for e in &self.known_event_entities {
+            typed_members.push(GroundTerm::Constant(e.clone()));
+        }
+        for d in &self.known_descriptions {
+            typed_members.push(GroundTerm::Description(d.clone()));
+        }
+
         self.domain_members_cache = members;
+        self.typed_domain_members_cache = typed_members;
         self.domain_members_dirty = false;
     }
 
     /// Return cached domain members. Panics if cache is dirty — call ensure_domain_members_cached() first.
     fn all_domain_members(&self) -> &[(String, LogicalTerm)] {
         &self.domain_members_cache
+    }
+
+    /// Return typed domain members. Call ensure_domain_members_cached() first.
+    fn all_typed_domain_members(&self) -> &[GroundTerm] {
+        &self.typed_domain_members_cache
     }
 }
 
@@ -1064,7 +1089,12 @@ fn register_ground_material_conditional(
                         .join(" ∧ "),
                     extract_pred_name(&conclusion_sexp).unwrap_or("?")
                 );
-                register_rule(inner, label, condition_sexps, vec![conclusion_sexp], vec![]);
+                // Build typed templates for this ground rule.
+                let mut typed_conds = Vec::new();
+                collect_ground_facts(buffer, *neg_inner, subs, None, &mut typed_conds);
+                let mut typed_concls = Vec::new();
+                collect_ground_facts(buffer, *r, subs, None, &mut typed_concls);
+                register_rule(inner, label, condition_sexps, vec![conclusion_sexp], vec![], typed_conds, typed_concls);
             }
             // Also check Or(Q, Not(P)) — reversed order (commutativity)
             else if let LogicNode::NotNode(neg_inner) = &buffer.nodes[*r as usize] {
@@ -1090,7 +1120,11 @@ fn register_ground_material_conditional(
                         .join(" ∧ "),
                     extract_pred_name(&conclusion_sexp).unwrap_or("?")
                 );
-                register_rule(inner, label, condition_sexps, vec![conclusion_sexp], vec![]);
+                let mut typed_conds = Vec::new();
+                collect_ground_facts(buffer, *neg_inner, subs, None, &mut typed_conds);
+                let mut typed_concls = Vec::new();
+                collect_ground_facts(buffer, *l, subs, None, &mut typed_concls);
+                register_rule(inner, label, condition_sexps, vec![conclusion_sexp], vec![], typed_conds, typed_concls);
             }
         }
         _ => {}

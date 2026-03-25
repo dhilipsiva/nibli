@@ -444,6 +444,8 @@ pub(super) fn register_rule(
     condition_strings: Vec<String>,
     conclusion_strings: Vec<String>,
     pattern_var_names: Vec<String>,
+    typed_conditions: Vec<StoredFact>,
+    typed_conclusions: Vec<StoredFact>,
 ) {
     let cond_keys = intern_vec(&condition_strings, &mut inner.interner);
     let concl_keys = intern_vec(&conclusion_strings, &mut inner.interner);
@@ -461,6 +463,8 @@ pub(super) fn register_rule(
         conclusion_templates: concl_keys,
         condition_trees,
         conclusion_trees,
+        typed_conditions,
+        typed_conclusions,
         pattern_var_names,
     };
     add_universal_rule(&mut inner.universal_rules, rule, &inner.interner);
@@ -679,12 +683,33 @@ pub(super) fn compile_forall_to_rule(
                 }
 
                 let label = build_rule_label(&bare_condition_sexps, &bare_conclusion_sexps);
+
+                // Build typed templates from the same condition/conclusion atoms.
+                let typed_conds: Vec<StoredFact> = all_conditions
+                    .iter()
+                    .filter_map(|&cid| {
+                        build_rule_template_fact(
+                            buffer, cid, &pattern_vars, &ground_skolems, &dependent_skolems,
+                        )
+                    })
+                    .collect();
+                let typed_concls: Vec<StoredFact> = consequent_atoms
+                    .iter()
+                    .filter_map(|&aid| {
+                        build_rule_template_fact(
+                            buffer, aid, &pattern_vars, &ground_skolems, &dependent_skolems,
+                        )
+                    })
+                    .collect();
+
                 register_rule(
                     inner,
                     label,
                     bare_condition_sexps.clone(),
                     bare_conclusion_sexps.clone(),
                     all_pattern_var_names.clone(),
+                    typed_conds,
+                    typed_concls,
                 );
 
                 let xp_name = inner.fresh_skolem();
@@ -764,12 +789,24 @@ pub(super) fn compile_forall_to_rule(
                 }
 
                 let label = build_rule_label(&[], &[body_sexp.clone()]);
+
+                let typed_concls: Vec<StoredFact> = vec![inner_body_id]
+                    .iter()
+                    .filter_map(|&aid| {
+                        build_rule_template_fact(
+                            buffer, aid, &pattern_vars, &ground_skolems, &dependent_skolems,
+                        )
+                    })
+                    .collect();
+
                 register_rule(
                     inner,
                     label,
                     vec![],
                     vec![body_sexp.clone()],
                     pattern_var_names.clone(),
+                    vec![],
+                    typed_concls,
                 );
             }
         }
@@ -1130,6 +1167,60 @@ pub(super) fn collect_ground_facts(
                 out.push(fact);
             }
         }
+    }
+}
+
+/// Build a typed rule template fact from a LogicBuffer node.
+/// `pattern_vars` maps variable names → pattern var names (e.g., "_v0" → "x__v0").
+/// `ground_skolems` maps variable names → Skolem constant names.
+/// `dependent_skolems` maps variable names → (base_name, [pattern_var_names]).
+pub(super) fn build_rule_template_fact(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    pattern_vars: &HashMap<String, String>,
+    ground_skolems: &HashMap<String, String>,
+    dependent_skolems: &HashMap<String, (String, Vec<String>)>,
+) -> Option<StoredFact> {
+    match &buffer.nodes[node_id as usize] {
+        LogicNode::Predicate((rel, args)) | LogicNode::ComputeNode((rel, args)) => {
+            let ground_args: Vec<GroundTerm> = args
+                .iter()
+                .map(|arg| match arg {
+                    LogicalTerm::Variable(v) => {
+                        if let Some(pvar) = pattern_vars.get(v.as_str()) {
+                            GroundTerm::PatternVar(pvar.clone())
+                        } else if let Some(sk) = ground_skolems.get(v.as_str()) {
+                            GroundTerm::Constant(sk.clone())
+                        } else if let Some((base, pvars)) = dependent_skolems.get(v.as_str()) {
+                            let deps: Vec<GroundTerm> = pvars
+                                .iter()
+                                .map(|pv| GroundTerm::PatternVar(pv.clone()))
+                                .collect();
+                            build_skolem_fn_term(base, &deps)
+                        } else {
+                            GroundTerm::PatternVar(v.clone())
+                        }
+                    }
+                    LogicalTerm::Constant(c) => GroundTerm::Constant(c.clone()),
+                    LogicalTerm::Description(d) => GroundTerm::Description(d.clone()),
+                    LogicalTerm::Unspecified => GroundTerm::Unspecified,
+                    LogicalTerm::Number(n) => GroundTerm::from_f64(*n),
+                })
+                .collect();
+            Some(StoredFact::Bare(GroundFact::new(rel.clone(), ground_args)))
+        }
+        LogicNode::ExistsNode((v, body)) => {
+            // Skip Exists wrapper if variable is Skolemized or a pattern var
+            if pattern_vars.contains_key(v.as_str())
+                || ground_skolems.contains_key(v.as_str())
+                || dependent_skolems.contains_key(v.as_str())
+            {
+                build_rule_template_fact(buffer, *body, pattern_vars, ground_skolems, dependent_skolems)
+            } else {
+                None
+            }
+        }
+        _ => None,
     }
 }
 
