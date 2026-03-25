@@ -4,9 +4,7 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 1: Pipeline Efficiency (Medium Effort, High Impact)
 
-4. **Avoid StoredFact cloning in proof memo** — `trace_predicate_provenance_typed()` clones `StoredFact` (String + Vec) on every memo insertion. Use fact interning (assign u64 IDs to StoredFacts) to key the memo by ID instead. Or use `Rc<StoredFact>`. ~20 lines, ~5-10% speedup on proof tracing.
-
-6. **Avoid unnecessary allocation in `assert_typed_fact()`** — `fact.relation().to_string()` allocates a new String on every fact insertion for the HashMap key. Use `entry` API with the fact's relation borrowed, or intern predicate names. ~5 lines.
+4. **Avoid unnecessary allocation in `assert_typed_fact()`** — `fact.relation().to_string()` allocates a new String on every fact insertion for the HashMap key. Use `entry` API with the fact's relation borrowed, or intern predicate names. ~5 lines.
 
 7. **Use Cow in substitute_term for SkolemFn** — `substitute_term()` creates a new `Box<GroundTerm>` for every SkolemFn term even when the dependency didn't change. Check if dep changed before boxing. Or use `Cow<GroundTerm>`. ~10 lines.
 

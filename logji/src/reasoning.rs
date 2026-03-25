@@ -662,11 +662,11 @@ pub(super) fn trace_predicate_provenance_typed(
     inner: &mut KnowledgeBaseInner,
     steps: &mut Vec<ProofStep>,
     depth: usize,
-    memo: &mut HashMap<StoredFact, u32>,
+    memo: &mut HashMap<String, u32>,
 ) -> u32 {
     let display = fact.to_display_string();
 
-    if let Some(&cached_idx) = memo.get(fact) {
+    if let Some(&cached_idx) = memo.get(&display) {
         let _ = cached_idx; // memo hit — emit ProofRef
         let idx = steps.len() as u32;
         steps.push(ProofStep {
@@ -680,28 +680,28 @@ pub(super) fn trace_predicate_provenance_typed(
     if typed_fact_is_asserted(fact, inner) {
         let idx = steps.len() as u32;
         steps.push(ProofStep {
-            rule: ProofRule::Asserted(display),
+            rule: ProofRule::Asserted(display.clone()),
             holds: true,
             children: vec![],
         });
-        memo.insert(fact.clone(), idx);
+        memo.insert(display, idx);
         return idx;
     }
 
     if depth < MAX_BACKWARD_CHAIN_DEPTH {
         if let Some(idx) = try_backward_chain_traced_typed(fact, inner, steps, depth, memo) {
-            memo.insert(fact.clone(), idx);
+            memo.insert(display, idx);
             return idx;
         }
     }
 
     let idx = steps.len() as u32;
     steps.push(ProofStep {
-        rule: ProofRule::PredicateCheck(("unknown".to_string(), display)),
+        rule: ProofRule::PredicateCheck(("unknown".to_string(), display.clone())),
         holds: true,
         children: vec![],
     });
-    memo.insert(fact.clone(), idx);
+    memo.insert(display, idx);
     idx
 }
 
@@ -711,7 +711,7 @@ pub(super) fn try_backward_chain_traced_typed(
     inner: &mut KnowledgeBaseInner,
     steps: &mut Vec<ProofStep>,
     depth: usize,
-    memo: &mut HashMap<StoredFact, u32>,
+    memo: &mut HashMap<String, u32>,
 ) -> Option<u32> {
     // Pre-compute candidate terms for unbound event variable search.
     let all_candidates = build_all_candidates(inner);
@@ -989,7 +989,7 @@ pub(super) fn check_formula_holds_traced(
     inner: &mut KnowledgeBaseInner,
     steps: &mut Vec<ProofStep>,
     tense: Option<&str>,
-    memo: &mut HashMap<StoredFact, u32>,
+    memo: &mut HashMap<String, u32>,
 ) -> Result<(bool, u32), String> {
     match &buffer.nodes[node_id as usize] {
         LogicNode::AndNode((l, r)) => {
