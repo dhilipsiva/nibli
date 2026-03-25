@@ -25,6 +25,21 @@ ni'o mu lo ueb.asemblii. pagbu cu se lasna fi lo WIT jupku'a .ije se zbasu fi lo
 | **lasna** | lasna: gerna → smuni → logji |
 | **gasnu** | lo samciste Wasmtime .e lo REPL .e lo TCP jikca ciste |
 
+## Canonical runtime surfaces
+
+Treat these as the supported top-level entrypoints:
+
+- `gasnu`: canonical local REPL / operator runtime for the theorem prover. This is the main single-node runtime. Use `just run`, `just run-with-backend`, or `just run-persist`.
+- `nibli-server`: canonical API runtime for the Transparency Triad. It serves GraphQL and can optionally join a `tavla` gossip network through `NIBLI_GOSSIP_HUB`. Use `just server` or `just server-gossip`.
+- `nibli-ui`: canonical browser frontend. It is a client of `nibli-server`, not a separate reasoning runtime. Use `just ui`.
+- `tavla`: canonical gossip and federation runtime. It owns TCP/WebRTC peer transport, sync, and hub-style deployment. Use `just gossip-hub` and the `gossip-*` targets.
+
+Supporting and non-canonical surfaces:
+
+- `nibli-engine`: shared embedding library used by the server, store-backed nodes, and tests. It is not a user-facing CLI/runtime.
+- `nibli`: native direct-crate REPL plus `nibli-validate`. Useful for debugging, validation, and dataset tooling, but not the canonical production/runtime path.
+- `nibli-agent`: specialized LLM-driven gossip peer that talks to `tavla`. Use it for agent demos and domain peers, not as the base runtime.
+
 ## ni'o lo cfari
 
 ### se nitcu

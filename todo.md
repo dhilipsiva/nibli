@@ -11,10 +11,6 @@ Order matters:
 
 ## Phase 2 - Runtime and Transport Hardening
 
-- [ ] 11. Choose and document canonical runtime surfaces.
-  Targets: `README.md`, `AGENTS.md`, `CLAUDE.md`
-  Be explicit about the role of `nibli-engine`, `gasnu`, `nibli-server`, `tavla`, `nibli-agent`, and `nibli`.
-
 - [ ] 12. Centralize cross-crate adapters and protocol conversion code.
   Targets: `nibli-engine/src/lib.rs`, `nibli/src/main.rs`, `nibli-protocol/src/lib.rs`
   Shared adapters should live in one place. Entry points should be thin wrappers instead of carrying duplicated conversion and formatting logic.

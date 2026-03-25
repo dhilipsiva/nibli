@@ -48,7 +48,7 @@ The gasnu (runner) acts as a TCP client to an external compute backend server vi
 
 ## Architecture
 
-5 WASM component crates + native hosts + gossip daemon (all crate names are Lojban gismu):
+Core component crates + runtime surfaces:
 
 | Crate | Lojban meaning | Role | Key files |
 |-------|---------------|------|-----------|
@@ -57,13 +57,29 @@ The gasnu (runner) acts as a TCP client to an external compute backend server vi
 | `logji` | logic | FOL logic buffer -> backward-chaining assert/query | `lib.rs` (single file, all logic) |
 | `lasna` | fasten/connect | Glue: chains gerna -> smuni -> logji | `lib.rs` |
 | `gasnu` | agent/doer | Native Wasmtime host, REPL, external compute backend TCP client | `main.rs` |
+| `nibli-engine` | — | Shared embedding library for engine + store-backed state used by server/tests | `lib.rs` |
+| `nibli-server` | — | GraphQL API server for the Transparency Triad | `main.rs` |
+| `nibli-ui` | — | Dioxus browser UI client for `nibli-server` | `main.rs` |
 | `tavla` | talk | Gossip daemon: federated knowledge propagation over TCP/WebRTC | `lib.rs`, `main.rs` |
+| `nibli-agent` | — | LLM-driven gossip peer that connects to `tavla` | `main.rs` |
+| `nibli` | — | Native debug REPL and `nibli-validate` tooling | `main.rs`, `src/bin/validate.rs` |
 | `python/` | — | Reference compute backend server (TCP + JSON Lines) | `nibli_backend.py` |
 
 - **WIT interfaces:** `wit/world.wit` defines `ast-types` (gerna output), `logic-types` (FOL IR), `gerna`, `smuni`, `logji`, `compute-backend`, `lasna`. `cargo component build` regenerates `src/bindings.rs` in each crate.
 - **WIT worlds:** `gerna-component`, `smuni-component`, `logji-component`, `lasna-pipeline`.
 - **Rust structs:** `GernaComponent`, `SmuniComponent`, `LogjiComponent`, `LasnaPipeline`.
 - **Cross-component data:** Flat index-based arrays (`AstBuffer`, `LogicBuffer`) with `u32` indices — no pointers across WASM boundaries.
+
+## Canonical Runtime Surfaces
+
+When choosing entrypoints, assume the following:
+
+- `gasnu` is the canonical local/operator runtime for the theorem prover. It is the main single-node REPL and the default place to exercise the WASM-hosted pipeline.
+- `nibli-server` is the canonical API/runtime for the Transparency Triad stack. `nibli-ui` is the canonical browser frontend for that server.
+- `tavla` is the canonical gossip transport/runtime. It owns peer transport, sync, and hub-style deployment behavior. The server can attach to a `tavla` peer; it does not define a separate transport stack.
+- `nibli-engine` is an internal embedding library, not a user-facing runtime surface.
+- `nibli` is developer tooling: a native direct-crate REPL and the `nibli-validate` binary used for validation/data-generation workflows. It is not the canonical production runtime.
+- `nibli-agent` is a specialized LLM gossip peer built on the canonical `tavla` network. Treat it as an integration/demo runtime, not the base theorem-prover runtime.
 
 ## Code Conventions
 
