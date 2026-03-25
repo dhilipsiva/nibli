@@ -57,6 +57,14 @@ run-native: build-native
 check:
     cargo check --workspace
 
+# Check Rust formatting across the workspace
+fmt-check:
+    cargo fmt --all --check
+
+# Strict clippy gate for the runtime crates under active hardening
+clippy-runtime:
+    cargo clippy --no-deps -p nibli-protocol -p nibli-store -p nibli-engine -p nibli -p tavla -p nibli-server --all-targets -- -D warnings
+
 # Run gerna unit tests only (bypasses cdylib linker issues)
 test-gerna:
     cargo test -p gerna --lib -- --nocapture
@@ -68,6 +76,10 @@ test:
 # Run nibli-engine integration tests (full pipeline: parse → compile → reason)
 test-engine:
     cargo test -p nibli-engine --test integration -- --nocapture --test-threads=1
+
+# Run nibli-server GraphQL and gossip integration tests
+test-server:
+    cargo test -p nibli-server -- --nocapture
 
 # Start the Python reference compute backend
 backend:
@@ -114,6 +126,19 @@ run-persist: build-wasm
 test-tavla:
     cargo test -p tavla -- --nocapture --test-threads=1
 
+# Run the full tavla end-to-end gossip integration suite
+test-gossip-e2e:
+    cargo test -p tavla --test gossip -- --nocapture --test-threads=1
+
+# Deterministic sync/retraction scenario for the CRDT rebuild path
+test-sync-retraction:
+    cargo test -p tavla --test gossip synced_retraction_survives_reset_and_rebuild -- --nocapture --test-threads=1
+
+# Persistence and replay regressions across engine and store layers
+test-persistence-replay:
+    cargo test -p nibli-engine --test integration persistent_engine_honors_store_retractions_after_reopen -- --nocapture --test-threads=1
+    cargo test -p nibli-store test_merge_from_file_tombstone_survives_reopen -- --nocapture
+
 # Start WebRTC signaling server on port 9090
 signal:
     cargo run -p tavla {{cargo_profile_flag}} -- --name signal --listen 127.0.0.1:9999 --signal-server 9090 --transport tcp
@@ -136,6 +161,9 @@ gossip-webrtc-b:
 
 # Run every test suite (unit + integration + Python + store + tavla)
 test-all: test test-engine test-store test-tavla test-backend test-classifier
+
+# CI gate for the hardened runtime and transport surface
+ci: fmt-check clippy-runtime test test-engine test-store test-server test-gossip-e2e test-persistence-replay test-sync-retraction
 
 # Build the nibli-validate binary (batch Lojban validation via stdin)
 build-validate:

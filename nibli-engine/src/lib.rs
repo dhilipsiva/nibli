@@ -8,9 +8,14 @@ use std::path::Path;
 
 use nibli_protocol::{
     LogicalTerm as LogicalTermJson, ProofRule as ProofRuleJson, ProofStep as ProofStepJson,
-    ProofTrace as ProofTraceJson, humanize_sexp,
+    ProofTrace as ProofTraceJson,
 };
 use nibli_store::{NibliStore, StoredLogicBuffer, StoredLogicNode, StoredLogicalTerm};
+
+pub use logji::bindings::lojban::nibli::logic_types::{
+    FactSummary as EngineFactSummary, LogicalTerm as EngineLogicalTerm,
+    WitnessBinding as EngineWitnessBinding,
+};
 
 // ─── Type aliases for each crate's WIT-generated types ──────────────
 
@@ -359,97 +364,6 @@ fn format_error(e: &NibliError) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// PROOF TRACE FORMATTING
-// ═══════════════════════════════════════════════════════════════════════
-
-fn format_term_display(term: &logji_logic::LogicalTerm) -> String {
-    match term {
-        logji_logic::LogicalTerm::Constant(s) => s.clone(),
-        logji_logic::LogicalTerm::Variable(s) => format!("?{}", s),
-        logji_logic::LogicalTerm::Description(s) => format!("lo {}", s),
-        logji_logic::LogicalTerm::Number(n) => {
-            if *n == (*n as i64) as f64 {
-                format!("{}", *n as i64)
-            } else {
-                format!("{}", n)
-            }
-        }
-        logji_logic::LogicalTerm::Unspecified => "zo'e".to_string(),
-    }
-}
-
-fn format_rule(rule: &logji_logic::ProofRule, result: bool) -> String {
-    let tag = if result { "TRUE" } else { "FALSE" };
-    match rule {
-        logji_logic::ProofRule::Conjunction => format!("Conjunction -> {}", tag),
-        logji_logic::ProofRule::DisjunctionCheck(s) => {
-            format!("Disjunction (check: {}) -> {}", s, tag)
-        }
-        logji_logic::ProofRule::DisjunctionIntro(side) => {
-            format!("Disjunction ({}) -> {}", side, tag)
-        }
-        logji_logic::ProofRule::Negation => format!("Negation -> {}", tag),
-        logji_logic::ProofRule::ModalPassthrough(kind) => {
-            format!("Modal ({}) -> {}", kind, tag)
-        }
-        logji_logic::ProofRule::ExistsWitness((var, term)) => {
-            format!("Exists: {} = {} -> {}", var, format_term_display(term), tag)
-        }
-        logji_logic::ProofRule::ExistsFailed => format!("Exists: no witness -> {}", tag),
-        logji_logic::ProofRule::ForallVacuous => {
-            format!("ForAll: vacuous (empty domain) -> {}", tag)
-        }
-        logji_logic::ProofRule::ForallVerified(entities) => {
-            let names: Vec<String> = entities.iter().map(format_term_display).collect();
-            format!("ForAll: verified [{}] -> {}", names.join(", "), tag)
-        }
-        logji_logic::ProofRule::ForallCounterexample(term) => {
-            format!(
-                "ForAll: counterexample {} -> {}",
-                format_term_display(term),
-                tag
-            )
-        }
-        logji_logic::ProofRule::CountResult((expected, actual)) => {
-            format!("Count: expected={}, actual={} -> {}", expected, actual, tag)
-        }
-        logji_logic::ProofRule::PredicateCheck((method, detail)) => {
-            format!("{}: {} -> {}", method, humanize_sexp(detail), tag)
-        }
-        logji_logic::ProofRule::ComputeCheck((method, detail)) => {
-            format!("Compute ({}): {} -> {}", method, humanize_sexp(detail), tag)
-        }
-        logji_logic::ProofRule::Asserted(sexp) => {
-            format!("Asserted: {} -> {}", humanize_sexp(sexp), tag)
-        }
-        logji_logic::ProofRule::Derived((label, sexp)) => {
-            format!("Derived ({}): {} -> {}", label, humanize_sexp(sexp), tag)
-        }
-        logji_logic::ProofRule::ProofRef(sexp) => {
-            format!("(proved above): {} -> {}", humanize_sexp(sexp), tag)
-        }
-    }
-}
-
-fn format_proof_node(steps: &[logji_logic::ProofStep], idx: u32, indent: usize, out: &mut String) {
-    let step = &steps[idx as usize];
-    for _ in 0..indent {
-        out.push_str("  ");
-    }
-    out.push_str(&format_rule(&step.rule, step.holds));
-    out.push('\n');
-    for &child in &step.children {
-        format_proof_node(steps, child, indent + 1, out);
-    }
-}
-
-fn format_proof_trace(trace: &logji_logic::ProofTrace) -> String {
-    let mut out = String::new();
-    format_proof_node(&trace.steps, trace.root, 0, &mut out);
-    out
-}
-
-// ═══════════════════════════════════════════════════════════════════════
 // PROOF TRACE CONVERSION (WIT types → nibli-protocol wire types)
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -529,8 +443,8 @@ fn rule_to_json(rule: &logji_logic::ProofRule) -> ProofRuleJson {
     }
 }
 
-fn proof_trace_to_json(trace: &logji_logic::ProofTrace) -> String {
-    let json_trace = ProofTraceJson {
+fn proof_trace_to_wire(trace: &logji_logic::ProofTrace) -> ProofTraceJson {
+    ProofTraceJson {
         steps: trace
             .steps
             .iter()
@@ -541,8 +455,156 @@ fn proof_trace_to_json(trace: &logji_logic::ProofTrace) -> String {
             })
             .collect(),
         root: trace.root,
-    };
-    json_trace.to_json()
+    }
+}
+
+pub fn display_term(term: &EngineLogicalTerm) -> String {
+    term_to_json(term).trace_display()
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// S-EXPRESSION RECONSTRUCTION (for debug output)
+// ═══════════════════════════════════════════════════════════════════════
+
+fn reconstruct_sexp(buffer: &logji_logic::LogicBuffer, node_id: u32) -> String {
+    let mut out = String::with_capacity(256);
+    write_sexp(&mut out, buffer, node_id);
+    out
+}
+
+fn write_sexp(out: &mut String, buffer: &logji_logic::LogicBuffer, node_id: u32) {
+    use std::fmt::Write as _;
+
+    match &buffer.nodes[node_id as usize] {
+        logji_logic::LogicNode::Predicate((rel, args)) => {
+            out.push_str("(Pred \"");
+            out.push_str(rel);
+            out.push_str("\" ");
+            write_term_list(out, args);
+            out.push(')');
+        }
+        logji_logic::LogicNode::ComputeNode((rel, args)) => {
+            out.push_str("(Compute \"");
+            out.push_str(rel);
+            out.push_str("\" ");
+            write_term_list(out, args);
+            out.push(')');
+        }
+        logji_logic::LogicNode::AndNode((l, r)) => {
+            out.push_str("(And ");
+            write_sexp(out, buffer, *l);
+            out.push(' ');
+            write_sexp(out, buffer, *r);
+            out.push(')');
+        }
+        logji_logic::LogicNode::OrNode((l, r)) => {
+            out.push_str("(Or ");
+            write_sexp(out, buffer, *l);
+            out.push(' ');
+            write_sexp(out, buffer, *r);
+            out.push(')');
+        }
+        logji_logic::LogicNode::NotNode(inner) => {
+            out.push_str("(Not ");
+            write_sexp(out, buffer, *inner);
+            out.push(')');
+        }
+        logji_logic::LogicNode::ExistsNode((v, body)) => {
+            out.push_str("(Exists \"");
+            out.push_str(v);
+            out.push_str("\" ");
+            write_sexp(out, buffer, *body);
+            out.push(')');
+        }
+        logji_logic::LogicNode::ForAllNode((v, body)) => {
+            out.push_str("(ForAll \"");
+            out.push_str(v);
+            out.push_str("\" ");
+            write_sexp(out, buffer, *body);
+            out.push(')');
+        }
+        logji_logic::LogicNode::PastNode(inner) => {
+            out.push_str("(Past ");
+            write_sexp(out, buffer, *inner);
+            out.push(')');
+        }
+        logji_logic::LogicNode::PresentNode(inner) => {
+            out.push_str("(Present ");
+            write_sexp(out, buffer, *inner);
+            out.push(')');
+        }
+        logji_logic::LogicNode::FutureNode(inner) => {
+            out.push_str("(Future ");
+            write_sexp(out, buffer, *inner);
+            out.push(')');
+        }
+        logji_logic::LogicNode::ObligatoryNode(inner) => {
+            out.push_str("(Obligatory ");
+            write_sexp(out, buffer, *inner);
+            out.push(')');
+        }
+        logji_logic::LogicNode::PermittedNode(inner) => {
+            out.push_str("(Permitted ");
+            write_sexp(out, buffer, *inner);
+            out.push(')');
+        }
+        logji_logic::LogicNode::CountNode((v, count, body)) => {
+            out.push_str("(Count \"");
+            out.push_str(v);
+            out.push_str("\" ");
+            let _ = write!(out, "{}", count);
+            out.push(' ');
+            write_sexp(out, buffer, *body);
+            out.push(')');
+        }
+    }
+}
+
+fn write_term_list(out: &mut String, args: &[logji_logic::LogicalTerm]) {
+    if args.is_empty() {
+        out.push_str("(Nil)");
+        return;
+    }
+    out.push_str("(Cons ");
+    write_term(out, &args[0]);
+    out.push(' ');
+    write_term_list(out, &args[1..]);
+    out.push(')');
+}
+
+fn write_term(out: &mut String, term: &logji_logic::LogicalTerm) {
+    use std::fmt::Write as _;
+
+    match term {
+        logji_logic::LogicalTerm::Variable(v) => {
+            out.push_str("(Var \"");
+            out.push_str(v);
+            out.push_str("\")");
+        }
+        logji_logic::LogicalTerm::Constant(c) => {
+            out.push_str("(Const \"");
+            out.push_str(c);
+            out.push_str("\")");
+        }
+        logji_logic::LogicalTerm::Description(d) => {
+            out.push_str("(Desc \"");
+            out.push_str(d);
+            out.push_str("\")");
+        }
+        logji_logic::LogicalTerm::Unspecified => out.push_str("(Zoe)"),
+        logji_logic::LogicalTerm::Number(n) => {
+            let _ = write!(out, "(Num {})", n);
+        }
+    }
+}
+
+fn debug_sexp(buffer: &logji_logic::LogicBuffer) -> String {
+    buffer
+        .roots
+        .iter()
+        .map(|&id| reconstruct_sexp(buffer, id))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -643,6 +705,12 @@ pub struct NibliEngine {
     store: RefCell<Option<NibliStore>>,
 }
 
+impl Default for NibliEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NibliEngine {
     fn default_compute_predicates() -> HashSet<String> {
         let mut preds = HashSet::new();
@@ -705,6 +773,10 @@ impl NibliEngine {
             .map_err(|e| format_error(&e))
     }
 
+    pub fn register_compute_predicate(&mut self, name: String) {
+        self.compute_predicates.insert(name);
+    }
+
     fn compile_text(&self, input: &str) -> Result<logji_logic::LogicBuffer, NibliError> {
         let parse_result =
             gerna::parse_text_native(input.to_string()).map_err(NibliError::Gerna)?;
@@ -754,10 +826,10 @@ impl NibliEngine {
     /// Reset the knowledge base, clearing all facts and rules.
     pub fn reset(&self) {
         self.kb.reset().ok();
-        if let Ok(mut store) = self.store.try_borrow_mut() {
-            if let Some(s) = store.as_mut() {
-                let _ = s.clear();
-            }
+        if let Ok(mut store) = self.store.try_borrow_mut()
+            && let Some(s) = store.as_mut()
+        {
+            let _ = s.clear();
         }
     }
 
@@ -789,14 +861,30 @@ impl NibliEngine {
         }
     }
 
+    pub fn assert_fact_direct(
+        &self,
+        relation: String,
+        args: Vec<EngineLogicalTerm>,
+    ) -> Result<u64, String> {
+        let label = format!(":assert {}", relation);
+        let buf = logji_logic::LogicBuffer {
+            nodes: vec![logji_logic::LogicNode::Predicate((relation, args))],
+            roots: vec![0],
+        };
+        self.kb
+            .assert_fact(buf, label)
+            .map_err(|e| format_logji_error(&e))
+    }
+
     pub fn query_text_with_proof(&self, text: &str) -> Result<(bool, String, String), String> {
         let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
         let (holds, trace) = self
             .kb
             .query_entailment_with_proof(buf)
             .map_err(|e| format_logji_error(&e))?;
-        let formatted = format_proof_trace(&trace);
-        let json = proof_trace_to_json(&trace);
+        let wire = proof_trace_to_wire(&trace);
+        let formatted = wire.to_pretty_text();
+        let json = wire.to_json();
         Ok((holds, formatted, json))
     }
 
@@ -808,6 +896,24 @@ impl NibliEngine {
             .query_entailment_with_proof(buf)
             .map_err(|e| format_logji_error(&e))?;
         Ok(holds)
+    }
+
+    pub fn query_find_text(&self, text: &str) -> Result<Vec<Vec<EngineWitnessBinding>>, String> {
+        let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
+        self.kb.query_find(buf).map_err(|e| format_logji_error(&e))
+    }
+
+    pub fn compile_debug(&self, text: &str) -> Result<String, String> {
+        let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
+        Ok(debug_sexp(&buf))
+    }
+
+    pub fn list_facts(&self) -> Result<Vec<EngineFactSummary>, String> {
+        self.kb.list_facts().map_err(|e| format_logji_error(&e))
+    }
+
+    pub fn retract_fact(&self, id: u64) -> Result<(), String> {
+        self.kb.retract_fact(id).map_err(|e| format_logji_error(&e))
     }
 }
 

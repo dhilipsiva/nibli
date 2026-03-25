@@ -4,9 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-gerna = { path = "../gerna" }
-smuni = { path = "../smuni" }
-logji = { path = "../logji" }
 nibli-engine = { path = "../nibli-engine" }
 reedline = "0.45.0"
 

@@ -147,7 +147,7 @@ fn extract_arity(definition: &str) -> usize {
 
                 if j < len && bytes[j].is_ascii_digit() {
                     let digit = (bytes[j] - b'0') as usize;
-                    if digit >= 1 && digit <= 5 {
+                    if (1..=5).contains(&digit) {
                         max_place = max_place.max(digit);
                     }
                 }

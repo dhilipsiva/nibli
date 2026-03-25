@@ -191,6 +191,7 @@ async fn run_both(cli: &Cli, node: &mut tavla::GossipNode) {
     run_tcp(cli, node).await;
 }
 
+#[cfg(feature = "webrtc-transport")]
 fn parse_stun(stun: &Option<String>) -> Vec<String> {
     match stun.as_deref() {
         Some("none") | Some("") => vec![],

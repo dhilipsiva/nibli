@@ -3569,11 +3569,8 @@ dependencies = [
 name = "nibli"
 version = "0.1.0"
 dependencies = [
- "gerna",
- "logji",
  "nibli-engine",
  "reedline",
- "smuni",
 ]
 
 [[package]]

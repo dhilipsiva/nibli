@@ -391,10 +391,10 @@ impl CrdtLog {
     pub fn merge(&mut self, other: &CrdtLog) -> Vec<EnvelopeId> {
         let mut new_ids = Vec::new();
         for id in &other.order {
-            if let Some(env) = other.envelopes.get(id) {
-                if self.insert(env.clone()) {
-                    new_ids.push(id.clone());
-                }
+            if let Some(env) = other.envelopes.get(id)
+                && self.insert(env.clone())
+            {
+                new_ids.push(id.clone());
             }
         }
         new_ids
@@ -821,7 +821,7 @@ impl GossipNode {
                 // but mark as quarantined so it won't be asserted into KB.
                 let id = envelope.id.clone();
                 // Don't insert rejected envelopes — they are truly rejected.
-                return Ok(IngestResult {
+                Ok(IngestResult {
                     envelope_id: id,
                     fact_id: None,
                     was_duplicate: false,
@@ -829,17 +829,15 @@ impl GossipNode {
                     was_quarantined: false,
                     was_rejected: true,
                     contradiction: None,
-                });
+                })
             }
             TrustVerdict::Quarantined => {
                 // Accept into CRDT log but mark as quarantined.
                 let mut quarantined_env = envelope.clone();
                 quarantined_env.quarantined = true;
-                return self.ingest_inner(quarantined_env, true, via);
+                self.ingest_inner(quarantined_env, true, via)
             }
-            TrustVerdict::Trusted => {
-                return self.ingest_inner(envelope, false, via);
-            }
+            TrustVerdict::Trusted => self.ingest_inner(envelope, false, via),
         }
     }
 
@@ -955,17 +953,14 @@ impl GossipNode {
         let count = active.len();
         let mut errors = 0;
         for env in &active {
-            match &env.op {
-                GossipOp::AssertLojban(text) => {
-                    if let Err(e) = self.engine.assert_text(text) {
-                        eprintln!(
-                            "[tavla] rebuild: failed to replay {}: {e}",
-                            &env.id[..12.min(env.id.len())]
-                        );
-                        errors += 1;
-                    }
-                }
-                _ => {}
+            if let GossipOp::AssertLojban(text) = &env.op
+                && let Err(e) = self.engine.assert_text(text)
+            {
+                eprintln!(
+                    "[tavla] rebuild: failed to replay {}: {e}",
+                    &env.id[..12.min(env.id.len())]
+                );
+                errors += 1;
             }
         }
         println!("[tavla] KB rebuilt from CRDT log ({count} active assertions, {errors} errors)");

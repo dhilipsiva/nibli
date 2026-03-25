@@ -114,6 +114,8 @@ Before every commit, always:
 
 ## Current Status
 
+Roadmap status: Phase 1 (distributed correctness) and Phase 2 (runtime and transport hardening) are complete. The next open work starts at Phase 3 in `todo.md`.
+
 Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator) + C2 (non-monotonic reasoning / belief revision) + C3 (temporal reasoning) + C4 (event semantics — Neo-Davidsonian) + C5 (description term opacity — `le` vs `lo`) + SkolemFn multi-dependency + event-decomposed universal rule compilation fix (condition-side ∃ as pattern variables) + proof trace memoization (DAG deduplication via ProofRef) + **egglog removal** (replaced egglog equality saturation with demand-driven backward-chaining over indexed fact store).
 
 **Implemented features:**
@@ -177,4 +179,4 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 
 - REPL `:load <filepath>` command: batch-loads a `.lojban` file into the knowledge base; reads file line by line, skips blank lines and `#` comment lines, asserts each remaining line via `call_assert_text`; per-line refueling prevents fuel exhaustion on large files; reports per-line fact IDs or errors with line numbers; final summary shows asserted/skipped/errors counts; use with `readme.lojban` ontological prelude to bootstrap the KB
 
-**Next up:** See `todo.md` for deferred items (async compute backend)
+**Next up:** See `todo.md` for the remaining Phase 3 production-finish items.

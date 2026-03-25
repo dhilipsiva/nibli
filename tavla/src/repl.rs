@@ -25,10 +25,8 @@ pub async fn run_repl(node: &mut GossipNode, transport: Arc<dyn Transport>) {
                 Ok(0) => break,
                 Ok(_) => {
                     let line = buf.trim().to_string();
-                    if !line.is_empty() {
-                        if stdin_tx.send(line).is_err() {
-                            break;
-                        }
+                    if !line.is_empty() && stdin_tx.send(line).is_err() {
+                        break;
                     }
                 }
                 Err(_) => break,
@@ -303,9 +301,9 @@ async fn handle_command(line: &str, node: &mut GossipNode, transport: &Arc<dyn T
         }
     } else if let Some(query) = line.strip_prefix('?') {
         // Query — but NOT "?~" which is opinion prefix.
-        if query.starts_with('~') {
+        if let Some(stripped) = query.strip_prefix('~') {
             // ?~ = Opinion assertion prefix.
-            let text = query[1..].trim();
+            let text = stripped.trim();
             if text.is_empty() {
                 println!("  usage: ?~<lojban> — assert as opinion (pe'i)");
                 return;

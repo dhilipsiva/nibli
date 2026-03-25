@@ -11,14 +11,6 @@ Order matters:
 
 ## Phase 2 - Runtime and Transport Hardening
 
-- [ ] 12. Centralize cross-crate adapters and protocol conversion code.
-  Targets: `nibli-engine/src/lib.rs`, `nibli/src/main.rs`, `nibli-protocol/src/lib.rs`
-  Shared adapters should live in one place. Entry points should be thin wrappers instead of carrying duplicated conversion and formatting logic.
-
-- [ ] 13. Add CI gates for the new architecture.
-  Targets: `Justfile`, `flake.nix`, workspace test layout
-  Run unit tests, end-to-end gossip tests, persistence and replay tests, formatting, clippy, and at least one deterministic sync/retraction scenario in CI.
-
 ## Phase 3 - Maintainability and Production Finish
 
 - [ ] 14. Split the giant core files by subsystem.

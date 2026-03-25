@@ -95,6 +95,18 @@ impl ProofTrace {
     pub fn from_json(s: &str) -> Option<Self> {
         serde_json::from_str(s).ok()
     }
+
+    /// Render the proof tree as compact indented text.
+    pub fn to_pretty_text(&self) -> String {
+        self.to_pretty_text_with_indent(0)
+    }
+
+    /// Render the proof tree as compact indented text with a base indent.
+    pub fn to_pretty_text_with_indent(&self, base_indent: usize) -> String {
+        let mut out = String::new();
+        format_proof_step(self, self.root, base_indent, &mut out);
+        out
+    }
 }
 
 // ── S-expression humanizer ──
@@ -450,6 +462,26 @@ mod tests {
         // Plain string that isn't an s-expression
         assert_eq!(humanize_sexp("hello"), "hello");
     }
+
+    #[test]
+    fn test_proof_trace_pretty_text() {
+        let trace = ProofTrace {
+            steps: vec![ProofStep {
+                rule: ProofRule::Asserted {
+                    sexp: r#"(Pred "gerku" (Cons (Const "adam") (Nil)))"#.to_string(),
+                },
+                holds: true,
+                children: vec![],
+            }],
+            root: 0,
+        };
+
+        assert_eq!(trace.to_pretty_text(), "Asserted: gerku(adam) -> TRUE\n");
+        assert_eq!(
+            trace.to_pretty_text_with_indent(1),
+            "  Asserted: gerku(adam) -> TRUE\n"
+        );
+    }
 }
 
 // ── Gossip network types (shared between nibli-server and nibli-ui) ──
@@ -561,6 +593,22 @@ impl LogicalTerm {
             _ => format!("({})", self.kind),
         }
     }
+
+    /// Compact textual rendering used in CLI proof traces.
+    pub fn trace_display(&self) -> String {
+        match self.kind.as_str() {
+            "constant" => self.value.clone().unwrap_or_default(),
+            "number" => match self.number {
+                Some(n) if n == (n as i64) as f64 => format!("{}", n as i64),
+                Some(n) => format!("{}", n),
+                None => String::new(),
+            },
+            "variable" => format!("?{}", self.value.clone().unwrap_or_default()),
+            "description" => format!("lo {}", self.value.as_deref().unwrap_or("?")),
+            "unspecified" => "zo'e".to_string(),
+            _ => self.display(),
+        }
+    }
 }
 
 impl ProofRule {
@@ -633,5 +681,65 @@ impl ProofRule {
             Self::ForallVacuous | Self::ForallVerified { .. } => "proof-exists",
             Self::CountResult { .. } => "proof-check",
         }
+    }
+
+    /// Compact textual rendering used in CLI proof traces.
+    pub fn trace_display(&self, result: bool) -> String {
+        let tag = if result { "TRUE" } else { "FALSE" };
+        match self {
+            Self::Conjunction => format!("Conjunction -> {}", tag),
+            Self::DisjunctionCheck { detail } => {
+                format!("Disjunction (check: {}) -> {}", detail, tag)
+            }
+            Self::DisjunctionIntro { side } => {
+                format!("Disjunction ({}) -> {}", side, tag)
+            }
+            Self::Negation => format!("Negation -> {}", tag),
+            Self::ModalPassthrough { kind } => format!("Modal ({}) -> {}", kind, tag),
+            Self::ExistsWitness { var, term } => {
+                format!("Exists: {} = {} -> {}", var, term.trace_display(), tag)
+            }
+            Self::ExistsFailed => format!("Exists: no witness -> {}", tag),
+            Self::ForallVacuous => format!("ForAll: vacuous (empty domain) -> {}", tag),
+            Self::ForallVerified { entities } => {
+                let names: Vec<String> = entities.iter().map(LogicalTerm::trace_display).collect();
+                format!("ForAll: verified [{}] -> {}", names.join(", "), tag)
+            }
+            Self::ForallCounterexample { entity } => {
+                format!(
+                    "ForAll: counterexample {} -> {}",
+                    entity.trace_display(),
+                    tag
+                )
+            }
+            Self::CountResult { expected, actual } => {
+                format!("Count: expected={}, actual={} -> {}", expected, actual, tag)
+            }
+            Self::PredicateCheck { method, detail } => {
+                format!("{}: {} -> {}", method, humanize_sexp(detail), tag)
+            }
+            Self::ComputeCheck { method, detail } => {
+                format!("Compute ({}): {} -> {}", method, humanize_sexp(detail), tag)
+            }
+            Self::Asserted { sexp } => format!("Asserted: {} -> {}", humanize_sexp(sexp), tag),
+            Self::Derived { label, sexp } => {
+                format!("Derived ({}): {} -> {}", label, humanize_sexp(sexp), tag)
+            }
+            Self::ProofRef { sexp } => {
+                format!("(proved above): {} -> {}", humanize_sexp(sexp), tag)
+            }
+        }
+    }
+}
+
+fn format_proof_step(trace: &ProofTrace, idx: u32, indent: usize, out: &mut String) {
+    let step = &trace.steps[idx as usize];
+    for _ in 0..indent {
+        out.push_str("  ");
+    }
+    out.push_str(&step.rule.trace_display(step.holds));
+    out.push('\n');
+    for &child in &step.children {
+        format_proof_step(trace, child, indent + 1, out);
     }
 }

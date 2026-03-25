@@ -135,7 +135,7 @@ fn crdt_retraction_tombstones() {
     let mut node = GossipNode::new("alis");
 
     let env1 = node.assert_local("la .adam. cu gerku").unwrap();
-    let env2 = node.assert_local("la .adam. cu danlu").unwrap();
+    let _env2 = node.assert_local("la .adam. cu danlu").unwrap();
 
     assert_eq!(node.active_count(), 2);
 
@@ -363,10 +363,10 @@ fn three_node_epidemic_gossip() {
     // ── Phase 2: "Kill" B. A and C assert independently. ──
 
     // A asserts more.
-    let fact_a2 = node_a.assert_local("la .adam. cu mlatu").unwrap();
+    let _fact_a2 = node_a.assert_local("la .adam. cu mlatu").unwrap();
 
     // C asserts independently.
-    let fact_c = node_c.assert_local("la .adam. cu finpe").unwrap();
+    let _fact_c = node_c.assert_local("la .adam. cu finpe").unwrap();
 
     // B is "dead" — doesn't see any of these.
     assert_eq!(node_b.log_size(), 2, "B hasn't seen new facts");
@@ -376,7 +376,7 @@ fn three_node_epidemic_gossip() {
     // B syncs from A.
     let diff_a_to_b = node_a.sync_diff(node_b.get_clock());
     assert!(
-        diff_a_to_b.len() >= 1,
+        !diff_a_to_b.is_empty(),
         "A should have at least 1 new envelope for B"
     );
     for env in diff_a_to_b {
@@ -386,7 +386,7 @@ fn three_node_epidemic_gossip() {
     // B syncs from C.
     let diff_c_to_b = node_c.sync_diff(node_b.get_clock());
     assert!(
-        diff_c_to_b.len() >= 1,
+        !diff_c_to_b.is_empty(),
         "C should have at least 1 new envelope for B"
     );
     for env in diff_c_to_b {
