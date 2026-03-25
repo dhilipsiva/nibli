@@ -43,10 +43,10 @@ use rules::*;
 
 // ─── Typed Fact Representation ────────────────────────────────────
 //
-// These types replace the s-expression string layer. Facts are stored and
+// These types replace the internal representation string layer. Facts are stored and
 // matched structurally instead of via string serialization/tokenization.
 
-/// A ground term — the typed replacement for s-expression term strings.
+/// A ground term — the typed replacement for legacy term strings.
 /// Implements Hash/Eq for direct use in HashSet-based fact stores.
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum GroundTerm {
@@ -312,7 +312,7 @@ pub fn substitute_term(
 
 // ─── S-Expression String Interner ─────────────────────────────────
 
-/// Lightweight string interner for s-expression deduplication.
+/// Lightweight string interner for string deduplication.
 /// Stores unique strings once and returns u32 keys for O(1) equality checks.
 /// Resolves keys back to &str in O(1) via index lookup.
 #[derive(Clone)]
@@ -371,7 +371,7 @@ impl LegacyInterner {
 
 /// Sorted u32 vector for columnar fact storage.
 ///
-/// Stores interned s-expression keys in sorted order for:
+/// Stores interned interned keys in sorted order for:
 /// - O(log n) membership test via binary search (cache-friendly)
 /// - 4 bytes per entry (vs ~32 bytes for HashSet<u32>)
 /// - Future SIMD batch membership via aligned u32 scans
@@ -477,7 +477,7 @@ const SKDEP_PREFIX: &str = "__skdep__";
 
 // ─── Structural S-Expression Tree ─────────────────────────────────
 
-/// Pre-parsed s-expression tree for structural pattern matching.
+/// Pre-parsed pattern tree for structural pattern matching.
 /// Eliminates repeated string tokenization during backward chaining.
 #[derive(Clone, Debug)]
 enum LegacyPatternTree {
@@ -490,7 +490,7 @@ enum LegacyPatternTree {
 }
 
 impl LegacyPatternTree {
-    /// Parse an s-expression string into a tree, marking pattern variables.
+    /// Parse an internal representation string into a tree, marking pattern variables.
     fn parse(s: &str, var_names: &[String]) -> Self {
         let tokens = legacy_tokenize(s);
         let (tree, _) = Self::parse_tokens(&tokens, 0, var_names);
@@ -517,7 +517,7 @@ impl LegacyPatternTree {
         }
     }
 
-    /// Match this tree (as pattern) against a concrete s-expression string.
+    /// Match this tree (as pattern) against a concrete internal representation string.
     /// Returns bindings mapping variable names to matched sub-expression strings.
     fn match_against(&self, concrete: &str) -> Option<HashMap<String, String>> {
         let conc_tokens = legacy_tokenize(concrete);
@@ -585,14 +585,14 @@ impl LegacyPatternTree {
         }
     }
 
-    /// Substitute bindings into this tree, producing an s-expression string.
+    /// Substitute bindings into this tree, producing an internal representation string.
     fn substitute(&self, bindings: &HashMap<String, String>) -> String {
         let mut buf = String::new();
         self.substitute_into(&mut buf, bindings);
         buf
     }
 
-    /// Write substituted s-expression into a buffer (avoids per-level allocation).
+    /// Write substituted representation into a buffer (avoids per-level allocation).
     fn substitute_into(&self, buf: &mut String, bindings: &HashMap<String, String>) {
         match self {
             LegacyPatternTree::Var(name) => match bindings.get(name.as_str()) {
@@ -629,9 +629,9 @@ impl LegacyPatternTree {
 struct UniversalRuleRecord {
     /// Human-readable label, e.g. "gerku → danlu"
     label: String,
-    /// Interned s-expression keys for the rule's conditions.
+    /// Interned interned keys for the rule's conditions.
     condition_templates: Vec<u32>,
-    /// Interned s-expression keys for the rule's conclusions.
+    /// Interned interned keys for the rule's conclusions.
     conclusion_templates: Vec<u32>,
     /// Pre-parsed condition templates for structural matching.
     condition_trees: Vec<LegacyPatternTree>,
@@ -766,7 +766,7 @@ impl KnowledgeBaseInner {
         }
     }
 
-    /// Return all known domain members as (s-expression, LogicalTerm) pairs.
+    /// Return all known domain members as (representation, LogicalTerm) pairs.
     /// Ensure the domain members cache is up-to-date. Call before any query.
     fn ensure_domain_members_cached(&mut self) {
         if !self.domain_members_dirty {
@@ -824,7 +824,7 @@ pub struct KnowledgeBase {
     inner: RefCell<KnowledgeBaseInner>,
 }
 
-/// Build a SkolemFn s-expression from a base name and dependency terms.
+/// Build a SkolemFn representation from a base name and dependency terms.
 /// Single dep: `(SkolemFn "sk_N" dep0)` — backward compatible.
 /// Multi dep: `(SkolemFn "sk_N" (DepPair dep0 (DepPair dep1 dep2)))` — right-nested pairs.
 fn build_skolem_fn_repr(base_name: &str, deps: &[&str]) -> String {
@@ -843,8 +843,8 @@ fn build_skolem_fn_repr(base_name: &str, deps: &[&str]) -> String {
     format!("(SkolemFn \"{}\" {})", base_name, dep_term)
 }
 
-/// Build a ground SkolemFn s-expression with a Const entity argument.
-/// Generate cartesian product of s-expression strings with given arity.
+/// Build a ground SkolemFn representation with a Const entity argument.
+/// Generate cartesian product of internal representation strings with given arity.
 /// Lazy cartesian product iterator: yields one combination at a time.
 /// Avoids materializing all M^N combinations in memory — stops at first match.
 struct CartesianProduct<'a> {
@@ -962,7 +962,7 @@ use std::cell::Cell;
 
 thread_local! {
     /// Cache for backward-chain predicate results within a single query.
-    /// Maps ground predicate s-expression → holds (true/false).
+    /// Maps ground predicate representation → holds (true/false).
     /// Cleared at the start of each query to avoid stale results.
     static PRED_CACHE: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
     /// Flag to enable/disable predicate caching (disabled during assertion replay).
@@ -1122,7 +1122,7 @@ fn register_ground_material_conditional(
     }
 }
 
-/// Helper: collect leaf s-expressions from the condition side of a material conditional.
+/// Helper: collect leaf representations from the condition side of a material conditional.
 /// Follows And nodes to flatten conjunctive conditions.
 fn collect_material_condition_leaves(
     buffer: &LogicBuffer,
@@ -3392,7 +3392,7 @@ mod tests {
 
     #[test]
     fn test_legacy_pattern_matching() {
-        // Test the structural s-expression pattern matcher
+        // Test the structural pattern matcher
         let var_names = vec!["x__v0".to_string()];
 
         // Simple predicate match via LegacyPatternTree

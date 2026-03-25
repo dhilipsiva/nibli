@@ -126,7 +126,7 @@ Before every commit, always:
 
 Roadmap status: Phase 1, Phase 2, and Phase 3 are complete. `todo.md` no longer contains open roadmap blockers; remaining work is deferred or incremental rather than required for production-readiness alignment.
 
-Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator) + C2 (non-monotonic reasoning / belief revision) + C3 (temporal reasoning) + C4 (event semantics — Neo-Davidsonian) + C5 (description term opacity — `le` vs `lo`) + SkolemFn multi-dependency + event-decomposed universal rule compilation fix (condition-side ∃ as pattern variables) + proof trace memoization (DAG deduplication via ProofRef) + **egglog removal** (replaced egglog equality saturation with demand-driven backward-chaining over indexed fact store) + **s-expression removal** (replaced legacy string interner + SortedU32Vec fact store with typed GroundTerm/GroundFact/StoredFact storage; untraced queries use structural unification via unify_facts(); legacy representation code retained only for proof trace display in the traced path).
+Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (production reasoning features: conjunction introduction, fuel limits, error variants, WASI sandboxing, clone-free connectives, arena allocator) + C2 (non-monotonic reasoning / belief revision) + C3 (temporal reasoning) + C4 (event semantics — Neo-Davidsonian) + C5 (description term opacity — `le` vs `lo`) + SkolemFn multi-dependency + event-decomposed universal rule compilation fix (condition-side ∃ as pattern variables) + proof trace memoization (DAG deduplication via ProofRef) + **egglog removal** (replaced egglog equality saturation with demand-driven backward-chaining over indexed fact store) + **legacy representation removal** (replaced legacy string interner + SortedU32Vec fact store with typed GroundTerm/GroundFact/StoredFact storage; untraced queries use structural unification via unify_facts(); legacy representation code retained only for proof trace display in the traced path).
 
 **Implemented features:**
 - Lexer + recursive-descent gerna/parser (gismu, cmavo, cmevla, lujvo)
@@ -196,7 +196,7 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - Step 4: Assert/query commands via query bar (unified proof-query only, no separate simple query)
 - Step 5: smuni-dictionary crate with PHF glosses + robotic back-translation (10,521 entries)
 - Step 6: Ollama integration — English→Lojban translation via server proxy (qwen3-coder:30b default)
-- Step 7: Proof trace visualization with human-readable s-expression formatting
+- Step 7: Proof trace visualization with human-readable internal representation formatting
 - Step 8: Fact management — KB status bar with per-line validation, .lojban file loading, clear button; Ollama temperature fixed to 0.0
 - Step 9: UI polish — keyboard shortcuts (Ctrl+L/K/O plus Ctrl+Enter in the Source tab), loading spinners, structured error display, output log improvements (cap/clear/auto-scroll), proof tree connectors, default example syllogism; unified query/proof across entire stack (engine, server, REPL, UI)
 - Step 10: Integration tests (16 tests via nibli-engine), Justfile targets (check, test-engine, test-all), README documentation (updated REPL examples, added Transparency Triad UI section)

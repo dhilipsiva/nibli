@@ -432,7 +432,7 @@ pub(super) fn legacy_fact_is_asserted(fact_repr: &str, inner: &KnowledgeBaseInne
     false
 }
 
-/// Parse an s-expression string into a StoredFact for typed store lookup.
+/// Parse a legacy representation string into a StoredFact for typed store lookup.
 /// Handles: (Pred "rel" (Cons term (Cons term (Nil)))), with optional tense wrappers.
 pub(super) fn parse_repr_to_stored_fact(fact_repr: &str) -> Option<StoredFact> {
     // Strip tense wrapper if present.
@@ -1102,12 +1102,12 @@ pub(super) fn generate_count_extra_witnesses(
 // ─── Typed Fact Builders (Phase 2 — parallel path) ───────────────
 //
 // These functions build StoredFact/GroundTerm directly from LogicBuffer,
-// bypassing the s-expression string layer entirely.
+// bypassing the legacy string layer entirely.
 
 /// Convert a LogicalTerm + Skolem substitutions to a GroundTerm.
 /// `subs` maps variable names to either:
 ///   - Raw Skolem names (e.g., "sk_0") during assertion
-///   - S-expression formatted values (e.g., `(Const "adam")`) during query
+///   - Legacy formatted values (e.g., `(Const "adam")`) during query
 /// This function handles both formats via `parse_repr_to_ground_term()`.
 pub(super) fn build_ground_term(
     term: &LogicalTerm,
@@ -1120,7 +1120,7 @@ pub(super) fn build_ground_term(
                     // Dependent Skolem — left as a variable (handled by rule compilation)
                     GroundTerm::PatternVar(v.clone())
                 } else if sk.starts_with('(') {
-                    // S-expression formatted value from query subs — parse it.
+                    // Legacy formatted value from query subs — parse it.
                     parse_repr_to_ground_term(sk)
                 } else {
                     // Raw Skolem constant name from assertion subs.
@@ -1138,7 +1138,7 @@ pub(super) fn build_ground_term(
     }
 }
 
-/// Parse an s-expression term string into a GroundTerm.
+/// Parse an legacy term string into a GroundTerm.
 /// Handles: (Const "name"), (Desc "name"), (Num N), (Zoe), (SkolemFn "name" dep), (DepPair a b)
 pub(super) fn parse_repr_to_ground_term(fact_repr: &str) -> GroundTerm {
     if let Some(rest) = fact_repr.strip_prefix("(Const \"") {
@@ -1184,7 +1184,7 @@ pub(super) fn parse_repr_to_ground_term(fact_repr: &str) -> GroundTerm {
     GroundTerm::Constant(fact_repr.to_string())
 }
 
-/// Split a pair of s-expressions at the top level (respecting balanced parens).
+/// Split a pair of representations at the top level (respecting balanced parens).
 fn split_repr_pair(s: &str) -> Option<(&str, &str)> {
     let mut depth = 0;
     for (i, c) in s.char_indices() {

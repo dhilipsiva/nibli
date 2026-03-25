@@ -512,7 +512,7 @@ mod tests {
 
     #[test]
     fn test_humanize_fallback() {
-        // Plain string that isn't an s-expression
+        // Plain string that isn't a structured representation
         assert_eq!(humanize_fact("hello"), "hello");
     }
 

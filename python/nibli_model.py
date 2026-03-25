@@ -562,7 +562,7 @@ def compute_bleu(predictions, references):
 
 
 def compute_semantic_match(predictions, references, gerna_valid, validate_binary):
-    """Compare FOL s-expressions for structurally equivalent translations.
+    """Compare FOL representations for structurally equivalent translations.
 
     For each prediction that passes gerna: assert both prediction and reference
     into separate nibli-engine instances, extract asserted facts, compare.

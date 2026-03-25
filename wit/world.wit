@@ -493,7 +493,7 @@ interface lasna {
         query-text-with-proof: func(input: string) -> result<tuple<bool, proof-trace>, nibli-error>;
         /// Query Lojban text and return witness bindings for existential variables.
         query-find-text: func(input: string) -> result<list<list<witness-binding>>, nibli-error>;
-        /// Debug: compile text to logic s-expression without asserting.
+        /// Debug: compile text to logic representation without asserting.
         compile-debug: func(input: string) -> result<string, nibli-error>;
         /// Reset the session's KB to fresh state.
         reset-kb: func() -> result<_, nibli-error>;

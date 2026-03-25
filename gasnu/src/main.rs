@@ -7,7 +7,7 @@
 //! - **(bare text)** — Assert Lojban facts
 //! - **`?`** — Query with proof trace
 //! - **`??`** — Query with witness extraction (find satisfying bindings)
-//! - **`:debug`** — Compile to logic s-expression without asserting
+//! - **`:debug`** — Compile to logic representation without asserting
 //! - **`:load`** — Load a `.lojban` file (assert each line, skip `#` comments)
 //! - **`:assert`** — Assert ground facts directly (bypasses Lojban parsing)
 //! - **`:retract`** — Retract a fact by ID (triggers KB rebuild)

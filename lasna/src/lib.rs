@@ -568,7 +568,7 @@ impl GuestSession for Session {
     }
 }
 
-// ─── S-expression reconstruction ───
+// ─── Legacy representation reconstruction ───
 
 use std::fmt::Write;
 
