@@ -2,11 +2,11 @@
 
 Ordered by impact, priority, and dependency.
 
-## Tier 1: Pipeline Efficiency (Medium Effort, High Impact)
+## Tier 1: Architecture (High Effort, High Impact)
 
-## Tier 3: Architecture (High Effort, High Impact)
+1. **Consolidate 3 WASM components into 1** — gerna, smuni, logji are separate cdylib components fused via `wac plug`, but only gasnu REPL uses the fused WASM (all other surfaces use native Rust). The 3-component split causes: ~275 lines of bridge conversion code (smuni/gerna_bridge.rs, logji/smuni_bridge.rs), duplicate conversion in lasna, `cargo component build` + wac pipeline complexity, cdylib linker workarounds (`cargo test --lib`), and cross-component ABI overhead. Merge into a single `lasna-component` that directly calls gerna/smuni/logji as internal modules. Eliminates bridge modules, wac step, and all cross-component type conversion. Lasna already chains the full pipeline — make it the single component with gerna/smuni/logji as internal crates rather than separate WASM components.
 
-8. **SelbriSnapshot deep-clone optimization** — go'i resolution deep-clones entire selbri subtree + dependencies for every assertion/query (`lasna/src/lib.rs:94-106, 283-297`). ~150 lines of remapping logic. Replace with index offset mapping (add base offset to all indices in place) to avoid cloning. High impact for `:load` batch operations.
+2. **SelbriSnapshot deep-clone optimization** — go'i resolution deep-clones entire selbri subtree + dependencies for every assertion/query (`lasna/src/lib.rs:94-106, 283-297`). ~150 lines of remapping logic. Replace with index offset mapping (add base offset to all indices in place) to avoid cloning. High impact for `:load` batch operations.
 
 ## Tier 4: Correctness & Robustness
 
