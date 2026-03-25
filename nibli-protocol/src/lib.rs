@@ -248,11 +248,11 @@ fn format_sexp_node(node: &SexpNode) -> String {
                 }
                 "SkolemFn" => {
                     if children.len() < 3 {
-                        "sk?".to_string()
+                        "#?".to_string()
                     } else {
                         let name = format_sexp_node(&children[1]);
                         let dep = format_sexp_node(&children[2]);
-                        format!("{}({})", name, dep)
+                        format!("{}({})", humanize_term(name), humanize_term(dep))
                     }
                 }
                 "DepPair" => {
@@ -295,19 +295,72 @@ fn format_sexp_pred(children: &[SexpNode]) -> String {
     }
     let name = format_sexp_node(&children[1]);
     let args = collect_cons_list(&children[2]);
-    if args.is_empty() {
-        name
+
+    // Collapse Neo-Davidsonian role predicates (e.g., "gerku_x1") into compact form.
+    // "gerku_x1(sk_0, adam)" → "gerku.x1(adam)" (hide event variable)
+    if let Some(base_and_role) = parse_role_predicate(&name) {
+        let formatted: Vec<String> = args.iter()
+            .map(|a| humanize_term(format_sexp_node(a)))
+            .filter(|s| !is_event_skolem(s))  // hide event Skolem args
+            .collect();
+        if formatted.is_empty() {
+            base_and_role
+        } else {
+            format!("{}({})", base_and_role, formatted.join(", "))
+        }
     } else {
-        let formatted: Vec<String> = args.iter().map(|a| format_sexp_node(a)).collect();
-        format!("{}({})", name, formatted.join(", "))
+        let formatted: Vec<String> = args.iter()
+            .map(|a| humanize_term(format_sexp_node(a)))
+            .collect();
+        if formatted.is_empty() {
+            name
+        } else {
+            format!("{}({})", name, formatted.join(", "))
+        }
     }
+}
+
+/// Detect Neo-Davidsonian role predicates: "gerku_x1" → "gerku.x1"
+fn parse_role_predicate(name: &str) -> Option<String> {
+    // Match patterns like "name_x1", "name_x2", etc.
+    if let Some(underscore_pos) = name.rfind('_') {
+        let suffix = &name[underscore_pos + 1..];
+        if suffix.starts_with('x') && suffix[1..].chars().all(|c| c.is_ascii_digit()) {
+            let base = &name[..underscore_pos];
+            return Some(format!("{}.{}", base, suffix));
+        }
+    }
+    None
+}
+
+/// Check if a term string looks like an event Skolem (starts with "sk_" and followed by digits).
+fn is_event_skolem(s: &str) -> bool {
+    s.starts_with("sk_") && s[3..].chars().all(|c| c.is_ascii_digit())
+}
+
+/// Humanize a single term: rename Skolem constants for readability.
+fn humanize_term(s: String) -> String {
+    // sk_N → #N (compact Skolem display)
+    if s.starts_with("sk_") && s[3..].chars().all(|c| c.is_ascii_digit()) {
+        return format!("#{}", &s[3..]);
+    }
+    // SkolemFn display: sk_N(arg) → #N(arg)
+    if s.starts_with("sk_") {
+        if let Some(paren) = s.find('(') {
+            let num_part = &s[3..paren];
+            if num_part.chars().all(|c| c.is_ascii_digit()) {
+                return format!("#{}{}", num_part, &s[paren..]);
+            }
+        }
+    }
+    s
 }
 
 fn format_sexp_extract(children: &[SexpNode]) -> String {
     if children.len() < 2 {
         "?".to_string()
     } else {
-        format_sexp_node(&children[1])
+        humanize_term(format_sexp_node(&children[1]))
     }
 }
 
@@ -721,14 +774,48 @@ impl ProofRule {
             Self::ComputeCheck { method, detail } => {
                 format!("Compute ({}): {} -> {}", method, humanize_sexp(detail), tag)
             }
-            Self::Asserted { sexp } => format!("Asserted: {} -> {}", humanize_sexp(sexp), tag),
+            Self::Asserted { sexp } => format!("Fact: {} -> {}", humanize_sexp(sexp), tag),
             Self::Derived { label, sexp } => {
-                format!("Derived ({}): {} -> {}", label, humanize_sexp(sexp), tag)
+                format!("Rule ({}): {} -> {}", humanize_rule_label(label), humanize_sexp(sexp), tag)
             }
             Self::ProofRef { sexp } => {
-                format!("(proved above): {} -> {}", humanize_sexp(sexp), tag)
+                format!("(see above): {} -> {}", humanize_sexp(sexp), tag)
             }
         }
+    }
+}
+
+/// Humanize a rule label: collapse event decomposition predicates.
+/// "gerku ∧ gerku_x1 ∧ gerku_x2 → danlu ∧ danlu_x1 ∧ danlu_x2" → "gerku → danlu"
+fn humanize_rule_label(label: &str) -> String {
+    if let Some((lhs, rhs)) = label.split_once(" → ") {
+        let lhs_base = collapse_role_predicates(lhs);
+        let rhs_base = collapse_role_predicates(rhs);
+        format!("{} → {}", lhs_base, rhs_base)
+    } else {
+        label.to_string()
+    }
+}
+
+/// Given "gerku ∧ gerku_x1 ∧ gerku_x2", return just "gerku".
+/// Strips all _xN role predicates, keeping only base predicate names.
+fn collapse_role_predicates(s: &str) -> String {
+    let parts: Vec<&str> = s.split(" ∧ ").collect();
+    let bases: Vec<&str> = parts
+        .iter()
+        .filter(|p| !p.contains("_x"))
+        .copied()
+        .collect();
+    if bases.is_empty() {
+        // All parts were role predicates — use the first one's base
+        if let Some(first) = parts.first() {
+            if let Some(underscore) = first.rfind('_') {
+                return first[..underscore].to_string();
+            }
+        }
+        s.to_string()
+    } else {
+        bases.join(" ∧ ")
     }
 }
 

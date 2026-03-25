@@ -432,6 +432,7 @@ fn build_envelope(
         topics,
         timestamp,
         sig: Vec::new(),
+        pub_key: Vec::new(),
         quarantined: false,
     }
 }

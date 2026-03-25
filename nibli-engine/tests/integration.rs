@@ -65,7 +65,7 @@ fn universal_rule_chain_syllogism() {
     let (holds, trace, _json) = engine.query_text_with_proof("la .adam. cu danlu").unwrap();
     assert!(holds, "One-hop derived fact should hold");
     assert!(
-        trace.contains("Derived"),
+        trace.contains("Rule"),
         "Proof trace should show derivation"
     );
 
@@ -73,7 +73,7 @@ fn universal_rule_chain_syllogism() {
     let (holds, trace, _json) = engine.query_text_with_proof("la .adam. cu citka").unwrap();
     assert!(holds, "Two-hop derived fact should hold");
     assert!(
-        trace.contains("Derived"),
+        trace.contains("Rule"),
         "Proof trace should show derivation chain"
     );
 }
@@ -154,8 +154,8 @@ fn proof_trace_contains_asserted_for_ground_fact() {
     let (holds, trace, json) = engine.query_text_with_proof("lo gerku cu barda").unwrap();
     assert!(holds);
     assert!(
-        trace.contains("Asserted"),
-        "Ground fact proof should contain 'Asserted'"
+        trace.contains("Fact:"),
+        "Ground fact proof should contain 'Fact:'"
     );
     // JSON should be valid
     let parsed: serde_json::Value = serde_json::from_str(&json).expect("Proof JSON should parse");
