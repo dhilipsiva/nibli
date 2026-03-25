@@ -57,11 +57,11 @@ pub enum ProofRule {
     #[serde(rename = "compute_check")]
     ComputeCheck { method: String, detail: String },
     #[serde(rename = "asserted")]
-    Asserted { #[serde(rename = "sexp")] fact: String },
+    Asserted { fact: String },
     #[serde(rename = "derived")]
-    Derived { label: String, #[serde(rename = "sexp")] fact: String },
+    Derived { label: String, fact: String },
     #[serde(rename = "proof_ref")]
-    ProofRef { #[serde(rename = "sexp")] fact: String },
+    ProofRef { fact: String },
 }
 
 // ── KB status wire types ──
