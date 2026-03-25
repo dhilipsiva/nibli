@@ -1008,3 +1008,138 @@ pub(super) fn generate_count_extra_witnesses(
         LogicNode::Predicate(_) | LogicNode::ComputeNode(_) => {}
     }
 }
+
+// ─── Typed Fact Builders (Phase 2 — parallel path) ───────────────
+//
+// These functions build StoredFact/GroundTerm directly from LogicBuffer,
+// bypassing the s-expression string layer entirely.
+
+/// Convert a LogicalTerm + Skolem substitutions to a GroundTerm.
+/// `subs` maps variable names to their Skolem constant names (e.g., "_v0" → "sk_0").
+pub(super) fn build_ground_term(
+    term: &LogicalTerm,
+    subs: &HashMap<String, String>,
+) -> GroundTerm {
+    match term {
+        LogicalTerm::Variable(v) => {
+            if let Some(sk) = subs.get(v.as_str()) {
+                if sk.starts_with(SKDEP_PREFIX) {
+                    // Dependent Skolem — left as a variable (handled by rule compilation)
+                    GroundTerm::PatternVar(v.clone())
+                } else {
+                    GroundTerm::SkolemConst(sk.clone())
+                }
+            } else {
+                // Unsubstituted variable — either a pattern var in rules or an error.
+                GroundTerm::PatternVar(v.clone())
+            }
+        }
+        LogicalTerm::Constant(c) => GroundTerm::Constant(c.clone()),
+        LogicalTerm::Description(d) => GroundTerm::Description(d.clone()),
+        LogicalTerm::Unspecified => GroundTerm::Unspecified,
+        LogicalTerm::Number(n) => GroundTerm::from_f64(*n),
+    }
+}
+
+/// Build a StoredFact from a Predicate/ComputeNode in a LogicBuffer.
+/// Returns None if the node isn't a predicate-like node.
+pub(super) fn build_stored_fact_from_node(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    subs: &HashMap<String, String>,
+    tense: Option<&str>,
+) -> Option<StoredFact> {
+    match &buffer.nodes[node_id as usize] {
+        LogicNode::Predicate((rel, args)) | LogicNode::ComputeNode((rel, args)) => {
+            let ground_args: Vec<GroundTerm> = args
+                .iter()
+                .map(|a| build_ground_term(a, subs))
+                .collect();
+            let fact = GroundFact::new(rel.clone(), ground_args);
+            Some(StoredFact::with_tense(fact, tense))
+        }
+        LogicNode::ExistsNode((v, body)) => {
+            // If variable is Skolemized, skip the quantifier wrapper.
+            if subs.contains_key(v.as_str()) {
+                build_stored_fact_from_node(buffer, *body, subs, tense)
+            } else {
+                None // Unskolemized existential — not a ground fact.
+            }
+        }
+        LogicNode::PastNode(inner) => {
+            build_stored_fact_from_node(buffer, *inner, subs, Some("Past"))
+        }
+        LogicNode::PresentNode(inner) => {
+            build_stored_fact_from_node(buffer, *inner, subs, Some("Present"))
+        }
+        LogicNode::FutureNode(inner) => {
+            build_stored_fact_from_node(buffer, *inner, subs, Some("Future"))
+        }
+        LogicNode::ObligatoryNode(inner) => {
+            build_stored_fact_from_node(buffer, *inner, subs, Some("Obligatory"))
+        }
+        LogicNode::PermittedNode(inner) => {
+            build_stored_fact_from_node(buffer, *inner, subs, Some("Permitted"))
+        }
+        _ => None, // And/Or/Not/ForAll/Count — not a leaf fact.
+    }
+}
+
+/// Collect leaf StoredFacts from an And-tree (typed equivalent of collect_ground_leaves + reconstruct_sexp).
+pub(super) fn collect_ground_facts(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    subs: &HashMap<String, String>,
+    tense: Option<&str>,
+    out: &mut Vec<StoredFact>,
+) {
+    match &buffer.nodes[node_id as usize] {
+        LogicNode::AndNode((l, r)) => {
+            collect_ground_facts(buffer, *l, subs, tense, out);
+            collect_ground_facts(buffer, *r, subs, tense, out);
+        }
+        LogicNode::ExistsNode((v, body)) => {
+            if subs.contains_key(v.as_str()) {
+                collect_ground_facts(buffer, *body, subs, tense, out);
+            }
+        }
+        LogicNode::PastNode(inner) => {
+            collect_ground_facts(buffer, *inner, subs, Some("Past"), out);
+        }
+        LogicNode::PresentNode(inner) => {
+            collect_ground_facts(buffer, *inner, subs, Some("Present"), out);
+        }
+        LogicNode::FutureNode(inner) => {
+            collect_ground_facts(buffer, *inner, subs, Some("Future"), out);
+        }
+        LogicNode::ObligatoryNode(inner) => {
+            collect_ground_facts(buffer, *inner, subs, Some("Obligatory"), out);
+        }
+        LogicNode::PermittedNode(inner) => {
+            collect_ground_facts(buffer, *inner, subs, Some("Permitted"), out);
+        }
+        _ => {
+            if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
+                out.push(fact);
+            }
+        }
+    }
+}
+
+/// Build a GroundTerm representing a SkolemFn with given dependencies.
+/// Typed equivalent of `build_skolem_fn_sexp()`.
+pub(super) fn build_skolem_fn_term(base_name: &str, deps: &[GroundTerm]) -> GroundTerm {
+    let dep_term = match deps.len() {
+        0 => GroundTerm::Unspecified,
+        1 => deps[0].clone(),
+        _ => {
+            // Right-nested DepPair encoding: [a, b, c] → DepPair(a, DepPair(b, c))
+            let mut acc = deps.last().unwrap().clone();
+            for dep in deps[..deps.len() - 1].iter().rev() {
+                acc = GroundTerm::DepPair(Box::new(dep.clone()), Box::new(acc));
+            }
+            acc
+        }
+    };
+    GroundTerm::SkolemFn(base_name.to_string(), Box::new(dep_term))
+}
