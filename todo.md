@@ -4,9 +4,7 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 1: Pipeline Efficiency (Medium Effort, High Impact)
 
-4. **Use Cow in substitute_term for SkolemFn** — `substitute_term()` creates a new `Box<GroundTerm>` for every SkolemFn term even when the dependency didn't change. Check if dep changed before boxing. Or use `Cow<GroundTerm>`. ~10 lines.
-
-8. **Consolidate compute node transform** — Identical `Predicate → ComputeNode` transform exists in `lasna/src/lib.rs:442` and `nibli-engine/src/lib.rs:293`. Called 5× per query in lasna alone. Merge into one function, call once after smuni compilation. ~20 lines saved.
+4. **Consolidate compute node transform** — Identical `Predicate → ComputeNode` transform exists in `lasna/src/lib.rs:442` and `nibli-engine/src/lib.rs:293`. Called 5× per query in lasna alone. Merge into one function, call once after smuni compilation. ~20 lines saved.
 
 9. **Consolidate proof trace + error formatting** — Proof tree formatting in both `nibli-protocol/src/lib.rs` and `gasnu/src/main.rs`. Error formatting repeated 3× in `nibli-engine/src/lib.rs`. Term serialization duplicated between `lasna` and `nibli-engine`. Consolidate to `nibli-protocol`. ~130 lines saved.
 

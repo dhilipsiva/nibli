@@ -27,6 +27,7 @@ use crate::bindings::lojban::nibli::logic_types::{
     FactSummary, LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofStep, ProofTrace,
     WitnessBinding,
 };
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -274,7 +275,7 @@ pub fn substitute_fact(
     let sub_inner = |f: &GroundFact| -> GroundFact {
         GroundFact {
             relation: f.relation.clone(),
-            args: f.args.iter().map(|a| substitute_term(a, bindings)).collect(),
+            args: f.args.iter().map(|a| substitute_term(a, bindings).into_owned()).collect(),
         }
     };
     match template {
@@ -288,23 +289,35 @@ pub fn substitute_fact(
 }
 
 /// Apply bindings to a single term.
-pub fn substitute_term(
-    term: &GroundTerm,
+pub fn substitute_term<'a>(
+    term: &'a GroundTerm,
     bindings: &HashMap<String, GroundTerm>,
-) -> GroundTerm {
+) -> Cow<'a, GroundTerm> {
     match term {
-        GroundTerm::PatternVar(name) => {
-            bindings.get(name).cloned().unwrap_or_else(|| term.clone())
-        }
+        GroundTerm::PatternVar(name) => match bindings.get(name) {
+            Some(replacement) => Cow::Owned(replacement.clone()),
+            None => Cow::Borrowed(term),
+        },
         GroundTerm::SkolemFn(name, dep) => {
-            GroundTerm::SkolemFn(name.clone(), Box::new(substitute_term(dep, bindings)))
+            let new_dep = substitute_term(dep, bindings);
+            match new_dep {
+                Cow::Borrowed(_) => Cow::Borrowed(term),
+                Cow::Owned(d) => Cow::Owned(GroundTerm::SkolemFn(name.clone(), Box::new(d))),
+            }
         }
-        GroundTerm::DepPair(a, b) => GroundTerm::DepPair(
-            Box::new(substitute_term(a, bindings)),
-            Box::new(substitute_term(b, bindings)),
-        ),
+        GroundTerm::DepPair(a, b) => {
+            let new_a = substitute_term(a, bindings);
+            let new_b = substitute_term(b, bindings);
+            match (&new_a, &new_b) {
+                (Cow::Borrowed(_), Cow::Borrowed(_)) => Cow::Borrowed(term),
+                _ => Cow::Owned(GroundTerm::DepPair(
+                    Box::new(new_a.into_owned()),
+                    Box::new(new_b.into_owned()),
+                )),
+            }
+        }
         // All other terms are ground — no substitution needed.
-        _ => term.clone(),
+        _ => Cow::Borrowed(term),
     }
 }
 
