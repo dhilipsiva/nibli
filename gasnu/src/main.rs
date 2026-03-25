@@ -16,7 +16,6 @@
 //! - **`:backend`** — Show/change external compute backend address
 //! - **`:reset`** — Clear the knowledge base
 //! - **`:fuel`** / **`:memory`** — Show/set WASM execution limits
-//! - **`:saturate`** — Show/set run bound (iterations)
 
 use anyhow::Result;
 use nibli_protocol::humanize_fact;
@@ -598,12 +597,6 @@ fn main() -> Result<()> {
         .unwrap_or(512);
     println!("Memory limit: {} MB", memory_limit_mb);
 
-    let mut run_bound: u32 = std::env::var("NIBLI_RUN_BOUND")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(100);
-    println!("Run bound: {} iterations", run_bound);
-
     let state = HostState {
         ctx: WasiCtxBuilder::new()
             .inherit_stdout()
@@ -630,13 +623,6 @@ fn main() -> Result<()> {
     let engine_iface = pipeline.lojban_nibli_lasna();
     let session = engine_iface.session();
     let session_handle = session.call_constructor(&mut store)?;
-
-    // Apply non-default run bound from env var
-    if run_bound != 100 {
-        session
-            .call_set_run_bound(&mut store, session_handle, run_bound)
-            .ok();
-    }
 
     // ── Persistent store (optional) ──
     let db_path = std::env::var("NIBLI_DB_PATH").ok();
@@ -743,7 +729,7 @@ fn main() -> Result<()> {
     let prompt = DefaultPrompt::default();
 
     println!(
-        "Ready. Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :saturate [n] :db :help"
+        "Ready. Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :db :help"
     );
     println!(
         "Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.\n"
@@ -803,10 +789,6 @@ fn main() -> Result<()> {
                         println!("[Memory] Limit: {} MB", memory_limit_mb);
                         continue;
                     }
-                    ":saturate" | ":sat" => {
-                        println!("[Saturate] Run bound: {} iterations", run_bound);
-                        continue;
-                    }
                     ":backend" | ":b" => {
                         let state = store.data();
                         match &state.backend_addr {
@@ -859,7 +841,6 @@ fn main() -> Result<()> {
                         println!("  :backend [host:port] Show or set compute backend address");
                         println!("  :fuel [amount]      Show or set WASM fuel budget per command");
                         println!("  :memory [mb]        Show or set WASM memory limit in MB");
-                        println!("  :saturate [n]       Show or set run bound");
                         println!("  :db                 Show persistent store info");
                         println!("  :merge <redb-file>  Merge facts from another store (CRDT)");
                         println!("  :export <redb-file> Export store to a new redb file");
@@ -918,21 +899,6 @@ fn main() -> Result<()> {
                             println!("[Memory] Limit set to {} MB", memory_limit_mb);
                         }
                         _ => println!("[Host] Usage: :memory <positive-integer-mb>"),
-                    }
-                } else if let Some(sat_arg) = input
-                    .strip_prefix(":saturate ")
-                    .or_else(|| input.strip_prefix(":sat "))
-                {
-                    match sat_arg.trim().parse::<u32>() {
-                        Ok(n) if n > 0 => {
-                            run_bound = n;
-                            refuel(&mut store, fuel_budget);
-                            match session.call_set_run_bound(&mut store, session_handle, n) {
-                                Ok(()) => println!("[Saturate] Run bound set to {} iterations", n),
-                                Err(e) => println!("{}", format_host_error(&e)),
-                            }
-                        }
-                        _ => println!("[Host] Usage: :saturate <positive-integer>"),
                     }
                 } else if let Some(compute_name) = input.strip_prefix(":compute ") {
                     let name = compute_name.trim();

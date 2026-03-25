@@ -384,7 +384,6 @@ struct KnowledgeBaseInner {
     /// Suppresses diagnostic prints during rebuild replay.
     rebuilding: bool,
     /// Configuration parameter preserved across reset/rebuild (kept for WIT API compatibility).
-    run_bound: u32,
     /// Cached domain members — invalidated when entities/descriptions change.
     domain_members_cache: Vec<(String, LogicalTerm)>,
     /// Typed domain members cache (parallel to domain_members_cache).
@@ -407,7 +406,6 @@ impl KnowledgeBaseInner {
             fact_counter: 0,
             fact_registry: HashMap::new(),
             rebuilding: false,
-            run_bound: 100,
             domain_members_cache: Vec::new(),
             typed_domain_members_cache: Vec::new(),
             domain_members_dirty: true,
@@ -864,13 +862,6 @@ impl KnowledgeBase {
         Ok(facts)
     }
 
-    fn set_run_bound_inner(&self, n: u32) {
-        self.inner.borrow_mut().run_bound = n;
-    }
-
-    fn get_run_bound_inner(&self) -> u32 {
-        self.inner.borrow().run_bound
-    }
 
     /// Check whether all root formulas in the logic buffer are entailed by the KB.
     fn query_entailment_inner(&self, logic: LogicBuffer) -> Result<bool, String> {
@@ -999,13 +990,6 @@ impl GuestKnowledgeBase for KnowledgeBase {
         self.list_facts_inner().map_err(NibliError::Reasoning)
     }
 
-    fn set_run_bound(&self, n: u32) {
-        self.set_run_bound_inner(n);
-    }
-
-    fn get_run_bound(&self) -> u32 {
-        self.get_run_bound_inner()
-    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -4350,35 +4334,6 @@ mod tests {
         );
     }
 
-    // ─── Run Bound / Saturation Tests ────────────────────────────────
-
-    #[test]
-    fn test_run_bound_default() {
-        let kb = new_kb();
-        assert_eq!(kb.get_run_bound_inner(), 100);
-    }
-
-    #[test]
-    fn test_run_bound_configurable() {
-        let kb = new_kb();
-        kb.set_run_bound_inner(5);
-        assert_eq!(kb.get_run_bound_inner(), 5);
-        kb.set_run_bound_inner(200);
-        assert_eq!(kb.get_run_bound_inner(), 200);
-    }
-
-    #[test]
-    fn test_run_bound_preserved_across_reset() {
-        let kb = new_kb();
-        kb.set_run_bound_inner(42);
-        kb.inner.borrow_mut().reset();
-        assert_eq!(
-            kb.get_run_bound_inner(),
-            42,
-            "run_bound should survive reset (it's config, not derived state)"
-        );
-    }
-
     #[test]
     fn test_backward_chain_derives_facts() {
         // Assert a fact and a rule, then verify backward-chaining derives conclusions
@@ -4395,9 +4350,6 @@ mod tests {
             "backward-chaining should derive danlu(alis) from gerku(alis) and universal rule"
         );
 
-        // run_bound is still stored as config (no-op value)
-        kb.set_run_bound_inner(0);
-        assert_eq!(kb.get_run_bound_inner(), 0);
     }
 
     // ─── Event-decomposed universal rule tests ──────────────────────

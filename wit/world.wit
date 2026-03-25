@@ -450,10 +450,6 @@ interface logji {
         retract-fact: func(id: fact-id) -> result<_, nibli-error>;
         /// List all active (non-retracted) facts in the KB.
         list-facts: func() -> result<list<fact-summary>, nibli-error>;
-        /// Set the run bound (default: 100).
-        set-run-bound: func(n: u32);
-        /// Get the current run bound.
-        get-run-bound: func() -> u32;
     }
 }
 
@@ -505,10 +501,6 @@ interface lasna {
         retract-fact: func(id: fact-id) -> result<_, nibli-error>;
         /// List all active (non-retracted) facts.
         list-facts: func() -> result<list<fact-summary>, nibli-error>;
-        /// Set the run bound (default: 100).
-        set-run-bound: func(n: u32);
-        /// Get the current run bound.
-        get-run-bound: func() -> u32;
     }
 }
 
