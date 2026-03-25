@@ -38,6 +38,278 @@ use reasoning::*;
 use rules::*;
 
 
+// ─── Typed Fact Representation ────────────────────────────────────
+//
+// These types replace the s-expression string layer. Facts are stored and
+// matched structurally instead of via string serialization/tokenization.
+
+/// A ground term — the typed replacement for s-expression term strings.
+/// Implements Hash/Eq for direct use in HashSet-based fact stores.
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub enum GroundTerm {
+    /// Named constant (e.g., "adam", "paris").
+    Constant(String),
+    /// Floating-point number stored as bit pattern for Hash/Eq.
+    Number(u64),
+    /// Opaque description term (le-gadri).
+    Description(String),
+    /// Unspecified argument (zo'e).
+    Unspecified,
+    /// Independent Skolem constant (e.g., "sk_0").
+    SkolemConst(String),
+    /// Dependent Skolem function (e.g., SkolemFn("sk_1", Constant("adam"))).
+    SkolemFn(String, Box<GroundTerm>),
+    /// Multi-dependency pairing for SkolemFn with multiple universals.
+    DepPair(Box<GroundTerm>, Box<GroundTerm>),
+    /// Pattern variable — only used in rule templates, never in the fact store.
+    PatternVar(String),
+}
+
+impl GroundTerm {
+    /// Create a Number term from f64.
+    pub fn from_f64(v: f64) -> Self {
+        GroundTerm::Number(v.to_bits())
+    }
+
+    /// Extract f64 from a Number term.
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            GroundTerm::Number(bits) => Some(f64::from_bits(*bits)),
+            _ => None,
+        }
+    }
+
+    /// Human-readable display string.
+    pub fn to_display_string(&self) -> String {
+        match self {
+            GroundTerm::Constant(s) => s.clone(),
+            GroundTerm::Number(bits) => {
+                let v = f64::from_bits(*bits);
+                if v == v.floor() && v.abs() < 1e15 {
+                    format!("{}", v as i64)
+                } else {
+                    format!("{v}")
+                }
+            }
+            GroundTerm::Description(s) => format!("le {s}"),
+            GroundTerm::Unspecified => "_".to_string(),
+            GroundTerm::SkolemConst(s) => s.clone(),
+            GroundTerm::SkolemFn(name, dep) => {
+                format!("{name}({})", dep.to_display_string())
+            }
+            GroundTerm::DepPair(a, b) => {
+                format!("({}, {})", a.to_display_string(), b.to_display_string())
+            }
+            GroundTerm::PatternVar(s) => format!("?{s}"),
+        }
+    }
+}
+
+/// A ground predicate — relation name plus argument list.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct GroundFact {
+    pub relation: String,
+    pub args: Vec<GroundTerm>,
+}
+
+impl GroundFact {
+    pub fn new(relation: impl Into<String>, args: Vec<GroundTerm>) -> Self {
+        GroundFact {
+            relation: relation.into(),
+            args,
+        }
+    }
+
+    /// Human-readable display: relation(arg1, arg2, ...)
+    pub fn to_display_string(&self) -> String {
+        if self.args.is_empty() {
+            self.relation.clone()
+        } else {
+            let args_str: Vec<String> = self.args.iter().map(|a| a.to_display_string()).collect();
+            format!("{}({})", self.relation, args_str.join(", "))
+        }
+    }
+}
+
+/// A fact with optional tense/deontic wrapper — the atomic unit of the fact store.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum StoredFact {
+    Bare(GroundFact),
+    Past(GroundFact),
+    Present(GroundFact),
+    Future(GroundFact),
+    Obligatory(GroundFact),
+    Permitted(GroundFact),
+}
+
+impl StoredFact {
+    /// Get the inner predicate's relation name.
+    pub fn relation(&self) -> &str {
+        match self {
+            StoredFact::Bare(f)
+            | StoredFact::Past(f)
+            | StoredFact::Present(f)
+            | StoredFact::Future(f)
+            | StoredFact::Obligatory(f)
+            | StoredFact::Permitted(f) => &f.relation,
+        }
+    }
+
+    /// Get a reference to the inner GroundFact.
+    pub fn inner(&self) -> &GroundFact {
+        match self {
+            StoredFact::Bare(f)
+            | StoredFact::Past(f)
+            | StoredFact::Present(f)
+            | StoredFact::Future(f)
+            | StoredFact::Obligatory(f)
+            | StoredFact::Permitted(f) => f,
+        }
+    }
+
+    /// Wrap a GroundFact with a tense/deontic context.
+    pub fn with_tense(fact: GroundFact, tense: Option<&str>) -> Self {
+        match tense {
+            Some("Past") => StoredFact::Past(fact),
+            Some("Present") => StoredFact::Present(fact),
+            Some("Future") => StoredFact::Future(fact),
+            Some("Obligatory") => StoredFact::Obligatory(fact),
+            Some("Permitted") => StoredFact::Permitted(fact),
+            _ => StoredFact::Bare(fact),
+        }
+    }
+
+    /// Human-readable display string.
+    pub fn to_display_string(&self) -> String {
+        match self {
+            StoredFact::Bare(f) => f.to_display_string(),
+            StoredFact::Past(f) => format!("Past({})", f.to_display_string()),
+            StoredFact::Present(f) => format!("Present({})", f.to_display_string()),
+            StoredFact::Future(f) => format!("Future({})", f.to_display_string()),
+            StoredFact::Obligatory(f) => format!("Obligatory({})", f.to_display_string()),
+            StoredFact::Permitted(f) => format!("Permitted({})", f.to_display_string()),
+        }
+    }
+}
+
+/// Structural unification: match a template (with PatternVars) against a concrete fact.
+/// Returns variable bindings on success, None on mismatch.
+pub fn unify_facts(
+    template: &StoredFact,
+    concrete: &StoredFact,
+) -> Option<HashMap<String, GroundTerm>> {
+    // Tense/deontic wrapper must match.
+    let (t_inner, c_inner) = match (template, concrete) {
+        (StoredFact::Bare(t), StoredFact::Bare(c)) => (t, c),
+        (StoredFact::Past(t), StoredFact::Past(c)) => (t, c),
+        (StoredFact::Present(t), StoredFact::Present(c)) => (t, c),
+        (StoredFact::Future(t), StoredFact::Future(c)) => (t, c),
+        (StoredFact::Obligatory(t), StoredFact::Obligatory(c)) => (t, c),
+        (StoredFact::Permitted(t), StoredFact::Permitted(c)) => (t, c),
+        _ => return None,
+    };
+
+    // Relation name must match.
+    if t_inner.relation != c_inner.relation {
+        return None;
+    }
+
+    // Arg count must match.
+    if t_inner.args.len() != c_inner.args.len() {
+        return None;
+    }
+
+    // Unify each argument pair.
+    let mut bindings = HashMap::new();
+    for (t_arg, c_arg) in t_inner.args.iter().zip(c_inner.args.iter()) {
+        if !unify_terms(t_arg, c_arg, &mut bindings) {
+            return None;
+        }
+    }
+    Some(bindings)
+}
+
+/// Unify a template term against a concrete term, accumulating bindings.
+fn unify_terms(
+    template: &GroundTerm,
+    concrete: &GroundTerm,
+    bindings: &mut HashMap<String, GroundTerm>,
+) -> bool {
+    match template {
+        GroundTerm::PatternVar(name) => {
+            if let Some(existing) = bindings.get(name) {
+                // Variable already bound — must match.
+                existing == concrete
+            } else {
+                bindings.insert(name.clone(), concrete.clone());
+                true
+            }
+        }
+        // Structural match for non-variable terms.
+        GroundTerm::Constant(a) => matches!(concrete, GroundTerm::Constant(b) if a == b),
+        GroundTerm::Number(a) => matches!(concrete, GroundTerm::Number(b) if a == b),
+        GroundTerm::Description(a) => matches!(concrete, GroundTerm::Description(b) if a == b),
+        GroundTerm::Unspecified => matches!(concrete, GroundTerm::Unspecified),
+        GroundTerm::SkolemConst(a) => matches!(concrete, GroundTerm::SkolemConst(b) if a == b),
+        GroundTerm::SkolemFn(name_a, dep_a) => {
+            if let GroundTerm::SkolemFn(name_b, dep_b) = concrete {
+                name_a == name_b && unify_terms(dep_a, dep_b, bindings)
+            } else {
+                false
+            }
+        }
+        GroundTerm::DepPair(a1, a2) => {
+            if let GroundTerm::DepPair(b1, b2) = concrete {
+                unify_terms(a1, b1, bindings) && unify_terms(a2, b2, bindings)
+            } else {
+                false
+            }
+        }
+    }
+}
+
+/// Apply bindings to a template fact, replacing PatternVars with bound values.
+pub fn substitute_fact(
+    template: &StoredFact,
+    bindings: &HashMap<String, GroundTerm>,
+) -> StoredFact {
+    let sub_inner = |f: &GroundFact| -> GroundFact {
+        GroundFact {
+            relation: f.relation.clone(),
+            args: f.args.iter().map(|a| substitute_term(a, bindings)).collect(),
+        }
+    };
+    match template {
+        StoredFact::Bare(f) => StoredFact::Bare(sub_inner(f)),
+        StoredFact::Past(f) => StoredFact::Past(sub_inner(f)),
+        StoredFact::Present(f) => StoredFact::Present(sub_inner(f)),
+        StoredFact::Future(f) => StoredFact::Future(sub_inner(f)),
+        StoredFact::Obligatory(f) => StoredFact::Obligatory(sub_inner(f)),
+        StoredFact::Permitted(f) => StoredFact::Permitted(sub_inner(f)),
+    }
+}
+
+/// Apply bindings to a single term.
+pub fn substitute_term(
+    term: &GroundTerm,
+    bindings: &HashMap<String, GroundTerm>,
+) -> GroundTerm {
+    match term {
+        GroundTerm::PatternVar(name) => {
+            bindings.get(name).cloned().unwrap_or_else(|| term.clone())
+        }
+        GroundTerm::SkolemFn(name, dep) => {
+            GroundTerm::SkolemFn(name.clone(), Box::new(substitute_term(dep, bindings)))
+        }
+        GroundTerm::DepPair(a, b) => GroundTerm::DepPair(
+            Box::new(substitute_term(a, bindings)),
+            Box::new(substitute_term(b, bindings)),
+        ),
+        // All other terms are ground — no substitution needed.
+        _ => term.clone(),
+    }
+}
+
 // ─── S-Expression String Interner ─────────────────────────────────
 
 /// Lightweight string interner for s-expression deduplication.
