@@ -1,4 +1,7 @@
 /target
+fuzz/target
+fuzz/corpus
+fuzz/artifacts
 jbovlaste-en.xml
 jbovlaste-en.xml:Zone.Identifier
 
