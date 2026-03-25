@@ -18,7 +18,10 @@
 //! - **`:fuel`** / **`:memory`** — Show/set WASM execution limits
 
 use anyhow::Result;
-use nibli_protocol::humanize_fact;
+use nibli_protocol::{
+    LogicalTerm as ProtoTerm, ProofRule as ProtoRule, ProofStep as ProtoStep,
+    ProofTrace as ProtoTrace,
+};
 use nibli_store::{NibliStore, StoredAssertion, StoredLogicalTerm as StoredTerm};
 use reedline::{DefaultPrompt, Reedline, Signal};
 use serde::{Deserialize, Serialize};
@@ -235,85 +238,99 @@ mod pipeline_bind {
 use pipeline_bind::lojban::nibli::compute_backend;
 use pipeline_bind::lojban::nibli::error_types::NibliError;
 use pipeline_bind::lojban::nibli::logic_types::LogicalTerm as EngineLogicalTerm;
-use pipeline_bind::lojban::nibli::logic_types::{ProofRule, ProofStep, ProofTrace};
+use pipeline_bind::lojban::nibli::logic_types::{ProofRule, ProofTrace};
 
 /// Format a LogicalTerm from the engine bindings for display.
 fn format_term(term: &EngineLogicalTerm) -> String {
+    term_to_proto(term).trace_display()
+}
+
+/// Convert a WIT LogicalTerm to the protocol wire type.
+fn term_to_proto(term: &EngineLogicalTerm) -> ProtoTerm {
     match term {
-        EngineLogicalTerm::Constant(s) => s.clone(),
-        EngineLogicalTerm::Variable(s) => format!("?{}", s),
-        EngineLogicalTerm::Description(s) => format!("lo {}", s),
-        EngineLogicalTerm::Number(n) => {
-            if *n == (*n as i64) as f64 {
-                format!("{}", *n as i64)
-            } else {
-                format!("{}", n)
-            }
-        }
-        EngineLogicalTerm::Unspecified => "zo'e".to_string(),
+        EngineLogicalTerm::Constant(s) => ProtoTerm {
+            kind: "constant".to_string(),
+            value: Some(s.clone()),
+            number: None,
+        },
+        EngineLogicalTerm::Variable(s) => ProtoTerm {
+            kind: "variable".to_string(),
+            value: Some(s.clone()),
+            number: None,
+        },
+        EngineLogicalTerm::Description(s) => ProtoTerm {
+            kind: "description".to_string(),
+            value: Some(s.clone()),
+            number: None,
+        },
+        EngineLogicalTerm::Number(n) => ProtoTerm {
+            kind: "number".to_string(),
+            value: None,
+            number: Some(*n),
+        },
+        EngineLogicalTerm::Unspecified => ProtoTerm {
+            kind: "unspecified".to_string(),
+            value: None,
+            number: None,
+        },
     }
 }
 
-/// Format a proof rule for display.
-fn format_rule(rule: &ProofRule, result: bool) -> String {
-    let tag = if result { "TRUE" } else { "FALSE" };
+/// Convert a WIT ProofRule to the protocol wire type.
+fn rule_to_proto(rule: &ProofRule) -> ProtoRule {
     match rule {
-        ProofRule::Conjunction => format!("Conjunction → {}", tag),
-        ProofRule::DisjunctionCheck(s) => format!("Disjunction (check: {}) → {}", s, tag),
-        ProofRule::DisjunctionIntro(side) => format!("Disjunction ({}) → {}", side, tag),
-        ProofRule::Negation => format!("Negation → {}", tag),
-        ProofRule::ModalPassthrough(kind) => format!("Modal ({}) → {}", kind, tag),
-        ProofRule::ExistsWitness((var, term)) => {
-            format!("Exists: {} = {} → {}", var, format_term(term), tag)
-        }
-        ProofRule::ExistsFailed => format!("Exists: no witness → {}", tag),
-        ProofRule::ForallVacuous => format!("ForAll: vacuous (empty domain) → {}", tag),
-        ProofRule::ForallVerified(entities) => {
-            let names: Vec<String> = entities.iter().map(format_term).collect();
-            format!("ForAll: verified [{}] → {}", names.join(", "), tag)
-        }
-        ProofRule::ForallCounterexample(term) => {
-            format!("ForAll: counterexample {} → {}", format_term(term), tag)
-        }
-        ProofRule::CountResult((expected, actual)) => {
-            format!("Count: expected={}, actual={} → {}", expected, actual, tag)
-        }
-        ProofRule::PredicateCheck((method, detail)) => {
-            format!("{}: {} → {}", method, humanize_fact(detail), tag)
-        }
-        ProofRule::ComputeCheck((method, detail)) => {
-            format!("Compute ({}): {} → {}", method, humanize_fact(detail), tag)
-        }
-        ProofRule::Asserted(fact) => {
-            format!("Fact: {} → {}", humanize_fact(fact), tag)
-        }
-        ProofRule::Derived((label, fact)) => {
-            format!("Rule ({}): {} → {}", label, humanize_fact(fact), tag)
-        }
-        ProofRule::ProofRef(fact) => {
-            format!("(see above): {} → {}", humanize_fact(fact), tag)
-        }
+        ProofRule::Conjunction => ProtoRule::Conjunction,
+        ProofRule::DisjunctionCheck(s) => ProtoRule::DisjunctionCheck { detail: s.clone() },
+        ProofRule::DisjunctionIntro(s) => ProtoRule::DisjunctionIntro { side: s.clone() },
+        ProofRule::Negation => ProtoRule::Negation,
+        ProofRule::ModalPassthrough(s) => ProtoRule::ModalPassthrough { kind: s.clone() },
+        ProofRule::ExistsWitness((var, term)) => ProtoRule::ExistsWitness {
+            var: var.clone(),
+            term: term_to_proto(term),
+        },
+        ProofRule::ExistsFailed => ProtoRule::ExistsFailed,
+        ProofRule::ForallVacuous => ProtoRule::ForallVacuous,
+        ProofRule::ForallVerified(entities) => ProtoRule::ForallVerified {
+            entities: entities.iter().map(term_to_proto).collect(),
+        },
+        ProofRule::ForallCounterexample(term) => ProtoRule::ForallCounterexample {
+            entity: term_to_proto(term),
+        },
+        ProofRule::CountResult((expected, actual)) => ProtoRule::CountResult {
+            expected: *expected,
+            actual: *actual,
+        },
+        ProofRule::PredicateCheck((method, detail)) => ProtoRule::PredicateCheck {
+            method: method.clone(),
+            detail: detail.clone(),
+        },
+        ProofRule::ComputeCheck((method, detail)) => ProtoRule::ComputeCheck {
+            method: method.clone(),
+            detail: detail.clone(),
+        },
+        ProofRule::Asserted(fact) => ProtoRule::Asserted { fact: fact.clone() },
+        ProofRule::Derived((label, fact)) => ProtoRule::Derived {
+            label: label.clone(),
+            fact: fact.clone(),
+        },
+        ProofRule::ProofRef(fact) => ProtoRule::ProofRef { fact: fact.clone() },
     }
 }
 
-/// Recursively format a proof tree node with indentation.
-fn format_proof_node(steps: &[ProofStep], idx: u32, indent: usize, out: &mut String) {
-    let step = &steps[idx as usize];
-    for _ in 0..indent {
-        out.push_str("  ");
+/// Convert a WIT ProofTrace to the protocol wire type for shared formatting.
+fn trace_to_proto(trace: &ProofTrace) -> ProtoTrace {
+    ProtoTrace {
+        steps: trace
+            .steps
+            .iter()
+            .map(|s| ProtoStep {
+                rule: rule_to_proto(&s.rule),
+                holds: s.holds,
+                children: s.children.clone(),
+            })
+            .collect(),
+        root: trace.root,
     }
-    out.push_str(&format_rule(&step.rule, step.holds));
-    out.push('\n');
-    for &child in &step.children {
-        format_proof_node(steps, child, indent + 1, out);
-    }
-}
-
-/// Format an entire proof trace as an indented tree string.
-fn format_proof_trace(trace: &ProofTrace) -> String {
-    let mut out = String::new();
-    format_proof_node(&trace.steps, trace.root, 1, &mut out);
-    out
 }
 
 /// Try built-in arithmetic evaluation for a single predicate.
@@ -1187,7 +1204,7 @@ fn main() -> Result<()> {
                         Ok(Ok((result, trace))) => {
                             let tag = if result { "TRUE" } else { "FALSE" };
                             println!("[Query] {}", tag);
-                            print!("{}", format_proof_trace(&trace));
+                            print!("{}", trace_to_proto(&trace).to_pretty_text_with_indent(1));
                         }
                         Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                         Err(e) => println!("{}", format_host_error(&e)),

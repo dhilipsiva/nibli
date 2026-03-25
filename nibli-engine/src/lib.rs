@@ -314,49 +314,40 @@ enum NibliError {
     Logji(logji_err::NibliError),
 }
 
-fn format_gerna_error(e: &gerna_err::NibliError) -> String {
-    match e {
-        gerna_err::NibliError::Syntax(d) => {
-            format!("[Syntax Error] line {}:{}: {}", d.line, d.column, d.message)
+macro_rules! format_nibli_error {
+    ($e:expr, $syntax:pat => $sd:ident, $semantic:pat => $sm:ident, $reasoning:pat => $rm:ident, $backend:pat => ($bk:ident, $bm:ident)) => {
+        match $e {
+            $syntax => format!("[Syntax Error] line {}:{}: {}", $sd.line, $sd.column, $sd.message),
+            $semantic => format!("[Semantic Error] {}", $sm),
+            $reasoning => format!("[Reasoning Error] {}", $rm),
+            $backend => format!("[Backend Error] {} — {}", $bk, $bm),
         }
-        gerna_err::NibliError::Semantic(msg) => format!("[Semantic Error] {}", msg),
-        gerna_err::NibliError::Reasoning(msg) => format!("[Reasoning Error] {}", msg),
-        gerna_err::NibliError::Backend((kind, msg)) => {
-            format!("[Backend Error] {} — {}", kind, msg)
-        }
-    }
-}
-
-fn format_smuni_error(e: &smuni_err::NibliError) -> String {
-    match e {
-        smuni_err::NibliError::Syntax(d) => {
-            format!("[Syntax Error] line {}:{}: {}", d.line, d.column, d.message)
-        }
-        smuni_err::NibliError::Semantic(msg) => format!("[Semantic Error] {}", msg),
-        smuni_err::NibliError::Reasoning(msg) => format!("[Reasoning Error] {}", msg),
-        smuni_err::NibliError::Backend((kind, msg)) => {
-            format!("[Backend Error] {} — {}", kind, msg)
-        }
-    }
+    };
 }
 
 fn format_logji_error(e: &logji_err::NibliError) -> String {
-    match e {
-        logji_err::NibliError::Syntax(d) => {
-            format!("[Syntax Error] line {}:{}: {}", d.line, d.column, d.message)
-        }
-        logji_err::NibliError::Semantic(msg) => format!("[Semantic Error] {}", msg),
-        logji_err::NibliError::Reasoning(msg) => format!("[Reasoning Error] {}", msg),
-        logji_err::NibliError::Backend((kind, msg)) => {
-            format!("[Backend Error] {} — {}", kind, msg)
-        }
-    }
+    format_nibli_error!(e,
+        logji_err::NibliError::Syntax(d) => d,
+        logji_err::NibliError::Semantic(m) => m,
+        logji_err::NibliError::Reasoning(m) => m,
+        logji_err::NibliError::Backend((k, m)) => (k, m)
+    )
 }
 
 fn format_error(e: &NibliError) -> String {
     match e {
-        NibliError::Gerna(e) => format_gerna_error(e),
-        NibliError::Smuni(e) => format_smuni_error(e),
+        NibliError::Gerna(e) => format_nibli_error!(e,
+            gerna_err::NibliError::Syntax(d) => d,
+            gerna_err::NibliError::Semantic(m) => m,
+            gerna_err::NibliError::Reasoning(m) => m,
+            gerna_err::NibliError::Backend((k, m)) => (k, m)
+        ),
+        NibliError::Smuni(e) => format_nibli_error!(e,
+            smuni_err::NibliError::Syntax(d) => d,
+            smuni_err::NibliError::Semantic(m) => m,
+            smuni_err::NibliError::Reasoning(m) => m,
+            smuni_err::NibliError::Backend((k, m)) => (k, m)
+        ),
         NibliError::Logji(e) => format_logji_error(e),
     }
 }

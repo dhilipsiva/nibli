@@ -4,9 +4,7 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 1: Pipeline Efficiency (Medium Effort, High Impact)
 
-4. **Consolidate proof trace + error formatting** — Proof tree formatting in both `nibli-protocol/src/lib.rs` and `gasnu/src/main.rs`. Error formatting repeated 3× in `nibli-engine/src/lib.rs`. Term serialization duplicated between `lasna` and `nibli-engine`. Consolidate to `nibli-protocol`. ~130 lines saved.
-
-10. **known_rules dedup key** — `HashSet<String>` uses full serialized rule as dedup key. Switch to structural hash of typed conditions/conclusions for O(1) dedup instead of O(k) string hashing.
+4. **known_rules dedup key** — `HashSet<String>` uses full serialized rule as dedup key. Switch to structural hash of typed conditions/conclusions for O(1) dedup instead of O(k) string hashing.
 
 ## Tier 3: Architecture (High Effort, High Impact)
 
