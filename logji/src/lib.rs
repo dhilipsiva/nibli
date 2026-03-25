@@ -44,7 +44,7 @@ use rules::*;
 // These types replace the internal representation string layer. Facts are stored and
 // matched structurally instead of via string serialization/tokenization.
 
-/// A ground term — the typed replacement for legacy term strings.
+/// A ground term — the typed representation of a ground term.
 /// Implements Hash/Eq for direct use in HashSet-based fact stores.
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum GroundTerm {
@@ -369,7 +369,7 @@ struct KnowledgeBaseInner {
     known_descriptions: HashSet<String>,
     known_rules: HashSet<String>,
     skolem_fn_registry: Vec<SkolemFnEntry>,
-    /// Typed ground facts — the fact store (replaced legacy sorted vector).
+    /// Typed ground facts — the canonical fact store.
     typed_facts: HashSet<StoredFact>,
     /// Typed predicate index: relation name → set of StoredFacts.
     typed_predicate_facts: HashMap<String, HashSet<StoredFact>>,

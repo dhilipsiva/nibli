@@ -503,12 +503,12 @@ pub(super) fn generate_count_extra_witnesses(
 // ─── Typed Fact Builders (Phase 2 — parallel path) ───────────────
 //
 // These functions build StoredFact/GroundTerm directly from LogicBuffer,
-// bypassing the legacy string layer entirely.
+// bypassing string serialization entirely.
 
 /// Convert a LogicalTerm + Skolem substitutions to a GroundTerm.
 /// `subs` maps variable names to either:
 ///   - Raw Skolem names (e.g., "sk_0") during assertion
-///   - Legacy formatted values (e.g., `(Const "adam")`) during query
+///   - Parenthesized values (e.g., `(Const "adam")`) during query
 /// This function handles both formats via `parse_repr_to_ground_term()`.
 pub(super) fn build_ground_term(
     term: &LogicalTerm,
@@ -521,7 +521,7 @@ pub(super) fn build_ground_term(
                     // Dependent Skolem — left as a variable (handled by rule compilation)
                     GroundTerm::PatternVar(v.clone())
                 } else if sk.starts_with('(') {
-                    // Legacy formatted value from query subs — parse it.
+                    // Parenthesized value from query subs — parse it.
                     parse_repr_to_ground_term(sk)
                 } else {
                     // Raw Skolem constant name from assertion subs.
@@ -539,7 +539,7 @@ pub(super) fn build_ground_term(
     }
 }
 
-/// Parse an legacy term string into a GroundTerm.
+/// Parse an internal term string into a GroundTerm.
 /// Handles: (Const "name"), (Desc "name"), (Num N), (Zoe), (SkolemFn "name" dep), (DepPair a b)
 pub(super) fn parse_repr_to_ground_term(fact_repr: &str) -> GroundTerm {
     if let Some(rest) = fact_repr.strip_prefix("(Const \"") {

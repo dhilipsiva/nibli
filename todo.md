@@ -10,7 +10,7 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 2: Pipeline Efficiency (Medium Effort, High Impact)
 
-4. **Migrate `subs` HashMap from `String` to `GroundTerm`** — `check_formula_holds()`, `check_formula_holds_traced()`, and `find_witnesses()` all use `HashMap<String, String>` where values are legacy-formatted strings like `(Const "adam")`. Every predicate leaf parses these strings via `parse_repr_to_ground_term()`. Change to `HashMap<String, GroundTerm>` and build GroundTerms from domain members directly. Eliminates per-query string parsing overhead. Touches: `logji/src/reasoning.rs`, `logji/src/lib.rs`.
+4. **Migrate `subs` HashMap from `String` to `GroundTerm`** — `check_formula_holds()`, `check_formula_holds_traced()`, and `find_witnesses()` all use `HashMap<String, String>` where values are parenthesized strings like `(Const "adam")`. Every predicate leaf parses these strings via `parse_repr_to_ground_term()`. Change to `HashMap<String, GroundTerm>` and build GroundTerms from domain members directly. Eliminates per-query string parsing overhead. Touches: `logji/src/reasoning.rs`, `logji/src/lib.rs`.
 
 5. **Cache backward-chaining candidate vectors** — `try_backward_chain_typed()` allocates a `Vec<String>` from `all_domain_members()` inside the per-rule loop (4 call sites in reasoning.rs). For R rules × S SkolemFn entries, this is R×S temporary vector allocations per query. Cache the member string vector alongside the domain cache (invalidate together). ~10 lines.
 

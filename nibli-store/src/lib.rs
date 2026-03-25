@@ -76,32 +76,8 @@ pub struct StoredFactRecord {
     pub predicates: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct LegacyStoredFactRecord {
-    id: u64,
-    payload: Vec<u8>,
-    label: String,
-    retracted: bool,
-    node_id: String,
-    hlc_timestamp: u64,
-}
-
 fn decode_stored_fact_record(bytes: &[u8]) -> Result<StoredFactRecord, StoreError> {
-    match postcard::from_bytes(bytes) {
-        Ok(record) => Ok(record),
-        Err(_) => {
-            let legacy: LegacyStoredFactRecord = postcard::from_bytes(bytes)?;
-            Ok(StoredFactRecord {
-                id: legacy.id,
-                payload: legacy.payload,
-                label: legacy.label,
-                retracted: legacy.retracted,
-                node_id: legacy.node_id,
-                hlc_timestamp: legacy.hlc_timestamp,
-                predicates: Vec::new(),
-            })
-        }
-    }
+    Ok(postcard::from_bytes(bytes)?)
 }
 
 /// Assertion type for gasnu (WASM host) persistence.
@@ -1147,46 +1123,4 @@ mod tests {
         cleanup(&remote_path);
     }
 
-    #[test]
-    fn test_export_all_backfills_predicates_from_legacy_index() {
-        #[derive(Serialize)]
-        struct LegacyStoredFactRecord {
-            id: u64,
-            payload: Vec<u8>,
-            label: String,
-            retracted: bool,
-            node_id: String,
-            hlc_timestamp: u64,
-        }
-
-        let path = temp_db_path("legacy_export_backfill");
-        cleanup(&path);
-
-        let store = NibliStore::open(&path, "node".into()).unwrap();
-        let legacy = LegacyStoredFactRecord {
-            id: 1,
-            payload: vec![42],
-            label: "legacy".into(),
-            retracted: false,
-            node_id: "node".into(),
-            hlc_timestamp: 1,
-        };
-        let legacy_bytes = postcard::to_allocvec(&legacy).unwrap();
-
-        let txn = store.db.begin_write().unwrap();
-        {
-            let mut facts = txn.open_table(FACTS_TABLE).unwrap();
-            facts.insert(1, legacy_bytes.as_slice()).unwrap();
-            let mut pred_idx = txn.open_table(PREDICATE_INDEX_TABLE).unwrap();
-            let idx_bytes = postcard::to_allocvec(&vec![1u64]).unwrap();
-            pred_idx.insert("gerku", idx_bytes.as_slice()).unwrap();
-        }
-        txn.commit().unwrap();
-
-        let exported = store.export_all().unwrap();
-        assert_eq!(exported.len(), 1);
-        assert_eq!(exported[0].predicates, vec!["gerku"]);
-
-        cleanup(&path);
-    }
 }

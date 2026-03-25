@@ -670,7 +670,7 @@ impl<'a> Iterator for TypedMultiCartesian<'a> {
 // ─── Typed Traced Backward-Chaining ──────────────────────────────
 //
 // Typed equivalents of trace_predicate_provenance() and try_backward_chain_traced()
-// that use StoredFact and unify_facts() instead of legacy string operations.
+// that use StoredFact and unify_facts() using structural unification.
 
 /// Typed trace_predicate_provenance: check if fact holds and build proof step.
 pub(super) fn trace_predicate_provenance_typed(
