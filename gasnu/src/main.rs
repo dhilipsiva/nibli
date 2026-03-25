@@ -321,9 +321,9 @@ fn format_proof_trace(trace: &ProofTrace) -> String {
 /// Returns Some(bool) for pilji/sumji/dilcu with 3+ numeric args.
 fn try_builtin_arithmetic(relation: &str, args: &[compute_backend::LogicalTerm]) -> Option<bool> {
     use compute_backend::LogicalTerm;
-    let extract_num = |t: &LogicalTerm| -> Option<i64> {
+    let extract_num = |t: &LogicalTerm| -> Option<f64> {
         if let LogicalTerm::Number(n) = t {
-            Some(*n as i64)
+            Some(*n)
         } else {
             None
         }
@@ -338,7 +338,7 @@ fn try_builtin_arithmetic(relation: &str, args: &[compute_backend::LogicalTerm])
                 "pilji" => Some(x1 == x2 * x3),
                 "sumji" => Some(x1 == x2 + x3),
                 "dilcu" => {
-                    if x3 == 0 {
+                    if x3 == 0.0 {
                         Some(false)
                     } else {
                         Some(x1 == x2 / x3)
@@ -1680,6 +1680,62 @@ mod tests {
             compute_backend::LogicalTerm::Number(3.0),
         ];
         assert_eq!(host.evaluate("dilcu".to_string(), args).unwrap(), false);
+    }
+
+    #[test]
+    fn test_builtin_sumji_fractional_correct() {
+        let mut host = make_host(None);
+        let args = vec![
+            compute_backend::LogicalTerm::Number(2.5),
+            compute_backend::LogicalTerm::Number(1.0),
+            compute_backend::LogicalTerm::Number(1.5),
+        ];
+        assert_eq!(host.evaluate("sumji".to_string(), args).unwrap(), true);
+    }
+
+    #[test]
+    fn test_builtin_dilcu_fractional_correct() {
+        let mut host = make_host(None);
+        let args = vec![
+            compute_backend::LogicalTerm::Number(2.5),
+            compute_backend::LogicalTerm::Number(5.0),
+            compute_backend::LogicalTerm::Number(2.0),
+        ];
+        assert_eq!(host.evaluate("dilcu".to_string(), args).unwrap(), true);
+    }
+
+    #[test]
+    fn test_evaluate_batch_keeps_fractional_builtin_arithmetic_local() {
+        let mut host = make_host(None);
+        let requests = vec![
+            compute_backend::ComputeRequest {
+                relation: "sumji".to_string(),
+                args: vec![
+                    compute_backend::LogicalTerm::Number(2.5),
+                    compute_backend::LogicalTerm::Number(1.0),
+                    compute_backend::LogicalTerm::Number(1.5),
+                ],
+            },
+            compute_backend::ComputeRequest {
+                relation: "dilcu".to_string(),
+                args: vec![
+                    compute_backend::LogicalTerm::Number(2.5),
+                    compute_backend::LogicalTerm::Number(5.0),
+                    compute_backend::LogicalTerm::Number(2.0),
+                ],
+            },
+        ];
+
+        let results = host.evaluate_batch(requests);
+        assert_eq!(results.len(), 2);
+        assert!(matches!(
+            results[0],
+            compute_backend::ComputeResult::Ok(true)
+        ));
+        assert!(matches!(
+            results[1],
+            compute_backend::ComputeResult::Ok(true)
+        ));
     }
 
     // ─── parse_assert_args edge cases ────────────────────────────

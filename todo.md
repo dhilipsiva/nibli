@@ -9,10 +9,6 @@ Order matters:
 
 ## Phase 1 - Distributed Correctness
 
-- [ ] 7. Fix numeric correctness in `gasnu`.
-  Targets: `gasnu/src/main.rs`
-  Stop truncating `f64` inputs to `i64` in built-in arithmetic. Fix both single and batch compute paths and add regression tests for fractional inputs.
-
 - [ ] 8. Add persistence and replay tests that span store plus engine.
   Targets: `nibli-store/src/lib.rs`, `nibli-engine/tests/integration.rs`, `tavla/tests/gossip.rs`
   Cover: open, assert, restart, replay, retract, restart, merge remote, rebuild, and query.
