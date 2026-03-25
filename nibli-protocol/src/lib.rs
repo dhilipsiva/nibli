@@ -400,9 +400,7 @@ mod tests {
     #[test]
     fn test_humanize_multi_arg() {
         assert_eq!(
-            humanize_sexp(
-                r#"(Pred "klama" (Cons (Const "adam") (Cons (Const "paris") (Nil))))"#
-            ),
+            humanize_sexp(r#"(Pred "klama" (Cons (Const "adam") (Cons (Const "paris") (Nil))))"#),
             "klama(adam, paris)"
         );
     }
@@ -442,9 +440,7 @@ mod tests {
     #[test]
     fn test_humanize_dep_pair_skolem() {
         assert_eq!(
-            humanize_sexp(
-                r#"(SkolemFn "sk_2" (DepPair (Const "adam") (Const "bob")))"#
-            ),
+            humanize_sexp(r#"(SkolemFn "sk_2" (DepPair (Const "adam") (Const "bob")))"#),
             "sk_2(adam, bob)"
         );
     }
@@ -489,10 +485,7 @@ pub enum GossipEvent {
     },
     /// Peer connected or disconnected.
     #[serde(rename = "peer_change")]
-    PeerChange {
-        peer_id: String,
-        connected: bool,
-    },
+    PeerChange { peer_id: String, connected: bool },
     /// Sync completed with a peer.
     #[serde(rename = "sync")]
     Sync {
@@ -579,7 +572,9 @@ impl ProofRule {
             Self::Negation => "¬",
             Self::ModalPassthrough { .. } => "◷",
             Self::ExistsWitness { .. } | Self::ExistsFailed => "∃",
-            Self::ForallVacuous | Self::ForallVerified { .. } | Self::ForallCounterexample { .. } => "∀",
+            Self::ForallVacuous
+            | Self::ForallVerified { .. }
+            | Self::ForallCounterexample { .. } => "∀",
             Self::CountResult { .. } => "#",
             Self::PredicateCheck { .. } | Self::ComputeCheck { .. } => "⊢",
             Self::Asserted { .. } => "▣",
@@ -603,8 +598,12 @@ impl ProofRule {
                 let names: Vec<String> = entities.iter().map(|t| t.display()).collect();
                 format!("Verified: [{}]", names.join(", "))
             }
-            Self::ForallCounterexample { entity } => format!("Counterexample: {}", entity.display()),
-            Self::CountResult { expected, actual } => format!("Count: expected {}, got {}", expected, actual),
+            Self::ForallCounterexample { entity } => {
+                format!("Counterexample: {}", entity.display())
+            }
+            Self::CountResult { expected, actual } => {
+                format!("Count: expected {}, got {}", expected, actual)
+            }
             Self::PredicateCheck { method, detail } => {
                 format!("Predicate ({}): {}", method, humanize_sexp(detail))
             }

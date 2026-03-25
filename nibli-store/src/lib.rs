@@ -108,7 +108,10 @@ impl std::fmt::Display for StoreError {
             StoreError::Serialization(msg) => write!(f, "serialization error: {msg}"),
             StoreError::NotFound(id) => write!(f, "fact {id} not found"),
             StoreError::SchemaVersion { expected, found } => {
-                write!(f, "schema version mismatch: expected {expected}, found {found}")
+                write!(
+                    f,
+                    "schema version mismatch: expected {expected}, found {found}"
+                )
             }
         }
     }
@@ -391,7 +394,10 @@ impl NibliStore {
         {
             let mut facts = txn.open_table(FACTS_TABLE)?;
             // Collect keys first to avoid borrow conflict.
-            let keys: Vec<u64> = facts.iter()?.map(|e| e.map(|(k, _)| k.value())).collect::<Result<_, _>>()?;
+            let keys: Vec<u64> = facts
+                .iter()?
+                .map(|e| e.map(|(k, _)| k.value()))
+                .collect::<Result<_, _>>()?;
             for key in keys {
                 facts.remove(key)?;
             }
@@ -425,7 +431,10 @@ impl NibliStore {
 
     /// Merge facts from a remote node using 2P-Set semantics.
     /// Tombstone wins: once retracted, stays retracted.
-    pub fn merge_remote(&mut self, remote_facts: Vec<StoredFactRecord>) -> Result<MergeResult, StoreError> {
+    pub fn merge_remote(
+        &mut self,
+        remote_facts: Vec<StoredFactRecord>,
+    ) -> Result<MergeResult, StoreError> {
         let mut result = MergeResult::default();
 
         let txn = self.db.begin_write()?;
@@ -460,8 +469,7 @@ impl NibliStore {
                             // Tombstone wins — apply retraction.
                             let mut merged = local;
                             merged.retracted = true;
-                            merged.hlc_timestamp =
-                                merged.hlc_timestamp.max(remote.hlc_timestamp);
+                            merged.hlc_timestamp = merged.hlc_timestamp.max(remote.hlc_timestamp);
                             let bytes = postcard::to_allocvec(&merged)?;
                             table.insert(merged.id, bytes.as_slice())?;
                             result.tombstoned += 1;
@@ -881,8 +889,12 @@ mod tests {
 
         // Remote has facts 2 and 3
         let mut remote = NibliStore::open(&remote_path, "node-b".into()).unwrap();
-        remote.insert_fact(2, "remote fact 2".into(), vec![2]).unwrap();
-        remote.insert_fact(3, "remote fact 3".into(), vec![3]).unwrap();
+        remote
+            .insert_fact(2, "remote fact 2".into(), vec![2])
+            .unwrap();
+        remote
+            .insert_fact(3, "remote fact 3".into(), vec![3])
+            .unwrap();
         drop(remote);
 
         // Merge remote into local

@@ -76,18 +76,17 @@ fn classify_cmavo(text: &str) -> Option<Selmaho> {
         // FA — Place tags
         "fa" | "fe" | "fi" | "fo" | "fu" => Some(Selmaho::FA),
         // JA — Selbri connectives (+ nai compounds)
-        "je" | "ja" | "jo" | "ju"
-        | "jenai" | "janai" | "jonai" | "junai" => Some(Selmaho::JA),
+        "je" | "ja" | "jo" | "ju" | "jenai" | "janai" | "jonai" | "junai" => Some(Selmaho::JA),
         // A — Sumti connectives (+ nai)
         "e" | "a" | "o" | "u" => Some(Selmaho::A),
         // GA — Forethought connectives (+ nai compounds)
-        "ge" | "ga" | "go" | "gu"
-        | "ganai" | "genai" | "ginai" | "gonai" | "gunai" => Some(Selmaho::GA),
+        "ge" | "ga" | "go" | "gu" | "ganai" | "genai" | "ginai" | "gonai" | "gunai" => {
+            Some(Selmaho::GA)
+        }
         // GI — Forethought separator
         "gi" => Some(Selmaho::GI),
         // PU — Tense (+ nai compounds)
-        "pu" | "ca" | "ba"
-        | "punai" | "canai" | "banai" => Some(Selmaho::PU),
+        "pu" | "ca" | "ba" | "punai" | "canai" | "banai" => Some(Selmaho::PU),
         // NU — Abstractions
         "nu" | "du'u" | "ka" | "ni" | "si'o" => Some(Selmaho::NU),
         // BAI — Modal tags
@@ -97,8 +96,9 @@ fn classify_cmavo(text: &str) -> Option<Selmaho> {
         // NA — Negation
         "na" | "nai" => Some(Selmaho::NA),
         // KU — Terminators (grouped as one class)
-        "ku" | "kei" | "vau" | "ku'o" | "ke'e" | "be'o" | "fe'u" | "li'u" | "lo'o"
-            => Some(Selmaho::KU),
+        "ku" | "kei" | "vau" | "ku'o" | "ke'e" | "be'o" | "fe'u" | "li'u" | "lo'o" => {
+            Some(Selmaho::KU)
+        }
         // KE — Grouping
         "ke" => Some(Selmaho::KE),
         // BE — Sumti raising
@@ -116,8 +116,9 @@ fn classify_cmavo(text: &str) -> Option<Selmaho> {
         // GOhI — Pro-bridi
         "go'i" => Some(Selmaho::GOhI),
         // PA — Numbers and quantifiers
-        "pa" | "re" | "ci" | "vo" | "mu" | "xa" | "ze" | "bi" | "so" | "no"
-        | "ro" | "su'o" => Some(Selmaho::PA),
+        "pa" | "re" | "ci" | "vo" | "mu" | "xa" | "ze" | "bi" | "so" | "no" | "ro" | "su'o" => {
+            Some(Selmaho::PA)
+        }
         // FIhO — Custom modal
         "fi'o" => Some(Selmaho::FIhO),
         // DA — Logic variables
@@ -127,8 +128,7 @@ fn classify_cmavo(text: &str) -> Option<Selmaho> {
         // KEhA — Relative variable
         "ke'a" => Some(Selmaho::KEhA),
         // Pro-sumti
-        "mi" | "do" | "ko" | "ti" | "ta" | "tu"
-        | "ri" | "ra" | "ru" | "zo'e" => Some(Selmaho::COI),
+        "mi" | "do" | "ko" | "ti" | "ta" | "tu" | "ri" | "ra" | "ru" | "zo'e" => Some(Selmaho::COI),
         // Attitudinals — treat as NA-class for erasure purposes
         "ei" | "e'e" => Some(Selmaho::NA),
         // Unrecognized cmavo — no classification
@@ -180,9 +180,8 @@ pub fn preprocess<'a>(
                 // The token after `sa` is NOT consumed — it stays in the stream as the
                 // "restart" point for parsing.
                 if let Some((next_tok, next_text)) = iter.peek() {
-                    let target_class = classify_selmaho(
-                        &NormalizedToken::Standard(next_tok.clone(), next_text),
-                    );
+                    let target_class =
+                        classify_selmaho(&NormalizedToken::Standard(next_tok.clone(), next_text));
                     if let Some(target) = target_class {
                         // Walk backward to find the first token of the same class
                         let mut found = None;
@@ -342,10 +341,22 @@ mod tests {
         let input = "lo gerku cu klama sa lo mlatu cu sutra";
         let result = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 4);
-        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Cmavo, "lo"));
-        assert_eq!(result[1], NormalizedToken::Standard(LojbanToken::Gismu, "mlatu"));
-        assert_eq!(result[2], NormalizedToken::Standard(LojbanToken::Cmavo, "cu"));
-        assert_eq!(result[3], NormalizedToken::Standard(LojbanToken::Gismu, "sutra"));
+        assert_eq!(
+            result[0],
+            NormalizedToken::Standard(LojbanToken::Cmavo, "lo")
+        );
+        assert_eq!(
+            result[1],
+            NormalizedToken::Standard(LojbanToken::Gismu, "mlatu")
+        );
+        assert_eq!(
+            result[2],
+            NormalizedToken::Standard(LojbanToken::Cmavo, "cu")
+        );
+        assert_eq!(
+            result[3],
+            NormalizedToken::Standard(LojbanToken::Gismu, "sutra")
+        );
     }
 
     #[test]
@@ -363,9 +374,18 @@ mod tests {
         let input = "mi klama sa prami do";
         let result = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 3);
-        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Cmavo, "mi"));
-        assert_eq!(result[1], NormalizedToken::Standard(LojbanToken::Gismu, "prami"));
-        assert_eq!(result[2], NormalizedToken::Standard(LojbanToken::Cmavo, "do"));
+        assert_eq!(
+            result[0],
+            NormalizedToken::Standard(LojbanToken::Cmavo, "mi")
+        );
+        assert_eq!(
+            result[1],
+            NormalizedToken::Standard(LojbanToken::Gismu, "prami")
+        );
+        assert_eq!(
+            result[2],
+            NormalizedToken::Standard(LojbanToken::Cmavo, "do")
+        );
     }
 
     #[test]
@@ -383,9 +403,18 @@ mod tests {
         let input = "mi klama sa lo gerku";
         let result = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 3);
-        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Cmavo, "mi"));
-        assert_eq!(result[1], NormalizedToken::Standard(LojbanToken::Cmavo, "lo"));
-        assert_eq!(result[2], NormalizedToken::Standard(LojbanToken::Gismu, "gerku"));
+        assert_eq!(
+            result[0],
+            NormalizedToken::Standard(LojbanToken::Cmavo, "mi")
+        );
+        assert_eq!(
+            result[1],
+            NormalizedToken::Standard(LojbanToken::Cmavo, "lo")
+        );
+        assert_eq!(
+            result[2],
+            NormalizedToken::Standard(LojbanToken::Gismu, "gerku")
+        );
     }
 
     #[test]
@@ -416,17 +445,47 @@ mod tests {
         // Then continues with: lo, prenu, cu, sutra
         assert_eq!(result.len(), 10);
         // First part preserved: lo gerku cu barda . e
-        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Cmavo, "lo"));
-        assert_eq!(result[1], NormalizedToken::Standard(LojbanToken::Gismu, "gerku"));
-        assert_eq!(result[2], NormalizedToken::Standard(LojbanToken::Cmavo, "cu"));
-        assert_eq!(result[3], NormalizedToken::Standard(LojbanToken::Gismu, "barda"));
-        assert_eq!(result[4], NormalizedToken::Standard(LojbanToken::Pause, "."));
-        assert_eq!(result[5], NormalizedToken::Standard(LojbanToken::Cmavo, "e"));
+        assert_eq!(
+            result[0],
+            NormalizedToken::Standard(LojbanToken::Cmavo, "lo")
+        );
+        assert_eq!(
+            result[1],
+            NormalizedToken::Standard(LojbanToken::Gismu, "gerku")
+        );
+        assert_eq!(
+            result[2],
+            NormalizedToken::Standard(LojbanToken::Cmavo, "cu")
+        );
+        assert_eq!(
+            result[3],
+            NormalizedToken::Standard(LojbanToken::Gismu, "barda")
+        );
+        assert_eq!(
+            result[4],
+            NormalizedToken::Standard(LojbanToken::Pause, ".")
+        );
+        assert_eq!(
+            result[5],
+            NormalizedToken::Standard(LojbanToken::Cmavo, "e")
+        );
         // Replacement: lo prenu cu sutra
-        assert_eq!(result[6], NormalizedToken::Standard(LojbanToken::Cmavo, "lo"));
-        assert_eq!(result[7], NormalizedToken::Standard(LojbanToken::Gismu, "prenu"));
-        assert_eq!(result[8], NormalizedToken::Standard(LojbanToken::Cmavo, "cu"));
-        assert_eq!(result[9], NormalizedToken::Standard(LojbanToken::Gismu, "sutra"));
+        assert_eq!(
+            result[6],
+            NormalizedToken::Standard(LojbanToken::Cmavo, "lo")
+        );
+        assert_eq!(
+            result[7],
+            NormalizedToken::Standard(LojbanToken::Gismu, "prenu")
+        );
+        assert_eq!(
+            result[8],
+            NormalizedToken::Standard(LojbanToken::Cmavo, "cu")
+        );
+        assert_eq!(
+            result[9],
+            NormalizedToken::Standard(LojbanToken::Gismu, "sutra")
+        );
     }
 
     // ─── si (erase word) tests ─────────────────────────────────
@@ -444,9 +503,18 @@ mod tests {
         let input = "mi klama si prami do";
         let result = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 3);
-        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Cmavo, "mi"));
-        assert_eq!(result[1], NormalizedToken::Standard(LojbanToken::Gismu, "prami"));
-        assert_eq!(result[2], NormalizedToken::Standard(LojbanToken::Cmavo, "do"));
+        assert_eq!(
+            result[0],
+            NormalizedToken::Standard(LojbanToken::Cmavo, "mi")
+        );
+        assert_eq!(
+            result[1],
+            NormalizedToken::Standard(LojbanToken::Gismu, "prami")
+        );
+        assert_eq!(
+            result[2],
+            NormalizedToken::Standard(LojbanToken::Cmavo, "do")
+        );
     }
 
     #[test]
@@ -459,7 +527,10 @@ mod tests {
         let input = "si klama";
         let result = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Gismu, "klama"));
+        assert_eq!(
+            result[0],
+            NormalizedToken::Standard(LojbanToken::Gismu, "klama")
+        );
     }
 
     #[test]
@@ -475,7 +546,10 @@ mod tests {
         let input = "mi do si si klama";
         let result = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Gismu, "klama"));
+        assert_eq!(
+            result[0],
+            NormalizedToken::Standard(LojbanToken::Gismu, "klama")
+        );
     }
 
     // ─── su (erase stream) tests ──────────────────────────────
@@ -496,10 +570,22 @@ mod tests {
         let input = "mi klama do su lo gerku cu sutra";
         let result = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 4);
-        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Cmavo, "lo"));
-        assert_eq!(result[1], NormalizedToken::Standard(LojbanToken::Gismu, "gerku"));
-        assert_eq!(result[2], NormalizedToken::Standard(LojbanToken::Cmavo, "cu"));
-        assert_eq!(result[3], NormalizedToken::Standard(LojbanToken::Gismu, "sutra"));
+        assert_eq!(
+            result[0],
+            NormalizedToken::Standard(LojbanToken::Cmavo, "lo")
+        );
+        assert_eq!(
+            result[1],
+            NormalizedToken::Standard(LojbanToken::Gismu, "gerku")
+        );
+        assert_eq!(
+            result[2],
+            NormalizedToken::Standard(LojbanToken::Cmavo, "cu")
+        );
+        assert_eq!(
+            result[3],
+            NormalizedToken::Standard(LojbanToken::Gismu, "sutra")
+        );
     }
 
     #[test]
@@ -512,7 +598,10 @@ mod tests {
         let input = "su klama";
         let result = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Gismu, "klama"));
+        assert_eq!(
+            result[0],
+            NormalizedToken::Standard(LojbanToken::Gismu, "klama")
+        );
     }
 
     // ─── zo (quote next) tests ────────────────────────────────
@@ -530,20 +619,23 @@ mod tests {
         let result = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 3);
         assert_eq!(result[0], NormalizedToken::Quoted("klama"));
-        assert_eq!(result[1], NormalizedToken::Standard(LojbanToken::Cmavo, "cu"));
+        assert_eq!(
+            result[1],
+            NormalizedToken::Standard(LojbanToken::Cmavo, "cu")
+        );
     }
 
     #[test]
     fn test_zo_at_end_of_stream() {
         // "mi zo" → just "mi" (zo at end has no next token to quote)
-        let tokens = vec![
-            (LojbanToken::Cmavo, "mi"),
-            (LojbanToken::QuoteNext, "zo"),
-        ];
+        let tokens = vec![(LojbanToken::Cmavo, "mi"), (LojbanToken::QuoteNext, "zo")];
         let input = "mi zo";
         let result = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Cmavo, "mi"));
+        assert_eq!(
+            result[0],
+            NormalizedToken::Standard(LojbanToken::Cmavo, "mi")
+        );
     }
 
     // ─── zei (glue words) tests ───────────────────────────────
@@ -575,7 +667,10 @@ mod tests {
         let input = "skami zei pilno zei tadni";
         let result = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0], NormalizedToken::Glued(vec!["skami", "pilno", "tadni"]));
+        assert_eq!(
+            result[0],
+            NormalizedToken::Glued(vec!["skami", "pilno", "tadni"])
+        );
     }
 
     #[test]
@@ -589,7 +684,10 @@ mod tests {
         let result = preprocess(tokens.into_iter(), input);
         // zei pops nothing (output is empty), if-let fails, klama stays in stream
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Gismu, "klama"));
+        assert_eq!(
+            result[0],
+            NormalizedToken::Standard(LojbanToken::Gismu, "klama")
+        );
     }
 
     // ─── sa edge cases ────────────────────────────────────────
@@ -606,8 +704,14 @@ mod tests {
         let result = preprocess(tokens.into_iter(), input);
         // sa at end: peek returns None, nothing happens
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Cmavo, "mi"));
-        assert_eq!(result[1], NormalizedToken::Standard(LojbanToken::Gismu, "klama"));
+        assert_eq!(
+            result[0],
+            NormalizedToken::Standard(LojbanToken::Cmavo, "mi")
+        );
+        assert_eq!(
+            result[1],
+            NormalizedToken::Standard(LojbanToken::Gismu, "klama")
+        );
     }
 
     #[test]
@@ -625,9 +729,18 @@ mod tests {
         let result = preprocess(tokens.into_iter(), input);
         // Pause has no selmaho classification → fallback to single-word erase
         // Removes "klama", then ". sutra" continues
-        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Cmavo, "mi"));
-        assert_eq!(result[1], NormalizedToken::Standard(LojbanToken::Pause, "."));
-        assert_eq!(result[2], NormalizedToken::Standard(LojbanToken::Gismu, "sutra"));
+        assert_eq!(
+            result[0],
+            NormalizedToken::Standard(LojbanToken::Cmavo, "mi")
+        );
+        assert_eq!(
+            result[1],
+            NormalizedToken::Standard(LojbanToken::Pause, ".")
+        );
+        assert_eq!(
+            result[2],
+            NormalizedToken::Standard(LojbanToken::Gismu, "sutra")
+        );
     }
 
     // ─── classify_selmaho edge cases ──────────────────────────
@@ -700,7 +813,13 @@ mod tests {
         // Truncates to idx 1: [mi]
         // Then gerku is added: [mi, gerku]
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0], NormalizedToken::Standard(LojbanToken::Cmavo, "mi"));
-        assert_eq!(result[1], NormalizedToken::Standard(LojbanToken::Gismu, "gerku"));
+        assert_eq!(
+            result[0],
+            NormalizedToken::Standard(LojbanToken::Cmavo, "mi")
+        );
+        assert_eq!(
+            result[1],
+            NormalizedToken::Standard(LojbanToken::Gismu, "gerku")
+        );
     }
 }

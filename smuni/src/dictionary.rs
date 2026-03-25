@@ -101,22 +101,18 @@ mod tests {
     fn test_various_gismu_arities() {
         // Spot-check a range of common gismu with different arities
         let checks = vec![
-            ("mlatu", 2),  // cat: x1 is a cat of species x2
-            ("barda", 3),  // big: x1 is big in property x2 by standard x3
-            ("sutra", 2),  // fast: x1 is fast at x2
-            ("prenu", 1),  // person: x1 is a person
-            ("cmene", 3),  // name: x1 is a name of x2 used by x3
-            ("dunda", 3),  // give: x1 gives x2 to x3
-            ("pilji", 3),  // multiply: x1 is product of x2 and x3
-            ("sumji", 3),  // sum: x1 is sum of x2 and x3
+            ("mlatu", 2), // cat: x1 is a cat of species x2
+            ("barda", 3), // big: x1 is big in property x2 by standard x3
+            ("sutra", 2), // fast: x1 is fast at x2
+            ("prenu", 1), // person: x1 is a person
+            ("cmene", 3), // name: x1 is a name of x2 used by x3
+            ("dunda", 3), // give: x1 gives x2 to x3
+            ("pilji", 3), // multiply: x1 is product of x2 and x3
+            ("sumji", 3), // sum: x1 is sum of x2 and x3
         ];
         for (word, expected) in checks {
             let actual = JbovlasteSchema::get_arity(word);
-            assert!(
-                actual.is_some(),
-                "expected {} to be in dictionary",
-                word
-            );
+            assert!(actual.is_some(), "expected {} to be in dictionary", word);
             assert_eq!(
                 actual.unwrap(),
                 expected,

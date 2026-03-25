@@ -6,7 +6,10 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::path::Path;
 
-use nibli_protocol::{humanize_sexp, ProofTrace as ProofTraceJson, ProofStep as ProofStepJson, ProofRule as ProofRuleJson, LogicalTerm as LogicalTermJson};
+use nibli_protocol::{
+    LogicalTerm as LogicalTermJson, ProofRule as ProofRuleJson, ProofStep as ProofStepJson,
+    ProofTrace as ProofTraceJson, humanize_sexp,
+};
 use nibli_store::{NibliStore, StoredLogicBuffer, StoredLogicNode, StoredLogicalTerm};
 
 // ─── Type aliases for each crate's WIT-generated types ──────────────
@@ -130,9 +133,7 @@ fn convert_attitudinal(a: &gerna_ast::Attitudinal) -> smuni_ast::Attitudinal {
     }
 }
 
-fn convert_sentence_connective(
-    c: &gerna_ast::SentenceConnective,
-) -> smuni_ast::SentenceConnective {
+fn convert_sentence_connective(c: &gerna_ast::SentenceConnective) -> smuni_ast::SentenceConnective {
     match c {
         gerna_ast::SentenceConnective::GanaiGi => smuni_ast::SentenceConnective::GanaiGi,
         gerna_ast::SentenceConnective::GeGi => smuni_ast::SentenceConnective::GeGi,
@@ -181,9 +182,7 @@ fn convert_sumti(s: &gerna_ast::Sumti) -> smuni_ast::Sumti {
         gerna_ast::Sumti::Name(v) => smuni_ast::Sumti::Name(v.clone()),
         gerna_ast::Sumti::QuotedLiteral(v) => smuni_ast::Sumti::QuotedLiteral(v.clone()),
         gerna_ast::Sumti::Unspecified => smuni_ast::Sumti::Unspecified,
-        gerna_ast::Sumti::Tagged((t, id)) => {
-            smuni_ast::Sumti::Tagged((convert_place_tag(t), *id))
-        }
+        gerna_ast::Sumti::Tagged((t, id)) => smuni_ast::Sumti::Tagged((convert_place_tag(t), *id)),
         gerna_ast::Sumti::ModalTagged((mt, id)) => {
             smuni_ast::Sumti::ModalTagged((convert_modal_tag(mt), *id))
         }
@@ -247,18 +246,14 @@ fn convert_logical_term_s2l(t: &smuni_logic::LogicalTerm) -> logji_logic::Logica
 
 fn convert_logic_node_s2l(n: &smuni_logic::LogicNode) -> logji_logic::LogicNode {
     match n {
-        smuni_logic::LogicNode::Predicate((rel, args)) => {
-            logji_logic::LogicNode::Predicate((
-                rel.clone(),
-                args.iter().map(convert_logical_term_s2l).collect(),
-            ))
-        }
-        smuni_logic::LogicNode::ComputeNode((rel, args)) => {
-            logji_logic::LogicNode::ComputeNode((
-                rel.clone(),
-                args.iter().map(convert_logical_term_s2l).collect(),
-            ))
-        }
+        smuni_logic::LogicNode::Predicate((rel, args)) => logji_logic::LogicNode::Predicate((
+            rel.clone(),
+            args.iter().map(convert_logical_term_s2l).collect(),
+        )),
+        smuni_logic::LogicNode::ComputeNode((rel, args)) => logji_logic::LogicNode::ComputeNode((
+            rel.clone(),
+            args.iter().map(convert_logical_term_s2l).collect(),
+        )),
         smuni_logic::LogicNode::AndNode((l, r)) => logji_logic::LogicNode::AndNode((*l, *r)),
         smuni_logic::LogicNode::OrNode((l, r)) => logji_logic::LogicNode::OrNode((*l, *r)),
         smuni_logic::LogicNode::NotNode(id) => logji_logic::LogicNode::NotNode(*id),
@@ -271,12 +266,8 @@ fn convert_logic_node_s2l(n: &smuni_logic::LogicNode) -> logji_logic::LogicNode 
         smuni_logic::LogicNode::PastNode(id) => logji_logic::LogicNode::PastNode(*id),
         smuni_logic::LogicNode::PresentNode(id) => logji_logic::LogicNode::PresentNode(*id),
         smuni_logic::LogicNode::FutureNode(id) => logji_logic::LogicNode::FutureNode(*id),
-        smuni_logic::LogicNode::ObligatoryNode(id) => {
-            logji_logic::LogicNode::ObligatoryNode(*id)
-        }
-        smuni_logic::LogicNode::PermittedNode(id) => {
-            logji_logic::LogicNode::PermittedNode(*id)
-        }
+        smuni_logic::LogicNode::ObligatoryNode(id) => logji_logic::LogicNode::ObligatoryNode(*id),
+        smuni_logic::LogicNode::PermittedNode(id) => logji_logic::LogicNode::PermittedNode(*id),
         smuni_logic::LogicNode::CountNode((v, c, b)) => {
             logji_logic::LogicNode::CountNode((v.clone(), *c, *b))
         }
@@ -294,10 +285,7 @@ fn convert_logic_buffer_s2l(buf: &smuni_logic::LogicBuffer) -> logji_logic::Logi
 // COMPUTE NODE TRANSFORM
 // ═══════════════════════════════════════════════════════════════════════
 
-fn transform_compute_nodes(
-    buf: &mut smuni_logic::LogicBuffer,
-    compute_preds: &HashSet<String>,
-) {
+fn transform_compute_nodes(buf: &mut smuni_logic::LogicBuffer, compute_preds: &HashSet<String>) {
     let nodes = std::mem::take(&mut buf.nodes);
     buf.nodes = nodes
         .into_iter()
@@ -443,12 +431,7 @@ fn format_rule(rule: &logji_logic::ProofRule, result: bool) -> String {
     }
 }
 
-fn format_proof_node(
-    steps: &[logji_logic::ProofStep],
-    idx: u32,
-    indent: usize,
-    out: &mut String,
-) {
+fn format_proof_node(steps: &[logji_logic::ProofStep], idx: u32, indent: usize, out: &mut String) {
     let step = &steps[idx as usize];
     for _ in 0..indent {
         out.push_str("  ");
@@ -503,16 +486,16 @@ fn term_to_json(term: &logji_logic::LogicalTerm) -> LogicalTermJson {
 fn rule_to_json(rule: &logji_logic::ProofRule) -> ProofRuleJson {
     match rule {
         logji_logic::ProofRule::Conjunction => ProofRuleJson::Conjunction,
-        logji_logic::ProofRule::DisjunctionCheck(s) => ProofRuleJson::DisjunctionCheck {
-            detail: s.clone(),
-        },
-        logji_logic::ProofRule::DisjunctionIntro(s) => ProofRuleJson::DisjunctionIntro {
-            side: s.clone(),
-        },
+        logji_logic::ProofRule::DisjunctionCheck(s) => {
+            ProofRuleJson::DisjunctionCheck { detail: s.clone() }
+        }
+        logji_logic::ProofRule::DisjunctionIntro(s) => {
+            ProofRuleJson::DisjunctionIntro { side: s.clone() }
+        }
         logji_logic::ProofRule::Negation => ProofRuleJson::Negation,
-        logji_logic::ProofRule::ModalPassthrough(s) => ProofRuleJson::ModalPassthrough {
-            kind: s.clone(),
-        },
+        logji_logic::ProofRule::ModalPassthrough(s) => {
+            ProofRuleJson::ModalPassthrough { kind: s.clone() }
+        }
         logji_logic::ProofRule::ExistsWitness((var, term)) => ProofRuleJson::ExistsWitness {
             var: var.clone(),
             term: term_to_json(term),
@@ -522,21 +505,17 @@ fn rule_to_json(rule: &logji_logic::ProofRule) -> ProofRuleJson {
         logji_logic::ProofRule::ForallVerified(entities) => ProofRuleJson::ForallVerified {
             entities: entities.iter().map(term_to_json).collect(),
         },
-        logji_logic::ProofRule::ForallCounterexample(term) => {
-            ProofRuleJson::ForallCounterexample {
-                entity: term_to_json(term),
-            }
-        }
+        logji_logic::ProofRule::ForallCounterexample(term) => ProofRuleJson::ForallCounterexample {
+            entity: term_to_json(term),
+        },
         logji_logic::ProofRule::CountResult((expected, actual)) => ProofRuleJson::CountResult {
             expected: *expected,
             actual: *actual,
         },
-        logji_logic::ProofRule::PredicateCheck((method, detail)) => {
-            ProofRuleJson::PredicateCheck {
-                method: method.clone(),
-                detail: detail.clone(),
-            }
-        }
+        logji_logic::ProofRule::PredicateCheck((method, detail)) => ProofRuleJson::PredicateCheck {
+            method: method.clone(),
+            detail: detail.clone(),
+        },
         logji_logic::ProofRule::ComputeCheck((method, detail)) => ProofRuleJson::ComputeCheck {
             method: method.clone(),
             detail: detail.clone(),
@@ -618,12 +597,14 @@ fn node_to_stored(n: &logji_logic::LogicNode) -> StoredLogicNode {
 
 fn node_from_stored(n: &StoredLogicNode) -> logji_logic::LogicNode {
     match n {
-        StoredLogicNode::Predicate(rel, args) => {
-            logji_logic::LogicNode::Predicate((rel.clone(), args.iter().map(term_from_stored).collect()))
-        }
-        StoredLogicNode::ComputeNode(rel, args) => {
-            logji_logic::LogicNode::ComputeNode((rel.clone(), args.iter().map(term_from_stored).collect()))
-        }
+        StoredLogicNode::Predicate(rel, args) => logji_logic::LogicNode::Predicate((
+            rel.clone(),
+            args.iter().map(term_from_stored).collect(),
+        )),
+        StoredLogicNode::ComputeNode(rel, args) => logji_logic::LogicNode::ComputeNode((
+            rel.clone(),
+            args.iter().map(term_from_stored).collect(),
+        )),
         StoredLogicNode::And(l, r) => logji_logic::LogicNode::AndNode((*l, *r)),
         StoredLogicNode::Or(l, r) => logji_logic::LogicNode::OrNode((*l, *r)),
         StoredLogicNode::Not(id) => logji_logic::LogicNode::NotNode(*id),
@@ -704,8 +685,8 @@ impl NibliEngine {
             .all_active_facts()
             .map_err(|e| format!("Store error: {e}"))?;
         for fact in &facts {
-            let stored_buf: StoredLogicBuffer =
-                postcard::from_bytes(&fact.payload).map_err(|e| format!("Deserialize error: {e}"))?;
+            let stored_buf: StoredLogicBuffer = postcard::from_bytes(&fact.payload)
+                .map_err(|e| format!("Deserialize error: {e}"))?;
             let buf = buf_from_stored(&stored_buf);
             self.kb
                 .assert_fact_with_id(buf, fact.label.clone(), fact.id)
@@ -719,13 +700,12 @@ impl NibliEngine {
 
     /// Validate Lojban text without asserting — returns Ok if it parses and compiles.
     pub fn validate(&self, text: &str) -> Result<(), String> {
-        self.compile_text(text).map(|_| ()).map_err(|e| format_error(&e))
+        self.compile_text(text)
+            .map(|_| ())
+            .map_err(|e| format_error(&e))
     }
 
-    fn compile_text(
-        &self,
-        input: &str,
-    ) -> Result<logji_logic::LogicBuffer, NibliError> {
+    fn compile_text(&self, input: &str) -> Result<logji_logic::LogicBuffer, NibliError> {
         let parse_result =
             gerna::parse_text_native(input.to_string()).map_err(NibliError::Gerna)?;
 
@@ -746,8 +726,11 @@ impl NibliEngine {
         }
 
         if !parse_result.errors.is_empty() {
-            let warnings: Vec<String> =
-                parse_result.errors.iter().map(|e| e.message.clone()).collect();
+            let warnings: Vec<String> = parse_result
+                .errors
+                .iter()
+                .map(|e| e.message.clone())
+                .collect();
             return Err(NibliError::Gerna(gerna_err::NibliError::Syntax(
                 gerna_err::SyntaxDetail {
                     message: format!(
@@ -762,8 +745,7 @@ impl NibliEngine {
         }
 
         let smuni_ast = convert_ast_buffer(&parse_result.buffer);
-        let mut smuni_buf =
-            smuni::compile_buffer_native(smuni_ast).map_err(NibliError::Smuni)?;
+        let mut smuni_buf = smuni::compile_buffer_native(smuni_ast).map_err(NibliError::Smuni)?;
         transform_compute_nodes(&mut smuni_buf, &self.compute_predicates);
         let logji_buf = convert_logic_buffer_s2l(&smuni_buf);
         Ok(logji_buf)
@@ -783,7 +765,8 @@ impl NibliEngine {
         let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
         // Assert to logji first (get fact_id), then persist to store.
         let stored_buf = buf_to_stored(&buf);
-        let fact_id = self.kb
+        let fact_id = self
+            .kb
             .assert_fact(buf, text.to_string())
             .map_err(|e| format_logji_error(&e))?;
         if let Ok(mut store) = self.store.try_borrow_mut() {

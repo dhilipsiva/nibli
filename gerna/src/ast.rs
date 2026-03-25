@@ -187,7 +187,10 @@ pub enum Selbri<'a> {
     Grouped(&'a Selbri<'a>),
 
     /// Selbri with bound arguments: selbri + be sumti (bei sumti)* [be'o]
-    WithArgs { core: &'a Selbri<'a>, args: Vec<Sumti<'a>> },
+    WithArgs {
+        core: &'a Selbri<'a>,
+        args: Vec<Sumti<'a>>,
+    },
 
     /// Selbri connective: selbri + (je|ja|jo|ju) + selbri
     Connected {

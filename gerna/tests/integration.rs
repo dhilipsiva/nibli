@@ -1,6 +1,6 @@
 use bumpalo::Bump;
 use parser_test::ast::*;
-use parser_test::grammar::{parse_tokens_to_ast, ParseResult};
+use parser_test::grammar::{ParseResult, parse_tokens_to_ast};
 use parser_test::lexer::tokenize;
 use parser_test::preprocessor::preprocess;
 
@@ -85,8 +85,14 @@ fn two_sentences() {
     let arena = Bump::new();
     let p = parse("mi prami do .i do prami mi", &arena);
     assert_eq!(p.sentences.len(), 2);
-    assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("prami".into()));
-    assert_eq!(as_bridi(&p.sentences[1]).selbri, Selbri::Root("prami".into()));
+    assert_eq!(
+        as_bridi(&p.sentences[0]).selbri,
+        Selbri::Root("prami".into())
+    );
+    assert_eq!(
+        as_bridi(&p.sentences[1]).selbri,
+        Selbri::Root("prami".into())
+    );
     assert_eq!(
         as_bridi(&p.sentences[0]).head_terms,
         vec![Sumti::ProSumti("mi".into())]
@@ -389,7 +395,10 @@ fn poi_relative_clause() {
 fn explicit_unspecified() {
     let arena = Bump::new();
     let p = parse("mi prami zo'e", &arena);
-    assert_eq!(as_bridi(&p.sentences[0]).tail_terms, vec![Sumti::Unspecified]);
+    assert_eq!(
+        as_bridi(&p.sentences[0]).tail_terms,
+        vec![Sumti::Unspecified]
+    );
 }
 
 // ─── Metalinguistic operators (via preprocessor) ─────────────────
@@ -399,7 +408,10 @@ fn si_erasure() {
     // "mi klama si prami do" → mi prami do (klama erased by si)
     let arena = Bump::new();
     let p = parse("mi klama si prami do", &arena);
-    assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("prami".into()));
+    assert_eq!(
+        as_bridi(&p.sentences[0]).selbri,
+        Selbri::Root("prami".into())
+    );
 }
 
 #[test]
@@ -407,7 +419,10 @@ fn su_erasure() {
     // "mi klama su do prami mi" → do prami mi (everything before su erased)
     let arena = Bump::new();
     let p = parse("mi klama su do prami mi", &arena);
-    assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("prami".into()));
+    assert_eq!(
+        as_bridi(&p.sentences[0]).selbri,
+        Selbri::Root("prami".into())
+    );
     assert_eq!(
         as_bridi(&p.sentences[0]).head_terms,
         vec![Sumti::ProSumti("do".into())]
@@ -420,7 +435,10 @@ fn sa_erasure_gadri_class() {
     // sa sees "lo" (LE class) → erases back to previous "lo" → result: "lo mlatu cu sutra"
     let arena = Bump::new();
     let p = parse("lo gerku cu klama sa lo mlatu cu sutra", &arena);
-    assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("sutra".into()));
+    assert_eq!(
+        as_bridi(&p.sentences[0]).selbri,
+        Selbri::Root("sutra".into())
+    );
     match &as_bridi(&p.sentences[0]).head_terms[0] {
         Sumti::Description { gadri, inner } => {
             assert_eq!(*gadri, Gadri::Lo);
@@ -435,7 +453,10 @@ fn sa_erasure_brivla_class() {
     // "mi klama sa prami do" → erases back to "klama" (Brivla class) → "mi prami do"
     let arena = Bump::new();
     let p = parse("mi klama sa prami do", &arena);
-    assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("prami".into()));
+    assert_eq!(
+        as_bridi(&p.sentences[0]).selbri,
+        Selbri::Root("prami".into())
+    );
     assert_eq!(
         as_bridi(&p.sentences[0]).head_terms,
         vec![Sumti::ProSumti("mi".into())]
@@ -456,7 +477,10 @@ fn sa_erasure_no_match_fallback() {
     let arena = Bump::new();
     let p = parse("klama sa lo gerku", &arena);
     // After fallback erase: "lo gerku" → observative with go'i and lo gerku as head term
-    assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("go'i".into()));
+    assert_eq!(
+        as_bridi(&p.sentences[0]).selbri,
+        Selbri::Root("go'i".into())
+    );
 }
 
 // ─── Complex combinations ────────────────────────────────────────
@@ -466,8 +490,14 @@ fn multi_sentence_with_descriptions() {
     let arena = Bump::new();
     let p = parse("mi prami lo gerku .i lo mlatu cu nelci mi", &arena);
     assert_eq!(p.sentences.len(), 2);
-    assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("prami".into()));
-    assert_eq!(as_bridi(&p.sentences[1]).selbri, Selbri::Root("nelci".into()));
+    assert_eq!(
+        as_bridi(&p.sentences[0]).selbri,
+        Selbri::Root("prami".into())
+    );
+    assert_eq!(
+        as_bridi(&p.sentences[1]).selbri,
+        Selbri::Root("nelci".into())
+    );
 }
 
 #[test]
@@ -513,7 +543,10 @@ fn sumti_connective_a_full_pipeline() {
     let arena = Bump::new();
     let p = parse("mi .a do klama", &arena);
     match &as_bridi(&p.sentences[0]).head_terms[0] {
-        Sumti::Connected { connective: Connective::Ja, .. } => {}
+        Sumti::Connected {
+            connective: Connective::Ja,
+            ..
+        } => {}
         other => panic!("expected Connected(.a), got {:?}", other),
     }
 }
@@ -523,7 +556,10 @@ fn sumti_connective_o_full_pipeline() {
     let arena = Bump::new();
     let p = parse("mi .o do klama", &arena);
     match &as_bridi(&p.sentences[0]).head_terms[0] {
-        Sumti::Connected { connective: Connective::Jo, .. } => {}
+        Sumti::Connected {
+            connective: Connective::Jo,
+            ..
+        } => {}
         other => panic!("expected Connected(.o), got {:?}", other),
     }
 }
@@ -533,7 +569,10 @@ fn sumti_connective_u_full_pipeline() {
     let arena = Bump::new();
     let p = parse("mi .u do klama", &arena);
     match &as_bridi(&p.sentences[0]).head_terms[0] {
-        Sumti::Connected { connective: Connective::Ju, .. } => {}
+        Sumti::Connected {
+            connective: Connective::Ju,
+            ..
+        } => {}
         other => panic!("expected Connected(.u), got {:?}", other),
     }
 }
@@ -579,8 +618,20 @@ fn sumti_connective_descriptions_full_pipeline() {
             right,
             ..
         } => {
-            assert!(matches!(left.as_ref(), Sumti::Description { gadri: Gadri::Lo, .. }));
-            assert!(matches!(right.as_ref(), Sumti::Description { gadri: Gadri::Lo, .. }));
+            assert!(matches!(
+                left.as_ref(),
+                Sumti::Description {
+                    gadri: Gadri::Lo,
+                    ..
+                }
+            ));
+            assert!(matches!(
+                right.as_ref(),
+                Sumti::Description {
+                    gadri: Gadri::Lo,
+                    ..
+                }
+            ));
         }
         other => panic!("expected Connected descriptions, got {:?}", other),
     }
@@ -594,7 +645,10 @@ fn sumti_connective_in_tail_full_pipeline() {
     let p = parse("mi nelci lo gerku .e lo mlatu", &arena);
     let s = as_bridi(&p.sentences[0]);
     match &s.tail_terms[0] {
-        Sumti::Connected { connective: Connective::Je, .. } => {}
+        Sumti::Connected {
+            connective: Connective::Je,
+            ..
+        } => {}
         other => panic!("expected Connected in tail, got {:?}", other),
     }
 }
@@ -605,8 +659,14 @@ fn sumti_connective_does_not_eat_dot_i_full_pipeline() {
     let arena = Bump::new();
     let p = parse("mi klama .i do prami", &arena);
     assert_eq!(p.sentences.len(), 2);
-    assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("klama".into()));
-    assert_eq!(as_bridi(&p.sentences[1]).selbri, Selbri::Root("prami".into()));
+    assert_eq!(
+        as_bridi(&p.sentences[0]).selbri,
+        Selbri::Root("klama".into())
+    );
+    assert_eq!(
+        as_bridi(&p.sentences[1]).selbri,
+        Selbri::Root("prami".into())
+    );
 }
 
 #[test]
@@ -671,13 +731,19 @@ fn sumti_connective_with_multi_sentence() {
 
     // First sentence: mi .e do klama
     match &as_bridi(&p.sentences[0]).head_terms[0] {
-        Sumti::Connected { connective: Connective::Je, .. } => {}
+        Sumti::Connected {
+            connective: Connective::Je,
+            ..
+        } => {}
         other => panic!("sentence 1: expected Connected(.e), got {:?}", other),
     }
 
     // Second sentence: lo gerku .a lo mlatu cu barda
     match &as_bridi(&p.sentences[1]).head_terms[0] {
-        Sumti::Connected { connective: Connective::Ja, .. } => {}
+        Sumti::Connected {
+            connective: Connective::Ja,
+            ..
+        } => {}
         other => panic!("sentence 2: expected Connected(.a), got {:?}", other),
     }
 }
@@ -743,5 +809,8 @@ fn error_display_includes_line_column() {
     let r = parse_result("ke ke ke", &arena);
     let msg = r.errors[0].to_string();
     // Format should be "line:col: message"
-    assert!(msg.contains(':'), "error display should contain line:col separator");
+    assert!(
+        msg.contains(':'),
+        "error display should contain line:col separator"
+    );
 }

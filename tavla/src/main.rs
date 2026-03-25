@@ -11,7 +11,10 @@ use tavla::transport::Transport;
 
 /// tavla — nibli gossip daemon
 #[derive(Parser)]
-#[command(name = "tavla", about = "nibli gossip daemon — lo fatri ke logji ciste")]
+#[command(
+    name = "tavla",
+    about = "nibli gossip daemon — lo fatri ke logji ciste"
+)]
 struct Cli {
     /// Agent name (your identity on the gossip network).
     #[arg(long)]
@@ -105,13 +108,9 @@ async fn main() {
 
 /// TCP-only mode.
 async fn run_tcp(cli: &Cli, node: &mut tavla::GossipNode) {
-    let transport = tavla::tcp::TcpTransport::new(
-        &cli.listen,
-        &cli.peer,
-        &cli.name,
-    )
-    .await
-    .expect("TCP transport failed to start");
+    let transport = tavla::tcp::TcpTransport::new(&cli.listen, &cli.peer, &cli.name)
+        .await
+        .expect("TCP transport failed to start");
     println!("[tavla] TCP listening on {}", cli.listen);
     tavla::repl::run_repl(node, transport as Arc<dyn Transport>).await;
 }
@@ -119,15 +118,14 @@ async fn run_tcp(cli: &Cli, node: &mut tavla::GossipNode) {
 /// WebRTC-only mode.
 #[cfg(feature = "webrtc-transport")]
 async fn run_webrtc(cli: &Cli, node: &mut tavla::GossipNode) {
-    let signal_url = cli.signal.as_deref().expect("--signal required for WebRTC mode");
+    let signal_url = cli
+        .signal
+        .as_deref()
+        .expect("--signal required for WebRTC mode");
     let stun_servers = parse_stun(&cli.stun);
-    let transport = tavla::webrtc::WebRtcTransport::new(
-        &cli.name,
-        signal_url,
-        stun_servers,
-    )
-    .await
-    .expect("WebRTC transport failed to start");
+    let transport = tavla::webrtc::WebRtcTransport::new(&cli.name, signal_url, stun_servers)
+        .await
+        .expect("WebRTC transport failed to start");
 
     for peer in &cli.peer {
         if let Err(e) = transport.connect_to_peer(peer).await {
@@ -158,13 +156,9 @@ async fn run_webrtc(cli: &Cli, node: &mut tavla::GossipNode) {
 #[cfg(feature = "webrtc-transport")]
 async fn run_both(cli: &Cli, node: &mut tavla::GossipNode) {
     // Start TCP as the primary transport.
-    let transport = tavla::tcp::TcpTransport::new(
-        &cli.listen,
-        &cli.peer,
-        &cli.name,
-    )
-    .await
-    .expect("TCP transport failed to start");
+    let transport = tavla::tcp::TcpTransport::new(&cli.listen, &cli.peer, &cli.name)
+        .await
+        .expect("TCP transport failed to start");
     println!("[tavla] TCP listening on {}", cli.listen);
 
     // If signaling server is configured, also set up WebRTC in background.

@@ -139,9 +139,7 @@ fn convert_attitudinal(a: &gerna_ast::Attitudinal) -> smuni_ast::Attitudinal {
     }
 }
 
-fn convert_sentence_connective(
-    c: &gerna_ast::SentenceConnective,
-) -> smuni_ast::SentenceConnective {
+fn convert_sentence_connective(c: &gerna_ast::SentenceConnective) -> smuni_ast::SentenceConnective {
     match c {
         gerna_ast::SentenceConnective::GanaiGi => smuni_ast::SentenceConnective::GanaiGi,
         gerna_ast::SentenceConnective::GeGi => smuni_ast::SentenceConnective::GeGi,
@@ -190,9 +188,7 @@ fn convert_sumti(s: &gerna_ast::Sumti) -> smuni_ast::Sumti {
         gerna_ast::Sumti::Name(v) => smuni_ast::Sumti::Name(v.clone()),
         gerna_ast::Sumti::QuotedLiteral(v) => smuni_ast::Sumti::QuotedLiteral(v.clone()),
         gerna_ast::Sumti::Unspecified => smuni_ast::Sumti::Unspecified,
-        gerna_ast::Sumti::Tagged((t, id)) => {
-            smuni_ast::Sumti::Tagged((convert_place_tag(t), *id))
-        }
+        gerna_ast::Sumti::Tagged((t, id)) => smuni_ast::Sumti::Tagged((convert_place_tag(t), *id)),
         gerna_ast::Sumti::ModalTagged((mt, id)) => {
             smuni_ast::Sumti::ModalTagged((convert_modal_tag(mt), *id))
         }
@@ -256,18 +252,14 @@ fn convert_logical_term_s2l(t: &smuni_logic::LogicalTerm) -> logji_logic::Logica
 
 fn convert_logic_node_s2l(n: &smuni_logic::LogicNode) -> logji_logic::LogicNode {
     match n {
-        smuni_logic::LogicNode::Predicate((rel, args)) => {
-            logji_logic::LogicNode::Predicate((
-                rel.clone(),
-                args.iter().map(convert_logical_term_s2l).collect(),
-            ))
-        }
-        smuni_logic::LogicNode::ComputeNode((rel, args)) => {
-            logji_logic::LogicNode::ComputeNode((
-                rel.clone(),
-                args.iter().map(convert_logical_term_s2l).collect(),
-            ))
-        }
+        smuni_logic::LogicNode::Predicate((rel, args)) => logji_logic::LogicNode::Predicate((
+            rel.clone(),
+            args.iter().map(convert_logical_term_s2l).collect(),
+        )),
+        smuni_logic::LogicNode::ComputeNode((rel, args)) => logji_logic::LogicNode::ComputeNode((
+            rel.clone(),
+            args.iter().map(convert_logical_term_s2l).collect(),
+        )),
         smuni_logic::LogicNode::AndNode((l, r)) => logji_logic::LogicNode::AndNode((*l, *r)),
         smuni_logic::LogicNode::OrNode((l, r)) => logji_logic::LogicNode::OrNode((*l, *r)),
         smuni_logic::LogicNode::NotNode(id) => logji_logic::LogicNode::NotNode(*id),
@@ -280,12 +272,8 @@ fn convert_logic_node_s2l(n: &smuni_logic::LogicNode) -> logji_logic::LogicNode 
         smuni_logic::LogicNode::PastNode(id) => logji_logic::LogicNode::PastNode(*id),
         smuni_logic::LogicNode::PresentNode(id) => logji_logic::LogicNode::PresentNode(*id),
         smuni_logic::LogicNode::FutureNode(id) => logji_logic::LogicNode::FutureNode(*id),
-        smuni_logic::LogicNode::ObligatoryNode(id) => {
-            logji_logic::LogicNode::ObligatoryNode(*id)
-        }
-        smuni_logic::LogicNode::PermittedNode(id) => {
-            logji_logic::LogicNode::PermittedNode(*id)
-        }
+        smuni_logic::LogicNode::ObligatoryNode(id) => logji_logic::LogicNode::ObligatoryNode(*id),
+        smuni_logic::LogicNode::PermittedNode(id) => logji_logic::LogicNode::PermittedNode(*id),
         smuni_logic::LogicNode::CountNode((v, c, b)) => {
             logji_logic::LogicNode::CountNode((v.clone(), *c, *b))
         }
@@ -305,10 +293,7 @@ fn convert_logic_buffer_s2l(buf: &smuni_logic::LogicBuffer) -> logji_logic::Logi
 
 /// Transform Predicate nodes into ComputeNode for registered compute predicates.
 /// Operates on smuni's LogicBuffer (before conversion to logji types).
-fn transform_compute_nodes(
-    buf: &mut smuni_logic::LogicBuffer,
-    compute_preds: &HashSet<String>,
-) {
+fn transform_compute_nodes(buf: &mut smuni_logic::LogicBuffer, compute_preds: &HashSet<String>) {
     let nodes = std::mem::take(&mut buf.nodes);
     buf.nodes = nodes
         .into_iter()
@@ -594,12 +579,7 @@ fn format_rule(rule: &logji_logic::ProofRule, result: bool) -> String {
     }
 }
 
-fn format_proof_node(
-    steps: &[logji_logic::ProofStep],
-    idx: u32,
-    indent: usize,
-    out: &mut String,
-) {
+fn format_proof_node(steps: &[logji_logic::ProofStep], idx: u32, indent: usize, out: &mut String) {
     let step = &steps[idx as usize];
     for _ in 0..indent {
         out.push_str("  ");
@@ -640,10 +620,7 @@ impl Session {
 
     /// Full pipeline: text -> gerna parse -> convert -> smuni compile -> convert -> logji buffer.
     /// Returns the logji-typed LogicBuffer ready for assertion/query.
-    fn compile_text(
-        &self,
-        input: &str,
-    ) -> Result<logji_logic::LogicBuffer, NibliError> {
+    fn compile_text(&self, input: &str) -> Result<logji_logic::LogicBuffer, NibliError> {
         // 1. Parse with gerna
         let parse_result =
             gerna::parse_text_native(input.to_string()).map_err(NibliError::Gerna)?;
@@ -667,8 +644,11 @@ impl Session {
 
         // Check for partial parse failure (abort assertion to prevent unsound reasoning)
         if !parse_result.errors.is_empty() {
-            let warnings: Vec<String> =
-                parse_result.errors.iter().map(|e| e.message.clone()).collect();
+            let warnings: Vec<String> = parse_result
+                .errors
+                .iter()
+                .map(|e| e.message.clone())
+                .collect();
             return Err(NibliError::Gerna(gerna_err::NibliError::Syntax(
                 gerna_err::SyntaxDetail {
                     message: format!(
@@ -686,8 +666,7 @@ impl Session {
         let smuni_ast = convert_ast_buffer(&parse_result.buffer);
 
         // 3. Compile with smuni
-        let mut smuni_buf =
-            smuni::compile_buffer_native(smuni_ast).map_err(NibliError::Smuni)?;
+        let mut smuni_buf = smuni::compile_buffer_native(smuni_ast).map_err(NibliError::Smuni)?;
 
         // 4. Transform compute nodes
         transform_compute_nodes(&mut smuni_buf, &self.compute_predicates);
@@ -756,9 +735,7 @@ impl Session {
             nodes,
             roots: vec![0],
         };
-        self.kb
-            .assert_fact(buf, label)
-            .map_err(NibliError::Logji)
+        self.kb.assert_fact(buf, label).map_err(NibliError::Logji)
     }
 
     fn register_compute_predicate(&mut self, name: String) {
@@ -801,7 +778,10 @@ fn run_test_book() {
 
     let commands = vec![
         (".i lo prenu cu ponse lo datni", "assert1"),
-        (".i ro lo prenu poi ponse lo datni cu bilga lo nu curmi", "assert2"),
+        (
+            ".i ro lo prenu poi ponse lo datni cu bilga lo nu curmi",
+            "assert2",
+        ),
         ("?! lo prenu cu bilga lo nu curmi", "proof-query"),
     ];
 
@@ -898,18 +878,10 @@ fn main() {
                         println!("  ?! <text>           Query with proof trace");
                         println!("  ?? <text>           Find witnesses (answer variables)");
                         println!("  :debug <text>       Show compiled logic tree");
-                        println!(
-                            "  :load <filepath>    Load a .lojban file (assert each line)"
-                        );
-                        println!(
-                            "  :compute <name>     Register predicate for compute dispatch"
-                        );
-                        println!(
-                            "  :assert <rel> <args..> Assert a ground fact directly"
-                        );
-                        println!(
-                            "  :retract <id>       Retract a fact by ID (rebuilds KB)"
-                        );
+                        println!("  :load <filepath>    Load a .lojban file (assert each line)");
+                        println!("  :compute <name>     Register predicate for compute dispatch");
+                        println!("  :assert <rel> <args..> Assert a ground fact directly");
+                        println!("  :retract <id>       Retract a fact by ID (rebuilds KB)");
                         println!("  :facts              List all active facts in the KB");
                         println!("  :reset              Clear all facts (fresh KB)");
                         println!("  :quit               Exit");
@@ -1016,11 +988,7 @@ fn main() {
                                 asserted += 1;
                             }
                             Err(e) => {
-                                println!(
-                                    "[Load] line {}: {}",
-                                    line_num + 1,
-                                    format_error(&e)
-                                );
+                                println!("[Load] line {}: {}", line_num + 1, format_error(&e));
                                 errors += 1;
                             }
                         }

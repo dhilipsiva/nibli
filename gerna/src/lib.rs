@@ -356,7 +356,11 @@ impl Flattener {
                 wit::Sumti::Connected((left_id, wit_conn, *right_negated, right_id))
             }
 
-            ast::Sumti::QuantifiedDescription { count, gadri, inner } => {
+            ast::Sumti::QuantifiedDescription {
+                count,
+                gadri,
+                inner,
+            } => {
                 let inner_id = self.push_selbri(inner);
                 let wit_gadri = match gadri {
                     ast::Gadri::Lo => wit::Gadri::Lo,
@@ -375,9 +379,7 @@ impl Flattener {
 
 /// Public API for native (non-WASM) callers.
 /// Wraps the internal `GernaComponent::parse_text` pipeline.
-pub fn parse_text_native(
-    input: String,
-) -> Result<wit::ParseResult, NibliError> {
+pub fn parse_text_native(input: String) -> Result<wit::ParseResult, NibliError> {
     <GernaComponent as Guest>::parse_text(input)
 }
 
@@ -389,9 +391,9 @@ bindings::export!(GernaComponent with_types_in bindings);
 
 #[cfg(test)]
 mod flattener_tests {
-    use bumpalo::Bump;
     use crate::ast::*;
     use crate::bindings::lojban::nibli::ast_types as wit;
+    use bumpalo::Bump;
 
     // Re-use the Flattener (it's private, so these tests must live in lib.rs
     // or you must make Flattener pub(crate)).
@@ -521,14 +523,17 @@ mod flattener_tests {
                 selbri: Selbri::Root("barda".into()),
                 head_terms: vec![Sumti::Description {
                     gadri: Gadri::Lo,
-                    inner: arena.alloc(Selbri::Abstraction(AbstractionKind::Nu, arena.alloc(Sentence::Simple(Bridi {
-                        selbri: Selbri::Root("klama".into()),
-                        head_terms: vec![Sumti::ProSumti("mi".into())],
-                        tail_terms: vec![],
-                        negated: false,
-                        tense: None,
-                        attitudinal: None,
-                    })))),
+                    inner: arena.alloc(Selbri::Abstraction(
+                        AbstractionKind::Nu,
+                        arena.alloc(Sentence::Simple(Bridi {
+                            selbri: Selbri::Root("klama".into()),
+                            head_terms: vec![Sumti::ProSumti("mi".into())],
+                            tail_terms: vec![],
+                            negated: false,
+                            tense: None,
+                            attitudinal: None,
+                        })),
+                    )),
                 }],
                 tail_terms: vec![],
                 negated: false,
@@ -605,36 +610,45 @@ mod flattener_tests {
             (AbstractionKind::Siho, wit::AbstractionKind::Siho),
         ] {
             let arena = Bump::new();
-        let parsed = ParsedText {
+            let parsed = ParsedText {
                 sentences: vec![Sentence::Simple(Bridi {
                     selbri: Selbri::Root("barda".into()),
                     head_terms: vec![Sumti::Description {
                         gadri: Gadri::Lo,
-                        inner: arena.alloc(Selbri::Abstraction(kind, arena.alloc(Sentence::Simple(Bridi {
-                            selbri: Selbri::Root("klama".into()),
-                            head_terms: vec![Sumti::ProSumti("mi".into())],
-                            tail_terms: vec![],
-                            negated: false,
-                            tense: None,
-                            attitudinal: None,
-                        })))),
+                        inner: arena.alloc(Selbri::Abstraction(
+                            kind,
+                            arena.alloc(Sentence::Simple(Bridi {
+                                selbri: Selbri::Root("klama".into()),
+                                head_terms: vec![Sumti::ProSumti("mi".into())],
+                                tail_terms: vec![],
+                                negated: false,
+                                tense: None,
+                                attitudinal: None,
+                            })),
+                        )),
                     }],
                     tail_terms: vec![],
                     negated: false,
                     tense: None,
                     attitudinal: None,
-                })]
+                })],
             };
 
             let buffer = Flattener::flatten(&parsed);
 
             // Find the abstraction selbri
-            let abs = buffer.selbris.iter().find(|s| matches!(s, wit::Selbri::Abstraction(_)));
+            let abs = buffer
+                .selbris
+                .iter()
+                .find(|s| matches!(s, wit::Selbri::Abstraction(_)));
             match abs {
                 Some(wit::Selbri::Abstraction((k, _))) => {
                     assert_eq!(*k, wit_kind, "abstraction kind mismatch for {:?}", kind);
                 }
-                other => panic!("expected Abstraction selbri for {:?}, got {:?}", kind, other),
+                other => panic!(
+                    "expected Abstraction selbri for {:?}, got {:?}",
+                    kind, other
+                ),
             }
         }
     }
@@ -841,7 +855,9 @@ mod flattener_tests {
             wit::Sumti::QuantifiedDescription((count, gadri, selbri_id)) => {
                 assert_eq!(*count, 2);
                 assert_eq!(*gadri, wit::Gadri::Lo);
-                assert!(matches!(&buffer.selbris[*selbri_id as usize], wit::Selbri::Root(s) if s == "gerku"));
+                assert!(
+                    matches!(&buffer.selbris[*selbri_id as usize], wit::Selbri::Root(s) if s == "gerku")
+                );
             }
             other => panic!("expected QuantifiedDescription, got {:?}", other),
         }
@@ -871,7 +887,9 @@ mod flattener_tests {
             wit::Sumti::ModalTagged((modal_tag, inner_id)) => {
                 match modal_tag {
                     wit::ModalTag::Fio(selbri_id) => {
-                        assert!(matches!(&buffer.selbris[*selbri_id as usize], wit::Selbri::Root(s) if s == "klama"));
+                        assert!(
+                            matches!(&buffer.selbris[*selbri_id as usize], wit::Selbri::Root(s) if s == "klama")
+                        );
                     }
                     other => panic!("expected Fio modal tag, got {:?}", other),
                 }
@@ -888,11 +906,11 @@ mod flattener_tests {
 /// the `.e`, `.a`, `.o`, `.u` patterns.
 #[cfg(test)]
 mod pipeline_tests {
-    use bumpalo::Bump;
     use crate::ast::*;
     use crate::grammar::parse_tokens_to_ast;
     use crate::lexer::tokenize;
     use crate::preprocessor::preprocess;
+    use bumpalo::Bump;
 
     fn parse<'a>(input: &str, arena: &'a Bump) -> ParsedText<'a> {
         let raw = tokenize(input);
@@ -941,7 +959,10 @@ mod pipeline_tests {
         let arena = Bump::new();
         let p = parse("mi .a do klama", &arena);
         match &as_bridi(&p.sentences[0]).head_terms[0] {
-            Sumti::Connected { connective: Connective::Ja, .. } => {}
+            Sumti::Connected {
+                connective: Connective::Ja,
+                ..
+            } => {}
             other => panic!("expected Connected(.a), got {:?}", other),
         }
     }
@@ -951,7 +972,10 @@ mod pipeline_tests {
         let arena = Bump::new();
         let p = parse("mi .o do klama", &arena);
         match &as_bridi(&p.sentences[0]).head_terms[0] {
-            Sumti::Connected { connective: Connective::Jo, .. } => {}
+            Sumti::Connected {
+                connective: Connective::Jo,
+                ..
+            } => {}
             other => panic!("expected Connected(.o), got {:?}", other),
         }
     }
@@ -961,7 +985,10 @@ mod pipeline_tests {
         let arena = Bump::new();
         let p = parse("mi .u do klama", &arena);
         match &as_bridi(&p.sentences[0]).head_terms[0] {
-            Sumti::Connected { connective: Connective::Ju, .. } => {}
+            Sumti::Connected {
+                connective: Connective::Ju,
+                ..
+            } => {}
             other => panic!("expected Connected(.u), got {:?}", other),
         }
     }
@@ -1034,8 +1061,20 @@ mod pipeline_tests {
                 right,
                 ..
             } => {
-                assert!(matches!(*left, Sumti::Description { gadri: Gadri::Lo, .. }));
-                assert!(matches!(*right, Sumti::Description { gadri: Gadri::Lo, .. }));
+                assert!(matches!(
+                    *left,
+                    Sumti::Description {
+                        gadri: Gadri::Lo,
+                        ..
+                    }
+                ));
+                assert!(matches!(
+                    *right,
+                    Sumti::Description {
+                        gadri: Gadri::Lo,
+                        ..
+                    }
+                ));
             }
             other => panic!("expected Connected descriptions, got {:?}", other),
         }
@@ -1048,7 +1087,10 @@ mod pipeline_tests {
         let p = parse("mi nelci lo gerku .e lo mlatu", &arena);
         let s = as_bridi(&p.sentences[0]);
         match &s.tail_terms[0] {
-            Sumti::Connected { connective: Connective::Je, .. } => {}
+            Sumti::Connected {
+                connective: Connective::Je,
+                ..
+            } => {}
             other => panic!("expected Connected in tail, got {:?}", other),
         }
     }
@@ -1058,8 +1100,14 @@ mod pipeline_tests {
         let arena = Bump::new();
         let p = parse("mi klama .i do prami", &arena);
         assert_eq!(p.sentences.len(), 2);
-        assert_eq!(as_bridi(&p.sentences[0]).selbri, Selbri::Root("klama".into()));
-        assert_eq!(as_bridi(&p.sentences[1]).selbri, Selbri::Root("prami".into()));
+        assert_eq!(
+            as_bridi(&p.sentences[0]).selbri,
+            Selbri::Root("klama".into())
+        );
+        assert_eq!(
+            as_bridi(&p.sentences[1]).selbri,
+            Selbri::Root("prami".into())
+        );
     }
 
     #[test]
@@ -1107,11 +1155,17 @@ mod pipeline_tests {
         let p = parse("mi .e do klama .i lo gerku .a lo mlatu cu barda", &arena);
         assert_eq!(p.sentences.len(), 2);
         match &as_bridi(&p.sentences[0]).head_terms[0] {
-            Sumti::Connected { connective: Connective::Je, .. } => {}
+            Sumti::Connected {
+                connective: Connective::Je,
+                ..
+            } => {}
             other => panic!("sentence 1: expected .e, got {:?}", other),
         }
         match &as_bridi(&p.sentences[1]).head_terms[0] {
-            Sumti::Connected { connective: Connective::Ja, .. } => {}
+            Sumti::Connected {
+                connective: Connective::Ja,
+                ..
+            } => {}
             other => panic!("sentence 2: expected .a, got {:?}", other),
         }
     }
@@ -1122,8 +1176,20 @@ mod pipeline_tests {
         let arena = Bump::new();
         let p = parse("mi .e do prami lo gerku .a lo mlatu", &arena);
         let s = as_bridi(&p.sentences[0]);
-        assert!(matches!(&s.head_terms[0], Sumti::Connected { connective: Connective::Je, .. }));
-        assert!(matches!(&s.tail_terms[0], Sumti::Connected { connective: Connective::Ja, .. }));
+        assert!(matches!(
+            &s.head_terms[0],
+            Sumti::Connected {
+                connective: Connective::Je,
+                ..
+            }
+        ));
+        assert!(matches!(
+            &s.tail_terms[0],
+            Sumti::Connected {
+                connective: Connective::Ja,
+                ..
+            }
+        ));
     }
 
     // ─── Abstraction types pipeline tests ──────────────────────────
@@ -1136,9 +1202,15 @@ mod pipeline_tests {
         assert_eq!(s.selbri, Selbri::Root("barda".into()));
         match &s.head_terms[0] {
             Sumti::Description { inner, .. } => {
-                assert!(matches!(*inner, Selbri::Abstraction(AbstractionKind::Duhu, _)));
+                assert!(matches!(
+                    *inner,
+                    Selbri::Abstraction(AbstractionKind::Duhu, _)
+                ));
             }
-            other => panic!("expected Description with Duhu abstraction, got {:?}", other),
+            other => panic!(
+                "expected Description with Duhu abstraction, got {:?}",
+                other
+            ),
         }
     }
 
@@ -1148,19 +1220,15 @@ mod pipeline_tests {
         let p = parse("lo ka ce'u melbi kei cu barda", &arena);
         let s = as_bridi(&p.sentences[0]);
         match &s.head_terms[0] {
-            Sumti::Description { inner, .. } => {
-                match *inner {
-                    Selbri::Abstraction(AbstractionKind::Ka, body) => {
-                        match *body {
-                            Sentence::Simple(inner_bridi) => {
-                                assert_eq!(inner_bridi.head_terms[0], Sumti::ProSumti("ce'u".into()));
-                            }
-                            other => panic!("expected Simple, got {:?}", other),
-                        }
+            Sumti::Description { inner, .. } => match *inner {
+                Selbri::Abstraction(AbstractionKind::Ka, body) => match *body {
+                    Sentence::Simple(inner_bridi) => {
+                        assert_eq!(inner_bridi.head_terms[0], Sumti::ProSumti("ce'u".into()));
                     }
-                    other => panic!("expected Ka abstraction, got {:?}", other),
-                }
-            }
+                    other => panic!("expected Simple, got {:?}", other),
+                },
+                other => panic!("expected Ka abstraction, got {:?}", other),
+            },
             other => panic!("expected Description, got {:?}", other),
         }
     }
@@ -1172,7 +1240,10 @@ mod pipeline_tests {
         let s = as_bridi(&p.sentences[0]);
         match &s.head_terms[0] {
             Sumti::Description { inner, .. } => {
-                assert!(matches!(*inner, Selbri::Abstraction(AbstractionKind::Ni, _)));
+                assert!(matches!(
+                    *inner,
+                    Selbri::Abstraction(AbstractionKind::Ni, _)
+                ));
             }
             other => panic!("expected Description with Ni abstraction, got {:?}", other),
         }
@@ -1185,9 +1256,15 @@ mod pipeline_tests {
         let s = as_bridi(&p.sentences[0]);
         match &s.head_terms[0] {
             Sumti::Description { inner, .. } => {
-                assert!(matches!(*inner, Selbri::Abstraction(AbstractionKind::Siho, _)));
+                assert!(matches!(
+                    *inner,
+                    Selbri::Abstraction(AbstractionKind::Siho, _)
+                ));
             }
-            other => panic!("expected Description with Siho abstraction, got {:?}", other),
+            other => panic!(
+                "expected Description with Siho abstraction, got {:?}",
+                other
+            ),
         }
     }
 
@@ -1198,7 +1275,10 @@ mod pipeline_tests {
         let s = as_bridi(&p.sentences[0]);
         match &s.head_terms[0] {
             Sumti::Description { inner, .. } => {
-                assert!(matches!(*inner, Selbri::Abstraction(AbstractionKind::Nu, _)));
+                assert!(matches!(
+                    *inner,
+                    Selbri::Abstraction(AbstractionKind::Nu, _)
+                ));
             }
             other => panic!("expected Description with Nu abstraction, got {:?}", other),
         }
@@ -1258,7 +1338,11 @@ mod pipeline_tests {
         let p = parse("re lo gerku cu barda", &arena);
         let s = as_bridi(&p.sentences[0]);
         match &s.head_terms[0] {
-            Sumti::QuantifiedDescription { count, gadri, inner } => {
+            Sumti::QuantifiedDescription {
+                count,
+                gadri,
+                inner,
+            } => {
                 assert_eq!(*count, 2);
                 assert_eq!(*gadri, Gadri::Lo);
                 assert_eq!(**inner, Selbri::Root("gerku".into()));
@@ -1274,7 +1358,10 @@ mod pipeline_tests {
         let p = parse("su'o lo gerku cu barda", &arena);
         let s = as_bridi(&p.sentences[0]);
         match &s.head_terms[0] {
-            Sumti::Description { gadri: Gadri::Lo, inner } => {
+            Sumti::Description {
+                gadri: Gadri::Lo,
+                inner,
+            } => {
                 assert_eq!(**inner, Selbri::Root("gerku".into()));
             }
             other => panic!("expected Description(Lo), got {:?}", other),
@@ -1290,7 +1377,10 @@ mod pipeline_tests {
             Sumti::QuantifiedDescription { count, .. } => {
                 assert_eq!(*count, 0);
             }
-            other => panic!("expected QuantifiedDescription with count 0, got {:?}", other),
+            other => panic!(
+                "expected QuantifiedDescription with count 0, got {:?}",
+                other
+            ),
         }
     }
 
@@ -1303,7 +1393,10 @@ mod pipeline_tests {
             Sumti::QuantifiedDescription { count, .. } => {
                 assert_eq!(*count, 12); // pa=1, re=2 → 12
             }
-            other => panic!("expected QuantifiedDescription with count 12, got {:?}", other),
+            other => panic!(
+                "expected QuantifiedDescription with count 12, got {:?}",
+                other
+            ),
         }
     }
 
@@ -1372,7 +1465,10 @@ mod pipeline_tests {
         let r = parse_result("ke ke ke", &arena);
         let msg = r.errors[0].to_string();
         // Format should be "line:col: message"
-        assert!(msg.contains(':'), "error display should contain line:col separator");
+        assert!(
+            msg.contains(':'),
+            "error display should contain line:col separator"
+        );
     }
 
     /// Verify every non-blank, non-comment line in readme.lojban parses cleanly.

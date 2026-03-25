@@ -314,12 +314,10 @@ impl SexpTree {
     /// Write substituted s-expression into a buffer (avoids per-level allocation).
     fn substitute_into(&self, buf: &mut String, bindings: &HashMap<String, String>) {
         match self {
-            SexpTree::Var(name) => {
-                match bindings.get(name.as_str()) {
-                    Some(val) => buf.push_str(val),
-                    None => buf.push_str(name),
-                }
-            }
+            SexpTree::Var(name) => match bindings.get(name.as_str()) {
+                Some(val) => buf.push_str(val),
+                None => buf.push_str(name),
+            },
             SexpTree::Atom(atom) => buf.push_str(atom),
             SexpTree::List(children) => {
                 buf.push('(');
@@ -574,7 +572,11 @@ impl<'a> Iterator for CartesianProduct<'a> {
             self.done = true;
             return Some(vec![]);
         }
-        let combo: Vec<&str> = self.indices.iter().map(|&i| self.entities[i].as_str()).collect();
+        let combo: Vec<&str> = self
+            .indices
+            .iter()
+            .map(|&i| self.entities[i].as_str())
+            .collect();
         // Advance indices (odometer-style, rightmost first)
         let mut carry = true;
         for i in (0..self.dep_count).rev() {
@@ -624,7 +626,10 @@ impl<'a> Iterator for MultiCartesianProduct<'a> {
             }
             return None;
         }
-        let combo: Vec<&str> = self.indices.iter().enumerate()
+        let combo: Vec<&str> = self
+            .indices
+            .iter()
+            .enumerate()
             .map(|(set_idx, &item_idx)| self.sets[set_idx][item_idx].as_str())
             .collect();
         // Advance indices
@@ -732,8 +737,11 @@ fn register_ground_material_conditional(
         LogicNode::ExistsNode((v, body)) if subs.contains_key(v.as_str()) => {
             register_ground_material_conditional(buffer, *body, subs, inner);
         }
-        LogicNode::PastNode(n) | LogicNode::PresentNode(n) | LogicNode::FutureNode(n)
-        | LogicNode::ObligatoryNode(n) | LogicNode::PermittedNode(n) => {
+        LogicNode::PastNode(n)
+        | LogicNode::PresentNode(n)
+        | LogicNode::FutureNode(n)
+        | LogicNode::ObligatoryNode(n)
+        | LogicNode::PermittedNode(n) => {
             register_ground_material_conditional(buffer, *n, subs, inner);
         }
         LogicNode::AndNode((l, r)) => {
@@ -750,10 +758,20 @@ fn register_ground_material_conditional(
                     .collect();
                 // Extract condition(s) — may be a conjunction
                 let mut condition_sexps = Vec::new();
-                collect_material_condition_leaves(buffer, *neg_inner, &raw_subs, &mut condition_sexps);
+                collect_material_condition_leaves(
+                    buffer,
+                    *neg_inner,
+                    &raw_subs,
+                    &mut condition_sexps,
+                );
                 let conclusion_sexp = reconstruct_sexp_with_subs(buffer, *r, &raw_subs);
-                let label = format!("{} → {}",
-                    condition_sexps.iter().map(|s| extract_pred_name(s).unwrap_or("?")).collect::<Vec<_>>().join(" ∧ "),
+                let label = format!(
+                    "{} → {}",
+                    condition_sexps
+                        .iter()
+                        .map(|s| extract_pred_name(s).unwrap_or("?"))
+                        .collect::<Vec<_>>()
+                        .join(" ∧ "),
                     extract_pred_name(&conclusion_sexp).unwrap_or("?")
                 );
                 register_rule(inner, label, condition_sexps, vec![conclusion_sexp], vec![]);
@@ -766,10 +784,20 @@ fn register_ground_material_conditional(
                     .map(|(k, v)| (k.clone(), format!("(Const \"{}\")", v)))
                     .collect();
                 let mut condition_sexps = Vec::new();
-                collect_material_condition_leaves(buffer, *neg_inner, &raw_subs, &mut condition_sexps);
+                collect_material_condition_leaves(
+                    buffer,
+                    *neg_inner,
+                    &raw_subs,
+                    &mut condition_sexps,
+                );
                 let conclusion_sexp = reconstruct_sexp_with_subs(buffer, *l, &raw_subs);
-                let label = format!("{} → {}",
-                    condition_sexps.iter().map(|s| extract_pred_name(s).unwrap_or("?")).collect::<Vec<_>>().join(" ∧ "),
+                let label = format!(
+                    "{} → {}",
+                    condition_sexps
+                        .iter()
+                        .map(|s| extract_pred_name(s).unwrap_or("?"))
+                        .collect::<Vec<_>>()
+                        .join(" ∧ "),
                     extract_pred_name(&conclusion_sexp).unwrap_or("?")
                 );
                 register_rule(inner, label, condition_sexps, vec![conclusion_sexp], vec![]);
@@ -833,10 +861,7 @@ fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) -> Res
         }
 
         // Phase 2: Dispatch based on formula structure
-        let is_forall = matches!(
-            &logic.nodes[root_id as usize],
-            LogicNode::ForAllNode(_)
-        );
+        let is_forall = matches!(&logic.nodes[root_id as usize], LogicNode::ForAllNode(_));
 
         if is_forall {
             // ═══ NATIVE RULE PATH ═══
@@ -902,30 +927,41 @@ impl KnowledgeBase {
     fn assert_fact_inner(&self, logic: LogicBuffer, label: String) -> Result<u64, String> {
         let mut inner = self.inner.borrow_mut();
         let id = inner.fresh_fact_id();
-        inner.fact_registry.insert(id, FactRecord {
+        inner.fact_registry.insert(
             id,
-            buffer: logic.clone(),
-            label,
-            retracted: false,
-        });
+            FactRecord {
+                id,
+                buffer: logic.clone(),
+                label,
+                retracted: false,
+            },
+        );
         process_assertion(&mut inner, &logic)?;
         Ok(id)
     }
 
     /// Assert a fact with a pre-assigned ID. Used for replay from persistent store.
     /// Advances the internal counter past the given ID.
-    pub fn assert_fact_with_id(&self, logic: LogicBuffer, label: String, id: u64) -> Result<(), String> {
+    pub fn assert_fact_with_id(
+        &self,
+        logic: LogicBuffer,
+        label: String,
+        id: u64,
+    ) -> Result<(), String> {
         let mut inner = self.inner.borrow_mut();
         // Advance counter past the provided ID.
         if id >= inner.fact_counter {
             inner.fact_counter = id + 1;
         }
-        inner.fact_registry.insert(id, FactRecord {
+        inner.fact_registry.insert(
             id,
-            buffer: logic.clone(),
-            label,
-            retracted: false,
-        });
+            FactRecord {
+                id,
+                buffer: logic.clone(),
+                label,
+                retracted: false,
+            },
+        );
         process_assertion(&mut inner, &logic)?;
         Ok(())
     }
@@ -966,10 +1002,7 @@ impl KnowledgeBase {
             .filter(|(_, r)| !r.retracted)
             .collect();
         entries.sort_by_key(|(id, _)| **id);
-        let buffers: Vec<LogicBuffer> = entries
-            .iter()
-            .map(|(_, r)| r.buffer.clone())
-            .collect();
+        let buffers: Vec<LogicBuffer> = entries.iter().map(|(_, r)| r.buffer.clone()).collect();
 
         // Replay with diagnostic output suppressed
         inner.rebuilding = true;
@@ -1067,8 +1100,9 @@ impl KnowledgeBase {
         let mut all_hold = true;
         for &root_id in &logic.roots {
             let mut subs = HashMap::new();
-            let (holds, step_idx) =
-                check_formula_holds_traced(&logic, root_id, &mut subs, &mut inner, &mut steps, None, &mut memo)?;
+            let (holds, step_idx) = check_formula_holds_traced(
+                &logic, root_id, &mut subs, &mut inner, &mut steps, None, &mut memo,
+            )?;
             root_children.push(step_idx);
             if !holds {
                 all_hold = false;
@@ -1124,8 +1158,7 @@ impl GuestKnowledgeBase for KnowledgeBase {
     }
 
     fn retract_fact(&self, id: u64) -> Result<(), NibliError> {
-        self.retract_fact_inner(id)
-            .map_err(NibliError::Reasoning)
+        self.retract_fact_inner(id).map_err(NibliError::Reasoning)
     }
 
     fn list_facts(&self) -> Result<Vec<FactSummary>, NibliError> {
@@ -1150,7 +1183,10 @@ fn extract_num_value(term: &LogicalTerm, subs: &HashMap<String, String>) -> Opti
         LogicalTerm::Number(n) => Some(*n as i64),
         LogicalTerm::Variable(v) => {
             let s = subs.get(v.as_str())?;
-            s.strip_prefix("(Num ")?.strip_suffix(')')?.parse::<i64>().ok()
+            s.strip_prefix("(Num ")?
+                .strip_suffix(')')?
+                .parse::<i64>()
+                .ok()
         }
         _ => None,
     }
@@ -1206,10 +1242,7 @@ fn parse_sexp_to_term(sexp: &str) -> LogicalTerm {
         .and_then(|s| s.strip_suffix("\")"))
     {
         LogicalTerm::Constant(name.to_string())
-    } else if let Some(n) = sexp
-        .strip_prefix("(Num ")
-        .and_then(|s| s.strip_suffix(')'))
-    {
+    } else if let Some(n) = sexp.strip_prefix("(Num ").and_then(|s| s.strip_suffix(')')) {
         LogicalTerm::Number(n.parse::<f64>().unwrap_or(0.0))
     } else if let Some(name) = sexp
         .strip_prefix("(Desc \"")
@@ -1441,21 +1474,34 @@ fn check_formula_holds(
     match &buffer.nodes[node_id as usize] {
         LogicNode::AndNode((l, r)) => Ok(check_formula_holds(buffer, *l, subs, inner, tense)?
             && check_formula_holds(buffer, *r, subs, inner, tense)?),
-        LogicNode::OrNode((l, r)) => {
-            Ok(check_formula_holds(buffer, *l, subs, inner, tense)?
-                || check_formula_holds(buffer, *r, subs, inner, tense)?)
+        LogicNode::OrNode((l, r)) => Ok(check_formula_holds(buffer, *l, subs, inner, tense)?
+            || check_formula_holds(buffer, *r, subs, inner, tense)?),
+        LogicNode::NotNode(inner_node) => Ok(!check_formula_holds(
+            buffer,
+            *inner_node,
+            subs,
+            inner,
+            tense,
+        )?),
+        LogicNode::PastNode(inner_node) => {
+            check_formula_holds(buffer, *inner_node, subs, inner, Some("Past"))
         }
-        LogicNode::NotNode(inner_node) => Ok(!check_formula_holds(buffer, *inner_node, subs, inner, tense)?),
-        LogicNode::PastNode(inner_node) => check_formula_holds(buffer, *inner_node, subs, inner, Some("Past")),
-        LogicNode::PresentNode(inner_node) => check_formula_holds(buffer, *inner_node, subs, inner, Some("Present")),
-        LogicNode::FutureNode(inner_node) => check_formula_holds(buffer, *inner_node, subs, inner, Some("Future")),
-        LogicNode::ObligatoryNode(inner_node)
-        | LogicNode::PermittedNode(inner_node) => check_formula_holds(buffer, *inner_node, subs, inner, tense),
+        LogicNode::PresentNode(inner_node) => {
+            check_formula_holds(buffer, *inner_node, subs, inner, Some("Present"))
+        }
+        LogicNode::FutureNode(inner_node) => {
+            check_formula_holds(buffer, *inner_node, subs, inner, Some("Future"))
+        }
+        LogicNode::ObligatoryNode(inner_node) | LogicNode::PermittedNode(inner_node) => {
+            check_formula_holds(buffer, *inner_node, subs, inner, tense)
+        }
         LogicNode::ExistsNode((v, body)) => {
             let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
             // Fast path: batch dispatch when body is a ComputeNode
             if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
-                if let Some(batch_results) = batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner) {
+                if let Some(batch_results) =
+                    batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner)
+                {
                     if batch_results.iter().any(|r| *r) {
                         return Ok(true);
                     }
@@ -1471,8 +1517,12 @@ fn check_formula_holds(
                 if check_formula_holds(buffer, *body, subs, inner, tense)? {
                     // Restore previous binding before returning
                     match prev {
-                        Some(p) => { subs.insert(v_key, p); }
-                        None => { subs.remove(&v_key); }
+                        Some(p) => {
+                            subs.insert(v_key, p);
+                        }
+                        None => {
+                            subs.remove(&v_key);
+                        }
                     }
                     return Ok(true);
                 }
@@ -1486,8 +1536,12 @@ fn check_formula_holds(
                     subs.insert(v_key.clone(), witness_sexp);
                     if check_formula_holds(buffer, *body, subs, inner, tense)? {
                         match prev {
-                            Some(p) => { subs.insert(v_key, p); }
-                            None => { subs.remove(&v_key); }
+                            Some(p) => {
+                                subs.insert(v_key, p);
+                            }
+                            None => {
+                                subs.remove(&v_key);
+                            }
                         }
                         return Ok(true);
                     }
@@ -1495,8 +1549,12 @@ fn check_formula_holds(
             }
             // Restore previous binding
             match prev {
-                Some(p) => { subs.insert(v_key, p); }
-                None => { subs.remove(&v_key); }
+                Some(p) => {
+                    subs.insert(v_key, p);
+                }
+                None => {
+                    subs.remove(&v_key);
+                }
             }
             Ok(false)
         }
@@ -1507,7 +1565,9 @@ fn check_formula_holds(
             }
             // Fast path: batch dispatch when body is a ComputeNode
             if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
-                if let Some(batch_results) = batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner) {
+                if let Some(batch_results) =
+                    batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner)
+                {
                     return Ok(batch_results.iter().all(|r| *r));
                 }
                 // Batch dispatch failed — fall through to sequential
@@ -1518,15 +1578,23 @@ fn check_formula_holds(
                 subs.insert(v_key.clone(), member_sexp.clone());
                 if !check_formula_holds(buffer, *body, subs, inner, tense)? {
                     match prev {
-                        Some(p) => { subs.insert(v_key, p); }
-                        None => { subs.remove(&v_key); }
+                        Some(p) => {
+                            subs.insert(v_key, p);
+                        }
+                        None => {
+                            subs.remove(&v_key);
+                        }
                     }
                     return Ok(false);
                 }
             }
             match prev {
-                Some(p) => { subs.insert(v_key, p); }
-                None => { subs.remove(&v_key); }
+                Some(p) => {
+                    subs.insert(v_key, p);
+                }
+                None => {
+                    subs.remove(&v_key);
+                }
             }
             Ok(true)
         }
@@ -1534,7 +1602,9 @@ fn check_formula_holds(
             let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
             // Fast path: batch dispatch when body is a ComputeNode
             if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
-                if let Some(batch_results) = batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner) {
+                if let Some(batch_results) =
+                    batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner)
+                {
                     let satisfying = batch_results.iter().filter(|r| **r).count() as u32;
                     return Ok(satisfying == *count);
                 }
@@ -1550,8 +1620,12 @@ fn check_formula_holds(
                 }
             }
             match prev {
-                Some(p) => { subs.insert(v_key, p); }
-                None => { subs.remove(&v_key); }
+                Some(p) => {
+                    subs.insert(v_key, p);
+                }
+                None => {
+                    subs.remove(&v_key);
+                }
             }
             Ok(satisfying == *count)
         }
@@ -1642,9 +1716,15 @@ fn find_witnesses(
             Ok(results)
         }
         // Temporal nodes: set tense context
-        LogicNode::PastNode(inner_node) => find_witnesses(buffer, *inner_node, subs, inner, Some("Past")),
-        LogicNode::PresentNode(inner_node) => find_witnesses(buffer, *inner_node, subs, inner, Some("Present")),
-        LogicNode::FutureNode(inner_node) => find_witnesses(buffer, *inner_node, subs, inner, Some("Future")),
+        LogicNode::PastNode(inner_node) => {
+            find_witnesses(buffer, *inner_node, subs, inner, Some("Past"))
+        }
+        LogicNode::PresentNode(inner_node) => {
+            find_witnesses(buffer, *inner_node, subs, inner, Some("Present"))
+        }
+        LogicNode::FutureNode(inner_node) => {
+            find_witnesses(buffer, *inner_node, subs, inner, Some("Future"))
+        }
         LogicNode::AndNode((l, r)) => {
             // Cross-product: for each left binding set, check right with merged subs
             let left_results = find_witnesses(buffer, *l, subs, inner, tense)?;
@@ -1704,8 +1784,7 @@ fn try_backward_chain_traced(
 
     for rule in &rules {
         for concl_tree in &rule.conclusion_trees {
-            if let Some(mut bindings) = concl_tree.match_against_tokens(&sexp_tokens)
-            {
+            if let Some(mut bindings) = concl_tree.match_against_tokens(&sexp_tokens) {
                 let unbound_event_vars: Vec<String> = rule
                     .pattern_var_names
                     .iter()
@@ -1728,7 +1807,8 @@ fn try_backward_chain_traced(
                     let mut per_var_candidates: Vec<Vec<String>> = Vec::new();
                     for ev_var in &unbound_event_vars {
                         // Use structural contains_var instead of string contains
-                        let single_var_cond_indices: Vec<usize> = rule.condition_trees
+                        let single_var_cond_indices: Vec<usize> = rule
+                            .condition_trees
                             .iter()
                             .enumerate()
                             .filter(|(_, ct)| {
@@ -1749,8 +1829,14 @@ fn try_backward_chain_traced(
                                     let mut test_bindings = bindings.clone();
                                     test_bindings.insert(ev_var.clone(), (*candidate).clone());
                                     single_var_cond_indices.iter().all(|&idx| {
-                                        let cs = rule.condition_trees[idx].substitute(&test_bindings);
-                                        check_predicate_in_kb(&cs, &*inner, depth + 1, &mut HashSet::new())
+                                        let cs =
+                                            rule.condition_trees[idx].substitute(&test_bindings);
+                                        check_predicate_in_kb(
+                                            &cs,
+                                            &*inner,
+                                            depth + 1,
+                                            &mut HashSet::new(),
+                                        )
                                     })
                                 })
                                 .cloned()
@@ -1855,7 +1941,8 @@ fn try_backward_chain_traced(
 
                 if !unbound_event_vars.is_empty() {
                     let members = inner.all_domain_members();
-                    let member_sexps: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
+                    let member_sexps: Vec<String> =
+                        members.iter().map(|(s, _)| s.clone()).collect();
                     let mut all_candidates: Vec<String> = member_sexps.clone();
                     let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
                     for entry in &entries {
@@ -1866,7 +1953,8 @@ fn try_backward_chain_traced(
 
                     let mut per_var_candidates: Vec<Vec<String>> = Vec::new();
                     for ev_var in &unbound_event_vars {
-                        let single_var_cond_indices: Vec<usize> = rule.condition_trees
+                        let single_var_cond_indices: Vec<usize> = rule
+                            .condition_trees
                             .iter()
                             .enumerate()
                             .filter(|(_, ct)| {
@@ -1887,9 +1975,15 @@ fn try_backward_chain_traced(
                                     let mut test_bindings = bindings.clone();
                                     test_bindings.insert(ev_var.clone(), (*candidate).clone());
                                     single_var_cond_indices.iter().all(|&idx| {
-                                        let bare_cs = rule.condition_trees[idx].substitute(&test_bindings);
+                                        let bare_cs =
+                                            rule.condition_trees[idx].substitute(&test_bindings);
                                         let tensed_cs = wrap_tense(tense, &bare_cs);
-                                        check_predicate_in_kb(&tensed_cs, &*inner, depth + 1, &mut HashSet::new())
+                                        check_predicate_in_kb(
+                                            &tensed_cs,
+                                            &*inner,
+                                            depth + 1,
+                                            &mut HashSet::new(),
+                                        )
                                     })
                                 })
                                 .cloned()
@@ -1910,7 +2004,12 @@ fn try_backward_chain_traced(
                         let all_hold = rule.condition_trees.iter().all(|ct| {
                             let bare_cs = ct.substitute(&bindings);
                             let tensed_cs = wrap_tense(tense, &bare_cs);
-                            check_predicate_in_kb(&tensed_cs, &*inner, depth + 1, &mut HashSet::new())
+                            check_predicate_in_kb(
+                                &tensed_cs,
+                                &*inner,
+                                depth + 1,
+                                &mut HashSet::new(),
+                            )
                         });
                         if all_hold {
                             found = true;
@@ -2073,7 +2172,8 @@ fn try_backward_chain(
 
                 let mut per_var_candidates: Vec<Vec<String>> = Vec::new();
                 for ev_var in &unbound_event_vars {
-                    let single_var_cond_indices: Vec<usize> = rule.condition_trees
+                    let single_var_cond_indices: Vec<usize> = rule
+                        .condition_trees
                         .iter()
                         .enumerate()
                         .filter(|(_, ct)| {
@@ -2167,7 +2267,8 @@ fn try_backward_chain(
 
                 if !unbound_event_vars.is_empty() {
                     let members = inner.all_domain_members();
-                    let member_sexps: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
+                    let member_sexps: Vec<String> =
+                        members.iter().map(|(s, _)| s.clone()).collect();
                     let mut all_candidates: Vec<String> = member_sexps.clone();
                     for entry in &inner.skolem_fn_registry {
                         for combo in CartesianProduct::new(&member_sexps, entry.dep_count) {
@@ -2178,7 +2279,8 @@ fn try_backward_chain(
                     // Per-variable pre-filtering with tense wrapping
                     let mut per_var_candidates: Vec<Vec<String>> = Vec::new();
                     for ev_var in &unbound_event_vars {
-                        let single_var_cond_indices: Vec<usize> = rule.condition_trees
+                        let single_var_cond_indices: Vec<usize> = rule
+                            .condition_trees
                             .iter()
                             .enumerate()
                             .filter(|(_, ct)| {
@@ -2199,7 +2301,8 @@ fn try_backward_chain(
                                     let mut test_bindings = bindings.clone();
                                     test_bindings.insert(ev_var.clone(), (*candidate).clone());
                                     single_var_cond_indices.iter().all(|&idx| {
-                                        let bare_cs = rule.condition_trees[idx].substitute(&test_bindings);
+                                        let bare_cs =
+                                            rule.condition_trees[idx].substitute(&test_bindings);
                                         let tensed_cs = wrap_tense(tense, &bare_cs);
                                         check_predicate_in_kb(&tensed_cs, inner, depth + 1, visited)
                                     })
@@ -2322,7 +2425,8 @@ fn check_formula_holds_traced(
 ) -> Result<(bool, u32), String> {
     match &buffer.nodes[node_id as usize] {
         LogicNode::AndNode((l, r)) => {
-            let (l_result, l_idx) = check_formula_holds_traced(buffer, *l, subs, inner, steps, tense, memo)?;
+            let (l_result, l_idx) =
+                check_formula_holds_traced(buffer, *l, subs, inner, steps, tense, memo)?;
             // Short-circuit: if left side fails, skip right side entirely.
             // This prevents exponential blowup when nested existentials try
             // many candidate bindings — wrong candidates fail fast at the
@@ -2336,7 +2440,8 @@ fn check_formula_holds_traced(
                 });
                 return Ok((false, idx));
             }
-            let (r_result, r_idx) = check_formula_holds_traced(buffer, *r, subs, inner, steps, tense, memo)?;
+            let (r_result, r_idx) =
+                check_formula_holds_traced(buffer, *r, subs, inner, steps, tense, memo)?;
             let idx = steps.len() as u32;
             steps.push(ProofStep {
                 rule: ProofRule::Conjunction,
@@ -2347,7 +2452,8 @@ fn check_formula_holds_traced(
         }
         LogicNode::OrNode((l, r)) => {
             // Try left then right
-            let (l_result, l_idx) = check_formula_holds_traced(buffer, *l, subs, inner, steps, tense, memo)?;
+            let (l_result, l_idx) =
+                check_formula_holds_traced(buffer, *l, subs, inner, steps, tense, memo)?;
             if l_result {
                 let idx = steps.len() as u32;
                 steps.push(ProofStep {
@@ -2357,7 +2463,8 @@ fn check_formula_holds_traced(
                 });
                 return Ok((true, idx));
             }
-            let (r_result, r_idx) = check_formula_holds_traced(buffer, *r, subs, inner, steps, tense, memo)?;
+            let (r_result, r_idx) =
+                check_formula_holds_traced(buffer, *r, subs, inner, steps, tense, memo)?;
             if r_result {
                 let idx = steps.len() as u32;
                 steps.push(ProofStep {
@@ -2390,8 +2497,15 @@ fn check_formula_holds_traced(
         }
         // Temporal nodes: set tense context for inner formula
         LogicNode::PastNode(inner_node) => {
-            let (result, child_idx) =
-                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, Some("Past"), memo)?;
+            let (result, child_idx) = check_formula_holds_traced(
+                buffer,
+                *inner_node,
+                subs,
+                inner,
+                steps,
+                Some("Past"),
+                memo,
+            )?;
             let idx = steps.len() as u32;
             steps.push(ProofStep {
                 rule: ProofRule::ModalPassthrough("past".to_string()),
@@ -2401,8 +2515,15 @@ fn check_formula_holds_traced(
             Ok((result, idx))
         }
         LogicNode::PresentNode(inner_node) => {
-            let (result, child_idx) =
-                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, Some("Present"), memo)?;
+            let (result, child_idx) = check_formula_holds_traced(
+                buffer,
+                *inner_node,
+                subs,
+                inner,
+                steps,
+                Some("Present"),
+                memo,
+            )?;
             let idx = steps.len() as u32;
             steps.push(ProofStep {
                 rule: ProofRule::ModalPassthrough("present".to_string()),
@@ -2412,8 +2533,15 @@ fn check_formula_holds_traced(
             Ok((result, idx))
         }
         LogicNode::FutureNode(inner_node) => {
-            let (result, child_idx) =
-                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, Some("Future"), memo)?;
+            let (result, child_idx) = check_formula_holds_traced(
+                buffer,
+                *inner_node,
+                subs,
+                inner,
+                steps,
+                Some("Future"),
+                memo,
+            )?;
             let idx = steps.len() as u32;
             steps.push(ProofStep {
                 rule: ProofRule::ModalPassthrough("future".to_string()),
@@ -2453,16 +2581,28 @@ fn check_formula_holds_traced(
 
             // Fast path: batch pre-screen when body is a ComputeNode
             if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
-                if let Some(batch_results) = batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner) {
+                if let Some(batch_results) =
+                    batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner)
+                {
                     if let Some(winner_idx) = batch_results.iter().position(|r| *r) {
                         // Witness found — trace only the successful path
                         let mut new_subs = subs.clone();
                         new_subs.insert(v.clone(), members[winner_idx].0.clone());
-                        let (_, body_idx) =
-                            check_formula_holds_traced(buffer, *body, &mut new_subs, inner, steps, tense, memo)?;
+                        let (_, body_idx) = check_formula_holds_traced(
+                            buffer,
+                            *body,
+                            &mut new_subs,
+                            inner,
+                            steps,
+                            tense,
+                            memo,
+                        )?;
                         let idx = steps.len() as u32;
                         steps.push(ProofStep {
-                            rule: ProofRule::ExistsWitness((v.clone(), members[winner_idx].1.clone())),
+                            rule: ProofRule::ExistsWitness((
+                                v.clone(),
+                                members[winner_idx].1.clone(),
+                            )),
                             holds: true,
                             children: vec![body_idx],
                         });
@@ -2479,8 +2619,15 @@ fn check_formula_holds_traced(
                 // Cheap boolean check first — no ProofStep allocation
                 if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)? {
                     // Witness found — now trace only the successful path
-                    let (_, body_idx) =
-                        check_formula_holds_traced(buffer, *body, &mut new_subs, inner, steps, tense, memo)?;
+                    let (_, body_idx) = check_formula_holds_traced(
+                        buffer,
+                        *body,
+                        &mut new_subs,
+                        inner,
+                        steps,
+                        tense,
+                        memo,
+                    )?;
                     let idx = steps.len() as u32;
                     steps.push(ProofStep {
                         rule: ProofRule::ExistsWitness((v.clone(), term.clone())),
@@ -2501,8 +2648,15 @@ fn check_formula_holds_traced(
                     // Cheap boolean check first
                     if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)? {
                         // Witness found — now trace only the successful path
-                        let (_, body_idx) =
-                            check_formula_holds_traced(buffer, *body, &mut new_subs, inner, steps, tense, memo)?;
+                        let (_, body_idx) = check_formula_holds_traced(
+                            buffer,
+                            *body,
+                            &mut new_subs,
+                            inner,
+                            steps,
+                            tense,
+                            memo,
+                        )?;
                         let idx = steps.len() as u32;
                         steps.push(ProofStep {
                             rule: ProofRule::ExistsWitness((
@@ -2539,13 +2693,22 @@ fn check_formula_holds_traced(
             // Determines pass/fail for all members in one batch dispatch,
             // then generates proof steps only for the relevant outcome.
             if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
-                if let Some(batch_results) = batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner) {
+                if let Some(batch_results) =
+                    batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner)
+                {
                     if let Some(fail_idx) = batch_results.iter().position(|r| !*r) {
                         // Counterexample found — trace only the failing member
                         let mut new_subs = subs.clone();
                         new_subs.insert(v.clone(), members[fail_idx].0.clone());
-                        let (_, body_idx) =
-                            check_formula_holds_traced(buffer, *body, &mut new_subs, inner, steps, tense, memo)?;
+                        let (_, body_idx) = check_formula_holds_traced(
+                            buffer,
+                            *body,
+                            &mut new_subs,
+                            inner,
+                            steps,
+                            tense,
+                            memo,
+                        )?;
                         let idx = steps.len() as u32;
                         steps.push(ProofStep {
                             rule: ProofRule::ForallCounterexample(members[fail_idx].1.clone()),
@@ -2560,8 +2723,15 @@ fn check_formula_holds_traced(
                     for (sexp, term) in &members {
                         let mut new_subs = subs.clone();
                         new_subs.insert(v.clone(), sexp.clone());
-                        let (_, body_idx) =
-                            check_formula_holds_traced(buffer, *body, &mut new_subs, inner, steps, tense, memo)?;
+                        let (_, body_idx) = check_formula_holds_traced(
+                            buffer,
+                            *body,
+                            &mut new_subs,
+                            inner,
+                            steps,
+                            tense,
+                            memo,
+                        )?;
                         child_indices.push(body_idx);
                         entity_terms.push(term.clone());
                     }
@@ -2579,8 +2749,15 @@ fn check_formula_holds_traced(
             for (sexp, term) in &members {
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), sexp.clone());
-                let (holds, body_idx) =
-                    check_formula_holds_traced(buffer, *body, &mut new_subs, inner, steps, tense, memo)?;
+                let (holds, body_idx) = check_formula_holds_traced(
+                    buffer,
+                    *body,
+                    &mut new_subs,
+                    inner,
+                    steps,
+                    tense,
+                    memo,
+                )?;
                 if !holds {
                     let idx = steps.len() as u32;
                     steps.push(ProofStep {
@@ -2605,7 +2782,9 @@ fn check_formula_holds_traced(
             let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
             // Fast path: batch pre-screen when body is a ComputeNode
             if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
-                if let Some(batch_results) = batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner) {
+                if let Some(batch_results) =
+                    batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner)
+                {
                     let satisfying = batch_results.iter().filter(|r| **r).count() as u32;
                     let result = satisfying == *count;
                     let idx = steps.len() as u32;
@@ -2643,10 +2822,8 @@ fn check_formula_holds_traced(
                     args.iter()
                         .map(|a| match a {
                             LogicalTerm::Number(n) => format!("{}", *n as i64),
-                            LogicalTerm::Variable(v) => subs
-                                .get(v.as_str())
-                                .cloned()
-                                .unwrap_or_else(|| v.clone()),
+                            LogicalTerm::Variable(v) =>
+                                subs.get(v.as_str()).cloned().unwrap_or_else(|| v.clone()),
                             _ => "?".to_string(),
                         })
                         .collect::<Vec<_>>()
@@ -2801,15 +2978,13 @@ fn decompose_implication(buffer: &LogicBuffer, body_id: u32) -> Option<(Vec<u32>
 
     loop {
         match &buffer.nodes[current as usize] {
-            LogicNode::OrNode((left, right)) => {
-                match &buffer.nodes[*left as usize] {
-                    LogicNode::NotNode(inner) => {
-                        conditions.push(*inner);
-                        current = *right;
-                    }
-                    _ => break,
+            LogicNode::OrNode((left, right)) => match &buffer.nodes[*left as usize] {
+                LogicNode::NotNode(inner) => {
+                    conditions.push(*inner);
+                    current = *right;
                 }
-            }
+                _ => break,
+            },
             _ => break,
         }
     }
@@ -2837,11 +3012,7 @@ fn flatten_conjuncts(buffer: &LogicBuffer, node_id: u32) -> Vec<u32> {
 /// Collect existential variable names from condition-side nodes.
 /// These variables should become pattern variables (not dependent Skolems)
 /// because condition-side ∃ means "if there exists any term satisfying..."
-fn collect_condition_exists(
-    buffer: &LogicBuffer,
-    node_id: u32,
-    exists_vars: &mut HashSet<String>,
-) {
+fn collect_condition_exists(buffer: &LogicBuffer, node_id: u32, exists_vars: &mut HashSet<String>) {
     match &buffer.nodes[node_id as usize] {
         LogicNode::ExistsNode((v, body)) => {
             exists_vars.insert(v.clone());
@@ -2865,7 +3036,11 @@ fn flatten_conjuncts_through_exists(
     match &buffer.nodes[node_id as usize] {
         LogicNode::AndNode((l, r)) => {
             let mut result = flatten_conjuncts_through_exists(buffer, *l, condition_exists);
-            result.extend(flatten_conjuncts_through_exists(buffer, *r, condition_exists));
+            result.extend(flatten_conjuncts_through_exists(
+                buffer,
+                *r,
+                condition_exists,
+            ));
             result
         }
         LogicNode::ExistsNode((v, body)) if condition_exists.contains(v.as_str()) => {
@@ -2968,23 +3143,47 @@ fn reconstruct_rule_sexp(
                 || pattern_vars.contains_key(v.as_str())
                 || dependent_skolems.contains_key(v.as_str())
             {
-                reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems, dependent_skolems)
+                reconstruct_rule_sexp(
+                    buffer,
+                    *body,
+                    pattern_vars,
+                    ground_skolems,
+                    dependent_skolems,
+                )
             } else {
                 format!(
                     "(Exists \"{}\" {})",
                     v,
-                    reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems, dependent_skolems)
+                    reconstruct_rule_sexp(
+                        buffer,
+                        *body,
+                        pattern_vars,
+                        ground_skolems,
+                        dependent_skolems
+                    )
                 )
             }
         }
         LogicNode::ForAllNode((v, body)) => {
             if pattern_vars.contains_key(v.as_str()) {
-                reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems, dependent_skolems)
+                reconstruct_rule_sexp(
+                    buffer,
+                    *body,
+                    pattern_vars,
+                    ground_skolems,
+                    dependent_skolems,
+                )
             } else {
                 format!(
                     "(ForAll \"{}\" {})",
                     v,
-                    reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems, dependent_skolems)
+                    reconstruct_rule_sexp(
+                        buffer,
+                        *body,
+                        pattern_vars,
+                        ground_skolems,
+                        dependent_skolems
+                    )
                 )
             }
         }
@@ -3005,34 +3204,88 @@ fn reconstruct_rule_sexp(
         LogicNode::NotNode(inner) => {
             format!(
                 "(Not {})",
-                reconstruct_rule_sexp(buffer, *inner, pattern_vars, ground_skolems, dependent_skolems)
+                reconstruct_rule_sexp(
+                    buffer,
+                    *inner,
+                    pattern_vars,
+                    ground_skolems,
+                    dependent_skolems
+                )
             )
         }
         LogicNode::CountNode((v, count, body)) => {
             if *count == 0 {
-                let body_sexp =
-                    reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems, dependent_skolems);
+                let body_sexp = reconstruct_rule_sexp(
+                    buffer,
+                    *body,
+                    pattern_vars,
+                    ground_skolems,
+                    dependent_skolems,
+                );
                 format!("(ForAll \"{}\" (Not {}))", v, body_sexp)
             } else if ground_skolems.contains_key(v.as_str()) {
-                reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems, dependent_skolems)
+                reconstruct_rule_sexp(
+                    buffer,
+                    *body,
+                    pattern_vars,
+                    ground_skolems,
+                    dependent_skolems,
+                )
             } else {
-                let body_sexp =
-                    reconstruct_rule_sexp(buffer, *body, pattern_vars, ground_skolems, dependent_skolems);
+                let body_sexp = reconstruct_rule_sexp(
+                    buffer,
+                    *body,
+                    pattern_vars,
+                    ground_skolems,
+                    dependent_skolems,
+                );
                 format!("(Exists \"{}\" {})", v, body_sexp)
             }
         }
         LogicNode::PastNode(inner) => {
-            format!("(Past {})", reconstruct_rule_sexp(buffer, *inner, pattern_vars, ground_skolems, dependent_skolems))
+            format!(
+                "(Past {})",
+                reconstruct_rule_sexp(
+                    buffer,
+                    *inner,
+                    pattern_vars,
+                    ground_skolems,
+                    dependent_skolems
+                )
+            )
         }
         LogicNode::PresentNode(inner) => {
-            format!("(Present {})", reconstruct_rule_sexp(buffer, *inner, pattern_vars, ground_skolems, dependent_skolems))
+            format!(
+                "(Present {})",
+                reconstruct_rule_sexp(
+                    buffer,
+                    *inner,
+                    pattern_vars,
+                    ground_skolems,
+                    dependent_skolems
+                )
+            )
         }
         LogicNode::FutureNode(inner) => {
-            format!("(Future {})", reconstruct_rule_sexp(buffer, *inner, pattern_vars, ground_skolems, dependent_skolems))
+            format!(
+                "(Future {})",
+                reconstruct_rule_sexp(
+                    buffer,
+                    *inner,
+                    pattern_vars,
+                    ground_skolems,
+                    dependent_skolems
+                )
+            )
         }
-        LogicNode::ObligatoryNode(inner)
-        | LogicNode::PermittedNode(inner) => {
-            reconstruct_rule_sexp(buffer, *inner, pattern_vars, ground_skolems, dependent_skolems)
+        LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) => {
+            reconstruct_rule_sexp(
+                buffer,
+                *inner,
+                pattern_vars,
+                ground_skolems,
+                dependent_skolems,
+            )
         }
     }
 }
@@ -3052,7 +3305,13 @@ fn extract_pred_name_deep(sexp: &str) -> Option<&str> {
         return Some(name);
     }
     // Try stripping tense/deontic wrappers.
-    for prefix in &["(Past ", "(Present ", "(Future ", "(Obligation ", "(Permission "] {
+    for prefix in &[
+        "(Past ",
+        "(Present ",
+        "(Future ",
+        "(Obligation ",
+        "(Permission ",
+    ] {
         if let Some(rest) = sexp.strip_prefix(prefix) {
             if let Some(inner) = rest.strip_suffix(')') {
                 return extract_pred_name(inner);
@@ -3064,7 +3323,10 @@ fn extract_pred_name_deep(sexp: &str) -> Option<&str> {
 
 /// Collect all rules that might match a queried s-expression.
 /// Looks up by predicate name + always includes fallback rules.
-fn collect_matching_rules(sexp: &str, rules: &HashMap<String, Vec<Arc<UniversalRuleRecord>>>) -> Vec<Arc<UniversalRuleRecord>> {
+fn collect_matching_rules(
+    sexp: &str,
+    rules: &HashMap<String, Vec<Arc<UniversalRuleRecord>>>,
+) -> Vec<Arc<UniversalRuleRecord>> {
     let mut result = Vec::new();
     if let Some(pred_name) = extract_pred_name_deep(sexp) {
         if let Some(matching) = rules.get(pred_name) {
@@ -3086,7 +3348,10 @@ fn sexp_is_asserted(sexp: &str, inner: &KnowledgeBaseInner) -> bool {
             return false;
         }
     }
-    inner.interner.get(sexp).is_some_and(|key| inner.asserted_sexps.contains(&key))
+    inner
+        .interner
+        .get(sexp)
+        .is_some_and(|key| inner.asserted_sexps.contains(&key))
 }
 
 /// Intern a vec of s-expression strings, returning interned keys.
@@ -3106,8 +3371,14 @@ fn register_rule(
     let cond_keys = intern_vec(&condition_strings, &mut inner.interner);
     let concl_keys = intern_vec(&conclusion_strings, &mut inner.interner);
     // Pre-parse templates into structural trees for fast matching.
-    let condition_trees: Vec<SexpTree> = condition_strings.iter().map(|s| SexpTree::parse(s, &pattern_var_names)).collect();
-    let conclusion_trees: Vec<SexpTree> = conclusion_strings.iter().map(|s| SexpTree::parse(s, &pattern_var_names)).collect();
+    let condition_trees: Vec<SexpTree> = condition_strings
+        .iter()
+        .map(|s| SexpTree::parse(s, &pattern_var_names))
+        .collect();
+    let conclusion_trees: Vec<SexpTree> = conclusion_strings
+        .iter()
+        .map(|s| SexpTree::parse(s, &pattern_var_names))
+        .collect();
     let rule = UniversalRuleRecord {
         label,
         condition_templates: cond_keys,
@@ -3138,18 +3409,28 @@ fn facts_for_predicate<'a>(pred: &str, inner: &'a KnowledgeBaseInner) -> Option<
 /// Add a universal rule to the predicate-indexed rule map.
 /// Indexes the rule by each conclusion template's predicate name.
 /// Resolves interned conclusion keys via the interner to extract predicate names.
-fn add_universal_rule(rules: &mut HashMap<String, Vec<Arc<UniversalRuleRecord>>>, rule: UniversalRuleRecord, interner: &SexpInterner) {
+fn add_universal_rule(
+    rules: &mut HashMap<String, Vec<Arc<UniversalRuleRecord>>>,
+    rule: UniversalRuleRecord,
+    interner: &SexpInterner,
+) {
     let rc = Arc::new(rule);
     let mut indexed = false;
     for &concl_key in &rc.conclusion_templates {
         let concl_str = interner.resolve(concl_key);
         if let Some(pred_name) = extract_pred_name_deep(concl_str) {
-            rules.entry(pred_name.to_string()).or_default().push(Arc::clone(&rc));
+            rules
+                .entry(pred_name.to_string())
+                .or_default()
+                .push(Arc::clone(&rc));
             indexed = true;
         }
     }
     if !indexed {
-        rules.entry("__fallback__".to_string()).or_default().push(rc);
+        rules
+            .entry("__fallback__".to_string())
+            .or_default()
+            .push(rc);
     }
 }
 
@@ -3212,16 +3493,13 @@ fn compile_forall_to_rule(
         .collect();
 
     // Entity-only pattern var names (used as SkolemFn dependencies — event vars excluded)
-    let pattern_var_names: Vec<String> = universals
-        .iter()
-        .map(|v| pattern_vars[v].clone())
-        .collect();
+    let pattern_var_names: Vec<String> =
+        universals.iter().map(|v| pattern_vars[v].clone()).collect();
     let mut dependent_skolems: HashMap<String, (String, Vec<String>)> = skolem_subs
         .iter()
         .filter_map(|(k, v)| {
-            v.strip_prefix(SKDEP_PREFIX).map(|base| {
-                (k.clone(), (base.to_string(), pattern_var_names.clone()))
-            })
+            v.strip_prefix(SKDEP_PREFIX)
+                .map(|base| (k.clone(), (base.to_string(), pattern_var_names.clone())))
         })
         .collect();
 
@@ -3247,7 +3525,11 @@ fn compile_forall_to_rule(
             // (condition-side existentials are now pattern variables, not SkolemFn)
             if !dependent_skolems.is_empty() {
                 for (_, (base, pvars)) in &dependent_skolems {
-                    if !inner.skolem_fn_registry.iter().any(|e| e.base_name == *base) {
+                    if !inner
+                        .skolem_fn_registry
+                        .iter()
+                        .any(|e| e.base_name == *base)
+                    {
                         inner.skolem_fn_registry.push(SkolemFnEntry {
                             base_name: base.clone(),
                             dep_count: pvars.len(),
@@ -3281,7 +3563,13 @@ fn compile_forall_to_rule(
             let bare_condition_sexps: Vec<String> = all_conditions
                 .iter()
                 .map(|&cid| {
-                    reconstruct_rule_sexp(buffer, cid, &pattern_vars, &ground_skolems, &dependent_skolems)
+                    reconstruct_rule_sexp(
+                        buffer,
+                        cid,
+                        &pattern_vars,
+                        &ground_skolems,
+                        &dependent_skolems,
+                    )
                 })
                 .collect();
             let conditions_sexp: Vec<String> = bare_condition_sexps
@@ -3293,7 +3581,13 @@ fn compile_forall_to_rule(
             let bare_conclusion_sexps: Vec<String> = consequent_atoms
                 .iter()
                 .map(|&aid| {
-                    reconstruct_rule_sexp(buffer, aid, &pattern_vars, &ground_skolems, &dependent_skolems)
+                    reconstruct_rule_sexp(
+                        buffer,
+                        aid,
+                        &pattern_vars,
+                        &ground_skolems,
+                        &dependent_skolems,
+                    )
                 })
                 .collect();
             let actions_sexp: Vec<String> = bare_conclusion_sexps
@@ -3309,10 +3603,7 @@ fn compile_forall_to_rule(
 
             if !inner.known_rules.insert(rule.clone()) {
                 if !inner.rebuilding {
-                    println!(
-                        "[Rule] ∀{} already present, skipping",
-                        universals.join(",")
-                    );
+                    println!("[Rule] ∀{} already present, skipping", universals.join(","));
                 }
             } else {
                 if !inner.rebuilding {
@@ -3324,7 +3615,13 @@ fn compile_forall_to_rule(
 
                 // Record rule structure for backward-chaining provenance
                 let label = build_rule_label(&bare_condition_sexps, &bare_conclusion_sexps);
-                register_rule(inner, label, bare_condition_sexps.clone(), bare_conclusion_sexps.clone(), all_pattern_var_names.clone());
+                register_rule(
+                    inner,
+                    label,
+                    bare_condition_sexps.clone(),
+                    bare_conclusion_sexps.clone(),
+                    all_pattern_var_names.clone(),
+                );
 
                 // ── xorlo presupposition: assert restrictor domain is non-empty ──
                 // In Lojban, `ro lo P cu Q` presupposes at least one P exists.
@@ -3338,7 +3635,9 @@ fn compile_forall_to_rule(
                 }
                 // Merge ground skolems from outer scope
                 for (k, v) in &ground_skolems {
-                    xp_subs.entry(k.clone()).or_insert_with(|| format!("(Const \"{}\")", v));
+                    xp_subs
+                        .entry(k.clone())
+                        .or_insert_with(|| format!("(Const \"{}\")", v));
                 }
                 // Add fresh Skolem constants for condition-side existential variables.
                 // Event variables (_ev*) are tracked as event entities (not InDomain)
@@ -3365,7 +3664,11 @@ fn compile_forall_to_rule(
             // Register dependent Skolems for bare rules (no condition/conclusion split)
             if !dependent_skolems.is_empty() {
                 for (_, (base, pvars)) in &dependent_skolems {
-                    if !inner.skolem_fn_registry.iter().any(|e| e.base_name == *base) {
+                    if !inner
+                        .skolem_fn_registry
+                        .iter()
+                        .any(|e| e.base_name == *base)
+                    {
                         inner.skolem_fn_registry.push(SkolemFnEntry {
                             base_name: base.clone(),
                             dep_count: pvars.len(),
@@ -3374,8 +3677,13 @@ fn compile_forall_to_rule(
                 }
             }
 
-            let body_sexp =
-                reconstruct_rule_sexp(buffer, inner_body_id, &pattern_vars, &ground_skolems, &dependent_skolems);
+            let body_sexp = reconstruct_rule_sexp(
+                buffer,
+                inner_body_id,
+                &pattern_vars,
+                &ground_skolems,
+                &dependent_skolems,
+            );
 
             let domain_conditions: Vec<String> = universals
                 .iter()
@@ -3405,7 +3713,13 @@ fn compile_forall_to_rule(
 
                 // Record bare rule structure for backward-chaining provenance
                 let label = build_rule_label(&[], &[body_sexp.clone()]);
-                register_rule(inner, label, vec![], vec![body_sexp.clone()], pattern_var_names.clone());
+                register_rule(
+                    inner,
+                    label,
+                    vec![],
+                    vec![body_sexp.clone()],
+                    pattern_var_names.clone(),
+                );
 
                 // Tense-lifted variants now generated lazily during backward chaining.
             }
@@ -3603,16 +3917,26 @@ fn reconstruct_sexp_with_subs(
             }
         }
         LogicNode::PastNode(inner) => {
-            format!("(Past {})", reconstruct_sexp_with_subs(buffer, *inner, subs))
+            format!(
+                "(Past {})",
+                reconstruct_sexp_with_subs(buffer, *inner, subs)
+            )
         }
         LogicNode::PresentNode(inner) => {
-            format!("(Present {})", reconstruct_sexp_with_subs(buffer, *inner, subs))
+            format!(
+                "(Present {})",
+                reconstruct_sexp_with_subs(buffer, *inner, subs)
+            )
         }
         LogicNode::FutureNode(inner) => {
-            format!("(Future {})", reconstruct_sexp_with_subs(buffer, *inner, subs))
+            format!(
+                "(Future {})",
+                reconstruct_sexp_with_subs(buffer, *inner, subs)
+            )
         }
-        LogicNode::ObligatoryNode(inner)
-        | LogicNode::PermittedNode(inner) => reconstruct_sexp_with_subs(buffer, *inner, subs),
+        LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) => {
+            reconstruct_sexp_with_subs(buffer, *inner, subs)
+        }
     }
 }
 
@@ -3735,9 +4059,15 @@ mod tests {
         let root = pred(
             &mut nodes,
             predicate,
-            vec![LogicalTerm::Constant(entity.to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant(entity.to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
-        LogicBuffer { nodes, roots: vec![root] }
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
     }
 
     /// Build "ro lo P cu Q" -> ForAll("_v0", Or(Not(Pred("P", [Var("_v0"), Zoe])), Pred("Q", [Var("_v0"), Zoe])))
@@ -3746,17 +4076,26 @@ mod tests {
         let restrict = pred(
             &mut nodes,
             restrictor,
-            vec![LogicalTerm::Variable("_v0".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("_v0".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let body = pred(
             &mut nodes,
             consequent,
-            vec![LogicalTerm::Variable("_v0".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("_v0".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let neg = not(&mut nodes, restrict);
         let disj = or(&mut nodes, neg, body);
         let root = forall(&mut nodes, "_v0", disj);
-        LogicBuffer { nodes, roots: vec![root] }
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
     }
 
     fn make_query(entity: &str, predicate: &str) -> LogicBuffer {
@@ -3803,10 +4142,19 @@ mod tests {
         let body = pred(
             &mut nodes,
             "gerku",
-            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("x".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = exists(&mut nodes, "x", body);
-        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root]
+            }
+        ));
     }
 
     #[test]
@@ -3820,10 +4168,19 @@ mod tests {
         let body = pred(
             &mut nodes,
             "danlu",
-            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("x".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = exists(&mut nodes, "x", body);
-        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root]
+            }
+        ));
     }
 
     #[test]
@@ -3837,16 +4194,28 @@ mod tests {
         let p1 = pred(
             &mut nodes,
             "gerku",
-            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("x".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let p2 = pred(
             &mut nodes,
             "danlu",
-            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("x".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let conj = and(&mut nodes, p1, p2);
         let root = exists(&mut nodes, "x", conj);
-        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root]
+            }
+        ));
     }
 
     #[test]
@@ -3864,10 +4233,19 @@ mod tests {
         let body = pred(
             &mut nodes,
             "danlu",
-            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("x".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = exists(&mut nodes, "x", body);
-        let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
+        let results = query_find(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        );
         assert!(results.len() >= 2); // alis + presupposition Skolem
     }
 
@@ -3884,10 +4262,19 @@ mod tests {
         let body = pred(
             &mut nodes,
             "xanlu",
-            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("x".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = exists(&mut nodes, "x", body);
-        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root]
+            }
+        ));
     }
 
     #[test]
@@ -3900,10 +4287,19 @@ mod tests {
         let body = pred(
             &mut nodes,
             "mlatu",
-            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("x".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = exists(&mut nodes, "x", body);
-        assert!(!query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+        assert!(!query(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root]
+            }
+        ));
     }
 
     #[test]
@@ -3934,18 +4330,30 @@ mod tests {
         let restrict = pred(
             &mut nodes,
             "gerku",
-            vec![LogicalTerm::Variable("_v0".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("_v0".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let body_pred = pred(
             &mut nodes,
             "danlu",
-            vec![LogicalTerm::Variable("_v0".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("_v0".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let neg_body = not(&mut nodes, body_pred);
         let neg_restrict = not(&mut nodes, restrict);
         let disj = or(&mut nodes, neg_restrict, neg_body);
         let root = forall(&mut nodes, "_v0", disj);
-        assert_buf(&kb, LogicBuffer { nodes, roots: vec![root] });
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        );
 
         assert!(!query(&kb, make_query("alis", "danlu")));
     }
@@ -3966,7 +4374,10 @@ mod tests {
         let restrict = pred(
             &mut nodes,
             restrictor,
-            vec![LogicalTerm::Variable("_v0".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("_v0".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let body = pred(
             &mut nodes,
@@ -3981,7 +4392,10 @@ mod tests {
         let neg = not(&mut nodes, restrict);
         let disj = or(&mut nodes, neg, ex);
         let root = forall(&mut nodes, "_v0", disj);
-        LogicBuffer { nodes, roots: vec![root] }
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
     }
 
     fn make_exists_query(entity: &str, predicate: &str) -> LogicBuffer {
@@ -3996,7 +4410,10 @@ mod tests {
             ],
         );
         let root = exists(&mut nodes, "_v1", body);
-        LogicBuffer { nodes, roots: vec![root] }
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
     }
 
     #[test]
@@ -4039,7 +4456,10 @@ mod tests {
         let kb = new_kb();
         assert_buf(&kb, make_dependent_skolem_universal("prenu", "zdani"));
         let inner = kb.inner.borrow();
-        assert!(!inner.skolem_fn_registry.is_empty(), "SkolemFn registry should have entries");
+        assert!(
+            !inner.skolem_fn_registry.is_empty(),
+            "SkolemFn registry should have entries"
+        );
         assert_eq!(inner.skolem_fn_registry[0].base_name, "sk_0");
         assert_eq!(inner.skolem_fn_registry[0].dep_count, 1);
     }
@@ -4053,12 +4473,18 @@ mod tests {
         let p = pred(
             &mut nodes,
             "prenu",
-            vec![LogicalTerm::Variable("_v0".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("_v0".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let q = pred(
             &mut nodes,
             "mlatu",
-            vec![LogicalTerm::Variable("_v1".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("_v1".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let conj = and(&mut nodes, p, q);
         let body = pred(
@@ -4075,7 +4501,10 @@ mod tests {
         let disj = or(&mut nodes, neg, ex);
         let inner_forall = forall(&mut nodes, "_v1", disj);
         let root = forall(&mut nodes, "_v0", inner_forall);
-        LogicBuffer { nodes, roots: vec![root] }
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
     }
 
     /// Query: ∃_v2. zdani(entity_a, entity_b, _v2)
@@ -4091,7 +4520,10 @@ mod tests {
             ],
         );
         let root = exists(&mut nodes, "_v2", body);
-        LogicBuffer { nodes, roots: vec![root] }
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
     }
 
     #[test]
@@ -4159,7 +4591,10 @@ mod tests {
     fn make_numeric_query(relation: &str, a: f64, b: f64) -> LogicBuffer {
         let mut nodes = Vec::new();
         let root = make_numeric_pred(&mut nodes, relation, a, b);
-        LogicBuffer { nodes, roots: vec![root] }
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
     }
 
     #[test]
@@ -4211,7 +4646,13 @@ mod tests {
         let mut nodes = Vec::new();
         let cmp = make_numeric_pred(&mut nodes, "zmadu", 1.0, 2.0);
         let root = not(&mut nodes, cmp);
-        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root]
+            }
+        ));
     }
 
     #[test]
@@ -4229,7 +4670,13 @@ mod tests {
                 LogicalTerm::Unspecified,
             ],
         );
-        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![a_root] });
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes: a_nodes,
+                roots: vec![a_root],
+            },
+        );
 
         let mut q_nodes = Vec::new();
         let q_root = pred(
@@ -4242,13 +4689,22 @@ mod tests {
                 LogicalTerm::Unspecified,
             ],
         );
-        assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes: q_nodes,
+                roots: vec![q_root]
+            }
+        ));
     }
 
     #[test]
     fn test_zmadu_large_numbers() {
         let kb = new_kb();
-        assert!(query(&kb, make_numeric_query("zmadu", 1_000_000.0, 999_999.0)));
+        assert!(query(
+            &kb,
+            make_numeric_query("zmadu", 1_000_000.0, 999_999.0)
+        ));
     }
 
     #[test]
@@ -4342,7 +4798,13 @@ mod tests {
             ],
         );
         let root = not(&mut nodes, inner);
-        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root]
+            }
+        ));
     }
 
     #[test]
@@ -4360,7 +4822,13 @@ mod tests {
                 LogicalTerm::Constant("zarci".to_string()),
             ],
         );
-        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![a_root] });
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes: a_nodes,
+                roots: vec![a_root],
+            },
+        );
 
         // Query as ComputeNode — unknown to arithmetic, should fall through to KB lookup
         let mut q_nodes = Vec::new();
@@ -4372,7 +4840,13 @@ mod tests {
                 LogicalTerm::Constant("zarci".to_string()),
             ],
         );
-        assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes: q_nodes,
+                roots: vec![q_root]
+            }
+        ));
     }
 
     // ── Material conditional / modus ponens tests ──
@@ -4384,16 +4858,25 @@ mod tests {
         let ante = pred(
             &mut nodes,
             antecedent,
-            vec![LogicalTerm::Constant(entity.to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant(entity.to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let cons = pred(
             &mut nodes,
             consequent,
-            vec![LogicalTerm::Constant(entity.to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant(entity.to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let neg_ante = not(&mut nodes, ante);
         let root = or(&mut nodes, neg_ante, cons);
-        LogicBuffer { nodes, roots: vec![root] }
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
     }
 
     #[test]
@@ -4429,10 +4912,19 @@ mod tests {
         let inner = pred(
             &mut neg_nodes,
             "tsali",
-            vec![LogicalTerm::Constant("sol".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("sol".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = not(&mut neg_nodes, inner);
-        assert_buf(&kb, LogicBuffer { nodes: neg_nodes, roots: vec![root] });
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes: neg_nodes,
+                roots: vec![root],
+            },
+        );
 
         // Query: barda(sol) should be FALSE (modus tollens derives Not(barda(sol)))
         assert!(!query(&kb, make_query("sol", "barda")));
@@ -4472,7 +4964,10 @@ mod tests {
                 LogicalTerm::Unspecified,
             ],
         );
-        LogicBuffer { nodes, roots: vec![root] }
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
     }
 
     #[test]
@@ -4490,7 +4985,10 @@ mod tests {
         let kb = new_kb();
         assert_buf(&kb, make_deontic_assertion("alis", "curmi", "klama"));
         assert!(query(&kb, make_deontic_assertion("alis", "curmi", "klama")));
-        assert!(!query(&kb, make_deontic_assertion("alis", "curmi", "tavla")));
+        assert!(!query(
+            &kb,
+            make_deontic_assertion("alis", "curmi", "tavla")
+        ));
     }
 
     #[test]
@@ -4499,7 +4997,10 @@ mod tests {
         let kb = new_kb();
         assert_buf(&kb, make_deontic_assertion("alis", "nitcu", "klama"));
         assert!(query(&kb, make_deontic_assertion("alis", "nitcu", "klama")));
-        assert!(!query(&kb, make_deontic_assertion("alis", "nitcu", "tavla")));
+        assert!(!query(
+            &kb,
+            make_deontic_assertion("alis", "nitcu", "tavla")
+        ));
     }
 
     #[test]
@@ -4546,19 +5047,37 @@ mod tests {
         let inner = pred(
             &mut a_nodes,
             "klama",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = obligatory(&mut a_nodes, inner);
-        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![root] });
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes: a_nodes,
+                roots: vec![root],
+            },
+        );
 
         let mut q_nodes = Vec::new();
         let q_inner = pred(
             &mut q_nodes,
             "klama",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let q_root = obligatory(&mut q_nodes, q_inner);
-        assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes: q_nodes,
+                roots: vec![q_root]
+            }
+        ));
     }
 
     #[test]
@@ -4569,19 +5088,37 @@ mod tests {
         let inner = pred(
             &mut a_nodes,
             "klama",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = permitted(&mut a_nodes, inner);
-        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![root] });
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes: a_nodes,
+                roots: vec![root],
+            },
+        );
 
         let mut q_nodes = Vec::new();
         let q_inner = pred(
             &mut q_nodes,
             "klama",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let q_root = permitted(&mut q_nodes, q_inner);
-        assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes: q_nodes,
+                roots: vec![q_root]
+            }
+        ));
     }
 
     #[test]
@@ -4592,10 +5129,19 @@ mod tests {
         let inner = pred(
             &mut a_nodes,
             "klama",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = obligatory(&mut a_nodes, inner);
-        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![root] });
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes: a_nodes,
+                roots: vec![root],
+            },
+        );
 
         // Query without obligatory wrapper → still TRUE (pass-through)
         assert!(query(&kb, make_query("alis", "klama")));
@@ -4619,7 +5165,13 @@ mod tests {
                 LogicalTerm::Number(3.0),
             ],
         );
-        assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes: q_nodes,
+                roots: vec![q_root]
+            }
+        ));
 
         // Now query the SAME fact as a plain Predicate (not ComputeNode)
         // It should be found directly in the KB because of auto-ingestion
@@ -4633,7 +5185,13 @@ mod tests {
                 LogicalTerm::Number(3.0),
             ],
         );
-        assert!(query(&kb, LogicBuffer { nodes: p_nodes, roots: vec![p_root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes: p_nodes,
+                roots: vec![p_root]
+            }
+        ));
     }
 
     #[test]
@@ -4651,7 +5209,13 @@ mod tests {
                 LogicalTerm::Number(3.0),
             ],
         );
-        assert!(!query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+        assert!(!query(
+            &kb,
+            LogicBuffer {
+                nodes: q_nodes,
+                roots: vec![q_root]
+            }
+        ));
 
         // Verify the false fact was NOT ingested as a plain Predicate
         let mut p_nodes = Vec::new();
@@ -4664,7 +5228,13 @@ mod tests {
                 LogicalTerm::Number(3.0),
             ],
         );
-        assert!(!query(&kb, LogicBuffer { nodes: p_nodes, roots: vec![p_root] }));
+        assert!(!query(
+            &kb,
+            LogicBuffer {
+                nodes: p_nodes,
+                roots: vec![p_root]
+            }
+        ));
     }
 
     #[test]
@@ -4682,7 +5252,13 @@ mod tests {
                 LogicalTerm::Number(3.0),
             ],
         );
-        assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes: q_nodes,
+                roots: vec![q_root]
+            }
+        ));
 
         // Step 2: Assert another fact
         assert_buf(&kb, make_assertion("ok", "derived"));
@@ -4708,7 +5284,13 @@ mod tests {
             ],
         );
         let root = and(&mut q2_nodes, left, right);
-        assert!(query(&kb, LogicBuffer { nodes: q2_nodes, roots: vec![root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes: q2_nodes,
+                roots: vec![root]
+            }
+        ));
 
         // Step 4: Conjunctive query with a non-ingested compute fact fails
         let mut q3_nodes = Vec::new();
@@ -4730,7 +5312,13 @@ mod tests {
             ],
         );
         let root2 = and(&mut q3_nodes, l2, r2);
-        assert!(!query(&kb, LogicBuffer { nodes: q3_nodes, roots: vec![root2] }));
+        assert!(!query(
+            &kb,
+            LogicBuffer {
+                nodes: q3_nodes,
+                roots: vec![root2]
+            }
+        ));
     }
 
     // ─── Witness extraction tests ────────────────────────────────
@@ -4749,10 +5337,19 @@ mod tests {
         let body = pred(
             &mut nodes,
             "klama",
-            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("x".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = exists(&mut nodes, "x", body);
-        let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
+        let results = query_find(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        );
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].len(), 1);
@@ -4771,10 +5368,19 @@ mod tests {
         let body = pred(
             &mut nodes,
             "klama",
-            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("x".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = exists(&mut nodes, "x", body);
-        let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
+        let results = query_find(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        );
 
         assert_eq!(results.len(), 2);
         let mut found: Vec<String> = results
@@ -4805,16 +5411,28 @@ mod tests {
         let p1 = pred(
             &mut nodes,
             "klama",
-            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("x".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let p2 = pred(
             &mut nodes,
             "prami",
-            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("x".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let conj = and(&mut nodes, p1, p2);
         let root = exists(&mut nodes, "x", conj);
-        let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
+        let results = query_find(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        );
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].len(), 1);
@@ -4831,10 +5449,19 @@ mod tests {
         let body = pred(
             &mut nodes,
             "klama",
-            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("x".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = exists(&mut nodes, "x", body);
-        let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
+        let results = query_find(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        );
 
         assert!(results.is_empty());
     }
@@ -4851,17 +5478,33 @@ mod tests {
         let body = pred(
             &mut nodes,
             "danlu",
-            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("x".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = exists(&mut nodes, "x", body);
-        let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
+        let results = query_find(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        );
 
         // At least alis + presupposition Skolem
         assert!(results.len() >= 1);
-        let found: Vec<String> = results.iter().filter_map(|bs| {
-            match &bs[0].term { LogicalTerm::Constant(c) => Some(c.clone()), _ => None }
-        }).collect();
-        assert!(found.contains(&"alis".to_string()), "alis should be a witness");
+        let found: Vec<String> = results
+            .iter()
+            .filter_map(|bs| match &bs[0].term {
+                LogicalTerm::Constant(c) => Some(c.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            found.contains(&"alis".to_string()),
+            "alis should be a witness"
+        );
     }
 
     #[test]
@@ -4879,7 +5522,13 @@ mod tests {
                 LogicalTerm::Constant("alis".to_string()),
             ],
         );
-        assert_buf(&kb, LogicBuffer { nodes: anodes, roots: vec![aidx] });
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes: anodes,
+                roots: vec![aidx],
+            },
+        );
 
         let mut nodes = Vec::new();
         let body = pred(
@@ -4892,7 +5541,13 @@ mod tests {
         );
         let inner = exists(&mut nodes, "y", body);
         let root = exists(&mut nodes, "x", inner);
-        let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
+        let results = query_find(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        );
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].len(), 2);
@@ -4917,16 +5572,32 @@ mod tests {
         let body = pred(
             &mut nodes,
             "xanlu",
-            vec![LogicalTerm::Variable("x".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("x".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = exists(&mut nodes, "x", body);
-        let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
+        let results = query_find(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        );
 
         assert!(results.len() >= 1);
-        let found: Vec<String> = results.iter().filter_map(|bs| {
-            match &bs[0].term { LogicalTerm::Constant(c) => Some(c.clone()), _ => None }
-        }).collect();
-        assert!(found.contains(&"alis".to_string()), "alis should be a witness");
+        let found: Vec<String> = results
+            .iter()
+            .filter_map(|bs| match &bs[0].term {
+                LogicalTerm::Constant(c) => Some(c.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            found.contains(&"alis".to_string()),
+            "alis should be a witness"
+        );
     }
 
     // ─── Proof trace tests ───────────────────────────────────────
@@ -4980,8 +5651,13 @@ mod tests {
             vec![LogicalTerm::Constant("mi".into()), LogicalTerm::Unspecified],
         );
         let root = and(&mut nodes, p1, p2);
-        let (result, trace) =
-            query_with_proof(&kb, LogicBuffer { nodes, roots: vec![root] });
+        let (result, trace) = query_with_proof(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        );
 
         assert!(result);
         let root_step = &trace.steps[trace.root as usize];
@@ -5007,8 +5683,13 @@ mod tests {
             vec![LogicalTerm::Constant("mi".into()), LogicalTerm::Unspecified],
         );
         let root = not(&mut nodes, inner);
-        let (result, trace) =
-            query_with_proof(&kb, LogicBuffer { nodes, roots: vec![root] });
+        let (result, trace) = query_with_proof(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        );
 
         assert!(result);
         let root_step = &trace.steps[trace.root as usize];
@@ -5033,8 +5714,13 @@ mod tests {
             vec![LogicalTerm::Variable("x".into()), LogicalTerm::Unspecified],
         );
         let root = exists(&mut nodes, "x", body);
-        let (result, trace) =
-            query_with_proof(&kb, LogicBuffer { nodes, roots: vec![root] });
+        let (result, trace) = query_with_proof(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        );
 
         assert!(result);
         let root_step = &trace.steps[trace.root as usize];
@@ -5058,8 +5744,13 @@ mod tests {
             vec![LogicalTerm::Variable("x".into()), LogicalTerm::Unspecified],
         );
         let root = exists(&mut nodes, "x", body);
-        let (result, trace) =
-            query_with_proof(&kb, LogicBuffer { nodes, roots: vec![root] });
+        let (result, trace) = query_with_proof(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        );
 
         assert!(!result);
         let root_step = &trace.steps[trace.root as usize];
@@ -5083,8 +5774,13 @@ mod tests {
             vec![LogicalTerm::Variable("x".into()), LogicalTerm::Unspecified],
         );
         let root = forall(&mut nodes, "x", body);
-        let (result, trace) =
-            query_with_proof(&kb, LogicBuffer { nodes, roots: vec![root] });
+        let (result, trace) = query_with_proof(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        );
 
         assert!(result);
         let root_step = &trace.steps[trace.root as usize];
@@ -5228,18 +5924,38 @@ mod tests {
     // ─── Conjunction Introduction (Guarded) Tests ────────────────────
 
     /// Helper: query whether And(pred1(entity1), pred2(entity2)) holds in the KB.
-    fn query_conjunction(kb: &KnowledgeBase, pred1: &str, entity1: &str, pred2: &str, entity2: &str) -> bool {
+    fn query_conjunction(
+        kb: &KnowledgeBase,
+        pred1: &str,
+        entity1: &str,
+        pred2: &str,
+        entity2: &str,
+    ) -> bool {
         let mut nodes = Vec::new();
-        let p1 = pred(&mut nodes, pred1, vec![
-            LogicalTerm::Constant(entity1.to_string()),
-            LogicalTerm::Unspecified,
-        ]);
-        let p2 = pred(&mut nodes, pred2, vec![
-            LogicalTerm::Constant(entity2.to_string()),
-            LogicalTerm::Unspecified,
-        ]);
+        let p1 = pred(
+            &mut nodes,
+            pred1,
+            vec![
+                LogicalTerm::Constant(entity1.to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let p2 = pred(
+            &mut nodes,
+            pred2,
+            vec![
+                LogicalTerm::Constant(entity2.to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
         let root = and(&mut nodes, p1, p2);
-        query(kb, LogicBuffer { nodes, roots: vec![root] })
+        query(
+            kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        )
     }
 
     #[test]
@@ -5278,8 +5994,8 @@ mod tests {
     fn test_conjunction_introduction_with_derived() {
         let kb = new_kb();
         assert_buf(&kb, make_universal("gerku", "danlu")); // All dogs are animals
-        assert_buf(&kb, make_assertion("alis", "gerku"));   // Alice is a dog
-        assert_buf(&kb, make_assertion("alis", "barda"));   // Alice is big
+        assert_buf(&kb, make_assertion("alis", "gerku")); // Alice is a dog
+        assert_buf(&kb, make_assertion("alis", "barda")); // Alice is big
 
         // Rule derives danlu(alis). Conjunction should combine derived + asserted.
         assert!(
@@ -5312,22 +6028,42 @@ mod tests {
                 LogicalTerm::Unspecified,
             ],
         );
-        assert_buf(&kb, LogicBuffer { nodes, roots: vec![root] });
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        );
 
         // Check: And(gerku(alis,_), nelci(bob,alis,_)) should hold
         let mut nodes2 = Vec::new();
-        let p1 = pred(&mut nodes2, "gerku", vec![
-            LogicalTerm::Constant("alis".to_string()),
-            LogicalTerm::Unspecified,
-        ]);
-        let p2 = pred(&mut nodes2, "nelci", vec![
-            LogicalTerm::Constant("bob".to_string()),
-            LogicalTerm::Constant("alis".to_string()),
-            LogicalTerm::Unspecified,
-        ]);
+        let p1 = pred(
+            &mut nodes2,
+            "gerku",
+            vec![
+                LogicalTerm::Constant("alis".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let p2 = pred(
+            &mut nodes2,
+            "nelci",
+            vec![
+                LogicalTerm::Constant("bob".to_string()),
+                LogicalTerm::Constant("alis".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
         let root2 = and(&mut nodes2, p1, p2);
         assert!(
-            query(&kb, LogicBuffer { nodes: nodes2, roots: vec![root2] }),
+            query(
+                &kb,
+                LogicBuffer {
+                    nodes: nodes2,
+                    roots: vec![root2]
+                }
+            ),
             "Cross-position entity sharing should allow conjunction query"
         );
     }
@@ -5338,17 +6074,16 @@ mod tests {
     /// ∀x. restrictor(x, _) → consequent(fixed_entity, x, _)
     /// This simulates "ro lo gerku cu se nelci la .bob." where SE swaps x1↔x2,
     /// producing: ∀x. gerku(x) → nelci(bob, x)
-    fn make_universal_2arg(
-        restrictor: &str,
-        consequent: &str,
-        fixed_entity: &str,
-    ) -> LogicBuffer {
+    fn make_universal_2arg(restrictor: &str, consequent: &str, fixed_entity: &str) -> LogicBuffer {
         let mut nodes = Vec::new();
         // restrictor(x, _)
         let restrict = pred(
             &mut nodes,
             restrictor,
-            vec![LogicalTerm::Variable("_v0".to_string()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("_v0".to_string()),
+                LogicalTerm::Unspecified,
+            ],
         );
         // consequent(fixed_entity, x, _)
         let body = pred(
@@ -5363,7 +6098,10 @@ mod tests {
         let neg = not(&mut nodes, restrict);
         let disj = or(&mut nodes, neg, body);
         let root = forall(&mut nodes, "_v0", disj);
-        LogicBuffer { nodes, roots: vec![root] }
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
     }
 
     #[test]
@@ -5387,7 +6125,13 @@ mod tests {
                 LogicalTerm::Unspecified,
             ],
         );
-        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root]
+            }
+        ));
     }
 
     #[test]
@@ -5409,7 +6153,13 @@ mod tests {
                 LogicalTerm::Unspecified,
             ],
         );
-        assert!(query(&kb, LogicBuffer { nodes: n1, roots: vec![r1] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes: n1,
+                roots: vec![r1]
+            }
+        ));
 
         // nelci(bob, rex) = TRUE
         let mut n2 = Vec::new();
@@ -5422,7 +6172,13 @@ mod tests {
                 LogicalTerm::Unspecified,
             ],
         );
-        assert!(query(&kb, LogicBuffer { nodes: n2, roots: vec![r2] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes: n2,
+                roots: vec![r2]
+            }
+        ));
 
         // nelci(bob, carol) = FALSE (carol is not a dog)
         let mut n3 = Vec::new();
@@ -5435,7 +6191,13 @@ mod tests {
                 LogicalTerm::Unspecified,
             ],
         );
-        assert!(!query(&kb, LogicBuffer { nodes: n3, roots: vec![r3] }));
+        assert!(!query(
+            &kb,
+            LogicBuffer {
+                nodes: n3,
+                roots: vec![r3]
+            }
+        ));
     }
 
     #[test]
@@ -5460,13 +6222,26 @@ mod tests {
             ],
         );
         let root = exists(&mut nodes, "x", body);
-        let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
+        let results = query_find(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        );
 
         assert!(results.len() >= 1);
-        let found: Vec<String> = results.iter().filter_map(|bs| {
-            match &bs[0].term { LogicalTerm::Constant(c) => Some(c.clone()), _ => None }
-        }).collect();
-        assert!(found.contains(&"alis".to_string()), "alis should be a witness");
+        let found: Vec<String> = results
+            .iter()
+            .filter_map(|bs| match &bs[0].term {
+                LogicalTerm::Constant(c) => Some(c.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            found.contains(&"alis".to_string()),
+            "alis should be a witness"
+        );
     }
 
     #[test]
@@ -5489,14 +6264,30 @@ mod tests {
             ],
         );
         let root = exists(&mut nodes, "x", body);
-        let results = query_find(&kb, LogicBuffer { nodes, roots: vec![root] });
+        let results = query_find(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        );
 
         assert!(results.len() >= 2);
-        let found: Vec<String> = results.iter().filter_map(|bs| {
-            match &bs[0].term { LogicalTerm::Constant(c) => Some(c.clone()), _ => None }
-        }).collect();
-        assert!(found.contains(&"alis".to_string()), "alis should be a witness");
-        assert!(found.contains(&"rex".to_string()), "rex should be a witness");
+        let found: Vec<String> = results
+            .iter()
+            .filter_map(|bs| match &bs[0].term {
+                LogicalTerm::Constant(c) => Some(c.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            found.contains(&"alis".to_string()),
+            "alis should be a witness"
+        );
+        assert!(
+            found.contains(&"rex".to_string()),
+            "rex should be a witness"
+        );
     }
 
     #[test]
@@ -5585,15 +6376,27 @@ mod tests {
         let left = pred(
             &mut nodes,
             "gerku",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let right = pred(
             &mut nodes,
             "mlatu",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = or(&mut nodes, left, right);
-        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root]
+            }
+        ));
     }
 
     #[test]
@@ -5605,15 +6408,27 @@ mod tests {
         let left = pred(
             &mut nodes,
             "gerku",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let right = pred(
             &mut nodes,
             "mlatu",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = or(&mut nodes, left, right);
-        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root]
+            }
+        ));
     }
 
     #[test]
@@ -5624,15 +6439,27 @@ mod tests {
         let left = pred(
             &mut nodes,
             "gerku",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let right = pred(
             &mut nodes,
             "mlatu",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = or(&mut nodes, left, right);
-        assert!(!query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+        assert!(!query(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root]
+            }
+        ));
     }
 
     // ─── Double negation tests ───────────────────────────────────
@@ -5647,11 +6474,20 @@ mod tests {
         let inner = pred(
             &mut nodes,
             "gerku",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let neg1 = not(&mut nodes, inner);
         let root = not(&mut nodes, neg1);
-        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root]
+            }
+        ));
     }
 
     // ─── Tense wrapper tests ─────────────────────────────────────
@@ -5681,20 +6517,38 @@ mod tests {
         let inner = pred(
             &mut a_nodes,
             "klama",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = past(&mut a_nodes, inner);
-        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![root] });
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes: a_nodes,
+                roots: vec![root],
+            },
+        );
 
         // Query same tense wrapper → TRUE
         let mut q_nodes = Vec::new();
         let q_inner = pred(
             &mut q_nodes,
             "klama",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let q_root = past(&mut q_nodes, q_inner);
-        assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes: q_nodes,
+                roots: vec![q_root]
+            }
+        ));
     }
 
     #[test]
@@ -5706,10 +6560,19 @@ mod tests {
         let inner = pred(
             &mut a_nodes,
             "klama",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = past(&mut a_nodes, inner);
-        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![root] });
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes: a_nodes,
+                roots: vec![root],
+            },
+        );
 
         assert!(!query(&kb, make_query("alis", "klama")));
     }
@@ -5722,19 +6585,37 @@ mod tests {
         let inner = pred(
             &mut a_nodes,
             "klama",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = past(&mut a_nodes, inner);
-        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![root] });
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes: a_nodes,
+                roots: vec![root],
+            },
+        );
 
         let mut q_nodes = Vec::new();
         let q_inner = pred(
             &mut q_nodes,
             "klama",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let q_root = future(&mut q_nodes, q_inner);
-        assert!(!query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+        assert!(!query(
+            &kb,
+            LogicBuffer {
+                nodes: q_nodes,
+                roots: vec![q_root]
+            }
+        ));
     }
 
     #[test]
@@ -5745,19 +6626,37 @@ mod tests {
         let inner = pred(
             &mut a_nodes,
             "klama",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let root = present(&mut a_nodes, inner);
-        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![root] });
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes: a_nodes,
+                roots: vec![root],
+            },
+        );
 
         let mut q_nodes = Vec::new();
         let q_inner = pred(
             &mut q_nodes,
             "klama",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let q_root = past(&mut q_nodes, q_inner);
-        assert!(!query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+        assert!(!query(
+            &kb,
+            LogicBuffer {
+                nodes: q_nodes,
+                roots: vec![q_root]
+            }
+        ));
     }
 
     #[test]
@@ -5770,10 +6669,19 @@ mod tests {
         let q_inner = pred(
             &mut q_nodes,
             "klama",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let q_root = past(&mut q_nodes, q_inner);
-        assert!(!query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+        assert!(!query(
+            &kb,
+            LogicBuffer {
+                nodes: q_nodes,
+                roots: vec![q_root]
+            }
+        ));
     }
 
     #[test]
@@ -5788,12 +6696,18 @@ mod tests {
         let gerku = pred(
             &mut r_nodes,
             "gerku",
-            vec![LogicalTerm::Variable("_v0".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("_v0".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let danlu = pred(
             &mut r_nodes,
             "danlu",
-            vec![LogicalTerm::Variable("_v0".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("_v0".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let neg_gerku = not(&mut r_nodes, gerku);
         let impl_body = or(&mut r_nodes, neg_gerku, danlu);
@@ -5802,27 +6716,51 @@ mod tests {
             r_nodes.push(LogicNode::ForAllNode(("_v0".into(), impl_body)));
             id
         };
-        assert_buf(&kb, LogicBuffer { nodes: r_nodes, roots: vec![forall] });
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes: r_nodes,
+                roots: vec![forall],
+            },
+        );
 
         // Assert Past(gerku(alis))
         let mut a_nodes = Vec::new();
         let gerku_alis = pred(
             &mut a_nodes,
             "gerku",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let past_gerku = past(&mut a_nodes, gerku_alis);
-        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![past_gerku] });
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes: a_nodes,
+                roots: vec![past_gerku],
+            },
+        );
 
         // Query Past(danlu(alis)) → TRUE (lifted rule fires on Past premises)
         let mut q_nodes = Vec::new();
         let danlu_alis = pred(
             &mut q_nodes,
             "danlu",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let past_danlu = past(&mut q_nodes, danlu_alis);
-        assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![past_danlu] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes: q_nodes,
+                roots: vec![past_danlu]
+            }
+        ));
     }
 
     #[test]
@@ -5837,12 +6775,18 @@ mod tests {
         let gerku = pred(
             &mut r_nodes,
             "gerku",
-            vec![LogicalTerm::Variable("_v0".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("_v0".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let danlu = pred(
             &mut r_nodes,
             "danlu",
-            vec![LogicalTerm::Variable("_v0".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Variable("_v0".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let neg_gerku = not(&mut r_nodes, gerku);
         let impl_body = or(&mut r_nodes, neg_gerku, danlu);
@@ -5851,27 +6795,51 @@ mod tests {
             r_nodes.push(LogicNode::ForAllNode(("_v0".into(), impl_body)));
             id
         };
-        assert_buf(&kb, LogicBuffer { nodes: r_nodes, roots: vec![forall] });
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes: r_nodes,
+                roots: vec![forall],
+            },
+        );
 
         // Assert Past(gerku(alis))
         let mut a_nodes = Vec::new();
         let gerku_alis = pred(
             &mut a_nodes,
             "gerku",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let past_gerku = past(&mut a_nodes, gerku_alis);
-        assert_buf(&kb, LogicBuffer { nodes: a_nodes, roots: vec![past_gerku] });
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes: a_nodes,
+                roots: vec![past_gerku],
+            },
+        );
 
         // Query Future(danlu(alis)) → FALSE (Past ≠ Future)
         let mut q_nodes = Vec::new();
         let danlu_alis = pred(
             &mut q_nodes,
             "danlu",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let future_danlu = future(&mut q_nodes, danlu_alis);
-        assert!(!query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![future_danlu] }));
+        assert!(!query(
+            &kb,
+            LogicBuffer {
+                nodes: q_nodes,
+                roots: vec![future_danlu]
+            }
+        ));
     }
 
     // ─── Multiple roots test ─────────────────────────────────────
@@ -5883,14 +6851,26 @@ mod tests {
         let r1 = pred(
             &mut nodes,
             "gerku",
-            vec![LogicalTerm::Constant("alis".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("alis".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
         let r2 = pred(
             &mut nodes,
             "mlatu",
-            vec![LogicalTerm::Constant("bob".into()), LogicalTerm::Unspecified],
+            vec![
+                LogicalTerm::Constant("bob".into()),
+                LogicalTerm::Unspecified,
+            ],
         );
-        assert_buf(&kb, LogicBuffer { nodes, roots: vec![r1, r2] });
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![r1, r2],
+            },
+        );
 
         assert!(query(&kb, make_query("alis", "gerku")));
         assert!(query(&kb, make_query("bob", "mlatu")));
@@ -5918,7 +6898,13 @@ mod tests {
             vec![LogicalTerm::Variable("x".into()), LogicalTerm::Unspecified],
         );
         let root = count(&mut nodes, "x", 2, body);
-        assert!(query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root]
+            }
+        ));
     }
 
     #[test]
@@ -5934,7 +6920,13 @@ mod tests {
             vec![LogicalTerm::Variable("x".into()), LogicalTerm::Unspecified],
         );
         let root = count(&mut nodes, "x", 2, body);
-        assert!(!query(&kb, LogicBuffer { nodes, roots: vec![root] }));
+        assert!(!query(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root]
+            }
+        ));
     }
 
     // ─── Compute builtin arithmetic tests ────────────────────────
@@ -6028,7 +7020,13 @@ mod tests {
                 LogicalTerm::Number(3.0),
             ],
         );
-        assert_buf(&kb, LogicBuffer { nodes, roots: vec![root] });
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        );
 
         // Query the same fact back
         let mut q_nodes = Vec::new();
@@ -6041,7 +7039,13 @@ mod tests {
                 LogicalTerm::Number(3.0),
             ],
         );
-        assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes: q_nodes,
+                roots: vec![q_root]
+            }
+        ));
     }
 
     #[test]
@@ -6056,7 +7060,13 @@ mod tests {
                 LogicalTerm::Description("lo_gerku".to_string()),
             ],
         );
-        assert_buf(&kb, LogicBuffer { nodes, roots: vec![root] });
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        );
 
         // Query back
         let mut q_nodes = Vec::new();
@@ -6068,7 +7078,13 @@ mod tests {
                 LogicalTerm::Description("lo_gerku".to_string()),
             ],
         );
-        assert!(query(&kb, LogicBuffer { nodes: q_nodes, roots: vec![q_root] }));
+        assert!(query(
+            &kb,
+            LogicBuffer {
+                nodes: q_nodes,
+                roots: vec![q_root]
+            }
+        ));
     }
 
     // ─── Fact Registry / Retraction Tests ────────────────────────────
@@ -6076,7 +7092,9 @@ mod tests {
     #[test]
     fn test_retract_basic() {
         let kb = new_kb();
-        let id = kb.assert_fact_inner(make_assertion("alis", "gerku"), "la alis gerku".into()).unwrap();
+        let id = kb
+            .assert_fact_inner(make_assertion("alis", "gerku"), "la alis gerku".into())
+            .unwrap();
         assert!(query(&kb, make_query("alis", "gerku")));
         kb.retract_fact_inner(id).unwrap();
         assert!(!query(&kb, make_query("alis", "gerku")));
@@ -6085,8 +7103,12 @@ mod tests {
     #[test]
     fn test_retract_preserves_other_facts() {
         let kb = new_kb();
-        let id1 = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new()).unwrap();
-        let _id2 = kb.assert_fact_inner(make_assertion("bob", "mlatu"), String::new()).unwrap();
+        let id1 = kb
+            .assert_fact_inner(make_assertion("alis", "gerku"), String::new())
+            .unwrap();
+        let _id2 = kb
+            .assert_fact_inner(make_assertion("bob", "mlatu"), String::new())
+            .unwrap();
         kb.retract_fact_inner(id1).unwrap();
         assert!(!query(&kb, make_query("alis", "gerku")));
         assert!(query(&kb, make_query("bob", "mlatu")));
@@ -6095,8 +7117,12 @@ mod tests {
     #[test]
     fn test_retract_derived_facts_gone() {
         let kb = new_kb();
-        let base_id = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new()).unwrap();
-        let _rule_id = kb.assert_fact_inner(make_universal("gerku", "danlu"), String::new()).unwrap();
+        let base_id = kb
+            .assert_fact_inner(make_assertion("alis", "gerku"), String::new())
+            .unwrap();
+        let _rule_id = kb
+            .assert_fact_inner(make_universal("gerku", "danlu"), String::new())
+            .unwrap();
         // "alis danlu" should be derivable via the rule
         assert!(query(&kb, make_query("alis", "danlu")));
         kb.retract_fact_inner(base_id).unwrap();
@@ -6107,8 +7133,12 @@ mod tests {
     #[test]
     fn test_retract_rule_preserves_base_facts() {
         let kb = new_kb();
-        let _base_id = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new()).unwrap();
-        let rule_id = kb.assert_fact_inner(make_universal("gerku", "danlu"), String::new()).unwrap();
+        let _base_id = kb
+            .assert_fact_inner(make_assertion("alis", "gerku"), String::new())
+            .unwrap();
+        let rule_id = kb
+            .assert_fact_inner(make_universal("gerku", "danlu"), String::new())
+            .unwrap();
         assert!(query(&kb, make_query("alis", "danlu")));
         kb.retract_fact_inner(rule_id).unwrap();
         // Base fact preserved
@@ -6120,9 +7150,13 @@ mod tests {
     #[test]
     fn test_retract_and_reassert_new_id() {
         let kb = new_kb();
-        let id1 = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new()).unwrap();
+        let id1 = kb
+            .assert_fact_inner(make_assertion("alis", "gerku"), String::new())
+            .unwrap();
         kb.retract_fact_inner(id1).unwrap();
-        let id2 = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new()).unwrap();
+        let id2 = kb
+            .assert_fact_inner(make_assertion("alis", "gerku"), String::new())
+            .unwrap();
         assert!(id2 > id1);
         assert!(query(&kb, make_query("alis", "gerku")));
     }
@@ -6136,7 +7170,9 @@ mod tests {
     #[test]
     fn test_retract_idempotent() {
         let kb = new_kb();
-        let id = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new()).unwrap();
+        let id = kb
+            .assert_fact_inner(make_assertion("alis", "gerku"), String::new())
+            .unwrap();
         kb.retract_fact_inner(id).unwrap();
         kb.retract_fact_inner(id).unwrap(); // second retract is no-op
         assert!(!query(&kb, make_query("alis", "gerku")));
@@ -6152,7 +7188,8 @@ mod tests {
     #[test]
     fn test_list_facts_after_assert() {
         let kb = new_kb();
-        kb.assert_fact_inner(make_assertion("alis", "gerku"), "la alis gerku".into()).unwrap();
+        kb.assert_fact_inner(make_assertion("alis", "gerku"), "la alis gerku".into())
+            .unwrap();
         let facts = kb.list_facts_inner().unwrap();
         assert_eq!(facts.len(), 1);
         assert_eq!(facts[0].label, "la alis gerku");
@@ -6162,8 +7199,11 @@ mod tests {
     #[test]
     fn test_list_facts_excludes_retracted() {
         let kb = new_kb();
-        let id = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new()).unwrap();
-        kb.assert_fact_inner(make_assertion("bob", "mlatu"), "bob mlatu".into()).unwrap();
+        let id = kb
+            .assert_fact_inner(make_assertion("alis", "gerku"), String::new())
+            .unwrap();
+        kb.assert_fact_inner(make_assertion("bob", "mlatu"), "bob mlatu".into())
+            .unwrap();
         kb.retract_fact_inner(id).unwrap();
         let facts = kb.list_facts_inner().unwrap();
         assert_eq!(facts.len(), 1);
@@ -6174,7 +7214,8 @@ mod tests {
     #[test]
     fn test_reset_clears_registry() {
         let kb = new_kb();
-        kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new()).unwrap();
+        kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new())
+            .unwrap();
         kb.inner.borrow_mut().reset();
         let facts = kb.list_facts_inner().unwrap();
         assert!(facts.is_empty());
@@ -6194,7 +7235,10 @@ mod tests {
                 LogicalTerm::Unspecified,
             ],
         );
-        LogicBuffer { nodes, roots: vec![root] }
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
     }
 
     /// Helper: make a query with a Description term in x1.
@@ -6241,7 +7285,13 @@ mod tests {
         );
         let root = and(&mut nodes, p1, p2);
         assert!(
-            query(&kb, LogicBuffer { nodes, roots: vec![root] }),
+            query(
+                &kb,
+                LogicBuffer {
+                    nodes,
+                    roots: vec![root]
+                }
+            ),
             "conjunction of two Desc-term facts should hold via conjunction introduction"
         );
     }
@@ -6292,7 +7342,13 @@ mod tests {
         );
         let root = exists(&mut nodes, "x", body);
         assert!(
-            query(&kb, LogicBuffer { nodes, roots: vec![root] }),
+            query(
+                &kb,
+                LogicBuffer {
+                    nodes,
+                    roots: vec![root]
+                }
+            ),
             "existential query should find Desc term as witness"
         );
     }
@@ -6553,12 +7609,16 @@ mod tests {
         let (holds, trace) = kb
             .query_entailment_with_proof_inner(make_event_query("alis", "danlu"))
             .unwrap();
-        assert!(holds, "entailment should hold for derived event-decomposed fact");
+        assert!(
+            holds,
+            "entailment should hold for derived event-decomposed fact"
+        );
 
         // Check that the proof trace contains a Derived step
-        let has_derived = trace.steps.iter().any(|step| {
-            matches!(&step.rule, ProofRule::Derived(_))
-        });
+        let has_derived = trace
+            .steps
+            .iter()
+            .any(|step| matches!(&step.rule, ProofRule::Derived(_)));
         assert!(
             has_derived,
             "proof trace should contain at least one Derived step for rule-derived fact"
@@ -6708,9 +7768,15 @@ mod tests {
 
         // Each entity derivable only in its own tense
         assert!(query(&kb, make_temporal_event_query("alis", "jmive", past)));
-        assert!(query(&kb, make_temporal_event_query("bob", "jmive", present)));
+        assert!(query(
+            &kb,
+            make_temporal_event_query("bob", "jmive", present)
+        ));
         // Cross-tense queries fail
-        assert!(!query(&kb, make_temporal_event_query("alis", "jmive", present)));
+        assert!(!query(
+            &kb,
+            make_temporal_event_query("alis", "jmive", present)
+        ));
         assert!(!query(&kb, make_temporal_event_query("bob", "jmive", past)));
     }
 
@@ -6802,7 +7868,10 @@ mod tests {
 
         // Both should hold before retraction
         assert!(query(&kb, make_temporal_event_query("alis", "jmive", past)));
-        assert!(query(&kb, make_temporal_event_query("bob", "jmive", present)));
+        assert!(query(
+            &kb,
+            make_temporal_event_query("bob", "jmive", present)
+        ));
 
         // Retract alice's assertion
         kb.retract_fact_inner(alis_id).unwrap();
@@ -6845,9 +7914,10 @@ mod tests {
         );
 
         // Proof should contain a ModalPassthrough for past tense
-        let has_modal = trace.steps.iter().any(|step| {
-            matches!(&step.rule, ProofRule::ModalPassthrough(t) if t == "past")
-        });
+        let has_modal = trace
+            .steps
+            .iter()
+            .any(|step| matches!(&step.rule, ProofRule::ModalPassthrough(t) if t == "past"));
         assert!(
             has_modal,
             "proof trace should contain a ModalPassthrough(past) step"
@@ -6965,11 +8035,7 @@ mod tests {
     ///   ∃ev0. P(ev0) ∧ P_x1(ev0, entity1) ∧ P_x2(ev0, entity2)
     /// This models sentences like "lo prenu cu ponse lo datni" where both
     /// the subject and object are concrete entities.
-    fn make_event_assertion_2arg(
-        entity1: &str,
-        entity2: &str,
-        predicate: &str,
-    ) -> LogicBuffer {
+    fn make_event_assertion_2arg(entity1: &str, entity2: &str, predicate: &str) -> LogicBuffer {
         let mut nodes = Vec::new();
         let p_type = pred(
             &mut nodes,
@@ -7020,7 +8086,10 @@ mod tests {
 
         // Assert: "A person possesses data"
         // ∃ev0. ponse(ev0) ∧ ponse_x1(ev0, prenu_sk) ∧ ponse_x2(ev0, datni_sk)
-        assert_buf(&kb, make_event_assertion_2arg("prenu_sk", "datni_sk", "ponse"));
+        assert_buf(
+            &kb,
+            make_event_assertion_2arg("prenu_sk", "datni_sk", "ponse"),
+        );
 
         // Also assert the gadri decompositions (what `lo prenu` and `lo datni` produce):
         // ∃ev1. prenu(ev1) ∧ prenu_x1(ev1, prenu_sk)
@@ -7057,7 +8126,10 @@ mod tests {
         let (holds2, _trace2) = kb
             .query_entailment_with_proof_inner(make_event_assertion("prenu_sk", "zukte"))
             .unwrap();
-        assert!(holds2, "proof-traced multi-hop should hold for zukte(prenu_sk)");
+        assert!(
+            holds2,
+            "proof-traced multi-hop should hold for zukte(prenu_sk)"
+        );
     }
 
     // ─── And flattening regression test ────
@@ -7073,25 +8145,53 @@ mod tests {
         // Build: ∃ev. P1(ev) ∧ P2(ev,a) ∧ P3(ev,b) ∧ P4(a) ∧ P5(b) ∧ P6(a) ∧ P7(b)
         // This simulates a 2-arg predicate with xorlo restrictors.
         let mut nodes = Vec::new();
-        let p1 = pred(&mut nodes, "ponse", vec![LogicalTerm::Variable("_ev0".into())]);
-        let p2 = pred(&mut nodes, "ponse_x1", vec![
-            LogicalTerm::Variable("_ev0".into()),
-            LogicalTerm::Variable("_v0".into()),
-        ]);
-        let p3 = pred(&mut nodes, "ponse_x2", vec![
-            LogicalTerm::Variable("_ev0".into()),
-            LogicalTerm::Variable("_v1".into()),
-        ]);
-        let p4 = pred(&mut nodes, "prenu", vec![LogicalTerm::Variable("_v0".into())]);
-        let p5 = pred(&mut nodes, "datni", vec![LogicalTerm::Variable("_v1".into())]);
-        let p6 = pred(&mut nodes, "prenu_x1", vec![
-            LogicalTerm::Variable("_ev1".into()),
-            LogicalTerm::Variable("_v0".into()),
-        ]);
-        let p7 = pred(&mut nodes, "datni_x1", vec![
-            LogicalTerm::Variable("_ev2".into()),
-            LogicalTerm::Variable("_v1".into()),
-        ]);
+        let p1 = pred(
+            &mut nodes,
+            "ponse",
+            vec![LogicalTerm::Variable("_ev0".into())],
+        );
+        let p2 = pred(
+            &mut nodes,
+            "ponse_x1",
+            vec![
+                LogicalTerm::Variable("_ev0".into()),
+                LogicalTerm::Variable("_v0".into()),
+            ],
+        );
+        let p3 = pred(
+            &mut nodes,
+            "ponse_x2",
+            vec![
+                LogicalTerm::Variable("_ev0".into()),
+                LogicalTerm::Variable("_v1".into()),
+            ],
+        );
+        let p4 = pred(
+            &mut nodes,
+            "prenu",
+            vec![LogicalTerm::Variable("_v0".into())],
+        );
+        let p5 = pred(
+            &mut nodes,
+            "datni",
+            vec![LogicalTerm::Variable("_v1".into())],
+        );
+        let p6 = pred(
+            &mut nodes,
+            "prenu_x1",
+            vec![
+                LogicalTerm::Variable("_ev1".into()),
+                LogicalTerm::Variable("_v0".into()),
+            ],
+        );
+        let p7 = pred(
+            &mut nodes,
+            "datni_x1",
+            vec![
+                LogicalTerm::Variable("_ev2".into()),
+                LogicalTerm::Variable("_v1".into()),
+            ],
+        );
 
         // Build deeply nested And tree (7 leaves, 6 And nodes)
         let a1 = and(&mut nodes, p1, p2);

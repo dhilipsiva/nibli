@@ -86,8 +86,8 @@ impl HostState {
             .backend_addr
             .as_ref()
             .ok_or("No compute backend configured")?;
-        let stream = TcpStream::connect(addr)
-            .map_err(|e| format!("Backend connect to {}: {}", addr, e))?;
+        let stream =
+            TcpStream::connect(addr).map_err(|e| format!("Backend connect to {}: {}", addr, e))?;
         stream
             .set_read_timeout(Some(Duration::from_secs(10)))
             .map_err(|e| format!("Set read timeout: {}", e))?;
@@ -138,10 +138,7 @@ impl HostState {
         requests: &[(usize, String)],
     ) -> std::result::Result<Vec<compute_backend::ComputeResult>, String> {
         self.connect_backend()?;
-        let reader = self
-            .backend_conn
-            .as_mut()
-            .ok_or("No backend connection")?;
+        let reader = self.backend_conn.as_mut().ok_or("No backend connection")?;
 
         // Write all requests in one burst
         for (_, payload) in requests {
@@ -181,10 +178,7 @@ impl HostState {
 
     fn try_dispatch(&mut self, payload: &str) -> std::result::Result<bool, String> {
         self.connect_backend()?;
-        let reader = self
-            .backend_conn
-            .as_mut()
-            .ok_or("No backend connection")?;
+        let reader = self.backend_conn.as_mut().ok_or("No backend connection")?;
 
         // Send request
         reader
@@ -325,10 +319,7 @@ fn format_proof_trace(trace: &ProofTrace) -> String {
 
 /// Try built-in arithmetic evaluation for a single predicate.
 /// Returns Some(bool) for pilji/sumji/dilcu with 3+ numeric args.
-fn try_builtin_arithmetic(
-    relation: &str,
-    args: &[compute_backend::LogicalTerm],
-) -> Option<bool> {
+fn try_builtin_arithmetic(relation: &str, args: &[compute_backend::LogicalTerm]) -> Option<bool> {
     use compute_backend::LogicalTerm;
     let extract_num = |t: &LogicalTerm| -> Option<i64> {
         if let LogicalTerm::Number(n) = t {
@@ -338,9 +329,11 @@ fn try_builtin_arithmetic(
         }
     };
     if args.len() >= 3 {
-        if let (Some(x1), Some(x2), Some(x3)) =
-            (extract_num(&args[0]), extract_num(&args[1]), extract_num(&args[2]))
-        {
+        if let (Some(x1), Some(x2), Some(x3)) = (
+            extract_num(&args[0]),
+            extract_num(&args[1]),
+            extract_num(&args[2]),
+        ) {
             return match relation {
                 "pilji" => Some(x1 == x2 * x3),
                 "sumji" => Some(x1 == x2 + x3),
@@ -396,7 +389,8 @@ impl compute_backend::Host for HostState {
                         pending.push((i, line));
                     }
                     Err(e) => {
-                        results[i] = compute_backend::ComputeResult::Err(format!("Serialize: {}", e));
+                        results[i] =
+                            compute_backend::ComputeResult::Err(format!("Serialize: {}", e));
                     }
                 }
             }
@@ -513,13 +507,25 @@ fn persist_text(nibli_store: &mut Option<NibliStore>, fact_id: u64, text: &str) 
 }
 
 /// Persist a direct assertion to the store (if configured).
-fn persist_direct(nibli_store: &mut Option<NibliStore>, fact_id: u64, relation: &str, args: &[EngineLogicalTerm]) {
+fn persist_direct(
+    nibli_store: &mut Option<NibliStore>,
+    fact_id: u64,
+    relation: &str,
+    args: &[EngineLogicalTerm],
+) {
     if let Some(s) = nibli_store.as_mut() {
         let assertion = StoredAssertion::Direct {
             relation: relation.to_string(),
             args: args.iter().map(wit_term_to_stored).collect(),
         };
-        let label = format!(":assert {} {}", relation, args.iter().map(|a| format_term(a)).collect::<Vec<_>>().join(" "));
+        let label = format!(
+            ":assert {} {}",
+            relation,
+            args.iter()
+                .map(|a| format_term(a))
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
         if let Ok(payload) = postcard::to_allocvec(&assertion) {
             let _ = s.insert_fact(fact_id, label, payload);
         }
@@ -599,7 +605,10 @@ fn main() -> Result<()> {
     println!("Run bound: {} iterations", run_bound);
 
     let state = HostState {
-        ctx: WasiCtxBuilder::new().inherit_stdout().inherit_stderr().build(),
+        ctx: WasiCtxBuilder::new()
+            .inherit_stdout()
+            .inherit_stderr()
+            .build(),
         table: ResourceTable::new(),
         limits: StoreLimitsBuilder::new()
             .memory_size(memory_limit_mb * 1024 * 1024)
@@ -615,8 +624,7 @@ fn main() -> Result<()> {
         .unwrap_or_else(|_| "target/wasm32-wasip2/debug/lasna-pipeline.wasm".to_string());
     println!("Loading fused WebAssembly Component from {}...", wasm_path);
     let pipeline_comp = Component::from_file(&engine, &wasm_path)?;
-    let pipeline =
-        pipeline_bind::LasnaPipeline::instantiate(&mut store, &pipeline_comp, &linker)?;
+    let pipeline = pipeline_bind::LasnaPipeline::instantiate(&mut store, &pipeline_comp, &linker)?;
 
     // Get the exported engine interface and create a session
     let engine_iface = pipeline.lojban_nibli_lasna();
@@ -633,18 +641,19 @@ fn main() -> Result<()> {
     // ── Persistent store (optional) ──
     let db_path = std::env::var("NIBLI_DB_PATH").ok();
     let mut nibli_store: Option<NibliStore> = match &db_path {
-        Some(p) => {
-            match NibliStore::open(Path::new(p), "gasnu-local".to_string()) {
-                Ok(s) => {
-                    println!("Persistent store: {}", p);
-                    Some(s)
-                }
-                Err(e) => {
-                    println!("[Store] Failed to open {}: {} (running without persistence)", p, e);
-                    None
-                }
+        Some(p) => match NibliStore::open(Path::new(p), "gasnu-local".to_string()) {
+            Ok(s) => {
+                println!("Persistent store: {}", p);
+                Some(s)
             }
-        }
+            Err(e) => {
+                println!(
+                    "[Store] Failed to open {}: {} (running without persistence)",
+                    p, e
+                );
+                None
+            }
+        },
         None => None,
     };
 
@@ -670,25 +679,50 @@ fn main() -> Result<()> {
                             match session.call_assert_text(&mut store, session_handle, text) {
                                 Ok(Ok(_)) => replayed += 1,
                                 Ok(Err(e)) => {
-                                    println!("[Store] Replay fact #{}: {}", fact.id, format_nibli_error(&e));
+                                    println!(
+                                        "[Store] Replay fact #{}: {}",
+                                        fact.id,
+                                        format_nibli_error(&e)
+                                    );
                                     replay_errors += 1;
                                 }
                                 Err(e) => {
-                                    println!("[Store] Replay fact #{}: {}", fact.id, format_host_error(&e));
+                                    println!(
+                                        "[Store] Replay fact #{}: {}",
+                                        fact.id,
+                                        format_host_error(&e)
+                                    );
                                     replay_errors += 1;
                                 }
                             }
                         }
-                        StoredAssertion::Direct { ref relation, ref args } => {
-                            let wit_args: Vec<EngineLogicalTerm> = args.iter().map(stored_term_to_wit).collect();
-                            match session.call_assert_fact(&mut store, session_handle, relation, &wit_args) {
+                        StoredAssertion::Direct {
+                            ref relation,
+                            ref args,
+                        } => {
+                            let wit_args: Vec<EngineLogicalTerm> =
+                                args.iter().map(stored_term_to_wit).collect();
+                            match session.call_assert_fact(
+                                &mut store,
+                                session_handle,
+                                relation,
+                                &wit_args,
+                            ) {
                                 Ok(Ok(_)) => replayed += 1,
                                 Ok(Err(e)) => {
-                                    println!("[Store] Replay fact #{}: {}", fact.id, format_nibli_error(&e));
+                                    println!(
+                                        "[Store] Replay fact #{}: {}",
+                                        fact.id,
+                                        format_nibli_error(&e)
+                                    );
                                     replay_errors += 1;
                                 }
                                 Err(e) => {
-                                    println!("[Store] Replay fact #{}: {}", fact.id, format_host_error(&e));
+                                    println!(
+                                        "[Store] Replay fact #{}: {}",
+                                        fact.id,
+                                        format_host_error(&e)
+                                    );
                                     replay_errors += 1;
                                 }
                             }
@@ -711,7 +745,9 @@ fn main() -> Result<()> {
     println!(
         "Ready. Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :saturate [n] :db :help"
     );
-    println!("Prefix '?' for queries, '?!' for proof trace, '??' for find, plain text for assertions.\n");
+    println!(
+        "Prefix '?' for queries, '?!' for proof trace, '??' for find, plain text for assertions.\n"
+    );
 
     loop {
         let sig = line_editor.read_line(&prompt);
@@ -743,10 +779,19 @@ fn main() -> Result<()> {
                             Some(s) => {
                                 let active = s.active_fact_count().unwrap_or(0);
                                 let total = s.total_fact_count().unwrap_or(0);
-                                println!("[Store] {} (node: {})", db_path.as_deref().unwrap_or("?"), s.node_id());
-                                println!("[Store] {} active facts, {} total (including retracted)", active, total);
+                                println!(
+                                    "[Store] {} (node: {})",
+                                    db_path.as_deref().unwrap_or("?"),
+                                    s.node_id()
+                                );
+                                println!(
+                                    "[Store] {} active facts, {} total (including retracted)",
+                                    active, total
+                                );
                             }
-                            None => println!("[Store] No persistent store configured. Set NIBLI_DB_PATH env var."),
+                            None => println!(
+                                "[Store] No persistent store configured. Set NIBLI_DB_PATH env var."
+                            ),
                         }
                         continue;
                     }
@@ -786,8 +831,12 @@ fn main() -> Result<()> {
                                 } else {
                                     println!("[Facts] {} active fact(s):", facts.len());
                                     for f in &facts {
-                                        let roots_label = if f.root_count == 1 { "root" } else { "roots" };
-                                        println!("  #{}: {} ({} {})", f.id, f.label, f.root_count, roots_label);
+                                        let roots_label =
+                                            if f.root_count == 1 { "root" } else { "roots" };
+                                        println!(
+                                            "  #{}: {} ({} {})",
+                                            f.id, f.label, f.root_count, roots_label
+                                        );
                                     }
                                 }
                             }
@@ -870,7 +919,10 @@ fn main() -> Result<()> {
                         }
                         _ => println!("[Host] Usage: :memory <positive-integer-mb>"),
                     }
-                } else if let Some(sat_arg) = input.strip_prefix(":saturate ").or_else(|| input.strip_prefix(":sat ")) {
+                } else if let Some(sat_arg) = input
+                    .strip_prefix(":saturate ")
+                    .or_else(|| input.strip_prefix(":sat "))
+                {
                     match sat_arg.trim().parse::<u32>() {
                         Ok(n) if n > 0 => {
                             run_bound = n;
@@ -889,8 +941,7 @@ fn main() -> Result<()> {
                         continue;
                     }
                     refuel(&mut store, fuel_budget);
-                    match session
-                        .call_register_compute_predicate(&mut store, session_handle, name)
+                    match session.call_register_compute_predicate(&mut store, session_handle, name)
                     {
                         Ok(()) => {
                             println!("[Compute] Registered '{}' for external dispatch", name)
@@ -998,7 +1049,11 @@ fn main() -> Result<()> {
                                 asserted += 1;
                             }
                             Ok(Err(e)) => {
-                                println!("[Load] line {}: {}", line_num + 1, format_nibli_error(&e));
+                                println!(
+                                    "[Load] line {}: {}",
+                                    line_num + 1,
+                                    format_nibli_error(&e)
+                                );
                                 errors += 1;
                             }
                             Err(e) => {
@@ -1049,7 +1104,9 @@ fn main() -> Result<()> {
                         continue;
                     }
                     match nibli_store.as_mut() {
-                        None => println!("[Merge] No persistent store. Set NIBLI_DB_PATH to enable."),
+                        None => {
+                            println!("[Merge] No persistent store. Set NIBLI_DB_PATH to enable.")
+                        }
                         Some(s) => {
                             let merge_path = Path::new(filepath);
                             if !merge_path.exists() {
@@ -1058,7 +1115,10 @@ fn main() -> Result<()> {
                             }
                             match s.merge_from_file(merge_path) {
                                 Ok(result) => {
-                                    println!("[Merge] {} added, {} tombstoned from {}", result.added, result.tombstoned, filepath);
+                                    println!(
+                                        "[Merge] {} added, {} tombstoned from {}",
+                                        result.added, result.tombstoned, filepath
+                                    );
                                     if result.added > 0 || result.tombstoned > 0 {
                                         // Rebuild WASM session from merged store
                                         refuel(&mut store, fuel_budget);
@@ -1067,26 +1127,51 @@ fn main() -> Result<()> {
                                             Ok(facts) => {
                                                 let mut replayed = 0u32;
                                                 for fact in &facts {
-                                                    let assertion: StoredAssertion = match postcard::from_bytes(&fact.payload) {
-                                                        Ok(a) => a,
-                                                        Err(_) => continue,
-                                                    };
+                                                    let assertion: StoredAssertion =
+                                                        match postcard::from_bytes(&fact.payload) {
+                                                            Ok(a) => a,
+                                                            Err(_) => continue,
+                                                        };
                                                     refuel(&mut store, fuel_budget);
                                                     match &assertion {
                                                         StoredAssertion::Text(text) => {
-                                                            if session.call_assert_text(&mut store, session_handle, text).is_ok() {
+                                                            if session
+                                                                .call_assert_text(
+                                                                    &mut store,
+                                                                    session_handle,
+                                                                    text,
+                                                                )
+                                                                .is_ok()
+                                                            {
                                                                 replayed += 1;
                                                             }
                                                         }
-                                                        StoredAssertion::Direct { relation, args } => {
-                                                            let wit_args: Vec<EngineLogicalTerm> = args.iter().map(stored_term_to_wit).collect();
-                                                            if session.call_assert_fact(&mut store, session_handle, relation, &wit_args).is_ok() {
+                                                        StoredAssertion::Direct {
+                                                            relation,
+                                                            args,
+                                                        } => {
+                                                            let wit_args: Vec<EngineLogicalTerm> =
+                                                                args.iter()
+                                                                    .map(stored_term_to_wit)
+                                                                    .collect();
+                                                            if session
+                                                                .call_assert_fact(
+                                                                    &mut store,
+                                                                    session_handle,
+                                                                    relation,
+                                                                    &wit_args,
+                                                                )
+                                                                .is_ok()
+                                                            {
                                                                 replayed += 1;
                                                             }
                                                         }
                                                     }
                                                 }
-                                                println!("[Merge] KB rebuilt with {} facts", replayed);
+                                                println!(
+                                                    "[Merge] KB rebuilt with {} facts",
+                                                    replayed
+                                                );
                                             }
                                             Err(e) => println!("[Merge] Replay error: {}", e),
                                         }
@@ -1103,13 +1188,15 @@ fn main() -> Result<()> {
                         continue;
                     }
                     match nibli_store.as_ref() {
-                        None => println!("[Export] No persistent store. Set NIBLI_DB_PATH to enable."),
-                        Some(s) => {
-                            match s.export_to_file(Path::new(filepath)) {
-                                Ok(count) => println!("[Export] {} facts exported to {}", count, filepath),
-                                Err(e) => println!("[Export] Error: {}", e),
-                            }
+                        None => {
+                            println!("[Export] No persistent store. Set NIBLI_DB_PATH to enable.")
                         }
+                        Some(s) => match s.export_to_file(Path::new(filepath)) {
+                            Ok(count) => {
+                                println!("[Export] {} facts exported to {}", count, filepath)
+                            }
+                            Err(e) => println!("[Export] Error: {}", e),
+                        },
                     }
                 } else if let Some(find_text) = input.strip_prefix("??") {
                     let text = find_text.trim();
@@ -1721,9 +1808,9 @@ mod tests {
         let (addr, _listener) = mock_server(r#"{"result": false}"#);
         let mut host = make_host(Some(addr));
 
-        let args = vec![
-            compute_backend::LogicalTerm::Description("lo gerku".to_string()),
-        ];
+        let args = vec![compute_backend::LogicalTerm::Description(
+            "lo gerku".to_string(),
+        )];
         let result = host.dispatch_to_backend("test_rel", &args);
         assert_eq!(result, Ok(false));
     }
@@ -1733,9 +1820,7 @@ mod tests {
         let (addr, _listener) = mock_server(r#"{"result": true}"#);
         let mut host = make_host(Some(addr));
 
-        let args = vec![
-            compute_backend::LogicalTerm::Unspecified,
-        ];
+        let args = vec![compute_backend::LogicalTerm::Unspecified];
         let result = host.dispatch_to_backend("test_rel", &args);
         assert_eq!(result, Ok(true));
     }

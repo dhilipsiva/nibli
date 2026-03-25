@@ -89,8 +89,7 @@ const COMPOUND_CMAVO: &[&str] = &[
     // GA selma'o + nai — forethought connectives
     "ganai", "genai", "ginai", "gonai", "gunai",
     // JA selma'o + nai — afterthought logical connectives
-    "janai", "jenai", "jonai", "junai",
-    // PU selma'o + nai — tense negation
+    "janai", "jenai", "jonai", "junai", // PU selma'o + nai — tense negation
     "punai", "canai", "banai",
 ];
 
@@ -295,10 +294,19 @@ mod tests {
             ("mi .unai do klama", "u"),
         ] {
             let tokens = tokenize(input);
-            assert_eq!(tokens[2], (LojbanToken::Cmavo, vowel),
-                "fused {} should produce Cmavo(\"{}\")", input, vowel);
-            assert_eq!(tokens[3], (LojbanToken::Cmavo, "nai"),
-                "fused {} should produce Cmavo(\"nai\")", input);
+            assert_eq!(
+                tokens[2],
+                (LojbanToken::Cmavo, vowel),
+                "fused {} should produce Cmavo(\"{}\")",
+                input,
+                vowel
+            );
+            assert_eq!(
+                tokens[3],
+                (LojbanToken::Cmavo, "nai"),
+                "fused {} should produce Cmavo(\"nai\")",
+                input
+            );
         }
     }
 
@@ -506,7 +514,9 @@ mod tests {
     fn test_sentence_separator_i() {
         let tokens = tokenize("mi klama .i do sutra");
         // .i is tokenized as Pause(".") + Cmavo("i")
-        let i_tok = tokens.iter().find(|(t, s)| *t == LojbanToken::Cmavo && *s == "i");
+        let i_tok = tokens
+            .iter()
+            .find(|(t, s)| *t == LojbanToken::Cmavo && *s == "i");
         assert!(i_tok.is_some());
     }
 

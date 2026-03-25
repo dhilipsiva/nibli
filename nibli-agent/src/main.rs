@@ -143,7 +143,7 @@ fn domain_topics(domain: &str) -> Vec<String> {
         "krali" => vec!["krali", "turni", "flalu"],
         "gerku" => vec!["gerku", "danlu", "mabru"],
         "skami" => vec!["skami", "datni", "ciste"],
-        "gdpr"  => vec!["datni", "curmi", "bilga", "prenu"],
+        "gdpr" => vec!["datni", "curmi", "bilga", "prenu"],
         "xukmi" => vec!["xukmi", "ckape", "bilma", "kanro"],
         _ => vec![],
     }
@@ -254,10 +254,14 @@ enum LlmClient {
 }
 
 impl LlmClient {
-    fn new_anthropic(model: &str, gen_prompt: &str, react_prompt: &str, trans_prompt: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    fn new_anthropic(
+        model: &str,
+        gen_prompt: &str,
+        react_prompt: &str,
+        trans_prompt: &str,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let client = anthropic::Client::new(
-            std::env::var("ANTHROPIC_API_KEY")
-                .expect("ANTHROPIC_API_KEY must be set"),
+            std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY must be set"),
         )?;
 
         let translator = client
@@ -281,10 +285,20 @@ impl LlmClient {
             .max_tokens(256)
             .build();
 
-        Ok(LlmClient::Anthropic { translator, generator, reactor })
+        Ok(LlmClient::Anthropic {
+            translator,
+            generator,
+            reactor,
+        })
     }
 
-    fn new_ollama(url: &str, model: &str, gen_prompt: &str, react_prompt: &str, trans_prompt: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    fn new_ollama(
+        url: &str,
+        model: &str,
+        gen_prompt: &str,
+        react_prompt: &str,
+        trans_prompt: &str,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let client = ollama::Client::builder()
             .api_key(rig::client::Nothing)
             .base_url(url)
@@ -311,7 +325,11 @@ impl LlmClient {
             .max_tokens(256)
             .build();
 
-        Ok(LlmClient::Ollama { translator, generator, reactor })
+        Ok(LlmClient::Ollama {
+            translator,
+            generator,
+            reactor,
+        })
     }
 
     async fn translate(&self, english: &str) -> Result<String, String> {
@@ -319,7 +337,9 @@ impl LlmClient {
             LlmClient::Anthropic { translator, .. } => translator.prompt(english).await,
             LlmClient::Ollama { translator, .. } => translator.prompt(english).await,
         };
-        result.map(|s| clean_llm_output(s.trim())).map_err(|e| e.to_string())
+        result
+            .map(|s| clean_llm_output(s.trim()))
+            .map_err(|e| e.to_string())
     }
 
     async fn generate(&self, topic: &str) -> Result<String, String> {
@@ -328,7 +348,9 @@ impl LlmClient {
             LlmClient::Anthropic { generator, .. } => generator.prompt(&prompt).await,
             LlmClient::Ollama { generator, .. } => generator.prompt(&prompt).await,
         };
-        result.map(|s| clean_llm_output(s.trim())).map_err(|e| e.to_string())
+        result
+            .map(|s| clean_llm_output(s.trim()))
+            .map_err(|e| e.to_string())
     }
 
     async fn react(&self, received_lojban: &str) -> Result<String, String> {
@@ -337,7 +359,9 @@ impl LlmClient {
             LlmClient::Anthropic { reactor, .. } => reactor.prompt(&prompt).await,
             LlmClient::Ollama { reactor, .. } => reactor.prompt(&prompt).await,
         };
-        result.map(|s| clean_llm_output(s.trim())).map_err(|e| e.to_string())
+        result
+            .map(|s| clean_llm_output(s.trim()))
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -359,7 +383,8 @@ fn clean_llm_output(s: &str) -> String {
         } else {
             inner
         };
-        inner.trim_start_matches('\n')
+        inner
+            .trim_start_matches('\n')
             .trim_end_matches("```")
             .trim()
     } else {
@@ -428,7 +453,9 @@ async fn translate_validate_gossip(
         let prompt = if attempt == 1 {
             english.to_string()
         } else {
-            format!("Previous attempt was rejected: {last_error}\nPlease fix and translate again: {english}")
+            format!(
+                "Previous attempt was rejected: {last_error}\nPlease fix and translate again: {english}"
+            )
         };
         match llm.translate(&prompt).await {
             Ok(candidate) => {
@@ -436,7 +463,13 @@ async fn translate_validate_gossip(
                 match validate_lojban(engine, &candidate) {
                     Ok(()) => {
                         println!("[{agent_name}] Validated (gerna pass)");
-                        let envelope = build_envelope(agent_name, clock, &candidate, stance.clone(), extra_topics);
+                        let envelope = build_envelope(
+                            agent_name,
+                            clock,
+                            &candidate,
+                            stance.clone(),
+                            extra_topics,
+                        );
                         return Some(envelope);
                     }
                     Err(e) => {
@@ -524,7 +557,10 @@ impl GossipConnection {
             .write_all(&bytes)
             .await
             .map_err(|e| format!("write: {e}"))?;
-        self.writer.flush().await.map_err(|e| format!("flush: {e}"))?;
+        self.writer
+            .flush()
+            .await
+            .map_err(|e| format!("flush: {e}"))?;
         Ok(())
     }
 }
@@ -537,7 +573,10 @@ fn display_inbound(agent_name: &str, msg: &WireMessage) {
             let stance_str = format!("{}", env.stance);
             match &env.op {
                 GossipOp::AssertLojban(text) => {
-                    println!("[{agent_name}] Received from {} [{stance_str}]: {text}", env.author);
+                    println!(
+                        "[{agent_name}] Received from {} [{stance_str}]: {text}",
+                        env.author
+                    );
                 }
                 GossipOp::AssertDirect { relation, args } => {
                     println!(
@@ -548,12 +587,18 @@ fn display_inbound(agent_name: &str, msg: &WireMessage) {
                     );
                 }
                 GossipOp::Retract(id) => {
-                    println!("[{agent_name}] Received retraction from {}: {id}", env.author);
+                    println!(
+                        "[{agent_name}] Received retraction from {}: {id}",
+                        env.author
+                    );
                 }
             }
         }
         WireMessage::SyncResponse { envelopes } => {
-            println!("[{agent_name}] Sync: received {} envelope(s)", envelopes.len());
+            println!(
+                "[{agent_name}] Sync: received {} envelope(s)",
+                envelopes.len()
+            );
         }
         WireMessage::SyncRequest { .. } => {}
     }
@@ -578,12 +623,10 @@ async fn handle_inbound(
 
     // Only react to Lojban assertions from other agents.
     let lojban = match msg {
-        WireMessage::Envelope(env) if env.author != agent_name => {
-            match &env.op {
-                GossipOp::AssertLojban(text) => Some(text.clone()),
-                _ => None,
-            }
-        }
+        WireMessage::Envelope(env) if env.author != agent_name => match &env.op {
+            GossipOp::AssertLojban(text) => Some(text.clone()),
+            _ => None,
+        },
         _ => None,
     };
 
@@ -610,9 +653,16 @@ async fn handle_inbound(
         Ok(english) => {
             println!("[{agent_name}] Reacting to gossip: \"{english}\"");
             match translate_validate_gossip(
-                llm, engine, &english, agent_name,
-                clock, stance, extra_topics,
-            ).await {
+                llm,
+                engine,
+                &english,
+                agent_name,
+                clock,
+                stance,
+                extra_topics,
+            )
+            .await
+            {
                 Some(env) => {
                     // Track our own output to avoid self-echo.
                     if let GossipOp::AssertLojban(ref text) = env.op {
@@ -626,7 +676,9 @@ async fn handle_inbound(
                         *gossiped += 1;
                     }
                 }
-                None => { *failed += 1; }
+                None => {
+                    *failed += 1;
+                }
             }
         }
         Err(e) => {
@@ -642,10 +694,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     println!("[{}] Starting nibli gossip agent", cli.name);
-    println!("[{}] Provider: {}", cli.name, match cli.provider {
-        Provider::Anthropic => "anthropic",
-        Provider::Ollama => "ollama",
-    });
+    println!(
+        "[{}] Provider: {}",
+        cli.name,
+        match cli.provider {
+            Provider::Anthropic => "anthropic",
+            Provider::Ollama => "ollama",
+        }
+    );
 
     // Select domain-specific prompts.
     let (gen_prompt, react_prompt, trans_prompt) = domain_prompts(cli.domain.as_deref());
@@ -653,7 +709,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create LLM client.
     let llm = match &cli.provider {
         Provider::Anthropic => {
-            let model = cli.model.as_deref()
+            let model = cli
+                .model
+                .as_deref()
                 .unwrap_or(anthropic::completion::CLAUDE_4_SONNET);
             println!("[{}] Model: {model}", cli.name);
             LlmClient::new_anthropic(model, gen_prompt, react_prompt, trans_prompt)?
@@ -661,12 +719,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Provider::Ollama => {
             let model = cli.model.as_deref().unwrap_or("qwen3:30b");
             println!("[{}] Model: {model} ({})", cli.name, cli.ollama_url);
-            LlmClient::new_ollama(&cli.ollama_url, model, gen_prompt, react_prompt, trans_prompt)?
+            LlmClient::new_ollama(
+                &cli.ollama_url,
+                model,
+                gen_prompt,
+                react_prompt,
+                trans_prompt,
+            )?
         }
     };
 
     // Check if DB already exists (before open creates it).
-    let db_existed = cli.db_path.as_ref().map(|p| Path::new(p).exists()).unwrap_or(false);
+    let db_existed = cli
+        .db_path
+        .as_ref()
+        .map(|p| Path::new(p).exists())
+        .unwrap_or(false);
 
     // Create validation engine (with optional persistence).
     let engine = if let Some(ref db) = cli.db_path {
@@ -706,12 +774,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-            println!("[{}] Seed loaded: {asserted} asserted, {skipped} skipped, {errors} errors", cli.name);
+            println!(
+                "[{}] Seed loaded: {asserted} asserted, {skipped} skipped, {errors} errors",
+                cli.name
+            );
         }
     }
 
     // Vector clock.
-    let mut clock = VectorClock { entries: HashMap::new() };
+    let mut clock = VectorClock {
+        entries: HashMap::new(),
+    };
 
     // Extra topics from domain.
     let extra_topics = cli.domain.as_deref().map(domain_topics).unwrap_or_default();
@@ -731,10 +804,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if cli.auto_gossip {
         // ── Auto-gossip mode ──
-        let topic = cli.topic.as_deref()
+        let topic = cli
+            .topic
+            .as_deref()
             .or(cli.domain.as_deref())
             .unwrap_or("general knowledge");
-        println!("[{}] Auto-gossip mode: topic=\"{topic}\", interval={}s", cli.name, cli.interval);
+        println!(
+            "[{}] Auto-gossip mode: topic=\"{topic}\", interval={}s",
+            cli.name, cli.interval
+        );
 
         let mut generated: u32 = 0;
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(cli.interval));
@@ -863,6 +941,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    println!("[{}] Final stats: Gossiped={gossiped}, Failed={failed}", cli.name);
+    println!(
+        "[{}] Final stats: Gossiped={gossiped}, Failed={failed}",
+        cli.name
+    );
     Ok(())
 }

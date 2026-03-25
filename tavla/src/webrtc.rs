@@ -10,21 +10,21 @@ mod inner {
     use std::sync::Arc;
 
     use async_trait::async_trait;
-    use tokio::sync::{mpsc, Mutex};
+    use tokio::sync::{Mutex, mpsc};
+    use webrtc::api::APIBuilder;
     use webrtc::api::interceptor_registry::register_default_interceptors;
     use webrtc::api::media_engine::MediaEngine;
-    use webrtc::api::APIBuilder;
-    use webrtc::data_channel::data_channel_message::DataChannelMessage;
     use webrtc::data_channel::RTCDataChannel;
+    use webrtc::data_channel::data_channel_message::DataChannelMessage;
     use webrtc::ice_transport::ice_server::RTCIceServer;
     use webrtc::interceptor::registry::Registry;
+    use webrtc::peer_connection::RTCPeerConnection;
     use webrtc::peer_connection::configuration::RTCConfiguration;
     use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
-    use webrtc::peer_connection::RTCPeerConnection;
 
+    use crate::WireMessage;
     use crate::signal::SdpExchange;
     use crate::transport::{InboundMessage, Transport};
-    use crate::WireMessage;
 
     /// Per-peer WebRTC state.
     struct WebRtcPeer {
@@ -74,9 +74,7 @@ mod inner {
             }
         }
 
-        async fn create_peer_connection(
-            &self,
-        ) -> Result<Arc<RTCPeerConnection>, String> {
+        async fn create_peer_connection(&self) -> Result<Arc<RTCPeerConnection>, String> {
             let mut m = MediaEngine::default();
             m.register_default_codecs()
                 .map_err(|e| format!("media engine: {e}"))?;
@@ -152,18 +150,11 @@ mod inner {
             }));
 
             // Wait up to 10s for ICE.
-            let _ = tokio::time::timeout(
-                std::time::Duration::from_secs(10),
-                ice_done_rx,
-            )
-            .await;
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(10), ice_done_rx).await;
 
-            let local_desc = pc
-                .local_description()
-                .await
-                .ok_or("no local description")?;
-            let sdp_json = serde_json::to_string(&local_desc)
-                .map_err(|e| format!("serialize offer: {e}"))?;
+            let local_desc = pc.local_description().await.ok_or("no local description")?;
+            let sdp_json =
+                serde_json::to_string(&local_desc).map_err(|e| format!("serialize offer: {e}"))?;
 
             // Post offer to signaling server.
             let client = reqwest::Client::new();
@@ -199,13 +190,10 @@ mod inner {
             println!("[tavla] WebRTC connected to {peer_name}");
 
             // Store peer.
-            self.peers.lock().await.insert(
-                peer_name.to_string(),
-                WebRtcPeer {
-                    dc,
-                    _pc: pc,
-                },
-            );
+            self.peers
+                .lock()
+                .await
+                .insert(peer_name.to_string(), WebRtcPeer { dc, _pc: pc });
 
             Ok(())
         }
@@ -216,10 +204,7 @@ mod inner {
 
             // Poll for offers directed at us.
             let resp = client
-                .get(format!(
-                    "{}/offer/{}",
-                    self.signal_url, self.our_name
-                ))
+                .get(format!("{}/offer/{}", self.signal_url, self.our_name))
                 .send()
                 .await
                 .map_err(|e| format!("get offer: {e}"))?;
@@ -228,10 +213,8 @@ mod inner {
                 return Err("no pending offer".to_string());
             }
 
-            let exchange: SdpExchange = resp
-                .json()
-                .await
-                .map_err(|e| format!("parse offer: {e}"))?;
+            let exchange: SdpExchange =
+                resp.json().await.map_err(|e| format!("parse offer: {e}"))?;
 
             let peer_name = exchange.from.clone();
             let offer: RTCSessionDescription = serde_json::from_str(&exchange.sdp)
@@ -262,9 +245,7 @@ mod inner {
                                 if line.trim().is_empty() {
                                     continue;
                                 }
-                                if let Ok(wire_msg) =
-                                    serde_json::from_str::<WireMessage>(line)
-                                {
+                                if let Ok(wire_msg) = serde_json::from_str::<WireMessage>(line) {
                                     let _ = inbound_tx.send(InboundMessage {
                                         peer_id: peer_id.clone(),
                                         message: wire_msg,
@@ -304,18 +285,11 @@ mod inner {
                 })
             }));
 
-            let _ = tokio::time::timeout(
-                std::time::Duration::from_secs(10),
-                ice_done_rx,
-            )
-            .await;
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(10), ice_done_rx).await;
 
-            let local_desc = pc
-                .local_description()
-                .await
-                .ok_or("no local description")?;
-            let sdp_json = serde_json::to_string(&local_desc)
-                .map_err(|e| format!("serialize answer: {e}"))?;
+            let local_desc = pc.local_description().await.ok_or("no local description")?;
+            let sdp_json =
+                serde_json::to_string(&local_desc).map_err(|e| format!("serialize answer: {e}"))?;
 
             // Post answer to signaling server.
             client
@@ -330,20 +304,17 @@ mod inner {
                 .map_err(|e| format!("post answer: {e}"))?;
 
             // Wait for data channel.
-            let dc = tokio::time::timeout(
-                std::time::Duration::from_secs(10),
-                dc_rx,
-            )
-            .await
-            .map_err(|_| "timeout waiting for data channel".to_string())?
-            .map_err(|_| "data channel sender dropped".to_string())?;
+            let dc = tokio::time::timeout(std::time::Duration::from_secs(10), dc_rx)
+                .await
+                .map_err(|_| "timeout waiting for data channel".to_string())?
+                .map_err(|_| "data channel sender dropped".to_string())?;
 
             println!("[tavla] WebRTC accepted from {peer_name}");
 
-            self.peers.lock().await.insert(
-                peer_name,
-                WebRtcPeer { dc, _pc: pc },
-            );
+            self.peers
+                .lock()
+                .await
+                .insert(peer_name, WebRtcPeer { dc, _pc: pc });
 
             Ok(())
         }
@@ -352,13 +323,11 @@ mod inner {
     #[async_trait]
     impl Transport for WebRtcTransport {
         async fn send_to(&self, peer: &str, msg: &WireMessage) -> Result<(), String> {
-            let data = serde_json::to_string(msg)
-                .map_err(|e| format!("serialize: {e}"))?;
+            let data = serde_json::to_string(msg).map_err(|e| format!("serialize: {e}"))?;
             let data = format!("{data}\n");
             let peers = self.peers.lock().await;
             if let Some(p) = peers.get(peer) {
-                p.dc
-                    .send_text(data)
+                p.dc.send_text(data)
                     .await
                     .map_err(|e| format!("send to {peer}: {e}"))?;
                 Ok(())
@@ -368,8 +337,7 @@ mod inner {
         }
 
         async fn broadcast(&self, msg: &WireMessage) -> Result<(), String> {
-            let data = serde_json::to_string(msg)
-                .map_err(|e| format!("serialize: {e}"))?;
+            let data = serde_json::to_string(msg).map_err(|e| format!("serialize: {e}"))?;
             let data = format!("{data}\n");
             let peers = self.peers.lock().await;
             for (id, p) in peers.iter() {

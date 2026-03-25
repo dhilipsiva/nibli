@@ -36,11 +36,7 @@ fn main() {
         match engine.assert_text(trimmed) {
             Ok(_fact_id) => {
                 let escaped_line = escape_json(trimmed);
-                let _ = writeln!(
-                    out,
-                    r#"{{"line":"{}","valid":true}}"#,
-                    escaped_line
-                );
+                let _ = writeln!(out, r#"{{"line":"{}","valid":true}}"#, escaped_line);
             }
             Err(e) => {
                 let escaped_line = escape_json(trimmed);

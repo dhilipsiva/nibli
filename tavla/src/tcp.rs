@@ -10,10 +10,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 
-use crate::transport::{InboundMessage, Transport};
 use crate::WireMessage;
+use crate::transport::{InboundMessage, Transport};
 
 /// Per-peer writer handle.
 struct PeerHandle {
@@ -43,8 +43,7 @@ impl TcpTransport {
             .map_err(|e| format!("TCP bind {listen_addr}: {e}"))?;
 
         let (inbound_tx, inbound_rx) = mpsc::unbounded_channel();
-        let peers: Arc<Mutex<HashMap<String, PeerHandle>>> =
-            Arc::new(Mutex::new(HashMap::new()));
+        let peers: Arc<Mutex<HashMap<String, PeerHandle>>> = Arc::new(Mutex::new(HashMap::new()));
 
         let transport = Arc::new(TcpTransport {
             inbound_rx: Mutex::new(inbound_rx),
@@ -67,10 +66,8 @@ impl TcpTransport {
                         // Spawn so we don't block the accept loop while
                         // waiting for the handshake line.
                         tokio::spawn(async move {
-                            Self::accept_with_handshake(
-                                stream, addr_str, peers3, inbound_tx3,
-                            )
-                            .await;
+                            Self::accept_with_handshake(stream, addr_str, peers3, inbound_tx3)
+                                .await;
                         });
                     }
                     Err(e) => {
@@ -117,7 +114,9 @@ impl TcpTransport {
         {
             Ok(Ok(n)) if n > 0 => {
                 let name = first_line.trim().to_string();
-                if name.is_empty() { addr } else {
+                if name.is_empty() {
+                    addr
+                } else {
                     println!("[tavla] + peer identified as {name}");
                     name
                 }
@@ -145,19 +144,11 @@ impl TcpTransport {
                         continue;
                     }
                     println!("[tavla] → connected to {addr}");
-                    Self::register_peer_stream(
-                        addr.to_string(),
-                        stream,
-                        peers,
-                        inbound_tx,
-                    )
-                    .await;
+                    Self::register_peer_stream(addr.to_string(), stream, peers, inbound_tx).await;
                     return;
                 }
                 Err(e) => {
-                    eprintln!(
-                        "[tavla] ~ connect to {addr} failed (attempt {attempt}/3): {e}"
-                    );
+                    eprintln!("[tavla] ~ connect to {addr} failed (attempt {attempt}/3): {e}");
                     if attempt < 3 {
                         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
                     }
@@ -238,9 +229,7 @@ impl TcpTransport {
                                 });
                             }
                             Err(e) => {
-                                eprintln!(
-                                    "[tavla] ~ bad JSON from {peer_id_r}: {e}"
-                                );
+                                eprintln!("[tavla] ~ bad JSON from {peer_id_r}: {e}");
                             }
                         }
                     }
@@ -257,8 +246,7 @@ impl TcpTransport {
 
     /// Serialize a WireMessage to JSON Lines bytes.
     fn encode(msg: &WireMessage) -> Result<Vec<u8>, String> {
-        let mut bytes =
-            serde_json::to_vec(msg).map_err(|e| format!("serialize: {e}"))?;
+        let mut bytes = serde_json::to_vec(msg).map_err(|e| format!("serialize: {e}"))?;
         bytes.push(b'\n');
         Ok(bytes)
     }

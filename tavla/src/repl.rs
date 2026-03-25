@@ -12,10 +12,7 @@ use crate::transport::{InboundMessage, Transport};
 use crate::{EpistemicStance, GossipNode, GossipOp, TrustPolicy, WireMessage};
 
 /// Run the interactive REPL.
-pub async fn run_repl(
-    node: &mut GossipNode,
-    transport: Arc<dyn Transport>,
-) {
+pub async fn run_repl(node: &mut GossipNode, transport: Arc<dyn Transport>) {
     let (stdin_tx, mut stdin_rx) = mpsc::unbounded_channel::<String>();
 
     // Spawn blocking stdin reader on a dedicated OS thread.
@@ -78,11 +75,7 @@ pub async fn run_repl(
 }
 
 /// Handle a user command from the REPL.
-async fn handle_command(
-    line: &str,
-    node: &mut GossipNode,
-    transport: &Arc<dyn Transport>,
-) {
+async fn handle_command(line: &str, node: &mut GossipNode, transport: &Arc<dyn Transport>) {
     if line.starts_with(':') {
         let parts: Vec<&str> = line.splitn(2, ' ').collect();
         let cmd = parts[0];
@@ -118,7 +111,10 @@ async fn handle_command(
                 let tombstoned = node.crdt_log().tombstones.len();
                 println!(
                     "  {} envelopes ({} active, {} quarantined, {} tombstoned)",
-                    all.len(), active, quarantined, tombstoned
+                    all.len(),
+                    active,
+                    quarantined,
+                    tombstoned
                 );
                 for env in &all {
                     let status = if node.crdt_log().is_tombstoned(&env.id) {
@@ -156,10 +152,7 @@ async fn handle_command(
                     return;
                 }
                 let all = node.log();
-                let matches: Vec<_> = all
-                    .iter()
-                    .filter(|env| env.id.starts_with(arg))
-                    .collect();
+                let matches: Vec<_> = all.iter().filter(|env| env.id.starts_with(arg)).collect();
                 match matches.len() {
                     0 => println!("  no envelope matching prefix '{arg}'"),
                     1 => {
@@ -333,22 +326,21 @@ async fn handle_command(
                     println!(
                         "  {} → {}",
                         query,
-                        if holds { "JETNU (TRUE)" } else { "JITFA (FALSE)" }
+                        if holds {
+                            "JETNU (TRUE)"
+                        } else {
+                            "JITFA (FALSE)"
+                        }
                     );
                     if holds {
                         // Show epistemic sources.
                         let sources = node.epistemic_sources(query);
                         if !sources.is_empty() {
-                            let formatted: Vec<String> = sources
-                                .iter()
-                                .map(GossipNode::format_source)
-                                .collect();
+                            let formatted: Vec<String> =
+                                sources.iter().map(GossipNode::format_source).collect();
                             println!("  Sources: {}", formatted.join(", "));
                             if let Some(strongest) = GossipNode::strongest_source(&sources) {
-                                println!(
-                                    "  Strongest: {}",
-                                    GossipNode::format_source(strongest)
-                                );
+                                println!("  Strongest: {}", GossipNode::format_source(strongest));
                             }
                         }
                         println!("{proof}");
@@ -426,9 +418,7 @@ async fn handle_inbound(
         }
         WireMessage::SyncResponse { envelopes } => {
             let count = envelopes.len();
-            println!(
-                "[tavla] ← {peer_id}: sync_response ({count} envelopes)"
-            );
+            println!("[tavla] ← {peer_id}: sync_response ({count} envelopes)");
             for envelope in envelopes {
                 if let Err(e) = node.ingest_from(envelope, Some(&peer_id)) {
                     eprintln!("[tavla] ✗ sync ingest error: {e}");

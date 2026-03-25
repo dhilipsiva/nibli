@@ -27,8 +27,8 @@ use bindings::lojban::nibli::error_types::{NibliError, SyntaxDetail};
 use bindings::lojban::nibli::logic_types::{
     FactSummary, LogicBuffer, LogicNode, LogicalTerm, ProofTrace, WitnessBinding,
 };
-use bindings::lojban::nibli::{gerna, smuni};
 use bindings::lojban::nibli::logji::KnowledgeBase;
+use bindings::lojban::nibli::{gerna, smuni};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -106,13 +106,16 @@ fn extract_selbri_snapshot(ast: &AstBuffer, root_id: u32) -> SelbriSnapshot {
 }
 
 fn visit_selbri(
-    ast: &AstBuffer, id: u32,
+    ast: &AstBuffer,
+    id: u32,
     snap: &mut SelbriSnapshot,
     sm: &mut HashMap<u32, u32>,
     um: &mut HashMap<u32, u32>,
     tm: &mut HashMap<u32, u32>,
 ) -> u32 {
-    if let Some(&mapped) = sm.get(&id) { return mapped; }
+    if let Some(&mapped) = sm.get(&id) {
+        return mapped;
+    }
     let new_id = snap.selbris.len() as u32;
     sm.insert(id, new_id);
     snap.selbris.push(Selbri::Root(String::new())); // placeholder
@@ -138,7 +141,10 @@ fn visit_selbri(
         }
         Selbri::WithArgs((core, args)) => {
             let nc = visit_selbri(ast, *core, snap, sm, um, tm);
-            let na: Vec<u32> = args.iter().map(|&a| visit_sumti(ast, a, snap, sm, um, tm)).collect();
+            let na: Vec<u32> = args
+                .iter()
+                .map(|&a| visit_sumti(ast, a, snap, sm, um, tm))
+                .collect();
             Selbri::WithArgs((nc, na))
         }
         Selbri::Connected((l, c, r)) => {
@@ -156,13 +162,16 @@ fn visit_selbri(
 }
 
 fn visit_sumti(
-    ast: &AstBuffer, id: u32,
+    ast: &AstBuffer,
+    id: u32,
     snap: &mut SelbriSnapshot,
     sm: &mut HashMap<u32, u32>,
     um: &mut HashMap<u32, u32>,
     tm: &mut HashMap<u32, u32>,
 ) -> u32 {
-    if let Some(&mapped) = um.get(&id) { return mapped; }
+    if let Some(&mapped) = um.get(&id) {
+        return mapped;
+    }
     let new_id = snap.sumtis.len() as u32;
     um.insert(id, new_id);
     snap.sumtis.push(Sumti::Unspecified); // placeholder
@@ -193,7 +202,13 @@ fn visit_sumti(
         Sumti::Restricted((inner, rc)) => {
             let ni = visit_sumti(ast, *inner, snap, sm, um, tm);
             let ns = visit_sentence(ast, rc.body_sentence, snap, sm, um, tm);
-            Sumti::Restricted((ni, RelClause { kind: rc.kind, body_sentence: ns }))
+            Sumti::Restricted((
+                ni,
+                RelClause {
+                    kind: rc.kind,
+                    body_sentence: ns,
+                },
+            ))
         }
         Sumti::Number(n) => Sumti::Number(*n),
         Sumti::Connected((l, c, neg, r)) => {
@@ -211,28 +226,47 @@ fn visit_sumti(
 }
 
 fn visit_sentence(
-    ast: &AstBuffer, id: u32,
+    ast: &AstBuffer,
+    id: u32,
     snap: &mut SelbriSnapshot,
     sm: &mut HashMap<u32, u32>,
     um: &mut HashMap<u32, u32>,
     tm: &mut HashMap<u32, u32>,
 ) -> u32 {
-    if let Some(&mapped) = tm.get(&id) { return mapped; }
+    if let Some(&mapped) = tm.get(&id) {
+        return mapped;
+    }
     let new_id = snap.sentences.len() as u32;
     tm.insert(id, new_id);
     // placeholder
     snap.sentences.push(Sentence::Simple(Bridi {
-        relation: 0, head_terms: vec![], tail_terms: vec![],
-        negated: false, tense: None, attitudinal: None,
+        relation: 0,
+        head_terms: vec![],
+        tail_terms: vec![],
+        negated: false,
+        tense: None,
+        attitudinal: None,
     }));
     let mapped = match &ast.sentences[id as usize] {
         Sentence::Simple(b) => {
             let nr = visit_selbri(ast, b.relation, snap, sm, um, tm);
-            let nh: Vec<u32> = b.head_terms.iter().map(|&s| visit_sumti(ast, s, snap, sm, um, tm)).collect();
-            let nt: Vec<u32> = b.tail_terms.iter().map(|&s| visit_sumti(ast, s, snap, sm, um, tm)).collect();
+            let nh: Vec<u32> = b
+                .head_terms
+                .iter()
+                .map(|&s| visit_sumti(ast, s, snap, sm, um, tm))
+                .collect();
+            let nt: Vec<u32> = b
+                .tail_terms
+                .iter()
+                .map(|&s| visit_sumti(ast, s, snap, sm, um, tm))
+                .collect();
             Sentence::Simple(Bridi {
-                relation: nr, head_terms: nh, tail_terms: nt,
-                negated: b.negated, tense: b.tense, attitudinal: b.attitudinal,
+                relation: nr,
+                head_terms: nh,
+                tail_terms: nt,
+                negated: b.negated,
+                tense: b.tense,
+                attitudinal: b.attitudinal,
             })
         }
         Sentence::Connected((c, l, r)) => {
@@ -293,12 +327,18 @@ fn rebase_sumti(s: &Sumti, sb: u32, ub: u32, tb: u32) -> Sumti {
             };
             Sumti::ModalTagged((nmt, i + ub))
         }
-        Sumti::Restricted((i, rc)) => {
-            Sumti::Restricted((i + ub, RelClause { kind: rc.kind, body_sentence: rc.body_sentence + tb }))
-        }
+        Sumti::Restricted((i, rc)) => Sumti::Restricted((
+            i + ub,
+            RelClause {
+                kind: rc.kind,
+                body_sentence: rc.body_sentence + tb,
+            },
+        )),
         Sumti::Number(n) => Sumti::Number(*n),
         Sumti::Connected((l, c, neg, r)) => Sumti::Connected((l + ub, c.clone(), *neg, r + ub)),
-        Sumti::QuantifiedDescription((count, g, sid)) => Sumti::QuantifiedDescription((*count, *g, sid + sb)),
+        Sumti::QuantifiedDescription((count, g, sid)) => {
+            Sumti::QuantifiedDescription((*count, *g, sid + sb))
+        }
     }
 }
 
@@ -308,7 +348,9 @@ fn rebase_sentence(s: &Sentence, sb: u32, ub: u32, tb: u32) -> Sentence {
             relation: b.relation + sb,
             head_terms: b.head_terms.iter().map(|i| i + ub).collect(),
             tail_terms: b.tail_terms.iter().map(|i| i + ub).collect(),
-            negated: b.negated, tense: b.tense, attitudinal: b.attitudinal,
+            negated: b.negated,
+            tense: b.tense,
+            attitudinal: b.attitudinal,
         }),
         Sentence::Connected((c, l, r)) => Sentence::Connected((c.clone(), l + tb, r + tb)),
     }
@@ -327,8 +369,9 @@ fn resolve_sentence_go_i(
             let selbri_id = bridi.relation;
             match &ast.selbris[selbri_id as usize] {
                 Selbri::Root(name) if name == "go'i" => {
-                    let resolved_id = current
-                        .ok_or_else(|| "go'i has no antecedent (no previous assertion)".to_string())?;
+                    let resolved_id = current.ok_or_else(|| {
+                        "go'i has no antecedent (no previous assertion)".to_string()
+                    })?;
                     // Repoint bridi.relation to the full antecedent selbri
                     bridi.relation = resolved_id;
                     ast.sentences[sentence_idx] = Sentence::Simple(bridi);
@@ -389,8 +432,8 @@ fn compile_pipeline(
         }));
     }
 
-    let last_selbri_id = resolve_go_i(&mut ast, last_snapshot)
-        .map_err(|e| NibliError::Semantic(e))?;
+    let last_selbri_id =
+        resolve_go_i(&mut ast, last_snapshot).map_err(|e| NibliError::Semantic(e))?;
     let new_snapshot = last_selbri_id.map(|id| extract_selbri_snapshot(&ast, id));
     let buf = smuni::compile_buffer(&ast)?;
     Ok((buf, new_snapshot, parse_warnings))
@@ -438,8 +481,7 @@ impl GuestSession for Session {
     }
 
     fn assert_text(&self, input: String) -> Result<u64, NibliError> {
-        let (mut buf, new_last, warnings) =
-            compile_pipeline(&input, &self.last_relation.borrow())?;
+        let (mut buf, new_last, warnings) = compile_pipeline(&input, &self.last_relation.borrow())?;
         // Abort entire assertion if any sentence failed to parse.
         // Partial assertion is unsound: dropped constraints can lead to wrong proofs.
         if !warnings.is_empty() {
@@ -460,29 +502,25 @@ impl GuestSession for Session {
     }
 
     fn query_text(&self, input: String) -> Result<bool, NibliError> {
-        let (mut buf, _, _warnings) =
-            compile_pipeline(&input, &self.last_relation.borrow())?;
+        let (mut buf, _, _warnings) = compile_pipeline(&input, &self.last_relation.borrow())?;
         transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
         self.kb.query_entailment(&buf)
     }
 
     fn query_find_text(&self, input: String) -> Result<Vec<Vec<WitnessBinding>>, NibliError> {
-        let (mut buf, _, _warnings) =
-            compile_pipeline(&input, &self.last_relation.borrow())?;
+        let (mut buf, _, _warnings) = compile_pipeline(&input, &self.last_relation.borrow())?;
         transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
         self.kb.query_find(&buf)
     }
 
     fn query_text_with_proof(&self, input: String) -> Result<(bool, ProofTrace), NibliError> {
-        let (mut buf, _, _warnings) =
-            compile_pipeline(&input, &self.last_relation.borrow())?;
+        let (mut buf, _, _warnings) = compile_pipeline(&input, &self.last_relation.borrow())?;
         transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
         self.kb.query_entailment_with_proof(&buf)
     }
 
     fn compile_debug(&self, input: String) -> Result<String, NibliError> {
-        let (mut buf, _, _warnings) =
-            compile_pipeline(&input, &self.last_relation.borrow())?;
+        let (mut buf, _, _warnings) = compile_pipeline(&input, &self.last_relation.borrow())?;
         transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
         Ok(debug_sexp(&buf))
     }
@@ -670,11 +708,7 @@ mod tests {
     use bindings::lojban::nibli::ast_types::{Bridi, Conversion, Sumti};
 
     // Helper: build a minimal AstBuffer with a single simple sentence
-    fn make_ast(
-        selbris: Vec<Selbri>,
-        bridi_relation: u32,
-        head_terms: Vec<u32>,
-    ) -> AstBuffer {
+    fn make_ast(selbris: Vec<Selbri>, bridi_relation: u32, head_terms: Vec<u32>) -> AstBuffer {
         let sumtis: Vec<Sumti> = head_terms
             .iter()
             .map(|_| Sumti::ProSumti("mi".to_string()))
@@ -697,10 +731,7 @@ mod tests {
 
     /// Helper: build a two-sentence AstBuffer where sentence 1 has `selbris_1`
     /// and sentence 2 has go'i with the given head_terms.
-    fn make_two_sentence_ast(
-        mut selbris: Vec<Selbri>,
-        first_relation: u32,
-    ) -> AstBuffer {
+    fn make_two_sentence_ast(mut selbris: Vec<Selbri>, first_relation: u32) -> AstBuffer {
         let go_i_id = selbris.len() as u32;
         selbris.push(Selbri::Root("go'i".to_string()));
         AstBuffer {
@@ -714,13 +745,17 @@ mod tests {
                     relation: first_relation,
                     head_terms: vec![0],
                     tail_terms: vec![],
-                    negated: false, tense: None, attitudinal: None,
+                    negated: false,
+                    tense: None,
+                    attitudinal: None,
                 }),
                 Sentence::Simple(Bridi {
                     relation: go_i_id,
                     head_terms: vec![1],
                     tail_terms: vec![],
-                    negated: false, tense: None, attitudinal: None,
+                    negated: false,
+                    tense: None,
+                    attitudinal: None,
                 }),
             ],
             roots: vec![0, 1],
@@ -740,7 +775,10 @@ mod tests {
     #[test]
     fn test_extract_head_relation_root() {
         let selbris = vec![Selbri::Root("klama".to_string())];
-        assert_eq!(extract_head_relation(&selbris, 0), Some("klama".to_string()));
+        assert_eq!(
+            extract_head_relation(&selbris, 0),
+            Some("klama".to_string())
+        );
     }
 
     #[test]
@@ -750,16 +788,19 @@ mod tests {
             Selbri::Root("klama".to_string()),
             Selbri::Tanru((0, 1)),
         ];
-        assert_eq!(extract_head_relation(&selbris, 2), Some("klama".to_string()));
+        assert_eq!(
+            extract_head_relation(&selbris, 2),
+            Some("klama".to_string())
+        );
     }
 
     #[test]
     fn test_extract_head_relation_negated() {
-        let selbris = vec![
-            Selbri::Root("klama".to_string()),
-            Selbri::Negated(0),
-        ];
-        assert_eq!(extract_head_relation(&selbris, 1), Some("klama".to_string()));
+        let selbris = vec![Selbri::Root("klama".to_string()), Selbri::Negated(0)];
+        assert_eq!(
+            extract_head_relation(&selbris, 1),
+            Some("klama".to_string())
+        );
     }
 
     #[test]
@@ -768,7 +809,10 @@ mod tests {
             Selbri::Root("klama".to_string()),
             Selbri::Converted((Conversion::Se, 0)),
         ];
-        assert_eq!(extract_head_relation(&selbris, 1), Some("klama".to_string()));
+        assert_eq!(
+            extract_head_relation(&selbris, 1),
+            Some("klama".to_string())
+        );
     }
 
     // ─── Snapshot extract & graft tests ───
@@ -786,23 +830,34 @@ mod tests {
     fn test_snapshot_negated() {
         let ast = make_ast(
             vec![Selbri::Root("klama".to_string()), Selbri::Negated(0)],
-            1, vec![0],
+            1,
+            vec![0],
         );
         let snap = extract_selbri_snapshot(&ast, 1);
         assert_eq!(snap.selbris.len(), 2);
         // Root should be Negated pointing to the inner Root
-        assert!(matches!(&snap.selbris[snap.root as usize], Selbri::Negated(_)));
+        assert!(matches!(
+            &snap.selbris[snap.root as usize],
+            Selbri::Negated(_)
+        ));
     }
 
     #[test]
     fn test_snapshot_converted() {
         let ast = make_ast(
-            vec![Selbri::Root("prami".to_string()), Selbri::Converted((Conversion::Se, 0))],
-            1, vec![0],
+            vec![
+                Selbri::Root("prami".to_string()),
+                Selbri::Converted((Conversion::Se, 0)),
+            ],
+            1,
+            vec![0],
         );
         let snap = extract_selbri_snapshot(&ast, 1);
         assert_eq!(snap.selbris.len(), 2);
-        assert!(matches!(&snap.selbris[snap.root as usize], Selbri::Converted((Conversion::Se, _))));
+        assert!(matches!(
+            &snap.selbris[snap.root as usize],
+            Selbri::Converted((Conversion::Se, _))
+        ));
     }
 
     #[test]
@@ -810,20 +865,23 @@ mod tests {
         // na se klama → Negated(Converted(Se, Root("klama")))
         let ast = make_ast(
             vec![
-                Selbri::Root("klama".to_string()),        // 0
-                Selbri::Converted((Conversion::Se, 0)),   // 1
-                Selbri::Negated(1),                        // 2
+                Selbri::Root("klama".to_string()),      // 0
+                Selbri::Converted((Conversion::Se, 0)), // 1
+                Selbri::Negated(1),                     // 2
             ],
-            2, vec![0],
+            2,
+            vec![0],
         );
         let snap = extract_selbri_snapshot(&ast, 2);
         assert_eq!(snap.selbris.len(), 3);
         // Walk: root → Negated → Converted → Root
-        assert!(matches!(&snap.selbris[snap.root as usize], Selbri::Negated(inner) if {
-            matches!(&snap.selbris[*inner as usize], Selbri::Converted((Conversion::Se, inner2)) if {
-                matches!(&snap.selbris[*inner2 as usize], Selbri::Root(n) if n == "klama")
+        assert!(
+            matches!(&snap.selbris[snap.root as usize], Selbri::Negated(inner) if {
+                matches!(&snap.selbris[*inner as usize], Selbri::Converted((Conversion::Se, inner2)) if {
+                    matches!(&snap.selbris[*inner2 as usize], Selbri::Root(n) if n == "klama")
+                })
             })
-        }));
+        );
     }
 
     #[test]
@@ -855,10 +913,7 @@ mod tests {
     #[test]
     fn test_resolve_go_i_basic_root() {
         // Sentence 1: klama, Sentence 2: go'i → repoints to klama
-        let mut ast = make_two_sentence_ast(
-            vec![Selbri::Root("klama".to_string())],
-            0,
-        );
+        let mut ast = make_two_sentence_ast(vec![Selbri::Root("klama".to_string())], 0);
         let result = resolve_go_i(&mut ast, &None).unwrap();
         // go'i sentence should now point to the klama selbri
         assert_eq!(bridi_relation(&ast, 1), 0);
@@ -870,8 +925,8 @@ mod tests {
         // THE BUG FIX: "na klama" then "go'i" should preserve negation
         let mut ast = make_two_sentence_ast(
             vec![
-                Selbri::Root("klama".to_string()),  // 0
-                Selbri::Negated(0),                  // 1
+                Selbri::Root("klama".to_string()), // 0
+                Selbri::Negated(0),                // 1
             ],
             1, // first sentence uses Negated(Root("klama"))
         );
@@ -879,9 +934,11 @@ mod tests {
         // go'i should point to the Negated selbri (index 1), NOT bare Root
         let go_i_rel = bridi_relation(&ast, 1);
         assert_eq!(go_i_rel, 1);
-        assert!(matches!(&ast.selbris[go_i_rel as usize], Selbri::Negated(inner) if {
-            matches!(&ast.selbris[*inner as usize], Selbri::Root(n) if n == "klama")
-        }));
+        assert!(
+            matches!(&ast.selbris[go_i_rel as usize], Selbri::Negated(inner) if {
+                matches!(&ast.selbris[*inner as usize], Selbri::Root(n) if n == "klama")
+            })
+        );
         assert!(result.is_some());
     }
 
@@ -890,15 +947,18 @@ mod tests {
         // "se prami" then "go'i" → should preserve se-conversion
         let mut ast = make_two_sentence_ast(
             vec![
-                Selbri::Root("prami".to_string()),          // 0
-                Selbri::Converted((Conversion::Se, 0)),     // 1
+                Selbri::Root("prami".to_string()),      // 0
+                Selbri::Converted((Conversion::Se, 0)), // 1
             ],
             1,
         );
         let result = resolve_go_i(&mut ast, &None).unwrap();
         let go_i_rel = bridi_relation(&ast, 1);
         assert_eq!(go_i_rel, 1);
-        assert!(matches!(&ast.selbris[go_i_rel as usize], Selbri::Converted((Conversion::Se, _))));
+        assert!(matches!(
+            &ast.selbris[go_i_rel as usize],
+            Selbri::Converted((Conversion::Se, _))
+        ));
         assert!(result.is_some());
     }
 
@@ -907,9 +967,9 @@ mod tests {
         // "na se klama" then "go'i" → Negated(Converted(Se, Root("klama")))
         let mut ast = make_two_sentence_ast(
             vec![
-                Selbri::Root("klama".to_string()),        // 0
-                Selbri::Converted((Conversion::Se, 0)),   // 1
-                Selbri::Negated(1),                        // 2
+                Selbri::Root("klama".to_string()),      // 0
+                Selbri::Converted((Conversion::Se, 0)), // 1
+                Selbri::Negated(1),                     // 2
             ],
             2,
         );
@@ -917,7 +977,10 @@ mod tests {
         let go_i_rel = bridi_relation(&ast, 1);
         assert_eq!(go_i_rel, 2);
         // Verify full chain: Negated → Converted(Se) → Root("klama")
-        assert!(matches!(&ast.selbris[go_i_rel as usize], Selbri::Negated(_)));
+        assert!(matches!(
+            &ast.selbris[go_i_rel as usize],
+            Selbri::Negated(_)
+        ));
         assert!(result.is_some());
     }
 
@@ -926,25 +989,25 @@ mod tests {
         // "sutra klama" then "go'i" → Tanru(Root("sutra"), Root("klama"))
         let mut ast = make_two_sentence_ast(
             vec![
-                Selbri::Root("sutra".to_string()),  // 0
-                Selbri::Root("klama".to_string()),  // 1
-                Selbri::Tanru((0, 1)),              // 2
+                Selbri::Root("sutra".to_string()), // 0
+                Selbri::Root("klama".to_string()), // 1
+                Selbri::Tanru((0, 1)),             // 2
             ],
             2,
         );
         let result = resolve_go_i(&mut ast, &None).unwrap();
         let go_i_rel = bridi_relation(&ast, 1);
         assert_eq!(go_i_rel, 2);
-        assert!(matches!(&ast.selbris[go_i_rel as usize], Selbri::Tanru((0, 1))));
+        assert!(matches!(
+            &ast.selbris[go_i_rel as usize],
+            Selbri::Tanru((0, 1))
+        ));
         assert!(result.is_some());
     }
 
     #[test]
     fn test_resolve_go_i_no_antecedent() {
-        let mut ast = make_ast(
-            vec![Selbri::Root("go'i".to_string())],
-            0, vec![0],
-        );
+        let mut ast = make_ast(vec![Selbri::Root("go'i".to_string())], 0, vec![0]);
         let result = resolve_go_i(&mut ast, &None);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("no antecedent"));
@@ -957,12 +1020,11 @@ mod tests {
         // Previous call had "klama", new call has just "go'i"
         let snap = SelbriSnapshot {
             selbris: vec![Selbri::Root("klama".to_string())],
-            sumtis: vec![], sentences: vec![], root: 0,
+            sumtis: vec![],
+            sentences: vec![],
+            root: 0,
         };
-        let mut ast = make_ast(
-            vec![Selbri::Root("go'i".to_string())],
-            0, vec![0],
-        );
+        let mut ast = make_ast(vec![Selbri::Root("go'i".to_string())], 0, vec![0]);
         let result = resolve_go_i(&mut ast, &Some(snap)).unwrap();
         // go'i should have been repointed to the grafted "klama"
         let go_i_rel = bridi_relation(&ast, 0);
@@ -975,18 +1037,19 @@ mod tests {
         // Previous call had "na klama" → snapshot preserves Negated
         let snap = SelbriSnapshot {
             selbris: vec![Selbri::Root("klama".to_string()), Selbri::Negated(0)],
-            sumtis: vec![], sentences: vec![], root: 1,
+            sumtis: vec![],
+            sentences: vec![],
+            root: 1,
         };
-        let mut ast = make_ast(
-            vec![Selbri::Root("go'i".to_string())],
-            0, vec![0],
-        );
+        let mut ast = make_ast(vec![Selbri::Root("go'i".to_string())], 0, vec![0]);
         let result = resolve_go_i(&mut ast, &Some(snap)).unwrap();
         let go_i_rel = bridi_relation(&ast, 0);
         // Should be Negated, not bare Root
-        assert!(matches!(&ast.selbris[go_i_rel as usize], Selbri::Negated(inner) if {
-            matches!(&ast.selbris[*inner as usize], Selbri::Root(n) if n == "klama")
-        }));
+        assert!(
+            matches!(&ast.selbris[go_i_rel as usize], Selbri::Negated(inner) if {
+                matches!(&ast.selbris[*inner as usize], Selbri::Root(n) if n == "klama")
+            })
+        );
         assert!(result.is_some());
     }
 
@@ -998,17 +1061,18 @@ mod tests {
                 Selbri::Root("prami".to_string()),
                 Selbri::Converted((Conversion::Se, 0)),
             ],
-            sumtis: vec![], sentences: vec![], root: 1,
+            sumtis: vec![],
+            sentences: vec![],
+            root: 1,
         };
-        let mut ast = make_ast(
-            vec![Selbri::Root("go'i".to_string())],
-            0, vec![0],
-        );
+        let mut ast = make_ast(vec![Selbri::Root("go'i".to_string())], 0, vec![0]);
         let result = resolve_go_i(&mut ast, &Some(snap)).unwrap();
         let go_i_rel = bridi_relation(&ast, 0);
-        assert!(matches!(&ast.selbris[go_i_rel as usize], Selbri::Converted((Conversion::Se, inner)) if {
-            matches!(&ast.selbris[*inner as usize], Selbri::Root(n) if n == "prami")
-        }));
+        assert!(
+            matches!(&ast.selbris[go_i_rel as usize], Selbri::Converted((Conversion::Se, inner)) if {
+                matches!(&ast.selbris[*inner as usize], Selbri::Root(n) if n == "prami")
+            })
+        );
         assert!(result.is_some());
     }
 
@@ -1021,16 +1085,18 @@ mod tests {
                 Selbri::Converted((Conversion::Se, 0)),
                 Selbri::Negated(1),
             ],
-            sumtis: vec![], sentences: vec![], root: 2,
+            sumtis: vec![],
+            sentences: vec![],
+            root: 2,
         };
-        let mut ast = make_ast(
-            vec![Selbri::Root("go'i".to_string())],
-            0, vec![0],
-        );
+        let mut ast = make_ast(vec![Selbri::Root("go'i".to_string())], 0, vec![0]);
         let result = resolve_go_i(&mut ast, &Some(snap)).unwrap();
         let go_i_rel = bridi_relation(&ast, 0);
         // Full chain: Negated → Converted(Se) → Root("klama")
-        assert!(matches!(&ast.selbris[go_i_rel as usize], Selbri::Negated(_)));
+        assert!(matches!(
+            &ast.selbris[go_i_rel as usize],
+            Selbri::Negated(_)
+        ));
         assert!(result.is_some());
     }
 
@@ -1040,9 +1106,9 @@ mod tests {
         // then prami becomes the new last relation
         let mut ast = AstBuffer {
             selbris: vec![
-                Selbri::Root("klama".to_string()),  // 0
-                Selbri::Root("go'i".to_string()),   // 1
-                Selbri::Root("prami".to_string()),  // 2
+                Selbri::Root("klama".to_string()), // 0
+                Selbri::Root("go'i".to_string()),  // 1
+                Selbri::Root("prami".to_string()), // 2
             ],
             sumtis: vec![
                 Sumti::ProSumti("mi".to_string()),
@@ -1051,16 +1117,28 @@ mod tests {
             ],
             sentences: vec![
                 Sentence::Simple(Bridi {
-                    relation: 0, head_terms: vec![0], tail_terms: vec![],
-                    negated: false, tense: None, attitudinal: None,
+                    relation: 0,
+                    head_terms: vec![0],
+                    tail_terms: vec![],
+                    negated: false,
+                    tense: None,
+                    attitudinal: None,
                 }),
                 Sentence::Simple(Bridi {
-                    relation: 1, head_terms: vec![1], tail_terms: vec![],
-                    negated: false, tense: None, attitudinal: None,
+                    relation: 1,
+                    head_terms: vec![1],
+                    tail_terms: vec![],
+                    negated: false,
+                    tense: None,
+                    attitudinal: None,
                 }),
                 Sentence::Simple(Bridi {
-                    relation: 2, head_terms: vec![2], tail_terms: vec![],
-                    negated: false, tense: None, attitudinal: None,
+                    relation: 2,
+                    head_terms: vec![2],
+                    tail_terms: vec![],
+                    negated: false,
+                    tense: None,
+                    attitudinal: None,
                 }),
             ],
             roots: vec![0, 1, 2],
@@ -1077,11 +1155,12 @@ mod tests {
         // Extract from one buffer, graft into another, verify structure
         let src = make_ast(
             vec![
-                Selbri::Root("klama".to_string()),        // 0
-                Selbri::Converted((Conversion::Se, 0)),   // 1
-                Selbri::Negated(1),                        // 2
+                Selbri::Root("klama".to_string()),      // 0
+                Selbri::Converted((Conversion::Se, 0)), // 1
+                Selbri::Negated(1),                     // 2
             ],
-            2, vec![0],
+            2,
+            vec![0],
         );
         let snap = extract_selbri_snapshot(&src, 2);
 
@@ -1095,18 +1174,23 @@ mod tests {
         let new_root = graft_snapshot(&mut dst, &snap);
         // dst.selbris: [Root("other"), Root("klama"), Converted(Se, 1), Negated(2)]
         assert_eq!(dst.selbris.len(), 4);
-        assert!(matches!(&dst.selbris[new_root as usize], Selbri::Negated(inner) if {
-            matches!(&dst.selbris[*inner as usize], Selbri::Converted((Conversion::Se, inner2)) if {
-                matches!(&dst.selbris[*inner2 as usize], Selbri::Root(n) if n == "klama")
+        assert!(
+            matches!(&dst.selbris[new_root as usize], Selbri::Negated(inner) if {
+                matches!(&dst.selbris[*inner as usize], Selbri::Converted((Conversion::Se, inner2)) if {
+                    matches!(&dst.selbris[*inner2 as usize], Selbri::Root(n) if n == "klama")
+                })
             })
-        }));
+        );
     }
 
     // ─── extract_head_relation additional tests ──────────────────
 
     #[test]
     fn test_extract_head_relation_compound() {
-        let selbris = vec![Selbri::Compound(vec!["skami".to_string(), "pilno".to_string()])];
+        let selbris = vec![Selbri::Compound(vec![
+            "skami".to_string(),
+            "pilno".to_string(),
+        ])];
         // Compound returns the last part as head relation
         let result = extract_head_relation(&selbris, 0);
         // Compound should return Some with the joined name or last element
@@ -1120,18 +1204,24 @@ mod tests {
             Selbri::Root("prami".to_string()),
             Selbri::WithArgs((0, vec![])),
         ];
-        assert_eq!(extract_head_relation(&selbris, 1), Some("prami".to_string()));
+        assert_eq!(
+            extract_head_relation(&selbris, 1),
+            Some("prami".to_string())
+        );
     }
 
     #[test]
     fn test_extract_head_relation_deeply_nested() {
         // Negated(Converted(Te, Root("klama")))
         let selbris = vec![
-            Selbri::Root("klama".to_string()),            // 0
-            Selbri::Converted((Conversion::Te, 0)),       // 1
-            Selbri::Negated(1),                            // 2
+            Selbri::Root("klama".to_string()),      // 0
+            Selbri::Converted((Conversion::Te, 0)), // 1
+            Selbri::Negated(1),                     // 2
         ];
-        assert_eq!(extract_head_relation(&selbris, 2), Some("klama".to_string()));
+        assert_eq!(
+            extract_head_relation(&selbris, 2),
+            Some("klama".to_string())
+        );
     }
 
     // ─── Snapshot extract edge cases ─────────────────────────────
@@ -1139,8 +1229,12 @@ mod tests {
     #[test]
     fn test_snapshot_compound_selbri() {
         let ast = make_ast(
-            vec![Selbri::Compound(vec!["skami".to_string(), "pilno".to_string()])],
-            0, vec![0],
+            vec![Selbri::Compound(vec![
+                "skami".to_string(),
+                "pilno".to_string(),
+            ])],
+            0,
+            vec![0],
         );
         let snap = extract_selbri_snapshot(&ast, 0);
         assert_eq!(snap.selbris.len(), 1);
@@ -1152,15 +1246,19 @@ mod tests {
         // sutra klama → Tanru(Root("sutra"), Root("klama"))
         let ast = make_ast(
             vec![
-                Selbri::Root("sutra".to_string()),  // 0
-                Selbri::Root("klama".to_string()),  // 1
-                Selbri::Tanru((0, 1)),              // 2
+                Selbri::Root("sutra".to_string()), // 0
+                Selbri::Root("klama".to_string()), // 1
+                Selbri::Tanru((0, 1)),             // 2
             ],
-            2, vec![0],
+            2,
+            vec![0],
         );
         let snap = extract_selbri_snapshot(&ast, 2);
         assert_eq!(snap.selbris.len(), 3);
-        assert!(matches!(&snap.selbris[snap.root as usize], Selbri::Tanru(_)));
+        assert!(matches!(
+            &snap.selbris[snap.root as usize],
+            Selbri::Tanru(_)
+        ));
     }
 
     // ─── graft rebase additional tests ───────────────────────────
@@ -1198,9 +1296,9 @@ mod tests {
         };
         let snap = SelbriSnapshot {
             selbris: vec![
-                Selbri::Root("sutra".to_string()),   // 0
-                Selbri::Root("klama".to_string()),   // 1
-                Selbri::Tanru((0, 1)),               // 2
+                Selbri::Root("sutra".to_string()), // 0
+                Selbri::Root("klama".to_string()), // 1
+                Selbri::Tanru((0, 1)),             // 2
             ],
             sumtis: vec![],
             sentences: vec![],
@@ -1229,10 +1327,7 @@ mod tests {
             sentences: vec![],
             root: 2,
         };
-        let mut ast = make_ast(
-            vec![Selbri::Root("go'i".to_string())],
-            0, vec![0],
-        );
+        let mut ast = make_ast(vec![Selbri::Root("go'i".to_string())], 0, vec![0]);
         let result = resolve_go_i(&mut ast, &Some(snap)).unwrap();
         let go_i_rel = bridi_relation(&ast, 0);
         assert!(matches!(&ast.selbris[go_i_rel as usize], Selbri::Tanru(_)));
@@ -1242,10 +1337,7 @@ mod tests {
     #[test]
     fn test_resolve_go_i_no_go_i_in_ast() {
         // All sentences have non-go'i selbri — should return the last relation without error
-        let mut ast = make_ast(
-            vec![Selbri::Root("klama".to_string())],
-            0, vec![0],
-        );
+        let mut ast = make_ast(vec![Selbri::Root("klama".to_string())], 0, vec![0]);
         let result = resolve_go_i(&mut ast, &None);
         // Should succeed (no go'i to resolve)
         assert!(result.is_ok());
@@ -1258,9 +1350,9 @@ mod tests {
         // klama, go'i, go'i → both go'i should resolve to klama
         let mut ast = AstBuffer {
             selbris: vec![
-                Selbri::Root("klama".to_string()),  // 0
-                Selbri::Root("go'i".to_string()),   // 1
-                Selbri::Root("go'i".to_string()),   // 2
+                Selbri::Root("klama".to_string()), // 0
+                Selbri::Root("go'i".to_string()),  // 1
+                Selbri::Root("go'i".to_string()),  // 2
             ],
             sumtis: vec![
                 Sumti::ProSumti("mi".to_string()),
@@ -1269,16 +1361,28 @@ mod tests {
             ],
             sentences: vec![
                 Sentence::Simple(Bridi {
-                    relation: 0, head_terms: vec![0], tail_terms: vec![],
-                    negated: false, tense: None, attitudinal: None,
+                    relation: 0,
+                    head_terms: vec![0],
+                    tail_terms: vec![],
+                    negated: false,
+                    tense: None,
+                    attitudinal: None,
                 }),
                 Sentence::Simple(Bridi {
-                    relation: 1, head_terms: vec![1], tail_terms: vec![],
-                    negated: false, tense: None, attitudinal: None,
+                    relation: 1,
+                    head_terms: vec![1],
+                    tail_terms: vec![],
+                    negated: false,
+                    tense: None,
+                    attitudinal: None,
                 }),
                 Sentence::Simple(Bridi {
-                    relation: 2, head_terms: vec![2], tail_terms: vec![],
-                    negated: false, tense: None, attitudinal: None,
+                    relation: 2,
+                    head_terms: vec![2],
+                    tail_terms: vec![],
+                    negated: false,
+                    tense: None,
+                    attitudinal: None,
                 }),
             ],
             roots: vec![0, 1, 2],

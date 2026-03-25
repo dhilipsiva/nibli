@@ -67,10 +67,7 @@ async fn post_offer(
     State(state): State<SharedState>,
     Json(payload): Json<SdpExchange>,
 ) -> StatusCode {
-    println!(
-        "[signal] offer: {} → {}",
-        payload.from, payload.to
-    );
+    println!("[signal] offer: {} → {}", payload.from, payload.to);
     let mut s = state.lock().await;
     s.offers.insert(payload.to.clone(), payload);
     StatusCode::OK
@@ -97,10 +94,7 @@ async fn post_answer(
     State(state): State<SharedState>,
     Json(payload): Json<SdpExchange>,
 ) -> StatusCode {
-    println!(
-        "[signal] answer: {} → {}",
-        payload.from, payload.to
-    );
+    println!("[signal] answer: {} → {}", payload.from, payload.to);
     let mut s = state.lock().await;
     s.answers.insert(payload.to.clone(), payload);
     StatusCode::OK

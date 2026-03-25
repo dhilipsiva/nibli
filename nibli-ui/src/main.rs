@@ -87,11 +87,7 @@ async fn graphql_mutate(query: &str, input: &str) -> Result<serde_json::Value, S
     graphql_post(&body).await
 }
 
-async fn graphql_mutate_kb(
-    query: &str,
-    kb: &str,
-    q: &str,
-) -> Result<serde_json::Value, String> {
+async fn graphql_mutate_kb(query: &str, kb: &str, q: &str) -> Result<serde_json::Value, String> {
     let body = serde_json::json!({
         "query": query,
         "variables": { "kb": kb, "query": q }
@@ -227,10 +223,7 @@ async fn gossip_assert(lojban: &str, stance: &str) -> Result<String, String> {
     if let Some(err) = r["error"].as_str() {
         Err(err.to_string())
     } else {
-        Ok(r["envelopeId"]
-            .as_str()
-            .unwrap_or("unknown")
-            .to_string())
+        Ok(r["envelopeId"].as_str().unwrap_or("unknown").to_string())
     }
 }
 
@@ -296,9 +289,7 @@ async fn execute_query(kb: &str, query_text: &str) -> OutputEntry {
             } else {
                 let holds = r["holds"].as_bool().unwrap_or(false);
                 let trace = r["proofTrace"].as_str().map(|s| s.to_string());
-                let trace_data = r["proofTraceJson"]
-                    .as_str()
-                    .and_then(ProofTrace::from_json);
+                let trace_data = r["proofTraceJson"].as_str().and_then(ProofTrace::from_json);
                 OutputEntry {
                     input: query_text.to_string(),
                     result: if holds {
@@ -345,13 +336,16 @@ fn App() -> Element {
                 Key::Character(ref c) if c == "k" => {
                     e.prevent_default();
                     spawn(async move {
-                        let _ = document::eval("document.getElementById('query-input').focus()").await;
+                        let _ =
+                            document::eval("document.getElementById('query-input').focus()").await;
                     });
                 }
                 Key::Character(ref c) if c == "o" => {
                     e.prevent_default();
                     spawn(async move {
-                        let _ = document::eval("document.getElementById('lojban-file-input').click()").await;
+                        let _ =
+                            document::eval("document.getElementById('lojban-file-input').click()")
+                                .await;
                     });
                 }
                 _ => {}
@@ -531,7 +525,11 @@ fn QueryBar(
     };
 
     let busy = *is_busy.read();
-    let btn_class = if busy { "query-btn btn-busy" } else { "query-btn" };
+    let btn_class = if busy {
+        "query-btn btn-busy"
+    } else {
+        "query-btn"
+    };
 
     rsx! {
         div { class: "query-bar",
@@ -593,20 +591,19 @@ fn OutputLog(output_log: Signal<Vec<OutputEntry>>) -> Element {
 /// Parses error strings for known prefixes and renders with distinct icons/colors.
 #[component]
 fn ErrorDisplay(message: String) -> Element {
-    let (icon, css_class, body) =
-        if let Some(rest) = message.strip_prefix("[Syntax Error]") {
-            ("\u{1F524}", "error-syntax", rest.trim())
-        } else if let Some(rest) = message.strip_prefix("[Semantic Error]") {
-            ("\u{1F517}", "error-semantic", rest.trim())
-        } else if let Some(rest) = message.strip_prefix("[Reasoning Error]") {
-            ("\u{1F50D}", "error-reasoning", rest.trim())
-        } else if let Some(rest) = message.strip_prefix("[Backend Error]") {
-            ("\u{2699}\u{FE0F}", "error-backend", rest.trim())
-        } else if let Some(rest) = message.strip_prefix("[Limit]") {
-            ("\u{23F1}\u{FE0F}", "error-limit", rest.trim())
-        } else {
-            ("\u{274C}", "error-generic", message.as_str())
-        };
+    let (icon, css_class, body) = if let Some(rest) = message.strip_prefix("[Syntax Error]") {
+        ("\u{1F524}", "error-syntax", rest.trim())
+    } else if let Some(rest) = message.strip_prefix("[Semantic Error]") {
+        ("\u{1F517}", "error-semantic", rest.trim())
+    } else if let Some(rest) = message.strip_prefix("[Reasoning Error]") {
+        ("\u{1F50D}", "error-reasoning", rest.trim())
+    } else if let Some(rest) = message.strip_prefix("[Backend Error]") {
+        ("\u{2699}\u{FE0F}", "error-backend", rest.trim())
+    } else if let Some(rest) = message.strip_prefix("[Limit]") {
+        ("\u{23F1}\u{FE0F}", "error-limit", rest.trim())
+    } else {
+        ("\u{274C}", "error-generic", message.as_str())
+    };
 
     rsx! {
         span { class: "output-error-display {css_class}",
@@ -981,9 +978,17 @@ fn NetworkView(network_snapshot: Signal<Option<NetworkSnapshotData>>) -> Element
 
 #[component]
 fn AgentCard(agent: AgentData, selected: bool, on_select: EventHandler<String>) -> Element {
-    let total = agent.stance_counts.deduced + agent.stance_counts.expected
-        + agent.stance_counts.opinion + agent.stance_counts.hearsay;
-    let card_class = if selected { "agent-card agent-card-selected" } else if agent.is_local { "agent-card agent-card-local" } else { "agent-card" };
+    let total = agent.stance_counts.deduced
+        + agent.stance_counts.expected
+        + agent.stance_counts.opinion
+        + agent.stance_counts.hearsay;
+    let card_class = if selected {
+        "agent-card agent-card-selected"
+    } else if agent.is_local {
+        "agent-card agent-card-local"
+    } else {
+        "agent-card"
+    };
     let name = agent.name.clone();
 
     rsx! {
@@ -1090,25 +1095,38 @@ fn EnvelopeCard(envelope: EnvelopeData) -> Element {
 #[component]
 fn EventCard(event: GossipEventData) -> Element {
     let (icon, label) = match event.kind.as_str() {
-        "envelope" => (">>", format!(
-            "{} {} [{}]",
-            event.author.as_deref().unwrap_or("?"),
-            event.lojban.as_deref().unwrap_or(""),
-            event.stance.as_deref().unwrap_or("?"),
-        )),
-        "contradiction" => ("!!", format!(
-            "Contradiction: {}",
-            event.assertion.as_deref().unwrap_or("?"),
-        )),
-        "peer_change" => ("--", format!(
-            "Peer {} {}",
-            event.peer_id.as_deref().unwrap_or("?"),
-            if event.connected.unwrap_or(false) { "connected" } else { "disconnected" },
-        )),
-        "sync" => ("<>", format!(
-            "Sync with {}",
-            event.peer_id.as_deref().unwrap_or("?"),
-        )),
+        "envelope" => (
+            ">>",
+            format!(
+                "{} {} [{}]",
+                event.author.as_deref().unwrap_or("?"),
+                event.lojban.as_deref().unwrap_or(""),
+                event.stance.as_deref().unwrap_or("?"),
+            ),
+        ),
+        "contradiction" => (
+            "!!",
+            format!(
+                "Contradiction: {}",
+                event.assertion.as_deref().unwrap_or("?"),
+            ),
+        ),
+        "peer_change" => (
+            "--",
+            format!(
+                "Peer {} {}",
+                event.peer_id.as_deref().unwrap_or("?"),
+                if event.connected.unwrap_or(false) {
+                    "connected"
+                } else {
+                    "disconnected"
+                },
+            ),
+        ),
+        "sync" => (
+            "<>",
+            format!("Sync with {}", event.peer_id.as_deref().unwrap_or("?"),),
+        ),
         _ => ("??", event.kind.clone()),
     };
 
@@ -1125,7 +1143,8 @@ fn ContradictionsPanel(
     contradictions: Vec<ContradictionData>,
     network_snapshot: Signal<Option<NetworkSnapshotData>>,
 ) -> Element {
-    let unresolved: Vec<&ContradictionData> = contradictions.iter().filter(|c| !c.resolved).collect();
+    let unresolved: Vec<&ContradictionData> =
+        contradictions.iter().filter(|c| !c.resolved).collect();
     if unresolved.is_empty() {
         return rsx! {};
     }
@@ -1231,7 +1250,11 @@ fn ProofNodeView(trace: ProofTrace, step_idx: u32, depth: u32) -> Element {
     let label = rule.label();
     let auto_open = depth < 3;
 
-    let result_class = if holds { "proof-result-true" } else { "proof-result-false" };
+    let result_class = if holds {
+        "proof-result-true"
+    } else {
+        "proof-result-false"
+    };
     let result_label = if holds { "TRUE" } else { "FALSE" };
 
     // ProofRef is a leaf node — render inline, no expand
