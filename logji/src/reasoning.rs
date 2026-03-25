@@ -1,5 +1,18 @@
 use super::*;
 
+/// Build the full candidate vector for unbound event variable search:
+/// all typed domain members + SkolemFn witness terms from the registry.
+fn build_all_candidates(inner: &KnowledgeBaseInner) -> Vec<GroundTerm> {
+    let members = inner.all_typed_domain_members();
+    let mut candidates: Vec<GroundTerm> = members.to_vec();
+    for entry in &inner.skolem_fn_registry {
+        for combo in GroundTermCartesianProduct::new(members, entry.dep_count) {
+            candidates.push(build_skolem_fn_term(&entry.base_name, &combo));
+        }
+    }
+    candidates
+}
+
 pub(super) fn check_formula_holds(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -361,6 +374,10 @@ pub(super) fn try_backward_chain_typed(
         return false;
     }
 
+    // Pre-compute candidate terms for unbound event variable search.
+    // Shared across all rules to avoid repeated allocation inside the per-rule loop.
+    let all_candidates = build_all_candidates(inner);
+
     let rules_snapshot = collect_matching_rules_typed(fact, &inner.universal_rules);
 
     for rule in &rules_snapshot {
@@ -380,13 +397,6 @@ pub(super) fn try_backward_chain_typed(
                 .collect();
 
             if !unbound_event_vars.is_empty() {
-                let members = inner.all_typed_domain_members();
-                let mut all_candidates: Vec<GroundTerm> = members.to_vec();
-                for entry in &inner.skolem_fn_registry {
-                    for combo in GroundTermCartesianProduct::new(members, entry.dep_count) {
-                        all_candidates.push(build_skolem_fn_term(&entry.base_name, &combo));
-                    }
-                }
 
                 let mut per_var_candidates: Vec<Vec<GroundTerm>> = Vec::new();
                 for ev_var in &unbound_event_vars {
@@ -479,14 +489,6 @@ pub(super) fn try_backward_chain_typed(
                     .collect();
 
                 if !unbound_event_vars.is_empty() {
-                    let members = inner.all_typed_domain_members();
-                    let mut all_candidates: Vec<GroundTerm> = members.to_vec();
-                    for entry in &inner.skolem_fn_registry {
-                        for combo in GroundTermCartesianProduct::new(members, entry.dep_count) {
-                            all_candidates.push(build_skolem_fn_term(&entry.base_name, &combo));
-                        }
-                    }
-
                     let mut per_var_candidates: Vec<Vec<GroundTerm>> = Vec::new();
                     for ev_var in &unbound_event_vars {
                         let single_var_cond_indices: Vec<usize> = rule
@@ -711,6 +713,9 @@ pub(super) fn try_backward_chain_traced_typed(
     depth: usize,
     memo: &mut HashMap<StoredFact, u32>,
 ) -> Option<u32> {
+    // Pre-compute candidate terms for unbound event variable search.
+    let all_candidates = build_all_candidates(inner);
+
     let rules_snapshot = collect_matching_rules_typed(fact, &inner.universal_rules);
     let display = fact.to_display_string();
 
@@ -730,14 +735,6 @@ pub(super) fn try_backward_chain_traced_typed(
                 .collect();
 
             if !unbound_event_vars.is_empty() {
-                let members = inner.all_typed_domain_members();
-                let mut all_candidates: Vec<GroundTerm> = members.to_vec();
-                for entry in &inner.skolem_fn_registry {
-                    for combo in GroundTermCartesianProduct::new(members, entry.dep_count) {
-                        all_candidates.push(build_skolem_fn_term(&entry.base_name, &combo));
-                    }
-                }
-
                 let mut per_var_candidates: Vec<Vec<GroundTerm>> = Vec::new();
                 for ev_var in &unbound_event_vars {
                     let single_var_cond_indices: Vec<usize> = rule
@@ -867,14 +864,6 @@ pub(super) fn try_backward_chain_traced_typed(
                     .collect();
 
                 if !unbound_event_vars.is_empty() {
-                    let members = inner.all_typed_domain_members();
-                    let mut all_candidates: Vec<GroundTerm> = members.to_vec();
-                    for entry in &inner.skolem_fn_registry {
-                        for combo in GroundTermCartesianProduct::new(members, entry.dep_count) {
-                            all_candidates.push(build_skolem_fn_term(&entry.base_name, &combo));
-                        }
-                    }
-
                     let mut per_var_candidates: Vec<Vec<GroundTerm>> = Vec::new();
                     for ev_var in &unbound_event_vars {
                         let single_var_cond_indices: Vec<usize> = rule

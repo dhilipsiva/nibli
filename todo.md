@@ -4,9 +4,7 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 1: Pipeline Efficiency (Medium Effort, High Impact)
 
-4. **Cache backward-chaining candidate vectors** — `try_backward_chain_typed()` allocates a `Vec<GroundTerm>` from `all_typed_domain_members()` inside the per-rule loop (4 call sites in reasoning.rs). For R rules × S SkolemFn entries, this is R×S temporary vector allocations per query. Cache the member vector alongside the domain cache (invalidate together). ~10 lines.
-
-5. **Avoid StoredFact cloning in proof memo** — `trace_predicate_provenance_typed()` clones `StoredFact` (String + Vec) on every memo insertion. Use fact interning (assign u64 IDs to StoredFacts) to key the memo by ID instead. Or use `Rc<StoredFact>`. ~20 lines, ~5-10% speedup on proof tracing.
+4. **Avoid StoredFact cloning in proof memo** — `trace_predicate_provenance_typed()` clones `StoredFact` (String + Vec) on every memo insertion. Use fact interning (assign u64 IDs to StoredFacts) to key the memo by ID instead. Or use `Rc<StoredFact>`. ~20 lines, ~5-10% speedup on proof tracing.
 
 6. **Avoid unnecessary allocation in `assert_typed_fact()`** — `fact.relation().to_string()` allocates a new String on every fact insertion for the HashMap key. Use `entry` API with the fact's relation borrowed, or intern predicate names. ~5 lines.
 
