@@ -32,7 +32,7 @@ These are leftover from the egglog (equality saturation) architecture that was f
 
 10. **Remove `check-membership` WIT method** — Defined in `wit/world.wit` `compute-backend` interface, stub implementation in gasnu (returns empty), `dispatch_check_membership()` in `logji/src/compute.rs` is **never called** from anywhere. Dead code end-to-end. Touches: `wit/world.wit`, `logji/src/compute.rs`, `gasnu/src/main.rs`.
 
-11. **Remove `#![allow(dead_code)]` ICE workarounds** — Crate-level `#![allow(dead_code)]` in `nibli-engine/src/lib.rs` and `tavla/src/lib.rs` were workarounds for rustc 1.93.1 ICE in `check_mod_deathness`. CLAUDE.md confirms this is fixed in rustc 1.94.0 (already in flake.nix). Remove the allows, fix any actual dead code warnings that surface. Touches: `nibli-engine/src/lib.rs`, `tavla/src/lib.rs`.
+11. **Remove `#![allow(dead_code)]` ICE workarounds and delete actually-dead code** — Crate-level `#![allow(dead_code)]` in `nibli-engine/src/lib.rs` and `tavla/src/lib.rs` were workarounds for rustc 1.93.1 ICE in `check_mod_deathness`. CLAUDE.md confirms this is fixed in rustc 1.94.0 (already in flake.nix). Remove the allows, then audit every dead code warning that surfaces: if the code is genuinely unused, delete it rather than suppressing the warning. Also audit item-level `#[allow(dead_code)]` across the workspace (gerna parser methods, logji `SortedU32Vec` utilities like `is_subset_of`/`intersection`, nibli-ui struct fields) — if the code has no callers and no concrete planned use, delete it.
 
 ## Tier 4: Correctness & Robustness (High Impact, Medium Priority)
 
