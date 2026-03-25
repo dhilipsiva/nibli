@@ -11,10 +11,6 @@ Order matters:
 
 ## Phase 2 - Runtime and Transport Hardening
 
-- [ ] 10. Reuse `tavla` transport instead of keeping a custom hub listener in the server.
-  Targets: `nibli-server/src/main.rs`, `tavla/src/transport.rs`, `tavla/src/tcp.rs`
-  The production shape should be: `tavla` owns peer transport behavior, `nibli-server` owns API behavior.
-
 - [ ] 11. Choose and document canonical runtime surfaces.
   Targets: `README.md`, `AGENTS.md`, `CLAUDE.md`
   Be explicit about the role of `nibli-engine`, `gasnu`, `nibli-server`, `tavla`, `nibli-agent`, and `nibli`.

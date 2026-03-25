@@ -32,6 +32,12 @@ pub struct TcpTransport {
 }
 
 impl TcpTransport {
+    /// Create a client-mode TCP transport with an ephemeral listener and one initial peer.
+    pub async fn client(connect_addr: &str, our_name: &str) -> Result<Arc<Self>, String> {
+        let peers = vec![connect_addr.to_string()];
+        Self::new("127.0.0.1:0", &peers, our_name).await
+    }
+
     /// Create a new TCP transport, bind the listener, and start accepting.
     pub async fn new(
         listen_addr: &str,

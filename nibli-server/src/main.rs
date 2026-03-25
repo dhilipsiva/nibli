@@ -6,8 +6,6 @@ use async_graphql::{EmptySubscription, Object, Schema};
 use async_graphql_axum::GraphQL;
 use axum::Router;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::TcpStream;
-use tokio::sync::mpsc;
 use tokio::task;
 use tower_http::cors::CorsLayer;
 
@@ -15,7 +13,8 @@ use nibli_engine::NibliEngine;
 use nibli_protocol::{
     ContradictionSummary, EnvelopeSummary, GossipEvent, NetworkAgent, NetworkSnapshot, StanceCounts,
 };
-use tavla::transport::encode_json_lines;
+use tavla::tcp::TcpTransport;
+use tavla::transport::{InboundMessage, Transport};
 use tavla::{EpistemicStance, GossipNode, GossipOp, WireMessage};
 
 // ── Ollama types ──
@@ -67,9 +66,9 @@ Examples:
 - "I ate the food" → "mi pu citka lo cidja"
 "#;
 
-type HubOutbound = Arc<Mutex<Option<mpsc::UnboundedSender<WireMessage>>>>;
 type SharedGossip = Arc<Mutex<GossipNode>>;
 type SharedEvents = Arc<Mutex<Vec<GossipEvent>>>;
+type SharedTransport = Option<Arc<dyn Transport>>;
 
 async fn run_blocking<T, F>(f: F) -> T
 where
@@ -98,9 +97,13 @@ impl QueryRoot {
     /// Get a snapshot of the gossip network state.
     async fn network_snapshot(&self, ctx: &async_graphql::Context<'_>) -> NetworkSnapshotGql {
         let gossip = ctx.data::<SharedGossip>().unwrap().clone();
+        let transport = ctx.data::<SharedTransport>().unwrap().clone();
         run_blocking(move || match gossip.lock() {
             Ok(node) => {
-                let snapshot = build_network_snapshot(&node);
+                let peers = transport
+                    .as_ref()
+                    .map_or_else(Vec::new, |transport| transport.peers());
+                let snapshot = build_network_snapshot(&node, peers);
                 snapshot_to_gql(&snapshot)
             }
             Err(_) => NetworkSnapshotGql {
@@ -315,31 +318,21 @@ impl MutationRoot {
     ) -> GossipAssertResult {
         let gossip = ctx.data::<SharedGossip>().unwrap().clone();
         let events = ctx.data::<SharedEvents>().unwrap().clone();
-        let hub_outbound = ctx.data::<HubOutbound>().unwrap().clone();
-        run_blocking(move || {
-            let ep_stance = match stance.as_deref() {
-                Some("Expected") | Some("ba'a") => EpistemicStance::Expected,
-                Some("Opinion") | Some("pe'i") => EpistemicStance::Opinion,
-                Some("Hearsay") | Some("ti'e") => EpistemicStance::Hearsay,
-                _ => EpistemicStance::Deduced,
-            };
+        let transport = ctx.data::<SharedTransport>().unwrap().clone();
+        let ep_stance = match stance.as_deref() {
+            Some("Expected") | Some("ba'a") => EpistemicStance::Expected,
+            Some("Opinion") | Some("pe'i") => EpistemicStance::Opinion,
+            Some("Hearsay") | Some("ti'e") => EpistemicStance::Hearsay,
+            _ => EpistemicStance::Deduced,
+        };
 
+        let envelope = match run_blocking(move || -> Result<tavla::Envelope, String> {
             let envelope = match gossip.lock() {
                 Ok(mut node) => match node.assert_local_with_stance_result(&lojban, ep_stance) {
                     Ok((_fact_id, envelope)) => envelope,
-                    Err(e) => {
-                        return GossipAssertResult {
-                            envelope_id: None,
-                            error: Some(e),
-                        };
-                    }
+                    Err(e) => return Err(e),
                 },
-                Err(_) => {
-                    return GossipAssertResult {
-                        envelope_id: None,
-                        error: Some("gossip state lock poisoned".to_string()),
-                    };
-                }
+                Err(_) => return Err("gossip state lock poisoned".to_string()),
             };
 
             push_gossip_event(
@@ -353,20 +346,33 @@ impl MutationRoot {
                     timestamp: envelope.timestamp.clone(),
                 },
             );
-            if let Err(e) =
-                broadcast_wire_message(&hub_outbound, WireMessage::Envelope(envelope.clone()))
-            {
-                return GossipAssertResult {
-                    envelope_id: Some(envelope.id),
-                    error: Some(format!("local assert succeeded, but broadcast failed: {e}")),
-                };
-            }
-            GossipAssertResult {
-                envelope_id: Some(envelope.id),
-                error: None,
-            }
+
+            Ok(envelope)
         })
         .await
+        {
+            Ok(envelope) => envelope,
+            Err(e) => {
+                return GossipAssertResult {
+                    envelope_id: None,
+                    error: Some(e),
+                };
+            }
+        };
+
+        if let Err(e) =
+            broadcast_wire_message(transport, WireMessage::Envelope(envelope.clone())).await
+        {
+            return GossipAssertResult {
+                envelope_id: Some(envelope.id),
+                error: Some(format!("local assert succeeded, but broadcast failed: {e}")),
+            };
+        }
+
+        GossipAssertResult {
+            envelope_id: Some(envelope.id),
+            error: None,
+        }
     }
 
     /// Retract a known envelope by ID prefix and broadcast the tombstone.
@@ -377,8 +383,9 @@ impl MutationRoot {
     ) -> GossipAssertResult {
         let gossip = ctx.data::<SharedGossip>().unwrap().clone();
         let events = ctx.data::<SharedEvents>().unwrap().clone();
-        let hub_outbound = ctx.data::<HubOutbound>().unwrap().clone();
-        run_blocking(move || {
+        let transport = ctx.data::<SharedTransport>().unwrap().clone();
+
+        let tombstone = match run_blocking(move || -> Result<tavla::Envelope, String> {
             let tombstone = match gossip.lock() {
                 Ok(mut node) => {
                     let matches: Vec<String> = node
@@ -392,35 +399,14 @@ impl MutationRoot {
                         .collect();
 
                     match matches.as_slice() {
-                        [] => {
-                            return GossipAssertResult {
-                                envelope_id: None,
-                                error: Some(format!("no envelope matching prefix '{envelope_id}'")),
-                            };
-                        }
+                        [] => return Err(format!("no envelope matching prefix '{envelope_id}'")),
                         [_, _, ..] => {
-                            return GossipAssertResult {
-                                envelope_id: None,
-                                error: Some(format!("ambiguous envelope prefix '{envelope_id}'")),
-                            };
+                            return Err(format!("ambiguous envelope prefix '{envelope_id}'"));
                         }
-                        [target_id] => match node.retract_local(target_id) {
-                            Ok(tombstone) => tombstone,
-                            Err(e) => {
-                                return GossipAssertResult {
-                                    envelope_id: None,
-                                    error: Some(e),
-                                };
-                            }
-                        },
+                        [target_id] => node.retract_local(target_id)?,
                     }
                 }
-                Err(_) => {
-                    return GossipAssertResult {
-                        envelope_id: None,
-                        error: Some("gossip state lock poisoned".to_string()),
-                    };
-                }
+                Err(_) => return Err("gossip state lock poisoned".to_string()),
             };
 
             push_gossip_event(
@@ -434,22 +420,35 @@ impl MutationRoot {
                     timestamp: tombstone.timestamp.clone(),
                 },
             );
-            if let Err(e) =
-                broadcast_wire_message(&hub_outbound, WireMessage::Envelope(tombstone.clone()))
-            {
-                return GossipAssertResult {
-                    envelope_id: Some(tombstone.id),
-                    error: Some(format!(
-                        "local retraction succeeded, but broadcast failed: {e}"
-                    )),
-                };
-            }
-            GossipAssertResult {
-                envelope_id: Some(tombstone.id),
-                error: None,
-            }
+
+            Ok(tombstone)
         })
         .await
+        {
+            Ok(tombstone) => tombstone,
+            Err(e) => {
+                return GossipAssertResult {
+                    envelope_id: None,
+                    error: Some(e),
+                };
+            }
+        };
+
+        if let Err(e) =
+            broadcast_wire_message(transport, WireMessage::Envelope(tombstone.clone())).await
+        {
+            return GossipAssertResult {
+                envelope_id: Some(tombstone.id),
+                error: Some(format!(
+                    "local retraction succeeded, but broadcast failed: {e}"
+                )),
+            };
+        }
+
+        GossipAssertResult {
+            envelope_id: Some(tombstone.id),
+            error: None,
+        }
     }
 
     /// Resolve a contradiction by ID.
@@ -481,7 +480,7 @@ impl MutationRoot {
 
 // ── Gossip helpers ──
 
-fn build_network_snapshot(node: &GossipNode) -> NetworkSnapshot {
+fn build_network_snapshot(node: &GossipNode, peers: Vec<String>) -> NetworkSnapshot {
     let envelopes = node.log();
     let mut agent_map: HashMap<String, (u32, StanceCounts, Vec<String>)> = HashMap::new();
 
@@ -551,7 +550,7 @@ fn build_network_snapshot(node: &GossipNode) -> NetworkSnapshot {
         agents,
         envelopes: envelope_summaries,
         contradictions,
-        peers: Vec::new(), // TCP peers not available without transport reference
+        peers,
         local_agent: node.agent_id.clone(),
         total_facts: node.active_count() as u32,
     }
@@ -596,12 +595,12 @@ fn push_gossip_event(events: &SharedEvents, event: GossipEvent) {
     }
 }
 
-fn broadcast_wire_message(hub_outbound: &HubOutbound, msg: WireMessage) -> Result<(), String> {
-    let sender = hub_outbound.lock().unwrap().clone();
-    match sender {
-        Some(tx) => tx
-            .send(msg)
-            .map_err(|_| "gossip hub writer closed".to_string()),
+async fn broadcast_wire_message(
+    transport: SharedTransport,
+    msg: WireMessage,
+) -> Result<(), String> {
+    match transport {
+        Some(transport) => transport.broadcast(&msg).await,
         None => Ok(()),
     }
 }
@@ -946,20 +945,23 @@ async fn main() -> Result<()> {
         std::env::var("NIBLI_GOSSIP_AGENT").unwrap_or_else(|_| "nibli-server".to_string());
     let gossip_state: SharedGossip = Arc::new(Mutex::new(GossipNode::new(&gossip_agent)));
     let gossip_events: SharedEvents = Arc::new(Mutex::new(Vec::new()));
-    let hub_outbound: HubOutbound = Arc::new(Mutex::new(None));
 
     println!("Gossip agent: {}", gossip_agent);
 
-    // Connect to gossip hub if NIBLI_GOSSIP_HUB is set.
-    if let Ok(hub_addr) = std::env::var("NIBLI_GOSSIP_HUB") {
-        let gs = gossip_state.clone();
-        let ge = gossip_events.clone();
-        let ho = hub_outbound.clone();
-        let agent = gossip_agent.clone();
-        tokio::spawn(async move {
-            gossip_hub_listener(&hub_addr, &agent, gs, ge, ho).await;
-        });
-    }
+    let gossip_transport = if let Ok(hub_addr) = std::env::var("NIBLI_GOSSIP_HUB") {
+        Some(
+            attach_tcp_transport(
+                &hub_addr,
+                &gossip_agent,
+                gossip_state.clone(),
+                gossip_events.clone(),
+            )
+            .await
+            .map_err(anyhow::Error::msg)?,
+        )
+    } else {
+        None
+    };
 
     let ollama_url =
         std::env::var("NIBLI_OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
@@ -975,7 +977,7 @@ async fn main() -> Result<()> {
         .data(ollama_config)
         .data(gossip_state)
         .data(gossip_events)
-        .data(hub_outbound)
+        .data(gossip_transport)
         .finish();
 
     let port: u16 = std::env::var("NIBLI_SERVER_PORT")
@@ -1006,138 +1008,172 @@ async fn graphql_playground() -> impl axum::response::IntoResponse {
     ))
 }
 
-/// Connect to the gossip hub as a peer, receive envelopes, and ingest into GossipNode.
-async fn gossip_hub_listener(
+async fn attach_tcp_transport(
     addr: &str,
     agent_name: &str,
     gossip_state: SharedGossip,
     gossip_events: SharedEvents,
-    hub_outbound: HubOutbound,
-) {
-    // Connect with retry.
-    let stream = loop {
-        match TcpStream::connect(addr).await {
-            Ok(s) => break s,
-            Err(e) => {
-                eprintln!("[gossip] Connect to hub {addr} failed: {e}, retrying in 3s...");
-                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-            }
-        }
-    };
+) -> Result<Arc<dyn Transport>, String> {
+    let transport: Arc<dyn Transport> = TcpTransport::client(addr, agent_name).await?;
+    println!("[gossip] Connected to transport peer at {addr}");
 
-    // Handshake: send our name.
-    let (read_half, mut write_half) = stream.into_split();
-    let hello = format!("{agent_name}\n");
-    if write_half.write_all(hello.as_bytes()).await.is_err() {
-        eprintln!("[gossip] Handshake failed");
-        return;
-    }
-    println!("[gossip] Connected to hub at {addr}");
-
-    let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel::<WireMessage>();
-    *hub_outbound.lock().unwrap() = Some(outbound_tx);
-
-    let writer_hub_outbound = hub_outbound.clone();
+    let listener_transport = transport.clone();
     tokio::spawn(async move {
-        while let Some(message) = outbound_rx.recv().await {
-            match encode_json_lines(&message) {
-                Ok(bytes) => {
-                    if write_half.write_all(&bytes).await.is_err() {
-                        break;
-                    }
-                    if write_half.flush().await.is_err() {
-                        break;
-                    }
-                }
-                Err(e) => {
-                    eprintln!("[gossip] encode error: {e}");
-                }
-            }
-        }
-        *writer_hub_outbound.lock().unwrap() = None;
+        gossip_transport_listener(listener_transport, gossip_state, gossip_events).await;
     });
 
-    // Read JSON Lines from hub.
-    let mut reader = BufReader::new(read_half);
-    let mut line = String::new();
+    Ok(transport)
+}
+
+async fn gossip_transport_listener(
+    transport: Arc<dyn Transport>,
+    gossip_state: SharedGossip,
+    gossip_events: SharedEvents,
+) {
     loop {
-        line.clear();
-        match reader.read_line(&mut line).await {
-            Ok(0) => {
-                eprintln!("[gossip] Hub disconnected");
-                *hub_outbound.lock().unwrap() = None;
-                break;
-            }
-            Ok(_) => {
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                match serde_json::from_str::<WireMessage>(trimmed) {
-                    Ok(WireMessage::Envelope(env)) => {
-                        let author = env.author.clone();
-                        let author_for_error = author.clone();
-                        let display_text = envelope_display_text(&env);
-                        let gossip_state = gossip_state.clone();
-                        let gossip_events = gossip_events.clone();
-
-                        match run_blocking(move || -> Result<(), String> {
-                            let result = match gossip_state.lock() {
-                                Ok(mut node) => node.ingest(env.clone())?,
-                                Err(_) => return Err("gossip state lock poisoned".to_string()),
-                            };
-
-                            if result.was_duplicate || result.was_rejected {
-                                return Ok(());
-                            }
-
-                            push_gossip_event(
-                                &gossip_events,
-                                GossipEvent::NewEnvelope {
-                                    envelope_id: env.id.clone(),
-                                    author: author.clone(),
-                                    lojban: display_text.clone(),
-                                    stance: format!("{}", env.stance),
-                                    topics: env.topics.clone(),
-                                    timestamp: env.timestamp.clone(),
-                                },
-                            );
-
-                            if let (Some(id), Some(assertion)) =
-                                (result.contradiction, display_text)
-                            {
-                                push_gossip_event(
-                                    &gossip_events,
-                                    GossipEvent::Contradiction {
-                                        id,
-                                        envelope_id: env.id.clone(),
-                                        assertion,
-                                        author,
-                                    },
-                                );
-                            }
-
-                            Ok(())
-                        })
-                        .await
-                        {
-                            Ok(()) => {}
-                            Err(e) => eprintln!("[gossip] {author_for_error}: ingest error: {e}"),
-                        }
-                    }
-                    Ok(_) => {} // Ignore sync messages.
-                    Err(e) => {
-                        eprintln!("[gossip] Bad JSON: {e}");
-                    }
-                }
+        match transport.recv().await {
+            Ok(inbound) => {
+                handle_inbound_wire_message(
+                    &transport,
+                    inbound,
+                    gossip_state.clone(),
+                    gossip_events.clone(),
+                )
+                .await;
             }
             Err(e) => {
-                eprintln!("[gossip] Read error: {e}");
-                *hub_outbound.lock().unwrap() = None;
+                eprintln!("[gossip] transport receive error: {e}");
                 break;
             }
         }
     }
+}
+
+async fn handle_inbound_wire_message(
+    transport: &Arc<dyn Transport>,
+    inbound: InboundMessage,
+    gossip_state: SharedGossip,
+    gossip_events: SharedEvents,
+) {
+    let InboundMessage { peer_id, message } = inbound;
+    match message {
+        WireMessage::Envelope(envelope) => {
+            let forwarded = WireMessage::Envelope(envelope.clone());
+            for peer in transport
+                .peers()
+                .into_iter()
+                .filter(|peer| peer != &peer_id)
+            {
+                let _ = transport.send_to(&peer, &forwarded).await;
+            }
+
+            if let Err(e) =
+                ingest_envelope_from_peer(envelope, Some(peer_id), gossip_state, gossip_events)
+                    .await
+            {
+                eprintln!("[gossip] envelope ingest error: {e}");
+            }
+        }
+        WireMessage::SyncRequest { clock } => {
+            let peer_for_event = peer_id.clone();
+            let missing = run_blocking(move || -> Result<Vec<tavla::Envelope>, String> {
+                match gossip_state.lock() {
+                    Ok(node) => Ok(node.sync_diff(&clock)),
+                    Err(_) => Err("gossip state lock poisoned".to_string()),
+                }
+            })
+            .await;
+
+            match missing {
+                Ok(missing) => {
+                    let count = missing.len();
+                    let msg = WireMessage::SyncResponse { envelopes: missing };
+                    if let Err(e) = transport.send_to(&peer_id, &msg).await {
+                        eprintln!("[gossip] sync response error to {peer_id}: {e}");
+                    } else {
+                        push_gossip_event(
+                            &gossip_events,
+                            GossipEvent::Sync {
+                                peer_id: peer_for_event,
+                                envelope_count: count,
+                            },
+                        );
+                    }
+                }
+                Err(e) => eprintln!("[gossip] sync diff error for {peer_id}: {e}"),
+            }
+        }
+        WireMessage::SyncResponse { envelopes } => {
+            let count = envelopes.len();
+            push_gossip_event(
+                &gossip_events,
+                GossipEvent::Sync {
+                    peer_id: peer_id.clone(),
+                    envelope_count: count,
+                },
+            );
+            for envelope in envelopes {
+                if let Err(e) = ingest_envelope_from_peer(
+                    envelope,
+                    Some(peer_id.clone()),
+                    gossip_state.clone(),
+                    gossip_events.clone(),
+                )
+                .await
+                {
+                    eprintln!("[gossip] sync ingest error from {peer_id}: {e}");
+                }
+            }
+        }
+    }
+}
+
+async fn ingest_envelope_from_peer(
+    envelope: tavla::Envelope,
+    via_peer: Option<String>,
+    gossip_state: SharedGossip,
+    gossip_events: SharedEvents,
+) -> Result<(), String> {
+    let author = envelope.author.clone();
+    let display_text = envelope_display_text(&envelope);
+
+    run_blocking(move || -> Result<(), String> {
+        let result = match gossip_state.lock() {
+            Ok(mut node) => node.ingest_from(envelope.clone(), via_peer.as_deref())?,
+            Err(_) => return Err("gossip state lock poisoned".to_string()),
+        };
+
+        if result.was_duplicate || result.was_rejected {
+            return Ok(());
+        }
+
+        push_gossip_event(
+            &gossip_events,
+            GossipEvent::NewEnvelope {
+                envelope_id: envelope.id.clone(),
+                author: author.clone(),
+                lojban: display_text.clone(),
+                stance: format!("{}", envelope.stance),
+                topics: envelope.topics.clone(),
+                timestamp: envelope.timestamp.clone(),
+            },
+        );
+
+        if let (Some(id), Some(assertion)) = (result.contradiction, display_text) {
+            push_gossip_event(
+                &gossip_events,
+                GossipEvent::Contradiction {
+                    id,
+                    envelope_id: envelope.id.clone(),
+                    assertion,
+                    author,
+                },
+            );
+        }
+
+        Ok(())
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -1226,7 +1262,7 @@ mod tests {
     fn build_test_schema(
         gossip_state: Arc<Mutex<GossipNode>>,
         gossip_events: Arc<Mutex<Vec<GossipEvent>>>,
-        hub_outbound: HubOutbound,
+        gossip_transport: SharedTransport,
     ) -> TestSchema {
         let ollama_config = Arc::new(OllamaConfig {
             url: "http://localhost:11434".to_string(),
@@ -1237,8 +1273,23 @@ mod tests {
             .data(ollama_config)
             .data(gossip_state)
             .data(gossip_events)
-            .data(hub_outbound)
+            .data(gossip_transport)
             .finish()
+    }
+
+    async fn start_server_transport(
+        hub_addr: &str,
+        gossip_state: Arc<Mutex<GossipNode>>,
+        gossip_events: Arc<Mutex<Vec<GossipEvent>>>,
+    ) -> (Arc<dyn Transport>, tokio::task::JoinHandle<()>) {
+        let transport: Arc<dyn Transport> = TcpTransport::client(hub_addr, "server")
+            .await
+            .expect("server transport should start");
+        let listener_transport = transport.clone();
+        let listener_handle = tokio::spawn(async move {
+            gossip_transport_listener(listener_transport, gossip_state, gossip_events).await;
+        });
+        (transport, listener_handle)
     }
 
     async fn execute_json(schema: &TestSchema, query: String) -> serde_json::Value {
@@ -1291,8 +1342,7 @@ mod tests {
     async fn gossip_assert_should_affect_query_results() {
         let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
         let gossip_events = Arc::new(Mutex::new(Vec::new()));
-        let hub_outbound: HubOutbound = Arc::new(Mutex::new(None));
-        let schema = build_test_schema(gossip_state, gossip_events, hub_outbound);
+        let schema = build_test_schema(gossip_state, gossip_events, None);
 
         let mutation = format!(
             "mutation {{ gossipAssert(lojban: {}) {{ envelopeId error }} }}",
@@ -1314,27 +1364,14 @@ mod tests {
     async fn remote_retraction_should_remove_query_results() {
         let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
         let gossip_events = Arc::new(Mutex::new(Vec::new()));
-        let hub_outbound: HubOutbound = Arc::new(Mutex::new(None));
+        let hub = start_fake_hub().await;
+        let (transport, listener_handle) =
+            start_server_transport(&hub.addr, gossip_state.clone(), gossip_events.clone()).await;
         let schema = build_test_schema(
             gossip_state.clone(),
             gossip_events.clone(),
-            hub_outbound.clone(),
+            Some(transport.clone()),
         );
-
-        let hub = start_fake_hub().await;
-        let hub_addr = hub.addr.clone();
-        let listener_events = gossip_events.clone();
-        let listener_outbound = hub_outbound.clone();
-        let listener_handle = tokio::spawn(async move {
-            gossip_hub_listener(
-                &hub_addr,
-                "server",
-                gossip_state,
-                listener_events,
-                listener_outbound,
-            )
-            .await
-        });
 
         let handshake = timeout(Duration::from_secs(1), hub.handshake)
             .await
@@ -1374,6 +1411,7 @@ mod tests {
             "remote retraction should remove the fact from queryText results"
         );
 
+        transport.shutdown().await;
         listener_handle.abort();
         hub.task.abort();
     }
@@ -1382,26 +1420,14 @@ mod tests {
     async fn gossip_assert_should_broadcast_to_connected_hub() {
         let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
         let gossip_events = Arc::new(Mutex::new(Vec::new()));
-        let hub_outbound: HubOutbound = Arc::new(Mutex::new(None));
+        let mut hub = start_fake_hub().await;
+        let (transport, listener_handle) =
+            start_server_transport(&hub.addr, gossip_state.clone(), gossip_events.clone()).await;
         let schema = build_test_schema(
             gossip_state.clone(),
             gossip_events.clone(),
-            hub_outbound.clone(),
+            Some(transport.clone()),
         );
-
-        let mut hub = start_fake_hub().await;
-        let hub_addr = hub.addr.clone();
-        let listener_outbound = hub_outbound.clone();
-        let listener_handle = tokio::spawn(async move {
-            gossip_hub_listener(
-                &hub_addr,
-                "server",
-                gossip_state,
-                gossip_events,
-                listener_outbound,
-            )
-            .await
-        });
 
         let handshake = timeout(Duration::from_secs(1), hub.handshake)
             .await
@@ -1430,6 +1456,7 @@ mod tests {
             "gossipAssert should broadcast an envelope"
         );
 
+        transport.shutdown().await;
         listener_handle.abort();
         hub.task.abort();
     }
@@ -1438,26 +1465,14 @@ mod tests {
     async fn gossip_retract_should_broadcast_tombstone_to_connected_hub() {
         let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
         let gossip_events = Arc::new(Mutex::new(Vec::new()));
-        let hub_outbound: HubOutbound = Arc::new(Mutex::new(None));
+        let mut hub = start_fake_hub().await;
+        let (transport, listener_handle) =
+            start_server_transport(&hub.addr, gossip_state.clone(), gossip_events.clone()).await;
         let schema = build_test_schema(
             gossip_state.clone(),
             gossip_events.clone(),
-            hub_outbound.clone(),
+            Some(transport.clone()),
         );
-
-        let mut hub = start_fake_hub().await;
-        let hub_addr = hub.addr.clone();
-        let listener_outbound = hub_outbound.clone();
-        let listener_handle = tokio::spawn(async move {
-            gossip_hub_listener(
-                &hub_addr,
-                "server",
-                gossip_state,
-                gossip_events,
-                listener_outbound,
-            )
-            .await
-        });
 
         let handshake = timeout(Duration::from_secs(1), hub.handshake)
             .await
@@ -1511,6 +1526,7 @@ mod tests {
             "local gossip retraction should remove the fact from query results"
         );
 
+        transport.shutdown().await;
         listener_handle.abort();
         hub.task.abort();
     }
@@ -1519,27 +1535,14 @@ mod tests {
     async fn duplicate_inbound_envelope_should_not_create_duplicate_events() {
         let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
         let gossip_events = Arc::new(Mutex::new(Vec::new()));
-        let hub_outbound: HubOutbound = Arc::new(Mutex::new(None));
+        let hub = start_fake_hub().await;
+        let (transport, listener_handle) =
+            start_server_transport(&hub.addr, gossip_state.clone(), gossip_events.clone()).await;
         let schema = build_test_schema(
             gossip_state.clone(),
             gossip_events.clone(),
-            hub_outbound.clone(),
+            Some(transport.clone()),
         );
-
-        let hub = start_fake_hub().await;
-        let hub_addr = hub.addr.clone();
-        let listener_events = gossip_events.clone();
-        let listener_outbound = hub_outbound.clone();
-        let listener_handle = tokio::spawn(async move {
-            gossip_hub_listener(
-                &hub_addr,
-                "server",
-                gossip_state,
-                listener_events,
-                listener_outbound,
-            )
-            .await
-        });
 
         let handshake = timeout(Duration::from_secs(1), hub.handshake)
             .await
@@ -1577,6 +1580,7 @@ mod tests {
             "deduplicated inbound assertion should still be queryable"
         );
 
+        transport.shutdown().await;
         listener_handle.abort();
         hub.task.abort();
     }
@@ -1588,27 +1592,14 @@ mod tests {
             TrustPolicy::TrustRequired,
         )));
         let gossip_events = Arc::new(Mutex::new(Vec::new()));
-        let hub_outbound: HubOutbound = Arc::new(Mutex::new(None));
+        let hub = start_fake_hub().await;
+        let (transport, listener_handle) =
+            start_server_transport(&hub.addr, gossip_state.clone(), gossip_events.clone()).await;
         let schema = build_test_schema(
             gossip_state.clone(),
             gossip_events.clone(),
-            hub_outbound.clone(),
+            Some(transport.clone()),
         );
-
-        let hub = start_fake_hub().await;
-        let hub_addr = hub.addr.clone();
-        let listener_events = gossip_events.clone();
-        let listener_outbound = hub_outbound.clone();
-        let listener_handle = tokio::spawn(async move {
-            gossip_hub_listener(
-                &hub_addr,
-                "server",
-                gossip_state,
-                listener_events,
-                listener_outbound,
-            )
-            .await
-        });
 
         let handshake = timeout(Duration::from_secs(1), hub.handshake)
             .await
@@ -1639,6 +1630,7 @@ mod tests {
             "rejected inbound assertions must stay out of query results"
         );
 
+        transport.shutdown().await;
         listener_handle.abort();
         hub.task.abort();
     }
