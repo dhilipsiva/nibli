@@ -3,7 +3,7 @@ use super::*;
 pub(super) fn check_formula_holds(
     buffer: &LogicBuffer,
     node_id: u32,
-    subs: &mut HashMap<String, String>,
+    subs: &mut HashMap<String, GroundTerm>,
     inner: &mut KnowledgeBaseInner,
     tense: Option<&str>,
 ) -> Result<bool, String> {
@@ -32,7 +32,7 @@ pub(super) fn check_formula_holds(
             check_formula_holds(buffer, *inner_node, subs, inner, tense)
         }
         LogicNode::ExistsNode((v, body)) => {
-            let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
+            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
             if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
                 if let Some(batch_results) =
                     batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner)
@@ -44,8 +44,8 @@ pub(super) fn check_formula_holds(
             }
             let v_key = v.clone();
             let prev = subs.remove(&v_key);
-            for (member_repr, _) in &members {
-                subs.insert(v_key.clone(), member_repr.clone());
+            for member in &members {
+                subs.insert(v_key.clone(), member.clone());
                 if check_formula_holds(buffer, *body, subs, inner, tense)? {
                     match prev {
                         Some(p) => {
@@ -60,10 +60,9 @@ pub(super) fn check_formula_holds(
             }
             let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
             for entry in &entries {
-                let dep_reprs: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
-                for combo in CartesianProduct::new(&dep_reprs, entry.dep_count) {
-                    let witness_repr = build_skolem_fn_repr(&entry.base_name, &combo);
-                    subs.insert(v_key.clone(), witness_repr);
+                for combo in GroundTermCartesianProduct::new(&members, entry.dep_count) {
+                    let witness = build_skolem_fn_term(&entry.base_name, &combo);
+                    subs.insert(v_key.clone(), witness);
                     if check_formula_holds(buffer, *body, subs, inner, tense)? {
                         match prev {
                             Some(p) => {
@@ -88,7 +87,7 @@ pub(super) fn check_formula_holds(
             Ok(false)
         }
         LogicNode::ForAllNode((v, body)) => {
-            let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
+            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
             if members.is_empty() {
                 return Ok(true);
             }
@@ -101,8 +100,8 @@ pub(super) fn check_formula_holds(
             }
             let v_key = v.clone();
             let prev = subs.remove(&v_key);
-            for (member_repr, _) in &members {
-                subs.insert(v_key.clone(), member_repr.clone());
+            for member in &members {
+                subs.insert(v_key.clone(), member.clone());
                 if !check_formula_holds(buffer, *body, subs, inner, tense)? {
                     match prev {
                         Some(p) => {
@@ -126,7 +125,7 @@ pub(super) fn check_formula_holds(
             Ok(true)
         }
         LogicNode::CountNode((v, count, body)) => {
-            let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
+            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
             if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
                 if let Some(batch_results) =
                     batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner)
@@ -138,8 +137,8 @@ pub(super) fn check_formula_holds(
             let mut satisfying = 0u32;
             let v_key = v.clone();
             let prev = subs.remove(&v_key);
-            for (member_repr, _) in &members {
-                subs.insert(v_key.clone(), member_repr.clone());
+            for member in &members {
+                subs.insert(v_key.clone(), member.clone());
                 if check_formula_holds(buffer, *body, subs, inner, tense)? {
                     satisfying += 1;
                 }
@@ -197,34 +196,33 @@ pub(super) fn check_formula_holds(
 pub(super) fn find_witnesses(
     buffer: &LogicBuffer,
     node_id: u32,
-    subs: &mut HashMap<String, String>,
+    subs: &mut HashMap<String, GroundTerm>,
     inner: &mut KnowledgeBaseInner,
     tense: Option<&str>,
-) -> Result<Vec<Vec<(String, String)>>, String> {
+) -> Result<Vec<Vec<(String, GroundTerm)>>, String> {
     match &buffer.nodes[node_id as usize] {
         LogicNode::ExistsNode((v, body)) => {
             let mut results = Vec::new();
-            let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
-            for (fact_repr, _) in &members {
+            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
+            for member in &members {
                 let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), fact_repr.clone());
+                new_subs.insert(v.clone(), member.clone());
                 let sub_results = find_witnesses(buffer, *body, &mut new_subs, inner, tense)?;
                 for mut bindings in sub_results {
-                    bindings.push((v.clone(), fact_repr.clone()));
+                    bindings.push((v.clone(), member.clone()));
                     results.push(bindings);
                 }
             }
 
             let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
             for entry in &entries {
-                let dep_reprs: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
-                for combo in CartesianProduct::new(&dep_reprs, entry.dep_count) {
-                    let witness_repr = build_skolem_fn_repr(&entry.base_name, &combo);
+                for combo in GroundTermCartesianProduct::new(&members, entry.dep_count) {
+                    let witness = build_skolem_fn_term(&entry.base_name, &combo);
                     let mut new_subs = subs.clone();
-                    new_subs.insert(v.clone(), witness_repr.clone());
+                    new_subs.insert(v.clone(), witness.clone());
                     let sub_results = find_witnesses(buffer, *body, &mut new_subs, inner, tense)?;
                     for mut bindings in sub_results {
-                        bindings.push((v.clone(), witness_repr.clone()));
+                        bindings.push((v.clone(), witness.clone()));
                         results.push(bindings);
                     }
                 }
@@ -385,17 +383,8 @@ pub(super) fn try_backward_chain_typed(
                 let members = inner.all_typed_domain_members();
                 let mut all_candidates: Vec<GroundTerm> = members.to_vec();
                 for entry in &inner.skolem_fn_registry {
-                    for combo in CartesianProduct::new(
-                        // CartesianProduct works with &[String] — need member names.
-                        // Reuse fact_repr domain members for candidate generation.
-                        &inner.all_domain_members().iter().map(|(s, _)| s.clone()).collect::<Vec<_>>(),
-                        entry.dep_count,
-                    ) {
-                        let dep_terms: Vec<GroundTerm> = combo
-                            .iter()
-                            .map(|s| parse_repr_to_ground_term(s))
-                            .collect();
-                        all_candidates.push(build_skolem_fn_term(&entry.base_name, &dep_terms));
+                    for combo in GroundTermCartesianProduct::new(members, entry.dep_count) {
+                        all_candidates.push(build_skolem_fn_term(&entry.base_name, &combo));
                     }
                 }
 
@@ -493,15 +482,8 @@ pub(super) fn try_backward_chain_typed(
                     let members = inner.all_typed_domain_members();
                     let mut all_candidates: Vec<GroundTerm> = members.to_vec();
                     for entry in &inner.skolem_fn_registry {
-                        for combo in CartesianProduct::new(
-                            &inner.all_domain_members().iter().map(|(s, _)| s.clone()).collect::<Vec<_>>(),
-                            entry.dep_count,
-                        ) {
-                            let dep_terms: Vec<GroundTerm> = combo
-                                .iter()
-                                .map(|s| parse_repr_to_ground_term(s))
-                                .collect();
-                            all_candidates.push(build_skolem_fn_term(&entry.base_name, &dep_terms));
+                        for combo in GroundTermCartesianProduct::new(members, entry.dep_count) {
+                            all_candidates.push(build_skolem_fn_term(&entry.base_name, &combo));
                         }
                     }
 
@@ -751,15 +733,8 @@ pub(super) fn try_backward_chain_traced_typed(
                 let members = inner.all_typed_domain_members();
                 let mut all_candidates: Vec<GroundTerm> = members.to_vec();
                 for entry in &inner.skolem_fn_registry {
-                    for combo in CartesianProduct::new(
-                        &inner.all_domain_members().iter().map(|(s, _)| s.clone()).collect::<Vec<_>>(),
-                        entry.dep_count,
-                    ) {
-                        let dep_terms: Vec<GroundTerm> = combo
-                            .iter()
-                            .map(|s| parse_repr_to_ground_term(s))
-                            .collect();
-                        all_candidates.push(build_skolem_fn_term(&entry.base_name, &dep_terms));
+                    for combo in GroundTermCartesianProduct::new(members, entry.dep_count) {
+                        all_candidates.push(build_skolem_fn_term(&entry.base_name, &combo));
                     }
                 }
 
@@ -895,15 +870,8 @@ pub(super) fn try_backward_chain_traced_typed(
                     let members = inner.all_typed_domain_members();
                     let mut all_candidates: Vec<GroundTerm> = members.to_vec();
                     for entry in &inner.skolem_fn_registry {
-                        for combo in CartesianProduct::new(
-                            &inner.all_domain_members().iter().map(|(s, _)| s.clone()).collect::<Vec<_>>(),
-                            entry.dep_count,
-                        ) {
-                            let dep_terms: Vec<GroundTerm> = combo
-                                .iter()
-                                .map(|s| parse_repr_to_ground_term(s))
-                                .collect();
-                            all_candidates.push(build_skolem_fn_term(&entry.base_name, &dep_terms));
+                        for combo in GroundTermCartesianProduct::new(members, entry.dep_count) {
+                            all_candidates.push(build_skolem_fn_term(&entry.base_name, &combo));
                         }
                     }
 
@@ -1028,7 +996,7 @@ pub(super) fn try_backward_chain_traced_typed(
 pub(super) fn check_formula_holds_traced(
     buffer: &LogicBuffer,
     node_id: u32,
-    subs: &mut HashMap<String, String>,
+    subs: &mut HashMap<String, GroundTerm>,
     inner: &mut KnowledgeBaseInner,
     steps: &mut Vec<ProofStep>,
     tense: Option<&str>,
@@ -1177,7 +1145,7 @@ pub(super) fn check_formula_holds_traced(
             Ok((result, idx))
         }
         LogicNode::ExistsNode((v, body)) => {
-            let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
+            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
 
             if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
                 if let Some(batch_results) =
@@ -1185,7 +1153,7 @@ pub(super) fn check_formula_holds_traced(
                 {
                     if let Some(winner_idx) = batch_results.iter().position(|r| *r) {
                         let mut new_subs = subs.clone();
-                        new_subs.insert(v.clone(), members[winner_idx].0.clone());
+                        new_subs.insert(v.clone(), members[winner_idx].clone());
                         let (_, body_idx) = check_formula_holds_traced(
                             buffer,
                             *body,
@@ -1199,7 +1167,7 @@ pub(super) fn check_formula_holds_traced(
                         steps.push(ProofStep {
                             rule: ProofRule::ExistsWitness((
                                 v.clone(),
-                                members[winner_idx].1.clone(),
+                                ground_term_to_logical_term(&members[winner_idx]),
                             )),
                             holds: true,
                             children: vec![body_idx],
@@ -1209,9 +1177,9 @@ pub(super) fn check_formula_holds_traced(
                 }
             }
 
-            for (fact_repr, term) in &members {
+            for member in &members {
                 let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), fact_repr.clone());
+                new_subs.insert(v.clone(), member.clone());
                 if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)? {
                     let (_, body_idx) = check_formula_holds_traced(
                         buffer,
@@ -1224,7 +1192,7 @@ pub(super) fn check_formula_holds_traced(
                     )?;
                     let idx = steps.len() as u32;
                     steps.push(ProofStep {
-                        rule: ProofRule::ExistsWitness((v.clone(), term.clone())),
+                        rule: ProofRule::ExistsWitness((v.clone(), ground_term_to_logical_term(member))),
                         holds: true,
                         children: vec![body_idx],
                     });
@@ -1233,11 +1201,10 @@ pub(super) fn check_formula_holds_traced(
             }
             let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
             for entry in &entries {
-                let dep_reprs: Vec<String> = members.iter().map(|(s, _)| s.clone()).collect();
-                for combo in CartesianProduct::new(&dep_reprs, entry.dep_count) {
-                    let witness_repr = build_skolem_fn_repr(&entry.base_name, &combo);
+                for combo in GroundTermCartesianProduct::new(&members, entry.dep_count) {
+                    let witness = build_skolem_fn_term(&entry.base_name, &combo);
                     let mut new_subs = subs.clone();
-                    new_subs.insert(v.clone(), witness_repr.clone());
+                    new_subs.insert(v.clone(), witness.clone());
                     if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)? {
                         let (_, body_idx) = check_formula_holds_traced(
                             buffer,
@@ -1252,7 +1219,7 @@ pub(super) fn check_formula_holds_traced(
                         steps.push(ProofStep {
                             rule: ProofRule::ExistsWitness((
                                 v.clone(),
-                                parse_repr_to_term(&witness_repr),
+                                ground_term_to_logical_term(&witness),
                             )),
                             holds: true,
                             children: vec![body_idx],
@@ -1270,7 +1237,7 @@ pub(super) fn check_formula_holds_traced(
             Ok((false, idx))
         }
         LogicNode::ForAllNode((v, body)) => {
-            let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
+            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
             if members.is_empty() {
                 let idx = steps.len() as u32;
                 steps.push(ProofStep {
@@ -1286,7 +1253,7 @@ pub(super) fn check_formula_holds_traced(
                 {
                     if let Some(fail_idx) = batch_results.iter().position(|r| !*r) {
                         let mut new_subs = subs.clone();
-                        new_subs.insert(v.clone(), members[fail_idx].0.clone());
+                        new_subs.insert(v.clone(), members[fail_idx].clone());
                         let (_, body_idx) = check_formula_holds_traced(
                             buffer,
                             *body,
@@ -1298,7 +1265,7 @@ pub(super) fn check_formula_holds_traced(
                         )?;
                         let idx = steps.len() as u32;
                         steps.push(ProofStep {
-                            rule: ProofRule::ForallCounterexample(members[fail_idx].1.clone()),
+                            rule: ProofRule::ForallCounterexample(ground_term_to_logical_term(&members[fail_idx])),
                             holds: false,
                             children: vec![body_idx],
                         });
@@ -1306,9 +1273,9 @@ pub(super) fn check_formula_holds_traced(
                     }
                     let mut child_indices = Vec::new();
                     let mut entity_terms = Vec::new();
-                    for (fact_repr, term) in &members {
+                    for member in &members {
                         let mut new_subs = subs.clone();
-                        new_subs.insert(v.clone(), fact_repr.clone());
+                        new_subs.insert(v.clone(), member.clone());
                         let (_, body_idx) = check_formula_holds_traced(
                             buffer,
                             *body,
@@ -1319,7 +1286,7 @@ pub(super) fn check_formula_holds_traced(
                             memo,
                         )?;
                         child_indices.push(body_idx);
-                        entity_terms.push(term.clone());
+                        entity_terms.push(ground_term_to_logical_term(member));
                     }
                     let idx = steps.len() as u32;
                     steps.push(ProofStep {
@@ -1332,9 +1299,9 @@ pub(super) fn check_formula_holds_traced(
             }
             let mut child_indices = Vec::new();
             let mut entity_terms = Vec::new();
-            for (fact_repr, term) in &members {
+            for member in &members {
                 let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), fact_repr.clone());
+                new_subs.insert(v.clone(), member.clone());
                 let (holds, body_idx) = check_formula_holds_traced(
                     buffer,
                     *body,
@@ -1347,14 +1314,14 @@ pub(super) fn check_formula_holds_traced(
                 if !holds {
                     let idx = steps.len() as u32;
                     steps.push(ProofStep {
-                        rule: ProofRule::ForallCounterexample(term.clone()),
+                        rule: ProofRule::ForallCounterexample(ground_term_to_logical_term(member)),
                         holds: false,
                         children: vec![body_idx],
                     });
                     return Ok((false, idx));
                 }
                 child_indices.push(body_idx);
-                entity_terms.push(term.clone());
+                entity_terms.push(ground_term_to_logical_term(member));
             }
             let idx = steps.len() as u32;
             steps.push(ProofStep {
@@ -1365,7 +1332,7 @@ pub(super) fn check_formula_holds_traced(
             Ok((true, idx))
         }
         LogicNode::CountNode((v, count, body)) => {
-            let members: Vec<(String, LogicalTerm)> = inner.all_domain_members().to_vec();
+            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
             if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
                 if let Some(batch_results) =
                     batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner)
@@ -1382,9 +1349,9 @@ pub(super) fn check_formula_holds_traced(
                 }
             }
             let mut satisfying = 0u32;
-            for (fact_repr, _) in &members {
+            for member in &members {
                 let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), fact_repr.clone());
+                new_subs.insert(v.clone(), member.clone());
                 if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)? {
                     satisfying += 1;
                 }
@@ -1407,7 +1374,7 @@ pub(super) fn check_formula_holds_traced(
                         .map(|a| match a {
                             LogicalTerm::Number(n) => format!("{}", *n as i64),
                             LogicalTerm::Variable(v) =>
-                                subs.get(v.as_str()).cloned().unwrap_or_else(|| v.clone()),
+                                subs.get(v.as_str()).map(|gt| gt.to_display_string()).unwrap_or_else(|| v.clone()),
                             _ => "?".to_string(),
                         })
                         .collect::<Vec<_>>()

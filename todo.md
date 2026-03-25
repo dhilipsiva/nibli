@@ -4,21 +4,19 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 1: Pipeline Efficiency (Medium Effort, High Impact)
 
-4. **Migrate `subs` HashMap from `String` to `GroundTerm`** — `check_formula_holds()`, `check_formula_holds_traced()`, and `find_witnesses()` all use `HashMap<String, String>` where values are parenthesized strings like `(Const "adam")`. Every predicate leaf parses these strings via `parse_repr_to_ground_term()`. Change to `HashMap<String, GroundTerm>` and build GroundTerms from domain members directly. Eliminates per-query string parsing overhead. Touches: `logji/src/reasoning.rs`, `logji/src/lib.rs`.
+4. **Cache backward-chaining candidate vectors** — `try_backward_chain_typed()` allocates a `Vec<GroundTerm>` from `all_typed_domain_members()` inside the per-rule loop (4 call sites in reasoning.rs). For R rules × S SkolemFn entries, this is R×S temporary vector allocations per query. Cache the member vector alongside the domain cache (invalidate together). ~10 lines.
 
-5. **Cache backward-chaining candidate vectors** — `try_backward_chain_typed()` allocates a `Vec<String>` from `all_domain_members()` inside the per-rule loop (4 call sites in reasoning.rs). For R rules × S SkolemFn entries, this is R×S temporary vector allocations per query. Cache the member string vector alongside the domain cache (invalidate together). ~10 lines.
+5. **Avoid StoredFact cloning in proof memo** — `trace_predicate_provenance_typed()` clones `StoredFact` (String + Vec) on every memo insertion. Use fact interning (assign u64 IDs to StoredFacts) to key the memo by ID instead. Or use `Rc<StoredFact>`. ~20 lines, ~5-10% speedup on proof tracing.
 
-6. **Avoid StoredFact cloning in proof memo** — `trace_predicate_provenance_typed()` clones `StoredFact` (String + Vec) on every memo insertion. Use fact interning (assign u64 IDs to StoredFacts) to key the memo by ID instead. Or use `Rc<StoredFact>`. ~20 lines, ~5-10% speedup on proof tracing.
+6. **Avoid unnecessary allocation in `assert_typed_fact()`** — `fact.relation().to_string()` allocates a new String on every fact insertion for the HashMap key. Use `entry` API with the fact's relation borrowed, or intern predicate names. ~5 lines.
 
-7. **Avoid unnecessary allocation in `assert_typed_fact()`** — `fact.relation().to_string()` allocates a new String on every fact insertion for the HashMap key. Use `entry` API with the fact's relation borrowed, or intern predicate names. ~5 lines.
+7. **Use Cow in substitute_term for SkolemFn** — `substitute_term()` creates a new `Box<GroundTerm>` for every SkolemFn term even when the dependency didn't change. Check if dep changed before boxing. Or use `Cow<GroundTerm>`. ~10 lines.
 
-8. **Use Cow in substitute_term for SkolemFn** — `substitute_term()` creates a new `Box<GroundTerm>` for every SkolemFn term even when the dependency didn't change. Check if dep changed before boxing. Or use `Cow<GroundTerm>`. ~10 lines.
+8. **Consolidate compute node transform** — Identical `Predicate → ComputeNode` transform exists in `lasna/src/lib.rs:442` and `nibli-engine/src/lib.rs:293`. Called 5× per query in lasna alone. Merge into one function, call once after smuni compilation. ~20 lines saved.
 
-9. **Consolidate compute node transform** — Identical `Predicate → ComputeNode` transform exists in `lasna/src/lib.rs:442` and `nibli-engine/src/lib.rs:293`. Called 5× per query in lasna alone. Merge into one function, call once after smuni compilation. ~20 lines saved.
+9. **Consolidate proof trace + error formatting** — Proof tree formatting in both `nibli-protocol/src/lib.rs` and `gasnu/src/main.rs`. Error formatting repeated 3× in `nibli-engine/src/lib.rs`. Term serialization duplicated between `lasna` and `nibli-engine`. Consolidate to `nibli-protocol`. ~130 lines saved.
 
-10. **Consolidate proof trace + error formatting** — Proof tree formatting in both `nibli-protocol/src/lib.rs` and `gasnu/src/main.rs`. Error formatting repeated 3× in `nibli-engine/src/lib.rs`. Term serialization duplicated between `lasna` and `nibli-engine`. Consolidate to `nibli-protocol`. ~130 lines saved.
-
-11. **known_rules dedup key** — `HashSet<String>` uses full serialized rule as dedup key. Switch to structural hash of typed conditions/conclusions for O(1) dedup instead of O(k) string hashing.
+10. **known_rules dedup key** — `HashSet<String>` uses full serialized rule as dedup key. Switch to structural hash of typed conditions/conclusions for O(1) dedup instead of O(k) string hashing.
 
 ## Tier 3: Architecture (High Effort, High Impact)
 

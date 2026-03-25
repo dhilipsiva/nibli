@@ -1,9 +1,22 @@
 use super::*;
 
+/// Check if a GroundTerm represents a dependent Skolem placeholder.
+pub(super) fn is_skdep(gt: &GroundTerm) -> bool {
+    matches!(gt, GroundTerm::PatternVar(s) if s.starts_with(SKDEP_PREFIX))
+}
+
+/// Extract the base Skolem name from a dependent Skolem placeholder.
+pub(super) fn skdep_base_name(gt: &GroundTerm) -> Option<&str> {
+    match gt {
+        GroundTerm::PatternVar(s) => s.strip_prefix(SKDEP_PREFIX),
+        _ => None,
+    }
+}
+
 pub(super) fn collect_exists_for_skolem(
     buffer: &LogicBuffer,
     node_id: u32,
-    subs: &mut HashMap<String, String>,
+    subs: &mut HashMap<String, GroundTerm>,
     enclosing_universals: &mut Vec<String>,
     counter: &mut usize,
 ) {
@@ -13,12 +26,12 @@ pub(super) fn collect_exists_for_skolem(
                 if enclosing_universals.is_empty() {
                     let sk = format!("sk_{}", *counter);
                     *counter += 1;
-                    subs.insert(v.clone(), sk);
+                    subs.insert(v.clone(), GroundTerm::Constant(sk));
                 } else {
                     let base = format!("sk_{}", *counter);
                     *counter += 1;
                     let placeholder = format!("{}{}", SKDEP_PREFIX, base);
-                    subs.insert(v.clone(), placeholder);
+                    subs.insert(v.clone(), GroundTerm::PatternVar(placeholder));
                 }
             }
             collect_exists_for_skolem(buffer, *body, subs, enclosing_universals, counter);
@@ -40,12 +53,12 @@ pub(super) fn collect_exists_for_skolem(
                 if enclosing_universals.is_empty() {
                     let sk = format!("sk_{}", *counter);
                     *counter += 1;
-                    subs.insert(v.clone(), sk);
+                    subs.insert(v.clone(), GroundTerm::Constant(sk));
                 } else {
                     let base = format!("sk_{}", *counter);
                     *counter += 1;
                     let placeholder = format!("{}{}", SKDEP_PREFIX, base);
-                    subs.insert(v.clone(), placeholder);
+                    subs.insert(v.clone(), GroundTerm::PatternVar(placeholder));
                 }
             }
             collect_exists_for_skolem(buffer, *body, subs, enclosing_universals, counter);
@@ -143,7 +156,7 @@ pub(super) fn flatten_conjuncts_through_exists(
 fn flatten_consequent(
     buffer: &LogicBuffer,
     node_id: u32,
-    skolem_subs: &HashMap<String, String>,
+    skolem_subs: &HashMap<String, GroundTerm>,
 ) -> Vec<u32> {
     match &buffer.nodes[node_id as usize] {
         LogicNode::ExistsNode((v, body)) if skolem_subs.contains_key(v.as_str()) => {
@@ -238,7 +251,7 @@ pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner
 pub(super) fn compile_forall_to_rule(
     buffer: &LogicBuffer,
     node_id: u32,
-    skolem_subs: &HashMap<String, String>,
+    skolem_subs: &HashMap<String, GroundTerm>,
     inner: &mut KnowledgeBaseInner,
 ) -> Result<(), String> {
     let mut universals: Vec<String> = Vec::new();
@@ -269,16 +282,22 @@ pub(super) fn compile_forall_to_rule(
 
     let mut ground_skolems: HashMap<String, String> = skolem_subs
         .iter()
-        .filter(|(_, v)| !v.starts_with(SKDEP_PREFIX))
-        .map(|(k, v)| (k.clone(), v.clone()))
+        .filter(|(_, gt)| !is_skdep(gt))
+        .filter_map(|(k, gt)| {
+            if let GroundTerm::Constant(s) = gt {
+                Some((k.clone(), s.clone()))
+            } else {
+                None
+            }
+        })
         .collect();
 
     let pattern_var_names: Vec<String> =
         universals.iter().map(|v| pattern_vars[v].clone()).collect();
     let mut dependent_skolems: HashMap<String, (String, Vec<String>)> = skolem_subs
         .iter()
-        .filter_map(|(k, v)| {
-            v.strip_prefix(SKDEP_PREFIX)
+        .filter_map(|(k, gt)| {
+            skdep_base_name(gt)
                 .map(|base| (k.clone(), (base.to_string(), pattern_var_names.clone())))
         })
         .collect();
@@ -373,14 +392,14 @@ pub(super) fn compile_forall_to_rule(
 
                 let xp_name = inner.fresh_skolem();
                 inner.note_entity(&xp_name);
-                let mut xp_subs: HashMap<String, String> = HashMap::new();
+                let mut xp_subs: HashMap<String, GroundTerm> = HashMap::new();
                 for v in &universals {
-                    xp_subs.insert(v.clone(), xp_name.clone());
+                    xp_subs.insert(v.clone(), GroundTerm::Constant(xp_name.clone()));
                 }
                 for (k, v) in &ground_skolems {
                     xp_subs
                         .entry(k.clone())
-                        .or_insert_with(|| v.clone());
+                        .or_insert_with(|| GroundTerm::Constant(v.clone()));
                 }
                 for var in &condition_exists_vars {
                     let ev_sk = inner.fresh_skolem();
@@ -389,7 +408,7 @@ pub(super) fn compile_forall_to_rule(
                     } else {
                         inner.note_entity(&ev_sk);
                     }
-                    xp_subs.insert(var.clone(), ev_sk);
+                    xp_subs.insert(var.clone(), GroundTerm::Constant(ev_sk));
                 }
                 for &cid in &all_conditions {
                     if let Some(fact) = build_stored_fact_from_node(buffer, cid, &xp_subs, None) {
@@ -457,7 +476,7 @@ pub(super) fn compile_forall_to_rule(
 pub(super) fn generate_count_extra_witnesses(
     buffer: &LogicBuffer,
     node_id: u32,
-    skolem_subs: &HashMap<String, String>,
+    skolem_subs: &HashMap<String, GroundTerm>,
     inner: &mut KnowledgeBaseInner,
 ) {
     match &buffer.nodes[node_id as usize] {
@@ -467,12 +486,12 @@ pub(super) fn generate_count_extra_witnesses(
                     let extra_sk = inner.fresh_skolem();
                     inner.note_entity(&extra_sk);
 
-                    let mut typed_extra_subs: HashMap<String, String> = skolem_subs
+                    let mut typed_extra_subs: HashMap<String, GroundTerm> = skolem_subs
                         .iter()
-                        .filter(|(_, sv)| !sv.starts_with(SKDEP_PREFIX))
-                        .map(|(k, sv)| (k.clone(), sv.clone()))
+                        .filter(|(_, gt)| !is_skdep(gt))
+                        .map(|(k, gt)| (k.clone(), gt.clone()))
                         .collect();
-                    typed_extra_subs.insert(v.clone(), extra_sk.clone());
+                    typed_extra_subs.insert(v.clone(), GroundTerm::Constant(extra_sk.clone()));
                     if let Some(fact) = build_stored_fact_from_node(buffer, *body, &typed_extra_subs, None) {
                         assert_typed_fact(fact, inner);
                     }
@@ -500,32 +519,20 @@ pub(super) fn generate_count_extra_witnesses(
     }
 }
 
-// ─── Typed Fact Builders (Phase 2 — parallel path) ───────────────
-//
-// These functions build StoredFact/GroundTerm directly from LogicBuffer,
-// bypassing string serialization entirely.
-
-/// Convert a LogicalTerm + Skolem substitutions to a GroundTerm.
-/// `subs` maps variable names to either:
-///   - Raw Skolem names (e.g., "sk_0") during assertion
-///   - Parenthesized values (e.g., `(Const "adam")`) during query
-/// This function handles both formats via `parse_repr_to_ground_term()`.
+/// Convert a LogicalTerm + substitutions to a GroundTerm.
+/// `subs` maps variable names to GroundTerm values directly — no string parsing needed.
 pub(super) fn build_ground_term(
     term: &LogicalTerm,
-    subs: &HashMap<String, String>,
+    subs: &HashMap<String, GroundTerm>,
 ) -> GroundTerm {
     match term {
         LogicalTerm::Variable(v) => {
-            if let Some(sk) = subs.get(v.as_str()) {
-                if sk.starts_with(SKDEP_PREFIX) {
+            if let Some(gt) = subs.get(v.as_str()) {
+                if is_skdep(gt) {
                     // Dependent Skolem — left as a variable (handled by rule compilation)
                     GroundTerm::PatternVar(v.clone())
-                } else if sk.starts_with('(') {
-                    // Parenthesized value from query subs — parse it.
-                    parse_repr_to_ground_term(sk)
                 } else {
-                    // Raw Skolem constant name from assertion subs.
-                    GroundTerm::Constant(sk.clone())
+                    gt.clone()
                 }
             } else {
                 // Unsubstituted variable — either a pattern var in rules or an error.
@@ -539,74 +546,13 @@ pub(super) fn build_ground_term(
     }
 }
 
-/// Parse an internal term string into a GroundTerm.
-/// Handles: (Const "name"), (Desc "name"), (Num N), (Zoe), (SkolemFn "name" dep), (DepPair a b)
-pub(super) fn parse_repr_to_ground_term(fact_repr: &str) -> GroundTerm {
-    if let Some(rest) = fact_repr.strip_prefix("(Const \"") {
-        if let Some(name) = rest.strip_suffix("\")") {
-            return GroundTerm::Constant(name.to_string());
-        }
-    }
-    if let Some(rest) = fact_repr.strip_prefix("(Desc \"") {
-        if let Some(name) = rest.strip_suffix("\")") {
-            return GroundTerm::Description(name.to_string());
-        }
-    }
-    if let Some(rest) = fact_repr.strip_prefix("(Num ") {
-        if let Some(num_str) = rest.strip_suffix(')') {
-            if let Ok(n) = num_str.parse::<f64>() {
-                return GroundTerm::from_f64(n);
-            }
-        }
-    }
-    if fact_repr == "(Zoe)" {
-        return GroundTerm::Unspecified;
-    }
-    if let Some(rest) = fact_repr.strip_prefix("(SkolemFn \"") {
-        // Parse (SkolemFn "name" dep)
-        if let Some(quote_end) = rest.find("\" ") {
-            let name = &rest[..quote_end];
-            let dep_str = &rest[quote_end + 2..rest.len() - 1]; // strip trailing )
-            let dep = parse_repr_to_ground_term(dep_str);
-            return GroundTerm::SkolemFn(name.to_string(), Box::new(dep));
-        }
-    }
-    if let Some(rest) = fact_repr.strip_prefix("(DepPair ") {
-        // Parse (DepPair a b) — need to find balanced split point
-        if let Some(inner) = rest.strip_suffix(')') {
-            if let Some((a_str, b_str)) = split_repr_pair(inner) {
-                let a = parse_repr_to_ground_term(a_str);
-                let b = parse_repr_to_ground_term(b_str);
-                return GroundTerm::DepPair(Box::new(a), Box::new(b));
-            }
-        }
-    }
-    // Fallback: bare string — likely a pattern variable name or Skolem constant
-    GroundTerm::Constant(fact_repr.to_string())
-}
-
-/// Split a pair of representations at the top level (respecting balanced parens).
-fn split_repr_pair(s: &str) -> Option<(&str, &str)> {
-    let mut depth = 0;
-    for (i, c) in s.char_indices() {
-        match c {
-            '(' => depth += 1,
-            ')' => depth -= 1,
-            ' ' if depth == 0 && i > 0 => {
-                return Some((&s[..i], &s[i + 1..]));
-            }
-            _ => {}
-        }
-    }
-    None
-}
 
 /// Build a StoredFact from a Predicate/ComputeNode in a LogicBuffer.
 /// Returns None if the node isn't a predicate-like node.
 pub(super) fn build_stored_fact_from_node(
     buffer: &LogicBuffer,
     node_id: u32,
-    subs: &HashMap<String, String>,
+    subs: &HashMap<String, GroundTerm>,
     tense: Option<&str>,
 ) -> Option<StoredFact> {
     match &buffer.nodes[node_id as usize] {
@@ -647,7 +593,7 @@ pub(super) fn build_stored_fact_from_node(
 pub(super) fn collect_ground_facts(
     buffer: &LogicBuffer,
     node_id: u32,
-    subs: &HashMap<String, String>,
+    subs: &HashMap<String, GroundTerm>,
     tense: Option<&str>,
     out: &mut Vec<StoredFact>,
 ) {
@@ -737,7 +683,6 @@ pub(super) fn build_rule_template_fact(
 }
 
 /// Build a GroundTerm representing a SkolemFn with given dependencies.
-/// Typed equivalent of `build_skolem_fn_repr()`.
 pub(super) fn build_skolem_fn_term(base_name: &str, deps: &[GroundTerm]) -> GroundTerm {
     let dep_term = match deps.len() {
         0 => GroundTerm::Unspecified,

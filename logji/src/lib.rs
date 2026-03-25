@@ -384,9 +384,7 @@ struct KnowledgeBaseInner {
     /// Suppresses diagnostic prints during rebuild replay.
     rebuilding: bool,
     /// Configuration parameter preserved across reset/rebuild (kept for WIT API compatibility).
-    /// Cached domain members — invalidated when entities/descriptions change.
-    domain_members_cache: Vec<(String, LogicalTerm)>,
-    /// Typed domain members cache (parallel to domain_members_cache).
+    /// Cached typed domain members — invalidated when entities/descriptions change.
     typed_domain_members_cache: Vec<GroundTerm>,
     domain_members_dirty: bool,
 }
@@ -406,7 +404,6 @@ impl KnowledgeBaseInner {
             fact_counter: 0,
             fact_registry: HashMap::new(),
             rebuilding: false,
-            domain_members_cache: Vec::new(),
             typed_domain_members_cache: Vec::new(),
             domain_members_dirty: true,
         }
@@ -425,7 +422,6 @@ impl KnowledgeBaseInner {
         self.fact_counter = 0;
         self.fact_registry.clear();
         self.rebuilding = false;
-        self.domain_members_cache.clear();
         self.typed_domain_members_cache.clear();
         self.domain_members_dirty = true;
     }
@@ -468,25 +464,6 @@ impl KnowledgeBaseInner {
         if !self.domain_members_dirty {
             return;
         }
-        let mut members = Vec::new();
-        for e in &self.known_entities {
-            members.push((
-                format!("(Const \"{}\")", e),
-                LogicalTerm::Constant(e.clone()),
-            ));
-        }
-        for e in &self.known_event_entities {
-            members.push((
-                format!("(Const \"{}\")", e),
-                LogicalTerm::Constant(e.clone()),
-            ));
-        }
-        for d in &self.known_descriptions {
-            members.push((
-                format!("(Desc \"{}\")", d),
-                LogicalTerm::Description(d.clone()),
-            ));
-        }
         let mut typed_members = Vec::new();
         for e in &self.known_entities {
             typed_members.push(GroundTerm::Constant(e.clone()));
@@ -498,14 +475,8 @@ impl KnowledgeBaseInner {
             typed_members.push(GroundTerm::Description(d.clone()));
         }
 
-        self.domain_members_cache = members;
         self.typed_domain_members_cache = typed_members;
         self.domain_members_dirty = false;
-    }
-
-    /// Return cached domain members. Panics if cache is dirty — call ensure_domain_members_cached() first.
-    fn all_domain_members(&self) -> &[(String, LogicalTerm)] {
-        &self.domain_members_cache
     }
 
     /// Return typed domain members. Call ensure_domain_members_cached() first.
@@ -520,41 +491,20 @@ pub struct KnowledgeBase {
     inner: RefCell<KnowledgeBaseInner>,
 }
 
-/// Build a SkolemFn representation from a base name and dependency terms.
-/// Single dep: `(SkolemFn "sk_N" dep0)` — backward compatible.
-/// Multi dep: `(SkolemFn "sk_N" (DepPair dep0 (DepPair dep1 dep2)))` — right-nested pairs.
-fn build_skolem_fn_repr(base_name: &str, deps: &[&str]) -> String {
-    let dep_term = match deps.len() {
-        0 => "(Zoe)".to_string(),
-        1 => deps[0].to_string(),
-        _ => {
-            // Right-nested DepPair encoding: [a, b, c] → (DepPair a (DepPair b c))
-            let mut acc = deps.last().unwrap().to_string();
-            for dep in deps[..deps.len() - 1].iter().rev() {
-                acc = format!("(DepPair {} {})", dep, acc);
-            }
-            acc
-        }
-    };
-    format!("(SkolemFn \"{}\" {})", base_name, dep_term)
-}
-
-/// Build a ground SkolemFn representation with a Const entity argument.
-/// Generate cartesian product of internal representation strings with given arity.
-/// Lazy cartesian product iterator: yields one combination at a time.
-/// Avoids materializing all M^N combinations in memory — stops at first match.
-struct CartesianProduct<'a> {
-    entities: &'a [String],
+/// Lazy cartesian product iterator over GroundTerm slices.
+/// Yields Vec<GroundTerm> combinations (cloned) with given arity.
+struct GroundTermCartesianProduct<'a> {
+    terms: &'a [GroundTerm],
     dep_count: usize,
     indices: Vec<usize>,
     done: bool,
 }
 
-impl<'a> CartesianProduct<'a> {
-    fn new(entities: &'a [String], dep_count: usize) -> Self {
-        let done = dep_count > 0 && entities.is_empty();
+impl<'a> GroundTermCartesianProduct<'a> {
+    fn new(terms: &'a [GroundTerm], dep_count: usize) -> Self {
+        let done = dep_count > 0 && terms.is_empty();
         Self {
-            entities,
+            terms,
             dep_count,
             indices: vec![0; dep_count],
             done,
@@ -562,8 +512,8 @@ impl<'a> CartesianProduct<'a> {
     }
 }
 
-impl<'a> Iterator for CartesianProduct<'a> {
-    type Item = Vec<&'a str>;
+impl<'a> Iterator for GroundTermCartesianProduct<'a> {
+    type Item = Vec<GroundTerm>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
@@ -573,17 +523,16 @@ impl<'a> Iterator for CartesianProduct<'a> {
             self.done = true;
             return Some(vec![]);
         }
-        let combo: Vec<&str> = self
+        let combo: Vec<GroundTerm> = self
             .indices
             .iter()
-            .map(|&i| self.entities[i].as_str())
+            .map(|&i| self.terms[i].clone())
             .collect();
-        // Advance indices (odometer-style, rightmost first)
         let mut carry = true;
         for i in (0..self.dep_count).rev() {
             if carry {
                 self.indices[i] += 1;
-                if self.indices[i] >= self.entities.len() {
+                if self.indices[i] >= self.terms.len() {
                     self.indices[i] = 0;
                 } else {
                     carry = false;
@@ -596,8 +545,6 @@ impl<'a> Iterator for CartesianProduct<'a> {
         Some(combo)
     }
 }
-
-
 
 // ─── Thread-local predicate result cache ─────────────────────────────
 
@@ -625,7 +572,7 @@ impl Guest for LogjiComponent {
 fn register_ground_material_conditional(
     buffer: &LogicBuffer,
     node_id: u32,
-    subs: &HashMap<String, String>,
+    subs: &HashMap<String, GroundTerm>,
     inner: &mut KnowledgeBaseInner,
 ) {
     // Walk through Skolemized Exists and tense wrappers to find the Or(Not(...), ...) pattern
@@ -687,11 +634,11 @@ fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) -> Res
         if !inner.rebuilding && !skolem_subs.is_empty() {
             let mapping: Vec<String> = skolem_subs
                 .iter()
-                .map(|(v, sk)| {
-                    if sk.starts_with(SKDEP_PREFIX) {
-                        format!("{} ↦ {}(∀-dependent)", v, &sk[SKDEP_PREFIX.len()..])
+                .map(|(v, gt)| {
+                    if let Some(base) = skdep_base_name(gt) {
+                        format!("{} ↦ {}(∀-dependent)", v, base)
                     } else {
-                        format!("{} ↦ {}", v, sk)
+                        format!("{} ↦ {}", v, gt.to_display_string())
                     }
                 })
                 .collect();
@@ -707,12 +654,14 @@ fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) -> Res
 
         if is_forall {
             // ═══ NATIVE RULE PATH ═══
-            for (var, sk) in &skolem_subs {
-                if !sk.starts_with(SKDEP_PREFIX) {
-                    if var.starts_with("_ev") {
-                        inner.note_event_entity(sk);
-                    } else {
-                        inner.note_entity(sk);
+            for (var, gt) in &skolem_subs {
+                if !is_skdep(gt) {
+                    if let GroundTerm::Constant(sk) = gt {
+                        if var.starts_with("_ev") {
+                            inner.note_event_entity(sk);
+                        } else {
+                            inner.note_entity(sk);
+                        }
                     }
                 }
             }
@@ -720,12 +669,14 @@ fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) -> Res
             compile_forall_to_rule(logic, root_id, &skolem_subs, inner)?;
         } else {
             // ═══ GROUND FORMULA PATH ═══
-            for (var, sk) in &skolem_subs {
-                if !sk.starts_with(SKDEP_PREFIX) {
-                    if var.starts_with("_ev") {
-                        inner.note_event_entity(sk);
-                    } else {
-                        inner.note_entity(sk);
+            for (var, gt) in &skolem_subs {
+                if !is_skdep(gt) {
+                    if let GroundTerm::Constant(sk) = gt {
+                        if var.starts_with("_ev") {
+                            inner.note_event_entity(sk);
+                        } else {
+                            inner.note_entity(sk);
+                        }
                     }
                 }
             }
@@ -883,7 +834,7 @@ impl KnowledgeBase {
         clear_pred_cache();
         let mut inner = self.inner.borrow_mut();
         inner.ensure_domain_members_cached();
-        let mut result_sets: Option<Vec<Vec<(String, String)>>> = None;
+        let mut result_sets: Option<Vec<Vec<(String, GroundTerm)>>> = None;
         for &root_id in &logic.roots {
             let mut subs = HashMap::new();
             let witnesses = find_witnesses(&logic, root_id, &mut subs, &mut inner, None)?;
@@ -903,9 +854,9 @@ impl KnowledgeBase {
             .map(|bindings| {
                 bindings
                     .into_iter()
-                    .map(|(var, repr)| WitnessBinding {
+                    .map(|(var, gt)| WitnessBinding {
                         variable: var,
-                        term: parse_repr_to_term(&repr),
+                        term: ground_term_to_logical_term(&gt),
                     })
                     .collect()
             })

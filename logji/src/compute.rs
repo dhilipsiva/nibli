@@ -2,16 +2,13 @@ use super::*;
 
 pub(super) fn extract_num_value(
     term: &LogicalTerm,
-    subs: &HashMap<String, String>,
+    subs: &HashMap<String, GroundTerm>,
 ) -> Option<i64> {
     match term {
         LogicalTerm::Number(n) => Some(*n as i64),
         LogicalTerm::Variable(v) => {
-            let s = subs.get(v.as_str())?;
-            s.strip_prefix("(Num ")?
-                .strip_suffix(')')?
-                .parse::<i64>()
-                .ok()
+            let gt = subs.get(v.as_str())?;
+            gt.as_f64().map(|f| f as i64)
         }
         _ => None,
     }
@@ -20,7 +17,7 @@ pub(super) fn extract_num_value(
 pub(super) fn try_numeric_comparison(
     rel: &str,
     args: &[LogicalTerm],
-    subs: &HashMap<String, String>,
+    subs: &HashMap<String, GroundTerm>,
 ) -> Option<bool> {
     let a = extract_num_value(args.get(0)?, subs)?;
     let b = extract_num_value(args.get(1)?, subs)?;
@@ -35,7 +32,7 @@ pub(super) fn try_numeric_comparison(
 pub(super) fn try_arithmetic_evaluation(
     rel: &str,
     args: &[LogicalTerm],
-    subs: &HashMap<String, String>,
+    subs: &HashMap<String, GroundTerm>,
 ) -> Option<bool> {
     let x1 = extract_num_value(args.get(0)?, subs)?;
     let x2 = extract_num_value(args.get(1)?, subs)?;
@@ -53,40 +50,28 @@ pub(super) fn try_arithmetic_evaluation(
     }
 }
 
-pub(super) fn parse_repr_to_term(fact_repr: &str) -> LogicalTerm {
-    if let Some(name) = fact_repr
-        .strip_prefix("(Const \"")
-        .and_then(|s| s.strip_suffix("\")"))
-    {
-        LogicalTerm::Constant(name.to_string())
-    } else if let Some(n) = fact_repr.strip_prefix("(Num ").and_then(|s| s.strip_suffix(')')) {
-        LogicalTerm::Number(n.parse::<f64>().unwrap_or(0.0))
-    } else if let Some(name) = fact_repr
-        .strip_prefix("(Desc \"")
-        .and_then(|s| s.strip_suffix("\")"))
-    {
-        LogicalTerm::Description(name.to_string())
-    } else if fact_repr == "(Zoe)" {
-        LogicalTerm::Unspecified
-    } else if let Some(name) = fact_repr
-        .strip_prefix("(Var \"")
-        .and_then(|s| s.strip_suffix("\")"))
-    {
-        LogicalTerm::Variable(name.to_string())
-    } else {
-        LogicalTerm::Variable(fact_repr.to_string())
+/// Convert a GroundTerm back to a LogicalTerm for compute backend dispatch.
+pub(super) fn ground_term_to_logical_term(gt: &GroundTerm) -> LogicalTerm {
+    match gt {
+        GroundTerm::Constant(c) => LogicalTerm::Constant(c.clone()),
+        GroundTerm::Number(bits) => LogicalTerm::Number(f64::from_bits(*bits)),
+        GroundTerm::Description(d) => LogicalTerm::Description(d.clone()),
+        GroundTerm::Unspecified => LogicalTerm::Unspecified,
+        GroundTerm::PatternVar(v) => LogicalTerm::Variable(v.clone()),
+        GroundTerm::SkolemFn(name, _) => LogicalTerm::Constant(name.clone()),
+        GroundTerm::DepPair(_, _) => LogicalTerm::Unspecified,
     }
 }
 
 pub(super) fn resolve_args_for_dispatch(
     args: &[LogicalTerm],
-    subs: &HashMap<String, String>,
+    subs: &HashMap<String, GroundTerm>,
 ) -> Vec<LogicalTerm> {
     args.iter()
         .map(|a| match a {
             LogicalTerm::Variable(v) => {
-                if let Some(s) = subs.get(v.as_str()) {
-                    parse_repr_to_term(s)
+                if let Some(gt) = subs.get(v.as_str()) {
+                    ground_term_to_logical_term(gt)
                 } else {
                     a.clone()
                 }
@@ -169,16 +154,16 @@ pub(super) fn batch_evaluate_compute_for_members(
     rel: &str,
     args: &[LogicalTerm],
     var: &str,
-    members: &[(String, LogicalTerm)],
-    subs: &HashMap<String, String>,
+    members: &[GroundTerm],
+    subs: &HashMap<String, GroundTerm>,
     inner: &mut KnowledgeBaseInner,
 ) -> Option<Vec<bool>> {
     let mut results = vec![false; members.len()];
     let mut pending: Vec<(usize, Vec<LogicalTerm>)> = Vec::new();
 
-    for (i, (member_repr, _)) in members.iter().enumerate() {
+    for (i, member) in members.iter().enumerate() {
         let mut s = subs.clone();
-        s.insert(var.to_string(), member_repr.clone());
+        s.insert(var.to_string(), member.clone());
 
         if let Some(r) = try_arithmetic_evaluation(rel, args, &s) {
             results[i] = r;
