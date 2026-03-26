@@ -937,3 +937,117 @@ fn unsigned_envelope_rejected_under_require_signed_policy() {
     let result = node_b.ingest(unsigned_env).unwrap();
     assert!(result.was_rejected, "unsigned should be rejected under RequireSigned");
 }
+
+// ─── Tombstone conflict handling ──────────────────────────────────
+
+/// Direct CrdtLog::merge() preserves tombstones from the peer.
+#[test]
+fn merge_preserves_tombstones_from_peer() {
+    let mut log_a = tavla::CrdtLog::new();
+    let mut log_b = tavla::CrdtLog::new();
+
+    // Both logs have the same assertion envelope.
+    let env = tavla::Envelope {
+        id: "fact1".to_string(),
+        author: "alis".to_string(),
+        clock: VectorClock::new(),
+        op: tavla::GossipOp::AssertLojban("la .adam. cu gerku".to_string()),
+        stance: EpistemicStance::Deduced,
+        topics: vec![],
+        timestamp: "2026-03-26T00:00:00Z".to_string(),
+        sig: vec![],
+        pub_key: vec![],
+        quarantined: false,
+    };
+    log_a.insert(env.clone());
+    log_b.insert(env);
+
+    // A retracts the fact (creates retraction envelope + tombstone).
+    let retract_env = tavla::Envelope {
+        id: "retract1".to_string(),
+        author: "alis".to_string(),
+        clock: VectorClock::new(),
+        op: tavla::GossipOp::Retract("fact1".to_string()),
+        stance: EpistemicStance::Deduced,
+        topics: vec![],
+        timestamp: "2026-03-26T00:01:00Z".to_string(),
+        sig: vec![],
+        pub_key: vec![],
+        quarantined: false,
+    };
+    log_a.insert(retract_env);
+    assert!(log_a.tombstones.contains("fact1"));
+
+    // B has no tombstone yet.
+    assert!(!log_b.tombstones.contains("fact1"));
+
+    // Merge A into B — tombstone should propagate.
+    log_b.merge(&log_a);
+    assert!(
+        log_b.tombstones.contains("fact1"),
+        "Tombstone should propagate via merge"
+    );
+
+    // Active assertions on B should exclude the tombstoned fact.
+    let active = log_b.active_assertions();
+    assert!(active.is_empty(), "Tombstoned fact should not be active after merge");
+}
+
+/// Concurrent retraction: two nodes independently retract the same fact, then merge.
+#[test]
+fn concurrent_retraction_same_envelope() {
+    let mut node_a = GossipNode::new("alis");
+    let mut node_b = GossipNode::new("bob");
+
+    // A asserts, B ingests.
+    let env = node_a.assert_local("la .adam. cu gerku").unwrap();
+    node_b.ingest(env.clone()).unwrap();
+    assert_eq!(node_a.active_count(), 1);
+    assert_eq!(node_b.active_count(), 1);
+
+    // Both independently retract the same fact.
+    let retract_a = node_a.retract_local(&env.id).unwrap();
+    let retract_b = node_b.retract_local(&env.id).unwrap();
+
+    // Both should have 0 active assertions locally.
+    assert_eq!(node_a.active_count(), 0);
+    assert_eq!(node_b.active_count(), 0);
+
+    // Cross-ingest the retractions (each gets the other's retraction envelope).
+    node_b.ingest(retract_a).unwrap();
+    node_a.ingest(retract_b).unwrap();
+
+    // Fact should remain retracted on both after cross-merge.
+    assert_eq!(node_a.active_count(), 0, "A should have 0 active after cross-merge");
+    assert_eq!(node_b.active_count(), 0, "B should have 0 active after cross-merge");
+}
+
+/// Partition recovery: A retracts during partition, B syncs after healing.
+#[test]
+fn partition_recovery_tombstone_via_sync() {
+    let mut node_a = GossipNode::new("alis");
+    let mut node_b = GossipNode::new("bob");
+
+    // Pre-partition: A asserts, B ingests.
+    let env = node_a.assert_local("la .adam. cu gerku").unwrap();
+    node_b.ingest(env.clone()).unwrap();
+    assert_eq!(node_b.active_count(), 1);
+
+    // Partition: A retracts, B doesn't see it.
+    let _retract = node_a.retract_local(&env.id).unwrap();
+    assert_eq!(node_a.active_count(), 0);
+    assert_eq!(node_b.active_count(), 1); // B still has the fact
+
+    // Partition heals: B syncs from A via sync_diff.
+    let diff = node_a.sync_diff(&node_b.get_clock());
+    for envelope in diff {
+        node_b.ingest(envelope).unwrap();
+    }
+
+    // B should now have the retraction.
+    assert_eq!(
+        node_b.active_count(),
+        0,
+        "B should have 0 active after partition recovery sync"
+    );
+}

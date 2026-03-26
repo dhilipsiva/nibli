@@ -4,10 +4,6 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 1: DRY Consolidation (Medium Effort, High Impact)
 
-## Tier 4: Correctness & Robustness
-
-10. **CRDT tombstone conflict handling** — `tavla` merge doesn't handle tombstone conflicts correctly. If two nodes retract different envelopes, merging could resurrect retracted facts. Vector clock comparison assumes missing agents at counter 0, breaks under partitions.
-
 ## Tier 5: Maintainability
 
 11. **Split god files** — `logji/src/lib.rs` (~5000 lines) and `gerna/src/grammar.rs` (4,471 lines) are too large. Split logji into `kb.rs`, `assertion.rs`, `query.rs`, `witness.rs`, `proof.rs`. Split grammar into per-construct modules.

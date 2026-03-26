@@ -414,6 +414,7 @@ impl CrdtLog {
     }
 
     /// Merge another log into this one (OR-Set union).
+    /// Unions both envelopes and tombstones to prevent resurrection of retracted facts.
     pub fn merge(&mut self, other: &CrdtLog) -> Vec<EnvelopeId> {
         let mut new_ids = Vec::new();
         for id in &other.order {
@@ -422,6 +423,11 @@ impl CrdtLog {
             {
                 new_ids.push(id.clone());
             }
+        }
+        // Merge tombstones: ensure retractions from peer are honoured
+        // even if the retraction envelope was already deduplicated.
+        for id in &other.tombstones {
+            self.tombstones.insert(id.clone());
         }
         new_ids
     }
