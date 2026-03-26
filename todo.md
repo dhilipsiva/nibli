@@ -4,10 +4,6 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 1: DRY Consolidation (Medium Effort, High Impact)
 
-1. **Consolidate proof trace conversion into nibli-protocol** — `term_to_json()`, `rule_to_json()`, `proof_trace_to_wire()` in nibli-engine (94 lines) and equivalent `format_term()`, `term_to_proto()`, `rule_to_proto()`, `trace_to_proto()` in gasnu (87 lines). Both target nibli-protocol wire types. Move canonical converters into nibli-protocol. ~181 lines → ~90.
-
-4. **Consolidate error formatting into nibli-protocol** — `format_nibli_error!` macro + helpers in nibli-engine (37 lines) and standalone `format_nibli_error()` in gasnu (23 lines). Move to nibli-protocol. ~60 lines → ~30.
-
 ## Tier 2: Architecture (High Effort, High Impact)
 
 5. **SelbriSnapshot deep-clone optimization** — go'i resolution deep-clones entire selbri subtree + dependencies for every assertion/query (`lasna/src/lib.rs`). ~150 lines of remapping logic. Replace with index offset mapping (add base offset to all indices in place) to avoid cloning. High impact for `:load` batch operations.
