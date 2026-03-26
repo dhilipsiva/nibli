@@ -32,6 +32,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 mod compute;
 mod reasoning;
+/// S-expression reconstruction for logic buffers (debug output).
+pub mod repr;
 mod rules;
 
 pub use compute::{register_compute_dispatch, ComputeRequest};
