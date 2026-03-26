@@ -309,11 +309,6 @@ impl KnowledgeBase {
     }
 }
 
-/// Bridge for standalone WASM component mode (converts smuni WIT types ↔ logji WIT types).
-/// Only needed if logji is compiled as a standalone WASM component (not the current architecture).
-#[cfg(target_arch = "wasm32")]
-pub mod smuni_bridge;
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -4,9 +4,7 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 1: Dead Code Cleanup (Low Effort, High Impact)
 
-1. **Delete dead bridge modules** — `smuni/src/gerna_bridge.rs` (196 lines) and `logji/src/smuni_bridge.rs` (82 lines) are behind `#[cfg(target_arch = "wasm32")]` and never compiled. Delete files + remove cfg-gated `mod` declarations.
-
-2. **Delete dead WIT export stubs** — `struct GernaComponent`, `struct SmuniComponent`, `bindings::export!()` macros in gerna/smuni/logji are `#[cfg(target_arch = "wasm32")]` and unreachable. Remove all cfg-gated export infrastructure from these 3 crates.
+1. **Delete dead WIT export stubs** — `struct GernaComponent`, `struct SmuniComponent`, `bindings::export!()` macros in gerna/smuni/logji are `#[cfg(target_arch = "wasm32")]` and unreachable. Remove all cfg-gated export infrastructure from these 3 crates.
 
 3. **Simplify crate-type** — gerna, smuni, logji Cargo.toml have `crate-type = ["cdylib", "lib"]` but cdylib is never built. Change to `["lib"]`.
 

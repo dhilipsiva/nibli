@@ -218,9 +218,5 @@ pub fn compile_from_gerna_ast(
     compile_ast(&ast)
 }
 
-/// Bridge module for standalone WASM component mode (converts smuni's WIT AST types → gerna types).
-#[cfg(target_arch = "wasm32")]
-mod gerna_bridge;
-
 #[cfg(target_arch = "wasm32")]
 bindings::export!(SmuniComponent with_types_in bindings);
