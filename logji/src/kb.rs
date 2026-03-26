@@ -464,6 +464,15 @@ impl KnowledgeBaseInner {
 
 /// The WIT-exported resource type.
 /// wit-bindgen generates `&self` for methods, so RefCell provides mutability.
+/// This is sound because WASI components are single-threaded.
+///
+/// Safety: KnowledgeBase is intentionally !Send and !Sync (RefCell is not thread-safe).
+/// If you need thread-safe access, wrap in Arc<Mutex<>> at the call site (as nibli-server does).
+#[cfg_attr(
+    all(not(target_arch = "wasm32"), target_has_atomic = "ptr"),
+    doc = "WARNING: This type uses RefCell for interior mutability. \
+           It is NOT thread-safe. Use Arc<Mutex<KnowledgeBase>> for multi-threaded contexts."
+)]
 pub struct KnowledgeBase {
     pub(super) inner: RefCell<KnowledgeBaseInner>,
 }
