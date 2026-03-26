@@ -4552,4 +4552,163 @@ mod tests {
             fact_count
         );
     }
+
+    // ─── Compute error propagation tests ─────────────────────────
+
+    #[test]
+    fn test_compute_backend_error_surfaces() {
+        // ComputeNode for unknown predicate without registered backend
+        // should return false (no backend = cannot prove), not panic.
+        let kb = new_kb();
+        let mut nodes = Vec::new();
+        let root = compute(
+            &mut nodes,
+            "tenfa", // not a built-in arithmetic predicate
+            vec![
+                LogicalTerm::Number(8.0),
+                LogicalTerm::Number(2.0),
+                LogicalTerm::Number(3.0),
+            ],
+        );
+        // Without a registered backend, this falls back to KB lookup (fails)
+        // and then dispatch_to_backend returns Err. The error should propagate
+        // as false (not provable), not crash.
+        assert!(!query(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            }
+        ));
+    }
+
+    // ─── ProofRef memo back-reference validation ─────────────────
+
+    #[test]
+    fn test_proof_ref_carries_cached_index() {
+        // Verify that ProofRef steps carry the original step index in children.
+        let kb = new_kb();
+        assert_buf(&kb, make_temporal_event_assertion("bob", "mlatu", present));
+        assert_buf(&kb, make_event_universal("mlatu", "danlu"));
+        assert_buf(&kb, make_event_universal("danlu", "jmive"));
+
+        let (holds, trace) = kb
+            .query_entailment_with_proof_inner(make_temporal_event_query("bob", "jmive", present))
+            .unwrap();
+        assert!(holds);
+
+        // Every ProofRef step should have exactly one child pointing to the
+        // original step, and its holds value should match the referenced step.
+        for step in &trace.steps {
+            if let ProofRule::ProofRef(_) = &step.rule {
+                assert_eq!(
+                    step.children.len(),
+                    1,
+                    "ProofRef should have exactly 1 child (back-reference)"
+                );
+                let referenced_idx = step.children[0] as usize;
+                assert!(
+                    referenced_idx < trace.steps.len(),
+                    "ProofRef back-reference {} out of bounds ({})",
+                    referenced_idx,
+                    trace.steps.len()
+                );
+                assert_eq!(
+                    step.holds, trace.steps[referenced_idx].holds,
+                    "ProofRef.holds should match the referenced step's holds"
+                );
+            }
+        }
+    }
+
+    // ─── unify_facts edge case tests ─────────────────────────────
+
+    #[test]
+    fn test_unify_pattern_var_rebinding_consistent() {
+        use super::kb::*;
+        // Pattern variable bound to "alis" in first arg must match "alis" in second.
+        let template = StoredFact::Bare(GroundFact::new(
+            "friends",
+            vec![GroundTerm::PatternVar("x".into()), GroundTerm::PatternVar("x".into())],
+        ));
+        let concrete = StoredFact::Bare(GroundFact::new(
+            "friends",
+            vec![GroundTerm::Constant("alis".into()), GroundTerm::Constant("alis".into())],
+        ));
+        let result = unify_facts(&template, &concrete);
+        assert!(result.is_some(), "same-value rebinding should succeed");
+        assert_eq!(result.unwrap().get("x"), Some(&GroundTerm::Constant("alis".into())));
+    }
+
+    #[test]
+    fn test_unify_pattern_var_rebinding_conflict() {
+        use super::kb::*;
+        // Pattern variable "x" bound to "alis" then "bob" should fail.
+        let template = StoredFact::Bare(GroundFact::new(
+            "friends",
+            vec![GroundTerm::PatternVar("x".into()), GroundTerm::PatternVar("x".into())],
+        ));
+        let concrete = StoredFact::Bare(GroundFact::new(
+            "friends",
+            vec![GroundTerm::Constant("alis".into()), GroundTerm::Constant("bob".into())],
+        ));
+        assert!(unify_facts(&template, &concrete).is_none(), "conflicting rebinding should fail");
+    }
+
+    #[test]
+    fn test_unify_skolem_fn_nested() {
+        use super::kb::*;
+        // SkolemFn("sk_0", PatternVar("x")) against SkolemFn("sk_0", Constant("alis"))
+        let template = StoredFact::Bare(GroundFact::new(
+            "rel",
+            vec![GroundTerm::SkolemFn("sk_0".into(), Box::new(GroundTerm::PatternVar("x".into())))],
+        ));
+        let concrete = StoredFact::Bare(GroundFact::new(
+            "rel",
+            vec![GroundTerm::SkolemFn("sk_0".into(), Box::new(GroundTerm::Constant("alis".into())))],
+        ));
+        let result = unify_facts(&template, &concrete);
+        assert!(result.is_some(), "SkolemFn nested unification should succeed");
+        assert_eq!(result.unwrap().get("x"), Some(&GroundTerm::Constant("alis".into())));
+    }
+
+    #[test]
+    fn test_unify_dep_pair() {
+        use super::kb::*;
+        // DepPair(PatternVar("x"), PatternVar("y")) against DepPair(Const("a"), Const("b"))
+        let template = StoredFact::Bare(GroundFact::new(
+            "rel",
+            vec![GroundTerm::DepPair(
+                Box::new(GroundTerm::PatternVar("x".into())),
+                Box::new(GroundTerm::PatternVar("y".into())),
+            )],
+        ));
+        let concrete = StoredFact::Bare(GroundFact::new(
+            "rel",
+            vec![GroundTerm::DepPair(
+                Box::new(GroundTerm::Constant("a".into())),
+                Box::new(GroundTerm::Constant("b".into())),
+            )],
+        ));
+        let result = unify_facts(&template, &concrete);
+        assert!(result.is_some(), "DepPair unification should succeed");
+        let bindings = result.unwrap();
+        assert_eq!(bindings.get("x"), Some(&GroundTerm::Constant("a".into())));
+        assert_eq!(bindings.get("y"), Some(&GroundTerm::Constant("b".into())));
+    }
+
+    #[test]
+    fn test_unify_skolem_fn_name_mismatch() {
+        use super::kb::*;
+        // SkolemFn("sk_0", ...) vs SkolemFn("sk_1", ...) should fail
+        let template = StoredFact::Bare(GroundFact::new(
+            "rel",
+            vec![GroundTerm::SkolemFn("sk_0".into(), Box::new(GroundTerm::Constant("a".into())))],
+        ));
+        let concrete = StoredFact::Bare(GroundFact::new(
+            "rel",
+            vec![GroundTerm::SkolemFn("sk_1".into(), Box::new(GroundTerm::Constant("a".into())))],
+        ));
+        assert!(unify_facts(&template, &concrete).is_none(), "SkolemFn name mismatch should fail");
+    }
 }
