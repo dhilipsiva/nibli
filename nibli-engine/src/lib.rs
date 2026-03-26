@@ -19,18 +19,10 @@ pub use smuni::bindings::lojban::nibli::logic_types::{
 
 // ─── Type aliases for each crate's WIT-generated types ──────────────
 
-mod gerna_err {
-    pub use gerna::bindings::lojban::nibli::error_types::*;
-}
-mod smuni_err {
-    pub use smuni::bindings::lojban::nibli::error_types::*;
-}
-mod logji_logic {
-    pub use smuni::bindings::lojban::nibli::logic_types::*;
-}
-mod logji_err {
-    pub use logji::bindings::lojban::nibli::error_types::*;
-}
+use gerna::bindings::lojban::nibli::error_types as gerna_err;
+use smuni::bindings::lojban::nibli::error_types as smuni_err;
+use smuni::bindings::lojban::nibli::logic_types as logji_logic;
+use logji::bindings::lojban::nibli::error_types as logji_err;
 
 // ═══════════════════════════════════════════════════════════════════════
 // ERROR FORMATTING

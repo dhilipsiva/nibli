@@ -4,8 +4,6 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 1: Dead Code Cleanup (Low Effort, High Impact)
 
-1. **Flatten nibli-engine module aliases** — `mod gerna_err`, `mod smuni_err`, `mod logji_logic`, `mod logji_err` are unnecessary indirection. Use direct paths.
-
 ## Tier 5: Maintainability
 
 12. **Make hardcoded constants configurable** — Backward-chaining depth limit (10), UI GraphQL URL, MAX_OUTPUT_ENTRIES (200), polling intervals. Some already configurable (fuel, memory); pattern is inconsistent.
