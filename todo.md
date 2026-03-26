@@ -2,7 +2,17 @@
 
 Ordered by impact, priority, and dependency.
 
-## Tier 1: DRY Consolidation (Medium Effort, High Impact)
+## Tier 1: Dead Code Cleanup (Low Effort, High Impact)
+
+1. **Delete dead bridge modules** — `smuni/src/gerna_bridge.rs` (196 lines) and `logji/src/smuni_bridge.rs` (82 lines) are behind `#[cfg(target_arch = "wasm32")]` and never compiled. Delete files + remove cfg-gated `mod` declarations.
+
+2. **Delete dead WIT export stubs** — `struct GernaComponent`, `struct SmuniComponent`, `bindings::export!()` macros in gerna/smuni/logji are `#[cfg(target_arch = "wasm32")]` and unreachable. Remove all cfg-gated export infrastructure from these 3 crates.
+
+3. **Simplify crate-type** — gerna, smuni, logji Cargo.toml have `crate-type = ["cdylib", "lib"]` but cdylib is never built. Change to `["lib"]`.
+
+4. **Inline thin wrapper debug_logic()** — `lasna/src/lib.rs` and `nibli-engine/src/lib.rs` each have a one-liner `debug_logic()` that just calls `logji::repr::debug_logic()`. Inline at call sites.
+
+5. **Flatten nibli-engine module aliases** — `mod gerna_err`, `mod smuni_err`, `mod logji_logic`, `mod logji_err` are unnecessary indirection. Use direct paths.
 
 ## Tier 5: Maintainability
 
