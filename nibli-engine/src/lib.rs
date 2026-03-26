@@ -283,9 +283,7 @@ impl NibliEngine {
             let stored_buf: StoredLogicBuffer = postcard::from_bytes(&fact.payload)
                 .map_err(|e| format!("Deserialize error: {e}"))?;
             let buf = buf_from_stored(&stored_buf);
-            self.kb
-                .assert_fact_with_id(buf, fact.label.clone(), fact.id)
-                .map_err(|e| format!("Replay error: {e}"))?;
+            self.kb.assert_fact_with_id(buf, fact.label.clone(), fact.id);
         }
         if !facts.is_empty() {
             println!("[Store] Replayed {} persisted facts", facts.len());
@@ -367,17 +365,10 @@ impl NibliEngine {
             let fact_id = s.next_fact_id().map_err(|e| format!("Store error: {e}"))?;
             s.insert_fact(fact_id, label.clone(), payload)
                 .map_err(|e| format!("Store error: {e}"))?;
-            if let Err(err) = self.kb.assert_fact_with_id(buf, label, fact_id) {
-                return match s.delete_fact(fact_id) {
-                    Ok(()) => Err(err),
-                    Err(rollback_err) => Err(format!("{err}; rollback failed: {rollback_err}")),
-                };
-            }
+            self.kb.assert_fact_with_id(buf, label, fact_id);
             Ok(fact_id)
         } else {
-            self.kb
-                .assert_fact(buf, label)
-                .map_err(|e| format_error(&e))
+            Ok(self.kb.assert_fact(buf, label))
         }
     }
 
@@ -391,9 +382,7 @@ impl NibliEngine {
             nodes: vec![logji_logic::LogicNode::Predicate((relation, args))],
             roots: vec![0],
         };
-        self.kb
-            .assert_fact(buf, label)
-            .map_err(|e| format_error(&e))
+        Ok(self.kb.assert_fact(buf, label))
     }
 
     pub fn query_text_with_proof(&self, text: &str) -> Result<(bool, String, String), String> {

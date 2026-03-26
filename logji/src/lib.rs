@@ -66,7 +66,7 @@ pub(crate) use kb::*;
 impl KnowledgeBase {
     /// Assert FOL facts from a logic buffer into the knowledge base.
     /// Stores the buffer in the fact registry and returns a unique fact ID.
-    fn assert_fact_inner(&self, logic: LogicBuffer, label: String) -> Result<u64, String> {
+    fn assert_fact_inner(&self, logic: LogicBuffer, label: String) -> u64 {
         let mut inner = self.inner.borrow_mut();
         let id = inner.fresh_fact_id();
         process_assertion(&mut inner, &logic);
@@ -79,19 +79,13 @@ impl KnowledgeBase {
                 retracted: false,
             },
         );
-        Ok(id)
+        id
     }
 
     /// Assert a fact with a pre-assigned ID. Used for replay from persistent store.
     /// Advances the internal counter past the given ID.
-    pub fn assert_fact_with_id(
-        &self,
-        logic: LogicBuffer,
-        label: String,
-        id: u64,
-    ) -> Result<(), String> {
+    pub fn assert_fact_with_id(&self, logic: LogicBuffer, label: String, id: u64) {
         let mut inner = self.inner.borrow_mut();
-        // Advance counter past the provided ID.
         if id >= inner.fact_counter {
             inner.fact_counter = id + 1;
         }
@@ -105,7 +99,6 @@ impl KnowledgeBase {
                 retracted: false,
             },
         );
-        Ok(())
     }
 
     /// Retract a previously asserted fact by its ID. Triggers a full KB rebuild
@@ -296,9 +289,8 @@ impl KnowledgeBase {
         }
     }
 
-    pub fn assert_fact(&self, logic: LogicBuffer, label: String) -> Result<u64, NibliError> {
+    pub fn assert_fact(&self, logic: LogicBuffer, label: String) -> u64 {
         self.assert_fact_inner(logic, label)
-            .map_err(NibliError::Reasoning)
     }
 
     pub fn query_entailment(&self, logic: LogicBuffer) -> Result<bool, NibliError> {
@@ -388,7 +380,7 @@ mod tests {
     }
 
     fn assert_buf(kb: &KnowledgeBase, buf: LogicBuffer) {
-        kb.assert_fact_inner(buf, String::new()).unwrap();
+        kb.assert_fact_inner(buf, String::new());
     }
 
     fn query(kb: &KnowledgeBase, buf: LogicBuffer) -> bool {
@@ -3477,8 +3469,7 @@ mod tests {
     fn test_retract_basic() {
         let kb = new_kb();
         let id = kb
-            .assert_fact_inner(make_assertion("alis", "gerku"), "la alis gerku".into())
-            .unwrap();
+            .assert_fact_inner(make_assertion("alis", "gerku"), "la alis gerku".into());
         assert!(query(&kb, make_query("alis", "gerku")));
         kb.retract_fact_inner(id).unwrap();
         assert!(!query(&kb, make_query("alis", "gerku")));
@@ -3488,11 +3479,9 @@ mod tests {
     fn test_retract_preserves_other_facts() {
         let kb = new_kb();
         let id1 = kb
-            .assert_fact_inner(make_assertion("alis", "gerku"), String::new())
-            .unwrap();
+            .assert_fact_inner(make_assertion("alis", "gerku"), String::new());
         let _id2 = kb
-            .assert_fact_inner(make_assertion("bob", "mlatu"), String::new())
-            .unwrap();
+            .assert_fact_inner(make_assertion("bob", "mlatu"), String::new());
         kb.retract_fact_inner(id1).unwrap();
         assert!(!query(&kb, make_query("alis", "gerku")));
         assert!(query(&kb, make_query("bob", "mlatu")));
@@ -3502,11 +3491,9 @@ mod tests {
     fn test_retract_derived_facts_gone() {
         let kb = new_kb();
         let base_id = kb
-            .assert_fact_inner(make_assertion("alis", "gerku"), String::new())
-            .unwrap();
+            .assert_fact_inner(make_assertion("alis", "gerku"), String::new());
         let _rule_id = kb
-            .assert_fact_inner(make_universal("gerku", "danlu"), String::new())
-            .unwrap();
+            .assert_fact_inner(make_universal("gerku", "danlu"), String::new());
         // "alis danlu" should be derivable via the rule
         assert!(query(&kb, make_query("alis", "danlu")));
         kb.retract_fact_inner(base_id).unwrap();
@@ -3518,11 +3505,9 @@ mod tests {
     fn test_retract_rule_preserves_base_facts() {
         let kb = new_kb();
         let _base_id = kb
-            .assert_fact_inner(make_assertion("alis", "gerku"), String::new())
-            .unwrap();
+            .assert_fact_inner(make_assertion("alis", "gerku"), String::new());
         let rule_id = kb
-            .assert_fact_inner(make_universal("gerku", "danlu"), String::new())
-            .unwrap();
+            .assert_fact_inner(make_universal("gerku", "danlu"), String::new());
         assert!(query(&kb, make_query("alis", "danlu")));
         kb.retract_fact_inner(rule_id).unwrap();
         // Base fact preserved
@@ -3535,12 +3520,10 @@ mod tests {
     fn test_retract_and_reassert_new_id() {
         let kb = new_kb();
         let id1 = kb
-            .assert_fact_inner(make_assertion("alis", "gerku"), String::new())
-            .unwrap();
+            .assert_fact_inner(make_assertion("alis", "gerku"), String::new());
         kb.retract_fact_inner(id1).unwrap();
         let id2 = kb
-            .assert_fact_inner(make_assertion("alis", "gerku"), String::new())
-            .unwrap();
+            .assert_fact_inner(make_assertion("alis", "gerku"), String::new());
         assert!(id2 > id1);
         assert!(query(&kb, make_query("alis", "gerku")));
     }
@@ -3555,8 +3538,7 @@ mod tests {
     fn test_retract_idempotent() {
         let kb = new_kb();
         let id = kb
-            .assert_fact_inner(make_assertion("alis", "gerku"), String::new())
-            .unwrap();
+            .assert_fact_inner(make_assertion("alis", "gerku"), String::new());
         kb.retract_fact_inner(id).unwrap();
         kb.retract_fact_inner(id).unwrap(); // second retract is no-op
         assert!(!query(&kb, make_query("alis", "gerku")));
@@ -3572,8 +3554,7 @@ mod tests {
     #[test]
     fn test_list_facts_after_assert() {
         let kb = new_kb();
-        kb.assert_fact_inner(make_assertion("alis", "gerku"), "la alis gerku".into())
-            .unwrap();
+        kb.assert_fact_inner(make_assertion("alis", "gerku"), "la alis gerku".into());
         let facts = kb.list_facts_inner().unwrap();
         assert_eq!(facts.len(), 1);
         assert_eq!(facts[0].label, "la alis gerku");
@@ -3584,10 +3565,8 @@ mod tests {
     fn test_list_facts_excludes_retracted() {
         let kb = new_kb();
         let id = kb
-            .assert_fact_inner(make_assertion("alis", "gerku"), String::new())
-            .unwrap();
-        kb.assert_fact_inner(make_assertion("bob", "mlatu"), "bob mlatu".into())
-            .unwrap();
+            .assert_fact_inner(make_assertion("alis", "gerku"), String::new());
+        kb.assert_fact_inner(make_assertion("bob", "mlatu"), "bob mlatu".into());
         kb.retract_fact_inner(id).unwrap();
         let facts = kb.list_facts_inner().unwrap();
         assert_eq!(facts.len(), 1);
@@ -3598,8 +3577,7 @@ mod tests {
     #[test]
     fn test_reset_clears_registry() {
         let kb = new_kb();
-        kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new())
-            .unwrap();
+        kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new());
         kb.inner.borrow_mut().reset();
         let facts = kb.list_facts_inner().unwrap();
         assert!(facts.is_empty());
@@ -4205,18 +4183,14 @@ mod tests {
         assert_buf(&kb, make_event_universal("mlatu", "danlu"));
         assert_buf(&kb, make_event_universal("danlu", "jmive"));
 
-        let alis_id = kb
-            .assert_fact_inner(
-                make_temporal_event_assertion("alis", "gerku", past),
-                "pu la .alis. gerku".into(),
-            )
-            .unwrap();
-        let _bob_id = kb
-            .assert_fact_inner(
-                make_temporal_event_assertion("bob", "mlatu", present),
-                "ca la .bob. mlatu".into(),
-            )
-            .unwrap();
+        let alis_id = kb.assert_fact_inner(
+            make_temporal_event_assertion("alis", "gerku", past),
+            "pu la .alis. gerku".into(),
+        );
+        let _bob_id = kb.assert_fact_inner(
+            make_temporal_event_assertion("bob", "mlatu", present),
+            "ca la .bob. mlatu".into(),
+        );
 
         // Both should hold before retraction
         assert!(query(&kb, make_temporal_event_query("alis", "jmive", past)));

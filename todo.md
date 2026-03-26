@@ -8,11 +8,9 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 3: Code Quality
 
-1. **assert_fact_inner returns Result but never errors** — Misleading signature. `process_assertion` is infallible, so the Result wrapper on `assert_fact_inner` / `assert_fact_with_id` is dead code. Change to return `u64` directly. ~10 lines in `logji/src/lib.rs`.
-
 ## Tier 4: Test Coverage
 
-7. **No tests for compute error propagation** — `dispatch_to_backend` returning `Err` is never tested through `check_formula_holds`. Add test asserting that compute backend errors surface correctly.
+1. **No tests for compute error propagation** — `dispatch_to_backend` returning `Err` is never tested through `check_formula_holds`. Add test asserting that compute backend errors surface correctly.
 
 8. **No tests verifying memo cache returns cached index** — Tests check that ProofRef steps exist but don't verify that `cached_idx` is actually used. Directly validates the fix for item #1.
 
@@ -21,3 +19,7 @@ Ordered by impact, priority, and dependency.
 ## Tier 5: Infrastructure & Deployment
 
 10. **Fine-grained server locking** — Replace `Arc<Mutex<>>` with `RwLock` for read-heavy gossip queries. Blocked by rustc ICE in nibli-server (check_mod_deathness panic prevents compilation with RwLock). Retry after rustc upgrade past 1.94.0.
+
+## Others
+
+11. Ensure that the while codebase does not abrubtly panic anywhere (especially in the core engine). I tmust always fail gracefully (atleast ensure it panics with proper messages so debugging becomes easier).
