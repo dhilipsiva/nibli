@@ -12,7 +12,7 @@ use nibli_protocol::{
 };
 use nibli_store::{NibliStore, StoredLogicBuffer, StoredLogicNode, StoredLogicalTerm};
 
-pub use logji::bindings::lojban::nibli::logic_types::{
+pub use smuni::bindings::lojban::nibli::logic_types::{
     FactSummary as EngineFactSummary, LogicalTerm as EngineLogicalTerm,
     WitnessBinding as EngineWitnessBinding,
 };
@@ -26,13 +26,11 @@ mod smuni_err {
     pub use smuni::bindings::lojban::nibli::error_types::*;
 }
 mod logji_logic {
-    pub use logji::bindings::lojban::nibli::logic_types::*;
+    pub use smuni::bindings::lojban::nibli::logic_types::*;
 }
 mod logji_err {
     pub use logji::bindings::lojban::nibli::error_types::*;
 }
-
-use logji::bindings::exports::lojban::nibli::logji::GuestKnowledgeBase;
 
 // ═══════════════════════════════════════════════════════════════════════
 // ERROR FORMATTING
@@ -535,11 +533,10 @@ impl NibliEngine {
             )));
         }
 
-        let smuni_buf =
+        let mut buf =
             smuni::compile_from_gerna_ast(parse_result.buffer).map_err(NibliError::Smuni)?;
-        let logji_buf =
-            logji::smuni_bridge::convert_logic_buffer(&smuni_buf, &self.compute_predicates);
-        Ok(logji_buf)
+        logji::transform_compute_nodes(&mut buf, &self.compute_predicates);
+        Ok(buf)
     }
 
     /// Reset the knowledge base, clearing all facts and rules.

@@ -21,9 +21,8 @@
 #[allow(warnings)]
 pub mod bindings;
 
-use crate::bindings::exports::lojban::nibli::logji::{Guest, GuestKnowledgeBase};
 use crate::bindings::lojban::nibli::error_types::NibliError;
-use crate::bindings::lojban::nibli::logic_types::{
+use smuni::bindings::lojban::nibli::logic_types::{
     FactSummary, LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofStep, ProofTrace,
     WitnessBinding,
 };
@@ -34,14 +33,30 @@ use std::sync::Arc;
 mod compute;
 mod reasoning;
 mod rules;
-/// Bridge: convert smuni's WIT logic types → logji's WIT logic types.
-pub mod smuni_bridge;
 
 pub use compute::{register_compute_dispatch, ComputeRequest};
 
 use compute::*;
 use reasoning::*;
 use rules::*;
+
+/// Transform registered compute predicates from Predicate → ComputeNode in a logic buffer.
+/// Call this after smuni compilation and before asserting/querying.
+pub fn transform_compute_nodes(buf: &mut LogicBuffer, compute_preds: &HashSet<String>) {
+    let nodes = std::mem::take(&mut buf.nodes);
+    buf.nodes = nodes
+        .into_iter()
+        .map(|node| match &node {
+            LogicNode::Predicate((rel, _)) if compute_preds.contains(rel.as_str()) => {
+                let LogicNode::Predicate(inner) = node else {
+                    unreachable!()
+                };
+                LogicNode::ComputeNode(inner)
+            }
+            _ => node,
+        })
+        .collect();
+}
 
 
 // ─── Typed Fact Representation ────────────────────────────────────
@@ -578,14 +593,6 @@ fn clear_pred_cache() {
     PRED_CACHE_ENABLED.with(|e| e.set(true));
 }
 
-// ─── WIT Export Implementation ────────────────────────────────────
-
-struct LogjiComponent;
-
-impl Guest for LogjiComponent {
-    type KnowledgeBase = KnowledgeBase;
-}
-
 fn register_ground_material_conditional(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -916,28 +923,30 @@ impl KnowledgeBase {
     }
 }
 
-impl GuestKnowledgeBase for KnowledgeBase {
-    fn new() -> Self {
+/// Public API for native callers (lasna, nibli-engine).
+/// Uses smuni's logic types directly — no bridge conversion needed.
+impl KnowledgeBase {
+    pub fn new() -> Self {
         KnowledgeBase {
             inner: RefCell::new(KnowledgeBaseInner::new()),
         }
     }
 
-    fn assert_fact(&self, logic: LogicBuffer, label: String) -> Result<u64, NibliError> {
+    pub fn assert_fact(&self, logic: LogicBuffer, label: String) -> Result<u64, NibliError> {
         self.assert_fact_inner(logic, label)
             .map_err(NibliError::Reasoning)
     }
 
-    fn query_entailment(&self, logic: LogicBuffer) -> Result<bool, NibliError> {
+    pub fn query_entailment(&self, logic: LogicBuffer) -> Result<bool, NibliError> {
         self.query_entailment_inner(logic)
             .map_err(NibliError::Reasoning)
     }
 
-    fn query_find(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, NibliError> {
+    pub fn query_find(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, NibliError> {
         self.query_find_inner(logic).map_err(NibliError::Reasoning)
     }
 
-    fn query_entailment_with_proof(
+    pub fn query_entailment_with_proof(
         &self,
         logic: LogicBuffer,
     ) -> Result<(bool, ProofTrace), NibliError> {
@@ -945,28 +954,29 @@ impl GuestKnowledgeBase for KnowledgeBase {
             .map_err(NibliError::Reasoning)
     }
 
-    fn reset(&self) -> Result<(), NibliError> {
+    pub fn reset(&self) -> Result<(), NibliError> {
         self.inner.borrow_mut().reset();
         Ok(())
     }
 
-    fn retract_fact(&self, id: u64) -> Result<(), NibliError> {
+    pub fn retract_fact(&self, id: u64) -> Result<(), NibliError> {
         self.retract_fact_inner(id).map_err(NibliError::Reasoning)
     }
 
-    fn list_facts(&self) -> Result<Vec<FactSummary>, NibliError> {
+    pub fn list_facts(&self) -> Result<Vec<FactSummary>, NibliError> {
         self.list_facts_inner().map_err(NibliError::Reasoning)
     }
-
 }
 
+/// Bridge for standalone WASM component mode (converts smuni WIT types ↔ logji WIT types).
+/// Only needed if logji is compiled as a standalone WASM component (not the current architecture).
 #[cfg(target_arch = "wasm32")]
-bindings::export!(LogjiComponent with_types_in bindings);
+pub mod smuni_bridge;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bindings::lojban::nibli::logic_types::{
+    use smuni::bindings::lojban::nibli::logic_types::{
         LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofTrace,
     };
 

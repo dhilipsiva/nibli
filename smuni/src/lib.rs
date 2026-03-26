@@ -17,49 +17,57 @@ pub mod ir;
 /// Semantic compiler: AST → FOL logic form tree.
 pub mod semantic;
 
-use bindings::exports::lojban::nibli::smuni::Guest;
-use bindings::lojban::nibli::ast_types::AstBuffer;
 use bindings::lojban::nibli::error_types::NibliError;
 use bindings::lojban::nibli::logic_types::{LogicBuffer, LogicNode, LogicalTerm as WitTerm};
+use gerna::bindings::lojban::nibli::ast_types as gerna_ast;
 use ir::{LogicalForm, LogicalTerm};
 use semantic::SemanticCompiler;
 
+/// Core compilation: gerna AST buffer → FOL logic buffer.
+/// Used by both the native API and the WIT export path.
+fn compile_ast(ast: &gerna_ast::AstBuffer) -> Result<LogicBuffer, NibliError> {
+    let mut compiler = SemanticCompiler::new();
+    let mut logic_forms = Vec::with_capacity(ast.roots.len());
+
+    // Only compile top-level (root) sentences.
+    // Rel clause bodies live in ast.sentences but are referenced
+    // by index from Sumti::Restricted — they are NOT roots.
+    for &root_idx in ast.roots.iter() {
+        logic_forms.push(compiler.compile_sentence(
+            root_idx,
+            &ast.selbris,
+            &ast.sumtis,
+            &ast.sentences,
+        ));
+    }
+
+    // Check for semantic errors accumulated during compilation.
+    if let Some(err) = compiler.errors.first() {
+        return Err(NibliError::Semantic(err.clone()));
+    }
+
+    let mut nodes = Vec::new();
+    let mut roots = Vec::with_capacity(logic_forms.len());
+
+    for form in logic_forms {
+        let root_id = flatten_form(&form, &mut nodes, &compiler.interner);
+        roots.push(root_id);
+    }
+
+    Ok(LogicBuffer { nodes, roots })
+}
+
 /// WIT component implementation for the `smuni` interface.
+/// Only used when compiled as a standalone WASM component (wasm32 target).
+#[cfg(target_arch = "wasm32")]
 struct SmuniComponent;
 
-impl Guest for SmuniComponent {
-    /// Compile an AST buffer into an FOL logic buffer.
-    /// Compiles only root sentences (rel clause bodies are referenced by index).
-    fn compile_buffer(ast: AstBuffer) -> Result<LogicBuffer, NibliError> {
-        let mut compiler = SemanticCompiler::new();
-        let mut logic_forms = Vec::with_capacity(ast.roots.len());
-
-        // Only compile top-level (root) sentences.
-        // Rel clause bodies live in ast.sentences but are referenced
-        // by index from Sumti::Restricted — they are NOT roots.
-        for &root_idx in ast.roots.iter() {
-            logic_forms.push(compiler.compile_sentence(
-                root_idx,
-                &ast.selbris,
-                &ast.sumtis,
-                &ast.sentences,
-            ));
-        }
-
-        // Check for semantic errors accumulated during compilation.
-        if let Some(err) = compiler.errors.first() {
-            return Err(NibliError::Semantic(err.clone()));
-        }
-
-        let mut nodes = Vec::new();
-        let mut roots = Vec::with_capacity(logic_forms.len());
-
-        for form in logic_forms {
-            let root_id = flatten_form(&form, &mut nodes, &compiler.interner);
-            roots.push(root_id);
-        }
-
-        Ok(LogicBuffer { nodes, roots })
+#[cfg(target_arch = "wasm32")]
+impl bindings::exports::lojban::nibli::smuni::Guest for SmuniComponent {
+    fn compile_buffer(
+        ast: bindings::lojban::nibli::ast_types::AstBuffer,
+    ) -> Result<LogicBuffer, NibliError> {
+        compile_ast(&gerna_bridge::convert_ast_buffer(&ast))
     }
 }
 
@@ -202,25 +210,17 @@ fn flatten_form(form: &LogicalForm, nodes: &mut Vec<LogicNode>, interner: &lasso
     }
 }
 
-/// Public API for native (non-WASM) callers.
-/// Wraps the internal `SmuniComponent::compile_buffer` pipeline.
-pub fn compile_buffer_native(ast: AstBuffer) -> Result<LogicBuffer, NibliError> {
-    <SmuniComponent as Guest>::compile_buffer(ast)
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// BRIDGE: accept gerna's AST types directly (for native callers like nibli-engine)
-// ═══════════════════════════════════════════════════════════════════════
-
-mod gerna_bridge;
-
 /// Compile a gerna-produced AST buffer into a logic buffer.
-/// Accepts gerna's WIT-generated types directly, converts internally.
+/// Primary API for all callers (lasna, nibli-engine).
 pub fn compile_from_gerna_ast(
-    ast: gerna::bindings::lojban::nibli::ast_types::AstBuffer,
+    ast: gerna_ast::AstBuffer,
 ) -> Result<LogicBuffer, NibliError> {
-    compile_buffer_native(gerna_bridge::convert_ast_buffer(&ast))
+    compile_ast(&ast)
 }
+
+/// Bridge module for standalone WASM component mode (converts smuni's WIT AST types → gerna types).
+#[cfg(target_arch = "wasm32")]
+mod gerna_bridge;
 
 #[cfg(target_arch = "wasm32")]
 bindings::export!(SmuniComponent with_types_in bindings);

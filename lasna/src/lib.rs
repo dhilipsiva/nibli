@@ -16,10 +16,9 @@ use bindings::lojban::nibli::logic_types as export_logic;
 // Gerna's native AST types (for go'i snapshot)
 use gerna::bindings::lojban::nibli::ast_types as gerna_ast;
 
-// Logji's native types (for KB operations)
-use logji::bindings::exports::lojban::nibli::logji::GuestKnowledgeBase;
+// Smuni's logic types (shared by logji — single canonical copy)
 use logji::bindings::lojban::nibli::error_types as logji_err;
-use logji::bindings::lojban::nibli::logic_types as logji_logic;
+use smuni::bindings::lojban::nibli::logic_types as logji_logic;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -613,13 +612,13 @@ fn compile_pipeline(
         resolve_go_i(&mut ast, last_snapshot).map_err(|e| export_err::NibliError::Semantic(e))?;
     let new_snapshot = last_selbri_id.map(|id| extract_selbri_snapshot(&ast, id));
 
-    // Call smuni (converts gerna AST → smuni logic buffer internally)
-    let smuni_buf = smuni::compile_from_gerna_ast(ast).map_err(convert_smuni_error)?;
+    // Call smuni (converts gerna AST → logic buffer internally)
+    let mut buf = smuni::compile_from_gerna_ast(ast).map_err(convert_smuni_error)?;
 
-    // Convert smuni logic buffer → logji logic buffer (also applies compute predicate transform)
-    let logji_buf = logji::smuni_bridge::convert_logic_buffer(&smuni_buf, compute_predicates);
+    // Transform registered predicates to ComputeNode
+    logji::transform_compute_nodes(&mut buf, compute_predicates);
 
-    Ok((logji_buf, new_snapshot, parse_warnings))
+    Ok((buf, new_snapshot, parse_warnings))
 }
 
 fn debug_logic(buffer: &logji_logic::LogicBuffer) -> String {
