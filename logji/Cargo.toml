@@ -7,12 +7,5 @@ edition = "2024"
 smuni = { path = "../smuni" }
 wit-bindgen-rt = "0.44.0"
 
-[package.metadata.component]
-package = "lojban:nibli"
-
-[package.metadata.component.target]
-path = "../wit/world.wit"
-world = "logji-component"
-
 [lib]
 crate-type = ["lib"]
