@@ -24,7 +24,11 @@ pub fn debug_logic(buffer: &LogicBuffer) -> String {
 }
 
 fn write_repr(out: &mut String, buffer: &LogicBuffer, node_id: u32) {
-    match &buffer.nodes[node_id as usize] {
+    let Some(node) = buffer.nodes.get(node_id as usize) else {
+        out.push_str(&format!("[invalid node {}]", node_id));
+        return;
+    };
+    match node {
         LogicNode::Predicate((rel, args)) => {
             out.push_str("(Pred \"");
             out.push_str(rel);

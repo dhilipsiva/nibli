@@ -1,6 +1,21 @@
 use super::*;
 use std::cell::Cell;
 
+/// Bounds-checked node access. Returns a descriptive error instead of panicking
+/// if node_id is out of range (e.g., from a malformed LogicBuffer).
+pub(super) fn get_node(buffer: &LogicBuffer, node_id: u32) -> Result<&LogicNode, String> {
+    buffer
+        .nodes
+        .get(node_id as usize)
+        .ok_or_else(|| {
+            format!(
+                "invalid node index {} (buffer has {} nodes)",
+                node_id,
+                buffer.nodes.len()
+            )
+        })
+}
+
 // ─── Typed Fact Representation ────────────────────────────────────
 //
 // These types replace the internal representation string layer. Facts are stored and
@@ -552,7 +567,8 @@ pub(super) fn register_ground_material_conditional(
     inner: &mut KnowledgeBaseInner,
 ) {
     // Walk through Skolemized Exists and tense wrappers to find the Or(Not(...), ...) pattern
-    match &buffer.nodes[node_id as usize] {
+    let Ok(node) = get_node(buffer, node_id) else { return };
+    match node {
         LogicNode::ExistsNode((v, body)) if subs.contains_key(v.as_str()) => {
             register_ground_material_conditional(buffer, *body, subs, inner);
         }
@@ -569,7 +585,7 @@ pub(super) fn register_ground_material_conditional(
         }
         LogicNode::OrNode((l, r)) => {
             // Check for Or(Not(P), Q) — material conditional P → Q
-            if let LogicNode::NotNode(neg_inner) = &buffer.nodes[*l as usize] {
+            if let Ok(LogicNode::NotNode(neg_inner)) = get_node(buffer, *l) {
                 let mut typed_conds = Vec::new();
                 collect_ground_facts(buffer, *neg_inner, subs, None, &mut typed_conds);
                 let mut typed_concls = Vec::new();
@@ -578,7 +594,7 @@ pub(super) fn register_ground_material_conditional(
                 register_rule(inner, label, vec![], typed_conds, typed_concls);
             }
             // Also check Or(Q, Not(P)) — reversed order (commutativity)
-            else if let LogicNode::NotNode(neg_inner) = &buffer.nodes[*r as usize] {
+            else if let Ok(LogicNode::NotNode(neg_inner)) = get_node(buffer, *r) {
                 let mut typed_conds = Vec::new();
                 collect_ground_facts(buffer, *neg_inner, subs, None, &mut typed_conds);
                 let mut typed_concls = Vec::new();
@@ -634,7 +650,7 @@ pub(super) fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuf
         }
 
         // Phase 2: Dispatch based on formula structure
-        let is_forall = matches!(&logic.nodes[root_id as usize], LogicNode::ForAllNode(_));
+        let is_forall = matches!(get_node(logic, root_id), Ok(LogicNode::ForAllNode(_)));
 
         if is_forall {
             // ═══ NATIVE RULE PATH ═══
@@ -751,7 +767,7 @@ fn collect_predicate_anchors(
     tense: Option<&str>,
     anchors: &mut Vec<PredicateAnchor>,
 ) {
-    let node = &buffer.nodes[node_id as usize];
+    let Ok(node) = get_node(buffer, node_id) else { return };
     match node {
         LogicNode::Predicate((rel, args)) | LogicNode::ComputeNode((rel, args)) => {
             if let Some(pos) = find_var_position(args, var_name, subs) {

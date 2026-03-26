@@ -144,15 +144,23 @@ pub(super) fn build_ground_fact_from_resolved(
     Some(StoredFact::Bare(GroundFact::new(rel, args)))
 }
 
+/// Result of batch compute: boolean results + facts to ingest into the KB.
+/// The caller is responsible for ingesting the deferred facts, which allows
+/// the domain member slice borrow to be released before mutating the KB.
+pub(super) struct BatchComputeResult {
+    pub results: Vec<bool>,
+    pub deferred_facts: Vec<StoredFact>,
+}
+
 pub(super) fn batch_evaluate_compute_for_members(
     rel: &str,
     args: &[LogicalTerm],
     var: &str,
     members: &[GroundTerm],
     subs: &HashMap<String, GroundTerm>,
-    inner: &mut KnowledgeBaseInner,
-) -> Option<Vec<bool>> {
+) -> Option<BatchComputeResult> {
     let mut results = vec![false; members.len()];
+    let mut deferred_facts = Vec::new();
     let mut pending: Vec<(usize, Vec<LogicalTerm>)> = Vec::new();
 
     for (i, member) in members.iter().enumerate() {
@@ -164,7 +172,7 @@ pub(super) fn batch_evaluate_compute_for_members(
             if r {
                 let resolved = resolve_args_for_dispatch(args, &s);
                 if let Some(fact) = build_ground_fact_from_resolved(rel, &resolved) {
-                    assert_typed_fact(fact, inner);
+                    deferred_facts.push(fact);
                 }
             }
         } else {
@@ -174,7 +182,7 @@ pub(super) fn batch_evaluate_compute_for_members(
     }
 
     if pending.is_empty() {
-        return Some(results);
+        return Some(BatchComputeResult { results, deferred_facts });
     }
 
     let requests: Vec<ComputeRequest> = pending
@@ -193,12 +201,12 @@ pub(super) fn batch_evaluate_compute_for_members(
                 results[member_idx] = r;
                 if r {
                     if let Some(fact) = build_ground_fact_from_resolved(rel, &pending[batch_idx].1) {
-                        assert_typed_fact(fact, inner);
+                        deferred_facts.push(fact);
                     }
                 }
             }
             Err(_) => return None,
         }
     }
-    Some(results)
+    Some(BatchComputeResult { results, deferred_facts })
 }

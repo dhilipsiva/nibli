@@ -1,14 +1,5 @@
 use super::*;
 
-/// Bounds-checked node access. Returns a descriptive error instead of panicking
-/// if node_id is out of range (e.g., from a malformed LogicBuffer).
-fn get_node(buffer: &LogicBuffer, node_id: u32) -> Result<&LogicNode, String> {
-    buffer
-        .nodes
-        .get(node_id as usize)
-        .ok_or_else(|| format!("invalid node index {} (buffer has {} nodes)", node_id, buffer.nodes.len()))
-}
-
 /// Temporarily bind `key` to `value` in `subs`, run `f`, then restore the
 /// previous binding (or remove if there was none). Avoids the repeated
 /// save/restore boilerplate across quantifier evaluation.
@@ -77,16 +68,25 @@ pub(super) fn check_formula_holds(
             check_formula_holds(buffer, *inner_node, subs, inner, tense)
         }
         LogicNode::ExistsNode((v, body)) => {
-            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
-            if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
-                if let Some(batch_results) =
-                    batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner)
-                {
-                    if batch_results.iter().any(|r| *r) {
-                        return Ok(true);
+            // Try batch compute fast path first (uses slice, no .to_vec()).
+            if let Ok(body_node) = get_node(buffer, *body) {
+                if let LogicNode::ComputeNode((rel, args)) = body_node {
+                    let members = inner.all_typed_domain_members();
+                    if let Some(batch) =
+                        batch_evaluate_compute_for_members(rel, args, v, members, subs)
+                    {
+                        // Ingest deferred facts now that the slice borrow is released.
+                        for fact in batch.deferred_facts {
+                            assert_typed_fact(fact, inner);
+                        }
+                        if batch.results.iter().any(|r| *r) {
+                            return Ok(true);
+                        }
                     }
                 }
             }
+            // Slow path: need owned Vec because check_formula_holds takes &mut inner.
+            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
             for member in &members {
                 let holds = with_sub(subs, v, member.clone(), |s| {
                     check_formula_holds(buffer, *body, s, inner, tense)
@@ -114,17 +114,24 @@ pub(super) fn check_formula_holds(
             Ok(false)
         }
         LogicNode::ForAllNode((v, body)) => {
-            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
-            if members.is_empty() {
+            if inner.all_typed_domain_members().is_empty() {
                 return Ok(true);
             }
-            if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
-                if let Some(batch_results) =
-                    batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner)
-                {
-                    return Ok(batch_results.iter().all(|r| *r));
+            // Batch compute fast path (slice, no .to_vec()).
+            if let Ok(body_node) = get_node(buffer, *body) {
+                if let LogicNode::ComputeNode((rel, args)) = body_node {
+                    let members = inner.all_typed_domain_members();
+                    if let Some(batch) =
+                        batch_evaluate_compute_for_members(rel, args, v, members, subs)
+                    {
+                        for fact in batch.deferred_facts {
+                            assert_typed_fact(fact, inner);
+                        }
+                        return Ok(batch.results.iter().all(|r| *r));
+                    }
                 }
             }
+            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
             for member in &members {
                 let holds = with_sub(subs, v, member.clone(), |s| {
                     check_formula_holds(buffer, *body, s, inner, tense)
@@ -136,15 +143,22 @@ pub(super) fn check_formula_holds(
             Ok(true)
         }
         LogicNode::CountNode((v, count, body)) => {
-            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
-            if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
-                if let Some(batch_results) =
-                    batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner)
-                {
-                    let satisfying = batch_results.iter().filter(|r| **r).count() as u32;
-                    return Ok(satisfying == *count);
+            // Batch compute fast path (slice, no .to_vec()).
+            if let Ok(body_node) = get_node(buffer, *body) {
+                if let LogicNode::ComputeNode((rel, args)) = body_node {
+                    let members = inner.all_typed_domain_members();
+                    if let Some(batch) =
+                        batch_evaluate_compute_for_members(rel, args, v, members, subs)
+                    {
+                        for fact in batch.deferred_facts {
+                            assert_typed_fact(fact, inner);
+                        }
+                        let satisfying = batch.results.iter().filter(|r| **r).count() as u32;
+                        return Ok(satisfying == *count);
+                    }
                 }
             }
+            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
             let mut satisfying = 0u32;
             for member in &members {
                 let holds = with_sub(subs, v, member.clone(), |s| {
@@ -1144,38 +1158,48 @@ pub(super) fn check_formula_holds_traced(
             Ok((result, idx))
         }
         LogicNode::ExistsNode((v, body)) => {
-            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
-
-            if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
-                if let Some(batch_results) =
-                    batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner)
-                {
-                    if let Some(winner_idx) = batch_results.iter().position(|r| *r) {
-                        let mut new_subs = subs.clone();
-                        new_subs.insert(v.clone(), members[winner_idx].clone());
-                        let (_, body_idx) = check_formula_holds_traced(
-                            buffer,
-                            *body,
-                            &mut new_subs,
-                            inner,
-                            steps,
-                            tense,
-                            memo,
-                        )?;
-                        let idx = steps.len() as u32;
-                        steps.push(ProofStep {
-                            rule: ProofRule::ExistsWitness((
-                                v.clone(),
-                                ground_term_to_logical_term(&members[winner_idx]),
-                            )),
-                            holds: true,
-                            children: vec![body_idx],
-                        });
-                        return Ok((true, idx));
+            // Batch compute fast path (slice, no .to_vec()).
+            if let Ok(body_node) = get_node(buffer, *body) {
+                if let LogicNode::ComputeNode((rel, args)) = body_node {
+                    let members = inner.all_typed_domain_members();
+                    if let Some(batch) =
+                        batch_evaluate_compute_for_members(rel, args, v, members, subs)
+                    {
+                        // Clone the winning member before releasing the slice borrow.
+                        let winner = batch.results.iter().position(|r| *r)
+                            .map(|i| members[i].clone());
+                        // Ingest deferred facts.
+                        for fact in batch.deferred_facts {
+                            assert_typed_fact(fact, inner);
+                        }
+                        if let Some(winning_member) = winner {
+                            let mut new_subs = subs.clone();
+                            new_subs.insert(v.clone(), winning_member.clone());
+                            let (_, body_idx) = check_formula_holds_traced(
+                                buffer,
+                                *body,
+                                &mut new_subs,
+                                inner,
+                                steps,
+                                tense,
+                                memo,
+                            )?;
+                            let idx = steps.len() as u32;
+                            steps.push(ProofStep {
+                                rule: ProofRule::ExistsWitness((
+                                    v.clone(),
+                                    ground_term_to_logical_term(&winning_member),
+                                )),
+                                holds: true,
+                                children: vec![body_idx],
+                            });
+                            return Ok((true, idx));
+                        }
                     }
                 }
             }
 
+            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
             for member in &members {
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), member.clone());
@@ -1250,54 +1274,54 @@ pub(super) fn check_formula_holds_traced(
                 });
                 return Ok((true, idx));
             }
-            if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
-                if let Some(batch_results) =
-                    batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner)
-                {
-                    if let Some(fail_idx) = batch_results.iter().position(|r| !*r) {
-                        let mut new_subs = subs.clone();
-                        new_subs.insert(v.clone(), members[fail_idx].clone());
-                        let (_, body_idx) = check_formula_holds_traced(
-                            buffer,
-                            *body,
-                            &mut new_subs,
-                            inner,
-                            steps,
-                            tense,
-                            memo,
-                        )?;
+            // Batch compute fast path.
+            if let Ok(body_node) = get_node(buffer, *body) {
+                if let LogicNode::ComputeNode((rel, args)) = body_node {
+                    let members_slice = inner.all_typed_domain_members();
+                    if let Some(batch) =
+                        batch_evaluate_compute_for_members(rel, args, v, members_slice, subs)
+                    {
+                        // Clone the counterexample before releasing slice.
+                        let fail_member = batch.results.iter().position(|r| !*r)
+                            .map(|i| members_slice[i].clone());
+                        for fact in batch.deferred_facts {
+                            assert_typed_fact(fact, inner);
+                        }
+                        if let Some(counter) = fail_member {
+                            let mut new_subs = subs.clone();
+                            new_subs.insert(v.clone(), counter.clone());
+                            let (_, body_idx) = check_formula_holds_traced(
+                                buffer, *body, &mut new_subs, inner, steps, tense, memo,
+                            )?;
+                            let idx = steps.len() as u32;
+                            steps.push(ProofStep {
+                                rule: ProofRule::ForallCounterexample(ground_term_to_logical_term(&counter)),
+                                holds: false,
+                                children: vec![body_idx],
+                            });
+                            return Ok((false, idx));
+                        }
+                        // All passed — trace each member.
+                        let members_owned: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
+                        let mut child_indices = Vec::new();
+                        let mut entity_terms = Vec::new();
+                        for member in &members_owned {
+                            let mut new_subs = subs.clone();
+                            new_subs.insert(v.clone(), member.clone());
+                            let (_, body_idx) = check_formula_holds_traced(
+                                buffer, *body, &mut new_subs, inner, steps, tense, memo,
+                            )?;
+                            child_indices.push(body_idx);
+                            entity_terms.push(ground_term_to_logical_term(member));
+                        }
                         let idx = steps.len() as u32;
                         steps.push(ProofStep {
-                            rule: ProofRule::ForallCounterexample(ground_term_to_logical_term(&members[fail_idx])),
-                            holds: false,
-                            children: vec![body_idx],
+                            rule: ProofRule::ForallVerified(entity_terms),
+                            holds: true,
+                            children: child_indices,
                         });
-                        return Ok((false, idx));
+                        return Ok((true, idx));
                     }
-                    let mut child_indices = Vec::new();
-                    let mut entity_terms = Vec::new();
-                    for member in &members {
-                        let mut new_subs = subs.clone();
-                        new_subs.insert(v.clone(), member.clone());
-                        let (_, body_idx) = check_formula_holds_traced(
-                            buffer,
-                            *body,
-                            &mut new_subs,
-                            inner,
-                            steps,
-                            tense,
-                            memo,
-                        )?;
-                        child_indices.push(body_idx);
-                        entity_terms.push(ground_term_to_logical_term(member));
-                    }
-                    let idx = steps.len() as u32;
-                    steps.push(ProofStep {
-                        rule: ProofRule::ForallVerified(entity_terms),
-                        holds: true,
-                        children: child_indices,
-                    });
-                    return Ok((true, idx));
                 }
             }
             let mut child_indices = Vec::new();
@@ -1335,22 +1359,29 @@ pub(super) fn check_formula_holds_traced(
             Ok((true, idx))
         }
         LogicNode::CountNode((v, count, body)) => {
-            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
-            if let LogicNode::ComputeNode((rel, args)) = &buffer.nodes[*body as usize] {
-                if let Some(batch_results) =
-                    batch_evaluate_compute_for_members(rel, args, v, &members, subs, inner)
-                {
-                    let satisfying = batch_results.iter().filter(|r| **r).count() as u32;
-                    let result = satisfying == *count;
-                    let idx = steps.len() as u32;
-                    steps.push(ProofStep {
-                        rule: ProofRule::CountResult((*count, satisfying)),
-                        holds: result,
-                        children: vec![],
-                    });
-                    return Ok((result, idx));
+            // Batch compute fast path.
+            if let Ok(body_node) = get_node(buffer, *body) {
+                if let LogicNode::ComputeNode((rel, args)) = body_node {
+                    let members = inner.all_typed_domain_members();
+                    if let Some(batch) =
+                        batch_evaluate_compute_for_members(rel, args, v, members, subs)
+                    {
+                        for fact in batch.deferred_facts {
+                            assert_typed_fact(fact, inner);
+                        }
+                        let satisfying = batch.results.iter().filter(|r| **r).count() as u32;
+                        let result = satisfying == *count;
+                        let idx = steps.len() as u32;
+                        steps.push(ProofStep {
+                            rule: ProofRule::CountResult((*count, satisfying)),
+                            holds: result,
+                            children: vec![],
+                        });
+                        return Ok((result, idx));
+                    }
                 }
             }
+            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
             let mut satisfying = 0u32;
             for member in &members {
                 let mut new_subs = subs.clone();

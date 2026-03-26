@@ -30,7 +30,8 @@ pub(super) fn collect_exists_for_skolem(
     enclosing_universals: &mut Vec<String>,
     counter: &mut usize,
 ) {
-    match &buffer.nodes[node_id as usize] {
+    let Ok(node) = get_node(buffer, node_id) else { return };
+    match node {
         LogicNode::ExistsNode((v, body)) => {
             if !subs.contains_key(v.as_str()) {
                 if enclosing_universals.is_empty() {
@@ -92,14 +93,18 @@ pub(super) fn decompose_implication(
     let mut current = body_id;
 
     loop {
-        match &buffer.nodes[current as usize] {
-            LogicNode::OrNode((left, right)) => match &buffer.nodes[*left as usize] {
-                LogicNode::NotNode(inner) => {
-                    conditions.push(*inner);
-                    current = *right;
+        let Ok(node) = get_node(buffer, current) else { break };
+        match node {
+            LogicNode::OrNode((left, right)) => {
+                let Ok(left_node) = get_node(buffer, *left) else { break };
+                match left_node {
+                    LogicNode::NotNode(inner) => {
+                        conditions.push(*inner);
+                        current = *right;
+                    }
+                    _ => break,
                 }
-                _ => break,
-            },
+            }
             _ => break,
         }
     }
@@ -113,7 +118,8 @@ pub(super) fn decompose_implication(
 
 #[allow(dead_code)]
 pub(super) fn flatten_conjuncts(buffer: &LogicBuffer, node_id: u32) -> Vec<u32> {
-    match &buffer.nodes[node_id as usize] {
+    let Ok(node) = get_node(buffer, node_id) else { return vec![node_id] };
+    match node {
         LogicNode::AndNode((l, r)) => {
             let mut result = flatten_conjuncts(buffer, *l);
             result.extend(flatten_conjuncts(buffer, *r));
@@ -128,7 +134,8 @@ pub(super) fn collect_condition_exists(
     node_id: u32,
     exists_vars: &mut HashSet<String>,
 ) {
-    match &buffer.nodes[node_id as usize] {
+    let Ok(node) = get_node(buffer, node_id) else { return };
+    match node {
         LogicNode::ExistsNode((v, body)) => {
             exists_vars.insert(v.clone());
             collect_condition_exists(buffer, *body, exists_vars);
@@ -146,7 +153,8 @@ pub(super) fn flatten_conjuncts_through_exists(
     node_id: u32,
     condition_exists: &HashSet<String>,
 ) -> Vec<u32> {
-    match &buffer.nodes[node_id as usize] {
+    let Ok(node) = get_node(buffer, node_id) else { return vec![node_id] };
+    match node {
         LogicNode::AndNode((l, r)) => {
             let mut result = flatten_conjuncts_through_exists(buffer, *l, condition_exists);
             result.extend(flatten_conjuncts_through_exists(
@@ -168,7 +176,8 @@ fn flatten_consequent(
     node_id: u32,
     skolem_subs: &HashMap<String, GroundTerm>,
 ) -> Vec<u32> {
-    match &buffer.nodes[node_id as usize] {
+    let Ok(node) = get_node(buffer, node_id) else { return vec![node_id] };
+    match node {
         LogicNode::ExistsNode((v, body)) if skolem_subs.contains_key(v.as_str()) => {
             flatten_consequent(buffer, *body, skolem_subs)
         }
@@ -186,7 +195,8 @@ pub(super) fn collect_and_note_constants(
     node_id: u32,
     inner: &mut KnowledgeBaseInner,
 ) {
-    match &buffer.nodes[node_id as usize] {
+    let Ok(node) = get_node(buffer, node_id) else { return };
+    match node {
         LogicNode::Predicate((_, args)) | LogicNode::ComputeNode((_, args)) => {
             for arg in args {
                 match arg {
@@ -274,7 +284,8 @@ pub(super) fn compile_forall_to_rule(
     let mut universals: Vec<String> = Vec::new();
     let mut current = node_id;
     loop {
-        match &buffer.nodes[current as usize] {
+        let Ok(node) = get_node(buffer, current) else { return };
+        match node {
             LogicNode::ForAllNode((v, body)) => {
                 universals.push(v.clone());
                 current = *body;
@@ -495,7 +506,8 @@ pub(super) fn generate_count_extra_witnesses(
     skolem_subs: &HashMap<String, GroundTerm>,
     inner: &mut KnowledgeBaseInner,
 ) {
-    match &buffer.nodes[node_id as usize] {
+    let Ok(node) = get_node(buffer, node_id) else { return };
+    match node {
         LogicNode::CountNode((v, count, body)) => {
             if *count > 1 {
                 for _ in 1..*count {
@@ -571,7 +583,8 @@ pub(super) fn build_stored_fact_from_node(
     subs: &HashMap<String, GroundTerm>,
     tense: Option<&str>,
 ) -> Option<StoredFact> {
-    match &buffer.nodes[node_id as usize] {
+    let Ok(node) = get_node(buffer, node_id) else { return None };
+    match node {
         LogicNode::Predicate((rel, args)) | LogicNode::ComputeNode((rel, args)) => {
             let ground_args: Vec<GroundTerm> = args
                 .iter()
@@ -613,7 +626,8 @@ pub(super) fn collect_ground_facts(
     tense: Option<&str>,
     out: &mut Vec<StoredFact>,
 ) {
-    match &buffer.nodes[node_id as usize] {
+    let Ok(node) = get_node(buffer, node_id) else { return };
+    match node {
         LogicNode::AndNode((l, r)) => {
             collect_ground_facts(buffer, *l, subs, tense, out);
             collect_ground_facts(buffer, *r, subs, tense, out);
@@ -655,7 +669,8 @@ pub(super) fn build_rule_template_fact(
     ground_skolems: &HashMap<String, String>,
     dependent_skolems: &HashMap<String, (String, Vec<String>)>,
 ) -> Option<StoredFact> {
-    match &buffer.nodes[node_id as usize] {
+    let Ok(node) = get_node(buffer, node_id) else { return None };
+    match node {
         LogicNode::Predicate((rel, args)) | LogicNode::ComputeNode((rel, args)) => {
             let ground_args: Vec<GroundTerm> = args
                 .iter()
