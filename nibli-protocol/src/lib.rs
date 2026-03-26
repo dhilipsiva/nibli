@@ -820,7 +820,13 @@ fn collapse_role_predicates(s: &str) -> String {
 }
 
 fn format_proof_step(trace: &ProofTrace, idx: u32, indent: usize, out: &mut String) {
-    let step = &trace.steps[idx as usize];
+    let Some(step) = trace.steps.get(idx as usize) else {
+        for _ in 0..indent {
+            out.push_str("  ");
+        }
+        out.push_str(&format!("[invalid step index {}]\n", idx));
+        return;
+    };
     for _ in 0..indent {
         out.push_str("  ");
     }

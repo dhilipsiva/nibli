@@ -595,6 +595,14 @@ pub(super) fn register_ground_material_conditional(
 /// Used by both initial assertion and rebuild-on-retract replay.
 pub(super) fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) {
     for &root_id in &logic.roots {
+        if root_id as usize >= logic.nodes.len() {
+            eprintln!(
+                "[Warning] skipping invalid root index {} (buffer has {} nodes)",
+                root_id,
+                logic.nodes.len()
+            );
+            continue;
+        }
         // Phase 1: Collect existential variables for Skolemization.
         let mut skolem_subs = HashMap::new();
         let mut enclosing_universals = Vec::new();

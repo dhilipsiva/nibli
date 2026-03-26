@@ -1,5 +1,14 @@
 use super::*;
 
+/// Bounds-checked node access. Returns a descriptive error instead of panicking
+/// if node_id is out of range (e.g., from a malformed LogicBuffer).
+fn get_node(buffer: &LogicBuffer, node_id: u32) -> Result<&LogicNode, String> {
+    buffer
+        .nodes
+        .get(node_id as usize)
+        .ok_or_else(|| format!("invalid node index {} (buffer has {} nodes)", node_id, buffer.nodes.len()))
+}
+
 /// Temporarily bind `key` to `value` in `subs`, run `f`, then restore the
 /// previous binding (or remove if there was none). Avoids the repeated
 /// save/restore boilerplate across quantifier evaluation.
@@ -38,7 +47,7 @@ pub(super) fn check_formula_holds(
     inner: &mut KnowledgeBaseInner,
     tense: Option<&str>,
 ) -> Result<bool, String> {
-    match &buffer.nodes[node_id as usize] {
+    match get_node(buffer, node_id)? {
         LogicNode::AndNode((l, r)) => Ok(check_formula_holds(buffer, *l, subs, inner, tense)?
             && check_formula_holds(buffer, *r, subs, inner, tense)?),
         LogicNode::OrNode((l, r)) => Ok(check_formula_holds(buffer, *l, subs, inner, tense)?
@@ -194,7 +203,7 @@ pub(super) fn find_witnesses(
     inner: &mut KnowledgeBaseInner,
     tense: Option<&str>,
 ) -> Result<Vec<Vec<(String, GroundTerm)>>, String> {
-    match &buffer.nodes[node_id as usize] {
+    match get_node(buffer, node_id)? {
         LogicNode::ExistsNode((v, body)) => {
             let mut results = Vec::new();
 
@@ -992,7 +1001,7 @@ pub(super) fn check_formula_holds_traced(
     tense: Option<&str>,
     memo: &mut HashMap<String, u32>,
 ) -> Result<(bool, u32), String> {
-    match &buffer.nodes[node_id as usize] {
+    match get_node(buffer, node_id)? {
         LogicNode::AndNode((l, r)) => {
             let (l_result, l_idx) =
                 check_formula_holds_traced(buffer, *l, subs, inner, steps, tense, memo)?;
