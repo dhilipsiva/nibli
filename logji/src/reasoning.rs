@@ -689,12 +689,15 @@ pub(super) fn trace_predicate_provenance_typed(
     let display = fact.to_display_string();
 
     if let Some(&cached_idx) = memo.get(&display) {
-        let _ = cached_idx; // memo hit — emit ProofRef
+        // Memo hit — emit a lightweight ProofRef leaf instead of
+        // re-deriving the full proof sub-tree. The original derivation
+        // lives at steps[cached_idx]. We store cached_idx in children
+        // so consumers can follow the back-reference if needed.
         let idx = steps.len() as u32;
         steps.push(ProofStep {
             rule: ProofRule::ProofRef(display),
-            holds: true,
-            children: vec![],
+            holds: steps[cached_idx as usize].holds,
+            children: vec![cached_idx],
         });
         return idx;
     }

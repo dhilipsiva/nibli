@@ -4,9 +4,7 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 1: Correctness Bugs
 
-1. **ProofRef memo cache is broken** — `trace_predicate_provenance_typed()` retrieves `cached_idx` from the memo but ignores it (`let _ = cached_idx`), then pushes a new ProofStep instead of reusing the cached one. Memoization creates ProofRef nodes but doesn't skip re-derivation. Affects proof trace quality, not reasoning correctness. ~5 lines in `logji/src/reasoning.rs:691`.
-
-2. **f64 as i64 truncation in compute.rs** — `LogicalTerm::Number(n) => Some(*n as i64)` silently drops fractional parts. Affects arithmetic dispatch (sumji/dilcu) for non-integer inputs. ~3 lines in `logji/src/compute.rs:25`.
+1. **f64 as i64 truncation in compute.rs** — `LogicalTerm::Number(n) => Some(*n as i64)` silently drops fractional parts. Affects arithmetic dispatch (sumji/dilcu) for non-integer inputs. ~3 lines in `logji/src/compute.rs:25`.
 
 ## Tier 2: Performance (Hot Path)
 
