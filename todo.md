@@ -2,13 +2,6 @@
 
 Ordered by impact, priority, and dependency.
 
-## Tier 1: Dead Code Cleanup (Low Effort, High Impact)
-
-## Tier 5: Maintainability
-
-
-13. **WIT schema versioning** — No migration path for WIT interface evolution.
-
 ## Tier 6: Infrastructure & Deployment
 
 14. **Fine-grained server locking** — Replace `Arc<Mutex<>>` with per-resource locks or `RwLock`.
