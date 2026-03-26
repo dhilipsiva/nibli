@@ -202,11 +202,31 @@ impl KnowledgeBase {
             let witnesses = find_witnesses(&logic, root_id, &mut subs, &mut inner, None)?;
             match result_sets {
                 None => result_sets = Some(witnesses),
-                Some(ref _prev) => {
+                Some(prev) => {
                     if witnesses.is_empty() {
                         return Ok(vec![]);
                     }
-                    result_sets = Some(witnesses);
+                    // Intersect: keep only binding sets from `prev` that are
+                    // compatible with at least one binding set from `witnesses`.
+                    // Two binding sets are compatible if every shared variable
+                    // maps to the same GroundTerm.
+                    let intersected: Vec<Vec<(String, GroundTerm)>> = prev
+                        .into_iter()
+                        .filter(|p_bindings| {
+                            witnesses.iter().any(|w_bindings| {
+                                p_bindings.iter().all(|(var, val)| {
+                                    w_bindings
+                                        .iter()
+                                        .find(|(wv, _)| wv == var)
+                                        .map_or(true, |(_, wval)| wval == val)
+                                })
+                            })
+                        })
+                        .collect();
+                    if intersected.is_empty() {
+                        return Ok(vec![]);
+                    }
+                    result_sets = Some(intersected);
                 }
             }
         }
