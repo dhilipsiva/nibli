@@ -7,8 +7,16 @@ fn main() {
     dioxus::launch(App);
 }
 
-const GRAPHQL_URL: &str = "http://localhost:8081/graphql";
-const READY_URL: &str = "http://localhost:8081/readyz";
+/// GraphQL endpoint URL. Override at build time: NIBLI_GRAPHQL_URL=http://host:port/graphql
+const GRAPHQL_URL: &str = match option_env!("NIBLI_GRAPHQL_URL") {
+    Some(url) => url,
+    None => "http://localhost:8081/graphql",
+};
+/// Readiness check URL. Override at build time: NIBLI_READY_URL=http://host:port/readyz
+const READY_URL: &str = match option_env!("NIBLI_READY_URL") {
+    Some(url) => url,
+    None => "http://localhost:8081/readyz",
+};
 const MAX_OUTPUT_ENTRIES: usize = 200;
 
 const DEFAULT_SOURCE: &str = "All dogs are animals.\nAll animals eat.\nAdam is a dog.";
