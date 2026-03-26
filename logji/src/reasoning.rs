@@ -222,50 +222,45 @@ pub(super) fn find_witnesses(
         LogicNode::ExistsNode((v, body)) => {
             let mut results = Vec::new();
 
-            // Fast path: index-driven candidate narrowing.
-            // If the body is a simple predicate with exactly one unbound
-            // position for this variable, extract matching values directly
-            // from the predicate index instead of enumerating all domain
-            // members.
-            if let Some(candidates) =
-                extract_candidates_from_index(buffer, *body, v, subs, inner, tense)
-            {
-                for candidate in candidates {
-                    let mut new_subs = subs.clone();
-                    new_subs.insert(v.clone(), candidate.clone());
-                    let sub_results =
-                        find_witnesses(buffer, *body, &mut new_subs, inner, tense)?;
-                    for mut bindings in sub_results {
-                        bindings.push((v.clone(), candidate.clone()));
-                        results.push(bindings);
+            // Index-driven candidate extraction: walk the body to find
+            // positive predicates mentioning this variable, extract
+            // candidates from the predicate index + backward-chain rule
+            // conclusions. Falls back to full domain scan only when no
+            // positive predicate anchor exists (pure negation body).
+            let candidates: Vec<GroundTerm> =
+                if let Some(indexed) = collect_candidates(buffer, *body, v, subs, inner, tense) {
+                    // Also include SkolemFn witnesses — these may not appear
+                    // in the index but are valid existential witnesses.
+                    let members = inner.all_typed_domain_members();
+                    let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
+                    let mut all = indexed;
+                    for entry in &entries {
+                        for combo in GroundTermCartesianProduct::new(members, entry.dep_count) {
+                            all.push(build_skolem_fn_term(&entry.base_name, &combo));
+                        }
                     }
-                }
-                return Ok(results);
-            }
+                    all
+                } else {
+                    // No positive anchor — must enumerate all domain members.
+                    // This only happens for bodies like ∃x.¬P(x).
+                    let members = inner.all_typed_domain_members();
+                    let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
+                    let mut all: Vec<GroundTerm> = members.to_vec();
+                    for entry in &entries {
+                        for combo in GroundTermCartesianProduct::new(members, entry.dep_count) {
+                            all.push(build_skolem_fn_term(&entry.base_name, &combo));
+                        }
+                    }
+                    all
+                };
 
-            // Slow path: brute-force enumeration of all domain members.
-            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
-            for member in &members {
+            for candidate in candidates {
                 let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), member.clone());
+                new_subs.insert(v.clone(), candidate.clone());
                 let sub_results = find_witnesses(buffer, *body, &mut new_subs, inner, tense)?;
                 for mut bindings in sub_results {
-                    bindings.push((v.clone(), member.clone()));
+                    bindings.push((v.clone(), candidate.clone()));
                     results.push(bindings);
-                }
-            }
-
-            let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
-            for entry in &entries {
-                for combo in GroundTermCartesianProduct::new(&members, entry.dep_count) {
-                    let witness = build_skolem_fn_term(&entry.base_name, &combo);
-                    let mut new_subs = subs.clone();
-                    new_subs.insert(v.clone(), witness.clone());
-                    let sub_results = find_witnesses(buffer, *body, &mut new_subs, inner, tense)?;
-                    for mut bindings in sub_results {
-                        bindings.push((v.clone(), witness.clone()));
-                        results.push(bindings);
-                    }
                 }
             }
 

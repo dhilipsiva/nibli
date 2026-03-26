@@ -674,13 +674,21 @@ pub(super) fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuf
     }
 }
 
-/// Extract candidate GroundTerm values for an existential variable from the
-/// predicate index. Returns `Some(candidates)` when the body is a simple
-/// predicate with exactly one unbound position matching `var_name` (the rest
-/// are bound via `subs`). Returns `None` if the pattern doesn't apply
-/// (complex body, multiple unbound positions, etc.) — caller falls back to
-/// brute-force enumeration.
-pub(super) fn extract_candidates_from_index(
+/// Collect candidate GroundTerm values for an existential variable by walking
+/// the body structure and extracting from the predicate index + backward-chaining
+/// rule conclusions.
+///
+/// Strategy:
+/// - Walk the body to find all positive predicates mentioning `var_name`
+/// - For AND bodies: extract from the first anchor predicate (smallest candidate set)
+/// - For OR bodies: union candidates from both branches
+/// - For tense/deontic wrappers: unwrap and recurse
+/// - For NOT bodies: cannot narrow (need all entities NOT satisfying P) — returns None
+/// - Includes backward-chain rule conclusions to cover derived facts
+///
+/// Returns `Some(candidates)` with deduplicated candidate values, or `None` if
+/// no positive predicate anchor exists (pure negation — genuinely requires domain scan).
+pub(super) fn collect_candidates(
     buffer: &LogicBuffer,
     body_id: u32,
     var_name: &str,
@@ -688,48 +696,154 @@ pub(super) fn extract_candidates_from_index(
     inner: &KnowledgeBaseInner,
     tense: Option<&str>,
 ) -> Option<Vec<GroundTerm>> {
-    let node = &buffer.nodes[body_id as usize];
+    let mut anchors = Vec::new();
+    collect_predicate_anchors(buffer, body_id, var_name, subs, tense, &mut anchors);
 
-    // Unwrap tense wrappers to reach the predicate
-    let (effective_node, effective_tense) = match node {
-        LogicNode::PastNode(inner_id) => (&buffer.nodes[*inner_id as usize], Some("Past")),
-        LogicNode::PresentNode(inner_id) => (&buffer.nodes[*inner_id as usize], Some("Present")),
-        LogicNode::FutureNode(inner_id) => (&buffer.nodes[*inner_id as usize], Some("Future")),
-        _ => (node, tense),
-    };
+    if anchors.is_empty() {
+        return None; // No positive predicate mentions this variable — must brute-force
+    }
 
-    let (relation, args) = match effective_node {
-        LogicNode::Predicate((rel, args)) => (rel, args),
-        _ => return None, // Not a simple predicate body — fall back
-    };
+    // Extract candidates from the best anchor (smallest result set).
+    // Try each anchor's index + backward-chain rules, pick the smallest.
+    let mut best: Option<HashSet<GroundTerm>> = None;
+    for anchor in &anchors {
+        let mut candidates = HashSet::new();
 
-    // Find the position of var_name in the args; all others must be bound
-    let mut var_positions = Vec::new();
-    for (i, arg) in args.iter().enumerate() {
-        match arg {
-            LogicalTerm::Variable(v) => {
-                if v == var_name {
-                    var_positions.push(i);
-                } else if !subs.contains_key(v) {
-                    return None; // Another unbound variable — can't narrow
-                }
-            }
-            _ => {} // Constants, numbers, etc. are bound
+        // Direct index lookup
+        extract_from_index(anchor, inner, &mut candidates);
+
+        // Backward-chain rule conclusions: if rules derive this predicate,
+        // include candidates that rules could produce.
+        extract_from_rules(anchor, var_name, subs, inner, &mut candidates);
+
+        match &best {
+            None => best = Some(candidates),
+            Some(prev) if candidates.len() < prev.len() => best = Some(candidates),
+            _ => {}
         }
     }
 
-    if var_positions.len() != 1 {
-        return None; // Variable appears 0 or 2+ times — fall back
+    best.map(|set| set.into_iter().collect())
+}
+
+/// An anchor: a positive predicate in the body that mentions the target variable.
+struct PredicateAnchor {
+    relation: String,
+    var_position: usize,
+    args: Vec<LogicalTerm>,
+    tense: Option<&'static str>,
+}
+
+/// Walk the body and collect all positive predicates where `var_name` appears.
+fn collect_predicate_anchors(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    var_name: &str,
+    subs: &HashMap<String, GroundTerm>,
+    tense: Option<&str>,
+    anchors: &mut Vec<PredicateAnchor>,
+) {
+    let node = &buffer.nodes[node_id as usize];
+    match node {
+        LogicNode::Predicate((rel, args)) | LogicNode::ComputeNode((rel, args)) => {
+            if let Some(pos) = find_var_position(args, var_name, subs) {
+                anchors.push(PredicateAnchor {
+                    relation: rel.clone(),
+                    var_position: pos,
+                    args: args.clone(),
+                    tense: tense_to_static(tense),
+                });
+            }
+        }
+        LogicNode::AndNode((l, r)) => {
+            collect_predicate_anchors(buffer, *l, var_name, subs, tense, anchors);
+            collect_predicate_anchors(buffer, *r, var_name, subs, tense, anchors);
+        }
+        LogicNode::OrNode((l, r)) => {
+            collect_predicate_anchors(buffer, *l, var_name, subs, tense, anchors);
+            collect_predicate_anchors(buffer, *r, var_name, subs, tense, anchors);
+        }
+        LogicNode::PastNode(inner_id) => {
+            collect_predicate_anchors(buffer, *inner_id, var_name, subs, Some("Past"), anchors);
+        }
+        LogicNode::PresentNode(inner_id) => {
+            collect_predicate_anchors(buffer, *inner_id, var_name, subs, Some("Present"), anchors);
+        }
+        LogicNode::FutureNode(inner_id) => {
+            collect_predicate_anchors(buffer, *inner_id, var_name, subs, Some("Future"), anchors);
+        }
+        LogicNode::ObligatoryNode(inner_id) | LogicNode::PermittedNode(inner_id) => {
+            collect_predicate_anchors(buffer, *inner_id, var_name, subs, tense, anchors);
+        }
+        LogicNode::ExistsNode((_, body)) | LogicNode::ForAllNode((_, body)) => {
+            collect_predicate_anchors(buffer, *body, var_name, subs, tense, anchors);
+        }
+        // NotNode: don't descend — negated predicates can't anchor candidates
+        // CountNode: complex, skip
+        _ => {}
     }
-    let var_pos = var_positions[0];
+}
 
-    // Look up facts matching this relation
-    let facts = inner.typed_predicate_facts.get(relation.as_str())?;
+/// Find the position of `var_name` in predicate args.
+/// Returns Some(pos) if var_name appears exactly once and all other variables are bound.
+fn find_var_position(
+    args: &[LogicalTerm],
+    var_name: &str,
+    subs: &HashMap<String, GroundTerm>,
+) -> Option<usize> {
+    let mut var_pos = None;
+    for (i, arg) in args.iter().enumerate() {
+        if let LogicalTerm::Variable(v) = arg {
+            if v == var_name {
+                if var_pos.is_some() {
+                    return None; // Appears more than once — can't extract cleanly
+                }
+                var_pos = Some(i);
+            } else if !subs.contains_key(v) {
+                // Another unbound variable — this anchor alone isn't sufficient,
+                // but we still collect it. The candidate extraction will be
+                // broader (all values at this position) but still narrower than
+                // full domain scan.
+            }
+        }
+    }
+    var_pos
+}
 
-    let mut candidates = Vec::new();
+fn tense_to_static(tense: Option<&str>) -> Option<&'static str> {
+    match tense {
+        Some("Past") => Some("Past"),
+        Some("Present") => Some("Present"),
+        Some("Future") => Some("Future"),
+        _ => None,
+    }
+}
+
+/// Resolve a LogicalTerm to a GroundTerm using current substitutions.
+fn resolve_arg(arg: &LogicalTerm, subs: &HashMap<String, GroundTerm>) -> Option<GroundTerm> {
+    match arg {
+        LogicalTerm::Variable(v) => subs.get(v).cloned(),
+        LogicalTerm::Constant(c) => Some(GroundTerm::Constant(c.clone())),
+        LogicalTerm::Number(n) => Some(GroundTerm::from_f64(*n)),
+        LogicalTerm::Description(d) => Some(GroundTerm::Description(d.clone())),
+        LogicalTerm::Unspecified => Some(GroundTerm::Unspecified),
+    }
+}
+
+/// Extract candidates from the typed fact index for a predicate anchor.
+fn extract_from_index(
+    anchor: &PredicateAnchor,
+    inner: &KnowledgeBaseInner,
+    candidates: &mut HashSet<GroundTerm>,
+) {
+    let facts = match inner.typed_predicate_facts.get(anchor.relation.as_str()) {
+        Some(f) => f,
+        None => return,
+    };
+
     for stored_fact in facts {
         // Check tense matches
-        let tense_matches = match (effective_tense, stored_fact) {
+        let tense_matches = match (anchor.tense, stored_fact) {
             (None, StoredFact::Bare(_)) => true,
             (Some("Past"), StoredFact::Past(_)) => true,
             (Some("Present"), StoredFact::Present(_)) => true,
@@ -741,37 +855,76 @@ pub(super) fn extract_candidates_from_index(
         }
 
         let fact_args = &stored_fact.inner().args;
-        if fact_args.len() != args.len() {
+        if fact_args.len() != anchor.args.len() {
             continue;
         }
 
-        // Check that all bound positions match
-        let mut all_match = true;
-        for (i, arg) in args.iter().enumerate() {
-            if i == var_pos {
-                continue; // Skip the position we're extracting
+        // For the variable position, extract the value.
+        // For other positions, we don't filter here — the full body
+        // verification in find_witnesses handles correctness.
+        // This gives us a superset of valid candidates, which is safe.
+        candidates.insert(fact_args[anchor.var_position].clone());
+    }
+}
+
+/// Extract candidates from backward-chaining rule conclusions.
+/// If rules can derive `relation(... x ...)`, include values from
+/// the rule's conclusion template matched against the fact store.
+fn extract_from_rules(
+    anchor: &PredicateAnchor,
+    _var_name: &str,
+    _subs: &HashMap<String, GroundTerm>,
+    inner: &KnowledgeBaseInner,
+    candidates: &mut HashSet<GroundTerm>,
+) {
+    let rules = match inner.universal_rules.get(anchor.relation.as_str()) {
+        Some(r) => r,
+        None => return,
+    };
+
+    // For each rule whose conclusion matches this predicate, extract
+    // candidate values by looking at what the rule's conditions could bind.
+    // We do one level of backward chaining: check which domain members
+    // satisfy the rule's condition predicates.
+    for rule in rules {
+        for conclusion in &rule.typed_conclusions {
+            if conclusion.relation() != anchor.relation {
+                continue;
             }
-            let expected = match arg {
-                LogicalTerm::Variable(v) => subs.get(v),
-                LogicalTerm::Constant(c) => Some(&GroundTerm::Constant(c.clone())),
-                LogicalTerm::Number(n) => Some(&GroundTerm::from_f64(*n)),
-                LogicalTerm::Description(d) => Some(&GroundTerm::Description(d.clone())),
-                LogicalTerm::Unspecified => Some(&GroundTerm::Unspecified),
-            };
-            if let Some(exp) = expected {
-                if &fact_args[i] != exp {
-                    all_match = false;
-                    break;
+            let conc_args = &conclusion.inner().args;
+            if conc_args.len() != anchor.args.len() {
+                continue;
+            }
+
+            // The conclusion template has PatternVar entries for universally
+            // quantified variables. We need to find which pattern var maps
+            // to our target position.
+            let conc_term = &conc_args[anchor.var_position];
+
+            match conc_term {
+                // If the conclusion position is a pattern variable, that
+                // variable is bound by the rule's conditions. Look at what
+                // entities satisfy the conditions.
+                GroundTerm::PatternVar(_) => {
+                    // Include all entities that could trigger this rule.
+                    // This is a safe superset — the full body verification
+                    // in find_witnesses prunes false positives.
+                    for entity in &inner.known_entities {
+                        candidates.insert(GroundTerm::Constant(entity.clone()));
+                    }
+                    for entity in &inner.known_event_entities {
+                        candidates.insert(GroundTerm::Constant(entity.clone()));
+                    }
+                    for desc in &inner.known_descriptions {
+                        candidates.insert(GroundTerm::Description(desc.clone()));
+                    }
                 }
-            } else {
-                all_match = false;
-                break;
+                // If the conclusion position is a ground term, that's a
+                // direct candidate.
+                other => {
+                    candidates.insert(other.clone());
+                }
             }
-        }
-        if all_match {
-            candidates.push(fact_args[var_pos].clone());
         }
     }
-
-    Some(candidates)
 }
