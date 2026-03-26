@@ -270,7 +270,7 @@ pub(super) fn compile_forall_to_rule(
     node_id: u32,
     skolem_subs: &HashMap<String, GroundTerm>,
     inner: &mut KnowledgeBaseInner,
-) -> Result<(), String> {
+) {
     let mut universals: Vec<String> = Vec::new();
     let mut current = node_id;
     loop {
@@ -487,7 +487,6 @@ pub(super) fn compile_forall_to_rule(
         }
     }
 
-    Ok(())
 }
 
 pub(super) fn generate_count_extra_witnesses(

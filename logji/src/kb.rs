@@ -593,7 +593,7 @@ pub(super) fn register_ground_material_conditional(
 
 /// Process a logic buffer into the knowledge base without recording in the fact registry.
 /// Used by both initial assertion and rebuild-on-retract replay.
-pub(super) fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) -> Result<(), String> {
+pub(super) fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) {
     for &root_id in &logic.roots {
         // Phase 1: Collect existential variables for Skolemization.
         let mut skolem_subs = HashMap::new();
@@ -642,7 +642,7 @@ pub(super) fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuf
                 }
             }
             collect_and_note_constants(logic, root_id, inner);
-            compile_forall_to_rule(logic, root_id, &skolem_subs, inner)?;
+            compile_forall_to_rule(logic, root_id, &skolem_subs, inner);
         } else {
             // ═══ GROUND FORMULA PATH ═══
             for (var, gt) in &skolem_subs {
@@ -672,6 +672,106 @@ pub(super) fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuf
         // Phase 3: Generate extra witnesses for Count quantifiers (n > 1)
         generate_count_extra_witnesses(logic, root_id, &skolem_subs, inner);
     }
+}
 
-    Ok(())
+/// Extract candidate GroundTerm values for an existential variable from the
+/// predicate index. Returns `Some(candidates)` when the body is a simple
+/// predicate with exactly one unbound position matching `var_name` (the rest
+/// are bound via `subs`). Returns `None` if the pattern doesn't apply
+/// (complex body, multiple unbound positions, etc.) — caller falls back to
+/// brute-force enumeration.
+pub(super) fn extract_candidates_from_index(
+    buffer: &LogicBuffer,
+    body_id: u32,
+    var_name: &str,
+    subs: &HashMap<String, GroundTerm>,
+    inner: &KnowledgeBaseInner,
+    tense: Option<&str>,
+) -> Option<Vec<GroundTerm>> {
+    let node = &buffer.nodes[body_id as usize];
+
+    // Unwrap tense wrappers to reach the predicate
+    let (effective_node, effective_tense) = match node {
+        LogicNode::PastNode(inner_id) => (&buffer.nodes[*inner_id as usize], Some("Past")),
+        LogicNode::PresentNode(inner_id) => (&buffer.nodes[*inner_id as usize], Some("Present")),
+        LogicNode::FutureNode(inner_id) => (&buffer.nodes[*inner_id as usize], Some("Future")),
+        _ => (node, tense),
+    };
+
+    let (relation, args) = match effective_node {
+        LogicNode::Predicate((rel, args)) => (rel, args),
+        _ => return None, // Not a simple predicate body — fall back
+    };
+
+    // Find the position of var_name in the args; all others must be bound
+    let mut var_positions = Vec::new();
+    for (i, arg) in args.iter().enumerate() {
+        match arg {
+            LogicalTerm::Variable(v) => {
+                if v == var_name {
+                    var_positions.push(i);
+                } else if !subs.contains_key(v) {
+                    return None; // Another unbound variable — can't narrow
+                }
+            }
+            _ => {} // Constants, numbers, etc. are bound
+        }
+    }
+
+    if var_positions.len() != 1 {
+        return None; // Variable appears 0 or 2+ times — fall back
+    }
+    let var_pos = var_positions[0];
+
+    // Look up facts matching this relation
+    let facts = inner.typed_predicate_facts.get(relation.as_str())?;
+
+    let mut candidates = Vec::new();
+    for stored_fact in facts {
+        // Check tense matches
+        let tense_matches = match (effective_tense, stored_fact) {
+            (None, StoredFact::Bare(_)) => true,
+            (Some("Past"), StoredFact::Past(_)) => true,
+            (Some("Present"), StoredFact::Present(_)) => true,
+            (Some("Future"), StoredFact::Future(_)) => true,
+            _ => false,
+        };
+        if !tense_matches {
+            continue;
+        }
+
+        let fact_args = &stored_fact.inner().args;
+        if fact_args.len() != args.len() {
+            continue;
+        }
+
+        // Check that all bound positions match
+        let mut all_match = true;
+        for (i, arg) in args.iter().enumerate() {
+            if i == var_pos {
+                continue; // Skip the position we're extracting
+            }
+            let expected = match arg {
+                LogicalTerm::Variable(v) => subs.get(v),
+                LogicalTerm::Constant(c) => Some(&GroundTerm::Constant(c.clone())),
+                LogicalTerm::Number(n) => Some(&GroundTerm::from_f64(*n)),
+                LogicalTerm::Description(d) => Some(&GroundTerm::Description(d.clone())),
+                LogicalTerm::Unspecified => Some(&GroundTerm::Unspecified),
+            };
+            if let Some(exp) = expected {
+                if &fact_args[i] != exp {
+                    all_match = false;
+                    break;
+                }
+            } else {
+                all_match = false;
+                break;
+            }
+        }
+        if all_match {
+            candidates.push(fact_args[var_pos].clone());
+        }
+    }
+
+    Some(candidates)
 }

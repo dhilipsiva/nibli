@@ -25,6 +25,11 @@ pub(super) fn check_formula_holds(
             && check_formula_holds(buffer, *r, subs, inner, tense)?),
         LogicNode::OrNode((l, r)) => Ok(check_formula_holds(buffer, *l, subs, inner, tense)?
             || check_formula_holds(buffer, *r, subs, inner, tense)?),
+        // Negation-as-failure (NAF): ¬P holds when P cannot be proved.
+        // Sound for the current system because Lojban input produces only ground
+        // facts and universal Horn rules — no recursive negation or circular
+        // definitions. The program is stratifiable by construction (facts at
+        // stratum 0, rules at stratum 1).
         LogicNode::NotNode(inner_node) => Ok(!check_formula_holds(
             buffer,
             *inner_node,
@@ -216,6 +221,29 @@ pub(super) fn find_witnesses(
     match &buffer.nodes[node_id as usize] {
         LogicNode::ExistsNode((v, body)) => {
             let mut results = Vec::new();
+
+            // Fast path: index-driven candidate narrowing.
+            // If the body is a simple predicate with exactly one unbound
+            // position for this variable, extract matching values directly
+            // from the predicate index instead of enumerating all domain
+            // members.
+            if let Some(candidates) =
+                extract_candidates_from_index(buffer, *body, v, subs, inner, tense)
+            {
+                for candidate in candidates {
+                    let mut new_subs = subs.clone();
+                    new_subs.insert(v.clone(), candidate.clone());
+                    let sub_results =
+                        find_witnesses(buffer, *body, &mut new_subs, inner, tense)?;
+                    for mut bindings in sub_results {
+                        bindings.push((v.clone(), candidate.clone()));
+                        results.push(bindings);
+                    }
+                }
+                return Ok(results);
+            }
+
+            // Slow path: brute-force enumeration of all domain members.
             let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
             for member in &members {
                 let mut new_subs = subs.clone();

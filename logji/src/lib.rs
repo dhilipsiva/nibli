@@ -68,19 +68,17 @@ impl KnowledgeBase {
     /// Stores the buffer in the fact registry and returns a unique fact ID.
     fn assert_fact_inner(&self, logic: LogicBuffer, label: String) -> Result<u64, String> {
         let mut inner = self.inner.borrow_mut();
-        let mut staged = inner.clone();
-        let id = staged.fresh_fact_id();
-        process_assertion(&mut staged, &logic)?;
-        staged.fact_registry.insert(
+        let id = inner.fresh_fact_id();
+        process_assertion(&mut inner, &logic);
+        inner.fact_registry.insert(
             id,
             FactRecord {
                 id,
-                buffer: logic.clone(),
+                buffer: logic,
                 label,
                 retracted: false,
             },
         );
-        *inner = staged;
         Ok(id)
     }
 
@@ -93,22 +91,20 @@ impl KnowledgeBase {
         id: u64,
     ) -> Result<(), String> {
         let mut inner = self.inner.borrow_mut();
-        let mut staged = inner.clone();
         // Advance counter past the provided ID.
-        if id >= staged.fact_counter {
-            staged.fact_counter = id + 1;
+        if id >= inner.fact_counter {
+            inner.fact_counter = id + 1;
         }
-        process_assertion(&mut staged, &logic)?;
-        staged.fact_registry.insert(
+        process_assertion(&mut inner, &logic);
+        inner.fact_registry.insert(
             id,
             FactRecord {
                 id,
-                buffer: logic.clone(),
+                buffer: logic,
                 label,
                 retracted: false,
             },
         );
-        *inner = staged;
         Ok(())
     }
 
@@ -152,7 +148,7 @@ impl KnowledgeBase {
         // Replay with diagnostic output suppressed
         inner.rebuilding = true;
         for buf in &buffers {
-            process_assertion(inner, buf)?;
+            process_assertion(inner, buf);
         }
         inner.rebuilding = false;
         Ok(())
