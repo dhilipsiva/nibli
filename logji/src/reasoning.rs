@@ -1,5 +1,23 @@
 use super::*;
 
+/// Temporarily bind `key` to `value` in `subs`, run `f`, then restore the
+/// previous binding (or remove if there was none). Avoids the repeated
+/// save/restore boilerplate across quantifier evaluation.
+fn with_sub<T>(
+    subs: &mut HashMap<String, GroundTerm>,
+    key: &str,
+    value: GroundTerm,
+    f: impl FnOnce(&mut HashMap<String, GroundTerm>) -> T,
+) -> T {
+    let prev = subs.insert(key.to_string(), value);
+    let result = f(subs);
+    match prev {
+        Some(p) => { subs.insert(key.to_string(), p); }
+        None => { subs.remove(key); }
+    }
+    result
+}
+
 /// Build the full candidate vector for unbound event variable search:
 /// all typed domain members + SkolemFn witness terms from the registry.
 fn build_all_candidates(inner: &KnowledgeBaseInner) -> Vec<GroundTerm> {
@@ -60,46 +78,28 @@ pub(super) fn check_formula_holds(
                     }
                 }
             }
-            let v_key = v.clone();
-            let prev = subs.remove(&v_key);
             for member in &members {
-                subs.insert(v_key.clone(), member.clone());
-                if check_formula_holds(buffer, *body, subs, inner, tense)? {
-                    match prev {
-                        Some(p) => {
-                            subs.insert(v_key, p);
-                        }
-                        None => {
-                            subs.remove(&v_key);
-                        }
-                    }
+                let holds = with_sub(subs, v, member.clone(), |s| {
+                    check_formula_holds(buffer, *body, s, inner, tense)
+                })?;
+                if holds {
                     return Ok(true);
                 }
             }
-            let entries = &inner.skolem_fn_registry;
-            for entry in &entries {
-                for combo in GroundTermCartesianProduct::new(&members, entry.dep_count) {
-                    let witness = build_skolem_fn_term(&entry.base_name, &combo);
-                    subs.insert(v_key.clone(), witness);
-                    if check_formula_holds(buffer, *body, subs, inner, tense)? {
-                        match prev {
-                            Some(p) => {
-                                subs.insert(v_key, p);
-                            }
-                            None => {
-                                subs.remove(&v_key);
-                            }
-                        }
+            let sk_entries: Vec<(String, usize)> = inner
+                .skolem_fn_registry
+                .iter()
+                .map(|e| (e.base_name.clone(), e.dep_count))
+                .collect();
+            for (base_name, dep_count) in &sk_entries {
+                for combo in GroundTermCartesianProduct::new(&members, *dep_count) {
+                    let witness = build_skolem_fn_term(base_name, &combo);
+                    let holds = with_sub(subs, v, witness, |s| {
+                        check_formula_holds(buffer, *body, s, inner, tense)
+                    })?;
+                    if holds {
                         return Ok(true);
                     }
-                }
-            }
-            match prev {
-                Some(p) => {
-                    subs.insert(v_key, p);
-                }
-                None => {
-                    subs.remove(&v_key);
                 }
             }
             Ok(false)
@@ -116,28 +116,12 @@ pub(super) fn check_formula_holds(
                     return Ok(batch_results.iter().all(|r| *r));
                 }
             }
-            let v_key = v.clone();
-            let prev = subs.remove(&v_key);
             for member in &members {
-                subs.insert(v_key.clone(), member.clone());
-                if !check_formula_holds(buffer, *body, subs, inner, tense)? {
-                    match prev {
-                        Some(p) => {
-                            subs.insert(v_key, p);
-                        }
-                        None => {
-                            subs.remove(&v_key);
-                        }
-                    }
+                let holds = with_sub(subs, v, member.clone(), |s| {
+                    check_formula_holds(buffer, *body, s, inner, tense)
+                })?;
+                if !holds {
                     return Ok(false);
-                }
-            }
-            match prev {
-                Some(p) => {
-                    subs.insert(v_key, p);
-                }
-                None => {
-                    subs.remove(&v_key);
                 }
             }
             Ok(true)
@@ -153,20 +137,12 @@ pub(super) fn check_formula_holds(
                 }
             }
             let mut satisfying = 0u32;
-            let v_key = v.clone();
-            let prev = subs.remove(&v_key);
             for member in &members {
-                subs.insert(v_key.clone(), member.clone());
-                if check_formula_holds(buffer, *body, subs, inner, tense)? {
+                let holds = with_sub(subs, v, member.clone(), |s| {
+                    check_formula_holds(buffer, *body, s, inner, tense)
+                })?;
+                if holds {
                     satisfying += 1;
-                }
-            }
-            match prev {
-                Some(p) => {
-                    subs.insert(v_key, p);
-                }
-                None => {
-                    subs.remove(&v_key);
                 }
             }
             Ok(satisfying == *count)
@@ -234,7 +210,7 @@ pub(super) fn find_witnesses(
                     let members = inner.all_typed_domain_members();
                     let entries = &inner.skolem_fn_registry;
                     let mut all = indexed;
-                    for entry in &entries {
+                    for entry in entries {
                         for combo in GroundTermCartesianProduct::new(members, entry.dep_count) {
                             all.push(build_skolem_fn_term(&entry.base_name, &combo));
                         }
@@ -246,7 +222,7 @@ pub(super) fn find_witnesses(
                     let members = inner.all_typed_domain_members();
                     let entries = &inner.skolem_fn_registry;
                     let mut all: Vec<GroundTerm> = members.to_vec();
-                    for entry in &entries {
+                    for entry in entries {
                         for combo in GroundTermCartesianProduct::new(members, entry.dep_count) {
                             all.push(build_skolem_fn_term(&entry.base_name, &combo));
                         }
@@ -1213,10 +1189,14 @@ pub(super) fn check_formula_holds_traced(
                     return Ok((true, idx));
                 }
             }
-            let entries = &inner.skolem_fn_registry;
-            for entry in &entries {
-                for combo in GroundTermCartesianProduct::new(&members, entry.dep_count) {
-                    let witness = build_skolem_fn_term(&entry.base_name, &combo);
+            let sk_entries: Vec<(String, usize)> = inner
+                .skolem_fn_registry
+                .iter()
+                .map(|e| (e.base_name.clone(), e.dep_count))
+                .collect();
+            for (base_name, dep_count) in &sk_entries {
+                for combo in GroundTermCartesianProduct::new(&members, *dep_count) {
+                    let witness = build_skolem_fn_term(base_name, &combo);
                     let mut new_subs = subs.clone();
                     new_subs.insert(v.clone(), witness.clone());
                     if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)? {

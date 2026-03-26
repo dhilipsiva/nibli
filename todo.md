@@ -8,9 +8,7 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 3: Code Quality
 
-1. **Save/restore pattern for substitutions repeated 6+ times** — The `let prev = subs.remove(&key); ... subs.insert(key, member); ... match prev { restore }` pattern is duplicated across `check_formula_holds`, `check_formula_holds_traced`, and `find_witnesses`. Extract to a scoped helper or macro. ~60 lines saved.
-
-6. **assert_fact_inner returns Result but never errors** — Misleading signature. `process_assertion` is infallible, so the Result wrapper on `assert_fact_inner` / `assert_fact_with_id` is dead code. Change to return `u64` directly. ~10 lines in `logji/src/lib.rs`.
+1. **assert_fact_inner returns Result but never errors** — Misleading signature. `process_assertion` is infallible, so the Result wrapper on `assert_fact_inner` / `assert_fact_with_id` is dead code. Change to return `u64` directly. ~10 lines in `logji/src/lib.rs`.
 
 ## Tier 4: Test Coverage
 
