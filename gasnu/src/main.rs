@@ -76,11 +76,25 @@ struct HostState {
     limits: StoreLimits,
     backend_addr: Option<String>,
     backend_conn: Option<BufReader<TcpStream>>,
+    /// Timestamp of last backend dispatch. Used for idle timeout cleanup.
+    backend_last_used: Option<std::time::Instant>,
 }
 
 impl HostState {
     /// Lazily connect to the external compute backend.
+    /// Drops idle connections older than NIBLI_BACKEND_IDLE_TIMEOUT_SECS (default: 300s).
     fn connect_backend(&mut self) -> std::result::Result<(), String> {
+        // Drop idle connections
+        if let (Some(conn_time), Some(_)) = (self.backend_last_used, &self.backend_conn) {
+            let idle_timeout = std::env::var("NIBLI_BACKEND_IDLE_TIMEOUT_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(300u64);
+            if conn_time.elapsed().as_secs() > idle_timeout {
+                self.backend_conn = None;
+                self.backend_last_used = None;
+            }
+        }
         if self.backend_conn.is_some() {
             return Ok(());
         }
@@ -190,6 +204,7 @@ impl HostState {
 
     fn try_dispatch(&mut self, payload: &str) -> std::result::Result<bool, String> {
         self.connect_backend()?;
+        self.backend_last_used = Some(std::time::Instant::now());
         let reader = self.backend_conn.as_mut().ok_or("No backend connection")?;
 
         // Send request
@@ -621,6 +636,7 @@ fn main() -> Result<()> {
             .build(),
         backend_addr,
         backend_conn: None,
+        backend_last_used: None,
     };
     let mut store = Store::new(&engine, state);
     store.set_fuel(fuel_budget)?;
@@ -1286,6 +1302,7 @@ mod tests {
                 .build(),
             backend_addr: addr,
             backend_conn: None,
+        backend_last_used: None,
         }
     }
 
@@ -1505,6 +1522,7 @@ mod tests {
             limits,
             backend_addr: None,
             backend_conn: None,
+        backend_last_used: None,
         };
     }
 
@@ -1524,6 +1542,7 @@ mod tests {
                 .build(),
             backend_addr: None,
             backend_conn: None,
+        backend_last_used: None,
         };
         let mut store = Store::new(&engine, state);
         store.set_fuel(1_000_000).unwrap();
