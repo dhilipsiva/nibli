@@ -17,7 +17,12 @@ use tavla::{Envelope, EpistemicStance, GossipOp, VectorClock, WireMessage};
 
 // ── Constants ──
 
-const MAX_RETRIES: usize = 3;
+fn max_retries() -> usize {
+    std::env::var("NIBLI_AGENT_MAX_RETRIES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(3)
+}
 
 const TRANSLATE_PROMPT: &str = r#"You are a Lojban translator. Translate the English sentence to grammatically correct Lojban. Output ONLY the Lojban sentence on a single line, nothing else. No markdown, no code fences, no explanations.
 
@@ -449,7 +454,8 @@ async fn translate_validate_gossip(
     extra_topics: &[String],
 ) -> Option<Envelope> {
     let mut last_error = String::new();
-    for attempt in 1..=MAX_RETRIES {
+    let retries = max_retries();
+    for attempt in 1..=retries {
         // On retry, prepend the error feedback so the LLM can correct.
         let prompt = if attempt == 1 {
             english.to_string()
@@ -460,7 +466,7 @@ async fn translate_validate_gossip(
         };
         match llm.translate(&prompt).await {
             Ok(candidate) => {
-                println!("[{agent_name}] Candidate ({attempt}/{MAX_RETRIES}): \"{candidate}\"");
+                println!("[{agent_name}] Candidate ({attempt}/{retries}): \"{candidate}\"");
                 match validate_lojban(engine, &candidate) {
                     Ok(()) => {
                         println!("[{agent_name}] Validated (gerna pass)");
@@ -485,7 +491,7 @@ async fn translate_validate_gossip(
             }
         }
     }
-    println!("[{agent_name}] Failed after {MAX_RETRIES} attempts");
+    println!("[{agent_name}] Failed after {retries} attempts");
     None
 }
 

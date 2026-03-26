@@ -361,6 +361,8 @@ pub(super) struct KnowledgeBaseInner {
     /// Cached typed domain members — invalidated when entities/descriptions change.
     pub(super) typed_domain_members_cache: Vec<GroundTerm>,
     pub(super) domain_members_dirty: bool,
+    /// Maximum backward-chaining depth for inference (default: 10).
+    pub(super) max_chain_depth: usize,
 }
 
 impl KnowledgeBaseInner {
@@ -380,6 +382,7 @@ impl KnowledgeBaseInner {
             rebuilding: false,
             typed_domain_members_cache: Vec::new(),
             domain_members_dirty: true,
+            max_chain_depth: 10,
         }
     }
 

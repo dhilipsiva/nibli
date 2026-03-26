@@ -6,7 +6,6 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 5: Maintainability
 
-12. **Make hardcoded constants configurable** — Backward-chaining depth limit (10), UI GraphQL URL, MAX_OUTPUT_ENTRIES (200), polling intervals. Some already configurable (fuel, memory); pattern is inconsistent.
 
 13. **WIT schema versioning** — No migration path for WIT interface evolution.
 

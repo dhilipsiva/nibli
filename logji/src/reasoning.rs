@@ -284,7 +284,6 @@ pub(super) fn find_witnesses(
     }
 }
 
-const MAX_BACKWARD_CHAIN_DEPTH: usize = 10;
 
 // ─── Typed Backward-Chaining (Phase 4-5b) ────────────────────────
 //
@@ -367,7 +366,7 @@ pub(super) fn try_backward_chain_typed(
     depth: usize,
     visited: &mut HashSet<StoredFact>,
 ) -> bool {
-    if depth >= MAX_BACKWARD_CHAIN_DEPTH {
+    if depth >= inner.max_chain_depth {
         return false;
     }
     if !visited.insert(fact.clone()) {
@@ -688,7 +687,7 @@ pub(super) fn trace_predicate_provenance_typed(
         return idx;
     }
 
-    if depth < MAX_BACKWARD_CHAIN_DEPTH {
+    if depth < inner.max_chain_depth {
         if let Some(idx) = try_backward_chain_traced_typed(fact, inner, steps, depth, memo) {
             memo.insert(display, idx);
             return idx;

@@ -91,10 +91,20 @@ impl HostState {
         let stream =
             TcpStream::connect(addr).map_err(|e| format!("Backend connect to {}: {}", addr, e))?;
         stream
-            .set_read_timeout(Some(Duration::from_secs(10)))
+            .set_read_timeout(Some(Duration::from_secs(
+                std::env::var("NIBLI_BACKEND_READ_TIMEOUT_SECS")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(10),
+            )))
             .map_err(|e| format!("Set read timeout: {}", e))?;
         stream
-            .set_write_timeout(Some(Duration::from_secs(5)))
+            .set_write_timeout(Some(Duration::from_secs(
+                std::env::var("NIBLI_BACKEND_WRITE_TIMEOUT_SECS")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(5),
+            )))
             .map_err(|e| format!("Set write timeout: {}", e))?;
         stream
             .set_nodelay(true)
