@@ -179,10 +179,6 @@ pub fn display_term(term: &EngineLogicalTerm) -> String {
     term_to_json(term).trace_display()
 }
 
-fn debug_logic(buffer: &logji_logic::LogicBuffer) -> String {
-    logji::repr::debug_logic(buffer)
-}
-
 // ═══════════════════════════════════════════════════════════════════════
 // ENGINE WRAPPER
 // ═══════════════════════════════════════════════════════════════════════
@@ -480,7 +476,7 @@ impl NibliEngine {
 
     pub fn compile_debug(&self, text: &str) -> Result<String, String> {
         let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
-        Ok(debug_logic(&buf))
+        Ok(logji::repr::debug_logic(&buf))
     }
 
     pub fn list_facts(&self) -> Result<Vec<EngineFactSummary>, String> {

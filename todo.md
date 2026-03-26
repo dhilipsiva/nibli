@@ -4,9 +4,7 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 1: Dead Code Cleanup (Low Effort, High Impact)
 
-1. **Inline thin wrapper debug_logic()** — `lasna/src/lib.rs` and `nibli-engine/src/lib.rs` each have a one-liner `debug_logic()` that just calls `logji::repr::debug_logic()`. Inline at call sites.
-
-5. **Flatten nibli-engine module aliases** — `mod gerna_err`, `mod smuni_err`, `mod logji_logic`, `mod logji_err` are unnecessary indirection. Use direct paths.
+1. **Flatten nibli-engine module aliases** — `mod gerna_err`, `mod smuni_err`, `mod logji_logic`, `mod logji_err` are unnecessary indirection. Use direct paths.
 
 ## Tier 5: Maintainability
 

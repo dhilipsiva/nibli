@@ -605,10 +605,6 @@ fn compile_pipeline(
     Ok((buf, new_snapshot, parse_warnings))
 }
 
-fn debug_logic(buffer: &logji_logic::LogicBuffer) -> String {
-    logji::repr::debug_logic(buffer)
-}
-
 // ─── WIT exports ───
 
 impl Guest for LasnaPipeline {
@@ -692,7 +688,7 @@ impl GuestSession for Session {
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),
         )?;
-        Ok(debug_logic(&buf))
+        Ok(logji::repr::debug_logic(&buf))
     }
 
     fn reset_kb(&self) -> Result<(), export_err::NibliError> {
