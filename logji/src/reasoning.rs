@@ -76,7 +76,7 @@ pub(super) fn check_formula_holds(
                     return Ok(true);
                 }
             }
-            let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
+            let entries = &inner.skolem_fn_registry;
             for entry in &entries {
                 for combo in GroundTermCartesianProduct::new(&members, entry.dep_count) {
                     let witness = build_skolem_fn_term(&entry.base_name, &combo);
@@ -232,7 +232,7 @@ pub(super) fn find_witnesses(
                     // Also include SkolemFn witnesses — these may not appear
                     // in the index but are valid existential witnesses.
                     let members = inner.all_typed_domain_members();
-                    let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
+                    let entries = &inner.skolem_fn_registry;
                     let mut all = indexed;
                     for entry in &entries {
                         for combo in GroundTermCartesianProduct::new(members, entry.dep_count) {
@@ -244,7 +244,7 @@ pub(super) fn find_witnesses(
                     // No positive anchor — must enumerate all domain members.
                     // This only happens for bodies like ∃x.¬P(x).
                     let members = inner.all_typed_domain_members();
-                    let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
+                    let entries = &inner.skolem_fn_registry;
                     let mut all: Vec<GroundTerm> = members.to_vec();
                     for entry in &entries {
                         for combo in GroundTermCartesianProduct::new(members, entry.dep_count) {
@@ -1213,7 +1213,7 @@ pub(super) fn check_formula_holds_traced(
                     return Ok((true, idx));
                 }
             }
-            let entries: Vec<SkolemFnEntry> = inner.skolem_fn_registry.clone();
+            let entries = &inner.skolem_fn_registry;
             for entry in &entries {
                 for combo in GroundTermCartesianProduct::new(&members, entry.dep_count) {
                     let witness = build_skolem_fn_term(&entry.base_name, &combo);
