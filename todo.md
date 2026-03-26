@@ -6,4 +6,3 @@ Ordered by impact, priority, and dependency.
 
 14. **Fine-grained server locking** — Replace `Arc<Mutex<>>` with `RwLock` for read-heavy gossip queries. Blocked by rustc ICE in nibli-server (check_mod_deathness panic prevents compilation with RwLock). Retry after rustc upgrade past 1.94.0.
 
-15. **Gossip envelope expiration** — CRDT log is append-only with no TTL.

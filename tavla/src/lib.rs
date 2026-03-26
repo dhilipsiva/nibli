@@ -438,6 +438,39 @@ impl CrdtLog {
             env.quarantined = quarantined;
         }
     }
+
+    /// Remove envelopes with timestamps strictly before `cutoff` (ISO 8601).
+    /// Expired assertion IDs are added to tombstones so they can't be resurrected
+    /// by a peer that still has them. Returns the number of envelopes removed.
+    pub fn expire_before(&mut self, cutoff: &str) -> usize {
+        let expired_ids: Vec<EnvelopeId> = self
+            .order
+            .iter()
+            .filter_map(|id| {
+                let env = self.envelopes.get(id)?;
+                if env.timestamp.as_str() < cutoff {
+                    Some(id.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let count = expired_ids.len();
+        for id in &expired_ids {
+            if let Some(env) = self.envelopes.remove(id) {
+                // Tombstone expired assertions so they don't resurrect on merge
+                match &env.op {
+                    GossipOp::AssertLojban(_) | GossipOp::AssertDirect { .. } => {
+                        self.tombstones.insert(id.clone());
+                    }
+                    GossipOp::Retract(_) => {}
+                }
+            }
+        }
+        self.order.retain(|id| self.envelopes.contains_key(id));
+        count
+    }
 }
 
 impl Default for CrdtLog {
@@ -1110,6 +1143,18 @@ impl GossipNode {
             }
         }
         println!("[tavla] KB rebuilt from CRDT log ({count} active assertions, {errors} errors)");
+    }
+
+    /// Expire envelopes older than `ttl` and rebuild the KB.
+    /// Returns the number of expired envelopes.
+    pub fn expire_old_envelopes(&mut self, ttl: chrono::Duration) -> usize {
+        let cutoff = (chrono::Utc::now() - ttl).to_rfc3339();
+        let expired = self.crdt_log.expire_before(&cutoff);
+        if expired > 0 {
+            println!("[tavla] Expired {expired} envelopes (TTL: {}s)", ttl.num_seconds());
+            self.rebuild_kb();
+        }
+        expired
     }
 
     /// Re-evaluate quarantined envelopes after trust changes.

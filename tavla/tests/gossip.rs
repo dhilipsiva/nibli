@@ -2,9 +2,10 @@
 //!
 //! Tests CRDT log, vector clocks, anti-entropy sync,
 //! retraction tombstones, KB rebuild, epidemic propagation,
-//! trust-as-knowledge, and contradiction detection.
+//! trust-as-knowledge, contradiction detection, and envelope expiration.
 
 use tavla::{EpistemicStance, GossipNode, TrustPolicy, VectorClock};
+use chrono;
 
 // ─── Basic gossip (from Prompt 1) ────────────────────────────────
 
@@ -1050,4 +1051,77 @@ fn partition_recovery_tombstone_via_sync() {
         0,
         "B should have 0 active after partition recovery sync"
     );
+}
+
+// ─── Envelope expiration ──────────────────────────────────────────
+
+/// CrdtLog::expire_before removes old envelopes and tombstones expired assertions.
+#[test]
+fn expire_before_removes_old_envelopes() {
+    let mut log = tavla::CrdtLog::new();
+
+    // Insert an old envelope and a recent one.
+    let old_env = tavla::Envelope {
+        id: "old1".to_string(),
+        author: "alis".to_string(),
+        clock: VectorClock::new(),
+        op: tavla::GossipOp::AssertLojban("la .adam. cu gerku".to_string()),
+        stance: EpistemicStance::Deduced,
+        topics: vec![],
+        timestamp: "2020-01-01T00:00:00Z".to_string(),
+        sig: vec![],
+        pub_key: vec![],
+        quarantined: false,
+    };
+    let recent_env = tavla::Envelope {
+        id: "recent1".to_string(),
+        author: "alis".to_string(),
+        clock: VectorClock::new(),
+        op: tavla::GossipOp::AssertLojban("la .adam. cu danlu".to_string()),
+        stance: EpistemicStance::Deduced,
+        topics: vec![],
+        timestamp: "2099-01-01T00:00:00Z".to_string(),
+        sig: vec![],
+        pub_key: vec![],
+        quarantined: false,
+    };
+    log.insert(old_env);
+    log.insert(recent_env);
+    assert_eq!(log.len(), 2);
+
+    // Expire everything before 2025.
+    let expired = log.expire_before("2025-01-01T00:00:00Z");
+    assert_eq!(expired, 1, "should expire 1 old envelope");
+    assert_eq!(log.len(), 1, "should have 1 envelope remaining");
+
+    // The old assertion should be tombstoned.
+    assert!(
+        log.tombstones.contains("old1"),
+        "expired assertion should be tombstoned"
+    );
+
+    // The recent envelope should still be active.
+    let active = log.active_assertions();
+    assert_eq!(active.len(), 1);
+    assert_eq!(active[0].id, "recent1");
+}
+
+/// GossipNode::expire_old_envelopes removes old envelopes and rebuilds KB.
+#[test]
+fn gossip_node_expire_old_envelopes() {
+    let mut node = GossipNode::new("alis");
+
+    // Assert two facts.
+    node.assert_local("la .adam. cu gerku").unwrap();
+    node.assert_local("la .adam. cu danlu").unwrap();
+    assert_eq!(node.active_count(), 2);
+
+    // Expire with a TTL of 0 seconds — everything should expire.
+    let expired = node.expire_old_envelopes(chrono::Duration::seconds(0));
+    assert_eq!(expired, 2, "both envelopes should expire with 0s TTL");
+    assert_eq!(node.active_count(), 0, "no active assertions after expiry");
+
+    // KB should reflect the expiration.
+    let (holds, _, _) = node.query_with_proof("la .adam. cu gerku").unwrap();
+    assert!(!holds, "expired fact should not hold");
 }
