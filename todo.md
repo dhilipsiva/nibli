@@ -22,4 +22,4 @@ Ordered by impact, priority, and dependency.
 
 ## Others
 
-11. Ensure that the while codebase does not abrubtly panic anywhere (especially in the core engine). I tmust always fail gracefully (atleast ensure it panics with proper messages so debugging becomes easier).
+11. Ensure that the whole codebase does not abrubtly panic anywhere (especially in the core engine). It must always fail gracefully (atleast ensure it panics with proper messages so debugging becomes easier).
