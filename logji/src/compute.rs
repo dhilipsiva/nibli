@@ -1,4 +1,21 @@
 use super::*;
+use std::cell::RefCell;
+
+// ─── Injectable compute dispatch ───
+
+type EvalFn = fn(&str, &[LogicalTerm]) -> Result<bool, String>;
+type BatchEvalFn = fn(&[ComputeRequest]) -> Vec<Result<bool, String>>;
+
+thread_local! {
+    static EVAL_FN: RefCell<Option<EvalFn>> = RefCell::new(None);
+    static BATCH_EVAL_FN: RefCell<Option<BatchEvalFn>> = RefCell::new(None);
+}
+
+/// Register external compute dispatch functions. Called once by the host (lasna or gasnu).
+pub fn register_compute_dispatch(eval: EvalFn, batch_eval: BatchEvalFn) {
+    EVAL_FN.with(|f| *f.borrow_mut() = Some(eval));
+    BATCH_EVAL_FN.with(|f| *f.borrow_mut() = Some(batch_eval));
+}
 
 pub(super) fn extract_num_value(
     term: &LogicalTerm,
@@ -81,50 +98,27 @@ pub(super) fn resolve_args_for_dispatch(
         .collect()
 }
 
-#[cfg(target_arch = "wasm32")]
 pub(super) fn dispatch_to_backend(rel: &str, args: &[LogicalTerm]) -> Result<bool, String> {
-    crate::bindings::lojban::nibli::compute_backend::evaluate(rel, args)
-        .map_err(|e| format!("{}", e))
+    EVAL_FN.with(|f| match *f.borrow() {
+        Some(eval) => eval(rel, args),
+        None => Err("Compute backend not registered".to_string()),
+    })
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-pub(super) fn dispatch_to_backend(_rel: &str, _args: &[LogicalTerm]) -> Result<bool, String> {
-    Err("Compute backend unavailable in native mode".to_string())
+/// Batch compute request.
+pub struct ComputeRequest {
+    pub relation: String,
+    pub args: Vec<LogicalTerm>,
 }
 
-/// Batch compute request (fields read only in WASM target).
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-struct ComputeRequest {
-    relation: String,
-    args: Vec<LogicalTerm>,
-}
-
-#[cfg(target_arch = "wasm32")]
 fn dispatch_batch_to_backend(requests: &[ComputeRequest]) -> Vec<Result<bool, String>> {
-    use crate::bindings::lojban::nibli::compute_backend as cb;
-    let wit_requests: Vec<cb::ComputeRequest> = requests
-        .iter()
-        .map(|r| cb::ComputeRequest {
-            relation: r.relation.clone(),
-            args: r.args.clone(),
-        })
-        .collect();
-    let results = cb::evaluate_batch(&wit_requests);
-    results
-        .into_iter()
-        .map(|r| match r {
-            cb::ComputeResult::Ok(b) => Ok(b),
-            cb::ComputeResult::Err(msg) => Err(msg),
-        })
-        .collect()
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn dispatch_batch_to_backend(requests: &[ComputeRequest]) -> Vec<Result<bool, String>> {
-    requests
-        .iter()
-        .map(|_| Err("Compute backend unavailable in native mode".to_string()))
-        .collect()
+    BATCH_EVAL_FN.with(|f| match *f.borrow() {
+        Some(batch_eval) => batch_eval(requests),
+        None => requests
+            .iter()
+            .map(|_| Err("Compute backend not registered".to_string()))
+            .collect(),
+    })
 }
 
 /// Build a typed StoredFact from resolved LogicalTerm arguments.

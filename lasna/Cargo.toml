@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+gerna = { path = "../gerna" }
+smuni = { path = "../smuni" }
+logji = { path = "../logji" }
 wit-bindgen-rt = "0.44.0"
 
 [package.metadata.component]

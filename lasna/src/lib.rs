@@ -1,34 +1,25 @@
 //! Lasna (fasten/orchestrator) WASM component: chains gerna → smuni → logji.
 //!
-//! Entry point for the `lasna-pipeline` WIT world. Provides a high-level
-//! [`Session`] resource that accepts Lojban text and internally orchestrates
-//! the full pipeline:
-//!
-//! 1. **Parse** — Lojban text → flat AST buffer (with error recovery)
-//! 2. **Compute node injection** — Rewrites registered predicates to `ComputeNode` IR
-//! 3. **Compile** — AST buffer → FOL logic buffer
-//! 4. **Assert/Query** — FOL logic buffer → indexed fact store
-//!
-//! Also handles:
-//! - **go'i pro-bridi resolution** — Replaces `go'i` with a deep clone of the
-//!   previous sentence's selbri via [`SelbriSnapshot`]
-//! - **Compute predicate registry** — Built-in arithmetic (pilji/sumji/dilcu) plus
-//!   user-registered predicates are rewritten to `ComputeNode` before semantic compilation
-//! - **Parse error surfacing** — Non-fatal parse errors are returned as warnings
+//! Single WASM component that calls gerna/smuni/logji as internal Rust crate
+//! dependencies. Provides a high-level [`Session`] resource via the `lasna` WIT
+//! export interface.
 
 #[allow(warnings)]
 mod bindings;
 
+// Lasna's own WIT export types (the boundary we serialize through)
 use bindings::exports::lojban::nibli::lasna::{Guest, GuestSession};
-use bindings::lojban::nibli::ast_types::{
-    AstBuffer, Bridi, ModalTag, RelClause, Selbri, Sentence, Sumti,
-};
-use bindings::lojban::nibli::error_types::{NibliError, SyntaxDetail};
-use bindings::lojban::nibli::logic_types::{
-    FactSummary, LogicBuffer, LogicNode, LogicalTerm, ProofTrace, WitnessBinding,
-};
-use bindings::lojban::nibli::logji::KnowledgeBase;
-use bindings::lojban::nibli::{gerna, smuni};
+use bindings::lojban::nibli::compute_backend as cb;
+use bindings::lojban::nibli::error_types as export_err;
+use bindings::lojban::nibli::logic_types as export_logic;
+
+// Gerna's native AST types (for go'i snapshot)
+use gerna::bindings::lojban::nibli::ast_types as gerna_ast;
+
+// Logji's native types (for KB operations)
+use logji::bindings::exports::lojban::nibli::logji::GuestKnowledgeBase;
+use logji::bindings::lojban::nibli::error_types as logji_err;
+use logji::bindings::lojban::nibli::logic_types as logji_logic;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -38,12 +29,8 @@ use std::collections::HashSet;
 struct LasnaPipeline;
 
 /// A user-facing session wrapping the full gerna → smuni → logji pipeline.
-///
-/// Maintains a knowledge base, compute predicate registry, and go'i pro-bridi
-/// anaphora state. All state is behind `RefCell` for interior mutability
-/// (WIT generates `&self` method signatures).
 pub struct Session {
-    kb: KnowledgeBase,
+    kb: logji::KnowledgeBase,
     compute_predicates: RefCell<HashSet<String>>,
     last_relation: RefCell<Option<SelbriSnapshot>>,
 }
@@ -52,9 +39,9 @@ pub struct Session {
 /// All indices are internal to the snapshot's own vecs.
 #[derive(Clone)]
 struct SelbriSnapshot {
-    selbris: Vec<Selbri>,
-    sumtis: Vec<Sumti>,
-    sentences: Vec<Sentence>,
+    selbris: Vec<gerna_ast::Selbri>,
+    sumtis: Vec<gerna_ast::Sumti>,
+    sentences: Vec<gerna_ast::Sentence>,
     root: u32,
 }
 
@@ -68,14 +55,208 @@ fn default_compute_predicates() -> HashSet<String> {
     set
 }
 
+// ─── Type conversion: logji → lasna export boundary ───
+
+fn convert_logical_term_to_export(t: &logji_logic::LogicalTerm) -> export_logic::LogicalTerm {
+    match t {
+        logji_logic::LogicalTerm::Variable(v) => export_logic::LogicalTerm::Variable(v.clone()),
+        logji_logic::LogicalTerm::Constant(c) => export_logic::LogicalTerm::Constant(c.clone()),
+        logji_logic::LogicalTerm::Description(d) => {
+            export_logic::LogicalTerm::Description(d.clone())
+        }
+        logji_logic::LogicalTerm::Number(n) => export_logic::LogicalTerm::Number(*n),
+        logji_logic::LogicalTerm::Unspecified => export_logic::LogicalTerm::Unspecified,
+    }
+}
+
+fn convert_logical_term_from_export(t: &export_logic::LogicalTerm) -> logji_logic::LogicalTerm {
+    match t {
+        export_logic::LogicalTerm::Variable(v) => logji_logic::LogicalTerm::Variable(v.clone()),
+        export_logic::LogicalTerm::Constant(c) => logji_logic::LogicalTerm::Constant(c.clone()),
+        export_logic::LogicalTerm::Description(d) => {
+            logji_logic::LogicalTerm::Description(d.clone())
+        }
+        export_logic::LogicalTerm::Number(n) => logji_logic::LogicalTerm::Number(*n),
+        export_logic::LogicalTerm::Unspecified => logji_logic::LogicalTerm::Unspecified,
+    }
+}
+
+fn convert_proof_rule(r: &logji_logic::ProofRule) -> export_logic::ProofRule {
+    match r {
+        logji_logic::ProofRule::Conjunction => export_logic::ProofRule::Conjunction,
+        logji_logic::ProofRule::DisjunctionCheck(s) => {
+            export_logic::ProofRule::DisjunctionCheck(s.clone())
+        }
+        logji_logic::ProofRule::DisjunctionIntro(s) => {
+            export_logic::ProofRule::DisjunctionIntro(s.clone())
+        }
+        logji_logic::ProofRule::Negation => export_logic::ProofRule::Negation,
+        logji_logic::ProofRule::ModalPassthrough(s) => {
+            export_logic::ProofRule::ModalPassthrough(s.clone())
+        }
+        logji_logic::ProofRule::ExistsWitness((v, t)) => {
+            export_logic::ProofRule::ExistsWitness((v.clone(), convert_logical_term_to_export(t)))
+        }
+        logji_logic::ProofRule::ExistsFailed => export_logic::ProofRule::ExistsFailed,
+        logji_logic::ProofRule::ForallVacuous => export_logic::ProofRule::ForallVacuous,
+        logji_logic::ProofRule::ForallVerified(terms) => {
+            export_logic::ProofRule::ForallVerified(
+                terms.iter().map(convert_logical_term_to_export).collect(),
+            )
+        }
+        logji_logic::ProofRule::ForallCounterexample(t) => {
+            export_logic::ProofRule::ForallCounterexample(convert_logical_term_to_export(t))
+        }
+        logji_logic::ProofRule::CountResult((expected, actual)) => {
+            export_logic::ProofRule::CountResult((*expected, *actual))
+        }
+        logji_logic::ProofRule::PredicateCheck((m, d)) => {
+            export_logic::ProofRule::PredicateCheck((m.clone(), d.clone()))
+        }
+        logji_logic::ProofRule::ComputeCheck((m, d)) => {
+            export_logic::ProofRule::ComputeCheck((m.clone(), d.clone()))
+        }
+        logji_logic::ProofRule::Asserted(f) => export_logic::ProofRule::Asserted(f.clone()),
+        logji_logic::ProofRule::Derived((l, f)) => {
+            export_logic::ProofRule::Derived((l.clone(), f.clone()))
+        }
+        logji_logic::ProofRule::ProofRef(f) => export_logic::ProofRule::ProofRef(f.clone()),
+    }
+}
+
+fn convert_proof_trace(t: logji_logic::ProofTrace) -> export_logic::ProofTrace {
+    export_logic::ProofTrace {
+        steps: t
+            .steps
+            .iter()
+            .map(|s| export_logic::ProofStep {
+                rule: convert_proof_rule(&s.rule),
+                holds: s.holds,
+                children: s.children.clone(),
+            })
+            .collect(),
+        root: t.root,
+    }
+}
+
+fn convert_witness_bindings(
+    wbs: Vec<Vec<logji_logic::WitnessBinding>>,
+) -> Vec<Vec<export_logic::WitnessBinding>> {
+    wbs.into_iter()
+        .map(|bindings| {
+            bindings
+                .into_iter()
+                .map(|wb| export_logic::WitnessBinding {
+                    variable: wb.variable,
+                    term: convert_logical_term_to_export(&wb.term),
+                })
+                .collect()
+        })
+        .collect()
+}
+
+fn convert_fact_summaries(fs: Vec<logji_logic::FactSummary>) -> Vec<export_logic::FactSummary> {
+    fs.into_iter()
+        .map(|f| export_logic::FactSummary {
+            id: f.id,
+            label: f.label,
+            root_count: f.root_count,
+        })
+        .collect()
+}
+
+fn convert_logji_error(e: logji_err::NibliError) -> export_err::NibliError {
+    match e {
+        logji_err::NibliError::Syntax(d) => export_err::NibliError::Syntax(export_err::SyntaxDetail {
+            message: d.message,
+            line: d.line,
+            column: d.column,
+        }),
+        logji_err::NibliError::Semantic(m) => export_err::NibliError::Semantic(m),
+        logji_err::NibliError::Reasoning(m) => export_err::NibliError::Reasoning(m),
+        logji_err::NibliError::Backend((k, m)) => export_err::NibliError::Backend((k, m)),
+    }
+}
+
+fn convert_gerna_error(e: gerna::bindings::lojban::nibli::error_types::NibliError) -> export_err::NibliError {
+    match e {
+        gerna::bindings::lojban::nibli::error_types::NibliError::Syntax(d) => {
+            export_err::NibliError::Syntax(export_err::SyntaxDetail {
+                message: d.message,
+                line: d.line,
+                column: d.column,
+            })
+        }
+        gerna::bindings::lojban::nibli::error_types::NibliError::Semantic(m) => {
+            export_err::NibliError::Semantic(m)
+        }
+        gerna::bindings::lojban::nibli::error_types::NibliError::Reasoning(m) => {
+            export_err::NibliError::Reasoning(m)
+        }
+        gerna::bindings::lojban::nibli::error_types::NibliError::Backend((k, m)) => {
+            export_err::NibliError::Backend((k, m))
+        }
+    }
+}
+
+fn convert_smuni_error(e: smuni::bindings::lojban::nibli::error_types::NibliError) -> export_err::NibliError {
+    match e {
+        smuni::bindings::lojban::nibli::error_types::NibliError::Syntax(d) => {
+            export_err::NibliError::Syntax(export_err::SyntaxDetail {
+                message: d.message,
+                line: d.line,
+                column: d.column,
+            })
+        }
+        smuni::bindings::lojban::nibli::error_types::NibliError::Semantic(m) => {
+            export_err::NibliError::Semantic(m)
+        }
+        smuni::bindings::lojban::nibli::error_types::NibliError::Reasoning(m) => {
+            export_err::NibliError::Reasoning(m)
+        }
+        smuni::bindings::lojban::nibli::error_types::NibliError::Backend((k, m)) => {
+            export_err::NibliError::Backend((k, m))
+        }
+    }
+}
+
+// ─── Compute dispatch bridge (logji → lasna WIT import) ───
+
+fn eval_via_host(rel: &str, args: &[logji_logic::LogicalTerm]) -> Result<bool, String> {
+    let converted: Vec<export_logic::LogicalTerm> =
+        args.iter().map(convert_logical_term_to_export).collect();
+    cb::evaluate(rel, &converted).map_err(|e| match e {
+        export_err::NibliError::Backend((_, m)) => m,
+        other => format!("{:?}", other),
+    })
+}
+
+fn batch_eval_via_host(
+    requests: &[logji::ComputeRequest],
+) -> Vec<Result<bool, String>> {
+    let wit_requests: Vec<cb::ComputeRequest> = requests
+        .iter()
+        .map(|r| cb::ComputeRequest {
+            relation: r.relation.clone(),
+            args: r.args.iter().map(convert_logical_term_to_export).collect(),
+        })
+        .collect();
+    let results = cb::evaluate_batch(&wit_requests);
+    results
+        .into_iter()
+        .map(|r| match r {
+            cb::ComputeResult::Ok(b) => Ok(b),
+            cb::ComputeResult::Err(msg) => Err(msg),
+        })
+        .collect()
+}
+
 // ─── go'i pro-bridi resolution ───
 
 // ─── Selbri snapshot: extract & graft subtrees for cross-call go'i ───
 
 /// Extract the self-contained subtree rooted at `root_id` from `ast`.
-/// Walks the transitive closure of selbri → sumti → sentence references,
-/// remapping all indices to be internal to the snapshot.
-fn extract_selbri_snapshot(ast: &AstBuffer, root_id: u32) -> SelbriSnapshot {
+fn extract_selbri_snapshot(ast: &gerna_ast::AstBuffer, root_id: u32) -> SelbriSnapshot {
     let mut snap = SelbriSnapshot {
         selbris: Vec::new(),
         sumtis: Vec::new(),
@@ -90,7 +271,7 @@ fn extract_selbri_snapshot(ast: &AstBuffer, root_id: u32) -> SelbriSnapshot {
 }
 
 fn visit_selbri(
-    ast: &AstBuffer,
+    ast: &gerna_ast::AstBuffer,
     id: u32,
     snap: &mut SelbriSnapshot,
     sm: &mut HashMap<u32, u32>,
@@ -102,43 +283,43 @@ fn visit_selbri(
     }
     let new_id = snap.selbris.len() as u32;
     sm.insert(id, new_id);
-    snap.selbris.push(Selbri::Root(String::new())); // placeholder
+    snap.selbris.push(gerna_ast::Selbri::Root(String::new())); // placeholder
     let mapped = match &ast.selbris[id as usize] {
-        Selbri::Root(n) => Selbri::Root(n.clone()),
-        Selbri::Compound(p) => Selbri::Compound(p.clone()),
-        Selbri::Tanru((m, h)) => {
+        gerna_ast::Selbri::Root(n) => gerna_ast::Selbri::Root(n.clone()),
+        gerna_ast::Selbri::Compound(p) => gerna_ast::Selbri::Compound(p.clone()),
+        gerna_ast::Selbri::Tanru((m, h)) => {
             let nm = visit_selbri(ast, *m, snap, sm, um, tm);
             let nh = visit_selbri(ast, *h, snap, sm, um, tm);
-            Selbri::Tanru((nm, nh))
+            gerna_ast::Selbri::Tanru((nm, nh))
         }
-        Selbri::Converted((c, i)) => {
+        gerna_ast::Selbri::Converted((c, i)) => {
             let ni = visit_selbri(ast, *i, snap, sm, um, tm);
-            Selbri::Converted((*c, ni))
+            gerna_ast::Selbri::Converted((*c, ni))
         }
-        Selbri::Negated(i) => {
+        gerna_ast::Selbri::Negated(i) => {
             let ni = visit_selbri(ast, *i, snap, sm, um, tm);
-            Selbri::Negated(ni)
+            gerna_ast::Selbri::Negated(ni)
         }
-        Selbri::Grouped(i) => {
+        gerna_ast::Selbri::Grouped(i) => {
             let ni = visit_selbri(ast, *i, snap, sm, um, tm);
-            Selbri::Grouped(ni)
+            gerna_ast::Selbri::Grouped(ni)
         }
-        Selbri::WithArgs((core, args)) => {
+        gerna_ast::Selbri::WithArgs((core, args)) => {
             let nc = visit_selbri(ast, *core, snap, sm, um, tm);
             let na: Vec<u32> = args
                 .iter()
                 .map(|&a| visit_sumti(ast, a, snap, sm, um, tm))
                 .collect();
-            Selbri::WithArgs((nc, na))
+            gerna_ast::Selbri::WithArgs((nc, na))
         }
-        Selbri::Connected((l, c, r)) => {
+        gerna_ast::Selbri::Connected((l, c, r)) => {
             let nl = visit_selbri(ast, *l, snap, sm, um, tm);
             let nr = visit_selbri(ast, *r, snap, sm, um, tm);
-            Selbri::Connected((nl, c.clone(), nr))
+            gerna_ast::Selbri::Connected((nl, c.clone(), nr))
         }
-        Selbri::Abstraction((k, s)) => {
+        gerna_ast::Selbri::Abstraction((k, s)) => {
             let ns = visit_sentence(ast, *s, snap, sm, um, tm);
-            Selbri::Abstraction((*k, ns))
+            gerna_ast::Selbri::Abstraction((*k, ns))
         }
     };
     snap.selbris[new_id as usize] = mapped;
@@ -146,7 +327,7 @@ fn visit_selbri(
 }
 
 fn visit_sumti(
-    ast: &AstBuffer,
+    ast: &gerna_ast::AstBuffer,
     id: u32,
     snap: &mut SelbriSnapshot,
     sm: &mut HashMap<u32, u32>,
@@ -158,51 +339,51 @@ fn visit_sumti(
     }
     let new_id = snap.sumtis.len() as u32;
     um.insert(id, new_id);
-    snap.sumtis.push(Sumti::Unspecified); // placeholder
+    snap.sumtis.push(gerna_ast::Sumti::Unspecified); // placeholder
     let mapped = match &ast.sumtis[id as usize] {
-        Sumti::ProSumti(s) => Sumti::ProSumti(s.clone()),
-        Sumti::Description((g, sid)) => {
+        gerna_ast::Sumti::ProSumti(s) => gerna_ast::Sumti::ProSumti(s.clone()),
+        gerna_ast::Sumti::Description((g, sid)) => {
             let ns = visit_selbri(ast, *sid, snap, sm, um, tm);
-            Sumti::Description((*g, ns))
+            gerna_ast::Sumti::Description((*g, ns))
         }
-        Sumti::Name(s) => Sumti::Name(s.clone()),
-        Sumti::QuotedLiteral(s) => Sumti::QuotedLiteral(s.clone()),
-        Sumti::Unspecified => Sumti::Unspecified,
-        Sumti::Tagged((t, inner)) => {
+        gerna_ast::Sumti::Name(s) => gerna_ast::Sumti::Name(s.clone()),
+        gerna_ast::Sumti::QuotedLiteral(s) => gerna_ast::Sumti::QuotedLiteral(s.clone()),
+        gerna_ast::Sumti::Unspecified => gerna_ast::Sumti::Unspecified,
+        gerna_ast::Sumti::Tagged((t, inner)) => {
             let ni = visit_sumti(ast, *inner, snap, sm, um, tm);
-            Sumti::Tagged((*t, ni))
+            gerna_ast::Sumti::Tagged((*t, ni))
         }
-        Sumti::ModalTagged((mt, inner)) => {
+        gerna_ast::Sumti::ModalTagged((mt, inner)) => {
             let ni = visit_sumti(ast, *inner, snap, sm, um, tm);
             let nmt = match mt {
-                ModalTag::Fixed(b) => ModalTag::Fixed(*b),
-                ModalTag::Fio(sid) => {
+                gerna_ast::ModalTag::Fixed(b) => gerna_ast::ModalTag::Fixed(*b),
+                gerna_ast::ModalTag::Fio(sid) => {
                     let ns = visit_selbri(ast, *sid, snap, sm, um, tm);
-                    ModalTag::Fio(ns)
+                    gerna_ast::ModalTag::Fio(ns)
                 }
             };
-            Sumti::ModalTagged((nmt, ni))
+            gerna_ast::Sumti::ModalTagged((nmt, ni))
         }
-        Sumti::Restricted((inner, rc)) => {
+        gerna_ast::Sumti::Restricted((inner, rc)) => {
             let ni = visit_sumti(ast, *inner, snap, sm, um, tm);
             let ns = visit_sentence(ast, rc.body_sentence, snap, sm, um, tm);
-            Sumti::Restricted((
+            gerna_ast::Sumti::Restricted((
                 ni,
-                RelClause {
+                gerna_ast::RelClause {
                     kind: rc.kind,
                     body_sentence: ns,
                 },
             ))
         }
-        Sumti::Number(n) => Sumti::Number(*n),
-        Sumti::Connected((l, c, neg, r)) => {
+        gerna_ast::Sumti::Number(n) => gerna_ast::Sumti::Number(*n),
+        gerna_ast::Sumti::Connected((l, c, neg, r)) => {
             let nl = visit_sumti(ast, *l, snap, sm, um, tm);
             let nr = visit_sumti(ast, *r, snap, sm, um, tm);
-            Sumti::Connected((nl, c.clone(), *neg, nr))
+            gerna_ast::Sumti::Connected((nl, c.clone(), *neg, nr))
         }
-        Sumti::QuantifiedDescription((count, g, sid)) => {
+        gerna_ast::Sumti::QuantifiedDescription((count, g, sid)) => {
             let ns = visit_selbri(ast, *sid, snap, sm, um, tm);
-            Sumti::QuantifiedDescription((*count, *g, ns))
+            gerna_ast::Sumti::QuantifiedDescription((*count, *g, ns))
         }
     };
     snap.sumtis[new_id as usize] = mapped;
@@ -210,7 +391,7 @@ fn visit_sumti(
 }
 
 fn visit_sentence(
-    ast: &AstBuffer,
+    ast: &gerna_ast::AstBuffer,
     id: u32,
     snap: &mut SelbriSnapshot,
     sm: &mut HashMap<u32, u32>,
@@ -223,7 +404,7 @@ fn visit_sentence(
     let new_id = snap.sentences.len() as u32;
     tm.insert(id, new_id);
     // placeholder
-    snap.sentences.push(Sentence::Simple(Bridi {
+    snap.sentences.push(gerna_ast::Sentence::Simple(gerna_ast::Bridi {
         relation: 0,
         head_terms: vec![],
         tail_terms: vec![],
@@ -232,7 +413,7 @@ fn visit_sentence(
         attitudinal: None,
     }));
     let mapped = match &ast.sentences[id as usize] {
-        Sentence::Simple(b) => {
+        gerna_ast::Sentence::Simple(b) => {
             let nr = visit_selbri(ast, b.relation, snap, sm, um, tm);
             let nh: Vec<u32> = b
                 .head_terms
@@ -244,7 +425,7 @@ fn visit_sentence(
                 .iter()
                 .map(|&s| visit_sumti(ast, s, snap, sm, um, tm))
                 .collect();
-            Sentence::Simple(Bridi {
+            gerna_ast::Sentence::Simple(gerna_ast::Bridi {
                 relation: nr,
                 head_terms: nh,
                 tail_terms: nt,
@@ -253,10 +434,10 @@ fn visit_sentence(
                 attitudinal: b.attitudinal,
             })
         }
-        Sentence::Connected((c, l, r)) => {
+        gerna_ast::Sentence::Connected((c, l, r)) => {
             let nl = visit_sentence(ast, *l, snap, sm, um, tm);
             let nr = visit_sentence(ast, *r, snap, sm, um, tm);
-            Sentence::Connected((c.clone(), nl, nr))
+            gerna_ast::Sentence::Connected((c.clone(), nl, nr))
         }
     };
     snap.sentences[new_id as usize] = mapped;
@@ -264,7 +445,7 @@ fn visit_sentence(
 }
 
 /// Graft a snapshot into an existing AstBuffer. Returns the new selbri root index.
-fn graft_snapshot(ast: &mut AstBuffer, snap: &SelbriSnapshot) -> u32 {
+fn graft_snapshot(ast: &mut gerna_ast::AstBuffer, snap: &SelbriSnapshot) -> u32 {
     let sb = ast.selbris.len() as u32;
     let ub = ast.sumtis.len() as u32;
     let tb = ast.sentences.len() as u32;
@@ -280,55 +461,68 @@ fn graft_snapshot(ast: &mut AstBuffer, snap: &SelbriSnapshot) -> u32 {
     snap.root + sb
 }
 
-fn rebase_selbri(s: &Selbri, sb: u32, ub: u32, tb: u32) -> Selbri {
+fn rebase_selbri(s: &gerna_ast::Selbri, sb: u32, ub: u32, tb: u32) -> gerna_ast::Selbri {
     match s {
-        Selbri::Root(n) => Selbri::Root(n.clone()),
-        Selbri::Compound(p) => Selbri::Compound(p.clone()),
-        Selbri::Tanru((m, h)) => Selbri::Tanru((m + sb, h + sb)),
-        Selbri::Converted((c, i)) => Selbri::Converted((*c, i + sb)),
-        Selbri::Negated(i) => Selbri::Negated(i + sb),
-        Selbri::Grouped(i) => Selbri::Grouped(i + sb),
-        Selbri::WithArgs((core, args)) => {
-            Selbri::WithArgs((core + sb, args.iter().map(|a| a + ub).collect()))
+        gerna_ast::Selbri::Root(n) => gerna_ast::Selbri::Root(n.clone()),
+        gerna_ast::Selbri::Compound(p) => gerna_ast::Selbri::Compound(p.clone()),
+        gerna_ast::Selbri::Tanru((m, h)) => gerna_ast::Selbri::Tanru((m + sb, h + sb)),
+        gerna_ast::Selbri::Converted((c, i)) => gerna_ast::Selbri::Converted((*c, i + sb)),
+        gerna_ast::Selbri::Negated(i) => gerna_ast::Selbri::Negated(i + sb),
+        gerna_ast::Selbri::Grouped(i) => gerna_ast::Selbri::Grouped(i + sb),
+        gerna_ast::Selbri::WithArgs((core, args)) => {
+            gerna_ast::Selbri::WithArgs((core + sb, args.iter().map(|a| a + ub).collect()))
         }
-        Selbri::Connected((l, c, r)) => Selbri::Connected((l + sb, c.clone(), r + sb)),
-        Selbri::Abstraction((k, sent)) => Selbri::Abstraction((*k, sent + tb)),
+        gerna_ast::Selbri::Connected((l, c, r)) => {
+            gerna_ast::Selbri::Connected((l + sb, c.clone(), r + sb))
+        }
+        gerna_ast::Selbri::Abstraction((k, sent)) => {
+            gerna_ast::Selbri::Abstraction((*k, sent + tb))
+        }
     }
 }
 
-fn rebase_sumti(s: &Sumti, sb: u32, ub: u32, tb: u32) -> Sumti {
+fn rebase_sumti(s: &gerna_ast::Sumti, sb: u32, ub: u32, tb: u32) -> gerna_ast::Sumti {
     match s {
-        Sumti::ProSumti(v) => Sumti::ProSumti(v.clone()),
-        Sumti::Description((g, sid)) => Sumti::Description((*g, sid + sb)),
-        Sumti::Name(v) => Sumti::Name(v.clone()),
-        Sumti::QuotedLiteral(v) => Sumti::QuotedLiteral(v.clone()),
-        Sumti::Unspecified => Sumti::Unspecified,
-        Sumti::Tagged((t, i)) => Sumti::Tagged((*t, i + ub)),
-        Sumti::ModalTagged((mt, i)) => {
-            let nmt = match mt {
-                ModalTag::Fixed(b) => ModalTag::Fixed(*b),
-                ModalTag::Fio(sid) => ModalTag::Fio(sid + sb),
-            };
-            Sumti::ModalTagged((nmt, i + ub))
+        gerna_ast::Sumti::ProSumti(v) => gerna_ast::Sumti::ProSumti(v.clone()),
+        gerna_ast::Sumti::Description((g, sid)) => {
+            gerna_ast::Sumti::Description((*g, sid + sb))
         }
-        Sumti::Restricted((i, rc)) => Sumti::Restricted((
+        gerna_ast::Sumti::Name(v) => gerna_ast::Sumti::Name(v.clone()),
+        gerna_ast::Sumti::QuotedLiteral(v) => gerna_ast::Sumti::QuotedLiteral(v.clone()),
+        gerna_ast::Sumti::Unspecified => gerna_ast::Sumti::Unspecified,
+        gerna_ast::Sumti::Tagged((t, i)) => gerna_ast::Sumti::Tagged((*t, i + ub)),
+        gerna_ast::Sumti::ModalTagged((mt, i)) => {
+            let nmt = match mt {
+                gerna_ast::ModalTag::Fixed(b) => gerna_ast::ModalTag::Fixed(*b),
+                gerna_ast::ModalTag::Fio(sid) => gerna_ast::ModalTag::Fio(sid + sb),
+            };
+            gerna_ast::Sumti::ModalTagged((nmt, i + ub))
+        }
+        gerna_ast::Sumti::Restricted((i, rc)) => gerna_ast::Sumti::Restricted((
             i + ub,
-            RelClause {
+            gerna_ast::RelClause {
                 kind: rc.kind,
                 body_sentence: rc.body_sentence + tb,
             },
         )),
-        Sumti::Number(n) => Sumti::Number(*n),
-        Sumti::Connected((l, c, neg, r)) => Sumti::Connected((l + ub, c.clone(), *neg, r + ub)),
-        Sumti::QuantifiedDescription((count, g, sid)) => {
-            Sumti::QuantifiedDescription((*count, *g, sid + sb))
+        gerna_ast::Sumti::Number(n) => gerna_ast::Sumti::Number(*n),
+        gerna_ast::Sumti::Connected((l, c, neg, r)) => {
+            gerna_ast::Sumti::Connected((l + ub, c.clone(), *neg, r + ub))
+        }
+        gerna_ast::Sumti::QuantifiedDescription((count, g, sid)) => {
+            gerna_ast::Sumti::QuantifiedDescription((*count, *g, sid + sb))
         }
     }
 }
 
-fn rebase_sentence(s: &Sentence, sb: u32, ub: u32, tb: u32) -> Sentence {
+fn rebase_sentence(
+    s: &gerna_ast::Sentence,
+    sb: u32,
+    ub: u32,
+    tb: u32,
+) -> gerna_ast::Sentence {
     match s {
-        Sentence::Simple(b) => Sentence::Simple(Bridi {
+        gerna_ast::Sentence::Simple(b) => gerna_ast::Sentence::Simple(gerna_ast::Bridi {
             relation: b.relation + sb,
             head_terms: b.head_terms.iter().map(|i| i + ub).collect(),
             tail_terms: b.tail_terms.iter().map(|i| i + ub).collect(),
@@ -336,29 +530,29 @@ fn rebase_sentence(s: &Sentence, sb: u32, ub: u32, tb: u32) -> Sentence {
             tense: b.tense,
             attitudinal: b.attitudinal,
         }),
-        Sentence::Connected((c, l, r)) => Sentence::Connected((c.clone(), l + tb, r + tb)),
+        gerna_ast::Sentence::Connected((c, l, r)) => {
+            gerna_ast::Sentence::Connected((c.clone(), l + tb, r + tb))
+        }
     }
 }
 
 /// Resolve go'i references in a single sentence.
-/// `current` tracks the last selbri index within the current AstBuffer.
 fn resolve_sentence_go_i(
-    ast: &mut AstBuffer,
+    ast: &mut gerna_ast::AstBuffer,
     sentence_idx: usize,
     current: &mut Option<u32>,
 ) -> Result<(), String> {
     let sentence = ast.sentences[sentence_idx].clone();
     match sentence {
-        Sentence::Simple(mut bridi) => {
+        gerna_ast::Sentence::Simple(mut bridi) => {
             let selbri_id = bridi.relation;
             match &ast.selbris[selbri_id as usize] {
-                Selbri::Root(name) if name == "go'i" => {
+                gerna_ast::Selbri::Root(name) if name == "go'i" => {
                     let resolved_id = current.ok_or_else(|| {
                         "go'i has no antecedent (no previous assertion)".to_string()
                     })?;
-                    // Repoint bridi.relation to the full antecedent selbri
                     bridi.relation = resolved_id;
-                    ast.sentences[sentence_idx] = Sentence::Simple(bridi);
+                    ast.sentences[sentence_idx] = gerna_ast::Sentence::Simple(bridi);
                 }
                 _ => {
                     *current = Some(selbri_id);
@@ -366,7 +560,7 @@ fn resolve_sentence_go_i(
             }
             Ok(())
         }
-        Sentence::Connected((_, left_idx, right_idx)) => {
+        gerna_ast::Sentence::Connected((_, left_idx, right_idx)) => {
             resolve_sentence_go_i(ast, left_idx as usize, current)?;
             resolve_sentence_go_i(ast, right_idx as usize, current)?;
             Ok(())
@@ -375,12 +569,10 @@ fn resolve_sentence_go_i(
 }
 
 /// Walk all root sentences and resolve any go'i references.
-/// Returns the selbri index of the last relation (for snapshot extraction).
 fn resolve_go_i(
-    ast: &mut AstBuffer,
+    ast: &mut gerna_ast::AstBuffer,
     last_snapshot: &Option<SelbriSnapshot>,
 ) -> Result<Option<u32>, String> {
-    // Graft cross-call snapshot into current buffer if present
     let mut current: Option<u32> = last_snapshot.as_ref().map(|snap| graft_snapshot(ast, snap));
     for i in 0..ast.roots.len() {
         let root_idx = ast.roots[i] as usize;
@@ -394,10 +586,12 @@ fn resolve_go_i(
 fn compile_pipeline(
     text: &str,
     last_snapshot: &Option<SelbriSnapshot>,
-) -> Result<(LogicBuffer, Option<SelbriSnapshot>, Vec<String>), NibliError> {
-    let parse_result = gerna::parse_text(text)?;
+    compute_predicates: &HashSet<String>,
+) -> Result<(logji_logic::LogicBuffer, Option<SelbriSnapshot>, Vec<String>), export_err::NibliError>
+{
+    let parse_result =
+        gerna::parse_text_native(text.to_string()).map_err(convert_gerna_error)?;
 
-    // Collect per-sentence parse errors as warning strings
     let parse_warnings: Vec<String> = parse_result
         .errors
         .iter()
@@ -406,10 +600,9 @@ fn compile_pipeline(
 
     let mut ast = parse_result.buffer;
 
-    // If ALL sentences failed, report error with first error's location
     if ast.roots.is_empty() && !parse_warnings.is_empty() {
         let first = &parse_result.errors[0];
-        return Err(NibliError::Syntax(SyntaxDetail {
+        return Err(export_err::NibliError::Syntax(export_err::SyntaxDetail {
             message: parse_warnings.join("; "),
             line: first.line,
             column: first.column,
@@ -417,30 +610,19 @@ fn compile_pipeline(
     }
 
     let last_selbri_id =
-        resolve_go_i(&mut ast, last_snapshot).map_err(|e| NibliError::Semantic(e))?;
+        resolve_go_i(&mut ast, last_snapshot).map_err(|e| export_err::NibliError::Semantic(e))?;
     let new_snapshot = last_selbri_id.map(|id| extract_selbri_snapshot(&ast, id));
-    let buf = smuni::compile_buffer(&ast)?;
-    Ok((buf, new_snapshot, parse_warnings))
+
+    // Call smuni (converts gerna AST → smuni logic buffer internally)
+    let smuni_buf = smuni::compile_from_gerna_ast(ast).map_err(convert_smuni_error)?;
+
+    // Convert smuni logic buffer → logji logic buffer (also applies compute predicate transform)
+    let logji_buf = logji::smuni_bridge::convert_logic_buffer(&smuni_buf, compute_predicates);
+
+    Ok((logji_buf, new_snapshot, parse_warnings))
 }
 
-/// Transform Predicate nodes into ComputeNode for registered compute predicates.
-fn transform_compute_nodes(buf: &mut LogicBuffer, compute_preds: &HashSet<String>) {
-    let nodes = std::mem::take(&mut buf.nodes);
-    buf.nodes = nodes
-        .into_iter()
-        .map(|node| match &node {
-            LogicNode::Predicate((rel, _)) if compute_preds.contains(rel.as_str()) => {
-                let LogicNode::Predicate(inner) = node else {
-                    unreachable!()
-                };
-                LogicNode::ComputeNode(inner)
-            }
-            _ => node,
-        })
-        .collect();
-}
-
-fn debug_logic(buffer: &LogicBuffer) -> String {
+fn debug_logic(buffer: &logji_logic::LogicBuffer) -> String {
     buffer
         .roots
         .iter()
@@ -457,19 +639,23 @@ impl Guest for LasnaPipeline {
 
 impl GuestSession for Session {
     fn new() -> Self {
+        // Register compute dispatch so logji can call the host's compute-backend
+        logji::register_compute_dispatch(eval_via_host, batch_eval_via_host);
         Session {
-            kb: KnowledgeBase::new(),
+            kb: logji::KnowledgeBase::new(),
             compute_predicates: RefCell::new(default_compute_predicates()),
             last_relation: RefCell::new(None),
         }
     }
 
-    fn assert_text(&self, input: String) -> Result<u64, NibliError> {
-        let (mut buf, new_last, warnings) = compile_pipeline(&input, &self.last_relation.borrow())?;
-        // Abort entire assertion if any sentence failed to parse.
-        // Partial assertion is unsound: dropped constraints can lead to wrong proofs.
+    fn assert_text(&self, input: String) -> Result<u64, export_err::NibliError> {
+        let (buf, new_last, warnings) = compile_pipeline(
+            &input,
+            &self.last_relation.borrow(),
+            &self.compute_predicates.borrow(),
+        )?;
         if !warnings.is_empty() {
-            return Err(NibliError::Syntax(SyntaxDetail {
+            return Err(export_err::NibliError::Syntax(export_err::SyntaxDetail {
                 message: format!(
                     "Assertion aborted: {} sentence(s) failed to parse: {}",
                     warnings.len(),
@@ -479,157 +665,184 @@ impl GuestSession for Session {
                 column: 0,
             }));
         }
-        transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
-        let fact_id = self.kb.assert_fact(&buf, &input)?;
+        let fact_id = self.kb.assert_fact(buf, input).map_err(convert_logji_error)?;
         *self.last_relation.borrow_mut() = new_last;
         Ok(fact_id)
     }
 
-    fn query_text(&self, input: String) -> Result<bool, NibliError> {
-        let (mut buf, _, _warnings) = compile_pipeline(&input, &self.last_relation.borrow())?;
-        transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
-        self.kb.query_entailment(&buf)
+    fn query_text(&self, input: String) -> Result<bool, export_err::NibliError> {
+        let (buf, _, _warnings) = compile_pipeline(
+            &input,
+            &self.last_relation.borrow(),
+            &self.compute_predicates.borrow(),
+        )?;
+        self.kb.query_entailment(buf).map_err(convert_logji_error)
     }
 
-    fn query_find_text(&self, input: String) -> Result<Vec<Vec<WitnessBinding>>, NibliError> {
-        let (mut buf, _, _warnings) = compile_pipeline(&input, &self.last_relation.borrow())?;
-        transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
-        self.kb.query_find(&buf)
+    fn query_find_text(
+        &self,
+        input: String,
+    ) -> Result<Vec<Vec<export_logic::WitnessBinding>>, export_err::NibliError> {
+        let (buf, _, _warnings) = compile_pipeline(
+            &input,
+            &self.last_relation.borrow(),
+            &self.compute_predicates.borrow(),
+        )?;
+        let result = self.kb.query_find(buf).map_err(convert_logji_error)?;
+        Ok(convert_witness_bindings(result))
     }
 
-    fn query_text_with_proof(&self, input: String) -> Result<(bool, ProofTrace), NibliError> {
-        let (mut buf, _, _warnings) = compile_pipeline(&input, &self.last_relation.borrow())?;
-        transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
-        self.kb.query_entailment_with_proof(&buf)
+    fn query_text_with_proof(
+        &self,
+        input: String,
+    ) -> Result<(bool, export_logic::ProofTrace), export_err::NibliError> {
+        let (buf, _, _warnings) = compile_pipeline(
+            &input,
+            &self.last_relation.borrow(),
+            &self.compute_predicates.borrow(),
+        )?;
+        let (holds, trace) = self
+            .kb
+            .query_entailment_with_proof(buf)
+            .map_err(convert_logji_error)?;
+        Ok((holds, convert_proof_trace(trace)))
     }
 
-    fn compile_debug(&self, input: String) -> Result<String, NibliError> {
-        let (mut buf, _, _warnings) = compile_pipeline(&input, &self.last_relation.borrow())?;
-        transform_compute_nodes(&mut buf, &self.compute_predicates.borrow());
+    fn compile_debug(&self, input: String) -> Result<String, export_err::NibliError> {
+        let (buf, _, _warnings) = compile_pipeline(
+            &input,
+            &self.last_relation.borrow(),
+            &self.compute_predicates.borrow(),
+        )?;
         Ok(debug_logic(&buf))
     }
 
-    fn reset_kb(&self) -> Result<(), NibliError> {
+    fn reset_kb(&self) -> Result<(), export_err::NibliError> {
         *self.last_relation.borrow_mut() = None;
-        self.kb.reset()
+        self.kb.reset().map_err(convert_logji_error)
     }
 
     fn register_compute_predicate(&self, name: String) {
         self.compute_predicates.borrow_mut().insert(name);
     }
 
-    fn assert_fact(&self, relation: String, args: Vec<LogicalTerm>) -> Result<u64, NibliError> {
-        // Store a minimal snapshot for go'i: just a Root selbri
+    fn assert_fact(
+        &self,
+        relation: String,
+        args: Vec<export_logic::LogicalTerm>,
+    ) -> Result<u64, export_err::NibliError> {
         *self.last_relation.borrow_mut() = Some(SelbriSnapshot {
-            selbris: vec![Selbri::Root(relation.clone())],
+            selbris: vec![gerna_ast::Selbri::Root(relation.clone())],
             sumtis: vec![],
             sentences: vec![],
             root: 0,
         });
+        let logji_args: Vec<logji_logic::LogicalTerm> =
+            args.iter().map(convert_logical_term_from_export).collect();
         let label = format!(":assert {}", relation);
-        let nodes = vec![LogicNode::Predicate((relation, args))];
-        let buf = LogicBuffer {
+        let nodes = vec![logji_logic::LogicNode::Predicate((relation, logji_args))];
+        let buf = logji_logic::LogicBuffer {
             nodes,
             roots: vec![0],
         };
-        self.kb.assert_fact(&buf, &label)
+        self.kb.assert_fact(buf, label).map_err(convert_logji_error)
     }
 
-    fn retract_fact(&self, id: u64) -> Result<(), NibliError> {
-        self.kb.retract_fact(id)
+    fn retract_fact(&self, id: u64) -> Result<(), export_err::NibliError> {
+        self.kb.retract_fact(id).map_err(convert_logji_error)
     }
 
-    fn list_facts(&self) -> Result<Vec<FactSummary>, NibliError> {
-        self.kb.list_facts()
+    fn list_facts(&self) -> Result<Vec<export_logic::FactSummary>, export_err::NibliError> {
+        let facts = self.kb.list_facts().map_err(convert_logji_error)?;
+        Ok(convert_fact_summaries(facts))
     }
-
 }
 
 // ─── Debug representation reconstruction ───
 
 use std::fmt::Write;
 
-fn reconstruct_repr(buffer: &LogicBuffer, node_id: u32) -> String {
+fn reconstruct_repr(buffer: &logji_logic::LogicBuffer, node_id: u32) -> String {
     let mut out = String::with_capacity(256);
     write_repr(&mut out, buffer, node_id);
     out
 }
 
-fn write_repr(out: &mut String, buffer: &LogicBuffer, node_id: u32) {
+fn write_repr(out: &mut String, buffer: &logji_logic::LogicBuffer, node_id: u32) {
     match &buffer.nodes[node_id as usize] {
-        LogicNode::Predicate((rel, args)) => {
+        logji_logic::LogicNode::Predicate((rel, args)) => {
             out.push_str("(Pred \"");
             out.push_str(rel);
             out.push_str("\" ");
             write_term_list(out, args);
             out.push(')');
         }
-        LogicNode::ComputeNode((rel, args)) => {
+        logji_logic::LogicNode::ComputeNode((rel, args)) => {
             out.push_str("(Compute \"");
             out.push_str(rel);
             out.push_str("\" ");
             write_term_list(out, args);
             out.push(')');
         }
-        LogicNode::AndNode((l, r)) => {
+        logji_logic::LogicNode::AndNode((l, r)) => {
             out.push_str("(And ");
             write_repr(out, buffer, *l);
             out.push(' ');
             write_repr(out, buffer, *r);
             out.push(')');
         }
-        LogicNode::OrNode((l, r)) => {
+        logji_logic::LogicNode::OrNode((l, r)) => {
             out.push_str("(Or ");
             write_repr(out, buffer, *l);
             out.push(' ');
             write_repr(out, buffer, *r);
             out.push(')');
         }
-        LogicNode::NotNode(inner) => {
+        logji_logic::LogicNode::NotNode(inner) => {
             out.push_str("(Not ");
             write_repr(out, buffer, *inner);
             out.push(')');
         }
-        LogicNode::ExistsNode((v, body)) => {
+        logji_logic::LogicNode::ExistsNode((v, body)) => {
             out.push_str("(Exists \"");
             out.push_str(v);
             out.push_str("\" ");
             write_repr(out, buffer, *body);
             out.push(')');
         }
-        LogicNode::ForAllNode((v, body)) => {
+        logji_logic::LogicNode::ForAllNode((v, body)) => {
             out.push_str("(ForAll \"");
             out.push_str(v);
             out.push_str("\" ");
             write_repr(out, buffer, *body);
             out.push(')');
         }
-        LogicNode::PastNode(inner) => {
+        logji_logic::LogicNode::PastNode(inner) => {
             out.push_str("(Past ");
             write_repr(out, buffer, *inner);
             out.push(')');
         }
-        LogicNode::PresentNode(inner) => {
+        logji_logic::LogicNode::PresentNode(inner) => {
             out.push_str("(Present ");
             write_repr(out, buffer, *inner);
             out.push(')');
         }
-        LogicNode::FutureNode(inner) => {
+        logji_logic::LogicNode::FutureNode(inner) => {
             out.push_str("(Future ");
             write_repr(out, buffer, *inner);
             out.push(')');
         }
-        LogicNode::ObligatoryNode(inner) => {
+        logji_logic::LogicNode::ObligatoryNode(inner) => {
             out.push_str("(Obligatory ");
             write_repr(out, buffer, *inner);
             out.push(')');
         }
-        LogicNode::PermittedNode(inner) => {
+        logji_logic::LogicNode::PermittedNode(inner) => {
             out.push_str("(Permitted ");
             write_repr(out, buffer, *inner);
             out.push(')');
         }
-        LogicNode::CountNode((v, count, body)) => {
+        logji_logic::LogicNode::CountNode((v, count, body)) => {
             out.push_str("(Count \"");
             out.push_str(v);
             out.push_str("\" ");
@@ -641,7 +854,7 @@ fn write_repr(out: &mut String, buffer: &LogicBuffer, node_id: u32) {
     }
 }
 
-fn write_term_list(out: &mut String, args: &[LogicalTerm]) {
+fn write_term_list(out: &mut String, args: &[logji_logic::LogicalTerm]) {
     if args.is_empty() {
         out.push_str("(Nil)");
         return;
@@ -653,25 +866,25 @@ fn write_term_list(out: &mut String, args: &[LogicalTerm]) {
     out.push(')');
 }
 
-fn write_term(out: &mut String, term: &LogicalTerm) {
+fn write_term(out: &mut String, term: &logji_logic::LogicalTerm) {
     match term {
-        LogicalTerm::Variable(v) => {
+        logji_logic::LogicalTerm::Variable(v) => {
             out.push_str("(Var \"");
             out.push_str(v);
             out.push_str("\")");
         }
-        LogicalTerm::Constant(c) => {
+        logji_logic::LogicalTerm::Constant(c) => {
             out.push_str("(Const \"");
             out.push_str(c);
             out.push_str("\")");
         }
-        LogicalTerm::Description(d) => {
+        logji_logic::LogicalTerm::Description(d) => {
             out.push_str("(Desc \"");
             out.push_str(d);
             out.push_str("\")");
         }
-        LogicalTerm::Unspecified => out.push_str("(Zoe)"),
-        LogicalTerm::Number(n) => {
+        logji_logic::LogicalTerm::Unspecified => out.push_str("(Zoe)"),
+        logji_logic::LogicalTerm::Number(n) => {
             let _ = write!(out, "(Num {})", n);
         }
     }
@@ -682,10 +895,13 @@ fn write_term(out: &mut String, term: &LogicalTerm) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bindings::lojban::nibli::ast_types::{Bridi, Conversion, Sumti};
+    use gerna_ast::{Bridi, Conversion, Sumti};
 
-    // Helper: build a minimal AstBuffer with a single simple sentence
-    fn make_ast(selbris: Vec<Selbri>, bridi_relation: u32, head_terms: Vec<u32>) -> AstBuffer {
+    fn make_ast(
+        selbris: Vec<gerna_ast::Selbri>,
+        bridi_relation: u32,
+        head_terms: Vec<u32>,
+    ) -> gerna_ast::AstBuffer {
         let sumtis: Vec<Sumti> = head_terms
             .iter()
             .map(|_| Sumti::ProSumti("mi".to_string()))
@@ -698,27 +914,28 @@ mod tests {
             tense: None,
             attitudinal: None,
         };
-        AstBuffer {
+        gerna_ast::AstBuffer {
             selbris,
             sumtis,
-            sentences: vec![Sentence::Simple(bridi)],
+            sentences: vec![gerna_ast::Sentence::Simple(bridi)],
             roots: vec![0],
         }
     }
 
-    /// Helper: build a two-sentence AstBuffer where sentence 1 has `selbris_1`
-    /// and sentence 2 has go'i with the given head_terms.
-    fn make_two_sentence_ast(mut selbris: Vec<Selbri>, first_relation: u32) -> AstBuffer {
+    fn make_two_sentence_ast(
+        mut selbris: Vec<gerna_ast::Selbri>,
+        first_relation: u32,
+    ) -> gerna_ast::AstBuffer {
         let go_i_id = selbris.len() as u32;
-        selbris.push(Selbri::Root("go'i".to_string()));
-        AstBuffer {
+        selbris.push(gerna_ast::Selbri::Root("go'i".to_string()));
+        gerna_ast::AstBuffer {
             selbris,
             sumtis: vec![
                 Sumti::ProSumti("mi".to_string()),
                 Sumti::ProSumti("do".to_string()),
             ],
             sentences: vec![
-                Sentence::Simple(Bridi {
+                gerna_ast::Sentence::Simple(Bridi {
                     relation: first_relation,
                     head_terms: vec![0],
                     tail_terms: vec![],
@@ -726,7 +943,7 @@ mod tests {
                     tense: None,
                     attitudinal: None,
                 }),
-                Sentence::Simple(Bridi {
+                gerna_ast::Sentence::Simple(Bridi {
                     relation: go_i_id,
                     head_terms: vec![1],
                     tail_terms: vec![],
@@ -739,38 +956,37 @@ mod tests {
         }
     }
 
-    /// Get the selbri id that a sentence's bridi.relation points to.
-    fn bridi_relation(ast: &AstBuffer, sentence_idx: usize) -> u32 {
+    fn bridi_relation(ast: &gerna_ast::AstBuffer, sentence_idx: usize) -> u32 {
         match &ast.sentences[sentence_idx] {
-            Sentence::Simple(b) => b.relation,
+            gerna_ast::Sentence::Simple(b) => b.relation,
             _ => panic!("expected Simple"),
         }
     }
 
-    // ─── Snapshot extract & graft tests ───
-
     #[test]
     fn test_snapshot_root() {
-        let ast = make_ast(vec![Selbri::Root("klama".to_string())], 0, vec![0]);
+        let ast = make_ast(vec![gerna_ast::Selbri::Root("klama".to_string())], 0, vec![0]);
         let snap = extract_selbri_snapshot(&ast, 0);
         assert_eq!(snap.selbris.len(), 1);
         assert_eq!(snap.root, 0);
-        assert!(matches!(&snap.selbris[0], Selbri::Root(n) if n == "klama"));
+        assert!(matches!(&snap.selbris[0], gerna_ast::Selbri::Root(n) if n == "klama"));
     }
 
     #[test]
     fn test_snapshot_negated() {
         let ast = make_ast(
-            vec![Selbri::Root("klama".to_string()), Selbri::Negated(0)],
+            vec![
+                gerna_ast::Selbri::Root("klama".to_string()),
+                gerna_ast::Selbri::Negated(0),
+            ],
             1,
             vec![0],
         );
         let snap = extract_selbri_snapshot(&ast, 1);
         assert_eq!(snap.selbris.len(), 2);
-        // Root should be Negated pointing to the inner Root
         assert!(matches!(
             &snap.selbris[snap.root as usize],
-            Selbri::Negated(_)
+            gerna_ast::Selbri::Negated(_)
         ));
     }
 
@@ -778,8 +994,8 @@ mod tests {
     fn test_snapshot_converted() {
         let ast = make_ast(
             vec![
-                Selbri::Root("prami".to_string()),
-                Selbri::Converted((Conversion::Se, 0)),
+                gerna_ast::Selbri::Root("prami".to_string()),
+                gerna_ast::Selbri::Converted((Conversion::Se, 0)),
             ],
             1,
             vec![0],
@@ -788,29 +1004,27 @@ mod tests {
         assert_eq!(snap.selbris.len(), 2);
         assert!(matches!(
             &snap.selbris[snap.root as usize],
-            Selbri::Converted((Conversion::Se, _))
+            gerna_ast::Selbri::Converted((Conversion::Se, _))
         ));
     }
 
     #[test]
     fn test_snapshot_negated_converted() {
-        // na se klama → Negated(Converted(Se, Root("klama")))
         let ast = make_ast(
             vec![
-                Selbri::Root("klama".to_string()),      // 0
-                Selbri::Converted((Conversion::Se, 0)), // 1
-                Selbri::Negated(1),                     // 2
+                gerna_ast::Selbri::Root("klama".to_string()),
+                gerna_ast::Selbri::Converted((Conversion::Se, 0)),
+                gerna_ast::Selbri::Negated(1),
             ],
             2,
             vec![0],
         );
         let snap = extract_selbri_snapshot(&ast, 2);
         assert_eq!(snap.selbris.len(), 3);
-        // Walk: root → Negated → Converted → Root
         assert!(
-            matches!(&snap.selbris[snap.root as usize], Selbri::Negated(inner) if {
-                matches!(&snap.selbris[*inner as usize], Selbri::Converted((Conversion::Se, inner2)) if {
-                    matches!(&snap.selbris[*inner2 as usize], Selbri::Root(n) if n == "klama")
+            matches!(&snap.selbris[snap.root as usize], gerna_ast::Selbri::Negated(inner) if {
+                matches!(&snap.selbris[*inner as usize], gerna_ast::Selbri::Converted((Conversion::Se, inner2)) if {
+                    matches!(&snap.selbris[*inner2 as usize], gerna_ast::Selbri::Root(n) if n == "klama")
                 })
             })
         );
@@ -818,57 +1032,51 @@ mod tests {
 
     #[test]
     fn test_graft_rebase_indices() {
-        // Create a buffer with existing entries
-        let mut ast = AstBuffer {
-            selbris: vec![Selbri::Root("existing".to_string())],
+        let mut ast = gerna_ast::AstBuffer {
+            selbris: vec![gerna_ast::Selbri::Root("existing".to_string())],
             sumtis: vec![Sumti::ProSumti("mi".to_string())],
             sentences: vec![],
             roots: vec![],
         };
-        // Snapshot: Negated(Root("klama"))
         let snap = SelbriSnapshot {
-            selbris: vec![Selbri::Root("klama".to_string()), Selbri::Negated(0)],
+            selbris: vec![
+                gerna_ast::Selbri::Root("klama".to_string()),
+                gerna_ast::Selbri::Negated(0),
+            ],
             sumtis: vec![],
             sentences: vec![],
             root: 1,
         };
         let grafted_root = graft_snapshot(&mut ast, &snap);
-        // Base offset = 1 (one existing selbri)
-        assert_eq!(grafted_root, 2); // snap.root(1) + base(1)
+        assert_eq!(grafted_root, 2);
         assert_eq!(ast.selbris.len(), 3);
-        assert!(matches!(&ast.selbris[1], Selbri::Root(n) if n == "klama"));
-        assert!(matches!(&ast.selbris[2], Selbri::Negated(id) if *id == 1));
+        assert!(matches!(&ast.selbris[1], gerna_ast::Selbri::Root(n) if n == "klama"));
+        assert!(matches!(&ast.selbris[2], gerna_ast::Selbri::Negated(id) if *id == 1));
     }
-
-    // ─── go'i resolution tests (within-call) ───
 
     #[test]
     fn test_resolve_go_i_basic_root() {
-        // Sentence 1: klama, Sentence 2: go'i → repoints to klama
-        let mut ast = make_two_sentence_ast(vec![Selbri::Root("klama".to_string())], 0);
+        let mut ast = make_two_sentence_ast(vec![gerna_ast::Selbri::Root("klama".to_string())], 0);
         let result = resolve_go_i(&mut ast, &None).unwrap();
-        // go'i sentence should now point to the klama selbri
         assert_eq!(bridi_relation(&ast, 1), 0);
         assert!(result.is_some());
     }
 
     #[test]
     fn test_resolve_go_i_preserves_negation() {
-        // THE BUG FIX: "na klama" then "go'i" should preserve negation
         let mut ast = make_two_sentence_ast(
             vec![
-                Selbri::Root("klama".to_string()), // 0
-                Selbri::Negated(0),                // 1
+                gerna_ast::Selbri::Root("klama".to_string()),
+                gerna_ast::Selbri::Negated(0),
             ],
-            1, // first sentence uses Negated(Root("klama"))
+            1,
         );
         let result = resolve_go_i(&mut ast, &None).unwrap();
-        // go'i should point to the Negated selbri (index 1), NOT bare Root
         let go_i_rel = bridi_relation(&ast, 1);
         assert_eq!(go_i_rel, 1);
         assert!(
-            matches!(&ast.selbris[go_i_rel as usize], Selbri::Negated(inner) if {
-                matches!(&ast.selbris[*inner as usize], Selbri::Root(n) if n == "klama")
+            matches!(&ast.selbris[go_i_rel as usize], gerna_ast::Selbri::Negated(inner) if {
+                matches!(&ast.selbris[*inner as usize], gerna_ast::Selbri::Root(n) if n == "klama")
             })
         );
         assert!(result.is_some());
@@ -876,11 +1084,10 @@ mod tests {
 
     #[test]
     fn test_resolve_go_i_preserves_conversion() {
-        // "se prami" then "go'i" → should preserve se-conversion
         let mut ast = make_two_sentence_ast(
             vec![
-                Selbri::Root("prami".to_string()),      // 0
-                Selbri::Converted((Conversion::Se, 0)), // 1
+                gerna_ast::Selbri::Root("prami".to_string()),
+                gerna_ast::Selbri::Converted((Conversion::Se, 0)),
             ],
             1,
         );
@@ -889,41 +1096,38 @@ mod tests {
         assert_eq!(go_i_rel, 1);
         assert!(matches!(
             &ast.selbris[go_i_rel as usize],
-            Selbri::Converted((Conversion::Se, _))
+            gerna_ast::Selbri::Converted((Conversion::Se, _))
         ));
         assert!(result.is_some());
     }
 
     #[test]
     fn test_resolve_go_i_preserves_negated_conversion() {
-        // "na se klama" then "go'i" → Negated(Converted(Se, Root("klama")))
         let mut ast = make_two_sentence_ast(
             vec![
-                Selbri::Root("klama".to_string()),      // 0
-                Selbri::Converted((Conversion::Se, 0)), // 1
-                Selbri::Negated(1),                     // 2
+                gerna_ast::Selbri::Root("klama".to_string()),
+                gerna_ast::Selbri::Converted((Conversion::Se, 0)),
+                gerna_ast::Selbri::Negated(1),
             ],
             2,
         );
         let result = resolve_go_i(&mut ast, &None).unwrap();
         let go_i_rel = bridi_relation(&ast, 1);
         assert_eq!(go_i_rel, 2);
-        // Verify full chain: Negated → Converted(Se) → Root("klama")
         assert!(matches!(
             &ast.selbris[go_i_rel as usize],
-            Selbri::Negated(_)
+            gerna_ast::Selbri::Negated(_)
         ));
         assert!(result.is_some());
     }
 
     #[test]
     fn test_resolve_go_i_preserves_tanru() {
-        // "sutra klama" then "go'i" → Tanru(Root("sutra"), Root("klama"))
         let mut ast = make_two_sentence_ast(
             vec![
-                Selbri::Root("sutra".to_string()), // 0
-                Selbri::Root("klama".to_string()), // 1
-                Selbri::Tanru((0, 1)),             // 2
+                gerna_ast::Selbri::Root("sutra".to_string()),
+                gerna_ast::Selbri::Root("klama".to_string()),
+                gerna_ast::Selbri::Tanru((0, 1)),
             ],
             2,
         );
@@ -932,357 +1136,52 @@ mod tests {
         assert_eq!(go_i_rel, 2);
         assert!(matches!(
             &ast.selbris[go_i_rel as usize],
-            Selbri::Tanru((0, 1))
+            gerna_ast::Selbri::Tanru((0, 1))
         ));
         assert!(result.is_some());
     }
 
     #[test]
     fn test_resolve_go_i_no_antecedent() {
-        let mut ast = make_ast(vec![Selbri::Root("go'i".to_string())], 0, vec![0]);
+        let mut ast = make_ast(vec![gerna_ast::Selbri::Root("go'i".to_string())], 0, vec![0]);
         let result = resolve_go_i(&mut ast, &None);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("no antecedent"));
     }
 
-    // ─── go'i resolution tests (cross-call via snapshot) ───
-
     #[test]
     fn test_resolve_go_i_cross_call_root() {
-        // Previous call had "klama", new call has just "go'i"
         let snap = SelbriSnapshot {
-            selbris: vec![Selbri::Root("klama".to_string())],
+            selbris: vec![gerna_ast::Selbri::Root("klama".to_string())],
             sumtis: vec![],
             sentences: vec![],
             root: 0,
         };
-        let mut ast = make_ast(vec![Selbri::Root("go'i".to_string())], 0, vec![0]);
+        let mut ast = make_ast(vec![gerna_ast::Selbri::Root("go'i".to_string())], 0, vec![0]);
         let result = resolve_go_i(&mut ast, &Some(snap)).unwrap();
-        // go'i should have been repointed to the grafted "klama"
         let go_i_rel = bridi_relation(&ast, 0);
-        assert!(matches!(&ast.selbris[go_i_rel as usize], Selbri::Root(n) if n == "klama"));
+        assert!(matches!(&ast.selbris[go_i_rel as usize], gerna_ast::Selbri::Root(n) if n == "klama"));
         assert!(result.is_some());
     }
 
     #[test]
     fn test_resolve_go_i_cross_call_negated() {
-        // Previous call had "na klama" → snapshot preserves Negated
-        let snap = SelbriSnapshot {
-            selbris: vec![Selbri::Root("klama".to_string()), Selbri::Negated(0)],
-            sumtis: vec![],
-            sentences: vec![],
-            root: 1,
-        };
-        let mut ast = make_ast(vec![Selbri::Root("go'i".to_string())], 0, vec![0]);
-        let result = resolve_go_i(&mut ast, &Some(snap)).unwrap();
-        let go_i_rel = bridi_relation(&ast, 0);
-        // Should be Negated, not bare Root
-        assert!(
-            matches!(&ast.selbris[go_i_rel as usize], Selbri::Negated(inner) if {
-                matches!(&ast.selbris[*inner as usize], Selbri::Root(n) if n == "klama")
-            })
-        );
-        assert!(result.is_some());
-    }
-
-    #[test]
-    fn test_resolve_go_i_cross_call_se_converted() {
-        // Previous call had "se prami"
         let snap = SelbriSnapshot {
             selbris: vec![
-                Selbri::Root("prami".to_string()),
-                Selbri::Converted((Conversion::Se, 0)),
+                gerna_ast::Selbri::Root("klama".to_string()),
+                gerna_ast::Selbri::Negated(0),
             ],
             sumtis: vec![],
             sentences: vec![],
             root: 1,
         };
-        let mut ast = make_ast(vec![Selbri::Root("go'i".to_string())], 0, vec![0]);
+        let mut ast = make_ast(vec![gerna_ast::Selbri::Root("go'i".to_string())], 0, vec![0]);
         let result = resolve_go_i(&mut ast, &Some(snap)).unwrap();
         let go_i_rel = bridi_relation(&ast, 0);
-        assert!(
-            matches!(&ast.selbris[go_i_rel as usize], Selbri::Converted((Conversion::Se, inner)) if {
-                matches!(&ast.selbris[*inner as usize], Selbri::Root(n) if n == "prami")
-            })
-        );
-        assert!(result.is_some());
-    }
-
-    #[test]
-    fn test_resolve_go_i_cross_call_na_se() {
-        // Previous call had "na se klama"
-        let snap = SelbriSnapshot {
-            selbris: vec![
-                Selbri::Root("klama".to_string()),
-                Selbri::Converted((Conversion::Se, 0)),
-                Selbri::Negated(1),
-            ],
-            sumtis: vec![],
-            sentences: vec![],
-            root: 2,
-        };
-        let mut ast = make_ast(vec![Selbri::Root("go'i".to_string())], 0, vec![0]);
-        let result = resolve_go_i(&mut ast, &Some(snap)).unwrap();
-        let go_i_rel = bridi_relation(&ast, 0);
-        // Full chain: Negated → Converted(Se) → Root("klama")
         assert!(matches!(
             &ast.selbris[go_i_rel as usize],
-            Selbri::Negated(_)
+            gerna_ast::Selbri::Negated(_)
         ));
-        assert!(result.is_some());
-    }
-
-    #[test]
-    fn test_resolve_go_i_multi_sentence_within_call() {
-        // Three sentences: klama, go'i, prami — go'i resolves to klama,
-        // then prami becomes the new last relation
-        let mut ast = AstBuffer {
-            selbris: vec![
-                Selbri::Root("klama".to_string()), // 0
-                Selbri::Root("go'i".to_string()),  // 1
-                Selbri::Root("prami".to_string()), // 2
-            ],
-            sumtis: vec![
-                Sumti::ProSumti("mi".to_string()),
-                Sumti::ProSumti("do".to_string()),
-                Sumti::ProSumti("ko'a".to_string()),
-            ],
-            sentences: vec![
-                Sentence::Simple(Bridi {
-                    relation: 0,
-                    head_terms: vec![0],
-                    tail_terms: vec![],
-                    negated: false,
-                    tense: None,
-                    attitudinal: None,
-                }),
-                Sentence::Simple(Bridi {
-                    relation: 1,
-                    head_terms: vec![1],
-                    tail_terms: vec![],
-                    negated: false,
-                    tense: None,
-                    attitudinal: None,
-                }),
-                Sentence::Simple(Bridi {
-                    relation: 2,
-                    head_terms: vec![2],
-                    tail_terms: vec![],
-                    negated: false,
-                    tense: None,
-                    attitudinal: None,
-                }),
-            ],
-            roots: vec![0, 1, 2],
-        };
-        let result = resolve_go_i(&mut ast, &None).unwrap();
-        // go'i (sentence 1) should point to klama (selbri 0)
-        assert_eq!(bridi_relation(&ast, 1), 0);
-        // Last relation should be prami (selbri 2)
-        assert_eq!(result, Some(2));
-    }
-
-    #[test]
-    fn test_snapshot_roundtrip_extract_graft() {
-        // Extract from one buffer, graft into another, verify structure
-        let src = make_ast(
-            vec![
-                Selbri::Root("klama".to_string()),      // 0
-                Selbri::Converted((Conversion::Se, 0)), // 1
-                Selbri::Negated(1),                     // 2
-            ],
-            2,
-            vec![0],
-        );
-        let snap = extract_selbri_snapshot(&src, 2);
-
-        // Graft into a fresh buffer with some pre-existing entries
-        let mut dst = AstBuffer {
-            selbris: vec![Selbri::Root("other".to_string())],
-            sumtis: vec![],
-            sentences: vec![],
-            roots: vec![],
-        };
-        let new_root = graft_snapshot(&mut dst, &snap);
-        // dst.selbris: [Root("other"), Root("klama"), Converted(Se, 1), Negated(2)]
-        assert_eq!(dst.selbris.len(), 4);
-        assert!(
-            matches!(&dst.selbris[new_root as usize], Selbri::Negated(inner) if {
-                matches!(&dst.selbris[*inner as usize], Selbri::Converted((Conversion::Se, inner2)) if {
-                    matches!(&dst.selbris[*inner2 as usize], Selbri::Root(n) if n == "klama")
-                })
-            })
-        );
-    }
-
-    // ─── Snapshot extract edge cases ─────────────────────────────
-
-    #[test]
-    fn test_snapshot_compound_selbri() {
-        let ast = make_ast(
-            vec![Selbri::Compound(vec![
-                "skami".to_string(),
-                "pilno".to_string(),
-            ])],
-            0,
-            vec![0],
-        );
-        let snap = extract_selbri_snapshot(&ast, 0);
-        assert_eq!(snap.selbris.len(), 1);
-        assert!(matches!(&snap.selbris[0], Selbri::Compound(parts) if parts.len() == 2));
-    }
-
-    #[test]
-    fn test_snapshot_tanru() {
-        // sutra klama → Tanru(Root("sutra"), Root("klama"))
-        let ast = make_ast(
-            vec![
-                Selbri::Root("sutra".to_string()), // 0
-                Selbri::Root("klama".to_string()), // 1
-                Selbri::Tanru((0, 1)),             // 2
-            ],
-            2,
-            vec![0],
-        );
-        let snap = extract_selbri_snapshot(&ast, 2);
-        assert_eq!(snap.selbris.len(), 3);
-        assert!(matches!(
-            &snap.selbris[snap.root as usize],
-            Selbri::Tanru(_)
-        ));
-    }
-
-    // ─── graft rebase additional tests ───────────────────────────
-
-    #[test]
-    fn test_graft_into_empty_buffer() {
-        let mut ast = AstBuffer {
-            selbris: vec![],
-            sumtis: vec![],
-            sentences: vec![],
-            roots: vec![],
-        };
-        let snap = SelbriSnapshot {
-            selbris: vec![Selbri::Root("klama".to_string())],
-            sumtis: vec![],
-            sentences: vec![],
-            root: 0,
-        };
-        let grafted = graft_snapshot(&mut ast, &snap);
-        assert_eq!(grafted, 0);
-        assert_eq!(ast.selbris.len(), 1);
-        assert!(matches!(&ast.selbris[0], Selbri::Root(n) if n == "klama"));
-    }
-
-    #[test]
-    fn test_graft_tanru_rebases_indices() {
-        let mut ast = AstBuffer {
-            selbris: vec![
-                Selbri::Root("existing1".to_string()),
-                Selbri::Root("existing2".to_string()),
-            ],
-            sumtis: vec![],
-            sentences: vec![],
-            roots: vec![],
-        };
-        let snap = SelbriSnapshot {
-            selbris: vec![
-                Selbri::Root("sutra".to_string()), // 0
-                Selbri::Root("klama".to_string()), // 1
-                Selbri::Tanru((0, 1)),             // 2
-            ],
-            sumtis: vec![],
-            sentences: vec![],
-            root: 2,
-        };
-        let grafted = graft_snapshot(&mut ast, &snap);
-        // Base offset = 2 (two existing selbris)
-        assert_eq!(grafted, 4); // snap.root(2) + base(2)
-        assert_eq!(ast.selbris.len(), 5);
-        // Tanru indices should be rebased: (0+2, 1+2) = (2, 3)
-        assert!(matches!(&ast.selbris[4], Selbri::Tanru((2, 3))));
-    }
-
-    // ─── go'i edge cases ─────────────────────────────────────────
-
-    #[test]
-    fn test_resolve_go_i_cross_call_tanru() {
-        // Previous call had "sutra klama" → snapshot preserves Tanru
-        let snap = SelbriSnapshot {
-            selbris: vec![
-                Selbri::Root("sutra".to_string()),
-                Selbri::Root("klama".to_string()),
-                Selbri::Tanru((0, 1)),
-            ],
-            sumtis: vec![],
-            sentences: vec![],
-            root: 2,
-        };
-        let mut ast = make_ast(vec![Selbri::Root("go'i".to_string())], 0, vec![0]);
-        let result = resolve_go_i(&mut ast, &Some(snap)).unwrap();
-        let go_i_rel = bridi_relation(&ast, 0);
-        assert!(matches!(&ast.selbris[go_i_rel as usize], Selbri::Tanru(_)));
-        assert!(result.is_some());
-    }
-
-    #[test]
-    fn test_resolve_go_i_no_go_i_in_ast() {
-        // All sentences have non-go'i selbri — should return the last relation without error
-        let mut ast = make_ast(vec![Selbri::Root("klama".to_string())], 0, vec![0]);
-        let result = resolve_go_i(&mut ast, &None);
-        // Should succeed (no go'i to resolve)
-        assert!(result.is_ok());
-    }
-
-    // ─── Multiple go'i in sequence ───────────────────────────────
-
-    #[test]
-    fn test_resolve_go_i_two_go_i_in_sequence() {
-        // klama, go'i, go'i → both go'i should resolve to klama
-        let mut ast = AstBuffer {
-            selbris: vec![
-                Selbri::Root("klama".to_string()), // 0
-                Selbri::Root("go'i".to_string()),  // 1
-                Selbri::Root("go'i".to_string()),  // 2
-            ],
-            sumtis: vec![
-                Sumti::ProSumti("mi".to_string()),
-                Sumti::ProSumti("do".to_string()),
-                Sumti::ProSumti("ko'a".to_string()),
-            ],
-            sentences: vec![
-                Sentence::Simple(Bridi {
-                    relation: 0,
-                    head_terms: vec![0],
-                    tail_terms: vec![],
-                    negated: false,
-                    tense: None,
-                    attitudinal: None,
-                }),
-                Sentence::Simple(Bridi {
-                    relation: 1,
-                    head_terms: vec![1],
-                    tail_terms: vec![],
-                    negated: false,
-                    tense: None,
-                    attitudinal: None,
-                }),
-                Sentence::Simple(Bridi {
-                    relation: 2,
-                    head_terms: vec![2],
-                    tail_terms: vec![],
-                    negated: false,
-                    tense: None,
-                    attitudinal: None,
-                }),
-            ],
-            roots: vec![0, 1, 2],
-        };
-        let result = resolve_go_i(&mut ast, &None).unwrap();
-        // First go'i resolves to klama (idx 0)
-        assert_eq!(bridi_relation(&ast, 1), 0);
-        // Second go'i also resolves to klama (idx 0)
-        assert_eq!(bridi_relation(&ast, 2), 0);
         assert!(result.is_some());
     }
 }

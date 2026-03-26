@@ -3239,6 +3239,9 @@ dependencies = [
 name = "lasna"
 version = "0.1.0"
 dependencies = [
+ "gerna",
+ "logji",
+ "smuni",
  "wit-bindgen-rt",
 ]
 
@@ -3350,6 +3353,7 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 name = "logji"
 version = "0.1.0"
 dependencies = [
+ "smuni",
  "wit-bindgen-rt",
 ]
 
@@ -5350,6 +5354,7 @@ dependencies = [
 name = "smuni"
 version = "0.1.0"
 dependencies = [
+ "gerna",
  "lasso",
  "phf",
  "phf_codegen",

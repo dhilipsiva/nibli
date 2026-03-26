@@ -22,16 +22,10 @@ clean-wasm-all:
     rm -f target/wasm32-wasip2/debug/*.wasm
     rm -f target/wasm32-wasip2/release/*.wasm
 
-# Compiles the discrete WebAssembly components and fuses them
+# Compiles the single lasna WASM component (gerna/smuni/logji linked as internal crates)
 build-wasm: clean-wasm
-    @echo "Building WASI components ({{wasi_target}}, {{profile}})..."
-    cargo component build --target {{wasi_target}} {{cargo_profile_flag}} -p gerna -p smuni -p logji -p lasna
-    @echo "Fusing components with WAC..."
-    wac plug {{wasm_dir}}/lasna.wasm \
-        --plug {{wasm_dir}}/gerna.wasm \
-        --plug {{wasm_dir}}/smuni.wasm \
-        --plug {{wasm_dir}}/logji.wasm \
-        -o {{wasm_dir}}/lasna-pipeline.wasm
+    @echo "Building WASI lasna component ({{wasi_target}}, {{profile}})..."
+    cargo component build --target {{wasi_target}} {{cargo_profile_flag}} -p lasna
 
 # Compiles the native Wasmtime host gasnu
 build-gasnu:
@@ -41,7 +35,7 @@ build-gasnu:
 # Executes the full pipeline: Builds WASM modules, then boots the native REPL
 run: build-wasm
     @echo "Launching Neuro-Symbolic Engine ({{profile}})..."
-    NIBLI_WASM_PATH={{wasm_dir}}/lasna-pipeline.wasm cargo run -p gasnu {{cargo_profile_flag}}
+    NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm cargo run -p gasnu {{cargo_profile_flag}}
 
 # Build the native Linux binary (no WASM, full backtraces)
 build-native:
@@ -87,7 +81,7 @@ backend:
 
 # Full pipeline with compute backend auto-configured
 run-with-backend: build-wasm
-    NIBLI_COMPUTE_ADDR=127.0.0.1:5555 NIBLI_WASM_PATH={{wasm_dir}}/lasna-pipeline.wasm cargo run -p gasnu {{cargo_profile_flag}}
+    NIBLI_COMPUTE_ADDR=127.0.0.1:5555 NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm cargo run -p gasnu {{cargo_profile_flag}}
 
 # Run Python backend tests
 test-backend:
@@ -120,7 +114,7 @@ test-store:
 
 # Run REPL with persistent storage
 run-persist: build-wasm
-    NIBLI_DB_PATH=nibli.redb NIBLI_WASM_PATH={{wasm_dir}}/lasna-pipeline.wasm cargo run -p gasnu {{cargo_profile_flag}}
+    NIBLI_DB_PATH=nibli.redb NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm cargo run -p gasnu {{cargo_profile_flag}}
 
 # Run tavla gossip tests
 test-tavla:

@@ -37,6 +37,8 @@ mod rules;
 /// Bridge: convert smuni's WIT logic types → logji's WIT logic types.
 pub mod smuni_bridge;
 
+pub use compute::{register_compute_dispatch, ComputeRequest};
+
 use compute::*;
 use reasoning::*;
 use rules::*;

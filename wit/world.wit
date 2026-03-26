@@ -494,12 +494,9 @@ interface lasna {
     }
 }
 
-/// Lasna component world: imports all sub-components, exports the lasna interface.
-/// This is the world that `wac plug` fuses into the final composite WASM binary.
+/// Lasna component world: single WASM component with gerna/smuni/logji as internal crate deps.
+/// Only imports compute-backend (host-provided), exports the lasna session interface.
 world lasna-pipeline {
-    import gerna;
-    import smuni;
-    import logji;
     import compute-backend;
     export lasna;
 }

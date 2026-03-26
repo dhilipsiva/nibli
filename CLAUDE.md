@@ -18,7 +18,7 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 
 | Command | What it does |
 |---------|-------------|
-| `just run` | Full pipeline: clean WASM -> build components -> fuse with wac -> launch REPL |
+| `just run` | Full pipeline: clean WASM -> build lasna component -> launch REPL |
 | `just check` | Fast type-check all workspace crates (`cargo check --workspace`) |
 | `just test` | Run all unit tests (`cargo test --lib -- --nocapture --test-threads=1`) |
 | `just test-engine` | Run nibli-engine integration tests (full pipeline: parse → compile → reason) |
@@ -26,7 +26,7 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | `just test-backend` | Run Python backend tests |
 | `just test-tavla` | Run tavla gossip tests |
 | `just test-all` | Run every test suite (unit + integration + Python + tavla) |
-| `just build-wasm` | Build WASM components + fuse with wac |
+| `just build-wasm` | Build single lasna WASM component |
 | `just build-gasnu` | Build native Wasmtime host gasnu (runner) |
 | `just backend` | Start the Python reference compute backend (port 5555) |
 | `just run-with-backend` | Build + run with `NIBLI_COMPUTE_ADDR=127.0.0.1:5555` |
@@ -74,10 +74,11 @@ Core component crates + runtime surfaces:
 | `nibli` | — | Native debug REPL and `nibli-validate` tooling | `main.rs`, `src/bin/validate.rs` |
 | `python/` | — | Reference compute backend server (TCP + JSON Lines) | `nibli_backend.py` |
 
-- **WIT interfaces:** `wit/world.wit` defines `ast-types` (gerna output), `logic-types` (FOL IR), `gerna`, `smuni`, `logji`, `compute-backend`, `lasna`. `wit/gossip.wit` defines gossip protocol types (agent identity, vector clocks, envelopes, trust, transport). `cargo component build` regenerates `src/bindings.rs` in each crate.
-- **WIT worlds:** `gerna-component`, `smuni-component`, `logji-component`, `lasna-pipeline`.
-- **Rust structs:** `GernaComponent`, `SmuniComponent`, `LogjiComponent`, `LasnaPipeline`.
+- **WIT interfaces:** `wit/world.wit` defines `ast-types` (gerna output), `logic-types` (FOL IR), `gerna`, `smuni`, `logji`, `compute-backend`, `lasna`. `wit/gossip.wit` defines gossip protocol types (agent identity, vector clocks, envelopes, trust, transport). `cargo component build -p lasna` regenerates `lasna/src/bindings.rs`; individual crate bindings regenerate with `cargo component build -p <crate>`.
+- **WIT worlds:** `lasna-pipeline` (single WASM component importing `compute-backend`, exporting `lasna`; gerna/smuni/logji linked as internal Rust crate deps). Legacy `gerna-component`, `smuni-component`, `logji-component` worlds retained for individual crate binding regeneration.
+- **Rust structs:** `LasnaPipeline` (WASM component), `GernaComponent`, `SmuniComponent`, `LogjiComponent` (binding stubs, not deployed as separate components).
 - **Cross-component data:** Flat index-based arrays (`AstBuffer`, `LogicBuffer`) with `u32` indices — no pointers across WASM boundaries.
+- **Compute dispatch:** logji uses injectable function pointers (`logji::register_compute_dispatch`) instead of cfg-gated WIT imports. Lasna registers host-bridge functions at Session creation; native mode (nibli-engine) leaves dispatch unregistered (returns error for external predicates).
 
 ## Canonical Runtime Surfaces
 
