@@ -4,10 +4,6 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 1: DRY Consolidation (Medium Effort, High Impact)
 
-## Tier 2: Architecture (High Effort, High Impact)
-
-5. **SelbriSnapshot deep-clone optimization** — go'i resolution deep-clones entire selbri subtree + dependencies for every assertion/query (`lasna/src/lib.rs`). ~150 lines of remapping logic. Replace with index offset mapping (add base offset to all indices in place) to avoid cloning. High impact for `:load` batch operations.
-
 ## Tier 4: Correctness & Robustness
 
 10. **CRDT tombstone conflict handling** — `tavla` merge doesn't handle tombstone conflicts correctly. If two nodes retract different envelopes, merging could resurrect retracted facts. Vector clock comparison assumes missing agents at counter 0, breaks under partitions.
