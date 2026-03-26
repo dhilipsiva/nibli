@@ -4,11 +4,9 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 1: Correctness Bugs
 
-1. **f64 as i64 truncation in compute.rs** — `LogicalTerm::Number(n) => Some(*n as i64)` silently drops fractional parts. Affects arithmetic dispatch (sumji/dilcu) for non-integer inputs. ~3 lines in `logji/src/compute.rs:25`.
-
 ## Tier 2: Performance (Hot Path)
 
-3. **SkolemFn registry cloned on every witness search** — `inner.skolem_fn_registry.clone()` appears 3× in hot paths (reasoning.rs). Should iterate by reference. ~3 lines.
+1. **SkolemFn registry cloned on every witness search** — `inner.skolem_fn_registry.clone()` appears 3× in hot paths (reasoning.rs). Should iterate by reference. ~3 lines.
 
 4. **all_typed_domain_members().to_vec() cloned on every quantifier evaluation** — The cached slice is already available; `.to_vec()` forces an unnecessary allocation+copy on every ∃/∀ evaluation. ~5 lines in `logji/src/reasoning.rs`.
 

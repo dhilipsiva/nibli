@@ -20,12 +20,12 @@ pub fn register_compute_dispatch(eval: EvalFn, batch_eval: BatchEvalFn) {
 pub(super) fn extract_num_value(
     term: &LogicalTerm,
     subs: &HashMap<String, GroundTerm>,
-) -> Option<i64> {
+) -> Option<f64> {
     match term {
-        LogicalTerm::Number(n) => Some(*n as i64),
+        LogicalTerm::Number(n) => Some(*n),
         LogicalTerm::Variable(v) => {
             let gt = subs.get(v.as_str())?;
-            gt.as_f64().map(|f| f as i64)
+            gt.as_f64()
         }
         _ => None,
     }
@@ -58,7 +58,7 @@ pub(super) fn try_arithmetic_evaluation(
         "pilji" => Some(x1 == x2 * x3),
         "sumji" => Some(x1 == x2 + x3),
         "dilcu" => {
-            if x3 == 0 {
+            if x3 == 0.0 {
                 return Some(false);
             }
             Some(x1 == x2 / x3)
