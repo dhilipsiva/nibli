@@ -1,0 +1,112 @@
+//! First-Order Logic types produced by the smuni compiler and consumed by logji.
+//!
+//! Flat index-based representation: `LogicBuffer` contains a `nodes` array
+//! of `LogicNode` variants, referenced by `u32` indices.
+
+/// A logical term — the typed representation of an FOL argument.
+#[derive(Clone, Debug)]
+pub enum LogicalTerm {
+    /// A bound or free variable (e.g., Skolem variables, universally quantified vars).
+    Variable(String),
+    /// A ground constant (e.g., entity names from `la`).
+    Constant(String),
+    /// An opaque description reference (from `le` gadri).
+    Description(String),
+    /// Unspecified placeholder (from `zo'e`).
+    Unspecified,
+    /// Numeric literal (from `li` + PA).
+    Number(f64),
+}
+
+/// A node in the flat logic graph. Each variant corresponds to an FOL constructor.
+/// Nodes reference children by `u32` index into the `LogicBuffer.nodes` array.
+#[derive(Clone, Debug)]
+pub enum LogicNode {
+    /// Ground or quantified predicate. Fields: (relation-name, argument-terms).
+    Predicate((String, Vec<LogicalTerm>)),
+    /// A predicate dispatched to an external compute backend for evaluation.
+    ComputeNode((String, Vec<LogicalTerm>)),
+    /// Conjunction: left ∧ right. Fields: (left-node-id, right-node-id).
+    AndNode((u32, u32)),
+    /// Disjunction: left ∨ right. Fields: (left-node-id, right-node-id).
+    OrNode((u32, u32)),
+    /// Negation: ¬inner. Payload: inner-node-id.
+    NotNode(u32),
+    /// Existential quantifier: ∃var. body. Fields: (variable-name, body-node-id).
+    ExistsNode((String, u32)),
+    /// Universal quantifier: ∀var. body. Fields: (variable-name, body-node-id).
+    ForAllNode((String, u32)),
+    /// Past tense wrapper (pu). Payload: inner-node-id.
+    PastNode(u32),
+    /// Present tense wrapper (ca). Payload: inner-node-id.
+    PresentNode(u32),
+    /// Future tense wrapper (ba). Payload: inner-node-id.
+    FutureNode(u32),
+    /// Deontic obligation wrapper (ei/bilga). Payload: inner-node-id.
+    ObligatoryNode(u32),
+    /// Deontic permission wrapper (e'e/curmi). Payload: inner-node-id.
+    PermittedNode(u32),
+    /// Exactly N entities satisfy the body. Fields: (variable-name, count, body-node-id).
+    CountNode((String, u32, u32)),
+}
+
+/// Flat logic buffer: a `nodes` array plus root indices.
+#[derive(Clone, Debug)]
+pub struct LogicBuffer {
+    pub nodes: Vec<LogicNode>,
+    pub roots: Vec<u32>,
+}
+
+/// A single witness binding: variable name → logical term value.
+#[derive(Clone, Debug)]
+pub struct WitnessBinding {
+    pub variable: String,
+    pub term: LogicalTerm,
+}
+
+/// Proof rule applied at a single proof step.
+#[derive(Clone, Debug)]
+pub enum ProofRule {
+    Conjunction,
+    DisjunctionCheck(String),
+    DisjunctionIntro(String),
+    Negation,
+    ModalPassthrough(String),
+    ExistsWitness((String, LogicalTerm)),
+    ExistsFailed,
+    ForallVacuous,
+    ForallVerified(Vec<LogicalTerm>),
+    ForallCounterexample(LogicalTerm),
+    CountResult((u32, u32)),
+    PredicateCheck((String, String)),
+    ComputeCheck((String, String)),
+    Asserted(String),
+    Derived((String, String)),
+    ProofRef(String),
+}
+
+/// A single step in a proof trace.
+#[derive(Clone, Debug)]
+pub struct ProofStep {
+    pub rule: ProofRule,
+    pub holds: bool,
+    pub children: Vec<u32>,
+}
+
+/// Complete proof trace: steps array + root index.
+#[derive(Clone, Debug)]
+pub struct ProofTrace {
+    pub steps: Vec<ProofStep>,
+    pub root: u32,
+}
+
+/// Unique identifier for a stored fact in the knowledge base.
+pub type FactId = u64;
+
+/// Summary of an active fact in the knowledge base.
+#[derive(Clone, Debug)]
+pub struct FactSummary {
+    pub id: FactId,
+    pub label: String,
+    pub root_count: u32,
+}
