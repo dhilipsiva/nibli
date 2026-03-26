@@ -206,27 +206,22 @@ impl KnowledgeBase {
                     if witnesses.is_empty() {
                         return Ok(vec![]);
                     }
-                    // Intersect: keep only binding sets from `prev` that are
-                    // compatible with at least one binding set from `witnesses`.
-                    // Two binding sets are compatible if every shared variable
-                    // maps to the same GroundTerm.
-                    let intersected: Vec<Vec<(String, GroundTerm)>> = prev
-                        .into_iter()
-                        .filter(|p_bindings| {
-                            witnesses.iter().any(|w_bindings| {
-                                p_bindings.iter().all(|(var, val)| {
-                                    w_bindings
-                                        .iter()
-                                        .find(|(wv, _)| wv == var)
-                                        .map_or(true, |(_, wval)| wval == val)
-                                })
-                            })
-                        })
-                        .collect();
-                    if intersected.is_empty() {
+                    // Join binding sets across roots: shared variables must agree,
+                    // and fresh variables from later roots are preserved.
+                    let mut joined = Vec::new();
+                    for prev_bindings in prev {
+                        for witness_bindings in &witnesses {
+                            if let Some(combined) =
+                                merge_witness_bindings(&prev_bindings, witness_bindings)
+                            {
+                                joined.push(combined);
+                            }
+                        }
+                    }
+                    if joined.is_empty() {
                         return Ok(vec![]);
                     }
-                    result_sets = Some(intersected);
+                    result_sets = Some(joined);
                 }
             }
         }
@@ -279,6 +274,21 @@ impl KnowledgeBase {
         };
         Ok((all_hold, ProofTrace { steps, root }))
     }
+}
+
+fn merge_witness_bindings(
+    left: &[(String, GroundTerm)],
+    right: &[(String, GroundTerm)],
+) -> Option<Vec<(String, GroundTerm)>> {
+    let mut combined = left.to_vec();
+    for (var, val) in right {
+        match combined.iter().find(|(existing_var, _)| existing_var == var) {
+            Some((_, existing_val)) if existing_val != val => return None,
+            Some(_) => {}
+            None => combined.push((var.clone(), val.clone())),
+        }
+    }
+    Some(combined)
 }
 
 /// Public API for native callers (lasna, nibli-engine).
@@ -1774,6 +1784,72 @@ mod tests {
         assert_eq!(results[0].len(), 1);
         assert_eq!(results[0][0].variable, "x");
         assert!(matches!(&results[0][0].term, LogicalTerm::Constant(c) if c == "mi"));
+    }
+
+    #[test]
+    fn test_find_witnesses_multi_root_join_merges_fresh_bindings() {
+        // Assert nelci(bob, alis).
+        // Query across two roots:
+        //   ∃x. nelci(x, alis)
+        //   ∃x. ∃y. nelci(x, y)
+        // The root join should preserve the fresh y binding from the second root.
+        let kb = new_kb();
+
+        let mut anodes = Vec::new();
+        let aidx = pred(
+            &mut anodes,
+            "nelci",
+            vec![
+                LogicalTerm::Constant("bob".to_string()),
+                LogicalTerm::Constant("alis".to_string()),
+            ],
+        );
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes: anodes,
+                roots: vec![aidx],
+            },
+        );
+
+        let mut nodes = Vec::new();
+        let left_body = pred(
+            &mut nodes,
+            "nelci",
+            vec![
+                LogicalTerm::Variable("x".to_string()),
+                LogicalTerm::Constant("alis".to_string()),
+            ],
+        );
+        let left_root = exists(&mut nodes, "x", left_body);
+
+        let right_body = pred(
+            &mut nodes,
+            "nelci",
+            vec![
+                LogicalTerm::Variable("x".to_string()),
+                LogicalTerm::Variable("y".to_string()),
+            ],
+        );
+        let right_inner = exists(&mut nodes, "y", right_body);
+        let right_root = exists(&mut nodes, "x", right_inner);
+
+        let results = query_find(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![left_root, right_root],
+            },
+        );
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].len(), 2);
+        let vars: std::collections::HashMap<&str, &LogicalTerm> = results[0]
+            .iter()
+            .map(|binding| (binding.variable.as_str(), &binding.term))
+            .collect();
+        assert!(matches!(vars["x"], LogicalTerm::Constant(c) if c == "bob"));
+        assert!(matches!(vars["y"], LogicalTerm::Constant(c) if c == "alis"));
     }
 
     #[test]
