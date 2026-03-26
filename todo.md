@@ -4,9 +4,7 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 1: Dead Code Cleanup (Low Effort, High Impact)
 
-1. **Delete dead WIT export stubs** — `struct GernaComponent`, `struct SmuniComponent`, `bindings::export!()` macros in gerna/smuni/logji are `#[cfg(target_arch = "wasm32")]` and unreachable. Remove all cfg-gated export infrastructure from these 3 crates.
-
-3. **Simplify crate-type** — gerna, smuni, logji Cargo.toml have `crate-type = ["cdylib", "lib"]` but cdylib is never built. Change to `["lib"]`.
+1. **Simplify crate-type** — gerna, smuni, logji Cargo.toml have `crate-type = ["cdylib", "lib"]` but cdylib is never built. Change to `["lib"]`.
 
 4. **Inline thin wrapper debug_logic()** — `lasna/src/lib.rs` and `nibli-engine/src/lib.rs` each have a one-liner `debug_logic()` that just calls `logji::repr::debug_logic()`. Inline at call sites.
 

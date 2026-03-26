@@ -57,20 +57,6 @@ fn compile_ast(ast: &gerna_ast::AstBuffer) -> Result<LogicBuffer, NibliError> {
     Ok(LogicBuffer { nodes, roots })
 }
 
-/// WIT component implementation for the `smuni` interface.
-/// Only used when compiled as a standalone WASM component (wasm32 target).
-#[cfg(target_arch = "wasm32")]
-struct SmuniComponent;
-
-#[cfg(target_arch = "wasm32")]
-impl bindings::exports::lojban::nibli::smuni::Guest for SmuniComponent {
-    fn compile_buffer(
-        ast: bindings::lojban::nibli::ast_types::AstBuffer,
-    ) -> Result<LogicBuffer, NibliError> {
-        compile_ast(&gerna_bridge::convert_ast_buffer(&ast))
-    }
-}
-
 /// Recursively flatten a [`LogicalForm`] tree into the flat `nodes` array.
 ///
 /// Returns the index of the root node in the array. String interning keys
@@ -218,5 +204,3 @@ pub fn compile_from_gerna_ast(
     compile_ast(&ast)
 }
 
-#[cfg(target_arch = "wasm32")]
-bindings::export!(SmuniComponent with_types_in bindings);

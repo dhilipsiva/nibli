@@ -383,8 +383,6 @@ pub fn parse_text_native(input: String) -> Result<wit::ParseResult, NibliError> 
     <GernaComponent as Guest>::parse_text(input)
 }
 
-#[cfg(target_arch = "wasm32")]
-bindings::export!(GernaComponent with_types_in bindings);
 
 // Add these tests to parser/src/lib.rs or a new integration test file.
 // They test the Flattener, not just the grammar parser.
