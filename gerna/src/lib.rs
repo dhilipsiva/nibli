@@ -13,8 +13,6 @@
 
 /// Lojban AST types (arena-allocated tree nodes).
 pub mod ast;
-#[allow(warnings)]
-pub mod bindings;
 /// Recursive descent parser producing an arena-allocated AST.
 pub mod grammar;
 /// Logos-based lexer with post-lex compound cmavo correction.
@@ -22,16 +20,11 @@ pub mod lexer;
 /// Metalinguistic preprocessor (si/sa/su/zo/zoi/zei resolution).
 pub mod preprocessor;
 
-use bindings::exports::lojban::nibli::gerna::Guest;
-use bindings::lojban::nibli::ast_types as wit;
-use bindings::lojban::nibli::error_types::NibliError;
+use nibli_types::ast as flat;
+use nibli_types::error::NibliError;
 
-/// WIT component implementation for the `gerna` interface.
-struct GernaComponent;
-
-impl Guest for GernaComponent {
-    /// Parse Lojban text through the full pipeline: lex → preprocess → parse → flatten.
-    fn parse_text(input: String) -> Result<wit::ParseResult, NibliError> {
+/// Parse Lojban text through the full pipeline: lex → preprocess → parse → flatten.
+pub fn parse_text_native(input: String) -> Result<flat::ParseResult, NibliError> {
         // 1. Lex into morphological classification stream
         let raw_tokens = crate::lexer::tokenize(&input);
 
@@ -42,22 +35,21 @@ impl Guest for GernaComponent {
         let arena = bumpalo::Bump::new();
         let result = crate::grammar::parse_tokens_to_ast(&normalized, &input, &arena);
 
-        // 4. Convert grammar errors to WIT errors
-        let errors: Vec<wit::ParseError> = result
+        // 4. Convert grammar errors
+        let errors: Vec<flat::ParseError> = result
             .errors
             .iter()
-            .map(|e| wit::ParseError {
+            .map(|e| flat::ParseError {
                 message: e.message.clone(),
                 line: e.line,
                 column: e.column,
             })
             .collect();
 
-        // 5. Flatten tree AST → index-based WIT buffer
+        // 5. Flatten tree AST → index-based flat buffer
         let buffer = Flattener::flatten(&result.parsed);
 
-        Ok(wit::ParseResult { buffer, errors })
-    }
+        Ok(flat::ParseResult { buffer, errors })
 }
 
 // ─── AST → WIT Buffer Flattener ─────────────────────────────────
@@ -70,13 +62,13 @@ impl Guest for GernaComponent {
 /// Rel clause bodies and nu abstraction bodies are stored in
 /// `buffer.sentences` but are NOT roots.
 struct Flattener {
-    buffer: wit::AstBuffer,
+    buffer: flat::AstBuffer,
 }
 
 impl Flattener {
     fn new() -> Self {
         Self {
-            buffer: wit::AstBuffer {
+            buffer: flat::AstBuffer {
                 selbris: Vec::new(),
                 sumtis: Vec::new(),
                 sentences: Vec::new(),
@@ -85,7 +77,7 @@ impl Flattener {
         }
     }
 
-    fn flatten(parsed: &ast::ParsedText<'_>) -> wit::AstBuffer {
+    fn flatten(parsed: &ast::ParsedText<'_>) -> flat::AstBuffer {
         let mut f = Self::new();
         for sentence in &parsed.sentences {
             let root_id = f.push_sentence(sentence);
@@ -96,7 +88,7 @@ impl Flattener {
 
     // ─── Sentence Flattening ────────────────────────────────
     fn push_sentence(&mut self, sentence: &ast::Sentence<'_>) -> u32 {
-        use bindings::lojban::nibli::ast_types::{
+        use flat::{
             Sentence as WasmSentence, SentenceConnective as WasmConn,
         };
 
@@ -115,17 +107,17 @@ impl Flattener {
                 }
 
                 let tense = bridi.tense.map(|t| match t {
-                    ast::Tense::Pu => bindings::lojban::nibli::ast_types::Tense::Pu,
-                    ast::Tense::Ca => bindings::lojban::nibli::ast_types::Tense::Ca,
-                    ast::Tense::Ba => bindings::lojban::nibli::ast_types::Tense::Ba,
+                    ast::Tense::Pu => flat::Tense::Pu,
+                    ast::Tense::Ca => flat::Tense::Ca,
+                    ast::Tense::Ba => flat::Tense::Ba,
                 });
 
                 let attitudinal = bridi.attitudinal.map(|a| match a {
-                    ast::Attitudinal::Ei => bindings::lojban::nibli::ast_types::Attitudinal::Ei,
-                    ast::Attitudinal::Ehe => bindings::lojban::nibli::ast_types::Attitudinal::Ehe,
+                    ast::Attitudinal::Ei => flat::Attitudinal::Ei,
+                    ast::Attitudinal::Ehe => flat::Attitudinal::Ehe,
                 });
 
-                let flat_bridi = bindings::lojban::nibli::ast_types::Bridi {
+                let flat_bridi = flat::Bridi {
                     relation,
                     head_terms,
                     tail_terms,
@@ -138,7 +130,7 @@ impl Flattener {
                 // Push the flat_bridi wrapped in the Simple enum variant
                 self.buffer
                     .sentences
-                    .push(bindings::lojban::nibli::ast_types::Sentence::Simple(
+                    .push(flat::Sentence::Simple(
                         flat_bridi,
                     ));
                 idx
@@ -161,10 +153,10 @@ impl Flattener {
                         right_negated,
                     } => {
                         let wit_conn = match c {
-                            ast::Connective::Je => wit::Connective::Je,
-                            ast::Connective::Ja => wit::Connective::Ja,
-                            ast::Connective::Jo => wit::Connective::Jo,
-                            ast::Connective::Ju => wit::Connective::Ju,
+                            ast::Connective::Je => flat::Connective::Je,
+                            ast::Connective::Ja => flat::Connective::Ja,
+                            ast::Connective::Jo => flat::Connective::Jo,
+                            ast::Connective::Ju => flat::Connective::Ju,
                         };
                         WasmConn::Afterthought((*left_negated, wit_conn, *right_negated))
                     }
@@ -189,41 +181,41 @@ impl Flattener {
 
     fn push_selbri(&mut self, selbri: &ast::Selbri<'_>) -> u32 {
         let wit_selbri = match selbri {
-            ast::Selbri::Root(s) => wit::Selbri::Root(s.clone()),
+            ast::Selbri::Root(s) => flat::Selbri::Root(s.clone()),
 
-            ast::Selbri::Compound(parts) => wit::Selbri::Compound(parts.clone()),
+            ast::Selbri::Compound(parts) => flat::Selbri::Compound(parts.clone()),
 
             ast::Selbri::Tanru(modifier, head) => {
                 let m_id = self.push_selbri(modifier);
                 let h_id = self.push_selbri(head);
-                wit::Selbri::Tanru((m_id, h_id))
+                flat::Selbri::Tanru((m_id, h_id))
             }
 
             ast::Selbri::Converted(conv, inner) => {
                 let inner_id = self.push_selbri(inner);
                 let wit_conv = match conv {
-                    ast::Conversion::Se => wit::Conversion::Se,
-                    ast::Conversion::Te => wit::Conversion::Te,
-                    ast::Conversion::Ve => wit::Conversion::Ve,
-                    ast::Conversion::Xe => wit::Conversion::Xe,
+                    ast::Conversion::Se => flat::Conversion::Se,
+                    ast::Conversion::Te => flat::Conversion::Te,
+                    ast::Conversion::Ve => flat::Conversion::Ve,
+                    ast::Conversion::Xe => flat::Conversion::Xe,
                 };
-                wit::Selbri::Converted((wit_conv, inner_id))
+                flat::Selbri::Converted((wit_conv, inner_id))
             }
 
             ast::Selbri::Negated(inner) => {
                 let inner_id = self.push_selbri(inner);
-                wit::Selbri::Negated(inner_id)
+                flat::Selbri::Negated(inner_id)
             }
 
             ast::Selbri::Grouped(inner) => {
                 let inner_id = self.push_selbri(inner);
-                wit::Selbri::Grouped(inner_id)
+                flat::Selbri::Grouped(inner_id)
             }
 
             ast::Selbri::WithArgs { core, args } => {
                 let core_id = self.push_selbri(core);
                 let arg_ids: Vec<u32> = args.iter().map(|s| self.push_sumti(s)).collect();
-                wit::Selbri::WithArgs((core_id, arg_ids))
+                flat::Selbri::WithArgs((core_id, arg_ids))
             }
 
             ast::Selbri::Connected {
@@ -234,12 +226,12 @@ impl Flattener {
                 let l_id = self.push_selbri(left);
                 let r_id = self.push_selbri(right);
                 let wit_conn = match connective {
-                    ast::Connective::Je => wit::Connective::Je,
-                    ast::Connective::Ja => wit::Connective::Ja,
-                    ast::Connective::Jo => wit::Connective::Jo,
-                    ast::Connective::Ju => wit::Connective::Ju,
+                    ast::Connective::Je => flat::Connective::Je,
+                    ast::Connective::Ja => flat::Connective::Ja,
+                    ast::Connective::Jo => flat::Connective::Jo,
+                    ast::Connective::Ju => flat::Connective::Ju,
                 };
-                wit::Selbri::Connected((l_id, wit_conn, r_id))
+                flat::Selbri::Connected((l_id, wit_conn, r_id))
             }
             ast::Selbri::Abstraction(kind, inner_bridi) => {
                 // Inner bridi goes into sentences (NOT a root —
@@ -247,13 +239,13 @@ impl Flattener {
                 let body_idx = self.buffer.sentences.len() as u32;
                 self.push_sentence(inner_bridi);
                 let wit_kind = match kind {
-                    ast::AbstractionKind::Nu => wit::AbstractionKind::Nu,
-                    ast::AbstractionKind::Duhu => wit::AbstractionKind::Duhu,
-                    ast::AbstractionKind::Ka => wit::AbstractionKind::Ka,
-                    ast::AbstractionKind::Ni => wit::AbstractionKind::Ni,
-                    ast::AbstractionKind::Siho => wit::AbstractionKind::Siho,
+                    ast::AbstractionKind::Nu => flat::AbstractionKind::Nu,
+                    ast::AbstractionKind::Duhu => flat::AbstractionKind::Duhu,
+                    ast::AbstractionKind::Ka => flat::AbstractionKind::Ka,
+                    ast::AbstractionKind::Ni => flat::AbstractionKind::Ni,
+                    ast::AbstractionKind::Siho => flat::AbstractionKind::Siho,
                 };
-                wit::Selbri::Abstraction((wit_kind, body_idx))
+                flat::Selbri::Abstraction((wit_kind, body_idx))
             }
         };
 
@@ -266,52 +258,52 @@ impl Flattener {
 
     fn push_sumti(&mut self, sumti: &ast::Sumti<'_>) -> u32 {
         let wit_sumti = match sumti {
-            ast::Sumti::ProSumti(s) => wit::Sumti::ProSumti(s.clone()),
+            ast::Sumti::ProSumti(s) => flat::Sumti::ProSumti(s.clone()),
             ast::Sumti::Description { gadri, inner } => {
                 let inner_id = self.push_selbri(inner);
                 let wit_gadri = match gadri {
-                    ast::Gadri::Lo => wit::Gadri::Lo,
-                    ast::Gadri::Le => wit::Gadri::Le,
-                    ast::Gadri::La => wit::Gadri::La,
-                    ast::Gadri::RoLo => wit::Gadri::RoLo,
-                    ast::Gadri::RoLe => wit::Gadri::RoLe,
+                    ast::Gadri::Lo => flat::Gadri::Lo,
+                    ast::Gadri::Le => flat::Gadri::Le,
+                    ast::Gadri::La => flat::Gadri::La,
+                    ast::Gadri::RoLo => flat::Gadri::RoLo,
+                    ast::Gadri::RoLe => flat::Gadri::RoLe,
                 };
-                wit::Sumti::Description((wit_gadri, inner_id))
+                flat::Sumti::Description((wit_gadri, inner_id))
             }
-            ast::Sumti::Name(n) => wit::Sumti::Name(n.clone()),
-            ast::Sumti::QuotedLiteral(q) => wit::Sumti::QuotedLiteral(q.clone()),
-            ast::Sumti::Unspecified => wit::Sumti::Unspecified,
+            ast::Sumti::Name(n) => flat::Sumti::Name(n.clone()),
+            ast::Sumti::QuotedLiteral(q) => flat::Sumti::QuotedLiteral(q.clone()),
+            ast::Sumti::Unspecified => flat::Sumti::Unspecified,
             ast::Sumti::Tagged(tag, inner) => {
                 let inner_id = self.push_sumti(inner);
                 let wit_tag = match tag {
-                    ast::PlaceTag::Fa => wit::PlaceTag::Fa,
-                    ast::PlaceTag::Fe => wit::PlaceTag::Fe,
-                    ast::PlaceTag::Fi => wit::PlaceTag::Fi,
-                    ast::PlaceTag::Fo => wit::PlaceTag::Fo,
-                    ast::PlaceTag::Fu => wit::PlaceTag::Fu,
+                    ast::PlaceTag::Fa => flat::PlaceTag::Fa,
+                    ast::PlaceTag::Fe => flat::PlaceTag::Fe,
+                    ast::PlaceTag::Fi => flat::PlaceTag::Fi,
+                    ast::PlaceTag::Fo => flat::PlaceTag::Fo,
+                    ast::PlaceTag::Fu => flat::PlaceTag::Fu,
                 };
-                wit::Sumti::Tagged((wit_tag, inner_id))
+                flat::Sumti::Tagged((wit_tag, inner_id))
             }
             ast::Sumti::ModalTagged(modal, inner) => {
                 let inner_id = self.push_sumti(inner);
                 let wit_modal = match modal {
                     ast::ModalTag::Fixed(bai) => {
                         let wit_bai = match bai {
-                            ast::BaiTag::Ria => wit::BaiTag::Ria,
-                            ast::BaiTag::Nii => wit::BaiTag::Nii,
-                            ast::BaiTag::Mui => wit::BaiTag::Mui,
-                            ast::BaiTag::Kiu => wit::BaiTag::Kiu,
-                            ast::BaiTag::Pio => wit::BaiTag::Pio,
-                            ast::BaiTag::Bai => wit::BaiTag::Bai,
+                            ast::BaiTag::Ria => flat::BaiTag::Ria,
+                            ast::BaiTag::Nii => flat::BaiTag::Nii,
+                            ast::BaiTag::Mui => flat::BaiTag::Mui,
+                            ast::BaiTag::Kiu => flat::BaiTag::Kiu,
+                            ast::BaiTag::Pio => flat::BaiTag::Pio,
+                            ast::BaiTag::Bai => flat::BaiTag::Bai,
                         };
-                        wit::ModalTag::Fixed(wit_bai)
+                        flat::ModalTag::Fixed(wit_bai)
                     }
                     ast::ModalTag::Fio(selbri) => {
                         let selbri_id = self.push_selbri(selbri);
-                        wit::ModalTag::Fio(selbri_id)
+                        flat::ModalTag::Fio(selbri_id)
                     }
                 };
-                wit::Sumti::ModalTagged((wit_modal, inner_id))
+                flat::Sumti::ModalTagged((wit_modal, inner_id))
             }
             ast::Sumti::Restricted { inner, clause } => {
                 let inner_id = self.push_sumti(inner);
@@ -323,21 +315,21 @@ impl Flattener {
                 self.push_sentence(clause.body);
 
                 let wit_kind = match clause.kind {
-                    ast::RelClauseKind::Poi => wit::RelClauseKind::Poi,
-                    ast::RelClauseKind::Noi => wit::RelClauseKind::Noi,
-                    ast::RelClauseKind::Voi => wit::RelClauseKind::Voi,
+                    ast::RelClauseKind::Poi => flat::RelClauseKind::Poi,
+                    ast::RelClauseKind::Noi => flat::RelClauseKind::Noi,
+                    ast::RelClauseKind::Voi => flat::RelClauseKind::Voi,
                 };
 
-                wit::Sumti::Restricted((
+                flat::Sumti::Restricted((
                     inner_id,
-                    wit::RelClause {
+                    flat::RelClause {
                         kind: wit_kind,
                         body_sentence: body_idx,
                     },
                 ))
             }
 
-            ast::Sumti::Number(n) => wit::Sumti::Number(*n),
+            ast::Sumti::Number(n) => flat::Sumti::Number(*n),
 
             ast::Sumti::Connected {
                 left,
@@ -348,12 +340,12 @@ impl Flattener {
                 let left_id = self.push_sumti(left);
                 let right_id = self.push_sumti(right);
                 let wit_conn = match connective {
-                    ast::Connective::Je => wit::Connective::Je,
-                    ast::Connective::Ja => wit::Connective::Ja,
-                    ast::Connective::Jo => wit::Connective::Jo,
-                    ast::Connective::Ju => wit::Connective::Ju,
+                    ast::Connective::Je => flat::Connective::Je,
+                    ast::Connective::Ja => flat::Connective::Ja,
+                    ast::Connective::Jo => flat::Connective::Jo,
+                    ast::Connective::Ju => flat::Connective::Ju,
                 };
-                wit::Sumti::Connected((left_id, wit_conn, *right_negated, right_id))
+                flat::Sumti::Connected((left_id, wit_conn, *right_negated, right_id))
             }
 
             ast::Sumti::QuantifiedDescription {
@@ -363,11 +355,11 @@ impl Flattener {
             } => {
                 let inner_id = self.push_selbri(inner);
                 let wit_gadri = match gadri {
-                    ast::Gadri::Lo => wit::Gadri::Lo,
-                    ast::Gadri::Le => wit::Gadri::Le,
+                    ast::Gadri::Lo => flat::Gadri::Lo,
+                    ast::Gadri::Le => flat::Gadri::Le,
                     _ => unreachable!("QuantifiedDescription only uses Lo or Le"),
                 };
-                wit::Sumti::QuantifiedDescription((*count, wit_gadri, inner_id))
+                flat::Sumti::QuantifiedDescription((*count, wit_gadri, inner_id))
             }
         };
 
@@ -377,11 +369,6 @@ impl Flattener {
     }
 }
 
-/// Public API for native (non-WASM) callers.
-/// Wraps the internal `GernaComponent::parse_text` pipeline.
-pub fn parse_text_native(input: String) -> Result<wit::ParseResult, NibliError> {
-    <GernaComponent as Guest>::parse_text(input)
-}
 
 
 // Add these tests to parser/src/lib.rs or a new integration test file.
@@ -390,7 +377,7 @@ pub fn parse_text_native(input: String) -> Result<wit::ParseResult, NibliError> 
 #[cfg(test)]
 mod flattener_tests {
     use crate::ast::*;
-    use crate::bindings::lojban::nibli::ast_types as wit;
+    use nibli_types::ast as flat;
     use bumpalo::Bump;
 
     // Re-use the Flattener (it's private, so these tests must live in lib.rs
@@ -598,14 +585,14 @@ mod flattener_tests {
     /// Abstraction kind is preserved through flattening
     #[test]
     fn test_abstraction_kind_flattening() {
-        use crate::bindings::lojban::nibli::ast_types as wit;
+        use nibli_types::ast as flat;
 
         for (kind, wit_kind) in [
-            (AbstractionKind::Nu, wit::AbstractionKind::Nu),
-            (AbstractionKind::Duhu, wit::AbstractionKind::Duhu),
-            (AbstractionKind::Ka, wit::AbstractionKind::Ka),
-            (AbstractionKind::Ni, wit::AbstractionKind::Ni),
-            (AbstractionKind::Siho, wit::AbstractionKind::Siho),
+            (AbstractionKind::Nu, flat::AbstractionKind::Nu),
+            (AbstractionKind::Duhu, flat::AbstractionKind::Duhu),
+            (AbstractionKind::Ka, flat::AbstractionKind::Ka),
+            (AbstractionKind::Ni, flat::AbstractionKind::Ni),
+            (AbstractionKind::Siho, flat::AbstractionKind::Siho),
         ] {
             let arena = Bump::new();
             let parsed = ParsedText {
@@ -638,9 +625,9 @@ mod flattener_tests {
             let abs = buffer
                 .selbris
                 .iter()
-                .find(|s| matches!(s, wit::Selbri::Abstraction(_)));
+                .find(|s| matches!(s, flat::Selbri::Abstraction(_)));
             match abs {
-                Some(wit::Selbri::Abstraction((k, _))) => {
+                Some(flat::Selbri::Abstraction((k, _))) => {
                     assert_eq!(*k, wit_kind, "abstraction kind mismatch for {:?}", kind);
                 }
                 other => panic!(
@@ -651,10 +638,10 @@ mod flattener_tests {
         }
     }
 
-    /// Sumti::Connected flattens to wit::Sumti::Connected with correct indices
+    /// Sumti::Connected flattens to flat::Sumti::Connected with correct indices
     #[test]
     fn test_connected_sumti_flattening() {
-        use crate::bindings::lojban::nibli::ast_types as wit;
+        use nibli_types::ast as flat;
 
         // mi .e do klama → head: [Connected(mi, Je, false, do)], selbri: klama
         let arena = Bump::new();
@@ -684,9 +671,9 @@ mod flattener_tests {
 
         // Check the Connected sumti
         match &buffer.sumtis[2] {
-            wit::Sumti::Connected((left_id, conn, negated, right_id)) => {
+            flat::Sumti::Connected((left_id, conn, negated, right_id)) => {
                 assert_eq!(*left_id, 0); // mi
-                assert_eq!(*conn, wit::Connective::Je);
+                assert_eq!(*conn, flat::Connective::Je);
                 assert!(!negated);
                 assert_eq!(*right_id, 1); // do
             }
@@ -694,12 +681,12 @@ mod flattener_tests {
         }
 
         // Verify left and right are correct
-        assert!(matches!(&buffer.sumtis[0], wit::Sumti::ProSumti(s) if s == "mi"));
-        assert!(matches!(&buffer.sumtis[1], wit::Sumti::ProSumti(s) if s == "do"));
+        assert!(matches!(&buffer.sumtis[0], flat::Sumti::ProSumti(s) if s == "mi"));
+        assert!(matches!(&buffer.sumtis[1], flat::Sumti::ProSumti(s) if s == "do"));
 
         // The bridi's head_terms should point to the Connected sumti (index 2)
         match &buffer.sentences[buffer.roots[0] as usize] {
-            wit::Sentence::Simple(bridi) => {
+            flat::Sentence::Simple(bridi) => {
                 assert_eq!(bridi.head_terms, vec![2]);
             }
             other => panic!("expected Simple sentence, got {:?}", other),
@@ -709,7 +696,7 @@ mod flattener_tests {
     /// Negated sumti connective flattens correctly
     #[test]
     fn test_connected_sumti_negated_flattening() {
-        use crate::bindings::lojban::nibli::ast_types as wit;
+        use nibli_types::ast as flat;
 
         // mi .e nai do klama
         let arena = Bump::new();
@@ -731,8 +718,8 @@ mod flattener_tests {
 
         let buffer = Flattener::flatten(&parsed);
         match &buffer.sumtis[2] {
-            wit::Sumti::Connected((_, conn, negated, _)) => {
-                assert_eq!(*conn, wit::Connective::Je);
+            flat::Sumti::Connected((_, conn, negated, _)) => {
+                assert_eq!(*conn, flat::Connective::Je);
                 assert!(negated); // right_negated = true
             }
             other => panic!("expected Connected sumti, got {:?}", other),
@@ -742,7 +729,7 @@ mod flattener_tests {
     /// Chained connected sumti flattens with correct nesting
     #[test]
     fn test_chained_connected_sumti_flattening() {
-        use crate::bindings::lojban::nibli::ast_types as wit;
+        use nibli_types::ast as flat;
 
         // mi .e (do .a di) → right-associative nesting
         let arena = Bump::new();
@@ -774,9 +761,9 @@ mod flattener_tests {
 
         // Inner: Connected(do=1, Ja, false, di=2)
         match &buffer.sumtis[3] {
-            wit::Sumti::Connected((left, conn, neg, right)) => {
+            flat::Sumti::Connected((left, conn, neg, right)) => {
                 assert_eq!(*left, 1);
-                assert_eq!(*conn, wit::Connective::Ja);
+                assert_eq!(*conn, flat::Connective::Ja);
                 assert!(!neg);
                 assert_eq!(*right, 2);
             }
@@ -785,9 +772,9 @@ mod flattener_tests {
 
         // Outer: Connected(mi=0, Je, false, inner=3)
         match &buffer.sumtis[4] {
-            wit::Sumti::Connected((left, conn, neg, right)) => {
+            flat::Sumti::Connected((left, conn, neg, right)) => {
                 assert_eq!(*left, 0);
-                assert_eq!(*conn, wit::Connective::Je);
+                assert_eq!(*conn, flat::Connective::Je);
                 assert!(!neg);
                 assert_eq!(*right, 3);
             }
@@ -818,10 +805,10 @@ mod flattener_tests {
         // sumtis should have 2 entries: inner "mi" and the ModalTagged wrapper
         assert_eq!(buffer.sumtis.len(), 2);
         match &buffer.sumtis[1] {
-            wit::Sumti::ModalTagged((modal_tag, inner_id)) => {
-                assert!(matches!(modal_tag, wit::ModalTag::Fixed(wit::BaiTag::Ria)));
+            flat::Sumti::ModalTagged((modal_tag, inner_id)) => {
+                assert!(matches!(modal_tag, flat::ModalTag::Fixed(flat::BaiTag::Ria)));
                 assert_eq!(*inner_id, 0); // inner is first sumti
-                assert!(matches!(&buffer.sumtis[0], wit::Sumti::ProSumti(s) if s == "mi"));
+                assert!(matches!(&buffer.sumtis[0], flat::Sumti::ProSumti(s) if s == "mi"));
             }
             other => panic!("expected ModalTagged, got {:?}", other),
         }
@@ -850,11 +837,11 @@ mod flattener_tests {
         assert_eq!(buffer.roots.len(), 1);
         assert_eq!(buffer.sumtis.len(), 1);
         match &buffer.sumtis[0] {
-            wit::Sumti::QuantifiedDescription((count, gadri, selbri_id)) => {
+            flat::Sumti::QuantifiedDescription((count, gadri, selbri_id)) => {
                 assert_eq!(*count, 2);
-                assert_eq!(*gadri, wit::Gadri::Lo);
+                assert_eq!(*gadri, flat::Gadri::Lo);
                 assert!(
-                    matches!(&buffer.selbris[*selbri_id as usize], wit::Selbri::Root(s) if s == "gerku")
+                    matches!(&buffer.selbris[*selbri_id as usize], flat::Selbri::Root(s) if s == "gerku")
                 );
             }
             other => panic!("expected QuantifiedDescription, got {:?}", other),
@@ -882,11 +869,11 @@ mod flattener_tests {
         let buffer = Flattener::flatten(&parsed);
         assert_eq!(buffer.sumtis.len(), 2);
         match &buffer.sumtis[1] {
-            wit::Sumti::ModalTagged((modal_tag, inner_id)) => {
+            flat::Sumti::ModalTagged((modal_tag, inner_id)) => {
                 match modal_tag {
-                    wit::ModalTag::Fio(selbri_id) => {
+                    flat::ModalTag::Fio(selbri_id) => {
                         assert!(
-                            matches!(&buffer.selbris[*selbri_id as usize], wit::Selbri::Root(s) if s == "klama")
+                            matches!(&buffer.selbris[*selbri_id as usize], flat::Selbri::Root(s) if s == "klama")
                         );
                     }
                     other => panic!("expected Fio modal tag, got {:?}", other),

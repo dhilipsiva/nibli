@@ -69,10 +69,10 @@ pub enum Gadri {
     Le,
     /// `la` — name gadri (proper name).
     La,
-    /// `lo` in a universal scope (`ro lo`).
-    LoUniversal,
-    /// `le` in a universal scope (`ro le`).
-    LeUniversal,
+    /// `ro lo` — universal over veridical description.
+    RoLo,
+    /// `ro le` — universal over non-veridical description.
+    RoLe,
 }
 
 /// Abstraction kind: wraps a sub-sentence into a sumti.
@@ -142,8 +142,8 @@ pub enum Sumti {
 pub enum Selbri {
     /// Root brivla (gismu, lujvo, or fu'ivla).
     Root(String),
-    /// Compound brivla (zei-lujvo).
-    Compound(String),
+    /// Compound word from zei-gluing. Payload: list of component strings.
+    Compound(Vec<String>),
     /// Tanru: modifier + head. Fields: (modifier-id, head-id).
     Tanru((SelbriId, SelbriId)),
     /// SE-converted selbri. Fields: (conversion, inner-id).
@@ -195,8 +195,8 @@ pub enum SentenceConnective {
     GeGi,
     /// `ga ... gi` — disjunctive (or).
     GaGi,
-    /// `.i` + afterthought connective: (connective, na-flag, nai-flag).
-    Afterthought((Connective, bool, bool)),
+    /// `.i` + afterthought connective: (na-flag, connective, nai-flag).
+    Afterthought((bool, Connective, bool)),
 }
 
 /// A sentence: either a simple bridi or two connected sentences.

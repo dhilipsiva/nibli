@@ -8,8 +8,6 @@
 //! The flattener expands `Biconditional` and `Xor` IR nodes into primitive
 //! `And`/`Or`/`Not` nodes (sharing sub-tree indices for zero-cost duplication).
 
-#[allow(warnings)]
-pub mod bindings;
 /// Compile-time PHF dictionary for gismu/lujvo arity lookup.
 pub mod dictionary;
 /// First-Order Logic IR types (`LogicalTerm`, `LogicalForm`).
@@ -17,9 +15,9 @@ pub mod ir;
 /// Semantic compiler: AST → FOL logic form tree.
 pub mod semantic;
 
-use bindings::lojban::nibli::error_types::NibliError;
-use bindings::lojban::nibli::logic_types::{LogicBuffer, LogicNode, LogicalTerm as WitTerm};
-use gerna::bindings::lojban::nibli::ast_types as gerna_ast;
+use nibli_types::ast as gerna_ast;
+use nibli_types::error::NibliError;
+use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm as WitTerm};
 use ir::{LogicalForm, LogicalTerm};
 use semantic::SemanticCompiler;
 

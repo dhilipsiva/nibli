@@ -6,8 +6,8 @@ edition = "2024"
 [dependencies]
 gerna = { path = "../gerna" }
 lasso = "0.7.3"
+nibli-types = { path = "../nibli-types" }
 phf = "0.13.1"
-wit-bindgen-rt = "0.44.0"
 
 [build-dependencies]
 phf_codegen = "0.13.1"

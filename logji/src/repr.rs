@@ -3,7 +3,7 @@
 //! Renders a `LogicBuffer` as human-readable S-expressions for debugging.
 //! Used by the `:compile` REPL command and `compile_debug` API method.
 
-use smuni::bindings::lojban::nibli::logic_types::{LogicBuffer, LogicNode, LogicalTerm};
+use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm};
 use std::fmt::Write;
 
 /// Reconstruct a single root node as an S-expression string.

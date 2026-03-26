@@ -7,6 +7,7 @@ edition = "2024"
 gerna = { path = "../gerna" }
 smuni = { path = "../smuni" }
 logji = { path = "../logji" }
+nibli-types = { path = "../nibli-types" }
 wit-bindgen-rt = "0.44.0"
 
 [package.metadata.component]

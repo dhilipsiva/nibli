@@ -12,63 +12,26 @@ use nibli_protocol::{
 };
 use nibli_store::{NibliStore, StoredLogicBuffer, StoredLogicNode, StoredLogicalTerm};
 
-pub use smuni::bindings::lojban::nibli::logic_types::{
+pub use nibli_types::logic::{
     FactSummary as EngineFactSummary, LogicalTerm as EngineLogicalTerm,
     WitnessBinding as EngineWitnessBinding,
 };
 
-// ─── Type aliases for each crate's WIT-generated types ──────────────
-
-use gerna::bindings::lojban::nibli::error_types as gerna_err;
-use smuni::bindings::lojban::nibli::error_types as smuni_err;
-use smuni::bindings::lojban::nibli::logic_types as logji_logic;
-use logji::bindings::lojban::nibli::error_types as logji_err;
+use nibli_types::error::NibliError as PipelineError;
+use nibli_types::logic as logji_logic;
 
 // ═══════════════════════════════════════════════════════════════════════
 // ERROR FORMATTING
 // ═══════════════════════════════════════════════════════════════════════
 
-enum NibliError {
-    Gerna(gerna_err::NibliError),
-    Smuni(smuni_err::NibliError),
-    Logji(logji_err::NibliError),
-}
-
-macro_rules! format_nibli_error {
-    ($e:expr, $syntax:pat => $sd:ident, $semantic:pat => $sm:ident, $reasoning:pat => $rm:ident, $backend:pat => ($bk:ident, $bm:ident)) => {
-        match $e {
-            $syntax => format!("[Syntax Error] line {}:{}: {}", $sd.line, $sd.column, $sd.message),
-            $semantic => format!("[Semantic Error] {}", $sm),
-            $reasoning => format!("[Reasoning Error] {}", $rm),
-            $backend => format!("[Backend Error] {} — {}", $bk, $bm),
-        }
-    };
-}
-
-fn format_logji_error(e: &logji_err::NibliError) -> String {
-    format_nibli_error!(e,
-        logji_err::NibliError::Syntax(d) => d,
-        logji_err::NibliError::Semantic(m) => m,
-        logji_err::NibliError::Reasoning(m) => m,
-        logji_err::NibliError::Backend((k, m)) => (k, m)
-    )
-}
-
-fn format_error(e: &NibliError) -> String {
+fn format_error(e: &PipelineError) -> String {
     match e {
-        NibliError::Gerna(e) => format_nibli_error!(e,
-            gerna_err::NibliError::Syntax(d) => d,
-            gerna_err::NibliError::Semantic(m) => m,
-            gerna_err::NibliError::Reasoning(m) => m,
-            gerna_err::NibliError::Backend((k, m)) => (k, m)
-        ),
-        NibliError::Smuni(e) => format_nibli_error!(e,
-            smuni_err::NibliError::Syntax(d) => d,
-            smuni_err::NibliError::Semantic(m) => m,
-            smuni_err::NibliError::Reasoning(m) => m,
-            smuni_err::NibliError::Backend((k, m)) => (k, m)
-        ),
-        NibliError::Logji(e) => format_logji_error(e),
+        PipelineError::Syntax(d) => {
+            format!("[Syntax Error] line {}:{}: {}", d.line, d.column, d.message)
+        }
+        PipelineError::Semantic(m) => format!("[Semantic Error] {}", m),
+        PipelineError::Reasoning(m) => format!("[Reasoning Error] {}", m),
+        PipelineError::Backend((k, m)) => format!("[Backend Error] {} — {}", k, m),
     }
 }
 
@@ -341,24 +304,21 @@ impl NibliEngine {
         self.compute_predicates.insert(name);
     }
 
-    fn compile_text(&self, input: &str) -> Result<logji_logic::LogicBuffer, NibliError> {
-        let parse_result =
-            gerna::parse_text_native(input.to_string()).map_err(NibliError::Gerna)?;
+    fn compile_text(&self, input: &str) -> Result<logji_logic::LogicBuffer, PipelineError> {
+        let parse_result = gerna::parse_text_native(input.to_string())?;
 
         if parse_result.buffer.roots.is_empty() && !parse_result.errors.is_empty() {
             let first = &parse_result.errors[0];
-            return Err(NibliError::Gerna(gerna_err::NibliError::Syntax(
-                gerna_err::SyntaxDetail {
-                    message: parse_result
-                        .errors
-                        .iter()
-                        .map(|e| e.message.clone())
-                        .collect::<Vec<_>>()
-                        .join("; "),
-                    line: first.line,
-                    column: first.column,
-                },
-            )));
+            return Err(PipelineError::Syntax(nibli_types::error::SyntaxDetail {
+                message: parse_result
+                    .errors
+                    .iter()
+                    .map(|e| e.message.clone())
+                    .collect::<Vec<_>>()
+                    .join("; "),
+                line: first.line,
+                column: first.column,
+            }));
         }
 
         if !parse_result.errors.is_empty() {
@@ -367,21 +327,18 @@ impl NibliEngine {
                 .iter()
                 .map(|e| e.message.clone())
                 .collect();
-            return Err(NibliError::Gerna(gerna_err::NibliError::Syntax(
-                gerna_err::SyntaxDetail {
-                    message: format!(
-                        "Assertion aborted: {} sentence(s) failed to parse: {}",
-                        warnings.len(),
-                        warnings.join("; ")
-                    ),
-                    line: 0,
-                    column: 0,
-                },
-            )));
+            return Err(PipelineError::Syntax(nibli_types::error::SyntaxDetail {
+                message: format!(
+                    "Assertion aborted: {} sentence(s) failed to parse: {}",
+                    warnings.len(),
+                    warnings.join("; ")
+                ),
+                line: 0,
+                column: 0,
+            }));
         }
 
-        let mut buf =
-            smuni::compile_from_gerna_ast(parse_result.buffer).map_err(NibliError::Smuni)?;
+        let mut buf = smuni::compile_from_gerna_ast(parse_result.buffer)?;
         logji::transform_compute_nodes(&mut buf, &self.compute_predicates);
         Ok(buf)
     }
@@ -420,7 +377,7 @@ impl NibliEngine {
         } else {
             self.kb
                 .assert_fact(buf, label)
-                .map_err(|e| format_logji_error(&e))
+                .map_err(|e| format_error(&e))
         }
     }
 
@@ -436,7 +393,7 @@ impl NibliEngine {
         };
         self.kb
             .assert_fact(buf, label)
-            .map_err(|e| format_logji_error(&e))
+            .map_err(|e| format_error(&e))
     }
 
     pub fn query_text_with_proof(&self, text: &str) -> Result<(bool, String, String), String> {
@@ -444,7 +401,7 @@ impl NibliEngine {
         let (holds, trace) = self
             .kb
             .query_entailment_with_proof(buf)
-            .map_err(|e| format_logji_error(&e))?;
+            .map_err(|e| format_error(&e))?;
         let wire = proof_trace_to_wire(&trace);
         let formatted = wire.to_pretty_text();
         let json = wire.to_json();
@@ -457,13 +414,13 @@ impl NibliEngine {
         let (holds, _trace) = self
             .kb
             .query_entailment_with_proof(buf)
-            .map_err(|e| format_logji_error(&e))?;
+            .map_err(|e| format_error(&e))?;
         Ok(holds)
     }
 
     pub fn query_find_text(&self, text: &str) -> Result<Vec<Vec<EngineWitnessBinding>>, String> {
         let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
-        self.kb.query_find(buf).map_err(|e| format_logji_error(&e))
+        self.kb.query_find(buf).map_err(|e| format_error(&e))
     }
 
     pub fn compile_debug(&self, text: &str) -> Result<String, String> {
@@ -472,11 +429,11 @@ impl NibliEngine {
     }
 
     pub fn list_facts(&self) -> Result<Vec<EngineFactSummary>, String> {
-        self.kb.list_facts().map_err(|e| format_logji_error(&e))
+        self.kb.list_facts().map_err(|e| format_error(&e))
     }
 
     pub fn retract_fact(&self, id: u64) -> Result<(), String> {
-        self.kb.retract_fact(id).map_err(|e| format_logji_error(&e))
+        self.kb.retract_fact(id).map_err(|e| format_error(&e))
     }
 }
 

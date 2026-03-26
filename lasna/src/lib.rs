@@ -13,12 +13,10 @@ use bindings::lojban::nibli::compute_backend as cb;
 use bindings::lojban::nibli::error_types as export_err;
 use bindings::lojban::nibli::logic_types as export_logic;
 
-// Gerna's native AST types (for go'i snapshot)
-use gerna::bindings::lojban::nibli::ast_types as gerna_ast;
-
-// Smuni's logic types (shared by logji — single canonical copy)
-use logji::bindings::lojban::nibli::error_types as logji_err;
-use smuni::bindings::lojban::nibli::logic_types as logji_logic;
+// Canonical pipeline types (shared across gerna/smuni/logji)
+use nibli_types::ast as gerna_ast;
+use nibli_types::error as pipeline_err;
+use nibli_types::logic as logji_logic;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -164,58 +162,17 @@ fn convert_fact_summaries(fs: Vec<logji_logic::FactSummary>) -> Vec<export_logic
         .collect()
 }
 
-fn convert_logji_error(e: logji_err::NibliError) -> export_err::NibliError {
+/// Convert pipeline error → WIT export error (for the WASM component boundary).
+fn convert_pipeline_error(e: pipeline_err::NibliError) -> export_err::NibliError {
     match e {
-        logji_err::NibliError::Syntax(d) => export_err::NibliError::Syntax(export_err::SyntaxDetail {
+        pipeline_err::NibliError::Syntax(d) => export_err::NibliError::Syntax(export_err::SyntaxDetail {
             message: d.message,
             line: d.line,
             column: d.column,
         }),
-        logji_err::NibliError::Semantic(m) => export_err::NibliError::Semantic(m),
-        logji_err::NibliError::Reasoning(m) => export_err::NibliError::Reasoning(m),
-        logji_err::NibliError::Backend((k, m)) => export_err::NibliError::Backend((k, m)),
-    }
-}
-
-fn convert_gerna_error(e: gerna::bindings::lojban::nibli::error_types::NibliError) -> export_err::NibliError {
-    match e {
-        gerna::bindings::lojban::nibli::error_types::NibliError::Syntax(d) => {
-            export_err::NibliError::Syntax(export_err::SyntaxDetail {
-                message: d.message,
-                line: d.line,
-                column: d.column,
-            })
-        }
-        gerna::bindings::lojban::nibli::error_types::NibliError::Semantic(m) => {
-            export_err::NibliError::Semantic(m)
-        }
-        gerna::bindings::lojban::nibli::error_types::NibliError::Reasoning(m) => {
-            export_err::NibliError::Reasoning(m)
-        }
-        gerna::bindings::lojban::nibli::error_types::NibliError::Backend((k, m)) => {
-            export_err::NibliError::Backend((k, m))
-        }
-    }
-}
-
-fn convert_smuni_error(e: smuni::bindings::lojban::nibli::error_types::NibliError) -> export_err::NibliError {
-    match e {
-        smuni::bindings::lojban::nibli::error_types::NibliError::Syntax(d) => {
-            export_err::NibliError::Syntax(export_err::SyntaxDetail {
-                message: d.message,
-                line: d.line,
-                column: d.column,
-            })
-        }
-        smuni::bindings::lojban::nibli::error_types::NibliError::Semantic(m) => {
-            export_err::NibliError::Semantic(m)
-        }
-        smuni::bindings::lojban::nibli::error_types::NibliError::Reasoning(m) => {
-            export_err::NibliError::Reasoning(m)
-        }
-        smuni::bindings::lojban::nibli::error_types::NibliError::Backend((k, m)) => {
-            export_err::NibliError::Backend((k, m))
-        }
+        pipeline_err::NibliError::Semantic(m) => export_err::NibliError::Semantic(m),
+        pipeline_err::NibliError::Reasoning(m) => export_err::NibliError::Reasoning(m),
+        pipeline_err::NibliError::Backend((k, m)) => export_err::NibliError::Backend((k, m)),
     }
 }
 
@@ -573,7 +530,7 @@ fn compile_pipeline(
 ) -> Result<(logji_logic::LogicBuffer, Option<SelbriSnapshot>, Vec<String>), export_err::NibliError>
 {
     let parse_result =
-        gerna::parse_text_native(text.to_string()).map_err(convert_gerna_error)?;
+        gerna::parse_text_native(text.to_string()).map_err(convert_pipeline_error)?;
 
     let parse_warnings: Vec<String> = parse_result
         .errors
@@ -597,7 +554,7 @@ fn compile_pipeline(
     let new_snapshot = last_selbri_id.map(|id| extract_selbri_snapshot(&ast, id));
 
     // Call smuni (converts gerna AST → logic buffer internally)
-    let mut buf = smuni::compile_from_gerna_ast(ast).map_err(convert_smuni_error)?;
+    let mut buf = smuni::compile_from_gerna_ast(ast).map_err(convert_pipeline_error)?;
 
     // Transform registered predicates to ComputeNode
     logji::transform_compute_nodes(&mut buf, compute_predicates);
@@ -639,7 +596,7 @@ impl GuestSession for Session {
                 column: 0,
             }));
         }
-        let fact_id = self.kb.assert_fact(buf, input).map_err(convert_logji_error)?;
+        let fact_id = self.kb.assert_fact(buf, input).map_err(convert_pipeline_error)?;
         *self.last_relation.borrow_mut() = new_last;
         Ok(fact_id)
     }
@@ -650,7 +607,7 @@ impl GuestSession for Session {
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),
         )?;
-        self.kb.query_entailment(buf).map_err(convert_logji_error)
+        self.kb.query_entailment(buf).map_err(convert_pipeline_error)
     }
 
     fn query_find_text(
@@ -662,7 +619,7 @@ impl GuestSession for Session {
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),
         )?;
-        let result = self.kb.query_find(buf).map_err(convert_logji_error)?;
+        let result = self.kb.query_find(buf).map_err(convert_pipeline_error)?;
         Ok(convert_witness_bindings(result))
     }
 
@@ -678,7 +635,7 @@ impl GuestSession for Session {
         let (holds, trace) = self
             .kb
             .query_entailment_with_proof(buf)
-            .map_err(convert_logji_error)?;
+            .map_err(convert_pipeline_error)?;
         Ok((holds, convert_proof_trace(trace)))
     }
 
@@ -693,7 +650,7 @@ impl GuestSession for Session {
 
     fn reset_kb(&self) -> Result<(), export_err::NibliError> {
         *self.last_relation.borrow_mut() = None;
-        self.kb.reset().map_err(convert_logji_error)
+        self.kb.reset().map_err(convert_pipeline_error)
     }
 
     fn register_compute_predicate(&self, name: String) {
@@ -719,15 +676,15 @@ impl GuestSession for Session {
             nodes,
             roots: vec![0],
         };
-        self.kb.assert_fact(buf, label).map_err(convert_logji_error)
+        self.kb.assert_fact(buf, label).map_err(convert_pipeline_error)
     }
 
     fn retract_fact(&self, id: u64) -> Result<(), export_err::NibliError> {
-        self.kb.retract_fact(id).map_err(convert_logji_error)
+        self.kb.retract_fact(id).map_err(convert_pipeline_error)
     }
 
     fn list_facts(&self) -> Result<Vec<export_logic::FactSummary>, export_err::NibliError> {
-        let facts = self.kb.list_facts().map_err(convert_logji_error)?;
+        let facts = self.kb.list_facts().map_err(convert_pipeline_error)?;
         Ok(convert_fact_summaries(facts))
     }
 }

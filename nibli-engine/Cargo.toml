@@ -7,6 +7,7 @@ edition = "2024"
 gerna = { path = "../gerna" }
 smuni = { path = "../smuni" }
 logji = { path = "../logji" }
+nibli-types = { path = "../nibli-types" }
 nibli-protocol = { path = "../nibli-protocol" }
 nibli-store = { path = "../nibli-store" }
 postcard = { version = "1", features = ["alloc"] }

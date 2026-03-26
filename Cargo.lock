@@ -2459,7 +2459,7 @@ version = "0.1.0"
 dependencies = [
  "bumpalo",
  "logos",
- "wit-bindgen-rt",
+ "nibli-types",
 ]
 
 [[package]]
@@ -3241,6 +3241,7 @@ version = "0.1.0"
 dependencies = [
  "gerna",
  "logji",
+ "nibli-types",
  "smuni",
  "wit-bindgen-rt",
 ]
@@ -3353,8 +3354,7 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 name = "logji"
 version = "0.1.0"
 dependencies = [
- "smuni",
- "wit-bindgen-rt",
+ "nibli-types",
 ]
 
 [[package]]
@@ -3663,6 +3663,7 @@ dependencies = [
  "logji",
  "nibli-protocol",
  "nibli-store",
+ "nibli-types",
  "postcard",
  "serde_json",
  "smuni",
@@ -3706,6 +3707,10 @@ dependencies = [
  "redb",
  "serde",
 ]
+
+[[package]]
+name = "nibli-types"
+version = "0.1.0"
 
 [[package]]
 name = "nibli-ui"
@@ -5356,9 +5361,9 @@ version = "0.1.0"
 dependencies = [
  "gerna",
  "lasso",
+ "nibli-types",
  "phf",
  "phf_codegen",
- "wit-bindgen-rt",
 ]
 
 [[package]]

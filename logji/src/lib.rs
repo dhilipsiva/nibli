@@ -19,11 +19,8 @@
 
 #![allow(dead_code)]
 
-#[allow(warnings)]
-pub mod bindings;
-
-use crate::bindings::lojban::nibli::error_types::NibliError;
-use smuni::bindings::lojban::nibli::logic_types::{
+use nibli_types::error::NibliError;
+use nibli_types::logic::{
     FactSummary, LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofStep, ProofTrace,
     WitnessBinding,
 };
@@ -312,7 +309,7 @@ impl KnowledgeBase {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use smuni::bindings::lojban::nibli::logic_types::{
+    use nibli_types::logic::{
         LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofTrace,
     };
 
