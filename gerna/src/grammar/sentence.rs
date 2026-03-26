@@ -2,6 +2,29 @@ use super::*;
 
 #[allow(dead_code)]
 impl<'a, 'arena> Parser<'a, 'arena> {
+    // ─── Tense & Attitudinal ──────────────────────────────────
+
+    pub(crate) fn try_parse_tense(&mut self) -> Option<Tense> {
+        let t = match self.peek_cmavo()? {
+            "pu" => Tense::Pu,
+            "ca" => Tense::Ca,
+            "ba" => Tense::Ba,
+            _ => return None,
+        };
+        self.pos += 1;
+        Some(t)
+    }
+
+    pub(crate) fn try_parse_attitudinal(&mut self) -> Option<Attitudinal> {
+        let a = match self.peek_cmavo()? {
+            "ei" => Attitudinal::Ei,
+            "e'e" => Attitudinal::Ehe,
+            _ => return None,
+        };
+        self.pos += 1;
+        Some(a)
+    }
+
     // ─── Sentence ─────────────────────────────────────────────
 
     pub(crate) fn parse_sentence(&mut self) -> Result<Sentence<'arena>, ParseError> {

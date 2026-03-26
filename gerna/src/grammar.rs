@@ -441,26 +441,6 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         }
     }
 
-    fn try_parse_tense(&mut self) -> Option<Tense> {
-        let t = match self.peek_cmavo()? {
-            "pu" => Tense::Pu,
-            "ca" => Tense::Ca,
-            "ba" => Tense::Ba,
-            _ => return None,
-        };
-        self.pos += 1;
-        Some(t)
-    }
-
-    fn try_parse_attitudinal(&mut self) -> Option<Attitudinal> {
-        let a = match self.peek_cmavo()? {
-            "ei" => Attitudinal::Ei,
-            "e'e" => Attitudinal::Ehe,
-            _ => return None,
-        };
-        self.pos += 1;
-        Some(a)
-    }
 }
 
 // ─── Public entry point ───────────────────────────────────────────

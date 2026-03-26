@@ -6,8 +6,6 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 5: Maintainability
 
-11. **Split god files** — `logji/src/lib.rs` (~5000 lines) and `gerna/src/grammar.rs` (4,471 lines) are too large. Split logji into `kb.rs`, `assertion.rs`, `query.rs`, `witness.rs`, `proof.rs`. Split grammar into per-construct modules.
-
 12. **Make hardcoded constants configurable** — Backward-chaining depth limit (10), UI GraphQL URL, MAX_OUTPUT_ENTRIES (200), polling intervals. Some already configurable (fuel, memory); pattern is inconsistent.
 
 13. **WIT schema versioning** — No migration path for WIT interface evolution.
