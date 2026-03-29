@@ -12,8 +12,12 @@ fn with_sub<T>(
     let prev = subs.insert(key.to_string(), value);
     let result = f(subs);
     match prev {
-        Some(p) => { subs.insert(key.to_string(), p); }
-        None => { subs.remove(key); }
+        Some(p) => {
+            subs.insert(key.to_string(), p);
+        }
+        None => {
+            subs.remove(key);
+        }
     }
     result
 }
@@ -31,30 +35,88 @@ fn build_all_candidates(inner: &KnowledgeBaseInner) -> Vec<GroundTerm> {
     candidates
 }
 
+fn prefer_non_definitive(
+    current: Option<QueryResult>,
+    candidate: QueryResult,
+) -> Option<QueryResult> {
+    if candidate.is_definitive() {
+        return current;
+    }
+    match (current, candidate) {
+        (Some(QueryResult::ResourceExceeded(kind)), QueryResult::Unknown(_)) => {
+            Some(QueryResult::ResourceExceeded(kind))
+        }
+        (Some(QueryResult::Unknown(_)), QueryResult::ResourceExceeded(kind)) => {
+            Some(QueryResult::ResourceExceeded(kind))
+        }
+        (Some(existing), _) => Some(existing),
+        (None, candidate) => Some(candidate),
+    }
+}
+
+fn combine_conjunction(left: QueryResult, right: QueryResult) -> QueryResult {
+    if left.is_false() || right.is_false() {
+        QueryResult::False
+    } else if left.is_true() && right.is_true() {
+        QueryResult::True
+    } else {
+        prefer_non_definitive(None, left)
+            .and_then(|acc| prefer_non_definitive(Some(acc), right))
+            .unwrap_or(QueryResult::False)
+    }
+}
+
+fn combine_disjunction(left: QueryResult, right: QueryResult) -> QueryResult {
+    if left.is_true() || right.is_true() {
+        QueryResult::True
+    } else if left.is_false() && right.is_false() {
+        QueryResult::False
+    } else {
+        prefer_non_definitive(None, left)
+            .and_then(|acc| prefer_non_definitive(Some(acc), right))
+            .unwrap_or(QueryResult::False)
+    }
+}
+
+fn negate_result(result: QueryResult) -> QueryResult {
+    match result {
+        QueryResult::True => QueryResult::False,
+        QueryResult::False => QueryResult::True,
+        QueryResult::Unknown(reason) => QueryResult::Unknown(reason),
+        QueryResult::ResourceExceeded(kind) => QueryResult::ResourceExceeded(kind),
+    }
+}
+
 pub(super) fn check_formula_holds(
     buffer: &LogicBuffer,
     node_id: u32,
     subs: &mut HashMap<String, GroundTerm>,
     inner: &mut KnowledgeBaseInner,
     tense: Option<&str>,
-) -> Result<bool, String> {
+) -> Result<QueryResult, String> {
     match get_node(buffer, node_id)? {
-        LogicNode::AndNode((l, r)) => Ok(check_formula_holds(buffer, *l, subs, inner, tense)?
-            && check_formula_holds(buffer, *r, subs, inner, tense)?),
-        LogicNode::OrNode((l, r)) => Ok(check_formula_holds(buffer, *l, subs, inner, tense)?
-            || check_formula_holds(buffer, *r, subs, inner, tense)?),
+        LogicNode::AndNode((l, r)) => {
+            let left = check_formula_holds(buffer, *l, subs, inner, tense)?;
+            let right = check_formula_holds(buffer, *r, subs, inner, tense)?;
+            Ok(combine_conjunction(left, right))
+        }
+        LogicNode::OrNode((l, r)) => {
+            let left = check_formula_holds(buffer, *l, subs, inner, tense)?;
+            let right = check_formula_holds(buffer, *r, subs, inner, tense)?;
+            Ok(combine_disjunction(left, right))
+        }
         // Negation-as-failure (NAF): ¬P holds when P cannot be proved.
         // Sound for the current system because Lojban input produces only ground
         // facts and universal Horn rules — no recursive negation or circular
         // definitions. The program is stratifiable by construction (facts at
         // stratum 0, rules at stratum 1).
-        LogicNode::NotNode(inner_node) => Ok(!check_formula_holds(
+        LogicNode::NotNode(inner_node) => Ok(negate_result(check_formula_holds(
             buffer,
             *inner_node,
             subs,
             inner,
             tense,
-        )?),
+        )?)),
         LogicNode::PastNode(inner_node) => {
             check_formula_holds(buffer, *inner_node, subs, inner, Some("Past"))
         }
@@ -80,20 +142,22 @@ pub(super) fn check_formula_holds(
                             assert_typed_fact(fact, inner);
                         }
                         if batch.results.iter().any(|r| *r) {
-                            return Ok(true);
+                            return Ok(QueryResult::True);
                         }
                     }
                 }
             }
             // Slow path: need owned Vec because check_formula_holds takes &mut inner.
             let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
+            let mut best_result = None;
             for member in &members {
-                let holds = with_sub(subs, v, member.clone(), |s| {
+                let result = with_sub(subs, v, member.clone(), |s| {
                     check_formula_holds(buffer, *body, s, inner, tense)
                 })?;
-                if holds {
-                    return Ok(true);
+                if result.is_true() {
+                    return Ok(QueryResult::True);
                 }
+                best_result = prefer_non_definitive(best_result, result);
             }
             let sk_entries: Vec<(String, usize)> = inner
                 .skolem_fn_registry
@@ -103,19 +167,20 @@ pub(super) fn check_formula_holds(
             for (base_name, dep_count) in &sk_entries {
                 for combo in GroundTermCartesianProduct::new(&members, *dep_count) {
                     let witness = build_skolem_fn_term(base_name, &combo);
-                    let holds = with_sub(subs, v, witness, |s| {
+                    let result = with_sub(subs, v, witness, |s| {
                         check_formula_holds(buffer, *body, s, inner, tense)
                     })?;
-                    if holds {
-                        return Ok(true);
+                    if result.is_true() {
+                        return Ok(QueryResult::True);
                     }
+                    best_result = prefer_non_definitive(best_result, result);
                 }
             }
-            Ok(false)
+            Ok(best_result.unwrap_or(QueryResult::False))
         }
         LogicNode::ForAllNode((v, body)) => {
             if inner.all_typed_domain_members().is_empty() {
-                return Ok(true);
+                return Ok(QueryResult::True);
             }
             // Batch compute fast path (slice, no .to_vec()).
             if let Ok(body_node) = get_node(buffer, *body) {
@@ -127,20 +192,28 @@ pub(super) fn check_formula_holds(
                         for fact in batch.deferred_facts {
                             assert_typed_fact(fact, inner);
                         }
-                        return Ok(batch.results.iter().all(|r| *r));
+                        return Ok(if batch.results.iter().all(|r| *r) {
+                            QueryResult::True
+                        } else {
+                            QueryResult::False
+                        });
                     }
                 }
             }
             let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
+            let mut best_result = None;
             for member in &members {
-                let holds = with_sub(subs, v, member.clone(), |s| {
+                let result = with_sub(subs, v, member.clone(), |s| {
                     check_formula_holds(buffer, *body, s, inner, tense)
                 })?;
-                if !holds {
-                    return Ok(false);
+                if result.is_false() {
+                    return Ok(QueryResult::False);
+                }
+                if !result.is_true() {
+                    best_result = prefer_non_definitive(best_result, result);
                 }
             }
-            Ok(true)
+            Ok(best_result.unwrap_or(QueryResult::True))
         }
         LogicNode::CountNode((v, count, body)) => {
             // Batch compute fast path (slice, no .to_vec()).
@@ -154,32 +227,57 @@ pub(super) fn check_formula_holds(
                             assert_typed_fact(fact, inner);
                         }
                         let satisfying = batch.results.iter().filter(|r| **r).count() as u32;
-                        return Ok(satisfying == *count);
+                        return Ok(if satisfying == *count {
+                            QueryResult::True
+                        } else {
+                            QueryResult::False
+                        });
                     }
                 }
             }
             let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
             let mut satisfying = 0u32;
+            let mut unresolved = 0u32;
+            let mut best_result = None;
             for member in &members {
-                let holds = with_sub(subs, v, member.clone(), |s| {
+                let result = with_sub(subs, v, member.clone(), |s| {
                     check_formula_holds(buffer, *body, s, inner, tense)
                 })?;
-                if holds {
-                    satisfying += 1;
+                match result {
+                    QueryResult::True => satisfying += 1,
+                    QueryResult::False => {}
+                    other => {
+                        unresolved += 1;
+                        best_result = prefer_non_definitive(best_result, other);
+                    }
                 }
             }
-            Ok(satisfying == *count)
+            if unresolved == 0 {
+                Ok(if satisfying == *count {
+                    QueryResult::True
+                } else {
+                    QueryResult::False
+                })
+            } else if satisfying > *count || satisfying + unresolved < *count {
+                Ok(QueryResult::False)
+            } else {
+                Ok(best_result.unwrap_or(QueryResult::Unknown(UnknownReason::IncompleteKnowledge)))
+            }
         }
         LogicNode::Predicate((rel, args)) => {
             if let Some(result) = try_numeric_comparison(rel, args, subs) {
-                return Ok(result);
+                return Ok(if result {
+                    QueryResult::True
+                } else {
+                    QueryResult::False
+                });
             }
             // Build typed fact and query typed store.
             if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
                 let mut visited = HashSet::new();
                 Ok(check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited))
             } else {
-                Ok(false) // build_stored_fact_from_node failed — should not happen for Predicate
+                Ok(QueryResult::False) // build_stored_fact_from_node failed — should not happen for Predicate
             }
         }
         LogicNode::ComputeNode((rel, args)) => {
@@ -190,7 +288,11 @@ pub(super) fn check_formula_holds(
                         assert_typed_fact(fact, inner);
                     }
                 }
-                return Ok(result);
+                return Ok(if result {
+                    QueryResult::True
+                } else {
+                    QueryResult::False
+                });
             }
             if let Some(result) = try_arithmetic_evaluation(rel, args, subs) {
                 if result {
@@ -198,13 +300,17 @@ pub(super) fn check_formula_holds(
                         assert_typed_fact(fact, inner);
                     }
                 }
-                return Ok(result);
+                return Ok(if result {
+                    QueryResult::True
+                } else {
+                    QueryResult::False
+                });
             }
             if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
                 let mut visited = HashSet::new();
                 Ok(check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited))
             } else {
-                Ok(false)
+                Ok(QueryResult::False)
             }
         }
     }
@@ -297,7 +403,7 @@ pub(super) fn find_witnesses(
             Ok(results)
         }
         _ => {
-            if check_formula_holds(buffer, node_id, subs, inner, tense)? {
+            if check_formula_holds(buffer, node_id, subs, inner, tense)?.is_true() {
                 Ok(vec![vec![]])
             } else {
                 Ok(vec![])
@@ -306,14 +412,14 @@ pub(super) fn find_witnesses(
     }
 }
 
-
 // ─── Typed Backward-Chaining (Phase 4-5b) ────────────────────────
 //
 // These functions mirror the fact_repr-based backward-chaining above but
 // operate on StoredFact/GroundTerm directly, avoiding all string ops.
 
 thread_local! {
-    static TYPED_PRED_CACHE: RefCell<HashMap<StoredFact, bool>> = RefCell::new(HashMap::new());
+    static TYPED_PRED_CACHE: RefCell<HashMap<StoredFact, QueryResult>> =
+        RefCell::new(HashMap::new());
 }
 
 pub(super) fn clear_typed_pred_cache() {
@@ -345,13 +451,13 @@ pub(super) fn check_predicate_in_kb_typed(
     inner: &KnowledgeBaseInner,
     depth: usize,
     visited: &mut HashSet<StoredFact>,
-) -> bool {
+) -> QueryResult {
     if typed_fact_is_asserted(fact, inner) {
-        return true;
+        return QueryResult::True;
     }
     let cached = PRED_CACHE_ENABLED.with(|e| {
         if e.get() {
-            TYPED_PRED_CACHE.with(|c| c.borrow().get(fact).copied())
+            TYPED_PRED_CACHE.with(|c| c.borrow().get(fact).cloned())
         } else {
             None
         }
@@ -362,7 +468,7 @@ pub(super) fn check_predicate_in_kb_typed(
     let result = try_backward_chain_typed(fact, inner, depth, visited);
     PRED_CACHE_ENABLED.with(|e| {
         if e.get() {
-            TYPED_PRED_CACHE.with(|c| c.borrow_mut().insert(fact.clone(), result));
+            TYPED_PRED_CACHE.with(|c| c.borrow_mut().insert(fact.clone(), result.clone()));
         }
     });
     result
@@ -387,12 +493,12 @@ pub(super) fn try_backward_chain_typed(
     inner: &KnowledgeBaseInner,
     depth: usize,
     visited: &mut HashSet<StoredFact>,
-) -> bool {
+) -> QueryResult {
     if depth >= inner.max_chain_depth {
-        return false;
+        return QueryResult::ResourceExceeded(ResourceKind::Depth);
     }
     if !visited.insert(fact.clone()) {
-        return false;
+        return QueryResult::Unknown(UnknownReason::CycleCut);
     }
 
     // Pre-compute candidate terms for unbound event variable search.
@@ -400,6 +506,7 @@ pub(super) fn try_backward_chain_typed(
     let all_candidates = build_all_candidates(inner);
 
     let rules_snapshot = collect_matching_rules_typed(fact, &inner.universal_rules);
+    let mut best_result = None;
 
     for rule in &rules_snapshot {
         for typed_concl in &rule.typed_conclusions {
@@ -418,7 +525,6 @@ pub(super) fn try_backward_chain_typed(
                 .collect();
 
             if !unbound_event_vars.is_empty() {
-
                 let mut per_var_candidates: Vec<Vec<GroundTerm>> = Vec::new();
                 for ev_var in &unbound_event_vars {
                     let single_var_cond_indices: Vec<usize> = rule
@@ -427,9 +533,9 @@ pub(super) fn try_backward_chain_typed(
                         .enumerate()
                         .filter(|(_, ct)| {
                             stored_fact_contains_var(ct, ev_var)
-                                && unbound_event_vars
-                                    .iter()
-                                    .all(|other| other == ev_var || !stored_fact_contains_var(ct, other))
+                                && unbound_event_vars.iter().all(|other| {
+                                    other == ev_var || !stored_fact_contains_var(ct, other)
+                                })
                         })
                         .map(|(i, _)| i)
                         .collect();
@@ -443,8 +549,12 @@ pub(super) fn try_backward_chain_typed(
                                 let mut test_bindings = bindings.clone();
                                 test_bindings.insert(ev_var.clone(), (*candidate).clone());
                                 single_var_cond_indices.iter().all(|&idx| {
-                                    let cs = substitute_fact(&rule.typed_conditions[idx], &test_bindings);
-                                    check_predicate_in_kb_typed(&cs, inner, depth + 1, visited)
+                                    let cs = substitute_fact(
+                                        &rule.typed_conditions[idx],
+                                        &test_bindings,
+                                    );
+                                    !check_predicate_in_kb_typed(&cs, inner, depth + 1, visited)
+                                        .is_false()
                                 })
                             })
                             .cloned()
@@ -458,36 +568,62 @@ pub(super) fn try_backward_chain_typed(
                 }
 
                 let mut found = false;
+                let mut combo_pending = None;
                 for combo in TypedMultiCartesian::new(&per_var_candidates) {
                     for (i, ev_var) in unbound_event_vars.iter().enumerate() {
                         bindings.insert(ev_var.clone(), combo[i].clone());
                     }
-                    let all_hold = rule.typed_conditions.iter().all(|ct| {
+                    let mut all_hold = true;
+                    let mut pending_here = None;
+                    for ct in &rule.typed_conditions {
                         let cs = substitute_fact(ct, &bindings);
-                        check_predicate_in_kb_typed(&cs, inner, depth + 1, visited)
-                    });
+                        let result = check_predicate_in_kb_typed(&cs, inner, depth + 1, visited);
+                        if result.is_false() {
+                            all_hold = false;
+                            pending_here = None;
+                            break;
+                        }
+                        if !result.is_true() {
+                            all_hold = false;
+                            pending_here = prefer_non_definitive(pending_here, result);
+                        }
+                    }
                     if all_hold {
                         found = true;
                         break;
                     }
+                    combo_pending = pending_here.or(combo_pending);
                     for ev_var in &unbound_event_vars {
                         bindings.remove(ev_var.as_str());
                     }
                 }
                 if !found {
+                    best_result = combo_pending.and_then(|r| prefer_non_definitive(best_result, r));
                     continue;
                 }
             }
 
-            let all_conditions_hold = rule.typed_conditions.iter().all(|ct| {
+            let mut all_conditions_hold = true;
+            let mut rule_pending = None;
+            for ct in &rule.typed_conditions {
                 let cs = substitute_fact(ct, &bindings);
-                check_predicate_in_kb_typed(&cs, inner, depth + 1, visited)
-            });
+                let result = check_predicate_in_kb_typed(&cs, inner, depth + 1, visited);
+                if result.is_false() {
+                    all_conditions_hold = false;
+                    rule_pending = None;
+                    break;
+                }
+                if !result.is_true() {
+                    all_conditions_hold = false;
+                    rule_pending = prefer_non_definitive(rule_pending, result);
+                }
+            }
 
             if all_conditions_hold {
                 visited.remove(fact);
-                return true;
+                return QueryResult::True;
             }
+            best_result = rule_pending.and_then(|r| prefer_non_definitive(best_result, r));
         }
     }
 
@@ -518,9 +654,9 @@ pub(super) fn try_backward_chain_typed(
                             .enumerate()
                             .filter(|(_, ct)| {
                                 stored_fact_contains_var(ct, ev_var)
-                                    && unbound_event_vars
-                                        .iter()
-                                        .all(|other| other == ev_var || !stored_fact_contains_var(ct, other))
+                                    && unbound_event_vars.iter().all(|other| {
+                                        other == ev_var || !stored_fact_contains_var(ct, other)
+                                    })
                             })
                             .map(|(i, _)| i)
                             .collect();
@@ -534,9 +670,18 @@ pub(super) fn try_backward_chain_typed(
                                     let mut test_bindings = bindings.clone();
                                     test_bindings.insert(ev_var.clone(), (*candidate).clone());
                                     single_var_cond_indices.iter().all(|&idx| {
-                                        let bare_cs = substitute_fact(&rule.typed_conditions[idx], &test_bindings);
+                                        let bare_cs = substitute_fact(
+                                            &rule.typed_conditions[idx],
+                                            &test_bindings,
+                                        );
                                         let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
-                                        check_predicate_in_kb_typed(&tensed_cs, inner, depth + 1, visited)
+                                        !check_predicate_in_kb_typed(
+                                            &tensed_cs,
+                                            inner,
+                                            depth + 1,
+                                            visited,
+                                        )
+                                        .is_false()
                                     })
                                 })
                                 .cloned()
@@ -550,44 +695,72 @@ pub(super) fn try_backward_chain_typed(
                     }
 
                     let mut found = false;
+                    let mut combo_pending = None;
                     for combo in TypedMultiCartesian::new(&per_var_candidates) {
                         for (i, ev_var) in unbound_event_vars.iter().enumerate() {
                             bindings.insert(ev_var.clone(), combo[i].clone());
                         }
-                        let all_hold = rule.typed_conditions.iter().all(|ct| {
+                        let mut all_hold = true;
+                        let mut pending_here = None;
+                        for ct in &rule.typed_conditions {
                             let bare_cs = substitute_fact(ct, &bindings);
                             let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
-                            check_predicate_in_kb_typed(&tensed_cs, inner, depth + 1, visited)
-                        });
+                            let result =
+                                check_predicate_in_kb_typed(&tensed_cs, inner, depth + 1, visited);
+                            if result.is_false() {
+                                all_hold = false;
+                                pending_here = None;
+                                break;
+                            }
+                            if !result.is_true() {
+                                all_hold = false;
+                                pending_here = prefer_non_definitive(pending_here, result);
+                            }
+                        }
                         if all_hold {
                             found = true;
                             break;
                         }
+                        combo_pending = pending_here.or(combo_pending);
                         for ev_var in &unbound_event_vars {
                             bindings.remove(ev_var.as_str());
                         }
                     }
                     if !found {
+                        best_result =
+                            combo_pending.and_then(|r| prefer_non_definitive(best_result, r));
                         continue;
                     }
                 }
 
-                let all_conditions_hold = rule.typed_conditions.iter().all(|ct| {
+                let mut all_conditions_hold = true;
+                let mut rule_pending = None;
+                for ct in &rule.typed_conditions {
                     let bare_cs = substitute_fact(ct, &bindings);
                     let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
-                    check_predicate_in_kb_typed(&tensed_cs, inner, depth + 1, visited)
-                });
+                    let result = check_predicate_in_kb_typed(&tensed_cs, inner, depth + 1, visited);
+                    if result.is_false() {
+                        all_conditions_hold = false;
+                        rule_pending = None;
+                        break;
+                    }
+                    if !result.is_true() {
+                        all_conditions_hold = false;
+                        rule_pending = prefer_non_definitive(rule_pending, result);
+                    }
+                }
 
                 if all_conditions_hold {
                     visited.remove(fact);
-                    return true;
+                    return QueryResult::True;
                 }
+                best_result = rule_pending.and_then(|r| prefer_non_definitive(best_result, r));
             }
         }
     }
 
     visited.remove(fact);
-    false
+    best_result.unwrap_or(QueryResult::False)
 }
 
 /// Strip tense wrapper from a StoredFact, returning the bare fact.
@@ -767,9 +940,9 @@ pub(super) fn try_backward_chain_traced_typed(
                         .enumerate()
                         .filter(|(_, ct)| {
                             stored_fact_contains_var(ct, ev_var)
-                                && unbound_event_vars
-                                    .iter()
-                                    .all(|other| other == ev_var || !stored_fact_contains_var(ct, other))
+                                && unbound_event_vars.iter().all(|other| {
+                                    other == ev_var || !stored_fact_contains_var(ct, other)
+                                })
                         })
                         .map(|(i, _)| i)
                         .collect();
@@ -783,8 +956,17 @@ pub(super) fn try_backward_chain_traced_typed(
                                 let mut test_bindings = bindings.clone();
                                 test_bindings.insert(ev_var.clone(), (*candidate).clone());
                                 single_var_cond_indices.iter().all(|&idx| {
-                                    let cs = substitute_fact(&rule.typed_conditions[idx], &test_bindings);
-                                    check_predicate_in_kb_typed(&cs, &*inner, depth + 1, &mut HashSet::new())
+                                    let cs = substitute_fact(
+                                        &rule.typed_conditions[idx],
+                                        &test_bindings,
+                                    );
+                                    check_predicate_in_kb_typed(
+                                        &cs,
+                                        &*inner,
+                                        depth + 1,
+                                        &mut HashSet::new(),
+                                    )
+                                    .is_true()
                                 })
                             })
                             .cloned()
@@ -805,6 +987,7 @@ pub(super) fn try_backward_chain_traced_typed(
                     let all_hold = rule.typed_conditions.iter().all(|ct| {
                         let cs = substitute_fact(ct, &bindings);
                         check_predicate_in_kb_typed(&cs, &*inner, depth + 1, &mut HashSet::new())
+                            .is_true()
                     });
                     if all_hold {
                         found = true;
@@ -825,7 +1008,9 @@ pub(super) fn try_backward_chain_traced_typed(
 
             for cond_template in &rule.typed_conditions {
                 let cond_fact = substitute_fact(cond_template, &bindings);
-                if check_predicate_in_kb_typed(&cond_fact, &*inner, depth + 1, &mut HashSet::new()) {
+                if check_predicate_in_kb_typed(&cond_fact, &*inner, depth + 1, &mut HashSet::new())
+                    .is_true()
+                {
                     condition_facts.push(cond_fact);
                 } else {
                     all_conditions_hold = false;
@@ -849,7 +1034,8 @@ pub(super) fn try_backward_chain_traced_typed(
 
             let mut child_indices = Vec::new();
             for cond_fact in &condition_facts {
-                let child_idx = trace_predicate_provenance_typed(cond_fact, inner, steps, depth + 1, memo);
+                let child_idx =
+                    trace_predicate_provenance_typed(cond_fact, inner, steps, depth + 1, memo);
                 child_indices.push(child_idx);
             }
 
@@ -896,9 +1082,9 @@ pub(super) fn try_backward_chain_traced_typed(
                             .enumerate()
                             .filter(|(_, ct)| {
                                 stored_fact_contains_var(ct, ev_var)
-                                    && unbound_event_vars
-                                        .iter()
-                                        .all(|other| other == ev_var || !stored_fact_contains_var(ct, other))
+                                    && unbound_event_vars.iter().all(|other| {
+                                        other == ev_var || !stored_fact_contains_var(ct, other)
+                                    })
                             })
                             .map(|(i, _)| i)
                             .collect();
@@ -912,9 +1098,18 @@ pub(super) fn try_backward_chain_traced_typed(
                                     let mut test_bindings = bindings.clone();
                                     test_bindings.insert(ev_var.clone(), (*candidate).clone());
                                     single_var_cond_indices.iter().all(|&idx| {
-                                        let bare_cs = substitute_fact(&rule.typed_conditions[idx], &test_bindings);
+                                        let bare_cs = substitute_fact(
+                                            &rule.typed_conditions[idx],
+                                            &test_bindings,
+                                        );
                                         let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
-                                        check_predicate_in_kb_typed(&tensed_cs, &*inner, depth + 1, &mut HashSet::new())
+                                        check_predicate_in_kb_typed(
+                                            &tensed_cs,
+                                            &*inner,
+                                            depth + 1,
+                                            &mut HashSet::new(),
+                                        )
+                                        .is_true()
                                     })
                                 })
                                 .cloned()
@@ -935,7 +1130,13 @@ pub(super) fn try_backward_chain_traced_typed(
                         let all_hold = rule.typed_conditions.iter().all(|ct| {
                             let bare_cs = substitute_fact(ct, &bindings);
                             let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
-                            check_predicate_in_kb_typed(&tensed_cs, &*inner, depth + 1, &mut HashSet::new())
+                            check_predicate_in_kb_typed(
+                                &tensed_cs,
+                                &*inner,
+                                depth + 1,
+                                &mut HashSet::new(),
+                            )
+                            .is_true()
                         });
                         if all_hold {
                             found = true;
@@ -955,7 +1156,14 @@ pub(super) fn try_backward_chain_traced_typed(
                 for cond_template in &rule.typed_conditions {
                     let bare_cs = substitute_fact(cond_template, &bindings);
                     let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
-                    if check_predicate_in_kb_typed(&tensed_cs, &*inner, depth + 1, &mut HashSet::new()) {
+                    if check_predicate_in_kb_typed(
+                        &tensed_cs,
+                        &*inner,
+                        depth + 1,
+                        &mut HashSet::new(),
+                    )
+                    .is_true()
+                    {
                         condition_facts.push(tensed_cs);
                     } else {
                         all_conditions_hold = false;
@@ -982,7 +1190,8 @@ pub(super) fn try_backward_chain_traced_typed(
 
                 let mut child_indices = Vec::new();
                 for cond_fact in &condition_facts {
-                    let child_idx = trace_predicate_provenance_typed(cond_fact, inner, steps, depth + 1, memo);
+                    let child_idx =
+                        trace_predicate_provenance_typed(cond_fact, inner, steps, depth + 1, memo);
                     child_indices.push(child_idx);
                 }
 
@@ -1004,7 +1213,6 @@ pub(super) fn try_backward_chain_traced_typed(
 }
 
 // ─── End Typed Backward-Chaining ─────────────────────────────────
-
 
 pub(super) fn check_formula_holds_traced(
     buffer: &LogicBuffer,
@@ -1166,7 +1374,10 @@ pub(super) fn check_formula_holds_traced(
                         batch_evaluate_compute_for_members(rel, args, v, members, subs)
                     {
                         // Clone the winning member before releasing the slice borrow.
-                        let winner = batch.results.iter().position(|r| *r)
+                        let winner = batch
+                            .results
+                            .iter()
+                            .position(|r| *r)
                             .map(|i| members[i].clone());
                         // Ingest deferred facts.
                         for fact in batch.deferred_facts {
@@ -1203,7 +1414,7 @@ pub(super) fn check_formula_holds_traced(
             for member in &members {
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), member.clone());
-                if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)? {
+                if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)?.is_true() {
                     let (_, body_idx) = check_formula_holds_traced(
                         buffer,
                         *body,
@@ -1215,7 +1426,10 @@ pub(super) fn check_formula_holds_traced(
                     )?;
                     let idx = steps.len() as u32;
                     steps.push(ProofStep {
-                        rule: ProofRule::ExistsWitness((v.clone(), ground_term_to_logical_term(member))),
+                        rule: ProofRule::ExistsWitness((
+                            v.clone(),
+                            ground_term_to_logical_term(member),
+                        )),
                         holds: true,
                         children: vec![body_idx],
                     });
@@ -1232,7 +1446,7 @@ pub(super) fn check_formula_holds_traced(
                     let witness = build_skolem_fn_term(base_name, &combo);
                     let mut new_subs = subs.clone();
                     new_subs.insert(v.clone(), witness.clone());
-                    if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)? {
+                    if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)?.is_true() {
                         let (_, body_idx) = check_formula_holds_traced(
                             buffer,
                             *body,
@@ -1282,7 +1496,10 @@ pub(super) fn check_formula_holds_traced(
                         batch_evaluate_compute_for_members(rel, args, v, members_slice, subs)
                     {
                         // Clone the counterexample before releasing slice.
-                        let fail_member = batch.results.iter().position(|r| !*r)
+                        let fail_member = batch
+                            .results
+                            .iter()
+                            .position(|r| !*r)
                             .map(|i| members_slice[i].clone());
                         for fact in batch.deferred_facts {
                             assert_typed_fact(fact, inner);
@@ -1291,25 +1508,40 @@ pub(super) fn check_formula_holds_traced(
                             let mut new_subs = subs.clone();
                             new_subs.insert(v.clone(), counter.clone());
                             let (_, body_idx) = check_formula_holds_traced(
-                                buffer, *body, &mut new_subs, inner, steps, tense, memo,
+                                buffer,
+                                *body,
+                                &mut new_subs,
+                                inner,
+                                steps,
+                                tense,
+                                memo,
                             )?;
                             let idx = steps.len() as u32;
                             steps.push(ProofStep {
-                                rule: ProofRule::ForallCounterexample(ground_term_to_logical_term(&counter)),
+                                rule: ProofRule::ForallCounterexample(ground_term_to_logical_term(
+                                    &counter,
+                                )),
                                 holds: false,
                                 children: vec![body_idx],
                             });
                             return Ok((false, idx));
                         }
                         // All passed — trace each member.
-                        let members_owned: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
+                        let members_owned: Vec<GroundTerm> =
+                            inner.all_typed_domain_members().to_vec();
                         let mut child_indices = Vec::new();
                         let mut entity_terms = Vec::new();
                         for member in &members_owned {
                             let mut new_subs = subs.clone();
                             new_subs.insert(v.clone(), member.clone());
                             let (_, body_idx) = check_formula_holds_traced(
-                                buffer, *body, &mut new_subs, inner, steps, tense, memo,
+                                buffer,
+                                *body,
+                                &mut new_subs,
+                                inner,
+                                steps,
+                                tense,
+                                memo,
                             )?;
                             child_indices.push(body_idx);
                             entity_terms.push(ground_term_to_logical_term(member));
@@ -1386,7 +1618,7 @@ pub(super) fn check_formula_holds_traced(
             for member in &members {
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), member.clone());
-                if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)? {
+                if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)?.is_true() {
                     satisfying += 1;
                 }
             }
@@ -1407,8 +1639,10 @@ pub(super) fn check_formula_holds_traced(
                     args.iter()
                         .map(|a| match a {
                             LogicalTerm::Number(n) => format!("{}", *n as i64),
-                            LogicalTerm::Variable(v) =>
-                                subs.get(v.as_str()).map(|gt| gt.to_display_string()).unwrap_or_else(|| v.clone()),
+                            LogicalTerm::Variable(v) => subs
+                                .get(v.as_str())
+                                .map(|gt| gt.to_display_string())
+                                .unwrap_or_else(|| v.clone()),
                             _ => "?".to_string(),
                         })
                         .collect::<Vec<_>>()
@@ -1425,13 +1659,29 @@ pub(super) fn check_formula_holds_traced(
             }
             if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
                 let mut visited = HashSet::new();
-                if check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited) {
+                let result = check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited);
+                if result.is_true() {
                     let idx = trace_predicate_provenance_typed(&fact, inner, steps, 0, memo);
                     Ok((true, idx))
                 } else {
+                    let method = match result {
+                        QueryResult::Unknown(UnknownReason::CycleCut) => "cycle_cut",
+                        QueryResult::Unknown(UnknownReason::IncompleteKnowledge) => {
+                            "incomplete_knowledge"
+                        }
+                        QueryResult::Unknown(UnknownReason::NafDependent) => "naf_dependent",
+                        QueryResult::ResourceExceeded(ResourceKind::Depth) => "depth_limit",
+                        QueryResult::ResourceExceeded(ResourceKind::Fuel) => "fuel_limit",
+                        QueryResult::ResourceExceeded(ResourceKind::Memory) => "memory_limit",
+                        QueryResult::False => "kb",
+                        QueryResult::True => "kb",
+                    };
                     let idx = steps.len() as u32;
                     steps.push(ProofStep {
-                        rule: ProofRule::PredicateCheck(("kb".to_string(), fact.to_display_string())),
+                        rule: ProofRule::PredicateCheck((
+                            method.to_string(),
+                            fact.to_display_string(),
+                        )),
                         holds: false,
                         children: vec![],
                     });
@@ -1478,15 +1728,26 @@ pub(super) fn check_formula_holds_traced(
                 return Ok((result, idx));
             }
             // Fallback: check typed store for compute predicate.
-            let holds = if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
-                let mut visited = HashSet::new();
-                check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited)
-            } else {
-                false
+            let result =
+                if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
+                    let mut visited = HashSet::new();
+                    check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited)
+                } else {
+                    QueryResult::False
+                };
+            let holds = result.is_true();
+            let method = match result {
+                QueryResult::Unknown(UnknownReason::CycleCut) => "cycle_cut",
+                QueryResult::Unknown(UnknownReason::IncompleteKnowledge) => "incomplete_knowledge",
+                QueryResult::Unknown(UnknownReason::NafDependent) => "naf_dependent",
+                QueryResult::ResourceExceeded(ResourceKind::Depth) => "depth_limit",
+                QueryResult::ResourceExceeded(ResourceKind::Fuel) => "fuel_limit",
+                QueryResult::ResourceExceeded(ResourceKind::Memory) => "memory_limit",
+                QueryResult::False | QueryResult::True => "kb",
             };
             let idx = steps.len() as u32;
             steps.push(ProofStep {
-                rule: ProofRule::ComputeCheck(("kb".to_string(), rel.clone())),
+                rule: ProofRule::ComputeCheck((method.to_string(), rel.clone())),
                 holds,
                 children: vec![],
             });

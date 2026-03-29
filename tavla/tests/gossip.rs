@@ -4,8 +4,17 @@
 //! retraction tombstones, KB rebuild, epidemic propagation,
 //! trust-as-knowledge, contradiction detection, and envelope expiration.
 
-use tavla::{EpistemicStance, GossipNode, TrustPolicy, VectorClock};
 use chrono;
+use nibli_engine::EngineQueryResult;
+use tavla::{EpistemicStance, GossipNode, TrustPolicy, VectorClock};
+
+fn assert_true(result: &EngineQueryResult, msg: &str) {
+    assert!(result.is_true(), "{msg}: got {result:?}");
+}
+
+fn assert_false(result: &EngineQueryResult, msg: &str) {
+    assert!(result.is_false(), "{msg}: got {result:?}");
+}
 
 // ─── Basic gossip (from Prompt 1) ────────────────────────────────
 
@@ -40,14 +49,18 @@ fn two_node_gossip_propagation() {
     let (holds, proof_text, _) = node_b
         .query_with_proof("la .adam. cu danlu")
         .expect("Node B should be able to query");
-    assert!(holds, "Node B should derive 'adam is an animal'");
+    assert_true(&holds, "Node B should derive 'adam is an animal'");
     println!("Proof trace for 'la .adam. cu danlu':\n{}", proof_text);
-    assert!(proof_text.contains("Rule ("), "expected backward-chaining rule derivation in proof text:\n{}", proof_text);
+    assert!(
+        proof_text.contains("Rule ("),
+        "expected backward-chaining rule derivation in proof text:\n{}",
+        proof_text
+    );
 
     let (holds, _, _) = node_b
         .query_with_proof("la .adam. cu mlatu")
         .expect("Node B should be able to query");
-    assert!(!holds, "Node B should NOT derive 'adam is a cat'");
+    assert_false(&holds, "Node B should NOT derive 'adam is a cat'");
 }
 
 /// Dedup test: ingesting the same envelope twice should be idempotent.
@@ -76,9 +89,9 @@ fn dedup_prevents_double_ingest() {
     let (holds, _, _) = node_b
         .query_with_proof("la .adam. cu gerku")
         .expect("Deduplicated fact should remain queryable");
-    assert!(
-        holds,
-        "Duplicate ingest should leave one queryable fact, not zero or many"
+    assert_true(
+        &holds,
+        "Duplicate ingest should leave one queryable fact, not zero or many",
     );
 }
 
@@ -153,7 +166,7 @@ fn crdt_retraction_tombstones() {
     // The retracted fact should no longer be in the KB.
     // After rebuild, only "la .adam. cu danlu" survives.
     let (holds, _, _) = node.query_with_proof("la .adam. cu danlu").unwrap();
-    assert!(holds, "Non-retracted fact should still hold");
+    assert_true(&holds, "Non-retracted fact should still hold");
 }
 
 /// Retraction propagates via ingest.
@@ -179,9 +192,9 @@ fn retraction_propagates_to_peer() {
     let (holds, _, _) = node_b
         .query_with_proof("la .adam. cu gerku")
         .expect("Peer should still be queryable after retraction");
-    assert!(
-        !holds,
-        "Retracted remote fact should no longer hold in the peer KB"
+    assert_false(
+        &holds,
+        "Retracted remote fact should no longer hold in the peer KB",
     );
 }
 
@@ -195,17 +208,17 @@ fn kb_rebuild_from_crdt_log() {
 
     // Verify derivation works.
     let (holds, _, _) = node.query_with_proof("la .adam. cu danlu").unwrap();
-    assert!(holds);
+    assert_true(&holds, "Fact should derive before reset");
 
     // Reset KB (simulating corruption or restart).
     node.reset();
     let (holds, _, _) = node.query_with_proof("la .adam. cu danlu").unwrap();
-    assert!(!holds, "KB should be empty after reset");
+    assert_false(&holds, "KB should be empty after reset");
 
     // Rebuild from CRDT log.
     node.rebuild_kb();
     let (holds, _, _) = node.query_with_proof("la .adam. cu danlu").unwrap();
-    assert!(holds, "KB should be restored after rebuild");
+    assert_true(&holds, "KB should be restored after rebuild");
 }
 
 #[test]
@@ -222,28 +235,28 @@ fn synced_retraction_survives_reset_and_rebuild() {
     node_b.ingest(tombstone).unwrap();
 
     let (holds, _, _) = node_b.query_with_proof("la .adam. cu gerku").unwrap();
-    assert!(
-        !holds,
-        "Synced tombstone should retract the fact before rebuild"
+    assert_false(
+        &holds,
+        "Synced tombstone should retract the fact before rebuild",
     );
     let (holds, _, _) = node_b.query_with_proof("la .adam. cu danlu").unwrap();
-    assert!(
-        holds,
-        "Independent surviving facts should still hold before rebuild"
+    assert_true(
+        &holds,
+        "Independent surviving facts should still hold before rebuild",
     );
 
     node_b.reset();
     let (holds, _, _) = node_b.query_with_proof("la .adam. cu danlu").unwrap();
-    assert!(!holds, "Reset should empty the KB before replay");
+    assert_false(&holds, "Reset should empty the KB before replay");
 
     node_b.rebuild_kb();
     let (holds, _, _) = node_b.query_with_proof("la .adam. cu gerku").unwrap();
-    assert!(
-        !holds,
-        "Rebuild must not replay tombstoned facts from the synced CRDT log"
+    assert_false(
+        &holds,
+        "Rebuild must not replay tombstoned facts from the synced CRDT log",
     );
     let (holds, _, _) = node_b.query_with_proof("la .adam. cu danlu").unwrap();
-    assert!(holds, "Rebuild should replay surviving synced assertions");
+    assert_true(&holds, "Rebuild should replay surviving synced assertions");
 }
 
 // ─── Vector clock dominance ──────────────────────────────────────
@@ -345,9 +358,9 @@ fn three_node_epidemic_gossip() {
 
     // B verifies derivation.
     let (holds, _, _) = node_b.query_with_proof("la .adam. cu danlu").unwrap();
-    assert!(
-        holds,
-        "B should derive 'adam is danlu' after syncing from A"
+    assert_true(
+        &holds,
+        "B should derive 'adam is danlu' after syncing from A",
     );
 
     // C ingests from B (B↔C link) — epidemic: A→B→C.
@@ -360,7 +373,7 @@ fn three_node_epidemic_gossip() {
 
     // C verifies derivation — facts propagated A→B→C.
     let (holds, _, _) = node_c.query_with_proof("la .adam. cu danlu").unwrap();
-    assert!(holds, "C should derive 'adam is danlu' via epidemic A→B→C");
+    assert_true(&holds, "C should derive 'adam is danlu' via epidemic A→B→C");
 
     // ── Phase 2: "Kill" B. A and C assert independently. ──
 
@@ -408,14 +421,14 @@ fn three_node_epidemic_gossip() {
 
     // B can query all the facts.
     let (holds, _, _) = node_b.query_with_proof("la .adam. cu mlatu").unwrap();
-    assert!(holds, "B should have A's new fact 'adam is mlatu'");
+    assert_true(&holds, "B should have A's new fact 'adam is mlatu'");
 
     let (holds, _, _) = node_b.query_with_proof("la .adam. cu finpe").unwrap();
-    assert!(holds, "B should have C's fact 'adam is finpe'");
+    assert_true(&holds, "B should have C's fact 'adam is finpe'");
 
     // The original derivation should still work.
     let (holds, _, _) = node_b.query_with_proof("la .adam. cu danlu").unwrap();
-    assert!(holds, "B should still derive 'adam is danlu'");
+    assert_true(&holds, "B should still derive 'adam is danlu'");
 
     println!("3-node epidemic gossip: A→B→C propagation + partition recovery verified");
 }
@@ -556,9 +569,9 @@ fn quarantine_untrusted_policy() {
     let (holds, _, _) = node_a
         .query_with_proof("la .adam. cu gerku")
         .expect("Quarantined KB should still be queryable");
-    assert!(
-        !holds,
-        "Quarantined envelopes must stay out of the KB until trust promotes them"
+    assert_false(
+        &holds,
+        "Quarantined envelopes must stay out of the KB until trust promotes them",
     );
 
     // CRDT log has the envelope.
@@ -574,7 +587,7 @@ fn quarantine_untrusted_policy() {
 
     // The fact should now be in the KB.
     let (holds, _, _) = node_a.query_with_proof("la .adam. cu gerku").unwrap();
-    assert!(holds, "Promoted fact should be queryable");
+    assert_true(&holds, "Promoted fact should be queryable");
 }
 
 /// AcceptAll: accepts everything regardless of trust.
@@ -868,7 +881,10 @@ fn signed_envelope_accepted_from_known_peer() {
 
     // Bob ingests — should succeed (valid signature, known key).
     let result = node_b.ingest(env).unwrap();
-    assert!(result.fact_id.is_some(), "signed envelope should be accepted");
+    assert!(
+        result.fact_id.is_some(),
+        "signed envelope should be accepted"
+    );
     assert!(!result.was_rejected);
 }
 
@@ -913,7 +929,10 @@ fn unsigned_envelope_accepted_under_accept_unsigned_policy() {
     };
 
     let result = node_b.ingest(unsigned_env).unwrap();
-    assert!(result.fact_id.is_some(), "unsigned should be accepted under AcceptUnsigned");
+    assert!(
+        result.fact_id.is_some(),
+        "unsigned should be accepted under AcceptUnsigned"
+    );
 }
 
 /// Unsigned envelopes rejected under RequireSigned policy.
@@ -936,7 +955,10 @@ fn unsigned_envelope_rejected_under_require_signed_policy() {
     };
 
     let result = node_b.ingest(unsigned_env).unwrap();
-    assert!(result.was_rejected, "unsigned should be rejected under RequireSigned");
+    assert!(
+        result.was_rejected,
+        "unsigned should be rejected under RequireSigned"
+    );
 }
 
 // ─── Tombstone conflict handling ──────────────────────────────────
@@ -991,7 +1013,10 @@ fn merge_preserves_tombstones_from_peer() {
 
     // Active assertions on B should exclude the tombstoned fact.
     let active = log_b.active_assertions();
-    assert!(active.is_empty(), "Tombstoned fact should not be active after merge");
+    assert!(
+        active.is_empty(),
+        "Tombstoned fact should not be active after merge"
+    );
 }
 
 /// Concurrent retraction: two nodes independently retract the same fact, then merge.
@@ -1019,8 +1044,16 @@ fn concurrent_retraction_same_envelope() {
     node_a.ingest(retract_b).unwrap();
 
     // Fact should remain retracted on both after cross-merge.
-    assert_eq!(node_a.active_count(), 0, "A should have 0 active after cross-merge");
-    assert_eq!(node_b.active_count(), 0, "B should have 0 active after cross-merge");
+    assert_eq!(
+        node_a.active_count(),
+        0,
+        "A should have 0 active after cross-merge"
+    );
+    assert_eq!(
+        node_b.active_count(),
+        0,
+        "B should have 0 active after cross-merge"
+    );
 }
 
 /// Partition recovery: A retracts during partition, B syncs after healing.
@@ -1123,5 +1156,5 @@ fn gossip_node_expire_old_envelopes() {
 
     // KB should reflect the expiration.
     let (holds, _, _) = node.query_with_proof("la .adam. cu gerku").unwrap();
-    assert!(!holds, "expired fact should not hold");
+    assert_false(&holds, "expired fact should not hold");
 }

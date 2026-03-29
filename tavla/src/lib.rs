@@ -12,7 +12,7 @@
 use std::collections::{HashMap, HashSet};
 
 use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
-use nibli_engine::NibliEngine;
+use nibli_engine::{EngineQueryResult, NibliEngine};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -567,10 +567,17 @@ impl GossipNode {
     }
 
     /// Register a peer's public key from raw bytes.
-    pub fn register_peer_key_bytes(&mut self, agent_id: &str, key_bytes: &[u8]) -> Result<(), String> {
-        let bytes: [u8; 32] = key_bytes
-            .try_into()
-            .map_err(|_| format!("invalid public key length: expected 32, got {}", key_bytes.len()))?;
+    pub fn register_peer_key_bytes(
+        &mut self,
+        agent_id: &str,
+        key_bytes: &[u8],
+    ) -> Result<(), String> {
+        let bytes: [u8; 32] = key_bytes.try_into().map_err(|_| {
+            format!(
+                "invalid public key length: expected 32, got {}",
+                key_bytes.len()
+            )
+        })?;
         let key = VerifyingKey::from_bytes(&bytes)
             .map_err(|e| format!("invalid ed25519 public key: {e}"))?;
         self.peer_keys.insert(agent_id.to_string(), key);
@@ -587,7 +594,7 @@ impl GossipNode {
         }
         let query = format!("la .{}. cu lacri la .{}.", self.agent_id, author);
         match self.engine.query_text_with_proof(&query) {
-            Ok((holds, _, _)) => holds,
+            Ok((result, _, _)) => result.is_true(),
             Err(_) => false,
         }
     }
@@ -603,7 +610,7 @@ impl GossipNode {
             self.agent_id, author, topic
         );
         match self.engine.query_text_with_proof(&query) {
-            Ok((holds, _, _)) => holds,
+            Ok((result, _, _)) => result.is_true(),
             Err(_) => false,
         }
     }
@@ -660,8 +667,12 @@ impl GossipNode {
         }
 
         // Parse the signature bytes.
-        let sig_bytes: [u8; 64] = envelope.sig.as_slice().try_into()
-            .map_err(|_| format!("invalid signature length: expected 64, got {}", envelope.sig.len()))?;
+        let sig_bytes: [u8; 64] = envelope.sig.as_slice().try_into().map_err(|_| {
+            format!(
+                "invalid signature length: expected 64, got {}",
+                envelope.sig.len()
+            )
+        })?;
         let signature = ed25519_dalek::Signature::from_bytes(&sig_bytes);
 
         // Get the verifying key: prefer registered peer key, fall back to envelope's embedded key (TOFU).
@@ -669,8 +680,12 @@ impl GossipNode {
             *key
         } else if !envelope.pub_key.is_empty() {
             // TOFU: trust on first use — register the key from this envelope.
-            let key_bytes: [u8; 32] = envelope.pub_key.as_slice().try_into()
-                .map_err(|_| format!("invalid pub_key length: expected 32, got {}", envelope.pub_key.len()))?;
+            let key_bytes: [u8; 32] = envelope.pub_key.as_slice().try_into().map_err(|_| {
+                format!(
+                    "invalid pub_key length: expected 32, got {}",
+                    envelope.pub_key.len()
+                )
+            })?;
             let key = VerifyingKey::from_bytes(&key_bytes)
                 .map_err(|e| format!("invalid ed25519 public key: {e}"))?;
             self.peer_keys.insert(envelope.author.clone(), key);
@@ -678,13 +693,16 @@ impl GossipNode {
         } else {
             return match self.sig_policy {
                 SignaturePolicy::AcceptUnsigned => Ok(()),
-                SignaturePolicy::RequireSigned => Err("signed but no public key available".to_string()),
+                SignaturePolicy::RequireSigned => {
+                    Err("signed but no public key available".to_string())
+                }
             };
         };
 
         // Verify signature against canonical bytes.
         let canonical = envelope.canonical_bytes();
-        verifying_key.verify(&canonical, &signature)
+        verifying_key
+            .verify(&canonical, &signature)
             .map_err(|_| "signature verification failed".to_string())
     }
 
@@ -1151,7 +1169,10 @@ impl GossipNode {
         let cutoff = (chrono::Utc::now() - ttl).to_rfc3339();
         let expired = self.crdt_log.expire_before(&cutoff);
         if expired > 0 {
-            println!("[tavla] Expired {expired} envelopes (TTL: {}s)", ttl.num_seconds());
+            println!(
+                "[tavla] Expired {expired} envelopes (TTL: {}s)",
+                ttl.num_seconds()
+            );
             self.rebuild_kb();
         }
         expired
@@ -1222,7 +1243,10 @@ impl GossipNode {
     }
 
     /// Query the local KB with proof trace.
-    pub fn query_with_proof(&self, lojban: &str) -> Result<(bool, String, String), String> {
+    pub fn query_with_proof(
+        &self,
+        lojban: &str,
+    ) -> Result<(EngineQueryResult, String, String), String> {
         self.engine.query_text_with_proof(lojban)
     }
 

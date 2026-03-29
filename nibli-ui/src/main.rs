@@ -279,7 +279,7 @@ fn parse_kb_status(data: &serde_json::Value) -> Option<KbStatus> {
 }
 
 async fn execute_query(kb: &str, query_text: &str) -> OutputEntry {
-    let gql = r#"mutation($kb: String!, $query: String!) { queryWithKb(kb: $kb, query: $query) { holds proofTrace proofTraceJson error kbStatus { asserted errors skipped lineResults { lineNumber text success factId error } } } }"#;
+    let gql = r#"mutation($kb: String!, $query: String!) { queryWithKb(kb: $kb, query: $query) { status unknownReason resourceKind proofTrace proofTraceJson error kbStatus { asserted errors skipped lineResults { lineNumber text success factId error } } } }"#;
     match graphql_mutate_kb(gql, kb, query_text).await {
         Ok(data) => {
             let r = &data["queryWithKb"];
@@ -294,15 +294,24 @@ async fn execute_query(kb: &str, query_text: &str) -> OutputEntry {
                     kb_status,
                 }
             } else {
-                let holds = r["holds"].as_bool().unwrap_or(false);
+                let status = r["status"].as_str().unwrap_or("FALSE");
+                let status_label = match status {
+                    "TRUE" | "True" => "TRUE",
+                    "FALSE" | "False" => "FALSE",
+                    "UNKNOWN" | "Unknown" => "UNKNOWN",
+                    "RESOURCE_EXCEEDED" | "ResourceExceeded" => "RESOURCE_EXCEEDED",
+                    other => other,
+                };
+                let detail = r["resourceKind"]
+                    .as_str()
+                    .or_else(|| r["unknownReason"].as_str());
                 let trace = r["proofTrace"].as_str().map(|s| s.to_string());
                 let trace_data = r["proofTraceJson"].as_str().and_then(ProofTrace::from_json);
                 OutputEntry {
                     input: query_text.to_string(),
-                    result: if holds {
-                        "TRUE".to_string()
-                    } else {
-                        "FALSE".to_string()
+                    result: match detail {
+                        Some(detail) => format!("{} ({})", status_label, detail),
+                        None => status_label.to_string(),
                     },
                     is_error: false,
                     proof_trace: trace,

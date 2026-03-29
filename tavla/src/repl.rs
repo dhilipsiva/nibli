@@ -6,6 +6,7 @@
 
 use std::sync::Arc;
 
+use nibli_engine::display_query_result;
 use tokio::sync::mpsc;
 
 use crate::transport::{InboundMessage, Transport};
@@ -320,17 +321,9 @@ async fn handle_command(line: &str, node: &mut GossipNode, transport: &Arc<dyn T
         } else {
             let query = query.trim();
             match node.query_with_proof(query) {
-                Ok((holds, proof, _json)) => {
-                    println!(
-                        "  {} → {}",
-                        query,
-                        if holds {
-                            "JETNU (TRUE)"
-                        } else {
-                            "JITFA (FALSE)"
-                        }
-                    );
-                    if holds {
+                Ok((result, proof, _json)) => {
+                    println!("  {} → {}", query, display_query_result(&result));
+                    if result.is_true() {
                         // Show epistemic sources.
                         let sources = node.epistemic_sources(query);
                         if !sources.is_empty() {

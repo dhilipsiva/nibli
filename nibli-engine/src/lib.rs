@@ -14,7 +14,8 @@ use nibli_store::{NibliStore, StoredLogicBuffer, StoredLogicNode, StoredLogicalT
 
 pub use nibli_types::logic::{
     FactSummary as EngineFactSummary, LogicalTerm as EngineLogicalTerm,
-    WitnessBinding as EngineWitnessBinding,
+    QueryResult as EngineQueryResult, ResourceKind as EngineResourceKind,
+    UnknownReason as EngineUnknownReason, WitnessBinding as EngineWitnessBinding,
 };
 
 use nibli_types::error::NibliError as PipelineError;
@@ -132,6 +133,13 @@ fn proof_trace_to_wire(trace: &logji_logic::ProofTrace) -> ProofTraceJson {
 
 pub fn display_term(term: &EngineLogicalTerm) -> String {
     term_to_json(term).trace_display()
+}
+
+pub fn display_query_result(result: &EngineQueryResult) -> String {
+    match result.detail_label() {
+        Some(detail) => format!("{} ({})", result.status_label(), detail),
+        None => result.status_label().to_string(),
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -283,7 +291,8 @@ impl NibliEngine {
             let stored_buf: StoredLogicBuffer = postcard::from_bytes(&fact.payload)
                 .map_err(|e| format!("Deserialize error: {e}"))?;
             let buf = buf_from_stored(&stored_buf);
-            self.kb.assert_fact_with_id(buf, fact.label.clone(), fact.id);
+            self.kb
+                .assert_fact_with_id(buf, fact.label.clone(), fact.id);
         }
         if !facts.is_empty() {
             println!("[Store] Replayed {} persisted facts", facts.len());
@@ -385,26 +394,25 @@ impl NibliEngine {
         Ok(self.kb.assert_fact(buf, label))
     }
 
-    pub fn query_text_with_proof(&self, text: &str) -> Result<(bool, String, String), String> {
+    pub fn query_text_with_proof(
+        &self,
+        text: &str,
+    ) -> Result<(EngineQueryResult, String, String), String> {
         let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
-        let (holds, trace) = self
+        let (result, trace) = self
             .kb
             .query_entailment_with_proof(buf)
             .map_err(|e| format_error(&e))?;
         let wire = proof_trace_to_wire(&trace);
         let formatted = wire.to_pretty_text();
         let json = wire.to_json();
-        Ok((holds, formatted, json))
+        Ok((result, formatted, json))
     }
 
-    /// Check if a Lojban query holds in the KB (simple boolean check).
-    pub fn query_holds(&self, text: &str) -> Result<bool, String> {
+    /// Evaluate a Lojban query against the KB and return the typed query result.
+    pub fn query_holds(&self, text: &str) -> Result<EngineQueryResult, String> {
         let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
-        let (holds, _trace) = self
-            .kb
-            .query_entailment_with_proof(buf)
-            .map_err(|e| format_error(&e))?;
-        Ok(holds)
+        self.kb.query_entailment(buf).map_err(|e| format_error(&e))
     }
 
     pub fn query_find_text(&self, text: &str) -> Result<Vec<Vec<EngineWitnessBinding>>, String> {
@@ -458,9 +466,10 @@ mod tests {
             "Expected store error, got: {err}"
         );
         assert!(
-            !engine
+            engine
                 .query_holds("lo gerku cu barda")
-                .expect("Query should still run"),
+                .expect("Query should still run")
+                .is_false(),
             "Failed persistent assertions must not leak into the live KB"
         );
 

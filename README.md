@@ -109,6 +109,8 @@ just test
 [Reset] Knowledge base cleared.
 ```
 
+ni'o lo preti jalge cu na se ciksi fi lo jetnu/jetnu-nai ctuca poi je'u se fanva fi lo `bool` po'o .i la .nibli. cu ca se pilno lo `QueryResult` klesi: `TRUE`, `FALSE`, `UNKNOWN` (mu'i lo cycle-cut ja incomplete knowledge ja NAF dependence), joi `RESOURCE EXCEEDED` (mu'i lo depth/fuel/memory)
+
 ### lo Transparency Triad UI
 
 ni'o la .nibli. cu se pilno lo ueb. tcana noi se zbasu fi la Dioxus .ije lo GraphQL jikca:
@@ -218,6 +220,7 @@ ni'o lo ueb. tcana cu se pilno lo Network tcita noi se jarco lo tavla ciste: lo 
 - lo TCP jikca: sampu JSON Lines protokol, lazni jikca, ri jikca
 - lo skami jalge se jmina: lo jalge cu se jmina fi lo se slabu fatci (se krinu → skami → se krinu pruce)
 - lo fatci se jmina: `assert-fact` WIT fasnu + `:assert` REPL fasnu
+- lo query jalge klesi: `QueryResult` end-to-end (`TRUE`, `FALSE`, `UNKNOWN`, `RESOURCE EXCEEDED`) fi lo WIT, native API, GraphQL, UI, joi REPL
 - lo na monotoni logji: lo fatci se vimcu fi lo fatci liste + ri zbasu; `:retract <id>` .e `:facts` REPL fasnu
 - lo se birti se sisku: `query-find` cu se benji ro lo se birti sumti (`??` REPL lidne)
 - lo krinu ciste: `query-entailment-with-proof` cu se benji lo krinu tricu (15 krinu klesi) — `?` REPL lidne

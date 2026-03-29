@@ -22,7 +22,7 @@
 use nibli_types::error::NibliError;
 use nibli_types::logic::{
     FactSummary, LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofStep, ProofTrace,
-    WitnessBinding,
+    QueryResult, ResourceKind, UnknownReason, WitnessBinding,
 };
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -34,7 +34,7 @@ mod reasoning;
 pub mod repr;
 mod rules;
 
-pub use compute::{register_compute_dispatch, ComputeRequest};
+pub use compute::{ComputeRequest, register_compute_dispatch};
 
 use compute::*;
 use reasoning::*;
@@ -64,6 +64,22 @@ pub(crate) use kb::*;
 
 /// Internal methods that return `Result<_, String>` for use by both the WIT boundary and tests.
 impl KnowledgeBase {
+    fn combine_root_results(left: QueryResult, right: QueryResult) -> QueryResult {
+        if left.is_false() || right.is_false() {
+            QueryResult::False
+        } else if left.is_true() && right.is_true() {
+            QueryResult::True
+        } else {
+            match (left, right) {
+                (QueryResult::ResourceExceeded(kind), _) => QueryResult::ResourceExceeded(kind),
+                (_, QueryResult::ResourceExceeded(kind)) => QueryResult::ResourceExceeded(kind),
+                (QueryResult::Unknown(reason), _) => QueryResult::Unknown(reason),
+                (_, QueryResult::Unknown(reason)) => QueryResult::Unknown(reason),
+                _ => QueryResult::False,
+            }
+        }
+    }
+
     /// Assert FOL facts from a logic buffer into the knowledge base.
     /// Stores the buffer in the fact registry and returns a unique fact ID.
     fn assert_fact_inner(&self, logic: LogicBuffer, label: String) -> u64 {
@@ -164,19 +180,18 @@ impl KnowledgeBase {
         Ok(facts)
     }
 
-
     /// Check whether all root formulas in the logic buffer are entailed by the KB.
-    fn query_entailment_inner(&self, logic: LogicBuffer) -> Result<bool, String> {
+    fn query_entailment_inner(&self, logic: LogicBuffer) -> Result<QueryResult, String> {
         clear_pred_cache();
         let mut inner = self.inner.borrow_mut();
         inner.ensure_domain_members_cached();
+        let mut overall = QueryResult::True;
         for &root_id in &logic.roots {
             let mut subs = HashMap::new();
-            if !check_formula_holds(&logic, root_id, &mut subs, &mut inner, None)? {
-                return Ok(false);
-            }
+            let result = check_formula_holds(&logic, root_id, &mut subs, &mut inner, None)?;
+            overall = Self::combine_root_results(overall, result);
         }
-        Ok(true)
+        Ok(overall)
     }
 
     /// Find all satisfying binding sets for existential variables in the query formula.
@@ -232,23 +247,30 @@ impl KnowledgeBase {
     fn query_entailment_with_proof_inner(
         &self,
         logic: LogicBuffer,
-    ) -> Result<(bool, ProofTrace), String> {
+    ) -> Result<(QueryResult, ProofTrace), String> {
         clear_pred_cache();
         let mut inner = self.inner.borrow_mut();
         inner.ensure_domain_members_cached();
         let mut steps: Vec<ProofStep> = Vec::new();
         let mut memo: HashMap<String, u32> = HashMap::new();
         let mut root_children: Vec<u32> = Vec::new();
-        let mut all_hold = true;
+        let mut overall = QueryResult::True;
         for &root_id in &logic.roots {
             let mut subs = HashMap::new();
+            let result = check_formula_holds(&logic, root_id, &mut subs, &mut inner, None)?;
+            overall = Self::combine_root_results(overall, result);
+            let mut trace_subs = HashMap::new();
             let (holds, step_idx) = check_formula_holds_traced(
-                &logic, root_id, &mut subs, &mut inner, &mut steps, None, &mut memo,
+                &logic,
+                root_id,
+                &mut trace_subs,
+                &mut inner,
+                &mut steps,
+                None,
+                &mut memo,
             )?;
             root_children.push(step_idx);
-            if !holds {
-                all_hold = false;
-            }
+            let _ = holds;
         }
         let root = if root_children.len() == 1 {
             root_children[0]
@@ -256,12 +278,12 @@ impl KnowledgeBase {
             let idx = steps.len() as u32;
             steps.push(ProofStep {
                 rule: ProofRule::Conjunction,
-                holds: all_hold,
+                holds: overall.is_true(),
                 children: root_children,
             });
             idx
         };
-        Ok((all_hold, ProofTrace { steps, root }))
+        Ok((overall, ProofTrace { steps, root }))
     }
 }
 
@@ -271,7 +293,10 @@ fn merge_witness_bindings(
 ) -> Option<Vec<(String, GroundTerm)>> {
     let mut combined = left.to_vec();
     for (var, val) in right {
-        match combined.iter().find(|(existing_var, _)| existing_var == var) {
+        match combined
+            .iter()
+            .find(|(existing_var, _)| existing_var == var)
+        {
             Some((_, existing_val)) if existing_val != val => return None,
             Some(_) => {}
             None => combined.push((var.clone(), val.clone())),
@@ -293,7 +318,7 @@ impl KnowledgeBase {
         self.assert_fact_inner(logic, label)
     }
 
-    pub fn query_entailment(&self, logic: LogicBuffer) -> Result<bool, NibliError> {
+    pub fn query_entailment(&self, logic: LogicBuffer) -> Result<QueryResult, NibliError> {
         self.query_entailment_inner(logic)
             .map_err(NibliError::Reasoning)
     }
@@ -305,7 +330,7 @@ impl KnowledgeBase {
     pub fn query_entailment_with_proof(
         &self,
         logic: LogicBuffer,
-    ) -> Result<(bool, ProofTrace), NibliError> {
+    ) -> Result<(QueryResult, ProofTrace), NibliError> {
         self.query_entailment_with_proof_inner(logic)
             .map_err(NibliError::Reasoning)
     }
@@ -327,9 +352,7 @@ impl KnowledgeBase {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nibli_types::logic::{
-        LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofTrace,
-    };
+    use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofTrace};
 
     /// Helper: build a Predicate node with the given relation and args.
     fn pred(nodes: &mut Vec<LogicNode>, rel: &str, args: Vec<LogicalTerm>) -> u32 {
@@ -384,6 +407,10 @@ mod tests {
     }
 
     fn query(kb: &KnowledgeBase, buf: LogicBuffer) -> bool {
+        kb.query_entailment_inner(buf).unwrap().is_true()
+    }
+
+    fn query_result(kb: &KnowledgeBase, buf: LogicBuffer) -> QueryResult {
         kb.query_entailment_inner(buf).unwrap()
     }
 
@@ -699,6 +726,58 @@ mod tests {
         assert_buf(&kb, make_universal("gerku", "danlu"));
         assert_buf(&kb, make_assertion("alis", "gerku"));
         assert!(query(&kb, make_query("alis", "danlu")));
+    }
+
+    #[test]
+    fn test_query_result_false_for_missing_fact() {
+        let kb = new_kb();
+        let result = query_result(&kb, make_query("alis", "gerku"));
+        assert!(matches!(result, QueryResult::False));
+    }
+
+    #[test]
+    fn test_query_result_unknown_for_cycle_cut() {
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_universal("danlu", "gerku"));
+
+        let result = query_result(&kb, make_query("alis", "gerku"));
+        assert!(matches!(
+            result,
+            QueryResult::Unknown(UnknownReason::CycleCut)
+        ));
+
+        let (result, _) = kb
+            .query_entailment_with_proof_inner(make_query("alis", "gerku"))
+            .unwrap();
+        assert!(matches!(
+            result,
+            QueryResult::Unknown(UnknownReason::CycleCut)
+        ));
+    }
+
+    #[test]
+    fn test_query_result_resource_exceeded_for_depth_limit() {
+        let kb = new_kb();
+        kb.inner.borrow_mut().max_chain_depth = 1;
+
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_universal("danlu", "xanlu"));
+
+        let result = query_result(&kb, make_query("alis", "xanlu"));
+        assert!(matches!(
+            result,
+            QueryResult::ResourceExceeded(ResourceKind::Depth)
+        ));
+
+        let (result, _) = kb
+            .query_entailment_with_proof_inner(make_query("alis", "xanlu"))
+            .unwrap();
+        assert!(matches!(
+            result,
+            QueryResult::ResourceExceeded(ResourceKind::Depth)
+        ));
     }
 
     // ─── Dependent Skolem (Phase B) Tests ────────────────────────────
@@ -2003,7 +2082,8 @@ mod tests {
     // ─── Proof trace tests ───────────────────────────────────────
 
     fn query_with_proof(kb: &KnowledgeBase, buf: LogicBuffer) -> (bool, ProofTrace) {
-        kb.query_entailment_with_proof_inner(buf).unwrap()
+        let (result, trace) = kb.query_entailment_with_proof_inner(buf).unwrap();
+        (result.is_true(), trace)
     }
 
     #[test]
@@ -3468,8 +3548,7 @@ mod tests {
     #[test]
     fn test_retract_basic() {
         let kb = new_kb();
-        let id = kb
-            .assert_fact_inner(make_assertion("alis", "gerku"), "la alis gerku".into());
+        let id = kb.assert_fact_inner(make_assertion("alis", "gerku"), "la alis gerku".into());
         assert!(query(&kb, make_query("alis", "gerku")));
         kb.retract_fact_inner(id).unwrap();
         assert!(!query(&kb, make_query("alis", "gerku")));
@@ -3478,10 +3557,8 @@ mod tests {
     #[test]
     fn test_retract_preserves_other_facts() {
         let kb = new_kb();
-        let id1 = kb
-            .assert_fact_inner(make_assertion("alis", "gerku"), String::new());
-        let _id2 = kb
-            .assert_fact_inner(make_assertion("bob", "mlatu"), String::new());
+        let id1 = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new());
+        let _id2 = kb.assert_fact_inner(make_assertion("bob", "mlatu"), String::new());
         kb.retract_fact_inner(id1).unwrap();
         assert!(!query(&kb, make_query("alis", "gerku")));
         assert!(query(&kb, make_query("bob", "mlatu")));
@@ -3490,10 +3567,8 @@ mod tests {
     #[test]
     fn test_retract_derived_facts_gone() {
         let kb = new_kb();
-        let base_id = kb
-            .assert_fact_inner(make_assertion("alis", "gerku"), String::new());
-        let _rule_id = kb
-            .assert_fact_inner(make_universal("gerku", "danlu"), String::new());
+        let base_id = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new());
+        let _rule_id = kb.assert_fact_inner(make_universal("gerku", "danlu"), String::new());
         // "alis danlu" should be derivable via the rule
         assert!(query(&kb, make_query("alis", "danlu")));
         kb.retract_fact_inner(base_id).unwrap();
@@ -3504,10 +3579,8 @@ mod tests {
     #[test]
     fn test_retract_rule_preserves_base_facts() {
         let kb = new_kb();
-        let _base_id = kb
-            .assert_fact_inner(make_assertion("alis", "gerku"), String::new());
-        let rule_id = kb
-            .assert_fact_inner(make_universal("gerku", "danlu"), String::new());
+        let _base_id = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new());
+        let rule_id = kb.assert_fact_inner(make_universal("gerku", "danlu"), String::new());
         assert!(query(&kb, make_query("alis", "danlu")));
         kb.retract_fact_inner(rule_id).unwrap();
         // Base fact preserved
@@ -3519,11 +3592,9 @@ mod tests {
     #[test]
     fn test_retract_and_reassert_new_id() {
         let kb = new_kb();
-        let id1 = kb
-            .assert_fact_inner(make_assertion("alis", "gerku"), String::new());
+        let id1 = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new());
         kb.retract_fact_inner(id1).unwrap();
-        let id2 = kb
-            .assert_fact_inner(make_assertion("alis", "gerku"), String::new());
+        let id2 = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new());
         assert!(id2 > id1);
         assert!(query(&kb, make_query("alis", "gerku")));
     }
@@ -3537,8 +3608,7 @@ mod tests {
     #[test]
     fn test_retract_idempotent() {
         let kb = new_kb();
-        let id = kb
-            .assert_fact_inner(make_assertion("alis", "gerku"), String::new());
+        let id = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new());
         kb.retract_fact_inner(id).unwrap();
         kb.retract_fact_inner(id).unwrap(); // second retract is no-op
         assert!(!query(&kb, make_query("alis", "gerku")));
@@ -3564,8 +3634,7 @@ mod tests {
     #[test]
     fn test_list_facts_excludes_retracted() {
         let kb = new_kb();
-        let id = kb
-            .assert_fact_inner(make_assertion("alis", "gerku"), String::new());
+        let id = kb.assert_fact_inner(make_assertion("alis", "gerku"), String::new());
         kb.assert_fact_inner(make_assertion("bob", "mlatu"), "bob mlatu".into());
         kb.retract_fact_inner(id).unwrap();
         let facts = kb.list_facts_inner().unwrap();
@@ -3730,7 +3799,6 @@ mod tests {
             query(&kb, make_query("alis", "danlu")),
             "backward-chaining should derive danlu(alis) from gerku(alis) and universal rule"
         );
-
     }
 
     // ─── Event-decomposed universal rule tests ──────────────────────
@@ -3940,7 +4008,7 @@ mod tests {
             .query_entailment_with_proof_inner(make_event_query("alis", "danlu"))
             .unwrap();
         assert!(
-            holds,
+            holds.is_true(),
             "entailment should hold for derived event-decomposed fact"
         );
 
@@ -4225,7 +4293,10 @@ mod tests {
         let (holds, trace) = kb
             .query_entailment_with_proof_inner(make_temporal_event_query("alis", "jmive", past))
             .unwrap();
-        assert!(holds, "Past(jmive(alis)) should hold with proof trace");
+        assert!(
+            holds.is_true(),
+            "Past(jmive(alis)) should hold with proof trace"
+        );
 
         // Proof should contain Derived steps (from rule application)
         let derived_count = trace
@@ -4265,7 +4336,7 @@ mod tests {
         let (holds, trace) = kb
             .query_entailment_with_proof_inner(make_temporal_event_query("bob", "jmive", present))
             .unwrap();
-        assert!(holds, "Present(jmive(bob)) should hold");
+        assert!(holds.is_true(), "Present(jmive(bob)) should hold");
 
         // Count ProofRef steps — should be present due to repeated condition proofs
         let proof_ref_count = trace
@@ -4300,7 +4371,7 @@ mod tests {
         let (holds, trace) = kb
             .query_entailment_with_proof_inner(make_temporal_event_query("alis", "danlu", past))
             .unwrap();
-        assert!(holds, "Past(danlu(alis)) should hold");
+        assert!(holds.is_true(), "Past(danlu(alis)) should hold");
 
         // Should still have Derived steps from the rule application
         let derived_count = trace
@@ -4336,7 +4407,7 @@ mod tests {
         let (holds, trace) = kb
             .query_entailment_with_proof_inner(make_temporal_event_query("alis", "danlu", past))
             .unwrap();
-        assert!(holds, "Past(danlu(alis)) should hold");
+        assert!(holds.is_true(), "Past(danlu(alis)) should hold");
 
         // In a single-hop scenario, conditions are gerku(e), gerku_x1(e, alis), gerku_x2(e, zo'e)
         // These are all unique facts, so no ProofRef should be needed for condition proofs.
@@ -4440,7 +4511,10 @@ mod tests {
         let (holds, _trace) = kb
             .query_entailment_with_proof_inner(make_event_assertion("prenu_sk", "bilga"))
             .unwrap();
-        assert!(holds, "proof-traced query should hold for bilga(prenu_sk)");
+        assert!(
+            holds.is_true(),
+            "proof-traced query should hold for bilga(prenu_sk)"
+        );
 
         // Multi-hop: prenu→bilga→zukte
         assert!(
@@ -4453,7 +4527,7 @@ mod tests {
             .query_entailment_with_proof_inner(make_event_assertion("prenu_sk", "zukte"))
             .unwrap();
         assert!(
-            holds2,
+            holds2.is_true(),
             "proof-traced multi-hop should hold for zukte(prenu_sk)"
         );
     }
@@ -4595,7 +4669,7 @@ mod tests {
         let (holds, trace) = kb
             .query_entailment_with_proof_inner(make_temporal_event_query("bob", "jmive", present))
             .unwrap();
-        assert!(holds);
+        assert!(holds.is_true());
 
         // Every ProofRef step should have exactly one child pointing to the
         // original step, and its holds value should match the referenced step.
@@ -4629,15 +4703,24 @@ mod tests {
         // Pattern variable bound to "alis" in first arg must match "alis" in second.
         let template = StoredFact::Bare(GroundFact::new(
             "friends",
-            vec![GroundTerm::PatternVar("x".into()), GroundTerm::PatternVar("x".into())],
+            vec![
+                GroundTerm::PatternVar("x".into()),
+                GroundTerm::PatternVar("x".into()),
+            ],
         ));
         let concrete = StoredFact::Bare(GroundFact::new(
             "friends",
-            vec![GroundTerm::Constant("alis".into()), GroundTerm::Constant("alis".into())],
+            vec![
+                GroundTerm::Constant("alis".into()),
+                GroundTerm::Constant("alis".into()),
+            ],
         ));
         let result = unify_facts(&template, &concrete);
         assert!(result.is_some(), "same-value rebinding should succeed");
-        assert_eq!(result.unwrap().get("x"), Some(&GroundTerm::Constant("alis".into())));
+        assert_eq!(
+            result.unwrap().get("x"),
+            Some(&GroundTerm::Constant("alis".into()))
+        );
     }
 
     #[test]
@@ -4646,13 +4729,22 @@ mod tests {
         // Pattern variable "x" bound to "alis" then "bob" should fail.
         let template = StoredFact::Bare(GroundFact::new(
             "friends",
-            vec![GroundTerm::PatternVar("x".into()), GroundTerm::PatternVar("x".into())],
+            vec![
+                GroundTerm::PatternVar("x".into()),
+                GroundTerm::PatternVar("x".into()),
+            ],
         ));
         let concrete = StoredFact::Bare(GroundFact::new(
             "friends",
-            vec![GroundTerm::Constant("alis".into()), GroundTerm::Constant("bob".into())],
+            vec![
+                GroundTerm::Constant("alis".into()),
+                GroundTerm::Constant("bob".into()),
+            ],
         ));
-        assert!(unify_facts(&template, &concrete).is_none(), "conflicting rebinding should fail");
+        assert!(
+            unify_facts(&template, &concrete).is_none(),
+            "conflicting rebinding should fail"
+        );
     }
 
     #[test]
@@ -4661,15 +4753,27 @@ mod tests {
         // SkolemFn("sk_0", PatternVar("x")) against SkolemFn("sk_0", Constant("alis"))
         let template = StoredFact::Bare(GroundFact::new(
             "rel",
-            vec![GroundTerm::SkolemFn("sk_0".into(), Box::new(GroundTerm::PatternVar("x".into())))],
+            vec![GroundTerm::SkolemFn(
+                "sk_0".into(),
+                Box::new(GroundTerm::PatternVar("x".into())),
+            )],
         ));
         let concrete = StoredFact::Bare(GroundFact::new(
             "rel",
-            vec![GroundTerm::SkolemFn("sk_0".into(), Box::new(GroundTerm::Constant("alis".into())))],
+            vec![GroundTerm::SkolemFn(
+                "sk_0".into(),
+                Box::new(GroundTerm::Constant("alis".into())),
+            )],
         ));
         let result = unify_facts(&template, &concrete);
-        assert!(result.is_some(), "SkolemFn nested unification should succeed");
-        assert_eq!(result.unwrap().get("x"), Some(&GroundTerm::Constant("alis".into())));
+        assert!(
+            result.is_some(),
+            "SkolemFn nested unification should succeed"
+        );
+        assert_eq!(
+            result.unwrap().get("x"),
+            Some(&GroundTerm::Constant("alis".into()))
+        );
     }
 
     #[test]
@@ -4703,12 +4807,21 @@ mod tests {
         // SkolemFn("sk_0", ...) vs SkolemFn("sk_1", ...) should fail
         let template = StoredFact::Bare(GroundFact::new(
             "rel",
-            vec![GroundTerm::SkolemFn("sk_0".into(), Box::new(GroundTerm::Constant("a".into())))],
+            vec![GroundTerm::SkolemFn(
+                "sk_0".into(),
+                Box::new(GroundTerm::Constant("a".into())),
+            )],
         ));
         let concrete = StoredFact::Bare(GroundFact::new(
             "rel",
-            vec![GroundTerm::SkolemFn("sk_1".into(), Box::new(GroundTerm::Constant("a".into())))],
+            vec![GroundTerm::SkolemFn(
+                "sk_1".into(),
+                Box::new(GroundTerm::Constant("a".into())),
+            )],
         ));
-        assert!(unify_facts(&template, &concrete).is_none(), "SkolemFn name mismatch should fail");
+        assert!(
+            unify_facts(&template, &concrete).is_none(),
+            "SkolemFn name mismatch should fail"
+        );
     }
 }

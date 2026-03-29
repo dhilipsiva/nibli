@@ -263,11 +263,39 @@ mod pipeline_bind {
 use pipeline_bind::lojban::nibli::compute_backend;
 use pipeline_bind::lojban::nibli::error_types::NibliError;
 use pipeline_bind::lojban::nibli::logic_types::LogicalTerm as EngineLogicalTerm;
-use pipeline_bind::lojban::nibli::logic_types::{ProofRule, ProofTrace};
+use pipeline_bind::lojban::nibli::logic_types::{
+    ProofRule, ProofTrace, QueryResult as EngineQueryResult, ResourceKind as EngineResourceKind,
+    UnknownReason as EngineUnknownReason,
+};
 
 /// Format a LogicalTerm from the engine bindings for display.
 fn format_term(term: &EngineLogicalTerm) -> String {
     term_to_proto(term).trace_display()
+}
+
+fn format_query_result(result: &EngineQueryResult) -> String {
+    match result {
+        EngineQueryResult::True => "TRUE".to_string(),
+        EngineQueryResult::False => "FALSE".to_string(),
+        EngineQueryResult::Unknown(EngineUnknownReason::CycleCut) => {
+            "UNKNOWN (cycle-cut)".to_string()
+        }
+        EngineQueryResult::Unknown(EngineUnknownReason::IncompleteKnowledge) => {
+            "UNKNOWN (incomplete-knowledge)".to_string()
+        }
+        EngineQueryResult::Unknown(EngineUnknownReason::NafDependent) => {
+            "UNKNOWN (naf-dependent)".to_string()
+        }
+        EngineQueryResult::ResourceExceeded(EngineResourceKind::Depth) => {
+            "RESOURCE_EXCEEDED (depth)".to_string()
+        }
+        EngineQueryResult::ResourceExceeded(EngineResourceKind::Fuel) => {
+            "RESOURCE_EXCEEDED (fuel)".to_string()
+        }
+        EngineQueryResult::ResourceExceeded(EngineResourceKind::Memory) => {
+            "RESOURCE_EXCEEDED (memory)".to_string()
+        }
+    }
 }
 
 /// Convert a WIT LogicalTerm to the protocol wire type.
@@ -476,7 +504,6 @@ impl compute_backend::Host for HostState {
         }
         results
     }
-
 }
 
 /// Parse a `:assert` command string into (relation, args).
@@ -1228,8 +1255,7 @@ fn main() -> Result<()> {
                     refuel(&mut store, fuel_budget);
                     match session.call_query_text_with_proof(&mut store, session_handle, text) {
                         Ok(Ok((result, trace))) => {
-                            let tag = if result { "TRUE" } else { "FALSE" };
-                            println!("[Query] {}", tag);
+                            println!("[Query] {}", format_query_result(&result));
                             print!("{}", trace_to_proto(&trace).to_pretty_text_with_indent(1));
                         }
                         Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
@@ -1302,7 +1328,7 @@ mod tests {
                 .build(),
             backend_addr: addr,
             backend_conn: None,
-        backend_last_used: None,
+            backend_last_used: None,
         }
     }
 
@@ -1522,7 +1548,7 @@ mod tests {
             limits,
             backend_addr: None,
             backend_conn: None,
-        backend_last_used: None,
+            backend_last_used: None,
         };
     }
 
@@ -1542,7 +1568,7 @@ mod tests {
                 .build(),
             backend_addr: None,
             backend_conn: None,
-        backend_last_used: None,
+            backend_last_used: None,
         };
         let mut store = Store::new(&engine, state);
         store.set_fuel(1_000_000).unwrap();

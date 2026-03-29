@@ -4,7 +4,7 @@
 //! of `LogicNode` variants, referenced by `u32` indices.
 
 /// A logical term — the typed representation of an FOL argument.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum LogicalTerm {
     /// A bound or free variable (e.g., Skolem variables, universally quantified vars).
     Variable(String),
@@ -20,7 +20,7 @@ pub enum LogicalTerm {
 
 /// A node in the flat logic graph. Each variant corresponds to an FOL constructor.
 /// Nodes reference children by `u32` index into the `LogicBuffer.nodes` array.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum LogicNode {
     /// Ground or quantified predicate. Fields: (relation-name, argument-terms).
     Predicate((String, Vec<LogicalTerm>)),
@@ -51,17 +51,80 @@ pub enum LogicNode {
 }
 
 /// Flat logic buffer: a `nodes` array plus root indices.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LogicBuffer {
     pub nodes: Vec<LogicNode>,
     pub roots: Vec<u32>,
 }
 
 /// A single witness binding: variable name → logical term value.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WitnessBinding {
     pub variable: String,
     pub term: LogicalTerm,
+}
+
+/// Why the engine cannot currently return a definitive `True` or `False`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum UnknownReason {
+    /// Search encountered a recursive cycle and cut it rather than diverging.
+    CycleCut,
+    /// Result depends on knowledge the current KB does not have yet.
+    IncompleteKnowledge,
+    /// Result depends on negation-as-failure and is therefore not classically proved.
+    NafDependent,
+}
+
+/// Which resource or search bound prevented a definitive answer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ResourceKind {
+    Depth,
+    Fuel,
+    Memory,
+}
+
+/// Top-level entailment result returned by the reasoning engine.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum QueryResult {
+    True,
+    False,
+    Unknown(UnknownReason),
+    ResourceExceeded(ResourceKind),
+}
+
+impl QueryResult {
+    pub fn is_true(&self) -> bool {
+        matches!(self, Self::True)
+    }
+
+    pub fn is_false(&self) -> bool {
+        matches!(self, Self::False)
+    }
+
+    pub fn is_definitive(&self) -> bool {
+        matches!(self, Self::True | Self::False)
+    }
+
+    pub fn status_label(&self) -> &'static str {
+        match self {
+            Self::True => "TRUE",
+            Self::False => "FALSE",
+            Self::Unknown(_) => "UNKNOWN",
+            Self::ResourceExceeded(_) => "RESOURCE_EXCEEDED",
+        }
+    }
+
+    pub fn detail_label(&self) -> Option<&'static str> {
+        match self {
+            Self::Unknown(UnknownReason::CycleCut) => Some("cycle-cut"),
+            Self::Unknown(UnknownReason::IncompleteKnowledge) => Some("incomplete-knowledge"),
+            Self::Unknown(UnknownReason::NafDependent) => Some("naf-dependent"),
+            Self::ResourceExceeded(ResourceKind::Depth) => Some("depth"),
+            Self::ResourceExceeded(ResourceKind::Fuel) => Some("fuel"),
+            Self::ResourceExceeded(ResourceKind::Memory) => Some("memory"),
+            _ => None,
+        }
+    }
 }
 
 /// Proof rule applied at a single proof step.

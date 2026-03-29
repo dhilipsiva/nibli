@@ -7,7 +7,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use nibli_engine::{EngineLogicalTerm, NibliEngine, display_term};
+use nibli_engine::{EngineLogicalTerm, NibliEngine, display_query_result, display_term};
 use reedline::{DefaultPrompt, Reedline, Signal};
 
 fn parse_assert_args(input: &str) -> Result<(String, Vec<EngineLogicalTerm>), String> {
@@ -52,8 +52,8 @@ fn run_test_book() {
             let text = text.trim();
             eprintln!("[test-book] Calling query_text_with_proof...");
             match engine.query_text_with_proof(text) {
-                Ok((holds, trace, _json)) => {
-                    println!("Result: {}", if holds { "TRUE" } else { "FALSE" });
+                Ok((result, trace, _json)) => {
+                    println!("Result: {}", display_query_result(&result));
                     print!("{}", trace);
                 }
                 Err(e) => println!("Error: {}", e),
@@ -291,8 +291,7 @@ fn main() {
 
                     match engine.query_text_with_proof(text) {
                         Ok((result, trace, _json)) => {
-                            let tag = if result { "TRUE" } else { "FALSE" };
-                            println!("[Query] {}", tag);
+                            println!("[Query] {}", display_query_result(&result));
                             print!("{}", trace);
                         }
                         Err(e) => println!("{}", e),

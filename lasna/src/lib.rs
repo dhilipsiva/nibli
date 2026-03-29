@@ -78,6 +78,31 @@ fn convert_logical_term_from_export(t: &export_logic::LogicalTerm) -> logji_logi
     }
 }
 
+fn convert_query_result_to_export(result: &logji_logic::QueryResult) -> export_logic::QueryResult {
+    match result {
+        logji_logic::QueryResult::True => export_logic::QueryResult::True,
+        logji_logic::QueryResult::False => export_logic::QueryResult::False,
+        logji_logic::QueryResult::Unknown(logji_logic::UnknownReason::CycleCut) => {
+            export_logic::QueryResult::Unknown(export_logic::UnknownReason::CycleCut)
+        }
+        logji_logic::QueryResult::Unknown(logji_logic::UnknownReason::IncompleteKnowledge) => {
+            export_logic::QueryResult::Unknown(export_logic::UnknownReason::IncompleteKnowledge)
+        }
+        logji_logic::QueryResult::Unknown(logji_logic::UnknownReason::NafDependent) => {
+            export_logic::QueryResult::Unknown(export_logic::UnknownReason::NafDependent)
+        }
+        logji_logic::QueryResult::ResourceExceeded(logji_logic::ResourceKind::Depth) => {
+            export_logic::QueryResult::ResourceExceeded(export_logic::ResourceKind::Depth)
+        }
+        logji_logic::QueryResult::ResourceExceeded(logji_logic::ResourceKind::Fuel) => {
+            export_logic::QueryResult::ResourceExceeded(export_logic::ResourceKind::Fuel)
+        }
+        logji_logic::QueryResult::ResourceExceeded(logji_logic::ResourceKind::Memory) => {
+            export_logic::QueryResult::ResourceExceeded(export_logic::ResourceKind::Memory)
+        }
+    }
+}
+
 fn convert_proof_rule(r: &logji_logic::ProofRule) -> export_logic::ProofRule {
     match r {
         logji_logic::ProofRule::Conjunction => export_logic::ProofRule::Conjunction,
@@ -96,11 +121,9 @@ fn convert_proof_rule(r: &logji_logic::ProofRule) -> export_logic::ProofRule {
         }
         logji_logic::ProofRule::ExistsFailed => export_logic::ProofRule::ExistsFailed,
         logji_logic::ProofRule::ForallVacuous => export_logic::ProofRule::ForallVacuous,
-        logji_logic::ProofRule::ForallVerified(terms) => {
-            export_logic::ProofRule::ForallVerified(
-                terms.iter().map(convert_logical_term_to_export).collect(),
-            )
-        }
+        logji_logic::ProofRule::ForallVerified(terms) => export_logic::ProofRule::ForallVerified(
+            terms.iter().map(convert_logical_term_to_export).collect(),
+        ),
         logji_logic::ProofRule::ForallCounterexample(t) => {
             export_logic::ProofRule::ForallCounterexample(convert_logical_term_to_export(t))
         }
@@ -165,11 +188,13 @@ fn convert_fact_summaries(fs: Vec<logji_logic::FactSummary>) -> Vec<export_logic
 /// Convert pipeline error → WIT export error (for the WASM component boundary).
 fn convert_pipeline_error(e: pipeline_err::NibliError) -> export_err::NibliError {
     match e {
-        pipeline_err::NibliError::Syntax(d) => export_err::NibliError::Syntax(export_err::SyntaxDetail {
-            message: d.message,
-            line: d.line,
-            column: d.column,
-        }),
+        pipeline_err::NibliError::Syntax(d) => {
+            export_err::NibliError::Syntax(export_err::SyntaxDetail {
+                message: d.message,
+                line: d.line,
+                column: d.column,
+            })
+        }
         pipeline_err::NibliError::Semantic(m) => export_err::NibliError::Semantic(m),
         pipeline_err::NibliError::Reasoning(m) => export_err::NibliError::Reasoning(m),
         pipeline_err::NibliError::Backend((k, m)) => export_err::NibliError::Backend((k, m)),
@@ -187,9 +212,7 @@ fn eval_via_host(rel: &str, args: &[logji_logic::LogicalTerm]) -> Result<bool, S
     })
 }
 
-fn batch_eval_via_host(
-    requests: &[logji::ComputeRequest],
-) -> Vec<Result<bool, String>> {
+fn batch_eval_via_host(requests: &[logji::ComputeRequest]) -> Vec<Result<bool, String>> {
     let wit_requests: Vec<cb::ComputeRequest> = requests
         .iter()
         .map(|r| cb::ComputeRequest {
@@ -360,14 +383,15 @@ fn visit_sentence(
     let new_id = snap.sentences.len() as u32;
     tm.insert(id, new_id);
     // placeholder
-    snap.sentences.push(gerna_ast::Sentence::Simple(gerna_ast::Bridi {
-        relation: 0,
-        head_terms: vec![],
-        tail_terms: vec![],
-        negated: false,
-        tense: None,
-        attitudinal: None,
-    }));
+    snap.sentences
+        .push(gerna_ast::Sentence::Simple(gerna_ast::Bridi {
+            relation: 0,
+            head_terms: vec![],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        }));
     let mapped = match &ast.sentences[id as usize] {
         gerna_ast::Sentence::Simple(b) => {
             let nr = visit_selbri(ast, b.relation, snap, sm, um, tm);
@@ -425,15 +449,29 @@ fn graft_snapshot(ast: &mut gerna_ast::AstBuffer, snap: &mut SelbriSnapshot) -> 
 fn rebase_selbri_inplace(s: &mut gerna_ast::Selbri, sb: u32, ub: u32, tb: u32) {
     match s {
         gerna_ast::Selbri::Root(_) | gerna_ast::Selbri::Compound(_) => {}
-        gerna_ast::Selbri::Tanru((m, h)) => { *m += sb; *h += sb; }
-        gerna_ast::Selbri::Converted((_, i)) => { *i += sb; }
-        gerna_ast::Selbri::Negated(i) | gerna_ast::Selbri::Grouped(i) => { *i += sb; }
+        gerna_ast::Selbri::Tanru((m, h)) => {
+            *m += sb;
+            *h += sb;
+        }
+        gerna_ast::Selbri::Converted((_, i)) => {
+            *i += sb;
+        }
+        gerna_ast::Selbri::Negated(i) | gerna_ast::Selbri::Grouped(i) => {
+            *i += sb;
+        }
         gerna_ast::Selbri::WithArgs((core, args)) => {
             *core += sb;
-            for a in args.iter_mut() { *a += ub; }
+            for a in args.iter_mut() {
+                *a += ub;
+            }
         }
-        gerna_ast::Selbri::Connected((l, _, r)) => { *l += sb; *r += sb; }
-        gerna_ast::Selbri::Abstraction((_, sent)) => { *sent += tb; }
+        gerna_ast::Selbri::Connected((l, _, r)) => {
+            *l += sb;
+            *r += sb;
+        }
+        gerna_ast::Selbri::Abstraction((_, sent)) => {
+            *sent += tb;
+        }
     }
 }
 
@@ -444,18 +482,29 @@ fn rebase_sumti_inplace(s: &mut gerna_ast::Sumti, sb: u32, ub: u32, tb: u32) {
         | gerna_ast::Sumti::QuotedLiteral(_)
         | gerna_ast::Sumti::Unspecified
         | gerna_ast::Sumti::Number(_) => {}
-        gerna_ast::Sumti::Description((_, sid)) => { *sid += sb; }
-        gerna_ast::Sumti::Tagged((_, i)) => { *i += ub; }
+        gerna_ast::Sumti::Description((_, sid)) => {
+            *sid += sb;
+        }
+        gerna_ast::Sumti::Tagged((_, i)) => {
+            *i += ub;
+        }
         gerna_ast::Sumti::ModalTagged((mt, i)) => {
-            if let gerna_ast::ModalTag::Fio(sid) = mt { *sid += sb; }
+            if let gerna_ast::ModalTag::Fio(sid) = mt {
+                *sid += sb;
+            }
             *i += ub;
         }
         gerna_ast::Sumti::Restricted((i, rc)) => {
             *i += ub;
             rc.body_sentence += tb;
         }
-        gerna_ast::Sumti::Connected((l, _, _, r)) => { *l += ub; *r += ub; }
-        gerna_ast::Sumti::QuantifiedDescription((_, _, sid)) => { *sid += sb; }
+        gerna_ast::Sumti::Connected((l, _, _, r)) => {
+            *l += ub;
+            *r += ub;
+        }
+        gerna_ast::Sumti::QuantifiedDescription((_, _, sid)) => {
+            *sid += sb;
+        }
     }
 }
 
@@ -463,10 +512,17 @@ fn rebase_sentence_inplace(s: &mut gerna_ast::Sentence, sb: u32, ub: u32, tb: u3
     match s {
         gerna_ast::Sentence::Simple(b) => {
             b.relation += sb;
-            for i in b.head_terms.iter_mut() { *i += ub; }
-            for i in b.tail_terms.iter_mut() { *i += ub; }
+            for i in b.head_terms.iter_mut() {
+                *i += ub;
+            }
+            for i in b.tail_terms.iter_mut() {
+                *i += ub;
+            }
         }
-        gerna_ast::Sentence::Connected((_, l, r)) => { *l += tb; *r += tb; }
+        gerna_ast::Sentence::Connected((_, l, r)) => {
+            *l += tb;
+            *r += tb;
+        }
     }
 }
 
@@ -508,7 +564,10 @@ fn resolve_go_i(
     ast: &mut gerna_ast::AstBuffer,
     last_snapshot: &mut Option<SelbriSnapshot>,
 ) -> Result<Option<u32>, String> {
-    let has_go_i = ast.selbris.iter().any(|s| matches!(s, gerna_ast::Selbri::Root(n) if n == "go'i"));
+    let has_go_i = ast
+        .selbris
+        .iter()
+        .any(|s| matches!(s, gerna_ast::Selbri::Root(n) if n == "go'i"));
     let mut current: Option<u32> = if has_go_i {
         last_snapshot.as_mut().map(|snap| graft_snapshot(ast, snap))
     } else {
@@ -527,8 +586,14 @@ fn compile_pipeline(
     text: &str,
     last_snapshot: &mut Option<SelbriSnapshot>,
     compute_predicates: &HashSet<String>,
-) -> Result<(logji_logic::LogicBuffer, Option<SelbriSnapshot>, Vec<String>), export_err::NibliError>
-{
+) -> Result<
+    (
+        logji_logic::LogicBuffer,
+        Option<SelbriSnapshot>,
+        Vec<String>,
+    ),
+    export_err::NibliError,
+> {
     let parse_result =
         gerna::parse_text_native(text.to_string()).map_err(convert_pipeline_error)?;
 
@@ -601,13 +666,19 @@ impl GuestSession for Session {
         Ok(fact_id)
     }
 
-    fn query_text(&self, input: String) -> Result<bool, export_err::NibliError> {
+    fn query_text(
+        &self,
+        input: String,
+    ) -> Result<export_logic::QueryResult, export_err::NibliError> {
         let (buf, _, _warnings) = compile_pipeline(
             &input,
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),
         )?;
-        self.kb.query_entailment(buf).map_err(convert_pipeline_error)
+        self.kb
+            .query_entailment(buf)
+            .map(|result| convert_query_result_to_export(&result))
+            .map_err(convert_pipeline_error)
     }
 
     fn query_find_text(
@@ -626,17 +697,20 @@ impl GuestSession for Session {
     fn query_text_with_proof(
         &self,
         input: String,
-    ) -> Result<(bool, export_logic::ProofTrace), export_err::NibliError> {
+    ) -> Result<(export_logic::QueryResult, export_logic::ProofTrace), export_err::NibliError> {
         let (buf, _, _warnings) = compile_pipeline(
             &input,
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),
         )?;
-        let (holds, trace) = self
+        let (result, trace) = self
             .kb
             .query_entailment_with_proof(buf)
             .map_err(convert_pipeline_error)?;
-        Ok((holds, convert_proof_trace(trace)))
+        Ok((
+            convert_query_result_to_export(&result),
+            convert_proof_trace(trace),
+        ))
     }
 
     fn compile_debug(&self, input: String) -> Result<String, export_err::NibliError> {
@@ -688,7 +762,6 @@ impl GuestSession for Session {
         Ok(convert_fact_summaries(facts))
     }
 }
-
 
 // ─── Tests ───
 
@@ -765,7 +838,11 @@ mod tests {
 
     #[test]
     fn test_snapshot_root() {
-        let ast = make_ast(vec![gerna_ast::Selbri::Root("klama".to_string())], 0, vec![0]);
+        let ast = make_ast(
+            vec![gerna_ast::Selbri::Root("klama".to_string())],
+            0,
+            vec![0],
+        );
         let snap = extract_selbri_snapshot(&ast, 0);
         assert_eq!(snap.selbris.len(), 1);
         assert_eq!(snap.root, 0);
@@ -943,7 +1020,11 @@ mod tests {
 
     #[test]
     fn test_resolve_go_i_no_antecedent() {
-        let mut ast = make_ast(vec![gerna_ast::Selbri::Root("go'i".to_string())], 0, vec![0]);
+        let mut ast = make_ast(
+            vec![gerna_ast::Selbri::Root("go'i".to_string())],
+            0,
+            vec![0],
+        );
         let result = resolve_go_i(&mut ast, &mut None);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("no antecedent"));
@@ -957,10 +1038,16 @@ mod tests {
             sentences: vec![],
             root: 0,
         };
-        let mut ast = make_ast(vec![gerna_ast::Selbri::Root("go'i".to_string())], 0, vec![0]);
+        let mut ast = make_ast(
+            vec![gerna_ast::Selbri::Root("go'i".to_string())],
+            0,
+            vec![0],
+        );
         let result = resolve_go_i(&mut ast, &mut Some(snap)).unwrap();
         let go_i_rel = bridi_relation(&ast, 0);
-        assert!(matches!(&ast.selbris[go_i_rel as usize], gerna_ast::Selbri::Root(n) if n == "klama"));
+        assert!(
+            matches!(&ast.selbris[go_i_rel as usize], gerna_ast::Selbri::Root(n) if n == "klama")
+        );
         assert!(result.is_some());
     }
 
@@ -975,7 +1062,11 @@ mod tests {
             sentences: vec![],
             root: 1,
         };
-        let mut ast = make_ast(vec![gerna_ast::Selbri::Root("go'i".to_string())], 0, vec![0]);
+        let mut ast = make_ast(
+            vec![gerna_ast::Selbri::Root("go'i".to_string())],
+            0,
+            vec![0],
+        );
         let result = resolve_go_i(&mut ast, &mut Some(snap)).unwrap();
         let go_i_rel = bridi_relation(&ast, 0);
         assert!(matches!(

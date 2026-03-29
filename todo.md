@@ -4,33 +4,7 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 1: Semantic Correctness & API Truthfulness
 
-1. **Introduce a first-class query result type**
-   Replace bool-only entailment with a typed result across the entire stack.
-
-   Affected crates: `nibli-types` (define enum), `logji` (return it from `check_formula_holds` and `query_entailment_with_proof_inner`), `lasna` (WIT boundary), `nibli-engine` (native API), `nibli-server` (GraphQL schema), `nibli-ui` (render distinct states), REPL (`gasnu`).
-
-   The enum:
-   ```rust
-   pub enum QueryResult {
-       True(ProofTrace),
-       False(FailureTrace),      // see item 6
-       Unknown(UnknownReason),   // NAF-dependent, incomplete KB
-       ResourceExceeded {
-           kind: ResourceKind,   // Depth, Fuel, Memory
-           partial_trace: Option<ProofTrace>,
-       },
-   }
-   ```
-
-   Required work:
-   - Define the enum and wire format in `nibli-types`.
-   - Thread it through `check_formula_holds` — currently returns `Result<bool, String>`. Change to `Result<QueryResult, NibliError>`.
-   - Distinguish depth-limited FALSE (currently `depth >= inner.max_chain_depth` returns `false` in `try_backward_chain_typed`) from exhaustive FALSE (all paths explored, none succeed).
-   - Distinguish cycle-cut FALSE (currently `!visited.insert(fact.clone())` returns `false`) from genuine non-derivability.
-   - Update WIT interface, GraphQL schema, REPL display, and UI rendering.
-   - Add regression tests: depth-limited query, fuel exhaustion, cycle detection, genuine FALSE, genuine TRUE.
-
-2. **Make negation semantics explicit and surfaceable**
+1. **Make negation semantics explicit and surfaceable**
    Currently NAF is applied uniformly with no user visibility into which conclusions depend on it.
 
    Required work:
@@ -40,7 +14,7 @@ Ordered by impact, priority, and dependency.
    - Document the semantics: "Under CWA, `False` means 'not derivable and therefore assumed false.' Under open-world (future), it would mean `Unknown`."
    - This is prerequisite work for per-predicate open/closed world controls (future).
 
-3. **Enforce stratification or reject unsafe recursive negation**
+2. **Enforce stratification or reject unsafe recursive negation**
    The engine assumes stratification by construction. It should verify.
 
    Required work:
@@ -52,7 +26,7 @@ Ordered by impact, priority, and dependency.
    - Add tests: safe stratified negation, unsafe mutual recursion through negation, safe recursion without negation.
    - This must also cover rules ingested via gossip (`tavla` ingest path) and replay.
 
-4. **Add logic-layer predicate signature validation**
+3. **Add logic-layer predicate signature validation**
    `logji` accepts any predicate with any arity from any entry path.
 
    Required work:
@@ -73,7 +47,7 @@ Ordered by impact, priority, and dependency.
    - The arity-2 default in `smuni/src/dictionary.rs` should emit a warning when triggered, not silently succeed.
    - Add tests: valid arity, invalid arity, unknown predicate with both strict and permissive modes.
 
-5. **Add general equality / identity reasoning**
+4. **Add general equality / identity reasoning**
    The biggest classical logic gap.
 
    Required work:
@@ -88,7 +62,7 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 2: Completeness, Explanation & Scaling
 
-6. **Add failure traces / "why not?" explanation**
+5. **Add failure traces / "why not?" explanation**
    When `check_formula_holds` returns FALSE, capture the failure path.
 
    Required work:
@@ -112,7 +86,7 @@ Ordered by impact, priority, and dependency.
    - GraphQL: `whyNot` query returning the failure trace.
    - UI: render failure traces in the proof panel with distinct styling (red/grey instead of green).
 
-7. **Add hypothetical / counterfactual reasoning**
+6. **Add hypothetical / counterfactual reasoning**
    Temporary assumption contexts without mutating the real KB.
 
    Required work:
@@ -126,14 +100,14 @@ Ordered by impact, priority, and dependency.
    - Performance: `KnowledgeBase::clone()` exists and works. For v1, cloning is acceptable. Copy-on-write overlay is an optimization for later.
    - Add tests: assumption doesn't persist after query, nested assumptions, assumption that creates a contradiction.
 
-8. **Replace fixed-depth search with tabling or iterative deepening**
+7. **Replace fixed-depth search with tabling or iterative deepening**
    The depth cutoff silently collapses "not found within depth N" to FALSE.
 
    Required work (iterative deepening — lower effort, recommended first):
    - Modify `check_formula_holds` to accept a max_depth parameter.
    - Add a wrapper that calls with depth 1, 2, 3, ... up to `max_chain_depth`.
    - If the proof is found at depth D, return `True`. If exhausted all depths up to max, return `False`. This guarantees finding the shallowest proof.
-   - The `ResourceExceeded` result (from item 1) handles the case where max_chain_depth itself is hit.
+   - The `ResourceExceeded` result handles the case where max_chain_depth itself is hit.
 
    Required work (tabling — higher effort, future):
    - Maintain a table of (goal, result) pairs across recursive calls.
@@ -141,7 +115,7 @@ Ordered by impact, priority, and dependency.
    - Implement SLG-style completion: goals that depend on themselves through positive recursion are resolved to the least fixpoint.
    - This subsumes the visited-set cycle detection.
 
-9. **Add argument-position indexing**
+8. **Add argument-position indexing**
    `typed_predicate_facts` indexes by relation name only. Queries like "everything where x2 is adam" scan all facts for that predicate.
 
    Required work:
@@ -150,7 +124,7 @@ Ordered by impact, priority, and dependency.
    - Modify `check_predicate_in_kb_typed` and witness extraction to use the argument index when the query has ground arguments in specific positions.
    - Benchmark: compare query latency before/after on a KB with 1000+ facts for a single predicate.
 
-10. **Add incremental truth maintenance**
+9. **Add incremental truth maintenance**
     Replace full-rebuild retraction with dependency tracking.
 
     Required work:
@@ -167,7 +141,7 @@ Ordered by impact, priority, and dependency.
     - Keep full rebuild as a fallback (`:rebuild` REPL command) for consistency verification.
     - Add tests: retract a base fact, verify derived facts in the dependency cone are removed, verify unrelated facts survive.
 
-11. **Selective forward propagation for marked rules**
+10. **Selective forward propagation for marked rules**
     Keep backward chaining as the primary engine. Allow opt-in forward propagation for specific rules.
 
     Required work:
@@ -180,7 +154,7 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 3: Code Quality & Measurement
 
-12. **Break up oversized core files**
+11. **Break up oversized core files**
     Three files are disproportionately large and hard to review:
     - `logji/src/lib.rs` — 4,715 lines
     - `gerna/src/grammar.rs` — 4,452 lines
@@ -192,7 +166,7 @@ Ordered by impact, priority, and dependency.
     - `gerna/src/grammar.rs` -> already partially split (`selbri.rs`, `sentence.rs`, `sumti.rs`). Move more parse functions out of the main file.
     - `tavla/src/lib.rs` -> extract `gossip_node.rs` (GossipNode state and operations), `crdt.rs` (OR-Set CRDT), `envelope.rs` (envelope creation/verification), `contradiction.rs` (contradiction detection/resolution).
 
-13. **Benchmark the must-have changes**
+12. **Benchmark the must-have changes**
     Add repeatable `criterion` benchmarks for:
     - Query latency at 10^2 / 10^3 / 10^4 facts (parametric)
     - Recursive rule chains (depth 2, 5, 10)
@@ -204,7 +178,7 @@ Ordered by impact, priority, and dependency.
 
     Store baseline results in `benches/baseline.json` so regressions are detectable.
 
-14. **Publish explicit engine guarantees (GUARANTEES.md)**
+13. **Publish explicit engine guarantees (GUARANTEES.md)**
     Once the must-haves land, write a formal document stating:
     - Soundness: "The engine never returns TRUE for a formula that does not follow from the asserted facts and rules (given a correct implementation)."
     - Completeness: "For non-recursive rule sets with chain depth <= N, backward chaining is complete. For recursive rule sets, [tabling/iterative deepening] guarantees [X]. For depth-bounded search without tabling, the engine is sound but incomplete — UNDETERMINED may be returned for derivable conclusions."
@@ -215,10 +189,10 @@ Ordered by impact, priority, and dependency.
 
 ## Tier 4: Infrastructure & Deployment
 
-15. **Fine-grained server locking**
+14. **Fine-grained server locking**
     Replace `Arc<Mutex<>>` with `RwLock` for read-heavy gossip queries. Blocked by rustc ICE in `nibli-server` (`check_mod_deathness` panic prevents compilation with `RwLock`). Retry after rustc upgrade past `1.94.0`.
 
-16. **Gossip-layer contradiction detection push-down**
+15. **Gossip-layer contradiction detection push-down**
     Currently contradiction detection lives in `tavla` (syntactic negation toggle on `cu na`). It should also exist in `logji` (semantic contradiction via the proof engine).
 
     Required work:
@@ -227,7 +201,7 @@ Ordered by impact, priority, and dependency.
     - This is more powerful than syntactic negation: it catches contradictions that arise from rule interactions, not just direct negation.
     - Gate behind a flag (`contradiction_check_on_assert: bool`) since it adds per-assertion cost.
 
-17. **WebRTC transport for tavla gossip**
+16. **WebRTC transport for tavla gossip**
     The README and memory notes indicate WebRTC P2P as the designated transport. `tavla/src/webrtc.rs` exists (15K) but verify completeness relative to TCP transport.
     Required work:
     - Verify WebRTC transport is feature-complete relative to TCP (connect, send envelope, receive envelope, sync, disconnect).

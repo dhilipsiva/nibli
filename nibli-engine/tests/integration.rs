@@ -3,7 +3,7 @@
 //! Each test creates a fresh NibliEngine, asserts Lojban text, and queries with proof.
 //! No WASM, no HTTP — exercises gerna+smuni+logji directly via Rust crate calls.
 
-use nibli_engine::NibliEngine;
+use nibli_engine::{EngineQueryResult, NibliEngine};
 use nibli_store::NibliStore;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -17,6 +17,14 @@ fn engine_with_facts(lines: &[&str]) -> NibliEngine {
             .unwrap_or_else(|e| panic!("Failed to assert '{}': {}", line, e));
     }
     engine
+}
+
+fn assert_true(result: &EngineQueryResult, msg: &str) {
+    assert!(result.is_true(), "{msg}: got {result:?}");
+}
+
+fn assert_false(result: &EngineQueryResult, msg: &str) {
+    assert!(result.is_false(), "{msg}: got {result:?}");
 }
 
 fn temp_db_path(name: &str) -> PathBuf {
@@ -35,7 +43,7 @@ fn cleanup(path: &Path) {
 fn simple_assertion_and_query() {
     let engine = engine_with_facts(&["lo gerku cu barda"]);
     let (holds, trace, json) = engine.query_text_with_proof("lo gerku cu barda").unwrap();
-    assert!(holds, "Query for asserted fact should hold");
+    assert_true(&holds, "Query for asserted fact should hold");
     assert!(!trace.is_empty(), "Proof trace should be non-empty");
     assert!(!json.is_empty(), "Proof JSON should be non-empty");
 }
@@ -44,7 +52,7 @@ fn simple_assertion_and_query() {
 fn simple_negation_query_false() {
     let engine = engine_with_facts(&["lo gerku cu barda"]);
     let (holds, _trace, _json) = engine.query_text_with_proof("lo mlatu cu barda").unwrap();
-    assert!(!holds, "Query for unasserted fact should not hold");
+    assert_false(&holds, "Query for unasserted fact should not hold");
 }
 
 // ─── Universal rule chain (syllogism) ───────────────────────────────
@@ -59,19 +67,16 @@ fn universal_rule_chain_syllogism() {
 
     // Direct fact
     let (holds, _trace, _json) = engine.query_text_with_proof("la .adam. cu gerku").unwrap();
-    assert!(holds, "Direct fact should hold");
+    assert_true(&holds, "Direct fact should hold");
 
     // One-hop derivation: gerku → danlu
     let (holds, trace, _json) = engine.query_text_with_proof("la .adam. cu danlu").unwrap();
-    assert!(holds, "One-hop derived fact should hold");
-    assert!(
-        trace.contains("Rule"),
-        "Proof trace should show derivation"
-    );
+    assert_true(&holds, "One-hop derived fact should hold");
+    assert!(trace.contains("Rule"), "Proof trace should show derivation");
 
     // Two-hop derivation: gerku → danlu → citka
     let (holds, trace, _json) = engine.query_text_with_proof("la .adam. cu citka").unwrap();
-    assert!(holds, "Two-hop derived fact should hold");
+    assert_true(&holds, "Two-hop derived fact should hold");
     assert!(
         trace.contains("Rule"),
         "Proof trace should show derivation chain"
@@ -88,11 +93,11 @@ fn temporal_past_assertion_and_query() {
     let (holds, _trace, _json) = engine
         .query_text_with_proof("pu lo gerku cu barda")
         .unwrap();
-    assert!(holds, "Past-tensed query should hold");
+    assert_true(&holds, "Past-tensed query should hold");
 
     // Bare (untensed) query should NOT hold
     let (holds, _trace, _json) = engine.query_text_with_proof("lo gerku cu barda").unwrap();
-    assert!(!holds, "Bare query should not match past-tensed fact");
+    assert_false(&holds, "Bare query should not match past-tensed fact");
 }
 
 #[test]
@@ -103,7 +108,7 @@ fn temporal_tense_discrimination() {
     let (holds, _trace, _json) = engine
         .query_text_with_proof("ba lo gerku cu barda")
         .unwrap();
-    assert!(!holds, "Future query should not match past-tensed fact");
+    assert_false(&holds, "Future query should not match past-tensed fact");
 }
 
 // ─── Description opacity (le vs lo) ────────────────────────────────
@@ -114,14 +119,14 @@ fn description_opacity_le_vs_lo() {
 
     // le query should hold (opaque description)
     let (holds, _trace, _json) = engine.query_text_with_proof("le gerku cu barda").unwrap();
-    assert!(holds, "le (opaque) query should hold");
+    assert_true(&holds, "le (opaque) query should hold");
 }
 
 #[test]
 fn la_name_assertion() {
     let engine = engine_with_facts(&["la .adam. cu gerku"]);
     let (holds, _trace, _json) = engine.query_text_with_proof("la .adam. cu gerku").unwrap();
-    assert!(holds, "la name assertion should hold");
+    assert_true(&holds, "la name assertion should hold");
 }
 
 // ─── Parse error handling ───────────────────────────────────────────
@@ -152,7 +157,7 @@ fn query_parse_error() {
 fn proof_trace_contains_asserted_for_ground_fact() {
     let engine = engine_with_facts(&["lo gerku cu barda"]);
     let (holds, trace, json) = engine.query_text_with_proof("lo gerku cu barda").unwrap();
-    assert!(holds);
+    assert_true(&holds, "Ground fact proof query should be true");
     assert!(
         trace.contains("Fact:"),
         "Ground fact proof should contain 'Fact:'"
@@ -184,12 +189,12 @@ fn proof_trace_json_valid_for_derived_fact() {
 fn reset_clears_knowledge_base() {
     let engine = engine_with_facts(&["lo gerku cu barda"]);
     let (holds, _trace, _json) = engine.query_text_with_proof("lo gerku cu barda").unwrap();
-    assert!(holds, "Fact should hold before reset");
+    assert_true(&holds, "Fact should hold before reset");
 
     engine.reset();
 
     let (holds, _trace, _json) = engine.query_text_with_proof("lo gerku cu barda").unwrap();
-    assert!(!holds, "Fact should not hold after reset");
+    assert_false(&holds, "Fact should not hold after reset");
 }
 
 // ─── Multiple facts ─────────────────────────────────────────────────
@@ -198,9 +203,9 @@ fn reset_clears_knowledge_base() {
 fn multiple_independent_facts() {
     let engine = engine_with_facts(&["lo gerku cu barda", "lo mlatu cu cmalu"]);
     let (holds, _trace, _json) = engine.query_text_with_proof("lo gerku cu barda").unwrap();
-    assert!(holds, "First fact should hold");
+    assert_true(&holds, "First fact should hold");
     let (holds, _trace, _json) = engine.query_text_with_proof("lo mlatu cu cmalu").unwrap();
-    assert!(holds, "Second fact should hold");
+    assert_true(&holds, "Second fact should hold");
 }
 
 // ─── Multi-sentence assertion ───────────────────────────────────────
@@ -213,9 +218,9 @@ fn multi_sentence_assertion() {
         .assert_text("lo gerku cu barda .i lo mlatu cu cmalu")
         .unwrap();
     let (holds, _trace, _json) = engine.query_text_with_proof("lo gerku cu barda").unwrap();
-    assert!(holds, "First sentence should hold");
+    assert_true(&holds, "First sentence should hold");
     let (holds, _trace, _json) = engine.query_text_with_proof("lo mlatu cu cmalu").unwrap();
-    assert!(holds, "Second sentence should hold");
+    assert_true(&holds, "Second sentence should hold");
 }
 
 // ─── Sentence connectives ───────────────────────────────────────────
@@ -225,7 +230,7 @@ fn universal_rule_with_named_entity() {
     // Universal rules + named entity — the primary use case
     let engine = engine_with_facts(&["ro lo gerku cu danlu", "la .adam. cu gerku"]);
     let (holds, _trace, _json) = engine.query_text_with_proof("la .adam. cu danlu").unwrap();
-    assert!(holds, "Named entity should derive through universal rule");
+    assert_true(&holds, "Named entity should derive through universal rule");
 }
 
 // ─── Conversion (se) ────────────────────────────────────────────────
@@ -236,7 +241,7 @@ fn se_conversion_assertion_and_query() {
     let (holds, _trace, _json) = engine
         .query_text_with_proof("la .adam. cu se ponse lo gerku")
         .unwrap();
-    assert!(holds, "se-converted assertion should be queryable");
+    assert_true(&holds, "se-converted assertion should be queryable");
 }
 
 #[test]
@@ -263,6 +268,7 @@ fn reset_then_reassert_replaces_previous_kb_contents() {
         engine
             .query_holds("la .adam. cu gerku")
             .expect("Initial fact should be queryable")
+            .is_true()
     );
 
     engine.reset();
@@ -271,15 +277,17 @@ fn reset_then_reassert_replaces_previous_kb_contents() {
         .expect("New fact should assert after reset");
 
     assert!(
-        !engine
+        engine
             .query_holds("la .adam. cu gerku")
-            .expect("Old fact query should still run"),
+            .expect("Old fact query should still run")
+            .is_false(),
         "Reset should remove prior KB contents before new facts are asserted"
     );
     assert!(
         engine
             .query_holds("la .elis. cu mlatu")
-            .expect("New fact should be queryable"),
+            .expect("New fact should be queryable")
+            .is_true(),
         "Facts asserted after reset should become the whole active KB"
     );
 }
@@ -301,6 +309,7 @@ fn persistent_engine_replays_asserted_facts_after_reopen() {
             engine
                 .query_holds("la .adam. cu danlu")
                 .expect("Derived query should run before reopen")
+                .is_true()
         );
     }
 
@@ -309,7 +318,8 @@ fn persistent_engine_replays_asserted_facts_after_reopen() {
         assert!(
             reopened
                 .query_holds("la .adam. cu danlu")
-                .expect("Derived query should run after reopen"),
+                .expect("Derived query should run after reopen")
+                .is_true(),
             "Reopened engine should replay persisted rule and fact"
         );
     }
@@ -339,9 +349,10 @@ fn persistent_engine_honors_store_retractions_after_reopen() {
     {
         let reopened = NibliEngine::open(&path).expect("Persistent engine should reopen");
         assert!(
-            !reopened
+            reopened
                 .query_holds("la .adam. cu gerku")
-                .expect("Query should run after reopen"),
+                .expect("Query should run after reopen")
+                .is_false(),
             "Retracted facts must not replay into the reopened engine"
         );
     }
@@ -386,7 +397,8 @@ fn persistent_engine_queries_merged_remote_facts_after_reopen() {
         assert!(
             reopened
                 .query_holds("la .adam. cu danlu")
-                .expect("Merged query should run after reopen"),
+                .expect("Merged query should run after reopen")
+                .is_true(),
             "Merged remote facts should replay into the reopened engine"
         );
     }

@@ -283,6 +283,24 @@ interface logic-types {
         term: logical-term,
     }
 
+    /// Why the engine cannot yet return a definitive TRUE/FALSE answer.
+    enum unknown-reason {
+        cycle-cut,
+        incomplete-knowledge,
+        naf-dependent,
+    }
+
+    /// Which execution limit prevented a definitive answer.
+    enum resource-kind { depth, fuel, memory }
+
+    /// Top-level entailment result returned by the reasoner.
+    variant query-result {
+        true,
+        false,
+        unknown(unknown-reason),
+        resource-exceeded(resource-kind),
+    }
+
     /// Proof rule applied at a proof step.
     variant proof-rule {
         /// Both conjuncts checked. Children: [left, right].
@@ -416,7 +434,7 @@ interface compute-backend {
 /// Provides a stateful knowledge base resource that supports fact assertion,
 /// entailment queries, proof trace generation, and witness extraction.
 interface logji {
-    use logic-types.{logic-buffer, witness-binding, proof-trace, fact-id, fact-summary};
+    use logic-types.{fact-id, fact-summary, logic-buffer, proof-trace, query-result, witness-binding};
     use error-types.{nibli-error};
 
     /// A stateful knowledge base backed by an indexed fact store.
@@ -428,9 +446,9 @@ interface logji {
         /// Assert FOL facts into this KB. Returns a fact ID for later retraction.
         assert-fact: func(logic: logic-buffer, label: string) -> result<fact-id, nibli-error>;
         /// Query whether FOL formula is entailed by this KB.
-        query-entailment: func(logic: logic-buffer) -> result<bool, nibli-error>;
+        query-entailment: func(logic: logic-buffer) -> result<query-result, nibli-error>;
         /// Query with proof trace: returns result + proof tree.
-        query-entailment-with-proof: func(logic: logic-buffer) -> result<tuple<bool, proof-trace>, nibli-error>;
+        query-entailment-with-proof: func(logic: logic-buffer) -> result<tuple<query-result, proof-trace>, nibli-error>;
         /// Query with witness extraction: returns all satisfying binding sets
         /// for existential variables. Each inner list is one complete assignment.
         query-find: func(logic: logic-buffer) -> result<list<list<witness-binding>>, nibli-error>;
@@ -463,7 +481,7 @@ world logji-component {
 /// internally orchestrate the full pipeline. This is the primary API for
 /// end users (e.g., the REPL gasnu).
 interface lasna {
-    use logic-types.{logical-term, witness-binding, proof-trace, fact-id, fact-summary};
+    use logic-types.{fact-id, fact-summary, logical-term, proof-trace, query-result, witness-binding};
     use error-types.{nibli-error};
 
     /// A user-facing session that wraps the full pipeline.
@@ -474,9 +492,9 @@ interface lasna {
         /// Assert Lojban text as facts. Returns a fact ID for later retraction.
         assert-text: func(input: string) -> result<fact-id, nibli-error>;
         /// Query whether Lojban text is entailed.
-        query-text: func(input: string) -> result<bool, nibli-error>;
+        query-text: func(input: string) -> result<query-result, nibli-error>;
         /// Query Lojban text with proof trace.
-        query-text-with-proof: func(input: string) -> result<tuple<bool, proof-trace>, nibli-error>;
+        query-text-with-proof: func(input: string) -> result<tuple<query-result, proof-trace>, nibli-error>;
         /// Query Lojban text and return witness bindings for existential variables.
         query-find-text: func(input: string) -> result<list<list<witness-binding>>, nibli-error>;
         /// Debug: compile text to logic representation without asserting.
@@ -500,4 +518,3 @@ world lasna-pipeline {
     import compute-backend;
     export lasna;
 }
-

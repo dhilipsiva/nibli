@@ -13,13 +13,17 @@ use axum::http::{HeaderValue, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::IntoResponse;
 use axum::{Json, Router};
-use governor::{Quota, RateLimiter, clock::DefaultClock, state::{InMemoryState, NotKeyed}};
+use governor::{
+    Quota, RateLimiter,
+    clock::DefaultClock,
+    state::{InMemoryState, NotKeyed},
+};
 use tokio::task;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::{Level, error, info, warn};
 
-use nibli_engine::NibliEngine;
+use nibli_engine::{EngineQueryResult, EngineResourceKind, EngineUnknownReason, NibliEngine};
 use nibli_protocol::{
     ContradictionSummary, EnvelopeSummary, GossipEvent, NetworkAgent, NetworkSnapshot, StanceCounts,
 };
@@ -283,7 +287,9 @@ fn readiness_snapshot(
         Ok(events) => (true, events.len()),
         Err(_) => (false, 0),
     };
-    let gossip_peer_count = transport.as_ref().map_or(0, |transport| transport.peers().len());
+    let gossip_peer_count = transport
+        .as_ref()
+        .map_or(0, |transport| transport.peers().len());
     let ready = gossip_lock_ok
         && event_log_lock_ok
         && (!config.require_gossip_peer || gossip_peer_count > 0);
@@ -324,7 +330,10 @@ fn build_metrics_response(state: &HttpState) -> String {
     lines.push("# TYPE nibli_playground_requests_total counter".to_string());
     lines.push(format!(
         "nibli_playground_requests_total {}",
-        state.metrics.playground_requests_total.load(Ordering::Relaxed)
+        state
+            .metrics
+            .playground_requests_total
+            .load(Ordering::Relaxed)
     ));
     lines.push("# TYPE nibli_health_requests_total counter".to_string());
     lines.push(format!(
@@ -334,7 +343,10 @@ fn build_metrics_response(state: &HttpState) -> String {
     lines.push("# TYPE nibli_readiness_requests_total counter".to_string());
     lines.push(format!(
         "nibli_readiness_requests_total {}",
-        state.metrics.readiness_requests_total.load(Ordering::Relaxed)
+        state
+            .metrics
+            .readiness_requests_total
+            .load(Ordering::Relaxed)
     ));
     lines.push("# TYPE nibli_metrics_requests_total counter".to_string());
     lines.push(format!(
@@ -349,7 +361,10 @@ fn build_metrics_response(state: &HttpState) -> String {
     lines.push("# TYPE nibli_gossip_events_dropped_total counter".to_string());
     lines.push(format!(
         "nibli_gossip_events_dropped_total {}",
-        state.metrics.gossip_events_dropped_total.load(Ordering::Relaxed)
+        state
+            .metrics
+            .gossip_events_dropped_total
+            .load(Ordering::Relaxed)
     ));
     lines.push("# TYPE nibli_gossip_envelopes_ingested_total counter".to_string());
     lines.push(format!(
@@ -643,27 +658,33 @@ impl MutationRoot {
         .await
     }
 
-    async fn query_text(&self, ctx: &async_graphql::Context<'_>, input: String) -> QueryResult {
+    async fn query_text(&self, ctx: &async_graphql::Context<'_>, input: String) -> QueryResponse {
         let gossip = ctx.data::<SharedGossip>().unwrap().clone();
         run_blocking(move || match gossip.lock() {
             Ok(node) => match node.query_with_proof(&input) {
-                Ok((holds, trace, json)) => QueryResult {
-                    holds: Some(holds),
+                Ok((result, trace, json)) => QueryResponse {
+                    status: Some(QueryStatusGql::from(&result)),
+                    unknown_reason: UnknownReasonGql::from_result(&result),
+                    resource_kind: ResourceKindGql::from_result(&result),
                     proof_trace: Some(trace),
                     proof_trace_json: Some(json),
                     kb_status: None,
                     error: None,
                 },
-                Err(e) => QueryResult {
-                    holds: None,
+                Err(e) => QueryResponse {
+                    status: None,
+                    unknown_reason: None,
+                    resource_kind: None,
                     proof_trace: None,
                     proof_trace_json: None,
                     kb_status: None,
                     error: Some(e),
                 },
             },
-            Err(_) => QueryResult {
-                holds: None,
+            Err(_) => QueryResponse {
+                status: None,
+                unknown_reason: None,
+                resource_kind: None,
                 proof_trace: None,
                 proof_trace_json: None,
                 kb_status: None,
@@ -679,20 +700,24 @@ impl MutationRoot {
         _ctx: &async_graphql::Context<'_>,
         kb: String,
         query: String,
-    ) -> QueryResult {
+    ) -> QueryResponse {
         run_blocking(move || {
             let engine = NibliEngine::new();
             let kb_status = assert_kb_lines(&engine, &kb);
             match engine.query_text_with_proof(&query) {
-                Ok((holds, trace, json)) => QueryResult {
-                    holds: Some(holds),
+                Ok((result, trace, json)) => QueryResponse {
+                    status: Some(QueryStatusGql::from(&result)),
+                    unknown_reason: UnknownReasonGql::from_result(&result),
+                    resource_kind: ResourceKindGql::from_result(&result),
                     proof_trace: Some(trace),
                     proof_trace_json: Some(json),
                     kb_status: Some(kb_status),
                     error: None,
                 },
-                Err(e) => QueryResult {
-                    holds: None,
+                Err(e) => QueryResponse {
+                    status: None,
+                    unknown_reason: None,
+                    resource_kind: None,
                     proof_trace: None,
                     proof_trace_json: None,
                     kb_status: Some(kb_status),
@@ -1237,9 +1262,70 @@ struct KbStatusGql {
     line_results: Vec<LineResultGql>,
 }
 
+#[derive(async_graphql::Enum, Copy, Clone, Eq, PartialEq)]
+enum QueryStatusGql {
+    True,
+    False,
+    Unknown,
+    ResourceExceeded,
+}
+
+impl From<&EngineQueryResult> for QueryStatusGql {
+    fn from(value: &EngineQueryResult) -> Self {
+        match value {
+            EngineQueryResult::True => Self::True,
+            EngineQueryResult::False => Self::False,
+            EngineQueryResult::Unknown(_) => Self::Unknown,
+            EngineQueryResult::ResourceExceeded(_) => Self::ResourceExceeded,
+        }
+    }
+}
+
+#[derive(async_graphql::Enum, Copy, Clone, Eq, PartialEq)]
+enum UnknownReasonGql {
+    CycleCut,
+    IncompleteKnowledge,
+    NafDependent,
+}
+
+impl UnknownReasonGql {
+    fn from_result(value: &EngineQueryResult) -> Option<Self> {
+        match value {
+            EngineQueryResult::Unknown(EngineUnknownReason::CycleCut) => Some(Self::CycleCut),
+            EngineQueryResult::Unknown(EngineUnknownReason::IncompleteKnowledge) => {
+                Some(Self::IncompleteKnowledge)
+            }
+            EngineQueryResult::Unknown(EngineUnknownReason::NafDependent) => {
+                Some(Self::NafDependent)
+            }
+            _ => None,
+        }
+    }
+}
+
+#[derive(async_graphql::Enum, Copy, Clone, Eq, PartialEq)]
+enum ResourceKindGql {
+    Depth,
+    Fuel,
+    Memory,
+}
+
+impl ResourceKindGql {
+    fn from_result(value: &EngineQueryResult) -> Option<Self> {
+        match value {
+            EngineQueryResult::ResourceExceeded(EngineResourceKind::Depth) => Some(Self::Depth),
+            EngineQueryResult::ResourceExceeded(EngineResourceKind::Fuel) => Some(Self::Fuel),
+            EngineQueryResult::ResourceExceeded(EngineResourceKind::Memory) => Some(Self::Memory),
+            _ => None,
+        }
+    }
+}
+
 #[derive(async_graphql::SimpleObject)]
-struct QueryResult {
-    holds: Option<bool>,
+struct QueryResponse {
+    status: Option<QueryStatusGql>,
+    unknown_reason: Option<UnknownReasonGql>,
+    resource_kind: Option<ResourceKindGql>,
     proof_trace: Option<String>,
     proof_trace_json: Option<String>,
     kb_status: Option<KbStatusGql>,
@@ -1467,7 +1553,10 @@ async fn metrics_handler(State(state): State<HttpState>) -> impl IntoResponse {
 
     (
         StatusCode::OK,
-        [(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4")],
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4",
+        )],
         build_metrics_response(&state),
     )
 }
@@ -1518,12 +1607,9 @@ fn build_app(state: HttpState) -> Router {
         axum::routing::post(graphql_handler)
     };
 
-    let graphql_router = Router::new()
-        .route("/graphql", graphql_routes)
-        .layer(axum::middleware::from_fn_with_state(
-            state.clone(),
-            rate_limit_middleware,
-        ));
+    let graphql_router = Router::new().route("/graphql", graphql_routes).layer(
+        axum::middleware::from_fn_with_state(state.clone(), rate_limit_middleware),
+    );
 
     // Health/readiness/metrics are not rate limited (monitoring must always be reachable)
     let ops_router = Router::new()
@@ -1591,13 +1677,13 @@ async fn main() -> Result<()> {
 
     let schema: Arc<AppSchema> = Arc::new(
         Schema::build(QueryRoot, MutationRoot, EmptySubscription)
-        .data(ollama_config)
-        .data(gossip_state.clone())
-        .data(gossip_events.clone())
-        .data(gossip_transport.clone())
-        .data(config.clone())
-        .data(metrics.clone())
-        .finish(),
+            .data(ollama_config)
+            .data(gossip_state.clone())
+            .data(gossip_events.clone())
+            .data(gossip_transport.clone())
+            .data(config.clone())
+            .data(metrics.clone())
+            .finish(),
     );
 
     let quota = Quota::per_second(
@@ -1648,8 +1734,14 @@ async fn attach_tcp_transport(
 
     let listener_transport = transport.clone();
     tokio::spawn(async move {
-        gossip_transport_listener(listener_transport, gossip_state, gossip_events, metrics, config)
-            .await;
+        gossip_transport_listener(
+            listener_transport,
+            gossip_state,
+            gossip_events,
+            metrics,
+            config,
+        )
+        .await;
     });
 
     Ok(transport)
@@ -2061,18 +2153,18 @@ mod tests {
         serde_json::to_string(value).expect("gql string should serialize")
     }
 
-    async fn query_holds(schema: &TestSchema, input: &str) -> bool {
+    async fn query_is_true(schema: &TestSchema, input: &str) -> bool {
         let query = format!(
-            "mutation {{ queryText(input: {}) {{ holds error }} }}",
+            "mutation {{ queryText(input: {}) {{ status error }} }}",
             gql_string(input)
         );
         let json = execute_json(schema, query).await;
-        json["queryText"]["holds"].as_bool().unwrap_or(false)
+        matches!(json["queryText"]["status"].as_str(), Some("TRUE" | "True"))
     }
 
     async fn wait_for_query_result(schema: &TestSchema, input: &str, expected: bool) -> bool {
         for _ in 0..20 {
-            if query_holds(schema, input).await == expected {
+            if query_is_true(schema, input).await == expected {
                 return true;
             }
             sleep(Duration::from_millis(25)).await;
@@ -2467,7 +2559,11 @@ mod tests {
         }
 
         let events = events.lock().unwrap();
-        assert_eq!(events.len(), 3, "event buffer should keep only the newest items");
+        assert_eq!(
+            events.len(),
+            3,
+            "event buffer should keep only the newest items"
+        );
         match &events[0] {
             GossipEvent::Sync { peer_id, .. } => assert_eq!(peer_id, "peer-2"),
             other => panic!("expected sync event, got {other:?}"),
@@ -2497,11 +2593,17 @@ mod tests {
         };
 
         let readiness = readiness_snapshot(&gossip_state, &gossip_events, &None, &config);
-        assert!(!readiness.ready, "readiness should fail without a required gossip peer");
+        assert!(
+            !readiness.ready,
+            "readiness should fail without a required gossip peer"
+        );
 
         config.require_gossip_peer = false;
         let readiness = readiness_snapshot(&gossip_state, &gossip_events, &None, &config);
-        assert!(readiness.ready, "readiness should pass when gossip peers are optional");
+        assert!(
+            readiness.ready,
+            "readiness should pass when gossip peers are optional"
+        );
     }
 
     #[tokio::test]
