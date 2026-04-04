@@ -135,6 +135,7 @@ fn proof_trace_to_wire(trace: &logji_logic::ProofTrace) -> ProofTraceJson {
             })
             .collect(),
         root: trace.root,
+        naf_dependent: trace.has_naf_dependency(),
     }
 }
 

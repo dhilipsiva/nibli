@@ -166,6 +166,28 @@ pub struct ProofTrace {
     pub root: u32,
 }
 
+impl ProofTrace {
+    /// Returns true if any step in this proof trace used negation-as-failure.
+    /// A Negation step with `holds: true` means the inner formula was unprovable
+    /// and NAF flipped it to True — this is the CWA assumption in action.
+    /// Under open-world semantics, the same conclusion would be Unknown.
+    pub fn has_naf_dependency(&self) -> bool {
+        self.steps
+            .iter()
+            .any(|s| matches!(s.rule, ProofRule::Negation) && s.holds)
+    }
+
+    /// Collect indices of all NAF-dependent steps in this trace.
+    pub fn naf_dependent_steps(&self) -> Vec<u32> {
+        self.steps
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| matches!(s.rule, ProofRule::Negation) && s.holds)
+            .map(|(i, _)| i as u32)
+            .collect()
+    }
+}
+
 /// Unique identifier for a stored fact in the knowledge base.
 pub type FactId = u64;
 

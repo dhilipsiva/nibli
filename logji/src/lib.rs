@@ -5255,4 +5255,85 @@ mod tests {
             );
         }
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // NAF DEPENDENCY TESTS
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_naf_dependency_detected() {
+        // Query ¬P where P is not asserted → NAF flips False to True.
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku")); // Need at least one entity in domain.
+        let mut nodes = Vec::new();
+        let p = pred(
+            &mut nodes,
+            "mlatu",
+            vec![
+                LogicalTerm::Constant("alis".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let not_p = {
+            let id = nodes.len() as u32;
+            nodes.push(LogicNode::NotNode(p));
+            id
+        };
+        let buf = LogicBuffer {
+            nodes,
+            roots: vec![not_p],
+        };
+        let (result, trace) = kb.query_entailment_with_proof_inner(buf).unwrap();
+        assert!(result.is_true(), "¬mlatu(alis) should hold via NAF");
+        assert!(
+            trace.has_naf_dependency(),
+            "proof trace should flag NAF dependency"
+        );
+    }
+
+    #[test]
+    fn test_no_naf_for_positive_fact() {
+        // Query a directly asserted fact — no NAF involved.
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        let (result, trace) = kb
+            .query_entailment_with_proof_inner(make_query("alis", "gerku"))
+            .unwrap();
+        assert!(result.is_true());
+        assert!(
+            !trace.has_naf_dependency(),
+            "direct fact should not be NAF-dependent"
+        );
+    }
+
+    #[test]
+    fn test_naf_false_when_inner_proved() {
+        // Query ¬P where P IS asserted → negation holds=false (not NAF).
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        let mut nodes = Vec::new();
+        let p = pred(
+            &mut nodes,
+            "gerku",
+            vec![
+                LogicalTerm::Constant("alis".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let not_p = {
+            let id = nodes.len() as u32;
+            nodes.push(LogicNode::NotNode(p));
+            id
+        };
+        let buf = LogicBuffer {
+            nodes,
+            roots: vec![not_p],
+        };
+        let (result, trace) = kb.query_entailment_with_proof_inner(buf).unwrap();
+        assert!(result.is_false(), "¬gerku(alis) should be false");
+        assert!(
+            !trace.has_naf_dependency(),
+            "failed negation (inner proved) is not NAF"
+        );
+    }
 }

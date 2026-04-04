@@ -11,6 +11,10 @@ use serde::{Deserialize, Serialize};
 pub struct ProofTrace {
     pub steps: Vec<ProofStep>,
     pub root: u32,
+    /// True if any step in this trace used negation-as-failure (CWA assumption).
+    /// Under open-world semantics, NAF-dependent conclusions would be Unknown.
+    #[serde(default)]
+    pub naf_dependent: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -110,6 +114,9 @@ impl ProofTrace {
     /// Render the proof tree as compact indented text with a base indent.
     pub fn to_pretty_text_with_indent(&self, base_indent: usize) -> String {
         let mut out = String::new();
+        if self.naf_dependent {
+            out.push_str("[Note: result depends on negation-as-failure (closed-world assumption)]\n");
+        }
         format_proof_step(self, self.root, base_indent, &mut out);
         out
     }
@@ -533,6 +540,7 @@ mod tests {
                 children: vec![],
             }],
             root: 0,
+            naf_dependent: false,
         };
 
         assert_eq!(trace.to_pretty_text(), "Fact: gerku(adam) -> TRUE\n");
@@ -765,7 +773,13 @@ impl ProofRule {
             Self::DisjunctionIntro { side } => {
                 format!("Disjunction ({}) -> {}", side, tag)
             }
-            Self::Negation => format!("Negation -> {}", tag),
+            Self::Negation => {
+                if result {
+                    format!("Negation [NAF] -> {}", tag)
+                } else {
+                    format!("Negation -> {}", tag)
+                }
+            }
             Self::ModalPassthrough { kind } => format!("Modal ({}) -> {}", kind, tag),
             Self::ExistsWitness { var, term } => {
                 format!("Exists: {} = {} -> {}", var, term.trace_display(), tag)
