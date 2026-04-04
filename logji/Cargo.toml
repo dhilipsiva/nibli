@@ -5,6 +5,11 @@ edition = "2024"
 
 [dependencies]
 nibli-types = { path = "../nibli-types" }
+serde = { version = "1", features = ["derive"], optional = true }
+
+[features]
+default = []
+serde = ["dep:serde"]
 
 [lib]
 crate-type = ["lib"]

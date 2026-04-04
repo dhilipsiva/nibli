@@ -3,7 +3,7 @@
 //! This is the core inference component of Nibli. It maintains a stateful knowledge
 //! base with a fact index and backward-chaining rule engine:
 //!
-//! - **Fact assertion** — Ground predicates stored as typed `StoredFact` in `typed_facts` HashSet.
+//! - **Fact assertion** — Ground predicates stored as typed `StoredFact` via pluggable `FactStore` backend.
 //!   Universal quantifiers compile to `UniversalRuleRecord` templates for backward-chaining.
 //! - **Entailment queries** — Recursive formula checking via [`check_formula_holds`] with
 //!   demand-driven backward-chaining through universal rules.
@@ -29,6 +29,8 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 mod compute;
+/// Fact store abstraction (trait + in-memory implementation).
+pub mod fact_store;
 mod reasoning;
 /// S-expression reconstruction for logic buffers (debug output).
 pub mod repr;
@@ -142,8 +144,7 @@ impl KnowledgeBase {
         inner.known_descriptions.clear();
         inner.known_rules.clear();
         inner.skolem_fn_registry.clear();
-        inner.typed_facts.clear();
-        inner.typed_predicate_facts.clear();
+        inner.fact_store.clear();
         inner.universal_rules.clear();
         inner.pred_dep_graph.clear();
 
@@ -4625,10 +4626,10 @@ mod tests {
         assert_buf(&kb, buf);
 
         // Verify the fact count is bounded — each leaf gets a single entry
-        // in typed_facts (no combinatorial And explosion).
+        // in the fact store (no combinatorial And explosion).
         let inner = kb.inner.borrow();
-        let fact_count = inner.typed_facts.len();
-        eprintln!("[Test] typed_facts count: {}", fact_count);
+        let fact_count = inner.fact_store.len();
+        eprintln!("[Test] fact_store count: {}", fact_count);
         assert!(
             fact_count < 100,
             "Asserted facts should be < 100 after flattening, got {}",

@@ -427,12 +427,7 @@ pub(super) fn clear_typed_pred_cache() {
 
 /// Check if a typed fact is asserted in the typed fact store.
 pub(super) fn typed_fact_is_asserted(fact: &StoredFact, inner: &KnowledgeBaseInner) -> bool {
-    let rel = fact.relation();
-    if let Some(set) = inner.typed_predicate_facts.get(rel) {
-        set.contains(fact)
-    } else {
-        false
-    }
+    inner.fact_store.contains(fact)
 }
 
 /// Collect rules whose conclusion templates match the given fact's relation name.

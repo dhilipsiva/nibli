@@ -24,6 +24,7 @@ pub(super) fn get_node(buffer: &LogicBuffer, node_id: u32) -> Result<&LogicNode,
 /// A ground term — the typed representation of a ground term.
 /// Implements Hash/Eq for direct use in HashSet-based fact stores.
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GroundTerm {
     /// Named constant (e.g., "adam", "paris", "sk_0").
     /// Also used for Skolem constants — the internal format does not distinguish them.
@@ -83,6 +84,7 @@ impl GroundTerm {
 
 /// A ground predicate — relation name plus argument list.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GroundFact {
     pub relation: String,
     pub args: Vec<GroundTerm>,
@@ -109,6 +111,7 @@ impl GroundFact {
 
 /// A fact with optional tense/deontic wrapper — the atomic unit of the fact store.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum StoredFact {
     Bare(GroundFact),
     Past(GroundFact),
@@ -350,7 +353,6 @@ pub(super) struct FactRecord {
 }
 
 /// All mutable KB state behind a single RefCell.
-#[derive(Clone)]
 pub(super) struct KnowledgeBaseInner {
     pub(super) skolem_counter: usize,
     pub(super) known_entities: HashSet<String>,
@@ -362,10 +364,8 @@ pub(super) struct KnowledgeBaseInner {
     pub(super) known_descriptions: HashSet<String>,
     pub(super) known_rules: HashSet<u64>,
     pub(super) skolem_fn_registry: Vec<SkolemFnEntry>,
-    /// Typed ground facts — the canonical fact store.
-    pub(super) typed_facts: HashSet<StoredFact>,
-    /// Typed predicate index: relation name → set of StoredFacts.
-    pub(super) typed_predicate_facts: HashMap<String, HashSet<StoredFact>>,
+    /// Pluggable fact store (in-memory or persistent).
+    pub(super) fact_store: Box<dyn crate::fact_store::FactStore>,
     /// Compiled universal rule templates indexed by conclusion predicate name.
     /// Each predicate name maps to the rules whose conclusion templates mention it.
     /// Rc-wrapped to avoid cloning rule records during backward-chain snapshots.
@@ -396,8 +396,7 @@ impl KnowledgeBaseInner {
             known_descriptions: HashSet::new(),
             known_rules: HashSet::new(),
             skolem_fn_registry: Vec::new(),
-            typed_facts: HashSet::new(),
-            typed_predicate_facts: HashMap::new(),
+            fact_store: Box::new(crate::fact_store::InMemoryFactStore::new()),
             universal_rules: HashMap::new(),
             fact_counter: 0,
             fact_registry: HashMap::new(),
@@ -416,8 +415,7 @@ impl KnowledgeBaseInner {
         self.known_descriptions.clear();
         self.known_rules.clear();
         self.skolem_fn_registry.clear();
-        self.typed_facts.clear();
-        self.typed_predicate_facts.clear();
+        self.fact_store.clear();
         self.universal_rules.clear();
         self.fact_counter = 0;
         self.fact_registry.clear();
@@ -873,7 +871,7 @@ fn extract_from_index(
     inner: &KnowledgeBaseInner,
     candidates: &mut HashSet<GroundTerm>,
 ) {
-    let facts = match inner.typed_predicate_facts.get(anchor.relation.as_str()) {
+    let facts = match inner.fact_store.lookup_predicate(anchor.relation.as_str()) {
         Some(f) => f,
         None => return,
     };
