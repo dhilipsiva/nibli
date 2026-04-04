@@ -60,7 +60,7 @@ pub fn transform_compute_nodes(buf: &mut LogicBuffer, compute_preds: &HashSet<St
         .collect();
 }
 
-mod kb;
+pub mod kb;
 pub use kb::KnowledgeBase;
 pub(crate) use kb::*;
 
@@ -315,6 +315,15 @@ impl KnowledgeBase {
     pub fn new() -> Self {
         KnowledgeBase {
             inner: RefCell::new(KnowledgeBaseInner::new()),
+        }
+    }
+
+    /// Create a KB with a custom fact store backend (e.g., persistent redb).
+    pub fn with_store(store: Box<dyn fact_store::FactStore>) -> Self {
+        let mut inner = KnowledgeBaseInner::new();
+        inner.fact_store = store;
+        KnowledgeBase {
+            inner: RefCell::new(inner),
         }
     }
 

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+logji = { path = "../logji", features = ["serde"] }
 redb = "2"
 postcard = { version = "1", features = ["alloc"] }
 serde = { version = "1", features = ["derive"] }

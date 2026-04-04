@@ -4,6 +4,9 @@
 //! serialization. The store persists FactRecords to disk and supports
 //! 2P-Set CRDT merge semantics for multi-node replication.
 
+/// Persistent typed fact store (StoredFact → redb) with lazy loading.
+pub mod typed_store;
+
 use std::collections::HashMap;
 use std::path::Path;
 

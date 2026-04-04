@@ -266,12 +266,19 @@ impl NibliEngine {
     }
 
     /// Create an engine with disk persistence at the given path.
-    /// Replays all persisted facts into the in-memory KB on open.
+    /// Opens a `RedbFactStore` for typed fact persistence and replays
+    /// the legacy `NibliStore` (LogicBuffer-level) for backward compatibility.
     pub fn open(db_path: &Path) -> Result<Self, String> {
         let store = NibliStore::open(db_path, "local".to_string())
             .map_err(|e| format!("Store error: {e}"))?;
+
+        // Open persistent typed fact store alongside the legacy store.
+        let typed_db_path = db_path.with_extension("typed.redb");
+        let typed_store = nibli_store::typed_store::RedbFactStore::open(&typed_db_path)
+            .map_err(|e| format!("TypedStore error: {e}"))?;
+
         let engine = NibliEngine {
-            kb: logji::KnowledgeBase::new(),
+            kb: logji::KnowledgeBase::with_store(Box::new(typed_store)),
             compute_predicates: Self::default_compute_predicates(),
             store: RefCell::new(Some(store)),
         };
