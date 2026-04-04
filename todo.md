@@ -4,15 +4,7 @@ Ordered by dependency, correctness impact, then user value.
 
 ## Tier 2: Completeness & Explanation
 
-1. **Add failure traces / "why not?" explanation**
-   When `check_formula_holds` returns FALSE, no information about the failure path is available.
-
-   - Define `FailureTrace` in nibli-types with variants: `PredicateNotFound`, `NoMatchingRule`, `ConditionFailed`, `DepthExceeded`, `CycleCut`.
-   - Modify `check_formula_holds` to collect dead-end information on false paths.
-   - Add `query_failure_trace` API, `:why-not` REPL command, GraphQL `whyNot` query.
-   - UI: render failure traces in the proof panel with distinct styling.
-
-7. **Add hypothetical / counterfactual reasoning**
+1. **Add hypothetical / counterfactual reasoning**
    No way to ask "what if X were true?" without mutating the real KB.
 
    - Add `KnowledgeBase::with_assumptions(assumptions, callback)`: clone KB, assert assumptions, run callback, discard.
