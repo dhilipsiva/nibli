@@ -235,28 +235,130 @@ pub(super) fn register_rule(
     pattern_var_names: Vec<String>,
     typed_conditions: Vec<StoredFact>,
     typed_conclusions: Vec<StoredFact>,
-) {
+    negated_condition_indices: Vec<usize>,
+) -> Result<(), String> {
+    // Update predicate dependency graph before inserting the rule.
+    for concl in &typed_conclusions {
+        let concl_rel = concl.relation().to_string();
+        for (idx, cond) in typed_conditions.iter().enumerate() {
+            let is_neg = negated_condition_indices.contains(&idx);
+            inner
+                .pred_dep_graph
+                .entry(concl_rel.clone())
+                .or_default()
+                .push((cond.relation().to_string(), is_neg));
+        }
+    }
+
+    // Check stratification (skip during rebuild — same rules passed before).
+    if !inner.rebuilding {
+        if let Err(e) = check_stratification(&inner.pred_dep_graph) {
+            // Rollback: remove the edges we just added.
+            for concl in &typed_conclusions {
+                let concl_rel = concl.relation();
+                if let Some(edges) = inner.pred_dep_graph.get_mut(concl_rel) {
+                    for _ in 0..typed_conditions.len() {
+                        edges.pop();
+                    }
+                    if edges.is_empty() {
+                        inner.pred_dep_graph.remove(concl_rel);
+                    }
+                }
+            }
+            return Err(e);
+        }
+    }
+
     let rule = UniversalRuleRecord {
         label,
         typed_conditions,
         typed_conclusions,
         pattern_var_names,
+        negated_condition_indices,
     };
     let rc = Arc::new(rule);
     let mut indexed = false;
     for concl in &rc.typed_conclusions {
-        inner.universal_rules
+        inner
+            .universal_rules
             .entry(concl.relation().to_string())
             .or_default()
             .push(Arc::clone(&rc));
         indexed = true;
     }
     if !indexed {
-        inner.universal_rules
+        inner
+            .universal_rules
             .entry("__fallback__".to_string())
             .or_default()
             .push(rc);
     }
+    Ok(())
+}
+
+/// Check the predicate dependency graph for negative cycles.
+/// A negative cycle exists when a cycle in the graph contains at least one
+/// edge marked as negative (from a negated condition). NAF is unsound in
+/// the presence of negative cycles.
+fn check_stratification(graph: &HashMap<String, Vec<(String, bool)>>) -> Result<(), String> {
+    #[derive(Clone, Copy, PartialEq)]
+    enum Color {
+        White,
+        Gray,
+        Black,
+    }
+
+    let mut color: HashMap<&str, Color> = HashMap::new();
+    // Track whether the path from root to this Gray node includes a negative edge.
+    let mut neg_on_path: HashMap<&str, bool> = HashMap::new();
+
+    fn dfs<'a>(
+        node: &'a str,
+        has_neg: bool,
+        graph: &'a HashMap<String, Vec<(String, bool)>>,
+        color: &mut HashMap<&'a str, Color>,
+        neg_on_path: &mut HashMap<&'a str, bool>,
+    ) -> Result<(), String> {
+        color.insert(node, Color::Gray);
+        neg_on_path.insert(node, has_neg);
+
+        if let Some(edges) = graph.get(node) {
+            for (dep, is_neg) in edges {
+                let new_neg = has_neg || *is_neg;
+                match color.get(dep.as_str()).copied().unwrap_or(Color::White) {
+                    Color::Gray => {
+                        // Back-edge → cycle found. Check if the cycle has any
+                        // negative edge: either this edge is negative, or the
+                        // path from dep to here already had one.
+                        let dep_neg = neg_on_path.get(dep.as_str()).copied().unwrap_or(false);
+                        let cycle_has_neg = *is_neg || (has_neg && !dep_neg);
+                        if cycle_has_neg {
+                            return Err(format!(
+                                "Unstratifiable negation: cycle involving '{}' and \
+                                 '{}' contains a negative dependency",
+                                node, dep
+                            ));
+                        }
+                    }
+                    Color::Black => {} // already fully explored
+                    Color::White => {
+                        dfs(dep, new_neg, graph, color, neg_on_path)?;
+                    }
+                }
+            }
+        }
+
+        color.insert(node, Color::Black);
+        neg_on_path.remove(node);
+        Ok(())
+    }
+
+    for node in graph.keys() {
+        if color.get(node.as_str()).copied().unwrap_or(Color::White) == Color::White {
+            dfs(node, false, graph, &mut color, &mut neg_on_path)?;
+        }
+    }
+    Ok(())
 }
 
 /// Assert a typed fact into the fact store.
@@ -280,11 +382,11 @@ pub(super) fn compile_forall_to_rule(
     node_id: u32,
     skolem_subs: &HashMap<String, GroundTerm>,
     inner: &mut KnowledgeBaseInner,
-) {
+) -> Result<(), String> {
     let mut universals: Vec<String> = Vec::new();
     let mut current = node_id;
     loop {
-        let Ok(node) = get_node(buffer, current) else { return };
+        let Ok(node) = get_node(buffer, current) else { return Ok(()) };
         match node {
             LogicNode::ForAllNode((v, body)) => {
                 universals.push(v.clone());
@@ -379,14 +481,18 @@ pub(super) fn compile_forall_to_rule(
 
             let consequent_atoms = flatten_consequent(buffer, consequent_id, skolem_subs);
 
-            let typed_conds: Vec<StoredFact> = all_conditions
-                .iter()
-                .filter_map(|&cid| {
-                    build_rule_template_fact(
-                        buffer, cid, &pattern_vars, &ground_skolems, &dependent_skolems,
-                    )
-                })
-                .collect();
+            let mut typed_conds: Vec<StoredFact> = Vec::new();
+            let mut negated_condition_indices: Vec<usize> = Vec::new();
+            for &cid in &all_conditions {
+                if let Some((fact, is_negated)) = build_rule_template_fact_with_negation(
+                    buffer, cid, &pattern_vars, &ground_skolems, &dependent_skolems,
+                ) {
+                    if is_negated {
+                        negated_condition_indices.push(typed_conds.len());
+                    }
+                    typed_conds.push(fact);
+                }
+            }
             let typed_concls: Vec<StoredFact> = consequent_atoms
                 .iter()
                 .filter_map(|&aid| {
@@ -410,13 +516,17 @@ pub(super) fn compile_forall_to_rule(
                 }
 
                 let label = build_typed_rule_label(&typed_conds, &typed_concls);
-                register_rule(
+                if let Err(e) = register_rule(
                     inner,
                     label,
                     all_pattern_var_names.clone(),
                     typed_conds,
                     typed_concls,
-                );
+                    negated_condition_indices,
+                ) {
+                    eprintln!("[Stratification Error] {}", e);
+                    return Err(e);
+                }
 
                 let xp_name = inner.fresh_skolem();
                 inner.note_entity(&xp_name);
@@ -487,17 +597,22 @@ pub(super) fn compile_forall_to_rule(
                 }
 
                 let label = build_typed_rule_label(&[], &typed_concls);
-                register_rule(
+                if let Err(e) = register_rule(
                     inner,
                     label,
                     pattern_var_names.clone(),
                     vec![],
                     typed_concls,
-                );
+                    vec![], // bare universal — no conditions, no negation
+                ) {
+                    eprintln!("[Stratification Error] {}", e);
+                    return Err(e);
+                }
             }
         }
     }
 
+    Ok(())
 }
 
 pub(super) fn generate_count_extra_witnesses(
@@ -662,6 +777,29 @@ pub(super) fn collect_ground_facts(
 /// `pattern_vars` maps variable names → pattern var names (e.g., "_v0" → "x__v0").
 /// `ground_skolems` maps variable names → Skolem constant names.
 /// `dependent_skolems` maps variable names → (base_name, [pattern_var_names]).
+/// Like `build_rule_template_fact`, but also returns whether the atom was
+/// originally under negation. Used for stratification tracking.
+pub(super) fn build_rule_template_fact_with_negation(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    pattern_vars: &HashMap<String, String>,
+    ground_skolems: &HashMap<String, String>,
+    dependent_skolems: &HashMap<String, (String, Vec<String>)>,
+) -> Option<(StoredFact, bool)> {
+    let Ok(node) = get_node(buffer, node_id) else {
+        return None;
+    };
+    match node {
+        LogicNode::NotNode(inner_node) => {
+            // Recurse into the negated body and mark as negated.
+            build_rule_template_fact(buffer, *inner_node, pattern_vars, ground_skolems, dependent_skolems)
+                .map(|fact| (fact, true))
+        }
+        _ => build_rule_template_fact(buffer, node_id, pattern_vars, ground_skolems, dependent_skolems)
+            .map(|fact| (fact, false)),
+    }
+}
+
 pub(super) fn build_rule_template_fact(
     buffer: &LogicBuffer,
     node_id: u32,

@@ -374,10 +374,15 @@ impl NibliEngine {
             let fact_id = s.next_fact_id().map_err(|e| format!("Store error: {e}"))?;
             s.insert_fact(fact_id, label.clone(), payload)
                 .map_err(|e| format!("Store error: {e}"))?;
-            self.kb.assert_fact_with_id(buf, label, fact_id);
+            self.kb
+                .assert_fact_with_id(buf, label, fact_id)
+                .map_err(|e| format_error(&PipelineError::Semantic(e)))?;
             Ok(fact_id)
         } else {
-            Ok(self.kb.assert_fact(buf, label))
+            self.kb
+                .assert_fact(buf, label)
+                .map(|id| id)
+                .map_err(|e| format_error(&e))
         }
     }
 
@@ -391,7 +396,10 @@ impl NibliEngine {
             nodes: vec![logji_logic::LogicNode::Predicate((relation, args))],
             roots: vec![0],
         };
-        Ok(self.kb.assert_fact(buf, label))
+        self.kb
+            .assert_fact(buf, label)
+            .map(|id| id)
+            .map_err(|e| format_error(&e))
     }
 
     pub fn query_text_with_proof(

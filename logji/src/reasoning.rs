@@ -106,10 +106,9 @@ pub(super) fn check_formula_holds(
             Ok(combine_disjunction(left, right))
         }
         // Negation-as-failure (NAF): ¬P holds when P cannot be proved.
-        // Sound for the current system because Lojban input produces only ground
-        // facts and universal Horn rules — no recursive negation or circular
-        // definitions. The program is stratifiable by construction (facts at
-        // stratum 0, rules at stratum 1).
+        // Sound because stratification is enforced at rule registration time —
+        // register_rule() rejects any rule that would create a negative cycle
+        // in the predicate dependency graph.
         LogicNode::NotNode(inner_node) => Ok(negate_result(check_formula_holds(
             buffer,
             *inner_node,

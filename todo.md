@@ -4,16 +4,7 @@ Ordered by dependency, correctness impact, then user value.
 
 ## Tier 1: Soundness & Correctness Gaps
 
-1. **Enforce stratification or reject unsafe recursive negation**
-   The engine assumes stratification by construction but does not verify it. A dynamically asserted rule could introduce a negative cycle, making NAF unsound.
-
-   - On each `process_assertion` that registers a `UniversalRuleRecord`, build/update a predicate dependency graph.
-   - Edges: conclusion predicate → condition predicate. Mark edges through negation as "negative."
-   - On assertion, check for negative cycles via DFS. Reject with `NibliError::Semantic` if found.
-   - Must also cover rules ingested via gossip replay and `assert_fact_with_id`.
-   - Tests: safe stratified negation, unsafe mutual recursion through negation, safe positive recursion.
-
-2. **Add equality / identity reasoning (`du`)**
+1. **Add equality / identity reasoning (`du`)**
    The biggest classical FOL gap. No way to state "Adam is the same entity as the King."
 
    - Reserve `du` as a special predicate in logji.

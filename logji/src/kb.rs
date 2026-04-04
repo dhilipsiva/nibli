@@ -334,6 +334,10 @@ pub(super) struct UniversalRuleRecord {
     pub(super) typed_conclusions: Vec<StoredFact>,
     /// Pattern variable names used in templates, e.g. ["x__v0"].
     pub(super) pattern_var_names: Vec<String>,
+    /// Indices into `typed_conditions` that were originally under negation.
+    /// Used for stratification checking — a negated condition creates a
+    /// "negative" dependency edge in the predicate dependency graph.
+    pub(super) negated_condition_indices: Vec<usize>,
 }
 
 /// Registry entry for a single asserted fact, supporting retraction and rebuild.
@@ -378,6 +382,9 @@ pub(super) struct KnowledgeBaseInner {
     pub(super) domain_members_dirty: bool,
     /// Maximum backward-chaining depth for inference (default: 10).
     pub(super) max_chain_depth: usize,
+    /// Predicate dependency graph for stratification checking.
+    /// Maps conclusion predicate → Vec<(condition predicate, is_negative)>.
+    pub(super) pred_dep_graph: HashMap<String, Vec<(String, bool)>>,
 }
 
 impl KnowledgeBaseInner {
@@ -398,6 +405,7 @@ impl KnowledgeBaseInner {
             typed_domain_members_cache: Vec::new(),
             domain_members_dirty: true,
             max_chain_depth: 10,
+            pred_dep_graph: HashMap::new(),
         }
     }
 
@@ -416,6 +424,7 @@ impl KnowledgeBaseInner {
         self.rebuilding = false;
         self.typed_domain_members_cache.clear();
         self.domain_members_dirty = true;
+        self.pred_dep_graph.clear();
     }
 
     pub(super) fn fresh_fact_id(&mut self) -> u64 {
@@ -565,33 +574,35 @@ pub(super) fn register_ground_material_conditional(
     node_id: u32,
     subs: &HashMap<String, GroundTerm>,
     inner: &mut KnowledgeBaseInner,
-) {
+) -> Result<(), String> {
     // Walk through Skolemized Exists and tense wrappers to find the Or(Not(...), ...) pattern
-    let Ok(node) = get_node(buffer, node_id) else { return };
+    let Ok(node) = get_node(buffer, node_id) else { return Ok(()) };
     match node {
         LogicNode::ExistsNode((v, body)) if subs.contains_key(v.as_str()) => {
-            register_ground_material_conditional(buffer, *body, subs, inner);
+            register_ground_material_conditional(buffer, *body, subs, inner)?;
         }
         LogicNode::PastNode(n)
         | LogicNode::PresentNode(n)
         | LogicNode::FutureNode(n)
         | LogicNode::ObligatoryNode(n)
         | LogicNode::PermittedNode(n) => {
-            register_ground_material_conditional(buffer, *n, subs, inner);
+            register_ground_material_conditional(buffer, *n, subs, inner)?;
         }
         LogicNode::AndNode((l, r)) => {
-            register_ground_material_conditional(buffer, *l, subs, inner);
-            register_ground_material_conditional(buffer, *r, subs, inner);
+            register_ground_material_conditional(buffer, *l, subs, inner)?;
+            register_ground_material_conditional(buffer, *r, subs, inner)?;
         }
         LogicNode::OrNode((l, r)) => {
             // Check for Or(Not(P), Q) — material conditional P → Q
+            // The Not here encodes implication (P→Q ≡ ¬P∨Q), not body-negation.
+            // The dependency Q→P is positive, so negated_condition_indices is empty.
             if let Ok(LogicNode::NotNode(neg_inner)) = get_node(buffer, *l) {
                 let mut typed_conds = Vec::new();
                 collect_ground_facts(buffer, *neg_inner, subs, None, &mut typed_conds);
                 let mut typed_concls = Vec::new();
                 collect_ground_facts(buffer, *r, subs, None, &mut typed_concls);
                 let label = build_typed_rule_label(&typed_conds, &typed_concls);
-                register_rule(inner, label, vec![], typed_conds, typed_concls);
+                register_rule(inner, label, vec![], typed_conds, typed_concls, vec![])?;
             }
             // Also check Or(Q, Not(P)) — reversed order (commutativity)
             else if let Ok(LogicNode::NotNode(neg_inner)) = get_node(buffer, *r) {
@@ -600,16 +611,17 @@ pub(super) fn register_ground_material_conditional(
                 let mut typed_concls = Vec::new();
                 collect_ground_facts(buffer, *l, subs, None, &mut typed_concls);
                 let label = build_typed_rule_label(&typed_conds, &typed_concls);
-                register_rule(inner, label, vec![], typed_conds, typed_concls);
+                register_rule(inner, label, vec![], typed_conds, typed_concls, vec![])?;
             }
         }
         _ => {}
     }
+    Ok(())
 }
 
 /// Process a logic buffer into the knowledge base without recording in the fact registry.
 /// Used by both initial assertion and rebuild-on-retract replay.
-pub(super) fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) {
+pub(super) fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuffer) -> Result<(), String> {
     for &root_id in &logic.roots {
         if root_id as usize >= logic.nodes.len() {
             eprintln!(
@@ -666,7 +678,7 @@ pub(super) fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuf
                 }
             }
             collect_and_note_constants(logic, root_id, inner);
-            compile_forall_to_rule(logic, root_id, &skolem_subs, inner);
+            compile_forall_to_rule(logic, root_id, &skolem_subs, inner)?;
         } else {
             // ═══ GROUND FORMULA PATH ═══
             for (var, gt) in &skolem_subs {
@@ -690,12 +702,13 @@ pub(super) fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuf
             }
 
             // Register ground material conditionals for backward-chaining
-            register_ground_material_conditional(logic, root_id, &skolem_subs, inner);
+            register_ground_material_conditional(logic, root_id, &skolem_subs, inner)?;
         }
 
         // Phase 3: Generate extra witnesses for Count quantifiers (n > 1)
         generate_count_extra_witnesses(logic, root_id, &skolem_subs, inner);
     }
+    Ok(())
 }
 
 /// Collect candidate GroundTerm values for an existential variable by walking
