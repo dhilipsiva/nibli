@@ -192,6 +192,15 @@ impl ProofTrace {
     }
 }
 
+/// Aggregation operation for numeric witness values.
+#[derive(Clone, Debug)]
+pub enum AggregateOp {
+    Sum,
+    Min,
+    Max,
+    Avg,
+}
+
 /// Unique identifier for a stored fact in the knowledge base.
 pub type FactId = u64;
 

@@ -380,6 +380,45 @@ impl KnowledgeBase {
         self.query_find_inner(logic).map_err(NibliError::Reasoning)
     }
 
+    /// Count the number of distinct witness binding sets satisfying the formula.
+    pub fn count_witnesses(&self, logic: LogicBuffer) -> Result<usize, NibliError> {
+        self.query_find(logic).map(|bindings| bindings.len())
+    }
+
+    /// Aggregate numeric values of a named variable across all witness binding sets.
+    /// Returns `None` if no numeric witnesses found for the variable.
+    pub fn aggregate(
+        &self,
+        logic: LogicBuffer,
+        variable: &str,
+        op: nibli_types::logic::AggregateOp,
+    ) -> Result<Option<f64>, NibliError> {
+        let bindings = self.query_find(logic)?;
+        let values: Vec<f64> = bindings
+            .iter()
+            .filter_map(|binding_set| {
+                binding_set
+                    .iter()
+                    .find(|b| b.variable == variable)
+                    .and_then(|b| match &b.term {
+                        LogicalTerm::Number(n) => Some(*n),
+                        _ => None,
+                    })
+            })
+            .collect();
+        if values.is_empty() {
+            return Ok(None);
+        }
+        use nibli_types::logic::AggregateOp;
+        let result = match op {
+            AggregateOp::Sum => values.iter().sum(),
+            AggregateOp::Min => values.iter().cloned().reduce(f64::min).unwrap(),
+            AggregateOp::Max => values.iter().cloned().reduce(f64::max).unwrap(),
+            AggregateOp::Avg => values.iter().sum::<f64>() / values.len() as f64,
+        };
+        Ok(Some(result))
+    }
+
     pub fn query_entailment_with_proof(
         &self,
         logic: LogicBuffer,
@@ -5533,6 +5572,101 @@ mod tests {
         assert!(
             !query(&kb, make_query("alis", "danlu")),
             "danlu(alis) should NOT persist after hypothetical"
+        );
+    }
+
+    // ══════════════════════════════════════════════���════════════════════
+    // AGGREGATION TESTS
+    // ═════════���════════════════════════════���════════════════════════════
+
+    /// Helper: build ∃x. P(x, zo'e) — existential find query (unbound x).
+    fn make_find_query(predicate: &str) -> LogicBuffer {
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            predicate,
+            vec![
+                LogicalTerm::Variable("x".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let root = exists(&mut nodes, "x", body);
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
+    }
+
+    #[test]
+    fn test_count_witnesses_zero() {
+        let kb = new_kb();
+        let count = kb.count_witnesses(make_find_query("gerku")).unwrap();
+        assert_eq!(count, 0, "no gerku asserted → 0 witnesses");
+    }
+
+    #[test]
+    fn test_count_witnesses_multiple() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_assertion("bob", "gerku"));
+        assert_buf(&kb, make_assertion("carol", "gerku"));
+        let count = kb.count_witnesses(make_find_query("gerku")).unwrap();
+        assert!(count >= 3, "at least 3 gerku witnesses, got {}", count);
+    }
+
+    #[test]
+    fn test_aggregate_sum() {
+        // Assert numeric facts: tenfa(2, zo'e), tenfa(3, zo'e), tenfa(5, zo'e)
+        // Sum over x in ∃x. tenfa(x, zo'e) → 2+3+5 = 10
+        let kb = new_kb();
+        for val in [2.0, 3.0, 5.0] {
+            let mut nodes = Vec::new();
+            let root = pred(
+                &mut nodes,
+                "tenfa",
+                vec![LogicalTerm::Number(val), LogicalTerm::Unspecified],
+            );
+            assert_buf(
+                &kb,
+                LogicBuffer {
+                    nodes,
+                    roots: vec![root],
+                },
+            );
+        }
+        // Build ∃x. tenfa(x, zo'e)
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "tenfa",
+            vec![
+                LogicalTerm::Variable("x".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let root = exists(&mut nodes, "x", body);
+        let buf = LogicBuffer {
+            nodes,
+            roots: vec![root],
+        };
+        use nibli_types::logic::AggregateOp;
+        let sum = kb.aggregate(buf, "x", AggregateOp::Sum).unwrap();
+        assert_eq!(sum, Some(10.0), "sum of 2+3+5 should be 10");
+    }
+
+    #[test]
+    fn test_count_with_backward_chain() {
+        // Rule: gerku → danlu. Assert gerku for 2 entities.
+        // Count ∃x. danlu(x) should find at least 2 (+ xorlo Skolems).
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_assertion("bob", "gerku"));
+        let count = kb.count_witnesses(make_find_query("danlu")).unwrap();
+        assert!(
+            count >= 2,
+            "at least 2 danlu witnesses via backward chain, got {}",
+            count
         );
     }
 }
