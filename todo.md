@@ -69,7 +69,7 @@ Ordered by dependency, correctness impact, then user value.
 
 ## Tier 3: Storage, Search Strategy & Performance
 
-9. **Persistent fact store with lazy on-demand loading**
+9. **Persistent fact store — WASI lazy-loading backend (native redb backend done)**
    Everything is in-memory. WASM has a 4 GB limit. Large KBs (10K+ facts) must not load data they don't need.
 
    **Design: append-only facts log + predicate index + LRU page cache.**
