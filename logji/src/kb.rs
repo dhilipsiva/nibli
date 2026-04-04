@@ -21,6 +21,49 @@ pub struct PredicateSignature {
     pub source: SignatureSource,
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// INTEGRITY CONSTRAINTS
+// ═══════════════════════════════════════════════════════════════════
+
+/// An integrity constraint: a set of conjuncts that must NOT all hold simultaneously.
+/// If every conjunct is satisfied in the KB, the constraint is violated.
+#[derive(Clone, Debug)]
+pub struct IntegrityConstraint {
+    /// Human-readable label, e.g. "mutual-exclusion: gerku ∧ mlatu".
+    pub label: String,
+    /// Facts that must NOT all be true at the same time.
+    pub conjuncts: Vec<StoredFact>,
+    /// Predicate names appearing in conjuncts (for fast filtering).
+    pub predicates: Vec<String>,
+}
+
+/// Check integrity constraints relevant to a predicate after a fact insertion.
+/// Returns Err with a violation message if any constraint is fully satisfied.
+pub(super) fn check_constraints_for_predicate(
+    rel: &str,
+    inner: &KnowledgeBaseInner,
+) -> Option<String> {
+    for constraint in &inner.integrity_constraints {
+        if !constraint.predicates.iter().any(|p| p == rel) {
+            continue;
+        }
+        let all_hold = constraint.conjuncts.iter().all(|c| inner.fact_store.contains(c));
+        if all_hold {
+            let facts: Vec<String> = constraint
+                .conjuncts
+                .iter()
+                .map(|c| c.to_display_string())
+                .collect();
+            return Some(format!(
+                "Integrity violation '{}': {} all hold simultaneously",
+                constraint.label,
+                facts.join(" ∧ ")
+            ));
+        }
+    }
+    None
+}
+
 /// Bounds-checked node access. Returns a descriptive error instead of panicking
 /// if node_id is out of range (e.g., from a malformed LogicBuffer).
 pub(super) fn get_node(buffer: &LogicBuffer, node_id: u32) -> Result<&LogicNode, String> {
@@ -424,6 +467,9 @@ pub(super) struct KnowledgeBaseInner {
     /// Predicate signature registry: tracks arity + source for each predicate.
     /// Populated lazily on first assertion. Warns on arity mismatch.
     pub(super) predicate_registry: HashMap<String, PredicateSignature>,
+    /// Integrity constraints: conjunct sets that must NOT all hold simultaneously.
+    /// Checked after each fact insertion. Violations are warnings in permissive mode.
+    pub(super) integrity_constraints: Vec<IntegrityConstraint>,
 }
 
 impl KnowledgeBaseInner {
@@ -447,6 +493,7 @@ impl KnowledgeBaseInner {
             equivalence_parent: HashMap::new(),
             equivalence_classes: HashMap::new(),
             predicate_registry: HashMap::new(),
+            integrity_constraints: Vec::new(),
         }
     }
 
@@ -468,6 +515,8 @@ impl KnowledgeBaseInner {
         self.equivalence_parent.clear();
         self.equivalence_classes.clear();
         self.predicate_registry.clear();
+        // Note: integrity_constraints are NOT cleared on reset — they're
+        // structural declarations, not derived state. Clear explicitly if needed.
     }
 
     pub(super) fn fresh_fact_id(&mut self) -> u64 {

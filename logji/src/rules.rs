@@ -394,7 +394,15 @@ pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner
         );
     }
 
+    let rel_owned = rel.to_string();
     inner.fact_store.insert(fact);
+
+    // Check integrity constraints (permissive mode: warn, don't reject).
+    if !inner.integrity_constraints.is_empty() && !inner.rebuilding {
+        if let Some(violation) = check_constraints_for_predicate(&rel_owned, inner) {
+            eprintln!("[Constraint] {}", violation);
+        }
+    }
 }
 
 

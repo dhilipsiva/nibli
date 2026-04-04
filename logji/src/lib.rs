@@ -335,6 +335,18 @@ impl KnowledgeBase {
             .map_err(NibliError::Semantic)
     }
 
+    /// Register an integrity constraint: a set of facts that must NOT all hold simultaneously.
+    /// Checked after every fact insertion (permissive mode: warns on violation).
+    pub fn register_constraint(&self, label: String, conjuncts: Vec<kb::StoredFact>) {
+        let predicates: Vec<String> = conjuncts.iter().map(|c| c.relation().to_string()).collect();
+        let mut inner = self.inner.borrow_mut();
+        inner.integrity_constraints.push(kb::IntegrityConstraint {
+            label,
+            conjuncts,
+            predicates,
+        });
+    }
+
     pub fn query_entailment(&self, logic: LogicBuffer) -> Result<QueryResult, NibliError> {
         self.query_entailment_inner(logic)
             .map_err(NibliError::Reasoning)
@@ -5150,6 +5162,97 @@ mod tests {
         {
             let inner = kb.inner.borrow();
             assert!(inner.predicate_registry.is_empty(), "registry should be empty after reset");
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // INTEGRITY CONSTRAINT TESTS
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// Helper: build a ground StoredFact for constraint registration.
+    fn constraint_fact(rel: &str, entity: &str) -> StoredFact {
+        StoredFact::Bare(GroundFact::new(
+            rel,
+            vec![
+                GroundTerm::Constant(entity.to_string()),
+                GroundTerm::Unspecified,
+            ],
+        ))
+    }
+
+    #[test]
+    fn test_constraint_no_violation() {
+        let kb = new_kb();
+        // deny gerku(adam) ∧ mlatu(adam)
+        kb.register_constraint(
+            "no-gerku-and-mlatu".into(),
+            vec![
+                constraint_fact("gerku", "adam"),
+                constraint_fact("mlatu", "adam"),
+            ],
+        );
+        // Assert only gerku(adam) — no violation.
+        assert_buf(&kb, make_assertion("adam", "gerku"));
+        // Should still be queryable.
+        assert!(query(&kb, make_query("adam", "gerku")));
+    }
+
+    #[test]
+    fn test_constraint_violation_detected() {
+        let kb = new_kb();
+        // deny gerku(adam) ∧ mlatu(adam)
+        kb.register_constraint(
+            "no-gerku-and-mlatu".into(),
+            vec![
+                constraint_fact("gerku", "adam"),
+                constraint_fact("mlatu", "adam"),
+            ],
+        );
+        // Assert both — violation warning printed (permissive mode).
+        assert_buf(&kb, make_assertion("adam", "gerku"));
+        assert_buf(&kb, make_assertion("adam", "mlatu"));
+        // Both facts are still in the store (permissive mode).
+        assert!(query(&kb, make_query("adam", "gerku")));
+        assert!(query(&kb, make_query("adam", "mlatu")));
+    }
+
+    #[test]
+    fn test_constraint_different_entities_no_violation() {
+        let kb = new_kb();
+        // deny gerku(adam) ∧ mlatu(adam) — specific to adam.
+        kb.register_constraint(
+            "no-gerku-and-mlatu-adam".into(),
+            vec![
+                constraint_fact("gerku", "adam"),
+                constraint_fact("mlatu", "adam"),
+            ],
+        );
+        // Assert gerku(adam) and mlatu(bob) — no violation (different entities).
+        assert_buf(&kb, make_assertion("adam", "gerku"));
+        assert_buf(&kb, make_assertion("bob", "mlatu"));
+        // No violation — the constraint is about adam specifically.
+    }
+
+    #[test]
+    fn test_constraint_survives_reset() {
+        let kb = new_kb();
+        kb.register_constraint(
+            "test-constraint".into(),
+            vec![constraint_fact("gerku", "adam")],
+        );
+        {
+            let inner = kb.inner.borrow();
+            assert_eq!(inner.integrity_constraints.len(), 1);
+        }
+        // Constraints survive reset (they're structural declarations).
+        kb.reset().unwrap();
+        {
+            let inner = kb.inner.borrow();
+            assert_eq!(
+                inner.integrity_constraints.len(),
+                1,
+                "constraints should survive reset"
+            );
         }
     }
 }
