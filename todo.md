@@ -4,15 +4,7 @@ Ordered by dependency, correctness impact, then user value.
 
 ## Tier 1: Soundness & Correctness Gaps
 
-1. **Add predicate signature validation**
-   logji accepts any predicate with any arity from any entry path. Arity mismatches are silent.
-
-   - Add `PredicateRegistry` to `KnowledgeBaseInner` seeded from the PHF dictionary (known gismu/lujvo arities).
-   - On fact assertion, validate arity. Unknown predicates: accept + register with `Inferred` source + warning (permissive mode initially).
-   - Validate all entry paths: `process_assertion`, `assert_fact_with_id`, compute ingestion.
-   - Tests: valid arity, invalid arity, unknown predicate.
-
-4. **Add integrity constraints (`deny`)**
+1. **Add integrity constraints (`deny`)**
    No mechanism to declare "this must never be true." Domain modelling errors (asserting contradictory facts) are silent.
 
    - Add `deny` constraint registration: `deny P(x) ∧ Q(x)` means "if both hold for any x, error."
