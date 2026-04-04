@@ -4,16 +4,7 @@ Ordered by dependency, correctness impact, then user value.
 
 ## Tier 2: Completeness & Explanation
 
-1. **Add hypothetical / counterfactual reasoning**
-   No way to ask "what if X were true?" without mutating the real KB.
-
-   - Add `KnowledgeBase::with_assumptions(assumptions, callback)`: clone KB, assert assumptions, run callback, discard.
-   - REPL: `:assume <lojban> then <query>`.
-   - GraphQL: `queryWithAssumptions` mutation.
-   - Cloning is acceptable for v1. Copy-on-write overlay is a future optimisation.
-   - Tests: assumption doesn't persist, nested assumptions, assumption creating contradiction.
-
-8. **Add aggregation (count/sum over witnesses)**
+1. **Add aggregation (count/sum over witnesses)**
    No way to ask "how many entities satisfy P?" or "what is the sum of X where P(X)?" Needed for GDPR (counting data subjects) and pharma (summing dosages).
 
    - Add `count_witnesses(formula) -> usize` alongside `find_witnesses`.
