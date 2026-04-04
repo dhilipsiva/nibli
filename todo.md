@@ -2,20 +2,9 @@
 
 Ordered by dependency, correctness impact, then user value.
 
-## Tier 1: Soundness & Correctness Gaps
-
-1. **Add integrity constraints (`deny`)**
-   No mechanism to declare "this must never be true." Domain modelling errors (asserting contradictory facts) are silent.
-
-   - Add `deny` constraint registration: `deny P(x) ∧ Q(x)` means "if both hold for any x, error."
-   - Check constraints on every assertion (after fact is added, before returning success).
-   - If violated, return `NibliError::Reasoning("Integrity violation: ...")` with the violating bindings.
-   - Pairs with predicate validation (#3) and contradiction detection.
-   - Tests: simple mutual exclusion, constraint with universal quantifier, constraint violation on derived fact.
-
 ## Tier 2: Completeness & Explanation
 
-5. **Make NAF dependencies explicit and surfaceable**
+1. **Make NAF dependencies explicit and surfaceable**
    Currently NAF is applied uniformly with no visibility into which conclusions depend on it.
 
    - Tag proof trace steps that depend on NAF with a `NafDependency` marker.
