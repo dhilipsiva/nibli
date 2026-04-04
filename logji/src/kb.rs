@@ -472,6 +472,32 @@ pub(super) struct KnowledgeBaseInner {
     pub(super) integrity_constraints: Vec<IntegrityConstraint>,
 }
 
+impl Clone for KnowledgeBaseInner {
+    fn clone(&self) -> Self {
+        Self {
+            skolem_counter: self.skolem_counter,
+            known_entities: self.known_entities.clone(),
+            known_event_entities: self.known_event_entities.clone(),
+            known_descriptions: self.known_descriptions.clone(),
+            known_rules: self.known_rules.clone(),
+            skolem_fn_registry: self.skolem_fn_registry.clone(),
+            fact_store: self.fact_store.clone_box(),
+            universal_rules: self.universal_rules.clone(),
+            fact_counter: self.fact_counter,
+            fact_registry: self.fact_registry.clone(),
+            rebuilding: false,
+            typed_domain_members_cache: self.typed_domain_members_cache.clone(),
+            domain_members_dirty: self.domain_members_dirty,
+            max_chain_depth: self.max_chain_depth,
+            pred_dep_graph: self.pred_dep_graph.clone(),
+            equivalence_parent: self.equivalence_parent.clone(),
+            equivalence_classes: self.equivalence_classes.clone(),
+            predicate_registry: self.predicate_registry.clone(),
+            integrity_constraints: self.integrity_constraints.clone(),
+        }
+    }
+}
+
 impl KnowledgeBaseInner {
     pub(super) fn new() -> Self {
         Self {

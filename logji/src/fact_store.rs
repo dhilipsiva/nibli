@@ -36,11 +36,15 @@ pub trait FactStore {
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Clone the store into a new boxed instance (for hypothetical reasoning).
+    fn clone_box(&self) -> Box<dyn FactStore>;
 }
 
 /// In-memory fact store backed by HashSet + predicate index HashMap.
 /// This is a direct extraction of the previous `typed_facts` +
 /// `typed_predicate_facts` fields from `KnowledgeBaseInner`.
+#[derive(Clone)]
 pub struct InMemoryFactStore {
     facts: HashSet<StoredFact>,
     predicate_index: HashMap<String, HashSet<StoredFact>>,
@@ -94,5 +98,9 @@ impl FactStore for InMemoryFactStore {
 
     fn len(&self) -> usize {
         self.facts.len()
+    }
+
+    fn clone_box(&self) -> Box<dyn FactStore> {
+        Box::new(self.clone())
     }
 }

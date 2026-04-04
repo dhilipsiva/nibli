@@ -335,6 +335,30 @@ impl KnowledgeBase {
             .map_err(NibliError::Semantic)
     }
 
+    /// Run a query under temporary assumptions without mutating the real KB.
+    /// Clones the KB, asserts all assumptions into the clone, runs the callback,
+    /// and discards the clone. The original KB is untouched.
+    ///
+    /// Supports multiple independent hypotheticals (each gets its own snapshot)
+    /// and nesting (the callback receives a `&KnowledgeBase` with `with_assumptions`).
+    pub fn with_assumptions<F, R>(
+        &self,
+        assumptions: &[LogicBuffer],
+        f: F,
+    ) -> Result<R, NibliError>
+    where
+        F: FnOnce(&KnowledgeBase) -> R,
+    {
+        let snapshot = self.inner.borrow().clone();
+        let temp_kb = KnowledgeBase {
+            inner: RefCell::new(snapshot),
+        };
+        for buf in assumptions {
+            temp_kb.assert_fact(buf.clone(), "assumption".into())?;
+        }
+        Ok(f(&temp_kb))
+    }
+
     /// Register an integrity constraint: a set of facts that must NOT all hold simultaneously.
     /// Checked after every fact insertion (permissive mode: warns on violation).
     pub fn register_constraint(&self, label: String, conjuncts: Vec<kb::StoredFact>) {
@@ -5423,6 +5447,92 @@ mod tests {
         assert!(
             has_not_found,
             "conjunction failure should show mlatu not found"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // HYPOTHETICAL / COUNTERFACTUAL REASONING TESTS
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_hypothetical_doesnt_persist() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+
+        // In hypothetical: assume mlatu(alis), verify it holds.
+        let result = kb
+            .with_assumptions(&[make_assertion("alis", "mlatu")], |hyp| {
+                query(hyp, make_query("alis", "mlatu"))
+            })
+            .unwrap();
+        assert!(result, "mlatu(alis) should hold inside hypothetical");
+
+        // Back in real KB: mlatu(alis) should NOT hold.
+        assert!(
+            !query(&kb, make_query("alis", "mlatu")),
+            "mlatu(alis) should NOT persist after hypothetical"
+        );
+        // Original fact should still hold.
+        assert!(query(&kb, make_query("alis", "gerku")));
+    }
+
+    #[test]
+    fn test_hypothetical_query_conjunction() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+
+        // In hypothetical: assume mlatu(alis), query gerku(alis) ∧ mlatu(alis).
+        let result = kb
+            .with_assumptions(&[make_assertion("alis", "mlatu")], |hyp| {
+                // Build conjunction query.
+                let mut nodes = Vec::new();
+                let p = pred(
+                    &mut nodes,
+                    "gerku",
+                    vec![
+                        LogicalTerm::Constant("alis".to_string()),
+                        LogicalTerm::Unspecified,
+                    ],
+                );
+                let q = pred(
+                    &mut nodes,
+                    "mlatu",
+                    vec![
+                        LogicalTerm::Constant("alis".to_string()),
+                        LogicalTerm::Unspecified,
+                    ],
+                );
+                let conj = and(&mut nodes, p, q);
+                let buf = LogicBuffer {
+                    nodes,
+                    roots: vec![conj],
+                };
+                query(hyp, buf)
+            })
+            .unwrap();
+        assert!(result, "gerku ∧ mlatu should hold inside hypothetical");
+    }
+
+    #[test]
+    fn test_hypothetical_with_rule() {
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+
+        // In hypothetical: assume gerku(alis), query danlu(alis) via backward chaining.
+        let result = kb
+            .with_assumptions(&[make_assertion("alis", "gerku")], |hyp| {
+                query(hyp, make_query("alis", "danlu"))
+            })
+            .unwrap();
+        assert!(
+            result,
+            "danlu(alis) should hold via gerku→danlu + assumed gerku(alis)"
+        );
+
+        // Back in real KB: danlu(alis) should NOT hold (no gerku(alis) asserted).
+        assert!(
+            !query(&kb, make_query("alis", "danlu")),
+            "danlu(alis) should NOT persist after hypothetical"
         );
     }
 }

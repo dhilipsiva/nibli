@@ -212,6 +212,17 @@ impl FactStore for RedbFactStore {
     fn len(&self) -> usize {
         self.all_facts_cache.len()
     }
+
+    fn clone_box(&self) -> Box<dyn FactStore> {
+        // For hypothetical reasoning on persistent stores, clone the in-memory
+        // caches into an InMemoryFactStore (detached from disk). The hypothetical
+        // KB operates purely in memory — no disk writes.
+        let mut mem = logji::fact_store::InMemoryFactStore::new();
+        for fact in &self.all_facts_cache {
+            mem.insert(fact.clone());
+        }
+        Box::new(mem)
+    }
 }
 
 impl Drop for RedbFactStore {
