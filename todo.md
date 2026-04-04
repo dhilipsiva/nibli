@@ -2,17 +2,7 @@
 
 Ordered by dependency, correctness impact, then user value.
 
-## Tier 2: Completeness & Explanation
-
-1. **Add aggregation (count/sum over witnesses)**
-   No way to ask "how many entities satisfy P?" or "what is the sum of X where P(X)?" Needed for GDPR (counting data subjects) and pharma (summing dosages).
-
-   - Add `count_witnesses(formula) -> usize` alongside `find_witnesses`.
-   - Add `aggregate(formula, variable, op) -> f64` where op is Sum/Min/Max/Avg.
-   - Wire through WIT, REPL (`:count`), and GraphQL.
-   - Tests: count with 0/1/N witnesses, sum over numeric terms, aggregate with backward-chained witnesses.
-
-## Tier 3: Storage, Search Strategy & Performance
+## Tier 3: Search Strategy & Performance
 
 9. **Replace fixed-depth search with iterative deepening**
    The depth cutoff silently collapses "not found within depth N" to ResourceExceeded. Iterative deepening guarantees finding the shallowest proof.
