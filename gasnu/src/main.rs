@@ -374,11 +374,22 @@ fn rule_to_proto(rule: &ProofRule) -> ProtoRule {
                 substituted: substituted.clone(),
             }
         }
+        ProofRule::RuleAttemptFailed((label, cond)) => ProtoRule::RuleAttemptFailed {
+            rule_label: label.clone(),
+            failed_condition: cond.clone(),
+        },
+        ProofRule::PredicateNotFound(pred) => ProtoRule::PredicateNotFound {
+            predicate: pred.clone(),
+        },
     }
 }
 
 /// Convert a WIT ProofTrace to the protocol wire type for shared formatting.
 fn trace_to_proto(trace: &ProofTrace) -> ProtoTrace {
+    let naf = trace
+        .steps
+        .iter()
+        .any(|s| matches!(s.rule, ProofRule::Negation) && s.holds);
     ProtoTrace {
         steps: trace
             .steps
@@ -390,6 +401,7 @@ fn trace_to_proto(trace: &ProofTrace) -> ProtoTrace {
             })
             .collect(),
         root: trace.root,
+        naf_dependent: naf,
     }
 }
 

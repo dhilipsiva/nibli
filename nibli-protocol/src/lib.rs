@@ -72,6 +72,13 @@ pub enum ProofRule {
         du_facts: String,
         substituted: String,
     },
+    #[serde(rename = "rule_attempt_failed")]
+    RuleAttemptFailed {
+        rule_label: String,
+        failed_condition: String,
+    },
+    #[serde(rename = "predicate_not_found")]
+    PredicateNotFound { predicate: String },
 }
 
 // ── KB status wire types ──
@@ -696,6 +703,8 @@ impl ProofRule {
             Self::Derived { .. } => "⊢",
             Self::ProofRef { .. } => "↑",
             Self::EqualitySubstitution { .. } => "≡",
+            Self::RuleAttemptFailed { .. } => "✗",
+            Self::PredicateNotFound { .. } => "?",
         }
     }
 
@@ -741,6 +750,17 @@ impl ProofRule {
                 du_facts,
                 humanize_fact(substituted)
             ),
+            Self::RuleAttemptFailed {
+                rule_label,
+                failed_condition,
+            } => format!(
+                "Rule failed ({}): condition {} not satisfied",
+                humanize_rule_label(rule_label),
+                humanize_fact(failed_condition)
+            ),
+            Self::PredicateNotFound { predicate } => {
+                format!("Not found: {}", humanize_fact(predicate))
+            }
         }
     }
 
@@ -759,6 +779,7 @@ impl ProofRule {
             Self::ForallVacuous | Self::ForallVerified { .. } => "proof-exists",
             Self::CountResult { .. } => "proof-check",
             Self::EqualitySubstitution { .. } => "proof-derived",
+            Self::RuleAttemptFailed { .. } | Self::PredicateNotFound { .. } => "proof-failed",
         }
     }
 
@@ -825,6 +846,20 @@ impl ProofRule {
                     humanize_fact(substituted),
                     tag
                 )
+            }
+            Self::RuleAttemptFailed {
+                rule_label,
+                failed_condition,
+            } => {
+                format!(
+                    "Rule failed ({}): {} not satisfied -> {}",
+                    humanize_rule_label(rule_label),
+                    humanize_fact(failed_condition),
+                    tag
+                )
+            }
+            Self::PredicateNotFound { predicate } => {
+                format!("Not found: {} -> {}", humanize_fact(predicate), tag)
             }
         }
     }

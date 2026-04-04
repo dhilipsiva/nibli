@@ -339,6 +339,10 @@ interface logic-types {
         proof-ref(string),
         /// Equality substitution via `du`. Payload: (original-fact, du-facts-used, substituted-fact).
         equality-substitution(tuple<string, string, string>),
+        /// Rule was tried but a condition failed. Payload: (rule-label, failed-condition).
+        rule-attempt-failed(tuple<string, string>),
+        /// Predicate not found in KB and no rule could derive it. Payload: predicate display.
+        predicate-not-found(string),
     }
 
     /// A single step in a proof trace.

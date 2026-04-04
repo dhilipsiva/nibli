@@ -120,6 +120,13 @@ fn rule_to_json(rule: &logji_logic::ProofRule) -> ProofRuleJson {
                 substituted: s.clone(),
             }
         }
+        logji_logic::ProofRule::RuleAttemptFailed((l, c)) => ProofRuleJson::RuleAttemptFailed {
+            rule_label: l.clone(),
+            failed_condition: c.clone(),
+        },
+        logji_logic::ProofRule::PredicateNotFound(p) => ProofRuleJson::PredicateNotFound {
+            predicate: p.clone(),
+        },
     }
 }
 

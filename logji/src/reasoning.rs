@@ -1803,27 +1803,58 @@ pub(super) fn check_formula_holds_traced(
                     let idx = trace_predicate_provenance_typed(&fact, inner, steps, 0, memo);
                     Ok((true, idx))
                 } else {
-                    let method = match result {
-                        QueryResult::Unknown(UnknownReason::CycleCut) => "cycle_cut",
-                        QueryResult::Unknown(UnknownReason::IncompleteKnowledge) => {
-                            "incomplete_knowledge"
+                    // Record failure details: which rules were tried, which conditions failed.
+                    let mut failed_children = Vec::new();
+
+                    // Check if any rules could have matched this predicate.
+                    let rules_snapshot =
+                        collect_matching_rules_typed(&fact, &inner.universal_rules);
+                    for rule in &rules_snapshot {
+                        for concl in &rule.typed_conclusions {
+                            if let Some(bindings) = unify_facts(concl, &fact) {
+                                // Rule matched structurally. Check which condition failed.
+                                for ct in &rule.typed_conditions {
+                                    let cond_fact = substitute_fact(ct, &bindings);
+                                    let cond_result = check_predicate_in_kb_typed(
+                                        &cond_fact,
+                                        inner,
+                                        1,
+                                        &mut HashSet::new(),
+                                    );
+                                    if !cond_result.is_true() {
+                                        let child_idx = steps.len() as u32;
+                                        steps.push(ProofStep {
+                                            rule: ProofRule::RuleAttemptFailed((
+                                                rule.label.clone(),
+                                                cond_fact.to_display_string(),
+                                            )),
+                                            holds: false,
+                                            children: vec![],
+                                        });
+                                        failed_children.push(child_idx);
+                                        break; // First failed condition is enough.
+                                    }
+                                }
+                            }
                         }
-                        QueryResult::Unknown(UnknownReason::NafDependent) => "naf_dependent",
-                        QueryResult::ResourceExceeded(ResourceKind::Depth) => "depth_limit",
-                        QueryResult::ResourceExceeded(ResourceKind::Fuel) => "fuel_limit",
-                        QueryResult::ResourceExceeded(ResourceKind::Memory) => "memory_limit",
-                        QueryResult::False => "kb",
-                        QueryResult::True => "kb",
-                    };
+                    }
+
                     let idx = steps.len() as u32;
-                    steps.push(ProofStep {
-                        rule: ProofRule::PredicateCheck((
-                            method.to_string(),
-                            fact.to_display_string(),
-                        )),
-                        holds: false,
-                        children: vec![],
-                    });
+                    if failed_children.is_empty() {
+                        // No rules matched at all — predicate simply not found.
+                        steps.push(ProofStep {
+                            rule: ProofRule::PredicateNotFound(fact.to_display_string()),
+                            holds: false,
+                            children: vec![],
+                        });
+                    } else {
+                        // Rules were tried but conditions failed.
+                        steps.push(ProofStep {
+                            rule: ProofRule::PredicateNotFound(fact.to_display_string()),
+                            holds: false,
+                            children: failed_children,
+                        });
+                    }
                     Ok((false, idx))
                 }
             } else {

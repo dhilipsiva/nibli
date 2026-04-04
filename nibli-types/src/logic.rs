@@ -149,6 +149,10 @@ pub enum ProofRule {
     /// Equality substitution: fact proved by substituting equivalent terms.
     /// Fields: (original fact, du facts used, substituted fact that was found).
     EqualitySubstitution((String, String, String)),
+    /// Rule was tried but a condition failed. Fields: (rule_label, failed_condition_display).
+    RuleAttemptFailed((String, String)),
+    /// Predicate not found in fact store and no rule could derive it. Field: predicate display.
+    PredicateNotFound(String),
 }
 
 /// A single step in a proof trace.

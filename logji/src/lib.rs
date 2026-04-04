@@ -2136,14 +2136,18 @@ mod tests {
 
     #[test]
     fn test_proof_trace_false_predicate() {
-        // Query non-existent fact → predicate-check with result false
+        // Query non-existent fact → PredicateNotFound with result false
         let kb = new_kb();
         let (result, trace) = query_with_proof(&kb, make_query("mi", "klama"));
 
         assert!(!result);
         let root_step = &trace.steps[trace.root as usize];
         assert!(!root_step.holds);
-        assert!(matches!(&root_step.rule, ProofRule::PredicateCheck(_)));
+        assert!(
+            matches!(&root_step.rule, ProofRule::PredicateNotFound(_)),
+            "expected PredicateNotFound, got {:?}",
+            root_step.rule
+        );
     }
 
     #[test]
@@ -5334,6 +5338,91 @@ mod tests {
         assert!(
             !trace.has_naf_dependency(),
             "failed negation (inner proved) is not NAF"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // FAILURE TRACE TESTS
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_failure_trace_predicate_not_found() {
+        // Query a predicate that was never asserted and no rules derive it.
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku")); // Need domain member.
+        let (result, trace) = kb
+            .query_entailment_with_proof_inner(make_query("alis", "mlatu"))
+            .unwrap();
+        assert!(result.is_false());
+        // The trace should contain a PredicateNotFound step.
+        let has_not_found = trace
+            .steps
+            .iter()
+            .any(|s| matches!(s.rule, ProofRule::PredicateNotFound(_)));
+        assert!(
+            has_not_found,
+            "failure trace should contain PredicateNotFound for mlatu(alis)"
+        );
+    }
+
+    #[test]
+    fn test_failure_trace_rule_attempt_failed() {
+        // Assert rule gerku→danlu, query danlu(alis) where gerku(alis) is NOT asserted.
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_assertion("alis", "mlatu")); // alis exists but not as gerku.
+        let (result, trace) = kb
+            .query_entailment_with_proof_inner(make_query("alis", "danlu"))
+            .unwrap();
+        assert!(result.is_false());
+        // The trace should contain a RuleAttemptFailed showing the gerku condition failed.
+        let has_rule_failed = trace
+            .steps
+            .iter()
+            .any(|s| matches!(s.rule, ProofRule::RuleAttemptFailed(_)));
+        assert!(
+            has_rule_failed,
+            "failure trace should show the gerku→danlu rule was tried and gerku condition failed"
+        );
+    }
+
+    #[test]
+    fn test_failure_trace_conjunction_partial() {
+        // Query P∧Q where P holds but Q doesn't.
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        let mut nodes = Vec::new();
+        let p = pred(
+            &mut nodes,
+            "gerku",
+            vec![
+                LogicalTerm::Constant("alis".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let q = pred(
+            &mut nodes,
+            "mlatu",
+            vec![
+                LogicalTerm::Constant("alis".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let conj = and(&mut nodes, p, q);
+        let buf = LogicBuffer {
+            nodes,
+            roots: vec![conj],
+        };
+        let (result, trace) = kb.query_entailment_with_proof_inner(buf).unwrap();
+        assert!(result.is_false(), "gerku(alis) ∧ mlatu(alis) should be false");
+        // The trace should show gerku succeeded but mlatu failed.
+        let has_not_found = trace
+            .steps
+            .iter()
+            .any(|s| matches!(s.rule, ProofRule::PredicateNotFound(_)));
+        assert!(
+            has_not_found,
+            "conjunction failure should show mlatu not found"
         );
     }
 }

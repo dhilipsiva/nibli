@@ -144,6 +144,12 @@ fn convert_proof_rule(r: &logji_logic::ProofRule) -> export_logic::ProofRule {
         logji_logic::ProofRule::EqualitySubstitution((o, d, s)) => {
             export_logic::ProofRule::EqualitySubstitution((o.clone(), d.clone(), s.clone()))
         }
+        logji_logic::ProofRule::RuleAttemptFailed((l, c)) => {
+            export_logic::ProofRule::RuleAttemptFailed((l.clone(), c.clone()))
+        }
+        logji_logic::ProofRule::PredicateNotFound(p) => {
+            export_logic::ProofRule::PredicateNotFound(p.clone())
+        }
     }
 }
 
