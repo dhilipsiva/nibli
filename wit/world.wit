@@ -337,6 +337,8 @@ interface logic-types {
         /// Reference to an already-proved fact. Payload: fact string that was proved.
         /// No children — the full proof was shown at its first occurrence.
         proof-ref(string),
+        /// Equality substitution via `du`. Payload: (original-fact, du-facts-used, substituted-fact).
+        equality-substitution(tuple<string, string, string>),
     }
 
     /// A single step in a proof trace.

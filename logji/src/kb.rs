@@ -146,6 +146,18 @@ impl StoredFact {
         }
     }
 
+    /// Wrap a GroundFact with the same tense/deontic context as another StoredFact.
+    pub fn with_tense_from(fact: GroundFact, source: &StoredFact) -> Self {
+        match source {
+            StoredFact::Bare(_) => StoredFact::Bare(fact),
+            StoredFact::Past(_) => StoredFact::Past(fact),
+            StoredFact::Present(_) => StoredFact::Present(fact),
+            StoredFact::Future(_) => StoredFact::Future(fact),
+            StoredFact::Obligatory(_) => StoredFact::Obligatory(fact),
+            StoredFact::Permitted(_) => StoredFact::Permitted(fact),
+        }
+    }
+
     /// Wrap a GroundFact with a tense/deontic context.
     pub fn with_tense(fact: GroundFact, tense: Option<&str>) -> Self {
         match tense {
@@ -385,6 +397,10 @@ pub(super) struct KnowledgeBaseInner {
     /// Predicate dependency graph for stratification checking.
     /// Maps conclusion predicate → Vec<(condition predicate, is_negative)>.
     pub(super) pred_dep_graph: HashMap<String, Vec<(String, bool)>>,
+    /// Union-Find parent map for du-equivalence. Maps term → parent term.
+    pub(super) equivalence_parent: HashMap<GroundTerm, GroundTerm>,
+    /// Reverse index: canonical representative → all members of its class.
+    pub(super) equivalence_classes: HashMap<GroundTerm, Vec<GroundTerm>>,
 }
 
 impl KnowledgeBaseInner {
@@ -405,6 +421,8 @@ impl KnowledgeBaseInner {
             domain_members_dirty: true,
             max_chain_depth: 10,
             pred_dep_graph: HashMap::new(),
+            equivalence_parent: HashMap::new(),
+            equivalence_classes: HashMap::new(),
         }
     }
 
@@ -423,6 +441,8 @@ impl KnowledgeBaseInner {
         self.typed_domain_members_cache.clear();
         self.domain_members_dirty = true;
         self.pred_dep_graph.clear();
+        self.equivalence_parent.clear();
+        self.equivalence_classes.clear();
     }
 
     pub(super) fn fresh_fact_id(&mut self) -> u64 {
@@ -482,6 +502,95 @@ impl KnowledgeBaseInner {
     pub(super) fn all_typed_domain_members(&self) -> &[GroundTerm] {
         &self.typed_domain_members_cache
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EQUALITY / UNION-FIND for `du` predicate
+// ═══════════════════════════════════════════════════════════════════
+
+/// Find the canonical representative of a term (path-compressing).
+pub(super) fn find_canonical(
+    parent: &mut HashMap<GroundTerm, GroundTerm>,
+    term: &GroundTerm,
+) -> GroundTerm {
+    if !parent.contains_key(term) {
+        return term.clone();
+    }
+    let p = parent.get(term).unwrap().clone();
+    if &p == term {
+        return p;
+    }
+    let root = find_canonical(parent, &p);
+    // Path compression
+    parent.insert(term.clone(), root.clone());
+    root
+}
+
+/// Non-compressing find (for `&` contexts where mutation is not available).
+pub(super) fn find_canonical_readonly(
+    parent: &HashMap<GroundTerm, GroundTerm>,
+    term: &GroundTerm,
+) -> GroundTerm {
+    let mut current = term.clone();
+    loop {
+        match parent.get(&current) {
+            Some(p) if p != &current => current = p.clone(),
+            _ => return current,
+        }
+    }
+}
+
+/// Union two terms under the `du` equivalence relation.
+pub(super) fn union_terms(inner: &mut KnowledgeBaseInner, a: &GroundTerm, b: &GroundTerm) {
+    let root_a = find_canonical(&mut inner.equivalence_parent, a);
+    let root_b = find_canonical(&mut inner.equivalence_parent, b);
+    if root_a == root_b {
+        return; // Already equivalent.
+    }
+
+    // Merge smaller class into larger (union by size).
+    let size_a = inner
+        .equivalence_classes
+        .get(&root_a)
+        .map_or(1, |c| c.len());
+    let size_b = inner
+        .equivalence_classes
+        .get(&root_b)
+        .map_or(1, |c| c.len());
+    let (winner, loser) = if size_a >= size_b {
+        (root_a, root_b)
+    } else {
+        (root_b, root_a)
+    };
+
+    // Point loser at winner.
+    inner
+        .equivalence_parent
+        .insert(loser.clone(), winner.clone());
+
+    // Merge class lists.
+    let loser_class = inner
+        .equivalence_classes
+        .remove(&loser)
+        .unwrap_or_else(|| vec![loser.clone()]);
+    let winner_class = inner
+        .equivalence_classes
+        .entry(winner.clone())
+        .or_insert_with(|| vec![winner.clone()]);
+    winner_class.extend(loser_class);
+}
+
+/// Get all members of a term's equivalence class (readonly).
+pub(super) fn get_equivalence_class_readonly(
+    parent: &HashMap<GroundTerm, GroundTerm>,
+    classes: &HashMap<GroundTerm, Vec<GroundTerm>>,
+    term: &GroundTerm,
+) -> Vec<GroundTerm> {
+    let canon = find_canonical_readonly(parent, term);
+    classes
+        .get(&canon)
+        .cloned()
+        .unwrap_or_else(|| vec![term.clone()])
 }
 
 /// The WIT-exported resource type.
@@ -695,6 +804,14 @@ pub(super) fn process_assertion(inner: &mut KnowledgeBaseInner, logic: &LogicBuf
             // Flatten top-level conjunctions and assert each leaf as a typed fact.
             let mut typed_leaves = Vec::new();
             collect_ground_facts(logic, root_id, &skolem_subs, None, &mut typed_leaves);
+            for fact in &typed_leaves {
+                // Intercept `du` facts for equality equivalence indexing.
+                if let StoredFact::Bare(gf) = fact {
+                    if gf.relation == "du" && gf.args.len() == 2 {
+                        union_terms(inner, &gf.args[0], &gf.args[1]);
+                    }
+                }
+            }
             for fact in typed_leaves {
                 assert_typed_fact(fact, inner);
             }
@@ -898,7 +1015,18 @@ fn extract_from_index(
         // For other positions, we don't filter here — the full body
         // verification in find_witnesses handles correctness.
         // This gives us a superset of valid candidates, which is safe.
-        candidates.insert(fact_args[anchor.var_position].clone());
+        let direct = fact_args[anchor.var_position].clone();
+        candidates.insert(direct.clone());
+        // Expand by equivalence class.
+        if !inner.equivalence_parent.is_empty() {
+            for equiv in get_equivalence_class_readonly(
+                &inner.equivalence_parent,
+                &inner.equivalence_classes,
+                &direct,
+            ) {
+                candidates.insert(equiv);
+            }
+        }
     }
 }
 

@@ -427,7 +427,101 @@ pub(super) fn clear_typed_pred_cache() {
 
 /// Check if a typed fact is asserted in the typed fact store.
 pub(super) fn typed_fact_is_asserted(fact: &StoredFact, inner: &KnowledgeBaseInner) -> bool {
-    inner.fact_store.contains(fact)
+    // Fast path: exact match.
+    if inner.fact_store.contains(fact) {
+        return true;
+    }
+    // Equivalence path: try substitutions of equivalent terms in args.
+    if inner.equivalence_parent.is_empty() {
+        return false;
+    }
+    typed_fact_is_asserted_with_equivalence(fact, inner)
+}
+
+/// Check if a fact holds under any equivalence-class substitution of its arguments.
+fn typed_fact_is_asserted_with_equivalence(
+    fact: &StoredFact,
+    inner: &KnowledgeBaseInner,
+) -> bool {
+    let gf = fact.inner();
+    // For each arg position, get the equivalence class.
+    let equiv_args: Vec<Vec<GroundTerm>> = gf
+        .args
+        .iter()
+        .map(|arg| {
+            get_equivalence_class_readonly(
+                &inner.equivalence_parent,
+                &inner.equivalence_classes,
+                arg,
+            )
+        })
+        .collect();
+
+    // If no argument has equivalents beyond itself, nothing to try.
+    if equiv_args.iter().all(|cls| cls.len() <= 1) {
+        return false;
+    }
+
+    // Enumerate cartesian product of equivalence classes (skip original combo).
+    for combo in CartesianProduct::new(&equiv_args) {
+        let variant_gf = GroundFact::new(gf.relation.clone(), combo);
+        let variant = StoredFact::with_tense_from(variant_gf, fact);
+        if variant != *fact && inner.fact_store.contains(&variant) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Simple cartesian product iterator over Vec<Vec<T>>.
+struct CartesianProduct<'a> {
+    sets: &'a [Vec<GroundTerm>],
+    indices: Vec<usize>,
+    done: bool,
+}
+
+impl<'a> CartesianProduct<'a> {
+    fn new(sets: &'a [Vec<GroundTerm>]) -> Self {
+        let done = sets.iter().any(|s| s.is_empty());
+        Self {
+            sets,
+            indices: vec![0; sets.len()],
+            done,
+        }
+    }
+}
+
+impl Iterator for CartesianProduct<'_> {
+    type Item = Vec<GroundTerm>;
+
+    fn next(&mut self) -> Option<Vec<GroundTerm>> {
+        if self.done {
+            return None;
+        }
+        let result: Vec<GroundTerm> = self
+            .indices
+            .iter()
+            .enumerate()
+            .map(|(i, &idx)| self.sets[i][idx].clone())
+            .collect();
+
+        // Advance indices (rightmost first).
+        let mut carry = true;
+        for i in (0..self.sets.len()).rev() {
+            if carry {
+                self.indices[i] += 1;
+                if self.indices[i] < self.sets[i].len() {
+                    carry = false;
+                } else {
+                    self.indices[i] = 0;
+                }
+            }
+        }
+        if carry {
+            self.done = true;
+        }
+        Some(result)
+    }
 }
 
 /// Collect rules whose conclusion templates match the given fact's relation name.
@@ -446,6 +540,26 @@ pub(super) fn check_predicate_in_kb_typed(
     depth: usize,
     visited: &mut HashSet<StoredFact>,
 ) -> QueryResult {
+    // du reflexivity + transitivity: du(x,x) always holds; du(a,b) holds
+    // if a and b are in the same equivalence class.
+    if fact.relation() == "du" {
+        let args = &fact.inner().args;
+        if args.len() == 2 {
+            if args[0] == args[1] {
+                return QueryResult::True; // Reflexivity
+            }
+            if !inner.equivalence_parent.is_empty() {
+                let canon_a =
+                    find_canonical_readonly(&inner.equivalence_parent, &args[0]);
+                let canon_b =
+                    find_canonical_readonly(&inner.equivalence_parent, &args[1]);
+                if canon_a == canon_b {
+                    return QueryResult::True; // Symmetry + transitivity
+                }
+            }
+        }
+    }
+
     if typed_fact_is_asserted(fact, inner) {
         return QueryResult::True;
     }
@@ -459,7 +573,38 @@ pub(super) fn check_predicate_in_kb_typed(
     if let Some(result) = cached {
         return result;
     }
-    let result = try_backward_chain_typed(fact, inner, depth, visited);
+    let mut result = try_backward_chain_typed(fact, inner, depth, visited);
+
+    // If backward chaining failed, try equivalence variants.
+    if result.is_false() && !inner.equivalence_parent.is_empty() && fact.relation() != "du" {
+        let gf = fact.inner();
+        let equiv_args: Vec<Vec<GroundTerm>> = gf
+            .args
+            .iter()
+            .map(|arg| {
+                get_equivalence_class_readonly(
+                    &inner.equivalence_parent,
+                    &inner.equivalence_classes,
+                    arg,
+                )
+            })
+            .collect();
+        if equiv_args.iter().any(|cls| cls.len() > 1) {
+            for combo in CartesianProduct::new(&equiv_args) {
+                let variant_gf = GroundFact::new(gf.relation.clone(), combo);
+                let variant = StoredFact::with_tense_from(variant_gf, fact);
+                if variant != *fact {
+                    let variant_result =
+                        check_predicate_in_kb_typed(&variant, inner, depth, visited);
+                    if variant_result.is_true() {
+                        result = QueryResult::True;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     PRED_CACHE_ENABLED.with(|e| {
         if e.get() {
             TYPED_PRED_CACHE.with(|c| c.borrow_mut().insert(fact.clone(), result.clone()));

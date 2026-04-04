@@ -141,6 +141,9 @@ fn convert_proof_rule(r: &logji_logic::ProofRule) -> export_logic::ProofRule {
             export_logic::ProofRule::Derived((l.clone(), f.clone()))
         }
         logji_logic::ProofRule::ProofRef(f) => export_logic::ProofRule::ProofRef(f.clone()),
+        logji_logic::ProofRule::EqualitySubstitution((o, d, s)) => {
+            export_logic::ProofRule::EqualitySubstitution((o.clone(), d.clone(), s.clone()))
+        }
     }
 }
 

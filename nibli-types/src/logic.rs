@@ -146,6 +146,9 @@ pub enum ProofRule {
     Asserted(String),
     Derived((String, String)),
     ProofRef(String),
+    /// Equality substitution: fact proved by substituting equivalent terms.
+    /// Fields: (original fact, du facts used, substituted fact that was found).
+    EqualitySubstitution((String, String, String)),
 }
 
 /// A single step in a proof trace.

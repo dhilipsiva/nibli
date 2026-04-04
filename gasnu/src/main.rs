@@ -367,6 +367,13 @@ fn rule_to_proto(rule: &ProofRule) -> ProtoRule {
             fact: fact.clone(),
         },
         ProofRule::ProofRef(fact) => ProtoRule::ProofRef { fact: fact.clone() },
+        ProofRule::EqualitySubstitution((original, du_facts, substituted)) => {
+            ProtoRule::EqualitySubstitution {
+                original: original.clone(),
+                du_facts: du_facts.clone(),
+                substituted: substituted.clone(),
+            }
+        }
     }
 }
 

@@ -113,6 +113,13 @@ fn rule_to_json(rule: &logji_logic::ProofRule) -> ProofRuleJson {
             fact: fact.clone(),
         },
         logji_logic::ProofRule::ProofRef(fact) => ProofRuleJson::ProofRef { fact: fact.clone() },
+        logji_logic::ProofRule::EqualitySubstitution((o, d, s)) => {
+            ProofRuleJson::EqualitySubstitution {
+                original: o.clone(),
+                du_facts: d.clone(),
+                substituted: s.clone(),
+            }
+        }
     }
 }
 

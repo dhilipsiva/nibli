@@ -62,6 +62,12 @@ pub enum ProofRule {
     Derived { label: String, fact: String },
     #[serde(rename = "proof_ref")]
     ProofRef { fact: String },
+    #[serde(rename = "equality_substitution")]
+    EqualitySubstitution {
+        original: String,
+        du_facts: String,
+        substituted: String,
+    },
 }
 
 // ── KB status wire types ──
@@ -681,6 +687,7 @@ impl ProofRule {
             Self::Asserted { .. } => "▣",
             Self::Derived { .. } => "⊢",
             Self::ProofRef { .. } => "↑",
+            Self::EqualitySubstitution { .. } => "≡",
         }
     }
 
@@ -716,6 +723,16 @@ impl ProofRule {
                 format!("Derived ({}): {}", label, humanize_fact(fact))
             }
             Self::ProofRef { fact } => format!("(proved above): {}", humanize_fact(fact)),
+            Self::EqualitySubstitution {
+                original,
+                du_facts,
+                substituted,
+            } => format!(
+                "Equality: {} via {} → {}",
+                humanize_fact(original),
+                du_facts,
+                humanize_fact(substituted)
+            ),
         }
     }
 
@@ -733,6 +750,7 @@ impl ProofRule {
             Self::DisjunctionCheck { .. } | Self::DisjunctionIntro { .. } => "proof-derived",
             Self::ForallVacuous | Self::ForallVerified { .. } => "proof-exists",
             Self::CountResult { .. } => "proof-check",
+            Self::EqualitySubstitution { .. } => "proof-derived",
         }
     }
 
@@ -780,6 +798,19 @@ impl ProofRule {
             }
             Self::ProofRef { fact } => {
                 format!("(see above): {} -> {}", humanize_fact(fact), tag)
+            }
+            Self::EqualitySubstitution {
+                original,
+                du_facts,
+                substituted,
+            } => {
+                format!(
+                    "Equality: {} via {} → {} -> {}",
+                    humanize_fact(original),
+                    du_facts,
+                    humanize_fact(substituted),
+                    tag
+                )
             }
         }
     }

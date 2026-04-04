@@ -147,6 +147,8 @@ impl KnowledgeBase {
         inner.fact_store.clear();
         inner.universal_rules.clear();
         inner.pred_dep_graph.clear();
+        inner.equivalence_parent.clear();
+        inner.equivalence_classes.clear();
 
         // Collect non-retracted buffers ordered by ID (clone to avoid borrow conflict)
         let mut entries: Vec<(&u64, &FactRecord)> = inner
@@ -4915,5 +4917,159 @@ mod tests {
                 assert!(has_mlatu, "mlatu edge should remain from rule2");
             }
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // EQUALITY / du TESTS
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// Helper: build du(a, b) assertion.
+    fn make_du(a: &str, b: &str) -> LogicBuffer {
+        let mut nodes = Vec::new();
+        let root = pred(
+            &mut nodes,
+            "du",
+            vec![
+                LogicalTerm::Constant(a.to_string()),
+                LogicalTerm::Constant(b.to_string()),
+            ],
+        );
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
+    }
+
+    /// Helper: build du query.
+    fn make_du_query(a: &str, b: &str) -> LogicBuffer {
+        make_du(a, b)
+    }
+
+    /// Helper: build a 2-arg assertion P(a, b).
+    fn make_assertion_2(entity1: &str, entity2: &str, predicate: &str) -> LogicBuffer {
+        let mut nodes = Vec::new();
+        let root = pred(
+            &mut nodes,
+            predicate,
+            vec![
+                LogicalTerm::Constant(entity1.to_string()),
+                LogicalTerm::Constant(entity2.to_string()),
+            ],
+        );
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
+    }
+
+    #[test]
+    fn test_du_basic_substitution() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_du("alis", "bob"));
+        assert!(
+            query(&kb, make_query("bob", "gerku")),
+            "gerku(bob) should hold via du(alis, bob) + gerku(alis)"
+        );
+    }
+
+    #[test]
+    fn test_du_symmetry() {
+        let kb = new_kb();
+        assert_buf(&kb, make_du("alis", "bob"));
+        assert!(
+            query(&kb, make_du_query("bob", "alis")),
+            "du(bob, alis) should hold via symmetry"
+        );
+    }
+
+    #[test]
+    fn test_du_transitivity() {
+        let kb = new_kb();
+        assert_buf(&kb, make_du("alis", "bob"));
+        assert_buf(&kb, make_du("bob", "carol"));
+        assert!(
+            query(&kb, make_du_query("alis", "carol")),
+            "du(alis, carol) should hold via transitivity"
+        );
+    }
+
+    #[test]
+    fn test_du_reflexivity() {
+        let kb = new_kb();
+        // du(alis, alis) should hold without any assertion.
+        assert!(
+            query(&kb, make_du_query("alis", "alis")),
+            "du(alis, alis) should hold via reflexivity"
+        );
+    }
+
+    #[test]
+    fn test_du_with_backward_chain() {
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_du("alis", "bob"));
+        assert!(
+            query(&kb, make_query("bob", "danlu")),
+            "danlu(bob) should hold via gerku→danlu + gerku(alis) + du(alis, bob)"
+        );
+    }
+
+    #[test]
+    fn test_du_multiarg() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion_2("alis", "bob", "prami"));
+        assert_buf(&kb, make_du("bob", "carol"));
+        assert!(
+            query(&kb, make_assertion_2("alis", "carol", "prami")),
+            "prami(alis, carol) should hold via du(bob, carol) + prami(alis, bob)"
+        );
+    }
+
+    #[test]
+    fn test_du_retraction_rebuild() {
+        let kb = new_kb();
+        let du_id = assert_id(&kb, make_du("alis", "bob"), "du");
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert!(query(&kb, make_query("bob", "gerku")), "should hold before retraction");
+
+        kb.retract_fact_inner(du_id).unwrap();
+        assert!(
+            !query(&kb, make_query("bob", "gerku")),
+            "gerku(bob) should be FALSE after retracting du(alis, bob)"
+        );
+    }
+
+    #[test]
+    fn test_du_no_tensed() {
+        // Past(du(alis, bob)) should NOT activate equivalence.
+        let kb = new_kb();
+        let mut nodes = Vec::new();
+        let du_node = pred(
+            &mut nodes,
+            "du",
+            vec![
+                LogicalTerm::Constant("alis".to_string()),
+                LogicalTerm::Constant("bob".to_string()),
+            ],
+        );
+        let past = {
+            let id = nodes.len() as u32;
+            nodes.push(LogicNode::PastNode(du_node));
+            id
+        };
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![past],
+            },
+        );
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert!(
+            !query(&kb, make_query("bob", "gerku")),
+            "gerku(bob) should be FALSE — tensed du does not activate equivalence"
+        );
     }
 }
