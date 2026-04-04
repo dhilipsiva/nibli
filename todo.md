@@ -4,18 +4,7 @@ Ordered by dependency, correctness impact, then user value.
 
 ## Tier 1: Soundness & Correctness Gaps
 
-1. **Add equality / identity reasoning (`du`)**
-   The biggest classical FOL gap. No way to state "Adam is the same entity as the King."
-
-   - Reserve `du` as a special predicate in logji.
-   - Implement congruence closure (union-find): `du(a,b)` + `du(b,c)` → `du(a,c)`.
-   - Modify `check_predicate_in_kb_typed`: when checking `P(a)`, also check `P(x)` for all `x` in `a`'s equivalence class.
-   - Modify backward chaining: treat equivalent terms as matching during unification.
-   - Add `ProofRule::EqualitySubstitution` variant for proof traces.
-   - Start with untensed equality only. Tensed equality (`Past(du(a,b))`) is future work.
-   - Tests: simple alias, transitive chain, interaction with universal rules, interaction with Skolem terms.
-
-3. **Add predicate signature validation**
+1. **Add predicate signature validation**
    logji accepts any predicate with any arity from any entry path. Arity mismatches are silent.
 
    - Add `PredicateRegistry` to `KnowledgeBaseInner` seeded from the PHF dictionary (known gismu/lujvo arities).
@@ -117,3 +106,8 @@ Ordered by dependency, correctness impact, then user value.
 
 15. **Publish GUARANTEES.md**
     Formal statement of engine properties: soundness, completeness bounds, negation policy, equality semantics, resource limits, retraction model.
+
+
+## Others
+
+16. WASI lazy-loading backend: implement WasiFactStore using WASI file I/O (fd_read/fd_write/fd_seek) + LRU cache with per-predicate lazy loading. That's deferred per the todo.
