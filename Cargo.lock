@@ -3355,6 +3355,8 @@ name = "logji"
 version = "0.1.0"
 dependencies = [
  "nibli-types",
+ "serde",
+ "smuni-dictionary",
 ]
 
 [[package]]
@@ -3703,6 +3705,7 @@ dependencies = [
 name = "nibli-store"
 version = "0.1.0"
 dependencies = [
+ "logji",
  "postcard",
  "redb",
  "serde",
