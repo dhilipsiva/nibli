@@ -69,57 +69,7 @@ Ordered by dependency, correctness impact, then user value.
 
 ## Tier 3: Storage, Search Strategy & Performance
 
-9. **Persistent fact store — WASI lazy-loading backend (native redb backend done)**
-   Everything is in-memory. WASM has a 4 GB limit. Large KBs (10K+ facts) must not load data they don't need.
-
-   **Design: append-only facts log + predicate index + LRU page cache.**
-
-   On-disk format (two files):
-   - **Facts log** — append-only. Each entry: `[u64 fact_id][u32 lojban_len][lojban bytes][u32 stored_fact_len][postcard StoredFact]`. Original Lojban source preserved alongside compiled form (pipeline is one-way; can't reconstruct Lojban from StoredFact).
-   - **Predicate index** — `HashMap<relation, Vec<u64 offset>>` serialized on flush. Loaded on startup (kilobytes). Points into facts log.
-
-   In-memory (bounded, configurable):
-   - Predicate index — always loaded (small).
-   - LRU page cache — recently accessed `StoredFact` entries (e.g., 16 MB budget). Only facts touched by the current query chain are loaded.
-   - Universal rules — always loaded (small, needed for every query).
-   - Domain member sets — always loaded (needed for quantifier evaluation). These are just the set of known entity names, not the facts themselves.
-   - Equality index / union-find — always loaded once equality lands (#2).
-
-   **Critical invariant: never read a fact from disk unless backward chaining or predicate lookup demands it.** A query for `gerku(adam)` touches only the `gerku` index entries, not the entire KB.
-
-   Query path:
-   1. Predicate lookup → in-memory index → file offsets for that relation.
-   2. Check LRU cache for each offset.
-   3. Cache miss → `seek` + `read` from facts log → postcard deserialize → insert into cache.
-   4. Backward chaining operates on cached facts. Rule condition checks trigger further lazy loads.
-
-   Assertion path:
-   1. Serialize StoredFact + Lojban source → append to facts log (one sequential write).
-   2. Update in-memory predicate index with new offset.
-   3. Insert into LRU cache (hot on assertion).
-   4. Periodically flush predicate index to disk.
-
-   Retraction path:
-   - Mark fact as tombstoned in index (don't rewrite log). Compaction pass reclaims space offline.
-
-   Abstraction layer (`FactStore` trait):
-   ```rust
-   trait FactStore {
-       fn lookup_predicate(&self, relation: &str) -> impl Iterator<Item = &StoredFact>;
-       fn append(&mut self, fact: &StoredFact, source: &str) -> Result<u64>;
-       fn retract(&mut self, fact_id: u64) -> Result<()>;
-       fn domain_members(&self) -> &DomainMembers;
-   }
-   ```
-   - WASM impl: WASI file I/O (`fd_read`/`fd_write`/`fd_seek`) + LRU cache.
-   - Native impl: `memmap2` for zero-copy reads + same LRU cache interface.
-   - In-memory impl: current `HashSet<StoredFact>` wrapped in the trait (for tests and small KBs).
-
-   **Why not redb/sled/SQLite:** All use `mmap` or C FFI. None compile to `wasm32-wasip2`. The access pattern (predicate-indexed lookup) is narrow enough that a custom store is simpler and faster than a general-purpose DB.
-
-   Estimated scope: ~500 lines (log format, index, LRU cache, trait, WASI impl, native impl).
-
-10. **Replace fixed-depth search with iterative deepening (depends on #9)**
+9. **Replace fixed-depth search with iterative deepening**
    The depth cutoff silently collapses "not found within depth N" to ResourceExceeded. Iterative deepening guarantees finding the shallowest proof.
 
    - Modify `check_formula_holds` to accept max_depth parameter.
@@ -127,7 +77,7 @@ Ordered by dependency, correctness impact, then user value.
    - Proof found at depth D → True. Exhausted all depths → False. Hit max_chain_depth → ResourceExceeded.
    - Future: SLG tabling for full recursive completeness (subsumes visited-set cycle detection).
 
-11. **Add argument-position indexing (depends on #9)**
+10. **Add argument-position indexing**
     `typed_predicate_facts` indexes by relation name only. Queries like "everything where x2 is adam" scan all facts for that predicate.
 
     - Add `typed_arg_index: HashMap<(String, usize, GroundTerm), HashSet<StoredFact>>`.
@@ -135,7 +85,7 @@ Ordered by dependency, correctness impact, then user value.
     - Use argument index in `check_predicate_in_kb_typed` and witness extraction when query has ground arguments.
     - Benchmark: compare query latency before/after on 1000+ facts for a single predicate.
 
-12. **Add incremental truth maintenance (TMS)**
+11. **Add incremental truth maintenance (TMS)**
     Retraction currently rebuilds the entire KB from surviving base facts. O(KB) per retraction.
 
     - Add `Justification` to derived facts: which rule + which bindings + which supporting facts.
@@ -143,7 +93,7 @@ Ordered by dependency, correctness impact, then user value.
     - Keep full rebuild as fallback (`:rebuild` REPL command).
     - Tests: retract base fact → derived facts removed, unrelated facts survive.
 
-13. **Selective forward propagation for marked rules**
+12. **Selective forward propagation for marked rules**
     Keep backward chaining as primary. Allow opt-in forward propagation for specific rules (e.g., contradiction detection).
 
     - Add `forward: bool` flag to `UniversalRuleRecord` (default false).
@@ -153,11 +103,11 @@ Ordered by dependency, correctness impact, then user value.
 
 ## Tier 4: Code Quality & Measurement
 
-14. **Break up oversized core files**
+13. **Break up oversized core files**
     - `logji/src/lib.rs` (4,715 lines) → extract `assertion.rs`, `query.rs`, `witness.rs`, `proof.rs`.
     - `gerna/src/grammar.rs` (4,452 lines) → split per-construct (sumti, selbri, sentence parsing).
 
-15. **Add criterion benchmarks**
+14. **Add criterion benchmarks**
     - Query latency at 10² / 10³ / 10⁴ facts (parametric).
     - Recursive rule chains (depth 2, 5, 10).
     - Witness extraction over growing domain sizes.
@@ -165,5 +115,5 @@ Ordered by dependency, correctness impact, then user value.
     - Retract + rebuild vs retract + TMS (once TMS lands).
     - Store baseline in `benches/baseline.json`.
 
-16. **Publish GUARANTEES.md**
+15. **Publish GUARANTEES.md**
     Formal statement of engine properties: soundness, completeness bounds, negation policy, equality semantics, resource limits, retraction model.
