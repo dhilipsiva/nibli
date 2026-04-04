@@ -362,7 +362,38 @@ fn check_stratification(graph: &HashMap<String, Vec<(String, bool)>>) -> Result<
 }
 
 /// Assert a typed fact into the fact store.
+/// Validates predicate arity against the registry (permissive mode: warns on mismatch).
 pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner) {
+    let rel = fact.relation();
+    let arity = fact.inner().args.len();
+
+    if let Some(sig) = inner.predicate_registry.get(rel) {
+        // Known predicate — check arity.
+        if sig.arity != arity {
+            eprintln!(
+                "[Arity Warning] '{}': expected {} args, got {} ({})",
+                rel,
+                sig.arity,
+                arity,
+                match sig.source {
+                    SignatureSource::Dictionary => "dictionary",
+                    SignatureSource::Inferred => "inferred from first use",
+                }
+            );
+        }
+    } else {
+        // First time seeing this predicate — register it.
+        let source = if smuni_dictionary::get_arity(rel).is_some() {
+            SignatureSource::Dictionary
+        } else {
+            SignatureSource::Inferred
+        };
+        inner.predicate_registry.insert(
+            rel.to_string(),
+            PredicateSignature { arity, source },
+        );
+    }
+
     inner.fact_store.insert(fact);
 }
 

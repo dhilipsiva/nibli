@@ -1,6 +1,26 @@
 use super::*;
 use std::cell::Cell;
 
+// ═══════════════════════════════════════════════════════════════════
+// PREDICATE SIGNATURE VALIDATION
+// ═══════════════════════════════════════════════════════════════════
+
+/// How a predicate's arity was determined.
+#[derive(Clone, Debug)]
+pub enum SignatureSource {
+    /// Arity from the jbovlaste PHF dictionary (known gismu/lujvo).
+    Dictionary,
+    /// Arity inferred from the first assertion (not in dictionary).
+    Inferred,
+}
+
+/// Registered predicate signature: arity + how it was determined.
+#[derive(Clone, Debug)]
+pub struct PredicateSignature {
+    pub arity: usize,
+    pub source: SignatureSource,
+}
+
 /// Bounds-checked node access. Returns a descriptive error instead of panicking
 /// if node_id is out of range (e.g., from a malformed LogicBuffer).
 pub(super) fn get_node(buffer: &LogicBuffer, node_id: u32) -> Result<&LogicNode, String> {
@@ -401,6 +421,9 @@ pub(super) struct KnowledgeBaseInner {
     pub(super) equivalence_parent: HashMap<GroundTerm, GroundTerm>,
     /// Reverse index: canonical representative → all members of its class.
     pub(super) equivalence_classes: HashMap<GroundTerm, Vec<GroundTerm>>,
+    /// Predicate signature registry: tracks arity + source for each predicate.
+    /// Populated lazily on first assertion. Warns on arity mismatch.
+    pub(super) predicate_registry: HashMap<String, PredicateSignature>,
 }
 
 impl KnowledgeBaseInner {
@@ -423,6 +446,7 @@ impl KnowledgeBaseInner {
             pred_dep_graph: HashMap::new(),
             equivalence_parent: HashMap::new(),
             equivalence_classes: HashMap::new(),
+            predicate_registry: HashMap::new(),
         }
     }
 
@@ -443,6 +467,7 @@ impl KnowledgeBaseInner {
         self.pred_dep_graph.clear();
         self.equivalence_parent.clear();
         self.equivalence_classes.clear();
+        self.predicate_registry.clear();
     }
 
     pub(super) fn fresh_fact_id(&mut self) -> u64 {

@@ -149,6 +149,7 @@ impl KnowledgeBase {
         inner.pred_dep_graph.clear();
         inner.equivalence_parent.clear();
         inner.equivalence_classes.clear();
+        inner.predicate_registry.clear();
 
         // Collect non-retracted buffers ordered by ID (clone to avoid borrow conflict)
         let mut entries: Vec<(&u64, &FactRecord)> = inner
@@ -5071,5 +5072,84 @@ mod tests {
             !query(&kb, make_query("bob", "gerku")),
             "gerku(bob) should be FALSE — tensed du does not activate equivalence"
         );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // PREDICATE SIGNATURE VALIDATION TESTS
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_predicate_valid_arity_consistent() {
+        // Two assertions of the same predicate with the same arity — no warning.
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_assertion("bob", "gerku"));
+        let inner = kb.inner.borrow();
+        let sig = inner.predicate_registry.get("gerku").unwrap();
+        assert_eq!(sig.arity, 2, "gerku should be registered with arity 2");
+    }
+
+    #[test]
+    fn test_predicate_arity_mismatch_detected() {
+        // Assert gerku(alis, zo'e) (arity 2), then gerku(bob) (arity 1).
+        // The registry should have arity 2 from the first assertion.
+        // The second assertion warns but still inserts (permissive mode).
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku")); // arity 2
+        // Now assert gerku with arity 1 (single arg).
+        let mut nodes = Vec::new();
+        let root = pred(
+            &mut nodes,
+            "gerku",
+            vec![LogicalTerm::Constant("bob".to_string())],
+        );
+        assert_buf(&kb, LogicBuffer { nodes, roots: vec![root] });
+        // Both facts should be in the store (permissive mode).
+        let inner = kb.inner.borrow();
+        assert!(inner.fact_store.len() >= 2, "both facts should be stored despite arity mismatch");
+        let sig = inner.predicate_registry.get("gerku").unwrap();
+        assert_eq!(sig.arity, 2, "registry keeps the first-seen arity");
+    }
+
+    #[test]
+    fn test_predicate_unknown_registered_as_inferred() {
+        // Assert a predicate not in the dictionary.
+        let kb = new_kb();
+        let mut nodes = Vec::new();
+        let root = pred(
+            &mut nodes,
+            "xyzzy",
+            vec![LogicalTerm::Constant("alis".to_string())],
+        );
+        assert_buf(&kb, LogicBuffer { nodes, roots: vec![root] });
+        let inner = kb.inner.borrow();
+        let sig = inner.predicate_registry.get("xyzzy").unwrap();
+        assert_eq!(sig.arity, 1);
+        assert!(matches!(sig.source, SignatureSource::Inferred));
+    }
+
+    #[test]
+    fn test_predicate_dictionary_source() {
+        // Assert a known gismu — should be registered with Dictionary source.
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        let inner = kb.inner.borrow();
+        let sig = inner.predicate_registry.get("gerku").unwrap();
+        assert!(matches!(sig.source, SignatureSource::Dictionary));
+    }
+
+    #[test]
+    fn test_predicate_registry_cleared_on_reset() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        {
+            let inner = kb.inner.borrow();
+            assert!(!inner.predicate_registry.is_empty());
+        }
+        kb.reset().unwrap();
+        {
+            let inner = kb.inner.borrow();
+            assert!(inner.predicate_registry.is_empty(), "registry should be empty after reset");
+        }
     }
 }
