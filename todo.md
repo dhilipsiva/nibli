@@ -4,15 +4,7 @@ Ordered by dependency, correctness impact, then user value.
 
 ## Tier 2: Completeness & Explanation
 
-1. **Make NAF dependencies explicit and surfaceable**
-   Currently NAF is applied uniformly with no visibility into which conclusions depend on it.
-
-   - Tag proof trace steps that depend on NAF with a `NafDependency` marker.
-   - When a conclusion's proof contains NAF-dependent steps, `QueryResult` carries metadata.
-   - Add `:naf-deps` REPL command showing which active conclusions depend on NAF.
-   - Document: "Under CWA, `False` means 'not derivable.' Under open-world, it would mean `Unknown`."
-
-6. **Add failure traces / "why not?" explanation**
+1. **Add failure traces / "why not?" explanation**
    When `check_formula_holds` returns FALSE, no information about the failure path is available.
 
    - Define `FailureTrace` in nibli-types with variants: `PredicateNotFound`, `NoMatchingRule`, `ConditionFailed`, `DepthExceeded`, `CycleCut`.
