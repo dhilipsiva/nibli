@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "graphql-server",
+      "runtimeExecutable": "cargo",
+      "runtimeArgs": ["run", "-p", "nibli-server"],
+      "port": 8081
+    },
+    {
+      "name": "web-ui",
+      "runtimeExecutable": "dx",
+      "runtimeArgs": ["serve"],
+      "port": 8080
+    },
+    {
+      "name": "python-backend",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["python/nibli_backend.py"],
+      "port": 5555
+    },
+    {
+      "name": "gossip-hub",
+      "runtimeExecutable": "cargo",
+      "runtimeArgs": ["run", "-p", "tavla", "--", "--name", "hub", "--listen", "127.0.0.1:7777", "--transport", "tcp"],
+      "port": 7777
+    }
+  ]
+}
