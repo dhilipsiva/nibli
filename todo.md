@@ -1,10 +1,10 @@
 # Nibli — Reasoning Engine Backlog
 
-Ordered by dependency, correctness impact, then user value.
+All items complete.
 
-## PENDING:
+## Completed
 
-1. remove any unsafe codes. Always use 100% safe rust
-2. Do a code scan to ensure things are DRY
-3. Remove any unnecessary abstractions
-4. Ensure that the code never panics (If it cannot be avoided, atleast ensure that it panices with enough data to debug)
+- ✓ DRY scan (error formatting consolidated; WIT boundary duplication documented as inherent)
+- ✓ Unnecessary abstractions scan (all justified; _inner pattern for test ergonomics, FactStore trait for multi-backend)
+- ✓ Panic audit (6 unwrap/unreachable fixed; 3 structurally guaranteed sites kept with messages)
+- ✓ Safe Rust (zero unsafe in hand-written code; only lasna/bindings.rs has unsafe — auto-generated)
