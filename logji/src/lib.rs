@@ -54,7 +54,7 @@ pub fn transform_compute_nodes(buf: &mut LogicBuffer, compute_preds: &HashSet<St
         .map(|node| match &node {
             LogicNode::Predicate((rel, _)) if compute_preds.contains(rel.as_str()) => {
                 let LogicNode::Predicate(inner) = node else {
-                    unreachable!()
+                    unreachable!("already matched as Predicate in guard")
                 };
                 LogicNode::ComputeNode(inner)
             }
@@ -492,8 +492,7 @@ impl KnowledgeBase {
     }
 
     pub fn query_entailment(&self, logic: LogicBuffer) -> Result<QueryResult, NibliError> {
-        self.query_entailment_inner(logic)
-            .map_err(NibliError::Reasoning)
+        self.query_entailment_inner(logic).map_err(NibliError::Reasoning)
     }
 
     pub fn query_find(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, NibliError> {
@@ -532,8 +531,8 @@ impl KnowledgeBase {
         use nibli_types::logic::AggregateOp;
         let result = match op {
             AggregateOp::Sum => values.iter().sum(),
-            AggregateOp::Min => values.iter().cloned().reduce(f64::min).unwrap(),
-            AggregateOp::Max => values.iter().cloned().reduce(f64::max).unwrap(),
+            AggregateOp::Min => values.iter().cloned().reduce(f64::min).unwrap_or(0.0),
+            AggregateOp::Max => values.iter().cloned().reduce(f64::max).unwrap_or(0.0),
             AggregateOp::Avg => values.iter().sum::<f64>() / values.len() as f64,
         };
         Ok(Some(result))

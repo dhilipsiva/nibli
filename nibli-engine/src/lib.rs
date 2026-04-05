@@ -294,7 +294,9 @@ impl NibliEngine {
     /// Replay all persisted facts into the in-memory KB.
     fn replay_from_store(&self) -> Result<(), String> {
         let store = self.store.borrow();
-        let store = store.as_ref().unwrap();
+        let Some(store) = store.as_ref() else {
+            return Ok(()); // No store configured — nothing to replay.
+        };
         let facts = store
             .all_active_facts()
             .map_err(|e| format!("Store error: {e}"))?;

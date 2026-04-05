@@ -649,11 +649,9 @@ pub(super) fn try_backward_chain_typed(
 
     for rule in &rules_snapshot {
         for typed_concl in &rule.typed_conclusions {
-            let bindings_opt = unify_facts(typed_concl, fact);
-            if bindings_opt.is_none() {
+            let Some(mut bindings) = unify_facts(typed_concl, fact) else {
                 continue;
-            }
-            let mut bindings = bindings_opt.unwrap();
+            };
 
             // Handle unbound event variables (same logic as fact_repr version).
             let unbound_event_vars: Vec<String> = rule
@@ -771,11 +769,9 @@ pub(super) fn try_backward_chain_typed(
         let bare_rules = collect_matching_rules_typed(&bare_fact, &inner.universal_rules);
         for rule in &bare_rules {
             for typed_concl in &rule.typed_conclusions {
-                let bindings_opt = unify_facts(typed_concl, &bare_fact);
-                if bindings_opt.is_none() {
+                let Some(mut bindings) = unify_facts(typed_concl, &bare_fact) else {
                     continue;
-                }
-                let mut bindings = bindings_opt.unwrap();
+                };
 
                 let unbound_event_vars: Vec<String> = rule
                     .pattern_var_names
@@ -1057,11 +1053,9 @@ pub(super) fn try_backward_chain_traced_typed(
 
     for rule in &rules_snapshot {
         for typed_concl in &rule.typed_conclusions {
-            let bindings_opt = unify_facts(typed_concl, fact);
-            if bindings_opt.is_none() {
+            let Some(mut bindings) = unify_facts(typed_concl, fact) else {
                 continue;
-            }
-            let mut bindings = bindings_opt.unwrap();
+            };
 
             let unbound_event_vars: Vec<String> = rule
                 .pattern_var_names
@@ -1199,11 +1193,9 @@ pub(super) fn try_backward_chain_traced_typed(
         let bare_rules = collect_matching_rules_typed(&bare_fact, &inner.universal_rules);
         for rule in &bare_rules {
             for typed_concl in &rule.typed_conclusions {
-                let bindings_opt = unify_facts(typed_concl, &bare_fact);
-                if bindings_opt.is_none() {
+                let Some(mut bindings) = unify_facts(typed_concl, &bare_fact) else {
                     continue;
-                }
-                let mut bindings = bindings_opt.unwrap();
+                };
 
                 let unbound_event_vars: Vec<String> = rule
                     .pattern_var_names

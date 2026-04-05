@@ -632,10 +632,10 @@ pub(super) fn find_canonical(
     parent: &mut HashMap<GroundTerm, GroundTerm>,
     term: &GroundTerm,
 ) -> GroundTerm {
-    if !parent.contains_key(term) {
-        return term.clone();
-    }
-    let p = parent.get(term).unwrap().clone();
+    let p = match parent.get(term) {
+        Some(p) => p.clone(),
+        None => return term.clone(),
+    };
     if &p == term {
         return p;
     }

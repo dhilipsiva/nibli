@@ -138,7 +138,9 @@ pub(super) fn build_ground_fact_from_resolved(
             LogicalTerm::Constant(c) => GroundTerm::Constant(c.clone()),
             LogicalTerm::Description(d) => GroundTerm::Description(d.clone()),
             LogicalTerm::Unspecified => GroundTerm::Unspecified,
-            LogicalTerm::Variable(_) => unreachable!(),
+            LogicalTerm::Variable(v) => {
+                unreachable!("Variable '{}' in compute result — should be ground", v)
+            }
         })
         .collect();
     Some(StoredFact::Bare(GroundFact::new(rel, args)))
