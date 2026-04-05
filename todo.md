@@ -4,15 +4,7 @@ Ordered by dependency, correctness impact, then user value.
 
 ## Tier 3: Search Strategy & Performance
 
-9. **Replace fixed-depth search with iterative deepening**
-   The depth cutoff silently collapses "not found within depth N" to ResourceExceeded. Iterative deepening guarantees finding the shallowest proof.
-
-   - Modify `check_formula_holds` to accept max_depth parameter.
-   - Add wrapper that calls with depth 1, 2, ... up to `max_chain_depth`.
-   - Proof found at depth D → True. Exhausted all depths → False. Hit max_chain_depth → ResourceExceeded.
-   - Future: SLG tabling for full recursive completeness (subsumes visited-set cycle detection).
-
-10. **Add argument-position indexing**
+1. **Add argument-position indexing**
     `typed_predicate_facts` indexes by relation name only. Queries like "everything where x2 is adam" scan all facts for that predicate.
 
     - Add `typed_arg_index: HashMap<(String, usize, GroundTerm), HashSet<StoredFact>>`.
