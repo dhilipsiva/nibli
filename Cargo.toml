@@ -15,6 +15,7 @@ members = [
     "tavla",
     "nibli-agent",
     "nibli-types",
+    "nibli-import",
 ]
 exclude = ["fuzz"]
 resolver = "2"

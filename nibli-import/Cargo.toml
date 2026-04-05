@@ -1,0 +1,8 @@
+[package]
+name = "nibli-import"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+nibli-engine = { path = "../nibli-engine" }
+nibli-types = { path = "../nibli-types" }

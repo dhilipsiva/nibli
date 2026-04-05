@@ -251,6 +251,11 @@ impl Default for NibliEngine {
 }
 
 impl NibliEngine {
+    /// Access the underlying KnowledgeBase for sort/constraint declarations.
+    pub fn kb(&self) -> &logji::KnowledgeBase {
+        &self.kb
+    }
+
     fn default_compute_predicates() -> HashSet<String> {
         let mut preds = HashSet::new();
         preds.insert("pilji".to_string());
