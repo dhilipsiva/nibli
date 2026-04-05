@@ -525,12 +525,15 @@ impl Iterator for CartesianProduct<'_> {
 }
 
 /// Collect rules whose conclusion templates match the given fact's relation name.
+/// Returns rules sorted by priority descending (highest priority first).
 fn collect_matching_rules_typed(
     fact: &StoredFact,
     universal_rules: &HashMap<String, Vec<Arc<UniversalRuleRecord>>>,
 ) -> Vec<Arc<UniversalRuleRecord>> {
     let rel = fact.relation();
-    universal_rules.get(rel).cloned().unwrap_or_default()
+    let mut rules = universal_rules.get(rel).cloned().unwrap_or_default();
+    rules.sort_by_key(|r| std::cmp::Reverse(r.priority));
+    rules
 }
 
 /// Check if a typed fact holds in the KB (direct assertion or backward-chaining).

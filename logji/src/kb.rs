@@ -419,6 +419,9 @@ pub(super) struct UniversalRuleRecord {
     /// When true, this rule fires eagerly on fact assertion (forward chaining).
     /// When false (default), the rule only fires via backward-chaining queries.
     pub(super) forward: bool,
+    /// Rule priority (default 0). Higher = more important. When multiple rules
+    /// match a goal, higher-priority rules are tried first (defeasible reasoning).
+    pub(super) priority: u32,
 }
 
 /// Registry entry for a single asserted fact, supporting retraction and rebuild.

@@ -277,6 +277,7 @@ pub(super) fn register_rule(
         pattern_var_names,
         negated_condition_indices,
         forward,
+        priority: 0, // Default priority; can be changed via set_rule_priority.
     };
     let rc = Arc::new(rule);
     let mut indexed = false;
@@ -451,7 +452,7 @@ fn trigger_forward_rules(new_rel: &str, inner: &mut KnowledgeBaseInner) {
     }
 
     // Collect forward rules whose conditions mention the newly-asserted predicate.
-    let forward_rules: Vec<Arc<UniversalRuleRecord>> = inner
+    let mut forward_rules: Vec<Arc<UniversalRuleRecord>> = inner
         .universal_rules
         .values()
         .flat_map(|v| v.iter())
@@ -460,6 +461,7 @@ fn trigger_forward_rules(new_rel: &str, inner: &mut KnowledgeBaseInner) {
         })
         .cloned()
         .collect();
+    forward_rules.sort_by_key(|r| std::cmp::Reverse(r.priority));
 
     if forward_rules.is_empty() {
         return;

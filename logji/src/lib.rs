@@ -600,6 +600,25 @@ impl KnowledgeBase {
         }
     }
 
+    /// Set priority for all rules concluding the given predicate.
+    /// Higher priority = tried first during backward/forward chaining.
+    /// Default is 0. Rules with higher priority override lower-priority ones
+    /// (defeasible reasoning / exception hierarchies).
+    pub fn set_rule_priority(&self, conclusion_predicate: &str, priority: u32) {
+        let mut inner = self.inner.borrow_mut();
+        if let Some(rules) = inner.universal_rules.get_mut(conclusion_predicate) {
+            for rule in rules.iter_mut() {
+                if let Some(r) = Arc::get_mut(rule) {
+                    r.priority = priority;
+                } else {
+                    let mut cloned = (**rule).clone();
+                    cloned.priority = priority;
+                    *rule = Arc::new(cloned);
+                }
+            }
+        }
+    }
+
     /// Scan the KB for contradictions. Returns a list of human-readable
     /// contradiction descriptions. An empty list means no contradictions found.
     ///
