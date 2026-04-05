@@ -187,18 +187,35 @@ impl KnowledgeBase {
         Ok(facts)
     }
 
-    /// Check whether all root formulas in the logic buffer are entailed by the KB.
-    fn query_entailment_inner(&self, logic: LogicBuffer) -> Result<QueryResult, String> {
+    /// Single-pass entailment check at the current max_chain_depth.
+    fn run_entailment_check(&self, logic: &LogicBuffer) -> Result<QueryResult, String> {
         clear_pred_cache();
         let mut inner = self.inner.borrow_mut();
         inner.ensure_domain_members_cached();
         let mut overall = QueryResult::True;
         for &root_id in &logic.roots {
             let mut subs = HashMap::new();
-            let result = check_formula_holds(&logic, root_id, &mut subs, &mut inner, None)?;
+            let result = check_formula_holds(logic, root_id, &mut subs, &mut inner, None)?;
             overall = Self::combine_root_results(overall, result);
         }
         Ok(overall)
+    }
+
+    /// Check whether all root formulas in the logic buffer are entailed by the KB.
+    /// Uses iterative deepening: tries depth 1, 2, ..., max_chain_depth.
+    /// Guarantees finding the shallowest proof.
+    fn query_entailment_inner(&self, logic: LogicBuffer) -> Result<QueryResult, String> {
+        let configured_max = self.inner.borrow().max_chain_depth;
+        for depth_limit in 1..=configured_max {
+            self.inner.borrow_mut().max_chain_depth = depth_limit;
+            let result = self.run_entailment_check(&logic)?;
+            if !matches!(result, QueryResult::ResourceExceeded(ResourceKind::Depth)) {
+                self.inner.borrow_mut().max_chain_depth = configured_max;
+                return Ok(result);
+            }
+        }
+        self.inner.borrow_mut().max_chain_depth = configured_max;
+        Ok(QueryResult::ResourceExceeded(ResourceKind::Depth))
     }
 
     /// Find all satisfying binding sets for existential variables in the query formula.
@@ -251,9 +268,10 @@ impl KnowledgeBase {
             .collect())
     }
 
-    fn query_entailment_with_proof_inner(
+    /// Single-pass entailment check with proof trace at the current max_chain_depth.
+    fn run_entailment_check_with_proof(
         &self,
-        logic: LogicBuffer,
+        logic: &LogicBuffer,
     ) -> Result<(QueryResult, ProofTrace), String> {
         clear_pred_cache();
         let mut inner = self.inner.borrow_mut();
@@ -264,11 +282,11 @@ impl KnowledgeBase {
         let mut overall = QueryResult::True;
         for &root_id in &logic.roots {
             let mut subs = HashMap::new();
-            let result = check_formula_holds(&logic, root_id, &mut subs, &mut inner, None)?;
+            let result = check_formula_holds(logic, root_id, &mut subs, &mut inner, None)?;
             overall = Self::combine_root_results(overall, result);
             let mut trace_subs = HashMap::new();
             let (holds, step_idx) = check_formula_holds_traced(
-                &logic,
+                logic,
                 root_id,
                 &mut trace_subs,
                 &mut inner,
@@ -291,6 +309,32 @@ impl KnowledgeBase {
             idx
         };
         Ok((overall, ProofTrace { steps, root }))
+    }
+
+    /// Check entailment with proof trace using iterative deepening.
+    fn query_entailment_with_proof_inner(
+        &self,
+        logic: LogicBuffer,
+    ) -> Result<(QueryResult, ProofTrace), String> {
+        let configured_max = self.inner.borrow().max_chain_depth;
+        let mut last_trace = ProofTrace {
+            steps: vec![],
+            root: 0,
+        };
+        for depth_limit in 1..=configured_max {
+            self.inner.borrow_mut().max_chain_depth = depth_limit;
+            let (result, trace) = self.run_entailment_check_with_proof(&logic)?;
+            if !matches!(result, QueryResult::ResourceExceeded(ResourceKind::Depth)) {
+                self.inner.borrow_mut().max_chain_depth = configured_max;
+                return Ok((result, trace));
+            }
+            last_trace = trace;
+        }
+        self.inner.borrow_mut().max_chain_depth = configured_max;
+        Ok((
+            QueryResult::ResourceExceeded(ResourceKind::Depth),
+            last_trace,
+        ))
     }
 }
 
@@ -5667,6 +5711,53 @@ mod tests {
             count >= 2,
             "at least 2 danlu witnesses via backward chain, got {}",
             count
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // ITERATIVE DEEPENING TESTS
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_iterative_deepening_finds_shallow() {
+        // Chain: gerku→danlu→jmive (depth 2). Should find proof.
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_universal("danlu", "jmive"));
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert!(
+            query(&kb, make_query("alis", "jmive")),
+            "jmive(alis) should hold via 2-step chain"
+        );
+    }
+
+    #[test]
+    fn test_iterative_deepening_returns_false_not_exceeded() {
+        // Query something genuinely underivable → should be False, not ResourceExceeded.
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        let result = query_result(&kb, make_query("alis", "mlatu"));
+        assert!(
+            result.is_false(),
+            "underivable predicate should return False, got {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_iterative_deepening_exceeds_max() {
+        // Set max_chain_depth=2, chain of depth 3 → ResourceExceeded.
+        let kb = new_kb();
+        kb.inner.borrow_mut().max_chain_depth = 2;
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_universal("danlu", "jmive"));
+        assert_buf(&kb, make_universal("jmive", "xanlu"));
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        let result = query_result(&kb, make_query("alis", "xanlu"));
+        assert!(
+            matches!(result, QueryResult::ResourceExceeded(ResourceKind::Depth)),
+            "depth-3 chain with max_chain_depth=2 should exceed, got {:?}",
+            result
         );
     }
 }
