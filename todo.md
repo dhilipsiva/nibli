@@ -4,15 +4,7 @@ Ordered by dependency, correctness impact, then user value.
 
 ## Tier 3: Search Strategy & Performance
 
-1. **Add argument-position indexing**
-    `typed_predicate_facts` indexes by relation name only. Queries like "everything where x2 is adam" scan all facts for that predicate.
-
-    - Add `typed_arg_index: HashMap<(String, usize, GroundTerm), HashSet<StoredFact>>`.
-    - On `assert_typed_fact`, index each fact by (relation, arg_position, arg_value) for ground arguments.
-    - Use argument index in `check_predicate_in_kb_typed` and witness extraction when query has ground arguments.
-    - Benchmark: compare query latency before/after on 1000+ facts for a single predicate.
-
-11. **Add incremental truth maintenance (TMS)**
+1. **Add incremental truth maintenance (TMS)**
     Retraction currently rebuilds the entire KB from surviving base facts. O(KB) per retraction.
 
     - Add `Justification` to derived facts: which rule + which bindings + which supporting facts.
