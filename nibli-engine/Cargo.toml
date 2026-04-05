@@ -14,4 +14,9 @@ postcard = { version = "1", features = ["alloc"] }
 serde_json = "1"
 
 [dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
 serde_json = "1"
+
+[[bench]]
+name = "engine_bench"
+harness = false
