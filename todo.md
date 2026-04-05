@@ -4,15 +4,7 @@ Ordered by dependency, correctness impact, then user value.
 
 ## Tier 3: Search Strategy & Performance
 
-1. **Add incremental truth maintenance (TMS)**
-    Retraction currently rebuilds the entire KB from surviving base facts. O(KB) per retraction.
-
-    - Add `Justification` to derived facts: which rule + which bindings + which supporting facts.
-    - On retraction, walk the dependency cone and retract derived facts recursively.
-    - Keep full rebuild as fallback (`:rebuild` REPL command).
-    - Tests: retract base fact → derived facts removed, unrelated facts survive.
-
-12. **Selective forward propagation for marked rules**
+1. **Selective forward propagation for marked rules**
     Keep backward chaining as primary. Allow opt-in forward propagation for specific rules (e.g., contradiction detection).
 
     - Add `forward: bool` flag to `UniversalRuleRecord` (default false).
