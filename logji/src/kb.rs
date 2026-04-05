@@ -473,6 +473,13 @@ pub(super) struct KnowledgeBaseInner {
     /// Argument-position index: (relation, arg_position) → {value → [facts]}.
     /// Speeds up witness extraction and ground-argument queries.
     pub(super) arg_position_index: HashMap<(String, usize), HashMap<GroundTerm, Vec<StoredFact>>>,
+    /// Maps fact_registry ID → rule predicate keys inserted into universal_rules.
+    /// Used for incremental retraction: when a fact that compiled rules is retracted,
+    /// the corresponding rules can be removed without full rebuild.
+    pub(super) rule_source_map: HashMap<u64, Vec<String>>,
+    /// The current assertion's fact_registry ID (set during process_assertion).
+    /// Used by compile_forall_to_rule to record rule sources.
+    pub(super) current_assertion_id: Option<u64>,
 }
 
 impl Clone for KnowledgeBaseInner {
@@ -498,6 +505,8 @@ impl Clone for KnowledgeBaseInner {
             predicate_registry: self.predicate_registry.clone(),
             integrity_constraints: self.integrity_constraints.clone(),
             arg_position_index: self.arg_position_index.clone(),
+            rule_source_map: self.rule_source_map.clone(),
+            current_assertion_id: None,
         }
     }
 }
@@ -525,6 +534,8 @@ impl KnowledgeBaseInner {
             predicate_registry: HashMap::new(),
             integrity_constraints: Vec::new(),
             arg_position_index: HashMap::new(),
+            rule_source_map: HashMap::new(),
+            current_assertion_id: None,
         }
     }
 
@@ -547,6 +558,8 @@ impl KnowledgeBaseInner {
         self.equivalence_classes.clear();
         self.predicate_registry.clear();
         self.arg_position_index.clear();
+        self.rule_source_map.clear();
+        self.current_assertion_id = None;
         // Note: integrity_constraints are NOT cleared on reset — they're
         // structural declarations, not derived state. Clear explicitly if needed.
     }

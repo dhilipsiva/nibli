@@ -213,6 +213,17 @@ impl FactStore for RedbFactStore {
         self.all_facts_cache.len()
     }
 
+    fn remove(&mut self, fact: &StoredFact) -> bool {
+        let removed = self.all_facts_cache.remove(fact);
+        if removed {
+            if let Some(set) = self.cache.get_mut(fact.relation()) {
+                set.remove(fact);
+            }
+            // Note: disk cleanup deferred to compaction. In-memory state is authoritative.
+        }
+        removed
+    }
+
     fn clone_box(&self) -> Box<dyn FactStore> {
         // For hypothetical reasoning on persistent stores, clone the in-memory
         // caches into an InMemoryFactStore (detached from disk). The hypothetical

@@ -37,6 +37,9 @@ pub trait FactStore {
         self.len() == 0
     }
 
+    /// Remove a specific fact from the store. Returns true if it was present.
+    fn remove(&mut self, fact: &StoredFact) -> bool;
+
     /// Clone the store into a new boxed instance (for hypothetical reasoning).
     fn clone_box(&self) -> Box<dyn FactStore>;
 }
@@ -98,6 +101,19 @@ impl FactStore for InMemoryFactStore {
 
     fn len(&self) -> usize {
         self.facts.len()
+    }
+
+    fn remove(&mut self, fact: &StoredFact) -> bool {
+        let removed = self.facts.remove(fact);
+        if removed {
+            if let Some(set) = self.predicate_index.get_mut(fact.relation()) {
+                set.remove(fact);
+                if set.is_empty() {
+                    self.predicate_index.remove(fact.relation());
+                }
+            }
+        }
+        removed
     }
 
     fn clone_box(&self) -> Box<dyn FactStore> {

@@ -291,8 +291,23 @@ pub(super) fn register_rule(
             .universal_rules
             .entry("__fallback__".to_string())
             .or_default()
-            .push(rc);
+            .push(rc.clone());
     }
+
+    // Track which assertion ID produced this rule (for incremental retraction).
+    if let Some(assertion_id) = inner.current_assertion_id {
+        let pred_keys: Vec<String> = rc
+            .typed_conclusions
+            .iter()
+            .map(|c| c.relation().to_string())
+            .collect();
+        inner
+            .rule_source_map
+            .entry(assertion_id)
+            .or_default()
+            .extend(pred_keys);
+    }
+
     Ok(())
 }
 

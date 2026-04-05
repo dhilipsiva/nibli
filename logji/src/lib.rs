@@ -87,7 +87,9 @@ impl KnowledgeBase {
     fn assert_fact_inner(&self, logic: LogicBuffer, label: String) -> Result<u64, String> {
         let mut inner = self.inner.borrow_mut();
         let id = inner.fresh_fact_id();
+        inner.current_assertion_id = Some(id);
         process_assertion(&mut inner, &logic)?;
+        inner.current_assertion_id = None;
         inner.fact_registry.insert(
             id,
             FactRecord {
@@ -120,18 +122,87 @@ impl KnowledgeBase {
         Ok(())
     }
 
-    /// Retract a previously asserted fact by its ID. Triggers a full KB rebuild
-    /// from remaining (non-retracted) facts.
+    /// Retract a previously asserted fact by its ID.
+    /// Uses incremental removal: removes the fact from indexes directly
+    /// instead of rebuilding the entire KB.
     fn retract_fact_inner(&self, id: u64) -> Result<(), String> {
         let mut inner = self.inner.borrow_mut();
-        match inner.fact_registry.get_mut(&id) {
-            None => Err(format!("Fact #{} not found", id)),
-            Some(r) if r.retracted => Ok(()), // idempotent
+        let record = match inner.fact_registry.get_mut(&id) {
+            None => return Err(format!("Fact #{} not found", id)),
+            Some(r) if r.retracted => return Ok(()), // idempotent
             Some(r) => {
                 r.retracted = true;
-                Self::rebuild_inner(&mut inner)
+                r.clone()
+            }
+        };
+
+        // Check if this assertion involved Skolemization (existential variables
+        // or ForAll). If so, fall back to full rebuild — re-deriving Skolem subs
+        // with a temporary counter won't match the originals.
+        let has_skolems = record.buffer.nodes.iter().any(|n| {
+            matches!(
+                n,
+                LogicNode::ExistsNode(_) | LogicNode::ForAllNode(_)
+            )
+        });
+
+        if has_skolems || inner.rule_source_map.contains_key(&id) {
+            // Complex assertion (rules or Skolems) — fall back to full rebuild.
+            return Self::rebuild_inner(&mut inner);
+        }
+
+        // Simple ground fact — remove incrementally from all indexes.
+        let skolem_subs = HashMap::new();
+        let mut typed_leaves = Vec::new();
+        collect_ground_facts(
+            &record.buffer,
+            record.buffer.roots.first().copied().unwrap_or(0),
+            &skolem_subs,
+            None,
+            &mut typed_leaves,
+        );
+
+        let mut had_du = false;
+        for fact in &typed_leaves {
+            inner.fact_store.remove(fact);
+            let gf = fact.inner();
+            for (pos, arg) in gf.args.iter().enumerate() {
+                if let Some(val_map) = inner.arg_position_index.get_mut(&(gf.relation.clone(), pos))
+                {
+                    if let Some(entries) = val_map.get_mut(arg) {
+                        entries.retain(|f| f != fact);
+                    }
+                }
+            }
+            if let StoredFact::Bare(gf) = fact {
+                if gf.relation == "du" {
+                    had_du = true;
+                }
             }
         }
+
+        // If du facts were removed, rebuild equivalence from remaining du facts.
+        if had_du {
+            inner.equivalence_parent.clear();
+            inner.equivalence_classes.clear();
+            let all_facts: Vec<StoredFact> = inner.fact_store.all_facts().iter().cloned().collect();
+            for fact in &all_facts {
+                if let StoredFact::Bare(gf) = fact {
+                    if gf.relation == "du" && gf.args.len() == 2 {
+                        union_terms(&mut inner, &gf.args[0], &gf.args[1]);
+                    }
+                }
+            }
+        }
+
+        inner.domain_members_dirty = true;
+        Ok(())
+    }
+
+    /// Full rebuild from non-retracted facts. Kept as fallback / consistency check.
+    pub fn rebuild(&self) -> Result<(), String> {
+        let mut inner = self.inner.borrow_mut();
+        Self::rebuild_inner(&mut inner)
     }
 
     /// Rebuild the KB from all non-retracted facts.
@@ -151,6 +222,7 @@ impl KnowledgeBase {
         inner.equivalence_classes.clear();
         inner.predicate_registry.clear();
         inner.arg_position_index.clear();
+        inner.rule_source_map.clear();
 
         // Collect non-retracted buffers ordered by ID (clone to avoid borrow conflict)
         let mut entries: Vec<(&u64, &FactRecord)> = inner
@@ -5806,5 +5878,85 @@ mod tests {
                 "arg index should be empty after reset"
             );
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // INCREMENTAL TRUTH MAINTENANCE TESTS
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_incremental_retract_fact() {
+        let kb = new_kb();
+        let id1 = assert_id(&kb, make_assertion("alis", "gerku"), "alis gerku");
+        let _id2 = assert_id(&kb, make_assertion("bob", "gerku"), "bob gerku");
+        let _id3 = assert_id(&kb, make_assertion("carol", "mlatu"), "carol mlatu");
+
+        assert!(query(&kb, make_query("alis", "gerku")));
+        assert!(query(&kb, make_query("bob", "gerku")));
+        assert!(query(&kb, make_query("carol", "mlatu")));
+
+        // Retract alis's fact.
+        kb.retract_fact_inner(id1).unwrap();
+
+        assert!(
+            !query(&kb, make_query("alis", "gerku")),
+            "alis gerku should be gone after retraction"
+        );
+        assert!(
+            query(&kb, make_query("bob", "gerku")),
+            "bob gerku should survive"
+        );
+        assert!(
+            query(&kb, make_query("carol", "mlatu")),
+            "carol mlatu should survive"
+        );
+    }
+
+    #[test]
+    fn test_incremental_retract_rule() {
+        let kb = new_kb();
+        let rule_id = assert_id(&kb, make_universal("gerku", "danlu"), "rule");
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+
+        assert!(
+            query(&kb, make_query("alis", "danlu")),
+            "danlu(alis) should hold via rule"
+        );
+
+        // Retract the rule.
+        kb.retract_fact_inner(rule_id).unwrap();
+
+        assert!(
+            !query(&kb, make_query("alis", "danlu")),
+            "danlu(alis) should be gone after retracting the rule"
+        );
+        assert!(
+            query(&kb, make_query("alis", "gerku")),
+            "base fact gerku(alis) should survive"
+        );
+    }
+
+    #[test]
+    fn test_incremental_retract_du() {
+        let kb = new_kb();
+        let du_id = assert_id(&kb, make_du("alis", "bob"), "du");
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+
+        assert!(
+            query(&kb, make_query("bob", "gerku")),
+            "gerku(bob) should hold via du(alis, bob)"
+        );
+
+        // Retract the du fact.
+        kb.retract_fact_inner(du_id).unwrap();
+
+        assert!(
+            !query(&kb, make_query("bob", "gerku")),
+            "gerku(bob) should be gone after retracting du"
+        );
+        assert!(
+            query(&kb, make_query("alis", "gerku")),
+            "gerku(alis) should survive"
+        );
     }
 }
