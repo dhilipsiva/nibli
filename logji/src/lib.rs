@@ -31,6 +31,9 @@ use std::sync::Arc;
 mod compute;
 /// Fact store abstraction (trait + in-memory implementation).
 pub mod fact_store;
+/// WASI-compatible lazy-loading fact store (append-only log + LRU cache).
+#[cfg(feature = "wasi-store")]
+pub mod wasi_fact_store;
 mod reasoning;
 /// S-expression reconstruction for logic buffers (debug output).
 pub mod repr;

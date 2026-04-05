@@ -5,12 +5,14 @@ edition = "2024"
 
 [dependencies]
 nibli-types = { path = "../nibli-types" }
+postcard = { version = "1", features = ["alloc"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 smuni-dictionary = { path = "../smuni-dictionary" }
 
 [features]
 default = []
 serde = ["dep:serde"]
+wasi-store = ["serde", "dep:postcard"]
 
 [lib]
 crate-type = ["lib"]
