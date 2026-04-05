@@ -5631,3 +5631,55 @@
             }
         }
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // SORTED LOGIC / TYPE HIERARCHY TESTS
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_sort_valid_entity() {
+        // person ⊂ animal, adam: person, gerku expects (animal, _).
+        // adam is compatible with animal via subsort → no warning.
+        let kb = new_kb();
+        kb.declare_subsort("person", "animal");
+        kb.declare_entity_sort("adam", "person");
+        kb.set_predicate_sorts("gerku", vec!["animal".into(), String::new()]);
+        assert_buf(&kb, make_assertion("adam", "gerku"));
+        // Should succeed without sort warning (person ⊂ animal).
+        assert!(query(&kb, make_query("adam", "gerku")));
+    }
+
+    #[test]
+    fn test_sort_invalid_entity() {
+        // adam: number_sort, gerku expects (animal, _).
+        // number_sort is NOT a subsort of animal → sort warning printed.
+        let kb = new_kb();
+        kb.declare_entity_sort("adam", "number_sort");
+        kb.set_predicate_sorts("gerku", vec!["animal".into(), String::new()]);
+        // This should print a sort warning but still insert (permissive mode).
+        assert_buf(&kb, make_assertion("adam", "gerku"));
+        assert!(query(&kb, make_query("adam", "gerku")));
+    }
+
+    #[test]
+    fn test_sort_hierarchy_transitive() {
+        // person ⊂ animal ⊂ entity.
+        // adam: person. Predicate expects entity.
+        // person is transitively compatible with entity.
+        let kb = new_kb();
+        kb.declare_subsort("person", "animal");
+        kb.declare_subsort("animal", "entity");
+        kb.declare_entity_sort("adam", "person");
+        kb.set_predicate_sorts("gerku", vec!["entity".into(), String::new()]);
+        assert_buf(&kb, make_assertion("adam", "gerku"));
+        assert!(query(&kb, make_query("adam", "gerku")));
+    }
+
+    #[test]
+    fn test_sort_unset_no_check() {
+        // No sorts declared → no checking (fully backward compatible).
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("adam", "gerku"));
+        assert!(query(&kb, make_query("adam", "gerku")));
+        // No sort warning — sorts not declared.
+    }

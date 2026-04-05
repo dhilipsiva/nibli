@@ -19,6 +19,9 @@ pub enum SignatureSource {
 pub struct PredicateSignature {
     pub arity: usize,
     pub source: SignatureSource,
+    /// Optional sort constraint for each argument position.
+    /// Empty string = any sort (no constraint). Set via `set_predicate_sorts`.
+    pub arg_sorts: Vec<String>,
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -488,6 +491,12 @@ pub(super) struct KnowledgeBaseInner {
     pub(super) current_assertion_id: Option<u64>,
     /// Depth counter for forward chaining recursion. Prevents infinite loops.
     pub(super) forward_depth: usize,
+    /// Sort hierarchy: sort_name → set of parent sort names (transitive).
+    /// e.g., "person" → {"animal"}, "animal" → {"entity"}
+    pub(super) sort_hierarchy: HashMap<String, HashSet<String>>,
+    /// Entity sort assignments: entity_name → sort_name.
+    /// e.g., "adam" → "person"
+    pub(super) entity_sorts: HashMap<String, String>,
 }
 
 impl Clone for KnowledgeBaseInner {
@@ -516,6 +525,8 @@ impl Clone for KnowledgeBaseInner {
             rule_source_map: self.rule_source_map.clone(),
             current_assertion_id: None,
             forward_depth: 0,
+            sort_hierarchy: self.sort_hierarchy.clone(),
+            entity_sorts: self.entity_sorts.clone(),
         }
     }
 }
@@ -546,6 +557,8 @@ impl KnowledgeBaseInner {
             rule_source_map: HashMap::new(),
             current_assertion_id: None,
             forward_depth: 0,
+            sort_hierarchy: HashMap::new(),
+            entity_sorts: HashMap::new(),
         }
     }
 
@@ -721,6 +734,40 @@ pub(super) fn get_equivalence_class_readonly(
         .get(&canon)
         .cloned()
         .unwrap_or_else(|| vec![term.clone()])
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SORT HIERARCHY
+// ═══════════════════════════════════════════════════════════════════
+
+/// Check if `actual_sort` is compatible with `expected_sort`.
+/// Compatible means: actual == expected, or actual is a subsort of expected
+/// (transitively through the sort hierarchy).
+pub(super) fn is_sort_compatible(
+    hierarchy: &HashMap<String, HashSet<String>>,
+    actual: &str,
+    expected: &str,
+) -> bool {
+    if actual == expected {
+        return true;
+    }
+    // BFS/DFS up the hierarchy from actual to see if we reach expected.
+    let mut visited = HashSet::new();
+    let mut stack = vec![actual.to_string()];
+    while let Some(current) = stack.pop() {
+        if !visited.insert(current.clone()) {
+            continue;
+        }
+        if let Some(parents) = hierarchy.get(&current) {
+            for parent in parents {
+                if parent == expected {
+                    return true;
+                }
+                stack.push(parent.clone());
+            }
+        }
+    }
+    false
 }
 
 /// The WIT-exported resource type.

@@ -619,6 +619,45 @@ impl KnowledgeBase {
         }
     }
 
+    /// Declare that an entity belongs to a sort.
+    /// e.g., `declare_entity_sort("adam", "person")` means adam is a person.
+    pub fn declare_entity_sort(&self, entity: &str, sort: &str) {
+        let mut inner = self.inner.borrow_mut();
+        inner.entity_sorts.insert(entity.to_string(), sort.to_string());
+    }
+
+    /// Declare a subsort relationship: child ⊂ parent.
+    /// e.g., `declare_subsort("person", "animal")` means every person is an animal.
+    /// Transitive: if person ⊂ animal and animal ⊂ entity, then person is compatible with entity.
+    pub fn declare_subsort(&self, child: &str, parent: &str) {
+        let mut inner = self.inner.borrow_mut();
+        inner
+            .sort_hierarchy
+            .entry(child.to_string())
+            .or_default()
+            .insert(parent.to_string());
+    }
+
+    /// Set expected sorts for a predicate's arguments.
+    /// e.g., `set_predicate_sorts("gerku", vec!["animal", ""])` means gerku's x1 must be
+    /// an "animal" sort, x2 has no sort constraint.
+    /// Empty string = no constraint for that position.
+    pub fn set_predicate_sorts(&self, predicate: &str, arg_sorts: Vec<String>) {
+        let mut inner = self.inner.borrow_mut();
+        if let Some(sig) = inner.predicate_registry.get_mut(predicate) {
+            sig.arg_sorts = arg_sorts;
+        } else {
+            inner.predicate_registry.insert(
+                predicate.to_string(),
+                PredicateSignature {
+                    arity: arg_sorts.len(),
+                    source: SignatureSource::Inferred,
+                    arg_sorts,
+                },
+            );
+        }
+    }
+
     /// Scan the KB for contradictions. Returns a list of human-readable
     /// contradiction descriptions. An empty list means no contradictions found.
     ///

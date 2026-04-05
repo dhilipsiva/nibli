@@ -408,8 +408,42 @@ pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner
         };
         inner.predicate_registry.insert(
             rel.to_string(),
-            PredicateSignature { arity, source },
+            PredicateSignature {
+                arity,
+                source,
+                arg_sorts: vec![],
+            },
         );
+    }
+
+    // Sort validation (permissive mode: warn on mismatch).
+    if let Some(sig) = inner.predicate_registry.get(rel) {
+        if !sig.arg_sorts.is_empty() && !inner.rebuilding {
+            let gf_check = fact.inner();
+            for (pos, arg) in gf_check.args.iter().enumerate() {
+                if pos >= sig.arg_sorts.len() {
+                    break;
+                }
+                let expected_sort = &sig.arg_sorts[pos];
+                if expected_sort.is_empty() {
+                    continue; // No sort constraint for this position.
+                }
+                if let GroundTerm::Constant(name) = arg {
+                    if let Some(actual_sort) = inner.entity_sorts.get(name.as_str()) {
+                        if !is_sort_compatible(
+                            &inner.sort_hierarchy,
+                            actual_sort,
+                            expected_sort,
+                        ) {
+                            eprintln!(
+                                "[Sort Warning] '{}' arg {}: entity '{}' has sort '{}', expected '{}'",
+                                rel, pos, name, actual_sort, expected_sort
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 
     let rel_owned = rel.to_string();
