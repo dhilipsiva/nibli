@@ -2,18 +2,6 @@
 
 Ordered by dependency, correctness impact, then user value.
 
-## Tier 3: Search Strategy & Performance
-
-1. **Selective forward propagation for marked rules**
-    Keep backward chaining as primary. Allow opt-in forward propagation for specific rules (e.g., contradiction detection).
-
-    - Add `forward: bool` flag to `UniversalRuleRecord` (default false).
-    - On fact assertion, check all `forward: true` rules. If all conditions met, assert conclusion immediately.
-    - REPL: `:forward <rule-id>` to mark a rule.
-    - Primary use: contradiction detection rules. Secondary: hot derived predicates.
-
-## Tier 4: Code Quality & Measurement
-
 13. **Break up oversized core files**
     - `logji/src/lib.rs` (4,715 lines) → extract `assertion.rs`, `query.rs`, `witness.rs`, `proof.rs`.
     - `gerna/src/grammar.rs` (4,452 lines) → split per-construct (sumti, selbri, sentence parsing).
