@@ -150,6 +150,7 @@ impl KnowledgeBase {
         inner.equivalence_parent.clear();
         inner.equivalence_classes.clear();
         inner.predicate_registry.clear();
+        inner.arg_position_index.clear();
 
         // Collect non-retracted buffers ordered by ID (clone to avoid borrow conflict)
         let mut entries: Vec<(&u64, &FactRecord)> = inner
@@ -5759,5 +5760,51 @@ mod tests {
             "depth-3 chain with max_chain_depth=2 should exceed, got {:?}",
             result
         );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // ARGUMENT-POSITION INDEX TESTS
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_arg_index_populated() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_assertion("bob", "gerku"));
+        let inner = kb.inner.borrow();
+        // Index should have entries for (gerku, 0) and (gerku, 1).
+        let key0 = ("gerku".to_string(), 0usize);
+        assert!(
+            inner.arg_position_index.contains_key(&key0),
+            "index should have (gerku, 0)"
+        );
+        let values_at_0 = &inner.arg_position_index[&key0];
+        // Position 0 should have entries for "alis" and "bob".
+        assert!(
+            values_at_0.contains_key(&GroundTerm::Constant("alis".to_string())),
+            "index should map alis at position 0"
+        );
+        assert!(
+            values_at_0.contains_key(&GroundTerm::Constant("bob".to_string())),
+            "index should map bob at position 0"
+        );
+    }
+
+    #[test]
+    fn test_arg_index_cleared_on_reset() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        {
+            let inner = kb.inner.borrow();
+            assert!(!inner.arg_position_index.is_empty());
+        }
+        kb.reset().unwrap();
+        {
+            let inner = kb.inner.borrow();
+            assert!(
+                inner.arg_position_index.is_empty(),
+                "arg index should be empty after reset"
+            );
+        }
     }
 }

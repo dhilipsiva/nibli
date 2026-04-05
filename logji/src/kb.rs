@@ -470,6 +470,9 @@ pub(super) struct KnowledgeBaseInner {
     /// Integrity constraints: conjunct sets that must NOT all hold simultaneously.
     /// Checked after each fact insertion. Violations are warnings in permissive mode.
     pub(super) integrity_constraints: Vec<IntegrityConstraint>,
+    /// Argument-position index: (relation, arg_position) → {value → [facts]}.
+    /// Speeds up witness extraction and ground-argument queries.
+    pub(super) arg_position_index: HashMap<(String, usize), HashMap<GroundTerm, Vec<StoredFact>>>,
 }
 
 impl Clone for KnowledgeBaseInner {
@@ -494,6 +497,7 @@ impl Clone for KnowledgeBaseInner {
             equivalence_classes: self.equivalence_classes.clone(),
             predicate_registry: self.predicate_registry.clone(),
             integrity_constraints: self.integrity_constraints.clone(),
+            arg_position_index: self.arg_position_index.clone(),
         }
     }
 }
@@ -520,6 +524,7 @@ impl KnowledgeBaseInner {
             equivalence_classes: HashMap::new(),
             predicate_registry: HashMap::new(),
             integrity_constraints: Vec::new(),
+            arg_position_index: HashMap::new(),
         }
     }
 
@@ -541,6 +546,7 @@ impl KnowledgeBaseInner {
         self.equivalence_parent.clear();
         self.equivalence_classes.clear();
         self.predicate_registry.clear();
+        self.arg_position_index.clear();
         // Note: integrity_constraints are NOT cleared on reset — they're
         // structural declarations, not derived state. Clear explicitly if needed.
     }

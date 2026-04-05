@@ -395,6 +395,19 @@ pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner
     }
 
     let rel_owned = rel.to_string();
+
+    // Populate argument-position index before inserting (need fact reference).
+    let gf = fact.inner();
+    for (pos, arg) in gf.args.iter().enumerate() {
+        inner
+            .arg_position_index
+            .entry((gf.relation.clone(), pos))
+            .or_default()
+            .entry(arg.clone())
+            .or_default()
+            .push(fact.clone());
+    }
+
     inner.fact_store.insert(fact);
 
     // Check integrity constraints (permissive mode: warn, don't reject).
