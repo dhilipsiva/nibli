@@ -2,6 +2,9 @@
 
 Ordered by dependency, correctness impact, then user value.
 
-## Deferred
+## PENDING:
 
-16. WASI lazy-loading backend: implement WasiFactStore using WASI file I/O (fd_read/fd_write/fd_seek) + LRU cache with per-predicate lazy loading. That's deferred per the todo.
+1. remove any unsafe codes. Always use 100% safe rust
+2. Do a code scan to ensure things are DRY
+3. Remove any unnecessary abstractions
+4. Ensure that the code never panics (If it cannot be avoided, atleast ensure that it panices with enough data to debug)
