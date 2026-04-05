@@ -497,6 +497,10 @@ pub(super) struct KnowledgeBaseInner {
     /// Entity sort assignments: entity_name → sort_name.
     /// e.g., "adam" → "person"
     pub(super) entity_sorts: HashMap<String, String>,
+    /// Predicates being traced for interactive debugging.
+    /// When a traced predicate is encountered during reasoning, diagnostic
+    /// output is printed showing depth, rule matches, and condition results.
+    pub(super) traced_predicates: HashSet<String>,
 }
 
 impl Clone for KnowledgeBaseInner {
@@ -527,6 +531,7 @@ impl Clone for KnowledgeBaseInner {
             forward_depth: 0,
             sort_hierarchy: self.sort_hierarchy.clone(),
             entity_sorts: self.entity_sorts.clone(),
+            traced_predicates: self.traced_predicates.clone(),
         }
     }
 }
@@ -559,6 +564,7 @@ impl KnowledgeBaseInner {
             forward_depth: 0,
             sort_hierarchy: HashMap::new(),
             entity_sorts: HashMap::new(),
+            traced_predicates: HashSet::new(),
         }
     }
 

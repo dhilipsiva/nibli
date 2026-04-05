@@ -463,6 +463,21 @@ impl NibliEngine {
     pub fn check_contradictions(&self) -> Vec<String> {
         self.kb.check_contradictions()
     }
+
+    /// Enable tracing for a predicate (interactive debugging).
+    pub fn trace_predicate(&self, predicate: &str) {
+        self.kb.trace_predicate(predicate);
+    }
+
+    /// Disable tracing for a predicate.
+    pub fn untrace_predicate(&self, predicate: &str) {
+        self.kb.untrace_predicate(predicate);
+    }
+
+    /// List all currently traced predicates.
+    pub fn traced_predicates(&self) -> Vec<String> {
+        self.kb.traced_predicates()
+    }
 }
 
 #[cfg(test)]

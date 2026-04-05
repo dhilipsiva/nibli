@@ -131,6 +131,18 @@ fn main() {
                         }
                         continue;
                     }
+                    ":traces" => {
+                        let traced = engine.traced_predicates();
+                        if traced.is_empty() {
+                            println!("[Trace] No predicates being traced.");
+                        } else {
+                            println!("[Trace] Tracing {} predicate(s):", traced.len());
+                            for p in &traced {
+                                println!("  {}", p);
+                            }
+                        }
+                        continue;
+                    }
                     ":contradictions" => {
                         let violations = engine.check_contradictions();
                         if violations.is_empty() {
@@ -157,6 +169,9 @@ fn main() {
                         println!("  :retract <id>       Retract a fact by ID (rebuilds KB)");
                         println!("  :facts              List all active facts in the KB");
                         println!("  :contradictions     Scan KB for contradictions");
+                        println!("  :trace <pred>       Enable tracing for a predicate");
+                        println!("  :untrace <pred>     Disable tracing for a predicate");
+                        println!("  :traces             List traced predicates");
                         println!("  :reset              Clear all facts (fresh KB)");
                         println!("  :quit               Exit");
                         continue;
@@ -164,7 +179,25 @@ fn main() {
                     _ => {}
                 }
 
-                if let Some(debug_text) = input.strip_prefix(":debug ") {
+                if let Some(trace_pred) = input.strip_prefix(":trace ") {
+                    let pred = trace_pred.trim();
+                    if pred.is_empty() {
+                        println!("[Trace] Usage: :trace <predicate>");
+                    } else {
+                        engine.trace_predicate(pred);
+                        println!("[Trace] Now tracing: {}", pred);
+                    }
+                    continue;
+                } else if let Some(untrace_pred) = input.strip_prefix(":untrace ") {
+                    let pred = untrace_pred.trim();
+                    if pred.is_empty() {
+                        println!("[Trace] Usage: :untrace <predicate>");
+                    } else {
+                        engine.untrace_predicate(pred);
+                        println!("[Trace] Stopped tracing: {}", pred);
+                    }
+                    continue;
+                } else if let Some(debug_text) = input.strip_prefix(":debug ") {
                     let text = debug_text.trim();
                     if text.is_empty() {
                         println!("[Host] Usage: :debug <lojban text>");

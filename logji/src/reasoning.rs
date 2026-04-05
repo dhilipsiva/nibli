@@ -543,6 +543,18 @@ pub(super) fn check_predicate_in_kb_typed(
     depth: usize,
     visited: &mut HashSet<StoredFact>,
 ) -> QueryResult {
+    // Interactive trace: print when a traced predicate is encountered.
+    let is_traced = inner.traced_predicates.contains(fact.relation());
+    if is_traced {
+        let indent = "  ".repeat(depth);
+        eprintln!(
+            "[Trace] {}depth={} check: {}",
+            indent,
+            depth,
+            fact.to_display_string()
+        );
+    }
+
     // du reflexivity + transitivity: du(x,x) always holds; du(a,b) holds
     // if a and b are in the same equivalence class.
     if fact.relation() == "du" {
@@ -608,6 +620,17 @@ pub(super) fn check_predicate_in_kb_typed(
         }
     }
 
+    if is_traced {
+        let indent = "  ".repeat(depth);
+        eprintln!(
+            "[Trace] {}depth={} result: {} → {}",
+            indent,
+            depth,
+            fact.to_display_string(),
+            result.status_label()
+        );
+    }
+
     PRED_CACHE_ENABLED.with(|e| {
         if e.get() {
             TYPED_PRED_CACHE.with(|c| c.borrow_mut().insert(fact.clone(), result.clone()));
@@ -648,6 +671,17 @@ pub(super) fn try_backward_chain_typed(
     let all_candidates = build_all_candidates(inner);
 
     let rules_snapshot = collect_matching_rules_typed(fact, &inner.universal_rules);
+    let is_traced = inner.traced_predicates.contains(fact.relation());
+    if is_traced && !rules_snapshot.is_empty() {
+        let indent = "  ".repeat(depth);
+        eprintln!(
+            "[Trace] {}depth={} backward-chain: {} ({} rule(s) to try)",
+            indent,
+            depth,
+            fact.to_display_string(),
+            rules_snapshot.len()
+        );
+    }
     let mut best_result = None;
 
     for rule in &rules_snapshot {

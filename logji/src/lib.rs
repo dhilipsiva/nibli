@@ -658,6 +658,34 @@ impl KnowledgeBase {
         }
     }
 
+    /// Enable tracing for a predicate. When the predicate is encountered
+    /// during backward chaining, diagnostic output is printed showing
+    /// depth, rule matches, and results.
+    pub fn trace_predicate(&self, predicate: &str) {
+        self.inner
+            .borrow_mut()
+            .traced_predicates
+            .insert(predicate.to_string());
+    }
+
+    /// Disable tracing for a predicate.
+    pub fn untrace_predicate(&self, predicate: &str) {
+        self.inner
+            .borrow_mut()
+            .traced_predicates
+            .remove(predicate);
+    }
+
+    /// List all currently traced predicates.
+    pub fn traced_predicates(&self) -> Vec<String> {
+        self.inner
+            .borrow()
+            .traced_predicates
+            .iter()
+            .cloned()
+            .collect()
+    }
+
     /// Scan the KB for contradictions. Returns a list of human-readable
     /// contradiction descriptions. An empty list means no contradictions found.
     ///
