@@ -5453,3 +5453,89 @@
             violations
         );
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // SELECTIVE FORWARD CHAINING TESTS
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_forward_chain_basic() {
+        // Rule: gerku→danlu (forward). Assert gerku(alis) → danlu(alis) auto-derived.
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        kb.set_rule_forward("danlu", true);
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+
+        // danlu(alis) should be directly in the fact store (forward-derived),
+        // not just backward-chainable.
+        let inner = kb.inner.borrow();
+        let danlu_facts = inner.fact_store.lookup_predicate("danlu");
+        assert!(
+            danlu_facts.is_some() && !danlu_facts.unwrap().is_empty(),
+            "danlu(alis) should be forward-derived into the fact store"
+        );
+    }
+
+    #[test]
+    fn test_forward_chain_no_flag() {
+        // Same rule without forward flag → danlu(alis) NOT in fact store.
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        // Do NOT call set_rule_forward.
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+
+        let inner = kb.inner.borrow();
+        let danlu_facts = inner.fact_store.lookup_predicate("danlu");
+        // danlu should not be forward-derived (only available via backward chain).
+        let has_danlu_alis = danlu_facts
+            .map(|set| set.iter().any(|f| {
+                f.inner().relation == "danlu"
+                    && f.inner().args.first()
+                        == Some(&GroundTerm::Constant("alis".to_string()))
+            }))
+            .unwrap_or(false);
+        assert!(
+            !has_danlu_alis,
+            "danlu(alis) should NOT be forward-derived without forward flag"
+        );
+    }
+
+    #[test]
+    fn test_forward_chain_transitive() {
+        // Chain: gerku→danlu (forward), danlu→jmive (forward).
+        // Assert gerku(alis) → danlu(alis) auto-derived → jmive(alis) auto-derived.
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_universal("danlu", "jmive"));
+        kb.set_rule_forward("danlu", true);
+        kb.set_rule_forward("jmive", true);
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+
+        let inner = kb.inner.borrow();
+        let jmive_facts = inner.fact_store.lookup_predicate("jmive");
+        assert!(
+            jmive_facts.is_some() && !jmive_facts.unwrap().is_empty(),
+            "jmive(alis) should be transitively forward-derived"
+        );
+    }
+
+    #[test]
+    fn test_forward_chain_skipped_during_rebuild() {
+        // Forward chain should not fire during retraction rebuild.
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        kb.set_rule_forward("danlu", true);
+        let id = assert_id(&kb, make_assertion("alis", "gerku"), "gerku");
+
+        // danlu(alis) should be forward-derived.
+        assert!(query(&kb, make_query("alis", "danlu")));
+
+        // Retract gerku(alis) — triggers rebuild. Forward chains should not re-fire.
+        kb.retract_fact_inner(id).unwrap();
+
+        // After retraction, danlu(alis) should NOT hold.
+        assert!(
+            !query(&kb, make_query("alis", "danlu")),
+            "danlu(alis) should be gone after retracting gerku(alis)"
+        );
+    }

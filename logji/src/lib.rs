@@ -139,6 +139,18 @@ impl KnowledgeBase {
             }
         };
 
+        // Check if any forward-chaining rules are active. If so, forward-derived
+        // facts may depend on the retracted fact — fall back to full rebuild.
+        let has_forward_rules = inner
+            .universal_rules
+            .values()
+            .flat_map(|v| v.iter())
+            .any(|r| r.forward);
+
+        if has_forward_rules {
+            return Self::rebuild_inner(&mut inner);
+        }
+
         // Check if this assertion involved Skolemization (existential variables
         // or ForAll). If so, fall back to full rebuild — re-deriving Skolem subs
         // with a temporary counter won't match the originals.
@@ -557,6 +569,26 @@ impl KnowledgeBase {
 
     pub fn list_facts(&self) -> Result<Vec<FactSummary>, NibliError> {
         self.list_facts_inner().map_err(NibliError::Reasoning)
+    }
+
+    /// Mark all rules concluding the given predicate as forward-chaining enabled.
+    /// Forward-enabled rules fire eagerly on fact assertion when all conditions
+    /// are directly asserted in the fact store.
+    pub fn set_rule_forward(&self, conclusion_predicate: &str, forward: bool) {
+        let mut inner = self.inner.borrow_mut();
+        if let Some(rules) = inner.universal_rules.get_mut(conclusion_predicate) {
+            for rule in rules.iter_mut() {
+                // Arc::get_mut only succeeds if there's one strong reference.
+                // If shared, clone-on-write.
+                if let Some(r) = Arc::get_mut(rule) {
+                    r.forward = forward;
+                } else {
+                    let mut cloned = (**rule).clone();
+                    cloned.forward = forward;
+                    *rule = Arc::new(cloned);
+                }
+            }
+        }
     }
 
     /// Scan the KB for contradictions. Returns a list of human-readable

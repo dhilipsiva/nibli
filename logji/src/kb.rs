@@ -416,6 +416,9 @@ pub(super) struct UniversalRuleRecord {
     /// Used for stratification checking — a negated condition creates a
     /// "negative" dependency edge in the predicate dependency graph.
     pub(super) negated_condition_indices: Vec<usize>,
+    /// When true, this rule fires eagerly on fact assertion (forward chaining).
+    /// When false (default), the rule only fires via backward-chaining queries.
+    pub(super) forward: bool,
 }
 
 /// Registry entry for a single asserted fact, supporting retraction and rebuild.
@@ -480,6 +483,8 @@ pub(super) struct KnowledgeBaseInner {
     /// The current assertion's fact_registry ID (set during process_assertion).
     /// Used by compile_forall_to_rule to record rule sources.
     pub(super) current_assertion_id: Option<u64>,
+    /// Depth counter for forward chaining recursion. Prevents infinite loops.
+    pub(super) forward_depth: usize,
 }
 
 impl Clone for KnowledgeBaseInner {
@@ -507,6 +512,7 @@ impl Clone for KnowledgeBaseInner {
             arg_position_index: self.arg_position_index.clone(),
             rule_source_map: self.rule_source_map.clone(),
             current_assertion_id: None,
+            forward_depth: 0,
         }
     }
 }
@@ -536,6 +542,7 @@ impl KnowledgeBaseInner {
             arg_position_index: HashMap::new(),
             rule_source_map: HashMap::new(),
             current_assertion_id: None,
+            forward_depth: 0,
         }
     }
 
@@ -560,6 +567,7 @@ impl KnowledgeBaseInner {
         self.arg_position_index.clear();
         self.rule_source_map.clear();
         self.current_assertion_id = None;
+        self.forward_depth = 0;
         // Note: integrity_constraints are NOT cleared on reset — they're
         // structural declarations, not derived state. Clear explicitly if needed.
     }
@@ -828,7 +836,7 @@ pub(super) fn register_ground_material_conditional(
                 let mut typed_concls = Vec::new();
                 collect_ground_facts(buffer, *r, subs, None, &mut typed_concls);
                 let label = build_typed_rule_label(&typed_conds, &typed_concls);
-                register_rule(inner, label, vec![], typed_conds, typed_concls, vec![])?;
+                register_rule(inner, label, vec![], typed_conds, typed_concls, vec![], false)?;
             }
             // Also check Or(Q, Not(P)) — reversed order (commutativity)
             else if let Ok(LogicNode::NotNode(neg_inner)) = get_node(buffer, *r) {
@@ -837,7 +845,7 @@ pub(super) fn register_ground_material_conditional(
                 let mut typed_concls = Vec::new();
                 collect_ground_facts(buffer, *l, subs, None, &mut typed_concls);
                 let label = build_typed_rule_label(&typed_conds, &typed_concls);
-                register_rule(inner, label, vec![], typed_conds, typed_concls, vec![])?;
+                register_rule(inner, label, vec![], typed_conds, typed_concls, vec![], false)?;
             }
         }
         _ => {}

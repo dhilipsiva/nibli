@@ -236,6 +236,7 @@ pub(super) fn register_rule(
     typed_conditions: Vec<StoredFact>,
     typed_conclusions: Vec<StoredFact>,
     negated_condition_indices: Vec<usize>,
+    forward: bool,
 ) -> Result<(), String> {
     // Update predicate dependency graph before inserting the rule.
     for concl in &typed_conclusions {
@@ -275,6 +276,7 @@ pub(super) fn register_rule(
         typed_conclusions,
         pattern_var_names,
         negated_condition_indices,
+        forward,
     };
     let rc = Arc::new(rule);
     let mut indexed = false;
@@ -431,6 +433,89 @@ pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner
             eprintln!("[Constraint] {}", violation);
         }
     }
+
+    // Selective forward chaining: fire forward-enabled rules triggered by this fact.
+    if !inner.rebuilding {
+        trigger_forward_rules(&rel_owned, inner);
+    }
+}
+
+/// Fire forward-enabled rules whose conditions are fully satisfied after a new
+/// fact insertion. Only checks directly asserted facts (not backward chaining)
+/// to keep forward chaining cheap. Depth-limited to prevent infinite loops.
+const MAX_FORWARD_DEPTH: usize = 10;
+
+fn trigger_forward_rules(new_rel: &str, inner: &mut KnowledgeBaseInner) {
+    if inner.forward_depth >= MAX_FORWARD_DEPTH {
+        return;
+    }
+
+    // Collect forward rules whose conditions mention the newly-asserted predicate.
+    let forward_rules: Vec<Arc<UniversalRuleRecord>> = inner
+        .universal_rules
+        .values()
+        .flat_map(|v| v.iter())
+        .filter(|r| {
+            r.forward && r.typed_conditions.iter().any(|c| c.relation() == new_rel)
+        })
+        .cloned()
+        .collect();
+
+    if forward_rules.is_empty() {
+        return;
+    }
+
+    inner.forward_depth += 1;
+
+    // For each forward rule, try to match the new fact against each condition.
+    let mut to_derive: Vec<StoredFact> = Vec::new();
+    for rule in &forward_rules {
+        for (cond_idx, cond_template) in rule.typed_conditions.iter().enumerate() {
+            if cond_template.relation() != new_rel {
+                continue;
+            }
+            // Try all facts matching this predicate to find full condition satisfaction.
+            let matching_facts: Vec<StoredFact> = inner
+                .fact_store
+                .lookup_predicate(new_rel)
+                .map(|set| set.iter().cloned().collect())
+                .unwrap_or_default();
+
+            for fact in &matching_facts {
+                let Some(bindings) = unify_facts(cond_template, fact) else {
+                    continue;
+                };
+                // Check all OTHER conditions are directly asserted.
+                let all_others = rule
+                    .typed_conditions
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| *i != cond_idx)
+                    .all(|(_, other)| {
+                        let sub = substitute_fact(other, &bindings);
+                        inner.fact_store.contains(&sub)
+                    });
+                if all_others {
+                    for concl in &rule.typed_conclusions {
+                        let derived = substitute_fact(concl, &bindings);
+                        if !inner.fact_store.contains(&derived) {
+                            to_derive.push(derived);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Assert derived facts (may trigger further forward chaining recursively).
+    for fact in to_derive {
+        if !inner.rebuilding {
+            eprintln!("[Forward] Derived: {}", fact.to_display_string());
+        }
+        assert_typed_fact(fact, inner);
+    }
+
+    inner.forward_depth -= 1;
 }
 
 
@@ -581,6 +666,7 @@ pub(super) fn compile_forall_to_rule(
                     typed_conds,
                     typed_concls,
                     negated_condition_indices,
+                    false, // forward chaining disabled by default
                 ) {
                     eprintln!("[Stratification Error] {}", e);
                     return Err(e);
@@ -662,6 +748,7 @@ pub(super) fn compile_forall_to_rule(
                     vec![],
                     typed_concls,
                     vec![], // bare universal — no conditions, no negation
+                    false,  // forward chaining disabled by default
                 ) {
                     eprintln!("[Stratification Error] {}", e);
                     return Err(e);
