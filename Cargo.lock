@@ -3742,6 +3742,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nibli-import"
+version = "0.1.0"
+dependencies = [
+ "nibli-engine",
+ "nibli-types",
+]
+
+[[package]]
 name = "nibli-protocol"
 version = "0.1.0"
 dependencies = [
