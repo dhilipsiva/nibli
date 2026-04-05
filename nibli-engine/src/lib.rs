@@ -453,6 +453,11 @@ impl NibliEngine {
     pub fn retract_fact(&self, id: u64) -> Result<(), String> {
         self.kb.retract_fact(id).map_err(|e| e.to_string())
     }
+
+    /// Scan the KB for contradictions. Returns human-readable descriptions.
+    pub fn check_contradictions(&self) -> Vec<String> {
+        self.kb.check_contradictions()
+    }
 }
 
 #[cfg(test)]

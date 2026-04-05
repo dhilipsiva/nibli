@@ -131,6 +131,21 @@ fn main() {
                         }
                         continue;
                     }
+                    ":contradictions" => {
+                        let violations = engine.check_contradictions();
+                        if violations.is_empty() {
+                            println!("[Contradictions] No contradictions found.");
+                        } else {
+                            println!(
+                                "[Contradictions] {} issue(s) found:",
+                                violations.len()
+                            );
+                            for (i, v) in violations.iter().enumerate() {
+                                println!("  {}: {}", i + 1, v);
+                            }
+                        }
+                        continue;
+                    }
                     ":help" | ":h" => {
                         println!("  <text>              Assert Lojban as fact");
                         println!("  ? <text>            Query with proof trace");
@@ -141,6 +156,7 @@ fn main() {
                         println!("  :assert <rel> <args..> Assert a ground fact directly");
                         println!("  :retract <id>       Retract a fact by ID (rebuilds KB)");
                         println!("  :facts              List all active facts in the KB");
+                        println!("  :contradictions     Scan KB for contradictions");
                         println!("  :reset              Clear all facts (fresh KB)");
                         println!("  :quit               Exit");
                         continue;

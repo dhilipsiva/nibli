@@ -558,6 +558,148 @@ impl KnowledgeBase {
     pub fn list_facts(&self) -> Result<Vec<FactSummary>, NibliError> {
         self.list_facts_inner().map_err(NibliError::Reasoning)
     }
+
+    /// Scan the KB for contradictions. Returns a list of human-readable
+    /// contradiction descriptions. An empty list means no contradictions found.
+    ///
+    /// Checks:
+    /// 1. Integrity constraint violations (conjuncts that all hold simultaneously)
+    /// 2. Predicate arity inconsistencies (same predicate with different arities)
+    /// 3. Equality contradictions (du(a,b) where a and b have conflicting properties
+    ///    under registered integrity constraints)
+    pub fn check_contradictions(&self) -> Vec<String> {
+        let mut violations = Vec::new();
+
+        let inner = self.inner.borrow();
+
+        // 1. Check integrity constraints.
+        for constraint in &inner.integrity_constraints {
+            let all_hold = constraint
+                .conjuncts
+                .iter()
+                .all(|c| inner.fact_store.contains(c));
+            if all_hold {
+                let facts: Vec<String> = constraint
+                    .conjuncts
+                    .iter()
+                    .map(|c| c.to_display_string())
+                    .collect();
+                violations.push(format!(
+                    "Integrity violation '{}': {} all hold",
+                    constraint.label,
+                    facts.join(" ∧ ")
+                ));
+            }
+        }
+
+        // 2. Check predicate arity consistency across the fact store.
+        // The predicate registry tracks first-seen arity. Scan all facts for mismatches.
+        let mut arity_map: HashMap<String, usize> = HashMap::new();
+        for fact in inner.fact_store.all_facts() {
+            let rel = fact.relation().to_string();
+            let arity = fact.inner().args.len();
+            match arity_map.get(&rel) {
+                Some(&expected) if expected != arity => {
+                    violations.push(format!(
+                        "Arity inconsistency: '{}' has facts with {} and {} arguments",
+                        rel, expected, arity
+                    ));
+                }
+                None => {
+                    arity_map.insert(rel, arity);
+                }
+                _ => {}
+            }
+        }
+
+        // 3. Check equality-induced constraint violations.
+        // If du(a,b) and a constraint says "deny P(a) ∧ Q(a)", but P(a) and Q(b) are
+        // asserted (which means Q(a) holds via equivalence), flag it.
+        if !inner.equivalence_parent.is_empty() && !inner.integrity_constraints.is_empty() {
+            for constraint in &inner.integrity_constraints {
+                // For each conjunct, expand by equivalence class and check all combos.
+                let expanded: Vec<Vec<StoredFact>> = constraint
+                    .conjuncts
+                    .iter()
+                    .map(|c| {
+                        let gf = c.inner();
+                        let equiv_args: Vec<Vec<GroundTerm>> = gf
+                            .args
+                            .iter()
+                            .map(|arg| {
+                                get_equivalence_class_readonly(
+                                    &inner.equivalence_parent,
+                                    &inner.equivalence_classes,
+                                    arg,
+                                )
+                            })
+                            .collect();
+                        // Generate all argument combinations.
+                        let mut variants = Vec::new();
+                        fn cartesian(
+                            sets: &[Vec<GroundTerm>],
+                            idx: usize,
+                            current: &mut Vec<GroundTerm>,
+                            out: &mut Vec<Vec<GroundTerm>>,
+                        ) {
+                            if idx == sets.len() {
+                                out.push(current.clone());
+                                return;
+                            }
+                            for val in &sets[idx] {
+                                current.push(val.clone());
+                                cartesian(sets, idx + 1, current, out);
+                                current.pop();
+                            }
+                        }
+                        let mut buf = Vec::new();
+                        cartesian(&equiv_args, 0, &mut buf, &mut variants);
+                        variants
+                            .into_iter()
+                            .map(|args| {
+                                StoredFact::with_tense_from(
+                                    GroundFact::new(gf.relation.clone(), args),
+                                    c,
+                                )
+                            })
+                            .collect()
+                    })
+                    .collect();
+
+                // Check if any combination of expanded conjuncts all hold.
+                fn check_combos(
+                    expanded: &[Vec<StoredFact>],
+                    idx: usize,
+                    store: &dyn crate::fact_store::FactStore,
+                ) -> bool {
+                    if idx == expanded.len() {
+                        return true; // All conjuncts satisfied.
+                    }
+                    expanded[idx]
+                        .iter()
+                        .any(|variant| store.contains(variant) && check_combos(expanded, idx + 1, store))
+                }
+
+                if check_combos(&expanded, 0, &*inner.fact_store) {
+                    let facts: Vec<String> = constraint
+                        .conjuncts
+                        .iter()
+                        .map(|c| c.to_display_string())
+                        .collect();
+                    let msg = format!(
+                        "Equality-expanded integrity violation '{}': {} (via du equivalence)",
+                        constraint.label,
+                        facts.join(" ∧ ")
+                    );
+                    if !violations.contains(&msg) {
+                        violations.push(msg);
+                    }
+                }
+            }
+        }
+
+        violations
+    }
 }
 
 #[cfg(test)]

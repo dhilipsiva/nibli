@@ -5397,3 +5397,59 @@
             "gerku(alis) should survive"
         );
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // CONTRADICTIONS SCAN TESTS
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_contradictions_none() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        let violations = kb.check_contradictions();
+        assert!(violations.is_empty(), "no contradictions expected");
+    }
+
+    #[test]
+    fn test_contradictions_integrity_violation() {
+        let kb = new_kb();
+        kb.register_constraint(
+            "no-gerku-and-mlatu".into(),
+            vec![
+                constraint_fact("gerku", "adam"),
+                constraint_fact("mlatu", "adam"),
+            ],
+        );
+        assert_buf(&kb, make_assertion("adam", "gerku"));
+        assert_buf(&kb, make_assertion("adam", "mlatu"));
+        let violations = kb.check_contradictions();
+        assert!(
+            !violations.is_empty(),
+            "should detect integrity violation"
+        );
+        assert!(
+            violations[0].contains("Integrity violation"),
+            "violation message should mention integrity: {}",
+            violations[0]
+        );
+    }
+
+    #[test]
+    fn test_contradictions_arity_inconsistency() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku")); // arity 2
+        // Assert gerku with arity 1 (single arg).
+        let mut nodes = Vec::new();
+        let root = pred(
+            &mut nodes,
+            "gerku",
+            vec![LogicalTerm::Constant("bob".to_string())],
+        );
+        assert_buf(&kb, LogicBuffer { nodes, roots: vec![root] });
+        let violations = kb.check_contradictions();
+        assert!(
+            violations.iter().any(|v| v.contains("Arity inconsistency")),
+            "should detect arity mismatch: {:?}",
+            violations
+        );
+    }
