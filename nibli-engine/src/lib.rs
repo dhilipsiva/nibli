@@ -21,19 +21,8 @@ pub use nibli_types::logic::{
 use nibli_types::error::NibliError as PipelineError;
 use nibli_types::logic as logji_logic;
 
-// ═══════════════════════════════════════════════════════════════════════
-// ERROR FORMATTING
-// ═══════════════════════════════════════════════════════════════════════
-
 fn format_error(e: &PipelineError) -> String {
-    match e {
-        PipelineError::Syntax(d) => {
-            format!("[Syntax Error] line {}:{}: {}", d.line, d.column, d.message)
-        }
-        PipelineError::Semantic(m) => format!("[Semantic Error] {}", m),
-        PipelineError::Reasoning(m) => format!("[Reasoning Error] {}", m),
-        PipelineError::Backend((k, m)) => format!("[Backend Error] {} — {}", k, m),
-    }
+    e.to_string()
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -326,7 +315,7 @@ impl NibliEngine {
     pub fn validate(&self, text: &str) -> Result<(), String> {
         self.compile_text(text)
             .map(|_| ())
-            .map_err(|e| format_error(&e))
+            .map_err(|e| e.to_string())
     }
 
     pub fn register_compute_predicate(&mut self, name: String) {
@@ -383,7 +372,7 @@ impl NibliEngine {
     }
 
     pub fn assert_text(&self, text: &str) -> Result<u64, String> {
-        let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
+        let buf = self.compile_text(text).map_err(|e| e.to_string())?;
         let label = text.to_string();
         let mut store = self
             .store
@@ -404,7 +393,7 @@ impl NibliEngine {
             self.kb
                 .assert_fact(buf, label)
                 .map(|id| id)
-                .map_err(|e| format_error(&e))
+                .map_err(|e| e.to_string())
         }
     }
 
@@ -421,18 +410,18 @@ impl NibliEngine {
         self.kb
             .assert_fact(buf, label)
             .map(|id| id)
-            .map_err(|e| format_error(&e))
+            .map_err(|e| e.to_string())
     }
 
     pub fn query_text_with_proof(
         &self,
         text: &str,
     ) -> Result<(EngineQueryResult, String, String), String> {
-        let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
+        let buf = self.compile_text(text).map_err(|e| e.to_string())?;
         let (result, trace) = self
             .kb
             .query_entailment_with_proof(buf)
-            .map_err(|e| format_error(&e))?;
+            .map_err(|e| e.to_string())?;
         let wire = proof_trace_to_wire(&trace);
         let formatted = wire.to_pretty_text();
         let json = wire.to_json();
@@ -441,26 +430,26 @@ impl NibliEngine {
 
     /// Evaluate a Lojban query against the KB and return the typed query result.
     pub fn query_holds(&self, text: &str) -> Result<EngineQueryResult, String> {
-        let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
-        self.kb.query_entailment(buf).map_err(|e| format_error(&e))
+        let buf = self.compile_text(text).map_err(|e| e.to_string())?;
+        self.kb.query_entailment(buf).map_err(|e| e.to_string())
     }
 
     pub fn query_find_text(&self, text: &str) -> Result<Vec<Vec<EngineWitnessBinding>>, String> {
-        let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
-        self.kb.query_find(buf).map_err(|e| format_error(&e))
+        let buf = self.compile_text(text).map_err(|e| e.to_string())?;
+        self.kb.query_find(buf).map_err(|e| e.to_string())
     }
 
     pub fn compile_debug(&self, text: &str) -> Result<String, String> {
-        let buf = self.compile_text(text).map_err(|e| format_error(&e))?;
+        let buf = self.compile_text(text).map_err(|e| e.to_string())?;
         Ok(logji::repr::debug_logic(&buf))
     }
 
     pub fn list_facts(&self) -> Result<Vec<EngineFactSummary>, String> {
-        self.kb.list_facts().map_err(|e| format_error(&e))
+        self.kb.list_facts().map_err(|e| e.to_string())
     }
 
     pub fn retract_fact(&self, id: u64) -> Result<(), String> {
-        self.kb.retract_fact(id).map_err(|e| format_error(&e))
+        self.kb.retract_fact(id).map_err(|e| e.to_string())
     }
 }
 

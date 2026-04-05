@@ -20,3 +20,16 @@ pub enum NibliError {
     /// Backend error from external compute dispatch. Fields: (predicate, message).
     Backend((String, String)),
 }
+
+impl std::fmt::Display for NibliError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NibliError::Syntax(d) => {
+                write!(f, "[Syntax Error] line {}:{}: {}", d.line, d.column, d.message)
+            }
+            NibliError::Semantic(m) => write!(f, "[Semantic Error] {}", m),
+            NibliError::Reasoning(m) => write!(f, "[Reasoning Error] {}", m),
+            NibliError::Backend((k, m)) => write!(f, "[Backend Error] {} — {}", k, m),
+        }
+    }
+}
