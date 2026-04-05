@@ -2,15 +2,7 @@
 
 Ordered by dependency, correctness impact, then user value.
 
-1. **Add criterion benchmarks**
-    - Query latency at 10² / 10³ / 10⁴ facts (parametric).
-    - Recursive rule chains (depth 2, 5, 10).
-    - Witness extraction over growing domain sizes.
-    - Equality-heavy workloads (once equality lands).
-    - Retract + rebuild vs retract + TMS (once TMS lands).
-    - Store baseline in `benches/baseline.json`.
-
-15. **Publish GUARANTEES.md**
+1. **Publish GUARANTEES.md**
     Formal statement of engine properties: soundness, completeness bounds, negation policy, equality semantics, resource limits, retraction model.
 
 
