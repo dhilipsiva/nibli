@@ -797,10 +797,26 @@ thread_local! {
     pub(super) static PRED_CACHE_ENABLED: Cell<bool> = const { Cell::new(false) };
 }
 
-/// Clear the predicate result cache. Call at the start of each query.
-pub(super) fn clear_pred_cache() {
+/// Clear and enable the predicate result cache. Called at the start of
+/// each top-level query. The cache persists across iterative deepening
+/// iterations within a single query (tabling benefit) but is cleared
+/// between separate user queries for correctness.
+pub(super) fn clear_and_enable_pred_cache() {
     clear_typed_pred_cache();
     PRED_CACHE_ENABLED.with(|e| e.set(true));
+}
+
+/// Enable the predicate cache without clearing. Used within iterative
+/// deepening to preserve cached results across depth iterations.
+pub(super) fn enable_pred_cache() {
+    PRED_CACHE_ENABLED.with(|e| e.set(true));
+}
+
+/// Invalidate the predicate result cache. Call after any KB mutation
+/// (assert, retract, reset) to prevent stale cached results.
+pub(super) fn invalidate_pred_cache() {
+    clear_typed_pred_cache();
+    PRED_CACHE_ENABLED.with(|e| e.set(false));
 }
 
 pub(super) fn register_ground_material_conditional(

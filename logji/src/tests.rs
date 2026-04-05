@@ -5539,3 +5539,49 @@
             "danlu(alis) should be gone after retracting gerku(alis)"
         );
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TABLING / PERSISTENT MEMOIZATION TESTS
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_tabling_cache_survives_queries() {
+        // Query P(a) twice — second should use cached result (same answer).
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+
+        // First query — populates cache.
+        assert!(query(&kb, make_query("alis", "danlu")));
+        // Second query — uses cache (same result).
+        assert!(query(&kb, make_query("alis", "danlu")));
+    }
+
+    #[test]
+    fn test_tabling_invalidated_on_assert() {
+        // Query P(a) → False, assert P(a), query again → True.
+        let kb = new_kb();
+        assert!(!query(&kb, make_query("alis", "gerku")));
+        // Cache now has gerku(alis) → False.
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        // After assertion, cache should be invalidated.
+        assert!(
+            query(&kb, make_query("alis", "gerku")),
+            "gerku(alis) should be True after assertion (cache invalidated)"
+        );
+    }
+
+    #[test]
+    fn test_tabling_invalidated_on_retract() {
+        // Assert P(a), query → True, retract, query → False.
+        let kb = new_kb();
+        let id = assert_id(&kb, make_assertion("alis", "gerku"), "gerku");
+        assert!(query(&kb, make_query("alis", "gerku")));
+        // Cache now has gerku(alis) → True.
+        kb.retract_fact_inner(id).unwrap();
+        // After retraction, cache should be invalidated.
+        assert!(
+            !query(&kb, make_query("alis", "gerku")),
+            "gerku(alis) should be False after retraction (cache invalidated)"
+        );
+    }

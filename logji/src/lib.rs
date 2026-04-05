@@ -102,6 +102,7 @@ impl KnowledgeBase {
                 retracted: false,
             },
         );
+        invalidate_pred_cache(); // Tabling: KB mutated, clear cached derivations.
         Ok(id)
     }
 
@@ -148,7 +149,9 @@ impl KnowledgeBase {
             .any(|r| r.forward);
 
         if has_forward_rules {
-            return Self::rebuild_inner(&mut inner);
+            let result = Self::rebuild_inner(&mut inner);
+            invalidate_pred_cache();
+            return result;
         }
 
         // Check if this assertion involved Skolemization (existential variables
@@ -163,7 +166,9 @@ impl KnowledgeBase {
 
         if has_skolems || inner.rule_source_map.contains_key(&id) {
             // Complex assertion (rules or Skolems) — fall back to full rebuild.
-            return Self::rebuild_inner(&mut inner);
+            let result = Self::rebuild_inner(&mut inner);
+            invalidate_pred_cache();
+            return result;
         }
 
         // Simple ground fact — remove incrementally from all indexes.
@@ -211,6 +216,7 @@ impl KnowledgeBase {
         }
 
         inner.domain_members_dirty = true;
+        invalidate_pred_cache(); // Tabling: KB mutated.
         Ok(())
     }
 
@@ -277,7 +283,7 @@ impl KnowledgeBase {
 
     /// Single-pass entailment check at the current max_chain_depth.
     fn run_entailment_check(&self, logic: &LogicBuffer) -> Result<QueryResult, String> {
-        clear_pred_cache();
+        clear_and_enable_pred_cache();
         let mut inner = self.inner.borrow_mut();
         inner.ensure_domain_members_cached();
         let mut overall = QueryResult::True;
@@ -293,6 +299,7 @@ impl KnowledgeBase {
     /// Uses iterative deepening: tries depth 1, 2, ..., max_chain_depth.
     /// Guarantees finding the shallowest proof.
     fn query_entailment_inner(&self, logic: LogicBuffer) -> Result<QueryResult, String> {
+        clear_and_enable_pred_cache(); // Tabling: clear once, persist across depth iterations.
         let configured_max = self.inner.borrow().max_chain_depth;
         for depth_limit in 1..=configured_max {
             self.inner.borrow_mut().max_chain_depth = depth_limit;
@@ -309,7 +316,7 @@ impl KnowledgeBase {
     /// Find all satisfying binding sets for existential variables in the query formula.
     /// Returns one `Vec<WitnessBinding>` per satisfying assignment.
     fn query_find_inner(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, String> {
-        clear_pred_cache();
+        clear_and_enable_pred_cache();
         let mut inner = self.inner.borrow_mut();
         inner.ensure_domain_members_cached();
         let mut result_sets: Option<Vec<Vec<(String, GroundTerm)>>> = None;
@@ -361,7 +368,7 @@ impl KnowledgeBase {
         &self,
         logic: &LogicBuffer,
     ) -> Result<(QueryResult, ProofTrace), String> {
-        clear_pred_cache();
+        clear_and_enable_pred_cache();
         let mut inner = self.inner.borrow_mut();
         inner.ensure_domain_members_cached();
         let mut steps: Vec<ProofStep> = Vec::new();
@@ -404,6 +411,7 @@ impl KnowledgeBase {
         &self,
         logic: LogicBuffer,
     ) -> Result<(QueryResult, ProofTrace), String> {
+        clear_and_enable_pred_cache(); // Tabling: clear once, persist across depth iterations.
         let configured_max = self.inner.borrow().max_chain_depth;
         let mut last_trace = ProofTrace {
             steps: vec![],
@@ -560,6 +568,7 @@ impl KnowledgeBase {
 
     pub fn reset(&self) -> Result<(), NibliError> {
         self.inner.borrow_mut().reset();
+        invalidate_pred_cache(); // Tabling: KB cleared.
         Ok(())
     }
 
