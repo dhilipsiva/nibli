@@ -2,11 +2,7 @@
 
 Ordered by dependency, correctness impact, then user value.
 
-13. **Break up oversized core files**
-    - `logji/src/lib.rs` (4,715 lines) → extract `assertion.rs`, `query.rs`, `witness.rs`, `proof.rs`.
-    - `gerna/src/grammar.rs` (4,452 lines) → split per-construct (sumti, selbri, sentence parsing).
-
-14. **Add criterion benchmarks**
+1. **Add criterion benchmarks**
     - Query latency at 10² / 10³ / 10⁴ facts (parametric).
     - Recursive rule chains (depth 2, 5, 10).
     - Witness extraction over growing domain sizes.
