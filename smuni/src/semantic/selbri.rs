@@ -219,6 +219,13 @@ impl SemanticCompiler {
             Selbri::Connected((left_id, conn, right_id)) => {
                 let left_arity = self.get_selbri_arity(*left_id, selbris);
                 let right_arity = self.get_selbri_arity(*right_id, selbris);
+                if left_arity != right_arity {
+                    eprintln!(
+                        "[Arity Warning] Connected selbri: left arity {} != right arity {}. \
+                         Arguments will be fitted independently to each predicate.",
+                        left_arity, right_arity
+                    );
+                }
                 let left_args = Self::fit_args(args, left_arity);
                 let right_args = Self::fit_args(args, right_arity);
                 let left = self.apply_selbri(*left_id, &left_args, selbris, sumtis, sentences);
