@@ -35,7 +35,18 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:crates.io)",
       "WebFetch(domain:docs.rig.rs)",
-      "Bash(wsl -d Ubuntu -e bash -lc 'cd ~/projects/dhilipsiva/nibli && git add tavla/tests/gossip.rs && git commit -m \"\"Fix two_node_gossip_propagation test: match actual proof text format:*)"
+      "Bash(wsl -d Ubuntu -e bash -lc 'cd ~/projects/dhilipsiva/nibli && git add tavla/tests/gossip.rs && git commit -m \"\"Fix two_node_gossip_propagation test: match actual proof text format:*)",
+      "Read(//c/Users/dhilipsiva/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/c334c8ba-a2e1-4ee4-bc5e-354bf55220d7/d28e8be6-4f2d-4777-b554-623e6486aa23/skills/docx/**)",
+      "Bash(python scripts/office/unpack.py \"\\\\wsl.localhost\\\\Ubuntu\\\\home\\\\dhilipsiva\\\\projects\\\\dhilipsiva\\\\nibli\\\\book\\\\570_01_PD_Reviewed_SR.docx\" unpacked_570/)",
+      "Bash(pip install:*)",
+      "Bash(copy \"\\\\wsl.localhost\\\\Ubuntu\\\\tmp\\\\570_01.docx\" \"C:\\\\Users\\\\dhilipsiva\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\c334c8ba-a2e1-4ee4-bc5e-354bf55220d7\\\\d28e8be6-4f2d-4777-b554-623e6486aa23\\\\skills\\\\docx\\\\570_01.docx\")",
+      "Bash(cp \"\\\\\\\\wsl.localhost\\\\Ubuntu\\\\tmp\\\\570_01.docx\" \"C:\\\\Users\\\\dhilipsiva\\\\Downloads\\\\570_01.docx\")",
+      "Read(//c/Users/dhilipsiva/Downloads/**)",
+      "Bash(xcopy \"\\\\\\\\wsl.localhost\\\\Ubuntu\\\\tmp\\\\570_01.docx\" \"C:\\\\Users\\\\dhilipsiva\\\\Downloads\\\\\" /Y)",
+      "Bash(python C:UsersdhilipsivaAppDataRoamingClaudelocal-agent-mode-sessionsskills-pluginc334c8ba-a2e1-4ee4-bc5e-354bf55220d7d28e8be6-4f2d-4777-b554-623e6486aa23skillsdocxscriptsofficeunpack.py \"C:\\\\Users\\\\dhilipsiva\\\\Downloads\\\\570_01.docx\" \"C:\\\\Users\\\\dhilipsiva\\\\Downloads\\\\570_01_unpacked\")",
+      "Bash(wsl -d:*)",
+      "Bash(— and a First Glimpse\" with a conceptual English-only glimpse showing:*)",
+      "Bash(wsl -d Ubuntu -e bash -lc 'cd ~/projects/dhilipsiva/nibli/book && git add CLAUDE.md P1_C02_The_Hallucination_Firewall.md && git commit -m \"\"Ch 2: Add heading for first content section after Structure:*)"
     ]
   }
 }
