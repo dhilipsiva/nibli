@@ -46,7 +46,13 @@
       "Bash(python C:UsersdhilipsivaAppDataRoamingClaudelocal-agent-mode-sessionsskills-pluginc334c8ba-a2e1-4ee4-bc5e-354bf55220d7d28e8be6-4f2d-4777-b554-623e6486aa23skillsdocxscriptsofficeunpack.py \"C:\\\\Users\\\\dhilipsiva\\\\Downloads\\\\570_01.docx\" \"C:\\\\Users\\\\dhilipsiva\\\\Downloads\\\\570_01_unpacked\")",
       "Bash(wsl -d:*)",
       "Bash(— and a First Glimpse\" with a conceptual English-only glimpse showing:*)",
-      "Bash(wsl -d Ubuntu -e bash -lc 'cd ~/projects/dhilipsiva/nibli/book && git add CLAUDE.md P1_C02_The_Hallucination_Firewall.md && git commit -m \"\"Ch 2: Add heading for first content section after Structure:*)"
+      "Bash(wsl -d Ubuntu -e bash -lc 'cd ~/projects/dhilipsiva/nibli/book && git add CLAUDE.md P1_C02_The_Hallucination_Firewall.md && git commit -m \"\"Ch 2: Add heading for first content section after Structure:*)",
+      "Read(///wsl.localhost/Ubuntu/home/dhilipsiva/projects/**)",
+      "Read(//c/Users/dhilipsiva/projects/dhilipsiva/**)",
+      "Read(//mnt/c/Users/dhilipsiva/projects/**)",
+      "Read(//root/**)",
+      "Bash(wsl -d Ubuntu -e bash -lc 'cd ~/projects/dhilipsiva/nibli/book && echo \"\"=== num_variables \\(removed field\\) ===\"\" && grep -n \"\"num_variables\"\" P3_C10_Universal_Rules_as_Backward_Chaining_Templates.md P3_C09_Skolemization_and_the_Witness_Problem.md && echo \"\"=== \\(gerku pattern s-exp format ===\"\" && grep -c \"\"\\\\\"\"\\(gerku\\\\|\\\\\"\"\\(danlu\\\\|\\\\\"\"\\(klama\\\\|\\\\\"\"\\(ponse\\\\|\\\\\"\"\\(prenu\"\" P3_C10_Universal_Rules_as_Backward_Chaining_Templates.md P3_C09_Skolemization_and_the_Witness_Problem.md')",
+      "Bash(wsl -d Ubuntu -e bash -lc 'cd ~/projects/dhilipsiva/nibli/book && grep -cn \"\"\\\\\"\"\\(gerku\\\\|\\\\\"\"\\(danlu\\\\|\\\\\"\"\\(klama\\\\|\\\\\"\"\\(ponse\\\\|\\\\\"\"\\(prenu\\\\|\\\\\"\"\\(nelci\\\\|\\\\\"\"\\(mlatu\\\\|\\\\\"\"\\(sutra\\\\|\\\\\"\"\\(bajra\"\" P3_C10_Universal_Rules_as_Backward_Chaining_Templates.md P3_C09_Skolemization_and_the_Witness_Problem.md 2>/dev/null')"
     ]
   }
 }
