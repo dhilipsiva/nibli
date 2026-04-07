@@ -1,3 +1,11 @@
+//! Nibli Transparency Triad web UI (Dioxus).
+//!
+//! Browser-based interface with three tabs: Source (original document),
+//! Lojban (formal encoding with per-line validation), and Back-translation
+//! (robotic word-by-word gloss). Bottom query bar for proof-queries.
+//! Network tab for gossip assertions, event feed, and contradiction resolution.
+//! Communicates with nibli-server via GraphQL on port 8081.
+
 use dioxus::prelude::*;
 use gloo_net::http::Request;
 use nibli_protocol::{KbStatus, ProofRule, ProofTrace};

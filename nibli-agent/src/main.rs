@@ -1,3 +1,11 @@
+//! Nibli LLM gossip agent.
+//!
+//! Connects to a tavla gossip peer via TCP JSON Lines, translates between
+//! natural language and Lojban using Claude API or a local model, and
+//! propagates assertions with epistemic stances across the gossip network.
+//! Includes gerna-gated validation (3 retries) to ensure only parseable
+//! Lojban enters the network.
+
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::path::Path;

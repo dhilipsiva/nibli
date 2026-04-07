@@ -1,3 +1,12 @@
+//! Nibli GraphQL API server for the Transparency Triad.
+//!
+//! Exposes nibli-engine as an async-graphql + axum HTTP service on port 8081.
+//! Provides queries (assertText, queryWithProof, listFacts, networkSnapshot),
+//! mutations (gossipAssert, gossipRetract, resolveContradiction), and health
+//! endpoints (/healthz, /readyz, /metrics). Includes request timeouts and
+//! rate limiting (configurable via NIBLI_SERVER_REQUEST_TIMEOUT_SECS and
+//! NIBLI_SERVER_RATE_LIMIT_RPS env vars).
+
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
