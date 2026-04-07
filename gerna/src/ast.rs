@@ -18,14 +18,20 @@
 /// Place-tag cmavo: explicit argument position
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlaceTag {
-    Fa, // x1
-    Fe, // x2
-    Fi, // x3
-    Fo, // x4
-    Fu, // x5
+    /// First argument place (x1).
+    Fa,
+    /// Second argument place (x2).
+    Fe,
+    /// Third argument place (x3).
+    Fi,
+    /// Fourth argument place (x4).
+    Fo,
+    /// Fifth argument place (x5).
+    Fu,
 }
 
 impl PlaceTag {
+    /// Convert this place tag to a zero-based argument index (fa=0, fe=1, ...).
     pub fn to_index(self) -> usize {
         match self {
             PlaceTag::Fa => 0,
@@ -40,12 +46,18 @@ impl PlaceTag {
 /// BAI cmavo: modal tags derived from underlying gismu
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BaiTag {
-    Ria, // ri'a → rinka (cause)
-    Nii, // ni'i → nibli (logical entailment)
-    Mui, // mu'i → mukti (motivation)
-    Kiu, // ki'u → krinu (reason)
-    Pio, // pi'o → pilno (tool/use)
-    Bai, // ba'i → basti (replace)
+    /// ri'a: causal tag (from gismu rinka).
+    Ria,
+    /// ni'i: logical entailment tag (from gismu nibli).
+    Nii,
+    /// mu'i: motivation tag (from gismu mukti).
+    Mui,
+    /// ki'u: reason tag (from gismu krinu).
+    Kiu,
+    /// pi'o: instrument tag (from gismu pilno).
+    Pio,
+    /// ba'i: replacement tag (from gismu basti).
+    Bai,
 }
 
 /// Modal tag: either a fixed BAI shortcut or a fi'o-based custom tag
@@ -60,47 +72,68 @@ pub enum ModalTag<'a> {
 /// SE-series conversion: permutes argument places
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Conversion {
-    Se, // swap x1 ↔ x2
-    Te, // swap x1 ↔ x3
-    Ve, // swap x1 ↔ x4
-    Xe, // swap x1 ↔ x5
+    /// Swap x1 and x2.
+    Se,
+    /// Swap x1 and x3.
+    Te,
+    /// Swap x1 and x4.
+    Ve,
+    /// Swap x1 and x5.
+    Xe,
 }
 
 /// Logical connective between selbri or sumti
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Connective {
-    Je, // AND (∧)
-    Ja, // OR  (∨)
-    Jo, // IFF (↔)
-    Ju, // XOR (⊕)
+    /// Logical AND (conjunction).
+    Je,
+    /// Logical OR (disjunction).
+    Ja,
+    /// Logical IFF (biconditional).
+    Jo,
+    /// Logical XOR (exclusive or).
+    Ju,
 }
 
 /// Gadri (descriptor) type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Gadri {
-    Lo,   // veridical description (∃ in FOL)
-    Le,   // non-veridical reference (specific referent)
-    La,   // named entity (proper name)
-    RoLo, // universal veridical (∀ in FOL): ro lo
-    RoLe, // universal referential (∀ over specific set): ro le
+    /// Veridical existential description (lo).
+    Lo,
+    /// Non-veridical opaque reference (le).
+    Le,
+    /// Named entity / proper name (la).
+    La,
+    /// Universal veridical quantifier (ro lo).
+    RoLo,
+    /// Universal referential quantifier (ro le).
+    RoLe,
 }
 
 /// Relative clause type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RelClauseKind {
-    Poi, // restrictive (intersective)
-    Noi, // non-restrictive (appositive)
-    Voi, // non-veridical restrictive
+    /// Restrictive (intersective) relative clause.
+    Poi,
+    /// Non-restrictive (appositive) relative clause.
+    Noi,
+    /// Non-veridical restrictive relative clause.
+    Voi,
 }
 
 /// Abstraction type: which NU-class cmavo introduced this abstraction
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AbstractionKind {
-    Nu,   // event/state
-    Duhu, // proposition (du'u)
-    Ka,   // property (ka) — may contain ce'u
-    Ni,   // quantity/amount
-    Siho, // concept/idea (si'o)
+    /// Event or state abstraction (nu).
+    Nu,
+    /// Propositional abstraction (du'u).
+    Duhu,
+    /// Property abstraction (ka), may contain ce'u.
+    Ka,
+    /// Quantity or amount abstraction (ni).
+    Ni,
+    /// Concept or idea abstraction (si'o).
+    Siho,
 }
 
 // ─── Core AST nodes ──────────────────────────────────────────────
@@ -160,7 +193,9 @@ pub enum Sumti<'a> {
 /// A relative clause attached to a sumti.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RelClause<'a> {
+    /// Whether this is a poi, noi, or voi clause.
     pub kind: RelClauseKind,
+    /// The sentence forming the body of the relative clause.
     pub body: &'a Sentence<'a>,
 }
 
@@ -207,30 +242,42 @@ pub enum Selbri<'a> {
 /// Tense marker (PU selma'o)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tense {
-    Pu, // past
-    Ca, // present
-    Ba, // future
+    /// Past tense.
+    Pu,
+    /// Present tense.
+    Ca,
+    /// Future tense.
+    Ba,
 }
 
 /// Deontic attitudinal marker (UI selma'o subset)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Attitudinal {
-    Ei,  // obligation (should)
-    Ehe, // competence/permission (may)
+    /// Obligation (should).
+    Ei,
+    /// Competence or permission (may).
+    Ehe,
 }
 
 /// A single bridi (predication).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bridi<'a> {
+    /// The main predicate relation of this bridi.
     pub selbri: Selbri<'a>,
-    pub head_terms: Vec<Sumti<'a>>, // terms before selbri (cu-separated)
-    pub tail_terms: Vec<Sumti<'a>>, // terms after selbri
-    pub negated: bool,              // sentence-level na (before all terms)
+    /// Terms appearing before the selbri (separated by `cu`).
+    pub head_terms: Vec<Sumti<'a>>,
+    /// Terms appearing after the selbri.
+    pub tail_terms: Vec<Sumti<'a>>,
+    /// Whether sentence-level `na` negation is present.
+    pub negated: bool,
+    /// Optional tense marker (pu/ca/ba).
     pub tense: Option<Tense>,
+    /// Optional deontic attitudinal (ei/e'e).
     pub attitudinal: Option<Attitudinal>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// A parsed Lojban sentence: either a simple bridi or two sentences joined by a connective.
 pub enum Sentence<'a> {
     /// A single, simple predicate relationship
     Simple(Bridi<'a>),
@@ -244,10 +291,14 @@ pub enum Sentence<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Connective joining two sentences (forethought or afterthought).
 pub enum SentenceConnective {
-    GanaiGi, // Implication: ganai ... gi ...
-    GeGi,    // Conjunction: ge ... gi ... (AND)
-    GaGi,    // Disjunction: ga ... gi ... (OR)
+    /// Forethought implication: ganai ... gi ...
+    GanaiGi,
+    /// Forethought conjunction: ge ... gi ... (AND)
+    GeGi,
+    /// Forethought disjunction: ga ... gi ... (OR)
+    GaGi,
     /// Afterthought: .i [na] (je|ja|jo|ju) [nai]
     Afterthought {
         left_negated: bool,
@@ -258,6 +309,8 @@ pub enum SentenceConnective {
 
 // Update ParsedText to hold recursive Sentences, not flat Bridis
 #[derive(Debug)]
+/// Top-level parse result: the list of sentences produced by the parser.
 pub struct ParsedText<'a> {
+    /// The sequence of top-level sentences parsed from the input text.
     pub sentences: Vec<Sentence<'a>>,
 }

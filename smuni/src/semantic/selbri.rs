@@ -1,6 +1,13 @@
+//! Selbri compilation: maps selbri AST nodes to FOL logic forms.
+//!
+//! Handles root predicates, tanru, conversion (se/te/ve/xe), negation,
+//! ke...ke'e grouping, be...bei...be'o arguments, connected selbri,
+//! zei compounds, and abstraction (nu/du'u/ka/ni/si'o). All predicates
+//! are event-decomposed into Neo-Davidsonian form.
 use super::*;
 
 impl SemanticCompiler {
+    /// Decomposes a predicate into Neo-Davidsonian event form with role predicates.
     pub(crate) fn event_decompose(
         &mut self,
         relation: &str,
@@ -27,6 +34,7 @@ impl SemanticCompiler {
         LogicalForm::Exists(ev, Box::new(form))
     }
 
+    /// Compiles a selbri node with given arguments into a FOL logic form.
     pub(crate) fn apply_selbri(
         &mut self,
         selbri_id: u32,

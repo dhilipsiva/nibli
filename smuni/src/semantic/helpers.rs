@@ -1,18 +1,25 @@
+//! Helper methods for the semantic compiler.
+//!
+//! Provides fresh variable generation, sumti resolution, relative clause
+//! handling, argument fitting, and variable injection for implicit ke'a.
 use super::*;
 
 impl SemanticCompiler {
+    /// Generates a fresh entity variable name (_v0, _v1, ...) and interns it.
     pub(crate) fn fresh_var(&mut self) -> lasso::Spur {
         let v = format!("_v{}", self.var_counter);
         self.var_counter += 1;
         self.interner.get_or_intern(&v)
     }
 
+    /// Generates a fresh event variable name (_ev0, _ev1, ...) and interns it.
     pub(crate) fn fresh_event_var(&mut self) -> lasso::Spur {
         let v = format!("_ev{}", self.event_counter);
         self.event_counter += 1;
         self.interner.get_or_intern(&v)
     }
 
+    /// Maps a BAI modal tag to its underlying gismu relation name.
     pub(crate) fn bai_to_gismu(tag: &BaiTag) -> &'static str {
         match tag {
             BaiTag::Ria => "rinka",
@@ -24,6 +31,7 @@ impl SemanticCompiler {
         }
     }
 
+    /// Resolves the arity of a selbri by recursing through tanru, conversions, etc.
     pub(crate) fn get_selbri_arity(&self, selbri_id: u32, selbris: &[Selbri]) -> usize {
         match &selbris[selbri_id as usize] {
             Selbri::Root(g) => JbovlasteSchema::get_arity_or_default(g.as_str()),
@@ -41,6 +49,7 @@ impl SemanticCompiler {
         }
     }
 
+    /// Extracts the head gismu or lujvo name from a possibly nested selbri.
     pub(crate) fn get_selbri_head_name<'a>(
         &self,
         selbri_id: u32,
@@ -65,6 +74,7 @@ impl SemanticCompiler {
         }
     }
 
+    /// Builds an opaque le_domain_X restrictor predicate for le descriptions.
     pub(crate) fn build_le_domain_restrictor(
         &mut self,
         desc_id: u32,
@@ -79,6 +89,7 @@ impl SemanticCompiler {
         }
     }
 
+    /// Resolves a sumti AST node into a logical term and any quantifiers it introduces.
     pub(crate) fn resolve_sumti(
         &mut self,
         sumti: &Sumti,
@@ -246,6 +257,7 @@ impl SemanticCompiler {
         }
     }
 
+    /// Counts predicates with unspecified slots for relative clause ambiguity detection.
     pub(crate) fn count_unspecified_predicates(form: &LogicalForm, interner: &Rodeo) -> usize {
         match form {
             LogicalForm::Predicate { relation, args } => {
@@ -284,6 +296,7 @@ impl SemanticCompiler {
         }
     }
 
+    /// Replaces the first Unspecified slot in each predicate with the given variable.
     pub(crate) fn inject_variable(
         form: LogicalForm,
         var: lasso::Spur,
@@ -362,6 +375,7 @@ impl SemanticCompiler {
         }
     }
 
+    /// Pads or truncates an argument list to exactly the target arity.
     pub(crate) fn fit_args(args: &[LogicalTerm], arity: usize) -> Vec<LogicalTerm> {
         let mut fitted = Vec::with_capacity(arity);
         for i in 0..arity {

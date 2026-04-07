@@ -8,7 +8,7 @@
 //! - **Entailment queries** — Recursive formula checking via [`check_formula_holds`] with
 //!   demand-driven backward-chaining through universal rules.
 //! - **Proof traces** — [`check_formula_holds_traced`] builds a proof tree recording which
-//!   rule/axiom was applied at each step (15 proof rule variants). Multi-hop derivation
+//!   rule/axiom was applied at each step (20 proof rule variants). Multi-hop derivation
 //!   provenance traces derived facts through universal rule chains via backward-chaining.
 //! - **Witness extraction** — [`find_witnesses`] returns all satisfying entity bindings for
 //!   existential variables.
@@ -455,6 +455,7 @@ fn merge_witness_bindings(
 /// Public API for native callers (lasna, nibli-engine).
 /// Uses smuni's logic types directly — no bridge conversion needed.
 impl KnowledgeBase {
+    /// Create a new knowledge base with the default in-memory fact store.
     pub fn new() -> Self {
         KnowledgeBase {
             inner: RefCell::new(KnowledgeBaseInner::new()),
@@ -470,6 +471,7 @@ impl KnowledgeBase {
         }
     }
 
+    /// Assert a compiled FOL formula into the knowledge base. Returns the fact ID.
     pub fn assert_fact(&self, logic: LogicBuffer, label: String) -> Result<u64, NibliError> {
         self.assert_fact_inner(logic, label)
             .map_err(NibliError::Semantic)
@@ -511,10 +513,12 @@ impl KnowledgeBase {
         });
     }
 
+    /// Check whether a formula is entailed by the knowledge base (four-valued result).
     pub fn query_entailment(&self, logic: LogicBuffer) -> Result<QueryResult, NibliError> {
         self.query_entailment_inner(logic).map_err(NibliError::Reasoning)
     }
 
+    /// Find all satisfying witness binding sets for existential variables in the formula.
     pub fn query_find(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, NibliError> {
         self.query_find_inner(logic).map_err(NibliError::Reasoning)
     }
@@ -558,6 +562,7 @@ impl KnowledgeBase {
         Ok(Some(result))
     }
 
+    /// Check entailment and return a proof trace showing the full derivation chain.
     pub fn query_entailment_with_proof(
         &self,
         logic: LogicBuffer,
@@ -566,16 +571,20 @@ impl KnowledgeBase {
             .map_err(NibliError::Reasoning)
     }
 
+    /// Clear all facts, rules, indexes, and derived state.
     pub fn reset(&self) -> Result<(), NibliError> {
         self.inner.borrow_mut().reset();
         invalidate_pred_cache(); // Tabling: KB cleared.
         Ok(())
     }
 
+    /// Retract a fact by ID. Uses incremental removal for ground facts,
+    /// full rebuild for facts that compiled into rules.
     pub fn retract_fact(&self, id: u64) -> Result<(), NibliError> {
         self.retract_fact_inner(id).map_err(NibliError::Reasoning)
     }
 
+    /// List all active (non-retracted) facts with their IDs and labels.
     pub fn list_facts(&self) -> Result<Vec<FactSummary>, NibliError> {
         self.list_facts_inner().map_err(NibliError::Reasoning)
     }

@@ -46,9 +46,13 @@ pub(crate) enum QuantifierKind {
 /// Tracks a quantifier introduced by a description (lo/le/ro lo/ro le/PA lo),
 /// with an optional relative clause restrictor.
 pub(crate) struct QuantifierEntry {
+    /// The fresh variable bound by this quantifier.
     var: lasso::Spur,
+    /// Index into the selbri array for the description predicate (restrictor source).
     desc_id: u32,
+    /// Optional relative clause restrictor (poi/noi/voi body, already compiled).
     restrictor: Option<LogicalForm>,
+    /// What kind of quantifier this description introduces.
     kind: QuantifierKind,
 }
 
@@ -83,6 +87,7 @@ pub struct SemanticCompiler {
 }
 
 impl SemanticCompiler {
+    /// Creates a new compiler with empty interner and zeroed counters.
     pub fn new() -> Self {
         Self {
             interner: Rodeo::new(),

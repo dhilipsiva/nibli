@@ -23,21 +23,27 @@ pub enum LojbanToken {
     // --------------------------------------------------
     // Metalinguistic Operators (Must be intercepted)
     // --------------------------------------------------
+    /// `si`: erase the preceding word.
     #[token("si")]
     EraseWord,
 
+    /// `sa`: erase backward to matching grammatical class.
     #[token("sa")]
     EraseClass,
 
+    /// `su`: erase the entire discourse.
     #[token("su")]
     EraseStream,
 
+    /// `zo`: quote the next word as a literal.
     #[token("zo")]
     QuoteNext,
 
+    /// `zoi`: delimited quotation.
     #[token("zoi")]
     QuoteDelimited,
 
+    /// `zei`: glue adjacent words into a compound lujvo.
     #[token("zei")]
     GlueWords,
 
@@ -48,23 +54,27 @@ pub enum LojbanToken {
     // Gismu: CVCCV or CCVCV structure (simplified for demonstration,
     // real phonotactics check for specific valid consonant clusters)
     #[regex(r"([bcdfghjklmnprstvxz][aeiou][bcdfghjklmnprstvxz][bcdfghjklmnprstvxz][aeiou])|([bcdfghjklmnprstvxz][bcdfghjklmnprstvxz][aeiou][bcdfghjklmnprstvxz][aeiou])")]
+    /// Root predicate word (CVCCV or CCVCV, 5 letters).
     Gismu,
 
     // Lujvo (compound brivla): 6+ letter words ending in vowel.
     // Longest-match prevents cmavo from stealing prefixes (e.g., "nunprami" ≠ "nu" + ...).
     // Semantics dictionary lookup handles arity for known lujvo.
     #[regex(r"[a-z']{5}[a-z']*[aeiou]")]
+    /// Compound predicate word (6+ letters ending in vowel).
     Lujvo,
 
     // Cmevla (Names): Must end in a consonant.
     // No dots in body — dots are pause tokens and must not be consumed as part of a word.
     // Final character is explicitly a Lojban consonant, not a negated vowel class.
     #[regex(r"[a-zA-Z']+[bcdfghjklmnprstvxzBCDFGHJKLMNPRSTVXZ]")]
+    /// Name word (ends in a consonant, preceded by a pause).
     Cmevla,
 
     // Cmavo (Structure words): 1-to-many vowels, optionally preceded by one consonant
     // This acts as a fallback for structural words not explicitly tokenized above.
     #[regex(r"[bcdfghjklmnprstvxz]?[aeiouy']+")]
+    /// Structure word (vowel-based, optionally one leading consonant).
     Cmavo,
 
     // Explicit Pauses
@@ -93,6 +103,7 @@ const COMPOUND_CMAVO: &[&str] = &[
     "punai", "canai", "banai",
 ];
 
+/// Check whether a string matches a known compound cmavo.
 fn is_compound_cmavo(s: &str) -> bool {
     COMPOUND_CMAVO.iter().any(|&c| c == s)
 }

@@ -1,6 +1,13 @@
+//! Bridi and sentence compilation: the main compilation entry points.
+//!
+//! Compiles bridi (predication) nodes and sentence connectives into FOL.
+//! Handles place tags (fa/fe/fi/fo/fu), modal tags (BAI, fi'o), sumti
+//! connective expansion, quantifier closure, da/de/di existential wrapping,
+//! tense wrappers (pu/ca/ba), and deontic attitudinals (ei/e'e).
 use super::*;
 
 impl SemanticCompiler {
+    /// Compiles a bridi (predication) into FOL with quantifier scoping and tense wrapping.
     pub fn compile_bridi(
         &mut self,
         bridi: &Bridi,
@@ -278,6 +285,7 @@ impl SemanticCompiler {
         final_form
     }
 
+    /// Compiles a sentence node (simple bridi or connected sentences) into FOL.
     pub fn compile_sentence(
         &mut self,
         sentence_id: u32,

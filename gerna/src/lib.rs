@@ -66,6 +66,7 @@ struct Flattener {
 }
 
 impl Flattener {
+    /// Create a new `Flattener` with empty buffers.
     fn new() -> Self {
         Self {
             buffer: flat::AstBuffer {
@@ -77,6 +78,7 @@ impl Flattener {
         }
     }
 
+    /// Walk the parsed AST and produce a flat index-based `AstBuffer`.
     fn flatten(parsed: &ast::ParsedText<'_>) -> flat::AstBuffer {
         let mut f = Self::new();
         for sentence in &parsed.sentences {
@@ -87,6 +89,7 @@ impl Flattener {
     }
 
     // ─── Sentence Flattening ────────────────────────────────
+    /// Flatten a sentence node and return its index in `buffer.sentences`.
     fn push_sentence(&mut self, sentence: &ast::Sentence<'_>) -> u32 {
         use flat::{
             Sentence as WasmSentence, SentenceConnective as WasmConn,
@@ -179,6 +182,7 @@ impl Flattener {
 
     // ─── Selbri ──────────────────────────────────────────────
 
+    /// Flatten a selbri node and return its index in `buffer.selbris`.
     fn push_selbri(&mut self, selbri: &ast::Selbri<'_>) -> u32 {
         let wit_selbri = match selbri {
             ast::Selbri::Root(s) => flat::Selbri::Root(s.clone()),
@@ -256,6 +260,7 @@ impl Flattener {
 
     // ─── Sumti ───────────────────────────────────────────────
 
+    /// Flatten a sumti node and return its index in `buffer.sumtis`.
     fn push_sumti(&mut self, sumti: &ast::Sumti<'_>) -> u32 {
         let wit_sumti = match sumti {
             ast::Sumti::ProSumti(s) => flat::Sumti::ProSumti(s.clone()),
