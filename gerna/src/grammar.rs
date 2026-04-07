@@ -75,6 +75,7 @@ pub struct Parser<'a, 'arena> {
 
 #[allow(dead_code)]
 impl<'a, 'arena> Parser<'a, 'arena> {
+    /// Create a new parser over the given token stream.
     pub fn new(
         tokens: &'a [NormalizedToken<'a>],
         original_input: &'a str,

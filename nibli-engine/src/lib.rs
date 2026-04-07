@@ -325,6 +325,7 @@ impl NibliEngine {
             .map_err(|e| e.to_string())
     }
 
+    /// Register a predicate name for external compute dispatch.
     pub fn register_compute_predicate(&mut self, name: String) {
         self.compute_predicates.insert(name);
     }
@@ -378,6 +379,7 @@ impl NibliEngine {
         }
     }
 
+    /// Parse Lojban text, compile to FOL, and assert into the knowledge base.
     pub fn assert_text(&self, text: &str) -> Result<u64, String> {
         let buf = self.compile_text(text).map_err(|e| e.to_string())?;
         let label = text.to_string();
@@ -404,6 +406,7 @@ impl NibliEngine {
         }
     }
 
+    /// Assert a fact directly by relation name and arguments, bypassing Lojban parsing.
     pub fn assert_fact_direct(
         &self,
         relation: String,
@@ -420,6 +423,7 @@ impl NibliEngine {
             .map_err(|e| e.to_string())
     }
 
+    /// Parse Lojban query, run entailment check, return result + formatted proof + JSON proof.
     pub fn query_text_with_proof(
         &self,
         text: &str,
@@ -441,20 +445,24 @@ impl NibliEngine {
         self.kb.query_entailment(buf).map_err(|e| e.to_string())
     }
 
+    /// Parse Lojban query and extract all satisfying witness bindings.
     pub fn query_find_text(&self, text: &str) -> Result<Vec<Vec<EngineWitnessBinding>>, String> {
         let buf = self.compile_text(text).map_err(|e| e.to_string())?;
         self.kb.query_find(buf).map_err(|e| e.to_string())
     }
 
+    /// Compile Lojban text to FOL and return a debug representation of the logic nodes.
     pub fn compile_debug(&self, text: &str) -> Result<String, String> {
         let buf = self.compile_text(text).map_err(|e| e.to_string())?;
         Ok(logji::repr::debug_logic(&buf))
     }
 
+    /// List all active (non-retracted) facts with their IDs and labels.
     pub fn list_facts(&self) -> Result<Vec<EngineFactSummary>, String> {
         self.kb.list_facts().map_err(|e| e.to_string())
     }
 
+    /// Retract a fact by ID and rebuild derived state.
     pub fn retract_fact(&self, id: u64) -> Result<(), String> {
         self.kb.retract_fact(id).map_err(|e| e.to_string())
     }
