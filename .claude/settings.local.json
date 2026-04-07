@@ -52,7 +52,8 @@
       "Read(//mnt/c/Users/dhilipsiva/projects/**)",
       "Read(//root/**)",
       "Bash(wsl -d Ubuntu -e bash -lc 'cd ~/projects/dhilipsiva/nibli/book && echo \"\"=== num_variables \\(removed field\\) ===\"\" && grep -n \"\"num_variables\"\" P3_C10_Universal_Rules_as_Backward_Chaining_Templates.md P3_C09_Skolemization_and_the_Witness_Problem.md && echo \"\"=== \\(gerku pattern s-exp format ===\"\" && grep -c \"\"\\\\\"\"\\(gerku\\\\|\\\\\"\"\\(danlu\\\\|\\\\\"\"\\(klama\\\\|\\\\\"\"\\(ponse\\\\|\\\\\"\"\\(prenu\"\" P3_C10_Universal_Rules_as_Backward_Chaining_Templates.md P3_C09_Skolemization_and_the_Witness_Problem.md')",
-      "Bash(wsl -d Ubuntu -e bash -lc 'cd ~/projects/dhilipsiva/nibli/book && grep -cn \"\"\\\\\"\"\\(gerku\\\\|\\\\\"\"\\(danlu\\\\|\\\\\"\"\\(klama\\\\|\\\\\"\"\\(ponse\\\\|\\\\\"\"\\(prenu\\\\|\\\\\"\"\\(nelci\\\\|\\\\\"\"\\(mlatu\\\\|\\\\\"\"\\(sutra\\\\|\\\\\"\"\\(bajra\"\" P3_C10_Universal_Rules_as_Backward_Chaining_Templates.md P3_C09_Skolemization_and_the_Witness_Problem.md 2>/dev/null')"
+      "Bash(wsl -d Ubuntu -e bash -lc 'cd ~/projects/dhilipsiva/nibli/book && grep -cn \"\"\\\\\"\"\\(gerku\\\\|\\\\\"\"\\(danlu\\\\|\\\\\"\"\\(klama\\\\|\\\\\"\"\\(ponse\\\\|\\\\\"\"\\(prenu\\\\|\\\\\"\"\\(nelci\\\\|\\\\\"\"\\(mlatu\\\\|\\\\\"\"\\(sutra\\\\|\\\\\"\"\\(bajra\"\" P3_C10_Universal_Rules_as_Backward_Chaining_Templates.md P3_C09_Skolemization_and_the_Witness_Problem.md 2>/dev/null')",
+      "Bash(wsl -d Ubuntu -e bash -lc 'cd ~/projects/dhilipsiva/nibli && python3 -c \"\":*)"
     ]
   }
 }
