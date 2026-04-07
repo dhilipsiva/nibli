@@ -1,5 +1,6 @@
 [package]
 name = "smuni"
+description = "Semantic compiler — Lojban AST to First-Order Logic IR"
 version = "0.1.0"
 edition = "2024"
 

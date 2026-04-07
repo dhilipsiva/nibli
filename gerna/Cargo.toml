@@ -1,5 +1,6 @@
 [package]
 name = "gerna"
+description = "Lojban parser — recursive descent producing arena-allocated ASTs"
 version = "0.1.0"
 edition = "2024"
 

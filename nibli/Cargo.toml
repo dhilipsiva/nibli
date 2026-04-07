@@ -1,5 +1,6 @@
 [package]
 name = "nibli"
+description = "Native debug REPL and validation tooling"
 version = "0.1.0"
 edition = "2024"
 
@@ -9,8 +10,10 @@ reedline = "0.45.0"
 
 [[bin]]
 name = "nibli"
+description = "Native debug REPL and validation tooling"
 path = "src/main.rs"
 
 [[bin]]
 name = "nibli-validate"
+description = "Native debug REPL and validation tooling"
 path = "src/bin/validate.rs"

@@ -326,6 +326,10 @@ The parser (`gerna`) accepts a practical subset of Lojban sufficient for formal 
 - **Iterative deepening:** shallowest-proof guarantee
 - **Tabling:** cached results with invalidation on mutations
 - **KB import/export:** RDF Turtle parser, OWL class mapping via `nibli-import` crate
+- **Failure traces:** `PredicateNotFound`, `RuleAttemptFailed`, `EqualitySubstitution` proof rule variants explain why derivations fail
+- **Argument-position indexing:** `(relation, position, value)` secondary index for efficient witness extraction
+- **Predicate signature validation:** arity checking from PHF dictionary with permissive warnings
+- **NAF visibility:** `has_naf_dependency()` on proof traces marks CWA-dependent conclusions
 - **Interactive debugging:** `:trace`/`:untrace`/`:traces` REPL commands
 - **WASM fuel limits:** configurable via `NIBLI_FUEL` or `:fuel` REPL command
 - **WASM memory limits:** configurable via `NIBLI_MEMORY_MB` or `:memory` REPL command

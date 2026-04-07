@@ -1,5 +1,6 @@
 [package]
 name = "logji"
+description = "Reasoning engine — backward-chaining inference over typed fact store"
 version = "0.1.0"
 edition = "2024"
 

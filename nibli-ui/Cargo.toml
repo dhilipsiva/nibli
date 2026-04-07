@@ -1,5 +1,6 @@
 [package]
 name = "nibli-ui"
+description = "Dioxus web UI for the Transparency Triad"
 version = "0.1.0"
 edition = "2024"
 

@@ -1,5 +1,6 @@
 [package]
 name = "nibli-import"
+description = "RDF/OWL import and KB export utilities"
 version = "0.1.0"
 edition = "2024"
 

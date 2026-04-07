@@ -1,5 +1,6 @@
 [package]
 name = "nibli-types"
+description = "Canonical type definitions shared across the pipeline"
 version = "0.1.0"
 edition = "2024"
 

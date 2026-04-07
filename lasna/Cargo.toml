@@ -1,5 +1,6 @@
 [package]
 name = "lasna"
+description = "Pipeline orchestrator — chains gerna, smuni, logji into a single WASM component"
 version = "0.1.0"
 edition = "2024"
 

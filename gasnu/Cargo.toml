@@ -1,5 +1,6 @@
 [package]
 name = "gasnu"
+description = "WASM host runner — Wasmtime REPL with compute backend TCP client"
 version = "0.1.0"
 edition = "2024"
 
