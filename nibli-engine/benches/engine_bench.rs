@@ -70,7 +70,7 @@ fn bench_rule_chain(c: &mut Criterion) {
             }
             engine.assert_text(".i la .adam. gerku").unwrap();
             let last = preds[depth.min(preds.len() - 1)];
-            let query = format!("? la .adam. {}", last);
+            let query = format!("la .adam. {}", last);
             b.iter(|| {
                 engine.query_holds(&query).unwrap();
             });
@@ -88,7 +88,7 @@ fn bench_witness_extraction(c: &mut Criterion) {
             let engine = NibliEngine::new();
             populate_kb(&engine, n);
             b.iter(|| {
-                engine.query_find_text("?? ma gerku").unwrap();
+                engine.query_find_text("ma gerku").unwrap();
             });
         });
     }
