@@ -36,8 +36,11 @@ use crate::lexer::LojbanToken;
 use crate::preprocessor::NormalizedToken;
 use bumpalo::Bump;
 
+/// Selbri parsing rules (tanru, connectives, conversion, abstraction, be-clauses).
 mod selbri;
+/// Sentence-level parsing (simple bridi, forethought connectives, tense, attitudinals).
 mod sentence;
+/// Sumti/term parsing (descriptions, names, pro-sumti, connectives, relative clauses).
 mod sumti;
 
 /// Maximum recursion depth to prevent stack overflow on pathological input.
@@ -46,9 +49,13 @@ const MAX_DEPTH: usize = 64;
 /// Parse error with line:column context.
 #[derive(Debug, Clone)]
 pub struct ParseError {
+    /// Human-readable error description.
     pub message: String,
+    /// Token index where the error was detected.
     pub position: usize,
+    /// 1-indexed line number in the original input.
     pub line: u32,
+    /// 1-indexed column number in the original input.
     pub column: u32,
 }
 
@@ -60,16 +67,23 @@ impl std::fmt::Display for ParseError {
 
 /// Result of parsing: successfully parsed sentences + any per-sentence errors.
 pub struct ParseResult<'arena> {
+    /// The successfully parsed sentences.
     pub parsed: ParsedText<'arena>,
+    /// Errors encountered during parsing (one per failed sentence).
     pub errors: Vec<ParseError>,
 }
 
 /// Recursive descent parser over the preprocessed token stream.
 pub struct Parser<'a, 'arena> {
+    /// The preprocessed token stream to parse.
     tokens: &'a [NormalizedToken<'a>],
+    /// Current position in the token stream.
     pos: usize,
+    /// Current recursion depth.
     depth: usize,
+    /// Original input text, used for line:column error reporting.
     original_input: &'a str,
+    /// Arena allocator for AST node allocation.
     arena: &'arena Bump,
 }
 
@@ -135,6 +149,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
 
     // ─── Depth guard ──────────────────────────────────────────
 
+    /// Increment recursion depth; errors if MAX_DEPTH exceeded.
     fn enter(&mut self) -> Result<(), ParseError> {
         self.depth += 1;
         if self.depth > MAX_DEPTH {
@@ -144,20 +159,24 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         }
     }
 
+    /// Decrement recursion depth.
     fn leave(&mut self) {
         self.depth = self.depth.saturating_sub(1);
     }
 
     // ─── Token inspection ─────────────────────────────────────
 
+    /// Return true if all tokens have been consumed.
     fn at_end(&self) -> bool {
         self.pos >= self.tokens.len()
     }
 
+    /// Peek at the current token without consuming it.
     fn peek(&self) -> Option<&NormalizedToken<'a>> {
         self.tokens.get(self.pos)
     }
 
+    /// Peek at current token as a cmavo string, if it is one.
     fn peek_cmavo(&self) -> Option<&'a str> {
         match self.peek()? {
             NormalizedToken::Standard(LojbanToken::Cmavo, s) => Some(s),
@@ -165,14 +184,17 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         }
     }
 
+    /// Return true if the current token is the given cmavo.
     fn peek_is_cmavo(&self, target: &str) -> bool {
         self.peek_cmavo().map_or(false, |s| s == target)
     }
 
+    /// Return true if current token matches any of the given cmavo.
     fn peek_is_any_cmavo(&self, targets: &[&str]) -> bool {
         self.peek_cmavo().map_or(false, |s| targets.contains(&s))
     }
 
+    /// Return true if current token is a content word (gismu or lujvo).
     fn peek_is_gismu(&self) -> bool {
         matches!(
             self.peek(),
@@ -181,6 +203,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         )
     }
 
+    /// Return true if current token is a name word (cmevla).
     fn peek_is_cmevla(&self) -> bool {
         matches!(
             self.peek(),
@@ -188,6 +211,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         )
     }
 
+    /// Consume and return the current token, advancing the position.
     fn advance(&mut self) -> Option<&NormalizedToken<'a>> {
         let t = self.tokens.get(self.pos);
         if t.is_some() {
@@ -418,6 +442,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
 
     // ─── Error helpers ────────────────────────────────────────
 
+    /// Construct a ParseError at the current position with line:column context.
     fn error(&self, message: &str) -> ParseError {
         let byte_off = if self.pos < self.tokens.len() {
             self.byte_offset_of_token(self.pos)
@@ -446,6 +471,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
 
 // ─── Public entry point ───────────────────────────────────────────
 
+/// Parse a preprocessed token stream into an AST with per-sentence error recovery.
 pub fn parse_tokens_to_ast<'a, 'arena>(
     tokens: &[NormalizedToken<'a>],
     original_input: &'a str,

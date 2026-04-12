@@ -1,9 +1,12 @@
+//! Sentence-level parsing: simple bridi, forethought connectives, tense, attitudinals.
+
 use super::*;
 
 #[allow(dead_code)]
 impl<'a, 'arena> Parser<'a, 'arena> {
     // ─── Tense & Attitudinal ──────────────────────────────────
 
+    /// Try to consume a tense marker (pu/ca/ba).
     pub(crate) fn try_parse_tense(&mut self) -> Option<Tense> {
         let t = match self.peek_cmavo()? {
             "pu" => Tense::Pu,
@@ -15,6 +18,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         Some(t)
     }
 
+    /// Try to consume a deontic attitudinal (ei/ehe).
     pub(crate) fn try_parse_attitudinal(&mut self) -> Option<Attitudinal> {
         let a = match self.peek_cmavo()? {
             "ei" => Attitudinal::Ei,
@@ -27,6 +31,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
 
     // ─── Sentence ─────────────────────────────────────────────
 
+    /// Parse a sentence: forethought connective or simple bridi.
     pub(crate) fn parse_sentence(&mut self) -> Result<Sentence<'arena>, ParseError> {
         self.enter()?;
 
@@ -65,6 +70,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         Ok(Sentence::Simple(bridi))
     }
 
+    /// Parse a simple (non-connected) sentence into a Bridi.
     pub(crate) fn parse_simple_sentence(&mut self) -> Result<Bridi<'arena>, ParseError> {
         self.enter()?;
 

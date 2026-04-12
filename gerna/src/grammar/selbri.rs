@@ -1,9 +1,12 @@
+//! Selbri parsing: tanru, connectives, conversion, abstraction, be-clauses.
+
 use super::*;
 
 #[allow(dead_code)]
 impl<'a, 'arena> Parser<'a, 'arena> {
     // ─── Selbri ───────────────────────────────────────────────
 
+    /// Try to parse a selbri, including optional na-negation.
     pub(crate) fn try_parse_selbri(&mut self) -> Result<Option<Selbri<'arena>>, ParseError> {
         let negated = self.eat_cmavo("na");
 
@@ -22,6 +25,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         }
     }
 
+    /// Parse a selbri connective chain: selbri_2 ((je|ja|jo|ju) selbri_2)*.
     pub(crate) fn try_parse_selbri_conn(&mut self) -> Result<Option<Selbri<'arena>>, ParseError> {
         let mut left = match self.try_parse_selbri_2() {
             Some(s) => s,
@@ -60,6 +64,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         Ok(Some(left))
     }
 
+    /// Parse an optionally converted tanru (SE + tanru).
     pub(crate) fn try_parse_selbri_2(&mut self) -> Option<Selbri<'arena>> {
         let saved = self.save();
         let conv = self.try_parse_conversion();
@@ -81,6 +86,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         }
     }
 
+    /// Try to consume a SE-series conversion cmavo (se/te/ve/xe).
     pub(crate) fn try_parse_conversion(&mut self) -> Option<Conversion> {
         let conv = match self.peek_cmavo()? {
             "se" => Conversion::Se,
@@ -93,6 +99,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         Some(conv)
     }
 
+    /// Parse a tanru (right-grouping sequence of tanru units).
     pub(crate) fn try_parse_tanru(&mut self) -> Option<Selbri<'arena>> {
         let mut units: Vec<Selbri> = Vec::new();
 
@@ -112,6 +119,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         Some(result)
     }
 
+    /// Parse a single tanru unit, including any trailing be-clauses.
     pub(crate) fn try_parse_tanru_unit(&mut self) -> Option<Selbri<'arena>> {
         let mut unit = self.try_parse_tanru_unit_base()?;
 
@@ -122,6 +130,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         Some(unit)
     }
 
+    /// Parse the base of a tanru unit: brivla, ke-group, abstraction, or conversion.
     pub(crate) fn try_parse_tanru_unit_base(&mut self) -> Option<Selbri<'arena>> {
         if self.peek_is_cmavo("ke") {
             if self.depth >= MAX_DEPTH {
@@ -198,6 +207,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         None
     }
 
+    /// Try to consume a NU-class abstraction keyword (nu/duhu/ka/ni/siho).
     pub(crate) fn try_parse_abstraction_keyword(&mut self) -> Option<AbstractionKind> {
         let kind = match self.peek_cmavo()? {
             "nu" => AbstractionKind::Nu,
@@ -211,6 +221,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         Some(kind)
     }
 
+    /// Parse a be...bei...beo argument-binding clause on a selbri.
     pub(crate) fn parse_be_clause(&mut self, core: Selbri<'arena>) -> Selbri<'arena> {
         self.eat_cmavo("be");
 

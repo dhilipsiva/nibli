@@ -23,6 +23,7 @@ use crate::lexer::LojbanToken;
 // recognized by the parser.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Grammatical class used for sa-erasure boundary detection.
 enum Selmaho {
     LE,     // Gadri: lo, le, la
     FA,     // Place tags: fa, fe, fi, fo, fu
@@ -136,6 +137,7 @@ fn classify_cmavo(text: &str) -> Option<Selmaho> {
     }
 }
 
+/// A token after metalinguistic preprocessing (si/sa/su/zo/zoi/zei resolved).
 #[derive(Debug, PartialEq)]
 pub enum NormalizedToken<'a> {
     /// A standard Lojban word (Gismu, Cmavo, Cmevla, etc.)

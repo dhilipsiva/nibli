@@ -1,9 +1,12 @@
+//! Sumti/term parsing: descriptions, names, pro-sumti, connectives, relative clauses.
+
 use super::*;
 
 #[allow(dead_code)]
 impl<'a, 'arena> Parser<'a, 'arena> {
     // ─── Terms ────────────────────────────────────────────────
 
+    /// Parse zero or more terms (sumti with optional tags).
     pub(crate) fn parse_terms(&mut self) -> Vec<Sumti<'arena>> {
         let mut terms = Vec::new();
         while let Some(term) = self.try_parse_term() {
@@ -12,6 +15,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         terms
     }
 
+    /// Try to parse a single term: tagged or bare sumti.
     pub(crate) fn try_parse_term(&mut self) -> Option<Sumti<'arena>> {
         let saved = self.save();
 
@@ -34,6 +38,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         self.try_parse_sumti()
     }
 
+    /// Try to consume a place tag (fa/fe/fi/fo/fu).
     pub(crate) fn try_parse_place_tag(&mut self) -> Option<PlaceTag> {
         let tag = match self.peek_cmavo()? {
             "fa" => PlaceTag::Fa,
@@ -47,6 +52,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         Some(tag)
     }
 
+    /// Try to consume a BAI modal tag.
     pub(crate) fn try_parse_bai_tag(&mut self) -> Option<BaiTag> {
         let tag = match self.peek_cmavo()? {
             "ri'a" => BaiTag::Ria,
@@ -61,6 +67,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         Some(tag)
     }
 
+    /// Try to parse a fio...feu custom modal tag.
     pub(crate) fn try_parse_fio_tag(&mut self) -> Option<ModalTag<'arena>> {
         if !self.peek_is_cmavo("fi'o") {
             return None;
@@ -81,6 +88,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         Some(ModalTag::Fio(self.arena.alloc(selbri)))
     }
 
+    /// Try to parse any modal tag (BAI shortcut or fio).
     pub(crate) fn try_parse_modal_tag(&mut self) -> Option<ModalTag<'arena>> {
         if let Some(bai) = self.try_parse_bai_tag() {
             return Some(ModalTag::Fixed(bai));
@@ -90,6 +98,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
 
     // ─── Sumti ────────────────────────────────────────────────
 
+    /// Try to parse a sumti with optional relative clauses and connectives.
     pub(crate) fn try_parse_sumti(&mut self) -> Option<Sumti<'arena>> {
         let mut sumti = self.try_parse_bare_sumti()?;
 
@@ -114,6 +123,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         Some(sumti)
     }
 
+    /// Try to parse a sumti connective (.e/.a/.o/.u + optional nai).
     pub(crate) fn try_parse_sumti_connective(&mut self) -> Option<(Connective, bool)> {
         if self.pos + 1 >= self.tokens.len() {
             return None;
@@ -149,6 +159,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         Some((conn, negated))
     }
 
+    /// Try to parse a bare sumti (no connective, no rel clause).
     pub(crate) fn try_parse_bare_sumti(&mut self) -> Option<Sumti<'arena>> {
         if self.peek_is_cmavo("la") {
             return self.try_parse_la_name();
@@ -190,6 +201,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         None
     }
 
+    /// Try to parse a li-number sumti (li + PA digits + optional pi fraction).
     pub(crate) fn try_parse_li_number(&mut self) -> Option<Sumti<'arena>> {
         if !self.peek_is_cmavo("li") {
             return None;
@@ -231,6 +243,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         Some(Sumti::Number(value))
     }
 
+    /// Try to consume a single PA digit cmavo (no..so = 0..9).
     pub(crate) fn try_parse_pa_digit(&mut self) -> Option<u8> {
         let d = match self.peek_cmavo()? {
             "no" => 0,
@@ -249,6 +262,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         Some(d)
     }
 
+    /// Return true if the current token is a PA digit.
     pub(crate) fn peek_is_pa_digit(&self) -> bool {
         matches!(
             self.peek_cmavo(),
@@ -256,6 +270,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         )
     }
 
+    /// Try to parse a suho-quantified description (suho lo/le selbri).
     pub(crate) fn try_parse_suho_description(&mut self) -> Option<Sumti<'arena>> {
         if !self.peek_is_cmavo("su'o") {
             return None;
@@ -294,6 +309,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         })
     }
 
+    /// Try to parse a numerically quantified description (PA lo/le selbri).
     pub(crate) fn try_parse_numeric_quantified_description(&mut self) -> Option<Sumti<'arena>> {
         let saved = self.save();
 
@@ -344,6 +360,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         })
     }
 
+    /// Try to parse a universally quantified description (ro lo/le selbri).
     pub(crate) fn try_parse_ro_description(&mut self) -> Option<Sumti<'arena>> {
         if !self.peek_is_cmavo("ro") {
             return None;
@@ -383,6 +400,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         })
     }
 
+    /// Try to parse a la-name or la-description.
     pub(crate) fn try_parse_la_name(&mut self) -> Option<Sumti<'arena>> {
         if !self.peek_is_cmavo("la") {
             return None;
@@ -415,6 +433,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         Some(Sumti::Name(name_parts.join(" ")))
     }
 
+    /// Try to parse a lo/le description.
     pub(crate) fn try_parse_description(&mut self) -> Option<Sumti<'arena>> {
         let gadri = match self.peek_cmavo()? {
             "lo" => Gadri::Lo,
@@ -441,6 +460,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         })
     }
 
+    /// Parse a selbri inside a description (supports na-negation and tanru).
     pub(crate) fn try_parse_selbri_for_description(&mut self) -> Option<Selbri<'arena>> {
         let saved = self.save();
         let negated = self.eat_cmavo("na");
@@ -459,6 +479,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         }
     }
 
+    /// Try to parse a pro-sumti (mi, do, da, keha, cehu, ma, etc.).
     pub(crate) fn try_parse_pro_sumti(&mut self) -> Option<Sumti<'arena>> {
         let cmavo = self.peek_cmavo()?;
 
@@ -481,6 +502,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         Some(result)
     }
 
+    /// Try to parse a relative clause (poi/noi/voi + sentence + optional kuo).
     pub(crate) fn try_parse_rel_clause(&mut self) -> Option<RelClause<'arena>> {
         let kind = match self.peek_cmavo()? {
             "poi" => RelClauseKind::Poi,
