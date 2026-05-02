@@ -55,12 +55,16 @@
             dioxus-cli
           ];
           shellHook = ''
-            echo "=================================================="
-            echo " Lojban NeSy Engine - Nix Dev Environment Loaded  "
-            echo "=================================================="
+            if [ -e "$HOME/.cargo/bin/cargo-component" ]; then
+              echo "warning: ~/.cargo/bin/cargo-component shadows the Nix-provided one. Remove it." >&2
+            fi
             rustc --version
             python3 --version
             echo "Target 'wasm32-wasip2' is active."
+            export CARGO_INSTALL_ROOT="$PWD/.cargo-local"
+            echo "=================================================="
+            echo " Lojban NeSy Engine - Nix Dev Environment Loaded  "
+            echo "=================================================="
           '';
         };
       }
