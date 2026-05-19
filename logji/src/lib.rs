@@ -8,7 +8,7 @@
 //! - **Entailment queries** — Recursive formula checking via [`check_formula_holds`] with
 //!   demand-driven backward-chaining through universal rules.
 //! - **Proof traces** — [`check_formula_holds_traced`] builds a proof tree recording which
-//!   rule/axiom was applied at each step (20 proof rule variants). Multi-hop derivation
+//!   rule/axiom was applied at each step (19 proof rule variants). Multi-hop derivation
 //!   provenance traces derived facts through universal rule chains via backward-chaining.
 //! - **Witness extraction** — [`find_witnesses`] returns all satisfying entity bindings for
 //!   existential variables.
