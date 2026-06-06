@@ -510,6 +510,11 @@ fn trigger_forward_rules(new_rel: &str, inner: &mut KnowledgeBaseInner) {
             if cond_template.relation() != new_rel {
                 continue;
             }
+            // A forward rule cannot be triggered by ASSERTING a fact that matches a
+            // negated (absence) condition — asserting the fact makes ¬P false, not true.
+            if rule.negated_condition_indices.contains(&cond_idx) {
+                continue;
+            }
             // Try all facts matching this predicate to find full condition satisfaction.
             let matching_facts: Vec<StoredFact> = inner
                 .fact_store
@@ -521,15 +526,22 @@ fn trigger_forward_rules(new_rel: &str, inner: &mut KnowledgeBaseInner) {
                 let Some(bindings) = unify_facts(cond_template, fact) else {
                     continue;
                 };
-                // Check all OTHER conditions are directly asserted.
+                // Check all OTHER conditions hold against the fact store: positive
+                // conditions must be asserted; negated conditions hold via NAF (absent).
+                // TODO(naf-forward): no truth maintenance when a negated condition flips
+                // after a forward derivation; forward rules are off by default. See todo.md.
                 let all_others = rule
                     .typed_conditions
                     .iter()
                     .enumerate()
                     .filter(|(i, _)| *i != cond_idx)
-                    .all(|(_, other)| {
+                    .all(|(i, other)| {
                         let sub = substitute_fact(other, &bindings);
-                        inner.fact_store.contains(&sub)
+                        if rule.negated_condition_indices.contains(&i) {
+                            !inner.fact_store.contains(&sub)
+                        } else {
+                            inner.fact_store.contains(&sub)
+                        }
                     });
                 if all_others {
                     for concl in &rule.typed_conclusions {

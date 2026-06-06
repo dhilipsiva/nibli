@@ -371,6 +371,130 @@
         assert!(!query(&kb, make_query("alis", "danlu")));
     }
 
+    /// Build the rule ∀x. (gerku(x) ∧ ¬mlatu(x)) → danlu(x)
+    /// encoded as ∀x. ¬(gerku(x) ∧ ¬mlatu(x)) ∨ danlu(x).
+    fn make_negated_antecedent_rule() -> LogicBuffer {
+        let mut nodes = Vec::new();
+        let gerku = pred(
+            &mut nodes,
+            "gerku",
+            vec![
+                LogicalTerm::Variable("_v0".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let mlatu = pred(
+            &mut nodes,
+            "mlatu",
+            vec![
+                LogicalTerm::Variable("_v0".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let neg_mlatu = not(&mut nodes, mlatu);
+        let antecedent = and(&mut nodes, gerku, neg_mlatu);
+        let danlu = pred(
+            &mut nodes,
+            "danlu",
+            vec![
+                LogicalTerm::Variable("_v0".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let neg_antecedent = not(&mut nodes, antecedent);
+        let disj = or(&mut nodes, neg_antecedent, danlu);
+        let root = forall(&mut nodes, "_v0", disj);
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
+    }
+
+    /// Regression: a negated antecedent condition must be evaluated via
+    /// negation-as-failure, not as a positive requirement. Untraced path.
+    #[test]
+    fn test_naf_negated_antecedent_untraced() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_negated_antecedent_rule());
+
+        // mlatu(alis) is unprovable → ¬mlatu holds (NAF) → the rule fires.
+        assert!(
+            query(&kb, make_query("alis", "danlu")),
+            "danlu(alis) should hold: gerku true and mlatu unprovable (NAF)"
+        );
+
+        // Asserting mlatu(alis) makes ¬mlatu false → the rule must no longer fire.
+        assert_buf(&kb, make_assertion("alis", "mlatu"));
+        assert!(
+            matches!(
+                query_result(&kb, make_query("alis", "danlu")),
+                QueryResult::False
+            ),
+            "danlu(alis) should be FALSE once mlatu(alis) is asserted"
+        );
+    }
+
+    /// Regression: the traced (proof) path must agree with the untraced verdict
+    /// and record the negated condition as a negation-as-failure dependency.
+    #[test]
+    fn test_naf_negated_antecedent_traced() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_negated_antecedent_rule());
+
+        let (result, trace) = kb
+            .query_entailment_with_proof_inner(make_query("alis", "danlu"))
+            .unwrap();
+        assert!(result.is_true(), "traced verdict should be TRUE before mlatu");
+        assert!(
+            trace.has_naf_dependency(),
+            "proof should record a negation-as-failure dependency for ¬mlatu"
+        );
+
+        assert_buf(&kb, make_assertion("alis", "mlatu"));
+        let (result2, _trace2) = kb
+            .query_entailment_with_proof_inner(make_query("alis", "danlu"))
+            .unwrap();
+        assert!(
+            result2.is_false(),
+            "traced verdict should be FALSE after mlatu(alis) is asserted"
+        );
+    }
+
+    /// White-box guard for the And-flattening prerequisite: the negated-antecedent
+    /// rule must register with two conditions [gerku, mlatu], mlatu (index 1) flagged
+    /// negated, and a positive danlu conclusion.
+    #[test]
+    fn test_naf_negated_antecedent_rule_shape() {
+        let kb = new_kb();
+        assert_buf(&kb, make_negated_antecedent_rule());
+
+        let inner = kb.inner.borrow();
+        let rule = inner
+            .universal_rules
+            .values()
+            .flatten()
+            .find(|r| r.typed_conclusions.iter().any(|c| c.relation() == "danlu"))
+            .expect("a rule concluding danlu should be registered");
+
+        let cond_rels: Vec<&str> = rule
+            .typed_conditions
+            .iter()
+            .map(|c| c.relation())
+            .collect();
+        assert_eq!(
+            cond_rels,
+            vec!["gerku", "mlatu"],
+            "antecedent And should flatten into two conditions"
+        );
+        assert_eq!(
+            rule.negated_condition_indices,
+            vec![1],
+            "mlatu (index 1) should be the negated condition"
+        );
+    }
+
     #[test]
     fn test_native_rule_duplicate_rule_no_panic() {
         let kb = new_kb();

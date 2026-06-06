@@ -727,8 +727,14 @@ pub(super) fn try_backward_chain_typed(
                                         &rule.typed_conditions[idx],
                                         &test_bindings,
                                     );
-                                    !check_predicate_in_kb_typed(&cs, inner, depth + 1, visited)
-                                        .is_false()
+                                    let result =
+                                        check_predicate_in_kb_typed(&cs, inner, depth + 1, visited);
+                                    let verdict = if rule.negated_condition_indices.contains(&idx) {
+                                        negate_result(result)
+                                    } else {
+                                        result
+                                    };
+                                    !verdict.is_false()
                                 })
                             })
                             .cloned()
@@ -749,17 +755,22 @@ pub(super) fn try_backward_chain_typed(
                     }
                     let mut all_hold = true;
                     let mut pending_here = None;
-                    for ct in &rule.typed_conditions {
+                    for (idx, ct) in rule.typed_conditions.iter().enumerate() {
                         let cs = substitute_fact(ct, &bindings);
                         let result = check_predicate_in_kb_typed(&cs, inner, depth + 1, visited);
-                        if result.is_false() {
+                        let verdict = if rule.negated_condition_indices.contains(&idx) {
+                            negate_result(result)
+                        } else {
+                            result
+                        };
+                        if verdict.is_false() {
                             all_hold = false;
                             pending_here = None;
                             break;
                         }
-                        if !result.is_true() {
+                        if !verdict.is_true() {
                             all_hold = false;
-                            pending_here = prefer_non_definitive(pending_here, result);
+                            pending_here = prefer_non_definitive(pending_here, verdict);
                         }
                     }
                     if all_hold {
@@ -779,17 +790,24 @@ pub(super) fn try_backward_chain_typed(
 
             let mut all_conditions_hold = true;
             let mut rule_pending = None;
-            for ct in &rule.typed_conditions {
+            for (idx, ct) in rule.typed_conditions.iter().enumerate() {
                 let cs = substitute_fact(ct, &bindings);
                 let result = check_predicate_in_kb_typed(&cs, inner, depth + 1, visited);
-                if result.is_false() {
+                // Negated antecedent conditions hold via negation-as-failure: invert
+                // the verdict so ¬P holds iff P is unprovable (False), not iff P is True.
+                let verdict = if rule.negated_condition_indices.contains(&idx) {
+                    negate_result(result)
+                } else {
+                    result
+                };
+                if verdict.is_false() {
                     all_conditions_hold = false;
                     rule_pending = None;
                     break;
                 }
-                if !result.is_true() {
+                if !verdict.is_true() {
                     all_conditions_hold = false;
-                    rule_pending = prefer_non_definitive(rule_pending, result);
+                    rule_pending = prefer_non_definitive(rule_pending, verdict);
                 }
             }
 
@@ -847,13 +865,19 @@ pub(super) fn try_backward_chain_typed(
                                             &test_bindings,
                                         );
                                         let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
-                                        !check_predicate_in_kb_typed(
+                                        let result = check_predicate_in_kb_typed(
                                             &tensed_cs,
                                             inner,
                                             depth + 1,
                                             visited,
-                                        )
-                                        .is_false()
+                                        );
+                                        let verdict =
+                                            if rule.negated_condition_indices.contains(&idx) {
+                                                negate_result(result)
+                                            } else {
+                                                result
+                                            };
+                                        !verdict.is_false()
                                     })
                                 })
                                 .cloned()
@@ -874,19 +898,24 @@ pub(super) fn try_backward_chain_typed(
                         }
                         let mut all_hold = true;
                         let mut pending_here = None;
-                        for ct in &rule.typed_conditions {
+                        for (idx, ct) in rule.typed_conditions.iter().enumerate() {
                             let bare_cs = substitute_fact(ct, &bindings);
                             let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
                             let result =
                                 check_predicate_in_kb_typed(&tensed_cs, inner, depth + 1, visited);
-                            if result.is_false() {
+                            let verdict = if rule.negated_condition_indices.contains(&idx) {
+                                negate_result(result)
+                            } else {
+                                result
+                            };
+                            if verdict.is_false() {
                                 all_hold = false;
                                 pending_here = None;
                                 break;
                             }
-                            if !result.is_true() {
+                            if !verdict.is_true() {
                                 all_hold = false;
-                                pending_here = prefer_non_definitive(pending_here, result);
+                                pending_here = prefer_non_definitive(pending_here, verdict);
                             }
                         }
                         if all_hold {
@@ -907,18 +936,23 @@ pub(super) fn try_backward_chain_typed(
 
                 let mut all_conditions_hold = true;
                 let mut rule_pending = None;
-                for ct in &rule.typed_conditions {
+                for (idx, ct) in rule.typed_conditions.iter().enumerate() {
                     let bare_cs = substitute_fact(ct, &bindings);
                     let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
                     let result = check_predicate_in_kb_typed(&tensed_cs, inner, depth + 1, visited);
-                    if result.is_false() {
+                    let verdict = if rule.negated_condition_indices.contains(&idx) {
+                        negate_result(result)
+                    } else {
+                        result
+                    };
+                    if verdict.is_false() {
                         all_conditions_hold = false;
                         rule_pending = None;
                         break;
                     }
-                    if !result.is_true() {
+                    if !verdict.is_true() {
                         all_conditions_hold = false;
-                        rule_pending = prefer_non_definitive(rule_pending, result);
+                        rule_pending = prefer_non_definitive(rule_pending, verdict);
                     }
                 }
 
@@ -1154,10 +1188,15 @@ pub(super) fn try_backward_chain_traced_typed(
                     for (i, ev_var) in unbound_event_vars.iter().enumerate() {
                         bindings.insert(ev_var.clone(), combo[i].clone());
                     }
-                    let all_hold = rule.typed_conditions.iter().all(|ct| {
+                    let all_hold = rule.typed_conditions.iter().enumerate().all(|(idx, ct)| {
                         let cs = substitute_fact(ct, &bindings);
-                        check_predicate_in_kb_typed(&cs, &*inner, depth + 1, &mut HashSet::new())
-                            .is_true()
+                        let result =
+                            check_predicate_in_kb_typed(&cs, &*inner, depth + 1, &mut HashSet::new());
+                        if rule.negated_condition_indices.contains(&idx) {
+                            result.is_false()
+                        } else {
+                            result.is_true()
+                        }
                     });
                     if all_hold {
                         found = true;
@@ -1172,41 +1211,41 @@ pub(super) fn try_backward_chain_traced_typed(
                 }
             }
 
-            // Check all conditions hold and collect their StoredFacts for provenance.
+            // Check all conditions hold, building provenance children inline. A negated
+            // condition holds via negation-as-failure (¬P holds iff P is unprovable);
+            // record it as a leaf Negation step rather than tracing the positive atom
+            // (which does not hold). An empty condition list yields a childless Derived
+            // step (ground material conditional).
             let mut all_conditions_hold = true;
-            let mut condition_facts = Vec::new();
+            let mut child_indices = Vec::new();
 
-            for cond_template in &rule.typed_conditions {
+            for (idx, cond_template) in rule.typed_conditions.iter().enumerate() {
                 let cond_fact = substitute_fact(cond_template, &bindings);
-                if check_predicate_in_kb_typed(&cond_fact, &*inner, depth + 1, &mut HashSet::new())
-                    .is_true()
-                {
-                    condition_facts.push(cond_fact);
-                } else {
+                let negated = rule.negated_condition_indices.contains(&idx);
+                let result =
+                    check_predicate_in_kb_typed(&cond_fact, &*inner, depth + 1, &mut HashSet::new());
+                let holds = if negated { result.is_false() } else { result.is_true() };
+                if !holds {
                     all_conditions_hold = false;
                     break;
+                }
+                if negated {
+                    let leaf = steps.len() as u32;
+                    steps.push(ProofStep {
+                        rule: ProofRule::Negation,
+                        holds: true,
+                        children: vec![],
+                    });
+                    child_indices.push(leaf);
+                } else {
+                    let child_idx =
+                        trace_predicate_provenance_typed(&cond_fact, inner, steps, depth + 1, memo);
+                    child_indices.push(child_idx);
                 }
             }
 
             if !all_conditions_hold {
                 continue;
-            }
-
-            if rule.typed_conditions.is_empty() {
-                let idx = steps.len() as u32;
-                steps.push(ProofStep {
-                    rule: ProofRule::Derived((rule.label.clone(), display.clone())),
-                    holds: true,
-                    children: vec![],
-                });
-                return Some(idx);
-            }
-
-            let mut child_indices = Vec::new();
-            for cond_fact in &condition_facts {
-                let child_idx =
-                    trace_predicate_provenance_typed(cond_fact, inner, steps, depth + 1, memo);
-                child_indices.push(child_idx);
             }
 
             let idx = steps.len() as u32;
@@ -1295,16 +1334,20 @@ pub(super) fn try_backward_chain_traced_typed(
                         for (i, ev_var) in unbound_event_vars.iter().enumerate() {
                             bindings.insert(ev_var.clone(), combo[i].clone());
                         }
-                        let all_hold = rule.typed_conditions.iter().all(|ct| {
+                        let all_hold = rule.typed_conditions.iter().enumerate().all(|(idx, ct)| {
                             let bare_cs = substitute_fact(ct, &bindings);
                             let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
-                            check_predicate_in_kb_typed(
+                            let result = check_predicate_in_kb_typed(
                                 &tensed_cs,
                                 &*inner,
                                 depth + 1,
                                 &mut HashSet::new(),
-                            )
-                            .is_true()
+                            );
+                            if rule.negated_condition_indices.contains(&idx) {
+                                result.is_false()
+                            } else {
+                                result.is_true()
+                            }
                         });
                         if all_hold {
                             found = true;
@@ -1320,47 +1363,40 @@ pub(super) fn try_backward_chain_traced_typed(
                 }
 
                 let mut all_conditions_hold = true;
-                let mut condition_facts = Vec::new();
-                for cond_template in &rule.typed_conditions {
+                let mut child_indices = Vec::new();
+                for (idx, cond_template) in rule.typed_conditions.iter().enumerate() {
                     let bare_cs = substitute_fact(cond_template, &bindings);
                     let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
-                    if check_predicate_in_kb_typed(
+                    let negated = rule.negated_condition_indices.contains(&idx);
+                    let result = check_predicate_in_kb_typed(
                         &tensed_cs,
                         &*inner,
                         depth + 1,
                         &mut HashSet::new(),
-                    )
-                    .is_true()
-                    {
-                        condition_facts.push(tensed_cs);
-                    } else {
+                    );
+                    let holds = if negated { result.is_false() } else { result.is_true() };
+                    if !holds {
                         all_conditions_hold = false;
                         break;
+                    }
+                    if negated {
+                        let leaf = steps.len() as u32;
+                        steps.push(ProofStep {
+                            rule: ProofRule::Negation,
+                            holds: true,
+                            children: vec![],
+                        });
+                        child_indices.push(leaf);
+                    } else {
+                        let child_idx = trace_predicate_provenance_typed(
+                            &tensed_cs, inner, steps, depth + 1, memo,
+                        );
+                        child_indices.push(child_idx);
                     }
                 }
 
                 if !all_conditions_hold {
                     continue;
-                }
-
-                if rule.typed_conditions.is_empty() {
-                    let idx = steps.len() as u32;
-                    steps.push(ProofStep {
-                        rule: ProofRule::Derived((
-                            format!("{} [{}]", rule.label, tense_label),
-                            display.clone(),
-                        )),
-                        holds: true,
-                        children: vec![],
-                    });
-                    return Some(idx);
-                }
-
-                let mut child_indices = Vec::new();
-                for cond_fact in &condition_facts {
-                    let child_idx =
-                        trace_predicate_provenance_typed(cond_fact, inner, steps, depth + 1, memo);
-                    child_indices.push(child_idx);
                 }
 
                 let idx = steps.len() as u32;
