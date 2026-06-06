@@ -631,8 +631,13 @@ pub(super) fn check_predicate_in_kb_typed(
         );
     }
 
+    // Only cache definitive (True/False) results. Non-definitive results
+    // (Unknown(CycleCut), ResourceExceeded(Depth)) are context-dependent — they
+    // depend on the current `visited` stack and `max_chain_depth` — so caching
+    // them keyed by fact alone would poison sibling branches and later, deeper
+    // iterative-deepening passes. True/False are context-independent for a fixed KB.
     PRED_CACHE_ENABLED.with(|e| {
-        if e.get() {
+        if e.get() && result.is_definitive() {
             TYPED_PRED_CACHE.with(|c| c.borrow_mut().insert(fact.clone(), result.clone()));
         }
     });

@@ -283,7 +283,10 @@ impl KnowledgeBase {
 
     /// Single-pass entailment check at the current max_chain_depth.
     fn run_entailment_check(&self, logic: &LogicBuffer) -> Result<QueryResult, String> {
-        clear_and_enable_pred_cache();
+        // Enable WITHOUT clearing: the cache is cleared once before the
+        // iterative-deepening loop in query_entailment_inner, then definitive
+        // results persist across depth passes (cross-depth tabling).
+        enable_pred_cache();
         let mut inner = self.inner.borrow_mut();
         inner.ensure_domain_members_cached();
         let mut overall = QueryResult::True;
@@ -368,7 +371,10 @@ impl KnowledgeBase {
         &self,
         logic: &LogicBuffer,
     ) -> Result<(QueryResult, ProofTrace), String> {
-        clear_and_enable_pred_cache();
+        // Enable WITHOUT clearing: cleared once before the iterative-deepening
+        // loop in query_entailment_with_proof_inner; definitive results persist
+        // across depth passes (cross-depth tabling).
+        enable_pred_cache();
         let mut inner = self.inner.borrow_mut();
         inner.ensure_domain_members_cached();
         let mut steps: Vec<ProofStep> = Vec::new();

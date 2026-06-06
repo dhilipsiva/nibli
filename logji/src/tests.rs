@@ -5807,3 +5807,72 @@
         assert!(query(&kb, make_query("adam", "gerku")));
         // No sort warning — sorts not declared.
     }
+
+    /// Cross-depth tabling: a 3-step transitive chain must resolve True across
+    /// iterative-deepening passes. Passes 1 and 2 return ResourceExceeded(Depth);
+    /// because the cache write is gated to definitive (True/False) results only,
+    /// those Depth verdicts are never cached, so pass 3 re-derives the chain and
+    /// returns True. Before the gating fix, persisting a stale Depth across passes
+    /// would poison pass 3 and the query would wrongly return ResourceExceeded.
+    #[test]
+    fn test_tabling_cross_depth_persistence() {
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_universal("danlu", "jmive"));
+        assert_buf(&kb, make_universal("jmive", "xanlu"));
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert!(
+            query(&kb, make_query("alis", "xanlu")),
+            "xanlu(alis) should hold via a 3-step chain across depth iterations"
+        );
+        // A fresh query (entry clear) must remain True.
+        assert!(
+            query(&kb, make_query("alis", "xanlu")),
+            "re-query of xanlu(alis) should remain True"
+        );
+    }
+
+    /// A cycle-cut must not poison a sibling goal within a single query. Proving the
+    /// left conjunct a(alis) first explores the cyclic rule `f→a → a→f → a` (a on the
+    /// visited stack) which yields Unknown(CycleCut) for f(alis); a is then proved via
+    /// seed→a. The right conjunct f(alis) must NOT read a cached CycleCut — it is
+    /// derivable via a→f. The cyclic rule f→a is registered before the resolver seed→a
+    /// so the cyclic branch is tried first. Before the gating fix the cached CycleCut
+    /// poisoned the second conjunct and And(a, f) came back not-True.
+    #[test]
+    fn test_cycle_cut_does_not_poison_sibling_conjunct() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "seed"));
+        assert_buf(&kb, make_universal("f", "a")); // cyclic rule registered FIRST
+        assert_buf(&kb, make_universal("a", "f"));
+        assert_buf(&kb, make_universal("seed", "a")); // resolver registered AFTER
+
+        let mut nodes = Vec::new();
+        let left = pred(
+            &mut nodes,
+            "a",
+            vec![
+                LogicalTerm::Constant("alis".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let right = pred(
+            &mut nodes,
+            "f",
+            vec![
+                LogicalTerm::Constant("alis".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let root = and(&mut nodes, left, right);
+        assert!(
+            query(
+                &kb,
+                LogicBuffer {
+                    nodes,
+                    roots: vec![root],
+                }
+            ),
+            "And(a(alis), f(alis)) should hold; sibling f must not read a poisoned CycleCut"
+        );
+    }
