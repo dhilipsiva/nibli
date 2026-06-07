@@ -458,3 +458,172 @@ fn persistent_engine_queries_merged_remote_facts_after_reopen() {
     cleanup(&local_path);
     cleanup(&remote_path);
 }
+
+// ════════════════════════════════════════════════════════════════════
+// GDPR compliance engine (Chapter 20 case study)
+//
+// Every assertion below uses a construct verified to reason end-to-end. The
+// corpus file (gdpr.lojban) is the single source of truth; these tests pin the
+// behaviour the chapter narrates so prose and engine cannot drift.
+// ════════════════════════════════════════════════════════════════════
+
+/// Every non-comment line of gdpr.lojban asserts cleanly through the pipeline.
+#[test]
+fn gdpr_file_loads_clean() {
+    let corpus = include_str!("../../gdpr.lojban");
+    let engine = NibliEngine::new();
+    for (line_num, line) in corpus.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        engine.assert_text(trimmed).unwrap_or_else(|e| {
+            panic!("gdpr.lojban line {} failed to assert: {:?}\n{}", line_num + 1, trimmed, e)
+        });
+    }
+}
+
+/// THE HEADLINE: consent-withdrawal belief revision.
+/// With consent, processing has a lawful basis (Art 6) and there is no erasure
+/// right. Retract consent and BOTH flip: no lawful basis remains, so the right
+/// to erasure (Art 17(1)(b)) arises. The erasure verdict is derived by
+/// negation-as-failure and the proof carries the NAF dependency flag.
+#[test]
+fn gdpr_belief_revision_consent_withdrawal() {
+    let engine = NibliEngine::new();
+    engine.assert_text("la .adam. cu prenu").unwrap();
+    engine
+        .assert_text("ro lo prenu poi zanru cu se curmi")
+        .unwrap(); // Art 6(1)(a)
+    let consent_id = engine.assert_text("la .adam. cu zanru").unwrap();
+
+    // ── Consent present ──
+    assert_true(
+        &engine.query_holds("la .adam. cu se curmi").unwrap(),
+        "With consent, Adam's processing has a lawful basis",
+    );
+    assert_false(
+        &engine.query_holds("la .adam. na se curmi").unwrap(),
+        "With consent, there is no right to erasure",
+    );
+
+    // ── Withdraw consent ──
+    engine.retract_fact(consent_id).unwrap();
+
+    assert_false(
+        &engine.query_holds("la .adam. cu se curmi").unwrap(),
+        "After withdrawal, no lawful basis remains",
+    );
+    let (erasure, trace, json) = engine
+        .query_text_with_proof("la .adam. na se curmi")
+        .unwrap();
+    assert_true(
+        &erasure,
+        "After withdrawal, the right to erasure (Art 17) is triggered",
+    );
+    assert!(!trace.is_empty(), "Erasure proof trace should be non-empty");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json).expect("Erasure proof JSON should parse");
+    assert_eq!(
+        parsed["naf_dependent"], serde_json::Value::Bool(true),
+        "Erasure verdict must be flagged as negation-as-failure dependent"
+    );
+}
+
+/// Art 6(1)(b): a contract is an independent lawful basis. A subject bound by a
+/// contract reaches lawful processing without consent; a subject with neither
+/// basis does not (negative control).
+#[test]
+fn gdpr_lawful_basis_via_contract() {
+    let engine = engine_with_facts(&[
+        "ro lo prenu poi nupre cu se curmi",
+        "la .adam. cu prenu",
+        "la .adam. cu nupre",
+        "la .bet. cu prenu", // a person with no lawful basis
+    ]);
+    assert_true(
+        &engine.query_holds("la .adam. cu se curmi").unwrap(),
+        "Contract is a lawful basis (Art 6(1)(b))",
+    );
+    assert_false(
+        &engine.query_holds("la .bet. cu se curmi").unwrap(),
+        "A subject with no lawful basis has no lawful processing",
+    );
+}
+
+/// Art 9: special-category (health) data requires a stricter, specific basis;
+/// ordinary personal data does not (negative control / DPIA triage).
+#[test]
+fn gdpr_special_category_requires_stricter_basis() {
+    let engine = engine_with_facts(&[
+        "ro lo kanro datni cu se bilga lo nu satci",
+        "la .kanrek. cu kanro datni",
+        "la .ordrek. cu datni",
+    ]);
+    assert_true(
+        &engine.query_holds("la .kanrek. cu se bilga lo nu satci").unwrap(),
+        "Health data requires a stricter basis (Art 9)",
+    );
+    assert_false(
+        &engine.query_holds("la .ordrek. cu se bilga lo nu satci").unwrap(),
+        "Ordinary data does not require the special-category basis",
+    );
+}
+
+/// Art 5: principles (here, accuracy) apply to ALL personal data, reached through
+/// a category -> data -> obligation chain (multi-hop inference over special data).
+#[test]
+fn gdpr_art5_accuracy_applies_to_health_data() {
+    let engine = engine_with_facts(&[
+        "ro lo kanro datni cu datni",
+        "ro lo datni cu se bilga lo nu drani",
+        "la .kanrek. cu kanro datni",
+    ]);
+    let (holds, trace, _json) = engine
+        .query_text_with_proof("la .kanrek. cu se bilga lo nu drani")
+        .unwrap();
+    assert_true(
+        &holds,
+        "Accuracy obligation reaches health data via kanro datni -> datni -> drani",
+    );
+    assert!(trace.contains("Rule"), "Accuracy proof should show a derivation chain");
+}
+
+/// Art 15: every data subject has a right of access (DSAR); a non-subject does
+/// not (negative control).
+#[test]
+fn gdpr_right_of_access_dsar() {
+    let engine = engine_with_facts(&[
+        "ro lo prenu cu se curmi lo nu datni facki",
+        "la .adam. cu prenu",
+        "la .akmes. cu datni turni", // a controller, not a data subject
+    ]);
+    assert_true(
+        &engine.query_holds("la .adam. cu se curmi lo nu datni facki").unwrap(),
+        "A data subject has the right of access (Art 15)",
+    );
+    assert_false(
+        &engine.query_holds("la .akmes. cu se curmi lo nu datni facki").unwrap(),
+        "A controller (non-subject) does not acquire the access right",
+    );
+}
+
+/// Art 33: a controller that suffers a breach must notify; a controller with no
+/// breach has no such obligation (negative control / audit evidence).
+#[test]
+fn gdpr_breach_notification() {
+    let engine = engine_with_facts(&[
+        "ro lo datni turni poi cfila cu se bilga lo nu notci",
+        "la .akmes. cu datni turni",
+        "la .gugli. cu datni turni",
+        "la .akmes. cu cfila", // only AkmeCorp breached
+    ]);
+    assert_true(
+        &engine.query_holds("la .akmes. cu se bilga lo nu notci").unwrap(),
+        "A breached controller must notify (Art 33)",
+    );
+    assert_false(
+        &engine.query_holds("la .gugli. cu se bilga lo nu notci").unwrap(),
+        "A controller with no breach has no notification obligation",
+    );
+}
