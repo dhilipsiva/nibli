@@ -229,16 +229,31 @@ impl SemanticCompiler {
                     } else {
                         let unspec_count =
                             Self::count_unspecified_predicates(&rel_body, &self.interner);
-                        if unspec_count > 1 {
-                            self.errors.push(format!(
-                                "Relative clause has {} predicates with unspecified slots; \
-                                 implicit variable injection is ambiguous. Use explicit ke'a \
-                                 for precise control.",
-                                unspec_count
-                            ));
+                        if unspec_count == 1 {
+                            // Exactly one candidate subject (_x1) slot: inject the
+                            // described entity's variable there.
+                            last.restrictor =
+                                Some(Self::inject_variable(rel_body, last.var, &self.interner));
+                        } else {
+                            // Firewall (book Ch6): reject rather than guess.
+                            // 0 = the referent has no subject (_x1) slot to bind into (its
+                            //     place would be a non-subject slot); >1 = multiple candidate
+                            //     subject slots. Either way, require explicit ke'a.
+                            self.errors.push(if unspec_count == 0 {
+                                "Relative clause: the described entity has no unambiguous \
+                                 subject (x1) slot to bind into; use explicit ke'a to mark its \
+                                 place."
+                                    .to_string()
+                            } else {
+                                format!(
+                                    "Relative clause has {} predicates with unspecified subject \
+                                     slots; implicit variable injection is ambiguous. Use \
+                                     explicit ke'a for precise control.",
+                                    unspec_count
+                                )
+                            });
+                            last.restrictor = Some(rel_body);
                         }
-                        last.restrictor =
-                            Some(Self::inject_variable(rel_body, last.var, &self.interner));
                     }
                 }
 

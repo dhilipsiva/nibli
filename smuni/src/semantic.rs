@@ -1450,10 +1450,11 @@ mod tests {
     }
 
     #[test]
-    fn test_inject_variable_nested_description_no_error_with_events() {
+    fn test_nested_description_implicit_kea_rejected() {
         // lo gerku poi lo mlatu cu barda
-        // With event decomposition, the description variable fills the _x1 role slot,
-        // so there is only 1 unspecified _x1 role (not 2). No ambiguity error.
+        // The relative-clause body has NO unfilled subject (_x1) slot for the described
+        // dog (the cat fills barda's x1), and ke'a is implicit. Per the firewall (book
+        // Ch6), the engine REJECTS and demands explicit ke'a rather than guessing.
         //
         // Buffer layout:
         //   selbris: [0: gerku, 1: mlatu, 2: barda]
@@ -1495,11 +1496,14 @@ mod tests {
         ];
 
         let (_form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
-        // With event decomposition, the description variable fills _x1 roles,
-        // so inject_variable finds at most 1 unspecified _x1 target — no error.
+        // Firewall: no unambiguous subject slot for the implicit ke'a → rejected.
         assert!(
-            compiler.errors.is_empty(),
-            "Expected no errors with event decomposition, got: {:?}",
+            !compiler.errors.is_empty(),
+            "Expected an ambiguity/ke'a error for an implicit-ke'a nested description"
+        );
+        assert!(
+            compiler.errors.iter().any(|e| e.contains("ke'a")),
+            "Error should direct the user to explicit ke'a, got: {:?}",
             compiler.errors
         );
     }
@@ -1558,25 +1562,99 @@ mod tests {
     }
 
     #[test]
-    fn test_inject_variable_no_error_with_event_decomposition() {
-        // With event decomposition, the description variable fills _x1 role slots,
-        // so nested descriptions no longer produce ambiguity errors.
-        // Same setup as test_inject_variable_nested_description_no_error_with_events
+    fn test_single_predicate_injects_head_into_subject() {
+        // lo gerku poi barda cu klama
+        // The relative-clause body `barda` has exactly one unfilled subject (_x1) slot,
+        // so the described dog is injected there. Verify no error AND that the dog's
+        // variable actually appears in barda_x1 (the same variable bound by gerku).
+        //
+        // Buffer layout:
+        //   selbris: [0: gerku, 1: barda, 2: klama]
+        //   sumtis:  [0: Description(Lo, 0), 1: Restricted(0, poi body=1)]
+        //   sentences: [0: Simple(klama, head=[1]), 1: Simple(barda, head=[])]
         let selbris = vec![
-            Selbri::Root("gerku".into()),
-            Selbri::Root("mlatu".into()),
-            Selbri::Root("barda".into()),
+            Selbri::Root("gerku".into()), // 0
+            Selbri::Root("barda".into()), // 1
+            Selbri::Root("klama".into()), // 2
         ];
         let sumtis = vec![
-            Sumti::Description((Gadri::Lo, 0)),
-            Sumti::Description((Gadri::Lo, 1)),
+            Sumti::Description((Gadri::Lo, 0)), // 0: lo gerku
             Sumti::Restricted((
                 0,
                 RelClause {
                     kind: RelClauseKind::Poi,
                     body_sentence: 1,
                 },
-            )),
+            )), // 1: lo gerku poi barda
+        ];
+        let sentences = vec![
+            Sentence::Simple(Bridi {
+                relation: 2,
+                head_terms: vec![1],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+            Sentence::Simple(Bridi {
+                relation: 1,
+                head_terms: vec![],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+        ];
+
+        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        assert!(
+            compiler.errors.is_empty(),
+            "Expected no errors for a single-predicate clause, got: {:?}",
+            compiler.errors
+        );
+        let barda_args = get_pred_args(&form, "barda_x1", &compiler)
+            .expect("barda_x1 role predicate should be present");
+        let gerku_args = get_pred_args(&form, "gerku_x1", &compiler)
+            .expect("gerku_x1 role predicate should be present");
+        // The implicit ke'a (dog) variable is injected into barda's subject slot, and it
+        // must be the SAME variable bound by the gerku description.
+        assert!(
+            matches!(barda_args[1], LogicalTerm::Variable(_)),
+            "dog variable should be injected into barda_x1, got {:?}",
+            barda_args[1]
+        );
+        assert_eq!(
+            barda_args[1], gerku_args[1],
+            "barda_x1 must bind the same variable as gerku_x1 (the described dog)"
+        );
+    }
+
+    #[test]
+    fn test_nested_description_two_place_rejected() {
+        // lo gerku poi lo mlatu cu batci  (book Ch6 canonical reject case)
+        // batci is 2-place (x1 bites x2); the cat fills batci_x1, so the dog's place
+        // would be the non-subject batci_x2. Implicit ke'a cannot safely target a
+        // non-subject slot -> reject and demand explicit ke'a.
+        //
+        // Buffer layout:
+        //   selbris: [0: gerku, 1: mlatu, 2: batci]
+        //   sumtis:  [0: Description(Lo, 0), 1: Description(Lo, 1), 2: Restricted(0, poi body=1)]
+        //   sentences: [0: Simple(batci, head=[2]), 1: Simple(batci, head=[1])]
+        let selbris = vec![
+            Selbri::Root("gerku".into()), // 0
+            Selbri::Root("mlatu".into()), // 1
+            Selbri::Root("batci".into()), // 2
+        ];
+        let sumtis = vec![
+            Sumti::Description((Gadri::Lo, 0)), // 0: lo gerku
+            Sumti::Description((Gadri::Lo, 1)), // 1: lo mlatu
+            Sumti::Restricted((
+                0,
+                RelClause {
+                    kind: RelClauseKind::Poi,
+                    body_sentence: 1,
+                },
+            )), // 2: lo gerku poi lo mlatu cu batci
         ];
         let sentences = vec![
             Sentence::Simple(Bridi {
@@ -1589,7 +1667,7 @@ mod tests {
             }),
             Sentence::Simple(Bridi {
                 relation: 2,
-                head_terms: vec![1],
+                head_terms: vec![1], // lo mlatu fills batci_x1; batci_x2 is the dog's place
                 tail_terms: vec![],
                 negated: false,
                 tense: None,
@@ -1597,12 +1675,10 @@ mod tests {
             }),
         ];
 
-        let (_, compiler) = compile_sentence_full(selbris, sumtis, sentences);
-        // With event decomposition, no ambiguity error is produced
+        let (_form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
         assert!(
-            compiler.errors.is_empty(),
-            "Expected no errors with event decomposition, got: {:?}",
-            compiler.errors
+            !compiler.errors.is_empty(),
+            "Expected a ke'a error: the dog's batci_x2 place cannot be filled implicitly"
         );
     }
 
