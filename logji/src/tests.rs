@@ -5876,3 +5876,72 @@
             "And(a(alis), f(alis)) should hold; sibling f must not read a poisoned CycleCut"
         );
     }
+
+    /// A fact true only via a du-equivalent, RULE-DERIVED variant must get an honest
+    /// EqualitySubstitution proof step — not a holds:true "unknown" leaf with no
+    /// derivation. The ground material conditional `seed(adam) -> danlu(adam)` has a
+    /// GROUND conclusion, so `danlu(betty)` does not unify with it and routes through the
+    /// du-equivalence fallback that the traced path previously lacked.
+    #[test]
+    fn test_proof_trace_du_substitution_rule_derived() {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("adam", "seed"));
+
+        // Ground material conditional: Or(Not(seed(adam)), danlu(adam)) — a ground
+        // conclusion danlu(adam), auto-registered as a zero-variable rule.
+        let mut nodes = Vec::new();
+        let seed_adam = pred(
+            &mut nodes,
+            "seed",
+            vec![
+                LogicalTerm::Constant("adam".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let danlu_adam = pred(
+            &mut nodes,
+            "danlu",
+            vec![
+                LogicalTerm::Constant("adam".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let neg_seed = not(&mut nodes, seed_adam);
+        let cond = or(&mut nodes, neg_seed, danlu_adam);
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![cond],
+            },
+        );
+        assert_buf(&kb, make_du("adam", "betty"));
+
+        // Sanity: danlu(betty) holds (untraced) via the du-equivalence fallback over the
+        // rule-derived danlu(adam).
+        assert!(
+            query(&kb, make_query("betty", "danlu")),
+            "danlu(betty) should hold via rule-derived danlu(adam) + adam du betty"
+        );
+
+        let (result, trace) = query_with_proof(&kb, make_query("betty", "danlu"));
+        assert!(result, "traced verdict for danlu(betty) should be True");
+        assert!(
+            trace
+                .steps
+                .iter()
+                .any(|s| matches!(s.rule, ProofRule::EqualitySubstitution(_)) && s.holds),
+            "trace should contain a holds:true EqualitySubstitution step"
+        );
+        assert!(
+            !trace.steps.iter().any(|s| {
+                matches!(&s.rule, ProofRule::PredicateCheck((src, _)) if src == "unknown")
+                    && s.holds
+            }),
+            "trace must not contain a holds:true PredicateCheck(\"unknown\", ...) leaf"
+        );
+        assert!(
+            trace.steps[trace.root as usize].holds,
+            "root step holds must match the True verdict"
+        );
+    }

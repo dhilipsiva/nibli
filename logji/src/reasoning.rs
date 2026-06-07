@@ -1103,10 +1103,67 @@ pub(super) fn trace_predicate_provenance_typed(
         }
     }
 
+    // Equality substitution: the fact may hold only after replacing arguments with
+    // du-equivalent terms (mirrors the untraced fallback in check_predicate_in_kb_typed).
+    // Find a satisfying equivalent variant and record an EqualitySubstitution step whose
+    // child is the variant's real derivation — never a holds:true leaf with no support.
+    if !inner.equivalence_parent.is_empty() && fact.relation() != "du" {
+        let gf = fact.inner();
+        let equiv_args: Vec<Vec<GroundTerm>> = gf
+            .args
+            .iter()
+            .map(|arg| {
+                get_equivalence_class_readonly(
+                    &inner.equivalence_parent,
+                    &inner.equivalence_classes,
+                    arg,
+                )
+            })
+            .collect();
+        if equiv_args.iter().any(|cls| cls.len() > 1) {
+            let mut satisfying: Option<StoredFact> = None;
+            for combo in CartesianProduct::new(&equiv_args) {
+                let variant_gf = GroundFact::new(gf.relation.clone(), combo);
+                let variant = StoredFact::with_tense_from(variant_gf, fact);
+                if variant != *fact
+                    && check_predicate_in_kb_typed(&variant, &*inner, depth, &mut HashSet::new())
+                        .is_true()
+                {
+                    satisfying = Some(variant);
+                    break;
+                }
+            }
+            if let Some(variant) = satisfying {
+                let du_note = gf
+                    .args
+                    .iter()
+                    .zip(variant.inner().args.iter())
+                    .filter(|(o, v)| o != v)
+                    .map(|(o, v)| {
+                        format!("{} du {}", o.to_display_string(), v.to_display_string())
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let substituted = variant.to_display_string();
+                let child = trace_predicate_provenance_typed(&variant, inner, steps, depth, memo);
+                let idx = steps.len() as u32;
+                steps.push(ProofStep {
+                    rule: ProofRule::EqualitySubstitution((display.clone(), du_note, substituted)),
+                    holds: true,
+                    children: vec![child],
+                });
+                memo.insert(display, idx);
+                return idx;
+            }
+        }
+    }
+
+    // Final fallback: the traced path could not derive the fact. Report it honestly as
+    // not-found (holds:false) rather than claiming truth with no supporting derivation.
     let idx = steps.len() as u32;
     steps.push(ProofStep {
-        rule: ProofRule::PredicateCheck(("unknown".to_string(), display.clone())),
-        holds: true,
+        rule: ProofRule::PredicateNotFound(display.clone()),
+        holds: false,
         children: vec![],
     });
     memo.insert(display, idx);
