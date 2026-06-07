@@ -234,22 +234,55 @@ fn universal_rule_with_named_entity() {
 }
 
 #[test]
-fn forethought_biconditional_go_gi_pipeline() {
-    // `go A gi B` (= A <-> B) parses, compiles to a biconditional, and flows through the
-    // full pipeline (gerna -> smuni -> logji) without error. NOTE: end-to-end *reasoning*
-    // over a ground biconditional with event-decomposed operands is limited by the
-    // engine's ground material-conditional handling (the A<->B cycle yields CycleCut
-    // rather than deriving from the asserted side) — tracked separately in todo.md. This
-    // test asserts pipeline acceptance, not a modus-ponens outcome.
-    let engine = NibliEngine::new();
-    engine
-        .assert_text("go la .adam. cu gerku gi la .adam. cu danlu")
-        .expect("forethought biconditional should assert through the full pipeline");
-    let result = engine.query_text_with_proof("go la .adam. cu gerku gi la .adam. cu danlu");
-    assert!(
-        result.is_ok(),
-        "forethought biconditional should be queryable end-to-end: {result:?}"
-    );
+fn forethought_implication_ganai_reasons() {
+    // ganai A gi B  ==  A -> B. Assert the conditional + A (gerku), derive B (danlu).
+    let engine = engine_with_facts(&[
+        "ganai la .adam. cu gerku gi la .adam. cu danlu",
+        "la .adam. cu gerku",
+    ]);
+    let (holds, _t, _j) = engine.query_text_with_proof("la .adam. cu danlu").unwrap();
+    assert_true(&holds, "ganai: danlu should derive from gerku (modus ponens)");
+
+    // Negative control: without the antecedent, the consequent is not derivable.
+    let only_rule = engine_with_facts(&["ganai la .adam. cu gerku gi la .adam. cu danlu"]);
+    let (holds, _t, _j) = only_rule.query_text_with_proof("la .adam. cu danlu").unwrap();
+    assert_false(&holds, "ganai: danlu must NOT hold without gerku");
+}
+
+#[test]
+fn forethought_biconditional_go_gi_reasons_both_directions() {
+    // go A gi B  ==  A <-> B. Reasons from either side (no CycleCut).
+    let fwd = engine_with_facts(&[
+        "go la .adam. cu gerku gi la .adam. cu danlu",
+        "la .adam. cu gerku",
+    ]);
+    let (holds, _t, _j) = fwd.query_text_with_proof("la .adam. cu danlu").unwrap();
+    assert_true(&holds, "go biconditional: gerku should derive danlu (forward)");
+
+    let rev = engine_with_facts(&[
+        "go la .adam. cu gerku gi la .adam. cu danlu",
+        "la .adam. cu danlu",
+    ]);
+    let (holds, _t, _j) = rev.query_text_with_proof("la .adam. cu gerku").unwrap();
+    assert_true(&holds, "go biconditional: danlu should derive gerku (reverse)");
+}
+
+#[test]
+fn afterthought_biconditional_jo_reasons_both_directions() {
+    // S1 .i jo S2  ==  S1 <-> S2.
+    let fwd = engine_with_facts(&[
+        "la .adam. cu gerku .i jo la .adam. cu danlu",
+        "la .adam. cu gerku",
+    ]);
+    let (holds, _t, _j) = fwd.query_text_with_proof("la .adam. cu danlu").unwrap();
+    assert_true(&holds, ".i jo biconditional: gerku should derive danlu (forward)");
+
+    let rev = engine_with_facts(&[
+        "la .adam. cu gerku .i jo la .adam. cu danlu",
+        "la .adam. cu danlu",
+    ]);
+    let (holds, _t, _j) = rev.query_text_with_proof("la .adam. cu gerku").unwrap();
+    assert_true(&holds, ".i jo biconditional: danlu should derive gerku (reverse)");
 }
 
 // ─── Conversion (se) ────────────────────────────────────────────────

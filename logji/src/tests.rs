@@ -3675,6 +3675,100 @@
         );
     }
 
+    /// Build `Exists(ev, And(P(ev), P_x1(ev, entity)))` for a GROUND entity constant.
+    fn event_operand(nodes: &mut Vec<LogicNode>, ev: &str, predicate: &str, entity: &str) -> u32 {
+        let p_type = pred(nodes, predicate, vec![LogicalTerm::Variable(ev.to_string())]);
+        let p_role = pred(
+            nodes,
+            &format!("{}_x1", predicate),
+            vec![
+                LogicalTerm::Variable(ev.to_string()),
+                LogicalTerm::Constant(entity.to_string()),
+            ],
+        );
+        let p_and = and(nodes, p_type, p_role);
+        exists(nodes, ev, p_and)
+    }
+
+    /// Ground event-decomposed material conditional: Or(Not(A), B), operands over a constant.
+    fn make_event_material_conditional(
+        entity: &str,
+        antecedent: &str,
+        consequent: &str,
+    ) -> LogicBuffer {
+        let mut nodes = Vec::new();
+        let a = event_operand(&mut nodes, "_ev0", antecedent, entity);
+        let b = event_operand(&mut nodes, "_ev1", consequent, entity);
+        let neg_a = not(&mut nodes, a);
+        let root = or(&mut nodes, neg_a, b);
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
+    }
+
+    /// Ground event-decomposed biconditional: And(Or(Not(A),B), Or(Not(B),A)).
+    fn make_event_biconditional(entity: &str, a: &str, b: &str) -> LogicBuffer {
+        let mut nodes = Vec::new();
+        let a1 = event_operand(&mut nodes, "_ev0", a, entity);
+        let b1 = event_operand(&mut nodes, "_ev1", b, entity);
+        let neg_a1 = not(&mut nodes, a1);
+        let impl1 = or(&mut nodes, neg_a1, b1);
+        let b2 = event_operand(&mut nodes, "_ev2", b, entity);
+        let a2 = event_operand(&mut nodes, "_ev3", a, entity);
+        let neg_b2 = not(&mut nodes, b2);
+        let impl2 = or(&mut nodes, neg_b2, a2);
+        let root = and(&mut nodes, impl1, impl2);
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
+    }
+
+    #[test]
+    fn test_event_decomposed_ground_material_conditional() {
+        // Or(Not(∃e. gerku(e) ∧ gerku_x1(e, adam)), ∃e2. danlu(e2) ∧ danlu_x1(e2, adam))
+        // + gerku(adam) ⇒ danlu(adam) (modus ponens over event-decomposed operands).
+        let kb = new_kb();
+        assert_buf(&kb, make_event_material_conditional("adam", "gerku", "danlu"));
+        assert_buf(&kb, make_event_assertion("adam", "gerku"));
+        assert!(
+            query(&kb, make_event_query("adam", "danlu")),
+            "ground material conditional should derive danlu(adam) from gerku(adam)"
+        );
+    }
+
+    #[test]
+    fn test_event_decomposed_ground_material_conditional_no_antecedent() {
+        // Negative control: without the antecedent fact the conclusion is not derivable.
+        let kb = new_kb();
+        assert_buf(&kb, make_event_material_conditional("adam", "gerku", "danlu"));
+        assert!(
+            !query(&kb, make_event_query("adam", "danlu")),
+            "danlu(adam) must NOT hold without gerku(adam)"
+        );
+    }
+
+    #[test]
+    fn test_event_decomposed_ground_biconditional_both_directions() {
+        // A ↔ B reasons both ways over event-decomposed operands (no CycleCut).
+        let kb = new_kb();
+        assert_buf(&kb, make_event_biconditional("adam", "gerku", "danlu"));
+        assert_buf(&kb, make_event_assertion("adam", "gerku"));
+        assert!(
+            query(&kb, make_event_query("adam", "danlu")),
+            "biconditional: danlu(adam) should derive from gerku(adam) (forward)"
+        );
+
+        let kb2 = new_kb();
+        assert_buf(&kb2, make_event_biconditional("adam", "gerku", "danlu"));
+        assert_buf(&kb2, make_event_assertion("adam", "danlu"));
+        assert!(
+            query(&kb2, make_event_query("adam", "gerku")),
+            "biconditional: gerku(adam) should derive from danlu(adam) (reverse)"
+        );
+    }
+
     #[test]
     fn test_event_decomposed_rule_selective() {
         let kb = new_kb();

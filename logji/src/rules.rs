@@ -720,29 +720,34 @@ pub(super) fn compile_forall_to_rule(
                     return Err(e);
                 }
 
-                let xp_name = inner.fresh_skolem();
-                inner.note_entity(&xp_name);
-                let mut xp_subs: HashMap<String, GroundTerm> = HashMap::new();
-                for v in &universals {
-                    xp_subs.insert(v.clone(), GroundTerm::Constant(xp_name.clone()));
-                }
-                for (k, v) in &ground_skolems {
-                    xp_subs
-                        .entry(k.clone())
-                        .or_insert_with(|| GroundTerm::Constant(v.clone()));
-                }
-                for var in &condition_exists_vars {
-                    let ev_sk = inner.fresh_skolem();
-                    if var.starts_with("_ev") {
-                        inner.note_event_entity(&ev_sk);
-                    } else {
-                        inner.note_entity(&ev_sk);
+                // xorlo presupposition applies only to genuine universals (ro lo / ro le):
+                // a ground material conditional (zero universals, e.g. `ganai A gi B`) carries
+                // no existential import and must NOT assert its antecedent/consequent witnesses.
+                if !universals.is_empty() {
+                    let xp_name = inner.fresh_skolem();
+                    inner.note_entity(&xp_name);
+                    let mut xp_subs: HashMap<String, GroundTerm> = HashMap::new();
+                    for v in &universals {
+                        xp_subs.insert(v.clone(), GroundTerm::Constant(xp_name.clone()));
                     }
-                    xp_subs.insert(var.clone(), GroundTerm::Constant(ev_sk));
-                }
-                for &cid in &all_conditions {
-                    if let Some(fact) = build_stored_fact_from_node(buffer, cid, &xp_subs, None) {
-                        assert_typed_fact(fact, inner);
+                    for (k, v) in &ground_skolems {
+                        xp_subs
+                            .entry(k.clone())
+                            .or_insert_with(|| GroundTerm::Constant(v.clone()));
+                    }
+                    for var in &condition_exists_vars {
+                        let ev_sk = inner.fresh_skolem();
+                        if var.starts_with("_ev") {
+                            inner.note_event_entity(&ev_sk);
+                        } else {
+                            inner.note_entity(&ev_sk);
+                        }
+                        xp_subs.insert(var.clone(), GroundTerm::Constant(ev_sk));
+                    }
+                    for &cid in &all_conditions {
+                        if let Some(fact) = build_stored_fact_from_node(buffer, cid, &xp_subs, None) {
+                            assert_typed_fact(fact, inner);
+                        }
                     }
                 }
             }

@@ -902,15 +902,17 @@ pub(super) fn register_ground_material_conditional(
             // Check for Or(Not(P), Q) — material conditional P → Q
             // The Not here encodes implication (P→Q ≡ ¬P∨Q), not body-negation.
             // The dependency Q→P is positive, so negated_condition_indices is empty.
-            if let Ok(LogicNode::NotNode(neg_inner)) = get_node(buffer, *l) {
-                let mut typed_conds = Vec::new();
-                collect_ground_facts(buffer, *neg_inner, subs, None, &mut typed_conds);
-                let mut typed_concls = Vec::new();
-                collect_ground_facts(buffer, *r, subs, None, &mut typed_concls);
-                let label = build_typed_rule_label(&typed_conds, &typed_concls);
-                register_rule(inner, label, vec![], typed_conds, typed_concls, vec![], false)?;
+            if matches!(get_node(buffer, *l), Ok(LogicNode::NotNode(_))) {
+                // Reuse the universal-rule compiler with zero entity universals: condition-side
+                // event existentials become `ev__` pattern vars (matching any asserted event)
+                // and conclusion-side existentials become skolem witnesses, so event-decomposed
+                // operands reason via modus ponens. Plain predicates compile identically to the
+                // old path, and dedup + negated-condition handling come for free.
+                compile_forall_to_rule(buffer, node_id, subs, inner)?;
             }
-            // Also check Or(Q, Not(P)) — reversed order (commutativity)
+            // Also check Or(Q, Not(P)) — reversed order (commutativity). smuni never emits this
+            // for ganai/go/jo (always Not-on-left), so it stays on the simpler ground path;
+            // event-decomposed operands in this orientation are not reachable from the pipeline.
             else if let Ok(LogicNode::NotNode(neg_inner)) = get_node(buffer, *r) {
                 let mut typed_conds = Vec::new();
                 collect_ground_facts(buffer, *neg_inner, subs, None, &mut typed_conds);
