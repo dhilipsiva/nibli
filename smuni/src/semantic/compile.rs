@@ -310,6 +310,9 @@ impl SemanticCompiler {
                     SentenceConnective::GaGi => {
                         LogicalForm::Or(Box::new(left_form), Box::new(right_form))
                     }
+                    SentenceConnective::GoGi => {
+                        LogicalForm::Biconditional(Box::new(left_form), Box::new(right_form))
+                    }
                     SentenceConnective::Afterthought((left_neg, conn, right_neg)) => {
                         let l = if *left_neg {
                             LogicalForm::Not(Box::new(left_form))

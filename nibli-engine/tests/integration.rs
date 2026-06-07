@@ -233,6 +233,25 @@ fn universal_rule_with_named_entity() {
     assert_true(&holds, "Named entity should derive through universal rule");
 }
 
+#[test]
+fn forethought_biconditional_go_gi_pipeline() {
+    // `go A gi B` (= A <-> B) parses, compiles to a biconditional, and flows through the
+    // full pipeline (gerna -> smuni -> logji) without error. NOTE: end-to-end *reasoning*
+    // over a ground biconditional with event-decomposed operands is limited by the
+    // engine's ground material-conditional handling (the A<->B cycle yields CycleCut
+    // rather than deriving from the asserted side) — tracked separately in todo.md. This
+    // test asserts pipeline acceptance, not a modus-ponens outcome.
+    let engine = NibliEngine::new();
+    engine
+        .assert_text("go la .adam. cu gerku gi la .adam. cu danlu")
+        .expect("forethought biconditional should assert through the full pipeline");
+    let result = engine.query_text_with_proof("go la .adam. cu gerku gi la .adam. cu danlu");
+    assert!(
+        result.is_ok(),
+        "forethought biconditional should be queryable end-to-end: {result:?}"
+    );
+}
+
 // ─── Conversion (se) ────────────────────────────────────────────────
 
 #[test]

@@ -299,6 +299,8 @@ pub enum SentenceConnective {
     GeGi,
     /// Forethought disjunction: ga ... gi ... (OR)
     GaGi,
+    /// Forethought biconditional: go ... gi ... (IFF)
+    GoGi,
     /// Afterthought: .i [na] (je|ja|jo|ju) [nai]
     Afterthought {
         left_negated: bool,

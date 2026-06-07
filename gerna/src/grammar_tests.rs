@@ -3498,6 +3498,29 @@
     }
 
     #[test]
+    fn test_forethought_go_gi() {
+        // go mi klama gi do sutra → Connected(GoGi, ...)  (forethought biconditional)
+        let arena = Bump::new();
+        let r = parse_ok(
+            &[
+                cmavo("go"),
+                cmavo("mi"),
+                gismu("klama"),
+                cmavo("gi"),
+                cmavo("do"),
+                gismu("sutra"),
+            ],
+            &arena,
+        );
+        match &r.sentences[0] {
+            Sentence::Connected { connective, .. } => {
+                assert_eq!(*connective, SentenceConnective::GoGi);
+            }
+            other => panic!("expected Sentence::Connected, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn test_parse_error_has_position_info() {
         // Invalid input should produce error with meaningful message
         let err = parse_err(&[cmavo("ku")]);

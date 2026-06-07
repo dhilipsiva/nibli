@@ -195,6 +195,8 @@ pub enum SentenceConnective {
     GeGi,
     /// `ga ... gi` — disjunctive (or).
     GaGi,
+    /// `go ... gi` — biconditional (iff).
+    GoGi,
     /// `.i` + afterthought connective: (na-flag, connective, nai-flag).
     Afterthought((bool, Connective, bool)),
 }

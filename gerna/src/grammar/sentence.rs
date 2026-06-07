@@ -41,6 +41,8 @@ impl<'a, 'arena> Parser<'a, 'arena> {
             Some(SentenceConnective::GeGi)
         } else if self.eat_cmavo("ga") {
             Some(SentenceConnective::GaGi)
+        } else if self.eat_cmavo("go") {
+            Some(SentenceConnective::GoGi)
         } else {
             None
         };

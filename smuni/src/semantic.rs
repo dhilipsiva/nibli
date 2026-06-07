@@ -2416,6 +2416,42 @@ mod tests {
         assert!(matches!(form, LogicalForm::And(_, _)));
     }
 
+    #[test]
+    fn test_sentence_connective_go_gi_produces_biconditional() {
+        // go mi klama gi do sutra → Biconditional(klama(mi,...), klama(do,...))
+        let selbris = vec![Selbri::Root("klama".into()), Selbri::Root("sutra".into())];
+        let sumtis = vec![Sumti::ProSumti("mi".into()), Sumti::ProSumti("do".into())];
+        let sentences = vec![
+            Sentence::Connected((
+                SentenceConnective::GoGi,
+                1, // left sentence idx
+                2, // right sentence idx
+            )),
+            Sentence::Simple(Bridi {
+                relation: 0,
+                head_terms: vec![0],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+            Sentence::Simple(Bridi {
+                relation: 1,
+                head_terms: vec![1],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+        ];
+        let (form, _) = compile_sentence_full(selbris, sumtis, sentences);
+        assert!(
+            matches!(form, LogicalForm::Biconditional(_, _)),
+            "expected Biconditional, got {:?}",
+            form
+        );
+    }
+
     // ─── Fresh variable generation ────────────────────────────
 
     #[test]

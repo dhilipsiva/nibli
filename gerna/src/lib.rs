@@ -150,6 +150,7 @@ impl Flattener {
                     ast::SentenceConnective::GanaiGi => WasmConn::GanaiGi,
                     ast::SentenceConnective::GeGi => WasmConn::GeGi,
                     ast::SentenceConnective::GaGi => WasmConn::GaGi,
+                    ast::SentenceConnective::GoGi => WasmConn::GoGi,
                     ast::SentenceConnective::Afterthought {
                         left_negated,
                         connective: c,
