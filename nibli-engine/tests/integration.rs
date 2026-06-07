@@ -3,7 +3,7 @@
 //! Each test creates a fresh NibliEngine, asserts Lojban text, and queries with proof.
 //! No WASM, no HTTP — exercises gerna+smuni+logji directly via Rust crate calls.
 
-use nibli_engine::{EngineQueryResult, NibliEngine};
+use nibli_engine::{EngineAggregateOp, EngineQueryResult, NibliEngine};
 use nibli_store::NibliStore;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -625,5 +625,276 @@ fn gdpr_breach_notification() {
     assert_false(
         &engine.query_holds("la .gugli. cu se bilga lo nu notci").unwrap(),
         "A controller with no breach has no notification obligation",
+    );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Drug-drug interaction (DDI) safety engine (Chapter 21 case study)
+//
+// Every assertion below uses a construct verified to reason end-to-end. The
+// corpus file (drug-interactions.lojban) is the single source of truth; these
+// tests pin the behaviour Chapter 21 narrates so prose and engine cannot drift.
+//
+// Mechanism: fluconazole inhibits CYP2C9; warfarin/phenytoin (narrow therapeutic
+// index) are CYP2C9 substrates -> concentration rises -> toxicity risk -> alert.
+// Apixaban (CYP3A4 substrate) is the negative control: no alert.
+// ════════════════════════════════════════════════════════════════════
+
+/// Load every non-comment line of drug-interactions.lojban into a fresh engine.
+fn engine_with_ddi_corpus() -> NibliEngine {
+    let corpus = include_str!("../../drug-interactions.lojban");
+    let engine = NibliEngine::new();
+    for (line_num, line) in corpus.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        engine.assert_text(trimmed).unwrap_or_else(|e| {
+            panic!(
+                "drug-interactions.lojban line {} failed to assert: {:?}\n{}",
+                line_num + 1,
+                trimmed,
+                e
+            )
+        });
+    }
+    engine
+}
+
+/// Every non-comment line of drug-interactions.lojban asserts cleanly.
+#[test]
+fn ddi_file_loads_clean() {
+    let _ = engine_with_ddi_corpus();
+}
+
+/// THE HEADLINE: the warfarin + fluconazole interaction derives a safety alert
+/// through the full mechanism chain (inhibition + metabolism -> concentration
+/// increase -> toxicity risk -> alert). Apixaban, metabolised by a different
+/// enzyme that fluconazole does not inhibit, derives NO alert — a real, deduced
+/// False, not an absence of data.
+#[test]
+fn ddi_headline_warfarin_fluconazole_alert() {
+    let engine = engine_with_ddi_corpus();
+
+    // Step 1: concentration increase (derived from the grounded mechanism).
+    assert_true(
+        &engine.query_holds("la .varfarin. cu zenba").unwrap(),
+        "Warfarin concentration rises (fluconazole inhibits CYP2C9, warfarin is a substrate)",
+    );
+    // Step 2: toxicity risk (general rule: increased concentration + narrow index).
+    assert_true(
+        &engine.query_holds("la .varfarin. cu ckape").unwrap(),
+        "Warfarin is at toxicity risk (increased concentration + narrow therapeutic index)",
+    );
+    // Step 3: safety alert (general rule: toxicity risk -> alert), with proof.
+    let (alert, trace, _json) = engine
+        .query_text_with_proof("la .varfarin. cu kajde")
+        .unwrap();
+    assert_true(&alert, "Warfarin co-prescription warrants a safety alert");
+    assert!(
+        trace.contains("Rule"),
+        "Alert proof should show a derivation chain, got:\n{trace}"
+    );
+
+    // Negative control: apixaban (CYP3A4) — fluconazole does not inhibit CYP3A4.
+    assert_false(
+        &engine.query_holds("la .apiksaban. cu zenba").unwrap(),
+        "Apixaban concentration does not rise (CYP3A4 not inhibited by fluconazole)",
+    );
+    assert_false(
+        &engine.query_holds("la .apiksaban. cu kajde").unwrap(),
+        "Apixaban co-administration produces NO alert (deduced False, not unknown)",
+    );
+}
+
+/// The downstream clinical rules are GENERAL: phenytoin, a different narrow-index
+/// CYP2C9 substrate, reaches a safety alert through the SAME toxicity/alert rules
+/// (no per-drug alert rule is written).
+#[test]
+fn ddi_general_rules_fire_for_second_drug() {
+    let engine = engine_with_ddi_corpus();
+    assert_true(
+        &engine.query_holds("la .fenituin. cu kajde").unwrap(),
+        "Phenytoin alerts via the same general toxicity/alert rules as warfarin",
+    );
+}
+
+/// The toxicity step requires BOTH a concentration increase AND a narrow
+/// therapeutic index. Two negative controls confirm the conjunction is real:
+/// (a) a wide-margin drug whose concentration rises is NOT flagged; (b) a
+/// narrow-index drug with no interaction (no concentration rise) is NOT flagged.
+#[test]
+fn ddi_toxicity_requires_both_conditions() {
+    // (a) concentration rises, but NOT narrow-index -> no toxicity risk.
+    let wide = engine_with_facts(&[
+        "la .raxitidin. cu xukmi",
+        "la .raxitidin. cu zenba", // concentration rises
+        "ganai ge la .raxitidin. cu zenba gi la .raxitidin. cu cinla gi la .raxitidin. cu ckape",
+        "ro lo xukmi poi ckape cu kajde",
+    ]);
+    assert_false(
+        &wide.query_holds("la .raxitidin. cu ckape").unwrap(),
+        "A wide-margin drug with raised concentration is not at toxicity risk",
+    );
+    assert_false(
+        &wide.query_holds("la .raxitidin. cu kajde").unwrap(),
+        "A wide-margin drug with raised concentration warrants no alert",
+    );
+
+    // (b) narrow-index, but NO interaction (no concentration rise) -> no risk.
+    // This is the discriminating control: it fails if the toxicity step ignores
+    // the concentration-increase premise.
+    let narrow = engine_with_facts(&[
+        "la .narotil. cu xukmi",
+        "la .narotil. cu cinla", // narrow index, but no interaction
+        "ganai ge la .narotil. cu zenba gi la .narotil. cu cinla gi la .narotil. cu ckape",
+        "ro lo xukmi poi ckape cu kajde",
+    ]);
+    assert_false(
+        &narrow.query_holds("la .narotil. cu ckape").unwrap(),
+        "A narrow-index drug with no interaction is not at toxicity risk",
+    );
+    assert_false(
+        &narrow.query_holds("la .narotil. cu kajde").unwrap(),
+        "A narrow-index drug with no interaction warrants no alert",
+    );
+}
+
+/// Belief revision (non-monotonic): an alert is not "baked in" — it is re-derived
+/// from current facts. The clinically canonical move: the interacting drug is
+/// discontinued. Retracting "fluconazole inhibits CYP2C9" removes the mechanism's
+/// entry premise, so the concentration rise, the toxicity risk, and the alert all
+/// dissolve in one step. Phenytoin shares the same inhibitor premise, so its alert
+/// dissolves too — exactly the intended clinical consequence of stopping the
+/// inhibitor.
+#[test]
+fn ddi_belief_revision_discontinue_inhibitor() {
+    let engine = NibliEngine::new();
+    for line in [
+        "la .varfarin. cu xukmi",
+        "la .fenituin. cu xukmi",
+        "la .flukonazol. cu xukmi",
+        "la .varfarin. cu se katna la .siptucin.",
+        "la .fenituin. cu se katna la .siptucin.",
+        "la .varfarin. cu cinla",
+        "la .fenituin. cu cinla",
+    ] {
+        engine.assert_text(line).unwrap();
+    }
+    let inhibits_id = engine
+        .assert_text("la .flukonazol. cu fanta la .siptucin.")
+        .unwrap();
+    for line in [
+        "ganai ge la .flukonazol. cu fanta la .siptucin. gi la .varfarin. cu se katna la .siptucin. gi la .varfarin. cu zenba",
+        "ganai ge la .flukonazol. cu fanta la .siptucin. gi la .fenituin. cu se katna la .siptucin. gi la .fenituin. cu zenba",
+        "ganai ge la .varfarin. cu zenba gi la .varfarin. cu cinla gi la .varfarin. cu ckape",
+        "ganai ge la .fenituin. cu zenba gi la .fenituin. cu cinla gi la .fenituin. cu ckape",
+        "ro lo xukmi poi ckape cu kajde",
+    ] {
+        engine.assert_text(line).unwrap();
+    }
+
+    // ── Before discontinuation: both drugs alert ──
+    assert_true(
+        &engine.query_holds("la .varfarin. cu kajde").unwrap(),
+        "While fluconazole inhibits CYP2C9, warfarin alerts",
+    );
+    assert_true(
+        &engine.query_holds("la .fenituin. cu kajde").unwrap(),
+        "While fluconazole inhibits CYP2C9, phenytoin alerts",
+    );
+
+    // ── Discontinue fluconazole: retract the inhibition fact ──
+    engine.retract_fact(inhibits_id).unwrap();
+
+    assert_false(
+        &engine.query_holds("la .varfarin. cu zenba").unwrap(),
+        "After discontinuation, warfarin's concentration no longer rises",
+    );
+    assert_false(
+        &engine.query_holds("la .varfarin. cu ckape").unwrap(),
+        "After discontinuation, warfarin's toxicity basis is gone",
+    );
+    assert_false(
+        &engine.query_holds("la .varfarin. cu kajde").unwrap(),
+        "After discontinuation, the warfarin alert is automatically withdrawn",
+    );
+    assert_false(
+        &engine.query_holds("la .fenituin. cu kajde").unwrap(),
+        "Discontinuing the shared inhibitor also clears the phenytoin alert",
+    );
+}
+
+/// Witness extraction: enumerate which drugs are CYP2C9 substrates. The query
+/// finds the entities bound to the existential variable across the fact store.
+#[test]
+fn ddi_witness_cyp2c9_substrates() {
+    let engine = engine_with_ddi_corpus();
+    let witnesses = engine.query_find_text("da se katna la .siptucin.").unwrap();
+    // Collect the entity bound to `da` in each witness set.
+    let mut substrates: Vec<String> = witnesses
+        .iter()
+        .filter_map(|set| {
+            set.iter()
+                .find(|b| b.variable == "da")
+                .map(|b| nibli_engine::display_term(&b.term))
+        })
+        .collect();
+    substrates.sort();
+    substrates.dedup();
+    assert!(
+        substrates.iter().any(|s| s.contains("varfarin")),
+        "warfarin should be a CYP2C9 substrate witness, got {substrates:?}"
+    );
+    assert!(
+        substrates.iter().any(|s| s.contains("fenituin")),
+        "phenytoin should be a CYP2C9 substrate witness, got {substrates:?}"
+    );
+    assert!(
+        !substrates.iter().any(|s| s.contains("apiksaban")),
+        "apixaban (CYP3A4) must NOT appear as a CYP2C9 substrate, got {substrates:?}"
+    );
+}
+
+/// Aggregation API: count the drugs in the patient's regimen (polypharmacy
+/// count). Exercises NibliEngine::count_witnesses_text added for this case study.
+#[test]
+fn ddi_regimen_count_aggregation() {
+    let engine = engine_with_ddi_corpus();
+    let n = engine.count_witnesses_text("la .adam. cu pilno da").unwrap();
+    assert_eq!(
+        n, 2,
+        "Adam's regimen contains exactly two drugs (warfarin + fluconazole)"
+    );
+}
+
+/// Aggregation API: sum a numeric property across witnesses. Exercises
+/// NibliEngine::aggregate_text over event-decomposed numeric facts.
+#[test]
+fn ddi_dose_sum_aggregation() {
+    // klani(drug, amount): "drug measures <amount>". Numbers via `li`.
+    let engine = engine_with_facts(&[
+        "la .varfarin. cu klani li mu", // 5
+        "la .fenituin. cu klani li ze", // 7
+    ]);
+    let total = engine
+        .aggregate_text("da klani de", "de", EngineAggregateOp::Sum)
+        .unwrap();
+    assert_eq!(total, Some(12.0), "Summed dose across drugs should be 12");
+}
+
+/// Temporal reasoning: a present-tense alert holds; a past-tense query for the
+/// same alert does not (tense discrimination), matching the engine's temporal
+/// contract used elsewhere in the book.
+#[test]
+fn ddi_temporal_alert_discrimination() {
+    let engine = engine_with_facts(&["ca la .varfarin. cu kajde"]);
+    assert_true(
+        &engine.query_holds("ca la .varfarin. cu kajde").unwrap(),
+        "A present-tense alert holds",
+    );
+    assert_false(
+        &engine.query_holds("pu la .varfarin. cu kajde").unwrap(),
+        "There was no alert in the past (tense discrimination)",
     );
 }

@@ -626,3 +626,35 @@
             failures.join("\n")
         );
     }
+
+    /// Verify every non-blank, non-comment line in drug-interactions.lojban parses
+    /// cleanly. Guards the DDI safety corpus (Chapter 21) against parser regressions.
+    #[test]
+    fn pipeline_drug_interactions_lojban_all_lines_parse() {
+        let corpus = include_str!("../../drug-interactions.lojban");
+        let mut failures = Vec::new();
+
+        for (line_num, line) in corpus.lines().enumerate() {
+            let trimmed = line.trim();
+            // Skip blank lines and # comments
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            let arena = Bump::new();
+            let result = parse_result(trimmed, &arena);
+            if !result.errors.is_empty() {
+                failures.push(format!(
+                    "line {}: {:?} → {:?}",
+                    line_num + 1,
+                    trimmed,
+                    result.errors
+                ));
+            }
+        }
+
+        assert!(
+            failures.is_empty(),
+            "drug-interactions.lojban parse failures:\n{}",
+            failures.join("\n")
+        );
+    }

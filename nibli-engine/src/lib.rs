@@ -13,9 +13,10 @@ use nibli_protocol::{
 use nibli_store::{NibliStore, StoredLogicBuffer, StoredLogicNode, StoredLogicalTerm};
 
 pub use nibli_types::logic::{
-    FactSummary as EngineFactSummary, LogicalTerm as EngineLogicalTerm,
-    QueryResult as EngineQueryResult, ResourceKind as EngineResourceKind,
-    UnknownReason as EngineUnknownReason, WitnessBinding as EngineWitnessBinding,
+    AggregateOp as EngineAggregateOp, FactSummary as EngineFactSummary,
+    LogicalTerm as EngineLogicalTerm, QueryResult as EngineQueryResult,
+    ResourceKind as EngineResourceKind, UnknownReason as EngineUnknownReason,
+    WitnessBinding as EngineWitnessBinding,
 };
 
 use nibli_types::error::NibliError as PipelineError;
@@ -449,6 +450,28 @@ impl NibliEngine {
     pub fn query_find_text(&self, text: &str) -> Result<Vec<Vec<EngineWitnessBinding>>, String> {
         let buf = self.compile_text(text).map_err(|e| e.to_string())?;
         self.kb.query_find(buf).map_err(|e| e.to_string())
+    }
+
+    /// Count the number of distinct witness binding sets satisfying a Lojban query.
+    /// Exposes `logji::KnowledgeBase::count_witnesses` at the embedding level.
+    pub fn count_witnesses_text(&self, text: &str) -> Result<usize, String> {
+        let buf = self.compile_text(text).map_err(|e| e.to_string())?;
+        self.kb.count_witnesses(buf).map_err(|e| e.to_string())
+    }
+
+    /// Aggregate the numeric values bound to `variable` across all witness binding
+    /// sets of a Lojban query, applying `op` (Sum/Min/Max/Avg). Returns `Ok(None)`
+    /// when no numeric witnesses are found. Exposes `logji::KnowledgeBase::aggregate`.
+    pub fn aggregate_text(
+        &self,
+        text: &str,
+        variable: &str,
+        op: nibli_types::logic::AggregateOp,
+    ) -> Result<Option<f64>, String> {
+        let buf = self.compile_text(text).map_err(|e| e.to_string())?;
+        self.kb
+            .aggregate(buf, variable, op)
+            .map_err(|e| e.to_string())
     }
 
     /// Compile Lojban text to FOL and return a debug representation of the logic nodes.
