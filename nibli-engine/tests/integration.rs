@@ -629,6 +629,41 @@ fn gdpr_breach_notification() {
 }
 
 // ════════════════════════════════════════════════════════════════════
+// Stacked relative-clause restrictor: conjunction, not overwrite
+// ════════════════════════════════════════════════════════════════════
+
+/// Regression: stacked `poi` relative clauses must CONJOIN, not overwrite. A
+/// universal whose restrictor stacks two clauses fires only when BOTH clause
+/// predicates hold. Pre-fix, the earlier clause (`zenba`) was silently dropped,
+/// so the rule degenerated to `cinla -> ckape` and a cinla-only drug wrongly
+/// triggered the conclusion.
+#[test]
+fn stacked_poi_conjoins_both_clauses() {
+    let engine = engine_with_facts(&[
+        "ro lo xukmi poi zenba poi cinla cu ckape",
+        "la .alfan. cu xukmi",
+        "la .alfan. cu zenba",
+        "la .alfan. cu cinla", // both conditions hold
+        "la .betan. cu xukmi",
+        "la .betan. cu zenba", // zenba only
+        "la .gaman. cu xukmi",
+        "la .gaman. cu cinla", // cinla only
+    ]);
+    assert_true(
+        &engine.query_holds("la .alfan. cu ckape").unwrap(),
+        "both zenba and cinla -> ckape",
+    );
+    assert_false(
+        &engine.query_holds("la .betan. cu ckape").unwrap(),
+        "zenba only (cinla missing) -> NOT ckape",
+    );
+    assert_false(
+        &engine.query_holds("la .gaman. cu ckape").unwrap(),
+        "cinla only (zenba missing) -> NOT ckape (the pre-fix bug)",
+    );
+}
+
+// ════════════════════════════════════════════════════════════════════
 // Drug-drug interaction (DDI) safety engine (Chapter 21 case study)
 //
 // Every assertion below uses a construct verified to reason end-to-end. The

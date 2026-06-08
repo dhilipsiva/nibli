@@ -224,16 +224,15 @@ impl SemanticCompiler {
                 self.kea_used = outer_kea_used;
 
                 if let Some(last) = quants.last_mut() {
-                    if kea_was_used {
-                        last.restrictor = Some(rel_body);
+                    let new_restrictor = if kea_was_used {
+                        rel_body
                     } else {
                         let unspec_count =
                             Self::count_unspecified_predicates(&rel_body, &self.interner);
                         if unspec_count == 1 {
                             // Exactly one candidate subject (_x1) slot: inject the
                             // described entity's variable there.
-                            last.restrictor =
-                                Some(Self::inject_variable(rel_body, last.var, &self.interner));
+                            Self::inject_variable(rel_body, last.var, &self.interner)
                         } else {
                             // Firewall (book Ch6): reject rather than guess.
                             // 0 = the referent has no subject (_x1) slot to bind into (its
@@ -252,9 +251,18 @@ impl SemanticCompiler {
                                     unspec_count
                                 )
                             });
-                            last.restrictor = Some(rel_body);
+                            rel_body
                         }
-                    }
+                    };
+                    // Stacked clauses (`poi P poi Q`) nest as Restricted(Restricted(...)),
+                    // so the inner recursion already set a restrictor for this quantifier.
+                    // CONJOIN rather than overwrite, to keep every clause's predicate.
+                    last.restrictor = Some(match last.restrictor.take() {
+                        Some(existing) => {
+                            LogicalForm::And(Box::new(existing), Box::new(new_restrictor))
+                        }
+                        None => new_restrictor,
+                    });
                 }
 
                 (term, quants)
