@@ -591,7 +591,28 @@ pub(super) fn check_predicate_in_kb_typed(
     let mut result = try_backward_chain_typed(fact, inner, depth, visited);
 
     // If backward chaining failed, try equivalence variants.
-    if result.is_false() && !inner.equivalence_parent.is_empty() && fact.relation() != "du" {
+    //
+    // This fallback recurses through `check_predicate_in_kb_typed`. Without a
+    // cycle guard it loops forever: `try_backward_chain_typed` removes its own
+    // `visited` entry before returning, so by the time we get here `fact` is no
+    // longer in `visited`, and checking an equivalence variant can regenerate
+    // `fact` (du(a,b) makes `a` and `b` mutually substitutable). Asserting du(a,b)
+    // then querying an unprovable predicate about `b` would otherwise stack-
+    // overflow: `P(b)` → variant `P(a)` → variant `P(b)` → … .
+    //
+    // Cut the cycle with the shared `visited` set: re-insert `fact` for the
+    // duration of the variant search and skip any variant already on the stack.
+    // The recursion keeps the SAME `depth` (the variant is a lateral equality
+    // rewrite, not a deeper proof step) so iterative deepening is unaffected —
+    // gating this on `depth + 1 < max_chain_depth` would wrongly let a shallow
+    // pass return a definitive (and cacheable) False before the fallback ever
+    // runs. `visited` is removed by the inner backward chainer for the variant's
+    // own derivation, but `fact` itself stays guarded until the loop ends.
+    if result.is_false()
+        && !inner.equivalence_parent.is_empty()
+        && fact.relation() != "du"
+        && !visited.contains(fact)
+    {
         let gf = fact.inner();
         let equiv_args: Vec<Vec<GroundTerm>> = gf
             .args
@@ -605,10 +626,14 @@ pub(super) fn check_predicate_in_kb_typed(
             })
             .collect();
         if equiv_args.iter().any(|cls| cls.len() > 1) {
+            // Guard against re-deriving `fact` itself while exploring its
+            // equivalence variants. Inserted here (not by the inner backward
+            // chainer, which removes its own entry on return).
+            let reinserted = visited.insert(fact.clone());
             for combo in CartesianProduct::new(&equiv_args) {
                 let variant_gf = GroundFact::new(gf.relation.clone(), combo);
                 let variant = StoredFact::with_tense_from(variant_gf, fact);
-                if variant != *fact {
+                if variant != *fact && !visited.contains(&variant) {
                     let variant_result =
                         check_predicate_in_kb_typed(&variant, inner, depth, visited);
                     if variant_result.is_true() {
@@ -616,6 +641,11 @@ pub(super) fn check_predicate_in_kb_typed(
                         break;
                     }
                 }
+            }
+            // Only remove `fact` if WE inserted it (don't clobber an entry an
+            // outer frame is relying on for its own cycle guard).
+            if reinserted {
+                visited.remove(fact);
             }
         }
     }
@@ -788,7 +818,14 @@ pub(super) fn try_backward_chain_typed(
                     }
                 }
                 if !found {
-                    best_result = combo_pending.and_then(|r| prefer_non_definitive(best_result, r));
+                    // Merge any pending non-definitive result WITHOUT wiping an
+                    // already-pending one: if combo_pending is None (every combo
+                    // failed definitively), keep best_result intact. Using
+                    // `and_then` here would erase a pending ResourceExceeded into
+                    // None and cache a wrong definitive False.
+                    if let Some(r) = combo_pending {
+                        best_result = prefer_non_definitive(best_result, r);
+                    }
                     continue;
                 }
             }
@@ -820,7 +857,12 @@ pub(super) fn try_backward_chain_typed(
                 visited.remove(fact);
                 return QueryResult::True;
             }
-            best_result = rule_pending.and_then(|r| prefer_non_definitive(best_result, r));
+            // Never wipe an already-pending non-definitive result: when
+            // rule_pending is None (this rule failed definitively), leave
+            // best_result intact rather than erasing it via `and_then`.
+            if let Some(r) = rule_pending {
+                best_result = prefer_non_definitive(best_result, r);
+            }
         }
     }
 
@@ -933,8 +975,11 @@ pub(super) fn try_backward_chain_typed(
                         }
                     }
                     if !found {
-                        best_result =
-                            combo_pending.and_then(|r| prefer_non_definitive(best_result, r));
+                        // Preserve any already-pending non-definitive result; do
+                        // not erase best_result when combo_pending is None.
+                        if let Some(r) = combo_pending {
+                            best_result = prefer_non_definitive(best_result, r);
+                        }
                         continue;
                     }
                 }
@@ -965,7 +1010,11 @@ pub(super) fn try_backward_chain_typed(
                     visited.remove(fact);
                     return QueryResult::True;
                 }
-                best_result = rule_pending.and_then(|r| prefer_non_definitive(best_result, r));
+                // Preserve any already-pending non-definitive result; do not
+                // erase best_result when rule_pending is None.
+                if let Some(r) = rule_pending {
+                    best_result = prefer_non_definitive(best_result, r);
+                }
             }
         }
     }
@@ -1107,6 +1156,15 @@ pub(super) fn trace_predicate_provenance_typed(
     // du-equivalent terms (mirrors the untraced fallback in check_predicate_in_kb_typed).
     // Find a satisfying equivalent variant and record an EqualitySubstitution step whose
     // child is the variant's real derivation — never a holds:true leaf with no support.
+    // The variant probe below recurses only into `check_predicate_in_kb_typed`,
+    // whose own equivalence fallback now carries a `visited` cycle guard, so the
+    // probe terminates (returns a definitive verdict) for every variant. A du-
+    // cycle therefore yields `satisfying = None` rather than overflowing the
+    // stack, and the recursive `trace_predicate_provenance_typed` below only fires
+    // for a genuinely-provable variant (which bottoms out at an asserted fact /
+    // rule), so it terminates as well. No extra depth gate is needed here, and
+    // adding one would wrongly suppress the fallback on shallow iterative-
+    // deepening passes.
     if !inner.equivalence_parent.is_empty() && fact.relation() != "du" {
         let gf = fact.inner();
         let equiv_args: Vec<Vec<GroundTerm>> = gf

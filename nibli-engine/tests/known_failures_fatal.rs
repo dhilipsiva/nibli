@@ -1,32 +1,21 @@
-//! PROCESS-ABORTING known-failure backlog — QUARANTINED.
+//! FIXED former process-aborting regression — now a normal, safe-to-run test.
 //!
-//! ┌─────────────────────────────────────────────────────────────────────────┐
-//! │  WARNING: the test in this file ABORTS THE PROCESS (stack overflow →     │
-//! │  SIGABRT). A stack overflow is UNCATCHABLE — it cannot be turned into a   │
-//! │  Rust panic and `#[should_panic]` will NOT contain it. One abort kills    │
-//! │  every sibling test running in the same process.                          │
-//! │                                                                           │
-//! │  RUN ONLY IN ISOLATION, never as part of the normal suite:                │
-//! │    cargo test -p nibli-engine --test known_failures_fatal \               │
-//! │      -- --ignored --exact du_equivalence_unprovable_query_must_not_abort \ │
-//! │      --test-threads=1                                                     │
-//! │                                                                           │
-//! │  EXPECTED RED STATE (today): the command aborts with a stack-overflow     │
-//! │  message and a NONZERO exit code. That abort IS the reproduction — report │
-//! │  it as "reproduced", not as a harness failure.                            │
-//! │                                                                           │
-//! │  This is why the test is `#[ignore]`d: it must never run alongside the    │
-//! │  rest of the backlog (`known_failures.rs`, `integration.rs`).             │
-//! └─────────────────────────────────────────────────────────────────────────┘
-//!
-//! Bug (panel finding, todo.md: HIGH): "du-equivalence fallback recurses
-//! unboundedly — stack overflow (SIGABRT)" — `logji/src/reasoning.rs:594-621`.
-//! `check_predicate_in_kb_typed`'s du-equivalence variant fallback recurses with
+//! Bug (panel finding, todo.md: HIGH, FIXED 2026-06-10): "du-equivalence fallback
+//! recurses unboundedly — stack overflow (SIGABRT)" — `logji/src/reasoning.rs`.
+//! `check_predicate_in_kb_typed`'s du-equivalence variant fallback recursed with
 //! NO cycle guard and NO depth increment: `try_backward_chain_typed` removes its
-//! own `visited` entry before returning, and the variant loop passes the same
+//! own `visited` entry before returning, and the variant loop passed the same
 //! `depth` with a cleaned `visited`, so for a symmetric equivalence class
-//! {alis, bob} an unprovable predicate `P(bob)` expands to the variant `P(alis)`,
-//! which expands back to `P(bob)`, … unbounded recursion → stack overflow.
+//! {alis, bob} an unprovable predicate `P(bob)` expanded to the variant `P(alis)`,
+//! which expanded back to `P(bob)`, … unbounded recursion → stack overflow. The
+//! traced twin (`trace_predicate_provenance_typed`) had the same defect (it
+//! recursed on the variant with the same `depth` and a fresh `HashSet`).
+//!
+//! Fix: the variant fallback now (a) re-inserts `fact` into the shared `visited`
+//! set for the duration of the variant search and skips already-visited variants,
+//! and (b) advances `depth + 1` on the recursive call so the iterative-deepening
+//! bound (`depth + 1 < max_chain_depth`) also terminates the search. The traced
+//! twin advances `depth + 1` through both the probe and the recursive trace.
 //!
 //! Reachability: `du` is NOT parseable from surface Lojban, so the fact is
 //! injected via the engine's direct fact-injection API
@@ -34,18 +23,16 @@
 //! (this routes through `process_assertion` → `collect_ground_facts` → the
 //! `union_terms` interception that populates the equivalence classes — exactly
 //! what the documented `:assert du` REPL command / `assert-fact` WIT method do).
-//! In the native nibli-server embedding (no WASM fuel) this is a process-crash
-//! DoS.
+//! In the native nibli-server embedding (no WASM fuel) this had been a
+//! process-crash DoS.
 //!
-//! DESIRED post-fix behaviour: the query returns gracefully (False / Unknown /
-//! Err) instead of aborting. When the fix lands (thread depth + a visited guard
-//! through the variant fallback), delete the `#[ignore]` so this becomes a normal
-//! regression test — it will then be safe to run with the rest of the suite.
+//! Post-fix behaviour (asserted below): the query returns gracefully with a
+//! non-True result instead of aborting. The `#[ignore]` has been removed, so this
+//! is now a normal regression test, safe to run alongside the rest of the suite.
 
 use nibli_engine::{EngineLogicalTerm, NibliEngine};
 
 #[test]
-#[ignore = "KNOWN BUG (todo.md: du-equivalence fallback recurses unboundedly): PROCESS-ABORTING stack overflow — run ONLY in isolation"]
 fn du_equivalence_unprovable_query_must_not_abort() {
     let engine = NibliEngine::new();
 

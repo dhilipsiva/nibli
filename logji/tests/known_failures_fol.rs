@@ -103,7 +103,6 @@ fn best_result_control_deep_chain_alone_is_true() {
 /// deepening pass, the `and_then` wipes the pending → definitive False is cached
 /// cross-depth → deepening halts early → entailed `ppp(alis)` returns wrong False.
 #[test]
-#[ignore = "KNOWN BUG (todo.md: best_result wipe in backward chaining): a later definitively-failing rule for the same conclusion erases an earlier rule's pending ResourceExceeded(Depth), caching a wrong definitive False"]
 fn best_result_wipe_entailed_query_must_be_true() {
     let kb = KnowledgeBase::new();
     kb.assert_fact(fact("aaa", "alis"), "aaa(alis)".into())
@@ -130,7 +129,6 @@ fn best_result_wipe_entailed_query_must_be_true() {
 /// True for `¬ppp(alis)`. The DESIRED behaviour is that ¬ppp does NOT hold,
 /// because ppp is entailed.
 #[test]
-#[ignore = "KNOWN BUG (todo.md: best_result wipe in backward chaining): the wrongly-cached False makes ¬ppp(alis) return a wrong True under NAF"]
 fn best_result_wipe_negation_must_not_be_true() {
     let kb = KnowledgeBase::new();
     kb.assert_fact(fact("aaa", "alis"), "aaa(alis)".into())
