@@ -66,10 +66,11 @@ impl SemanticCompiler {
                 };
                 let mut form = type_pred;
 
+                // Emit ALL head roles, including Unspecified — exactly like root
+                // event decomposition. Skipping Unspecified roles left `poi <tanru>`
+                // clauses with no injectable _x1 slot, so the ambiguity firewall
+                // FALSELY rejected valid clauses (panel finding 2026-06-10).
                 for (i, arg) in head_args.iter().enumerate() {
-                    if matches!(arg, LogicalTerm::Unspecified) {
-                        continue;
-                    }
                     let role = format!("{}_x{}", head_name, i + 1);
                     let role_pred = LogicalForm::Predicate {
                         relation: self.interner.get_or_intern(&role),
@@ -78,10 +79,9 @@ impl SemanticCompiler {
                     form = LogicalForm::And(Box::new(form), Box::new(role_pred));
                 }
 
+                // Modifier roles likewise emit Unspecified slots (shared event var
+                // keeps modifier and head describing one predication).
                 for (i, arg) in mod_args.iter().enumerate() {
-                    if matches!(arg, LogicalTerm::Unspecified) {
-                        continue;
-                    }
                     let role = format!("{}_x{}", mod_name, i + 1);
                     let role_pred = LogicalForm::Predicate {
                         relation: self.interner.get_or_intern(&role),

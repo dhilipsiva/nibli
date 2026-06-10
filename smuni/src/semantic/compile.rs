@@ -15,6 +15,12 @@ impl SemanticCompiler {
         sumtis: &[Sumti],
         sentences: &[Sentence],
     ) -> LogicalForm {
+        // Frame-local checkpoint for rel clauses attached to non-quantifier
+        // sumti (see `pending_matrix_conjuncts`): only conjuncts pushed by
+        // THIS bridi's sumti are drained into THIS bridi's matrix; nested
+        // bridi (rel clause bodies, abstractions) drain their own.
+        let matrix_conjunct_checkpoint = self.pending_matrix_conjuncts.len();
+
         let all_terms: Vec<u32> = bridi
             .head_terms
             .iter()
@@ -95,6 +101,24 @@ impl SemanticCompiler {
                     };
                     if idx < target_arity {
                         positioned[idx] = Some(term);
+                    } else {
+                        // FAIL CLOSED: a place tag beyond the selbri's arity has no
+                        // slot to bind into. Silently dropping the tagged term loses
+                        // meaning (panel finding 2026-06-10) — reject instead.
+                        let tag_name = match tag {
+                            PlaceTag::Fa => "fa",
+                            PlaceTag::Fe => "fe",
+                            PlaceTag::Fi => "fi",
+                            PlaceTag::Fo => "fo",
+                            PlaceTag::Fu => "fu",
+                        };
+                        self.errors.push(format!(
+                            "Place tag `{}` targets place x{}, but the selbri only has \
+                             {} place(s); the tagged term cannot be placed.",
+                            tag_name,
+                            idx + 1,
+                            target_arity
+                        ));
                     }
                 }
                 Sumti::ModalTagged((modal_tag, inner_id)) => {
@@ -152,6 +176,49 @@ impl SemanticCompiler {
             };
 
             final_form = LogicalForm::And(Box::new(final_form), Box::new(modal_form));
+        }
+
+        // Conjoin rel clauses attached to non-quantifier sumti (la names, le
+        // descriptions, pro-sumti) into the bridi matrix. These were
+        // previously compiled then silently DISCARDED (panel finding
+        // 2026-06-10), so `la .adam. poi gerku cu klama` answered TRUE with
+        // only klama(adam) known.
+        let pending: Vec<LogicalForm> = self
+            .pending_matrix_conjuncts
+            .split_off(matrix_conjunct_checkpoint);
+        for conj in pending {
+            final_form = LogicalForm::And(Box::new(final_form), Box::new(conj));
+        }
+
+        // Bare logic variables (da/de/di) used as arguments get existential
+        // closure. Lojban scope is left-to-right: in `ro lo gerku cu citka da`
+        // the universal outscopes the existential (∀x.∃y), so when a universal
+        // description is closed, bare-var existentials are wrapped INSIDE
+        // (before the ForAll), keeping ForAll at the root — logji's assertion
+        // dispatch compiles rules only from a ForAll root, and the old
+        // Exists-over-ForAll shape dead-ended, silently losing the whole
+        // assertion (panel finding 2026-06-10). Purely existential sentences
+        // keep the original outermost wrap.
+        let mut da_vars_seen = std::collections::HashSet::new();
+        let mut da_vars: Vec<lasso::Spur> = Vec::new();
+        for arg in &args {
+            if let LogicalTerm::Variable(spur) = arg {
+                let name = self.interner.resolve(spur);
+                if matches!(name, "da" | "de" | "di") && da_vars_seen.insert(*spur) {
+                    da_vars.push(*spur);
+                }
+            }
+        }
+        let has_universal_quantifier = quantifiers.iter().any(|e| {
+            matches!(
+                e.kind,
+                QuantifierKind::Universal | QuantifierKind::UniversalLe
+            )
+        });
+        if has_universal_quantifier {
+            for var in &da_vars {
+                final_form = LogicalForm::Exists(*var, Box::new(final_form));
+            }
         }
 
         for entry in quantifiers.into_iter().rev() {
@@ -241,13 +308,34 @@ impl SemanticCompiler {
             }
         }
 
-        let mut da_vars_seen = std::collections::HashSet::new();
-        for arg in &args {
-            if let LogicalTerm::Variable(spur) = arg {
-                let name = self.interner.resolve(spur);
-                if matches!(name, "da" | "de" | "di") && da_vars_seen.insert(*spur) {
-                    final_form = LogicalForm::Exists(*spur, Box::new(final_form));
+        // Rare corner: a rel clause on a non-quantifier sumti nested inside a
+        // description restrictor (e.g. the be-arg in `lo gerku be la .adam.
+        // poi prenu`) pushes its conjunct while the closure loop above
+        // compiles the restrictor — too late to join the matrix. Conjoin it
+        // at the top level when sound (no universal: the root stays a ground
+        // conjunction); under a universal the root must remain ForAll for
+        // rule compilation, so FAIL CLOSED rather than silently drop.
+        let late: Vec<LogicalForm> = self
+            .pending_matrix_conjuncts
+            .split_off(matrix_conjunct_checkpoint);
+        if !late.is_empty() {
+            if has_universal_quantifier {
+                self.errors.push(
+                    "Relative clause on a name/description inside a universal \
+                     description's restrictor cannot be represented; restate it \
+                     as a separate sentence."
+                        .to_string(),
+                );
+            } else {
+                for conj in late {
+                    final_form = LogicalForm::And(Box::new(final_form), Box::new(conj));
                 }
+            }
+        }
+
+        if !has_universal_quantifier {
+            for var in &da_vars {
+                final_form = LogicalForm::Exists(*var, Box::new(final_form));
             }
         }
 

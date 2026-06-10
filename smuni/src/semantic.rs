@@ -84,6 +84,12 @@ pub struct SemanticCompiler {
     pub errors: Vec<String>,
     /// Monotonically increasing counter for generating fresh event variable names.
     event_counter: usize,
+    /// Relative clause bodies attached to sumti that introduce NO quantifier
+    /// (la names, le descriptions, pro-sumti). The clause term is already
+    /// substituted in; `compile_bridi` drains its frame's entries and conjoins
+    /// them into the bridi matrix (previously these were silently dropped —
+    /// panel finding 2026-06-10).
+    pending_matrix_conjuncts: Vec<LogicalForm>,
 }
 
 impl SemanticCompiler {
@@ -98,6 +104,7 @@ impl SemanticCompiler {
             ma_vars: Vec::new(),
             errors: Vec::new(),
             event_counter: 0,
+            pending_matrix_conjuncts: Vec::new(),
         }
     }
 }
@@ -107,8 +114,8 @@ mod tests {
     use super::*;
     use crate::ir::{LogicalForm, LogicalTerm};
     use nibli_types::ast::{
-        Bridi, Connective, Gadri, RelClause, RelClauseKind, Selbri, Sentence, SentenceConnective,
-        Sumti,
+        Bridi, Connective, Gadri, PlaceTag, RelClause, RelClauseKind, Selbri, Sentence,
+        SentenceConnective, Sumti,
     };
 
     /// Helper: build a minimal buffer and compile the first sentence.
@@ -1748,6 +1755,293 @@ mod tests {
                 assert!(matches!(args[1], LogicalTerm::Unspecified));
             }
             other => panic!("expected Predicate, got {:?}", other),
+        }
+    }
+
+    // ─── Panel-finding regressions (2026-06-10): meaning loss ────
+
+    #[test]
+    fn test_fa_tag_beyond_arity_errors() {
+        // fu do gerku → `fu` targets x5 but gerku is 2-place: semantic error,
+        // never a silent drop of `do`.
+        let selbris = vec![Selbri::Root("gerku".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("do".into()),     // 0
+            Sumti::Tagged((PlaceTag::Fu, 0)), // 1: fu do
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![1],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (_form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(
+            !compiler.errors.is_empty(),
+            "over-arity FA tag must produce a semantic error"
+        );
+        assert!(
+            compiler.errors.iter().any(|e| e.contains("fu")),
+            "error should name the offending tag, got: {:?}",
+            compiler.errors
+        );
+    }
+
+    #[test]
+    fn test_fa_tag_within_arity_no_error() {
+        // fe do gerku → `fe` targets x2; gerku is 2-place: fine.
+        let selbris = vec![Selbri::Root("gerku".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("do".into()),     // 0
+            Sumti::Tagged((PlaceTag::Fe, 0)), // 1: fe do
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![1],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(
+            compiler.errors.is_empty(),
+            "in-range FA tag must not error, got: {:?}",
+            compiler.errors
+        );
+        let x2 = get_pred_args(&form, "gerku_x2", &compiler).unwrap();
+        let do_term = LogicalTerm::Constant(compiler.interner.get("do").unwrap());
+        assert_eq!(x2[1], do_term, "fe must place `do` into gerku_x2");
+    }
+
+    #[test]
+    fn test_tanru_in_poi_not_falsely_rejected() {
+        // lo gerku poi sutra bajra cu klama — the tanru `sutra bajra` shares
+        // ONE event, so its two unfilled x1 roles are one candidate subject
+        // slot; the firewall must not reject, and injection must fill BOTH x1
+        // roles with the dog's variable.
+        let selbris = vec![
+            Selbri::Root("gerku".into()), // 0
+            Selbri::Root("sutra".into()), // 1
+            Selbri::Root("bajra".into()), // 2
+            Selbri::Tanru((1, 2)),        // 3: sutra bajra
+            Selbri::Root("klama".into()), // 4
+        ];
+        let sumtis = vec![
+            Sumti::Description((Gadri::Lo, 0)), // 0: lo gerku
+            Sumti::Restricted((
+                0,
+                RelClause {
+                    kind: RelClauseKind::Poi,
+                    body_sentence: 1,
+                },
+            )), // 1: lo gerku poi sutra bajra
+        ];
+        let sentences = vec![
+            Sentence::Simple(Bridi {
+                relation: 4,
+                head_terms: vec![1],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+            Sentence::Simple(Bridi {
+                relation: 3,
+                head_terms: vec![],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+        ];
+        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        assert!(
+            compiler.errors.is_empty(),
+            "valid tanru-in-poi clause must not be rejected, got: {:?}",
+            compiler.errors
+        );
+        let bajra_x1 = get_pred_args(&form, "bajra_x1", &compiler).unwrap();
+        let sutra_x1 = get_pred_args(&form, "sutra_x1", &compiler).unwrap();
+        let gerku_x1 = get_pred_args(&form, "gerku_x1", &compiler).unwrap();
+        assert_eq!(
+            bajra_x1[1], gerku_x1[1],
+            "tanru head x1 must bind the dog variable"
+        );
+        assert_eq!(
+            sutra_x1[1], gerku_x1[1],
+            "tanru modifier x1 must bind the dog variable"
+        );
+        assert_eq!(
+            bajra_x1[0], sutra_x1[0],
+            "tanru must keep the shared event variable"
+        );
+    }
+
+    #[test]
+    fn test_rel_clause_on_name_conjoined_not_dropped() {
+        // la .adam. poi gerku cu klama → And(klama(adam...), gerku(adam...)):
+        // the clause on a name (no quantifier) must be conjoined into the
+        // matrix, not compiled-then-dropped. An assertion asserts both
+        // conjuncts; a query requires both.
+        let selbris = vec![
+            Selbri::Root("gerku".into()), // 0
+            Selbri::Root("klama".into()), // 1
+        ];
+        let sumtis = vec![
+            Sumti::Name("adam".into()), // 0
+            Sumti::Restricted((
+                0,
+                RelClause {
+                    kind: RelClauseKind::Poi,
+                    body_sentence: 1,
+                },
+            )), // 1: la .adam. poi gerku
+        ];
+        let sentences = vec![
+            Sentence::Simple(Bridi {
+                relation: 1,
+                head_terms: vec![1],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+            Sentence::Simple(Bridi {
+                relation: 0,
+                head_terms: vec![],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+        ];
+        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        assert!(
+            compiler.errors.is_empty(),
+            "single-subject-slot clause on a name must compile cleanly, got: {:?}",
+            compiler.errors
+        );
+        let adam = LogicalTerm::Constant(compiler.interner.get("adam").unwrap());
+        let klama_x1 =
+            get_pred_args(&form, "klama_x1", &compiler).expect("matrix klama must be present");
+        assert_eq!(klama_x1[1], adam);
+        let gerku_x1 = get_pred_args(&form, "gerku_x1", &compiler)
+            .expect("the poi clause's gerku must be conjoined, not dropped");
+        assert_eq!(
+            gerku_x1[1], adam,
+            "the name must be substituted into the clause's subject slot"
+        );
+    }
+
+    #[test]
+    fn test_rel_clause_on_name_firewall_still_applies() {
+        // la .adam. poi lo mlatu cu batci → the clause has NO unfilled subject
+        // slot for Adam (the cat fills batci_x1): ambiguous implicit ke'a must
+        // be rejected on names too, exactly like on lo descriptions.
+        let selbris = vec![
+            Selbri::Root("mlatu".into()), // 0
+            Selbri::Root("batci".into()), // 1
+        ];
+        let sumtis = vec![
+            Sumti::Name("adam".into()),         // 0
+            Sumti::Description((Gadri::Lo, 0)), // 1: lo mlatu
+            Sumti::Restricted((
+                0,
+                RelClause {
+                    kind: RelClauseKind::Poi,
+                    body_sentence: 1,
+                },
+            )), // 2: la .adam. poi lo mlatu cu batci
+        ];
+        let sentences = vec![
+            Sentence::Simple(Bridi {
+                relation: 1,
+                head_terms: vec![2],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+            Sentence::Simple(Bridi {
+                relation: 1,
+                head_terms: vec![1], // lo mlatu fills batci_x1
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+        ];
+        let (_form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        assert!(
+            !compiler.errors.is_empty(),
+            "ambiguous implicit-ke'a clause on a name must be rejected"
+        );
+        assert!(
+            compiler.errors.iter().any(|e| e.contains("ke'a")),
+            "error should direct the user to explicit ke'a, got: {:?}",
+            compiler.errors
+        );
+    }
+
+    #[test]
+    fn test_da_after_universal_closes_inside_forall() {
+        // ro lo gerku cu citka da → ∀x.(gerku(x) → ∃da. citka(x, da)):
+        // left-to-right Lojban scope puts the bare-var existential INSIDE the
+        // universal. The old Exists-over-ForAll root dead-ended logji's rule
+        // dispatch and silently lost the whole assertion.
+        fn exists_da_somewhere(f: &LogicalForm, c: &SemanticCompiler) -> bool {
+            match f {
+                LogicalForm::Exists(v, inner) => {
+                    c.interner.resolve(v) == "da" || exists_da_somewhere(inner, c)
+                }
+                LogicalForm::And(l, r)
+                | LogicalForm::Or(l, r)
+                | LogicalForm::Biconditional(l, r)
+                | LogicalForm::Xor(l, r) => exists_da_somewhere(l, c) || exists_da_somewhere(r, c),
+                LogicalForm::Not(i)
+                | LogicalForm::ForAll(_, i)
+                | LogicalForm::Past(i)
+                | LogicalForm::Present(i)
+                | LogicalForm::Future(i)
+                | LogicalForm::Obligatory(i)
+                | LogicalForm::Permitted(i) => exists_da_somewhere(i, c),
+                LogicalForm::Count { body, .. } => exists_da_somewhere(body, c),
+                LogicalForm::Predicate { .. } => false,
+            }
+        }
+
+        let selbris = vec![
+            Selbri::Root("gerku".into()), // 0
+            Selbri::Root("citka".into()), // 1
+        ];
+        let sumtis = vec![
+            Sumti::Description((Gadri::RoLo, 0)), // 0: ro lo gerku
+            Sumti::ProSumti("da".into()),         // 1: da
+        ];
+        let bridi = Bridi {
+            relation: 1,
+            head_terms: vec![0],
+            tail_terms: vec![1],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        match &form {
+            LogicalForm::ForAll(_, body) => {
+                assert!(
+                    exists_da_somewhere(body, &compiler),
+                    "∃da must be nested inside the ∀ body, got: {:?}",
+                    form
+                );
+            }
+            other => panic!(
+                "root must stay ForAll (logji's rule shape), got {:?}",
+                other
+            ),
         }
     }
 

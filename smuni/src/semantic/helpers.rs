@@ -211,9 +211,16 @@ impl SemanticCompiler {
                 let outer_rel_var = self.rel_clause_var;
                 let outer_kea_used = self.kea_used;
 
-                if let Some(last) = quants.last() {
-                    self.rel_clause_var = Some(last.var);
-                }
+                // The clause binds the quantifier variable introduced by the
+                // inner sumti (lo / ro lo / PA lo). Sumti that introduce NO
+                // quantifier (la names, le descriptions, pro-sumti) get a fresh
+                // clause variable instead, substituted by the resolved term
+                // after the body is compiled.
+                let clause_var = match quants.last() {
+                    Some(last) => last.var,
+                    None => self.fresh_var(),
+                };
+                self.rel_clause_var = Some(clause_var);
                 self.kea_used = false;
 
                 let rel_body =
@@ -223,37 +230,38 @@ impl SemanticCompiler {
                 self.rel_clause_var = outer_rel_var;
                 self.kea_used = outer_kea_used;
 
-                if let Some(last) = quants.last_mut() {
-                    let new_restrictor = if kea_was_used {
-                        rel_body
+                let new_restrictor = if kea_was_used {
+                    rel_body
+                } else {
+                    let unspec_count =
+                        Self::count_unspecified_predicates(&rel_body, &self.interner);
+                    if unspec_count == 1 {
+                        // Exactly one candidate subject (_x1) slot: inject the
+                        // described entity's variable there.
+                        Self::inject_variable(rel_body, clause_var, &self.interner)
                     } else {
-                        let unspec_count =
-                            Self::count_unspecified_predicates(&rel_body, &self.interner);
-                        if unspec_count == 1 {
-                            // Exactly one candidate subject (_x1) slot: inject the
-                            // described entity's variable there.
-                            Self::inject_variable(rel_body, last.var, &self.interner)
+                        // Firewall (book Ch6): reject rather than guess.
+                        // 0 = the referent has no subject (_x1) slot to bind into (its
+                        //     place would be a non-subject slot); >1 = multiple candidate
+                        //     subject slots. Either way, require explicit ke'a.
+                        self.errors.push(if unspec_count == 0 {
+                            "Relative clause: the described entity has no unambiguous \
+                             subject (x1) slot to bind into; use explicit ke'a to mark its \
+                             place."
+                                .to_string()
                         } else {
-                            // Firewall (book Ch6): reject rather than guess.
-                            // 0 = the referent has no subject (_x1) slot to bind into (its
-                            //     place would be a non-subject slot); >1 = multiple candidate
-                            //     subject slots. Either way, require explicit ke'a.
-                            self.errors.push(if unspec_count == 0 {
-                                "Relative clause: the described entity has no unambiguous \
-                                 subject (x1) slot to bind into; use explicit ke'a to mark its \
-                                 place."
-                                    .to_string()
-                            } else {
-                                format!(
-                                    "Relative clause has {} predicates with unspecified subject \
-                                     slots; implicit variable injection is ambiguous. Use \
-                                     explicit ke'a for precise control.",
-                                    unspec_count
-                                )
-                            });
-                            rel_body
-                        }
-                    };
+                            format!(
+                                "Relative clause has {} predicates with unspecified subject \
+                                 slots; implicit variable injection is ambiguous. Use \
+                                 explicit ke'a for precise control.",
+                                unspec_count
+                            )
+                        });
+                        rel_body
+                    }
+                };
+
+                if let Some(last) = quants.last_mut() {
                     // Stacked clauses (`poi P poi Q`) nest as Restricted(Restricted(...)),
                     // so the inner recursion already set a restrictor for this quantifier.
                     // CONJOIN rather than overwrite, to keep every clause's predicate.
@@ -263,6 +271,16 @@ impl SemanticCompiler {
                         }
                         None => new_restrictor,
                     });
+                } else {
+                    // No quantifier: the clause restricts a rigid term (la name,
+                    // le description, pro-sumti). Substitute the term for the
+                    // clause variable and queue the clause for conjunction into
+                    // the bridi matrix. Previously the compiled clause was
+                    // silently DISCARDED here, so `la .adam. poi gerku cu klama`
+                    // answered TRUE with only klama(adam) known (panel finding
+                    // 2026-06-10).
+                    let bound = Self::substitute_variable(new_restrictor, clause_var, &term);
+                    self.pending_matrix_conjuncts.push(bound);
                 }
 
                 (term, quants)
@@ -280,8 +298,27 @@ impl SemanticCompiler {
         }
     }
 
-    /// Counts predicates with unspecified slots for relative clause ambiguity detection.
+    /// Counts candidate subject slots for relative clause ambiguity detection.
+    ///
+    /// Role predicates (`rel_x1(ev, subject)`) that share the SAME event
+    /// variable describe one predication — e.g. a tanru's modifier and head —
+    /// so their unfilled subject slots count as ONE candidate
+    /// (`inject_variable` fills them all with the same entity). Distinct
+    /// event variables (separate predications) and non-role predicates count
+    /// individually.
     pub(crate) fn count_unspecified_predicates(form: &LogicalForm, interner: &Rodeo) -> usize {
+        let mut events: std::collections::HashSet<lasso::Spur> = std::collections::HashSet::new();
+        let mut others = 0usize;
+        Self::collect_unspecified_subject_slots(form, interner, &mut events, &mut others);
+        events.len() + others
+    }
+
+    fn collect_unspecified_subject_slots(
+        form: &LogicalForm,
+        interner: &Rodeo,
+        events: &mut std::collections::HashSet<lasso::Spur>,
+        others: &mut usize,
+    ) {
         match form {
             LogicalForm::Predicate { relation, args } => {
                 let rel_name = interner.resolve(relation);
@@ -290,22 +327,22 @@ impl SemanticCompiler {
                         && args.len() >= 2
                         && matches!(&args[1], LogicalTerm::Unspecified)
                     {
-                        1
-                    } else {
-                        0
+                        if let LogicalTerm::Variable(ev) = &args[0] {
+                            events.insert(*ev);
+                        } else {
+                            *others += 1;
+                        }
                     }
                 } else if args.iter().any(|a| matches!(a, LogicalTerm::Unspecified)) {
-                    1
-                } else {
-                    0
+                    *others += 1;
                 }
             }
             LogicalForm::And(l, r)
             | LogicalForm::Or(l, r)
             | LogicalForm::Biconditional(l, r)
             | LogicalForm::Xor(l, r) => {
-                Self::count_unspecified_predicates(l, interner)
-                    + Self::count_unspecified_predicates(r, interner)
+                Self::collect_unspecified_subject_slots(l, interner, events, others);
+                Self::collect_unspecified_subject_slots(r, interner, events, others);
             }
             LogicalForm::Not(inner)
             | LogicalForm::Exists(_, inner)
@@ -314,8 +351,12 @@ impl SemanticCompiler {
             | LogicalForm::Present(inner)
             | LogicalForm::Future(inner)
             | LogicalForm::Obligatory(inner)
-            | LogicalForm::Permitted(inner) => Self::count_unspecified_predicates(inner, interner),
-            LogicalForm::Count { body, .. } => Self::count_unspecified_predicates(body, interner),
+            | LogicalForm::Permitted(inner) => {
+                Self::collect_unspecified_subject_slots(inner, interner, events, others)
+            }
+            LogicalForm::Count { body, .. } => {
+                Self::collect_unspecified_subject_slots(body, interner, events, others)
+            }
         }
     }
 
@@ -395,6 +436,106 @@ impl SemanticCompiler {
                 count,
                 body: Box::new(Self::inject_variable(*body, var, interner)),
             },
+        }
+    }
+
+    /// Replaces every occurrence of `Variable(var)` with the given replacement
+    /// term. Used to bind a relative clause compiled against a fresh clause
+    /// variable to a rigid term (proper-name constant, `le` description,
+    /// pro-sumti). A binder that shadows `var` stops the substitution.
+    pub(crate) fn substitute_variable(
+        form: LogicalForm,
+        var: lasso::Spur,
+        replacement: &LogicalTerm,
+    ) -> LogicalForm {
+        match form {
+            LogicalForm::Predicate { relation, mut args } => {
+                for a in args.iter_mut() {
+                    if matches!(a, LogicalTerm::Variable(v) if *v == var) {
+                        *a = replacement.clone();
+                    }
+                }
+                LogicalForm::Predicate { relation, args }
+            }
+            LogicalForm::And(l, r) => LogicalForm::And(
+                Box::new(Self::substitute_variable(*l, var, replacement)),
+                Box::new(Self::substitute_variable(*r, var, replacement)),
+            ),
+            LogicalForm::Or(l, r) => LogicalForm::Or(
+                Box::new(Self::substitute_variable(*l, var, replacement)),
+                Box::new(Self::substitute_variable(*r, var, replacement)),
+            ),
+            LogicalForm::Biconditional(l, r) => LogicalForm::Biconditional(
+                Box::new(Self::substitute_variable(*l, var, replacement)),
+                Box::new(Self::substitute_variable(*r, var, replacement)),
+            ),
+            LogicalForm::Xor(l, r) => LogicalForm::Xor(
+                Box::new(Self::substitute_variable(*l, var, replacement)),
+                Box::new(Self::substitute_variable(*r, var, replacement)),
+            ),
+            LogicalForm::Not(inner) => LogicalForm::Not(Box::new(Self::substitute_variable(
+                *inner,
+                var,
+                replacement,
+            ))),
+            LogicalForm::Exists(v, body) => {
+                if v == var {
+                    LogicalForm::Exists(v, body) // shadowed: substitution stops here
+                } else {
+                    LogicalForm::Exists(
+                        v,
+                        Box::new(Self::substitute_variable(*body, var, replacement)),
+                    )
+                }
+            }
+            LogicalForm::ForAll(v, body) => {
+                if v == var {
+                    LogicalForm::ForAll(v, body) // shadowed: substitution stops here
+                } else {
+                    LogicalForm::ForAll(
+                        v,
+                        Box::new(Self::substitute_variable(*body, var, replacement)),
+                    )
+                }
+            }
+            LogicalForm::Past(inner) => LogicalForm::Past(Box::new(Self::substitute_variable(
+                *inner,
+                var,
+                replacement,
+            ))),
+            LogicalForm::Present(inner) => LogicalForm::Present(Box::new(
+                Self::substitute_variable(*inner, var, replacement),
+            )),
+            LogicalForm::Future(inner) => LogicalForm::Future(Box::new(Self::substitute_variable(
+                *inner,
+                var,
+                replacement,
+            ))),
+            LogicalForm::Obligatory(inner) => LogicalForm::Obligatory(Box::new(
+                Self::substitute_variable(*inner, var, replacement),
+            )),
+            LogicalForm::Permitted(inner) => LogicalForm::Permitted(Box::new(
+                Self::substitute_variable(*inner, var, replacement),
+            )),
+            LogicalForm::Count {
+                var: v,
+                count,
+                body,
+            } => {
+                if v == var {
+                    LogicalForm::Count {
+                        var: v,
+                        count,
+                        body,
+                    } // shadowed
+                } else {
+                    LogicalForm::Count {
+                        var: v,
+                        count,
+                        body: Box::new(Self::substitute_variable(*body, var, replacement)),
+                    }
+                }
+            }
         }
     }
 
