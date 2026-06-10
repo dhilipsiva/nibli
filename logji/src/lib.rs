@@ -31,13 +31,13 @@ use std::sync::Arc;
 mod compute;
 /// Fact store abstraction (trait + in-memory implementation).
 pub mod fact_store;
-/// WASI-compatible lazy-loading fact store (append-only log + LRU cache).
-#[cfg(feature = "wasi-store")]
-pub mod wasi_fact_store;
 mod reasoning;
 /// S-expression reconstruction for logic buffers (debug output).
 pub mod repr;
 mod rules;
+/// WASI-compatible lazy-loading fact store (append-only log + LRU cache).
+#[cfg(feature = "wasi-store")]
+pub mod wasi_fact_store;
 
 pub use compute::{ComputeRequest, register_compute_dispatch};
 
@@ -108,7 +108,12 @@ impl KnowledgeBase {
 
     /// Assert a fact with a pre-assigned ID. Used for replay from persistent store.
     /// Advances the internal counter past the given ID.
-    pub fn assert_fact_with_id(&self, logic: LogicBuffer, label: String, id: u64) -> Result<(), String> {
+    pub fn assert_fact_with_id(
+        &self,
+        logic: LogicBuffer,
+        label: String,
+        id: u64,
+    ) -> Result<(), String> {
         let mut inner = self.inner.borrow_mut();
         if id >= inner.fact_counter {
             inner.fact_counter = id + 1;
@@ -157,12 +162,11 @@ impl KnowledgeBase {
         // Check if this assertion involved Skolemization (existential variables
         // or ForAll). If so, fall back to full rebuild — re-deriving Skolem subs
         // with a temporary counter won't match the originals.
-        let has_skolems = record.buffer.nodes.iter().any(|n| {
-            matches!(
-                n,
-                LogicNode::ExistsNode(_) | LogicNode::ForAllNode(_)
-            )
-        });
+        let has_skolems = record
+            .buffer
+            .nodes
+            .iter()
+            .any(|n| matches!(n, LogicNode::ExistsNode(_) | LogicNode::ForAllNode(_)));
 
         if has_skolems || inner.rule_source_map.contains_key(&id) {
             // Complex assertion (rules or Skolems) — fall back to full rebuild.
@@ -187,7 +191,9 @@ impl KnowledgeBase {
             inner.fact_store.remove(fact);
             let gf = fact.inner();
             for (pos, arg) in gf.args.iter().enumerate() {
-                if let Some(val_map) = inner.arg_position_index.get_mut(&(gf.relation.clone(), pos))
+                if let Some(val_map) = inner
+                    .arg_position_index
+                    .get_mut(&(gf.relation.clone(), pos))
                 {
                     if let Some(entries) = val_map.get_mut(arg) {
                         entries.retain(|f| f != fact);
@@ -489,11 +495,7 @@ impl KnowledgeBase {
     ///
     /// Supports multiple independent hypotheticals (each gets its own snapshot)
     /// and nesting (the callback receives a `&KnowledgeBase` with `with_assumptions`).
-    pub fn with_assumptions<F, R>(
-        &self,
-        assumptions: &[LogicBuffer],
-        f: F,
-    ) -> Result<R, NibliError>
+    pub fn with_assumptions<F, R>(&self, assumptions: &[LogicBuffer], f: F) -> Result<R, NibliError>
     where
         F: FnOnce(&KnowledgeBase) -> R,
     {
@@ -521,7 +523,8 @@ impl KnowledgeBase {
 
     /// Check whether a formula is entailed by the knowledge base (four-valued result).
     pub fn query_entailment(&self, logic: LogicBuffer) -> Result<QueryResult, NibliError> {
-        self.query_entailment_inner(logic).map_err(NibliError::Reasoning)
+        self.query_entailment_inner(logic)
+            .map_err(NibliError::Reasoning)
     }
 
     /// Find all satisfying witness binding sets for existential variables in the formula.
@@ -638,7 +641,9 @@ impl KnowledgeBase {
     /// e.g., `declare_entity_sort("adam", "person")` means adam is a person.
     pub fn declare_entity_sort(&self, entity: &str, sort: &str) {
         let mut inner = self.inner.borrow_mut();
-        inner.entity_sorts.insert(entity.to_string(), sort.to_string());
+        inner
+            .entity_sorts
+            .insert(entity.to_string(), sort.to_string());
     }
 
     /// Declare a subsort relationship: child ⊂ parent.
@@ -685,10 +690,7 @@ impl KnowledgeBase {
 
     /// Disable tracing for a predicate.
     pub fn untrace_predicate(&self, predicate: &str) {
-        self.inner
-            .borrow_mut()
-            .traced_predicates
-            .remove(predicate);
+        self.inner.borrow_mut().traced_predicates.remove(predicate);
     }
 
     /// List all currently traced predicates.
@@ -817,9 +819,9 @@ impl KnowledgeBase {
                     if idx == expanded.len() {
                         return true; // All conjuncts satisfied.
                     }
-                    expanded[idx]
-                        .iter()
-                        .any(|variant| store.contains(variant) && check_combos(expanded, idx + 1, store))
+                    expanded[idx].iter().any(|variant| {
+                        store.contains(variant) && check_combos(expanded, idx + 1, store)
+                    })
                 }
 
                 if check_combos(&expanded, 0, &*inner.fact_store) {
@@ -845,6 +847,5 @@ impl KnowledgeBase {
 }
 
 #[cfg(test)]
-
 #[cfg(test)]
 mod tests;

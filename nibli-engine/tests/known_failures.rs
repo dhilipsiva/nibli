@@ -150,7 +150,9 @@ fn tanru_in_poi_must_not_be_falsely_rejected() {
     let engine = NibliEngine::new();
     // "a dog that runs fast goes" — valid Lojban; `sutra bajra` is a tanru inside the poi clause.
     assert!(
-        engine.assert_text("lo gerku poi sutra bajra cu klama").is_ok(),
+        engine
+            .assert_text("lo gerku poi sutra bajra cu klama")
+            .is_ok(),
         "a valid tanru-in-poi relative clause was rejected by the ambiguity firewall"
     );
 }

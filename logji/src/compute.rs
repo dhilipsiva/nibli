@@ -184,7 +184,10 @@ pub(super) fn batch_evaluate_compute_for_members(
     }
 
     if pending.is_empty() {
-        return Some(BatchComputeResult { results, deferred_facts });
+        return Some(BatchComputeResult {
+            results,
+            deferred_facts,
+        });
     }
 
     let requests: Vec<ComputeRequest> = pending
@@ -202,7 +205,8 @@ pub(super) fn batch_evaluate_compute_for_members(
             Ok(r) => {
                 results[member_idx] = r;
                 if r {
-                    if let Some(fact) = build_ground_fact_from_resolved(rel, &pending[batch_idx].1) {
+                    if let Some(fact) = build_ground_fact_from_resolved(rel, &pending[batch_idx].1)
+                    {
                         deferred_facts.push(fact);
                     }
                 }
@@ -210,5 +214,8 @@ pub(super) fn batch_evaluate_compute_for_members(
             Err(_) => return None,
         }
     }
-    Some(BatchComputeResult { results, deferred_facts })
+    Some(BatchComputeResult {
+        results,
+        deferred_facts,
+    })
 }

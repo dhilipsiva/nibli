@@ -439,10 +439,7 @@ pub(super) fn typed_fact_is_asserted(fact: &StoredFact, inner: &KnowledgeBaseInn
 }
 
 /// Check if a fact holds under any equivalence-class substitution of its arguments.
-fn typed_fact_is_asserted_with_equivalence(
-    fact: &StoredFact,
-    inner: &KnowledgeBaseInner,
-) -> bool {
+fn typed_fact_is_asserted_with_equivalence(fact: &StoredFact, inner: &KnowledgeBaseInner) -> bool {
     let gf = fact.inner();
     // For each arg position, get the equivalence class.
     let equiv_args: Vec<Vec<GroundTerm>> = gf
@@ -564,10 +561,8 @@ pub(super) fn check_predicate_in_kb_typed(
                 return QueryResult::True; // Reflexivity
             }
             if !inner.equivalence_parent.is_empty() {
-                let canon_a =
-                    find_canonical_readonly(&inner.equivalence_parent, &args[0]);
-                let canon_b =
-                    find_canonical_readonly(&inner.equivalence_parent, &args[1]);
+                let canon_a = find_canonical_readonly(&inner.equivalence_parent, &args[0]);
+                let canon_b = find_canonical_readonly(&inner.equivalence_parent, &args[1]);
                 if canon_a == canon_b {
                     return QueryResult::True; // Symmetry + transitivity
                 }
@@ -1197,9 +1192,7 @@ pub(super) fn trace_predicate_provenance_typed(
                     .iter()
                     .zip(variant.inner().args.iter())
                     .filter(|(o, v)| o != v)
-                    .map(|(o, v)| {
-                        format!("{} du {}", o.to_display_string(), v.to_display_string())
-                    })
+                    .map(|(o, v)| format!("{} du {}", o.to_display_string(), v.to_display_string()))
                     .collect::<Vec<_>>()
                     .join(", ");
                 let substituted = variant.to_display_string();
@@ -1310,8 +1303,12 @@ pub(super) fn try_backward_chain_traced_typed(
                     }
                     let all_hold = rule.typed_conditions.iter().enumerate().all(|(idx, ct)| {
                         let cs = substitute_fact(ct, &bindings);
-                        let result =
-                            check_predicate_in_kb_typed(&cs, &*inner, depth + 1, &mut HashSet::new());
+                        let result = check_predicate_in_kb_typed(
+                            &cs,
+                            &*inner,
+                            depth + 1,
+                            &mut HashSet::new(),
+                        );
                         if rule.negated_condition_indices.contains(&idx) {
                             result.is_false()
                         } else {
@@ -1342,9 +1339,17 @@ pub(super) fn try_backward_chain_traced_typed(
             for (idx, cond_template) in rule.typed_conditions.iter().enumerate() {
                 let cond_fact = substitute_fact(cond_template, &bindings);
                 let negated = rule.negated_condition_indices.contains(&idx);
-                let result =
-                    check_predicate_in_kb_typed(&cond_fact, &*inner, depth + 1, &mut HashSet::new());
-                let holds = if negated { result.is_false() } else { result.is_true() };
+                let result = check_predicate_in_kb_typed(
+                    &cond_fact,
+                    &*inner,
+                    depth + 1,
+                    &mut HashSet::new(),
+                );
+                let holds = if negated {
+                    result.is_false()
+                } else {
+                    result.is_true()
+                };
                 if !holds {
                     all_conditions_hold = false;
                     break;
@@ -1494,7 +1499,11 @@ pub(super) fn try_backward_chain_traced_typed(
                         depth + 1,
                         &mut HashSet::new(),
                     );
-                    let holds = if negated { result.is_false() } else { result.is_true() };
+                    let holds = if negated {
+                        result.is_false()
+                    } else {
+                        result.is_true()
+                    };
                     if !holds {
                         all_conditions_hold = false;
                         break;
@@ -1509,7 +1518,11 @@ pub(super) fn try_backward_chain_traced_typed(
                         child_indices.push(leaf);
                     } else {
                         let child_idx = trace_predicate_provenance_typed(
-                            &tensed_cs, inner, steps, depth + 1, memo,
+                            &tensed_cs,
+                            inner,
+                            steps,
+                            depth + 1,
+                            memo,
                         );
                         child_indices.push(child_idx);
                     }

@@ -1125,5 +1125,4 @@ mod tests {
         cleanup(&local_path);
         cleanup(&remote_path);
     }
-
 }

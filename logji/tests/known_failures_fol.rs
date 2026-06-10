@@ -83,12 +83,18 @@ fn best_result_control_deep_chain_alone_is_true() {
     let kb = KnowledgeBase::new();
     kb.assert_fact(fact("aaa", "alis"), "aaa(alis)".into())
         .unwrap();
-    kb.assert_fact(rule("aaa", "bbb"), "aaa→bbb".into()).unwrap();
-    kb.assert_fact(rule("bbb", "ccc"), "bbb→ccc".into()).unwrap();
-    kb.assert_fact(rule("ccc", "ddd"), "ccc→ddd".into()).unwrap();
-    kb.assert_fact(rule("ddd", "eee"), "ddd→eee".into()).unwrap();
-    kb.assert_fact(rule("eee", "qqq"), "eee→qqq".into()).unwrap();
-    kb.assert_fact(rule("qqq", "ppp"), "qqq→ppp".into()).unwrap();
+    kb.assert_fact(rule("aaa", "bbb"), "aaa→bbb".into())
+        .unwrap();
+    kb.assert_fact(rule("bbb", "ccc"), "bbb→ccc".into())
+        .unwrap();
+    kb.assert_fact(rule("ccc", "ddd"), "ccc→ddd".into())
+        .unwrap();
+    kb.assert_fact(rule("ddd", "eee"), "ddd→eee".into())
+        .unwrap();
+    kb.assert_fact(rule("eee", "qqq"), "eee→qqq".into())
+        .unwrap();
+    kb.assert_fact(rule("qqq", "ppp"), "qqq→ppp".into())
+        .unwrap();
 
     let r = kb.query_entailment(query("ppp", "alis")).unwrap();
     assert!(
@@ -107,15 +113,22 @@ fn best_result_wipe_entailed_query_must_be_true() {
     let kb = KnowledgeBase::new();
     kb.assert_fact(fact("aaa", "alis"), "aaa(alis)".into())
         .unwrap();
-    kb.assert_fact(rule("aaa", "bbb"), "aaa→bbb".into()).unwrap();
-    kb.assert_fact(rule("bbb", "ccc"), "bbb→ccc".into()).unwrap();
-    kb.assert_fact(rule("ccc", "ddd"), "ccc→ddd".into()).unwrap();
-    kb.assert_fact(rule("ddd", "eee"), "ddd→eee".into()).unwrap();
-    kb.assert_fact(rule("eee", "qqq"), "eee→qqq".into()).unwrap();
+    kb.assert_fact(rule("aaa", "bbb"), "aaa→bbb".into())
+        .unwrap();
+    kb.assert_fact(rule("bbb", "ccc"), "bbb→ccc".into())
+        .unwrap();
+    kb.assert_fact(rule("ccc", "ddd"), "ccc→ddd".into())
+        .unwrap();
+    kb.assert_fact(rule("ddd", "eee"), "ddd→eee".into())
+        .unwrap();
+    kb.assert_fact(rule("eee", "qqq"), "eee→qqq".into())
+        .unwrap();
     // Two rules concluding ppp; the deep one is registered first, the
     // definitively-failing one (no `ttt` fact anywhere) second.
-    kb.assert_fact(rule("qqq", "ppp"), "qqq→ppp".into()).unwrap();
-    kb.assert_fact(rule("ttt", "ppp"), "ttt→ppp".into()).unwrap();
+    kb.assert_fact(rule("qqq", "ppp"), "qqq→ppp".into())
+        .unwrap();
+    kb.assert_fact(rule("ttt", "ppp"), "ttt→ppp".into())
+        .unwrap();
 
     let r = kb.query_entailment(query("ppp", "alis")).unwrap();
     assert!(
@@ -133,18 +146,28 @@ fn best_result_wipe_negation_must_not_be_true() {
     let kb = KnowledgeBase::new();
     kb.assert_fact(fact("aaa", "alis"), "aaa(alis)".into())
         .unwrap();
-    kb.assert_fact(rule("aaa", "bbb"), "aaa→bbb".into()).unwrap();
-    kb.assert_fact(rule("bbb", "ccc"), "bbb→ccc".into()).unwrap();
-    kb.assert_fact(rule("ccc", "ddd"), "ccc→ddd".into()).unwrap();
-    kb.assert_fact(rule("ddd", "eee"), "ddd→eee".into()).unwrap();
-    kb.assert_fact(rule("eee", "qqq"), "eee→qqq".into()).unwrap();
-    kb.assert_fact(rule("qqq", "ppp"), "qqq→ppp".into()).unwrap();
-    kb.assert_fact(rule("ttt", "ppp"), "ttt→ppp".into()).unwrap();
+    kb.assert_fact(rule("aaa", "bbb"), "aaa→bbb".into())
+        .unwrap();
+    kb.assert_fact(rule("bbb", "ccc"), "bbb→ccc".into())
+        .unwrap();
+    kb.assert_fact(rule("ccc", "ddd"), "ccc→ddd".into())
+        .unwrap();
+    kb.assert_fact(rule("ddd", "eee"), "ddd→eee".into())
+        .unwrap();
+    kb.assert_fact(rule("eee", "qqq"), "eee→qqq".into())
+        .unwrap();
+    kb.assert_fact(rule("qqq", "ppp"), "qqq→ppp".into())
+        .unwrap();
+    kb.assert_fact(rule("ttt", "ppp"), "ttt→ppp".into())
+        .unwrap();
 
     // ¬ppp(alis): Not(Predicate ppp(alis)).
     let neg = LogicBuffer {
         nodes: vec![
-            LogicNode::Predicate(("ppp".to_string(), vec![LogicalTerm::Constant("alis".to_string())])),
+            LogicNode::Predicate((
+                "ppp".to_string(),
+                vec![LogicalTerm::Constant("alis".to_string())],
+            )),
             LogicNode::NotNode(0),
         ],
         roots: vec![1],

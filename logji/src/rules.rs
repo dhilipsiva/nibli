@@ -30,7 +30,9 @@ pub(super) fn collect_exists_for_skolem(
     enclosing_universals: &mut Vec<String>,
     counter: &mut usize,
 ) {
-    let Ok(node) = get_node(buffer, node_id) else { return };
+    let Ok(node) = get_node(buffer, node_id) else {
+        return;
+    };
     match node {
         LogicNode::ExistsNode((v, body)) => {
             if !subs.contains_key(v.as_str()) {
@@ -85,18 +87,19 @@ pub(super) fn collect_exists_for_skolem(
     }
 }
 
-pub(super) fn decompose_implication(
-    buffer: &LogicBuffer,
-    body_id: u32,
-) -> Option<(Vec<u32>, u32)> {
+pub(super) fn decompose_implication(buffer: &LogicBuffer, body_id: u32) -> Option<(Vec<u32>, u32)> {
     let mut conditions = Vec::new();
     let mut current = body_id;
 
     loop {
-        let Ok(node) = get_node(buffer, current) else { break };
+        let Ok(node) = get_node(buffer, current) else {
+            break;
+        };
         match node {
             LogicNode::OrNode((left, right)) => {
-                let Ok(left_node) = get_node(buffer, *left) else { break };
+                let Ok(left_node) = get_node(buffer, *left) else {
+                    break;
+                };
                 match left_node {
                     LogicNode::NotNode(inner) => {
                         conditions.push(*inner);
@@ -118,7 +121,9 @@ pub(super) fn decompose_implication(
 
 #[allow(dead_code)]
 pub(super) fn flatten_conjuncts(buffer: &LogicBuffer, node_id: u32) -> Vec<u32> {
-    let Ok(node) = get_node(buffer, node_id) else { return vec![node_id] };
+    let Ok(node) = get_node(buffer, node_id) else {
+        return vec![node_id];
+    };
     match node {
         LogicNode::AndNode((l, r)) => {
             let mut result = flatten_conjuncts(buffer, *l);
@@ -134,7 +139,9 @@ pub(super) fn collect_condition_exists(
     node_id: u32,
     exists_vars: &mut HashSet<String>,
 ) {
-    let Ok(node) = get_node(buffer, node_id) else { return };
+    let Ok(node) = get_node(buffer, node_id) else {
+        return;
+    };
     match node {
         LogicNode::ExistsNode((v, body)) => {
             exists_vars.insert(v.clone());
@@ -153,7 +160,9 @@ pub(super) fn flatten_conjuncts_through_exists(
     node_id: u32,
     condition_exists: &HashSet<String>,
 ) -> Vec<u32> {
-    let Ok(node) = get_node(buffer, node_id) else { return vec![node_id] };
+    let Ok(node) = get_node(buffer, node_id) else {
+        return vec![node_id];
+    };
     match node {
         LogicNode::AndNode((l, r)) => {
             let mut result = flatten_conjuncts_through_exists(buffer, *l, condition_exists);
@@ -176,7 +185,9 @@ fn flatten_consequent(
     node_id: u32,
     skolem_subs: &HashMap<String, GroundTerm>,
 ) -> Vec<u32> {
-    let Ok(node) = get_node(buffer, node_id) else { return vec![node_id] };
+    let Ok(node) = get_node(buffer, node_id) else {
+        return vec![node_id];
+    };
     match node {
         LogicNode::ExistsNode((v, body)) if skolem_subs.contains_key(v.as_str()) => {
             flatten_consequent(buffer, *body, skolem_subs)
@@ -195,7 +206,9 @@ pub(super) fn collect_and_note_constants(
     node_id: u32,
     inner: &mut KnowledgeBaseInner,
 ) {
-    let Ok(node) = get_node(buffer, node_id) else { return };
+    let Ok(node) = get_node(buffer, node_id) else {
+        return;
+    };
     match node {
         LogicNode::Predicate((_, args)) | LogicNode::ComputeNode((_, args)) => {
             for arg in args {
@@ -227,7 +240,6 @@ pub(super) fn collect_and_note_constants(
         }
     }
 }
-
 
 pub(super) fn register_rule(
     inner: &mut KnowledgeBaseInner,
@@ -430,11 +442,7 @@ pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner
                 }
                 if let GroundTerm::Constant(name) = arg {
                     if let Some(actual_sort) = inner.entity_sorts.get(name.as_str()) {
-                        if !is_sort_compatible(
-                            &inner.sort_hierarchy,
-                            actual_sort,
-                            expected_sort,
-                        ) {
+                        if !is_sort_compatible(&inner.sort_hierarchy, actual_sort, expected_sort) {
                             eprintln!(
                                 "[Sort Warning] '{}' arg {}: entity '{}' has sort '{}', expected '{}'",
                                 rel, pos, name, actual_sort, expected_sort
@@ -490,9 +498,7 @@ fn trigger_forward_rules(new_rel: &str, inner: &mut KnowledgeBaseInner) {
         .universal_rules
         .values()
         .flat_map(|v| v.iter())
-        .filter(|r| {
-            r.forward && r.typed_conditions.iter().any(|c| c.relation() == new_rel)
-        })
+        .filter(|r| r.forward && r.typed_conditions.iter().any(|c| c.relation() == new_rel))
         .cloned()
         .collect();
     forward_rules.sort_by_key(|r| std::cmp::Reverse(r.priority));
@@ -566,8 +572,6 @@ fn trigger_forward_rules(new_rel: &str, inner: &mut KnowledgeBaseInner) {
     inner.forward_depth -= 1;
 }
 
-
-
 pub(super) fn compile_forall_to_rule(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -577,7 +581,9 @@ pub(super) fn compile_forall_to_rule(
     let mut universals: Vec<String> = Vec::new();
     let mut current = node_id;
     loop {
-        let Ok(node) = get_node(buffer, current) else { return Ok(()) };
+        let Ok(node) = get_node(buffer, current) else {
+            return Ok(());
+        };
         match node {
             LogicNode::ForAllNode((v, body)) => {
                 universals.push(v.clone());
@@ -683,7 +689,11 @@ pub(super) fn compile_forall_to_rule(
             let mut negated_condition_indices: Vec<usize> = Vec::new();
             for &cid in &all_conditions {
                 match build_rule_template_fact_with_negation(
-                    buffer, cid, &pattern_vars, &ground_skolems, &dependent_skolems,
+                    buffer,
+                    cid,
+                    &pattern_vars,
+                    &ground_skolems,
+                    &dependent_skolems,
                 ) {
                     Some((fact, is_negated)) => {
                         if is_negated {
@@ -711,7 +721,11 @@ pub(super) fn compile_forall_to_rule(
             let mut typed_concls: Vec<StoredFact> = Vec::new();
             for &aid in &consequent_atoms {
                 match build_rule_template_fact(
-                    buffer, aid, &pattern_vars, &ground_skolems, &dependent_skolems,
+                    buffer,
+                    aid,
+                    &pattern_vars,
+                    &ground_skolems,
+                    &dependent_skolems,
                 ) {
                     Some(fact) => typed_concls.push(fact),
                     // FAIL CLOSED: a conclusion atom we cannot template (negated,
@@ -780,7 +794,8 @@ pub(super) fn compile_forall_to_rule(
                         xp_subs.insert(var.clone(), GroundTerm::Constant(ev_sk));
                     }
                     for &cid in &all_conditions {
-                        if let Some(fact) = build_stored_fact_from_node(buffer, cid, &xp_subs, None) {
+                        if let Some(fact) = build_stored_fact_from_node(buffer, cid, &xp_subs, None)
+                        {
                             assert_typed_fact(fact, inner);
                         }
                     }
@@ -804,7 +819,11 @@ pub(super) fn compile_forall_to_rule(
             }
 
             let typed_concls: Vec<StoredFact> = match build_rule_template_fact(
-                buffer, inner_body_id, &pattern_vars, &ground_skolems, &dependent_skolems,
+                buffer,
+                inner_body_id,
+                &pattern_vars,
+                &ground_skolems,
+                &dependent_skolems,
             ) {
                 Some(fact) => vec![fact],
                 // FAIL CLOSED: a bare universal whose body is conjunctive/complex would
@@ -859,7 +878,9 @@ pub(super) fn generate_count_extra_witnesses(
     skolem_subs: &HashMap<String, GroundTerm>,
     inner: &mut KnowledgeBaseInner,
 ) {
-    let Ok(node) = get_node(buffer, node_id) else { return };
+    let Ok(node) = get_node(buffer, node_id) else {
+        return;
+    };
     match node {
         LogicNode::CountNode((v, count, body)) => {
             if *count > 1 {
@@ -873,7 +894,9 @@ pub(super) fn generate_count_extra_witnesses(
                         .map(|(k, gt)| (k.clone(), gt.clone()))
                         .collect();
                     typed_extra_subs.insert(v.clone(), GroundTerm::Constant(extra_sk.clone()));
-                    if let Some(fact) = build_stored_fact_from_node(buffer, *body, &typed_extra_subs, None) {
+                    if let Some(fact) =
+                        build_stored_fact_from_node(buffer, *body, &typed_extra_subs, None)
+                    {
                         assert_typed_fact(fact, inner);
                     }
                 }
@@ -927,7 +950,6 @@ pub(super) fn build_ground_term(
     }
 }
 
-
 /// Build a StoredFact from a Predicate/ComputeNode in a LogicBuffer.
 /// Returns None if the node isn't a predicate-like node.
 pub(super) fn build_stored_fact_from_node(
@@ -936,13 +958,13 @@ pub(super) fn build_stored_fact_from_node(
     subs: &HashMap<String, GroundTerm>,
     tense: Option<&str>,
 ) -> Option<StoredFact> {
-    let Ok(node) = get_node(buffer, node_id) else { return None };
+    let Ok(node) = get_node(buffer, node_id) else {
+        return None;
+    };
     match node {
         LogicNode::Predicate((rel, args)) | LogicNode::ComputeNode((rel, args)) => {
-            let ground_args: Vec<GroundTerm> = args
-                .iter()
-                .map(|a| build_ground_term(a, subs))
-                .collect();
+            let ground_args: Vec<GroundTerm> =
+                args.iter().map(|a| build_ground_term(a, subs)).collect();
             let fact = GroundFact::new(rel.clone(), ground_args);
             Some(StoredFact::with_tense(fact, tense))
         }
@@ -979,7 +1001,9 @@ pub(super) fn collect_ground_facts(
     tense: Option<&str>,
     out: &mut Vec<StoredFact>,
 ) {
-    let Ok(node) = get_node(buffer, node_id) else { return };
+    let Ok(node) = get_node(buffer, node_id) else {
+        return;
+    };
     match node {
         LogicNode::AndNode((l, r)) => {
             collect_ground_facts(buffer, *l, subs, tense, out);
@@ -1030,11 +1054,23 @@ pub(super) fn build_rule_template_fact_with_negation(
     match node {
         LogicNode::NotNode(inner_node) => {
             // Recurse into the negated body and mark as negated.
-            build_rule_template_fact(buffer, *inner_node, pattern_vars, ground_skolems, dependent_skolems)
-                .map(|fact| (fact, true))
+            build_rule_template_fact(
+                buffer,
+                *inner_node,
+                pattern_vars,
+                ground_skolems,
+                dependent_skolems,
+            )
+            .map(|fact| (fact, true))
         }
-        _ => build_rule_template_fact(buffer, node_id, pattern_vars, ground_skolems, dependent_skolems)
-            .map(|fact| (fact, false)),
+        _ => build_rule_template_fact(
+            buffer,
+            node_id,
+            pattern_vars,
+            ground_skolems,
+            dependent_skolems,
+        )
+        .map(|fact| (fact, false)),
     }
 }
 
@@ -1045,7 +1081,9 @@ pub(super) fn build_rule_template_fact(
     ground_skolems: &HashMap<String, String>,
     dependent_skolems: &HashMap<String, (String, Vec<String>)>,
 ) -> Option<StoredFact> {
-    let Ok(node) = get_node(buffer, node_id) else { return None };
+    let Ok(node) = get_node(buffer, node_id) else {
+        return None;
+    };
     match node {
         LogicNode::Predicate((rel, args)) | LogicNode::ComputeNode((rel, args)) => {
             let ground_args: Vec<GroundTerm> = args
@@ -1080,7 +1118,13 @@ pub(super) fn build_rule_template_fact(
                 || ground_skolems.contains_key(v.as_str())
                 || dependent_skolems.contains_key(v.as_str())
             {
-                build_rule_template_fact(buffer, *body, pattern_vars, ground_skolems, dependent_skolems)
+                build_rule_template_fact(
+                    buffer,
+                    *body,
+                    pattern_vars,
+                    ground_skolems,
+                    dependent_skolems,
+                )
             } else {
                 None
             }

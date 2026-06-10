@@ -72,7 +72,11 @@ impl WasiFactStore {
         };
 
         let count = if fact_count > 0 {
-            println!("[WasiStore] Loaded index: {} predicates, {} facts", pred_index.len(), fact_count);
+            println!(
+                "[WasiStore] Loaded index: {} predicates, {} facts",
+                pred_index.len(),
+                fact_count
+            );
             fact_count
         } else {
             0
@@ -149,7 +153,6 @@ impl WasiFactStore {
             }
         }
     }
-
 }
 
 /// Read a single fact entry from the current file position.
@@ -180,11 +183,13 @@ fn write_fact_at_end(file: &mut File, fact: &StoredFact) -> Option<u64> {
 
     let rel = fact.relation();
     let rel_bytes = rel.as_bytes();
-    file.write_all(&(rel_bytes.len() as u32).to_le_bytes()).ok()?;
+    file.write_all(&(rel_bytes.len() as u32).to_le_bytes())
+        .ok()?;
     file.write_all(rel_bytes).ok()?;
 
     let fact_bytes = postcard::to_allocvec(fact).ok()?;
-    file.write_all(&(fact_bytes.len() as u32).to_le_bytes()).ok()?;
+    file.write_all(&(fact_bytes.len() as u32).to_le_bytes())
+        .ok()?;
     file.write_all(&fact_bytes).ok()?;
 
     Some(offset)
@@ -209,7 +214,11 @@ impl FactStore for WasiFactStore {
 
     fn insert(&mut self, fact: StoredFact) {
         let facts_path = self.dir.join("facts.bin");
-        if let Ok(mut file) = OpenOptions::new().append(true).create(true).open(&facts_path) {
+        if let Ok(mut file) = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&facts_path)
+        {
             if let Some(offset) = write_fact_at_end(&mut file, &fact) {
                 let rel = fact.relation().to_string();
                 self.pred_index.entry(rel.clone()).or_default().push(offset);

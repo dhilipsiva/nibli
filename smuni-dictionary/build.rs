@@ -314,10 +314,7 @@ const FALLBACK_GISMU_ENTRIES: &[(&str, usize, &str)] = &[
 /// is alphabetically accidental rather than canonical (e.g. gerku's
 /// glosswords are bitch/canine/dog — "dog" is the right back-translation).
 /// Consulted before FALLBACK_GISMU_ENTRIES and extract_glossword.
-const GISMU_GLOSS_OVERRIDES: &[(&str, &str)] = &[
-    ("bilga", "must"),
-    ("curmi", "permit"),
-];
+const GISMU_GLOSS_OVERRIDES: &[(&str, &str)] = &[("bilga", "must"), ("curmi", "permit")];
 
 /// Hardcoded gloss overrides for common cmavo where jbovlaste glosses
 /// are too technical for readable back-translation.

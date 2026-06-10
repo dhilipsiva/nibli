@@ -160,7 +160,11 @@ fn tokenize_triple(
                                     None => break,
                                 }
                             }
-                            if type_iri.contains("integer") || type_iri.contains("decimal") || type_iri.contains("double") || type_iri.contains("float") {
+                            if type_iri.contains("integer")
+                                || type_iri.contains("decimal")
+                                || type_iri.contains("double")
+                                || type_iri.contains("float")
+                            {
                                 if let Ok(n) = lit.parse::<f64>() {
                                     tokens.push(Term::NumericLiteral(n));
                                     is_numeric = true;

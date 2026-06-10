@@ -95,7 +95,10 @@ impl RedbFactStore {
 
     /// Persist the predicate index to disk.
     fn flush_pred_index(&self) -> Result<(), String> {
-        let txn = self.db.begin_write().map_err(|e| format!("redb write: {e}"))?;
+        let txn = self
+            .db
+            .begin_write()
+            .map_err(|e| format!("redb write: {e}"))?;
         {
             let mut table = txn
                 .open_table(TYPED_PRED_INDEX_TABLE)

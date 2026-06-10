@@ -122,7 +122,9 @@ impl ProofTrace {
     pub fn to_pretty_text_with_indent(&self, base_indent: usize) -> String {
         let mut out = String::new();
         if self.naf_dependent {
-            out.push_str("[Note: result depends on negation-as-failure (closed-world assumption)]\n");
+            out.push_str(
+                "[Note: result depends on negation-as-failure (closed-world assumption)]\n",
+            );
         }
         format_proof_step(self, self.root, base_indent, &mut out);
         out
@@ -319,9 +321,10 @@ fn format_fact_pred(children: &[FactNode]) -> String {
     // Collapse Neo-Davidsonian role predicates (e.g., "gerku_x1") into compact form.
     // "gerku_x1(sk_0, adam)" → "gerku.x1(adam)" (hide event variable)
     if let Some(base_and_role) = parse_role_predicate(&name) {
-        let formatted: Vec<String> = args.iter()
+        let formatted: Vec<String> = args
+            .iter()
             .map(|a| humanize_term(format_fact_node(a)))
-            .filter(|s| !is_event_skolem(s))  // hide event Skolem args
+            .filter(|s| !is_event_skolem(s)) // hide event Skolem args
             .collect();
         if formatted.is_empty() {
             base_and_role
@@ -329,7 +332,8 @@ fn format_fact_pred(children: &[FactNode]) -> String {
             format!("{}({})", base_and_role, formatted.join(", "))
         }
     } else {
-        let formatted: Vec<String> = args.iter()
+        let formatted: Vec<String> = args
+            .iter()
             .map(|a| humanize_term(format_fact_node(a)))
             .collect();
         if formatted.is_empty() {
@@ -829,7 +833,12 @@ impl ProofRule {
             }
             Self::Asserted { fact } => format!("Fact: {} -> {}", humanize_fact(fact), tag),
             Self::Derived { label, fact } => {
-                format!("Rule ({}): {} -> {}", humanize_rule_label(label), humanize_fact(fact), tag)
+                format!(
+                    "Rule ({}): {} -> {}",
+                    humanize_rule_label(label),
+                    humanize_fact(fact),
+                    tag
+                )
             }
             Self::ProofRef { fact } => {
                 format!("(see above): {} -> {}", humanize_fact(fact), tag)

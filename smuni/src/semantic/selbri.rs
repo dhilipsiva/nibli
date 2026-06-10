@@ -8,11 +8,7 @@ use super::*;
 
 impl SemanticCompiler {
     /// Decomposes a predicate into Neo-Davidsonian event form with role predicates.
-    pub(crate) fn event_decompose(
-        &mut self,
-        relation: &str,
-        args: &[LogicalTerm],
-    ) -> LogicalForm {
+    pub(crate) fn event_decompose(&mut self, relation: &str, args: &[LogicalTerm]) -> LogicalForm {
         let ev = self.fresh_event_var();
         let ev_term = LogicalTerm::Variable(ev);
 

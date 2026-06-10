@@ -25,31 +25,31 @@ use nibli_types::error::NibliError;
 
 /// Parse Lojban text through the full pipeline: lex → preprocess → parse → flatten.
 pub fn parse_text_native(input: String) -> Result<flat::ParseResult, NibliError> {
-        // 1. Lex into morphological classification stream
-        let raw_tokens = crate::lexer::tokenize(&input);
+    // 1. Lex into morphological classification stream
+    let raw_tokens = crate::lexer::tokenize(&input);
 
-        // 2. Resolve metalinguistic operators (si/sa/su/zo/zoi/zei)
-        let normalized = crate::preprocessor::preprocess(raw_tokens.into_iter(), &input);
+    // 2. Resolve metalinguistic operators (si/sa/su/zo/zoi/zei)
+    let normalized = crate::preprocessor::preprocess(raw_tokens.into_iter(), &input);
 
-        // 3. Recursive descent parse (with per-sentence error recovery)
-        let arena = bumpalo::Bump::new();
-        let result = crate::grammar::parse_tokens_to_ast(&normalized, &input, &arena);
+    // 3. Recursive descent parse (with per-sentence error recovery)
+    let arena = bumpalo::Bump::new();
+    let result = crate::grammar::parse_tokens_to_ast(&normalized, &input, &arena);
 
-        // 4. Convert grammar errors
-        let errors: Vec<flat::ParseError> = result
-            .errors
-            .iter()
-            .map(|e| flat::ParseError {
-                message: e.message.clone(),
-                line: e.line,
-                column: e.column,
-            })
-            .collect();
+    // 4. Convert grammar errors
+    let errors: Vec<flat::ParseError> = result
+        .errors
+        .iter()
+        .map(|e| flat::ParseError {
+            message: e.message.clone(),
+            line: e.line,
+            column: e.column,
+        })
+        .collect();
 
-        // 5. Flatten tree AST → index-based flat buffer
-        let buffer = Flattener::flatten(&result.parsed);
+    // 5. Flatten tree AST → index-based flat buffer
+    let buffer = Flattener::flatten(&result.parsed);
 
-        Ok(flat::ParseResult { buffer, errors })
+    Ok(flat::ParseResult { buffer, errors })
 }
 
 // ─── AST → WIT Buffer Flattener ─────────────────────────────────
@@ -91,9 +91,7 @@ impl Flattener {
     // ─── Sentence Flattening ────────────────────────────────
     /// Flatten a sentence node and return its index in `buffer.sentences`.
     fn push_sentence(&mut self, sentence: &ast::Sentence<'_>) -> u32 {
-        use flat::{
-            Sentence as WasmSentence, SentenceConnective as WasmConn,
-        };
+        use flat::{Sentence as WasmSentence, SentenceConnective as WasmConn};
 
         match sentence {
             ast::Sentence::Simple(bridi) => {
@@ -133,9 +131,7 @@ impl Flattener {
                 // Push the flat_bridi wrapped in the Simple enum variant
                 self.buffer
                     .sentences
-                    .push(flat::Sentence::Simple(
-                        flat_bridi,
-                    ));
+                    .push(flat::Sentence::Simple(flat_bridi));
                 idx
             }
             ast::Sentence::Connected {
@@ -374,8 +370,6 @@ impl Flattener {
         id
     }
 }
-
-
 
 // Add these tests to parser/src/lib.rs or a new integration test file.
 // They test the Flattener, not just the grammar parser.

@@ -148,10 +148,7 @@ fn main() {
                         if violations.is_empty() {
                             println!("[Contradictions] No contradictions found.");
                         } else {
-                            println!(
-                                "[Contradictions] {} issue(s) found:",
-                                violations.len()
-                            );
+                            println!("[Contradictions] {} issue(s) found:", violations.len());
                             for (i, v) in violations.iter().enumerate() {
                                 println!("  {}: {}", i + 1, v);
                             }

@@ -64,7 +64,8 @@ mod tests {
     #[test]
     fn test_import_simple_triple() {
         let engine = NibliEngine::new();
-        let turtle = r#"<http://example.org/adam> <http://example.org/likes> <http://example.org/bob> ."#;
+        let turtle =
+            r#"<http://example.org/adam> <http://example.org/likes> <http://example.org/bob> ."#;
         let count = import_triples_raw(&engine, turtle).unwrap();
         assert_eq!(count, 1);
         let facts = engine.list_facts().unwrap();

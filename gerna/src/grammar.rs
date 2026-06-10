@@ -466,7 +466,6 @@ impl<'a, 'arena> Parser<'a, 'arena> {
             column,
         }
     }
-
 }
 
 // ─── Public entry point ───────────────────────────────────────────
@@ -482,7 +481,6 @@ pub fn parse_tokens_to_ast<'a, 'arena>(
 }
 
 // ─── Tests ────────────────────────────────────────────────────────
-
 
 #[cfg(test)]
 #[path = "grammar_tests.rs"]

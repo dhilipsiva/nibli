@@ -16,13 +16,13 @@
 //! - **String interning**: all relation names and variable names use [`lasso::Rodeo`]
 //!   for zero-copy comparison and deduplication.
 
+use crate::dictionary::JbovlasteSchema;
+use crate::ir::{LogicalForm, LogicalTerm};
+use lasso::Rodeo;
 use nibli_types::ast::{
     AbstractionKind, Attitudinal, BaiTag, Bridi, Connective, Conversion, Gadri, ModalTag, PlaceTag,
     Selbri, Sentence, SentenceConnective, Sumti, Tense,
 };
-use crate::dictionary::JbovlasteSchema;
-use crate::ir::{LogicalForm, LogicalTerm};
-use lasso::Rodeo;
 
 mod compile;
 mod helpers;
@@ -105,11 +105,11 @@ impl SemanticCompiler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ir::{LogicalForm, LogicalTerm};
     use nibli_types::ast::{
         Bridi, Connective, Gadri, RelClause, RelClauseKind, Selbri, Sentence, SentenceConnective,
         Sumti,
     };
-    use crate::ir::{LogicalForm, LogicalTerm};
 
     /// Helper: build a minimal buffer and compile the first sentence.
     /// Returns the compiled LogicalForm.

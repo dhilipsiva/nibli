@@ -25,7 +25,11 @@ impl std::fmt::Display for NibliError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             NibliError::Syntax(d) => {
-                write!(f, "[Syntax Error] line {}:{}: {}", d.line, d.column, d.message)
+                write!(
+                    f,
+                    "[Syntax Error] line {}:{}: {}",
+                    d.line, d.column, d.message
+                )
             }
             NibliError::Semantic(m) => write!(f, "[Semantic Error] {}", m),
             NibliError::Reasoning(m) => write!(f, "[Reasoning Error] {}", m),

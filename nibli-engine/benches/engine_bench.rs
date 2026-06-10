@@ -27,12 +27,9 @@ fn bench_assertion_throughput(c: &mut Criterion) {
     let mut group = c.benchmark_group("assertion_throughput");
     for &n in &[100, 500, 1000] {
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &n| {
-            b.iter_with_setup(
-                NibliEngine::new,
-                |engine| {
-                    populate_kb(&engine, n);
-                },
-            );
+            b.iter_with_setup(NibliEngine::new, |engine| {
+                populate_kb(&engine, n);
+            });
         });
     }
     group.finish();
@@ -62,8 +59,10 @@ fn bench_rule_chain(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(depth), &depth, |b, &depth| {
             let engine = NibliEngine::new();
             // Build rule chain: gerku→danlu→jmive→... via Lojban.
-            let preds = ["gerku", "danlu", "jmive", "xanlu", "fenki", "lisri",
-                         "bangu", "prenu", "nixli", "nanmu", "mlatu"];
+            let preds = [
+                "gerku", "danlu", "jmive", "xanlu", "fenki", "lisri", "bangu", "prenu", "nixli",
+                "nanmu", "mlatu",
+            ];
             for i in 0..depth.min(preds.len() - 1) {
                 let text = format!(".i ro lo {} cu {}", preds[i], preds[i + 1]);
                 engine.assert_text(&text).unwrap();

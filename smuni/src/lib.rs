@@ -15,10 +15,10 @@ pub mod ir;
 /// Semantic compiler: AST → FOL logic form tree.
 pub mod semantic;
 
+use ir::{LogicalForm, LogicalTerm};
 use nibli_types::ast as gerna_ast;
 use nibli_types::error::NibliError;
 use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm as WitTerm};
-use ir::{LogicalForm, LogicalTerm};
 use semantic::SemanticCompiler;
 
 /// Core compilation: gerna AST buffer → FOL logic buffer.
@@ -196,9 +196,6 @@ fn flatten_form(form: &LogicalForm, nodes: &mut Vec<LogicNode>, interner: &lasso
 
 /// Compile a gerna-produced AST buffer into a logic buffer.
 /// Primary API for all callers (lasna, nibli-engine).
-pub fn compile_from_gerna_ast(
-    ast: gerna_ast::AstBuffer,
-) -> Result<LogicBuffer, NibliError> {
+pub fn compile_from_gerna_ast(ast: gerna_ast::AstBuffer) -> Result<LogicBuffer, NibliError> {
     compile_ast(&ast)
 }
-

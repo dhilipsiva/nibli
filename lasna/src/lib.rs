@@ -670,7 +670,10 @@ impl GuestSession for Session {
                 column: 0,
             }));
         }
-        let fact_id = self.kb.assert_fact(buf, input).map_err(convert_pipeline_error)?;
+        let fact_id = self
+            .kb
+            .assert_fact(buf, input)
+            .map_err(convert_pipeline_error)?;
         *self.last_relation.borrow_mut() = new_last;
         Ok(fact_id)
     }
@@ -759,7 +762,9 @@ impl GuestSession for Session {
             nodes,
             roots: vec![0],
         };
-        self.kb.assert_fact(buf, label).map_err(convert_pipeline_error)
+        self.kb
+            .assert_fact(buf, label)
+            .map_err(convert_pipeline_error)
     }
 
     fn retract_fact(&self, id: u64) -> Result<(), export_err::NibliError> {

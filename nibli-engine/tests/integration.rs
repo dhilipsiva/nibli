@@ -241,11 +241,16 @@ fn forethought_implication_ganai_reasons() {
         "la .adam. cu gerku",
     ]);
     let (holds, _t, _j) = engine.query_text_with_proof("la .adam. cu danlu").unwrap();
-    assert_true(&holds, "ganai: danlu should derive from gerku (modus ponens)");
+    assert_true(
+        &holds,
+        "ganai: danlu should derive from gerku (modus ponens)",
+    );
 
     // Negative control: without the antecedent, the consequent is not derivable.
     let only_rule = engine_with_facts(&["ganai la .adam. cu gerku gi la .adam. cu danlu"]);
-    let (holds, _t, _j) = only_rule.query_text_with_proof("la .adam. cu danlu").unwrap();
+    let (holds, _t, _j) = only_rule
+        .query_text_with_proof("la .adam. cu danlu")
+        .unwrap();
     assert_false(&holds, "ganai: danlu must NOT hold without gerku");
 }
 
@@ -257,14 +262,20 @@ fn forethought_biconditional_go_gi_reasons_both_directions() {
         "la .adam. cu gerku",
     ]);
     let (holds, _t, _j) = fwd.query_text_with_proof("la .adam. cu danlu").unwrap();
-    assert_true(&holds, "go biconditional: gerku should derive danlu (forward)");
+    assert_true(
+        &holds,
+        "go biconditional: gerku should derive danlu (forward)",
+    );
 
     let rev = engine_with_facts(&[
         "go la .adam. cu gerku gi la .adam. cu danlu",
         "la .adam. cu danlu",
     ]);
     let (holds, _t, _j) = rev.query_text_with_proof("la .adam. cu gerku").unwrap();
-    assert_true(&holds, "go biconditional: danlu should derive gerku (reverse)");
+    assert_true(
+        &holds,
+        "go biconditional: danlu should derive gerku (reverse)",
+    );
 }
 
 #[test]
@@ -275,14 +286,20 @@ fn afterthought_biconditional_jo_reasons_both_directions() {
         "la .adam. cu gerku",
     ]);
     let (holds, _t, _j) = fwd.query_text_with_proof("la .adam. cu danlu").unwrap();
-    assert_true(&holds, ".i jo biconditional: gerku should derive danlu (forward)");
+    assert_true(
+        &holds,
+        ".i jo biconditional: gerku should derive danlu (forward)",
+    );
 
     let rev = engine_with_facts(&[
         "la .adam. cu gerku .i jo la .adam. cu danlu",
         "la .adam. cu danlu",
     ]);
     let (holds, _t, _j) = rev.query_text_with_proof("la .adam. cu gerku").unwrap();
-    assert_true(&holds, ".i jo biconditional: danlu should derive gerku (reverse)");
+    assert_true(
+        &holds,
+        ".i jo biconditional: danlu should derive gerku (reverse)",
+    );
 }
 
 // ─── Conversion (se) ────────────────────────────────────────────────
@@ -545,7 +562,12 @@ fn gdpr_file_loads_clean() {
             continue;
         }
         engine.assert_text(trimmed).unwrap_or_else(|e| {
-            panic!("gdpr.lojban line {} failed to assert: {:?}\n{}", line_num + 1, trimmed, e)
+            panic!(
+                "gdpr.lojban line {} failed to assert: {:?}\n{}",
+                line_num + 1,
+                trimmed,
+                e
+            )
         });
     }
 }
@@ -592,7 +614,8 @@ fn gdpr_belief_revision_consent_withdrawal() {
     let parsed: serde_json::Value =
         serde_json::from_str(&json).expect("Erasure proof JSON should parse");
     assert_eq!(
-        parsed["naf_dependent"], serde_json::Value::Bool(true),
+        parsed["naf_dependent"],
+        serde_json::Value::Bool(true),
         "Erasure verdict must be flagged as negation-as-failure dependent"
     );
 }
@@ -628,11 +651,15 @@ fn gdpr_special_category_requires_stricter_basis() {
         "la .ordrek. cu datni",
     ]);
     assert_true(
-        &engine.query_holds("la .kanrek. cu se bilga lo nu satci").unwrap(),
+        &engine
+            .query_holds("la .kanrek. cu se bilga lo nu satci")
+            .unwrap(),
         "Health data requires a stricter basis (Art 9)",
     );
     assert_false(
-        &engine.query_holds("la .ordrek. cu se bilga lo nu satci").unwrap(),
+        &engine
+            .query_holds("la .ordrek. cu se bilga lo nu satci")
+            .unwrap(),
         "Ordinary data does not require the special-category basis",
     );
 }
@@ -653,7 +680,10 @@ fn gdpr_art5_accuracy_applies_to_health_data() {
         &holds,
         "Accuracy obligation reaches health data via kanro datni -> datni -> drani",
     );
-    assert!(trace.contains("Rule"), "Accuracy proof should show a derivation chain");
+    assert!(
+        trace.contains("Rule"),
+        "Accuracy proof should show a derivation chain"
+    );
 }
 
 /// Art 15: every data subject has a right of access (DSAR); a non-subject does
@@ -666,11 +696,15 @@ fn gdpr_right_of_access_dsar() {
         "la .akmes. cu datni turni", // a controller, not a data subject
     ]);
     assert_true(
-        &engine.query_holds("la .adam. cu se curmi lo nu datni facki").unwrap(),
+        &engine
+            .query_holds("la .adam. cu se curmi lo nu datni facki")
+            .unwrap(),
         "A data subject has the right of access (Art 15)",
     );
     assert_false(
-        &engine.query_holds("la .akmes. cu se curmi lo nu datni facki").unwrap(),
+        &engine
+            .query_holds("la .akmes. cu se curmi lo nu datni facki")
+            .unwrap(),
         "A controller (non-subject) does not acquire the access right",
     );
 }
@@ -686,11 +720,15 @@ fn gdpr_breach_notification() {
         "la .akmes. cu cfila", // only AkmeCorp breached
     ]);
     assert_true(
-        &engine.query_holds("la .akmes. cu se bilga lo nu notci").unwrap(),
+        &engine
+            .query_holds("la .akmes. cu se bilga lo nu notci")
+            .unwrap(),
         "A breached controller must notify (Art 33)",
     );
     assert_false(
-        &engine.query_holds("la .gugli. cu se bilga lo nu notci").unwrap(),
+        &engine
+            .query_holds("la .gugli. cu se bilga lo nu notci")
+            .unwrap(),
         "A controller with no breach has no notification obligation",
     );
 }
@@ -963,7 +1001,9 @@ fn ddi_witness_cyp2c9_substrates() {
 #[test]
 fn ddi_regimen_count_aggregation() {
     let engine = engine_with_ddi_corpus();
-    let n = engine.count_witnesses_text("la .adam. cu pilno da").unwrap();
+    let n = engine
+        .count_witnesses_text("la .adam. cu pilno da")
+        .unwrap();
     assert_eq!(
         n, 2,
         "Adam's regimen contains exactly two drugs (warfarin + fluconazole)"

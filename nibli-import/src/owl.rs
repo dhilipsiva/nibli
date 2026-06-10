@@ -48,7 +48,9 @@ pub fn import_owl_classes(engine: &NibliEngine, triples: &[Triple]) -> Result<us
                     term_to_logical(&triple.subject),
                     term_to_logical(&triple.object),
                 ];
-                engine.assert_fact_direct(rel, args).map_err(|e| e.to_string())?;
+                engine
+                    .assert_fact_direct(rel, args)
+                    .map_err(|e| e.to_string())?;
                 count += 1;
             }
         }
