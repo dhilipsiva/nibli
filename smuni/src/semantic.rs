@@ -5,8 +5,8 @@
 //!
 //! - **Quantifier scoping**: gadri descriptions (`lo`/`le`/`la`/`ro lo`) introduce
 //!   quantified variables; scopes are closed outward after the bridi body is compiled.
-//! - **Skolemization**: existential quantifiers under universals produce `SkolemFn`
-//!   dependent terms instead of bare Skolem constants.
+//! - **Quantifier closure**: bare logic variables (`da`/`de`/`di`) are wrapped in
+//!   `Exists`; Skolemization itself happens downstream in logji at assertion time.
 //! - **Connective expansion**: sumti/selbri/sentence connectives expand into FOL
 //!   `And`/`Or`/`Not`/`Biconditional`/`Xor` combinations.
 //! - **Conversion**: `se`/`te`/`ve`/`xe` permute argument places.

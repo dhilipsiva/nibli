@@ -37,7 +37,17 @@ fn main() {
                         2
                     };
 
-                    let gloss = extract_glossword(block).unwrap_or(word);
+                    let gloss = if let Some(&(_, g)) =
+                        GISMU_GLOSS_OVERRIDES.iter().find(|(w, _)| *w == word)
+                    {
+                        g
+                    } else if let Some(&(_, _, g)) =
+                        FALLBACK_GISMU_ENTRIES.iter().find(|(w, _, _)| *w == word)
+                    {
+                        g
+                    } else {
+                        extract_glossword(block).unwrap_or(word)
+                    };
                     let escaped_gloss = escape_str(gloss);
                     let value = format!(
                         "DictEntry {{ arity: Some({}), gloss: \"{}\" }}",
@@ -298,6 +308,15 @@ const FALLBACK_GISMU_ENTRIES: &[(&str, usize, &str)] = &[
     ("dilcu", 3, "divide"),
     ("danlu", 2, "animal"),
     ("jmive", 1, "live"),
+];
+
+/// Curated gloss overrides for gismu where the first jbovlaste glossword
+/// is alphabetically accidental rather than canonical (e.g. gerku's
+/// glosswords are bitch/canine/dog — "dog" is the right back-translation).
+/// Consulted before FALLBACK_GISMU_ENTRIES and extract_glossword.
+const GISMU_GLOSS_OVERRIDES: &[(&str, &str)] = &[
+    ("bilga", "must"),
+    ("curmi", "permit"),
 ];
 
 /// Hardcoded gloss overrides for common cmavo where jbovlaste glosses

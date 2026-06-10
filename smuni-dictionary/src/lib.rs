@@ -62,10 +62,14 @@ mod tests {
 
     #[test]
     fn test_gismu_gloss() {
-        // jbovlaste first glossword for gerku is "bitch" (female dog)
-        assert!(get_gloss("gerku").is_some());
-        assert!(get_gloss("klama").is_some());
+        // Curated glosses win over the alphabetically-first jbovlaste
+        // glossword (gerku's glosswords are bitch/canine/dog)
+        assert_eq!(get_gloss("gerku"), Some("dog"));
+        assert_eq!(get_gloss("prenu"), Some("person"));
+        assert_eq!(get_gloss("curmi"), Some("permit"));
+        assert_eq!(get_gloss("bilga"), Some("must"));
         assert_eq!(get_gloss("prami"), Some("love"));
+        assert!(get_gloss("klama").is_some());
     }
 
     #[test]
@@ -81,6 +85,12 @@ mod tests {
         // Should contain glosses for gerku and klama (whatever jbovlaste provides)
         assert!(result.contains("the"), "Expected 'the' in: {}", result);
         assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_back_translate_default_syllogism() {
+        // The Transparency Triad UI's default example (book Ch 19)
+        assert_eq!(back_translate("ro lo gerku cu danlu"), "all the dog animal");
     }
 
     #[test]
