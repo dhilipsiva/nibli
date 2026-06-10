@@ -412,6 +412,73 @@ fn persistent_engine_honors_store_retractions_after_reopen() {
     cleanup(&path);
 }
 
+/// Regression: retracting through the *engine* API (not the store directly)
+/// must durably tombstone the fact so it does not resurrect on reopen.
+///
+/// Before the fix, `NibliEngine::retract_fact` only mutated the in-memory KB and
+/// never propagated the tombstone to the persistent `NibliStore`, so `open()`'s
+/// replay of `all_active_facts()` brought the retracted fact back to life.
+#[test]
+fn persistent_engine_retraction_via_engine_api_survives_reopen() {
+    let path = temp_db_path("engine_api_retract_then_reopen");
+    cleanup(&path);
+
+    let fact_id = {
+        let engine = NibliEngine::open(&path).expect("Persistent engine should open");
+        let id = engine
+            .assert_text("la .adam. cu gerku")
+            .expect("Fact should persist");
+        assert!(
+            engine
+                .query_holds("la .adam. cu gerku")
+                .expect("Query should run before retraction")
+                .is_true(),
+            "Fact should hold immediately after assertion"
+        );
+
+        // Retract through the engine API (the path the REPL / server use), NOT
+        // by reaching into the store directly.
+        engine
+            .retract_fact(id)
+            .expect("Engine-level retraction should succeed");
+        assert!(
+            engine
+                .query_holds("la .adam. cu gerku")
+                .expect("Query should run after retraction")
+                .is_false(),
+            "Retracted fact must not hold in the live engine"
+        );
+        id
+    };
+
+    // The store must have recorded the tombstone durably.
+    {
+        let store = NibliStore::open(&path, "local".into()).expect("Store should reopen");
+        let record = store
+            .get_fact(fact_id)
+            .expect("Store read should succeed")
+            .expect("Retracted fact record should still exist as a tombstone");
+        assert!(
+            record.retracted,
+            "Engine-level retraction must durably tombstone the persisted fact"
+        );
+    }
+
+    // Reopening a fresh engine must NOT resurrect the retracted fact.
+    {
+        let reopened = NibliEngine::open(&path).expect("Persistent engine should reopen");
+        assert!(
+            reopened
+                .query_holds("la .adam. cu gerku")
+                .expect("Query should run after reopen")
+                .is_false(),
+            "Facts retracted via the engine API must stay retracted after reopen"
+        );
+    }
+
+    cleanup(&path);
+}
+
 #[test]
 fn persistent_engine_queries_merged_remote_facts_after_reopen() {
     let local_path = temp_db_path("merge_local");

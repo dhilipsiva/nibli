@@ -311,7 +311,8 @@ impl NibliEngine {
                 .map_err(|e| format!("Deserialize error: {e}"))?;
             let buf = buf_from_stored(&stored_buf);
             self.kb
-                .assert_fact_with_id(buf, fact.label.clone(), fact.id);
+                .assert_fact_with_id(buf, fact.label.clone(), fact.id)
+                .map_err(|e| format!("Replay error (fact {}): {e}", fact.id))?;
         }
         if !facts.is_empty() {
             println!("[Store] Replayed {} persisted facts", facts.len());
@@ -400,10 +401,7 @@ impl NibliEngine {
                 .map_err(|e| format_error(&PipelineError::Semantic(e)))?;
             Ok(fact_id)
         } else {
-            self.kb
-                .assert_fact(buf, label)
-                .map(|id| id)
-                .map_err(|e| e.to_string())
+            self.kb.assert_fact(buf, label).map_err(|e| e.to_string())
         }
     }
 
@@ -418,10 +416,7 @@ impl NibliEngine {
             nodes: vec![logji_logic::LogicNode::Predicate((relation, args))],
             roots: vec![0],
         };
-        self.kb
-            .assert_fact(buf, label)
-            .map(|id| id)
-            .map_err(|e| e.to_string())
+        self.kb.assert_fact(buf, label).map_err(|e| e.to_string())
     }
 
     /// Parse Lojban query, run entailment check, return result + formatted proof + JSON proof.
@@ -486,8 +481,31 @@ impl NibliEngine {
     }
 
     /// Retract a fact by ID and rebuild derived state.
+    ///
+    /// When persistence is configured, the retraction is also written through to
+    /// the on-disk store as a tombstone, so a subsequent `open()` does NOT replay
+    /// (resurrect) the retracted fact. The in-memory KB is retracted first (this
+    /// validates the ID and rebuilds derived state); the durable tombstone is only
+    /// written if that succeeds, keeping both layers consistent.
     pub fn retract_fact(&self, id: u64) -> Result<(), String> {
-        self.kb.retract_fact(id).map_err(|e| e.to_string())
+        self.kb.retract_fact(id).map_err(|e| e.to_string())?;
+
+        let mut store = self
+            .store
+            .try_borrow_mut()
+            .map_err(|_| "Store error: persistence state is already borrowed".to_string())?;
+        if let Some(s) = store.as_mut() {
+            // Idempotent at the store layer: retracting an already-tombstoned or
+            // never-persisted-but-known fact is fine. A NotFound here means the id
+            // lives only in the in-memory KB (e.g. assert_fact_direct, which bypasses
+            // the store) — that is not a durability failure, so swallow it.
+            match s.retract_fact(id) {
+                Ok(()) => {}
+                Err(nibli_store::StoreError::NotFound(_)) => {}
+                Err(e) => return Err(format!("Store error: {e}")),
+            }
+        }
+        Ok(())
     }
 
     /// Scan the KB for contradictions. Returns human-readable descriptions.
