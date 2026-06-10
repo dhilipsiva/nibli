@@ -473,6 +473,224 @@ fn test_quantified_description_flattening() {
     }
 }
 
+// ─── Body-index TARGET tests (2026-06-10 panel regression) ────────────────
+//
+// The Abstraction and Restricted arms used to snapshot `sentences.len()`
+// BEFORE recursing and discard push_sentence's return value. Whenever the
+// body itself pushed nested sentences first (connected sentences, rel-clause
+// bodies, nested abstractions), the recorded index pointed at the WRONG
+// sentence — always in-range, so smuni miscompiled silently. The tests above
+// only assert COUNTS, which is why the bug survived; these assert which
+// sentence the index actually targets.
+
+/// Resolve the root-selbri name of a Simple sentence at `idx` (panics otherwise).
+fn simple_sentence_relation(buffer: &flat::AstBuffer, idx: u32) -> String {
+    match &buffer.sentences[idx as usize] {
+        flat::Sentence::Simple(b) => match &buffer.selbris[b.relation as usize] {
+            flat::Selbri::Root(s) => s.clone(),
+            other => panic!("expected Root selbri, got {:?}", other),
+        },
+        other => panic!("expected Simple sentence at index {}, got {:?}", idx, other),
+    }
+}
+
+/// Find the (first) Abstraction selbri's body index.
+fn abstraction_body_idx(buffer: &flat::AstBuffer) -> u32 {
+    buffer
+        .selbris
+        .iter()
+        .find_map(|s| match s {
+            flat::Selbri::Abstraction((_, idx)) => Some(*idx),
+            _ => None,
+        })
+        .expect("abstraction selbri must exist")
+}
+
+/// `mi djica lo nu ganai gerku gi klama kei` — the abstraction body is the
+/// CONNECTED sentence. Its children are pushed first, so a pre-recursion
+/// snapshot bound the antecedent (`gerku`) bridi instead, silently dropping
+/// the consequent from the compiled FOL.
+#[test]
+fn test_abstraction_body_over_connected_sentence_targets_connected_node() {
+    let arena = Bump::new();
+    let parsed = ParsedText {
+        sentences: vec![Sentence::Simple(Bridi {
+            selbri: Selbri::Root("djica".into()),
+            head_terms: vec![Sumti::ProSumti("mi".into())],
+            tail_terms: vec![Sumti::Description {
+                gadri: Gadri::Lo,
+                inner: arena.alloc(Selbri::Abstraction(
+                    AbstractionKind::Nu,
+                    arena.alloc(Sentence::Connected {
+                        connective: SentenceConnective::GanaiGi,
+                        left: arena.alloc(Sentence::Simple(Bridi {
+                            selbri: Selbri::Root("gerku".into()),
+                            head_terms: vec![],
+                            tail_terms: vec![],
+                            negated: false,
+                            tense: None,
+                            attitudinal: None,
+                        })),
+                        right: arena.alloc(Sentence::Simple(Bridi {
+                            selbri: Selbri::Root("klama".into()),
+                            head_terms: vec![],
+                            tail_terms: vec![],
+                            negated: false,
+                            tense: None,
+                            attitudinal: None,
+                        })),
+                    }),
+                )),
+            }],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        })],
+    };
+
+    let buffer = Flattener::flatten(&parsed);
+    let body_idx = abstraction_body_idx(&buffer);
+
+    match &buffer.sentences[body_idx as usize] {
+        flat::Sentence::Connected((conn, l, r)) => {
+            assert!(
+                matches!(conn, flat::SentenceConnective::GanaiGi),
+                "expected GanaiGi connective, got {:?}",
+                conn
+            );
+            assert_eq!(simple_sentence_relation(&buffer, *l), "gerku");
+            assert_eq!(simple_sentence_relation(&buffer, *r), "klama");
+        }
+        other => panic!(
+            "abstraction body_idx {} must target the Connected sentence, \
+             got {:?} (the pre-recursion snapshot bug binds the antecedent)",
+            body_idx, other
+        ),
+    }
+}
+
+/// `mi djica lo nu lo gerku poi barda cu klama kei` — the abstraction body is
+/// the `klama` bridi; the `barda` rel-clause body is pushed FIRST during
+/// recursion. The abstraction must reference `klama`, not the rel clause.
+#[test]
+fn test_abstraction_body_with_rel_clause_targets_head_bridi() {
+    let arena = Bump::new();
+    let parsed = ParsedText {
+        sentences: vec![Sentence::Simple(Bridi {
+            selbri: Selbri::Root("djica".into()),
+            head_terms: vec![Sumti::ProSumti("mi".into())],
+            tail_terms: vec![Sumti::Description {
+                gadri: Gadri::Lo,
+                inner: arena.alloc(Selbri::Abstraction(
+                    AbstractionKind::Nu,
+                    arena.alloc(Sentence::Simple(Bridi {
+                        selbri: Selbri::Root("klama".into()),
+                        head_terms: vec![Sumti::Restricted {
+                            inner: arena.alloc(Sumti::Description {
+                                gadri: Gadri::Lo,
+                                inner: arena.alloc(Selbri::Root("gerku".into())),
+                            }),
+                            clause: RelClause {
+                                kind: RelClauseKind::Poi,
+                                body: arena.alloc(Sentence::Simple(Bridi {
+                                    selbri: Selbri::Root("barda".into()),
+                                    head_terms: vec![],
+                                    tail_terms: vec![],
+                                    negated: false,
+                                    tense: None,
+                                    attitudinal: None,
+                                })),
+                            },
+                        }],
+                        tail_terms: vec![],
+                        negated: false,
+                        tense: None,
+                        attitudinal: None,
+                    })),
+                )),
+            }],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        })],
+    };
+
+    let buffer = Flattener::flatten(&parsed);
+    let body_idx = abstraction_body_idx(&buffer);
+
+    assert_eq!(
+        simple_sentence_relation(&buffer, body_idx),
+        "klama",
+        "abstraction body must target the head bridi (klama), not the \
+         rel-clause body (barda) pushed first during recursion"
+    );
+}
+
+/// `lo gerku poi nelci lo nu bajra kei cu klama` — the rel clause body is the
+/// `nelci` bridi, whose own abstraction pushes the `bajra` sentence FIRST.
+/// RelClause.body_sentence must reference `nelci`, not `bajra`.
+#[test]
+fn test_rel_clause_body_with_nested_abstraction_targets_clause_bridi() {
+    let arena = Bump::new();
+    let parsed = ParsedText {
+        sentences: vec![Sentence::Simple(Bridi {
+            selbri: Selbri::Root("klama".into()),
+            head_terms: vec![Sumti::Restricted {
+                inner: arena.alloc(Sumti::Description {
+                    gadri: Gadri::Lo,
+                    inner: arena.alloc(Selbri::Root("gerku".into())),
+                }),
+                clause: RelClause {
+                    kind: RelClauseKind::Poi,
+                    body: arena.alloc(Sentence::Simple(Bridi {
+                        selbri: Selbri::Root("nelci".into()),
+                        head_terms: vec![],
+                        tail_terms: vec![Sumti::Description {
+                            gadri: Gadri::Lo,
+                            inner: arena.alloc(Selbri::Abstraction(
+                                AbstractionKind::Nu,
+                                arena.alloc(Sentence::Simple(Bridi {
+                                    selbri: Selbri::Root("bajra".into()),
+                                    head_terms: vec![],
+                                    tail_terms: vec![],
+                                    negated: false,
+                                    tense: None,
+                                    attitudinal: None,
+                                })),
+                            )),
+                        }],
+                        negated: false,
+                        tense: None,
+                        attitudinal: None,
+                    })),
+                },
+            }],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        })],
+    };
+
+    let buffer = Flattener::flatten(&parsed);
+
+    let body_sentence = buffer
+        .sumtis
+        .iter()
+        .find_map(|s| match s {
+            flat::Sumti::Restricted((_, clause)) => Some(clause.body_sentence),
+            _ => None,
+        })
+        .expect("restricted sumti must exist");
+
+    assert_eq!(
+        simple_sentence_relation(&buffer, body_sentence),
+        "nelci",
+        "rel clause body_sentence must target the clause bridi (nelci), not \
+         the nested abstraction body (bajra) pushed first during recursion"
+    );
+}
+
 #[test]
 fn test_fio_flattening() {
     // barda fi'o klama mi → tail: [ModalTagged(Fio(Root("klama")), ProSumti("mi"))]

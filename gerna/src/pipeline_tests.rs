@@ -563,6 +563,106 @@ fn pipeline_error_display_format() {
     );
 }
 
+// ─── Lex error surfacing (2026-06-10 panel regression) ─────────────────────
+//
+// The lexer used to TRUNCATE input at the first unlexable character with
+// zero errors. parse_text_native must now surface a positioned ParseError
+// for each unlexable run while still parsing the rest of the input.
+
+#[test]
+fn pipeline_unlexable_char_surfaces_positioned_error() {
+    // The panel's probe input: `7` is unlexable mid-sentence. Pre-fix the
+    // lexer TRUNCATED here, silently asserting just `mi klama` with zero
+    // errors. Post-fix the lex error MUST surface (fail-closed downstream:
+    // nibli-engine assert_text aborts on any error).
+    let r = crate::parse_text_native("mi klama 7 do prami .i lo gerku cu danlu".to_string())
+        .expect("parse_text_native must not Err — errors ride in ParseResult");
+
+    // The lex error comes first and carries the exact position of the `7`.
+    assert!(
+        !r.errors.is_empty(),
+        "unlexable `7` produced no error — input silently truncated"
+    );
+    assert!(
+        r.errors[0].message.contains("unlexable"),
+        "first error should be the lex error, got: {}",
+        r.errors[0].message
+    );
+    assert_eq!(r.errors[0].line, 1);
+    assert_eq!(r.errors[0].column, 10); // "mi klama " is 9 bytes → col 10
+
+    // The skip leaves `do prami` wreckage in sentence 1, which the grammar
+    // also reports (unconsumed tokens) — at least two errors total. NOTE:
+    // the trailing `.i lo gerku cu danlu` is currently ALSO lost, but at the
+    // GRAMMAR level: the top-level loop `break`s when a successfully parsed
+    // sentence is followed by garbage instead of `.i`, instead of recovering
+    // to the next `.i`. That is a separate, pre-existing recovery limitation
+    // (adjacent to the filed connective re-pairing finding), not lexer
+    // truncation — the tokens ARE produced (see the lexer test).
+    assert!(
+        r.errors.len() >= 2,
+        "expected lex error + grammar error, got: {:?}",
+        r.errors
+    );
+}
+
+#[test]
+fn pipeline_sentences_after_unlexable_char_still_parse() {
+    use nibli_types::ast as flat;
+
+    // Here the unlexable `7` sits at the END of sentence 2, so skipping it
+    // leaves all three sentences well-formed: the error is recorded AND the
+    // later sentences still parse (per-sentence recovery philosophy).
+    let r = crate::parse_text_native("mi klama .i do prami 7 .i lo gerku cu danlu".to_string())
+        .expect("parse_text_native must not Err");
+
+    let lex_errors: Vec<_> = r
+        .errors
+        .iter()
+        .filter(|e| e.message.contains("unlexable"))
+        .collect();
+    assert_eq!(
+        lex_errors.len(),
+        1,
+        "expected one lex error: {:?}",
+        r.errors
+    );
+    assert_eq!(lex_errors[0].line, 1);
+    assert_eq!(lex_errors[0].column, 22); // "mi klama .i do prami " is 21 bytes
+
+    // All three sentences must be roots; the last one is `danlu`.
+    assert_eq!(
+        r.buffer.roots.len(),
+        3,
+        "sentences after the unlexable char were dropped: {:?}",
+        r.buffer.roots
+    );
+    let last_root = *r.buffer.roots.last().unwrap();
+    match &r.buffer.sentences[last_root as usize] {
+        flat::Sentence::Simple(b) => assert!(
+            matches!(
+                &r.buffer.selbris[b.relation as usize],
+                flat::Selbri::Root(s) if s == "danlu"
+            ),
+            "last root is not the danlu sentence"
+        ),
+        other => panic!("expected Simple sentence, got {:?}", other),
+    }
+}
+
+#[test]
+fn pipeline_unlexable_char_position_on_second_line() {
+    let r = crate::parse_text_native("mi klama\n.i do @ prami".to_string()).unwrap();
+
+    let lex_err = r
+        .errors
+        .iter()
+        .find(|e| e.message.contains("unlexable"))
+        .expect("the `@` must surface a lex error");
+    assert_eq!(lex_err.line, 2, "error should be on line 2");
+    assert_eq!(lex_err.column, 7, "`.i do ` is 6 bytes → col 7");
+}
+
 /// Verify every non-blank, non-comment line in readme.lojban parses cleanly.
 /// This is a regression test: if the parser breaks any readme line, this fails.
 #[test]

@@ -23,10 +23,27 @@ pub mod preprocessor;
 use nibli_types::ast as flat;
 use nibli_types::error::NibliError;
 
+/// Compute 1-indexed (line, column) from a byte offset into `input`.
+///
+/// Mirrors the grammar parser's `line_col_at` convention. Operates on raw
+/// bytes so an offset that is not a UTF-8 char boundary cannot panic.
+fn line_col_at(input: &str, byte_offset: usize) -> (u32, u32) {
+    let offset = byte_offset.min(input.len());
+    let bytes = &input.as_bytes()[..offset];
+    let line = bytes.iter().filter(|&&b| b == b'\n').count() as u32 + 1;
+    let col = match bytes.iter().rposition(|&b| b == b'\n') {
+        Some(nl_pos) => (offset - nl_pos) as u32,
+        None => offset as u32 + 1,
+    };
+    (line, col)
+}
+
 /// Parse Lojban text through the full pipeline: lex → preprocess → parse → flatten.
 pub fn parse_text_native(input: String) -> Result<flat::ParseResult, NibliError> {
-    // 1. Lex into morphological classification stream
-    let raw_tokens = crate::lexer::tokenize(&input);
+    // 1. Lex into morphological classification stream. Unlexable characters
+    //    are skipped (lexing continues) and reported as positioned errors —
+    //    input is never silently truncated.
+    let (raw_tokens, lex_errors) = crate::lexer::tokenize_with_errors(&input);
 
     // 2. Resolve metalinguistic operators (si/sa/su/zo/zoi/zei)
     let normalized = crate::preprocessor::preprocess(raw_tokens.into_iter(), &input);
@@ -35,16 +52,25 @@ pub fn parse_text_native(input: String) -> Result<flat::ParseResult, NibliError>
     let arena = bumpalo::Bump::new();
     let result = crate::grammar::parse_tokens_to_ast(&normalized, &input, &arena);
 
-    // 4. Convert grammar errors
-    let errors: Vec<flat::ParseError> = result
-        .errors
+    // 4. Convert lex + grammar errors (lex errors first: they occur earlier
+    //    in the pipeline and explain downstream parse failures)
+    let mut errors: Vec<flat::ParseError> = lex_errors
         .iter()
-        .map(|e| flat::ParseError {
-            message: e.message.clone(),
-            line: e.line,
-            column: e.column,
+        .map(|e| {
+            let (line, column) = line_col_at(&input, e.start);
+            let snippet = input.get(e.start..e.end).unwrap_or("<invalid utf-8>");
+            flat::ParseError {
+                message: format!("unlexable input `{snippet}` skipped (not valid Lojban)"),
+                line,
+                column,
+            }
         })
         .collect();
+    errors.extend(result.errors.iter().map(|e| flat::ParseError {
+        message: e.message.clone(),
+        line: e.line,
+        column: e.column,
+    }));
 
     // 5. Flatten tree AST → index-based flat buffer
     let buffer = Flattener::flatten(&result.parsed);
@@ -237,8 +263,13 @@ impl Flattener {
             ast::Selbri::Abstraction(kind, inner_bridi) => {
                 // Inner bridi goes into sentences (NOT a root —
                 // same pattern as rel clause bodies).
-                let body_idx = self.buffer.sentences.len() as u32;
-                self.push_sentence(inner_bridi);
+                //
+                // Use push_sentence's RETURN VALUE as the body index: the body
+                // may itself push nested sentences first (connected sentences,
+                // rel-clause bodies, nested abstractions), so a pre-recursion
+                // `sentences.len()` snapshot would point at the wrong (nested)
+                // sentence — always in-range, silently miscompiled downstream.
+                let body_idx = self.push_sentence(inner_bridi);
                 let wit_kind = match kind {
                     ast::AbstractionKind::Nu => flat::AbstractionKind::Nu,
                     ast::AbstractionKind::Duhu => flat::AbstractionKind::Duhu,
@@ -313,8 +344,12 @@ impl Flattener {
                 // The rel clause body is a sentence — push it as a bridi.
                 // It is NOT a root; it lives in `sentences` only for
                 // cross-referencing by index from the Restricted variant.
-                let body_idx = self.buffer.sentences.len() as u32;
-                self.push_sentence(clause.body);
+                //
+                // As with the Abstraction arm: use push_sentence's RETURN
+                // VALUE, not a pre-recursion `sentences.len()` snapshot — the
+                // clause body may push nested sentences (e.g. an abstraction
+                // inside the clause) before its own node is recorded.
+                let body_idx = self.push_sentence(clause.body);
 
                 let wit_kind = match clause.kind {
                     ast::RelClauseKind::Poi => flat::RelClauseKind::Poi,

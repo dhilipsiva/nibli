@@ -190,18 +190,65 @@ fn fix_sumti_connective_nai<'a>(tokens: &mut Vec<(LojbanToken, &'a str)>, input:
     }
 }
 
-/// Tokenizer: Logos DFA + post-lex compound cmavo reclassification.
-pub fn tokenize(input: &str) -> Vec<(LojbanToken, &str)> {
+/// A lexical error: a maximal run of unlexable characters in the input.
+///
+/// `start..end` is the byte span of the run in the original input string.
+/// Callers convert the span to line:column for diagnostics (the parser
+/// already does pointer-arithmetic positioning from token slices; lex
+/// errors carry explicit offsets because the offending text never becomes
+/// a token).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LexError {
+    /// Byte offset of the first unlexable character.
+    pub start: usize,
+    /// Byte offset one past the last unlexable character of the run.
+    pub end: usize,
+}
+
+/// Tokenizer with an explicit error channel: Logos DFA + post-lex compound
+/// cmavo reclassification.
+///
+/// Unlexable characters (digits, most punctuation, capitalized vowel-final
+/// words) do NOT stop lexing: each maximal run is skipped, recorded as a
+/// [`LexError`] span, and lexing continues — so later sentences still parse
+/// and input is never silently dropped. Callers that must fail closed
+/// (e.g. assertion paths) reject the input when any error is present.
+pub fn tokenize_with_errors(input: &str) -> (Vec<(LojbanToken, &str)>, Vec<LexError>) {
     let mut lex = LojbanToken::lexer(input);
     let mut tokens = Vec::new();
+    let mut errors: Vec<LexError> = Vec::new();
 
-    while let Some(Ok(token)) = lex.next() {
-        tokens.push((token, lex.slice()));
+    while let Some(result) = lex.next() {
+        match result {
+            Ok(token) => tokens.push((token, lex.slice())),
+            Err(()) => {
+                let span = lex.span();
+                // Coalesce adjacent unlexable characters into one run
+                // (logos reports errors char by char).
+                match errors.last_mut() {
+                    Some(last) if last.end == span.start => last.end = span.end,
+                    _ => errors.push(LexError {
+                        start: span.start,
+                        end: span.end,
+                    }),
+                }
+            }
+        }
     }
 
     reclassify_compounds(&mut tokens, input);
     fix_sumti_connective_nai(&mut tokens, input);
-    tokens
+    (tokens, errors)
+}
+
+/// Tokenizer returning only the token stream.
+///
+/// Unlexable characters are skipped (lexing continues past them) but their
+/// positions are discarded — use [`tokenize_with_errors`] to observe them.
+/// The full pipeline ([`crate::parse_text_native`]) uses the error-carrying
+/// variant so unlexable input surfaces as a positioned parse error.
+pub fn tokenize(input: &str) -> Vec<(LojbanToken, &str)> {
+    tokenize_with_errors(input).0
 }
 
 #[cfg(test)]
@@ -539,5 +586,79 @@ mod tests {
         assert_eq!(tokens[0], (LojbanToken::Cmavo, "du'u"));
         assert_eq!(tokens[1], (LojbanToken::Cmavo, "si'o"));
         assert_eq!(tokens[2], (LojbanToken::Cmavo, "e'e"));
+    }
+
+    // ─── Lex error channel (2026-06-10 panel regression) ──────────
+    //
+    // tokenize() used to stop at the first logos Err and DISCARD the rest
+    // of the input with zero errors: `mi klama 7 do prami .i lo gerku cu
+    // danlu` silently asserted just `mi klama`. The error channel records
+    // each unlexable run's byte span and lexing continues.
+
+    #[test]
+    fn test_unlexable_char_mid_input_reported_and_rest_lexed() {
+        let input = "mi klama 7 do prami .i lo gerku cu danlu";
+        let (tokens, errors) = tokenize_with_errors(input);
+
+        // The `7` must surface as exactly one error at its byte span.
+        assert_eq!(errors.len(), 1, "expected one lex error, got {errors:?}");
+        assert_eq!(&input[errors[0].start..errors[0].end], "7");
+        assert_eq!(errors[0].start, 9); // "mi klama " is 9 bytes
+
+        // Lexing must CONTINUE past the bad char: the trailing sentence's
+        // tokens must all be present.
+        for expected in ["do", "prami", "i", "lo", "gerku", "cu", "danlu"] {
+            assert!(
+                tokens.iter().any(|(_, s)| *s == expected),
+                "token `{expected}` missing after the unlexable char — input truncated"
+            );
+        }
+    }
+
+    #[test]
+    fn test_unlexable_run_coalesced_into_one_error() {
+        let input = "mi 123 klama";
+        let (tokens, errors) = tokenize_with_errors(input);
+
+        // Adjacent unlexable chars coalesce into one maximal run.
+        assert_eq!(
+            errors.len(),
+            1,
+            "expected one coalesced run, got {errors:?}"
+        );
+        assert_eq!(&input[errors[0].start..errors[0].end], "123");
+
+        // Both surrounding words still lex.
+        assert!(tokens.iter().any(|(_, s)| *s == "mi"));
+        assert!(tokens.iter().any(|(_, s)| *s == "klama"));
+    }
+
+    #[test]
+    fn test_separated_unlexable_runs_reported_individually() {
+        let input = "mi 7 klama 9 do";
+        let (tokens, errors) = tokenize_with_errors(input);
+
+        assert_eq!(
+            errors.len(),
+            2,
+            "expected two separate runs, got {errors:?}"
+        );
+        assert_eq!(&input[errors[0].start..errors[0].end], "7");
+        assert_eq!(&input[errors[1].start..errors[1].end], "9");
+        assert!(tokens.iter().any(|(_, s)| *s == "do"));
+    }
+
+    #[test]
+    fn test_clean_input_has_no_lex_errors() {
+        let (tokens, errors) = tokenize_with_errors("lo gerku cu klama lo zarci");
+        assert!(errors.is_empty(), "clean input produced {errors:?}");
+        assert_eq!(tokens.len(), 6);
+    }
+
+    #[test]
+    fn test_tokenize_wrapper_skips_unlexable_and_continues() {
+        // The error-discarding wrapper must not truncate either.
+        let tokens = tokenize("mi klama 7 do prami");
+        assert!(tokens.iter().any(|(_, s)| *s == "prami"));
     }
 }
