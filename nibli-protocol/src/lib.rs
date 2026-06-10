@@ -365,12 +365,12 @@ fn humanize_term(s: String) -> String {
         return format!("#{}", &s[3..]);
     }
     // SkolemFn display: sk_N(arg) → #N(arg)
-    if s.starts_with("sk_") {
-        if let Some(paren) = s.find('(') {
-            let num_part = &s[3..paren];
-            if num_part.chars().all(|c| c.is_ascii_digit()) {
-                return format!("#{}{}", num_part, &s[paren..]);
-            }
+    if s.starts_with("sk_")
+        && let Some(paren) = s.find('(')
+    {
+        let num_part = &s[3..paren];
+        if num_part.chars().all(|c| c.is_ascii_digit()) {
+            return format!("#{}{}", num_part, &s[paren..]);
         }
     }
     s
@@ -888,10 +888,10 @@ fn collapse_role_predicates(s: &str) -> String {
         .collect();
     if bases.is_empty() {
         // All parts were role predicates — use the first one's base
-        if let Some(first) = parts.first() {
-            if let Some(underscore) = first.rfind('_') {
-                return first[..underscore].to_string();
-            }
+        if let Some(first) = parts.first()
+            && let Some(underscore) = first.rfind('_')
+        {
+            return first[..underscore].to_string();
         }
         s.to_string()
     } else {

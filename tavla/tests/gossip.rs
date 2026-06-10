@@ -4,7 +4,6 @@
 //! retraction tombstones, KB rebuild, epidemic propagation,
 //! trust-as-knowledge, contradiction detection, and envelope expiration.
 
-use chrono;
 use nibli_engine::EngineQueryResult;
 use tavla::{EpistemicStance, GossipNode, TrustPolicy, VectorClock};
 
@@ -1073,7 +1072,7 @@ fn partition_recovery_tombstone_via_sync() {
     assert_eq!(node_b.active_count(), 1); // B still has the fact
 
     // Partition heals: B syncs from A via sync_diff.
-    let diff = node_a.sync_diff(&node_b.get_clock());
+    let diff = node_a.sync_diff(node_b.get_clock());
     for envelope in diff {
         node_b.ingest(envelope).unwrap();
     }
