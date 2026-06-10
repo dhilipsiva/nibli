@@ -336,6 +336,15 @@
 
     #[test]
     fn test_native_rule_negated_universal() {
+        // A universal with a NEGATED conclusion — ∀x. gerku(x) → ¬danlu(x), encoded as
+        // ∀x. ¬gerku(x) ∨ ¬danlu(x). The conclusion atom ¬danlu(x) is not a flat
+        // predicate, so it cannot be compiled into a backward-chaining template.
+        //
+        // This used to be silently dropped to an empty-conclusion `__fallback__` rule
+        // (dead, never matched), and the test "passed for the wrong reason": danlu(alis)
+        // was simply never derivable. The compiler now FAILS CLOSED (todo.md: "Negated
+        // conclusions silently dropped to __fallback__") — the assertion is rejected
+        // rather than registering a misleading dead rule.
         let kb = new_kb();
         assert_buf(&kb, make_assertion("alis", "gerku"));
 
@@ -360,14 +369,19 @@
         let neg_restrict = not(&mut nodes, restrict);
         let disj = or(&mut nodes, neg_restrict, neg_body);
         let root = forall(&mut nodes, "_v0", disj);
-        assert_buf(
-            &kb,
+        let result = kb.assert_fact_inner(
             LogicBuffer {
                 nodes,
                 roots: vec![root],
             },
+            String::new(),
+        );
+        assert!(
+            result.is_err(),
+            "negated-conclusion universal must be rejected (fail-closed), got {result:?}"
         );
 
+        // danlu(alis) must not be derivable either way.
         assert!(!query(&kb, make_query("alis", "danlu")));
     }
 

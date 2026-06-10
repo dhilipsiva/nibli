@@ -595,6 +595,13 @@ pub(super) fn compile_forall_to_rule(
     }
     let inner_body_id = current;
 
+    // For fail-closed diagnostics: how to refer to this rule in an error message.
+    let rule_desc = if universals.is_empty() {
+        "ground conditional".to_string()
+    } else {
+        format!("∀{}", universals.join(","))
+    };
+
     let mut pattern_vars: HashMap<String, String> = universals
         .iter()
         .enumerate()
@@ -675,23 +682,51 @@ pub(super) fn compile_forall_to_rule(
             let mut typed_conds: Vec<StoredFact> = Vec::new();
             let mut negated_condition_indices: Vec<usize> = Vec::new();
             for &cid in &all_conditions {
-                if let Some((fact, is_negated)) = build_rule_template_fact_with_negation(
+                match build_rule_template_fact_with_negation(
                     buffer, cid, &pattern_vars, &ground_skolems, &dependent_skolems,
                 ) {
-                    if is_negated {
-                        negated_condition_indices.push(typed_conds.len());
+                    Some((fact, is_negated)) => {
+                        if is_negated {
+                            negated_condition_indices.push(typed_conds.len());
+                        }
+                        typed_conds.push(fact);
                     }
-                    typed_conds.push(fact);
+                    // FAIL CLOSED: an antecedent atom we cannot represent as a flat
+                    // backward-chaining template (a tense wrapper, disjunction, nested
+                    // quantifier, or negated-complex form) would otherwise be silently
+                    // dropped — leaving an UNDER-CONDITIONED rule that fires when it
+                    // should not. That is exactly the fail-open unsoundness the
+                    // zero-hallucination contract forbids. Reject the assertion instead.
+                    None => {
+                        return Err(format!(
+                            "cannot compile rule antecedent for {rule_desc}: an atom is not a \
+                             flat predicate (tense, disjunction, nested quantifier, or \
+                             negated-complex antecedents are unsupported). Rejecting the \
+                             assertion to preserve soundness rather than registering an \
+                             under-conditioned rule."
+                        ));
+                    }
                 }
             }
-            let typed_concls: Vec<StoredFact> = consequent_atoms
-                .iter()
-                .filter_map(|&aid| {
-                    build_rule_template_fact(
-                        buffer, aid, &pattern_vars, &ground_skolems, &dependent_skolems,
-                    )
-                })
-                .collect();
+            let mut typed_concls: Vec<StoredFact> = Vec::new();
+            for &aid in &consequent_atoms {
+                match build_rule_template_fact(
+                    buffer, aid, &pattern_vars, &ground_skolems, &dependent_skolems,
+                ) {
+                    Some(fact) => typed_concls.push(fact),
+                    // FAIL CLOSED: a conclusion atom we cannot template (negated,
+                    // disjunctive, or nested) would make the rule conclude less than
+                    // written — a dead `__fallback__` rule or silently-lost negative
+                    // information. Reject rather than register a misleading rule.
+                    None => {
+                        return Err(format!(
+                            "cannot compile rule conclusion for {rule_desc}: a consequent \
+                             atom is not a flat predicate. Rejecting the assertion to \
+                             preserve soundness."
+                        ));
+                    }
+                }
+            }
 
             let dedup_key = rule_dedup_hash(0, &typed_conds, &typed_concls);
             if !inner.known_rules.insert(dedup_key) {
@@ -768,14 +803,19 @@ pub(super) fn compile_forall_to_rule(
                 }
             }
 
-            let typed_concls: Vec<StoredFact> = vec![inner_body_id]
-                .iter()
-                .filter_map(|&aid| {
-                    build_rule_template_fact(
-                        buffer, aid, &pattern_vars, &ground_skolems, &dependent_skolems,
-                    )
-                })
-                .collect();
+            let typed_concls: Vec<StoredFact> = match build_rule_template_fact(
+                buffer, inner_body_id, &pattern_vars, &ground_skolems, &dependent_skolems,
+            ) {
+                Some(fact) => vec![fact],
+                // FAIL CLOSED: a bare universal whose body is conjunctive/complex would
+                // otherwise collapse to an empty conclusion list (a dead rule). Reject.
+                None => {
+                    return Err(format!(
+                        "cannot compile bare universal {rule_desc}: its body is not a flat \
+                         predicate. Rejecting the assertion to preserve soundness."
+                    ));
+                }
+            };
 
             let dedup_key = rule_dedup_hash(1, &[], &typed_concls);
             if !inner.known_rules.insert(dedup_key) {

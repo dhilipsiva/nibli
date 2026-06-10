@@ -29,34 +29,41 @@ use nibli_engine::{EngineLogicalTerm, NibliEngine};
 // atoms it cannot represent (tense wrappers, disjunctions, ...), and the rule is
 // registered anyway — possibly with zero conditions, so it fires unconditionally.
 
-#[test]
-#[ignore = "KNOWN BUG (todo.md: fail-open rule compilation): a tensed antecedent atom is dropped, so the rule fires on an empty KB"]
+#[test] // FIXED (fail-closed rule compilation): promoted from the backlog to a live guard.
 fn ganai_tensed_antecedent_must_not_fire_unconditionally() {
     let engine = NibliEngine::new();
     // "if Adam ran (past), then Adam is an animal" — on an empty KB, Adam never ran.
-    engine
+    // Fail-closed (reject the unrepresentable rule) and fail-open-fixed (represent the
+    // tensed condition and don't fire) are both acceptable; the invariant is that
+    // danlu(adam) is NOT derivable from an empty KB.
+    if engine
         .assert_text("ganai la .adam. pu bajra gi la .adam. danlu")
-        .unwrap();
-    let r = engine.query_holds("la .adam. cu danlu").unwrap();
-    assert!(
-        !r.is_true(),
-        "tensed antecedent was dropped → rule fired with no supporting fact: {r:?}"
-    );
+        .is_ok()
+    {
+        let r = engine.query_holds("la .adam. cu danlu").unwrap();
+        assert!(
+            !r.is_true(),
+            "tensed antecedent was dropped → rule fired with no supporting fact: {r:?}"
+        );
+    }
 }
 
-#[test]
-#[ignore = "KNOWN BUG (todo.md: fail-open rule compilation): a disjunctive antecedent (ga..gi) is dropped, so the rule fires on an empty KB"]
+#[test] // FIXED (fail-closed rule compilation): promoted from the backlog to a live guard.
 fn ganai_disjunctive_antecedent_must_not_fire_unconditionally() {
     let engine = NibliEngine::new();
     // "if (Adam is a dog OR Adam is a cat) then Adam is an animal" — neither disjunct holds.
-    engine
+    // Reject-or-represent (see the tensed-antecedent test); the invariant is that
+    // danlu(adam) is NOT derivable from an empty KB.
+    if engine
         .assert_text("ganai ga la .adam. gerku gi la .adam. mlatu gi la .adam. danlu")
-        .unwrap();
-    let r = engine.query_holds("la .adam. cu danlu").unwrap();
-    assert!(
-        !r.is_true(),
-        "disjunctive antecedent was dropped → rule fired with no supporting fact: {r:?}"
-    );
+        .is_ok()
+    {
+        let r = engine.query_holds("la .adam. cu danlu").unwrap();
+        assert!(
+            !r.is_true(),
+            "disjunctive antecedent was dropped → rule fired with no supporting fact: {r:?}"
+        );
+    }
 }
 
 // ─── Zero-ingest assertions (todo.md: HIGH) ─────────────────────────────────

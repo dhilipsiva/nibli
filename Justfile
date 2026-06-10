@@ -179,6 +179,7 @@ verify-book-vocab:
 # is fixed (revisions P0.2) — it is intentionally red until then.
 verify-harness:
     cargo test -p logji --test known_failures_fol {{cargo_profile_flag}} -- --test-threads=1
+    cargo test -p nibli-engine --test known_failures {{cargo_profile_flag}} -- --test-threads=1
 
 # Generate training data (requires ANTHROPIC_API_KEY env var)
 generate-training: build-validate
