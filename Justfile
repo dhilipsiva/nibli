@@ -157,7 +157,7 @@ gossip-webrtc-b:
 test-all: test test-engine test-store test-tavla test-backend test-classifier
 
 # CI gate for the hardened runtime and transport surface
-ci: fmt-check clippy-runtime test test-engine test-store test-server test-gossip-e2e test-persistence-replay test-sync-retraction
+ci: fmt-check clippy-runtime test test-engine test-store test-server test-gossip-e2e test-persistence-replay test-sync-retraction verify-harness
 
 # Build the nibli-validate binary (batch Lojban validation via stdin)
 build-validate:
@@ -171,6 +171,14 @@ verify-book: build-validate
 # Manuscript gate, vocab-only (fast; no build needed)
 verify-book-vocab:
     python3 book/tools/verify_book.py --vocab-only
+
+# Step-zero regression guard (run by `ci`). The logji FOL control test proves the
+# deep-chain reasoning path stays sound (it must PASS). The RED known-failure
+# backlog (known_failures*) stays opt-in via `-- --ignored` and is NOT run here.
+# The book vocab gate (`verify-book-vocab`) joins `ci` once the `xanlu` non-word
+# is fixed (revisions P0.2) — it is intentionally red until then.
+verify-harness:
+    cargo test -p logji --test known_failures_fol {{cargo_profile_flag}} -- --test-threads=1
 
 # Generate training data (requires ANTHROPIC_API_KEY env var)
 generate-training: build-validate
