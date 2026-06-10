@@ -733,6 +733,69 @@ fn gdpr_breach_notification() {
     );
 }
 
+/// PERF REGRESSION PIN (Ch 20 reproducibility): the chapter tells readers to
+/// load the FULL shipped gdpr.lojban and run `la .adam. cu se curmi`. Before
+/// the 2026-06 backward-chaining fixes in logji (lazy candidate build,
+/// index-decidable filter pruning, depth-horizon provability lookahead), this
+/// query did not return within 240 seconds in a debug build: at the depth
+/// horizon every unbound-event-variable filter check returned ResourceExceeded
+/// and pessimistically kept the entire members^k candidate cartesian product
+/// alive. Post-fix the full Ch 20 sequence — lawful-basis query, consent
+/// withdrawal, and BOTH post-retraction verdicts (the worst case: a definitive
+/// False cannot short-circuit the search) — completes in seconds. The
+/// 120-second budget is deliberately generous so CI never flakes; its job is
+/// to catch a regression back to the cartesian-blowup complexity class.
+#[test]
+fn gdpr_full_corpus_lawful_basis_query_completes() {
+    let start = std::time::Instant::now();
+    let corpus = include_str!("../../gdpr.lojban");
+    let engine = NibliEngine::new();
+    let mut consent_id = None;
+    for (line_num, line) in corpus.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let id = engine.assert_text(trimmed).unwrap_or_else(|e| {
+            panic!(
+                "gdpr.lojban line {} failed to assert: {:?}\n{}",
+                line_num + 1,
+                trimmed,
+                e
+            )
+        });
+        if trimmed == "la .adam. cu zanru" {
+            consent_id = Some(id);
+        }
+    }
+
+    // Ch 20's first lawful-basis query, against the FULL loaded corpus.
+    assert_true(
+        &engine.query_holds("la .adam. cu se curmi").unwrap(),
+        "Against the full corpus, Adam's processing has a lawful basis (Art 6)",
+    );
+
+    // The consent-withdrawal belief-revision flip, also against the full corpus.
+    engine
+        .retract_fact(consent_id.expect("consent line present in gdpr.lojban"))
+        .unwrap();
+    assert_false(
+        &engine.query_holds("la .adam. cu se curmi").unwrap(),
+        "After withdrawal, no lawful basis remains (full-corpus exhaustive search)",
+    );
+    assert_true(
+        &engine.query_holds("la .adam. na se curmi").unwrap(),
+        "After withdrawal, the right to erasure (Art 17) is triggered",
+    );
+
+    let elapsed = start.elapsed();
+    assert!(
+        elapsed < std::time::Duration::from_secs(120),
+        "full-corpus Ch 20 sequence took {elapsed:?} (budget 120s) — the \
+         backward-chaining candidate search has regressed"
+    );
+}
+
 // ════════════════════════════════════════════════════════════════════
 // Stacked relative-clause restrictor: conjunction, not overwrite
 // ════════════════════════════════════════════════════════════════════
