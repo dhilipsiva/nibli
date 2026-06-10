@@ -119,8 +119,7 @@ fn negated_ground_fact_then_contrary_positive_is_a_contradiction() {
 
 // ─── smuni silently discards meaning (todo.md: HIGH) ────────────────────────
 
-#[test]
-#[ignore = "KNOWN BUG (todo.md: smuni silent meaning loss): a relative clause on a `la`-name is dropped, yielding an unsound TRUE"]
+#[test] // FIXED (rel clause on name conjoined into matrix): promoted to a live guard.
 fn rel_clause_on_name_must_not_be_dropped() {
     let engine = NibliEngine::new();
     engine.assert_text("la .adam. cu klama").unwrap(); // only known fact: Adam goes
@@ -132,8 +131,30 @@ fn rel_clause_on_name_must_not_be_dropped() {
     );
 }
 
-#[test]
-#[ignore = "KNOWN BUG (todo.md: smuni silent meaning loss): a FA place tag beyond the selbri arity drops the bound term with no diagnostic"]
+#[test] // Positive companion to the guard above: when BOTH conjuncts are known, the
+// restricted query holds, and asserting the restricted sentence asserts both conjuncts.
+fn rel_clause_on_name_positive_direction() {
+    let engine = NibliEngine::new();
+    engine.assert_text("la .adam. cu gerku").unwrap();
+    engine.assert_text("la .adam. cu klama").unwrap();
+    let r = engine.query_holds("la .adam. poi gerku cu klama").unwrap();
+    assert!(
+        r.is_true(),
+        "both conjuncts known → restricted query must hold: {r:?}"
+    );
+
+    // Asserting the restricted sentence must assert BOTH conjuncts.
+    let engine2 = NibliEngine::new();
+    engine2.assert_text("la .adam. poi gerku cu klama").unwrap();
+    let g = engine2.query_holds("la .adam. cu gerku").unwrap();
+    let k = engine2.query_holds("la .adam. cu klama").unwrap();
+    assert!(
+        g.is_true() && k.is_true(),
+        "asserting the restricted sentence must assert both conjuncts: gerku={g:?}, klama={k:?}"
+    );
+}
+
+#[test] // FIXED (FA-overflow fails closed with a semantic error): promoted to a live guard.
 fn fa_tag_beyond_arity_must_error_not_silently_drop() {
     let engine = NibliEngine::new();
     // `fu` tags place x5; `gerku` is 2-place, so the x5 term `do` cannot be placed.
@@ -144,8 +165,7 @@ fn fa_tag_beyond_arity_must_error_not_silently_drop() {
     );
 }
 
-#[test]
-#[ignore = "KNOWN BUG (todo.md: smuni tanru-in-poi false rejection): event decomposition skips Unspecified roles in a tanru, so a valid `poi <tanru>` clause is rejected"]
+#[test] // FIXED (tanru decomposition emits Unspecified roles; firewall counts per shared event): promoted.
 fn tanru_in_poi_must_not_be_falsely_rejected() {
     let engine = NibliEngine::new();
     // "a dog that runs fast goes" — valid Lojban; `sutra bajra` is a tanru inside the poi clause.
@@ -159,8 +179,7 @@ fn tanru_in_poi_must_not_be_falsely_rejected() {
 
 // ─── gerna lexer truncation (todo.md: HIGH) ─────────────────────────────────
 
-#[test]
-#[ignore = "KNOWN BUG (todo.md: lexer truncation): tokenize() stops at the first unlexable char and drops the rest with no error"]
+#[test] // FIXED (lexer error channel: unlexable runs surface as positioned parse errors): promoted.
 fn lexer_must_not_silently_truncate_input() {
     let engine = NibliEngine::new();
     // The bare `7` is unlexable mid-sentence; the trailing sentence must not vanish silently.
@@ -178,8 +197,7 @@ fn lexer_must_not_silently_truncate_input() {
 
 // ─── Quantifier-closure scoping (todo.md: HIGH) ─────────────────────────────
 
-#[test]
-#[ignore = "KNOWN BUG (todo.md: quantifier-closure scoping): `da` after a `ro lo` description is closed OUTSIDE the universal, dead-ending the rule so the whole assertion is silently lost"]
+#[test] // FIXED (da/de/di existentials close INSIDE universal closure — ∀x.∃y scope): promoted.
 fn da_after_universal_description_must_not_lose_the_rule() {
     let engine = NibliEngine::new();
     engine.assert_text("ro lo gerku cu citka da").unwrap(); // every dog eats something
@@ -200,8 +218,7 @@ fn da_after_universal_description_must_not_lose_the_rule() {
 // it is always in-range, so smuni miscompiles silently. We pin via compile_debug:
 // the abstraction's body predicate must actually appear in the compiled FOL.
 
-#[test]
-#[ignore = "KNOWN BUG (todo.md: gerna flattener wrong body indices): an abstraction over `ganai A gi B` binds the antecedent A; the real body B (klama) vanishes from the compiled FOL"]
+#[test] // FIXED (flattener uses push_sentence's return value for body indices): promoted.
 fn abstraction_body_over_connected_must_reference_real_body() {
     let engine = NibliEngine::new();
     // The `lo nu ...` abstraction body is `ganai la .adam. gerku gi la .adam. klama`.
@@ -218,8 +235,7 @@ fn abstraction_body_over_connected_must_reference_real_body() {
     );
 }
 
-#[test]
-#[ignore = "KNOWN BUG (todo.md: gerna flattener wrong body indices): an abstraction over a bridi with a relative clause binds the rel-clause bridi; the real body (klama) vanishes"]
+#[test] // FIXED (flattener uses push_sentence's return value for body indices): promoted.
 fn abstraction_body_over_rel_clause_must_reference_real_body() {
     let engine = NibliEngine::new();
     // Abstraction body is `lo gerku poi ke'a barda cu klama`; the head predicate
