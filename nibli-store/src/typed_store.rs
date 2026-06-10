@@ -12,7 +12,7 @@ use std::path::Path;
 
 use logji::fact_store::FactStore;
 use logji::kb::StoredFact;
-use redb::{Database, ReadableTable, ReadableTableMetadata, TableDefinition};
+use redb::{Database, ReadableTable, TableDefinition};
 
 const TYPED_FACTS_TABLE: TableDefinition<u64, &[u8]> = TableDefinition::new("typed_facts");
 const TYPED_PRED_INDEX_TABLE: TableDefinition<&str, &[u8]> =

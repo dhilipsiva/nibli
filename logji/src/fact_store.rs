@@ -13,7 +13,15 @@ use crate::kb::StoredFact;
 ///
 /// Implementations must maintain a predicate index (relation name → facts)
 /// for O(1) amortized lookup on the hot path.
-pub trait FactStore {
+///
+/// `Send` supertrait: a `Box<dyn FactStore>` lives inside `KnowledgeBaseInner`,
+/// so without this bound the whole `KnowledgeBase` (and everything embedding it —
+/// `NibliEngine`, tavla's `GossipNode`) is `!Send`, which makes it unusable as
+/// async-graphql shared state (`Arc<Mutex<GossipNode>>` requires the inner to be
+/// `Send`). All impls (in-memory, redb, WASI) hold only `Send` fields. We do not
+/// require `Sync`: `KnowledgeBase` wraps its inner in `RefCell` (single-threaded
+/// by design), and the server provides cross-thread safety via the outer `Mutex`.
+pub trait FactStore: Send {
     /// Look up all facts for a given predicate relation.
     fn lookup_predicate(&self, relation: &str) -> Option<&HashSet<StoredFact>>;
 
