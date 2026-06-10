@@ -1057,11 +1057,10 @@ async fn broadcast_wire_message(
     metrics: SharedMetrics,
 ) -> Result<(), String> {
     match transport {
-        Some(transport) => transport.broadcast(&msg).await.map_err(|err| {
+        Some(transport) => transport.broadcast(&msg).await.inspect_err(|_err| {
             metrics
                 .gossip_broadcast_failures_total
                 .fetch_add(1, Ordering::Relaxed);
-            err
         }),
         None => Ok(()),
     }

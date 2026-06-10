@@ -142,13 +142,13 @@ impl FactStore for RedbFactStore {
         self.next_id += 1;
 
         // Serialize and write to redb.
-        if let Ok(bytes) = postcard::to_allocvec(&fact) {
-            if let Ok(txn) = self.db.begin_write() {
-                if let Ok(mut table) = txn.open_table(TYPED_FACTS_TABLE) {
-                    let _ = table.insert(id, bytes.as_slice());
-                }
-                let _ = txn.commit();
+        if let Ok(bytes) = postcard::to_allocvec(&fact)
+            && let Ok(txn) = self.db.begin_write()
+        {
+            if let Ok(mut table) = txn.open_table(TYPED_FACTS_TABLE) {
+                let _ = table.insert(id, bytes.as_slice());
             }
+            let _ = txn.commit();
         }
 
         // Update in-memory index.
@@ -163,7 +163,7 @@ impl FactStore for RedbFactStore {
         self.cache.entry(relation).or_default().insert(fact);
 
         // Periodically flush the predicate index (every 100 inserts).
-        if id % 100 == 0 {
+        if id.is_multiple_of(100) {
             let _ = self.flush_pred_index();
         }
     }
@@ -215,12 +215,10 @@ impl FactStore for RedbFactStore {
 
     fn remove(&mut self, fact: &StoredFact) -> bool {
         let removed = self.all_facts_cache.remove(fact);
-        if removed {
-            if let Some(set) = self.cache.get_mut(fact.relation()) {
-                set.remove(fact);
-            }
-            // Note: disk cleanup deferred to compaction. In-memory state is authoritative.
+        if removed && let Some(set) = self.cache.get_mut(fact.relation()) {
+            set.remove(fact);
         }
+        // Note: disk cleanup deferred to compaction. In-memory state is authoritative.
         removed
     }
 
