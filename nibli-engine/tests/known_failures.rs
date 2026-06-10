@@ -72,8 +72,7 @@ fn ganai_disjunctive_antecedent_must_not_fire_unconditionally() {
 // assert must be observable — either the engine rejects what it cannot represent,
 // or the asserted statement queries back true.
 
-#[test]
-#[ignore = "KNOWN BUG (todo.md: zero-ingest assertions): a bare `.i ja` disjunction ingests nothing yet assert returns Ok"]
+#[test] // FIXED (zero-ingest guard): bare disjunction is now rejected. Live guard.
 fn disjunction_assert_must_be_observable() {
     let engine = NibliEngine::new();
     let s = "la .adam. cu gerku .i ja la .adam. cu mlatu";
@@ -88,8 +87,7 @@ fn disjunction_assert_must_be_observable() {
     //  `if` is then skipped and the test passes.)
 }
 
-#[test]
-#[ignore = "KNOWN BUG (todo.md: zero-ingest assertions): `.i ju` Xor is erased in smuni flattening and ingests nothing"]
+#[test] // FIXED (zero-ingest guard): xor (flattened to And(Or, Not(And))) is now rejected. Live guard.
 fn xor_assert_must_be_observable() {
     let engine = NibliEngine::new();
     let s = "la .adam. cu gerku .i ju la .adam. cu mlatu";
@@ -103,7 +101,7 @@ fn xor_assert_must_be_observable() {
 }
 
 #[test]
-#[ignore = "KNOWN BUG (todo.md: zero-ingest assertions): a negated ground fact `na` ingests nothing, so a contrary positive is not flagged"]
+#[ignore = "KNOWN BUG (todo.md: negated ground facts not stored): `na <selbri>` is accepted as a closed-world no-op, so a later contrary positive is not flagged as a contradiction. Needs explicit negative-fact storage + contradiction detection — distinct from the zero-ingest guard, which deliberately exempts negations so this fix stays possible."]
 fn negated_ground_fact_then_contrary_positive_is_a_contradiction() {
     let engine = NibliEngine::new();
     // "Adam is NOT a dog."
