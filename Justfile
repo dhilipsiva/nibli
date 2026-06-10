@@ -163,6 +163,15 @@ ci: fmt-check clippy-runtime test test-engine test-store test-server test-gossip
 build-validate:
     cargo build -p nibli --bin nibli-validate {{cargo_profile_flag}}
 
+# Manuscript gate: run every Lojban example in book/ through the engine (parse + vocab).
+# Detection half of the manuscript-CI gate (see book/tools/README.md).
+verify-book: build-validate
+    python3 book/tools/verify_book.py --validate-bin target/debug/nibli-validate
+
+# Manuscript gate, vocab-only (fast; no build needed)
+verify-book-vocab:
+    python3 book/tools/verify_book.py --vocab-only
+
 # Generate training data (requires ANTHROPIC_API_KEY env var)
 generate-training: build-validate
     python3 python/generate_training_data.py --output data/training_raw.jsonl
