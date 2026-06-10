@@ -514,6 +514,13 @@ pub(super) struct KnowledgeBaseInner {
     /// When a traced predicate is encountered during reasoning, diagnostic
     /// output is printed showing depth, rule matches, and condition results.
     pub(super) traced_predicates: HashSet<String>,
+    /// Explicitly asserted NEGATIVE ground facts (`na <selbri>`), stored as
+    /// template groups for contradiction detection (`check_contradictions`).
+    /// Each group is the conjunction of leaves under one negation, with event
+    /// Skolem arguments generalized to pattern variables (see
+    /// `record_negative_ground_fact`). Negatives never enter the positive fact
+    /// store or predicate index — queries keep NAF/CWA semantics unchanged.
+    pub(super) negative_facts: HashSet<Vec<StoredFact>>,
 }
 
 impl Clone for KnowledgeBaseInner {
@@ -545,6 +552,7 @@ impl Clone for KnowledgeBaseInner {
             sort_hierarchy: self.sort_hierarchy.clone(),
             entity_sorts: self.entity_sorts.clone(),
             traced_predicates: self.traced_predicates.clone(),
+            negative_facts: self.negative_facts.clone(),
         }
     }
 }
@@ -578,6 +586,7 @@ impl KnowledgeBaseInner {
             sort_hierarchy: HashMap::new(),
             entity_sorts: HashMap::new(),
             traced_predicates: HashSet::new(),
+            negative_facts: HashSet::new(),
         }
     }
 
@@ -603,6 +612,7 @@ impl KnowledgeBaseInner {
         self.rule_source_map.clear();
         self.current_assertion_id = None;
         self.forward_depth = 0;
+        self.negative_facts.clear();
         // Note: integrity_constraints are NOT cleared on reset — they're
         // structural declarations, not derived state. Clear explicitly if needed.
     }
@@ -1015,6 +1025,147 @@ fn root_reduces_to_negation(
     }
 }
 
+/// Descend through tense/deontic wrappers and Skolemized Exists to the NotNode,
+/// returning the negation body and the accumulated tense context. Companion to
+/// `root_reduces_to_negation` (which decides THAT a root is a negation; this
+/// returns WHERE its body is). Tense tracking mirrors `collect_ground_facts`:
+/// Past/Present/Future set the context, deontic wrappers are transparent.
+fn find_negation_body(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    subs: &HashMap<String, GroundTerm>,
+    tense: Option<&'static str>,
+) -> Option<(u32, Option<&'static str>)> {
+    let node = get_node(buffer, node_id).ok()?;
+    match node {
+        LogicNode::NotNode(body) => Some((*body, tense)),
+        LogicNode::PastNode(n) => find_negation_body(buffer, *n, subs, Some("Past")),
+        LogicNode::PresentNode(n) => find_negation_body(buffer, *n, subs, Some("Present")),
+        LogicNode::FutureNode(n) => find_negation_body(buffer, *n, subs, Some("Future")),
+        LogicNode::ObligatoryNode(n) | LogicNode::PermittedNode(n) => {
+            find_negation_body(buffer, *n, subs, tense)
+        }
+        LogicNode::ExistsNode((v, body)) if subs.contains_key(v.as_str()) => {
+            find_negation_body(buffer, *body, subs, tense)
+        }
+        _ => None,
+    }
+}
+
+/// Record a negated ground root (`na <selbri>`) as an explicit negative-fact
+/// template group for contradiction detection.
+///
+/// THE EVENT TRAP: smuni event-decomposes every predication, so
+/// `la .adam. na gerku` compiles to ¬∃e.(gerku(e) ∧ gerku_x1(e, adam) ∧
+/// gerku_x2(e, zo'e)), and Skolemization gives the negative leaves an event
+/// Skolem (e.g. sk_0) that can NEVER equal the fresh event Skolem a later
+/// contrary positive receives (sk_1) — naive `StoredFact` equality would never
+/// match. We therefore GENERALIZE event arguments: every constant that was
+/// introduced as an event Skolem (an `_ev*` variable; the ground path has
+/// already registered it via `note_event_entity`, so `known_event_entities` is
+/// the authoritative set — the same set witness search and proof tracing use to
+/// distinguish event entities) is replaced by a `PatternVar`, one per DISTINCT
+/// event constant, preserving event coreference within the group.
+/// `check_contradictions` then unifies the whole group against asserted
+/// positives under a single consistent binding (`negative_group_holds`).
+///
+/// Queries are NOT affected: negative facts live in their own registry, never
+/// in the positive fact store or predicate index (NAF/CWA unchanged — a
+/// negative premise stays assertable, and `Not` is still computed by
+/// failure-to-derive).
+pub(super) fn record_negative_ground_fact(
+    inner: &mut KnowledgeBaseInner,
+    buffer: &LogicBuffer,
+    root_id: u32,
+    skolem_subs: &HashMap<String, GroundTerm>,
+) {
+    let Some((body_id, tense)) = find_negation_body(buffer, root_id, skolem_subs, None) else {
+        return;
+    };
+    let mut leaves = Vec::new();
+    collect_ground_facts(buffer, body_id, skolem_subs, tense, &mut leaves);
+    if leaves.is_empty() {
+        // Nothing representable under the negation (e.g. ¬¬P, ¬(P ∨ Q)) —
+        // keep the closed-world no-op rather than recording an empty group
+        // (an empty group would unify trivially and flag a false contradiction).
+        return;
+    }
+
+    let mut event_var_map: HashMap<String, String> = HashMap::new();
+    let templates: Vec<StoredFact> = leaves
+        .iter()
+        .map(|f| generalize_event_args(f, &inner.known_event_entities, &mut event_var_map))
+        .collect();
+    inner.negative_facts.insert(templates);
+}
+
+/// Replace event-Skolem constants in a fact with pattern variables (one per
+/// distinct event constant), so a negative template matches a contrary positive
+/// regardless of which fresh event Skolem that positive assertion received.
+/// `PatternVar` never occurs in stored ground facts, so the generalized form
+/// cannot collide with a genuine stored fact.
+fn generalize_event_args(
+    fact: &StoredFact,
+    event_entities: &HashSet<String>,
+    event_var_map: &mut HashMap<String, String>,
+) -> StoredFact {
+    let gf = fact.inner();
+    let args: Vec<GroundTerm> = gf
+        .args
+        .iter()
+        .map(|arg| match arg {
+            GroundTerm::Constant(c) if event_entities.contains(c.as_str()) => {
+                let next_idx = event_var_map.len();
+                let pvar = event_var_map
+                    .entry(c.clone())
+                    .or_insert_with(|| format!("__neg_ev{next_idx}"))
+                    .clone();
+                GroundTerm::PatternVar(pvar)
+            }
+            other => other.clone(),
+        })
+        .collect();
+    StoredFact::with_tense_from(GroundFact::new(gf.relation.clone(), args), fact)
+}
+
+/// Does a negative template group hold against the ASSERTED positive store?
+/// True when a single consistent binding of the group's pattern variables (the
+/// generalized event arguments) satisfies EVERY template — requiring the whole
+/// group to share one event binding prevents false positives from unrelated
+/// events that merely share a predicate. Same-tense matching only (the
+/// `StoredFact` wrapper must agree, via `unify_facts`); only directly asserted
+/// facts are consulted (derived facts are out of scope by design).
+pub(super) fn negative_group_holds(
+    templates: &[StoredFact],
+    store: &dyn crate::fact_store::FactStore,
+) -> bool {
+    fn solve(
+        templates: &[StoredFact],
+        idx: usize,
+        bindings: &HashMap<String, GroundTerm>,
+        store: &dyn crate::fact_store::FactStore,
+    ) -> bool {
+        let Some(template) = templates.get(idx) else {
+            return true; // Every template satisfied under this binding.
+        };
+        let bound = substitute_fact(template, bindings);
+        let Some(candidates) = store.lookup_predicate(bound.relation()) else {
+            return false;
+        };
+        for fact in candidates {
+            if let Some(new_bindings) = unify_facts(&bound, fact) {
+                let mut merged = bindings.clone();
+                merged.extend(new_bindings);
+                if solve(templates, idx + 1, &merged, store) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+    solve(templates, 0, &HashMap::new(), store)
+}
+
 /// Process a logic buffer into the knowledge base without recording in the fact registry.
 /// Used by both initial assertion and rebuild-on-retract replay.
 pub(super) fn process_assertion(
@@ -1119,20 +1270,22 @@ pub(super) fn process_assertion(
             // hold). Returning Ok with a fact id would misrepresent it as asserted when
             // querying it back yields False. Exemptions: numeric quantifiers (Count) store
             // their witnesses separately, and negated ground facts (`na <selbri>`) are
-            // accepted as closed-world no-ops (see `root_reduces_to_negation`). Universals
-            // never reach this branch — they take the rule path above.
-            if nothing_collected
-                && !registered
-                && !contains_count_node(logic, root_id)
-                && !root_reduces_to_negation(logic, root_id, &skolem_subs)
-            {
-                return Err(
-                    "assertion has no representable content: a bare disjunction or \
-                     exclusive-or ingests no facts and registers no rules. Rejecting to \
-                     preserve soundness rather than reporting it as asserted (querying it \
-                     back would return False)."
-                        .to_string(),
-                );
+            // accepted — they store nothing in the POSITIVE store (NAF/CWA query semantics
+            // unchanged) but are recorded in the negative-fact registry so a later
+            // contrary positive is flagged by `check_contradictions`. Universals never
+            // reach this branch — they take the rule path above.
+            if nothing_collected && !registered {
+                if root_reduces_to_negation(logic, root_id, &skolem_subs) {
+                    record_negative_ground_fact(inner, logic, root_id, &skolem_subs);
+                } else if !contains_count_node(logic, root_id) {
+                    return Err(
+                        "assertion has no representable content: a bare disjunction or \
+                         exclusive-or ingests no facts and registers no rules. Rejecting to \
+                         preserve soundness rather than reporting it as asserted (querying it \
+                         back would return False)."
+                            .to_string(),
+                    );
+                }
             }
         }
 

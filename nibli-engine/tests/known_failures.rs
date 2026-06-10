@@ -100,8 +100,7 @@ fn xor_assert_must_be_observable() {
     }
 }
 
-#[test]
-#[ignore = "KNOWN BUG (todo.md: negated ground facts not stored): `na <selbri>` is accepted as a closed-world no-op, so a later contrary positive is not flagged as a contradiction. Needs explicit negative-fact storage + contradiction detection — distinct from the zero-ingest guard, which deliberately exempts negations so this fix stays possible."]
+#[test] // FIXED (negative-fact registry + event-normalized contradiction detection): promoted.
 fn negated_ground_fact_then_contrary_positive_is_a_contradiction() {
     let engine = NibliEngine::new();
     // "Adam is NOT a dog."
@@ -258,9 +257,26 @@ fn abstraction_body_over_rel_clause_must_reference_real_body() {
 // still asserts it. Reachable via the direct fact-injection API (`:assert` /
 // assert-fact). The fact must still hold after retracting one of its two records.
 
-#[test]
-#[ignore = "KNOWN BUG (todo.md: retraction/registry consistency — duplicate ground facts conflated): retracting one of two identical ground assertions removes the fact even though a live record still asserts it"]
+#[test] // FIXED (multiplicity-aware incremental retraction): promoted to a live guard.
+// PIN RE-ENCODED during promotion: the original pin queried via TEXT
+// (`query_holds("la .adam. cu gerku")`), but text queries are event-decomposed
+// (∃e. gerku(e) ∧ gerku_x1(e, adam) …) and structurally NEVER match a flat
+// direct-injected fact — the pin failed even with both records live, masking the
+// actual retraction bug behind a query-shape mismatch. We therefore verify
+// through the raw FOL contract (`engine.kb().query_entailment` with a flat
+// query buffer), which is exactly the shape `assert_fact_direct` stores. The
+// flat-injection-vs-text-query mismatch is filed separately in todo.md.
 fn duplicate_ground_fact_survives_retracting_one_copy() {
+    let flat_gerku_adam = || nibli_types::logic::LogicBuffer {
+        nodes: vec![nibli_types::logic::LogicNode::Predicate((
+            "gerku".to_string(),
+            vec![nibli_types::logic::LogicalTerm::Constant(
+                "adam".to_string(),
+            )],
+        ))],
+        roots: vec![0],
+    };
+
     let engine = NibliEngine::new();
     let id1 = engine
         .assert_fact_direct(
@@ -274,9 +290,15 @@ fn duplicate_ground_fact_survives_retracting_one_copy() {
             vec![EngineLogicalTerm::Constant("adam".to_string())],
         )
         .unwrap();
+    // Sanity: the flat fact is queryable through the FOL contract while both live.
+    let before = engine.kb().query_entailment(flat_gerku_adam()).unwrap();
+    assert!(
+        before.is_true(),
+        "sanity: flat direct-injected fact must be queryable via the FOL contract: {before:?}"
+    );
     // Retract only the FIRST record; the second still asserts gerku(adam).
     engine.retract_fact(id1).unwrap();
-    let r = engine.query_holds("la .adam. cu gerku").unwrap();
+    let r = engine.kb().query_entailment(flat_gerku_adam()).unwrap();
     assert!(
         r.is_true(),
         "a live record still asserts gerku(adam), but retracting the duplicate \

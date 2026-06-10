@@ -161,33 +161,70 @@ impl KnowledgeBase {
 
         // Check if this assertion involved Skolemization (existential variables
         // or ForAll). If so, fall back to full rebuild — re-deriving Skolem subs
-        // with a temporary counter won't match the originals.
+        // with a temporary counter won't match the originals. Negation-bearing
+        // buffers also take the rebuild path: a negated ground root is recorded
+        // in the negative-fact registry (see `record_negative_ground_fact`), and
+        // replaying the surviving records repopulates that registry exactly.
         let has_skolems = record
             .buffer
             .nodes
             .iter()
             .any(|n| matches!(n, LogicNode::ExistsNode(_) | LogicNode::ForAllNode(_)));
+        let has_negation = record
+            .buffer
+            .nodes
+            .iter()
+            .any(|n| matches!(n, LogicNode::NotNode(_)));
 
-        if has_skolems || inner.rule_source_map.contains_key(&id) {
-            // Complex assertion (rules or Skolems) — fall back to full rebuild.
+        if has_skolems || has_negation || inner.rule_source_map.contains_key(&id) {
+            // Complex assertion (rules, Skolems, or negations) — full rebuild.
             let result = Self::rebuild_inner(&mut inner);
             invalidate_pred_cache();
             return result;
         }
 
         // Simple ground fact — remove incrementally from all indexes.
+        // Walk ALL roots: assertion processes every root, so retraction must too
+        // (processing only the first root left later roots' facts orphaned).
         let skolem_subs = HashMap::new();
         let mut typed_leaves = Vec::new();
-        collect_ground_facts(
-            &record.buffer,
-            record.buffer.roots.first().copied().unwrap_or(0),
-            &skolem_subs,
-            None,
-            &mut typed_leaves,
-        );
+        for &root_id in &record.buffer.roots {
+            collect_ground_facts(
+                &record.buffer,
+                root_id,
+                &skolem_subs,
+                None,
+                &mut typed_leaves,
+            );
+        }
+
+        // The HashSet fact store tracks no multiplicity: if another LIVE record
+        // still asserts the same ground fact, removing it here would conflate the
+        // two records (queries flip to False while list_facts shows an active
+        // record asserting the fact, and a later rebuild resurrects it). Recompute
+        // each surviving record's ground leaves and keep any fact that is still
+        // asserted elsewhere. This is exact for the buffers this path handles
+        // (skolem-free): a skolem-bearing survivor's Exists-wrapped leaves carry
+        // assertion-unique Skolem constants and cannot collide with a skolem-free
+        // leaf, while its non-quantified leaves ARE recovered by the same
+        // empty-substitution walk used here.
+        let mut still_asserted: HashSet<StoredFact> = HashSet::new();
+        for other in inner.fact_registry.values() {
+            if other.retracted {
+                continue;
+            }
+            for &root_id in &other.buffer.roots {
+                let mut leaves = Vec::new();
+                collect_ground_facts(&other.buffer, root_id, &skolem_subs, None, &mut leaves);
+                still_asserted.extend(leaves);
+            }
+        }
 
         let mut had_du = false;
         for fact in &typed_leaves {
+            if still_asserted.contains(fact) {
+                continue; // Another live record still asserts this fact — keep it.
+            }
             inner.fact_store.remove(fact);
             let gf = fact.inner();
             for (pos, arg) in gf.args.iter().enumerate() {
@@ -250,6 +287,7 @@ impl KnowledgeBase {
         inner.predicate_registry.clear();
         inner.arg_position_index.clear();
         inner.rule_source_map.clear();
+        inner.negative_facts.clear();
 
         // Collect non-retracted buffers ordered by ID (clone to avoid borrow conflict)
         let mut entries: Vec<(&u64, &FactRecord)> = inner
@@ -711,6 +749,8 @@ impl KnowledgeBase {
     /// 2. Predicate arity inconsistencies (same predicate with different arities)
     /// 3. Equality contradictions (du(a,b) where a and b have conflicting properties
     ///    under registered integrity constraints)
+    /// 4. Negation contradictions (an explicitly asserted `na <selbri>` whose
+    ///    positive counterpart is also asserted, matched modulo event Skolems)
     pub fn check_contradictions(&self) -> Vec<String> {
         let mut violations = Vec::new();
 
@@ -838,6 +878,29 @@ impl KnowledgeBase {
                     if !violations.contains(&msg) {
                         violations.push(msg);
                     }
+                }
+            }
+        }
+
+        // 4. Explicitly asserted negative facts (`na <selbri>`) whose positive
+        //    counterpart is asserted. Each negation is stored as a template group
+        //    with event arguments generalized to pattern variables (see
+        //    `record_negative_ground_fact`); it is violated when one consistent
+        //    binding satisfies EVERY template against the asserted fact store —
+        //    the whole-group requirement prevents false positives from unrelated
+        //    events sharing a predicate. Scope: directly asserted positives only
+        //    (no derived facts), same tense only. Query semantics (NAF/CWA) are
+        //    unaffected — negatives never enter the positive store.
+        for group in &inner.negative_facts {
+            if negative_group_holds(group, &*inner.fact_store) {
+                let facts: Vec<String> = group.iter().map(|f| f.to_display_string()).collect();
+                let msg = format!(
+                    "Negation contradiction: ¬({}) was asserted, but the positive \
+                     counterpart is also asserted",
+                    facts.join(" ∧ ")
+                );
+                if !violations.contains(&msg) {
+                    violations.push(msg);
                 }
             }
         }
