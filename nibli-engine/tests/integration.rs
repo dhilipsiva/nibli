@@ -929,10 +929,11 @@ fn ddi_general_rules_fire_for_second_drug() {
 #[test]
 fn ddi_toxicity_requires_both_conditions() {
     // (a) concentration rises, but NOT narrow-index -> no toxicity risk.
+    // The toxicity step is the general conjunctive universal rule.
     let wide = engine_with_facts(&[
         "la .raxitidin. cu xukmi",
         "la .raxitidin. cu zenba", // concentration rises
-        "ganai ge la .raxitidin. cu zenba gi la .raxitidin. cu cinla gi la .raxitidin. cu ckape",
+        "ro lo xukmi poi zenba poi cinla cu ckape",
         "ro lo xukmi poi ckape cu kajde",
     ]);
     assert_false(
@@ -950,7 +951,7 @@ fn ddi_toxicity_requires_both_conditions() {
     let narrow = engine_with_facts(&[
         "la .narotil. cu xukmi",
         "la .narotil. cu cinla", // narrow index, but no interaction
-        "ganai ge la .narotil. cu zenba gi la .narotil. cu cinla gi la .narotil. cu ckape",
+        "ro lo xukmi poi zenba poi cinla cu ckape",
         "ro lo xukmi poi ckape cu kajde",
     ]);
     assert_false(
@@ -990,8 +991,7 @@ fn ddi_belief_revision_discontinue_inhibitor() {
     for line in [
         "ganai ge la .flukonazol. cu fanta la .siptucin. gi la .varfarin. cu se katna la .siptucin. gi la .varfarin. cu zenba",
         "ganai ge la .flukonazol. cu fanta la .siptucin. gi la .fenituin. cu se katna la .siptucin. gi la .fenituin. cu zenba",
-        "ganai ge la .varfarin. cu zenba gi la .varfarin. cu cinla gi la .varfarin. cu ckape",
-        "ganai ge la .fenituin. cu zenba gi la .fenituin. cu cinla gi la .fenituin. cu ckape",
+        "ro lo xukmi poi zenba poi cinla cu ckape",
         "ro lo xukmi poi ckape cu kajde",
     ] {
         engine.assert_text(line).unwrap();

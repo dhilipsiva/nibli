@@ -32,6 +32,22 @@ build-gasnu:
     @echo "Building native host gasnu..."
     cargo build -p gasnu {{cargo_profile_flag}}
 
+# Smoke-test gasnu non-interactive script mode: pipe a 3-line script (assert,
+# query, :facts) into the built binary and assert the echoed prompts + markers.
+# Exercises the byte-faithful REPL transcript capture path used for the book.
+smoke-gasnu-script: build-wasm build-gasnu
+    @echo "Smoke-testing gasnu script mode (piped stdin)..."
+    @out=$(printf 'la .adam. cu gerku\n? la .adam. cu gerku\n:facts\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$out"; \
+        echo "$out" | grep -qF 'nibli> la .adam. cu gerku' || { echo 'FAIL: missing echoed assert prompt'; exit 1; }; \
+        echo "$out" | grep -qF 'nibli> ? la .adam. cu gerku' || { echo 'FAIL: missing echoed query prompt'; exit 1; }; \
+        echo "$out" | grep -qF 'nibli> :facts' || { echo 'FAIL: missing echoed :facts prompt'; exit 1; }; \
+        echo "$out" | grep -qF '[Fact #0] Asserted.' || { echo 'FAIL: missing [Fact #0] Asserted.'; exit 1; }; \
+        echo "$out" | grep -qF '[Query] TRUE' || { echo 'FAIL: missing [Query] TRUE'; exit 1; }; \
+        echo "$out" | grep -qF '[Facts] 1 active fact(s):' || { echo 'FAIL: missing :facts listing'; exit 1; }; \
+        echo 'PASS: gasnu script mode emits echoed prompts + expected markers'
+
 # Executes the full pipeline: Builds WASM modules, then boots the native REPL
 run: build-wasm
     @echo "Launching Neuro-Symbolic Engine ({{profile}})..."

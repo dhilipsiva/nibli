@@ -26,7 +26,7 @@ use nibli_store::{NibliStore, StoredAssertion, StoredLogicalTerm as StoredTerm};
 use reedline::{DefaultPrompt, Reedline, Signal};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, IsTerminal, Write};
 use std::net::TcpStream;
 use std::path::Path;
 use std::time::Duration;
@@ -800,8 +800,16 @@ fn main() -> Result<()> {
         }
     }
 
-    let mut line_editor = Reedline::create();
-    let prompt = DefaultPrompt::default();
+    // Mode selection: interactive (reedline) vs. non-interactive script mode.
+    // Script mode triggers when --script <file> is passed OR stdin is not a TTY,
+    // letting REPL transcripts be captured byte-faithfully via a pipe.
+    let script_path: Option<String> = {
+        let args: Vec<String> = std::env::args().collect();
+        args.windows(2)
+            .find(|w| w[0] == "--script")
+            .map(|w| w[1].clone())
+    };
+    let use_script_mode = script_path.is_some() || !std::io::stdin().is_terminal();
 
     println!(
         "Ready. Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :db :help"
@@ -810,492 +818,514 @@ fn main() -> Result<()> {
         "Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.\n"
     );
 
-    loop {
-        let sig = line_editor.read_line(&prompt);
-        match sig {
-            Ok(Signal::Success(buffer)) => {
-                let input = buffer.trim();
-                if input.is_empty() {
+    // Per-command dispatch shared by interactive and script modes.
+    // Returns true when the session should quit (`:quit`), false to continue.
+    let mut dispatch = |input: &str| -> bool {
+        match input {
+            ":quit" | ":q" => return true,
+            ":reset" | ":r" => {
+                refuel(&mut store, fuel_budget);
+                match session.call_reset_kb(&mut store, session_handle) {
+                    Ok(Ok(())) => {
+                        if let Some(s) = nibli_store.as_mut() {
+                            let _ = s.clear();
+                        }
+                        println!("[Reset] Knowledge base cleared.");
+                    }
+                    Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
+                    Err(e) => println!("{}", format_host_error(&e)),
+                }
+                return false;
+            }
+            ":db" => {
+                match &nibli_store {
+                    Some(s) => {
+                        let active = s.active_fact_count().unwrap_or(0);
+                        let total = s.total_fact_count().unwrap_or(0);
+                        println!(
+                            "[Store] {} (node: {})",
+                            db_path.as_deref().unwrap_or("?"),
+                            s.node_id()
+                        );
+                        println!(
+                            "[Store] {} active facts, {} total (including retracted)",
+                            active, total
+                        );
+                    }
+                    None => println!(
+                        "[Store] No persistent store configured. Set NIBLI_DB_PATH env var."
+                    ),
+                }
+                return false;
+            }
+            ":fuel" | ":f" => {
+                println!("[Fuel] Budget: {} per command", fuel_budget);
+                return false;
+            }
+            ":memory" | ":m" => {
+                println!("[Memory] Limit: {} MB", memory_limit_mb);
+                return false;
+            }
+            ":backend" | ":b" => {
+                let state = store.data();
+                match &state.backend_addr {
+                    Some(addr) => {
+                        let status = if state.backend_conn.is_some() {
+                            "connected"
+                        } else {
+                            "not connected (lazy)"
+                        };
+                        println!("[Backend] {} ({})", addr, status);
+                    }
+                    None => println!("[Backend] Not configured"),
+                }
+                return false;
+            }
+            ":facts" => {
+                refuel(&mut store, fuel_budget);
+                match session.call_list_facts(&mut store, session_handle) {
+                    Ok(Ok(facts)) => {
+                        if facts.is_empty() {
+                            println!("[Facts] Knowledge base is empty.");
+                        } else {
+                            println!("[Facts] {} active fact(s):", facts.len());
+                            for f in &facts {
+                                let roots_label = if f.root_count == 1 { "root" } else { "roots" };
+                                println!(
+                                    "  #{}: {} ({} {})",
+                                    f.id, f.label, f.root_count, roots_label
+                                );
+                            }
+                        }
+                    }
+                    Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
+                    Err(e) => println!("{}", format_host_error(&e)),
+                }
+                return false;
+            }
+            ":help" | ":h" => {
+                println!("  <text>              Assert Lojban as fact");
+                println!("  ? <text>            Query with proof trace");
+                println!("  ?? <text>           Find witnesses (answer variables)");
+                println!("  :debug <text>       Show compiled logic tree");
+                println!("  :load <filepath>    Load a .lojban file (assert each line)");
+                println!("  :dump <filepath>    Export KB as a .lojban file");
+                println!("  :compute <name>     Register predicate for compute dispatch");
+                println!("  :assert <rel> <args..> Assert a ground fact directly");
+                println!("  :retract <id>       Retract a fact by ID (rebuilds KB)");
+                println!("  :facts              List all active facts in the KB");
+                println!("  :backend [host:port] Show or set compute backend address");
+                println!("  :fuel [amount]      Show or set WASM fuel budget per command");
+                println!("  :memory [mb]        Show or set WASM memory limit in MB");
+                println!("  :db                 Show persistent store info");
+                println!("  :merge <redb-file>  Merge facts from another store (CRDT)");
+                println!("  :export <redb-file> Export store to a new redb file");
+                println!("  :reset              Clear all facts (fresh KB)");
+                println!("  :quit               Exit");
+                return false;
+            }
+            _ => {}
+        }
+
+        // ── Route by prefix ──
+        if let Some(debug_text) = input.strip_prefix(":debug ") {
+            let text = debug_text.trim();
+            if text.is_empty() {
+                println!("[Host] Usage: :debug <lojban text>");
+                return false;
+            }
+            refuel(&mut store, fuel_budget);
+            match session.call_compile_debug(&mut store, session_handle, text) {
+                Ok(Ok(debug_output)) => println!("[Logic] {}", debug_output),
+                Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
+                Err(e) => println!("{}", format_host_error(&e)),
+            }
+        } else if let Some(backend_arg) = input.strip_prefix(":backend ") {
+            let addr = backend_arg.trim();
+            if addr.is_empty() {
+                let state = store.data();
+                match &state.backend_addr {
+                    Some(a) => println!("[Backend] {}", a),
+                    None => println!("[Backend] Not configured"),
+                }
+            } else {
+                let state = store.data_mut();
+                state.backend_conn = None; // drop existing connection
+                state.backend_addr = Some(addr.to_string());
+                println!("[Backend] Set to {} (connects on first use)", addr);
+            }
+        } else if let Some(fuel_arg) = input.strip_prefix(":fuel ") {
+            let arg = fuel_arg.trim();
+            match arg.parse::<u64>() {
+                Ok(n) if n > 0 => {
+                    fuel_budget = n;
+                    println!("[Fuel] Budget set to {}", fuel_budget);
+                }
+                _ => println!("[Host] Usage: :fuel <positive-integer>"),
+            }
+        } else if let Some(mem_arg) = input.strip_prefix(":memory ") {
+            let arg = mem_arg.trim();
+            match arg.parse::<usize>() {
+                Ok(n) if n > 0 => {
+                    memory_limit_mb = n;
+                    let state = store.data_mut();
+                    state.limits = StoreLimitsBuilder::new()
+                        .memory_size(memory_limit_mb * 1024 * 1024)
+                        .build();
+                    println!("[Memory] Limit set to {} MB", memory_limit_mb);
+                }
+                _ => println!("[Host] Usage: :memory <positive-integer-mb>"),
+            }
+        } else if let Some(compute_name) = input.strip_prefix(":compute ") {
+            let name = compute_name.trim();
+            if name.is_empty() {
+                println!("[Host] Usage: :compute <predicate-name>");
+                return false;
+            }
+            refuel(&mut store, fuel_budget);
+            match session.call_register_compute_predicate(&mut store, session_handle, name) {
+                Ok(()) => {
+                    println!("[Compute] Registered '{}' for external dispatch", name)
+                }
+                Err(e) => println!("{}", format_host_error(&e)),
+            }
+        } else if let Some(assert_args) = input.strip_prefix(":assert ") {
+            let text = assert_args.trim();
+            if text.is_empty() {
+                println!("[Host] Usage: :assert <relation> <arg1> <arg2> ...");
+                return false;
+            }
+            match parse_assert_args(text) {
+                Ok((relation, args)) => {
+                    let display_args: Vec<String> = args
+                        .iter()
+                        .map(|a| match a {
+                            EngineLogicalTerm::Number(n) => format!("{}", n),
+                            EngineLogicalTerm::Constant(s) => s.clone(),
+                            _ => "?".to_string(),
+                        })
+                        .collect();
+                    refuel(&mut store, fuel_budget);
+                    match session.call_assert_fact(&mut store, session_handle, &relation, &args) {
+                        Ok(Ok(fact_id)) => {
+                            persist_direct(&mut nibli_store, fact_id, &relation, &args);
+                            println!(
+                                "[Fact #{}] {}({}) asserted.",
+                                fact_id,
+                                relation,
+                                display_args.join(", ")
+                            );
+                        }
+                        Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
+                        Err(e) => println!("{}", format_host_error(&e)),
+                    }
+                }
+                Err(e) => println!("[Error] {}", e),
+            }
+        } else if let Some(retract_arg) = input.strip_prefix(":retract ") {
+            let arg = retract_arg.trim();
+            match arg.parse::<u64>() {
+                Ok(id) => {
+                    refuel(&mut store, fuel_budget);
+                    match session.call_retract_fact(&mut store, session_handle, id) {
+                        Ok(Ok(())) => {
+                            if let Some(s) = nibli_store.as_mut() {
+                                let _ = s.retract_fact(id);
+                            }
+                            println!("[Retract] Fact #{} retracted. KB rebuilt.", id);
+                        }
+                        Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
+                        Err(e) => println!("{}", format_host_error(&e)),
+                    }
+                }
+                Err(_) => println!("[Host] Usage: :retract <fact-id>"),
+            }
+        } else if let Some(load_arg) = input.strip_prefix(":load ") {
+            let filepath = load_arg.trim();
+            if filepath.is_empty() {
+                println!("[Host] Usage: :load <filepath>");
+                return false;
+            }
+            let path = Path::new(filepath);
+            if !path.exists() {
+                println!("[Load] File not found: {}", filepath);
+                return false;
+            }
+            let file = match File::open(path) {
+                Ok(f) => f,
+                Err(e) => {
+                    println!("[Load] Cannot open file: {}", e);
+                    return false;
+                }
+            };
+            let reader = BufReader::new(file);
+            let mut asserted = 0u32;
+            let mut skipped = 0u32;
+            let mut errors = 0u32;
+            for (line_num, line_result) in reader.lines().enumerate() {
+                let line = match line_result {
+                    Ok(l) => l,
+                    Err(e) => {
+                        println!("[Load] Read error at line {}: {}", line_num + 1, e);
+                        errors += 1;
+                        continue;
+                    }
+                };
+                let trimmed = line.trim();
+                // Skip blank lines and comments (lines starting with #)
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    skipped += 1;
                     continue;
                 }
-
-                match input {
-                    ":quit" | ":q" => break,
-                    ":reset" | ":r" => {
-                        refuel(&mut store, fuel_budget);
-                        match session.call_reset_kb(&mut store, session_handle) {
-                            Ok(Ok(())) => {
-                                if let Some(s) = nibli_store.as_mut() {
-                                    let _ = s.clear();
-                                }
-                                println!("[Reset] Knowledge base cleared.");
-                            }
-                            Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
-                            Err(e) => println!("{}", format_host_error(&e)),
-                        }
-                        continue;
+                refuel(&mut store, fuel_budget);
+                match session.call_assert_text(&mut store, session_handle, trimmed) {
+                    Ok(Ok(fact_id)) => {
+                        persist_text(&mut nibli_store, fact_id, trimmed);
+                        println!("[Fact #{}] {}", fact_id, trimmed);
+                        asserted += 1;
                     }
-                    ":db" => {
-                        match &nibli_store {
-                            Some(s) => {
-                                let active = s.active_fact_count().unwrap_or(0);
-                                let total = s.total_fact_count().unwrap_or(0);
-                                println!(
-                                    "[Store] {} (node: {})",
-                                    db_path.as_deref().unwrap_or("?"),
-                                    s.node_id()
-                                );
-                                println!(
-                                    "[Store] {} active facts, {} total (including retracted)",
-                                    active, total
-                                );
-                            }
-                            None => println!(
-                                "[Store] No persistent store configured. Set NIBLI_DB_PATH env var."
-                            ),
-                        }
-                        continue;
+                    Ok(Err(e)) => {
+                        println!("[Load] line {}: {}", line_num + 1, format_nibli_error(&e));
+                        errors += 1;
                     }
-                    ":fuel" | ":f" => {
-                        println!("[Fuel] Budget: {} per command", fuel_budget);
-                        continue;
-                    }
-                    ":memory" | ":m" => {
-                        println!("[Memory] Limit: {} MB", memory_limit_mb);
-                        continue;
-                    }
-                    ":backend" | ":b" => {
-                        let state = store.data();
-                        match &state.backend_addr {
-                            Some(addr) => {
-                                let status = if state.backend_conn.is_some() {
-                                    "connected"
-                                } else {
-                                    "not connected (lazy)"
-                                };
-                                println!("[Backend] {} ({})", addr, status);
-                            }
-                            None => println!("[Backend] Not configured"),
-                        }
-                        continue;
-                    }
-                    ":facts" => {
-                        refuel(&mut store, fuel_budget);
-                        match session.call_list_facts(&mut store, session_handle) {
-                            Ok(Ok(facts)) => {
-                                if facts.is_empty() {
-                                    println!("[Facts] Knowledge base is empty.");
-                                } else {
-                                    println!("[Facts] {} active fact(s):", facts.len());
-                                    for f in &facts {
-                                        let roots_label =
-                                            if f.root_count == 1 { "root" } else { "roots" };
-                                        println!(
-                                            "  #{}: {} ({} {})",
-                                            f.id, f.label, f.root_count, roots_label
-                                        );
-                                    }
-                                }
-                            }
-                            Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
-                            Err(e) => println!("{}", format_host_error(&e)),
-                        }
-                        continue;
-                    }
-                    ":help" | ":h" => {
-                        println!("  <text>              Assert Lojban as fact");
-                        println!("  ? <text>            Query with proof trace");
-                        println!("  ?? <text>           Find witnesses (answer variables)");
-                        println!("  :debug <text>       Show compiled logic tree");
-                        println!("  :load <filepath>    Load a .lojban file (assert each line)");
-                        println!("  :dump <filepath>    Export KB as a .lojban file");
-                        println!("  :compute <name>     Register predicate for compute dispatch");
-                        println!("  :assert <rel> <args..> Assert a ground fact directly");
-                        println!("  :retract <id>       Retract a fact by ID (rebuilds KB)");
-                        println!("  :facts              List all active facts in the KB");
-                        println!("  :backend [host:port] Show or set compute backend address");
-                        println!("  :fuel [amount]      Show or set WASM fuel budget per command");
-                        println!("  :memory [mb]        Show or set WASM memory limit in MB");
-                        println!("  :db                 Show persistent store info");
-                        println!("  :merge <redb-file>  Merge facts from another store (CRDT)");
-                        println!("  :export <redb-file> Export store to a new redb file");
-                        println!("  :reset              Clear all facts (fresh KB)");
-                        println!("  :quit               Exit");
-                        continue;
-                    }
-                    _ => {}
-                }
-
-                // ── Route by prefix ──
-                if let Some(debug_text) = input.strip_prefix(":debug ") {
-                    let text = debug_text.trim();
-                    if text.is_empty() {
-                        println!("[Host] Usage: :debug <lojban text>");
-                        continue;
-                    }
-                    refuel(&mut store, fuel_budget);
-                    match session.call_compile_debug(&mut store, session_handle, text) {
-                        Ok(Ok(debug_output)) => println!("[Logic] {}", debug_output),
-                        Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
-                        Err(e) => println!("{}", format_host_error(&e)),
-                    }
-                } else if let Some(backend_arg) = input.strip_prefix(":backend ") {
-                    let addr = backend_arg.trim();
-                    if addr.is_empty() {
-                        let state = store.data();
-                        match &state.backend_addr {
-                            Some(a) => println!("[Backend] {}", a),
-                            None => println!("[Backend] Not configured"),
-                        }
-                    } else {
-                        let state = store.data_mut();
-                        state.backend_conn = None; // drop existing connection
-                        state.backend_addr = Some(addr.to_string());
-                        println!("[Backend] Set to {} (connects on first use)", addr);
-                    }
-                } else if let Some(fuel_arg) = input.strip_prefix(":fuel ") {
-                    let arg = fuel_arg.trim();
-                    match arg.parse::<u64>() {
-                        Ok(n) if n > 0 => {
-                            fuel_budget = n;
-                            println!("[Fuel] Budget set to {}", fuel_budget);
-                        }
-                        _ => println!("[Host] Usage: :fuel <positive-integer>"),
-                    }
-                } else if let Some(mem_arg) = input.strip_prefix(":memory ") {
-                    let arg = mem_arg.trim();
-                    match arg.parse::<usize>() {
-                        Ok(n) if n > 0 => {
-                            memory_limit_mb = n;
-                            let state = store.data_mut();
-                            state.limits = StoreLimitsBuilder::new()
-                                .memory_size(memory_limit_mb * 1024 * 1024)
-                                .build();
-                            println!("[Memory] Limit set to {} MB", memory_limit_mb);
-                        }
-                        _ => println!("[Host] Usage: :memory <positive-integer-mb>"),
-                    }
-                } else if let Some(compute_name) = input.strip_prefix(":compute ") {
-                    let name = compute_name.trim();
-                    if name.is_empty() {
-                        println!("[Host] Usage: :compute <predicate-name>");
-                        continue;
-                    }
-                    refuel(&mut store, fuel_budget);
-                    match session.call_register_compute_predicate(&mut store, session_handle, name)
-                    {
-                        Ok(()) => {
-                            println!("[Compute] Registered '{}' for external dispatch", name)
-                        }
-                        Err(e) => println!("{}", format_host_error(&e)),
-                    }
-                } else if let Some(assert_args) = input.strip_prefix(":assert ") {
-                    let text = assert_args.trim();
-                    if text.is_empty() {
-                        println!("[Host] Usage: :assert <relation> <arg1> <arg2> ...");
-                        continue;
-                    }
-                    match parse_assert_args(text) {
-                        Ok((relation, args)) => {
-                            let display_args: Vec<String> = args
-                                .iter()
-                                .map(|a| match a {
-                                    EngineLogicalTerm::Number(n) => format!("{}", n),
-                                    EngineLogicalTerm::Constant(s) => s.clone(),
-                                    _ => "?".to_string(),
-                                })
-                                .collect();
-                            refuel(&mut store, fuel_budget);
-                            match session.call_assert_fact(
-                                &mut store,
-                                session_handle,
-                                &relation,
-                                &args,
-                            ) {
-                                Ok(Ok(fact_id)) => {
-                                    persist_direct(&mut nibli_store, fact_id, &relation, &args);
-                                    println!(
-                                        "[Fact #{}] {}({}) asserted.",
-                                        fact_id,
-                                        relation,
-                                        display_args.join(", ")
-                                    );
-                                }
-                                Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
-                                Err(e) => println!("{}", format_host_error(&e)),
-                            }
-                        }
-                        Err(e) => println!("[Error] {}", e),
-                    }
-                } else if let Some(retract_arg) = input.strip_prefix(":retract ") {
-                    let arg = retract_arg.trim();
-                    match arg.parse::<u64>() {
-                        Ok(id) => {
-                            refuel(&mut store, fuel_budget);
-                            match session.call_retract_fact(&mut store, session_handle, id) {
-                                Ok(Ok(())) => {
-                                    if let Some(s) = nibli_store.as_mut() {
-                                        let _ = s.retract_fact(id);
-                                    }
-                                    println!("[Retract] Fact #{} retracted. KB rebuilt.", id);
-                                }
-                                Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
-                                Err(e) => println!("{}", format_host_error(&e)),
-                            }
-                        }
-                        Err(_) => println!("[Host] Usage: :retract <fact-id>"),
-                    }
-                } else if let Some(load_arg) = input.strip_prefix(":load ") {
-                    let filepath = load_arg.trim();
-                    if filepath.is_empty() {
-                        println!("[Host] Usage: :load <filepath>");
-                        continue;
-                    }
-                    let path = Path::new(filepath);
-                    if !path.exists() {
-                        println!("[Load] File not found: {}", filepath);
-                        continue;
-                    }
-                    let file = match File::open(path) {
-                        Ok(f) => f,
-                        Err(e) => {
-                            println!("[Load] Cannot open file: {}", e);
-                            continue;
-                        }
-                    };
-                    let reader = BufReader::new(file);
-                    let mut asserted = 0u32;
-                    let mut skipped = 0u32;
-                    let mut errors = 0u32;
-                    for (line_num, line_result) in reader.lines().enumerate() {
-                        let line = match line_result {
-                            Ok(l) => l,
-                            Err(e) => {
-                                println!("[Load] Read error at line {}: {}", line_num + 1, e);
-                                errors += 1;
-                                continue;
-                            }
-                        };
-                        let trimmed = line.trim();
-                        // Skip blank lines and comments (lines starting with #)
-                        if trimmed.is_empty() || trimmed.starts_with('#') {
-                            skipped += 1;
-                            continue;
-                        }
-                        refuel(&mut store, fuel_budget);
-                        match session.call_assert_text(&mut store, session_handle, trimmed) {
-                            Ok(Ok(fact_id)) => {
-                                persist_text(&mut nibli_store, fact_id, trimmed);
-                                println!("[Fact #{}] {}", fact_id, trimmed);
-                                asserted += 1;
-                            }
-                            Ok(Err(e)) => {
-                                println!(
-                                    "[Load] line {}: {}",
-                                    line_num + 1,
-                                    format_nibli_error(&e)
-                                );
-                                errors += 1;
-                            }
-                            Err(e) => {
-                                println!("[Load] line {}: {}", line_num + 1, format_host_error(&e));
-                                errors += 1;
-                            }
-                        }
-                    }
-                    println!(
-                        "[Load] Done: {} asserted, {} skipped, {} errors",
-                        asserted, skipped, errors
-                    );
-                } else if let Some(dump_arg) = input.strip_prefix(":dump ") {
-                    let filepath = dump_arg.trim();
-                    if filepath.is_empty() {
-                        println!("[Host] Usage: :dump <filepath>");
-                        continue;
-                    }
-                    // Get facts from WASM session (works with or without persistent store)
-                    refuel(&mut store, fuel_budget);
-                    match session.call_list_facts(&mut store, session_handle) {
-                        Ok(Ok(facts)) => {
-                            if facts.is_empty() {
-                                println!("[Dump] Knowledge base is empty — nothing to dump.");
-                            } else {
-                                match File::create(filepath) {
-                                    Ok(mut file) => {
-                                        let mut written = 0u32;
-                                        for f in &facts {
-                                            // The label is the original Lojban text (or :assert form)
-                                            if writeln!(file, "{}", f.label).is_ok() {
-                                                written += 1;
-                                            }
-                                        }
-                                        println!("[Dump] Wrote {} facts to {}", written, filepath);
-                                    }
-                                    Err(e) => println!("[Dump] Cannot create file: {}", e),
-                                }
-                            }
-                        }
-                        Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
-                        Err(e) => println!("{}", format_host_error(&e)),
-                    }
-                } else if let Some(merge_arg) = input.strip_prefix(":merge ") {
-                    let filepath = merge_arg.trim();
-                    if filepath.is_empty() {
-                        println!("[Host] Usage: :merge <redb-filepath>");
-                        continue;
-                    }
-                    match nibli_store.as_mut() {
-                        None => {
-                            println!("[Merge] No persistent store. Set NIBLI_DB_PATH to enable.")
-                        }
-                        Some(s) => {
-                            let merge_path = Path::new(filepath);
-                            if !merge_path.exists() {
-                                println!("[Merge] File not found: {}", filepath);
-                                continue;
-                            }
-                            match s.merge_from_file(merge_path) {
-                                Ok(result) => {
-                                    println!(
-                                        "[Merge] {} added, {} tombstoned from {}",
-                                        result.added, result.tombstoned, filepath
-                                    );
-                                    if result.added > 0 || result.tombstoned > 0 {
-                                        // Rebuild WASM session from merged store
-                                        refuel(&mut store, fuel_budget);
-                                        let _ = session.call_reset_kb(&mut store, session_handle);
-                                        match s.all_active_facts() {
-                                            Ok(facts) => {
-                                                let mut replayed = 0u32;
-                                                for fact in &facts {
-                                                    let assertion: StoredAssertion =
-                                                        match postcard::from_bytes(&fact.payload) {
-                                                            Ok(a) => a,
-                                                            Err(_) => continue,
-                                                        };
-                                                    refuel(&mut store, fuel_budget);
-                                                    match &assertion {
-                                                        StoredAssertion::Text(text) => {
-                                                            if session
-                                                                .call_assert_text(
-                                                                    &mut store,
-                                                                    session_handle,
-                                                                    text,
-                                                                )
-                                                                .is_ok()
-                                                            {
-                                                                replayed += 1;
-                                                            }
-                                                        }
-                                                        StoredAssertion::Direct {
-                                                            relation,
-                                                            args,
-                                                        } => {
-                                                            let wit_args: Vec<EngineLogicalTerm> =
-                                                                args.iter()
-                                                                    .map(stored_term_to_wit)
-                                                                    .collect();
-                                                            if session
-                                                                .call_assert_fact(
-                                                                    &mut store,
-                                                                    session_handle,
-                                                                    relation,
-                                                                    &wit_args,
-                                                                )
-                                                                .is_ok()
-                                                            {
-                                                                replayed += 1;
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                println!(
-                                                    "[Merge] KB rebuilt with {} facts",
-                                                    replayed
-                                                );
-                                            }
-                                            Err(e) => println!("[Merge] Replay error: {}", e),
-                                        }
-                                    }
-                                }
-                                Err(e) => println!("[Merge] Error: {}", e),
-                            }
-                        }
-                    }
-                } else if let Some(export_arg) = input.strip_prefix(":export ") {
-                    let filepath = export_arg.trim();
-                    if filepath.is_empty() {
-                        println!("[Host] Usage: :export <redb-filepath>");
-                        continue;
-                    }
-                    match nibli_store.as_ref() {
-                        None => {
-                            println!("[Export] No persistent store. Set NIBLI_DB_PATH to enable.")
-                        }
-                        Some(s) => match s.export_to_file(Path::new(filepath)) {
-                            Ok(count) => {
-                                println!("[Export] {} facts exported to {}", count, filepath)
-                            }
-                            Err(e) => println!("[Export] Error: {}", e),
-                        },
-                    }
-                } else if let Some(find_text) = input.strip_prefix("??") {
-                    let text = find_text.trim();
-                    if text.is_empty() {
-                        println!("[Host] Usage: ?? <lojban query with ma>");
-                        continue;
-                    }
-                    refuel(&mut store, fuel_budget);
-                    match session.call_query_find_text(&mut store, session_handle, text) {
-                        Ok(Ok(binding_sets)) => {
-                            if binding_sets.is_empty() {
-                                println!("[Find] No witnesses found.");
-                            } else {
-                                for bindings in &binding_sets {
-                                    let parts: Vec<String> = bindings
-                                        .iter()
-                                        .map(|b| {
-                                            format!("{} = {}", b.variable, format_term(&b.term))
-                                        })
-                                        .collect();
-                                    println!("[Find] {}", parts.join(", "));
-                                }
-                            }
-                        }
-                        Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
-                        Err(e) => println!("{}", format_host_error(&e)),
-                    }
-                } else if let Some(query_text) = input.strip_prefix('?') {
-                    let text = query_text.trim();
-                    if text.is_empty() {
-                        println!("[Host] Usage: ? <lojban query>");
-                        continue;
-                    }
-                    refuel(&mut store, fuel_budget);
-                    match session.call_query_text_with_proof(&mut store, session_handle, text) {
-                        Ok(Ok((result, trace))) => {
-                            println!("[Query] {}", format_query_result(&result));
-                            print!("{}", trace_to_proto(&trace).to_pretty_text_with_indent(1));
-                        }
-                        Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
-                        Err(e) => println!("{}", format_host_error(&e)),
-                    }
-                } else {
-                    refuel(&mut store, fuel_budget);
-                    match session.call_assert_text(&mut store, session_handle, input) {
-                        Ok(Ok(fact_id)) => {
-                            persist_text(&mut nibli_store, fact_id, input);
-                            println!("[Fact #{}] Asserted.", fact_id);
-                        }
-                        Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
-                        Err(e) => println!("{}", format_host_error(&e)),
+                    Err(e) => {
+                        println!("[Load] line {}: {}", line_num + 1, format_host_error(&e));
+                        errors += 1;
                     }
                 }
             }
-            Ok(Signal::CtrlD) | Ok(Signal::CtrlC) => break,
-            Err(err) => {
-                println!("Error: {:?}", err);
+            println!(
+                "[Load] Done: {} asserted, {} skipped, {} errors",
+                asserted, skipped, errors
+            );
+        } else if let Some(dump_arg) = input.strip_prefix(":dump ") {
+            let filepath = dump_arg.trim();
+            if filepath.is_empty() {
+                println!("[Host] Usage: :dump <filepath>");
+                return false;
+            }
+            // Get facts from WASM session (works with or without persistent store)
+            refuel(&mut store, fuel_budget);
+            match session.call_list_facts(&mut store, session_handle) {
+                Ok(Ok(facts)) => {
+                    if facts.is_empty() {
+                        println!("[Dump] Knowledge base is empty — nothing to dump.");
+                    } else {
+                        match File::create(filepath) {
+                            Ok(mut file) => {
+                                let mut written = 0u32;
+                                for f in &facts {
+                                    // The label is the original Lojban text (or :assert form)
+                                    if writeln!(file, "{}", f.label).is_ok() {
+                                        written += 1;
+                                    }
+                                }
+                                println!("[Dump] Wrote {} facts to {}", written, filepath);
+                            }
+                            Err(e) => println!("[Dump] Cannot create file: {}", e),
+                        }
+                    }
+                }
+                Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
+                Err(e) => println!("{}", format_host_error(&e)),
+            }
+        } else if let Some(merge_arg) = input.strip_prefix(":merge ") {
+            let filepath = merge_arg.trim();
+            if filepath.is_empty() {
+                println!("[Host] Usage: :merge <redb-filepath>");
+                return false;
+            }
+            match nibli_store.as_mut() {
+                None => {
+                    println!("[Merge] No persistent store. Set NIBLI_DB_PATH to enable.")
+                }
+                Some(s) => {
+                    let merge_path = Path::new(filepath);
+                    if !merge_path.exists() {
+                        println!("[Merge] File not found: {}", filepath);
+                        return false;
+                    }
+                    match s.merge_from_file(merge_path) {
+                        Ok(result) => {
+                            println!(
+                                "[Merge] {} added, {} tombstoned from {}",
+                                result.added, result.tombstoned, filepath
+                            );
+                            if result.added > 0 || result.tombstoned > 0 {
+                                // Rebuild WASM session from merged store
+                                refuel(&mut store, fuel_budget);
+                                let _ = session.call_reset_kb(&mut store, session_handle);
+                                match s.all_active_facts() {
+                                    Ok(facts) => {
+                                        let mut replayed = 0u32;
+                                        for fact in &facts {
+                                            let assertion: StoredAssertion =
+                                                match postcard::from_bytes(&fact.payload) {
+                                                    Ok(a) => a,
+                                                    Err(_) => continue,
+                                                };
+                                            refuel(&mut store, fuel_budget);
+                                            match &assertion {
+                                                StoredAssertion::Text(text) => {
+                                                    if session
+                                                        .call_assert_text(
+                                                            &mut store,
+                                                            session_handle,
+                                                            text,
+                                                        )
+                                                        .is_ok()
+                                                    {
+                                                        replayed += 1;
+                                                    }
+                                                }
+                                                StoredAssertion::Direct { relation, args } => {
+                                                    let wit_args: Vec<EngineLogicalTerm> = args
+                                                        .iter()
+                                                        .map(stored_term_to_wit)
+                                                        .collect();
+                                                    if session
+                                                        .call_assert_fact(
+                                                            &mut store,
+                                                            session_handle,
+                                                            relation,
+                                                            &wit_args,
+                                                        )
+                                                        .is_ok()
+                                                    {
+                                                        replayed += 1;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        println!("[Merge] KB rebuilt with {} facts", replayed);
+                                    }
+                                    Err(e) => println!("[Merge] Replay error: {}", e),
+                                }
+                            }
+                        }
+                        Err(e) => println!("[Merge] Error: {}", e),
+                    }
+                }
+            }
+        } else if let Some(export_arg) = input.strip_prefix(":export ") {
+            let filepath = export_arg.trim();
+            if filepath.is_empty() {
+                println!("[Host] Usage: :export <redb-filepath>");
+                return false;
+            }
+            match nibli_store.as_ref() {
+                None => {
+                    println!("[Export] No persistent store. Set NIBLI_DB_PATH to enable.")
+                }
+                Some(s) => match s.export_to_file(Path::new(filepath)) {
+                    Ok(count) => {
+                        println!("[Export] {} facts exported to {}", count, filepath)
+                    }
+                    Err(e) => println!("[Export] Error: {}", e),
+                },
+            }
+        } else if let Some(find_text) = input.strip_prefix("??") {
+            let text = find_text.trim();
+            if text.is_empty() {
+                println!("[Host] Usage: ?? <lojban query with ma>");
+                return false;
+            }
+            refuel(&mut store, fuel_budget);
+            match session.call_query_find_text(&mut store, session_handle, text) {
+                Ok(Ok(binding_sets)) => {
+                    if binding_sets.is_empty() {
+                        println!("[Find] No witnesses found.");
+                    } else {
+                        for bindings in &binding_sets {
+                            let parts: Vec<String> = bindings
+                                .iter()
+                                .map(|b| format!("{} = {}", b.variable, format_term(&b.term)))
+                                .collect();
+                            println!("[Find] {}", parts.join(", "));
+                        }
+                    }
+                }
+                Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
+                Err(e) => println!("{}", format_host_error(&e)),
+            }
+        } else if let Some(query_text) = input.strip_prefix('?') {
+            let text = query_text.trim();
+            if text.is_empty() {
+                println!("[Host] Usage: ? <lojban query>");
+                return false;
+            }
+            refuel(&mut store, fuel_budget);
+            match session.call_query_text_with_proof(&mut store, session_handle, text) {
+                Ok(Ok((result, trace))) => {
+                    println!("[Query] {}", format_query_result(&result));
+                    print!("{}", trace_to_proto(&trace).to_pretty_text_with_indent(1));
+                }
+                Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
+                Err(e) => println!("{}", format_host_error(&e)),
+            }
+        } else {
+            refuel(&mut store, fuel_budget);
+            match session.call_assert_text(&mut store, session_handle, input) {
+                Ok(Ok(fact_id)) => {
+                    persist_text(&mut nibli_store, fact_id, input);
+                    println!("[Fact #{}] Asserted.", fact_id);
+                }
+                Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
+                Err(e) => println!("{}", format_host_error(&e)),
+            }
+        }
+        false
+    };
+
+    if use_script_mode {
+        // Read commands line-by-line from the script file (or piped stdin),
+        // echoing `nibli> <input>` then the exact output the interactive path
+        // prints. Blank lines and `#` comments are skipped silently.
+        let reader: Box<dyn BufRead> = match &script_path {
+            Some(p) => match File::open(p) {
+                Ok(f) => Box::new(BufReader::new(f)),
+                Err(e) => {
+                    println!("[Script] Cannot open {}: {}", p, e);
+                    session_handle.resource_drop(&mut store)?;
+                    return Ok(());
+                }
+            },
+            None => Box::new(BufReader::new(std::io::stdin())),
+        };
+        for line_result in reader.lines() {
+            let line = match line_result {
+                Ok(l) => l,
+                Err(_) => break,
+            };
+            let input = line.trim();
+            if input.is_empty() || input.starts_with('#') {
+                continue;
+            }
+            println!("nibli> {}", input);
+            if dispatch(input) {
                 break;
+            }
+        }
+    } else {
+        let mut line_editor = Reedline::create();
+        let prompt = DefaultPrompt::default();
+        loop {
+            let sig = line_editor.read_line(&prompt);
+            match sig {
+                Ok(Signal::Success(buffer)) => {
+                    let input = buffer.trim();
+                    if input.is_empty() {
+                        continue;
+                    }
+                    if dispatch(input) {
+                        break;
+                    }
+                }
+                Ok(Signal::CtrlD) | Ok(Signal::CtrlC) => break,
+                Err(err) => {
+                    println!("Error: {:?}", err);
+                    break;
+                }
             }
         }
     }

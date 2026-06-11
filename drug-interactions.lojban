@@ -64,20 +64,19 @@ la .adam. cu pilno la .flukonazol.
 # drug's blood concentration rises. Expressed as a grounded conditional per
 # affected substrate. The fully general multi-variable rule
 # "for all inhibitor, substrate, enzyme ..." requires multi-variable join-rule
-# compilation; the per-substrate, two-positive-condition toxicity step likewise
-# requires conjunctive universal restrictors. Neither is yet available from
-# Lojban surface syntax, so both mechanism steps are grounded per substrate
-# (see Chapter 21, "Honest Boundaries"). The final alert rule IS general.
+# compilation, which is not yet available from Lojban surface syntax, so this
+# step alone remains grounded per substrate (see Chapter 21, "Honest
+# Boundaries"). The toxicity step (step 2) and the alert step are both general.
 ganai ge la .flukonazol. cu fanta la .siptucin. gi la .varfarin. cu se katna la .siptucin. gi la .varfarin. cu zenba
 ganai ge la .flukonazol. cu fanta la .siptucin. gi la .fenituin. cu se katna la .siptucin. gi la .fenituin. cu zenba
 
-# ─── Mechanism step 2: toxicity risk ──────────────────────────────
+# ─── Mechanism step 2: toxicity risk (general rule) ───────────────
 # A drug whose concentration is increased AND which has a narrow therapeutic
 # index is at toxicity risk. BOTH conditions are required: a benign concentration
-# rise in a wide-margin drug does not trip this. (Grounded per substrate because
-# a conjunctive universal restrictor is not yet supported — see Chapter 21.)
-ganai ge la .varfarin. cu zenba gi la .varfarin. cu cinla gi la .varfarin. cu ckape
-ganai ge la .fenituin. cu zenba gi la .fenituin. cu cinla gi la .fenituin. cu ckape
+# rise in a wide-margin drug does not trip this. Encoded as a single general
+# universal rule with a conjunctive (stacked-poi) restrictor — it fires for ANY
+# drug satisfying both conditions, with no per-substrate rule.
+ro lo xukmi poi zenba poi cinla cu ckape
 
 # ─── General clinical rule (fires for ANY drug) ───────────────────
 # Any drug at toxicity risk warrants a safety alert. This rule is fully general:
