@@ -3807,6 +3807,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "nibli-wasm"
+version = "0.1.0"
+dependencies = [
+ "gerna",
+ "logji",
+ "nibli-protocol",
+ "nibli-types",
+ "serde_json",
+ "smuni",
+ "smuni-dictionary",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "nix"
 version = "0.26.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

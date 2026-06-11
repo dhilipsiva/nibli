@@ -1,0 +1,22 @@
+[package]
+name = "nibli-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "Browser wasm wrapper — gerna/smuni/logji + smuni-dictionary behind wasm-bindgen, no persistence. Powers the live Transparency Triad demo at dhilipsiva.dev/nibli."
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[dependencies]
+gerna = { path = "../gerna" }
+smuni = { path = "../smuni" }
+logji = { path = "../logji" }
+nibli-types = { path = "../nibli-types" }
+nibli-protocol = { path = "../nibli-protocol" }
+smuni-dictionary = { path = "../smuni-dictionary" }
+wasm-bindgen = "0.2"
+serde_json = "1"
