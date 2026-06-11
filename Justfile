@@ -188,6 +188,14 @@ verify-book: build-validate
 verify-book-vocab:
     python3 book/tools/verify_book.py --vocab-only
 
+# Capture-regeneration gate: every transcript block in book/ must match a fresh
+# engine capture (book's "captured verbatim" claims, re-checked). Pre-release
+# gate, NOT in `ci` — it needs the WASM + gasnu build and replays sessions.
+# See book/tools/README.md. Run after any output-affecting engine change.
+verify-book-capture: build-wasm
+    cargo build -p gasnu {{cargo_profile_flag}}
+    NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm python3 book/tools/capture_book.py --check
+
 # Step-zero regression guard (run by `ci`). The logji FOL control test proves the
 # deep-chain reasoning path stays sound (it must PASS). The RED known-failure
 # backlog (known_failures*) stays opt-in via `-- --ignored` and is NOT run here.
