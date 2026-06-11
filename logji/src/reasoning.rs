@@ -1870,7 +1870,7 @@ pub(super) fn check_formula_holds_traced(
                             steps.push(ProofStep {
                                 rule: ProofRule::ExistsWitness((
                                     v.clone(),
-                                    ground_term_to_logical_term(&winning_member),
+                                    witness_term_to_logical_term(&winning_member),
                                 )),
                                 holds: true,
                                 children: vec![body_idx],
@@ -1899,7 +1899,7 @@ pub(super) fn check_formula_holds_traced(
                     steps.push(ProofStep {
                         rule: ProofRule::ExistsWitness((
                             v.clone(),
-                            ground_term_to_logical_term(member),
+                            witness_term_to_logical_term(member),
                         )),
                         holds: true,
                         children: vec![body_idx],
@@ -1931,7 +1931,7 @@ pub(super) fn check_formula_holds_traced(
                         steps.push(ProofStep {
                             rule: ProofRule::ExistsWitness((
                                 v.clone(),
-                                ground_term_to_logical_term(&witness),
+                                witness_term_to_logical_term(&witness),
                             )),
                             holds: true,
                             children: vec![body_idx],

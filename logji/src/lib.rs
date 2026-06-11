@@ -414,7 +414,7 @@ impl KnowledgeBase {
                     .into_iter()
                     .map(|(var, gt)| WitnessBinding {
                         variable: var,
-                        term: ground_term_to_logical_term(&gt),
+                        term: witness_term_to_logical_term(&gt),
                     })
                     .collect()
             })

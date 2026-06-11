@@ -1776,6 +1776,102 @@ fn test_find_witnesses_via_universal_rule() {
 }
 
 #[test]
+fn test_find_witnesses_dependent_skolem_terms_stay_distinct() {
+    // Two persons; ∀x. prenu(x) → ∃y. zdani(x, y, _). Each person's witness
+    // is a dependent Skolem FUNCTION — sk_N(alis) vs sk_N(bob) — and the
+    // WitnessBinding surface must keep them distinguishable. Regression:
+    // SkolemFn(name, dep) was collapsed to Constant(name) on conversion,
+    // so different entities' witnesses printed identically (`sk_0`).
+    let kb = new_kb();
+    assert_buf(&kb, make_assertion("alis", "prenu"));
+    assert_buf(&kb, make_assertion("bob", "prenu"));
+    assert_buf(&kb, make_dependent_skolem_universal("prenu", "zdani"));
+
+    let witnesses_for = |entity: &str| -> Vec<String> {
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "zdani",
+            vec![
+                LogicalTerm::Constant(entity.to_string()),
+                LogicalTerm::Variable("y".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let root = exists(&mut nodes, "y", body);
+        query_find(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        )
+        .iter()
+        .flat_map(|bs| bs.iter())
+        .filter(|b| b.variable == "y")
+        .filter_map(|b| match &b.term {
+            LogicalTerm::Constant(c) => Some(c.clone()),
+            _ => None,
+        })
+        .collect()
+    };
+
+    let alis_w = witnesses_for("alis");
+    let bob_w = witnesses_for("bob");
+    assert!(
+        alis_w.iter().any(|w| w.contains("alis")),
+        "alis's dependent witness must mention its dependency, got {alis_w:?}"
+    );
+    assert!(
+        bob_w.iter().any(|w| w.contains("bob")),
+        "bob's dependent witness must mention its dependency, got {bob_w:?}"
+    );
+}
+
+#[test]
+fn test_proof_trace_exists_witness_renders_dependent_skolem() {
+    // ∀x. prenu(x) → ∃y. zdani(x, y, _); query ∃y. zdani(alis, y, _) with
+    // proof. The ExistsWitness step's term must render the dependent Skolem
+    // functionally (sk_N(alis)), not as its bare base name.
+    let kb = new_kb();
+    assert_buf(&kb, make_assertion("alis", "prenu"));
+    assert_buf(&kb, make_dependent_skolem_universal("prenu", "zdani"));
+
+    let mut nodes = Vec::new();
+    let body = pred(
+        &mut nodes,
+        "zdani",
+        vec![
+            LogicalTerm::Constant("alis".to_string()),
+            LogicalTerm::Variable("y".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let root = exists(&mut nodes, "y", body);
+    let (result, trace) = query_with_proof(
+        &kb,
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        },
+    );
+
+    assert!(result);
+    let witness_terms: Vec<String> = trace
+        .steps
+        .iter()
+        .filter_map(|s| match &s.rule {
+            ProofRule::ExistsWitness((_, LogicalTerm::Constant(c))) => Some(c.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        witness_terms.iter().any(|w| w.contains("alis")),
+        "ExistsWitness must render the dependent Skolem functionally, got {witness_terms:?}"
+    );
+}
+
+#[test]
 fn test_find_witnesses_two_variables() {
     // Assert nelci(bob, alis), query ∃x.∃y.nelci(x, y)
     // Should find x=bob, y=alis

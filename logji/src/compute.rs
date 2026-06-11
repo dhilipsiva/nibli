@@ -80,6 +80,20 @@ pub(super) fn ground_term_to_logical_term(gt: &GroundTerm) -> LogicalTerm {
     }
 }
 
+/// Witness-surface conversion: unlike the compute-dispatch conversion above
+/// (which only needs an opaque token), dependent Skolem terms keep their
+/// functional form — SkolemFn("sk_1", adam) renders as `sk_1(adam)` — so
+/// distinct dependent witnesses stay distinguishable in `[Find]` results and
+/// `ExistsWitness` proof steps.
+pub(super) fn witness_term_to_logical_term(gt: &GroundTerm) -> LogicalTerm {
+    match gt {
+        GroundTerm::SkolemFn(..) | GroundTerm::DepPair(..) => {
+            LogicalTerm::Constant(gt.to_display_string())
+        }
+        other => ground_term_to_logical_term(other),
+    }
+}
+
 pub(super) fn resolve_args_for_dispatch(
     args: &[LogicalTerm],
     subs: &HashMap<String, GroundTerm>,
