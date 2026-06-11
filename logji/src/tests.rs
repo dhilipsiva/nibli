@@ -6298,3 +6298,74 @@ fn test_proof_trace_du_substitution_rule_derived() {
         "root step holds must match the True verdict"
     );
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// DETERMINISM PINS (todo.md: witness/proof output ordering was
+// HashSet-derived and varied with the process hasher seed)
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn find_witness_ordering_is_deterministic_across_kb_instances() {
+    // Same facts, two DIFFERENT assertion orders, two fresh KB instances
+    // (each std HashSet gets its own RandomState even in-process). The FULL
+    // ordered binding list must be identical: query_find_inner sorts binding
+    // sets canonically at its return boundary, so the order is hasher-seed
+    // independent by construction. NOTE: an in-process pin is weaker than a
+    // two-process check (which exercises different global seeds); the sort
+    // makes order seed-independent by construction, and the gasnu script-mode
+    // byte-identity check covers the two-process case empirically.
+    let names = ["zeta", "alis", "mike", "bob", "carol", "dave", "erin"];
+    let kb1 = new_kb();
+    for n in names {
+        assert_buf(&kb1, make_assertion(n, "gerku"));
+    }
+    let kb2 = new_kb();
+    for n in names.iter().rev() {
+        assert_buf(&kb2, make_assertion(n, "gerku"));
+    }
+
+    let r1a = query_find(&kb1, make_find_query("gerku"));
+    let r1b = query_find(&kb1, make_find_query("gerku"));
+    let r2 = query_find(&kb2, make_find_query("gerku"));
+
+    assert_eq!(r1a.len(), names.len(), "one binding set per asserted gerku");
+    assert_eq!(r1a, r1b, "same KB, repeated query: order must be stable");
+    assert_eq!(
+        r1a, r2,
+        "different assertion order: canonical witness order must agree"
+    );
+}
+
+#[test]
+fn domain_member_cache_order_is_deterministic() {
+    // Domain-iteration-order probe: the typed domain member cache must be
+    // sorted regardless of HashSet insertion order. This cache drives ForAll
+    // member iteration and the ForallVerified entity order in proof output.
+    let names = ["zeta", "alis", "mike", "bob"];
+    let kb1 = new_kb();
+    for n in names {
+        assert_buf(&kb1, make_assertion(n, "gerku"));
+    }
+    let kb2 = new_kb();
+    for n in names.iter().rev() {
+        assert_buf(&kb2, make_assertion(n, "gerku"));
+    }
+
+    let m1: Vec<GroundTerm> = {
+        let mut inner = kb1.inner.borrow_mut();
+        inner.ensure_domain_members_cached();
+        inner.all_typed_domain_members().to_vec()
+    };
+    let m2: Vec<GroundTerm> = {
+        let mut inner = kb2.inner.borrow_mut();
+        inner.ensure_domain_members_cached();
+        inner.all_typed_domain_members().to_vec()
+    };
+    assert_eq!(
+        m1, m2,
+        "domain member order must be insertion/hasher independent"
+    );
+    let mut sorted = m1.clone();
+    sorted.sort();
+    assert_eq!(m1, sorted, "domain member cache must be sorted");
+}

@@ -666,6 +666,12 @@ impl KnowledgeBaseInner {
             typed_members.push(GroundTerm::Description(d.clone()));
         }
 
+        // Determinism: the source sets are HashSets whose iteration order
+        // depends on the process hasher seed. Sort once at the cache boundary
+        // so domain iteration (ForAll/Exists evaluation, witness search,
+        // ForallVerified proof output) is byte-reproducible across runs.
+        typed_members.sort();
+
         self.typed_domain_members_cache = typed_members;
         self.domain_members_dirty = false;
     }
@@ -1194,7 +1200,11 @@ pub(super) fn process_assertion(
 
         // Log Skolem substitutions (suppressed during rebuild)
         if !inner.rebuilding && !skolem_subs.is_empty() {
-            let mapping: Vec<String> = skolem_subs
+            // Determinism: skolem_subs is a HashMap — sort by variable name so
+            // the printed mapping order is byte-reproducible across runs.
+            let mut entries: Vec<(&String, &GroundTerm)> = skolem_subs.iter().collect();
+            entries.sort_by(|a, b| a.0.cmp(b.0));
+            let mapping: Vec<String> = entries
                 .iter()
                 .map(|(v, gt)| {
                     if let Some(base) = skdep_base_name(gt) {
@@ -1344,7 +1354,13 @@ pub(super) fn collect_candidates(
         }
     }
 
-    best.map(|set| set.into_iter().collect())
+    // Determinism: the candidate set is a HashSet — sort once at the return
+    // boundary so witness enumeration order is hasher-seed independent.
+    best.map(|set| {
+        let mut candidates: Vec<GroundTerm> = set.into_iter().collect();
+        candidates.sort();
+        candidates
+    })
 }
 
 /// An anchor: a positive predicate in the body that mentions the target variable.

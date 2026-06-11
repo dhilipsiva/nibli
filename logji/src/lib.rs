@@ -395,7 +395,18 @@ impl KnowledgeBase {
                 }
             }
         }
-        let binding_sets = result_sets.unwrap_or_default();
+        let mut binding_sets = result_sets.unwrap_or_default();
+        // Determinism: witness enumeration touches HashSet-backed candidate
+        // collections, so the order binding sets arrive in is hasher-seed
+        // dependent. Sort the outer list by each set's canonical key (its
+        // sorted (var, term) pairs) so `[Find]` output is byte-reproducible
+        // across runs and processes. Intra-set binding order (structural,
+        // inner-to-outer) is preserved; no dedup — count semantics unchanged.
+        binding_sets.sort_by_cached_key(|bindings| {
+            let mut key = bindings.clone();
+            key.sort();
+            key
+        });
         Ok(binding_sets
             .into_iter()
             .map(|bindings| {

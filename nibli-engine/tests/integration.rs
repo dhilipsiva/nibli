@@ -1103,3 +1103,57 @@ fn ddi_temporal_alert_discrimination() {
         "There was no alert in the past (tense discrimination)",
     );
 }
+
+// ─── Determinism pin (todo.md: witness/proof output ordering) ────────
+
+#[test]
+fn find_witness_output_order_is_deterministic() {
+    // Full-pipeline pin for the HashSet-derived-ordering item: witness
+    // candidates and domain members were iterated straight out of HashSets,
+    // so `ma` find output order varied with the hasher seed. Two fresh
+    // engines (each with its own RandomState instances) loading the same
+    // corpus must produce identical ordered find results, and a repeated
+    // query on one engine must be order-stable — binding sets are sorted
+    // canonically at the logji query_find boundary.
+    //
+    // NOTE: the corpus is asserted in the SAME order in both engines because
+    // event-existential Skolem names (sk_N) are assertion-order dependent by
+    // design; cross-order canonicalization is pinned at the logji level on
+    // Skolem-free ground facts. An in-process pin is weaker than two true
+    // processes (different global seeds), but the sort makes the order
+    // seed-independent by construction.
+    let lines = [
+        "la .zod. cu gerku",
+        "la .alis. cu gerku",
+        "la .mik. cu gerku",
+        "la .bob. cu gerku",
+    ];
+    let e1 = engine_with_facts(&lines);
+    let e2 = engine_with_facts(&lines);
+
+    let render = |engine: &NibliEngine| -> Vec<String> {
+        engine
+            .query_find_text("ma gerku")
+            .unwrap()
+            .iter()
+            .map(|bindings| {
+                bindings
+                    .iter()
+                    .map(|b| format!("{} = {:?}", b.variable, b.term))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .collect()
+    };
+
+    let r1a = render(&e1);
+    let r1b = render(&e1);
+    let r2 = render(&e2);
+
+    assert!(!r1a.is_empty(), "ma gerku should find witnesses");
+    assert_eq!(r1a, r1b, "repeated find on one engine must be order-stable");
+    assert_eq!(
+        r1a, r2,
+        "a fresh engine on the same corpus must produce identical find order"
+    );
+}
