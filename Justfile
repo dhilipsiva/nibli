@@ -173,7 +173,7 @@ gossip-webrtc-b:
 test-all: test test-engine test-store test-tavla test-backend test-classifier
 
 # CI gate for the hardened runtime and transport surface
-ci: fmt-check clippy-runtime test test-engine test-store test-server test-gossip-e2e test-persistence-replay test-sync-retraction verify-harness
+ci: fmt-check clippy-runtime test test-engine test-store test-server test-gossip-e2e test-persistence-replay test-sync-retraction verify-harness verify-book-vocab
 
 # Build the nibli-validate binary (batch Lojban validation via stdin)
 build-validate:
