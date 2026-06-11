@@ -180,33 +180,34 @@ pub(super) fn check_formula_holds(
                 }
             }
             // Slow path: need owned Vec because check_formula_holds takes &mut inner.
-            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
+            // Candidate narrowing (∃-heavy query blowup fix): when the body has
+            // a mandatory positive anchor, enumerate only index/rule-derivable
+            // candidates instead of the full domain × SkolemFn-registry
+            // cartesian — completeness argument at collect_entailment_candidates.
+            let candidates: Vec<GroundTerm> =
+                match collect_entailment_candidates(buffer, *body, v, subs, inner, tense) {
+                    Some(narrowed) => narrowed,
+                    None => {
+                        let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
+                        let mut all = members.clone();
+                        for entry in &inner.skolem_fn_registry {
+                            for combo in GroundTermCartesianProduct::new(&members, entry.dep_count)
+                            {
+                                all.push(build_skolem_fn_term(&entry.base_name, &combo));
+                            }
+                        }
+                        all
+                    }
+                };
             let mut best_result = None;
-            for member in &members {
-                let result = with_sub(subs, v, member.clone(), |s| {
+            for candidate in candidates {
+                let result = with_sub(subs, v, candidate, |s| {
                     check_formula_holds(buffer, *body, s, inner, tense)
                 })?;
                 if result.is_true() {
                     return Ok(QueryResult::True);
                 }
                 best_result = prefer_non_definitive(best_result, result);
-            }
-            let sk_entries: Vec<(String, usize)> = inner
-                .skolem_fn_registry
-                .iter()
-                .map(|e| (e.base_name.clone(), e.dep_count))
-                .collect();
-            for (base_name, dep_count) in &sk_entries {
-                for combo in GroundTermCartesianProduct::new(&members, *dep_count) {
-                    let witness = build_skolem_fn_term(base_name, &combo);
-                    let result = with_sub(subs, v, witness, |s| {
-                        check_formula_holds(buffer, *body, s, inner, tense)
-                    })?;
-                    if result.is_true() {
-                        return Ok(QueryResult::True);
-                    }
-                    best_result = prefer_non_definitive(best_result, result);
-                }
             }
             Ok(best_result.unwrap_or(QueryResult::False))
         }
@@ -1881,10 +1882,26 @@ pub(super) fn check_formula_holds_traced(
                 }
             }
 
-            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
-            for member in &members {
+            // Candidate narrowing (∃-heavy query blowup fix) — same enumeration
+            // as the untraced Exists arm; see collect_entailment_candidates.
+            let candidates: Vec<GroundTerm> =
+                match collect_entailment_candidates(buffer, *body, v, subs, inner, tense) {
+                    Some(narrowed) => narrowed,
+                    None => {
+                        let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
+                        let mut all = members.clone();
+                        for entry in &inner.skolem_fn_registry {
+                            for combo in GroundTermCartesianProduct::new(&members, entry.dep_count)
+                            {
+                                all.push(build_skolem_fn_term(&entry.base_name, &combo));
+                            }
+                        }
+                        all
+                    }
+                };
+            for candidate in &candidates {
                 let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), member.clone());
+                new_subs.insert(v.clone(), candidate.clone());
                 if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)?.is_true() {
                     let (_, body_idx) = check_formula_holds_traced(
                         buffer,
@@ -1899,45 +1916,12 @@ pub(super) fn check_formula_holds_traced(
                     steps.push(ProofStep {
                         rule: ProofRule::ExistsWitness((
                             v.clone(),
-                            witness_term_to_logical_term(member),
+                            witness_term_to_logical_term(candidate),
                         )),
                         holds: true,
                         children: vec![body_idx],
                     });
                     return Ok((true, idx));
-                }
-            }
-            let sk_entries: Vec<(String, usize)> = inner
-                .skolem_fn_registry
-                .iter()
-                .map(|e| (e.base_name.clone(), e.dep_count))
-                .collect();
-            for (base_name, dep_count) in &sk_entries {
-                for combo in GroundTermCartesianProduct::new(&members, *dep_count) {
-                    let witness = build_skolem_fn_term(base_name, &combo);
-                    let mut new_subs = subs.clone();
-                    new_subs.insert(v.clone(), witness.clone());
-                    if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)?.is_true() {
-                        let (_, body_idx) = check_formula_holds_traced(
-                            buffer,
-                            *body,
-                            &mut new_subs,
-                            inner,
-                            steps,
-                            tense,
-                            memo,
-                        )?;
-                        let idx = steps.len() as u32;
-                        steps.push(ProofStep {
-                            rule: ProofRule::ExistsWitness((
-                                v.clone(),
-                                witness_term_to_logical_term(&witness),
-                            )),
-                            holds: true,
-                            children: vec![body_idx],
-                        });
-                        return Ok((true, idx));
-                    }
                 }
             }
             let idx = steps.len() as u32;

@@ -305,3 +305,43 @@ fn duplicate_ground_fact_survives_retracting_one_copy() {
          removed the fact entirely (HashSet store has no multiplicity): {r:?}"
     );
 }
+
+// ─── ∃-heavy nested-abstraction query blowup (Ch 12 consent case study) ─────
+// A universal rule whose restrictor and conclusion both nest a full bridi
+// inside `lo nu` (11 ∀-dependent Skolems), queried with an indefinite `lo`
+// subject: the entailment search generate-and-tested every query existential
+// over the full domain × SkolemFn-registry cartesian (members^k). The 3-fact
+// KB below took ~40s in a native debug build and exhausted gasnu's default
+// 10B WASM fuel — which is how the trap bricked the REPL session and
+// corrupted the Ch 12 captured transcripts. The query runs on a watchdog
+// thread so a complexity regression fails cleanly on timeout instead of
+// hanging the suite.
+
+#[test] // FIXED (entailment ∃ candidate narrowing — collect_entailment_candidates): promoted.
+fn ch12_consent_case_study_traced_query_completes() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let engine = NibliEngine::new();
+        engine.assert_text(".i lo prenu cu ponse lo datni").unwrap();
+        engine
+            .assert_text(".i lo prenu cu curmi lo nu lo datni cu se pilno")
+            .unwrap();
+        engine
+            .assert_text(
+                ".i ro lo prenu poi curmi lo nu lo datni cu se pilno cu se bilga lo nu lo datni cu se pilno",
+            )
+            .unwrap();
+        let (verdict, _trace, _json) = engine
+            .query_text_with_proof("lo prenu cu se bilga lo nu lo datni cu se pilno")
+            .unwrap();
+        tx.send(verdict).ok();
+    });
+    let verdict = rx.recv_timeout(std::time::Duration::from_secs(10)).expect(
+        "Ch 12 consent query exceeded the 10s debug budget for a 3-fact \
+             KB — the ∃-heavy nested-abstraction candidate search has blown up",
+    );
+    assert!(
+        verdict.is_true(),
+        "consent → processing obligation must be derivable: {verdict:?}"
+    );
+}

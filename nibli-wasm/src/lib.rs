@@ -204,8 +204,8 @@ impl Session {
 
 impl Session {
     fn compile_text(&self, input: &str) -> Result<logji_logic::LogicBuffer, String> {
-        let parse_result =
-            gerna::parse_text_native(input.to_string()).map_err(|e: PipelineError| e.to_string())?;
+        let parse_result = gerna::parse_text_native(input.to_string())
+            .map_err(|e: PipelineError| e.to_string())?;
 
         if !parse_result.errors.is_empty() {
             let msgs: Vec<String> = parse_result

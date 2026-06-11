@@ -1363,6 +1363,176 @@ pub(super) fn collect_candidates(
     })
 }
 
+/// Entailment-side ∃ candidate narrowing (the ∃-heavy query blowup fix).
+///
+/// Unlike `collect_candidates` (the find path), this narrows ONLY from
+/// MANDATORY positive anchors — predicates not under any `Or` (an Or-branch
+/// anchor is optional, so narrowing by it could miss witnesses), and never
+/// compute or query-time-evaluated relations (`du`, `zmadu`, `mleca`,
+/// `dunli`), whose extensions are not store-backed.
+///
+/// Completeness relative to the full domain + registry-cartesian scan it
+/// replaces: any witness `w` satisfying the body satisfies every mandatory
+/// anchor, so `w` is either in the anchor's predicate index (superset
+/// extraction, equivalence-expanded) or derivable via a rule concluding the
+/// anchor relation — whose conclusion position is ground (added directly),
+/// a PatternVar (full member + registry-cartesian superset, same as the old
+/// scan), or a dependent-Skolem template (instantiated for THAT base name
+/// only — a name-mismatched SkolemFn can never unify, so other bases are
+/// dead candidates by construction).
+///
+/// Returns `None` when no mandatory anchor exists — the caller falls back to
+/// the full scan.
+pub(super) fn collect_entailment_candidates(
+    buffer: &LogicBuffer,
+    body_id: u32,
+    var_name: &str,
+    subs: &HashMap<String, GroundTerm>,
+    inner: &KnowledgeBaseInner,
+    tense: Option<&str>,
+) -> Option<Vec<GroundTerm>> {
+    let mut anchors = Vec::new();
+    collect_mandatory_anchors(buffer, body_id, var_name, subs, tense, &mut anchors);
+    if anchors.is_empty() {
+        return None;
+    }
+    let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
+    let mut best: Option<HashSet<GroundTerm>> = None;
+    for anchor in &anchors {
+        let mut candidates = HashSet::new();
+        extract_from_index(anchor, inner, &mut candidates);
+        extract_rule_candidates_for_entailment(anchor, inner, &members, &mut candidates);
+        // Unspecified (zo'e) can appear as a stored argument but is never a
+        // meaningful witness value.
+        candidates.remove(&GroundTerm::Unspecified);
+        match &best {
+            None => best = Some(candidates),
+            Some(prev) if candidates.len() < prev.len() => best = Some(candidates),
+            _ => {}
+        }
+    }
+    best.map(|set| {
+        let mut candidates: Vec<GroundTerm> = set.into_iter().collect();
+        candidates.sort();
+        candidates
+    })
+}
+
+/// Relations whose truth is not store-backed (query-time evaluation /
+/// equivalence machinery) — never sound to narrow candidates from.
+fn is_non_indexable_relation(rel: &str) -> bool {
+    matches!(rel, "du" | "zmadu" | "mleca" | "dunli")
+}
+
+/// Like `collect_predicate_anchors`, but only MANDATORY anchors: descends
+/// And/tense/deontic/quantifier bodies, but NOT Or branches (optional) and
+/// NOT compute nodes or query-time-evaluated relations.
+fn collect_mandatory_anchors(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    var_name: &str,
+    subs: &HashMap<String, GroundTerm>,
+    tense: Option<&str>,
+    anchors: &mut Vec<PredicateAnchor>,
+) {
+    let Ok(node) = get_node(buffer, node_id) else {
+        return;
+    };
+    match node {
+        LogicNode::Predicate((rel, args)) => {
+            if is_non_indexable_relation(rel) {
+                return;
+            }
+            if let Some(pos) = find_var_position(args, var_name, subs) {
+                anchors.push(PredicateAnchor {
+                    relation: rel.clone(),
+                    var_position: pos,
+                    args: args.clone(),
+                    tense: tense_to_static(tense),
+                });
+            }
+        }
+        LogicNode::AndNode((l, r)) => {
+            collect_mandatory_anchors(buffer, *l, var_name, subs, tense, anchors);
+            collect_mandatory_anchors(buffer, *r, var_name, subs, tense, anchors);
+        }
+        LogicNode::PastNode(inner_id) => {
+            collect_mandatory_anchors(buffer, *inner_id, var_name, subs, Some("Past"), anchors);
+        }
+        LogicNode::PresentNode(inner_id) => {
+            collect_mandatory_anchors(buffer, *inner_id, var_name, subs, Some("Present"), anchors);
+        }
+        LogicNode::FutureNode(inner_id) => {
+            collect_mandatory_anchors(buffer, *inner_id, var_name, subs, Some("Future"), anchors);
+        }
+        LogicNode::ObligatoryNode(inner_id) | LogicNode::PermittedNode(inner_id) => {
+            collect_mandatory_anchors(buffer, *inner_id, var_name, subs, tense, anchors);
+        }
+        // A nested quantifier's body conjuncts are still mandatory for OUR
+        // variable (smuni generates unique variable names, so no shadowing).
+        LogicNode::ExistsNode((_, body)) | LogicNode::ForAllNode((_, body)) => {
+            collect_mandatory_anchors(buffer, *body, var_name, subs, tense, anchors);
+        }
+        // OrNode: optional branches can't narrow. NotNode: negated predicates
+        // can't anchor. CountNode/ComputeNode/others: not store-backed anchors.
+        _ => {}
+    }
+}
+
+/// Rule-derivable candidates for an entailment anchor (see
+/// `collect_entailment_candidates` for the completeness argument).
+fn extract_rule_candidates_for_entailment(
+    anchor: &PredicateAnchor,
+    inner: &KnowledgeBaseInner,
+    members: &[GroundTerm],
+    candidates: &mut HashSet<GroundTerm>,
+) {
+    let rules = match inner.universal_rules.get(anchor.relation.as_str()) {
+        Some(r) => r,
+        None => return,
+    };
+    for rule in rules {
+        for conclusion in &rule.typed_conclusions {
+            if conclusion.relation() != anchor.relation {
+                continue;
+            }
+            let conc_args = &conclusion.inner().args;
+            if conc_args.len() != anchor.args.len() {
+                continue;
+            }
+            match &conc_args[anchor.var_position] {
+                GroundTerm::PatternVar(_) => {
+                    // The rule's conditions can bind this position to any
+                    // domain member, or (via chained rules) to another rule's
+                    // dependent-Skolem witness — full superset, same as the
+                    // old unconditional scan.
+                    candidates.extend(members.iter().cloned());
+                    for entry in &inner.skolem_fn_registry {
+                        for combo in GroundTermCartesianProduct::new(members, entry.dep_count) {
+                            candidates.insert(build_skolem_fn_term(&entry.base_name, &combo));
+                        }
+                    }
+                }
+                GroundTerm::SkolemFn(base, _) => {
+                    // Anchored cartesian: only THIS base name can unify here.
+                    let dep_count = inner
+                        .skolem_fn_registry
+                        .iter()
+                        .find(|e| e.base_name == *base)
+                        .map(|e| e.dep_count)
+                        .unwrap_or(1);
+                    for combo in GroundTermCartesianProduct::new(members, dep_count) {
+                        candidates.insert(build_skolem_fn_term(base, &combo));
+                    }
+                }
+                other => {
+                    candidates.insert(other.clone());
+                }
+            }
+        }
+    }
+}
+
 /// An anchor: a positive predicate in the body that mentions the target variable.
 struct PredicateAnchor {
     relation: String,
