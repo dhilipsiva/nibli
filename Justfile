@@ -52,6 +52,25 @@ smoke-gasnu-script: build-wasm build-gasnu
         echo "$out" | grep -qF '[Facts] 1 active fact(s):' || { echo 'FAIL: missing :facts listing'; exit 1; }; \
         echo 'PASS: gasnu script mode emits echoed prompts + expected markers'
 
+# Trap-recovery smoke: a fuel trap must not brick the session. The host
+# rebuilds the poisoned component instance lazily (before the next session
+# call, so an intervening :fuel raise applies) and replays the journaled
+# mutations deterministically; the post-trap query answers from the replayed
+# KB with the original fact ids. Pre-release gate like smoke-gasnu-script
+# (needs the WASM build; not part of `ci`).
+smoke-gasnu-trap-recovery: build-wasm build-gasnu
+    @echo "Smoke-testing gasnu trap recovery (fuel trap mid-session)..."
+    @out=$(printf 'la .adam. cu gerku\n:fuel 1000\n? la .adam. cu gerku\n:fuel 10000000000\n? la .adam. cu gerku\n:facts\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$out"; \
+        echo "$out" | grep -qF '[Limit] Execution fuel exhausted' || { echo 'FAIL: fuel trap not classified as [Limit]'; exit 1; }; \
+        echo "$out" | grep -qF '[Session] Wasm trap poisoned the component instance; rebuilding and replaying 1 command(s)...' || { echo 'FAIL: missing rebuild message'; exit 1; }; \
+        echo "$out" | grep -qF '[Query] TRUE' || { echo 'FAIL: post-recovery query did not answer TRUE'; exit 1; }; \
+        echo "$out" | grep -qF '#0: la .adam. cu gerku' || { echo 'FAIL: replayed fact #0 missing from :facts'; exit 1; }; \
+        if echo "$out" | grep -qF 'cannot enter component instance'; then echo 'FAIL: session still bricked after trap'; exit 1; fi; \
+        if echo "$out" | grep -qF 'cannot remove owned resource'; then echo 'FAIL: resource-drop error at exit'; exit 1; fi; \
+        echo 'PASS: fuel trap recovered — session rebuilt and replayed'
+
 # Executes the full pipeline: Builds WASM modules, then boots the native REPL
 run: build-wasm
     @echo "Launching Neuro-Symbolic Engine ({{profile}})..."

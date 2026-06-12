@@ -30,7 +30,7 @@ use std::io::{BufRead, BufReader, IsTerminal, Write};
 use std::net::TcpStream;
 use std::path::Path;
 use std::time::Duration;
-use wasmtime::component::{Component, HasSelf, Linker};
+use wasmtime::component::{Component, HasSelf, Linker, ResourceAny};
 use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder};
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
@@ -633,201 +633,166 @@ fn format_nibli_error(e: &NibliError) -> String {
     }
 }
 
-fn main() -> Result<()> {
-    println!("==================================================");
-    println!(" Lojban Neuro-Symbolic Engine - V4 Typed Pipeline  ");
-    println!("==================================================");
+// ── REPL driver ──
 
-    let mut config = Config::new();
-    config.wasm_component_model(true);
-    config.consume_fuel(true);
-    // Note: debug_info(true) triggers a Cranelift assertion failure
-    // (value_is_real) on our WASM module — WASM debug symbols not supported.
-    let engine = Engine::new(&config)?;
+/// All host-side REPL state. Factored out of `main` (instead of a closure
+/// over a dozen locals) so the trap-recovery path can swap the poisoned
+/// Store/instance/session for fresh ones mid-session.
+struct Repl {
+    // engine/component/linker are held for the trap-recovery rebuild path
+    // (re-instantiation reuses the compiled Component and the Linker).
+    #[allow(dead_code)]
+    engine: Engine,
+    #[allow(dead_code)]
+    component: Component,
+    #[allow(dead_code)]
+    linker: Linker<HostState>,
+    store: Store<HostState>,
+    pipeline: pipeline_bind::LasnaPipeline,
+    session_handle: ResourceAny,
+    fuel_budget: u64,
+    memory_limit_mb: usize,
+    nibli_store: Option<NibliStore>,
+    db_path: Option<String>,
+}
 
-    let mut linker = Linker::new(&engine);
-    wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
-    compute_backend::add_to_linker::<HostState, HasSelf<HostState>>(
-        &mut linker,
-        |state: &mut HostState| state,
-    )?;
-
-    let backend_addr = std::env::var("NIBLI_COMPUTE_ADDR").ok();
-    if let Some(ref addr) = backend_addr {
-        println!("Compute backend: {}", addr);
-    } else {
-        println!("Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)");
+impl Repl {
+    /// Create a fresh Store + component instance + session resource.
+    /// Used at startup and (after a wasm trap poisons the instance) by the
+    /// rebuild path — `Component` and `Linker` are reusable across stores.
+    fn instantiate_session(
+        engine: &Engine,
+        component: &Component,
+        linker: &Linker<HostState>,
+        fuel_budget: u64,
+        memory_limit_mb: usize,
+        backend_addr: Option<String>,
+    ) -> Result<(Store<HostState>, pipeline_bind::LasnaPipeline, ResourceAny)> {
+        let state = HostState {
+            ctx: WasiCtxBuilder::new()
+                .inherit_stdout()
+                .inherit_stderr()
+                .build(),
+            table: ResourceTable::new(),
+            limits: StoreLimitsBuilder::new()
+                .memory_size(memory_limit_mb * 1024 * 1024)
+                .build(),
+            backend_addr,
+            backend_conn: None,
+            backend_last_used: None,
+        };
+        let mut store = Store::new(engine, state);
+        store.set_fuel(fuel_budget)?;
+        store.limiter(|state| &mut state.limits);
+        let pipeline = pipeline_bind::LasnaPipeline::instantiate(&mut store, component, linker)?;
+        let session_handle = pipeline
+            .lojban_nibli_lasna()
+            .session()
+            .call_constructor(&mut store)?;
+        Ok((store, pipeline, session_handle))
     }
 
-    let mut fuel_budget: u64 = std::env::var("NIBLI_FUEL")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(10_000_000_000);
-    println!("Fuel budget: {} per command", fuel_budget);
+    /// Make the session callable for the next command: refuel.
+    fn prepare_session(&mut self) {
+        refuel(&mut self.store, self.fuel_budget);
+    }
 
-    let mut memory_limit_mb: usize = std::env::var("NIBLI_MEMORY_MB")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(512);
-    println!("Memory limit: {} MB", memory_limit_mb);
-
-    let state = HostState {
-        ctx: WasiCtxBuilder::new()
-            .inherit_stdout()
-            .inherit_stderr()
-            .build(),
-        table: ResourceTable::new(),
-        limits: StoreLimitsBuilder::new()
-            .memory_size(memory_limit_mb * 1024 * 1024)
-            .build(),
-        backend_addr,
-        backend_conn: None,
-        backend_last_used: None,
-    };
-    let mut store = Store::new(&engine, state);
-    store.set_fuel(fuel_budget)?;
-    store.limiter(|state| &mut state.limits);
-
-    let wasm_path = std::env::var("NIBLI_WASM_PATH")
-        .unwrap_or_else(|_| "target/wasm32-wasip2/debug/lasna.wasm".to_string());
-    println!("Loading WebAssembly Component from {}...", wasm_path);
-    let pipeline_comp = Component::from_file(&engine, &wasm_path)?;
-    let pipeline = pipeline_bind::LasnaPipeline::instantiate(&mut store, &pipeline_comp, &linker)?;
-
-    // Get the exported engine interface and create a session
-    let engine_iface = pipeline.lojban_nibli_lasna();
-    let session = engine_iface.session();
-    let session_handle = session.call_constructor(&mut store)?;
-
-    // ── Persistent store (optional) ──
-    let db_path = std::env::var("NIBLI_DB_PATH").ok();
-    let mut nibli_store: Option<NibliStore> = match &db_path {
-        Some(p) => match NibliStore::open(Path::new(p), "gasnu-local".to_string()) {
-            Ok(s) => {
-                println!("Persistent store: {}", p);
-                Some(s)
-            }
-            Err(e) => {
-                println!(
-                    "[Store] Failed to open {}: {} (running without persistence)",
-                    p, e
-                );
-                None
-            }
-        },
-        None => None,
-    };
-
-    // Replay persisted facts into WASM session
-    if let Some(ref s) = nibli_store {
-        match s.all_active_facts() {
-            Ok(facts) if !facts.is_empty() => {
-                println!("[Store] Replaying {} persisted facts...", facts.len());
-                let mut replayed = 0u32;
-                let mut replay_errors = 0u32;
-                for fact in &facts {
-                    let assertion: StoredAssertion = match postcard::from_bytes(&fact.payload) {
-                        Ok(a) => a,
-                        Err(e) => {
-                            println!("[Store] Fact #{} deserialize error: {}", fact.id, e);
+    /// Replay persisted facts from the durable store into the WASM session.
+    fn replay_persisted(&mut self) {
+        let facts = match self.nibli_store.as_ref() {
+            Some(s) => match s.all_active_facts() {
+                Ok(facts) if !facts.is_empty() => facts,
+                _ => return,
+            },
+            None => return,
+        };
+        println!("[Store] Replaying {} persisted facts...", facts.len());
+        let mut replayed = 0u32;
+        let mut replay_errors = 0u32;
+        for fact in &facts {
+            let assertion: StoredAssertion = match postcard::from_bytes(&fact.payload) {
+                Ok(a) => a,
+                Err(e) => {
+                    println!("[Store] Fact #{} deserialize error: {}", fact.id, e);
+                    replay_errors += 1;
+                    continue;
+                }
+            };
+            self.prepare_session();
+            let session = self.pipeline.lojban_nibli_lasna().session();
+            match assertion {
+                StoredAssertion::Text(ref text) => {
+                    match session.call_assert_text(&mut self.store, self.session_handle, text) {
+                        Ok(Ok(_)) => replayed += 1,
+                        Ok(Err(e)) => {
+                            println!(
+                                "[Store] Replay fact #{}: {}",
+                                fact.id,
+                                format_nibli_error(&e)
+                            );
                             replay_errors += 1;
-                            continue;
                         }
-                    };
-                    refuel(&mut store, fuel_budget);
-                    match assertion {
-                        StoredAssertion::Text(ref text) => {
-                            match session.call_assert_text(&mut store, session_handle, text) {
-                                Ok(Ok(_)) => replayed += 1,
-                                Ok(Err(e)) => {
-                                    println!(
-                                        "[Store] Replay fact #{}: {}",
-                                        fact.id,
-                                        format_nibli_error(&e)
-                                    );
-                                    replay_errors += 1;
-                                }
-                                Err(e) => {
-                                    println!(
-                                        "[Store] Replay fact #{}: {}",
-                                        fact.id,
-                                        format_host_error(&e)
-                                    );
-                                    replay_errors += 1;
-                                }
-                            }
-                        }
-                        StoredAssertion::Direct {
-                            ref relation,
-                            ref args,
-                        } => {
-                            let wit_args: Vec<EngineLogicalTerm> =
-                                args.iter().map(stored_term_to_wit).collect();
-                            match session.call_assert_fact(
-                                &mut store,
-                                session_handle,
-                                relation,
-                                &wit_args,
-                            ) {
-                                Ok(Ok(_)) => replayed += 1,
-                                Ok(Err(e)) => {
-                                    println!(
-                                        "[Store] Replay fact #{}: {}",
-                                        fact.id,
-                                        format_nibli_error(&e)
-                                    );
-                                    replay_errors += 1;
-                                }
-                                Err(e) => {
-                                    println!(
-                                        "[Store] Replay fact #{}: {}",
-                                        fact.id,
-                                        format_host_error(&e)
-                                    );
-                                    replay_errors += 1;
-                                }
-                            }
+                        Err(e) => {
+                            println!(
+                                "[Store] Replay fact #{}: {}",
+                                fact.id,
+                                format_host_error(&e)
+                            );
+                            replay_errors += 1;
                         }
                     }
                 }
-                if replay_errors > 0 {
-                    println!("[Store] Replay: {} ok, {} errors", replayed, replay_errors);
-                } else {
-                    println!("[Store] Replay complete ({} facts)", replayed);
+                StoredAssertion::Direct {
+                    ref relation,
+                    ref args,
+                } => {
+                    let wit_args: Vec<EngineLogicalTerm> =
+                        args.iter().map(stored_term_to_wit).collect();
+                    match session.call_assert_fact(
+                        &mut self.store,
+                        self.session_handle,
+                        relation,
+                        &wit_args,
+                    ) {
+                        Ok(Ok(_)) => replayed += 1,
+                        Ok(Err(e)) => {
+                            println!(
+                                "[Store] Replay fact #{}: {}",
+                                fact.id,
+                                format_nibli_error(&e)
+                            );
+                            replay_errors += 1;
+                        }
+                        Err(e) => {
+                            println!(
+                                "[Store] Replay fact #{}: {}",
+                                fact.id,
+                                format_host_error(&e)
+                            );
+                            replay_errors += 1;
+                        }
+                    }
                 }
             }
-            _ => {}
+        }
+        if replay_errors > 0 {
+            println!("[Store] Replay: {} ok, {} errors", replayed, replay_errors);
+        } else {
+            println!("[Store] Replay complete ({} facts)", replayed);
         }
     }
 
-    // Mode selection: interactive (reedline) vs. non-interactive script mode.
-    // Script mode triggers when --script <file> is passed OR stdin is not a TTY,
-    // letting REPL transcripts be captured byte-faithfully via a pipe.
-    let script_path: Option<String> = {
-        let args: Vec<String> = std::env::args().collect();
-        args.windows(2)
-            .find(|w| w[0] == "--script")
-            .map(|w| w[1].clone())
-    };
-    let use_script_mode = script_path.is_some() || !std::io::stdin().is_terminal();
-
-    println!(
-        "Ready. Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :db :help"
-    );
-    println!(
-        "Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.\n"
-    );
-
-    // Per-command dispatch shared by interactive and script modes.
-    // Returns true when the session should quit (`:quit`), false to continue.
-    let mut dispatch = |input: &str| -> bool {
+    /// Per-command dispatch shared by interactive and script modes.
+    /// Returns true when the session should quit (`:quit`), false to continue.
+    fn dispatch(&mut self, input: &str) -> bool {
         match input {
             ":quit" | ":q" => return true,
             ":reset" | ":r" => {
-                refuel(&mut store, fuel_budget);
-                match session.call_reset_kb(&mut store, session_handle) {
+                self.prepare_session();
+                let session = self.pipeline.lojban_nibli_lasna().session();
+                match session.call_reset_kb(&mut self.store, self.session_handle) {
                     Ok(Ok(())) => {
-                        if let Some(s) = nibli_store.as_mut() {
+                        if let Some(s) = self.nibli_store.as_mut() {
                             let _ = s.clear();
                         }
                         println!("[Reset] Knowledge base cleared.");
@@ -838,13 +803,13 @@ fn main() -> Result<()> {
                 return false;
             }
             ":db" => {
-                match &nibli_store {
+                match &self.nibli_store {
                     Some(s) => {
                         let active = s.active_fact_count().unwrap_or(0);
                         let total = s.total_fact_count().unwrap_or(0);
                         println!(
                             "[Store] {} (node: {})",
-                            db_path.as_deref().unwrap_or("?"),
+                            self.db_path.as_deref().unwrap_or("?"),
                             s.node_id()
                         );
                         println!(
@@ -859,15 +824,15 @@ fn main() -> Result<()> {
                 return false;
             }
             ":fuel" | ":f" => {
-                println!("[Fuel] Budget: {} per command", fuel_budget);
+                println!("[Fuel] Budget: {} per command", self.fuel_budget);
                 return false;
             }
             ":memory" | ":m" => {
-                println!("[Memory] Limit: {} MB", memory_limit_mb);
+                println!("[Memory] Limit: {} MB", self.memory_limit_mb);
                 return false;
             }
             ":backend" | ":b" => {
-                let state = store.data();
+                let state = self.store.data();
                 match &state.backend_addr {
                     Some(addr) => {
                         let status = if state.backend_conn.is_some() {
@@ -882,8 +847,9 @@ fn main() -> Result<()> {
                 return false;
             }
             ":facts" => {
-                refuel(&mut store, fuel_budget);
-                match session.call_list_facts(&mut store, session_handle) {
+                self.prepare_session();
+                let session = self.pipeline.lojban_nibli_lasna().session();
+                match session.call_list_facts(&mut self.store, self.session_handle) {
                     Ok(Ok(facts)) => {
                         if facts.is_empty() {
                             println!("[Facts] Knowledge base is empty.");
@@ -934,8 +900,9 @@ fn main() -> Result<()> {
                 println!("[Host] Usage: :debug <lojban text>");
                 return false;
             }
-            refuel(&mut store, fuel_budget);
-            match session.call_compile_debug(&mut store, session_handle, text) {
+            self.prepare_session();
+            let session = self.pipeline.lojban_nibli_lasna().session();
+            match session.call_compile_debug(&mut self.store, self.session_handle, text) {
                 Ok(Ok(debug_output)) => println!("[Logic] {}", debug_output),
                 Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                 Err(e) => println!("{}", format_host_error(&e)),
@@ -943,13 +910,13 @@ fn main() -> Result<()> {
         } else if let Some(backend_arg) = input.strip_prefix(":backend ") {
             let addr = backend_arg.trim();
             if addr.is_empty() {
-                let state = store.data();
+                let state = self.store.data();
                 match &state.backend_addr {
                     Some(a) => println!("[Backend] {}", a),
                     None => println!("[Backend] Not configured"),
                 }
             } else {
-                let state = store.data_mut();
+                let state = self.store.data_mut();
                 state.backend_conn = None; // drop existing connection
                 state.backend_addr = Some(addr.to_string());
                 println!("[Backend] Set to {} (connects on first use)", addr);
@@ -958,8 +925,8 @@ fn main() -> Result<()> {
             let arg = fuel_arg.trim();
             match arg.parse::<u64>() {
                 Ok(n) if n > 0 => {
-                    fuel_budget = n;
-                    println!("[Fuel] Budget set to {}", fuel_budget);
+                    self.fuel_budget = n;
+                    println!("[Fuel] Budget set to {}", self.fuel_budget);
                 }
                 _ => println!("[Host] Usage: :fuel <positive-integer>"),
             }
@@ -967,12 +934,13 @@ fn main() -> Result<()> {
             let arg = mem_arg.trim();
             match arg.parse::<usize>() {
                 Ok(n) if n > 0 => {
-                    memory_limit_mb = n;
-                    let state = store.data_mut();
+                    self.memory_limit_mb = n;
+                    let limit = self.memory_limit_mb;
+                    let state = self.store.data_mut();
                     state.limits = StoreLimitsBuilder::new()
-                        .memory_size(memory_limit_mb * 1024 * 1024)
+                        .memory_size(limit * 1024 * 1024)
                         .build();
-                    println!("[Memory] Limit set to {} MB", memory_limit_mb);
+                    println!("[Memory] Limit set to {} MB", self.memory_limit_mb);
                 }
                 _ => println!("[Host] Usage: :memory <positive-integer-mb>"),
             }
@@ -982,8 +950,13 @@ fn main() -> Result<()> {
                 println!("[Host] Usage: :compute <predicate-name>");
                 return false;
             }
-            refuel(&mut store, fuel_budget);
-            match session.call_register_compute_predicate(&mut store, session_handle, name) {
+            self.prepare_session();
+            let session = self.pipeline.lojban_nibli_lasna().session();
+            match session.call_register_compute_predicate(
+                &mut self.store,
+                self.session_handle,
+                name,
+            ) {
                 Ok(()) => {
                     println!("[Compute] Registered '{}' for external dispatch", name)
                 }
@@ -1005,10 +978,16 @@ fn main() -> Result<()> {
                             _ => "?".to_string(),
                         })
                         .collect();
-                    refuel(&mut store, fuel_budget);
-                    match session.call_assert_fact(&mut store, session_handle, &relation, &args) {
+                    self.prepare_session();
+                    let session = self.pipeline.lojban_nibli_lasna().session();
+                    match session.call_assert_fact(
+                        &mut self.store,
+                        self.session_handle,
+                        &relation,
+                        &args,
+                    ) {
                         Ok(Ok(fact_id)) => {
-                            persist_direct(&mut nibli_store, fact_id, &relation, &args);
+                            persist_direct(&mut self.nibli_store, fact_id, &relation, &args);
                             println!(
                                 "[Fact #{}] {}({}) asserted.",
                                 fact_id,
@@ -1026,10 +1005,11 @@ fn main() -> Result<()> {
             let arg = retract_arg.trim();
             match arg.parse::<u64>() {
                 Ok(id) => {
-                    refuel(&mut store, fuel_budget);
-                    match session.call_retract_fact(&mut store, session_handle, id) {
+                    self.prepare_session();
+                    let session = self.pipeline.lojban_nibli_lasna().session();
+                    match session.call_retract_fact(&mut self.store, self.session_handle, id) {
                         Ok(Ok(())) => {
-                            if let Some(s) = nibli_store.as_mut() {
+                            if let Some(s) = self.nibli_store.as_mut() {
                                 let _ = s.retract_fact(id);
                             }
                             println!("[Retract] Fact #{} retracted. KB rebuilt.", id);
@@ -1077,10 +1057,11 @@ fn main() -> Result<()> {
                     skipped += 1;
                     continue;
                 }
-                refuel(&mut store, fuel_budget);
-                match session.call_assert_text(&mut store, session_handle, trimmed) {
+                self.prepare_session();
+                let session = self.pipeline.lojban_nibli_lasna().session();
+                match session.call_assert_text(&mut self.store, self.session_handle, trimmed) {
                     Ok(Ok(fact_id)) => {
-                        persist_text(&mut nibli_store, fact_id, trimmed);
+                        persist_text(&mut self.nibli_store, fact_id, trimmed);
                         println!("[Fact #{}] {}", fact_id, trimmed);
                         asserted += 1;
                     }
@@ -1105,8 +1086,9 @@ fn main() -> Result<()> {
                 return false;
             }
             // Get facts from WASM session (works with or without persistent store)
-            refuel(&mut store, fuel_budget);
-            match session.call_list_facts(&mut store, session_handle) {
+            self.prepare_session();
+            let session = self.pipeline.lojban_nibli_lasna().session();
+            match session.call_list_facts(&mut self.store, self.session_handle) {
                 Ok(Ok(facts)) => {
                     if facts.is_empty() {
                         println!("[Dump] Knowledge base is empty — nothing to dump.");
@@ -1135,77 +1117,84 @@ fn main() -> Result<()> {
                 println!("[Host] Usage: :merge <redb-filepath>");
                 return false;
             }
-            match nibli_store.as_mut() {
-                None => {
-                    println!("[Merge] No persistent store. Set NIBLI_DB_PATH to enable.")
-                }
-                Some(s) => {
-                    let merge_path = Path::new(filepath);
-                    if !merge_path.exists() {
-                        println!("[Merge] File not found: {}", filepath);
-                        return false;
-                    }
-                    match s.merge_from_file(merge_path) {
-                        Ok(result) => {
-                            println!(
-                                "[Merge] {} added, {} tombstoned from {}",
-                                result.added, result.tombstoned, filepath
-                            );
-                            if result.added > 0 || result.tombstoned > 0 {
-                                // Rebuild WASM session from merged store
-                                refuel(&mut store, fuel_budget);
-                                let _ = session.call_reset_kb(&mut store, session_handle);
-                                match s.all_active_facts() {
-                                    Ok(facts) => {
-                                        let mut replayed = 0u32;
-                                        for fact in &facts {
-                                            let assertion: StoredAssertion =
-                                                match postcard::from_bytes(&fact.payload) {
-                                                    Ok(a) => a,
-                                                    Err(_) => continue,
-                                                };
-                                            refuel(&mut store, fuel_budget);
-                                            match &assertion {
-                                                StoredAssertion::Text(text) => {
-                                                    if session
-                                                        .call_assert_text(
-                                                            &mut store,
-                                                            session_handle,
-                                                            text,
-                                                        )
-                                                        .is_ok()
-                                                    {
-                                                        replayed += 1;
-                                                    }
-                                                }
-                                                StoredAssertion::Direct { relation, args } => {
-                                                    let wit_args: Vec<EngineLogicalTerm> = args
-                                                        .iter()
-                                                        .map(stored_term_to_wit)
-                                                        .collect();
-                                                    if session
-                                                        .call_assert_fact(
-                                                            &mut store,
-                                                            session_handle,
-                                                            relation,
-                                                            &wit_args,
-                                                        )
-                                                        .is_ok()
-                                                    {
-                                                        replayed += 1;
-                                                    }
-                                                }
+            if self.nibli_store.is_none() {
+                println!("[Merge] No persistent store. Set NIBLI_DB_PATH to enable.");
+                return false;
+            }
+            let merge_path = Path::new(filepath);
+            if !merge_path.exists() {
+                println!("[Merge] File not found: {}", filepath);
+                return false;
+            }
+            let merge_result = self
+                .nibli_store
+                .as_mut()
+                .expect("checked above")
+                .merge_from_file(merge_path);
+            match merge_result {
+                Ok(result) => {
+                    println!(
+                        "[Merge] {} added, {} tombstoned from {}",
+                        result.added, result.tombstoned, filepath
+                    );
+                    if result.added > 0 || result.tombstoned > 0 {
+                        // Rebuild WASM session from merged store
+                        self.prepare_session();
+                        let session = self.pipeline.lojban_nibli_lasna().session();
+                        let _ = session.call_reset_kb(&mut self.store, self.session_handle);
+                        let facts = self
+                            .nibli_store
+                            .as_ref()
+                            .expect("checked above")
+                            .all_active_facts();
+                        match facts {
+                            Ok(facts) => {
+                                let mut replayed = 0u32;
+                                for fact in &facts {
+                                    let assertion: StoredAssertion =
+                                        match postcard::from_bytes(&fact.payload) {
+                                            Ok(a) => a,
+                                            Err(_) => continue,
+                                        };
+                                    self.prepare_session();
+                                    let session = self.pipeline.lojban_nibli_lasna().session();
+                                    match &assertion {
+                                        StoredAssertion::Text(text) => {
+                                            if session
+                                                .call_assert_text(
+                                                    &mut self.store,
+                                                    self.session_handle,
+                                                    text,
+                                                )
+                                                .is_ok()
+                                            {
+                                                replayed += 1;
                                             }
                                         }
-                                        println!("[Merge] KB rebuilt with {} facts", replayed);
+                                        StoredAssertion::Direct { relation, args } => {
+                                            let wit_args: Vec<EngineLogicalTerm> =
+                                                args.iter().map(stored_term_to_wit).collect();
+                                            if session
+                                                .call_assert_fact(
+                                                    &mut self.store,
+                                                    self.session_handle,
+                                                    relation,
+                                                    &wit_args,
+                                                )
+                                                .is_ok()
+                                            {
+                                                replayed += 1;
+                                            }
+                                        }
                                     }
-                                    Err(e) => println!("[Merge] Replay error: {}", e),
                                 }
+                                println!("[Merge] KB rebuilt with {} facts", replayed);
                             }
+                            Err(e) => println!("[Merge] Replay error: {}", e),
                         }
-                        Err(e) => println!("[Merge] Error: {}", e),
                     }
                 }
+                Err(e) => println!("[Merge] Error: {}", e),
             }
         } else if let Some(export_arg) = input.strip_prefix(":export ") {
             let filepath = export_arg.trim();
@@ -1213,7 +1202,7 @@ fn main() -> Result<()> {
                 println!("[Host] Usage: :export <redb-filepath>");
                 return false;
             }
-            match nibli_store.as_ref() {
+            match self.nibli_store.as_ref() {
                 None => {
                     println!("[Export] No persistent store. Set NIBLI_DB_PATH to enable.")
                 }
@@ -1230,8 +1219,9 @@ fn main() -> Result<()> {
                 println!("[Host] Usage: ?? <lojban query with ma>");
                 return false;
             }
-            refuel(&mut store, fuel_budget);
-            match session.call_query_find_text(&mut store, session_handle, text) {
+            self.prepare_session();
+            let session = self.pipeline.lojban_nibli_lasna().session();
+            match session.call_query_find_text(&mut self.store, self.session_handle, text) {
                 Ok(Ok(binding_sets)) => {
                     if binding_sets.is_empty() {
                         println!("[Find] No witnesses found.");
@@ -1254,8 +1244,9 @@ fn main() -> Result<()> {
                 println!("[Host] Usage: ? <lojban query>");
                 return false;
             }
-            refuel(&mut store, fuel_budget);
-            match session.call_query_text_with_proof(&mut store, session_handle, text) {
+            self.prepare_session();
+            let session = self.pipeline.lojban_nibli_lasna().session();
+            match session.call_query_text_with_proof(&mut self.store, self.session_handle, text) {
                 Ok(Ok((result, trace))) => {
                     println!("[Query] {}", format_query_result(&result));
                     print!("{}", trace_to_proto(&trace).to_pretty_text_with_indent(1));
@@ -1264,10 +1255,11 @@ fn main() -> Result<()> {
                 Err(e) => println!("{}", format_host_error(&e)),
             }
         } else {
-            refuel(&mut store, fuel_budget);
-            match session.call_assert_text(&mut store, session_handle, input) {
+            self.prepare_session();
+            let session = self.pipeline.lojban_nibli_lasna().session();
+            match session.call_assert_text(&mut self.store, self.session_handle, input) {
                 Ok(Ok(fact_id)) => {
-                    persist_text(&mut nibli_store, fact_id, input);
+                    persist_text(&mut self.nibli_store, fact_id, input);
                     println!("[Fact #{}] Asserted.", fact_id);
                 }
                 Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
@@ -1275,7 +1267,118 @@ fn main() -> Result<()> {
             }
         }
         false
+    }
+
+    /// Release the session resource and store.
+    fn shutdown(mut self) -> Result<()> {
+        self.session_handle.resource_drop(&mut self.store)?;
+        Ok(())
+    }
+}
+
+fn main() -> Result<()> {
+    println!("==================================================");
+    println!(" Lojban Neuro-Symbolic Engine - V4 Typed Pipeline  ");
+    println!("==================================================");
+
+    let mut config = Config::new();
+    config.wasm_component_model(true);
+    config.consume_fuel(true);
+    // Note: debug_info(true) triggers a Cranelift assertion failure
+    // (value_is_real) on our WASM module — WASM debug symbols not supported.
+    let engine = Engine::new(&config)?;
+
+    let mut linker = Linker::new(&engine);
+    wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
+    compute_backend::add_to_linker::<HostState, HasSelf<HostState>>(
+        &mut linker,
+        |state: &mut HostState| state,
+    )?;
+
+    let backend_addr = std::env::var("NIBLI_COMPUTE_ADDR").ok();
+    if let Some(ref addr) = backend_addr {
+        println!("Compute backend: {}", addr);
+    } else {
+        println!("Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)");
+    }
+
+    let fuel_budget: u64 = std::env::var("NIBLI_FUEL")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10_000_000_000);
+    println!("Fuel budget: {} per command", fuel_budget);
+
+    let memory_limit_mb: usize = std::env::var("NIBLI_MEMORY_MB")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(512);
+    println!("Memory limit: {} MB", memory_limit_mb);
+
+    let wasm_path = std::env::var("NIBLI_WASM_PATH")
+        .unwrap_or_else(|_| "target/wasm32-wasip2/debug/lasna.wasm".to_string());
+    println!("Loading WebAssembly Component from {}...", wasm_path);
+    let component = Component::from_file(&engine, &wasm_path)?;
+    let (store, pipeline, session_handle) = Repl::instantiate_session(
+        &engine,
+        &component,
+        &linker,
+        fuel_budget,
+        memory_limit_mb,
+        backend_addr,
+    )?;
+
+    // ── Persistent store (optional) ──
+    let db_path = std::env::var("NIBLI_DB_PATH").ok();
+    let nibli_store: Option<NibliStore> = match &db_path {
+        Some(p) => match NibliStore::open(Path::new(p), "gasnu-local".to_string()) {
+            Ok(s) => {
+                println!("Persistent store: {}", p);
+                Some(s)
+            }
+            Err(e) => {
+                println!(
+                    "[Store] Failed to open {}: {} (running without persistence)",
+                    p, e
+                );
+                None
+            }
+        },
+        None => None,
     };
+
+    let mut repl = Repl {
+        engine,
+        component,
+        linker,
+        store,
+        pipeline,
+        session_handle,
+        fuel_budget,
+        memory_limit_mb,
+        nibli_store,
+        db_path,
+    };
+
+    // Replay persisted facts into WASM session
+    repl.replay_persisted();
+
+    // Mode selection: interactive (reedline) vs. non-interactive script mode.
+    // Script mode triggers when --script <file> is passed OR stdin is not a TTY,
+    // letting REPL transcripts be captured byte-faithfully via a pipe.
+    let script_path: Option<String> = {
+        let args: Vec<String> = std::env::args().collect();
+        args.windows(2)
+            .find(|w| w[0] == "--script")
+            .map(|w| w[1].clone())
+    };
+    let use_script_mode = script_path.is_some() || !std::io::stdin().is_terminal();
+
+    println!(
+        "Ready. Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :db :help"
+    );
+    println!(
+        "Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.\n"
+    );
 
     if use_script_mode {
         // Read commands line-by-line from the script file (or piped stdin),
@@ -1286,8 +1389,7 @@ fn main() -> Result<()> {
                 Ok(f) => Box::new(BufReader::new(f)),
                 Err(e) => {
                     println!("[Script] Cannot open {}: {}", p, e);
-                    session_handle.resource_drop(&mut store)?;
-                    return Ok(());
+                    return repl.shutdown();
                 }
             },
             None => Box::new(BufReader::new(std::io::stdin())),
@@ -1302,7 +1404,7 @@ fn main() -> Result<()> {
                 continue;
             }
             println!("nibli> {}", input);
-            if dispatch(input) {
+            if repl.dispatch(input) {
                 break;
             }
         }
@@ -1317,7 +1419,7 @@ fn main() -> Result<()> {
                     if input.is_empty() {
                         continue;
                     }
-                    if dispatch(input) {
+                    if repl.dispatch(input) {
                         break;
                     }
                 }
@@ -1330,10 +1432,7 @@ fn main() -> Result<()> {
         }
     }
 
-    // Drop the session resource
-    session_handle.resource_drop(&mut store)?;
-
-    Ok(())
+    repl.shutdown()
 }
 
 #[cfg(test)]
