@@ -26,6 +26,10 @@ clean-wasm-all:
 build-wasm: clean-wasm
     @echo "Building WASI lasna component ({{wasi_target}}, {{profile}})..."
     cargo component build --target {{wasi_target}} {{cargo_profile_flag}} -p lasna
+    # cargo-component regenerates lasna/src/bindings.rs in wit-bindgen's own
+    # formatting; normalize it so a later `fmt-check` (ci) doesn't trip on the
+    # auto-generated file.
+    cargo fmt -p lasna
 
 # Compiles the native Wasmtime host gasnu
 build-gasnu:

@@ -179,6 +179,16 @@ pub(super) fn check_formula_holds(
                     }
                 }
             }
+            // Decomposed numeric group (surface arithmetic/comparison): evaluate
+            // the operands gathered from the role predicates directly — the
+            // verdict is definitive, matching the flat ComputeNode arm.
+            if let Some(verdict) = try_evaluate_numeric_group(buffer, v, *body, subs) {
+                return Ok(if verdict.holds {
+                    QueryResult::True
+                } else {
+                    QueryResult::False
+                });
+            }
             // Slow path: need owned Vec because check_formula_holds takes &mut inner.
             // Candidate narrowing (∃-heavy query blowup fix): when the body has
             // a mandatory positive anchor, enumerate only index/rule-derivable
@@ -314,8 +324,11 @@ pub(super) fn check_formula_holds(
             }
         }
         LogicNode::ComputeNode((rel, args)) => {
-            let resolved = resolve_args_for_dispatch(args, subs);
-            if let Ok(result) = dispatch_to_backend(rel, &resolved) {
+            // Built-in arithmetic FIRST, then external dispatch — the
+            // documented Layer-2 ordering (matches gasnu's evaluate() and the
+            // batch path; the backend is only consulted for what the engine
+            // cannot compute itself).
+            if let Some(result) = try_arithmetic_evaluation(rel, args, subs) {
                 if result {
                     if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
                         assert_typed_fact(fact, inner);
@@ -327,7 +340,8 @@ pub(super) fn check_formula_holds(
                     QueryResult::False
                 });
             }
-            if let Some(result) = try_arithmetic_evaluation(rel, args, subs) {
+            let resolved = resolve_args_for_dispatch(args, subs);
+            if let Ok(result) = dispatch_to_backend(rel, &resolved) {
                 if result {
                     if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
                         assert_typed_fact(fact, inner);
@@ -1882,6 +1896,18 @@ pub(super) fn check_formula_holds_traced(
                 }
             }
 
+            // Decomposed numeric group — must mirror the untraced arm exactly
+            // (run_entailment_check_with_proof runs both on the same roots, so
+            // a one-sided hook would make verdict and trace disagree).
+            if let Some(verdict) = try_evaluate_numeric_group(buffer, v, *body, subs) {
+                let idx = steps.len() as u32;
+                steps.push(ProofStep {
+                    rule: ProofRule::ComputeCheck((verdict.method.to_string(), verdict.relation)),
+                    holds: verdict.holds,
+                    children: vec![],
+                });
+                return Ok((verdict.holds, idx));
+            }
             // Candidate narrowing (∃-heavy query blowup fix) — same enumeration
             // as the untraced Exists arm; see collect_entailment_candidates.
             let candidates: Vec<GroundTerm> =
@@ -2184,6 +2210,23 @@ pub(super) fn check_formula_holds_traced(
             }
         }
         LogicNode::ComputeNode((rel, args)) => {
+            // Built-in arithmetic FIRST, then external dispatch — the
+            // documented Layer-2 ordering (matches gasnu's evaluate() and the
+            // batch path).
+            if let Some(result) = try_arithmetic_evaluation(rel, args, subs) {
+                if result {
+                    if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
+                        assert_typed_fact(fact, inner);
+                    }
+                }
+                let idx = steps.len() as u32;
+                steps.push(ProofStep {
+                    rule: ProofRule::ComputeCheck(("arithmetic".to_string(), rel.clone())),
+                    holds: result,
+                    children: vec![],
+                });
+                return Ok((result, idx));
+            }
             let resolved = resolve_args_for_dispatch(args, subs);
             if let Ok(result) = dispatch_to_backend(rel, &resolved) {
                 if result {
@@ -2194,20 +2237,6 @@ pub(super) fn check_formula_holds_traced(
                 let idx = steps.len() as u32;
                 steps.push(ProofStep {
                     rule: ProofRule::ComputeCheck(("backend".to_string(), rel.clone())),
-                    holds: result,
-                    children: vec![],
-                });
-                return Ok((result, idx));
-            }
-            if let Some(result) = try_arithmetic_evaluation(rel, args, subs) {
-                if result {
-                    if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
-                        assert_typed_fact(fact, inner);
-                    }
-                }
-                let idx = steps.len() as u32;
-                steps.push(ProofStep {
-                    rule: ProofRule::ComputeCheck(("arithmetic".to_string(), rel.clone())),
                     holds: result,
                     children: vec![],
                 });

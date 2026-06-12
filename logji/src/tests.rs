@@ -985,6 +985,267 @@ fn test_compute_dilcu_division_by_zero() {
     assert!(!query(&kb, make_compute_query("dilcu", 0.0, 5.0, 0.0)));
 }
 
+// ─── Decomposed numeric groups (surface-Lojban shape) ─────────────
+//
+// Surface numeric bridi event-decompose to ∃ev. head(ev) ∧ rel_x1(ev, a) ∧
+// rel_x2(ev, b) ∧ ... — a LEFT-nested And where the head carries only the
+// event variable and the operands live in sibling role predicates. These
+// tests build that exact shape (mirroring smuni's event_decompose output)
+// and pin that the numeric evaluators reach the operands.
+
+/// Decomposed compute group: ∃_ev0. (((Compute(rel,[ev]) ∧ rel_x1(ev,x1))
+/// ∧ rel_x2(ev,x2)) ∧ rel_x3(ev,x3)) — the surface shape for pilji/sumji/dilcu.
+fn make_decomposed_compute_query(rel: &str, x1: f64, x2: f64, x3: f64) -> LogicBuffer {
+    let mut nodes = Vec::new();
+    let ev = || LogicalTerm::Variable("_ev0".to_string());
+    let head = compute(&mut nodes, rel, vec![ev()]);
+    let mut acc = head;
+    for (i, v) in [x1, x2, x3].iter().enumerate() {
+        let role = pred(
+            &mut nodes,
+            &format!("{rel}_x{}", i + 1),
+            vec![ev(), LogicalTerm::Number(*v)],
+        );
+        acc = and(&mut nodes, acc, role);
+    }
+    let root = exists(&mut nodes, "_ev0", acc);
+    LogicBuffer {
+        nodes,
+        roots: vec![root],
+    }
+}
+
+/// Decomposed comparison group: ∃_ev0. head Pred(rel,[ev]) ∧ rel_x1(ev,a) ∧
+/// rel_x2(ev,b) ∧ Zoe-padded trailing roles (zmadu/mleca arity 4, dunli 3).
+fn make_decomposed_comparison_query(rel: &str, a: f64, b: f64) -> LogicBuffer {
+    let mut nodes = Vec::new();
+    let ev = || LogicalTerm::Variable("_ev0".to_string());
+    let head = pred(&mut nodes, rel, vec![ev()]);
+    let arity = if rel == "dunli" { 3 } else { 4 };
+    let mut acc = head;
+    for i in 1..=arity {
+        let arg = match i {
+            1 => LogicalTerm::Number(a),
+            2 => LogicalTerm::Number(b),
+            _ => LogicalTerm::Unspecified,
+        };
+        let role = pred(&mut nodes, &format!("{rel}_x{i}"), vec![ev(), arg]);
+        acc = and(&mut nodes, acc, role);
+    }
+    let root = exists(&mut nodes, "_ev0", acc);
+    LogicBuffer {
+        nodes,
+        roots: vec![root],
+    }
+}
+
+#[test]
+fn test_decomposed_pilji_true() {
+    let kb = new_kb();
+    // 10 = 2 * 5 through the decomposed surface shape
+    assert!(query(
+        &kb,
+        make_decomposed_compute_query("pilji", 10.0, 2.0, 5.0)
+    ));
+}
+
+#[test]
+fn test_decomposed_pilji_false() {
+    let kb = new_kb();
+    assert!(!query(
+        &kb,
+        make_decomposed_compute_query("pilji", 11.0, 2.0, 5.0)
+    ));
+}
+
+#[test]
+fn test_decomposed_sumji_true_false() {
+    let kb = new_kb();
+    assert!(query(
+        &kb,
+        make_decomposed_compute_query("sumji", 5.0, 2.0, 3.0)
+    ));
+    assert!(!query(
+        &kb,
+        make_decomposed_compute_query("sumji", 6.0, 2.0, 3.0)
+    ));
+}
+
+#[test]
+fn test_decomposed_dilcu_true_and_division_by_zero() {
+    let kb = new_kb();
+    assert!(query(
+        &kb,
+        make_decomposed_compute_query("dilcu", 3.0, 6.0, 2.0)
+    ));
+    // Division by zero is a definitive FALSE, not an error or fall-through.
+    assert!(!query(
+        &kb,
+        make_decomposed_compute_query("dilcu", 3.0, 6.0, 0.0)
+    ));
+}
+
+#[test]
+fn test_decomposed_zmadu_true_false() {
+    let kb = new_kb();
+    assert!(query(
+        &kb,
+        make_decomposed_comparison_query("zmadu", 5.0, 3.0)
+    ));
+    assert!(!query(
+        &kb,
+        make_decomposed_comparison_query("zmadu", 3.0, 5.0)
+    ));
+}
+
+#[test]
+fn test_decomposed_mleca_true_false() {
+    let kb = new_kb();
+    assert!(query(
+        &kb,
+        make_decomposed_comparison_query("mleca", 2.0, 3.0)
+    ));
+    assert!(!query(
+        &kb,
+        make_decomposed_comparison_query("mleca", 3.0, 2.0)
+    ));
+}
+
+#[test]
+fn test_decomposed_dunli_true_false() {
+    let kb = new_kb();
+    assert!(query(
+        &kb,
+        make_decomposed_comparison_query("dunli", 3.0, 3.0)
+    ));
+    assert!(!query(
+        &kb,
+        make_decomposed_comparison_query("dunli", 3.0, 2.0)
+    ));
+}
+
+#[test]
+fn test_decomposed_negated() {
+    // Not(∃ev. group) — the Not arm recurses into the Exists arm, so the
+    // group verdict flips with no special handling.
+    let kb = new_kb();
+    let mut buf = make_decomposed_comparison_query("zmadu", 3.0, 5.0);
+    let inner_root = buf.roots[0];
+    let neg = {
+        let id = buf.nodes.len() as u32;
+        buf.nodes.push(LogicNode::NotNode(inner_root));
+        id
+    };
+    buf.roots = vec![neg];
+    assert!(query(&kb, buf), "NOT(3 > 5) must be TRUE");
+}
+
+#[test]
+fn test_decomposed_extra_conjunct_falls_through() {
+    // A group with an unrelated conjunct must NOT shortcut: the strict
+    // same-relation rule bails, normal evaluation runs, and the unprovable
+    // extra conjunct makes the query FALSE even though the arithmetic is true.
+    let kb = new_kb();
+    let mut nodes = Vec::new();
+    let ev = || LogicalTerm::Variable("_ev0".to_string());
+    let head = compute(&mut nodes, "pilji", vec![ev()]);
+    let x1 = pred(
+        &mut nodes,
+        "pilji_x1",
+        vec![ev(), LogicalTerm::Number(10.0)],
+    );
+    let x2 = pred(&mut nodes, "pilji_x2", vec![ev(), LogicalTerm::Number(2.0)]);
+    let x3 = pred(&mut nodes, "pilji_x3", vec![ev(), LogicalTerm::Number(5.0)]);
+    let extra = pred(&mut nodes, "broda", vec![ev()]);
+    let a1 = and(&mut nodes, head, x1);
+    let a2 = and(&mut nodes, a1, x2);
+    let a3 = and(&mut nodes, a2, x3);
+    let body = and(&mut nodes, a3, extra);
+    let root = exists(&mut nodes, "_ev0", body);
+    let buf = LogicBuffer {
+        nodes,
+        roots: vec![root],
+    };
+    assert!(
+        !query(&kb, buf),
+        "an unrelated conjunct must disable the numeric-group shortcut"
+    );
+}
+
+#[test]
+fn test_decomposed_non_numeric_falls_through_to_store() {
+    // Non-numeric operands can't compute; the group must fall through to
+    // normal evaluation, where the asserted decomposed facts satisfy it.
+    let kb = new_kb();
+    let make = || {
+        let mut nodes = Vec::new();
+        let ev = || LogicalTerm::Variable("_ev0".to_string());
+        let head = pred(&mut nodes, "zmadu", vec![ev()]);
+        let x1 = pred(
+            &mut nodes,
+            "zmadu_x1",
+            vec![ev(), LogicalTerm::Constant("alis".to_string())],
+        );
+        let x2 = pred(
+            &mut nodes,
+            "zmadu_x2",
+            vec![ev(), LogicalTerm::Constant("bob".to_string())],
+        );
+        let a1 = and(&mut nodes, head, x1);
+        let body = and(&mut nodes, a1, x2);
+        let root = exists(&mut nodes, "_ev0", body);
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
+    };
+    assert_buf(&kb, make());
+    assert!(
+        query(&kb, make()),
+        "asserted non-numeric zmadu group must stay queryable via the store"
+    );
+}
+
+#[test]
+fn test_decomposed_asserted_true_group_still_true() {
+    // Asserting an arithmetically-true group then querying it: the computed
+    // verdict agrees with the store, so shadowing is invisible for true facts.
+    let kb = new_kb();
+    assert_buf(&kb, make_decomposed_compute_query("pilji", 10.0, 2.0, 5.0));
+    assert!(query(
+        &kb,
+        make_decomposed_compute_query("pilji", 10.0, 2.0, 5.0)
+    ));
+}
+
+#[test]
+fn test_decomposed_traced_compute_check() {
+    // The traced evaluator must agree with the untraced verdict and record
+    // a ComputeCheck step for the group.
+    let kb = new_kb();
+    let (result, trace) =
+        query_with_proof(&kb, make_decomposed_compute_query("pilji", 10.0, 2.0, 5.0));
+    assert!(result, "traced 10 = 2 × 5 must be TRUE");
+    assert!(
+        trace
+            .steps
+            .iter()
+            .any(|s| matches!(&s.rule, ProofRule::ComputeCheck(_)) && s.holds),
+        "trace must contain a holding ComputeCheck step"
+    );
+
+    let (result_f, trace_f) =
+        query_with_proof(&kb, make_decomposed_comparison_query("zmadu", 3.0, 5.0));
+    assert!(!result_f, "traced 3 > 5 must be FALSE");
+    assert!(
+        trace_f
+            .steps
+            .iter()
+            .any(|s| matches!(&s.rule, ProofRule::ComputeCheck(_)) && !s.holds),
+        "trace must contain a non-holding ComputeCheck step"
+    );
+}
+
 #[test]
 fn test_compute_negated() {
     let kb = new_kb();

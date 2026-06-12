@@ -94,6 +94,161 @@ pub(super) fn witness_term_to_logical_term(gt: &GroundTerm) -> LogicalTerm {
     }
 }
 
+// ─── Decomposed numeric-group evaluation ────────────────────────────────────
+//
+// Neo-Davidsonian event decomposition compiles a surface numeric bridi to
+// `∃ev. head(ev) ∧ rel_x1(ev, a) ∧ rel_x2(ev, b) ∧ ...` — the head
+// (ComputeNode for registered compute predicates, a plain Predicate for the
+// query-time comparisons zmadu/mleca/dunli) carries ONLY the event variable;
+// the operands live in sibling role predicates. The flat evaluators above
+// read the head's own args and never see the numbers, so every surface
+// numeric query used to return FALSE.
+
+/// The verdict of a numeric-group evaluation, tagged with the route taken
+/// (the tag feeds the traced evaluator's ComputeCheck step).
+pub(super) struct NumericGroupVerdict {
+    pub relation: String,
+    /// "numeric" (comparison), "arithmetic" (built-in), or "backend" (dispatch).
+    pub method: &'static str,
+    pub holds: bool,
+}
+
+/// Evaluate an event-decomposed numeric group at its `∃ev` boundary.
+///
+/// Fires only on the EXACT group shape (the strictness is the soundness
+/// guard): the body's And-tree must consist of one head — `ComputeNode(rel,
+/// [Var ev])`, or `Predicate(rel, [Var ev])` with rel ∈ {zmadu, mleca, dunli}
+/// — plus role predicates `rel_xN(Var ev, arg)` for the same rel with
+/// contiguous N starting at 1. Any other conjunct (tanru modifier roles,
+/// tense nodes in hand-built buffers, a different event variable) returns
+/// None and normal evaluation proceeds, so asserted facts stay reachable.
+///
+/// Routing is by RELATION NAME, arithmetic-first (matching the documented
+/// design, gasnu's host evaluate(), and the batch path): comparison →
+/// built-in arithmetic → (ComputeNode heads only) external backend dispatch.
+/// A backend error degrades to None (store/NAF fallback), so no-backend
+/// configs neither error nor hang.
+///
+/// A computed `false` is DEFINITIVE, matching the flat ComputeNode/Predicate
+/// arms (the store-shadowing policy question is tracked in todo.md).
+///
+/// Deliberately performs NO auto-ingestion: unlike the flat path, whose
+/// ground fact is byte-identical on every query (HashSet-deduped), ingesting
+/// a group would mint a fresh Skolem event per query and accumulate
+/// duplicate facts. Recomputation is free.
+pub(super) fn try_evaluate_numeric_group(
+    buffer: &LogicBuffer,
+    exists_var: &str,
+    body_id: u32,
+    subs: &HashMap<String, GroundTerm>,
+) -> Option<NumericGroupVerdict> {
+    // Flatten the And-tree; bail on anything that is not And/Predicate/Compute.
+    let mut conjuncts: Vec<u32> = Vec::new();
+    let mut stack = vec![body_id];
+    while let Some(id) = stack.pop() {
+        match get_node(buffer, id).ok()? {
+            LogicNode::AndNode((l, r)) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            LogicNode::Predicate(_) | LogicNode::ComputeNode(_) => conjuncts.push(id),
+            _ => return None,
+        }
+    }
+
+    // Identify exactly one head over our event variable.
+    let is_head_var =
+        |args: &[LogicalTerm]| matches!(args, [LogicalTerm::Variable(v)] if v == exists_var);
+    let mut head: Option<(&str, bool)> = None; // (relation, head_is_compute_node)
+    for &id in &conjuncts {
+        match get_node(buffer, id).ok()? {
+            LogicNode::ComputeNode((rel, args)) if is_head_var(args) => {
+                if head.is_some() {
+                    return None; // two heads — not a single group
+                }
+                head = Some((rel.as_str(), true));
+            }
+            LogicNode::Predicate((rel, args))
+                if is_head_var(args) && matches!(rel.as_str(), "zmadu" | "mleca" | "dunli") =>
+            {
+                if head.is_some() {
+                    return None;
+                }
+                head = Some((rel.as_str(), false));
+            }
+            _ => {}
+        }
+    }
+    let (rel, head_is_compute) = head?;
+
+    // Every other conjunct must be a role predicate rel_xN(Var ev, arg).
+    let role_prefix = format!("{rel}_x");
+    let mut roles: Vec<Option<&LogicalTerm>> = Vec::new();
+    for &id in &conjuncts {
+        match get_node(buffer, id).ok()? {
+            LogicNode::ComputeNode((r, args)) if is_head_var(args) && r.as_str() == rel => {}
+            LogicNode::Predicate((r, args)) if is_head_var(args) && r.as_str() == rel => {}
+            LogicNode::Predicate((r, args)) if r.starts_with(&role_prefix) => {
+                let n: usize = r[role_prefix.len()..].parse().ok()?;
+                if n == 0 {
+                    return None;
+                }
+                match args.as_slice() {
+                    [LogicalTerm::Variable(v), arg] if v == exists_var => {
+                        if roles.len() < n {
+                            roles.resize(n, None);
+                        }
+                        if roles[n - 1].is_some() {
+                            return None; // duplicate role index
+                        }
+                        roles[n - 1] = Some(arg);
+                    }
+                    _ => return None,
+                }
+            }
+            _ => return None, // unrelated conjunct — not a pure group
+        }
+    }
+    // Roles must be contiguous x1..=xN (smuni always emits the full arity).
+    if roles.is_empty() || roles.iter().any(|r| r.is_none()) {
+        return None;
+    }
+    let collected: Vec<LogicalTerm> = roles.into_iter().map(|r| r.unwrap().clone()).collect();
+
+    // Route by relation name, arithmetic-first.
+    if let Some(holds) = try_numeric_comparison(rel, &collected, subs) {
+        return Some(NumericGroupVerdict {
+            relation: rel.to_string(),
+            method: "numeric",
+            holds,
+        });
+    }
+    if let Some(holds) = try_arithmetic_evaluation(rel, &collected, subs) {
+        return Some(NumericGroupVerdict {
+            relation: rel.to_string(),
+            method: "arithmetic",
+            holds,
+        });
+    }
+    if head_is_compute {
+        // External dispatch: every non-Unspecified role must resolve numeric.
+        let resolved = resolve_args_for_dispatch(&collected, subs);
+        let dispatchable = resolved
+            .iter()
+            .all(|t| matches!(t, LogicalTerm::Number(_) | LogicalTerm::Unspecified));
+        if dispatchable {
+            if let Ok(holds) = dispatch_to_backend(rel, &resolved) {
+                return Some(NumericGroupVerdict {
+                    relation: rel.to_string(),
+                    method: "backend",
+                    holds,
+                });
+            }
+        }
+    }
+    None
+}
+
 pub(super) fn resolve_args_for_dispatch(
     args: &[LogicalTerm],
     subs: &HashMap<String, GroundTerm>,

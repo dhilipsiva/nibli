@@ -1157,3 +1157,95 @@ fn find_witness_output_order_is_deterministic() {
         "a fresh engine on the same corpus must produce identical find order"
     );
 }
+
+// ════════════════════════════════════════════════════════════════════
+// Surface-numeric evaluation (todo.md: event decomposition shadowed the
+// numeric evaluators — every surface arithmetic/comparison query was FALSE)
+// ════════════════════════════════════════════════════════════════════
+
+#[test]
+fn surface_numeric_pilji_true_and_false() {
+    let engine = NibliEngine::new();
+    assert_true(
+        &engine.query_holds("li pa no cu pilji li re li mu").unwrap(),
+        "10 = 2 × 5 must be derivable through surface Lojban",
+    );
+    assert_false(
+        &engine.query_holds("li pa pa cu pilji li re li mu").unwrap(),
+        "11 = 2 × 5 must be FALSE through surface Lojban",
+    );
+}
+
+#[test]
+fn surface_numeric_sumji_dilcu() {
+    let engine = NibliEngine::new();
+    assert_true(
+        &engine.query_holds("li mu cu sumji li re li ci").unwrap(),
+        "5 = 2 + 3 must be TRUE through surface Lojban",
+    );
+    assert_false(
+        &engine.query_holds("li xa cu sumji li re li ci").unwrap(),
+        "6 = 2 + 3 must be FALSE through surface Lojban",
+    );
+    assert_true(
+        &engine.query_holds("li ci cu dilcu li xa li re").unwrap(),
+        "3 = 6 / 2 must be TRUE through surface Lojban",
+    );
+    assert_false(
+        &engine.query_holds("li ci cu dilcu li xa li no").unwrap(),
+        "division by zero must be FALSE, not an error",
+    );
+}
+
+#[test]
+fn surface_numeric_comparison_zmadu_mleca_dunli() {
+    let engine = NibliEngine::new();
+    assert_true(
+        &engine.query_holds("li mu cu zmadu li ci").unwrap(),
+        "5 > 3 must be TRUE through surface Lojban",
+    );
+    assert_false(
+        &engine.query_holds("li ci cu zmadu li mu").unwrap(),
+        "3 > 5 must be FALSE through surface Lojban",
+    );
+    assert_true(
+        &engine.query_holds("li re cu mleca li ci").unwrap(),
+        "2 < 3 must be TRUE through surface Lojban",
+    );
+    assert_true(
+        &engine.query_holds("li ci cu dunli li ci").unwrap(),
+        "3 == 3 must be TRUE through surface Lojban",
+    );
+    assert_false(
+        &engine.query_holds("li ci cu dunli li re").unwrap(),
+        "3 == 2 must be FALSE through surface Lojban",
+    );
+}
+
+#[test]
+fn surface_numeric_negation() {
+    let engine = NibliEngine::new();
+    assert_true(
+        &engine.query_holds("li ci na zmadu li mu").unwrap(),
+        "NOT(3 > 5) must be TRUE through surface Lojban",
+    );
+    assert_false(
+        &engine.query_holds("li mu na zmadu li ci").unwrap(),
+        "NOT(5 > 3) must be FALSE through surface Lojban",
+    );
+}
+
+#[test]
+fn surface_numeric_traced_verdicts_agree() {
+    // The traced path must agree with the untraced verdict (both evaluators
+    // carry the numeric-group hook) and record a compute-check step.
+    let engine = NibliEngine::new();
+    let (verdict, trace, _json) = engine
+        .query_text_with_proof("li pa no cu pilji li re li mu")
+        .unwrap();
+    assert_true(&verdict, "traced 10 = 2 × 5 must be TRUE");
+    assert!(
+        trace.contains("pilji"),
+        "trace should mention the computed relation: {trace}"
+    );
+}
