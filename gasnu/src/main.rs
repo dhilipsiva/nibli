@@ -610,13 +610,27 @@ fn refuel(store: &mut Store<HostState>, budget: u64) {
 }
 
 fn format_host_error(e: &anyhow::Error) -> String {
-    let msg = e.to_string();
-    if msg.contains("fuel") {
-        "[Limit] Execution fuel exhausted. Increase with NIBLI_FUEL env var or :fuel command."
-            .to_string()
-    } else if msg.contains("memory") || msg.contains("Memory") {
-        "[Limit] Memory limit exceeded. Increase with NIBLI_MEMORY_MB env var or :memory command."
-            .to_string()
+    const FUEL_MSG: &str =
+        "[Limit] Execution fuel exhausted. Increase with NIBLI_FUEL env var or :fuel command.";
+    const MEMORY_MSG: &str =
+        "[Limit] Memory limit exceeded. Increase with NIBLI_MEMORY_MB env var or :memory command.";
+    // A wasmtime trap's Display is the wasm-backtrace context line; the cause
+    // ("all fuel consumed by WebAssembly", "forcing trap when growing
+    // memory...") sits deeper in the chain. Classify via the typed Trap
+    // first, then scan the full chain — never just the top line.
+    if let Some(trap) = e.downcast_ref::<wasmtime::Trap>() {
+        if matches!(trap, wasmtime::Trap::OutOfFuel) {
+            return FUEL_MSG.to_string();
+        }
+    }
+    let chain_contains = |needle: &str| e.chain().any(|cause| cause.to_string().contains(needle));
+    if chain_contains("fuel") {
+        FUEL_MSG.to_string()
+    } else if chain_contains("forcing trap when growing memory")
+        || chain_contains("memory")
+        || chain_contains("Memory")
+    {
+        MEMORY_MSG.to_string()
     } else {
         format!("[Host Error] {:?}", e)
     }
@@ -635,17 +649,27 @@ fn format_nibli_error(e: &NibliError) -> String {
 
 // ── REPL driver ──
 
+/// One journaled, successful KB mutation. After a wasm trap poisons the
+/// component instance, replaying these in order on a fresh instance rebuilds
+/// a byte-identical session (the engine is deterministic: identical fact ids
+/// and Skolem numbering). Queries are not journaled — their only KB side
+/// effect (flat-path compute auto-ingestion) is recomputed on demand.
+enum JournalEntry {
+    AssertText(String),
+    AssertDirect {
+        relation: String,
+        args: Vec<EngineLogicalTerm>,
+    },
+    Retract(u64),
+    RegisterCompute(String),
+}
+
 /// All host-side REPL state. Factored out of `main` (instead of a closure
 /// over a dozen locals) so the trap-recovery path can swap the poisoned
 /// Store/instance/session for fresh ones mid-session.
 struct Repl {
-    // engine/component/linker are held for the trap-recovery rebuild path
-    // (re-instantiation reuses the compiled Component and the Linker).
-    #[allow(dead_code)]
     engine: Engine,
-    #[allow(dead_code)]
     component: Component,
-    #[allow(dead_code)]
     linker: Linker<HostState>,
     store: Store<HostState>,
     pipeline: pipeline_bind::LasnaPipeline,
@@ -654,6 +678,14 @@ struct Repl {
     memory_limit_mb: usize,
     nibli_store: Option<NibliStore>,
     db_path: Option<String>,
+    /// Successful KB mutations, in order — the rebuild-after-trap replay source.
+    journal: Vec<JournalEntry>,
+    /// True while replaying the journal (suppresses re-journaling and rebuild).
+    replaying: bool,
+    /// Set when a host-level error may have poisoned the component instance.
+    /// The rebuild runs LAZILY before the next session call, so an intervening
+    /// `:fuel`/`:memory` raise applies to the replay.
+    needs_rebuild: bool,
 }
 
 impl Repl {
@@ -676,6 +708,7 @@ impl Repl {
             table: ResourceTable::new(),
             limits: StoreLimitsBuilder::new()
                 .memory_size(memory_limit_mb * 1024 * 1024)
+                .trap_on_grow_failure(true)
                 .build(),
             backend_addr,
             backend_conn: None,
@@ -692,9 +725,105 @@ impl Repl {
         Ok((store, pipeline, session_handle))
     }
 
-    /// Make the session callable for the next command: refuel.
+    /// Make the session callable for the next command: rebuild lazily if a
+    /// trap poisoned the instance, then refuel.
     fn prepare_session(&mut self) {
+        if self.needs_rebuild && !self.replaying {
+            self.rebuild_after_trap();
+        }
         refuel(&mut self.store, self.fuel_budget);
+    }
+
+    /// A wasm trap permanently poisons the component instance (component-model
+    /// semantics forbid re-entering it). Recover by abandoning the poisoned
+    /// Store/instance/session — WITHOUT resource_drop, which would itself have
+    /// to enter the dead instance — re-instantiating from the compiled
+    /// Component, and replaying the journal. The engine is deterministic, so
+    /// the rebuilt session is byte-identical (same fact ids, same Skolem
+    /// numbering); the guest's per-assert diagnostics ([Skolem]/[Rule] lines)
+    /// print during the replay, making the rebuilt state visible.
+    fn rebuild_after_trap(&mut self) {
+        self.needs_rebuild = false;
+        println!(
+            "[Session] Wasm trap poisoned the component instance; rebuilding and replaying {} command(s)...",
+            self.journal.len()
+        );
+        let backend_addr = self.store.data().backend_addr.clone();
+        match Self::instantiate_session(
+            &self.engine,
+            &self.component,
+            &self.linker,
+            self.fuel_budget,
+            self.memory_limit_mb,
+            backend_addr,
+        ) {
+            Ok((store, pipeline, session_handle)) => {
+                // The old store (with the dead session resource inside it) is
+                // dropped here; its destructor never re-enters the instance.
+                self.store = store;
+                self.pipeline = pipeline;
+                self.session_handle = session_handle;
+            }
+            Err(e) => {
+                println!("[Session] Rebuild failed: {:?}", e);
+                return;
+            }
+        }
+        self.replaying = true;
+        let journal = std::mem::take(&mut self.journal);
+        let total = journal.len();
+        let mut ok = 0usize;
+        let mut failed: Option<String> = None;
+        for entry in &journal {
+            match self.replay_entry(entry) {
+                Ok(()) => ok += 1,
+                Err(e) => {
+                    failed = Some(format!("{}", e));
+                    break;
+                }
+            }
+        }
+        self.journal = journal;
+        self.replaying = false;
+        if let Some(err) = failed {
+            println!(
+                "[Session] Replay incomplete ({} of {}): {} — KB state may be partial; consider :reset",
+                ok, total, err
+            );
+        }
+    }
+
+    /// Replay one journaled mutation against the fresh session. Persistence is
+    /// NOT re-run: the mutation was persisted when it first succeeded, and
+    /// re-inserting would spuriously advance the durable store's HLC clock.
+    fn replay_entry(&mut self, entry: &JournalEntry) -> Result<()> {
+        refuel(&mut self.store, self.fuel_budget);
+        let session = self.pipeline.lojban_nibli_lasna().session();
+        match entry {
+            JournalEntry::AssertText(text) => {
+                session
+                    .call_assert_text(&mut self.store, self.session_handle, text)?
+                    .map_err(|e| anyhow::anyhow!("{}", format_nibli_error(&e)))?;
+            }
+            JournalEntry::AssertDirect { relation, args } => {
+                session
+                    .call_assert_fact(&mut self.store, self.session_handle, relation, args)?
+                    .map_err(|e| anyhow::anyhow!("{}", format_nibli_error(&e)))?;
+            }
+            JournalEntry::Retract(id) => {
+                session
+                    .call_retract_fact(&mut self.store, self.session_handle, *id)?
+                    .map_err(|e| anyhow::anyhow!("{}", format_nibli_error(&e)))?;
+            }
+            JournalEntry::RegisterCompute(name) => {
+                session.call_register_compute_predicate(
+                    &mut self.store,
+                    self.session_handle,
+                    name,
+                )?;
+            }
+        }
+        Ok(())
     }
 
     /// Replay persisted facts from the durable store into the WASM session.
@@ -723,7 +852,10 @@ impl Repl {
             match assertion {
                 StoredAssertion::Text(ref text) => {
                     match session.call_assert_text(&mut self.store, self.session_handle, text) {
-                        Ok(Ok(_)) => replayed += 1,
+                        Ok(Ok(_)) => {
+                            self.journal.push(JournalEntry::AssertText(text.clone()));
+                            replayed += 1;
+                        }
                         Ok(Err(e)) => {
                             println!(
                                 "[Store] Replay fact #{}: {}",
@@ -738,6 +870,7 @@ impl Repl {
                                 fact.id,
                                 format_host_error(&e)
                             );
+                            self.needs_rebuild = true;
                             replay_errors += 1;
                         }
                     }
@@ -754,7 +887,13 @@ impl Repl {
                         relation,
                         &wit_args,
                     ) {
-                        Ok(Ok(_)) => replayed += 1,
+                        Ok(Ok(_)) => {
+                            self.journal.push(JournalEntry::AssertDirect {
+                                relation: relation.clone(),
+                                args: wit_args.clone(),
+                            });
+                            replayed += 1;
+                        }
                         Ok(Err(e)) => {
                             println!(
                                 "[Store] Replay fact #{}: {}",
@@ -769,6 +908,7 @@ impl Repl {
                                 fact.id,
                                 format_host_error(&e)
                             );
+                            self.needs_rebuild = true;
                             replay_errors += 1;
                         }
                     }
@@ -795,10 +935,14 @@ impl Repl {
                         if let Some(s) = self.nibli_store.as_mut() {
                             let _ = s.clear();
                         }
+                        self.journal.clear();
                         println!("[Reset] Knowledge base cleared.");
                     }
                     Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
-                    Err(e) => println!("{}", format_host_error(&e)),
+                    Err(e) => {
+                        println!("{}", format_host_error(&e));
+                        self.needs_rebuild = true;
+                    }
                 }
                 return false;
             }
@@ -865,7 +1009,10 @@ impl Repl {
                         }
                     }
                     Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
-                    Err(e) => println!("{}", format_host_error(&e)),
+                    Err(e) => {
+                        println!("{}", format_host_error(&e));
+                        self.needs_rebuild = true;
+                    }
                 }
                 return false;
             }
@@ -905,7 +1052,10 @@ impl Repl {
             match session.call_compile_debug(&mut self.store, self.session_handle, text) {
                 Ok(Ok(debug_output)) => println!("[Logic] {}", debug_output),
                 Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
-                Err(e) => println!("{}", format_host_error(&e)),
+                Err(e) => {
+                    println!("{}", format_host_error(&e));
+                    self.needs_rebuild = true;
+                }
             }
         } else if let Some(backend_arg) = input.strip_prefix(":backend ") {
             let addr = backend_arg.trim();
@@ -939,6 +1089,7 @@ impl Repl {
                     let state = self.store.data_mut();
                     state.limits = StoreLimitsBuilder::new()
                         .memory_size(limit * 1024 * 1024)
+                        .trap_on_grow_failure(true)
                         .build();
                     println!("[Memory] Limit set to {} MB", self.memory_limit_mb);
                 }
@@ -958,9 +1109,14 @@ impl Repl {
                 name,
             ) {
                 Ok(()) => {
+                    self.journal
+                        .push(JournalEntry::RegisterCompute(name.to_string()));
                     println!("[Compute] Registered '{}' for external dispatch", name)
                 }
-                Err(e) => println!("{}", format_host_error(&e)),
+                Err(e) => {
+                    println!("{}", format_host_error(&e));
+                    self.needs_rebuild = true;
+                }
             }
         } else if let Some(assert_args) = input.strip_prefix(":assert ") {
             let text = assert_args.trim();
@@ -988,6 +1144,10 @@ impl Repl {
                     ) {
                         Ok(Ok(fact_id)) => {
                             persist_direct(&mut self.nibli_store, fact_id, &relation, &args);
+                            self.journal.push(JournalEntry::AssertDirect {
+                                relation: relation.clone(),
+                                args: args.clone(),
+                            });
                             println!(
                                 "[Fact #{}] {}({}) asserted.",
                                 fact_id,
@@ -996,7 +1156,10 @@ impl Repl {
                             );
                         }
                         Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
-                        Err(e) => println!("{}", format_host_error(&e)),
+                        Err(e) => {
+                            println!("{}", format_host_error(&e));
+                            self.needs_rebuild = true;
+                        }
                     }
                 }
                 Err(e) => println!("[Error] {}", e),
@@ -1012,10 +1175,14 @@ impl Repl {
                             if let Some(s) = self.nibli_store.as_mut() {
                                 let _ = s.retract_fact(id);
                             }
+                            self.journal.push(JournalEntry::Retract(id));
                             println!("[Retract] Fact #{} retracted. KB rebuilt.", id);
                         }
                         Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
-                        Err(e) => println!("{}", format_host_error(&e)),
+                        Err(e) => {
+                            println!("{}", format_host_error(&e));
+                            self.needs_rebuild = true;
+                        }
                     }
                 }
                 Err(_) => println!("[Host] Usage: :retract <fact-id>"),
@@ -1062,6 +1229,8 @@ impl Repl {
                 match session.call_assert_text(&mut self.store, self.session_handle, trimmed) {
                     Ok(Ok(fact_id)) => {
                         persist_text(&mut self.nibli_store, fact_id, trimmed);
+                        self.journal
+                            .push(JournalEntry::AssertText(trimmed.to_string()));
                         println!("[Fact #{}] {}", fact_id, trimmed);
                         asserted += 1;
                     }
@@ -1071,6 +1240,7 @@ impl Repl {
                     }
                     Err(e) => {
                         println!("[Load] line {}: {}", line_num + 1, format_host_error(&e));
+                        self.needs_rebuild = true;
                         errors += 1;
                     }
                 }
@@ -1109,7 +1279,10 @@ impl Repl {
                     }
                 }
                 Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
-                Err(e) => println!("{}", format_host_error(&e)),
+                Err(e) => {
+                    println!("{}", format_host_error(&e));
+                    self.needs_rebuild = true;
+                }
             }
         } else if let Some(merge_arg) = input.strip_prefix(":merge ") {
             let filepath = merge_arg.trim();
@@ -1138,10 +1311,13 @@ impl Repl {
                         result.added, result.tombstoned, filepath
                     );
                     if result.added > 0 || result.tombstoned > 0 {
-                        // Rebuild WASM session from merged store
+                        // Rebuild WASM session from merged store. The journal is
+                        // rebuilt alongside it so a later trap recovery replays
+                        // the MERGED state, not the pre-merge one.
                         self.prepare_session();
                         let session = self.pipeline.lojban_nibli_lasna().session();
                         let _ = session.call_reset_kb(&mut self.store, self.session_handle);
+                        self.journal.clear();
                         let facts = self
                             .nibli_store
                             .as_ref()
@@ -1160,29 +1336,35 @@ impl Repl {
                                     let session = self.pipeline.lojban_nibli_lasna().session();
                                     match &assertion {
                                         StoredAssertion::Text(text) => {
-                                            if session
-                                                .call_assert_text(
+                                            if matches!(
+                                                session.call_assert_text(
                                                     &mut self.store,
                                                     self.session_handle,
                                                     text,
-                                                )
-                                                .is_ok()
-                                            {
+                                                ),
+                                                Ok(Ok(_))
+                                            ) {
+                                                self.journal
+                                                    .push(JournalEntry::AssertText(text.clone()));
                                                 replayed += 1;
                                             }
                                         }
                                         StoredAssertion::Direct { relation, args } => {
                                             let wit_args: Vec<EngineLogicalTerm> =
                                                 args.iter().map(stored_term_to_wit).collect();
-                                            if session
-                                                .call_assert_fact(
+                                            if matches!(
+                                                session.call_assert_fact(
                                                     &mut self.store,
                                                     self.session_handle,
                                                     relation,
                                                     &wit_args,
-                                                )
-                                                .is_ok()
-                                            {
+                                                ),
+                                                Ok(Ok(_))
+                                            ) {
+                                                self.journal.push(JournalEntry::AssertDirect {
+                                                    relation: relation.clone(),
+                                                    args: wit_args,
+                                                });
                                                 replayed += 1;
                                             }
                                         }
@@ -1236,7 +1418,10 @@ impl Repl {
                     }
                 }
                 Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
-                Err(e) => println!("{}", format_host_error(&e)),
+                Err(e) => {
+                    println!("{}", format_host_error(&e));
+                    self.needs_rebuild = true;
+                }
             }
         } else if let Some(query_text) = input.strip_prefix('?') {
             let text = query_text.trim();
@@ -1252,7 +1437,10 @@ impl Repl {
                     print!("{}", trace_to_proto(&trace).to_pretty_text_with_indent(1));
                 }
                 Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
-                Err(e) => println!("{}", format_host_error(&e)),
+                Err(e) => {
+                    println!("{}", format_host_error(&e));
+                    self.needs_rebuild = true;
+                }
             }
         } else {
             self.prepare_session();
@@ -1260,18 +1448,25 @@ impl Repl {
             match session.call_assert_text(&mut self.store, self.session_handle, input) {
                 Ok(Ok(fact_id)) => {
                     persist_text(&mut self.nibli_store, fact_id, input);
+                    self.journal
+                        .push(JournalEntry::AssertText(input.to_string()));
                     println!("[Fact #{}] Asserted.", fact_id);
                 }
                 Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
-                Err(e) => println!("{}", format_host_error(&e)),
+                Err(e) => {
+                    println!("{}", format_host_error(&e));
+                    self.needs_rebuild = true;
+                }
             }
         }
         false
     }
 
-    /// Release the session resource and store.
+    /// Release the session resource. Errors are deliberately ignored: if a
+    /// trap poisoned the instance (and no rebuild ran since), entering it to
+    /// drop the resource would fail with "cannot remove owned resource".
     fn shutdown(mut self) -> Result<()> {
-        self.session_handle.resource_drop(&mut self.store)?;
+        let _ = self.session_handle.resource_drop(&mut self.store);
         Ok(())
     }
 }
@@ -1357,6 +1552,9 @@ fn main() -> Result<()> {
         memory_limit_mb,
         nibli_store,
         db_path,
+        journal: Vec::new(),
+        replaying: false,
+        needs_rebuild: false,
     };
 
     // Replay persisted facts into WASM session
@@ -1681,6 +1879,40 @@ mod tests {
         let e = anyhow::anyhow!("something else broke");
         let out = format_host_error(&e);
         assert!(out.starts_with("[Host Error]"));
+    }
+
+    #[test]
+    fn test_format_host_error_real_fuel_trap_chain() {
+        // The real shape of a fuel trap: Display is the wasm-backtrace context
+        // line (contains neither "fuel" nor "memory"); the typed Trap is the
+        // root cause. The old top-line substring match misclassified this as
+        // [Host Error].
+        let e = anyhow::Error::from(wasmtime::Trap::OutOfFuel)
+            .context("error while executing at wasm backtrace: ...");
+        let out = format_host_error(&e);
+        assert!(out.starts_with("[Limit]"), "got: {out}");
+        assert!(out.contains("fuel"));
+        assert!(out.contains("NIBLI_FUEL"));
+    }
+
+    #[test]
+    fn test_format_host_error_memory_grow_denial_chain() {
+        // StoreLimits with trap_on_grow_failure(true) denies growth with this
+        // message as the CAUSE under a backtrace context line.
+        let e = anyhow::anyhow!("forcing trap when growing memory to 1073741824 bytes")
+            .context("error while executing at wasm backtrace: ...");
+        let out = format_host_error(&e);
+        assert!(out.starts_with("[Limit]"), "got: {out}");
+        assert!(out.contains("Memory limit"));
+        assert!(out.contains("NIBLI_MEMORY_MB"));
+    }
+
+    #[test]
+    fn test_format_host_error_cannot_enter_is_host_error() {
+        // The post-trap re-entry error must NOT classify as a resource limit.
+        let e = anyhow::anyhow!("wasm trap: cannot enter component instance");
+        let out = format_host_error(&e);
+        assert!(out.starts_with("[Host Error]"), "got: {out}");
     }
 
     #[test]
