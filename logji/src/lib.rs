@@ -448,9 +448,10 @@ impl KnowledgeBase {
         for &root_id in &logic.roots {
             let mut subs = HashMap::new();
             let result = check_formula_holds(logic, root_id, &mut subs, &mut inner, None)?;
+            let root_is_true = result.is_true();
             overall = Self::combine_root_results(overall, result);
             let mut trace_subs = HashMap::new();
-            let (holds, step_idx) = check_formula_holds_traced(
+            let (_holds, step_idx) = check_formula_holds_traced(
                 logic,
                 root_id,
                 &mut trace_subs,
@@ -459,8 +460,12 @@ impl KnowledgeBase {
                 None,
                 &mut memo,
             )?;
+            // Reconcile the per-root proof step's displayed verdict with the
+            // authoritative four-valued result, so the trace can never contradict
+            // the reported answer (the traced builder collapses four-valued to
+            // bool and could otherwise show a decided result under Unknown/RE).
+            steps[step_idx as usize].holds = root_is_true;
             root_children.push(step_idx);
-            let _ = holds;
         }
         let root = if root_children.len() == 1 {
             root_children[0]

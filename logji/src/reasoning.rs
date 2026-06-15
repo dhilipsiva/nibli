@@ -1973,9 +1973,16 @@ pub(super) fn check_formula_holds_traced(
             Ok((false, idx))
         }
         LogicNode::NotNode(inner_node) => {
-            let (inner_result, inner_idx) =
+            let (_inner_result, inner_idx) =
                 check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, tense, memo)?;
-            let result = !inner_result;
+            // NAF flips to True only when the inner is DEFINITIVELY False. A merely
+            // Unknown/ResourceExceeded inner stays non-definitive (negate_result
+            // preserves it), so a boolean `!inner` would wrongly display a NAF
+            // dependency. Recheck the inner four-valued (bounded re-walk).
+            let mut recheck_subs = subs.clone();
+            let inner_four =
+                check_formula_holds(buffer, *inner_node, &mut recheck_subs, inner, tense)?;
+            let result = matches!(inner_four, QueryResult::False);
             let idx = steps.len() as u32;
             steps.push(ProofStep {
                 rule: ProofRule::Negation,
@@ -2134,10 +2141,12 @@ pub(super) fn check_formula_holds_traced(
                         all
                     }
                 };
+            let mut saw_non_definitive = false;
             for candidate in &candidates {
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), candidate.clone());
-                if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)?.is_true() {
+                let cand = check_formula_holds(buffer, *body, &mut new_subs, inner, tense)?;
+                if cand.is_true() {
                     let (_, body_idx) = check_formula_holds_traced(
                         buffer,
                         *body,
@@ -2157,14 +2166,30 @@ pub(super) fn check_formula_holds_traced(
                         children: vec![body_idx],
                     });
                     return Ok((true, idx));
+                } else if !matches!(cand, QueryResult::False) {
+                    saw_non_definitive = true;
                 }
             }
             let idx = steps.len() as u32;
-            steps.push(ProofStep {
-                rule: ProofRule::ExistsFailed,
-                holds: false,
-                children: vec![],
-            });
+            if saw_non_definitive {
+                // At least one candidate was Unknown/ResourceExceeded — the
+                // existential is not definitively false; do not display a decided
+                // ExistsFailed.
+                steps.push(ProofStep {
+                    rule: ProofRule::PredicateCheck((
+                        "indeterminate".to_string(),
+                        "exists".to_string(),
+                    )),
+                    holds: false,
+                    children: vec![],
+                });
+            } else {
+                steps.push(ProofStep {
+                    rule: ProofRule::ExistsFailed,
+                    holds: false,
+                    children: vec![],
+                });
+            }
             Ok((false, idx))
         }
         LogicNode::ForAllNode((v, body)) => {
@@ -2261,12 +2286,34 @@ pub(super) fn check_formula_holds_traced(
                     memo,
                 )?;
                 if !holds {
+                    // Distinguish a genuine counterexample (member definitively
+                    // False) from a merely non-definitive member (Unknown/
+                    // ResourceExceeded) — the latter must not be displayed as a
+                    // decided counterexample. Recheck four-valued (bounded — only
+                    // the one failing member).
+                    let mut recheck_subs = subs.clone();
+                    recheck_subs.insert(v.clone(), member.clone());
+                    let member_four =
+                        check_formula_holds(buffer, *body, &mut recheck_subs, inner, tense)?;
                     let idx = steps.len() as u32;
-                    steps.push(ProofStep {
-                        rule: ProofRule::ForallCounterexample(ground_term_to_logical_term(member)),
-                        holds: false,
-                        children: vec![body_idx],
-                    });
+                    if matches!(member_four, QueryResult::False) {
+                        steps.push(ProofStep {
+                            rule: ProofRule::ForallCounterexample(ground_term_to_logical_term(
+                                member,
+                            )),
+                            holds: false,
+                            children: vec![body_idx],
+                        });
+                    } else {
+                        steps.push(ProofStep {
+                            rule: ProofRule::PredicateCheck((
+                                "indeterminate".to_string(),
+                                "forall".to_string(),
+                            )),
+                            holds: false,
+                            children: vec![body_idx],
+                        });
+                    }
                     return Ok((false, idx));
                 }
                 child_indices.push(body_idx);
@@ -2353,6 +2400,22 @@ pub(super) fn check_formula_holds_traced(
                 if result.is_true() {
                     let idx = trace_predicate_provenance_typed(&fact, inner, steps, 0, memo);
                     Ok((true, idx))
+                } else if !matches!(result, QueryResult::False) {
+                    // Non-definitive (Unknown(CycleCut)/ResourceExceeded): the
+                    // predicate is neither proven nor refuted — do NOT display a
+                    // decided "not found". Emit a non-committal step instead.
+                    let reason = match &result {
+                        QueryResult::Unknown(r) => format!("unknown:{r:?}"),
+                        QueryResult::ResourceExceeded(k) => format!("resource-exceeded:{k:?}"),
+                        _ => "indeterminate".to_string(),
+                    };
+                    let idx = steps.len() as u32;
+                    steps.push(ProofStep {
+                        rule: ProofRule::PredicateCheck(("indeterminate".to_string(), reason)),
+                        holds: false,
+                        children: vec![],
+                    });
+                    Ok((false, idx))
                 } else {
                     // Record failure details: which rules were tried, which conditions failed.
                     let mut failed_children = Vec::new();

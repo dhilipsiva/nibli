@@ -600,6 +600,181 @@ fn test_query_result_resource_exceeded_for_depth_limit() {
     ));
 }
 
+// ─── Proof-trace / verdict consistency (EG-M2 + LP-M3 display half) ──
+//
+// The displayed proof must never contradict the authoritative four-valued
+// verdict: under Unknown/ResourceExceeded the trace must NOT assert a decided
+// FALSE (ForallCounterexample / ExistsFailed / PredicateNotFound) or a NAF-true
+// negation. A genuine definitive False MUST still show its counterexample.
+
+/// Assert the proof trace's root step is consistent with the four-valued verdict.
+fn assert_trace_consistent(result: &QueryResult, trace: &ProofTrace) {
+    let root = &trace.steps[trace.root as usize];
+    match result {
+        QueryResult::True => assert!(root.holds, "True verdict but root step holds=false"),
+        QueryResult::False => assert!(!root.holds, "False verdict but root step holds=true"),
+        QueryResult::Unknown(_) | QueryResult::ResourceExceeded(_) => {
+            assert!(
+                !root.holds,
+                "non-definitive verdict {result:?} but root step holds=true"
+            );
+            assert!(
+                !matches!(
+                    root.rule,
+                    ProofRule::ForallCounterexample(_)
+                        | ProofRule::ExistsFailed
+                        | ProofRule::PredicateNotFound(_)
+                ),
+                "non-definitive verdict {result:?} but root asserts a decided failure: {:?}",
+                root.rule
+            );
+        }
+    }
+}
+
+#[test]
+fn trace_does_not_contradict_unknown_cyclecut() {
+    // gerku ⟸ danlu ⟸ gerku: querying gerku(alis) cuts the cycle → Unknown.
+    // The trace must not display a decided "predicate not found" under Unknown.
+    let kb = new_kb();
+    assert_buf(&kb, make_universal("gerku", "danlu"));
+    assert_buf(&kb, make_universal("danlu", "gerku"));
+    let (result, trace) = kb
+        .query_entailment_with_proof_inner(make_query("alis", "gerku"))
+        .unwrap();
+    assert!(matches!(
+        result,
+        QueryResult::Unknown(UnknownReason::CycleCut)
+    ));
+    assert_trace_consistent(&result, &trace);
+}
+
+#[test]
+fn trace_does_not_show_counterexample_under_depth_exceeded() {
+    // max depth 1, chain gerku→danlu→xanlu, gerku(alis). ∀x. xanlu(x) over the
+    // singleton domain {alis} exceeds the depth budget → ResourceExceeded(Depth);
+    // the trace must NOT show a decided ForallCounterexample.
+    let kb = new_kb();
+    kb.inner.borrow_mut().max_chain_depth = 1;
+    assert_buf(&kb, make_assertion("alis", "gerku"));
+    assert_buf(&kb, make_universal("gerku", "danlu"));
+    assert_buf(&kb, make_universal("danlu", "xanlu"));
+    let mut nodes = Vec::new();
+    let body = pred(
+        &mut nodes,
+        "xanlu",
+        vec![LogicalTerm::Variable("x".into()), LogicalTerm::Unspecified],
+    );
+    let root = forall(&mut nodes, "x", body);
+    let buf = LogicBuffer {
+        nodes,
+        roots: vec![root],
+    };
+    let (result, trace) = kb.query_entailment_with_proof_inner(buf).unwrap();
+    assert!(
+        matches!(result, QueryResult::ResourceExceeded(ResourceKind::Depth)),
+        "got {result:?}"
+    );
+    assert_trace_consistent(&result, &trace);
+    assert!(
+        !trace
+            .steps
+            .iter()
+            .any(|s| matches!(s.rule, ProofRule::ForallCounterexample(_))),
+        "depth-exceeded ForAll must not display a decided counterexample"
+    );
+}
+
+#[test]
+fn trace_naf_flag_false_when_inner_is_unknown() {
+    // ¬gerku(alis) where gerku(alis) is Unknown(CycleCut), NOT definitively False.
+    // negate_result preserves Unknown, so the verdict is Unknown and the trace
+    // must NOT claim a NAF dependency (a boolean !false would wrongly do so).
+    let kb = new_kb();
+    assert_buf(&kb, make_universal("gerku", "danlu"));
+    assert_buf(&kb, make_universal("danlu", "gerku"));
+    let mut nodes = Vec::new();
+    let inner = pred(
+        &mut nodes,
+        "gerku",
+        vec![
+            LogicalTerm::Constant("alis".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let root = not(&mut nodes, inner);
+    let buf = LogicBuffer {
+        nodes,
+        roots: vec![root],
+    };
+    let (result, trace) = kb.query_entailment_with_proof_inner(buf).unwrap();
+    assert!(matches!(result, QueryResult::Unknown(_)), "got {result:?}");
+    assert!(
+        !trace.has_naf_dependency(),
+        "NAF flag must be false when the negated inner is Unknown, not definitively False"
+    );
+}
+
+#[test]
+fn trace_exists_failed_only_when_all_definitively_false() {
+    // Ground material conditionals gerku(x)⟸danlu(x) and danlu(x)⟸gerku(x) form a
+    // positive cycle WITHOUT xorlo witnesses (unlike `ro lo` universals), so
+    // gerku(x) is Unknown(CycleCut) and ∃y.gerku(y) — whose only candidate is the
+    // rule-derivable `x` — has no satisfying witness. Verdict Unknown → the trace
+    // must NOT show a decided ExistsFailed.
+    let kb = new_kb();
+    assert_buf(&kb, make_material_cond("gerku", "danlu", false));
+    assert_buf(&kb, make_material_cond("danlu", "gerku", false));
+    let mut nodes = Vec::new();
+    let body = pred(&mut nodes, "gerku", vec![LogicalTerm::Variable("y".into())]);
+    let root = exists(&mut nodes, "y", body);
+    let buf = LogicBuffer {
+        nodes,
+        roots: vec![root],
+    };
+    let (result, trace) = kb.query_entailment_with_proof_inner(buf).unwrap();
+    assert!(matches!(result, QueryResult::Unknown(_)), "got {result:?}");
+    assert_trace_consistent(&result, &trace);
+    assert!(
+        !trace
+            .steps
+            .iter()
+            .any(|s| matches!(s.rule, ProofRule::ExistsFailed)),
+        "Exists over an Unknown candidate must not display a decided ExistsFailed"
+    );
+}
+
+#[test]
+fn forall_genuine_counterexample_still_traced() {
+    // Positive guard against over-suppression: a genuinely-False member (bob,
+    // known but not mlatu) under a definitive False verdict MUST still be shown
+    // as a ForallCounterexample.
+    let kb = new_kb();
+    assert_buf(&kb, make_assertion("alis", "mlatu")); // mlatu(alis) true; alis known
+    assert_buf(&kb, make_assertion("bob", "gerku")); // bob known, not mlatu
+    let mut nodes = Vec::new();
+    let body = pred(
+        &mut nodes,
+        "mlatu",
+        vec![LogicalTerm::Variable("x".into()), LogicalTerm::Unspecified],
+    );
+    let root = forall(&mut nodes, "x", body);
+    let buf = LogicBuffer {
+        nodes,
+        roots: vec![root],
+    };
+    let (result, trace) = kb.query_entailment_with_proof_inner(buf).unwrap();
+    assert!(matches!(result, QueryResult::False), "got {result:?}");
+    assert_trace_consistent(&result, &trace);
+    assert!(
+        trace
+            .steps
+            .iter()
+            .any(|s| matches!(s.rule, ProofRule::ForallCounterexample(_))),
+        "a genuine False member must still be shown as a counterexample"
+    );
+}
+
 // ─── Dependent Skolem (Phase B) Tests ────────────────────────────
 
 fn make_dependent_skolem_universal(restrictor: &str, consequent: &str) -> LogicBuffer {
