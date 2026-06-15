@@ -55,6 +55,62 @@ fn simple_negation_query_false() {
     assert_false(&holds, "Query for unasserted fact should not hold");
 }
 
+// ─── du (identity) equivalence through the surface pipeline (G-M1) ───
+
+#[test]
+fn du_surface_equivalence_transfers_fact() {
+    // la .coumadin. cu du la .varfarin.  (brand name == generic name)
+    // la .coumadin. cu xukmi             (Coumadin is a drug)
+    // ? la .varfarin. cu xukmi           → TRUE via du-equivalence transfer.
+    let engine = engine_with_facts(&[
+        "la .coumadin. cu du la .varfarin.",
+        "la .coumadin. cu xukmi",
+    ]);
+    let (holds, _t, _j) = engine
+        .query_text_with_proof("la .varfarin. cu xukmi")
+        .unwrap();
+    assert_true(
+        &holds,
+        "xukmi should transfer from coumadin to varfarin via surface du",
+    );
+}
+
+#[test]
+fn du_surface_equivalence_is_symmetric() {
+    // Assert the fact about the SECOND name, query the FIRST.
+    let engine = engine_with_facts(&[
+        "la .coumadin. cu du la .varfarin.",
+        "la .varfarin. cu xukmi",
+    ]);
+    let (holds, _t, _j) = engine
+        .query_text_with_proof("la .coumadin. cu xukmi")
+        .unwrap();
+    assert_true(&holds, "du equivalence is symmetric");
+}
+
+#[test]
+fn du_surface_negative_control() {
+    // No du link → no transfer.
+    let engine = engine_with_facts(&["la .coumadin. cu xukmi"]);
+    let (holds, _t, _j) = engine
+        .query_text_with_proof("la .varfarin. cu xukmi")
+        .unwrap();
+    assert_false(&holds, "without du, the fact must not transfer");
+}
+
+#[test]
+fn na_du_surface_contradiction() {
+    // Asserting both an identity and an inequality for the same pair is flagged.
+    let engine = engine_with_facts(&["la .djan. cu du la .jan.", "la .djan. na du la .jan."]);
+    let violations = engine.check_contradictions();
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.contains("Inequality contradiction")),
+        "du + na du for the same pair must be flagged: {violations:?}"
+    );
+}
+
 // ─── Cooperative cancellation ───────────────────────────────────────
 
 #[test]

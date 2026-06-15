@@ -220,6 +220,63 @@ mod tests {
             .map(|(_, args)| args)
     }
 
+    // ─── du (identity) selbri lowering ───────────────────────────
+
+    #[test]
+    fn test_du_lowers_flat_not_event_decomposed() {
+        // `la .X. cu du la .Y.` (Root("du") + 2 sumti) must lower to a FLAT
+        // 2-arg du(X,Y) predicate — NOT the Neo-Davidsonian event form
+        // (∃e. du(e) ∧ du_x1(e,X) ∧ du_x2(e,Y)) — so logji's union-find
+        // ingestion (which matches relation=="du" && args.len()==2) fires.
+        let selbris = vec![Selbri::Root("du".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()), // 0
+            Sumti::ProSumti("do".into()), // 1
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![1],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let args =
+            get_pred_args(&form, "du", &compiler).expect("flat du predicate must be present");
+        assert_eq!(args.len(), 2, "du must be a flat 2-arg predicate");
+        assert!(
+            !has_pred(&form, "du_x1", &compiler),
+            "du must NOT be event-decomposed (no role predicates)"
+        );
+    }
+
+    #[test]
+    fn test_du_with_more_than_two_sumti_is_rejected() {
+        // Fail-closed: n-ary du is unsupported (logji handles only binary
+        // identity). A 3-sumti du must push a semantic error rather than
+        // silently dropping the third argument.
+        let selbris = vec![Selbri::Root("du".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()), // 0
+            Sumti::ProSumti("do".into()), // 1
+            Sumti::ProSumti("ti".into()), // 2
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![1, 2],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (_form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(
+            !compiler.errors.is_empty(),
+            ">2-place du must be rejected fail-closed"
+        );
+    }
+
     // ─── Sumti connective expansion tests ────────────────────────
 
     #[test]

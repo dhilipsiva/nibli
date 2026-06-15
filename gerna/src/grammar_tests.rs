@@ -3300,6 +3300,80 @@ fn test_observative_single_description() {
     assert_eq!(b.head_terms.len(), 1);
 }
 
+// ─── du (identity) selbri (G-M1) ────────────────────────────
+
+#[test]
+fn test_du_as_selbri_with_cu() {
+    // la .djan. cu du la .jan. → Bridi { selbri: Root("du"), head: [la djan], tail: [la jan] }
+    let arena = Bump::new();
+    let r = parse_ok(
+        &[
+            cmavo("la"),
+            cmevla("djan"),
+            cmavo("cu"),
+            cmavo("du"),
+            cmavo("la"),
+            cmevla("jan"),
+        ],
+        &arena,
+    );
+    let b = as_bridi(&r.sentences[0]);
+    assert_eq!(b.selbri, Selbri::Root("du".to_string()));
+    assert_eq!(b.head_terms.len(), 1);
+    assert_eq!(b.tail_terms.len(), 1);
+}
+
+#[test]
+fn test_observative_du_without_cu() {
+    // la .djan. du la .jan. → cu-less; du must be recognized as the selbri,
+    // NOT skipped so the implicit-go'i observative fallback fires.
+    let arena = Bump::new();
+    let r = parse_ok(
+        &[
+            cmavo("la"),
+            cmevla("djan"),
+            cmavo("du"),
+            cmavo("la"),
+            cmevla("jan"),
+        ],
+        &arena,
+    );
+    let b = as_bridi(&r.sentences[0]);
+    assert_eq!(b.selbri, Selbri::Root("du".to_string()));
+    assert_eq!(b.head_terms.len(), 1);
+    assert_eq!(b.tail_terms.len(), 1);
+}
+
+#[test]
+fn test_du_does_not_break_du_u() {
+    // Negative control: du'u still parses as the Duhu abstraction, not a du selbri.
+    let arena = Bump::new();
+    let s = parse_ok(
+        &[
+            cmavo("lo"),
+            cmavo("du'u"),
+            cmavo("mi"),
+            gismu("klama"),
+            cmavo("kei"),
+            cmavo("cu"),
+            gismu("barda"),
+        ],
+        &arena,
+    );
+    let bridi = as_bridi(&s.sentences[0]);
+    assert_eq!(bridi.selbri, Selbri::Root("barda".into()));
+    match &bridi.head_terms[0] {
+        Sumti::Description {
+            gadri: Gadri::Lo,
+            inner,
+        } => match inner {
+            Selbri::Abstraction(AbstractionKind::Duhu, _) => {}
+            other => panic!("expected Abstraction(Duhu, ..), got {:?}", other),
+        },
+        other => panic!("expected Description, got {:?}", other),
+    }
+}
+
 // ═══════════════════════════════════════════════════════════
 // ERROR RECOVERY TESTS
 // ═══════════════════════════════════════════════════════════

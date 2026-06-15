@@ -936,7 +936,25 @@ impl KnowledgeBase {
         //    events sharing a predicate. Scope: directly asserted positives only
         //    (no derived facts), same tense only. Query semantics (NAF/CWA) are
         //    unaffected — negatives never enter the positive store.
+        // A negative group that is a single flat 2-arg `du(X, Y)` is an asserted
+        // INEQUALITY; it is handled by section 5 (union-find aware) rather than
+        // the store-membership check here, because equality can hold
+        // transitively (`du(X,Z) ∧ du(Z,Y)`) without `du(X,Y)` ever being stored.
+        fn flat_du_pair(group: &[StoredFact]) -> Option<(&GroundTerm, &GroundTerm)> {
+            if group.len() == 1 {
+                if let StoredFact::Bare(gf) = &group[0] {
+                    if gf.relation == "du" && gf.args.len() == 2 {
+                        return Some((&gf.args[0], &gf.args[1]));
+                    }
+                }
+            }
+            None
+        }
+
         for group in &inner.negative_facts {
+            if flat_du_pair(group).is_some() {
+                continue;
+            }
             if negative_group_holds(group, &*inner.fact_store) {
                 let facts: Vec<String> = group.iter().map(|f| f.to_display_string()).collect();
                 let msg = format!(
@@ -946,6 +964,28 @@ impl KnowledgeBase {
                 );
                 if !violations.contains(&msg) {
                     violations.push(msg);
+                }
+            }
+        }
+
+        // 5. Asserted inequalities (`na du`). A flat `na du(X, Y)` is contradicted
+        //    when X and Y are equivalent under the du union-find — catching both
+        //    a directly-asserted `du(X, Y)` and transitive equality
+        //    (`du(X, Z) ∧ du(Z, Y)`) that a store-membership check would miss.
+        //    (Reflexive `na du(a, a)` is correctly always a contradiction.)
+        for group in &inner.negative_facts {
+            if let Some((x, y)) = flat_du_pair(group) {
+                let rx = find_canonical_readonly(&inner.equivalence_parent, x);
+                let ry = find_canonical_readonly(&inner.equivalence_parent, y);
+                if rx == ry {
+                    let msg = format!(
+                        "Inequality contradiction: ¬({}) was asserted, but the terms are \
+                         equivalent under du",
+                        group[0].to_display_string()
+                    );
+                    if !violations.contains(&msg) {
+                        violations.push(msg);
+                    }
                 }
             }
         }

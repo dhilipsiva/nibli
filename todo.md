@@ -37,10 +37,6 @@ Adjudicated with probes; each item cites the reproduction. Items here are NEW (n
 
 ## gerna (parser/lexer)
 
-### Medium
-
-- [ ] **The `du` (identity) selbri does not parse in an assertion — equality reasoning is unreachable from surface Lojban** — logji maintains union-find equivalence classes over the `du` predicate (drug-synonym transfer, e.g. warfarin = Coumadin), but `la .X. du la .Y.` and `la .X. cu du la .Y.` both fail to parse ("unconsumed tokens remaining"), so `du` facts can only be injected at the fact-store layer, not written in a corpus. Discovered building the drug-interaction corpus (Chapter 21 "Honest Boundaries" names this). _Location:_ `gerna/src/grammar` (selbri/bridi parsing of the `du` cmavo). _Fix:_ accept `du` as a selbri in the bridi tail (it is GOhA/du-class), lowering to a `du` predicate; add a parse test for `la .X. cu du la .Y.` and an end-to-end test that a fact about X transfers to Y. (completeness)
-
 ### Low
 
 - [ ] **Relative-clause ambiguity rejection is mis-located to 'the parser' in Appendix D** — Appendix D says '...the parser rejects ambiguous cases without explicit `ke'a`', but `try_parse_rel_clause` does no slot-counting or `ke'a` check. The rejection actually lives in smuni (`helpers.rs:230-239` via `count_unspecified_predicates`, pushing onto `self.errors` at `semantic.rs:82`). The safety property IS enforced — just in the semantic compiler, not gerna. _Location:_ `gerna/src/grammar/sumti.rs:506-531`. _Book:_ Appendix D line 139 ('the parser'); Chapter 6 line 250 ('the engine', accurate). _Fix:_ Correct Appendix D line 139 to state the ambiguity rejection happens in the semantic compiler (smuni), not the gerna parser. (docs-mismatch)

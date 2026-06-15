@@ -194,6 +194,14 @@ impl<'a, 'arena> Parser<'a, 'arena> {
             return Some(Selbri::Root("go'i".to_string()));
         }
 
+        // `du` (identity / GOhA): a content-bearing cmavo selbri, like go'i.
+        // Smuni lowers it to a flat 2-arg `du(x1, x2)` predicate (no event
+        // decomposition) that feeds logji's union-find equivalence classes.
+        if self.peek_is_cmavo("du") {
+            self.pos += 1;
+            return Some(Selbri::Root("du".to_string()));
+        }
+
         {
             let saved = self.save();
             if let Some(conv) = self.try_parse_conversion() {

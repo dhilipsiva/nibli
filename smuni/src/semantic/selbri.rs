@@ -41,6 +41,20 @@ impl SemanticCompiler {
     ) -> LogicalForm {
         match &selbris[selbri_id as usize] {
             Selbri::Root(g) => {
+                // `du` (identity) is a pure binary equivalence relation with no
+                // event structure. It MUST stay a flat 2-arg `du(x1, x2)`
+                // predicate — logji's union-find ingestion and du-query arm only
+                // match `relation == "du" && args.len() == 2`, so the
+                // Neo-Davidsonian event form would silently disable equality
+                // reasoning. (The >2-place fail-closed reject lives in
+                // `compile_bridi`, where the dropped-overflow sumti are visible.)
+                if g == "du" {
+                    let fitted = Self::fit_args(args, 2);
+                    return LogicalForm::Predicate {
+                        relation: self.interner.get_or_intern("du"),
+                        args: fitted,
+                    };
+                }
                 let arity = JbovlasteSchema::get_arity_or_default(g.as_str());
                 let fitted = Self::fit_args(args, arity);
                 self.event_decompose(g.as_str(), &fitted)

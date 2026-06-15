@@ -5612,6 +5612,71 @@ fn test_du_no_tensed() {
     );
 }
 
+/// Helper: build a flat negated du assertion/query: Not(du(a, b)).
+fn make_negated_du(a: &str, b: &str) -> LogicBuffer {
+    let mut nodes = Vec::new();
+    let inner = pred(
+        &mut nodes,
+        "du",
+        vec![
+            LogicalTerm::Constant(a.to_string()),
+            LogicalTerm::Constant(b.to_string()),
+        ],
+    );
+    let root = not(&mut nodes, inner);
+    LogicBuffer {
+        nodes,
+        roots: vec![root],
+    }
+}
+
+#[test]
+fn test_na_du_transitive_contradiction() {
+    // du(alis,bob) ∧ du(bob,carol) makes alis ≡ carol via the union-find even
+    // though du(alis,carol) was never stored; asserting `na du(alis, carol)`
+    // must be flagged. RED before the union-find-aware section: section 4 only
+    // checks store membership, and du(alis,carol) is not in the store.
+    let kb = new_kb();
+    assert_buf(&kb, make_du("alis", "bob"));
+    assert_buf(&kb, make_du("bob", "carol"));
+    assert_id(&kb, make_negated_du("alis", "carol"), "na du");
+    let violations = kb.check_contradictions();
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.contains("Inequality contradiction")),
+        "transitive equality must contradict the asserted inequality: {violations:?}"
+    );
+}
+
+#[test]
+fn test_na_du_unrelated_no_contradiction() {
+    // du(alis,bob) but carol is unrelated: `na du(alis, carol)` is consistent.
+    let kb = new_kb();
+    assert_buf(&kb, make_du("alis", "bob"));
+    assert_id(&kb, make_negated_du("alis", "carol"), "na du");
+    assert!(
+        kb.check_contradictions().is_empty(),
+        "an inequality between non-equivalent terms is not a contradiction"
+    );
+}
+
+#[test]
+fn test_na_du_inequality_query() {
+    // Inequality querying via NAF over the union-find: na du holds when the two
+    // terms are not equivalent, and fails when they are.
+    let kb = new_kb();
+    assert_buf(&kb, make_du("alis", "bob"));
+    assert!(
+        query(&kb, make_negated_du("alis", "carol")),
+        "na du(alis, carol) should hold — they are not equivalent"
+    );
+    assert!(
+        !query(&kb, make_negated_du("alis", "bob")),
+        "na du(alis, bob) should fail — they ARE equivalent"
+    );
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // PREDICATE SIGNATURE VALIDATION TESTS
 // ═══════════════════════════════════════════════════════════════════

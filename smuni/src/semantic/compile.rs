@@ -160,6 +160,19 @@ impl SemanticCompiler {
             })
             .collect();
 
+        // Fail-closed: `du` (identity) is a 2-place relation and logji's
+        // union-find consumes only 2-arg du facts. Any sumti beyond x2 overflow
+        // arity 2 and are silently dropped above (left unconsumed in
+        // `untagged_iter`), so reject n-ary du rather than lose meaning.
+        let head_is_du = self.get_selbri_head_name(bridi.relation, selbris) == "du";
+        if head_is_du && untagged_iter.len() > 0 {
+            self.errors.push(format!(
+                "`du` (identity) is a 2-place relation, but {} extra sumti were supplied; \
+                 n-ary identity is unsupported.",
+                untagged_iter.len()
+            ));
+        }
+
         let mut final_form = self.apply_selbri(bridi.relation, &args, selbris, sumtis, sentences);
 
         for (modal_tag, tagged_term, modal_quants) in modal_entries {
