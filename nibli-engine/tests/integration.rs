@@ -120,6 +120,70 @@ fn universal_rule_chain_syllogism() {
     );
 }
 
+// ─── Binary-condition universal rules (poi se R) ────────────────────
+//
+// A universal rule whose restrictor contains a CONVERTED two-place relation
+// (`poi se prami la .alis.`) must fire. Pre-fix it returned FALSE: in a relative
+// clause the implicit `ke'a` subject was injected post-hoc into the first
+// unspecified `_x1` role, but `se` conversion had already vacated that slot and
+// moved the explicit sumti — so the clause compiled `prami(dog, alis)` ("dog
+// loves alis") instead of `prami(alis, dog)` ("loved by alis"), mismatching the
+// asserted fact. Fixed in smuni by placing `ke'a` as the clause's x1 argument
+// BEFORE conversion (semantic/compile.rs), mirroring the explicit-subject path.
+
+#[test]
+fn binary_restrictor_rule_fires() {
+    // "every dog that is loved by alis is an animal"; rex is a dog AND loved by alis.
+    let engine = engine_with_facts(&[
+        "ro lo gerku poi se prami la .alis. cu danlu",
+        "la .rex. cu gerku",
+        "la .rex. cu se prami la .alis.",
+    ]);
+    let (holds, _trace, _json) = engine.query_text_with_proof("la .rex. cu danlu").unwrap();
+    assert_true(
+        &holds,
+        "binary-restrictor rule should fire when both the gadri and the 2-place relation hold",
+    );
+}
+
+#[test]
+fn binary_restrictor_negative_control() {
+    // rex is loved by alis but is NOT asserted to be a dog → rule must NOT fire.
+    let engine = engine_with_facts(&[
+        "ro lo gerku poi se prami la .alis. cu danlu",
+        "la .rex. cu se prami la .alis.",
+    ]);
+    let (holds, _trace, _json) = engine.query_text_with_proof("la .rex. cu danlu").unwrap();
+    assert_false(
+        &holds,
+        "rule must not fire when the gadri predicate is unsatisfied",
+    );
+}
+
+#[test]
+fn binary_restrictor_constant_second_place_fires() {
+    // DDI-shape: "every drug metabolised-by CYP2C9 triggers an alert".
+    let engine = engine_with_facts(&[
+        "ro lo xukmi poi se katna la .siptucin. cu kajde",
+        "la .uarfarin. cu xukmi",
+        "la .uarfarin. cu se katna la .siptucin.",
+    ]);
+    let (holds, _trace, _json) = engine
+        .query_text_with_proof("la .uarfarin. cu kajde")
+        .unwrap();
+    assert_true(
+        &holds,
+        "2-place restrictor with a constant second place should fire",
+    );
+}
+
+// NOTE: multi-universal rules (`ro lo gerku cu pendo ro lo mlatu`) are a SEPARATE,
+// larger defect tracked in todo.md — they fail at COMPILATION ("a consequent atom
+// is not a flat predicate") because the conclusion is itself a nested ∀y.(mlatu(y)
+// → pendo(x,y)), needing prenex-flattening of nested universals plus firing-side
+// individual-var enumeration. Not covered by the binary-condition (poi se R) fix
+// above.
+
 // ─── Temporal reasoning ─────────────────────────────────────────────
 
 #[test]

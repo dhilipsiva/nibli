@@ -222,6 +222,12 @@ impl SemanticCompiler {
                 };
                 self.rel_clause_var = Some(clause_var);
                 self.kea_used = false;
+                // Offer the clause variable as the implicit ke'a subject (x1) of
+                // the clause's main bridi, consumed there before selbri
+                // conversion. Save/restore so a nested Restricted clause does not
+                // steal this one.
+                let outer_clause_subject = self.pending_clause_subject.take();
+                self.pending_clause_subject = Some(clause_var);
 
                 let rel_body =
                     self.compile_sentence(rel_clause.body_sentence, selbris, sumtis, sentences);
@@ -229,6 +235,7 @@ impl SemanticCompiler {
                 let kea_was_used = self.kea_used;
                 self.rel_clause_var = outer_rel_var;
                 self.kea_used = outer_kea_used;
+                self.pending_clause_subject = outer_clause_subject;
 
                 let new_restrictor = if kea_was_used {
                     rel_body

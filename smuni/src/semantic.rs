@@ -90,6 +90,14 @@ pub struct SemanticCompiler {
     /// them into the bridi matrix (previously these were silently dropped —
     /// panel finding 2026-06-10).
     pending_matrix_conjuncts: Vec<LogicalForm>,
+    /// One-shot: the implicit `ke'a` subject of a relative clause, to be placed
+    /// as the x1 ARGUMENT of the clause's main bridi BEFORE selbri conversion —
+    /// the same position an explicit subject occupies. Consumed by the first
+    /// `compile_bridi` of the clause body. This makes `poi se prami la .alis.`
+    /// route `ke'a` through `se` conversion to the correct underlying role
+    /// (prami_x2), instead of post-hoc `inject_variable` wrongly filling the
+    /// conversion-vacated `prami_x1` slot.
+    pending_clause_subject: Option<lasso::Spur>,
 }
 
 impl SemanticCompiler {
@@ -105,6 +113,7 @@ impl SemanticCompiler {
             errors: Vec::new(),
             event_counter: 0,
             pending_matrix_conjuncts: Vec::new(),
+            pending_clause_subject: None,
         }
     }
 }

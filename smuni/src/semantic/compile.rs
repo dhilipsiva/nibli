@@ -80,6 +80,23 @@ impl SemanticCompiler {
         let target_arity = self.get_selbri_arity(bridi.relation, selbris);
 
         let mut positioned: Vec<Option<LogicalTerm>> = vec![None; target_arity];
+
+        // A relative clause's implicit `ke'a` subject occupies x1 (the CLL
+        // default), pushing the clause's explicit sumti to x2+. Place it as the
+        // x1 ARGUMENT here — BEFORE `apply_selbri` runs any `se`/`te`/`ve`/`xe`
+        // conversion — so `poi se prami la .alis.` routes `ke'a` through the
+        // conversion to the correct underlying role (prami_x2), exactly as an
+        // explicit subject would. One-shot: only the clause's main (first) bridi
+        // consumes it; nested bridi (abstraction bodies) see `None`. Marking
+        // `kea_used` makes the caller skip the post-hoc `inject_variable`, which
+        // cannot see conversion and would refill the vacated x1 slot.
+        if bridi.head_terms.is_empty() && target_arity >= 1 {
+            if let Some(subject) = self.pending_clause_subject.take() {
+                positioned[0] = Some(LogicalTerm::Variable(subject));
+                self.kea_used = true;
+            }
+        }
+
         let mut untagged: Vec<LogicalTerm> = Vec::new();
         let mut quantifiers: Vec<QuantifierEntry> = Vec::new();
         let mut modal_entries: Vec<(ModalTag, LogicalTerm, Vec<QuantifierEntry>)> = Vec::new();
