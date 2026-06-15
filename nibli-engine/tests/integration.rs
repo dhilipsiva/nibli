@@ -55,6 +55,43 @@ fn simple_negation_query_false() {
     assert_false(&holds, "Query for unasserted fact should not hold");
 }
 
+// ─── Cooperative cancellation ───────────────────────────────────────
+
+#[test]
+fn engine_cancel_flag_aborts_query() {
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+    // With the cancel flag pre-set, every query path returns Err instead of
+    // running to completion. This is the hook the native server's watchdog
+    // uses to free a blocking thread when the request timeout elapses.
+    let engine = engine_with_facts(&["la .adam. cu gerku", "ro lo gerku cu danlu"]);
+    let flag = Arc::new(AtomicBool::new(true));
+    engine.set_cancel_flag(flag.clone());
+
+    let proof = engine.query_text_with_proof("la .adam. cu danlu");
+    assert!(
+        proof.is_err(),
+        "cancelled proof query must Err, got {proof:?}"
+    );
+    assert!(proof.unwrap_err().to_lowercase().contains("cancel"));
+
+    let holds = engine.query_holds("la .adam. cu danlu");
+    assert!(
+        holds.is_err(),
+        "cancelled holds query must Err, got {holds:?}"
+    );
+
+    // Clearing the flag restores normal evaluation.
+    engine.clear_cancel_flag();
+    let (result, _, _) = engine
+        .query_text_with_proof("la .adam. cu danlu")
+        .expect("query should succeed after clearing cancel flag");
+    assert_true(
+        &result,
+        "syllogism should hold once cancellation is cleared",
+    );
+}
+
 // ─── Universal rule chain (syllogism) ───────────────────────────────
 
 #[test]

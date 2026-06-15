@@ -350,7 +350,16 @@ impl KnowledgeBase {
         let configured_max = self.inner.borrow().max_chain_depth;
         for depth_limit in 1..=configured_max {
             self.inner.borrow_mut().max_chain_depth = depth_limit;
-            let result = self.run_entailment_check(&logic)?;
+            // Restore the configured depth on EVERY exit, including the error
+            // path (e.g. cooperative cancellation), so an aborted query never
+            // leaves a reusable KB pinned at a partial deepening depth.
+            let result = match self.run_entailment_check(&logic) {
+                Ok(result) => result,
+                Err(e) => {
+                    self.inner.borrow_mut().max_chain_depth = configured_max;
+                    return Err(e);
+                }
+            };
             if !matches!(result, QueryResult::ResourceExceeded(ResourceKind::Depth)) {
                 self.inner.borrow_mut().max_chain_depth = configured_max;
                 return Ok(result);
@@ -480,7 +489,16 @@ impl KnowledgeBase {
         };
         for depth_limit in 1..=configured_max {
             self.inner.borrow_mut().max_chain_depth = depth_limit;
-            let (result, trace) = self.run_entailment_check_with_proof(&logic)?;
+            // Restore the configured depth on the error path too (see
+            // query_entailment_inner) so a cancelled proof query leaves the KB
+            // usable.
+            let (result, trace) = match self.run_entailment_check_with_proof(&logic) {
+                Ok(pair) => pair,
+                Err(e) => {
+                    self.inner.borrow_mut().max_chain_depth = configured_max;
+                    return Err(e);
+                }
+            };
             if !matches!(result, QueryResult::ResourceExceeded(ResourceKind::Depth)) {
                 self.inner.borrow_mut().max_chain_depth = configured_max;
                 return Ok((result, trace));
@@ -530,6 +548,22 @@ impl KnowledgeBase {
         KnowledgeBase {
             inner: RefCell::new(inner),
         }
+    }
+
+    /// Install a cooperative cancellation flag. When the flag is set to `true`,
+    /// the next central reasoning checkpoint aborts the in-flight query via the
+    /// `Err` channel (the verdict variants are untouched). The native nibli-server
+    /// watchdog sets the flag when a request's wall-clock budget elapses, freeing
+    /// the blocking thread instead of letting a pathological query run to
+    /// completion. No clock is read inside the engine, so the WASI sandbox
+    /// guarantee is preserved; gasnu/lasna never install a flag.
+    pub fn set_cancel_flag(&self, flag: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+        self.inner.borrow_mut().cancel = Some(flag);
+    }
+
+    /// Remove any installed cancellation flag (queries run unbounded again).
+    pub fn clear_cancel_flag(&self) {
+        self.inner.borrow_mut().cancel = None;
     }
 
     /// Assert a compiled FOL formula into the knowledge base. Returns the fact ID.

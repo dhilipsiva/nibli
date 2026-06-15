@@ -120,7 +120,41 @@ fn negate_result(result: QueryResult) -> QueryResult {
     }
 }
 
+/// Cooperative cancellation checkpoint. Returns `Err` when an installed cancel
+/// flag has been raised (by the native nibli-server request watchdog), aborting
+/// the in-flight query through the existing `Result` error channel. A `None` flag
+/// (gasnu/lasna/tests) makes this a single branch with no clock access.
+#[inline]
+pub(super) fn check_cancelled(inner: &KnowledgeBaseInner) -> Result<(), String> {
+    if inner
+        .cancel
+        .as_ref()
+        .is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed))
+    {
+        return Err("reasoning cancelled: deadline exceeded".to_string());
+    }
+    Ok(())
+}
+
 pub(super) fn check_formula_holds(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    subs: &mut HashMap<String, GroundTerm>,
+    inner: &mut KnowledgeBaseInner,
+    tense: Option<&str>,
+) -> Result<QueryResult, String> {
+    // Check cancellation both BEFORE and AFTER the sub-evaluation. The pre-check
+    // catches a flag that was already raised (e.g. before the query started); the
+    // post-check converts a flag raised by the watchdog DURING a long backward-
+    // chaining call into a clean `Err` rather than a discarded partial verdict.
+    // Recursion runs through this wrapper, so the checks fire at every node.
+    check_cancelled(inner)?;
+    let result = check_formula_holds_inner(buffer, node_id, subs, inner, tense)?;
+    check_cancelled(inner)?;
+    Ok(result)
+}
+
+fn check_formula_holds_inner(
     buffer: &LogicBuffer,
     node_id: u32,
     subs: &mut HashMap<String, GroundTerm>,
@@ -588,6 +622,14 @@ pub(super) fn check_predicate_in_kb_typed(
     depth: usize,
     visited: &mut HashSet<StoredFact>,
 ) -> QueryResult {
+    // Cooperative cancellation: once the watchdog raises the flag, collapse every
+    // predicate sub-check to False immediately so a candidates² backward-chaining
+    // blowup unwinds in bounded time. Returns before any cache write, so no
+    // cancelled verdict is memoized. The Result-returning callers (check_formula_
+    // holds / _traced) convert the raised flag into the final `Err`.
+    if check_cancelled(inner).is_err() {
+        return QueryResult::False;
+    }
     // Interactive trace: print when a traced predicate is encountered.
     let is_traced = inner.traced_predicates.contains(fact.relation());
     if is_traced {
@@ -759,6 +801,12 @@ pub(super) fn try_backward_chain_typed(
     depth: usize,
     visited: &mut HashSet<StoredFact>,
 ) -> QueryResult {
+    // Cancellation fast-path: unwind the recursion immediately (see
+    // check_predicate_in_kb_typed). The Result-returning formula entry surfaces
+    // the raised flag as the final `Err`.
+    if check_cancelled(inner).is_err() {
+        return QueryResult::False;
+    }
     if depth >= inner.max_chain_depth {
         // A goal that is not asserted (the caller already checked) and that no
         // rule conclusion can unify with is unprovable at ANY depth: return the
@@ -897,7 +945,7 @@ pub(super) fn try_backward_chain_typed(
 
                 let mut found = false;
                 let mut combo_pending = None;
-                for combo in TypedMultiCartesian::new(&per_var_candidates) {
+                for combo in TypedMultiCartesian::new(&per_var_candidates, inner.cancel.clone()) {
                     for (i, ev_var) in unbound_event_vars.iter().enumerate() {
                         bindings.insert(ev_var.clone(), combo[i].clone());
                     }
@@ -1078,7 +1126,8 @@ pub(super) fn try_backward_chain_typed(
 
                     let mut found = false;
                     let mut combo_pending = None;
-                    for combo in TypedMultiCartesian::new(&per_var_candidates) {
+                    for combo in TypedMultiCartesian::new(&per_var_candidates, inner.cancel.clone())
+                    {
                         for (i, ev_var) in unbound_event_vars.iter().enumerate() {
                             bindings.insert(ev_var.clone(), combo[i].clone());
                         }
@@ -1196,15 +1245,23 @@ struct TypedMultiCartesian<'a> {
     sets: &'a [Vec<GroundTerm>],
     indices: Vec<usize>,
     done: bool,
+    /// Cooperative cancellation flag: when raised, the product stops yielding so
+    /// a candidates^k backward-chaining blowup terminates promptly. `None` for
+    /// every non-server caller, so iteration is unchanged there.
+    cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl<'a> TypedMultiCartesian<'a> {
-    fn new(sets: &'a [Vec<GroundTerm>]) -> Self {
+    fn new(
+        sets: &'a [Vec<GroundTerm>],
+        cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    ) -> Self {
         let done = sets.iter().any(|s| s.is_empty());
         Self {
             sets,
             indices: vec![0; sets.len()],
             done,
+            cancel,
         }
     }
 }
@@ -1213,6 +1270,13 @@ impl<'a> Iterator for TypedMultiCartesian<'a> {
     type Item = Vec<GroundTerm>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if self
+            .cancel
+            .as_ref()
+            .is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed))
+        {
+            return None;
+        }
         if self.done || self.sets.is_empty() {
             if self.sets.is_empty() && !self.done {
                 self.done = true;
@@ -1373,6 +1437,12 @@ pub(super) fn try_backward_chain_traced_typed(
     depth: usize,
     memo: &mut HashMap<String, u32>,
 ) -> Option<u32> {
+    // Cancellation fast-path: bail out of the traced backward chain immediately
+    // once the watchdog raises the flag. check_formula_holds_traced surfaces the
+    // raised flag as the final `Err`.
+    if check_cancelled(inner).is_err() {
+        return None;
+    }
     // Candidate terms for unbound event variable search, built lazily (only a
     // matched rule with unbound `ev__` pattern variables needs them).
     let mut candidates_slot: Option<Vec<GroundTerm>> = None;
@@ -1444,7 +1514,7 @@ pub(super) fn try_backward_chain_traced_typed(
                 }
 
                 let mut found = false;
-                for combo in TypedMultiCartesian::new(&per_var_candidates) {
+                for combo in TypedMultiCartesian::new(&per_var_candidates, inner.cancel.clone()) {
                     for (i, ev_var) in unbound_event_vars.iter().enumerate() {
                         bindings.insert(ev_var.clone(), combo[i].clone());
                     }
@@ -1604,7 +1674,8 @@ pub(super) fn try_backward_chain_traced_typed(
                     }
 
                     let mut found = false;
-                    for combo in TypedMultiCartesian::new(&per_var_candidates) {
+                    for combo in TypedMultiCartesian::new(&per_var_candidates, inner.cancel.clone())
+                    {
                         for (i, ev_var) in unbound_event_vars.iter().enumerate() {
                             bindings.insert(ev_var.clone(), combo[i].clone());
                         }
@@ -1709,6 +1780,7 @@ pub(super) fn check_formula_holds_traced(
     tense: Option<&str>,
     memo: &mut HashMap<String, u32>,
 ) -> Result<(bool, u32), String> {
+    check_cancelled(inner)?;
     match get_node(buffer, node_id)? {
         LogicNode::AndNode((l, r)) => {
             let (l_result, l_idx) =

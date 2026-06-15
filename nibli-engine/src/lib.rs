@@ -257,6 +257,21 @@ impl NibliEngine {
         &self.kb
     }
 
+    /// Install a cooperative cancellation flag on the underlying reasoning core.
+    /// When the flag is raised, an in-flight query aborts via the error channel
+    /// (returned as a `String` error from the query methods). The native
+    /// nibli-server watchdog uses this to free a blocking thread when a request's
+    /// wall-clock budget elapses, instead of letting a pathological query run to
+    /// completion. No clock is read inside the engine.
+    pub fn set_cancel_flag(&self, flag: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+        self.kb.set_cancel_flag(flag);
+    }
+
+    /// Remove any installed cancellation flag.
+    pub fn clear_cancel_flag(&self) {
+        self.kb.clear_cancel_flag();
+    }
+
     fn default_compute_predicates() -> HashSet<String> {
         let mut preds = HashSet::new();
         preds.insert("pilji".to_string());

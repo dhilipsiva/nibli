@@ -706,12 +706,28 @@ impl MutationRoot {
     /// Reset the engine, assert all KB lines, then run a query.
     async fn query_with_kb(
         &self,
-        _ctx: &async_graphql::Context<'_>,
+        ctx: &async_graphql::Context<'_>,
         kb: String,
         query: String,
     ) -> QueryResponse {
-        run_blocking(move || {
+        let config = ctx.data::<SharedConfig>().unwrap().clone();
+        // Cancellation watchdog: raise the cooperative cancel flag when the
+        // request's wall-clock budget elapses, so the blocking reasoning task
+        // unwinds and frees its thread instead of running a pathological query to
+        // completion (which would pin a blocking-pool thread; repeats exhaust the
+        // pool). The HTTP timeout middleware still returns 408 to the client.
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let watchdog = {
+            let cancel = cancel.clone();
+            let budget = Duration::from_secs(config.request_timeout_secs);
+            tokio::spawn(async move {
+                tokio::time::sleep(budget).await;
+                cancel.store(true, Ordering::Relaxed);
+            })
+        };
+        let response = run_blocking(move || {
             let engine = NibliEngine::new();
+            engine.set_cancel_flag(cancel);
             let kb_status = assert_kb_lines(&engine, &kb);
             match engine.query_text_with_proof(&query) {
                 Ok((result, trace, json)) => QueryResponse {
@@ -734,7 +750,9 @@ impl MutationRoot {
                 },
             }
         })
-        .await
+        .await;
+        watchdog.abort();
+        response
     }
 
     /// Assert Lojban into the gossip-backed authoritative knowledge state.
@@ -1602,6 +1620,38 @@ async fn rate_limit_middleware(
     }
 }
 
+/// Maximum GraphQL query nesting depth accepted by the API.
+const MAX_QUERY_DEPTH: usize = 32;
+/// Maximum GraphQL query complexity (field count) accepted by the API.
+const MAX_QUERY_COMPLEXITY: usize = 10_000;
+
+/// Build the request rate limiter, clamping an invalid `0` to 1 req/s instead of
+/// panicking at startup (a `0` produces a `None` `NonZeroU32`).
+fn build_rate_limiter(rate_limit_rps: u32) -> SharedRateLimiter {
+    let rps = NonZeroU32::new(rate_limit_rps).unwrap_or_else(|| {
+        warn!("NIBLI_SERVER_RATE_LIMIT_RPS=0 is invalid; clamping to 1 req/s");
+        NonZeroU32::new(1).expect("1 is non-zero")
+    });
+    Arc::new(RateLimiter::direct(Quota::per_second(rps)))
+}
+
+/// Apply DoS guards to the GraphQL schema: bound query depth and complexity, and
+/// disable introspection unless the playground is enabled (the playground needs
+/// it; the internal API default-denies it).
+fn apply_query_guards(
+    builder: async_graphql::SchemaBuilder<QueryRoot, MutationRoot, EmptySubscription>,
+    config: &ServerConfig,
+) -> async_graphql::SchemaBuilder<QueryRoot, MutationRoot, EmptySubscription> {
+    let builder = builder
+        .limit_depth(MAX_QUERY_DEPTH)
+        .limit_complexity(MAX_QUERY_COMPLEXITY);
+    if config.enable_playground {
+        builder
+    } else {
+        builder.disable_introspection()
+    }
+}
+
 fn build_app(state: HttpState) -> Router {
     let config = state.config.clone();
     let trace_layer = TraceLayer::new_for_http()
@@ -1684,20 +1734,20 @@ async fn main() -> Result<()> {
     });
 
     let schema: Arc<AppSchema> = Arc::new(
-        Schema::build(QueryRoot, MutationRoot, EmptySubscription)
-            .data(ollama_config)
-            .data(gossip_state.clone())
-            .data(gossip_events.clone())
-            .data(gossip_transport.clone())
-            .data(config.clone())
-            .data(metrics.clone())
-            .finish(),
+        apply_query_guards(
+            Schema::build(QueryRoot, MutationRoot, EmptySubscription)
+                .data(ollama_config)
+                .data(gossip_state.clone())
+                .data(gossip_events.clone())
+                .data(gossip_transport.clone())
+                .data(config.clone())
+                .data(metrics.clone()),
+            config.as_ref(),
+        )
+        .finish(),
     );
 
-    let quota = Quota::per_second(
-        NonZeroU32::new(config.rate_limit_rps).expect("rate_limit_rps must be > 0"),
-    );
-    let rate_limiter: SharedRateLimiter = Arc::new(RateLimiter::direct(quota));
+    let rate_limiter: SharedRateLimiter = build_rate_limiter(config.rate_limit_rps);
 
     let app_state = HttpState {
         schema: schema.clone(),
@@ -2066,14 +2116,14 @@ mod tests {
             model: "test-model".to_string(),
         });
 
-        Schema::build(QueryRoot, MutationRoot, EmptySubscription)
+        let builder = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
             .data(ollama_config)
             .data(gossip_state)
             .data(gossip_events)
             .data(gossip_transport)
-            .data(config)
-            .data(metrics)
-            .finish()
+            .data(config.clone())
+            .data(metrics);
+        apply_query_guards(builder, config.as_ref()).finish()
     }
 
     fn test_server_config() -> SharedConfig {
@@ -2106,8 +2156,7 @@ mod tests {
             metrics.clone(),
         ));
 
-        let quota = Quota::per_second(NonZeroU32::new(1000).unwrap());
-        let rate_limiter: SharedRateLimiter = Arc::new(RateLimiter::direct(quota));
+        let rate_limiter: SharedRateLimiter = build_rate_limiter(1000);
 
         HttpState {
             schema,
@@ -2694,6 +2743,134 @@ mod tests {
         assert!(
             metrics_text.contains("nibli_ready 0"),
             "metrics should expose readiness gauge"
+        );
+    }
+
+    // ── Hardening: rate-limit guard, GraphQL introspection gate, query watchdog ──
+
+    #[test]
+    fn zero_rps_config_does_not_panic() {
+        // NIBLI_SERVER_RATE_LIMIT_RPS=0 must not panic at startup; the limiter
+        // builder clamps to a safe minimum instead of unwrapping a None NonZeroU32.
+        let _ = build_rate_limiter(0);
+        let _ = build_rate_limiter(1000);
+    }
+
+    #[tokio::test]
+    async fn introspection_disabled_unless_playground() {
+        // "Succeeded" = no errors AND a non-null __schema. This is robust to
+        // however async-graphql represents a disabled introspection (an error or
+        // a null result).
+        fn introspection_succeeded(resp: async_graphql::Response) -> bool {
+            if !resp.errors.is_empty() {
+                return false;
+            }
+            resp.data
+                .into_json()
+                .ok()
+                .map(|j| !j["__schema"].is_null())
+                .unwrap_or(false)
+        }
+        let introspection = "{ __schema { queryType { name } } }";
+
+        // Playground OFF (the internal-API default) → introspection is refused.
+        let schema_off = build_test_schema(
+            Arc::new(Mutex::new(GossipNode::new("server"))),
+            Arc::new(Mutex::new(Vec::new())),
+            None,
+            test_server_config(),
+            Arc::new(ServerMetrics::default()),
+        );
+        let resp_off = schema_off.execute(Request::new(introspection)).await;
+        assert!(
+            !introspection_succeeded(resp_off),
+            "introspection should be refused when the playground is disabled"
+        );
+
+        // Playground ON → introspection is allowed (IDE/tooling support).
+        let mut cfg_on = Arc::unwrap_or_clone(test_server_config());
+        cfg_on.enable_playground = true;
+        let schema_on = build_test_schema(
+            Arc::new(Mutex::new(GossipNode::new("server"))),
+            Arc::new(Mutex::new(Vec::new())),
+            None,
+            Arc::new(cfg_on),
+            Arc::new(ServerMetrics::default()),
+        );
+        let resp_on = schema_on.execute(Request::new(introspection)).await;
+        assert!(
+            introspection_succeeded(resp_on),
+            "introspection should be allowed when the playground is enabled"
+        );
+    }
+
+    #[tokio::test]
+    async fn query_with_kb_watchdog_preserves_normal_queries() {
+        // The cancellation watchdog must not break or delay a normal query, and
+        // the timer task must not keep the call hanging. A simple syllogism still
+        // returns TRUE well within the request budget.
+        let config = test_server_config(); // request_timeout_secs = 30
+        let schema = build_test_schema(
+            Arc::new(Mutex::new(GossipNode::new("server"))),
+            Arc::new(Mutex::new(Vec::new())),
+            None,
+            config,
+            Arc::new(ServerMetrics::default()),
+        );
+        let kb = "ro lo gerku cu danlu\nla .adam. cu gerku";
+        let query = format!(
+            "mutation {{ queryWithKb(kb: {}, query: {}) {{ status error }} }}",
+            gql_string(kb),
+            gql_string("la .adam. cu danlu")
+        );
+        let json = timeout(Duration::from_secs(10), execute_json(&schema, query))
+            .await
+            .expect("queryWithKb must return within the timeout (no thread leak)");
+        assert!(
+            json["queryWithKb"]["error"].is_null(),
+            "normal query should not error: {:?}",
+            json["queryWithKb"]["error"]
+        );
+        assert_eq!(
+            json["queryWithKb"]["status"].as_str(),
+            Some("TRUE"),
+            "syllogism should resolve TRUE under the watchdog"
+        );
+    }
+
+    #[tokio::test]
+    async fn query_with_kb_zero_timeout_cancels() {
+        // request_timeout_secs = 0 → the watchdog raises the cancel flag while the
+        // KB is still being asserted, so the reasoning query aborts with a
+        // cancellation error instead of running to completion. This proves the
+        // server watchdog is wired to the engine's cooperative cancel flag
+        // end-to-end (the engine-level mechanism itself is pinned separately in
+        // nibli-engine's engine_cancel_flag_aborts_query).
+        let mut cfg = Arc::unwrap_or_clone(test_server_config());
+        cfg.request_timeout_secs = 0;
+        let schema = build_test_schema(
+            Arc::new(Mutex::new(GossipNode::new("server"))),
+            Arc::new(Mutex::new(Vec::new())),
+            None,
+            Arc::new(cfg),
+            Arc::new(ServerMetrics::default()),
+        );
+        let kb =
+            "ro lo gerku cu danlu\nro lo danlu cu citka\nro lo citka cu jmive\nla .adam. cu gerku";
+        let query = format!(
+            "mutation {{ queryWithKb(kb: {}, query: {}) {{ status error }} }}",
+            gql_string(kb),
+            gql_string("la .adam. cu jmive")
+        );
+        let json = timeout(Duration::from_secs(10), execute_json(&schema, query))
+            .await
+            .expect("queryWithKb must return within the timeout");
+        let err = json["queryWithKb"]["error"].as_str();
+        assert!(
+            err.map(|e| e.to_lowercase().contains("cancel"))
+                .unwrap_or(false),
+            "zero-timeout query should be cancelled; got error={err:?} status={:?}",
+            json["queryWithKb"]["status"]
         );
     }
 }

@@ -141,6 +141,37 @@ fn test_native_rule_selective_application() {
     assert!(!query(&kb, make_query("bob", "danlu")));
 }
 
+// ─── Cooperative cancellation (server watchdog) ──────────────
+
+#[test]
+fn cancelled_query_returns_err() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    // A pre-set cancel flag makes any query abort via the Err channel
+    // rather than running to completion. The native server's watchdog
+    // sets this flag when the request timeout elapses.
+    let kb = new_kb();
+    assert_buf(&kb, make_assertion("alis", "gerku"));
+    assert_buf(&kb, make_universal("gerku", "danlu"));
+
+    let flag = std::sync::Arc::new(AtomicBool::new(true));
+    kb.set_cancel_flag(flag.clone());
+
+    let result = kb.query_entailment_inner(make_query("alis", "danlu"));
+    assert!(
+        result.is_err(),
+        "cancelled query must return Err, got {result:?}"
+    );
+    assert!(
+        result.unwrap_err().to_lowercase().contains("cancel"),
+        "cancellation error should mention 'cancel'"
+    );
+
+    // Clearing the flag restores normal evaluation.
+    flag.store(false, Ordering::Relaxed);
+    kb.clear_cancel_flag();
+    assert!(query(&kb, make_query("alis", "danlu")));
+}
+
 // ─── Existential introduction (xorlo presupposition) ─────────
 
 #[test]

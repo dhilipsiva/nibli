@@ -521,6 +521,12 @@ pub(super) struct KnowledgeBaseInner {
     /// `record_negative_ground_fact`). Negatives never enter the positive fact
     /// store or predicate index — queries keep NAF/CWA semantics unchanged.
     pub(super) negative_facts: HashSet<Vec<StoredFact>>,
+    /// Cooperative cancellation flag (None = never cancels). Set by a native
+    /// caller (the nibli-server request watchdog) when a query's wall-clock
+    /// budget elapses; checked at the central reasoning entry points, which
+    /// abort via the `Result::Err` channel. Default `None` keeps gasnu/lasna/
+    /// tests byte-identical and needs no clock — the WASI sandbox forbids one.
+    pub(super) cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl Clone for KnowledgeBaseInner {
@@ -553,6 +559,7 @@ impl Clone for KnowledgeBaseInner {
             entity_sorts: self.entity_sorts.clone(),
             traced_predicates: self.traced_predicates.clone(),
             negative_facts: self.negative_facts.clone(),
+            cancel: self.cancel.clone(),
         }
     }
 }
@@ -587,6 +594,7 @@ impl KnowledgeBaseInner {
             entity_sorts: HashMap::new(),
             traced_predicates: HashSet::new(),
             negative_facts: HashSet::new(),
+            cancel: None,
         }
     }
 
