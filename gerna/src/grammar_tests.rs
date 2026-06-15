@@ -3445,6 +3445,147 @@ fn test_error_preserves_good_sentences() {
     assert!(result.parsed.sentences.len() >= 1);
 }
 
+// ─── Recovery hardening: depth-guard leak (P-H5) + connective re-pairing (P-H4) ───
+
+#[test]
+fn test_depth_resets_after_recovery_then_valid_parses() {
+    // Each malformed forethought sentence (`ganai`×6 then `gi`, truncated) leaks
+    // ~7 depth: the recursive parse_sentence()? fails and the `?` skips leave().
+    // Pre-fix the leaked depth accumulates across recovery on the shared Parser,
+    // so the trailing VALID `mi klama` spuriously trips "maximum nesting depth
+    // exceeded" and never parses. Post-fix, recovery resets depth so it parses.
+    let mut tokens: Vec<NormalizedToken<'static>> = Vec::new();
+    for _ in 0..12 {
+        for _ in 0..6 {
+            tokens.push(cmavo("ganai"));
+        }
+        tokens.push(cmavo("gi")); // truncated: no valid left sentence before gi
+        tokens.push(pause());
+        tokens.push(cmavo("i"));
+    }
+    tokens.push(cmavo("mi"));
+    tokens.push(gismu("klama"));
+    let arena = Bump::new();
+    let result = parse_tokens_to_ast(&tokens, "", &arena);
+    assert!(
+        result
+            .parsed
+            .sentences
+            .iter()
+            .any(|s| matches!(s, Sentence::Simple(_))),
+        "valid `mi klama` after recovery must parse (depth must reset on recovery); got {:?}",
+        result.parsed.sentences
+    );
+}
+
+#[test]
+fn test_afterthought_after_recovery_does_not_repair_prior() {
+    // mi klama .i lo .i ja do prami
+    // The middle sentence `lo` fails; recovery skips to the 2nd `.i`, where `ja`
+    // must NOT re-pair the unrelated prior `mi klama` as its left operand.
+    // Pre-fix: a Connected(Ja, mi-klama, do-prami) the author never wrote.
+    let arena = Bump::new();
+    let result = parse_tokens_to_ast(
+        &[
+            cmavo("mi"),
+            gismu("klama"),
+            pause(),
+            cmavo("i"),
+            cmavo("lo"), // malformed: bare gadri, no selbri follows
+            pause(),
+            cmavo("i"),
+            cmavo("ja"),
+            cmavo("do"),
+            gismu("prami"),
+        ],
+        "",
+        &arena,
+    );
+    assert!(
+        !result
+            .parsed
+            .sentences
+            .iter()
+            .any(|s| matches!(s, Sentence::Connected { .. })),
+        "afterthought across a recovery gap must not fabricate a Connected; got {:?}",
+        result.parsed.sentences
+    );
+    assert!(
+        result.errors.iter().any(|e| e
+            .message
+            .contains("afterthought connective has no valid prior sentence")),
+        "the orphaned afterthought connective must be reported; got {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn test_afterthought_pairs_normally_without_recovery() {
+    // Positive control (guards against over-correction): with no recovery in
+    // play, `mi klama .i ja do sutra` still pairs into one Connected, no errors.
+    let arena = Bump::new();
+    let result = parse_tokens_to_ast(
+        &[
+            cmavo("mi"),
+            gismu("klama"),
+            pause(),
+            cmavo("i"),
+            cmavo("ja"),
+            cmavo("do"),
+            gismu("sutra"),
+        ],
+        "",
+        &arena,
+    );
+    assert!(
+        result.errors.is_empty(),
+        "a clean afterthought must not error; got {:?}",
+        result.errors
+    );
+    assert_eq!(result.parsed.sentences.len(), 1);
+    assert!(matches!(
+        result.parsed.sentences[0],
+        Sentence::Connected { .. }
+    ));
+}
+
+#[test]
+fn test_afterthought_repairs_after_intervening_good_sentence() {
+    // Flag-clear control: a bad sentence triggers recovery, but the intervening
+    // good `do sutra` must CLEAR the recovery state so the later `ja` pairs
+    // `do sutra` + `mi viska` — not leave it standalone (over-suppression).
+    let arena = Bump::new();
+    let result = parse_tokens_to_ast(
+        &[
+            cmavo("mi"),
+            gismu("klama"),
+            pause(),
+            cmavo("i"),
+            cmavo("ku"), // bad: bare terminator
+            pause(),
+            cmavo("i"),
+            cmavo("do"),
+            gismu("sutra"),
+            pause(),
+            cmavo("i"),
+            cmavo("ja"),
+            cmavo("mi"),
+            gismu("viska"),
+        ],
+        "",
+        &arena,
+    );
+    assert!(
+        result
+            .parsed
+            .sentences
+            .iter()
+            .any(|s| matches!(s, Sentence::Connected { .. })),
+        "ja must re-pair after an intervening good sentence cleared recovery; got {:?}",
+        result.parsed.sentences
+    );
+}
+
 // ═══════════════════════════════════════════════════════════
 // DEPTH LIMIT TESTS
 // ═══════════════════════════════════════════════════════════

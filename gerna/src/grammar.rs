@@ -85,6 +85,11 @@ pub struct Parser<'a, 'arena> {
     original_input: &'a str,
     /// Arena allocator for AST node allocation.
     arena: &'arena Bump,
+    /// True once error recovery has discarded a sentence; prevents an afterthought
+    /// connective from re-pairing onto a non-adjacent prior sentence across the
+    /// recovery gap. Set in `skip_to_next_dot_i`, cleared on the next successful
+    /// standalone parse or afterthought-pairing attempt.
+    recovery_active: bool,
 }
 
 #[allow(dead_code)]
@@ -101,6 +106,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
             depth: 0,
             original_input,
             arena,
+            recovery_active: false,
         }
     }
 
@@ -340,7 +346,20 @@ impl<'a, 'arena> Parser<'a, 'arena> {
     }
 
     /// Advance to the next `.i` boundary or end of tokens (error recovery).
+    ///
+    /// Resets two pieces of recovery-relevant state (both at the top, since this
+    /// fn never mutates depth itself, so one reset covers the `.i`-found and the
+    /// EOF fall-through exits):
+    /// - `depth = 0`: the malformed subtree is being discarded, and an unbalanced
+    ///   `enter()`/`leave()` would otherwise leak nesting into the next sentence
+    ///   (this fn is only ever called from `parse_text`'s top-level loop, where
+    ///   depth is conceptually 0, so resetting cannot truncate a live context).
+    /// - `recovery_active = true`: signals that the prior would-be sentence is
+    ///   gone, so an afterthought connective must not re-pair onto a non-adjacent
+    ///   earlier sentence across this gap.
     fn skip_to_next_dot_i(&mut self) {
+        self.depth = 0;
+        self.recovery_active = true;
         while !self.at_end() {
             if self.at_dot_i() {
                 return; // Don't consume — the main loop will eat it
@@ -392,16 +411,26 @@ impl<'a, 'arena> Parser<'a, 'arena> {
                 }
                 match self.parse_sentence() {
                     Ok(right) => {
-                        if let Some(left) = sentences.pop() {
+                        if self.recovery_active {
+                            // Recovery discarded the would-be left operand: do NOT
+                            // re-pair across the gap onto a non-adjacent prior
+                            // sentence. Report the orphaned connective and keep the
+                            // well-formed right as a standalone sentence.
+                            errors.push(
+                                self.error("afterthought connective has no valid prior sentence"),
+                            );
+                            sentences.push(right);
+                        } else if let Some(left) = sentences.pop() {
                             sentences.push(Sentence::Connected {
                                 connective: conn,
                                 left: self.arena.alloc(left),
                                 right: self.arena.alloc(right),
                             });
                         } else {
-                            // Left sentence had an error; push right as standalone
+                            // No prior sentence at all; push right as standalone.
                             sentences.push(right);
                         }
+                        self.recovery_active = false;
                     }
                     Err(e) => {
                         errors.push(e);
@@ -420,7 +449,12 @@ impl<'a, 'arena> Parser<'a, 'arena> {
             }
 
             match self.parse_sentence() {
-                Ok(s) => sentences.push(s),
+                Ok(s) => {
+                    sentences.push(s);
+                    // A clean standalone parse re-establishes adjacency: a later
+                    // afterthought connective may pair with THIS sentence.
+                    self.recovery_active = false;
+                }
                 Err(e) => {
                     errors.push(e);
                     self.skip_to_next_dot_i();
