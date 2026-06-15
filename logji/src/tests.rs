@@ -5455,6 +5455,128 @@ fn test_retraction_rebuilds_dep_graph() {
     }
 }
 
+/// Build a ground material conditional for stratification tests:
+/// `concl <- cond`  (positive edge concl->cond) as Or(Not(cond), concl), or
+/// `concl <- ¬cond` (negative/NAF edge)         as Or(Not(Not(cond)), concl).
+/// The inner Not is the NAF body-negation that `build_rule_template_fact_with_negation`
+/// marks negated; the outer Not is the implication arm `decompose_implication` consumes.
+fn make_material_cond(concl: &str, cond: &str, neg: bool) -> LogicBuffer {
+    let mut nodes = Vec::new();
+    let cond_pred = pred(&mut nodes, cond, vec![LogicalTerm::Constant("x".into())]);
+    let not_cond = not(&mut nodes, cond_pred);
+    let antecedent = if neg {
+        not(&mut nodes, not_cond)
+    } else {
+        not_cond
+    };
+    let concl_pred = pred(&mut nodes, concl, vec![LogicalTerm::Constant("x".into())]);
+    let root = or(&mut nodes, antecedent, concl_pred);
+    LogicBuffer {
+        nodes,
+        roots: vec![root],
+    }
+}
+
+const STRAT_PERMS: [[usize; 3]; 6] = [
+    [0, 1, 2],
+    [0, 2, 1],
+    [1, 0, 2],
+    [1, 2, 0],
+    [2, 0, 1],
+    [2, 1, 0],
+];
+
+#[test]
+fn test_neg_cycle_rejected_all_orderings() {
+    // {a <- ¬b; b <- ¬c; c <- b}: the SCC {b,c} contains the negative edge
+    // b->¬c; a->¬b feeds IN but a is OUTSIDE the SCC (the position-blindness
+    // trap). Pre-fix the verdict flips with the DFS root order (a fresh KB per
+    // iteration reseeds the dep-graph HashMap, ~1/3 wrongly accept); post-fix
+    // every ordering/seed rejects deterministically.
+    let rules: [(&str, &str, bool); 3] = [
+        ("a", "b", true),  // a <- ¬b
+        ("b", "c", true),  // b <- ¬c
+        ("c", "b", false), // c <- b
+    ];
+    for perm in STRAT_PERMS {
+        for _ in 0..20 {
+            let kb = new_kb();
+            let mut any_err = false;
+            for &i in &perm {
+                let (concl, cond, neg) = rules[i];
+                if kb
+                    .assert_fact_inner(make_material_cond(concl, cond, neg), String::new())
+                    .is_err()
+                {
+                    any_err = true;
+                }
+            }
+            assert!(
+                any_err,
+                "unstratifiable negative cycle must be rejected (insertion order {perm:?})"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_positive_cycle_accepted_all_orderings() {
+    // {a <- b; b <- c; c <- a}: an all-positive cycle (no negative edge in the
+    // SCC) is stratifiable and must ALWAYS be accepted — guards the SCC fix
+    // against over-rejecting positive recursion routed through a cycle.
+    let rules: [(&str, &str, bool); 3] = [("a", "b", false), ("b", "c", false), ("c", "a", false)];
+    for perm in STRAT_PERMS {
+        for _ in 0..20 {
+            let kb = new_kb();
+            for &i in &perm {
+                let (concl, cond, neg) = rules[i];
+                assert!(
+                    kb.assert_fact_inner(make_material_cond(concl, cond, neg), String::new())
+                        .is_ok(),
+                    "all-positive cycle must be accepted (insertion order {perm:?})"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_neg_self_loop_rejected() {
+    // a <- ¬a : a size-1 SCC with a negative self-edge — a degenerate negative
+    // cycle that must be rejected (no `len() > 1` gate may skip it).
+    let kb = new_kb();
+    assert!(
+        kb.assert_fact_inner(make_material_cond("a", "a", true), String::new())
+            .is_err(),
+        "negative self-loop a<-¬a must be rejected"
+    );
+}
+
+#[test]
+fn test_compute_sccs_partition() {
+    // a <-> b (2-cycle), b -> c (tail; c is an edge target but NOT a graph key),
+    // and an isolated key d. The partition must be {a,b}, {c}, {d} regardless of
+    // HashMap order — pins the Tarjan port + the edge-target-as-node inclusion.
+    let mut graph: std::collections::HashMap<String, Vec<(String, bool)>> =
+        std::collections::HashMap::new();
+    graph.insert("a".into(), vec![("b".into(), false)]);
+    graph.insert("b".into(), vec![("a".into(), false), ("c".into(), false)]);
+    graph.insert("d".into(), vec![]);
+    let sccs = compute_sccs(&graph);
+    let scc_of = |name: &str| -> Vec<String> {
+        let mut s = sccs
+            .iter()
+            .find(|s| s.iter().any(|n| n.as_str() == name))
+            .unwrap_or_else(|| panic!("no SCC contains {name}"))
+            .clone();
+        s.sort();
+        s
+    };
+    assert_eq!(scc_of("a"), vec!["a".to_string(), "b".to_string()]);
+    assert_eq!(scc_of("c"), vec!["c".to_string()]);
+    assert_eq!(scc_of("d"), vec!["d".to_string()]);
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // EQUALITY / du TESTS
 // ═══════════════════════════════════════════════════════════════════

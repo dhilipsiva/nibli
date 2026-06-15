@@ -326,66 +326,123 @@ pub(super) fn register_rule(
     Ok(())
 }
 
-/// Check the predicate dependency graph for negative cycles.
-/// A negative cycle exists when a cycle in the graph contains at least one
-/// edge marked as negative (from a negated condition). NAF is unsound in
-/// the presence of negative cycles.
-fn check_stratification(graph: &HashMap<String, Vec<(String, bool)>>) -> Result<(), String> {
-    #[derive(Clone, Copy, PartialEq)]
-    enum Color {
-        White,
-        Gray,
-        Black,
+/// Compute the strongly-connected components of the predicate dependency graph.
+///
+/// Iterative (explicit-stack) Tarjan — a recursive DFS would risk a stack
+/// overflow on a long positive dependency chain. The node set is the graph keys
+/// PLUS every edge target (a condition-only leaf predicate is never a key but is
+/// still a node), and both the node scan and each node's neighbor list are taken
+/// in SORTED order, so the partition is canonical regardless of HashMap layout or
+/// rule-registration order.
+pub(super) fn compute_sccs(graph: &HashMap<String, Vec<(String, bool)>>) -> Vec<Vec<String>> {
+    use std::collections::{BTreeSet, HashSet};
+
+    let mut node_set: BTreeSet<&str> = BTreeSet::new();
+    for (k, edges) in graph {
+        node_set.insert(k.as_str());
+        for (dep, _) in edges {
+            node_set.insert(dep.as_str());
+        }
     }
+    let nodes: Vec<&str> = node_set.into_iter().collect();
 
-    let mut color: HashMap<&str, Color> = HashMap::new();
-    // Track whether the path from root to this Gray node includes a negative edge.
-    let mut neg_on_path: HashMap<&str, bool> = HashMap::new();
+    let neighbors = |n: &str| -> Vec<&str> {
+        match graph.get(n) {
+            Some(edges) => {
+                let mut out: Vec<&str> = edges.iter().map(|(d, _)| d.as_str()).collect();
+                out.sort_unstable();
+                out
+            }
+            None => Vec::new(),
+        }
+    };
 
-    fn dfs<'a>(
-        node: &'a str,
-        has_neg: bool,
-        graph: &'a HashMap<String, Vec<(String, bool)>>,
-        color: &mut HashMap<&'a str, Color>,
-        neg_on_path: &mut HashMap<&'a str, bool>,
-    ) -> Result<(), String> {
-        color.insert(node, Color::Gray);
-        neg_on_path.insert(node, has_neg);
+    let mut index_of: HashMap<&str, usize> = HashMap::new();
+    let mut lowlink: HashMap<&str, usize> = HashMap::new();
+    let mut on_stack: HashSet<&str> = HashSet::new();
+    let mut tarjan_stack: Vec<&str> = Vec::new();
+    let mut next_index = 0usize;
+    let mut sccs: Vec<Vec<String>> = Vec::new();
 
-        if let Some(edges) = graph.get(node) {
-            for (dep, is_neg) in edges {
-                let new_neg = has_neg || *is_neg;
-                match color.get(dep.as_str()).copied().unwrap_or(Color::White) {
-                    Color::Gray => {
-                        // Back-edge → cycle found. Check if the cycle has any
-                        // negative edge: either this edge is negative, or the
-                        // path from dep to here already had one.
-                        let dep_neg = neg_on_path.get(dep.as_str()).copied().unwrap_or(false);
-                        let cycle_has_neg = *is_neg || (has_neg && !dep_neg);
-                        if cycle_has_neg {
-                            return Err(format!(
-                                "Unstratifiable negation: cycle involving '{}' and \
-                                 '{}' contains a negative dependency",
-                                node, dep
-                            ));
+    for &start in &nodes {
+        if index_of.contains_key(start) {
+            continue;
+        }
+        index_of.insert(start, next_index);
+        lowlink.insert(start, next_index);
+        next_index += 1;
+        tarjan_stack.push(start);
+        on_stack.insert(start);
+        // Each work frame is (node, neighbor cursor, sorted neighbors).
+        let mut work: Vec<(&str, usize, Vec<&str>)> = vec![(start, 0, neighbors(start))];
+
+        while let Some(&(node, _, _)) = work.last() {
+            let cursor = work.last().unwrap().1;
+            let nlen = work.last().unwrap().2.len();
+            if cursor < nlen {
+                let w = work.last().unwrap().2[cursor];
+                work.last_mut().unwrap().1 += 1;
+                if !index_of.contains_key(w) {
+                    index_of.insert(w, next_index);
+                    lowlink.insert(w, next_index);
+                    next_index += 1;
+                    tarjan_stack.push(w);
+                    on_stack.insert(w);
+                    work.push((w, 0, neighbors(w)));
+                } else if on_stack.contains(w) {
+                    let wi = index_of[w];
+                    let cur = lowlink[node];
+                    lowlink.insert(node, cur.min(wi));
+                }
+            } else {
+                // `node` is fully explored; if it roots an SCC, pop the component.
+                if lowlink[node] == index_of[node] {
+                    let mut comp: Vec<String> = Vec::new();
+                    while let Some(w) = tarjan_stack.pop() {
+                        on_stack.remove(w);
+                        comp.push(w.to_string());
+                        if w == node {
+                            break;
                         }
                     }
-                    Color::Black => {} // already fully explored
-                    Color::White => {
-                        dfs(dep, new_neg, graph, color, neg_on_path)?;
-                    }
+                    comp.sort();
+                    sccs.push(comp);
+                }
+                work.pop();
+                if let Some(&(parent, _, _)) = work.last() {
+                    let cur = lowlink[parent];
+                    let child = lowlink[node];
+                    lowlink.insert(parent, cur.min(child));
                 }
             }
         }
-
-        color.insert(node, Color::Black);
-        neg_on_path.remove(node);
-        Ok(())
     }
+    sccs
+}
 
-    for node in graph.keys() {
-        if color.get(node.as_str()).copied().unwrap_or(Color::White) == Color::White {
-            dfs(node, false, graph, &mut color, &mut neg_on_path)?;
+/// Check the predicate dependency graph for negative cycles.
+///
+/// A program is unstratifiable iff some strongly-connected component contains a
+/// negative edge — negation-as-failure over a recursive cycle is unsound. This
+/// is order-independent (SCCs are a graph invariant) and position-aware: only
+/// edges whose BOTH endpoints lie inside one SCC are counted, so a negative edge
+/// feeding INTO a cycle from outside cannot flip the verdict, and a negative
+/// self-loop (a size-1 SCC) is caught uniformly.
+fn check_stratification(graph: &HashMap<String, Vec<(String, bool)>>) -> Result<(), String> {
+    for scc in compute_sccs(graph) {
+        let members: std::collections::HashSet<&str> = scc.iter().map(|s| s.as_str()).collect();
+        for node in &scc {
+            if let Some(edges) = graph.get(node.as_str()) {
+                for (dep, is_neg) in edges {
+                    if *is_neg && members.contains(dep.as_str()) {
+                        return Err(format!(
+                            "Unstratifiable negation: strongly-connected component \
+                             containing '{}' -> '{}' (negative)",
+                            node, dep
+                        ));
+                    }
+                }
+            }
         }
     }
     Ok(())
