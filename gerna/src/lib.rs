@@ -194,6 +194,16 @@ impl Flattener {
                     .push(WasmSentence::Connected((conn, l_idx, r_idx)));
                 idx
             }
+            ast::Sentence::Prenex { vars, body } => {
+                // Flatten the body first; record its returned index (same pattern
+                // as Connected / Abstraction bodies).
+                let body_idx = self.push_sentence(body);
+                let idx = self.buffer.sentences.len() as u32;
+                self.buffer
+                    .sentences
+                    .push(WasmSentence::Prenex((vars.clone(), body_idx)));
+                idx
+            }
         }
     }
 

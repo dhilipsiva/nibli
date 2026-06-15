@@ -177,12 +177,77 @@ fn binary_restrictor_constant_second_place_fires() {
     );
 }
 
-// NOTE: multi-universal rules (`ro lo gerku cu pendo ro lo mlatu`) are a SEPARATE,
-// larger defect tracked in todo.md — they fail at COMPILATION ("a consequent atom
-// is not a flat predicate") because the conclusion is itself a nested ∀y.(mlatu(y)
-// → pendo(x,y)), needing prenex-flattening of nested universals plus firing-side
-// individual-var enumeration. Not covered by the binary-condition (poi se R) fix
-// above.
+// NOTE: the OBJECT-POSITION multi-universal shape (`ro lo gerku cu pendo ro lo mlatu`)
+// is a separate defect (the conclusion is a nested ∀, rejected at compilation). The
+// idiomatic multi-variable rule uses the PRENEX form below.
+
+// ─── Prenex multi-variable rules (ro da ro de zo'u) ─────────────────
+
+#[test]
+fn prenex_symmetric_rule_fires() {
+    // ro da ro de zo'u ganai da pendo de gi de pendo da
+    // "for all da, de: if da befriends de, then de befriends da." Both vars are
+    // bound by the conclusion (de pendo da), so this exercises prenex parse +
+    // lowering + leading-ForAll compilation without the unbound-var firing gap.
+    let engine = engine_with_facts(&[
+        "ro da ro de zo'u ganai da pendo de gi de pendo da",
+        "la .rex. cu pendo la .felix.",
+    ]);
+    let (holds, _t, _j) = engine
+        .query_text_with_proof("la .felix. cu pendo la .rex.")
+        .unwrap();
+    assert_true(
+        &holds,
+        "prenex symmetric rule should derive the reverse friendship",
+    );
+}
+
+#[test]
+fn prenex_cross_entity_join_fires() {
+    // ro da ro de ro di zo'u ganai ge da fanta di gi de se katna di gi de zenba
+    // "for all inhibitor da, substrate de, enzyme di: if da inhibits di AND de is
+    // metabolized-by di, then de's concentration rises." The CYP cross-entity
+    // join: querying `de zenba` binds only de; the inhibitor (da) and enzyme (di)
+    // appear ONLY in conditions, so this is the unbound-individual-var firing case.
+    let engine = engine_with_facts(&[
+        "ro da ro de ro di zo'u ganai ge da fanta di gi de se katna di gi de zenba",
+        "la .flukonazol. cu fanta la .siptucin.",
+        "la .uarfarin. cu se katna la .siptucin.",
+    ]);
+    let (holds, _t, _j) = engine
+        .query_text_with_proof("la .uarfarin. cu zenba")
+        .unwrap();
+    assert_true(
+        &holds,
+        "prenex CYP cross-entity join should raise warfarin concentration",
+    );
+}
+
+#[test]
+fn prenex_cross_entity_join_negative_control() {
+    // Same rule, but apixaban is metabolized by a DIFFERENT enzyme that no drug
+    // inhibits → the join must NOT fire (guards against an under-conditioned rule).
+    let engine = engine_with_facts(&[
+        "ro da ro de ro di zo'u ganai ge da fanta di gi de se katna di gi de zenba",
+        "la .flukonazol. cu fanta la .siptucin.",
+        "la .apiksaban. cu se katna la .sipibeman.",
+    ]);
+    let (holds, _t, _j) = engine
+        .query_text_with_proof("la .apiksaban. cu zenba")
+        .unwrap();
+    assert_false(
+        &holds,
+        "no drug inhibits apixaban's enzyme → no concentration rise",
+    );
+}
+
+// KNOWN LIMITATION (filed in todo.md): a multi-variable prenex join blows up
+// (candidates^k) on a LARGE fact base — e.g. the rule above with ~12 unrelated
+// `se katna` facts does not resolve within 20s. The join fires correctly and
+// fast on small/modest corpora (above), and the blowup is resource-bounded in
+// production (the nibli-server cancellation watchdog and gasnu fuel cap it). The
+// index-anchored join narrowing that removes the blowup is the staged follow-up
+// (same class as the GDPR/DDI candidate-narrowing work).
 
 // ─── Temporal reasoning ─────────────────────────────────────────────
 

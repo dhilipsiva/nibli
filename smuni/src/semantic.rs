@@ -98,6 +98,11 @@ pub struct SemanticCompiler {
     /// (prami_x2), instead of post-hoc `inject_variable` wrongly filling the
     /// conversion-vacated `prami_x1` slot.
     pending_clause_subject: Option<lasso::Spur>,
+    /// Logic variables (`da`/`de`/`di`) bound by an enclosing prenex
+    /// (`ro da ... zo'u`). These are universally quantified by the prenex
+    /// lowering, so `compile_bridi` must NOT existentially close them the way it
+    /// closes free `da`/`de`/`di`.
+    prenex_vars: std::collections::HashSet<lasso::Spur>,
 }
 
 impl SemanticCompiler {
@@ -114,6 +119,7 @@ impl SemanticCompiler {
             event_counter: 0,
             pending_matrix_conjuncts: Vec::new(),
             pending_clause_subject: None,
+            prenex_vars: std::collections::HashSet::new(),
         }
     }
 }

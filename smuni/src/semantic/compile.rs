@@ -221,7 +221,12 @@ impl SemanticCompiler {
         for arg in &args {
             if let LogicalTerm::Variable(spur) = arg {
                 let name = self.interner.resolve(spur);
-                if matches!(name, "da" | "de" | "di") && da_vars_seen.insert(*spur) {
+                // Skip vars bound by an enclosing prenex — those are universally
+                // quantified by the prenex lowering, not existentially closed here.
+                if matches!(name, "da" | "de" | "di")
+                    && !self.prenex_vars.contains(spur)
+                    && da_vars_seen.insert(*spur)
+                {
                     da_vars.push(*spur);
                 }
             }
@@ -400,6 +405,35 @@ impl SemanticCompiler {
     ) -> LogicalForm {
         match &sentences[sentence_id as usize] {
             Sentence::Simple(bridi) => self.compile_bridi(bridi, selbris, sumtis, sentences),
+            Sentence::Prenex((vars, body_id)) => {
+                // `ro da [ro de ...] zo'u BODY` → ∀da. ∀de. … BODY.
+                // Intern each prenex variable and mark it bound so the body's
+                // compile_bridi does NOT existentially close it; then wrap the
+                // compiled body in nested ForAll (outermost = first variable).
+                let spurs: Vec<lasso::Spur> = vars
+                    .iter()
+                    .map(|v| self.interner.get_or_intern(v))
+                    .collect();
+                let saved: Vec<lasso::Spur> = spurs
+                    .iter()
+                    .filter(|s| self.prenex_vars.insert(**s))
+                    .copied()
+                    .collect();
+
+                let mut form = self.compile_sentence(*body_id, selbris, sumtis, sentences);
+
+                // Wrap inner-to-outer so the first variable is the outermost ∀.
+                for spur in spurs.iter().rev() {
+                    form = LogicalForm::ForAll(*spur, Box::new(form));
+                }
+
+                // Restore: only remove the vars THIS prenex introduced (a nested
+                // prenex may share a name with an outer one).
+                for s in saved {
+                    self.prenex_vars.remove(&s);
+                }
+                form
+            }
             Sentence::Connected((connective, left_id, right_id)) => {
                 let left_form = self.compile_sentence(*left_id, selbris, sumtis, sentences);
                 let right_form = self.compile_sentence(*right_id, selbris, sumtis, sentences);

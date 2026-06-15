@@ -285,6 +285,7 @@ The parser (`gerna`) accepts a practical subset of Lojban sufficient for formal 
 
 - **Articles (gadri):** `lo` (existential: "something that is..."), `le` (descriptive: "the thing I have in mind"), `la` (name → constant)
 - **Quantifiers:** `ro lo` / `ro le` (universal), `PA lo` / `PA le` (numeric), `su'o lo` (at least one)
+- **Prenex:** `ro da [ro de ...] zo'u <body>` — multi-variable universally-quantified rules (lowers to nested `∀`). Firing is currently `members^dep_count`-expensive for two or more free join variables; see `todo.md`.
 - **Place tags:** `fa`/`fe`/`fi`/`fo`/`fu` (explicit argument positions)
 - **Modal tags:** BAI (`ri'a`, `ni'i`, `mu'i`, `ki'u`, `pi'o`, `ba'i`) and `fi'o`...`fe'u`
 - **Selbri (predicates):** root, tanru with Neo-Davidsonian event semantics (resolves the intersective fallacy), conversion (`se`/`te`/`ve`/`xe`), negation (`na`), grouping (`ke`...`ke'e`), compounds (`zei`), argument attachment (`be`...`bei`...`be'o`)

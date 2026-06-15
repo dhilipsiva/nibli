@@ -288,6 +288,13 @@ pub enum Sentence<'a> {
         left: &'a Sentence<'a>,
         right: &'a Sentence<'a>,
     },
+    /// Prenex: `ro da [ro de ...] zo'u <body>`. A sequence of universally
+    /// quantified logic variables (`da`/`de`/`di`) scoping a body sentence.
+    /// Lowers to nested `∀` over the body in smuni.
+    Prenex {
+        vars: Vec<String>,
+        body: &'a Sentence<'a>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

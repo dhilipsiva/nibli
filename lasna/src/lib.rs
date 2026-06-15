@@ -428,6 +428,10 @@ fn visit_sentence(
             let nr = visit_sentence(ast, *r, snap, sm, um, tm);
             gerna_ast::Sentence::Connected((c.clone(), nl, nr))
         }
+        gerna_ast::Sentence::Prenex((vars, body)) => {
+            let nb = visit_sentence(ast, *body, snap, sm, um, tm);
+            gerna_ast::Sentence::Prenex((vars.clone(), nb))
+        }
     };
     snap.sentences[new_id as usize] = mapped;
     new_id
@@ -532,6 +536,9 @@ fn rebase_sentence_inplace(s: &mut gerna_ast::Sentence, sb: u32, ub: u32, tb: u3
             *l += tb;
             *r += tb;
         }
+        gerna_ast::Sentence::Prenex((_, body)) => {
+            *body += tb;
+        }
     }
 }
 
@@ -562,6 +569,10 @@ fn resolve_sentence_go_i(
         gerna_ast::Sentence::Connected((_, left_idx, right_idx)) => {
             resolve_sentence_go_i(ast, left_idx as usize, current)?;
             resolve_sentence_go_i(ast, right_idx as usize, current)?;
+            Ok(())
+        }
+        gerna_ast::Sentence::Prenex((_, body_idx)) => {
+            resolve_sentence_go_i(ast, body_idx as usize, current)?;
             Ok(())
         }
     }

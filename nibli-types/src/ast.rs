@@ -201,13 +201,18 @@ pub enum SentenceConnective {
     Afterthought((bool, Connective, bool)),
 }
 
-/// A sentence: either a simple bridi or two connected sentences.
+/// A sentence: a simple bridi, two connected sentences, or a prenex-quantified body.
 #[derive(Clone, Debug)]
 pub enum Sentence {
     /// Simple predication.
     Simple(Bridi),
     /// Connected sentences. Fields: (connective, left-sentence-id, right-sentence-id).
     Connected((SentenceConnective, u32, u32)),
+    /// Prenex `ro da [ro de ...] zo'u <body>`: a sequence of universally
+    /// quantified logic variables (`da`/`de`/`di`) scoping a body sentence.
+    /// Fields: (variable names in prenex order, body-sentence-id). Lowers to
+    /// nested `∀` over the body in smuni.
+    Prenex((Vec<String>, u32)),
 }
 
 /// Flat AST buffer: parallel arrays indexed by u32 IDs.

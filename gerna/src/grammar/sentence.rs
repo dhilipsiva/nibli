@@ -31,9 +31,51 @@ impl<'a, 'arena> Parser<'a, 'arena> {
 
     // ─── Sentence ─────────────────────────────────────────────
 
-    /// Parse a sentence: forethought connective or simple bridi.
+    /// Try to parse a prenex: `(ro (da|de|di))+ zo'u`. Returns the universally
+    /// quantified variable names in prenex order, restoring the position if this
+    /// is not a prenex (e.g. `ro lo gerku ...` — a universal description — or a
+    /// `ro <var>` sequence with no `zo'u` terminator). `zo'u` already lexes as a
+    /// plain cmavo.
+    fn try_parse_prenex(&mut self) -> Option<Vec<String>> {
+        let saved = self.save();
+        let mut vars = Vec::new();
+        while self.eat_cmavo("ro") {
+            match self.peek_cmavo() {
+                Some(v @ ("da" | "de" | "di")) => {
+                    let name = v.to_string();
+                    self.pos += 1;
+                    vars.push(name);
+                }
+                // `ro` not followed by a logic variable (e.g. `ro lo gerku`):
+                // this is a universal description, not a prenex.
+                _ => {
+                    self.restore(saved);
+                    return None;
+                }
+            }
+        }
+        if vars.is_empty() || !self.eat_cmavo("zo'u") {
+            // No `ro <var>` sequence, or no `zo'u` terminator: not a prenex.
+            self.restore(saved);
+            return None;
+        }
+        Some(vars)
+    }
+
+    /// Parse a sentence: prenex, forethought connective, or simple bridi.
     pub(crate) fn parse_sentence(&mut self) -> Result<Sentence<'arena>, ParseError> {
         self.enter()?;
+
+        // Prenex `ro da ro de zo'u <sentence>` quantifies a whole (recursive)
+        // sentence body. Try it before the forethought/simple paths.
+        if let Some(vars) = self.try_parse_prenex() {
+            let body = self.parse_sentence()?;
+            self.leave();
+            return Ok(Sentence::Prenex {
+                vars,
+                body: self.arena.alloc(body),
+            });
+        }
 
         let conn = if self.eat_cmavo("ganai") {
             Some(SentenceConnective::GanaiGi)

@@ -235,6 +235,54 @@ fn test_afterthought_sentence_je() {
 }
 
 #[test]
+fn test_prenex_two_universals() {
+    // ro da ro de zo'u da pendo de → Prenex { vars: [da, de], body: da pendo de }
+    let arena = Bump::new();
+    let r = parse_ok(
+        &[
+            cmavo("ro"),
+            cmavo("da"),
+            cmavo("ro"),
+            cmavo("de"),
+            cmavo("zo'u"),
+            cmavo("da"),
+            gismu("pendo"),
+            cmavo("de"),
+        ],
+        &arena,
+    );
+    assert_eq!(r.sentences.len(), 1);
+    match &r.sentences[0] {
+        Sentence::Prenex { vars, body } => {
+            assert_eq!(vars, &vec!["da".to_string(), "de".to_string()]);
+            let b = as_bridi(body);
+            assert_eq!(b.selbri, Selbri::Root("pendo".into()));
+        }
+        other => panic!("expected Sentence::Prenex, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_ro_lo_description_is_not_a_prenex() {
+    // `ro lo gerku cu danlu` starts with `ro` but is a universal DESCRIPTION,
+    // not a prenex — try_parse_prenex must backtrack cleanly.
+    let arena = Bump::new();
+    let r = parse_ok(
+        &[
+            cmavo("ro"),
+            cmavo("lo"),
+            gismu("gerku"),
+            cmavo("cu"),
+            gismu("danlu"),
+        ],
+        &arena,
+    );
+    assert_eq!(r.sentences.len(), 1);
+    let b = as_bridi(&r.sentences[0]);
+    assert_eq!(b.selbri, Selbri::Root("danlu".into()));
+}
+
+#[test]
 fn test_afterthought_sentence_ja() {
     // mi klama .i ja do prami
     let arena = Bump::new();
