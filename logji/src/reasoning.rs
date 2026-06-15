@@ -68,6 +68,91 @@ fn condition_is_index_decidable(relation: &str, inner: &KnowledgeBaseInner) -> b
         && !inner.universal_rules.contains_key(relation)
 }
 
+/// True if the (substituted) fact still has any unbound pattern-var argument.
+fn fact_has_unbound_pattern_var(fact: &StoredFact) -> bool {
+    fact.inner()
+        .args
+        .iter()
+        .any(|a| matches!(a, GroundTerm::PatternVar(_)))
+}
+
+/// Index-anchored join binding. After a rule's event variables are bound, a
+/// condition like `fanta_x1(ev_f, x__v0)` has a GROUND anchor arg (the bound
+/// event) and an unbound individual pattern var. Look the matching asserted fact
+/// up in `arg_position_index` and bind the individual var to it — instead of
+/// enumerating those vars over a `members^k` domain cartesian. Runs to a
+/// fixpoint so a var bound from one condition (the shared `di`) propagates to the
+/// next (`se-katna(di, de)` becomes ground). Binds only on a UNIQUE index match
+/// (deterministic — event role atoms have one fact per event), so it never
+/// guesses; non-unique conditions are left for the downstream ground check.
+/// Returns the names of vars newly bound, so the caller removes them per combo.
+fn bind_join_vars_from_index(
+    rule: &UniversalRuleRecord,
+    bindings: &mut HashMap<String, GroundTerm>,
+    inner: &KnowledgeBaseInner,
+) -> Vec<String> {
+    let mut newly_bound: Vec<String> = Vec::new();
+    loop {
+        let mut changed = false;
+        for ct in &rule.typed_conditions {
+            let cs = substitute_fact(ct, bindings);
+            let gf = cs.inner();
+            let Some(anchor_pos) = gf
+                .args
+                .iter()
+                .position(|a| !matches!(a, GroundTerm::PatternVar(_)))
+            else {
+                continue;
+            };
+            let has_unbound_individual = gf
+                .args
+                .iter()
+                .any(|a| matches!(a, GroundTerm::PatternVar(s) if s.starts_with("x__")));
+            if !has_unbound_individual {
+                continue;
+            }
+            let Some(by_val) = inner
+                .arg_position_index
+                .get(&(gf.relation.clone(), anchor_pos))
+            else {
+                continue;
+            };
+            let Some(facts) = by_val.get(&gf.args[anchor_pos]) else {
+                continue;
+            };
+            // Facts that match ALL already-ground args of the (substituted) condition.
+            let matching: Vec<&StoredFact> = facts
+                .iter()
+                .filter(|f| {
+                    let fa = &f.inner().args;
+                    fa.len() == gf.args.len()
+                        && gf
+                            .args
+                            .iter()
+                            .zip(fa.iter())
+                            .all(|(c, a)| matches!(c, GroundTerm::PatternVar(_)) || c == a)
+                })
+                .collect();
+            if matching.len() == 1 {
+                let fa = &matching[0].inner().args;
+                for (i, a) in gf.args.iter().enumerate() {
+                    if let GroundTerm::PatternVar(s) = a {
+                        if s.starts_with("x__") && !bindings.contains_key(s) {
+                            bindings.insert(s.clone(), fa[i].clone());
+                            newly_bound.push(s.clone());
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    newly_bound
+}
+
 fn prefer_non_definitive(
     current: Option<QueryResult>,
     candidate: QueryResult,
@@ -907,6 +992,17 @@ pub(super) fn try_backward_chain_typed(
                                             &rule.typed_conditions[idx],
                                             &test_bindings,
                                         );
+                                        // A condition still carrying an unbound
+                                        // individual pattern var (e.g. fanta_x1(ev,
+                                        // da) with da unbound) cannot be pruned on
+                                        // here — da is bound later by the
+                                        // index-anchored join. Only prune on
+                                        // conditions that are fully ground after
+                                        // substitution (the event-type atom and
+                                        // role atoms whose individual arg is bound).
+                                        if fact_has_unbound_pattern_var(&cs) {
+                                            return true;
+                                        }
                                         let asserted = typed_fact_is_asserted(&cs, inner);
                                         if rule.negated_condition_indices.contains(&idx) {
                                             !asserted
@@ -918,6 +1014,9 @@ pub(super) fn try_backward_chain_typed(
                                             &rule.typed_conditions[idx],
                                             &test_bindings,
                                         );
+                                        if fact_has_unbound_pattern_var(&cs) {
+                                            return true;
+                                        }
                                         let result = check_predicate_in_kb_typed(
                                             &cs,
                                             inner,
@@ -949,6 +1048,11 @@ pub(super) fn try_backward_chain_typed(
                     for (i, ev_var) in unbound_event_vars.iter().enumerate() {
                         bindings.insert(ev_var.clone(), combo[i].clone());
                     }
+                    // Index-anchored join: bind condition-only individual vars
+                    // (e.g. the inhibitor/enzyme of a multi-variable prenex rule)
+                    // from the bound events' role facts, instead of enumerating
+                    // them over a members^k domain cartesian.
+                    let joined_vars = bind_join_vars_from_index(rule, &mut bindings, inner);
                     let mut all_hold = true;
                     let mut pending_here = None;
                     for (idx, ct) in rule.typed_conditions.iter().enumerate() {
@@ -976,6 +1080,9 @@ pub(super) fn try_backward_chain_typed(
                     combo_pending = pending_here.or(combo_pending);
                     for ev_var in &unbound_event_vars {
                         bindings.remove(ev_var.as_str());
+                    }
+                    for v in &joined_vars {
+                        bindings.remove(v.as_str());
                     }
                 }
                 if !found {
@@ -1086,6 +1193,11 @@ pub(super) fn try_backward_chain_typed(
                                                 &test_bindings,
                                             );
                                             let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
+                                            // Don't prune on conditions still carrying an
+                                            // unbound individual var — bound later by the join.
+                                            if fact_has_unbound_pattern_var(&tensed_cs) {
+                                                return true;
+                                            }
                                             let asserted =
                                                 typed_fact_is_asserted(&tensed_cs, inner);
                                             if rule.negated_condition_indices.contains(&idx) {
@@ -1099,6 +1211,9 @@ pub(super) fn try_backward_chain_typed(
                                                 &test_bindings,
                                             );
                                             let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
+                                            if fact_has_unbound_pattern_var(&tensed_cs) {
+                                                return true;
+                                            }
                                             let result = check_predicate_in_kb_typed(
                                                 &tensed_cs,
                                                 inner,
@@ -1131,6 +1246,7 @@ pub(super) fn try_backward_chain_typed(
                         for (i, ev_var) in unbound_event_vars.iter().enumerate() {
                             bindings.insert(ev_var.clone(), combo[i].clone());
                         }
+                        let joined_vars = bind_join_vars_from_index(rule, &mut bindings, inner);
                         let mut all_hold = true;
                         let mut pending_here = None;
                         for (idx, ct) in rule.typed_conditions.iter().enumerate() {
@@ -1160,6 +1276,9 @@ pub(super) fn try_backward_chain_typed(
                         combo_pending = pending_here.or(combo_pending);
                         for ev_var in &unbound_event_vars {
                             bindings.remove(ev_var.as_str());
+                        }
+                        for v in &joined_vars {
+                            bindings.remove(v.as_str());
                         }
                     }
                     if !found {
@@ -1494,6 +1613,11 @@ pub(super) fn try_backward_chain_traced_typed(
                                             &rule.typed_conditions[idx],
                                             &test_bindings,
                                         );
+                                        // Don't prune on conditions still carrying an
+                                        // unbound individual var — bound later by the join.
+                                        if fact_has_unbound_pattern_var(&cs) {
+                                            return true;
+                                        }
                                         check_predicate_in_kb_typed(
                                             &cs,
                                             &*inner,
@@ -1518,6 +1642,7 @@ pub(super) fn try_backward_chain_traced_typed(
                     for (i, ev_var) in unbound_event_vars.iter().enumerate() {
                         bindings.insert(ev_var.clone(), combo[i].clone());
                     }
+                    let joined_vars = bind_join_vars_from_index(rule, &mut bindings, inner);
                     let all_hold = rule.typed_conditions.iter().enumerate().all(|(idx, ct)| {
                         let cs = substitute_fact(ct, &bindings);
                         let result = check_predicate_in_kb_typed(
@@ -1538,6 +1663,9 @@ pub(super) fn try_backward_chain_traced_typed(
                     }
                     for ev_var in &unbound_event_vars {
                         bindings.remove(ev_var.as_str());
+                    }
+                    for v in &joined_vars {
+                        bindings.remove(v.as_str());
                     }
                 }
                 if !found {
@@ -1654,6 +1782,11 @@ pub(super) fn try_backward_chain_traced_typed(
                                                 &test_bindings,
                                             );
                                             let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
+                                            // Don't prune on conditions still carrying an
+                                            // unbound individual var — bound later by the join.
+                                            if fact_has_unbound_pattern_var(&tensed_cs) {
+                                                return true;
+                                            }
                                             check_predicate_in_kb_typed(
                                                 &tensed_cs,
                                                 &*inner,
@@ -1679,6 +1812,7 @@ pub(super) fn try_backward_chain_traced_typed(
                         for (i, ev_var) in unbound_event_vars.iter().enumerate() {
                             bindings.insert(ev_var.clone(), combo[i].clone());
                         }
+                        let joined_vars = bind_join_vars_from_index(rule, &mut bindings, inner);
                         let all_hold = rule.typed_conditions.iter().enumerate().all(|(idx, ct)| {
                             let bare_cs = substitute_fact(ct, &bindings);
                             let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
@@ -1700,6 +1834,9 @@ pub(super) fn try_backward_chain_traced_typed(
                         }
                         for ev_var in &unbound_event_vars {
                             bindings.remove(ev_var.as_str());
+                        }
+                        for v in &joined_vars {
+                            bindings.remove(v.as_str());
                         }
                     }
                     if !found {

@@ -572,6 +572,22 @@ fn trigger_forward_rules(new_rel: &str, inner: &mut KnowledgeBaseInner) {
     inner.forward_depth -= 1;
 }
 
+/// Collect the variable names appearing as arguments of a flat predicate/compute
+/// atom. Used to compute precise dependent-skolem dependencies (which universals
+/// a conclusion existential actually references).
+fn atom_var_args(buffer: &LogicBuffer, node_id: u32) -> Vec<String> {
+    match get_node(buffer, node_id) {
+        Ok(LogicNode::Predicate((_, args))) | Ok(LogicNode::ComputeNode((_, args))) => args
+            .iter()
+            .filter_map(|t| match t {
+                LogicalTerm::Variable(v) => Some(v.clone()),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 pub(super) fn compile_forall_to_rule(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -649,6 +665,31 @@ pub(super) fn compile_forall_to_rule(
                 pattern_vars.insert(var.clone(), pvar);
             }
 
+            let consequent_atoms = flatten_consequent(buffer, consequent_id, skolem_subs);
+
+            // DepPair precision: a conclusion existential depends only on the
+            // universals it actually references, not on ALL enclosing universals.
+            // Over-approximating inflates `dep_count`, which drives a
+            // `members^dep_count` witness cartesian in `build_all_candidates`.
+            // Refine each dependent skolem's deps to the universals that co-occur
+            // with its existential var in some consequent atom, preserving the
+            // `universals` order so DepPair nesting stays deterministic. (For a
+            // genuinely multi-dependency existential like `zdani(x, y, z)` this
+            // still yields both x and y; for `zenba(de)` it yields only `de`.)
+            for (k, val) in dependent_skolems.iter_mut() {
+                let mut precise: Vec<String> = Vec::new();
+                for u in &universals {
+                    let co_occurs = consequent_atoms.iter().any(|&aid| {
+                        let vars = atom_var_args(buffer, aid);
+                        vars.iter().any(|v| v == k) && vars.iter().any(|v| v == u)
+                    });
+                    if co_occurs {
+                        precise.push(pattern_vars[u].clone());
+                    }
+                }
+                val.1 = precise;
+            }
+
             if !dependent_skolems.is_empty() {
                 for (_, (base, pvars)) in &dependent_skolems {
                     if !inner
@@ -682,8 +723,6 @@ pub(super) fn compile_forall_to_rule(
                     &condition_exists_vars,
                 ));
             }
-
-            let consequent_atoms = flatten_consequent(buffer, consequent_id, skolem_subs);
 
             let mut typed_conds: Vec<StoredFact> = Vec::new();
             let mut negated_condition_indices: Vec<usize> = Vec::new();

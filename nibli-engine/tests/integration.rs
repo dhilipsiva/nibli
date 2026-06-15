@@ -241,13 +241,37 @@ fn prenex_cross_entity_join_negative_control() {
     );
 }
 
-// KNOWN LIMITATION (filed in todo.md): a multi-variable prenex join blows up
-// (candidates^k) on a LARGE fact base — e.g. the rule above with ~12 unrelated
-// `se katna` facts does not resolve within 20s. The join fires correctly and
-// fast on small/modest corpora (above), and the blowup is resource-bounded in
-// production (the nibli-server cancellation watchdog and gasnu fuel cap it). The
-// index-anchored join narrowing that removes the blowup is the staged follow-up
-// (same class as the GDPR/DDI candidate-narrowing work).
+#[test]
+fn prenex_join_terminates_without_blowup() {
+    // A 3-variable prenex join over a modest fact base must resolve quickly —
+    // no candidates^k / members^dep_count blowup. Watchdog thread; the query is
+    // TRUE (warfarin's enzyme is inhibited) and must return well within budget.
+    use std::sync::mpsc;
+    use std::time::Duration;
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut lines = vec![
+            "ro da ro de ro di zo'u ganai ge da fanta di gi de se katna di gi de zenba".to_string(),
+            "la .flukonazol. cu fanta la .siptucin.".to_string(),
+        ];
+        // Distinct noise drugs/enzymes (letter-only cmevla — no digits).
+        for v in [
+            "a", "e", "i", "o", "u", "ai", "au", "ei", "oi", "ia", "ie", "io",
+        ] {
+            lines.push(format!("la .druk{v}n. cu se katna la .enk{v}n."));
+        }
+        lines.push("la .uarfarin. cu se katna la .siptucin.".to_string());
+        let refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
+        let engine = engine_with_facts(&refs);
+        let r = engine.query_text_with_proof("la .uarfarin. cu zenba");
+        let _ = tx.send(r.map(|(h, _, _)| h.is_true()));
+    });
+    match rx.recv_timeout(Duration::from_secs(15)) {
+        Ok(Ok(true)) => {}
+        Ok(other) => panic!("prenex join gave unexpected result: {other:?}"),
+        Err(_) => panic!("prenex join did not terminate within 15s (candidates^k blowup?)"),
+    }
+}
 
 // ─── Temporal reasoning ─────────────────────────────────────────────
 
