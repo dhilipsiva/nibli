@@ -880,6 +880,75 @@ fn any_rule_conclusion_unifies(fact: &StoredFact, inner: &KnowledgeBaseInner) ->
 }
 
 /// Typed backward-chaining — structural matching instead of fact_repr tokenization.
+/// Narrow the candidate set for one unbound event variable by its single-event-var
+/// conditions, BEFORE the full combo enumeration. Unifies the candidate filter that
+/// was duplicated (and divergent) across all four backward-chain blocks
+/// (untraced/traced × normal/temporal): index-decidable conditions are checked first
+/// and definitively (`typed_fact_is_asserted`, no depth penalty); rule-backed
+/// conditions fall through to a recursive check kept unless DEFINITIVELY false
+/// (a non-definitive verdict near the depth horizon conservatively keeps the
+/// candidate). Negated conditions are inverted in both phases (NAF). A condition
+/// still carrying an unbound individual `x__` var is NOT pruned on — it is bound
+/// later by the index-anchored join. `tense_fact = Some(f)` applies f's tense to
+/// each condition (temporal lifting); `None` keeps them bare.
+#[allow(clippy::too_many_arguments)]
+fn filter_event_candidates(
+    rule: &UniversalRuleRecord,
+    ev_var: &str,
+    bindings: &HashMap<String, GroundTerm>,
+    single_var_cond_indices: &[usize],
+    candidates: &[GroundTerm],
+    inner: &KnowledgeBaseInner,
+    depth: usize,
+    visited: &mut HashSet<StoredFact>,
+    tense_fact: Option<&StoredFact>,
+) -> Vec<GroundTerm> {
+    let (decidable_indices, recursive_indices): (Vec<usize>, Vec<usize>) =
+        single_var_cond_indices.iter().copied().partition(|&idx| {
+            condition_is_index_decidable(rule.typed_conditions[idx].relation(), inner)
+        });
+    candidates
+        .iter()
+        .filter(|candidate| {
+            let mut tb = bindings.clone();
+            tb.insert(ev_var.to_string(), (*candidate).clone());
+            decidable_indices.iter().all(|&idx| {
+                let bare = substitute_fact(&rule.typed_conditions[idx], &tb);
+                let cs = match tense_fact {
+                    Some(f) => apply_tense_to_fact(&bare, f),
+                    None => bare,
+                };
+                if fact_has_unbound_pattern_var(&cs) {
+                    return true;
+                }
+                let asserted = typed_fact_is_asserted(&cs, inner);
+                if rule.negated_condition_indices.contains(&idx) {
+                    !asserted
+                } else {
+                    asserted
+                }
+            }) && recursive_indices.iter().all(|&idx| {
+                let bare = substitute_fact(&rule.typed_conditions[idx], &tb);
+                let cs = match tense_fact {
+                    Some(f) => apply_tense_to_fact(&bare, f),
+                    None => bare,
+                };
+                if fact_has_unbound_pattern_var(&cs) {
+                    return true;
+                }
+                let result = check_predicate_in_kb_typed(&cs, inner, depth + 1, visited);
+                let verdict = if rule.negated_condition_indices.contains(&idx) {
+                    negate_result(result)
+                } else {
+                    result
+                };
+                !verdict.is_false()
+            })
+        })
+        .cloned()
+        .collect()
+}
+
 pub(super) fn try_backward_chain_typed(
     fact: &StoredFact,
     inner: &KnowledgeBaseInner,
@@ -968,72 +1037,18 @@ pub(super) fn try_backward_chain_typed(
                         per_var_candidates
                             .push(ensure_candidates(&mut candidates_slot, inner).to_vec());
                     } else {
-                        // Index-decidable conditions are evaluated FIRST and
-                        // definitively (their verdict cannot change at greater
-                        // depth), pruning candidates without recursion. Only
-                        // rule-backed conditions fall through to the recursive
-                        // check, whose ResourceExceeded near the depth horizon
-                        // must conservatively keep the candidate.
-                        let (decidable_indices, recursive_indices): (Vec<usize>, Vec<usize>) =
-                            single_var_cond_indices.iter().copied().partition(|&idx| {
-                                condition_is_index_decidable(
-                                    rule.typed_conditions[idx].relation(),
-                                    inner,
-                                )
-                            });
-                        let filtered: Vec<GroundTerm> =
-                            ensure_candidates(&mut candidates_slot, inner)
-                                .iter()
-                                .filter(|candidate| {
-                                    let mut test_bindings = bindings.clone();
-                                    test_bindings.insert(ev_var.clone(), (*candidate).clone());
-                                    decidable_indices.iter().all(|&idx| {
-                                        let cs = substitute_fact(
-                                            &rule.typed_conditions[idx],
-                                            &test_bindings,
-                                        );
-                                        // A condition still carrying an unbound
-                                        // individual pattern var (e.g. fanta_x1(ev,
-                                        // da) with da unbound) cannot be pruned on
-                                        // here — da is bound later by the
-                                        // index-anchored join. Only prune on
-                                        // conditions that are fully ground after
-                                        // substitution (the event-type atom and
-                                        // role atoms whose individual arg is bound).
-                                        if fact_has_unbound_pattern_var(&cs) {
-                                            return true;
-                                        }
-                                        let asserted = typed_fact_is_asserted(&cs, inner);
-                                        if rule.negated_condition_indices.contains(&idx) {
-                                            !asserted
-                                        } else {
-                                            asserted
-                                        }
-                                    }) && recursive_indices.iter().all(|&idx| {
-                                        let cs = substitute_fact(
-                                            &rule.typed_conditions[idx],
-                                            &test_bindings,
-                                        );
-                                        if fact_has_unbound_pattern_var(&cs) {
-                                            return true;
-                                        }
-                                        let result = check_predicate_in_kb_typed(
-                                            &cs,
-                                            inner,
-                                            depth + 1,
-                                            visited,
-                                        );
-                                        let verdict =
-                                            if rule.negated_condition_indices.contains(&idx) {
-                                                negate_result(result)
-                                            } else {
-                                                result
-                                            };
-                                        !verdict.is_false()
-                                    })
-                                })
-                                .cloned()
-                                .collect();
+                        let cand = ensure_candidates(&mut candidates_slot, inner).to_vec();
+                        let filtered = filter_event_candidates(
+                            rule,
+                            ev_var,
+                            &bindings,
+                            &single_var_cond_indices,
+                            &cand,
+                            inner,
+                            depth,
+                            visited,
+                            None,
+                        );
                         per_var_candidates.push(filtered);
                     }
                 }
@@ -1170,67 +1185,21 @@ pub(super) fn try_backward_chain_typed(
                             per_var_candidates
                                 .push(ensure_candidates(&mut candidates_slot, inner).to_vec());
                         } else {
-                            // Same decidable-first split as the untensed block
-                            // above; the asserted check runs on the TENSED fact
-                            // (temporal lifting consults the same relation-keyed
-                            // rule bucket, so decidability is tense-independent).
-                            let (decidable_indices, recursive_indices): (Vec<usize>, Vec<usize>) =
-                                single_var_cond_indices.iter().copied().partition(|&idx| {
-                                    condition_is_index_decidable(
-                                        rule.typed_conditions[idx].relation(),
-                                        inner,
-                                    )
-                                });
-                            let filtered: Vec<GroundTerm> =
-                                ensure_candidates(&mut candidates_slot, inner)
-                                    .iter()
-                                    .filter(|candidate| {
-                                        let mut test_bindings = bindings.clone();
-                                        test_bindings.insert(ev_var.clone(), (*candidate).clone());
-                                        decidable_indices.iter().all(|&idx| {
-                                            let bare_cs = substitute_fact(
-                                                &rule.typed_conditions[idx],
-                                                &test_bindings,
-                                            );
-                                            let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
-                                            // Don't prune on conditions still carrying an
-                                            // unbound individual var — bound later by the join.
-                                            if fact_has_unbound_pattern_var(&tensed_cs) {
-                                                return true;
-                                            }
-                                            let asserted =
-                                                typed_fact_is_asserted(&tensed_cs, inner);
-                                            if rule.negated_condition_indices.contains(&idx) {
-                                                !asserted
-                                            } else {
-                                                asserted
-                                            }
-                                        }) && recursive_indices.iter().all(|&idx| {
-                                            let bare_cs = substitute_fact(
-                                                &rule.typed_conditions[idx],
-                                                &test_bindings,
-                                            );
-                                            let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
-                                            if fact_has_unbound_pattern_var(&tensed_cs) {
-                                                return true;
-                                            }
-                                            let result = check_predicate_in_kb_typed(
-                                                &tensed_cs,
-                                                inner,
-                                                depth + 1,
-                                                visited,
-                                            );
-                                            let verdict =
-                                                if rule.negated_condition_indices.contains(&idx) {
-                                                    negate_result(result)
-                                                } else {
-                                                    result
-                                                };
-                                            !verdict.is_false()
-                                        })
-                                    })
-                                    .cloned()
-                                    .collect();
+                            // Temporal lifting: the candidate filter applies the
+                            // queried fact's tense to each condition (the shared
+                            // helper handles the decidable/recursive split + NAF).
+                            let cand = ensure_candidates(&mut candidates_slot, inner).to_vec();
+                            let filtered = filter_event_candidates(
+                                rule,
+                                ev_var,
+                                &bindings,
+                                &single_var_cond_indices,
+                                &cand,
+                                inner,
+                                depth,
+                                visited,
+                                Some(fact),
+                            );
                             per_var_candidates.push(filtered);
                         }
                     }
@@ -1602,33 +1571,21 @@ pub(super) fn try_backward_chain_traced_typed(
                         per_var_candidates
                             .push(ensure_candidates(&mut candidates_slot, inner).to_vec());
                     } else {
-                        let filtered: Vec<GroundTerm> =
-                            ensure_candidates(&mut candidates_slot, inner)
-                                .iter()
-                                .filter(|candidate| {
-                                    let mut test_bindings = bindings.clone();
-                                    test_bindings.insert(ev_var.clone(), (*candidate).clone());
-                                    single_var_cond_indices.iter().all(|&idx| {
-                                        let cs = substitute_fact(
-                                            &rule.typed_conditions[idx],
-                                            &test_bindings,
-                                        );
-                                        // Don't prune on conditions still carrying an
-                                        // unbound individual var — bound later by the join.
-                                        if fact_has_unbound_pattern_var(&cs) {
-                                            return true;
-                                        }
-                                        check_predicate_in_kb_typed(
-                                            &cs,
-                                            &*inner,
-                                            depth + 1,
-                                            &mut HashSet::new(),
-                                        )
-                                        .is_true()
-                                    })
-                                })
-                                .cloned()
-                                .collect();
+                        // Shared candidate filter (2-phase, NAF-aware) — same as
+                        // the untraced path. A fresh `visited` preserves the traced
+                        // filter's per-call cycle scope.
+                        let cand = ensure_candidates(&mut candidates_slot, inner).to_vec();
+                        let filtered = filter_event_candidates(
+                            rule,
+                            ev_var,
+                            &bindings,
+                            &single_var_cond_indices,
+                            &cand,
+                            &*inner,
+                            depth,
+                            &mut HashSet::new(),
+                            None,
+                        );
                         per_var_candidates.push(filtered);
                     }
                 }
@@ -1770,34 +1727,21 @@ pub(super) fn try_backward_chain_traced_typed(
                             per_var_candidates
                                 .push(ensure_candidates(&mut candidates_slot, inner).to_vec());
                         } else {
-                            let filtered: Vec<GroundTerm> =
-                                ensure_candidates(&mut candidates_slot, inner)
-                                    .iter()
-                                    .filter(|candidate| {
-                                        let mut test_bindings = bindings.clone();
-                                        test_bindings.insert(ev_var.clone(), (*candidate).clone());
-                                        single_var_cond_indices.iter().all(|&idx| {
-                                            let bare_cs = substitute_fact(
-                                                &rule.typed_conditions[idx],
-                                                &test_bindings,
-                                            );
-                                            let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
-                                            // Don't prune on conditions still carrying an
-                                            // unbound individual var — bound later by the join.
-                                            if fact_has_unbound_pattern_var(&tensed_cs) {
-                                                return true;
-                                            }
-                                            check_predicate_in_kb_typed(
-                                                &tensed_cs,
-                                                &*inner,
-                                                depth + 1,
-                                                &mut HashSet::new(),
-                                            )
-                                            .is_true()
-                                        })
-                                    })
-                                    .cloned()
-                                    .collect();
+                            // Shared candidate filter (2-phase, NAF-aware) with the
+                            // queried fact's tense applied; fresh `visited` preserves
+                            // the traced filter's per-call cycle scope.
+                            let cand = ensure_candidates(&mut candidates_slot, inner).to_vec();
+                            let filtered = filter_event_candidates(
+                                rule,
+                                ev_var,
+                                &bindings,
+                                &single_var_cond_indices,
+                                &cand,
+                                &*inner,
+                                depth,
+                                &mut HashSet::new(),
+                                Some(fact),
+                            );
                             per_var_candidates.push(filtered);
                         }
                     }
