@@ -650,6 +650,39 @@ fn trace_does_not_contradict_unknown_cyclecut() {
 }
 
 #[test]
+fn backchain_cycle_cut_trace_parity() {
+    // Regression LOCK (GREEN before+after the 2b core merge): over a cyclic rule
+    // set (gerku ⟸ danlu ⟸ gerku), the untraced verdict path and the
+    // proof-recording path must reach the SAME Unknown(CycleCut) verdict. The
+    // merged `try_backward_chain_core` threads ONE shared `visited` through both
+    // walks (closing the former traced-path per-condition fresh-`HashSet` cycle
+    // asymmetry, LP-L2), so the recording walk can no longer re-expand a cycle
+    // that the untraced walk cut. The trace root must stay non-committal.
+    let kb = new_kb();
+    assert_buf(&kb, make_universal("gerku", "danlu"));
+    assert_buf(&kb, make_universal("danlu", "gerku"));
+
+    // Untraced (authoritative) verdict.
+    let untraced = kb
+        .query_entailment_inner(make_query("alis", "gerku"))
+        .unwrap();
+    assert!(
+        matches!(untraced, QueryResult::Unknown(UnknownReason::CycleCut)),
+        "untraced verdict over a cycle should be Unknown(CycleCut), got {untraced:?}"
+    );
+
+    // Recording (proof) path — same KB, same query: must agree.
+    let (traced, trace) = kb
+        .query_entailment_with_proof_inner(make_query("alis", "gerku"))
+        .unwrap();
+    assert!(
+        matches!(traced, QueryResult::Unknown(UnknownReason::CycleCut)),
+        "recording-path verdict should match the untraced Unknown(CycleCut), got {traced:?}"
+    );
+    assert_trace_consistent(&traced, &trace);
+}
+
+#[test]
 fn trace_does_not_show_counterexample_under_depth_exceeded() {
     // max depth 1, chain gerku→danlu→xanlu, gerku(alis). ∀x. xanlu(x) over the
     // singleton domain {alis} exceeds the depth budget → ResourceExceeded(Depth);
@@ -5046,6 +5079,39 @@ fn test_zoo_proof_trace_multi_hop_temporal() {
     assert!(
         has_modal,
         "proof trace should contain a ModalPassthrough(past) step"
+    );
+}
+
+#[test]
+fn backchain_temporal_trace_label_present() {
+    // A tensed goal proved via a bare (timeless) rule + temporal lifting must
+    // carry the tense in its Derived step's LABEL (the `[past]` suffix emitted by
+    // the merged core's temporal phase via `emit_derived`). This is distinct from
+    // the ModalPassthrough(past) wrapper step and pins that the merge kept the
+    // tense-label keying when folding the traced temporal block into the core.
+    let kb = new_kb();
+    assert_buf(&kb, make_temporal_event_assertion("alis", "gerku", past));
+    assert_buf(&kb, make_event_universal("gerku", "danlu"));
+
+    let (holds, trace) = kb
+        .query_entailment_with_proof_inner(make_temporal_event_query("alis", "danlu", past))
+        .unwrap();
+    assert!(holds.is_true(), "Past(danlu(alis)) should hold");
+
+    let has_tensed_derived = trace.steps.iter().any(
+        |step| matches!(&step.rule, ProofRule::Derived((label, _)) if label.contains("[past]")),
+    );
+    assert!(
+        has_tensed_derived,
+        "temporal-lifted derivation should carry a `[past]` tag in a Derived label; rules seen: {:?}",
+        trace
+            .steps
+            .iter()
+            .filter_map(|s| match &s.rule {
+                ProofRule::Derived((l, _)) => Some(l.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
     );
 }
 

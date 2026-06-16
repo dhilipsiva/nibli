@@ -949,17 +949,147 @@ fn filter_event_candidates(
         .collect()
 }
 
-pub(super) fn try_backward_chain_typed(
+/// Trace sink: a compile-time switch between the untraced verdict path
+/// (`NoOpSink`) and the proof-recording path (`RecordingSink`), so the single
+/// backward-chain core serves both. `RECORDING` MUST stay an associated `const`
+/// (never a method): each `if S::RECORDING { … }` is then constant-folded per
+/// monomorphization and the dead arm eliminated, so the untraced hot path takes
+/// no indirect call and records nothing. Turning it into a method would
+/// reintroduce indirect-call overhead on the reasoning hot path.
+trait TraceSink {
+    const RECORDING: bool;
+    /// Push a proof step, returning its index. `NoOpSink` returns 0 (never read).
+    fn push(&mut self, step: ProofStep) -> u32;
+    /// Record a proven positive condition's provenance, returning its step
+    /// index. Re-enters `trace_predicate_provenance_typed` on the recording
+    /// path; the shared `visited` keeps its cycle guard consistent with the
+    /// verdict walk. `NoOpSink` returns 0.
+    fn trace_child(
+        &mut self,
+        fact: &StoredFact,
+        inner: &KnowledgeBaseInner,
+        depth: usize,
+        visited: &mut HashSet<StoredFact>,
+    ) -> u32;
+}
+
+/// Zero-sized untraced sink. Both methods inline to nothing; every recording
+/// branch guarded by `S::RECORDING` is dead-code-eliminated for this type.
+struct NoOpSink;
+impl TraceSink for NoOpSink {
+    const RECORDING: bool = false;
+    #[inline(always)]
+    fn push(&mut self, _step: ProofStep) -> u32 {
+        0
+    }
+    #[inline(always)]
+    fn trace_child(
+        &mut self,
+        _fact: &StoredFact,
+        _inner: &KnowledgeBaseInner,
+        _depth: usize,
+        _visited: &mut HashSet<StoredFact>,
+    ) -> u32 {
+        0
+    }
+}
+
+/// Recording sink: borrows the proof-step vec + memo, re-entering the typed
+/// provenance tracer for each proven child derivation.
+struct RecordingSink<'a> {
+    steps: &'a mut Vec<ProofStep>,
+    memo: &'a mut HashMap<String, u32>,
+}
+impl TraceSink for RecordingSink<'_> {
+    const RECORDING: bool = true;
+    fn push(&mut self, step: ProofStep) -> u32 {
+        let idx = self.steps.len() as u32;
+        self.steps.push(step);
+        idx
+    }
+    fn trace_child(
+        &mut self,
+        fact: &StoredFact,
+        inner: &KnowledgeBaseInner,
+        depth: usize,
+        visited: &mut HashSet<StoredFact>,
+    ) -> u32 {
+        trace_predicate_provenance_typed(fact, inner, self.steps, depth, self.memo, visited)
+    }
+}
+
+/// Build the `Derived` proof step for a rule that fired, recording each
+/// condition's provenance as a child (a `Negation` leaf for a NAF-negated
+/// condition, otherwise the positive atom's full derivation via the sink).
+/// Called ONLY on the recording path (`S::RECORDING`); `tense_source`/
+/// `tense_label` carry the temporal-lifting context (both `None` for a normal
+/// rule). All conditions are known to hold (the four-valued verdict loop just
+/// confirmed it), so no re-check/break is needed here.
+#[allow(clippy::too_many_arguments)]
+fn emit_derived<S: TraceSink>(
+    sink: &mut S,
+    rule: &UniversalRuleRecord,
+    bindings: &HashMap<String, GroundTerm>,
     fact: &StoredFact,
     inner: &KnowledgeBaseInner,
     depth: usize,
     visited: &mut HashSet<StoredFact>,
-) -> QueryResult {
+    tense_source: Option<&StoredFact>,
+    tense_label: Option<&str>,
+) -> u32 {
+    let display = fact.to_display_string();
+    let mut child_indices = Vec::new();
+    for (idx, cond_template) in rule.typed_conditions.iter().enumerate() {
+        let bare = substitute_fact(cond_template, bindings);
+        let cond_fact = match tense_source {
+            Some(src) => apply_tense_to_fact(&bare, src),
+            None => bare,
+        };
+        if rule.negated_condition_indices.contains(&idx) {
+            let leaf = sink.push(ProofStep {
+                rule: ProofRule::Negation,
+                holds: true,
+                children: vec![],
+            });
+            child_indices.push(leaf);
+        } else {
+            let child = sink.trace_child(&cond_fact, inner, depth + 1, visited);
+            child_indices.push(child);
+        }
+    }
+    let label = match tense_label {
+        Some(t) => format!("{} [{}]", rule.label, t),
+        None => rule.label.clone(),
+    };
+    sink.push(ProofStep {
+        rule: ProofRule::Derived((label, display)),
+        holds: true,
+        children: child_indices,
+    })
+}
+
+/// Typed backward-chaining core — the single rule-firing enumeration shared by
+/// the untraced verdict path (`S = NoOpSink`) and the proof-recording path
+/// (`S = RecordingSink`). The four-valued accumulation and the shared `visited`
+/// cycle-cut run UNCONDITIONALLY, so the returned `QueryResult` is authoritative
+/// and identical to the former `try_backward_chain_typed`; proof steps are
+/// emitted only when `S::RECORDING`, and the second tuple field is the index of
+/// the `Derived` step proving the goal (`Some` only when recording AND a rule
+/// fired). This replaces the former untraced/traced × normal/temporal block
+/// duplication; sharing `visited` with the recording path closes the old
+/// traced-path per-condition cycle asymmetry (LP-L2).
+fn try_backward_chain_core<S: TraceSink>(
+    fact: &StoredFact,
+    inner: &KnowledgeBaseInner,
+    depth: usize,
+    visited: &mut HashSet<StoredFact>,
+    sink: &mut S,
+) -> (QueryResult, Option<u32>) {
     // Cancellation fast-path: unwind the recursion immediately (see
     // check_predicate_in_kb_typed). The Result-returning formula entry surfaces
     // the raised flag as the final `Err`.
     if check_cancelled(inner).is_err() {
-        return QueryResult::False;
+        return (QueryResult::False, None);
     }
     if depth >= inner.max_chain_depth {
         // A goal that is not asserted (the caller already checked) and that no
@@ -976,12 +1106,12 @@ pub(super) fn try_backward_chain_typed(
             && !inner.universal_rules.contains_key("__fallback__")
             && !any_rule_conclusion_unifies(fact, inner)
         {
-            return QueryResult::False;
+            return (QueryResult::False, None);
         }
-        return QueryResult::ResourceExceeded(ResourceKind::Depth);
+        return (QueryResult::ResourceExceeded(ResourceKind::Depth), None);
     }
     if !visited.insert(fact.clone()) {
-        return QueryResult::Unknown(UnknownReason::CycleCut);
+        return (QueryResult::Unknown(UnknownReason::CycleCut), None);
     }
 
     // Candidate terms for unbound event variable search, built lazily: only a
@@ -1137,8 +1267,15 @@ pub(super) fn try_backward_chain_typed(
             }
 
             if all_conditions_hold {
+                let root = if S::RECORDING {
+                    Some(emit_derived(
+                        sink, rule, &bindings, fact, inner, depth, visited, None, None,
+                    ))
+                } else {
+                    None
+                };
                 visited.remove(fact);
-                return QueryResult::True;
+                return (QueryResult::True, root);
             }
             // Never wipe an already-pending non-definitive result: when
             // rule_pending is None (this rule failed definitively), leave
@@ -1151,6 +1288,12 @@ pub(super) fn try_backward_chain_typed(
 
     // Temporal lifting: if querying a tensed fact, try bare (timeless) rules.
     if let Some(bare_fact) = strip_tense_from_fact(fact) {
+        let tense_label = match fact {
+            StoredFact::Past(_) => "past",
+            StoredFact::Present(_) => "present",
+            StoredFact::Future(_) => "future",
+            _ => "?",
+        };
         let bare_rules = collect_matching_rules_typed(&bare_fact, &inner.universal_rules);
         for rule in &bare_rules {
             for typed_concl in &rule.typed_conclusions {
@@ -1283,8 +1426,23 @@ pub(super) fn try_backward_chain_typed(
                 }
 
                 if all_conditions_hold {
+                    let root = if S::RECORDING {
+                        Some(emit_derived(
+                            sink,
+                            rule,
+                            &bindings,
+                            fact,
+                            inner,
+                            depth,
+                            visited,
+                            Some(fact),
+                            Some(tense_label),
+                        ))
+                    } else {
+                        None
+                    };
                     visited.remove(fact);
-                    return QueryResult::True;
+                    return (QueryResult::True, root);
                 }
                 // Preserve any already-pending non-definitive result; do not
                 // erase best_result when rule_pending is None.
@@ -1296,7 +1454,19 @@ pub(super) fn try_backward_chain_typed(
     }
 
     visited.remove(fact);
-    best_result.unwrap_or(QueryResult::False)
+    (best_result.unwrap_or(QueryResult::False), None)
+}
+
+/// Untraced backward-chaining: the verdict-only entry. Delegates to the shared
+/// core with a no-op sink, so the hot path records nothing — every
+/// `if S::RECORDING` branch is dead-code-eliminated for `NoOpSink`.
+pub(super) fn try_backward_chain_typed(
+    fact: &StoredFact,
+    inner: &KnowledgeBaseInner,
+    depth: usize,
+    visited: &mut HashSet<StoredFact>,
+) -> QueryResult {
+    try_backward_chain_core(fact, inner, depth, visited, &mut NoOpSink).0
 }
 
 /// Strip tense wrapper from a StoredFact, returning the bare fact.
@@ -1404,10 +1574,11 @@ impl<'a> Iterator for TypedMultiCartesian<'a> {
 /// Typed trace_predicate_provenance: check if fact holds and build proof step.
 pub(super) fn trace_predicate_provenance_typed(
     fact: &StoredFact,
-    inner: &mut KnowledgeBaseInner,
+    inner: &KnowledgeBaseInner,
     steps: &mut Vec<ProofStep>,
     depth: usize,
     memo: &mut HashMap<String, u32>,
+    visited: &mut HashSet<StoredFact>,
 ) -> u32 {
     let display = fact.to_display_string();
 
@@ -1437,7 +1608,20 @@ pub(super) fn trace_predicate_provenance_typed(
     }
 
     if depth < inner.max_chain_depth {
-        if let Some(idx) = try_backward_chain_traced_typed(fact, inner, steps, depth, memo) {
+        // Fire rules via the shared core with a recording sink. `root` is `Some`
+        // iff a rule fired (verdict True); a non-firing verdict (False / Unknown
+        // / ResourceExceeded) returns `None` and falls through to the equality
+        // fallback below — the same trigger as the former `Option<u32>` path.
+        // The shared `visited` keeps the recording walk's cycle guard consistent
+        // with the untraced verdict (closes LP-L2).
+        let (_verdict, root) = try_backward_chain_core::<RecordingSink>(
+            fact,
+            inner,
+            depth,
+            visited,
+            &mut RecordingSink { steps, memo },
+        );
+        if let Some(idx) = root {
             memo.insert(display, idx);
             return idx;
         }
@@ -1475,7 +1659,7 @@ pub(super) fn trace_predicate_provenance_typed(
                 let variant_gf = GroundFact::new(gf.relation.clone(), combo);
                 let variant = StoredFact::with_tense_from(variant_gf, fact);
                 if variant != *fact
-                    && check_predicate_in_kb_typed(&variant, &*inner, depth, &mut HashSet::new())
+                    && check_predicate_in_kb_typed(&variant, inner, depth, &mut HashSet::new())
                         .is_true()
                 {
                     satisfying = Some(variant);
@@ -1492,7 +1676,14 @@ pub(super) fn trace_predicate_provenance_typed(
                     .collect::<Vec<_>>()
                     .join(", ");
                 let substituted = variant.to_display_string();
-                let child = trace_predicate_provenance_typed(&variant, inner, steps, depth, memo);
+                let child = trace_predicate_provenance_typed(
+                    &variant,
+                    inner,
+                    steps,
+                    depth,
+                    memo,
+                    &mut HashSet::new(),
+                );
                 let idx = steps.len() as u32;
                 steps.push(ProofStep {
                     rule: ProofRule::EqualitySubstitution((display.clone(), du_note, substituted)),
@@ -1515,339 +1706,6 @@ pub(super) fn trace_predicate_provenance_typed(
     });
     memo.insert(display, idx);
     idx
-}
-
-/// Typed try_backward_chain_traced: structural matching with proof step recording.
-pub(super) fn try_backward_chain_traced_typed(
-    fact: &StoredFact,
-    inner: &mut KnowledgeBaseInner,
-    steps: &mut Vec<ProofStep>,
-    depth: usize,
-    memo: &mut HashMap<String, u32>,
-) -> Option<u32> {
-    // Cancellation fast-path: bail out of the traced backward chain immediately
-    // once the watchdog raises the flag. check_formula_holds_traced surfaces the
-    // raised flag as the final `Err`.
-    if check_cancelled(inner).is_err() {
-        return None;
-    }
-    // Candidate terms for unbound event variable search, built lazily (only a
-    // matched rule with unbound `ev__` pattern variables needs them).
-    let mut candidates_slot: Option<Vec<GroundTerm>> = None;
-
-    let rules_snapshot = collect_matching_rules_typed(fact, &inner.universal_rules);
-    let display = fact.to_display_string();
-
-    for rule in &rules_snapshot {
-        for typed_concl in &rule.typed_conclusions {
-            let Some(mut bindings) = unify_facts(typed_concl, fact) else {
-                continue;
-            };
-
-            let unbound_event_vars: Vec<String> = rule
-                .pattern_var_names
-                .iter()
-                .filter(|pv| pv.starts_with("ev__") && !bindings.contains_key(pv.as_str()))
-                .cloned()
-                .collect();
-
-            if !unbound_event_vars.is_empty() {
-                let mut per_var_candidates: Vec<Vec<GroundTerm>> = Vec::new();
-                for ev_var in &unbound_event_vars {
-                    let single_var_cond_indices: Vec<usize> = rule
-                        .typed_conditions
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, ct)| {
-                            stored_fact_contains_var(ct, ev_var)
-                                && unbound_event_vars.iter().all(|other| {
-                                    other == ev_var || !stored_fact_contains_var(ct, other)
-                                })
-                        })
-                        .map(|(i, _)| i)
-                        .collect();
-
-                    if single_var_cond_indices.is_empty() {
-                        per_var_candidates
-                            .push(ensure_candidates(&mut candidates_slot, inner).to_vec());
-                    } else {
-                        // Shared candidate filter (2-phase, NAF-aware) — same as
-                        // the untraced path. A fresh `visited` preserves the traced
-                        // filter's per-call cycle scope.
-                        let cand = ensure_candidates(&mut candidates_slot, inner).to_vec();
-                        let filtered = filter_event_candidates(
-                            rule,
-                            ev_var,
-                            &bindings,
-                            &single_var_cond_indices,
-                            &cand,
-                            &*inner,
-                            depth,
-                            &mut HashSet::new(),
-                            None,
-                        );
-                        per_var_candidates.push(filtered);
-                    }
-                }
-
-                if per_var_candidates.iter().any(|pvc| pvc.is_empty()) {
-                    continue;
-                }
-
-                let mut found = false;
-                for combo in TypedMultiCartesian::new(&per_var_candidates, inner.cancel.clone()) {
-                    for (i, ev_var) in unbound_event_vars.iter().enumerate() {
-                        bindings.insert(ev_var.clone(), combo[i].clone());
-                    }
-                    let joined_vars = bind_join_vars_from_index(rule, &mut bindings, inner);
-                    let all_hold = rule.typed_conditions.iter().enumerate().all(|(idx, ct)| {
-                        let cs = substitute_fact(ct, &bindings);
-                        let result = check_predicate_in_kb_typed(
-                            &cs,
-                            &*inner,
-                            depth + 1,
-                            &mut HashSet::new(),
-                        );
-                        if rule.negated_condition_indices.contains(&idx) {
-                            result.is_false()
-                        } else {
-                            result.is_true()
-                        }
-                    });
-                    if all_hold {
-                        found = true;
-                        break;
-                    }
-                    for ev_var in &unbound_event_vars {
-                        bindings.remove(ev_var.as_str());
-                    }
-                    for v in &joined_vars {
-                        bindings.remove(v.as_str());
-                    }
-                }
-                if !found {
-                    continue;
-                }
-            }
-
-            // Check all conditions hold, building provenance children inline. A negated
-            // condition holds via negation-as-failure (¬P holds iff P is unprovable);
-            // record it as a leaf Negation step rather than tracing the positive atom
-            // (which does not hold). An empty condition list yields a childless Derived
-            // step (ground material conditional).
-            let mut all_conditions_hold = true;
-            let mut child_indices = Vec::new();
-
-            for (idx, cond_template) in rule.typed_conditions.iter().enumerate() {
-                let cond_fact = substitute_fact(cond_template, &bindings);
-                let negated = rule.negated_condition_indices.contains(&idx);
-                let result = check_predicate_in_kb_typed(
-                    &cond_fact,
-                    &*inner,
-                    depth + 1,
-                    &mut HashSet::new(),
-                );
-                let holds = if negated {
-                    result.is_false()
-                } else {
-                    result.is_true()
-                };
-                if !holds {
-                    all_conditions_hold = false;
-                    break;
-                }
-                if negated {
-                    let leaf = steps.len() as u32;
-                    steps.push(ProofStep {
-                        rule: ProofRule::Negation,
-                        holds: true,
-                        children: vec![],
-                    });
-                    child_indices.push(leaf);
-                } else {
-                    let child_idx =
-                        trace_predicate_provenance_typed(&cond_fact, inner, steps, depth + 1, memo);
-                    child_indices.push(child_idx);
-                }
-            }
-
-            if !all_conditions_hold {
-                continue;
-            }
-
-            let idx = steps.len() as u32;
-            steps.push(ProofStep {
-                rule: ProofRule::Derived((rule.label.clone(), display.clone())),
-                holds: true,
-                children: child_indices,
-            });
-            return Some(idx);
-        }
-    }
-
-    // Temporal lifting: if querying a tensed fact, try bare (timeless) rules.
-    if let Some(bare_fact) = strip_tense_from_fact(fact) {
-        let tense_label = match fact {
-            StoredFact::Past(_) => "past",
-            StoredFact::Present(_) => "present",
-            StoredFact::Future(_) => "future",
-            _ => "?",
-        };
-        let bare_rules = collect_matching_rules_typed(&bare_fact, &inner.universal_rules);
-        for rule in &bare_rules {
-            for typed_concl in &rule.typed_conclusions {
-                let Some(mut bindings) = unify_facts(typed_concl, &bare_fact) else {
-                    continue;
-                };
-
-                let unbound_event_vars: Vec<String> = rule
-                    .pattern_var_names
-                    .iter()
-                    .filter(|pv| pv.starts_with("ev__") && !bindings.contains_key(pv.as_str()))
-                    .cloned()
-                    .collect();
-
-                if !unbound_event_vars.is_empty() {
-                    let mut per_var_candidates: Vec<Vec<GroundTerm>> = Vec::new();
-                    for ev_var in &unbound_event_vars {
-                        let single_var_cond_indices: Vec<usize> = rule
-                            .typed_conditions
-                            .iter()
-                            .enumerate()
-                            .filter(|(_, ct)| {
-                                stored_fact_contains_var(ct, ev_var)
-                                    && unbound_event_vars.iter().all(|other| {
-                                        other == ev_var || !stored_fact_contains_var(ct, other)
-                                    })
-                            })
-                            .map(|(i, _)| i)
-                            .collect();
-
-                        if single_var_cond_indices.is_empty() {
-                            per_var_candidates
-                                .push(ensure_candidates(&mut candidates_slot, inner).to_vec());
-                        } else {
-                            // Shared candidate filter (2-phase, NAF-aware) with the
-                            // queried fact's tense applied; fresh `visited` preserves
-                            // the traced filter's per-call cycle scope.
-                            let cand = ensure_candidates(&mut candidates_slot, inner).to_vec();
-                            let filtered = filter_event_candidates(
-                                rule,
-                                ev_var,
-                                &bindings,
-                                &single_var_cond_indices,
-                                &cand,
-                                &*inner,
-                                depth,
-                                &mut HashSet::new(),
-                                Some(fact),
-                            );
-                            per_var_candidates.push(filtered);
-                        }
-                    }
-
-                    if per_var_candidates.iter().any(|pvc| pvc.is_empty()) {
-                        continue;
-                    }
-
-                    let mut found = false;
-                    for combo in TypedMultiCartesian::new(&per_var_candidates, inner.cancel.clone())
-                    {
-                        for (i, ev_var) in unbound_event_vars.iter().enumerate() {
-                            bindings.insert(ev_var.clone(), combo[i].clone());
-                        }
-                        let joined_vars = bind_join_vars_from_index(rule, &mut bindings, inner);
-                        let all_hold = rule.typed_conditions.iter().enumerate().all(|(idx, ct)| {
-                            let bare_cs = substitute_fact(ct, &bindings);
-                            let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
-                            let result = check_predicate_in_kb_typed(
-                                &tensed_cs,
-                                &*inner,
-                                depth + 1,
-                                &mut HashSet::new(),
-                            );
-                            if rule.negated_condition_indices.contains(&idx) {
-                                result.is_false()
-                            } else {
-                                result.is_true()
-                            }
-                        });
-                        if all_hold {
-                            found = true;
-                            break;
-                        }
-                        for ev_var in &unbound_event_vars {
-                            bindings.remove(ev_var.as_str());
-                        }
-                        for v in &joined_vars {
-                            bindings.remove(v.as_str());
-                        }
-                    }
-                    if !found {
-                        continue;
-                    }
-                }
-
-                let mut all_conditions_hold = true;
-                let mut child_indices = Vec::new();
-                for (idx, cond_template) in rule.typed_conditions.iter().enumerate() {
-                    let bare_cs = substitute_fact(cond_template, &bindings);
-                    let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
-                    let negated = rule.negated_condition_indices.contains(&idx);
-                    let result = check_predicate_in_kb_typed(
-                        &tensed_cs,
-                        &*inner,
-                        depth + 1,
-                        &mut HashSet::new(),
-                    );
-                    let holds = if negated {
-                        result.is_false()
-                    } else {
-                        result.is_true()
-                    };
-                    if !holds {
-                        all_conditions_hold = false;
-                        break;
-                    }
-                    if negated {
-                        let leaf = steps.len() as u32;
-                        steps.push(ProofStep {
-                            rule: ProofRule::Negation,
-                            holds: true,
-                            children: vec![],
-                        });
-                        child_indices.push(leaf);
-                    } else {
-                        let child_idx = trace_predicate_provenance_typed(
-                            &tensed_cs,
-                            inner,
-                            steps,
-                            depth + 1,
-                            memo,
-                        );
-                        child_indices.push(child_idx);
-                    }
-                }
-
-                if !all_conditions_hold {
-                    continue;
-                }
-
-                let idx = steps.len() as u32;
-                steps.push(ProofStep {
-                    rule: ProofRule::Derived((
-                        format!("{} [{}]", rule.label, tense_label),
-                        display.clone(),
-                    )),
-                    holds: true,
-                    children: child_indices,
-                });
-                return Some(idx);
-            }
-        }
-    }
-
-    None
 }
 
 // ─── End Typed Backward-Chaining ─────────────────────────────────
@@ -2342,7 +2200,14 @@ pub(super) fn check_formula_holds_traced(
                 let mut visited = HashSet::new();
                 let result = check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited);
                 if result.is_true() {
-                    let idx = trace_predicate_provenance_typed(&fact, inner, steps, 0, memo);
+                    let idx = trace_predicate_provenance_typed(
+                        &fact,
+                        inner,
+                        steps,
+                        0,
+                        memo,
+                        &mut visited,
+                    );
                     Ok((true, idx))
                 } else if !matches!(result, QueryResult::False) {
                     // Non-definitive (Unknown(CycleCut)/ResourceExceeded): the
