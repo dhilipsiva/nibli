@@ -228,57 +228,240 @@ pub(super) fn check_formula_holds(
     inner: &mut KnowledgeBaseInner,
     tense: Option<&str>,
 ) -> Result<QueryResult, String> {
-    // Check cancellation both BEFORE and AFTER the sub-evaluation. The pre-check
-    // catches a flag that was already raised (e.g. before the query started); the
-    // post-check converts a flag raised by the watchdog DURING a long backward-
-    // chaining call into a clean `Err` rather than a discarded partial verdict.
-    // Recursion runs through this wrapper, so the checks fire at every node.
+    // The bare (untraced) entry: delegate to the single evaluator with a no-op
+    // sink (every recording branch is dead-code-eliminated for `NoOpSink`), and
+    // drop the step index. The post-check converts a flag raised by the watchdog
+    // DURING a long backward-chaining call into a clean `Err`; the core also
+    // check_cancelled's at every node entry.
     check_cancelled(inner)?;
-    let result = check_formula_holds_inner(buffer, node_id, subs, inner, tense)?;
+    let (result, _idx) =
+        check_formula_holds_core::<NoOpSink>(buffer, node_id, subs, inner, tense, &mut NoOpSink)?;
     check_cancelled(inner)?;
     Ok(result)
 }
 
-fn check_formula_holds_inner(
+/// The proof-recording entry: evaluate the formula AND build its proof trace in
+/// ONE walk, returning the authoritative four-valued verdict together with the
+/// root proof-step index. Replaces the former separate `check_formula_holds`
+/// (verdict) + `check_formula_holds_traced` (trace) double evaluation — the
+/// trace's per-node `holds` is now natively the four-valued verdict's
+/// `is_true()`, so no root reconciliation is needed.
+pub(super) fn check_formula_holds_recording(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    subs: &mut HashMap<String, GroundTerm>,
+    inner: &mut KnowledgeBaseInner,
+    steps: &mut Vec<ProofStep>,
+    tense: Option<&str>,
+    memo: &mut HashMap<String, u32>,
+) -> Result<(QueryResult, u32), String> {
+    check_cancelled(inner)?;
+    let mut sink = RecordingSink { steps, memo };
+    let result =
+        check_formula_holds_core::<RecordingSink>(buffer, node_id, subs, inner, tense, &mut sink)?;
+    check_cancelled(inner)?;
+    Ok(result)
+}
+
+/// The single four-valued formula evaluator, generic over a trace sink. The
+/// verdict is computed identically to the former untraced evaluator (the
+/// authoritative path); when `S::RECORDING`, each arm ALSO records its proof
+/// step(s) via the sink and returns that step's index (the former
+/// `check_formula_holds_traced`). For `NoOpSink` (`const RECORDING = false`)
+/// every `if S::RECORDING { … }` block is dead-code-eliminated and the returned
+/// index is 0.
+///
+/// And/Or short-circuit on a DEFINITIVELY decided left operand (False for And,
+/// True for Or) — verdict-identical to `combine_conjunction`/`combine_disjunction`
+/// (the only skipped operand is the one the left already decides). Enumerating
+/// arms (Exists/ForAll/Count) probe candidates with `NoOpSink` for the verdict and
+/// re-walk only the KEPT subtree (witness/counterexample/all-members) with `S`,
+/// so discarded candidates never pollute the trace.
+fn check_formula_holds_core<S: TraceSink>(
     buffer: &LogicBuffer,
     node_id: u32,
     subs: &mut HashMap<String, GroundTerm>,
     inner: &mut KnowledgeBaseInner,
     tense: Option<&str>,
-) -> Result<QueryResult, String> {
+    sink: &mut S,
+) -> Result<(QueryResult, u32), String> {
+    check_cancelled(inner)?;
     match get_node(buffer, node_id)? {
         LogicNode::AndNode((l, r)) => {
-            let left = check_formula_holds(buffer, *l, subs, inner, tense)?;
-            let right = check_formula_holds(buffer, *r, subs, inner, tense)?;
-            Ok(combine_conjunction(left, right))
+            let (lv, li) = check_formula_holds_core::<S>(buffer, *l, subs, inner, tense, sink)?;
+            // Short-circuit on a definitively-False left: `False ∧ x = False`
+            // regardless of x (verdict-identical to combine_conjunction).
+            if lv.is_false() {
+                let idx = if S::RECORDING {
+                    sink.push(ProofStep {
+                        rule: ProofRule::Conjunction,
+                        holds: false,
+                        children: vec![li],
+                    })
+                } else {
+                    0
+                };
+                return Ok((QueryResult::False, idx));
+            }
+            let (rv, ri) = check_formula_holds_core::<S>(buffer, *r, subs, inner, tense, sink)?;
+            let verdict = combine_conjunction(lv, rv);
+            let idx = if S::RECORDING {
+                sink.push(ProofStep {
+                    rule: ProofRule::Conjunction,
+                    holds: verdict.is_true(),
+                    children: vec![li, ri],
+                })
+            } else {
+                0
+            };
+            Ok((verdict, idx))
         }
         LogicNode::OrNode((l, r)) => {
-            let left = check_formula_holds(buffer, *l, subs, inner, tense)?;
-            let right = check_formula_holds(buffer, *r, subs, inner, tense)?;
-            Ok(combine_disjunction(left, right))
+            let (lv, li) = check_formula_holds_core::<S>(buffer, *l, subs, inner, tense, sink)?;
+            // Short-circuit on a definitively-True left: `True ∨ x = True`.
+            if lv.is_true() {
+                let idx = if S::RECORDING {
+                    sink.push(ProofStep {
+                        rule: ProofRule::DisjunctionIntro("left".to_string()),
+                        holds: true,
+                        children: vec![li],
+                    })
+                } else {
+                    0
+                };
+                return Ok((QueryResult::True, idx));
+            }
+            let (rv, ri) = check_formula_holds_core::<S>(buffer, *r, subs, inner, tense, sink)?;
+            let rv_is_true = rv.is_true();
+            let verdict = combine_disjunction(lv, rv);
+            let idx = if S::RECORDING {
+                if rv_is_true {
+                    sink.push(ProofStep {
+                        rule: ProofRule::DisjunctionIntro("right".to_string()),
+                        holds: true,
+                        children: vec![ri],
+                    })
+                } else {
+                    sink.push(ProofStep {
+                        rule: ProofRule::DisjunctionIntro("neither".to_string()),
+                        holds: verdict.is_true(),
+                        children: vec![li, ri],
+                    })
+                }
+            } else {
+                0
+            };
+            Ok((verdict, idx))
         }
         // Negation-as-failure (NAF): ¬P holds when P cannot be proved.
         // Sound because stratification is enforced at rule registration time —
         // register_rule() rejects any rule that would create a negative cycle
-        // in the predicate dependency graph.
-        LogicNode::NotNode(inner_node) => Ok(negate_result(check_formula_holds(
-            buffer,
-            *inner_node,
-            subs,
-            inner,
-            tense,
-        )?)),
+        // in the predicate dependency graph. The `holds` flag is true only when
+        // the inner is DEFINITIVELY False (a merely Unknown/RE inner is preserved
+        // by negate_result and must not display a decided NAF dependency) — the
+        // four-valued sub-verdict `iv` is natively in hand, so no recheck re-walk.
+        LogicNode::NotNode(inner_node) => {
+            let (iv, ii) =
+                check_formula_holds_core::<S>(buffer, *inner_node, subs, inner, tense, sink)?;
+            let verdict = negate_result(iv.clone());
+            let idx = if S::RECORDING {
+                sink.push(ProofStep {
+                    rule: ProofRule::Negation,
+                    holds: matches!(iv, QueryResult::False),
+                    children: vec![ii],
+                })
+            } else {
+                0
+            };
+            Ok((verdict, idx))
+        }
         LogicNode::PastNode(inner_node) => {
-            check_formula_holds(buffer, *inner_node, subs, inner, Some("Past"))
+            let (verdict, ci) = check_formula_holds_core::<S>(
+                buffer,
+                *inner_node,
+                subs,
+                inner,
+                Some("Past"),
+                sink,
+            )?;
+            let idx = if S::RECORDING {
+                sink.push(ProofStep {
+                    rule: ProofRule::ModalPassthrough("past".to_string()),
+                    holds: verdict.is_true(),
+                    children: vec![ci],
+                })
+            } else {
+                0
+            };
+            Ok((verdict, idx))
         }
         LogicNode::PresentNode(inner_node) => {
-            check_formula_holds(buffer, *inner_node, subs, inner, Some("Present"))
+            let (verdict, ci) = check_formula_holds_core::<S>(
+                buffer,
+                *inner_node,
+                subs,
+                inner,
+                Some("Present"),
+                sink,
+            )?;
+            let idx = if S::RECORDING {
+                sink.push(ProofStep {
+                    rule: ProofRule::ModalPassthrough("present".to_string()),
+                    holds: verdict.is_true(),
+                    children: vec![ci],
+                })
+            } else {
+                0
+            };
+            Ok((verdict, idx))
         }
         LogicNode::FutureNode(inner_node) => {
-            check_formula_holds(buffer, *inner_node, subs, inner, Some("Future"))
+            let (verdict, ci) = check_formula_holds_core::<S>(
+                buffer,
+                *inner_node,
+                subs,
+                inner,
+                Some("Future"),
+                sink,
+            )?;
+            let idx = if S::RECORDING {
+                sink.push(ProofStep {
+                    rule: ProofRule::ModalPassthrough("future".to_string()),
+                    holds: verdict.is_true(),
+                    children: vec![ci],
+                })
+            } else {
+                0
+            };
+            Ok((verdict, idx))
         }
-        LogicNode::ObligatoryNode(inner_node) | LogicNode::PermittedNode(inner_node) => {
-            check_formula_holds(buffer, *inner_node, subs, inner, tense)
+        LogicNode::ObligatoryNode(inner_node) => {
+            let (verdict, ci) =
+                check_formula_holds_core::<S>(buffer, *inner_node, subs, inner, tense, sink)?;
+            let idx = if S::RECORDING {
+                sink.push(ProofStep {
+                    rule: ProofRule::ModalPassthrough("obligatory".to_string()),
+                    holds: verdict.is_true(),
+                    children: vec![ci],
+                })
+            } else {
+                0
+            };
+            Ok((verdict, idx))
+        }
+        LogicNode::PermittedNode(inner_node) => {
+            let (verdict, ci) =
+                check_formula_holds_core::<S>(buffer, *inner_node, subs, inner, tense, sink)?;
+            let idx = if S::RECORDING {
+                sink.push(ProofStep {
+                    rule: ProofRule::ModalPassthrough("permitted".to_string()),
+                    holds: verdict.is_true(),
+                    children: vec![ci],
+                })
+            } else {
+                0
+            };
+            Ok((verdict, idx))
         }
         LogicNode::ExistsNode((v, body)) => {
             // Try batch compute fast path first (uses slice, no .to_vec()).
@@ -288,12 +471,36 @@ fn check_formula_holds_inner(
                     if let Some(batch) =
                         batch_evaluate_compute_for_members(rel, args, v, members, subs)
                     {
+                        // Clone the winning member before releasing the slice borrow.
+                        let winner = batch
+                            .results
+                            .iter()
+                            .position(|r| *r)
+                            .map(|i| members[i].clone());
                         // Ingest deferred facts now that the slice borrow is released.
                         for fact in batch.deferred_facts {
                             assert_typed_fact(fact, inner);
                         }
-                        if batch.results.iter().any(|r| *r) {
-                            return Ok(QueryResult::True);
+                        if let Some(winning_member) = winner {
+                            let idx = if S::RECORDING {
+                                let body_idx = with_sub(subs, v, winning_member.clone(), |s| {
+                                    check_formula_holds_core::<S>(
+                                        buffer, *body, s, inner, tense, sink,
+                                    )
+                                })?
+                                .1;
+                                sink.push(ProofStep {
+                                    rule: ProofRule::ExistsWitness((
+                                        v.clone(),
+                                        witness_term_to_logical_term(&winning_member),
+                                    )),
+                                    holds: true,
+                                    children: vec![body_idx],
+                                })
+                            } else {
+                                0
+                            };
+                            return Ok((QueryResult::True, idx));
                         }
                     }
                 }
@@ -302,13 +509,26 @@ fn check_formula_holds_inner(
             // the operands gathered from the role predicates directly — the
             // verdict is definitive, matching the flat ComputeNode arm.
             if let Some(verdict) = try_evaluate_numeric_group(buffer, v, *body, subs) {
-                return Ok(if verdict.holds {
+                let res = if verdict.holds {
                     QueryResult::True
                 } else {
                     QueryResult::False
-                });
+                };
+                let idx = if S::RECORDING {
+                    sink.push(ProofStep {
+                        rule: ProofRule::ComputeCheck((
+                            verdict.method.to_string(),
+                            verdict.relation,
+                        )),
+                        holds: verdict.holds,
+                        children: vec![],
+                    })
+                } else {
+                    0
+                };
+                return Ok((res, idx));
             }
-            // Slow path: need owned Vec because check_formula_holds takes &mut inner.
+            // Slow path: need owned Vec because the body eval takes &mut inner.
             // Candidate narrowing (∃-heavy query blowup fix): when the body has
             // a mandatory positive anchor, enumerate only index/rule-derivable
             // candidates instead of the full domain × SkolemFn-registry
@@ -329,53 +549,216 @@ fn check_formula_holds_inner(
                     }
                 };
             let mut best_result = None;
-            for candidate in candidates {
-                let result = with_sub(subs, v, candidate, |s| {
-                    check_formula_holds(buffer, *body, s, inner, tense)
-                })?;
+            for candidate in &candidates {
+                // Probe the verdict with a no-op sink (no recording of discarded
+                // candidates); record only the winning witness's subtree below.
+                let result = with_sub(subs, v, candidate.clone(), |s| {
+                    check_formula_holds_core::<NoOpSink>(
+                        buffer,
+                        *body,
+                        s,
+                        inner,
+                        tense,
+                        &mut NoOpSink,
+                    )
+                })?
+                .0;
                 if result.is_true() {
-                    return Ok(QueryResult::True);
+                    let idx = if S::RECORDING {
+                        let body_idx = with_sub(subs, v, candidate.clone(), |s| {
+                            check_formula_holds_core::<S>(buffer, *body, s, inner, tense, sink)
+                        })?
+                        .1;
+                        sink.push(ProofStep {
+                            rule: ProofRule::ExistsWitness((
+                                v.clone(),
+                                witness_term_to_logical_term(candidate),
+                            )),
+                            holds: true,
+                            children: vec![body_idx],
+                        })
+                    } else {
+                        0
+                    };
+                    return Ok((QueryResult::True, idx));
                 }
                 best_result = prefer_non_definitive(best_result, result);
             }
-            Ok(best_result.unwrap_or(QueryResult::False))
+            // No witness. `best_result` is Some iff some candidate was
+            // non-definitive (prefer_non_definitive drops definitive ones), so it
+            // distinguishes a genuine ExistsFailed (all definitively False) from a
+            // non-committal indeterminate.
+            let saw_non_definitive = best_result.is_some();
+            let verdict = best_result.unwrap_or(QueryResult::False);
+            let idx = if S::RECORDING {
+                if saw_non_definitive {
+                    sink.push(ProofStep {
+                        rule: ProofRule::PredicateCheck((
+                            "indeterminate".to_string(),
+                            "exists".to_string(),
+                        )),
+                        holds: false,
+                        children: vec![],
+                    })
+                } else {
+                    sink.push(ProofStep {
+                        rule: ProofRule::ExistsFailed,
+                        holds: false,
+                        children: vec![],
+                    })
+                }
+            } else {
+                0
+            };
+            Ok((verdict, idx))
         }
         LogicNode::ForAllNode((v, body)) => {
-            if inner.all_typed_domain_members().is_empty() {
-                return Ok(QueryResult::True);
+            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
+            if members.is_empty() {
+                let idx = if S::RECORDING {
+                    sink.push(ProofStep {
+                        rule: ProofRule::ForallVacuous,
+                        holds: true,
+                        children: vec![],
+                    })
+                } else {
+                    0
+                };
+                return Ok((QueryResult::True, idx));
             }
             // Batch compute fast path (slice, no .to_vec()).
             if let Ok(body_node) = get_node(buffer, *body) {
                 if let LogicNode::ComputeNode((rel, args)) = body_node {
-                    let members = inner.all_typed_domain_members();
+                    let members_slice = inner.all_typed_domain_members();
                     if let Some(batch) =
-                        batch_evaluate_compute_for_members(rel, args, v, members, subs)
+                        batch_evaluate_compute_for_members(rel, args, v, members_slice, subs)
                     {
+                        let fail_member = batch
+                            .results
+                            .iter()
+                            .position(|r| !*r)
+                            .map(|i| members_slice[i].clone());
                         for fact in batch.deferred_facts {
                             assert_typed_fact(fact, inner);
                         }
-                        return Ok(if batch.results.iter().all(|r| *r) {
-                            QueryResult::True
+                        if let Some(counter) = fail_member {
+                            let idx = if S::RECORDING {
+                                let body_idx = with_sub(subs, v, counter.clone(), |s| {
+                                    check_formula_holds_core::<S>(
+                                        buffer, *body, s, inner, tense, sink,
+                                    )
+                                })?
+                                .1;
+                                sink.push(ProofStep {
+                                    rule: ProofRule::ForallCounterexample(
+                                        ground_term_to_logical_term(&counter),
+                                    ),
+                                    holds: false,
+                                    children: vec![body_idx],
+                                })
+                            } else {
+                                0
+                            };
+                            return Ok((QueryResult::False, idx));
+                        }
+                        let idx = if S::RECORDING {
+                            let (child_indices, entity_terms) = forall_record_all_members::<S>(
+                                buffer, *body, v, &members, subs, inner, tense, sink,
+                            )?;
+                            sink.push(ProofStep {
+                                rule: ProofRule::ForallVerified(entity_terms),
+                                holds: true,
+                                children: child_indices,
+                            })
                         } else {
-                            QueryResult::False
-                        });
+                            0
+                        };
+                        return Ok((QueryResult::True, idx));
                     }
                 }
             }
-            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
+            // Slow path: untraced verdict semantics (short-circuit on a
+            // definitively-False member; accumulate non-definitive ones), then
+            // record the step matching the four-valued verdict.
             let mut best_result = None;
+            let mut false_member: Option<GroundTerm> = None;
+            let mut nondef_member: Option<GroundTerm> = None;
             for member in &members {
                 let result = with_sub(subs, v, member.clone(), |s| {
-                    check_formula_holds(buffer, *body, s, inner, tense)
-                })?;
+                    check_formula_holds_core::<NoOpSink>(
+                        buffer,
+                        *body,
+                        s,
+                        inner,
+                        tense,
+                        &mut NoOpSink,
+                    )
+                })?
+                .0;
                 if result.is_false() {
-                    return Ok(QueryResult::False);
+                    false_member = Some(member.clone());
+                    break;
                 }
                 if !result.is_true() {
+                    if nondef_member.is_none() {
+                        nondef_member = Some(member.clone());
+                    }
                     best_result = prefer_non_definitive(best_result, result);
                 }
             }
-            Ok(best_result.unwrap_or(QueryResult::True))
+            if let Some(counter) = false_member {
+                let idx = if S::RECORDING {
+                    let body_idx = with_sub(subs, v, counter.clone(), |s| {
+                        check_formula_holds_core::<S>(buffer, *body, s, inner, tense, sink)
+                    })?
+                    .1;
+                    sink.push(ProofStep {
+                        rule: ProofRule::ForallCounterexample(ground_term_to_logical_term(
+                            &counter,
+                        )),
+                        holds: false,
+                        children: vec![body_idx],
+                    })
+                } else {
+                    0
+                };
+                return Ok((QueryResult::False, idx));
+            }
+            if let Some(nd) = nondef_member {
+                let verdict =
+                    best_result.unwrap_or(QueryResult::Unknown(UnknownReason::IncompleteKnowledge));
+                let idx = if S::RECORDING {
+                    let body_idx = with_sub(subs, v, nd.clone(), |s| {
+                        check_formula_holds_core::<S>(buffer, *body, s, inner, tense, sink)
+                    })?
+                    .1;
+                    sink.push(ProofStep {
+                        rule: ProofRule::PredicateCheck((
+                            "indeterminate".to_string(),
+                            "forall".to_string(),
+                        )),
+                        holds: false,
+                        children: vec![body_idx],
+                    })
+                } else {
+                    0
+                };
+                return Ok((verdict, idx));
+            }
+            // All members hold.
+            let idx = if S::RECORDING {
+                let (child_indices, entity_terms) = forall_record_all_members::<S>(
+                    buffer, *body, v, &members, subs, inner, tense, sink,
+                )?;
+                sink.push(ProofStep {
+                    rule: ProofRule::ForallVerified(entity_terms),
+                    holds: true,
+                    children: child_indices,
+                })
+            } else {
+                0
+            };
+            Ok((QueryResult::True, idx))
         }
         LogicNode::CountNode((v, count, body)) => {
             // Batch compute fast path (slice, no .to_vec()).
@@ -389,11 +772,21 @@ fn check_formula_holds_inner(
                             assert_typed_fact(fact, inner);
                         }
                         let satisfying = batch.results.iter().filter(|r| **r).count() as u32;
-                        return Ok(if satisfying == *count {
+                        let verdict = if satisfying == *count {
                             QueryResult::True
                         } else {
                             QueryResult::False
-                        });
+                        };
+                        let idx = if S::RECORDING {
+                            sink.push(ProofStep {
+                                rule: ProofRule::CountResult((*count, satisfying)),
+                                holds: verdict.is_true(),
+                                children: vec![],
+                            })
+                        } else {
+                            0
+                        };
+                        return Ok((verdict, idx));
                     }
                 }
             }
@@ -403,8 +796,16 @@ fn check_formula_holds_inner(
             let mut best_result = None;
             for member in &members {
                 let result = with_sub(subs, v, member.clone(), |s| {
-                    check_formula_holds(buffer, *body, s, inner, tense)
-                })?;
+                    check_formula_holds_core::<NoOpSink>(
+                        buffer,
+                        *body,
+                        s,
+                        inner,
+                        tense,
+                        &mut NoOpSink,
+                    )
+                })?
+                .0;
                 match result {
                     QueryResult::True => satisfying += 1,
                     QueryResult::False => {}
@@ -414,32 +815,141 @@ fn check_formula_holds_inner(
                     }
                 }
             }
-            if unresolved == 0 {
-                Ok(if satisfying == *count {
+            let verdict = if unresolved == 0 {
+                if satisfying == *count {
                     QueryResult::True
                 } else {
                     QueryResult::False
-                })
+                }
             } else if satisfying > *count || satisfying + unresolved < *count {
-                Ok(QueryResult::False)
+                QueryResult::False
             } else {
-                Ok(best_result.unwrap_or(QueryResult::Unknown(UnknownReason::IncompleteKnowledge)))
-            }
+                best_result.unwrap_or(QueryResult::Unknown(UnknownReason::IncompleteKnowledge))
+            };
+            let idx = if S::RECORDING {
+                sink.push(ProofStep {
+                    rule: ProofRule::CountResult((*count, satisfying)),
+                    holds: verdict.is_true(),
+                    children: vec![],
+                })
+            } else {
+                0
+            };
+            Ok((verdict, idx))
         }
         LogicNode::Predicate((rel, args)) => {
             if let Some(result) = try_numeric_comparison(rel, args, subs) {
-                return Ok(if result {
+                let verdict = if result {
                     QueryResult::True
                 } else {
                     QueryResult::False
-                });
+                };
+                let idx = if S::RECORDING {
+                    let detail = format!(
+                        "{}({}) = {}",
+                        rel,
+                        args.iter()
+                            .map(|a| match a {
+                                LogicalTerm::Number(n) => format!("{}", *n as i64),
+                                LogicalTerm::Variable(var) => subs
+                                    .get(var.as_str())
+                                    .map(|gt| gt.to_display_string())
+                                    .unwrap_or_else(|| var.clone()),
+                                _ => "?".to_string(),
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        result
+                    );
+                    sink.push(ProofStep {
+                        rule: ProofRule::PredicateCheck(("numeric".to_string(), detail)),
+                        holds: result,
+                        children: vec![],
+                    })
+                } else {
+                    0
+                };
+                return Ok((verdict, idx));
             }
-            // Build typed fact and query typed store.
+            // Build typed fact and query typed store for the authoritative verdict.
             if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
                 let mut visited = HashSet::new();
-                Ok(check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited))
+                let verdict = check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited);
+                let idx = if S::RECORDING {
+                    if verdict.is_true() {
+                        // Record the derivation tree (asserted / derived / equality).
+                        sink.trace_child(&fact, &*inner, 0, &mut visited)
+                    } else if !matches!(verdict, QueryResult::False) {
+                        // Non-definitive (Unknown/ResourceExceeded): neither proven
+                        // nor refuted — emit a non-committal step, never a decided
+                        // "not found".
+                        let reason = match &verdict {
+                            QueryResult::Unknown(r) => format!("unknown:{r:?}"),
+                            QueryResult::ResourceExceeded(k) => format!("resource-exceeded:{k:?}"),
+                            _ => "indeterminate".to_string(),
+                        };
+                        sink.push(ProofStep {
+                            rule: ProofRule::PredicateCheck(("indeterminate".to_string(), reason)),
+                            holds: false,
+                            children: vec![],
+                        })
+                    } else {
+                        // Definitively False — record which rules were tried and
+                        // which condition failed.
+                        let mut failed_children = Vec::new();
+                        let rules_snapshot =
+                            collect_matching_rules_typed(&fact, &inner.universal_rules);
+                        for rule in &rules_snapshot {
+                            for concl in &rule.typed_conclusions {
+                                if let Some(bindings) = unify_facts(concl, &fact) {
+                                    for ct in &rule.typed_conditions {
+                                        let cond_fact = substitute_fact(ct, &bindings);
+                                        let cond_result = check_predicate_in_kb_typed(
+                                            &cond_fact,
+                                            &*inner,
+                                            1,
+                                            &mut HashSet::new(),
+                                        );
+                                        if !cond_result.is_true() {
+                                            let child_idx = sink.push(ProofStep {
+                                                rule: ProofRule::RuleAttemptFailed((
+                                                    rule.label.clone(),
+                                                    cond_fact.to_display_string(),
+                                                )),
+                                                holds: false,
+                                                children: vec![],
+                                            });
+                                            failed_children.push(child_idx);
+                                            break; // First failed condition is enough.
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        sink.push(ProofStep {
+                            rule: ProofRule::PredicateNotFound(fact.to_display_string()),
+                            holds: false,
+                            children: failed_children,
+                        })
+                    }
+                } else {
+                    0
+                };
+                Ok((verdict, idx))
             } else {
-                Ok(QueryResult::False) // build_stored_fact_from_node failed — should not happen for Predicate
+                let idx = if S::RECORDING {
+                    sink.push(ProofStep {
+                        rule: ProofRule::PredicateCheck((
+                            "build_failed".to_string(),
+                            String::new(),
+                        )),
+                        holds: false,
+                        children: vec![],
+                    })
+                } else {
+                    0
+                };
+                Ok((QueryResult::False, idx))
             }
         }
         LogicNode::ComputeNode((rel, args)) => {
@@ -453,11 +963,21 @@ fn check_formula_holds_inner(
                         assert_typed_fact(fact, inner);
                     }
                 }
-                return Ok(if result {
+                let verdict = if result {
                     QueryResult::True
                 } else {
                     QueryResult::False
-                });
+                };
+                let idx = if S::RECORDING {
+                    sink.push(ProofStep {
+                        rule: ProofRule::ComputeCheck(("arithmetic".to_string(), rel.clone())),
+                        holds: result,
+                        children: vec![],
+                    })
+                } else {
+                    0
+                };
+                return Ok((verdict, idx));
             }
             let resolved = resolve_args_for_dispatch(args, subs);
             if let Ok(result) = dispatch_to_backend(rel, &resolved) {
@@ -466,20 +986,80 @@ fn check_formula_holds_inner(
                         assert_typed_fact(fact, inner);
                     }
                 }
-                return Ok(if result {
+                let verdict = if result {
                     QueryResult::True
                 } else {
                     QueryResult::False
-                });
+                };
+                let idx = if S::RECORDING {
+                    sink.push(ProofStep {
+                        rule: ProofRule::ComputeCheck(("backend".to_string(), rel.clone())),
+                        holds: result,
+                        children: vec![],
+                    })
+                } else {
+                    0
+                };
+                return Ok((verdict, idx));
             }
-            if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
-                let mut visited = HashSet::new();
-                Ok(check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited))
+            // Fallback: check typed store for the compute predicate.
+            let verdict =
+                if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
+                    let mut visited = HashSet::new();
+                    check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited)
+                } else {
+                    QueryResult::False
+                };
+            let idx = if S::RECORDING {
+                let method = match &verdict {
+                    QueryResult::Unknown(UnknownReason::CycleCut) => "cycle_cut",
+                    QueryResult::Unknown(UnknownReason::IncompleteKnowledge) => {
+                        "incomplete_knowledge"
+                    }
+                    QueryResult::Unknown(UnknownReason::NafDependent) => "naf_dependent",
+                    QueryResult::ResourceExceeded(ResourceKind::Depth) => "depth_limit",
+                    QueryResult::ResourceExceeded(ResourceKind::Fuel) => "fuel_limit",
+                    QueryResult::ResourceExceeded(ResourceKind::Memory) => "memory_limit",
+                    QueryResult::False | QueryResult::True => "kb",
+                };
+                sink.push(ProofStep {
+                    rule: ProofRule::ComputeCheck((method.to_string(), rel.clone())),
+                    holds: verdict.is_true(),
+                    children: vec![],
+                })
             } else {
-                Ok(QueryResult::False)
-            }
+                0
+            };
+            Ok((verdict, idx))
         }
     }
+}
+
+/// Record the proof subtree for EVERY member of a fully-verified universal
+/// (`ForallVerified`), returning the per-member child step indices and their
+/// rendered entity terms. Only invoked on the recording path.
+#[allow(clippy::too_many_arguments)]
+fn forall_record_all_members<S: TraceSink>(
+    buffer: &LogicBuffer,
+    body: u32,
+    v: &str,
+    members: &[GroundTerm],
+    subs: &mut HashMap<String, GroundTerm>,
+    inner: &mut KnowledgeBaseInner,
+    tense: Option<&str>,
+    sink: &mut S,
+) -> Result<(Vec<u32>, Vec<LogicalTerm>), String> {
+    let mut child_indices = Vec::new();
+    let mut entity_terms = Vec::new();
+    for member in members {
+        let body_idx = with_sub(subs, v, member.clone(), |s| {
+            check_formula_holds_core::<S>(buffer, body, s, inner, tense, sink)
+        })?
+        .1;
+        child_indices.push(body_idx);
+        entity_terms.push(ground_term_to_logical_term(member));
+    }
+    Ok((child_indices, entity_terms))
 }
 
 pub(super) fn find_witnesses(
@@ -1709,645 +2289,3 @@ pub(super) fn trace_predicate_provenance_typed(
 }
 
 // ─── End Typed Backward-Chaining ─────────────────────────────────
-
-pub(super) fn check_formula_holds_traced(
-    buffer: &LogicBuffer,
-    node_id: u32,
-    subs: &mut HashMap<String, GroundTerm>,
-    inner: &mut KnowledgeBaseInner,
-    steps: &mut Vec<ProofStep>,
-    tense: Option<&str>,
-    memo: &mut HashMap<String, u32>,
-) -> Result<(bool, u32), String> {
-    check_cancelled(inner)?;
-    match get_node(buffer, node_id)? {
-        LogicNode::AndNode((l, r)) => {
-            let (l_result, l_idx) =
-                check_formula_holds_traced(buffer, *l, subs, inner, steps, tense, memo)?;
-            if !l_result {
-                let idx = steps.len() as u32;
-                steps.push(ProofStep {
-                    rule: ProofRule::Conjunction,
-                    holds: false,
-                    children: vec![l_idx],
-                });
-                return Ok((false, idx));
-            }
-            let (r_result, r_idx) =
-                check_formula_holds_traced(buffer, *r, subs, inner, steps, tense, memo)?;
-            let idx = steps.len() as u32;
-            steps.push(ProofStep {
-                rule: ProofRule::Conjunction,
-                holds: r_result,
-                children: vec![l_idx, r_idx],
-            });
-            Ok((r_result, idx))
-        }
-        LogicNode::OrNode((l, r)) => {
-            let (l_result, l_idx) =
-                check_formula_holds_traced(buffer, *l, subs, inner, steps, tense, memo)?;
-            if l_result {
-                let idx = steps.len() as u32;
-                steps.push(ProofStep {
-                    rule: ProofRule::DisjunctionIntro("left".to_string()),
-                    holds: true,
-                    children: vec![l_idx],
-                });
-                return Ok((true, idx));
-            }
-            let (r_result, r_idx) =
-                check_formula_holds_traced(buffer, *r, subs, inner, steps, tense, memo)?;
-            if r_result {
-                let idx = steps.len() as u32;
-                steps.push(ProofStep {
-                    rule: ProofRule::DisjunctionIntro("right".to_string()),
-                    holds: true,
-                    children: vec![r_idx],
-                });
-                return Ok((true, idx));
-            }
-            let idx = steps.len() as u32;
-            steps.push(ProofStep {
-                rule: ProofRule::DisjunctionIntro("neither".to_string()),
-                holds: false,
-                children: vec![l_idx, r_idx],
-            });
-            Ok((false, idx))
-        }
-        LogicNode::NotNode(inner_node) => {
-            let (_inner_result, inner_idx) =
-                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, tense, memo)?;
-            // NAF flips to True only when the inner is DEFINITIVELY False. A merely
-            // Unknown/ResourceExceeded inner stays non-definitive (negate_result
-            // preserves it), so a boolean `!inner` would wrongly display a NAF
-            // dependency. Recheck the inner four-valued (bounded re-walk).
-            let mut recheck_subs = subs.clone();
-            let inner_four =
-                check_formula_holds(buffer, *inner_node, &mut recheck_subs, inner, tense)?;
-            let result = matches!(inner_four, QueryResult::False);
-            let idx = steps.len() as u32;
-            steps.push(ProofStep {
-                rule: ProofRule::Negation,
-                holds: result,
-                children: vec![inner_idx],
-            });
-            Ok((result, idx))
-        }
-        LogicNode::PastNode(inner_node) => {
-            let (result, child_idx) = check_formula_holds_traced(
-                buffer,
-                *inner_node,
-                subs,
-                inner,
-                steps,
-                Some("Past"),
-                memo,
-            )?;
-            let idx = steps.len() as u32;
-            steps.push(ProofStep {
-                rule: ProofRule::ModalPassthrough("past".to_string()),
-                holds: result,
-                children: vec![child_idx],
-            });
-            Ok((result, idx))
-        }
-        LogicNode::PresentNode(inner_node) => {
-            let (result, child_idx) = check_formula_holds_traced(
-                buffer,
-                *inner_node,
-                subs,
-                inner,
-                steps,
-                Some("Present"),
-                memo,
-            )?;
-            let idx = steps.len() as u32;
-            steps.push(ProofStep {
-                rule: ProofRule::ModalPassthrough("present".to_string()),
-                holds: result,
-                children: vec![child_idx],
-            });
-            Ok((result, idx))
-        }
-        LogicNode::FutureNode(inner_node) => {
-            let (result, child_idx) = check_formula_holds_traced(
-                buffer,
-                *inner_node,
-                subs,
-                inner,
-                steps,
-                Some("Future"),
-                memo,
-            )?;
-            let idx = steps.len() as u32;
-            steps.push(ProofStep {
-                rule: ProofRule::ModalPassthrough("future".to_string()),
-                holds: result,
-                children: vec![child_idx],
-            });
-            Ok((result, idx))
-        }
-        LogicNode::ObligatoryNode(inner_node) => {
-            let (result, child_idx) =
-                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, tense, memo)?;
-            let idx = steps.len() as u32;
-            steps.push(ProofStep {
-                rule: ProofRule::ModalPassthrough("obligatory".to_string()),
-                holds: result,
-                children: vec![child_idx],
-            });
-            Ok((result, idx))
-        }
-        LogicNode::PermittedNode(inner_node) => {
-            let (result, child_idx) =
-                check_formula_holds_traced(buffer, *inner_node, subs, inner, steps, tense, memo)?;
-            let idx = steps.len() as u32;
-            steps.push(ProofStep {
-                rule: ProofRule::ModalPassthrough("permitted".to_string()),
-                holds: result,
-                children: vec![child_idx],
-            });
-            Ok((result, idx))
-        }
-        LogicNode::ExistsNode((v, body)) => {
-            // Batch compute fast path (slice, no .to_vec()).
-            if let Ok(body_node) = get_node(buffer, *body) {
-                if let LogicNode::ComputeNode((rel, args)) = body_node {
-                    let members = inner.all_typed_domain_members();
-                    if let Some(batch) =
-                        batch_evaluate_compute_for_members(rel, args, v, members, subs)
-                    {
-                        // Clone the winning member before releasing the slice borrow.
-                        let winner = batch
-                            .results
-                            .iter()
-                            .position(|r| *r)
-                            .map(|i| members[i].clone());
-                        // Ingest deferred facts.
-                        for fact in batch.deferred_facts {
-                            assert_typed_fact(fact, inner);
-                        }
-                        if let Some(winning_member) = winner {
-                            let mut new_subs = subs.clone();
-                            new_subs.insert(v.clone(), winning_member.clone());
-                            let (_, body_idx) = check_formula_holds_traced(
-                                buffer,
-                                *body,
-                                &mut new_subs,
-                                inner,
-                                steps,
-                                tense,
-                                memo,
-                            )?;
-                            let idx = steps.len() as u32;
-                            steps.push(ProofStep {
-                                rule: ProofRule::ExistsWitness((
-                                    v.clone(),
-                                    witness_term_to_logical_term(&winning_member),
-                                )),
-                                holds: true,
-                                children: vec![body_idx],
-                            });
-                            return Ok((true, idx));
-                        }
-                    }
-                }
-            }
-
-            // Decomposed numeric group — must mirror the untraced arm exactly
-            // (run_entailment_check_with_proof runs both on the same roots, so
-            // a one-sided hook would make verdict and trace disagree).
-            if let Some(verdict) = try_evaluate_numeric_group(buffer, v, *body, subs) {
-                let idx = steps.len() as u32;
-                steps.push(ProofStep {
-                    rule: ProofRule::ComputeCheck((verdict.method.to_string(), verdict.relation)),
-                    holds: verdict.holds,
-                    children: vec![],
-                });
-                return Ok((verdict.holds, idx));
-            }
-            // Candidate narrowing (∃-heavy query blowup fix) — same enumeration
-            // as the untraced Exists arm; see collect_entailment_candidates.
-            let candidates: Vec<GroundTerm> =
-                match collect_entailment_candidates(buffer, *body, v, subs, inner, tense) {
-                    Some(narrowed) => narrowed,
-                    None => {
-                        let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
-                        let mut all = members.clone();
-                        for entry in &inner.skolem_fn_registry {
-                            for combo in GroundTermCartesianProduct::new(&members, entry.dep_count)
-                            {
-                                all.push(build_skolem_fn_term(&entry.base_name, &combo));
-                            }
-                        }
-                        all
-                    }
-                };
-            let mut saw_non_definitive = false;
-            for candidate in &candidates {
-                let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), candidate.clone());
-                let cand = check_formula_holds(buffer, *body, &mut new_subs, inner, tense)?;
-                if cand.is_true() {
-                    let (_, body_idx) = check_formula_holds_traced(
-                        buffer,
-                        *body,
-                        &mut new_subs,
-                        inner,
-                        steps,
-                        tense,
-                        memo,
-                    )?;
-                    let idx = steps.len() as u32;
-                    steps.push(ProofStep {
-                        rule: ProofRule::ExistsWitness((
-                            v.clone(),
-                            witness_term_to_logical_term(candidate),
-                        )),
-                        holds: true,
-                        children: vec![body_idx],
-                    });
-                    return Ok((true, idx));
-                } else if !matches!(cand, QueryResult::False) {
-                    saw_non_definitive = true;
-                }
-            }
-            let idx = steps.len() as u32;
-            if saw_non_definitive {
-                // At least one candidate was Unknown/ResourceExceeded — the
-                // existential is not definitively false; do not display a decided
-                // ExistsFailed.
-                steps.push(ProofStep {
-                    rule: ProofRule::PredicateCheck((
-                        "indeterminate".to_string(),
-                        "exists".to_string(),
-                    )),
-                    holds: false,
-                    children: vec![],
-                });
-            } else {
-                steps.push(ProofStep {
-                    rule: ProofRule::ExistsFailed,
-                    holds: false,
-                    children: vec![],
-                });
-            }
-            Ok((false, idx))
-        }
-        LogicNode::ForAllNode((v, body)) => {
-            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
-            if members.is_empty() {
-                let idx = steps.len() as u32;
-                steps.push(ProofStep {
-                    rule: ProofRule::ForallVacuous,
-                    holds: true,
-                    children: vec![],
-                });
-                return Ok((true, idx));
-            }
-            // Batch compute fast path.
-            if let Ok(body_node) = get_node(buffer, *body) {
-                if let LogicNode::ComputeNode((rel, args)) = body_node {
-                    let members_slice = inner.all_typed_domain_members();
-                    if let Some(batch) =
-                        batch_evaluate_compute_for_members(rel, args, v, members_slice, subs)
-                    {
-                        // Clone the counterexample before releasing slice.
-                        let fail_member = batch
-                            .results
-                            .iter()
-                            .position(|r| !*r)
-                            .map(|i| members_slice[i].clone());
-                        for fact in batch.deferred_facts {
-                            assert_typed_fact(fact, inner);
-                        }
-                        if let Some(counter) = fail_member {
-                            let mut new_subs = subs.clone();
-                            new_subs.insert(v.clone(), counter.clone());
-                            let (_, body_idx) = check_formula_holds_traced(
-                                buffer,
-                                *body,
-                                &mut new_subs,
-                                inner,
-                                steps,
-                                tense,
-                                memo,
-                            )?;
-                            let idx = steps.len() as u32;
-                            steps.push(ProofStep {
-                                rule: ProofRule::ForallCounterexample(ground_term_to_logical_term(
-                                    &counter,
-                                )),
-                                holds: false,
-                                children: vec![body_idx],
-                            });
-                            return Ok((false, idx));
-                        }
-                        // All passed — trace each member.
-                        let members_owned: Vec<GroundTerm> =
-                            inner.all_typed_domain_members().to_vec();
-                        let mut child_indices = Vec::new();
-                        let mut entity_terms = Vec::new();
-                        for member in &members_owned {
-                            let mut new_subs = subs.clone();
-                            new_subs.insert(v.clone(), member.clone());
-                            let (_, body_idx) = check_formula_holds_traced(
-                                buffer,
-                                *body,
-                                &mut new_subs,
-                                inner,
-                                steps,
-                                tense,
-                                memo,
-                            )?;
-                            child_indices.push(body_idx);
-                            entity_terms.push(ground_term_to_logical_term(member));
-                        }
-                        let idx = steps.len() as u32;
-                        steps.push(ProofStep {
-                            rule: ProofRule::ForallVerified(entity_terms),
-                            holds: true,
-                            children: child_indices,
-                        });
-                        return Ok((true, idx));
-                    }
-                }
-            }
-            let mut child_indices = Vec::new();
-            let mut entity_terms = Vec::new();
-            for member in &members {
-                let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), member.clone());
-                let (holds, body_idx) = check_formula_holds_traced(
-                    buffer,
-                    *body,
-                    &mut new_subs,
-                    inner,
-                    steps,
-                    tense,
-                    memo,
-                )?;
-                if !holds {
-                    // Distinguish a genuine counterexample (member definitively
-                    // False) from a merely non-definitive member (Unknown/
-                    // ResourceExceeded) — the latter must not be displayed as a
-                    // decided counterexample. Recheck four-valued (bounded — only
-                    // the one failing member).
-                    let mut recheck_subs = subs.clone();
-                    recheck_subs.insert(v.clone(), member.clone());
-                    let member_four =
-                        check_formula_holds(buffer, *body, &mut recheck_subs, inner, tense)?;
-                    let idx = steps.len() as u32;
-                    if matches!(member_four, QueryResult::False) {
-                        steps.push(ProofStep {
-                            rule: ProofRule::ForallCounterexample(ground_term_to_logical_term(
-                                member,
-                            )),
-                            holds: false,
-                            children: vec![body_idx],
-                        });
-                    } else {
-                        steps.push(ProofStep {
-                            rule: ProofRule::PredicateCheck((
-                                "indeterminate".to_string(),
-                                "forall".to_string(),
-                            )),
-                            holds: false,
-                            children: vec![body_idx],
-                        });
-                    }
-                    return Ok((false, idx));
-                }
-                child_indices.push(body_idx);
-                entity_terms.push(ground_term_to_logical_term(member));
-            }
-            let idx = steps.len() as u32;
-            steps.push(ProofStep {
-                rule: ProofRule::ForallVerified(entity_terms),
-                holds: true,
-                children: child_indices,
-            });
-            Ok((true, idx))
-        }
-        LogicNode::CountNode((v, count, body)) => {
-            // Batch compute fast path.
-            if let Ok(body_node) = get_node(buffer, *body) {
-                if let LogicNode::ComputeNode((rel, args)) = body_node {
-                    let members = inner.all_typed_domain_members();
-                    if let Some(batch) =
-                        batch_evaluate_compute_for_members(rel, args, v, members, subs)
-                    {
-                        for fact in batch.deferred_facts {
-                            assert_typed_fact(fact, inner);
-                        }
-                        let satisfying = batch.results.iter().filter(|r| **r).count() as u32;
-                        let result = satisfying == *count;
-                        let idx = steps.len() as u32;
-                        steps.push(ProofStep {
-                            rule: ProofRule::CountResult((*count, satisfying)),
-                            holds: result,
-                            children: vec![],
-                        });
-                        return Ok((result, idx));
-                    }
-                }
-            }
-            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
-            let mut satisfying = 0u32;
-            for member in &members {
-                let mut new_subs = subs.clone();
-                new_subs.insert(v.clone(), member.clone());
-                if check_formula_holds(buffer, *body, &mut new_subs, inner, tense)?.is_true() {
-                    satisfying += 1;
-                }
-            }
-            let result = satisfying == *count;
-            let idx = steps.len() as u32;
-            steps.push(ProofStep {
-                rule: ProofRule::CountResult((*count, satisfying)),
-                holds: result,
-                children: vec![],
-            });
-            Ok((result, idx))
-        }
-        LogicNode::Predicate((rel, args)) => {
-            if let Some(result) = try_numeric_comparison(rel, args, subs) {
-                let detail = format!(
-                    "{}({}) = {}",
-                    rel,
-                    args.iter()
-                        .map(|a| match a {
-                            LogicalTerm::Number(n) => format!("{}", *n as i64),
-                            LogicalTerm::Variable(v) => subs
-                                .get(v.as_str())
-                                .map(|gt| gt.to_display_string())
-                                .unwrap_or_else(|| v.clone()),
-                            _ => "?".to_string(),
-                        })
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    result
-                );
-                let idx = steps.len() as u32;
-                steps.push(ProofStep {
-                    rule: ProofRule::PredicateCheck(("numeric".to_string(), detail)),
-                    holds: result,
-                    children: vec![],
-                });
-                return Ok((result, idx));
-            }
-            if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
-                let mut visited = HashSet::new();
-                let result = check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited);
-                if result.is_true() {
-                    let idx = trace_predicate_provenance_typed(
-                        &fact,
-                        inner,
-                        steps,
-                        0,
-                        memo,
-                        &mut visited,
-                    );
-                    Ok((true, idx))
-                } else if !matches!(result, QueryResult::False) {
-                    // Non-definitive (Unknown(CycleCut)/ResourceExceeded): the
-                    // predicate is neither proven nor refuted — do NOT display a
-                    // decided "not found". Emit a non-committal step instead.
-                    let reason = match &result {
-                        QueryResult::Unknown(r) => format!("unknown:{r:?}"),
-                        QueryResult::ResourceExceeded(k) => format!("resource-exceeded:{k:?}"),
-                        _ => "indeterminate".to_string(),
-                    };
-                    let idx = steps.len() as u32;
-                    steps.push(ProofStep {
-                        rule: ProofRule::PredicateCheck(("indeterminate".to_string(), reason)),
-                        holds: false,
-                        children: vec![],
-                    });
-                    Ok((false, idx))
-                } else {
-                    // Record failure details: which rules were tried, which conditions failed.
-                    let mut failed_children = Vec::new();
-
-                    // Check if any rules could have matched this predicate.
-                    let rules_snapshot =
-                        collect_matching_rules_typed(&fact, &inner.universal_rules);
-                    for rule in &rules_snapshot {
-                        for concl in &rule.typed_conclusions {
-                            if let Some(bindings) = unify_facts(concl, &fact) {
-                                // Rule matched structurally. Check which condition failed.
-                                for ct in &rule.typed_conditions {
-                                    let cond_fact = substitute_fact(ct, &bindings);
-                                    let cond_result = check_predicate_in_kb_typed(
-                                        &cond_fact,
-                                        inner,
-                                        1,
-                                        &mut HashSet::new(),
-                                    );
-                                    if !cond_result.is_true() {
-                                        let child_idx = steps.len() as u32;
-                                        steps.push(ProofStep {
-                                            rule: ProofRule::RuleAttemptFailed((
-                                                rule.label.clone(),
-                                                cond_fact.to_display_string(),
-                                            )),
-                                            holds: false,
-                                            children: vec![],
-                                        });
-                                        failed_children.push(child_idx);
-                                        break; // First failed condition is enough.
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    let idx = steps.len() as u32;
-                    if failed_children.is_empty() {
-                        // No rules matched at all — predicate simply not found.
-                        steps.push(ProofStep {
-                            rule: ProofRule::PredicateNotFound(fact.to_display_string()),
-                            holds: false,
-                            children: vec![],
-                        });
-                    } else {
-                        // Rules were tried but conditions failed.
-                        steps.push(ProofStep {
-                            rule: ProofRule::PredicateNotFound(fact.to_display_string()),
-                            holds: false,
-                            children: failed_children,
-                        });
-                    }
-                    Ok((false, idx))
-                }
-            } else {
-                let idx = steps.len() as u32;
-                steps.push(ProofStep {
-                    rule: ProofRule::PredicateCheck(("build_failed".to_string(), String::new())),
-                    holds: false,
-                    children: vec![],
-                });
-                Ok((false, idx))
-            }
-        }
-        LogicNode::ComputeNode((rel, args)) => {
-            // Built-in arithmetic FIRST, then external dispatch — the
-            // documented Layer-2 ordering (matches gasnu's evaluate() and the
-            // batch path).
-            if let Some(result) = try_arithmetic_evaluation(rel, args, subs) {
-                if result {
-                    if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
-                        assert_typed_fact(fact, inner);
-                    }
-                }
-                let idx = steps.len() as u32;
-                steps.push(ProofStep {
-                    rule: ProofRule::ComputeCheck(("arithmetic".to_string(), rel.clone())),
-                    holds: result,
-                    children: vec![],
-                });
-                return Ok((result, idx));
-            }
-            let resolved = resolve_args_for_dispatch(args, subs);
-            if let Ok(result) = dispatch_to_backend(rel, &resolved) {
-                if result {
-                    if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
-                        assert_typed_fact(fact, inner);
-                    }
-                }
-                let idx = steps.len() as u32;
-                steps.push(ProofStep {
-                    rule: ProofRule::ComputeCheck(("backend".to_string(), rel.clone())),
-                    holds: result,
-                    children: vec![],
-                });
-                return Ok((result, idx));
-            }
-            // Fallback: check typed store for compute predicate.
-            let result =
-                if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
-                    let mut visited = HashSet::new();
-                    check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited)
-                } else {
-                    QueryResult::False
-                };
-            let holds = result.is_true();
-            let method = match result {
-                QueryResult::Unknown(UnknownReason::CycleCut) => "cycle_cut",
-                QueryResult::Unknown(UnknownReason::IncompleteKnowledge) => "incomplete_knowledge",
-                QueryResult::Unknown(UnknownReason::NafDependent) => "naf_dependent",
-                QueryResult::ResourceExceeded(ResourceKind::Depth) => "depth_limit",
-                QueryResult::ResourceExceeded(ResourceKind::Fuel) => "fuel_limit",
-                QueryResult::ResourceExceeded(ResourceKind::Memory) => "memory_limit",
-                QueryResult::False | QueryResult::True => "kb",
-            };
-            let idx = steps.len() as u32;
-            steps.push(ProofStep {
-                rule: ProofRule::ComputeCheck((method.to_string(), rel.clone())),
-                holds,
-                children: vec![],
-            });
-            Ok((holds, idx))
-        }
-    }
-}

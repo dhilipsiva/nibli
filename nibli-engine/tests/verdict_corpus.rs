@@ -168,7 +168,10 @@ fn verdict_corpus_compute_requery_stable() {
             .query_text_with_proof("li xa cu pilji li re li ci")
             .unwrap();
         assert!(bare.is_true(), "6 = 2*3 should hold (bare), got {bare:?}");
-        assert!(proof.is_true(), "6 = 2*3 should hold (proof), got {proof:?}");
+        assert!(
+            proof.is_true(),
+            "6 = 2*3 should hold (proof), got {proof:?}"
+        );
         assert_eq!(bare, proof, "compute query bare/proof divergence");
     }
 }

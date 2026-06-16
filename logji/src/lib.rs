@@ -7,7 +7,7 @@
 //!   Universal quantifiers compile to `UniversalRuleRecord` templates for backward-chaining.
 //! - **Entailment queries** — Recursive formula checking via [`check_formula_holds`] with
 //!   demand-driven backward-chaining through universal rules.
-//! - **Proof traces** — [`check_formula_holds_traced`] builds a proof tree recording which
+//! - **Proof traces** — [`check_formula_holds_recording`] builds a proof tree recording which
 //!   rule/axiom was applied at each step (19 proof rule variants). Multi-hop derivation
 //!   provenance traces derived facts through universal rule chains via backward-chaining.
 //! - **Witness extraction** — [`find_witnesses`] returns all satisfying entity bindings for
@@ -447,24 +447,14 @@ impl KnowledgeBase {
         let mut overall = QueryResult::True;
         for &root_id in &logic.roots {
             let mut subs = HashMap::new();
-            let result = check_formula_holds(logic, root_id, &mut subs, &mut inner, None)?;
-            let root_is_true = result.is_true();
-            overall = Self::combine_root_results(overall, result);
-            let mut trace_subs = HashMap::new();
-            let (_holds, step_idx) = check_formula_holds_traced(
-                logic,
-                root_id,
-                &mut trace_subs,
-                &mut inner,
-                &mut steps,
-                None,
-                &mut memo,
+            // ONE walk per root: the recording evaluator returns the authoritative
+            // four-valued verdict AND builds the proof trace, so the trace's
+            // per-node `holds` is natively `verdict.is_true()` — no separate
+            // untraced pass and no root `holds` reconciliation needed.
+            let (result, step_idx) = check_formula_holds_recording(
+                logic, root_id, &mut subs, &mut inner, &mut steps, None, &mut memo,
             )?;
-            // Reconcile the per-root proof step's displayed verdict with the
-            // authoritative four-valued result, so the trace can never contradict
-            // the reported answer (the traced builder collapses four-valued to
-            // bool and could otherwise show a decided result under Unknown/RE).
-            steps[step_idx as usize].holds = root_is_true;
+            overall = Self::combine_root_results(overall, result);
             root_children.push(step_idx);
         }
         let root = if root_children.len() == 1 {

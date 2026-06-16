@@ -683,6 +683,62 @@ fn backchain_cycle_cut_trace_parity() {
 }
 
 #[test]
+fn unknown_left_and_evaluates_right_conjunct() {
+    // 2c: the merged And short-circuits ONLY on a definitively-False left. With a
+    // non-definitive (Unknown(CycleCut)) left conjunct, the right is still
+    // evaluated and BOTH children are recorded — where the former boolean traced
+    // evaluator short-circuited on any falsy (incl. Unknown) left and recorded
+    // only the left. The verdict (Unknown) is unchanged. This trace change is
+    // confined to non-definitive queries (book proofs are all-True, so it is
+    // invisible to verify-book-capture); pinned here instead.
+    let kb = new_kb();
+    assert_buf(&kb, make_universal("gerku", "danlu"));
+    assert_buf(&kb, make_universal("danlu", "gerku")); // gerku ⟸ danlu ⟸ gerku cycle
+    assert_buf(&kb, make_assertion("rex", "mlatu")); // a definitively-True conjunct
+
+    let mut nodes = Vec::new();
+    let gerku_rex = pred(
+        &mut nodes,
+        "gerku",
+        vec![
+            LogicalTerm::Constant("rex".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let mlatu_rex = pred(
+        &mut nodes,
+        "mlatu",
+        vec![
+            LogicalTerm::Constant("rex".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let root = and(&mut nodes, gerku_rex, mlatu_rex);
+    let buf = LogicBuffer {
+        nodes,
+        roots: vec![root],
+    };
+
+    let (result, trace) = kb.query_entailment_with_proof_inner(buf).unwrap();
+    assert!(
+        matches!(result, QueryResult::Unknown(UnknownReason::CycleCut)),
+        "Unknown(CycleCut) ∧ True should be Unknown(CycleCut), got {result:?}"
+    );
+    assert_trace_consistent(&result, &trace);
+    let root_step = &trace.steps[trace.root as usize];
+    assert!(
+        matches!(root_step.rule, ProofRule::Conjunction),
+        "root should be a Conjunction, got {:?}",
+        root_step.rule
+    );
+    assert_eq!(
+        root_step.children.len(),
+        2,
+        "the right conjunct must be evaluated and recorded even though the left is non-definitive"
+    );
+}
+
+#[test]
 fn trace_does_not_show_counterexample_under_depth_exceeded() {
     // max depth 1, chain gerku→danlu→xanlu, gerku(alis). ∀x. xanlu(x) over the
     // singleton domain {alis} exceeds the depth budget → ResourceExceeded(Depth);
