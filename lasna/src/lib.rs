@@ -768,18 +768,17 @@ impl Guest for LasnaPipeline {
     type Session = Session;
 }
 
-impl GuestSession for Session {
-    fn new() -> Self {
-        // Register compute dispatch so logji can call the host's compute-backend
-        logji::register_compute_dispatch(eval_via_host, batch_eval_via_host);
-        Session {
-            kb: logji::KnowledgeBase::new(),
-            compute_predicates: RefCell::new(default_compute_predicates()),
-            last_relation: RefCell::new(None),
-        }
-    }
-
-    fn assert_text(&self, input: String) -> Result<u64, export_err::NibliError> {
+impl Session {
+    /// Shared body for `assert_text` / `assert_text_with_id`. When `id` is
+    /// `Some`, the fact is asserted with that CALLER-CHOSEN id (persistent
+    /// restart-replay keeps the live KB's fact-id namespace equal to the durable
+    /// store's); when `None`, the KB mints a fresh id. The `last_relation` go'i
+    /// snapshot update and the parse-warnings abort apply on BOTH paths.
+    fn assert_text_inner(
+        &self,
+        input: String,
+        id: Option<u64>,
+    ) -> Result<u64, export_err::NibliError> {
         let (buf, new_last, warnings) = compile_pipeline(
             &input,
             &mut self.last_relation.borrow_mut(),
@@ -796,12 +795,75 @@ impl GuestSession for Session {
                 column: 0,
             }));
         }
-        let fact_id = self
-            .kb
-            .assert_fact(buf, input)
-            .map_err(convert_pipeline_error)?;
+        let fact_id = match id {
+            Some(i) => {
+                self.kb
+                    .assert_fact_with_id(buf, input, i)
+                    .map_err(|e| export_err::NibliError::Semantic(e))?;
+                i
+            }
+            None => self
+                .kb
+                .assert_fact(buf, input)
+                .map_err(convert_pipeline_error)?,
+        };
         *self.last_relation.borrow_mut() = new_last;
         Ok(fact_id)
+    }
+
+    /// Shared body for `assert_fact` / `assert_fact_with_id` (see
+    /// `assert_text_inner` for the `id` semantics).
+    fn assert_fact_inner(
+        &self,
+        relation: String,
+        args: Vec<export_logic::LogicalTerm>,
+        id: Option<u64>,
+    ) -> Result<u64, export_err::NibliError> {
+        *self.last_relation.borrow_mut() = Some(SelbriSnapshot {
+            selbris: vec![gerna_ast::Selbri::Root(relation.clone())],
+            sumtis: vec![],
+            sentences: vec![],
+            root: 0,
+        });
+        let logji_args: Vec<logji_logic::LogicalTerm> =
+            args.iter().map(convert_logical_term_from_export).collect();
+        let label = format!(":assert {}", relation);
+        // Event-decompose to the SAME shape a surface assertion produces, so the
+        // injected fact is matched by surface text queries (not just raw-FOL /
+        // same-shape direct queries). `du` stays flat — see compile_injected_fact.
+        let buf = smuni::compile_injected_fact(&relation, &logji_args);
+        match id {
+            Some(i) => {
+                self.kb
+                    .assert_fact_with_id(buf, label, i)
+                    .map_err(|e| export_err::NibliError::Semantic(e))?;
+                Ok(i)
+            }
+            None => self
+                .kb
+                .assert_fact(buf, label)
+                .map_err(convert_pipeline_error),
+        }
+    }
+}
+
+impl GuestSession for Session {
+    fn new() -> Self {
+        // Register compute dispatch so logji can call the host's compute-backend
+        logji::register_compute_dispatch(eval_via_host, batch_eval_via_host);
+        Session {
+            kb: logji::KnowledgeBase::new(),
+            compute_predicates: RefCell::new(default_compute_predicates()),
+            last_relation: RefCell::new(None),
+        }
+    }
+
+    fn assert_text(&self, input: String) -> Result<u64, export_err::NibliError> {
+        self.assert_text_inner(input, None)
+    }
+
+    fn assert_text_with_id(&self, input: String, id: u64) -> Result<(), export_err::NibliError> {
+        self.assert_text_inner(input, Some(id)).map(|_| ())
     }
 
     fn query_text(
@@ -874,22 +936,16 @@ impl GuestSession for Session {
         relation: String,
         args: Vec<export_logic::LogicalTerm>,
     ) -> Result<u64, export_err::NibliError> {
-        *self.last_relation.borrow_mut() = Some(SelbriSnapshot {
-            selbris: vec![gerna_ast::Selbri::Root(relation.clone())],
-            sumtis: vec![],
-            sentences: vec![],
-            root: 0,
-        });
-        let logji_args: Vec<logji_logic::LogicalTerm> =
-            args.iter().map(convert_logical_term_from_export).collect();
-        let label = format!(":assert {}", relation);
-        // Event-decompose to the SAME shape a surface assertion produces, so the
-        // injected fact is matched by surface text queries (not just raw-FOL /
-        // same-shape direct queries). `du` stays flat — see compile_injected_fact.
-        let buf = smuni::compile_injected_fact(&relation, &logji_args);
-        self.kb
-            .assert_fact(buf, label)
-            .map_err(convert_pipeline_error)
+        self.assert_fact_inner(relation, args, None)
+    }
+
+    fn assert_fact_with_id(
+        &self,
+        relation: String,
+        args: Vec<export_logic::LogicalTerm>,
+        id: u64,
+    ) -> Result<(), export_err::NibliError> {
+        self.assert_fact_inner(relation, args, Some(id)).map(|_| ())
     }
 
     fn retract_fact(&self, id: u64) -> Result<(), export_err::NibliError> {

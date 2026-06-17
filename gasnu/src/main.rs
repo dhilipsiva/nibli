@@ -655,10 +655,17 @@ fn format_nibli_error(e: &NibliError) -> String {
 /// and Skolem numbering). Queries are not journaled — their only KB side
 /// effect (flat-path compute auto-ingestion) is recomputed on demand.
 enum JournalEntry {
-    AssertText(String),
+    /// `id` is the fact id assigned at the original assertion (or the durable
+    /// store id at replay). Replayed via `assert-text-with-id` so a trap-rebuild
+    /// AFTER a restart keeps the live fact-id namespace equal to the store's.
+    AssertText {
+        text: String,
+        id: u64,
+    },
     AssertDirect {
         relation: String,
         args: Vec<EngineLogicalTerm>,
+        id: u64,
     },
     Retract(u64),
     RegisterCompute(String),
@@ -800,14 +807,20 @@ impl Repl {
         refuel(&mut self.store, self.fuel_budget);
         let session = self.pipeline.lojban_nibli_lasna().session();
         match entry {
-            JournalEntry::AssertText(text) => {
+            JournalEntry::AssertText { text, id } => {
                 session
-                    .call_assert_text(&mut self.store, self.session_handle, text)?
+                    .call_assert_text_with_id(&mut self.store, self.session_handle, text, *id)?
                     .map_err(|e| anyhow::anyhow!("{}", format_nibli_error(&e)))?;
             }
-            JournalEntry::AssertDirect { relation, args } => {
+            JournalEntry::AssertDirect { relation, args, id } => {
                 session
-                    .call_assert_fact(&mut self.store, self.session_handle, relation, args)?
+                    .call_assert_fact_with_id(
+                        &mut self.store,
+                        self.session_handle,
+                        relation,
+                        args,
+                        *id,
+                    )?
                     .map_err(|e| anyhow::anyhow!("{}", format_nibli_error(&e)))?;
             }
             JournalEntry::Retract(id) => {
@@ -851,9 +864,19 @@ impl Repl {
             let session = self.pipeline.lojban_nibli_lasna().session();
             match assertion {
                 StoredAssertion::Text(ref text) => {
-                    match session.call_assert_text(&mut self.store, self.session_handle, text) {
+                    // Replay with the DURABLE store id so the live session's
+                    // fact-id namespace stays equal to the store's (no drift).
+                    match session.call_assert_text_with_id(
+                        &mut self.store,
+                        self.session_handle,
+                        text,
+                        fact.id,
+                    ) {
                         Ok(Ok(_)) => {
-                            self.journal.push(JournalEntry::AssertText(text.clone()));
+                            self.journal.push(JournalEntry::AssertText {
+                                text: text.clone(),
+                                id: fact.id,
+                            });
                             replayed += 1;
                         }
                         Ok(Err(e)) => {
@@ -881,16 +904,18 @@ impl Repl {
                 } => {
                     let wit_args: Vec<EngineLogicalTerm> =
                         args.iter().map(stored_term_to_wit).collect();
-                    match session.call_assert_fact(
+                    match session.call_assert_fact_with_id(
                         &mut self.store,
                         self.session_handle,
                         relation,
                         &wit_args,
+                        fact.id,
                     ) {
                         Ok(Ok(_)) => {
                             self.journal.push(JournalEntry::AssertDirect {
                                 relation: relation.clone(),
                                 args: wit_args.clone(),
+                                id: fact.id,
                             });
                             replayed += 1;
                         }
@@ -1147,6 +1172,7 @@ impl Repl {
                             self.journal.push(JournalEntry::AssertDirect {
                                 relation: relation.clone(),
                                 args: args.clone(),
+                                id: fact_id,
                             });
                             println!(
                                 "[Fact #{}] {}({}) asserted.",
@@ -1229,8 +1255,10 @@ impl Repl {
                 match session.call_assert_text(&mut self.store, self.session_handle, trimmed) {
                     Ok(Ok(fact_id)) => {
                         persist_text(&mut self.nibli_store, fact_id, trimmed);
-                        self.journal
-                            .push(JournalEntry::AssertText(trimmed.to_string()));
+                        self.journal.push(JournalEntry::AssertText {
+                            text: trimmed.to_string(),
+                            id: fact_id,
+                        });
                         println!("[Fact #{}] {}", fact_id, trimmed);
                         asserted += 1;
                     }
@@ -1334,18 +1362,26 @@ impl Repl {
                                         };
                                     self.prepare_session();
                                     let session = self.pipeline.lojban_nibli_lasna().session();
+                                    // Replay merged facts with their DURABLE store
+                                    // ids (the with-id path), so live==store after a
+                                    // merge. CRDT id-collision across nodes is
+                                    // pre-existing/out of scope — this faithfully
+                                    // reflects the store's post-merge id assignment.
                                     match &assertion {
                                         StoredAssertion::Text(text) => {
                                             if matches!(
-                                                session.call_assert_text(
+                                                session.call_assert_text_with_id(
                                                     &mut self.store,
                                                     self.session_handle,
                                                     text,
+                                                    fact.id,
                                                 ),
                                                 Ok(Ok(_))
                                             ) {
-                                                self.journal
-                                                    .push(JournalEntry::AssertText(text.clone()));
+                                                self.journal.push(JournalEntry::AssertText {
+                                                    text: text.clone(),
+                                                    id: fact.id,
+                                                });
                                                 replayed += 1;
                                             }
                                         }
@@ -1353,17 +1389,19 @@ impl Repl {
                                             let wit_args: Vec<EngineLogicalTerm> =
                                                 args.iter().map(stored_term_to_wit).collect();
                                             if matches!(
-                                                session.call_assert_fact(
+                                                session.call_assert_fact_with_id(
                                                     &mut self.store,
                                                     self.session_handle,
                                                     relation,
                                                     &wit_args,
+                                                    fact.id,
                                                 ),
                                                 Ok(Ok(_))
                                             ) {
                                                 self.journal.push(JournalEntry::AssertDirect {
                                                     relation: relation.clone(),
                                                     args: wit_args,
+                                                    id: fact.id,
                                                 });
                                                 replayed += 1;
                                             }
@@ -1448,8 +1486,10 @@ impl Repl {
             match session.call_assert_text(&mut self.store, self.session_handle, input) {
                 Ok(Ok(fact_id)) => {
                     persist_text(&mut self.nibli_store, fact_id, input);
-                    self.journal
-                        .push(JournalEntry::AssertText(input.to_string()));
+                    self.journal.push(JournalEntry::AssertText {
+                        text: input.to_string(),
+                        id: fact_id,
+                    });
                     println!("[Fact #{}] Asserted.", fact_id);
                 }
                 Ok(Err(e)) => println!("{}", format_nibli_error(&e)),

@@ -87,6 +87,31 @@ smoke-gasnu-goi: build-wasm build-gasnu
         if echo "$out" | grep -qF 'cannot enter component instance'; then echo 'FAIL: session bricked after goi'; exit 1; fi; \
         echo 'PASS: repeated ? goi resolves correctly (TRUE) with no trap'
 
+# Persistent restart-replay smoke: prove the live session's fact-ids stay equal
+# to the durable store's across a reopen, INCLUDING a tombstone gap. Run-1
+# asserts 3 facts and retracts the middle one; run-2 reopens the SAME db and must
+# show the surviving STORE ids (with the gap) and retract the high one by its
+# store id. On the pre-fix build, run-2 replays with FRESH ids, so the high store
+# id is a zombie and the final query stays TRUE — this recipe FAILS. Pre-release
+# gate (needs the WASM build; not part of `ci`).
+smoke-gasnu-persist-replay: build-wasm build-gasnu
+    @echo "Smoke-testing gasnu persistent restart-replay (fact-id drift)..."
+    @dir=$(mktemp -d); db="$dir/nibli-smoke.redb"; \
+        out1=$(printf 'la .adam. cu gerku\nla .bel. cu gerku\nla .kar. cu gerku\n:retract 1\n' \
+            | NIBLI_DB_PATH="$db" NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$out1"; \
+        echo "$out1" | grep -qF '[Fact #2] Asserted.' || { echo 'FAIL run1: fact #2 not asserted'; rm -rf "$dir"; exit 1; }; \
+        echo "$out1" | grep -qF '[Retract] Fact #1 retracted.' || { echo 'FAIL run1: retract 1'; rm -rf "$dir"; exit 1; }; \
+        out2=$(printf ':facts\n:retract 2\n? la .kar. cu gerku\n' \
+            | NIBLI_DB_PATH="$db" NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$out2"; \
+        echo "$out2" | grep -qF '#2:' || { echo 'FAIL run2: surviving store id #2 missing after reopen (DRIFT)'; rm -rf "$dir"; exit 1; }; \
+        if echo "$out2" | grep -qF '#1:'; then echo 'FAIL run2: tombstoned/zombie id #1 present (DRIFT)'; rm -rf "$dir"; exit 1; fi; \
+        echo "$out2" | grep -qF '[Retract] Fact #2 retracted.' || { echo 'FAIL run2: surviving store id #2 not retractable (DRIFT)'; rm -rf "$dir"; exit 1; }; \
+        echo "$out2" | grep -qF '[Query] FALSE' || { echo 'FAIL run2: retracted fact still entailed (DRIFT)'; rm -rf "$dir"; exit 1; }; \
+        rm -rf "$dir"; \
+        echo 'PASS: persistent restart-replay keeps live==store fact-ids (gap preserved, high store id retractable)'
+
 # Executes the full pipeline: Builds WASM modules, then boots the native REPL
 run: build-wasm
     @echo "Launching Neuro-Symbolic Engine ({{profile}})..."

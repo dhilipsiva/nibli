@@ -497,6 +497,10 @@ interface lasna {
         constructor();
         /// Assert Lojban text as facts. Returns a fact ID for later retraction.
         assert-text: func(input: string) -> result<fact-id, nibli-error>;
+        /// Assert Lojban text with a CALLER-CHOSEN fact id (for persistent
+        /// restart-replay: keeps the live session's fact-id namespace equal to
+        /// the durable store's, so `:retract`/`:facts` stay correct after reopen).
+        assert-text-with-id: func(input: string, id: fact-id) -> result<_, nibli-error>;
         /// Query whether Lojban text is entailed.
         query-text: func(input: string) -> result<query-result, nibli-error>;
         /// Query Lojban text with proof trace.
@@ -511,6 +515,9 @@ interface lasna {
         register-compute-predicate: func(name: string);
         /// Assert a ground fact directly into the KB (bypasses Lojban parsing).
         assert-fact: func(relation: string, args: list<logical-term>) -> result<fact-id, nibli-error>;
+        /// Assert a ground fact directly with a CALLER-CHOSEN fact id (see
+        /// `assert-text-with-id` — for persistent restart-replay).
+        assert-fact-with-id: func(relation: string, args: list<logical-term>, id: fact-id) -> result<_, nibli-error>;
         /// Retract a previously asserted fact by its ID.
         retract-fact: func(id: fact-id) -> result<_, nibli-error>;
         /// List all active (non-retracted) facts.
