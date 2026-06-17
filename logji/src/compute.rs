@@ -12,6 +12,18 @@ thread_local! {
 }
 
 /// Register external compute dispatch functions. Called once by the host (lasna or gasnu).
+///
+/// TRUST BOUNDARY. Built-in arithmetic (`try_arithmetic_evaluation`, below — pilji/
+/// sumji/dilcu) is evaluated locally and is deterministic and trusted. Everything
+/// else is forwarded to the registered `eval`/`batch_eval`, which the host wires to
+/// an operator-configured backend (gasnu speaks JSON Lines over a **plaintext,
+/// unauthenticated** TCP channel). A `true` reply is **auto-asserted as a ground fact**
+/// mid-query (see `dispatch_to_backend`) that downstream universal rules can chain on,
+/// so a malicious or MITM backend can seed arbitrary predicates into the knowledge
+/// base. The backend is therefore part of the trusted computing base: run it on
+/// localhost or a network segment you control. (The auto-asserted facts are NOT
+/// durable — they carry no FactRecord and are recomputed on demand, never replayed by
+/// rebuild — so a retract/rebuild does not preserve backend-seeded facts.)
 pub fn register_compute_dispatch(eval: EvalFn, batch_eval: BatchEvalFn) {
     EVAL_FN.with(|f| *f.borrow_mut() = Some(eval));
     BATCH_EVAL_FN.with(|f| *f.borrow_mut() = Some(batch_eval));
@@ -267,6 +279,14 @@ pub(super) fn resolve_args_for_dispatch(
         .collect()
 }
 
+/// Forward a single predicate to the operator-configured external backend.
+///
+/// On `Ok(true)` the caller (the ComputeNode arm in `reasoning.rs`) auto-asserts the
+/// predicate as a ground fact via `assert_typed_fact`, which downstream rules may then
+/// chain on. The channel is unauthenticated — see the trust-boundary note on
+/// `register_compute_dispatch`. `assert_typed_fact` invalidates the predicate result
+/// cache on every insert, so an auto-asserted fact never leaves a stale verdict cached
+/// within the same query.
 pub(super) fn dispatch_to_backend(rel: &str, args: &[LogicalTerm]) -> Result<bool, String> {
     EVAL_FN.with(|f| match *f.borrow() {
         Some(eval) => eval(rel, args),

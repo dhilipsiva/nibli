@@ -20,11 +20,12 @@ Extend by adding entries to the HANDLERS dict.
 """
 
 import argparse
+import concurrent.futures
 import json
 import math
+import os
 import socket
 import sys
-import threading
 
 
 # ── Argument extraction helpers ──
@@ -127,6 +128,13 @@ def handle_connection(conn, addr):
                 writer.flush()
                 continue
 
+            # Valid JSON that is not an object (e.g. `123`, `[1,2,3]`, `null`)
+            # would AttributeError on `.get` below and kill the connection.
+            if not isinstance(request, dict):
+                writer.write(json.dumps({"error": "Request must be a JSON object"}) + "\n")
+                writer.flush()
+                continue
+
             relation = request.get("relation", "")
             args = request.get("args", [])
 
@@ -142,7 +150,11 @@ def handle_connection(conn, addr):
                     else:
                         result = handler(args)
                         response = {"result": result}
-                except (ValueError, TypeError, ZeroDivisionError) as e:
+                except Exception as e:
+                    # Catch-all per request: any handler error (a bad value, or
+                    # an OverflowError from a huge-exponent tenfa) becomes an
+                    # error response — one bad request must never kill the
+                    # connection thread (or, with the pool, leak a worker).
                     response = {"error": str(e)}
 
             writer.write(json.dumps(response) + "\n")
@@ -165,18 +177,24 @@ def serve(host, port):
     server.bind((host, port))
     server.listen(5)
 
+    # Bounded worker pool: a per-connection unbounded thread spawn lets a single
+    # client exhaust the host's threads. Excess connections queue instead.
+    max_workers = int(os.environ.get("NIBLI_BACKEND_WORKERS", "32"))
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+
     print(f"Nibli Compute Backend listening on {host}:{port}")
     print(f"Registered handlers: {', '.join(sorted(HANDLERS.keys()))}")
+    print(f"Max concurrent connections: {max_workers}")
     print("Ctrl+C to stop\n")
 
     try:
         while True:
             conn, addr = server.accept()
-            t = threading.Thread(target=handle_connection, args=(conn, addr), daemon=True)
-            t.start()
+            executor.submit(handle_connection, conn, addr)
     except KeyboardInterrupt:
         print("\nShutting down.")
     finally:
+        executor.shutdown(wait=False)
         server.close()
 
 

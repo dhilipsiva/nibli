@@ -5,6 +5,7 @@ import json
 import socket
 import subprocess
 import sys
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -174,6 +175,94 @@ class TestNibliBackend(unittest.TestCase):
             self.assertTrue(resp2["result"])
         finally:
             sock.close()
+
+    def test_large_exponent_survives_connection(self):
+        """A huge-exponent tenfa raises OverflowError inside the handler; it must
+        return an error response and the connection must keep working."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        sock.connect((HOST, PORT))
+        try:
+            reader = sock.makefile("r", encoding="utf-8")
+            writer = sock.makefile("w", encoding="utf-8")
+
+            # 10 ** 1000 overflows float exponentiation → OverflowError.
+            writer.write(json.dumps({"relation": "tenfa", "args": [
+                {"type": "number", "value": 1.0},
+                {"type": "number", "value": 10.0},
+                {"type": "number", "value": 1000.0},
+            ]}) + "\n")
+            writer.flush()
+            resp1 = json.loads(reader.readline())
+            self.assertIn("error", resp1)
+
+            # The same connection must still serve a follow-up valid request.
+            writer.write(json.dumps({"relation": "sumji", "args": [
+                {"type": "number", "value": 5.0},
+                {"type": "number", "value": 2.0},
+                {"type": "number", "value": 3.0},
+            ]}) + "\n")
+            writer.flush()
+            resp2 = json.loads(reader.readline())
+            self.assertTrue(resp2["result"])
+        finally:
+            sock.close()
+
+    def test_non_dict_json_returns_error(self):
+        """Valid JSON that is not an object must return an error, not crash the
+        connection (it would AttributeError on `.get`)."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        sock.connect((HOST, PORT))
+        try:
+            reader = sock.makefile("r", encoding="utf-8")
+            writer = sock.makefile("w", encoding="utf-8")
+
+            for raw in ("123", "[1, 2, 3]", "null"):
+                writer.write(raw + "\n")
+                writer.flush()
+                resp = json.loads(reader.readline())
+                self.assertIn("error", resp)
+
+            # Connection still serves a valid request afterward.
+            writer.write(json.dumps({"relation": "pilji", "args": [
+                {"type": "number", "value": 6.0},
+                {"type": "number", "value": 2.0},
+                {"type": "number", "value": 3.0},
+            ]}) + "\n")
+            writer.flush()
+            resp = json.loads(reader.readline())
+            self.assertTrue(resp["result"])
+        finally:
+            sock.close()
+
+    def test_bounded_pool_concurrency(self):
+        """~40 concurrent single-request connections (> the default 32 workers)
+        must all complete correctly — the bounded pool cycles workers as
+        connections close, so no deadlock and no dropped requests."""
+        results = {}
+        errors = []
+
+        def worker(i):
+            try:
+                resp = send_request({"relation": "pilji", "args": [
+                    {"type": "number", "value": 6.0},
+                    {"type": "number", "value": 2.0},
+                    {"type": "number", "value": 3.0},
+                ]})
+                results[i] = resp.get("result")
+            except Exception as e:
+                errors.append((i, str(e)))
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(40)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=10)
+
+        self.assertEqual(errors, [], f"no connection should error: {errors}")
+        self.assertEqual(len(results), 40, "all 40 requests completed")
+        self.assertTrue(all(results.values()), "all pilji(6,2,3) results are True")
 
 
 if __name__ == "__main__":

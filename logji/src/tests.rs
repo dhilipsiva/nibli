@@ -2161,6 +2161,157 @@ fn test_ingested_result_available_for_reasoning() {
     ));
 }
 
+#[test]
+fn assert_typed_fact_invalidates_pred_cache() {
+    // The cache-freshness invariant AT THE MUTATION POINT: cache a derived
+    // predicate as False, then assert (via `assert_typed_fact` — the path ALL
+    // five mid-query compute auto-ingestion sites funnel through) the base fact
+    // that makes it derivable. The stale False must NOT survive. Pre-fix the
+    // re-check returned the cached False (order-dependent wrong answers);
+    // post-fix `assert_typed_fact` clears the cache so the re-check re-derives.
+    let kb = new_kb();
+    assert_buf(&kb, make_universal("gerku", "danlu")); // ∀x. gerku(x) → danlu(x)
+
+    let danlu_adam = StoredFact::Bare(GroundFact::new(
+        "danlu",
+        vec![
+            GroundTerm::Constant("adam".to_string()),
+            GroundTerm::Unspecified,
+        ],
+    ));
+    let gerku_adam = StoredFact::Bare(GroundFact::new(
+        "gerku",
+        vec![
+            GroundTerm::Constant("adam".to_string()),
+            GroundTerm::Unspecified,
+        ],
+    ));
+
+    clear_and_enable_pred_cache();
+
+    // (1) danlu(adam) is not derivable yet (gerku(adam) absent) → caches False.
+    {
+        let inner = kb.inner.borrow();
+        let mut visited = std::collections::HashSet::new();
+        let r = check_predicate_in_kb_typed(&danlu_adam, &inner, 0, &mut visited);
+        assert!(
+            r.is_false(),
+            "danlu(adam) is not derivable before gerku(adam)"
+        );
+    }
+
+    // (2) Assert gerku(adam) through the mutation point.
+    {
+        let mut inner = kb.inner.borrow_mut();
+        assert_typed_fact(gerku_adam, &mut inner);
+    }
+
+    // (3) Re-check: a stale cached False here means the cache was NOT invalidated.
+    {
+        let inner = kb.inner.borrow();
+        let mut visited = std::collections::HashSet::new();
+        let r = check_predicate_in_kb_typed(&danlu_adam, &inner, 0, &mut visited);
+        assert!(
+            r.is_true(),
+            "danlu(adam) must derive True once gerku(adam) is asserted — a stale \
+             cached False means assert_typed_fact failed to invalidate the cache"
+        );
+    }
+}
+
+#[test]
+fn compute_autoassert_invalidates_stale_cache() {
+    // End-to-end through the actual compute auto-assert caller, in a SINGLE query
+    // (the bug window — the cache is cleared once at query entry, then persists).
+    // Rule `sumji(5,2,3) ⇒ derived(c)` (a ground material conditional), with
+    // sumji NOT stored. One query: a probe that returns True but caches
+    // derived(c)=False, then a compute conjunct that auto-asserts sumji(5,2,3),
+    // then a re-check of derived(c). Pre-fix the re-check reads the stale False
+    // (query wrongly False); post-fix the auto-assert clears the cache and
+    // derived(c) re-derives True.
+    let kb = new_kb();
+    assert_buf(&kb, make_assertion("c", "marker")); // always-true right branch
+
+    // Material conditional: Or(Not(sumji(5,2,3)), derived(c)) ⇒ zero-var rule.
+    let mut r_nodes = Vec::new();
+    let cond = pred(
+        &mut r_nodes,
+        "sumji",
+        vec![
+            LogicalTerm::Number(5.0),
+            LogicalTerm::Number(2.0),
+            LogicalTerm::Number(3.0),
+        ],
+    );
+    let concl = pred(
+        &mut r_nodes,
+        "derived",
+        vec![
+            LogicalTerm::Constant("c".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let ncond = not(&mut r_nodes, cond);
+    let rule_root = or(&mut r_nodes, ncond, concl);
+    assert_buf(
+        &kb,
+        LogicBuffer {
+            nodes: r_nodes,
+            roots: vec![rule_root],
+        },
+    );
+
+    // Query: And( Or(derived(c), marker(c)) , And( sumji(5,2,3)[compute] , derived(c) ) )
+    let mut q = Vec::new();
+    let derived_probe = pred(
+        &mut q,
+        "derived",
+        vec![
+            LogicalTerm::Constant("c".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let marker = pred(
+        &mut q,
+        "marker",
+        vec![
+            LogicalTerm::Constant("c".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let probe = or(&mut q, derived_probe, marker); // True overall, caches derived(c)=False
+    let compute_node = compute(
+        &mut q,
+        "sumji",
+        vec![
+            LogicalTerm::Number(5.0),
+            LogicalTerm::Number(2.0),
+            LogicalTerm::Number(3.0),
+        ],
+    ); // computes True, auto-asserts sumji(5,2,3)
+    let derived_final = pred(
+        &mut q,
+        "derived",
+        vec![
+            LogicalTerm::Constant("c".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let inner_and = and(&mut q, compute_node, derived_final);
+    let root = and(&mut q, probe, inner_and);
+    assert!(
+        query(
+            &kb,
+            LogicBuffer {
+                nodes: q,
+                roots: vec![root]
+            }
+        ),
+        "derived(c) must re-derive True after the compute conjunct auto-asserts \
+         sumji(5,2,3) — a stale cached False makes this query wrongly False"
+    );
+}
+
 // ─── Witness extraction tests ────────────────────────────────
 
 fn query_find(kb: &KnowledgeBase, buf: LogicBuffer) -> Vec<Vec<WitnessBinding>> {

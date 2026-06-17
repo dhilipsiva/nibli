@@ -527,6 +527,17 @@ pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner
 
     inner.fact_store.insert(fact);
 
+    // The fact store just changed. Clear the predicate result cache so no
+    // subsequent lookup in the SAME query returns a stale verdict — the most
+    // important trigger is mid-query compute auto-ingestion (an external/
+    // arithmetic result asserted here that a downstream rule then chains on).
+    // Structural invariant at the mutation point, not call-site discipline.
+    // CLEARS entries but KEEPS the cache enabled (preserves cross-depth
+    // tabling); cycle-cutting is a separate `visited` set, so this is
+    // termination-safe. During normal assertion the cache is disabled+empty,
+    // so this is a free no-op there.
+    clear_typed_pred_cache();
+
     // Check integrity constraints (permissive mode: warn, don't reject).
     if !inner.integrity_constraints.is_empty() && !inner.rebuilding {
         if let Some(violation) = check_constraints_for_predicate(&rel_owned, inner) {
