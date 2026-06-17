@@ -203,6 +203,75 @@ fn universal_rule_chain_syllogism() {
 // BEFORE conversion (semantic/compile.rs), mirroring the explicit-subject path.
 
 #[test]
+fn tensed_restrictor_rule_fires() {
+    // "every dog that ATE (past) is hungry"; rex is a dog AND ate in the past.
+    let engine = engine_with_facts(&[
+        "ro lo gerku poi pu citka cu xagji",
+        "la .rex. cu gerku",
+        "pu la .rex. cu citka",
+    ]);
+    let (holds, _trace, _json) = engine.query_text_with_proof("la .rex. cu xagji").unwrap();
+    assert_true(
+        &holds,
+        "tensed-antecedent rule should fire when the matching Past premise holds",
+    );
+}
+
+#[test]
+fn tensed_restrictor_negative_control() {
+    // rex is a dog but never ate → the tensed condition is unsatisfied.
+    let engine = engine_with_facts(&["ro lo gerku poi pu citka cu xagji", "la .rex. cu gerku"]);
+    let (holds, _trace, _json) = engine.query_text_with_proof("la .rex. cu xagji").unwrap();
+    assert_false(
+        &holds,
+        "tensed-antecedent rule must not fire without the past premise",
+    );
+}
+
+#[test]
+fn tensed_restrictor_wrong_tense_control() {
+    // rex WILL eat (future) — must not satisfy a PAST antecedent (strict tense).
+    let engine = engine_with_facts(&[
+        "ro lo gerku poi pu citka cu xagji",
+        "la .rex. cu gerku",
+        "ba la .rex. cu citka",
+    ]);
+    let (holds, _trace, _json) = engine.query_text_with_proof("la .rex. cu xagji").unwrap();
+    assert_false(
+        &holds,
+        "a Future premise must not satisfy a Past antecedent",
+    );
+}
+
+#[test]
+fn tensed_restrictor_bare_premise_control() {
+    // rex eats (bare/timeless) — must not satisfy a PAST antecedent.
+    let engine = engine_with_facts(&[
+        "ro lo gerku poi pu citka cu xagji",
+        "la .rex. cu gerku",
+        "la .rex. cu citka",
+    ]);
+    let (holds, _trace, _json) = engine.query_text_with_proof("la .rex. cu xagji").unwrap();
+    assert_false(&holds, "a bare premise must not satisfy a Past antecedent");
+}
+
+#[test]
+fn ganai_tensed_antecedent_fires_with_premise() {
+    // Positive companion to the `ganai_tensed_antecedent_must_not_fire_unconditionally`
+    // known-failure guard: a ground conditional with a tensed antecedent fires when
+    // (and only when) the matching Past premise is present.
+    let engine = engine_with_facts(&[
+        "ganai la .adam. pu bajra gi la .adam. danlu",
+        "pu la .adam. cu bajra",
+    ]);
+    let (holds, _trace, _json) = engine.query_text_with_proof("la .adam. cu danlu").unwrap();
+    assert_true(
+        &holds,
+        "tensed-antecedent ground conditional should fire on its Past premise",
+    );
+}
+
+#[test]
 fn binary_restrictor_rule_fires() {
     // "every dog that is loved by alis is an animal"; rex is a dog AND loved by alis.
     let engine = engine_with_facts(&[

@@ -4114,6 +4114,139 @@ fn test_temporal_rule_no_cross_tense() {
     ));
 }
 
+// ─── Tensed rule antecedents (compile + fire) ────────────────
+
+/// Assert the tensed-antecedent rule `∀x. Past(citka(x)) → xagji(x)`
+/// ("everything that ATE is hungry"). Pre-fix this panics (the rule is
+/// rejected at compile time because the tensed condition cannot be templated).
+fn assert_pu_citka_then_xagji(kb: &KnowledgeBase) {
+    let mut r = Vec::new();
+    let citka = pred(
+        &mut r,
+        "citka",
+        vec![
+            LogicalTerm::Variable("_v0".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let past_citka = past(&mut r, citka);
+    let neg = not(&mut r, past_citka);
+    let xagji = pred(
+        &mut r,
+        "xagji",
+        vec![
+            LogicalTerm::Variable("_v0".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let body = or(&mut r, neg, xagji);
+    let forall = {
+        let id = r.len() as u32;
+        r.push(LogicNode::ForAllNode(("_v0".into(), body)));
+        id
+    };
+    assert_buf(
+        kb,
+        LogicBuffer {
+            nodes: r,
+            roots: vec![forall],
+        },
+    );
+}
+
+/// Query bare `xagji(rex)`.
+fn query_xagji_rex(kb: &KnowledgeBase) -> bool {
+    let mut q = Vec::new();
+    let xagji = pred(
+        &mut q,
+        "xagji",
+        vec![
+            LogicalTerm::Constant("rex".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    query(
+        kb,
+        LogicBuffer {
+            nodes: q,
+            roots: vec![xagji],
+        },
+    )
+}
+
+/// Assert a `citka(rex)` fact under the given tense wrapper (`None` = bare).
+fn assert_citka_rex(kb: &KnowledgeBase, tense: Option<&str>) {
+    let mut a = Vec::new();
+    let citka_rex = pred(
+        &mut a,
+        "citka",
+        vec![
+            LogicalTerm::Constant("rex".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let root = match tense {
+        Some("Past") => past(&mut a, citka_rex),
+        Some("Future") => future(&mut a, citka_rex),
+        Some("Present") => present(&mut a, citka_rex),
+        _ => citka_rex,
+    };
+    assert_buf(
+        kb,
+        LogicBuffer {
+            nodes: a,
+            roots: vec![root],
+        },
+    );
+}
+
+#[test]
+fn test_tensed_antecedent_rule_compiles_and_fires() {
+    // ∀x. Past(citka(x)) → xagji(x); given Past(citka(rex)), derive bare xagji(rex).
+    let kb = new_kb();
+    assert_pu_citka_then_xagji(&kb);
+    assert_citka_rex(&kb, Some("Past"));
+    assert!(
+        query_xagji_rex(&kb),
+        "tensed-antecedent rule must fire on a matching Past premise"
+    );
+}
+
+#[test]
+fn test_tensed_antecedent_no_premise_does_not_fire() {
+    // The rule compiles, but with no premise the tensed condition fails.
+    let kb = new_kb();
+    assert_pu_citka_then_xagji(&kb);
+    assert!(
+        !query_xagji_rex(&kb),
+        "tensed-antecedent rule must NOT fire with no supporting premise"
+    );
+}
+
+#[test]
+fn test_tensed_antecedent_wrong_tense_does_not_fire() {
+    // A Future premise must not satisfy a Past antecedent (strict tense).
+    let kb = new_kb();
+    assert_pu_citka_then_xagji(&kb);
+    assert_citka_rex(&kb, Some("Future"));
+    assert!(
+        !query_xagji_rex(&kb),
+        "Past antecedent must NOT fire on a Future premise"
+    );
+}
+
+#[test]
+fn test_tensed_antecedent_bare_premise_does_not_fire() {
+    // A bare premise must not satisfy a Past antecedent.
+    let kb = new_kb();
+    assert_pu_citka_then_xagji(&kb);
+    assert_citka_rex(&kb, None);
+    assert!(
+        !query_xagji_rex(&kb),
+        "Past antecedent must NOT fire on a bare premise"
+    );
+}
+
 // ─── Multiple roots test ─────────────────────────────────────
 
 #[test]

@@ -151,32 +151,61 @@ pub(super) fn collect_condition_exists(
             collect_condition_exists(buffer, *l, exists_vars);
             collect_condition_exists(buffer, *r, exists_vars);
         }
+        // Descend tense/deontic wrappers so an event ∃ var living UNDER a tensed
+        // condition (`poi pu broda` → `Past(Exists(ev, ...))`) is still
+        // registered (and becomes a pattern var). Tense is irrelevant to WHICH
+        // vars exist — just recurse.
+        LogicNode::PastNode(inner)
+        | LogicNode::PresentNode(inner)
+        | LogicNode::FutureNode(inner)
+        | LogicNode::ObligatoryNode(inner)
+        | LogicNode::PermittedNode(inner) => {
+            collect_condition_exists(buffer, *inner, exists_vars);
+        }
         _ => {}
     }
 }
 
+/// Flatten an And-tree of condition atoms, descending condition-∃ AND tense
+/// wrappers. Each returned leaf carries the tense accumulated on the path to it
+/// (`Some("Past")` etc.), so a tensed antecedent atom (`poi pu broda` →
+/// `Past(Exists(ev, And(broda(ev), broda_x1(ev, x))))`) flattens to tensed leaf
+/// atoms instead of one opaque `Past(...)` node that would be rejected. Deontic
+/// `Obligatory/Permitted` are intentionally NOT descended here — they fall to
+/// the `_` arm and `build_rule_template_fact` rejects them (out of scope).
 pub(super) fn flatten_conjuncts_through_exists(
     buffer: &LogicBuffer,
     node_id: u32,
     condition_exists: &HashSet<String>,
-) -> Vec<u32> {
+    tense: Option<&'static str>,
+) -> Vec<(u32, Option<&'static str>)> {
     let Ok(node) = get_node(buffer, node_id) else {
-        return vec![node_id];
+        return vec![(node_id, tense)];
     };
     match node {
         LogicNode::AndNode((l, r)) => {
-            let mut result = flatten_conjuncts_through_exists(buffer, *l, condition_exists);
+            let mut result = flatten_conjuncts_through_exists(buffer, *l, condition_exists, tense);
             result.extend(flatten_conjuncts_through_exists(
                 buffer,
                 *r,
                 condition_exists,
+                tense,
             ));
             result
         }
         LogicNode::ExistsNode((v, body)) if condition_exists.contains(v.as_str()) => {
-            flatten_conjuncts_through_exists(buffer, *body, condition_exists)
+            flatten_conjuncts_through_exists(buffer, *body, condition_exists, tense)
         }
-        _ => vec![node_id],
+        LogicNode::PastNode(inner) => {
+            flatten_conjuncts_through_exists(buffer, *inner, condition_exists, Some("Past"))
+        }
+        LogicNode::PresentNode(inner) => {
+            flatten_conjuncts_through_exists(buffer, *inner, condition_exists, Some("Present"))
+        }
+        LogicNode::FutureNode(inner) => {
+            flatten_conjuncts_through_exists(buffer, *inner, condition_exists, Some("Future"))
+        }
+        _ => vec![(node_id, tense)],
     }
 }
 
@@ -673,6 +702,12 @@ pub(super) fn compile_forall_to_rule(
                 universals.push(v.clone());
                 current = *body;
             }
+            // SCOPE: a WHOLE-RULE tense (`pu (ro lo gerku cu danlu)`) is stripped
+            // here and the rule compiles timeless. This is distinct from a tensed
+            // ANTECEDENT ATOM (`ro lo gerku poi pu citka cu xagji`), which is
+            // preserved by the per-condition tense threading in
+            // `flatten_conjuncts_through_exists` + `build_rule_template_fact`.
+            // Fail-closing whole-rule tense is a separate item (see todo.md).
             LogicNode::PastNode(inner_node)
             | LogicNode::PresentNode(inner_node)
             | LogicNode::FutureNode(inner_node)
@@ -815,24 +850,26 @@ pub(super) fn compile_forall_to_rule(
                 names
             };
 
-            let mut all_conditions = Vec::new();
+            let mut all_conditions: Vec<(u32, Option<&str>)> = Vec::new();
             for cid in &condition_ids {
                 all_conditions.extend(flatten_conjuncts_through_exists(
                     buffer,
                     *cid,
                     &condition_exists_vars,
+                    None,
                 ));
             }
 
             let mut typed_conds: Vec<StoredFact> = Vec::new();
             let mut negated_condition_indices: Vec<usize> = Vec::new();
-            for &cid in &all_conditions {
+            for &(cid, tense) in &all_conditions {
                 match build_rule_template_fact_with_negation(
                     buffer,
                     cid,
                     &pattern_vars,
                     &ground_skolems,
                     &dependent_skolems,
+                    tense,
                 ) {
                     Some((fact, is_negated)) => {
                         if is_negated {
@@ -865,6 +902,7 @@ pub(super) fn compile_forall_to_rule(
                     &pattern_vars,
                     &ground_skolems,
                     &dependent_skolems,
+                    None, // conclusions stay bare (tensed conclusions out of scope)
                 ) {
                     Some(fact) => typed_concls.push(fact),
                     // FAIL CLOSED: a conclusion atom we cannot template (negated,
@@ -932,8 +970,9 @@ pub(super) fn compile_forall_to_rule(
                         }
                         xp_subs.insert(var.clone(), GroundTerm::Constant(ev_sk));
                     }
-                    for &cid in &all_conditions {
-                        if let Some(fact) = build_stored_fact_from_node(buffer, cid, &xp_subs, None)
+                    for &(cid, tense) in &all_conditions {
+                        if let Some(fact) =
+                            build_stored_fact_from_node(buffer, cid, &xp_subs, tense)
                         {
                             assert_typed_fact(fact, inner);
                         }
@@ -963,6 +1002,7 @@ pub(super) fn compile_forall_to_rule(
                 &pattern_vars,
                 &ground_skolems,
                 &dependent_skolems,
+                None, // conclusions stay bare (tensed conclusions out of scope)
             ) {
                 Some(fact) => vec![fact],
                 // FAIL CLOSED: a bare universal whose body is conjunctive/complex would
@@ -1186,6 +1226,7 @@ pub(super) fn build_rule_template_fact_with_negation(
     pattern_vars: &HashMap<String, String>,
     ground_skolems: &HashMap<String, String>,
     dependent_skolems: &HashMap<String, (String, Vec<String>)>,
+    tense: Option<&str>,
 ) -> Option<(StoredFact, bool)> {
     let Ok(node) = get_node(buffer, node_id) else {
         return None;
@@ -1199,6 +1240,7 @@ pub(super) fn build_rule_template_fact_with_negation(
                 pattern_vars,
                 ground_skolems,
                 dependent_skolems,
+                tense,
             )
             .map(|fact| (fact, true))
         }
@@ -1208,6 +1250,7 @@ pub(super) fn build_rule_template_fact_with_negation(
             pattern_vars,
             ground_skolems,
             dependent_skolems,
+            tense,
         )
         .map(|fact| (fact, false)),
     }
@@ -1219,6 +1262,7 @@ pub(super) fn build_rule_template_fact(
     pattern_vars: &HashMap<String, String>,
     ground_skolems: &HashMap<String, String>,
     dependent_skolems: &HashMap<String, (String, Vec<String>)>,
+    tense: Option<&str>,
 ) -> Option<StoredFact> {
     let Ok(node) = get_node(buffer, node_id) else {
         return None;
@@ -1249,7 +1293,13 @@ pub(super) fn build_rule_template_fact(
                     LogicalTerm::Number(n) => GroundTerm::from_f64(*n),
                 })
                 .collect();
-            Some(StoredFact::Bare(GroundFact::new(rel.clone(), ground_args)))
+            // Carry the antecedent's tense (threaded from the flatten walk) so a
+            // tensed condition becomes a `StoredFact::Past/Present/Future` template
+            // that unify_facts matches only against the same-tense stored fact.
+            Some(StoredFact::with_tense(
+                GroundFact::new(rel.clone(), ground_args),
+                tense,
+            ))
         }
         LogicNode::ExistsNode((v, body)) => {
             // Skip Exists wrapper if variable is Skolemized or a pattern var
@@ -1263,6 +1313,7 @@ pub(super) fn build_rule_template_fact(
                     pattern_vars,
                     ground_skolems,
                     dependent_skolems,
+                    tense,
                 )
             } else {
                 None
