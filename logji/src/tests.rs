@@ -4148,6 +4148,120 @@ fn test_assert_multiple_roots() {
     assert!(query(&kb, make_query("bob", "mlatu")));
 }
 
+// ─── Assertion atomicity (rebuild-on-failure) ────────────────
+
+#[test]
+fn multi_root_partial_failure_is_atomic() {
+    // A 2-root assertion: root0 is a valid ground fact, root1 fails (a bare
+    // disjunction ingests no fact and registers no rule → "no representable
+    // content" Err). The whole assertion must roll back — root0's fact must NOT
+    // survive, and no orphan FactRecord may be left behind.
+    let kb = new_kb();
+    let mut nodes = Vec::new();
+    let root0 = pred(
+        &mut nodes,
+        "gerku",
+        vec![
+            LogicalTerm::Constant("adam".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let g = pred(
+        &mut nodes,
+        "gerku",
+        vec![
+            LogicalTerm::Constant("zelda".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let m = pred(
+        &mut nodes,
+        "mlatu",
+        vec![
+            LogicalTerm::Constant("zelda".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let root1 = or(&mut nodes, g, m); // bare disjunction → process_assertion Err
+
+    let result = kb.assert_fact_inner(
+        LogicBuffer {
+            nodes,
+            roots: vec![root0, root1],
+        },
+        String::new(),
+    );
+    assert!(result.is_err(), "the assertion must fail on root1");
+    assert!(
+        !query(&kb, make_query("adam", "gerku")),
+        "root0's fact must be rolled back, not orphaned"
+    );
+    assert!(
+        kb.list_facts_inner().unwrap().is_empty(),
+        "a failed assertion must leave no FactRecord"
+    );
+}
+
+#[test]
+fn failed_assertion_does_not_leak_assertion_id() {
+    // The error path must clear current_assertion_id; a stale id would
+    // mis-attribute the NEXT assertion's rules in rule_source_map.
+    let kb = new_kb();
+    let mut nodes = Vec::new();
+    let g = pred(
+        &mut nodes,
+        "gerku",
+        vec![
+            LogicalTerm::Constant("zelda".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let m = pred(
+        &mut nodes,
+        "mlatu",
+        vec![
+            LogicalTerm::Constant("zelda".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let bad = or(&mut nodes, g, m);
+    let result = kb.assert_fact_inner(
+        LogicBuffer {
+            nodes,
+            roots: vec![bad],
+        },
+        String::new(),
+    );
+    assert!(result.is_err());
+    assert!(
+        kb.inner.borrow().current_assertion_id.is_none(),
+        "current_assertion_id must be cleared after a failed assertion"
+    );
+}
+
+#[test]
+fn rebuild_preserves_user_arg_sorts() {
+    // User-declared arg sorts (set_predicate_sorts) must survive a rebuild.
+    let kb = new_kb();
+    kb.set_predicate_sorts("gerku", vec!["animal".to_string(), String::new()]);
+    // Retracting a ForAll record takes the full-rebuild path (a ground-fact
+    // retraction is incremental and would not rebuild).
+    let throwaway = assert_id(&kb, make_universal("foo", "bar"), "throwaway");
+    assert_buf(&kb, make_assertion("adam", "gerku"));
+    kb.retract_fact_inner(throwaway).unwrap(); // forces rebuild_inner
+
+    let inner = kb.inner.borrow();
+    let sig = inner
+        .predicate_registry
+        .get("gerku")
+        .expect("gerku should be registered after rebuild");
+    assert_eq!(
+        sig.arg_sorts,
+        vec!["animal".to_string(), String::new()],
+        "user-declared arg sorts must survive a rebuild"
+    );
+}
+
 // ─── Count quantifier test ───────────────────────────────────
 
 fn count(nodes: &mut Vec<LogicNode>, var: &str, cnt: u32, body: u32) -> u32 {

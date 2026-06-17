@@ -91,8 +91,24 @@ impl KnowledgeBase {
         let mut inner = self.inner.borrow_mut();
         let id = inner.fresh_fact_id();
         inner.current_assertion_id = Some(id);
-        process_assertion(&mut inner, &logic)?;
+        let result = process_assertion(&mut inner, &logic);
+        // ALWAYS clear: a stale id would mis-attribute the NEXT assertion's rules
+        // in rule_source_map (register_rule reads current_assertion_id).
         inner.current_assertion_id = None;
+        if let Err(e) = result {
+            // Atomic rollback. A multi-root assertion that fails on a later root
+            // leaves earlier roots' facts/rules in the live store, but the
+            // FactRecord is only inserted on success — so those facts would be
+            // orphaned (un-listable, un-retractable). The failed assertion has no
+            // FactRecord, so rebuilding from the durable registry reproduces the
+            // exact pre-assertion state, discarding the partial mutation.
+            let rb = Self::rebuild_inner(&mut inner);
+            invalidate_pred_cache();
+            return match rb {
+                Ok(()) => Err(e),
+                Err(re) => Err(format!("{e} (additionally, rollback failed: {re})")),
+            };
+        }
         inner.fact_registry.insert(
             id,
             FactRecord {
@@ -118,7 +134,20 @@ impl KnowledgeBase {
         if id >= inner.fact_counter {
             inner.fact_counter = id + 1;
         }
-        process_assertion(&mut inner, &logic)?;
+        // Attribute any rule compiled during this replay to THIS fact in
+        // rule_source_map (otherwise a later retract of a replayed rule-producing
+        // fact leaves a stale rule behind).
+        inner.current_assertion_id = Some(id);
+        let result = process_assertion(&mut inner, &logic);
+        inner.current_assertion_id = None;
+        if let Err(e) = result {
+            let rb = Self::rebuild_inner(&mut inner);
+            invalidate_pred_cache();
+            return match rb {
+                Ok(()) => Err(e),
+                Err(re) => Err(format!("{e} (additionally, rollback failed: {re})")),
+            };
+        }
         inner.fact_registry.insert(
             id,
             FactRecord {
@@ -128,6 +157,7 @@ impl KnowledgeBase {
                 retracted: false,
             },
         );
+        invalidate_pred_cache();
         Ok(())
     }
 
@@ -272,6 +302,16 @@ impl KnowledgeBase {
     /// Rebuild the KB from all non-retracted facts.
     /// Preserves fact_registry and fact_counter; resets all derived state.
     fn rebuild_inner(inner: &mut KnowledgeBaseInner) -> Result<(), String> {
+        // Preserve user-declared arg sorts (set via `set_predicate_sorts`): replay
+        // only re-infers arity+source per predicate, never the sorts, so clearing
+        // `predicate_registry` below would silently drop them.
+        let saved_arg_sorts: Vec<(String, Vec<String>)> = inner
+            .predicate_registry
+            .iter()
+            .filter(|(_, sig)| !sig.arg_sorts.is_empty())
+            .map(|(pred, sig)| (pred.clone(), sig.arg_sorts.clone()))
+            .collect();
+
         // Reset derived state (interner too — all interned keys become invalid)
         inner.skolem_counter = 0;
         inner.known_entities.clear();
@@ -289,23 +329,54 @@ impl KnowledgeBase {
         inner.rule_source_map.clear();
         inner.negative_facts.clear();
 
-        // Collect non-retracted buffers ordered by ID (clone to avoid borrow conflict)
+        // Collect non-retracted buffers + their ids ordered by ID (owned, to avoid
+        // a borrow conflict with the mutable replay below).
         let mut entries: Vec<(&u64, &FactRecord)> = inner
             .fact_registry
             .iter()
             .filter(|(_, r)| !r.retracted)
             .collect();
         entries.sort_by_key(|(id, _)| **id);
+        let ids: Vec<u64> = entries.iter().map(|(id, _)| **id).collect();
         let buffers: Vec<LogicBuffer> = entries.iter().map(|(_, r)| r.buffer.clone()).collect();
 
-        // Replay with diagnostic output suppressed
+        // Replay with diagnostic output + stratification checks suppressed
+        // (inner.rebuilding == true). Collect-and-continue: replay EVERY surviving
+        // fact so the store stays maximally consistent, accumulating errors rather
+        // than silently dropping a fact that fails to replay.
         inner.rebuilding = true;
-        for buf in &buffers {
-            // Stratification check is skipped during rebuild (inner.rebuilding == true).
-            let _ = process_assertion(inner, buf);
+        let mut replay_errors: Vec<(u64, String)> = Vec::new();
+        for (buf, &fid) in buffers.iter().zip(ids.iter()) {
+            if let Err(e) = process_assertion(inner, buf) {
+                replay_errors.push((fid, e));
+            }
         }
         inner.rebuilding = false;
-        Ok(())
+
+        // Restore the preserved sorts into the re-populated registry.
+        for (pred, sorts) in saved_arg_sorts {
+            let arity = sorts.len();
+            inner
+                .predicate_registry
+                .entry(pred)
+                .or_insert_with(|| PredicateSignature {
+                    arity,
+                    source: SignatureSource::Inferred,
+                    arg_sorts: Vec::new(),
+                })
+                .arg_sorts = sorts;
+        }
+
+        if replay_errors.is_empty() {
+            Ok(())
+        } else {
+            let detail = replay_errors
+                .iter()
+                .map(|(id, e)| format!("#{id}: {e}"))
+                .collect::<Vec<_>>()
+                .join("; ");
+            Err(format!("rebuild replay errors: {detail}"))
+        }
     }
 
     /// List all active (non-retracted) facts in the KB.
