@@ -33,6 +33,21 @@ fn temp_db_path(name: &str) -> PathBuf {
     dir.join(format!("{name}.redb"))
 }
 
+/// Return the slice of a `compile_debug` S-expression rendering from the named
+/// role predicate (e.g. `klama_x4`) up to the next `(Pred ` — i.e. that
+/// predicate's own argument list. Used to assert which place a term landed in.
+fn role_segment(dbg: &str, role: &str) -> String {
+    let needle = format!("\"{role}\"");
+    let Some(start) = dbg.find(&needle) else {
+        return String::new();
+    };
+    let rest = &dbg[start + needle.len()..];
+    match rest.find("(Pred ") {
+        Some(end) => rest[..end].to_string(),
+        None => rest.to_string(),
+    }
+}
+
 fn cleanup(path: &Path) {
     let _ = fs::remove_file(path);
 }
@@ -557,6 +572,47 @@ fn se_conversion_assertion_and_query() {
         .query_text_with_proof("la .adam. cu se ponse lo gerku")
         .unwrap();
     assert_true(&holds, "se-converted assertion should be queryable");
+}
+
+#[test]
+fn connected_sumti_under_fa_holds_for_both() {
+    // `fa mi .e do klama` parses as Tagged(Fa, Connected(mi, Je, do)). The tag
+    // distributes over BOTH operands, so both `mi` and `do` are goers. Before
+    // the fix, the right operand `do` was silently dropped → `do klama` FALSE.
+    let engine = engine_with_facts(&["fa mi .e do klama"]);
+    let (mi_holds, _, _) = engine.query_text_with_proof("mi klama").unwrap();
+    assert_true(&mi_holds, "mi must be a goer");
+    let (do_holds, _, _) = engine.query_text_with_proof("do klama").unwrap();
+    assert_true(
+        &do_holds,
+        "do must be a goer (right operand was dropped before the fix)",
+    );
+}
+
+#[test]
+fn connected_under_fa_negative_control() {
+    // Only `mi` asserted → `do klama` must be FALSE (the fix must not over-assert).
+    let engine = engine_with_facts(&["fa mi klama"]);
+    let (do_holds, _, _) = engine.query_text_with_proof("do klama").unwrap();
+    assert_false(&do_holds, "do was never asserted as a goer");
+}
+
+#[test]
+fn cll_place_counter_fi_then_untagged() {
+    // `klama fi le zarci do` — CLL: `fi` sets the place counter to x3 (le zarci),
+    // and the following UNTAGGED `do` resumes at x4 (NOT x1, the pre-fix bug).
+    let engine = NibliEngine::new();
+    let dbg = engine
+        .compile_debug("klama fi le zarci do")
+        .expect("`klama fi le zarci do` should compile");
+    assert!(
+        role_segment(&dbg, "klama_x4").contains(r#"(Const "do")"#),
+        "untagged `do` must fill x4 after `fi`; debug: {dbg}"
+    );
+    assert!(
+        !role_segment(&dbg, "klama_x1").contains(r#"(Const "do")"#),
+        "do must NOT land in x1 (pre-fix `first free slot` bug); debug: {dbg}"
+    );
 }
 
 #[test]

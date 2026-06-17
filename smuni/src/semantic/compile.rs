@@ -6,6 +6,30 @@
 //! tense wrappers (pu/ca/ba), and deontic attitudinals (ei/e'e).
 use super::*;
 
+/// A connected sumti (`.e`/`.a`/`.o`/`.u`) found in a bridi's term list, ready to
+/// distribute. Captures the connective + operands plus the wrapper (if any) the
+/// connected sumti sits under, so distribution can preserve the place tag / BAI
+/// modal over each operand.
+struct ConnectedSplit {
+    /// Position of the connected term within `head_terms ++ tail_terms`.
+    term_pos: usize,
+    wrapper: ConnWrapper,
+    connective: Connective,
+    right_negated: bool,
+    left_id: u32,
+    right_id: u32,
+}
+
+/// What a connected sumti sits under in a bridi term slot.
+enum ConnWrapper {
+    /// A bare `Sumti::Connected` term.
+    Bare,
+    /// `Sumti::Tagged((tag, Connected(..)))` — a place tag over a connected sumti.
+    Place(PlaceTag),
+    /// `Sumti::ModalTagged((modal, Connected(..)))` — a BAI modal over a connected sumti.
+    Modal(ModalTag),
+}
+
 impl SemanticCompiler {
     /// Compiles a bridi (predication) into FOL with quantifier scoping and tense wrapping.
     pub fn compile_bridi(
@@ -28,53 +52,14 @@ impl SemanticCompiler {
             .copied()
             .collect();
 
-        for (idx, &term_id) in all_terms.iter().enumerate() {
-            if let Sumti::Connected((left_id, conn, right_negated, right_id)) =
-                &sumtis[term_id as usize]
-            {
-                let conn = *conn;
-                let right_negated = *right_negated;
-                let left_id = *left_id;
-                let right_id = *right_id;
-
-                let head_len = bridi.head_terms.len();
-                let make_substituted_bridi = |replacement_id: u32| -> Bridi {
-                    let mut head = bridi.head_terms.clone();
-                    let mut tail = bridi.tail_terms.clone();
-                    if idx < head_len {
-                        head[idx] = replacement_id;
-                    } else {
-                        tail[idx - head_len] = replacement_id;
-                    }
-                    Bridi {
-                        relation: bridi.relation,
-                        head_terms: head,
-                        tail_terms: tail,
-                        negated: bridi.negated,
-                        tense: bridi.tense,
-                        attitudinal: bridi.attitudinal,
-                    }
-                };
-
-                let left_bridi = make_substituted_bridi(left_id);
-                let right_bridi = make_substituted_bridi(right_id);
-
-                let left_form = self.compile_bridi(&left_bridi, selbris, sumtis, sentences);
-                let mut right_form = self.compile_bridi(&right_bridi, selbris, sumtis, sentences);
-
-                if right_negated {
-                    right_form = LogicalForm::Not(Box::new(right_form));
-                }
-
-                return match conn {
-                    Connective::Je => LogicalForm::And(Box::new(left_form), Box::new(right_form)),
-                    Connective::Ja => LogicalForm::Or(Box::new(left_form), Box::new(right_form)),
-                    Connective::Jo => {
-                        LogicalForm::Biconditional(Box::new(left_form), Box::new(right_form))
-                    }
-                    Connective::Ju => LogicalForm::Xor(Box::new(left_form), Box::new(right_form)),
-                };
-            }
+        // Distribute connected sumti (`.e`/`.a`/`.o`/`.u`) — including a
+        // connected sumti nested under a place tag (`fa mi .e do`) or BAI modal
+        // (`ri'a do .e ti`), where the wrapper is preserved over each operand.
+        // Only the first connected term is split here; the recursive
+        // `compile_bridi` re-scans for the rest, so every connected sumti in the
+        // bridi distributes.
+        if let Some(split) = Self::find_connected_term(&all_terms, sumtis) {
+            return self.distribute_connected(bridi, split, selbris, sumtis, sentences);
         }
 
         let target_arity = self.get_selbri_arity(bridi.relation, selbris);
@@ -97,42 +82,36 @@ impl SemanticCompiler {
             }
         }
 
-        let mut untagged: Vec<LogicalTerm> = Vec::new();
         let mut quantifiers: Vec<QuantifierEntry> = Vec::new();
         let mut modal_entries: Vec<(ModalTag, LogicalTerm, Vec<QuantifierEntry>)> = Vec::new();
+        // Untagged sumti that overflowed the selbri's arity (placed nowhere).
+        // Preserves the prior silent-drop behaviour for over-arity untagged
+        // sumti, and drives the fail-closed `du` n-ary check below.
+        let mut overflow_untagged: usize = 0;
+        // CLL place counter (CLL ch.9, FA cmavo): `fa/fe/fi/fo/fu` set the place
+        // number; a following UNTAGGED sumti fills the place AFTER the last tag,
+        // not the first free slot. Starts at x1 and skips slots already filled
+        // (a ke'a x1 pre-fill, or an out-of-order tag).
+        let mut next_place: usize = 0;
 
         for &term_id in bridi.head_terms.iter().chain(bridi.tail_terms.iter()) {
-            let sumti = &sumtis[term_id as usize];
-
-            match sumti {
+            match &sumtis[term_id as usize] {
                 Sumti::Tagged((tag, inner_id)) => {
                     let inner = &sumtis[*inner_id as usize];
                     let (term, quants) = self.resolve_sumti(inner, sumtis, selbris, sentences);
                     quantifiers.extend(quants);
-                    let idx = match tag {
-                        PlaceTag::Fa => 0,
-                        PlaceTag::Fe => 1,
-                        PlaceTag::Fi => 2,
-                        PlaceTag::Fo => 3,
-                        PlaceTag::Fu => 4,
-                    };
+                    let idx = tag.to_index();
                     if idx < target_arity {
                         positioned[idx] = Some(term);
+                        next_place = idx + 1; // CLL: resume AFTER the tagged place
                     } else {
                         // FAIL CLOSED: a place tag beyond the selbri's arity has no
                         // slot to bind into. Silently dropping the tagged term loses
                         // meaning (panel finding 2026-06-10) — reject instead.
-                        let tag_name = match tag {
-                            PlaceTag::Fa => "fa",
-                            PlaceTag::Fe => "fe",
-                            PlaceTag::Fi => "fi",
-                            PlaceTag::Fo => "fo",
-                            PlaceTag::Fu => "fu",
-                        };
                         self.errors.push(format!(
                             "Place tag `{}` targets place x{}, but the selbri only has \
                              {} place(s); the tagged term cannot be placed.",
-                            tag_name,
+                            tag.name(),
                             idx + 1,
                             target_arity
                         ));
@@ -141,35 +120,43 @@ impl SemanticCompiler {
                 Sumti::ModalTagged((modal_tag, inner_id)) => {
                     let inner = &sumtis[*inner_id as usize];
                     let (term, quants) = self.resolve_sumti(inner, sumtis, selbris, sentences);
-                    modal_entries.push((modal_tag.clone(), term, quants));
+                    // BAI modals are not place-filling — they do NOT advance the
+                    // place counter.
+                    modal_entries.push((*modal_tag, term, quants));
                 }
                 other => {
                     let (term, quants) = self.resolve_sumti(other, sumtis, selbris, sentences);
                     quantifiers.extend(quants);
-                    untagged.push(term);
+                    // Skip slots already filled (ke'a x1, or an out-of-order tag),
+                    // then fill the current place and advance.
+                    while next_place < target_arity && positioned[next_place].is_some() {
+                        next_place += 1;
+                    }
+                    if next_place < target_arity {
+                        positioned[next_place] = Some(term);
+                        next_place += 1;
+                    } else {
+                        overflow_untagged += 1;
+                    }
                 }
             }
         }
 
-        let mut untagged_iter = untagged.into_iter();
         let args: Vec<LogicalTerm> = positioned
             .into_iter()
-            .map(|slot| {
-                slot.or_else(|| untagged_iter.next())
-                    .unwrap_or(LogicalTerm::Unspecified)
-            })
+            .map(|slot| slot.unwrap_or(LogicalTerm::Unspecified))
             .collect();
 
         // Fail-closed: `du` (identity) is a 2-place relation and logji's
         // union-find consumes only 2-arg du facts. Any sumti beyond x2 overflow
-        // arity 2 and are silently dropped above (left unconsumed in
-        // `untagged_iter`), so reject n-ary du rather than lose meaning.
+        // arity 2 and are silently dropped above, so reject n-ary du rather than
+        // lose meaning.
         let head_is_du = self.get_selbri_head_name(bridi.relation, selbris) == "du";
-        if head_is_du && untagged_iter.len() > 0 {
+        if head_is_du && overflow_untagged > 0 {
             self.errors.push(format!(
                 "`du` (identity) is a 2-place relation, but {} extra sumti were supplied; \
                  n-ary identity is unsupported.",
-                untagged_iter.len()
+                overflow_untagged
             ));
         }
 
@@ -406,6 +393,106 @@ impl SemanticCompiler {
         }
 
         final_form
+    }
+
+    /// Find the first term (in `head_terms ++ tail_terms` order) that is — or
+    /// wraps, one level under a place tag / BAI modal — a connected sumti.
+    /// Returns everything `distribute_connected` needs to split it.
+    fn find_connected_term(all_terms: &[u32], sumtis: &[Sumti]) -> Option<ConnectedSplit> {
+        for (term_pos, &term_id) in all_terms.iter().enumerate() {
+            let term = &sumtis[term_id as usize];
+            let (wrapper, inner) = match term {
+                Sumti::Connected(_) => (ConnWrapper::Bare, term),
+                Sumti::Tagged((tag, inner_id)) => {
+                    (ConnWrapper::Place(*tag), &sumtis[*inner_id as usize])
+                }
+                Sumti::ModalTagged((modal, inner_id)) => {
+                    (ConnWrapper::Modal(*modal), &sumtis[*inner_id as usize])
+                }
+                _ => continue,
+            };
+            if let Sumti::Connected((left_id, connective, right_negated, right_id)) = inner {
+                return Some(ConnectedSplit {
+                    term_pos,
+                    wrapper,
+                    connective: *connective,
+                    right_negated: *right_negated,
+                    left_id: *left_id,
+                    right_id: *right_id,
+                });
+            }
+        }
+        None
+    }
+
+    /// Distribute a connected sumti into a logical combination of two bridi (one
+    /// per operand), preserving any place tag / BAI modal wrapper over each
+    /// operand. Recurses through `compile_bridi`, which re-scans for further
+    /// connected sumti, so every connected term in the bridi is distributed.
+    fn distribute_connected(
+        &mut self,
+        bridi: &Bridi,
+        split: ConnectedSplit,
+        selbris: &[Selbri],
+        sumtis: &[Sumti],
+        sentences: &[Sentence],
+    ) -> LogicalForm {
+        // A wrapped connected sumti needs a tag/modal node synthesised over each
+        // operand (these don't exist in the immutable `sumtis` buffer); a bare
+        // connected sumti reuses its existing operand ids unchanged.
+        let mut ext: Vec<Sumti> = sumtis.to_vec();
+        let (left_slot, right_slot) = match split.wrapper {
+            ConnWrapper::Bare => (split.left_id, split.right_id),
+            ConnWrapper::Place(tag) => {
+                let base = ext.len() as u32;
+                ext.push(Sumti::Tagged((tag, split.left_id)));
+                ext.push(Sumti::Tagged((tag, split.right_id)));
+                (base, base + 1)
+            }
+            ConnWrapper::Modal(modal) => {
+                let base = ext.len() as u32;
+                ext.push(Sumti::ModalTagged((modal, split.left_id)));
+                ext.push(Sumti::ModalTagged((modal, split.right_id)));
+                (base, base + 1)
+            }
+        };
+
+        let head_len = bridi.head_terms.len();
+        let term_pos = split.term_pos;
+        let substitute = |replacement_id: u32| -> Bridi {
+            let mut head = bridi.head_terms.clone();
+            let mut tail = bridi.tail_terms.clone();
+            if term_pos < head_len {
+                head[term_pos] = replacement_id;
+            } else {
+                tail[term_pos - head_len] = replacement_id;
+            }
+            Bridi {
+                relation: bridi.relation,
+                head_terms: head,
+                tail_terms: tail,
+                negated: bridi.negated,
+                tense: bridi.tense,
+                attitudinal: bridi.attitudinal,
+            }
+        };
+
+        let left_bridi = substitute(left_slot);
+        let right_bridi = substitute(right_slot);
+
+        let left_form = self.compile_bridi(&left_bridi, selbris, &ext, sentences);
+        let mut right_form = self.compile_bridi(&right_bridi, selbris, &ext, sentences);
+
+        if split.right_negated {
+            right_form = LogicalForm::Not(Box::new(right_form));
+        }
+
+        match split.connective {
+            Connective::Je => LogicalForm::And(Box::new(left_form), Box::new(right_form)),
+            Connective::Ja => LogicalForm::Or(Box::new(left_form), Box::new(right_form)),
+            Connective::Jo => LogicalForm::Biconditional(Box::new(left_form), Box::new(right_form)),
+            Connective::Ju => LogicalForm::Xor(Box::new(left_form), Box::new(right_form)),
+        }
     }
 
     /// Compiles a sentence node (simple bridi or connected sentences) into FOL.

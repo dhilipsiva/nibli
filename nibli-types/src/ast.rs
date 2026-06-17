@@ -18,6 +18,30 @@ pub enum PlaceTag {
     Fu,
 }
 
+impl PlaceTag {
+    /// Zero-based argument index: fa=0 (x1), fe=1 (x2), fi=2 (x3), fo=3 (x4), fu=4 (x5).
+    pub fn to_index(self) -> usize {
+        match self {
+            PlaceTag::Fa => 0,
+            PlaceTag::Fe => 1,
+            PlaceTag::Fi => 2,
+            PlaceTag::Fo => 3,
+            PlaceTag::Fu => 4,
+        }
+    }
+
+    /// The cmavo spelling of this place tag (for diagnostics).
+    pub fn name(self) -> &'static str {
+        match self {
+            PlaceTag::Fa => "fa",
+            PlaceTag::Fe => "fe",
+            PlaceTag::Fi => "fi",
+            PlaceTag::Fo => "fo",
+            PlaceTag::Fu => "fu",
+        }
+    }
+}
+
 /// BAI modal tag — each maps to an underlying gismu:
 /// ri'a=rinka (cause), ni'i=nibli (entailment), mu'i=mukti (motivation),
 /// ki'u=krinu (reason), pi'o=pilno (tool), ba'i=basti (replace).

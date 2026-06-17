@@ -299,6 +299,13 @@ impl SemanticCompiler {
             Sumti::Number(n) => (LogicalTerm::Number(*n), vec![]),
             Sumti::Unspecified => (LogicalTerm::Unspecified, vec![]),
             Sumti::Connected((left_id, _conn, _negated, _right_id)) => {
+                // Residual fallback. A connected sumti filling a place — bare, or
+                // under a place tag / BAI modal — is distributed in `compile_bridi`
+                // (see `find_connected_term`/`distribute_connected`) and never
+                // reaches here. This arm is only hit for connected sumti in
+                // positions the distributor doesn't descend into (e.g. `be`-args
+                // or relative-clause bodies), where it currently keeps the left
+                // operand best-effort. Fail-closing those is a separate follow-up.
                 let left = &sumtis[*left_id as usize];
                 self.resolve_sumti(left, sumtis, selbris, sentences)
             }

@@ -220,6 +220,29 @@ mod tests {
             .map(|(_, args)| args)
     }
 
+    /// Helper: get the args of EVERY predicate with the given name (in tree order).
+    /// Needed when a form distributes into multiple predications sharing a name
+    /// (e.g. two `rinka` modals, or four `prami` leaves).
+    fn get_all_pred_args(
+        form: &LogicalForm,
+        name: &str,
+        compiler: &SemanticCompiler,
+    ) -> Vec<Vec<LogicalTerm>> {
+        collect_predicates(form, compiler)
+            .into_iter()
+            .filter(|(n, _)| n == name)
+            .map(|(_, args)| args)
+            .collect()
+    }
+
+    /// Helper: extract a `Constant` term's interned string (panics otherwise).
+    fn const_str(compiler: &SemanticCompiler, term: &LogicalTerm) -> String {
+        match term {
+            LogicalTerm::Constant(c) => resolve(compiler, c),
+            other => panic!("expected Constant, got {:?}", other),
+        }
+    }
+
     // ─── du (identity) selbri lowering ───────────────────────────
 
     #[test]
@@ -548,6 +571,194 @@ mod tests {
             }
             other => panic!("expected And(Not, Not), got {:?}", other),
         }
+    }
+
+    // ─── Connected sumti under place tags / BAI modals + CLL place counter ───
+    // Soundness fix: a connected sumti nested under a place tag or BAI modal
+    // (`fa mi .e do`, `ri'a do .e ti`) previously dropped the right operand;
+    // only the FIRST connected sumti in a bridi was split; and untagged sumti
+    // after a tag filled the first free slot instead of the CLL place counter.
+
+    #[test]
+    fn test_fa_tagged_connected_distributes() {
+        // `fa mi .e do klama` parses as Tagged(Fa, Connected(mi, Je, do)) — the
+        // tag distributes over BOTH operands: klama(mi in x1) ∧ klama(do in x1).
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),                    // 0
+            Sumti::ProSumti("do".into()),                    // 1
+            Sumti::Connected((0, Connective::Je, false, 1)), // 2: mi .e do
+            Sumti::Tagged((PlaceTag::Fa, 2)),                // 3: fa (mi .e do)
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![3],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        match &form {
+            LogicalForm::And(left, right) => {
+                let l = get_pred_args(left, "klama_x1", &compiler).expect("left klama_x1");
+                let r = get_pred_args(right, "klama_x1", &compiler).expect("right klama_x1");
+                assert_eq!(const_str(&compiler, &l[1]), "mi");
+                assert_eq!(const_str(&compiler, &r[1]), "do");
+            }
+            other => panic!("expected And(klama(mi), klama(do)), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_bai_modal_connected_distributes() {
+        // `mi klama ri'a do .e ti` → ModalTagged(Ria, Connected(do, Je, ti)).
+        // Must distribute into TWO rinka modals: rinka(do, mi) and rinka(ti, mi).
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),                          // 0
+            Sumti::ProSumti("do".into()),                          // 1
+            Sumti::ProSumti("ti".into()),                          // 2
+            Sumti::Connected((1, Connective::Je, false, 2)),       // 3: do .e ti
+            Sumti::ModalTagged((ModalTag::Fixed(BaiTag::Ria), 3)), // 4: ri'a (do .e ti)
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![4],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        let rinkas = get_all_pred_args(&form, "rinka", &compiler);
+        assert_eq!(
+            rinkas.len(),
+            2,
+            "expected two rinka modals (do .e ti), got {}: {:?}",
+            rinkas.len(),
+            rinkas
+        );
+        let tagged: Vec<String> = rinkas.iter().map(|a| const_str(&compiler, &a[0])).collect();
+        assert!(tagged.contains(&"do".to_string()), "missing rinka(do, ..)");
+        assert!(tagged.contains(&"ti".to_string()), "missing rinka(ti, ..)");
+        for a in &rinkas {
+            assert_eq!(const_str(&compiler, &a[1]), "mi", "rinka x2 = main x1 (mi)");
+        }
+    }
+
+    #[test]
+    fn test_two_connected_sumti_both_split() {
+        // `mi .e do prami ti .e ta` — TWO connected sumti must both distribute
+        // into four prami leaves: (mi,ti), (mi,ta), (do,ti), (do,ta).
+        let selbris = vec![Selbri::Root("prami".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),                    // 0
+            Sumti::ProSumti("do".into()),                    // 1
+            Sumti::ProSumti("ti".into()),                    // 2
+            Sumti::ProSumti("ta".into()),                    // 3
+            Sumti::Connected((0, Connective::Je, false, 1)), // 4: mi .e do
+            Sumti::Connected((2, Connective::Je, false, 3)), // 5: ti .e ta
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![4],
+            tail_terms: vec![5],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        let x1 = get_all_pred_args(&form, "prami_x1", &compiler);
+        let x2 = get_all_pred_args(&form, "prami_x2", &compiler);
+        assert_eq!(x1.len(), 4, "expected 4 prami leaves, got {}", x1.len());
+        let pairs: Vec<(String, String)> = x1
+            .iter()
+            .zip(x2.iter())
+            .map(|(a, b)| (const_str(&compiler, &a[1]), const_str(&compiler, &b[1])))
+            .collect();
+        for expected in [("mi", "ti"), ("mi", "ta"), ("do", "ti"), ("do", "ta")] {
+            assert!(
+                pairs
+                    .iter()
+                    .any(|(l, r)| l == expected.0 && r == expected.1),
+                "missing prami{:?} in {:?}",
+                expected,
+                pairs
+            );
+        }
+    }
+
+    #[test]
+    fn test_cll_place_counter_resumes_after_fi() {
+        // `klama fi le zarci do` — CLL: `fi` sets the place counter to x3, so
+        // `le zarci` is x3 and the following UNTAGGED `do` resumes at x4
+        // (NOT x1, which is the pre-fix "first free slot" bug).
+        let selbris = vec![
+            Selbri::Root("klama".into()), // 0
+            Selbri::Root("zarci".into()), // 1
+        ];
+        let sumtis = vec![
+            Sumti::Description((Gadri::Le, 1)), // 0: le zarci
+            Sumti::Tagged((PlaceTag::Fi, 0)),   // 1: fi le zarci
+            Sumti::ProSumti("do".into()),       // 2: do (untagged)
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![],
+            tail_terms: vec![1, 2],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        let x4 = get_pred_args(&form, "klama_x4", &compiler).expect("klama_x4 present");
+        assert_eq!(
+            const_str(&compiler, &x4[1]),
+            "do",
+            "untagged `do` must fill x4 after fi"
+        );
+        let x1 = get_pred_args(&form, "klama_x1", &compiler).expect("klama_x1 present");
+        assert!(
+            !matches!(&x1[1], LogicalTerm::Constant(c) if resolve(&compiler, c) == "do"),
+            "do must NOT land in x1 (pre-fix bug), got {:?}",
+            x1[1]
+        );
+        let x3 = get_pred_args(&form, "klama_x3", &compiler).expect("klama_x3 present");
+        assert!(
+            matches!(&x3[1], LogicalTerm::Description(_)),
+            "fi `le zarci` must fill x3, got {:?}",
+            x3[1]
+        );
+    }
+
+    #[test]
+    fn test_untagged_before_tag_still_fills_x1() {
+        // Regression: `mi klama fe do` — untagged `mi` fills x1, `fe do` fills x2.
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),     // 0
+            Sumti::ProSumti("do".into()),     // 1
+            Sumti::Tagged((PlaceTag::Fe, 1)), // 2: fe do
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![2],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        let x1 = get_pred_args(&form, "klama_x1", &compiler).expect("klama_x1");
+        let x2 = get_pred_args(&form, "klama_x2", &compiler).expect("klama_x2");
+        assert_eq!(const_str(&compiler, &x1[1]), "mi");
+        assert_eq!(const_str(&compiler, &x2[1]), "do");
     }
 
     // ─── Abstraction type tests ──────────────────────────────────
