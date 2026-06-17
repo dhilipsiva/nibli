@@ -5297,6 +5297,70 @@ fn proof_trace_byte_deterministic_3x() {
 }
 
 #[test]
+fn proof_trace_equals_pinned_resolving_depth() {
+    // The iterative-deepening proof query returns the trace built at the RESOLVING
+    // depth (the shallowest non-ResourceExceeded(Depth) depth). This locks that
+    // invariant: the deepening loop's trace == a single proof build pinned at the
+    // resolving depth — the property the build-once-at-resolving-depth optimization
+    // relies on. A 2-hop chain (proof at depth >1) exercises it: querying the
+    // shallow depths hits the depth horizon (RE) before the chain resolves.
+
+    // (A) Build the trace ONCE, pinned at the resolving depth. The resolving depth
+    //     is found with the cheap UNTRACED walk on a freshly-cleared thread-local
+    //     cache (the cache is shared across KB instances, so clear it so a prior
+    //     query's cached True can't make a shallow probe spuriously resolve).
+    let kb_pin = new_kb();
+    assert_buf(&kb_pin, make_assertion("alis", "gerku"));
+    assert_buf(&kb_pin, make_universal("gerku", "danlu"));
+    assert_buf(&kb_pin, make_universal("danlu", "xanlu"));
+    clear_and_enable_pred_cache();
+    let configured_max = kb_pin.inner.borrow().max_chain_depth;
+    let mut resolving_depth = configured_max;
+    for depth_limit in 1..=configured_max {
+        kb_pin.inner.borrow_mut().max_chain_depth = depth_limit;
+        let r = kb_pin
+            .run_entailment_check(&make_query("alis", "xanlu"))
+            .unwrap();
+        if !matches!(r, QueryResult::ResourceExceeded(ResourceKind::Depth)) {
+            resolving_depth = depth_limit;
+            break;
+        }
+    }
+    kb_pin.inner.borrow_mut().max_chain_depth = resolving_depth;
+    let (r_pin, t_pin) = kb_pin
+        .run_entailment_check_with_proof(&make_query("alis", "xanlu"))
+        .unwrap();
+    kb_pin.inner.borrow_mut().max_chain_depth = configured_max;
+
+    // (B) The full iterative-deepening proof query (clears the cache at its start).
+    let kb_loop = new_kb();
+    assert_buf(&kb_loop, make_assertion("alis", "gerku"));
+    assert_buf(&kb_loop, make_universal("gerku", "danlu"));
+    assert_buf(&kb_loop, make_universal("danlu", "xanlu"));
+    let (r_loop, t_loop) = kb_loop
+        .query_entailment_with_proof_inner(make_query("alis", "xanlu"))
+        .unwrap();
+
+    assert!(
+        r_loop.is_true(),
+        "xanlu(alis) should hold via the 2-hop chain"
+    );
+    assert!(
+        resolving_depth > 1,
+        "expected a multi-hop proof (resolving depth >1), got {resolving_depth}"
+    );
+    assert_eq!(
+        r_loop, r_pin,
+        "verdict mismatch: deepening loop vs pinned at resolving depth"
+    );
+    assert_eq!(
+        format!("{t_loop:?}"),
+        format!("{t_pin:?}"),
+        "trace mismatch: deepening loop vs single build at resolving depth {resolving_depth}"
+    );
+}
+
+#[test]
 fn test_proof_memo_correctness() {
     // Memoized trace still reports the correct result and contains proper Derived + Asserted steps.
     let kb = new_kb();

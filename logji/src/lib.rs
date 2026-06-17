@@ -476,35 +476,42 @@ impl KnowledgeBase {
         &self,
         logic: LogicBuffer,
     ) -> Result<(QueryResult, ProofTrace), String> {
-        clear_and_enable_pred_cache(); // Tabling: clear once, persist across depth iterations.
+        clear_and_enable_pred_cache(); // Tabling: clear once, persist across phases.
         let configured_max = self.inner.borrow().max_chain_depth;
-        let mut last_trace = ProofTrace {
-            steps: vec![],
-            root: 0,
-        };
+        // Phase 1: find the resolving depth with the CHEAP untraced walk — no proof
+        // trace is built (then discarded) on the probe passes. The costly part of a
+        // proof query is the ProofStep-tree construction, which (unlike the verdict,
+        // which the predicate cache amortizes across depths) is NOT cross-depth-
+        // cached, so the old per-depth loop rebuilt D-1 partial traces only to throw
+        // them away. If no depth resolves, `resolving_depth` stays `configured_max`
+        // so Phase 2 builds the deepest trace (matching the old `last_trace`).
+        let mut resolving_depth = configured_max;
         for depth_limit in 1..=configured_max {
             self.inner.borrow_mut().max_chain_depth = depth_limit;
             // Restore the configured depth on the error path too (see
-            // query_entailment_inner) so a cancelled proof query leaves the KB
-            // usable.
-            let (result, trace) = match self.run_entailment_check_with_proof(&logic) {
-                Ok(pair) => pair,
+            // query_entailment_inner) — explicit `match`, NOT `?`, so a cancelled
+            // query never leaves the KB pinned at a partial deepening depth.
+            let result = match self.run_entailment_check(&logic) {
+                Ok(r) => r,
                 Err(e) => {
                     self.inner.borrow_mut().max_chain_depth = configured_max;
                     return Err(e);
                 }
             };
             if !matches!(result, QueryResult::ResourceExceeded(ResourceKind::Depth)) {
-                self.inner.borrow_mut().max_chain_depth = configured_max;
-                return Ok((result, trace));
+                resolving_depth = depth_limit;
+                break;
             }
-            last_trace = trace;
         }
+        // Phase 2: build the proof trace ONCE at the resolving depth. The predicate
+        // cache (warmed by Phase 1) makes this build's verdict sub-checks cheap; the
+        // trace is byte-identical to the former per-depth build because the trace
+        // descent never shortcuts on the verdict cache and the fact store is
+        // set-idempotent for the only state it reads (`typed_fact_is_asserted`).
+        self.inner.borrow_mut().max_chain_depth = resolving_depth;
+        let out = self.run_entailment_check_with_proof(&logic);
         self.inner.borrow_mut().max_chain_depth = configured_max;
-        Ok((
-            QueryResult::ResourceExceeded(ResourceKind::Depth),
-            last_trace,
-        ))
+        out
     }
 }
 
