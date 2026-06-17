@@ -19,11 +19,15 @@ const FACTS_TABLE: TableDefinition<u64, &[u8]> = TableDefinition::new("facts");
 const PREDICATE_INDEX_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("predicate_index");
 const META_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("metadata");
 
-const SCHEMA_VERSION: u32 = 1;
+const SCHEMA_VERSION: u32 = 2;
 
 // ─── Serializable mirror types ────────────────────────────────────
 
 /// A logical term, mirroring WIT `logical-term` for serialization.
+///
+/// Still used by `StoredAssertion::Direct` (gasnu's direct-fact injection path).
+/// nibli-engine no longer mirrors the full logic graph here — it persists
+/// `nibli_types::logic::LogicBuffer` directly (serde-derived) as the opaque payload.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum StoredLogicalTerm {
     Variable(String),
@@ -33,37 +37,12 @@ pub enum StoredLogicalTerm {
     Number(f64),
 }
 
-/// A logic node, mirroring WIT `logic-node` for serialization.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum StoredLogicNode {
-    Predicate(String, Vec<StoredLogicalTerm>),
-    ComputeNode(String, Vec<StoredLogicalTerm>),
-    And(u32, u32),
-    Or(u32, u32),
-    Not(u32),
-    Exists(String, u32),
-    ForAll(String, u32),
-    Past(u32),
-    Present(u32),
-    Future(u32),
-    Obligatory(u32),
-    Permitted(u32),
-    Count(String, u32, u32),
-}
-
-/// A logic buffer, mirroring WIT `logic-buffer` for serialization.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct StoredLogicBuffer {
-    pub nodes: Vec<StoredLogicNode>,
-    pub roots: Vec<u32>,
-}
-
 /// A fact record persisted to disk.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StoredFactRecord {
     pub id: u64,
     /// Opaque payload — caller decides format.
-    /// nibli-engine: postcard-serialized `StoredLogicBuffer`.
+    /// nibli-engine: postcard-serialized `nibli_types::logic::LogicBuffer`.
     /// gasnu: postcard-serialized `StoredAssertion`.
     pub payload: Vec<u8>,
     /// Human-readable label (Lojban source or `:assert rel args`).
@@ -659,6 +638,38 @@ mod tests {
     }
 
     #[test]
+    fn open_rejects_mismatched_schema_version() {
+        let path = temp_db_path("schema_version_reject");
+        cleanup(&path);
+
+        // Simulate an older on-disk database by writing schema_version = 1
+        // directly into the metadata table (the payload byte layout changed
+        // when nibli-engine moved off the StoredLogicBuffer mirror, so v1 DBs
+        // must be hard-rejected rather than silently misread).
+        {
+            let db = Database::create(&path).unwrap();
+            let txn = db.begin_write().unwrap();
+            {
+                let mut meta = txn.open_table(META_TABLE).unwrap();
+                let bytes = postcard::to_allocvec(&1u32).unwrap();
+                meta.insert("schema_version", bytes.as_slice()).unwrap();
+            }
+            txn.commit().unwrap();
+        }
+
+        match NibliStore::open(&path, "test-node".into()) {
+            Err(StoreError::SchemaVersion { expected, found }) => {
+                assert_eq!(expected, SCHEMA_VERSION);
+                assert_eq!(found, 1);
+            }
+            Err(other) => panic!("expected a SchemaVersion error, got: {other:?}"),
+            Ok(_) => panic!("a stale schema version must be rejected"),
+        }
+
+        cleanup(&path);
+    }
+
+    #[test]
     fn test_retraction_filters() {
         let path = temp_db_path("retract_filter");
         cleanup(&path);
@@ -813,45 +824,6 @@ mod tests {
         assert_eq!(gerku_ids, vec![2]);
 
         cleanup(&path);
-    }
-
-    #[test]
-    fn test_serialization_roundtrip() {
-        let buf = StoredLogicBuffer {
-            nodes: vec![
-                StoredLogicNode::Predicate(
-                    "gerku".into(),
-                    vec![StoredLogicalTerm::Constant("adam".into())],
-                ),
-                StoredLogicNode::Predicate(
-                    "danlu".into(),
-                    vec![StoredLogicalTerm::Constant("adam".into())],
-                ),
-                StoredLogicNode::And(0, 1),
-                StoredLogicNode::Exists("x".into(), 2),
-                StoredLogicNode::Past(0),
-                StoredLogicNode::Not(1),
-                StoredLogicNode::ForAll("y".into(), 5),
-                StoredLogicNode::ComputeNode(
-                    "pilji".into(),
-                    vec![
-                        StoredLogicalTerm::Number(3.0),
-                        StoredLogicalTerm::Number(4.0),
-                    ],
-                ),
-                StoredLogicNode::Count("z".into(), 2, 0),
-                StoredLogicNode::Or(0, 1),
-                StoredLogicNode::Present(0),
-                StoredLogicNode::Future(0),
-                StoredLogicNode::Obligatory(0),
-                StoredLogicNode::Permitted(0),
-            ],
-            roots: vec![2, 3],
-        };
-
-        let bytes = postcard::to_allocvec(&buf).unwrap();
-        let decoded: StoredLogicBuffer = postcard::from_bytes(&bytes).unwrap();
-        assert_eq!(buf, decoded);
     }
 
     #[test]

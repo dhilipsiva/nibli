@@ -10,7 +10,7 @@ use nibli_protocol::{
     LogicalTerm as LogicalTermJson, ProofRule as ProofRuleJson, ProofStep as ProofStepJson,
     ProofTrace as ProofTraceJson,
 };
-use nibli_store::{NibliStore, StoredLogicBuffer, StoredLogicNode, StoredLogicalTerm};
+use nibli_store::NibliStore;
 
 pub use nibli_types::logic::{
     AggregateOp as EngineAggregateOp, FactSummary as EngineFactSummary,
@@ -152,90 +152,6 @@ pub fn display_query_result(result: &EngineQueryResult) -> String {
 // ═══════════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════════
-// STORE CONVERSIONS: logji <-> nibli-store mirror types
-// ═══════════════════════════════════════════════════════════════════════
-
-fn term_to_stored(t: &logji_logic::LogicalTerm) -> StoredLogicalTerm {
-    match t {
-        logji_logic::LogicalTerm::Variable(v) => StoredLogicalTerm::Variable(v.clone()),
-        logji_logic::LogicalTerm::Constant(c) => StoredLogicalTerm::Constant(c.clone()),
-        logji_logic::LogicalTerm::Description(d) => StoredLogicalTerm::Description(d.clone()),
-        logji_logic::LogicalTerm::Unspecified => StoredLogicalTerm::Unspecified,
-        logji_logic::LogicalTerm::Number(n) => StoredLogicalTerm::Number(*n),
-    }
-}
-
-fn term_from_stored(t: &StoredLogicalTerm) -> logji_logic::LogicalTerm {
-    match t {
-        StoredLogicalTerm::Variable(v) => logji_logic::LogicalTerm::Variable(v.clone()),
-        StoredLogicalTerm::Constant(c) => logji_logic::LogicalTerm::Constant(c.clone()),
-        StoredLogicalTerm::Description(d) => logji_logic::LogicalTerm::Description(d.clone()),
-        StoredLogicalTerm::Unspecified => logji_logic::LogicalTerm::Unspecified,
-        StoredLogicalTerm::Number(n) => logji_logic::LogicalTerm::Number(*n),
-    }
-}
-
-fn node_to_stored(n: &logji_logic::LogicNode) -> StoredLogicNode {
-    match n {
-        logji_logic::LogicNode::Predicate((rel, args)) => {
-            StoredLogicNode::Predicate(rel.clone(), args.iter().map(term_to_stored).collect())
-        }
-        logji_logic::LogicNode::ComputeNode((rel, args)) => {
-            StoredLogicNode::ComputeNode(rel.clone(), args.iter().map(term_to_stored).collect())
-        }
-        logji_logic::LogicNode::AndNode((l, r)) => StoredLogicNode::And(*l, *r),
-        logji_logic::LogicNode::OrNode((l, r)) => StoredLogicNode::Or(*l, *r),
-        logji_logic::LogicNode::NotNode(id) => StoredLogicNode::Not(*id),
-        logji_logic::LogicNode::ExistsNode((v, b)) => StoredLogicNode::Exists(v.clone(), *b),
-        logji_logic::LogicNode::ForAllNode((v, b)) => StoredLogicNode::ForAll(v.clone(), *b),
-        logji_logic::LogicNode::PastNode(id) => StoredLogicNode::Past(*id),
-        logji_logic::LogicNode::PresentNode(id) => StoredLogicNode::Present(*id),
-        logji_logic::LogicNode::FutureNode(id) => StoredLogicNode::Future(*id),
-        logji_logic::LogicNode::ObligatoryNode(id) => StoredLogicNode::Obligatory(*id),
-        logji_logic::LogicNode::PermittedNode(id) => StoredLogicNode::Permitted(*id),
-        logji_logic::LogicNode::CountNode((v, c, b)) => StoredLogicNode::Count(v.clone(), *c, *b),
-    }
-}
-
-fn node_from_stored(n: &StoredLogicNode) -> logji_logic::LogicNode {
-    match n {
-        StoredLogicNode::Predicate(rel, args) => logji_logic::LogicNode::Predicate((
-            rel.clone(),
-            args.iter().map(term_from_stored).collect(),
-        )),
-        StoredLogicNode::ComputeNode(rel, args) => logji_logic::LogicNode::ComputeNode((
-            rel.clone(),
-            args.iter().map(term_from_stored).collect(),
-        )),
-        StoredLogicNode::And(l, r) => logji_logic::LogicNode::AndNode((*l, *r)),
-        StoredLogicNode::Or(l, r) => logji_logic::LogicNode::OrNode((*l, *r)),
-        StoredLogicNode::Not(id) => logji_logic::LogicNode::NotNode(*id),
-        StoredLogicNode::Exists(v, b) => logji_logic::LogicNode::ExistsNode((v.clone(), *b)),
-        StoredLogicNode::ForAll(v, b) => logji_logic::LogicNode::ForAllNode((v.clone(), *b)),
-        StoredLogicNode::Past(id) => logji_logic::LogicNode::PastNode(*id),
-        StoredLogicNode::Present(id) => logji_logic::LogicNode::PresentNode(*id),
-        StoredLogicNode::Future(id) => logji_logic::LogicNode::FutureNode(*id),
-        StoredLogicNode::Obligatory(id) => logji_logic::LogicNode::ObligatoryNode(*id),
-        StoredLogicNode::Permitted(id) => logji_logic::LogicNode::PermittedNode(*id),
-        StoredLogicNode::Count(v, c, b) => logji_logic::LogicNode::CountNode((v.clone(), *c, *b)),
-    }
-}
-
-fn buf_to_stored(buf: &logji_logic::LogicBuffer) -> StoredLogicBuffer {
-    StoredLogicBuffer {
-        nodes: buf.nodes.iter().map(node_to_stored).collect(),
-        roots: buf.roots.clone(),
-    }
-}
-
-fn buf_from_stored(stored: &StoredLogicBuffer) -> logji_logic::LogicBuffer {
-    logji_logic::LogicBuffer {
-        nodes: stored.nodes.iter().map(node_from_stored).collect(),
-        roots: stored.roots.clone(),
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════
 // ENGINE WRAPPER
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -334,9 +250,8 @@ impl NibliEngine {
             .all_active_facts()
             .map_err(|e| format!("Store error: {e}"))?;
         for fact in &facts {
-            let stored_buf: StoredLogicBuffer = postcard::from_bytes(&fact.payload)
+            let buf: logji_logic::LogicBuffer = postcard::from_bytes(&fact.payload)
                 .map_err(|e| format!("Deserialize error: {e}"))?;
-            let buf = buf_from_stored(&stored_buf);
             self.kb
                 .assert_fact_with_id(buf, fact.label.clone(), fact.id)
                 .map_err(|e| format!("Replay error (fact {}): {e}", fact.id))?;
@@ -418,8 +333,8 @@ impl NibliEngine {
             .map_err(|_| "Store error: persistence state is already borrowed".to_string())?;
 
         if let Some(s) = store.as_mut() {
-            let payload = postcard::to_allocvec(&buf_to_stored(&buf))
-                .map_err(|e| format!("Serialize error: {e}"))?;
+            let payload =
+                postcard::to_allocvec(&buf).map_err(|e| format!("Serialize error: {e}"))?;
             let fact_id = s.next_fact_id().map_err(|e| format!("Store error: {e}"))?;
             s.insert_fact(fact_id, label.clone(), payload)
                 .map_err(|e| format!("Store error: {e}"))?;
@@ -570,6 +485,50 @@ mod tests {
 
     fn cleanup(path: &Path) {
         let _ = fs::remove_file(path);
+    }
+
+    /// The persisted payload is now `nibli_types::logic::LogicBuffer` serialized
+    /// directly via serde/postcard (the `StoredLogicBuffer` mirror was deleted).
+    /// This pins that round-trip over every node + term variant — the property the
+    /// replay path (`replay_from_store`) and the write path (`assert_text`) depend on.
+    #[test]
+    fn logic_buffer_serde_postcard_roundtrip_covers_all_variants() {
+        use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm};
+
+        let buf = LogicBuffer {
+            nodes: vec![
+                LogicNode::Predicate((
+                    "gerku".into(),
+                    vec![
+                        LogicalTerm::Constant("adam".into()),
+                        LogicalTerm::Variable("x".into()),
+                        LogicalTerm::Description("le-dog".into()),
+                        LogicalTerm::Unspecified,
+                    ],
+                )),
+                LogicNode::Predicate(("danlu".into(), vec![LogicalTerm::Constant("adam".into())])),
+                LogicNode::AndNode((0, 1)),
+                LogicNode::ExistsNode(("x".into(), 2)),
+                LogicNode::PastNode(0),
+                LogicNode::NotNode(1),
+                LogicNode::ForAllNode(("y".into(), 5)),
+                LogicNode::ComputeNode((
+                    "pilji".into(),
+                    vec![LogicalTerm::Number(3.0), LogicalTerm::Number(4.0)],
+                )),
+                LogicNode::CountNode(("z".into(), 2, 0)),
+                LogicNode::OrNode((0, 1)),
+                LogicNode::PresentNode(0),
+                LogicNode::FutureNode(0),
+                LogicNode::ObligatoryNode(0),
+                LogicNode::PermittedNode(0),
+            ],
+            roots: vec![2, 3],
+        };
+
+        let bytes = postcard::to_allocvec(&buf).unwrap();
+        let decoded: LogicBuffer = postcard::from_bytes(&bytes).unwrap();
+        assert_eq!(buf, decoded);
     }
 
     #[test]

@@ -5,6 +5,7 @@
 
 /// A logical term — the typed representation of an FOL argument.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LogicalTerm {
     /// A bound or free variable (e.g., Skolem variables, universally quantified vars).
     Variable(String),
@@ -21,6 +22,7 @@ pub enum LogicalTerm {
 /// A node in the flat logic graph. Each variant corresponds to an FOL constructor.
 /// Nodes reference children by `u32` index into the `LogicBuffer.nodes` array.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LogicNode {
     /// Ground or quantified predicate. Fields: (relation-name, argument-terms).
     Predicate((String, Vec<LogicalTerm>)),
@@ -52,6 +54,7 @@ pub enum LogicNode {
 
 /// Flat logic buffer: a `nodes` array plus root indices.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LogicBuffer {
     pub nodes: Vec<LogicNode>,
     pub roots: Vec<u32>,
@@ -128,7 +131,7 @@ impl QueryResult {
 }
 
 /// Proof rule applied at a single proof step.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ProofRule {
     Conjunction,
     DisjunctionCheck(String),
