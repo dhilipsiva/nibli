@@ -3423,7 +3423,6 @@ name = "logji"
 version = "0.1.0"
 dependencies = [
  "nibli-types",
- "postcard",
  "serde",
  "smuni-dictionary",
 ]

@@ -35,9 +35,6 @@ mod reasoning;
 /// S-expression reconstruction for logic buffers (debug output).
 pub mod repr;
 mod rules;
-/// WASI-compatible lazy-loading fact store (append-only log + LRU cache).
-#[cfg(feature = "wasi-store")]
-pub mod wasi_fact_store;
 
 pub use compute::{ComputeRequest, register_compute_dispatch};
 
