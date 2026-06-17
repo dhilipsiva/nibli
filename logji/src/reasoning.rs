@@ -469,7 +469,7 @@ fn check_formula_holds_core<S: TraceSink>(
                 if let LogicNode::ComputeNode((rel, args)) = body_node {
                     let members = inner.all_typed_domain_members();
                     if let Some(batch) =
-                        batch_evaluate_compute_for_members(rel, args, v, members, subs)
+                        batch_evaluate_compute_for_members(&*inner, rel, args, v, members, subs)
                     {
                         // Clone the winning member before releasing the slice borrow.
                         let winner = batch
@@ -508,7 +508,7 @@ fn check_formula_holds_core<S: TraceSink>(
             // Decomposed numeric group (surface arithmetic/comparison): evaluate
             // the operands gathered from the role predicates directly — the
             // verdict is definitive, matching the flat ComputeNode arm.
-            if let Some(verdict) = try_evaluate_numeric_group(buffer, v, *body, subs) {
+            if let Some(verdict) = try_evaluate_numeric_group(&*inner, buffer, v, *body, subs) {
                 let res = if verdict.holds {
                     QueryResult::True
                 } else {
@@ -630,9 +630,14 @@ fn check_formula_holds_core<S: TraceSink>(
             if let Ok(body_node) = get_node(buffer, *body) {
                 if let LogicNode::ComputeNode((rel, args)) = body_node {
                     let members_slice = inner.all_typed_domain_members();
-                    if let Some(batch) =
-                        batch_evaluate_compute_for_members(rel, args, v, members_slice, subs)
-                    {
+                    if let Some(batch) = batch_evaluate_compute_for_members(
+                        &*inner,
+                        rel,
+                        args,
+                        v,
+                        members_slice,
+                        subs,
+                    ) {
                         let fail_member = batch
                             .results
                             .iter()
@@ -766,7 +771,7 @@ fn check_formula_holds_core<S: TraceSink>(
                 if let LogicNode::ComputeNode((rel, args)) = body_node {
                     let members = inner.all_typed_domain_members();
                     if let Some(batch) =
-                        batch_evaluate_compute_for_members(rel, args, v, members, subs)
+                        batch_evaluate_compute_for_members(&*inner, rel, args, v, members, subs)
                     {
                         for fact in batch.deferred_facts {
                             assert_typed_fact(fact, inner);
@@ -980,7 +985,7 @@ fn check_formula_holds_core<S: TraceSink>(
                 return Ok((verdict, idx));
             }
             let resolved = resolve_args_for_dispatch(args, subs);
-            if let Ok(result) = dispatch_to_backend(rel, &resolved) {
+            if let Ok(result) = dispatch_to_backend(&*inner, rel, &resolved) {
                 if result {
                     if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
                         assert_typed_fact(fact, inner);

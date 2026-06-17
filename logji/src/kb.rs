@@ -527,6 +527,14 @@ pub(super) struct KnowledgeBaseInner {
     /// abort via the `Result::Err` channel. Default `None` keeps gasnu/lasna/
     /// tests byte-identical and needs no clock — the WASI sandbox forbids one.
     pub(super) cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
+    /// Per-instance external compute dispatch (replaces the old thread-local
+    /// `register_compute_dispatch`, which the multithreaded server could never
+    /// register because each tokio worker had its own `None` thread-local). Set
+    /// via `KnowledgeBase::set_compute_dispatch`. Like `cancel`, this is
+    /// CONFIGURATION, not derived state — NOT cleared by `reset()`. `None` means
+    /// external predicates return an error (built-in arithmetic still works).
+    pub(super) compute_eval: Option<crate::compute::EvalFn>,
+    pub(super) compute_batch_eval: Option<crate::compute::BatchEvalFn>,
 }
 
 impl Clone for KnowledgeBaseInner {
@@ -560,6 +568,8 @@ impl Clone for KnowledgeBaseInner {
             traced_predicates: self.traced_predicates.clone(),
             negative_facts: self.negative_facts.clone(),
             cancel: self.cancel.clone(),
+            compute_eval: self.compute_eval,
+            compute_batch_eval: self.compute_batch_eval,
         }
     }
 }
@@ -595,6 +605,8 @@ impl KnowledgeBaseInner {
             traced_predicates: HashSet::new(),
             negative_facts: HashSet::new(),
             cancel: None,
+            compute_eval: None,
+            compute_batch_eval: None,
         }
     }
 

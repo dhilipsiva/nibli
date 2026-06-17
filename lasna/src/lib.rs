@@ -849,10 +849,12 @@ impl Session {
 
 impl GuestSession for Session {
     fn new() -> Self {
-        // Register compute dispatch so logji can call the host's compute-backend
-        logji::register_compute_dispatch(eval_via_host, batch_eval_via_host);
+        // Register compute dispatch PER-KB so logji can call the host's
+        // compute-backend (was a thread-local global — now per-instance).
+        let kb = logji::KnowledgeBase::new();
+        kb.set_compute_dispatch(eval_via_host, batch_eval_via_host);
         Session {
-            kb: logji::KnowledgeBase::new(),
+            kb,
             compute_predicates: RefCell::new(default_compute_predicates()),
             last_relation: RefCell::new(None),
         }

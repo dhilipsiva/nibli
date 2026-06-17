@@ -3,7 +3,9 @@
 //! Each test creates a fresh NibliEngine, asserts Lojban text, and queries with proof.
 //! No WASM, no HTTP — exercises gerna+smuni+logji directly via Rust crate calls.
 
-use nibli_engine::{EngineAggregateOp, EngineQueryResult, NibliEngine};
+use nibli_engine::{
+    EngineAggregateOp, EngineComputeRequest, EngineLogicalTerm, EngineQueryResult, NibliEngine,
+};
 use nibli_store::NibliStore;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -1584,6 +1586,40 @@ fn surface_numeric_pilji_true_and_false() {
     assert_false(
         &engine.query_holds("li pa pa cu pilji li re li mu").unwrap(),
         "11 = 2 × 5 must be FALSE through surface Lojban",
+    );
+}
+
+// Module-level stubs for the per-instance compute-dispatch test below.
+// A trivial backend that "knows" only `tenfa` (exponentiation), which logji has
+// no built-in for — so the query can only succeed via the registered dispatch.
+fn stub_tenfa_eval(rel: &str, _args: &[EngineLogicalTerm]) -> Result<bool, String> {
+    Ok(rel == "tenfa")
+}
+
+fn stub_tenfa_batch(reqs: &[EngineComputeRequest]) -> Vec<Result<bool, String>> {
+    reqs.iter().map(|r| Ok(r.relation == "tenfa")).collect()
+}
+
+#[test]
+fn per_instance_compute_dispatch_is_isolated() {
+    // engine_a registers a per-instance dispatch → external `tenfa` resolves TRUE.
+    let mut engine_a = NibliEngine::new();
+    engine_a.register_compute_predicate("tenfa".to_string());
+    engine_a.set_compute_dispatch(stub_tenfa_eval, stub_tenfa_batch);
+    assert_true(
+        &engine_a.query_holds("li bi cu tenfa li re li ci").unwrap(),
+        "an engine with per-instance dispatch must resolve external `tenfa`",
+    );
+
+    // engine_b: SAME compute-predicate registration, but NO dispatch set. With the
+    // old THREAD-LOCAL dispatch, engine_a's registration would leak to engine_b on
+    // the same thread; per-instance dispatch keeps them independent → `tenfa` is
+    // unresolved (no built-in, no backend) and the query is not TRUE.
+    let mut engine_b = NibliEngine::new();
+    engine_b.register_compute_predicate("tenfa".to_string());
+    assert_false(
+        &engine_b.query_holds("li bi cu tenfa li re li ci").unwrap(),
+        "an engine WITHOUT dispatch must not resolve external `tenfa`",
     );
 }
 

@@ -36,7 +36,7 @@ mod reasoning;
 pub mod repr;
 mod rules;
 
-pub use compute::{ComputeRequest, register_compute_dispatch};
+pub use compute::ComputeRequest;
 
 use compute::*;
 use reasoning::*;
@@ -648,6 +648,29 @@ impl KnowledgeBase {
     /// Remove any installed cancellation flag (queries run unbounded again).
     pub fn clear_cancel_flag(&self) {
         self.inner.borrow_mut().cancel = None;
+    }
+
+    /// Register this KB's external compute dispatch (per-instance — replaces the
+    /// old thread-local `register_compute_dispatch`, which the multithreaded
+    /// server could never register because each tokio blocking-pool worker had
+    /// its own `None` thread-local). Built-in arithmetic (pilji/sumji/dilcu) is
+    /// always evaluated locally; everything else is forwarded to `eval`/
+    /// `batch_eval`.
+    ///
+    /// TRUST BOUNDARY: a `true` reply is auto-asserted as a ground fact mid-query
+    /// that downstream universal rules can chain on, so a malicious or MITM
+    /// backend can seed arbitrary predicates. The backend is part of the trusted
+    /// computing base — run it on localhost or a network segment you control.
+    /// (Auto-asserted compute facts are non-durable: no FactRecord, never
+    /// replayed by rebuild.)
+    pub fn set_compute_dispatch(
+        &self,
+        eval: crate::compute::EvalFn,
+        batch_eval: crate::compute::BatchEvalFn,
+    ) {
+        let mut inner = self.inner.borrow_mut();
+        inner.compute_eval = Some(eval);
+        inner.compute_batch_eval = Some(batch_eval);
     }
 
     /// Assert a compiled FOL formula into the knowledge base. Returns the fact ID.

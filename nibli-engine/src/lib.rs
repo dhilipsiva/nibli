@@ -12,6 +12,7 @@ use nibli_protocol::{
 };
 use nibli_store::NibliStore;
 
+pub use logji::ComputeRequest as EngineComputeRequest;
 pub use nibli_types::logic::{
     AggregateOp as EngineAggregateOp, FactSummary as EngineFactSummary,
     LogicalTerm as EngineLogicalTerm, QueryResult as EngineQueryResult,
@@ -186,6 +187,19 @@ impl NibliEngine {
     /// Remove any installed cancellation flag.
     pub fn clear_cancel_flag(&self) {
         self.kb.clear_cancel_flag();
+    }
+
+    /// Register this engine's external compute dispatch (per-instance). Without
+    /// it, external predicates (e.g. `tenfa`/`dugri`) return an error; built-in
+    /// arithmetic (pilji/sumji/dilcu) works regardless. Replaces the old
+    /// thread-local registration that the multithreaded server could not use.
+    /// See `logji::KnowledgeBase::set_compute_dispatch` for the trust boundary.
+    pub fn set_compute_dispatch(
+        &self,
+        eval: fn(&str, &[EngineLogicalTerm]) -> Result<bool, String>,
+        batch_eval: fn(&[logji::ComputeRequest]) -> Vec<Result<bool, String>>,
+    ) {
+        self.kb.set_compute_dispatch(eval, batch_eval);
     }
 
     fn default_compute_predicates() -> HashSet<String> {

@@ -1,33 +1,11 @@
 use super::*;
-use std::cell::RefCell;
 
-// ─── Injectable compute dispatch ───
+// ─── Injectable compute dispatch (per-KB; see `KnowledgeBase::set_compute_dispatch`) ───
 
-type EvalFn = fn(&str, &[LogicalTerm]) -> Result<bool, String>;
-type BatchEvalFn = fn(&[ComputeRequest]) -> Vec<Result<bool, String>>;
-
-thread_local! {
-    static EVAL_FN: RefCell<Option<EvalFn>> = RefCell::new(None);
-    static BATCH_EVAL_FN: RefCell<Option<BatchEvalFn>> = RefCell::new(None);
-}
-
-/// Register external compute dispatch functions. Called once by the host (lasna or gasnu).
-///
-/// TRUST BOUNDARY. Built-in arithmetic (`try_arithmetic_evaluation`, below — pilji/
-/// sumji/dilcu) is evaluated locally and is deterministic and trusted. Everything
-/// else is forwarded to the registered `eval`/`batch_eval`, which the host wires to
-/// an operator-configured backend (gasnu speaks JSON Lines over a **plaintext,
-/// unauthenticated** TCP channel). A `true` reply is **auto-asserted as a ground fact**
-/// mid-query (see `dispatch_to_backend`) that downstream universal rules can chain on,
-/// so a malicious or MITM backend can seed arbitrary predicates into the knowledge
-/// base. The backend is therefore part of the trusted computing base: run it on
-/// localhost or a network segment you control. (The auto-asserted facts are NOT
-/// durable — they carry no FactRecord and are recomputed on demand, never replayed by
-/// rebuild — so a retract/rebuild does not preserve backend-seeded facts.)
-pub fn register_compute_dispatch(eval: EvalFn, batch_eval: BatchEvalFn) {
-    EVAL_FN.with(|f| *f.borrow_mut() = Some(eval));
-    BATCH_EVAL_FN.with(|f| *f.borrow_mut() = Some(batch_eval));
-}
+/// Single-predicate external compute dispatch function (stored on `KnowledgeBaseInner`).
+pub(crate) type EvalFn = fn(&str, &[LogicalTerm]) -> Result<bool, String>;
+/// Batch external compute dispatch function (stored on `KnowledgeBaseInner`).
+pub(crate) type BatchEvalFn = fn(&[ComputeRequest]) -> Vec<Result<bool, String>>;
 
 pub(super) fn extract_num_value(
     term: &LogicalTerm,
@@ -149,6 +127,7 @@ pub(super) struct NumericGroupVerdict {
 /// a group would mint a fresh Skolem event per query and accumulate
 /// duplicate facts. Recomputation is free.
 pub(super) fn try_evaluate_numeric_group(
+    inner: &KnowledgeBaseInner,
     buffer: &LogicBuffer,
     exists_var: &str,
     body_id: u32,
@@ -249,7 +228,7 @@ pub(super) fn try_evaluate_numeric_group(
             .iter()
             .all(|t| matches!(t, LogicalTerm::Number(_) | LogicalTerm::Unspecified));
         if dispatchable {
-            if let Ok(holds) = dispatch_to_backend(rel, &resolved) {
+            if let Ok(holds) = dispatch_to_backend(inner, rel, &resolved) {
                 return Some(NumericGroupVerdict {
                     relation: rel.to_string(),
                     method: "backend",
@@ -287,11 +266,15 @@ pub(super) fn resolve_args_for_dispatch(
 /// `register_compute_dispatch`. `assert_typed_fact` invalidates the predicate result
 /// cache on every insert, so an auto-asserted fact never leaves a stale verdict cached
 /// within the same query.
-pub(super) fn dispatch_to_backend(rel: &str, args: &[LogicalTerm]) -> Result<bool, String> {
-    EVAL_FN.with(|f| match *f.borrow() {
+pub(super) fn dispatch_to_backend(
+    inner: &KnowledgeBaseInner,
+    rel: &str,
+    args: &[LogicalTerm],
+) -> Result<bool, String> {
+    match inner.compute_eval {
         Some(eval) => eval(rel, args),
         None => Err("Compute backend not registered".to_string()),
-    })
+    }
 }
 
 /// Batch compute request.
@@ -300,14 +283,17 @@ pub struct ComputeRequest {
     pub args: Vec<LogicalTerm>,
 }
 
-fn dispatch_batch_to_backend(requests: &[ComputeRequest]) -> Vec<Result<bool, String>> {
-    BATCH_EVAL_FN.with(|f| match *f.borrow() {
+fn dispatch_batch_to_backend(
+    inner: &KnowledgeBaseInner,
+    requests: &[ComputeRequest],
+) -> Vec<Result<bool, String>> {
+    match inner.compute_batch_eval {
         Some(batch_eval) => batch_eval(requests),
         None => requests
             .iter()
             .map(|_| Err("Compute backend not registered".to_string()))
             .collect(),
-    })
+    }
 }
 
 /// Build a typed StoredFact from resolved LogicalTerm arguments.
@@ -344,6 +330,7 @@ pub(super) struct BatchComputeResult {
 }
 
 pub(super) fn batch_evaluate_compute_for_members(
+    inner: &KnowledgeBaseInner,
     rel: &str,
     args: &[LogicalTerm],
     var: &str,
@@ -386,7 +373,7 @@ pub(super) fn batch_evaluate_compute_for_members(
             args: resolved.clone(),
         })
         .collect();
-    let batch_results = dispatch_batch_to_backend(&requests);
+    let batch_results = dispatch_batch_to_backend(inner, &requests);
 
     for (batch_idx, result) in batch_results.into_iter().enumerate() {
         let member_idx = pending[batch_idx].0;
