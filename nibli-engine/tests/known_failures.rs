@@ -22,7 +22,7 @@
 //! (the `best_result` ResourceExceeded wipe) live in separate files so a crash
 //! cannot take the rest of the backlog down with it.
 
-use nibli_engine::{EngineLogicalTerm, NibliEngine};
+use nibli_engine::NibliEngine;
 
 // ─── Fail-open rule compilation (todo.md: HIGH) ─────────────────────────────
 // `build_rule_template_fact`'s `_ => None` catch-all silently drops antecedent
@@ -258,14 +258,14 @@ fn abstraction_body_over_rel_clause_must_reference_real_body() {
 // assert-fact). The fact must still hold after retracting one of its two records.
 
 #[test] // FIXED (multiplicity-aware incremental retraction): promoted to a live guard.
-// PIN RE-ENCODED during promotion: the original pin queried via TEXT
-// (`query_holds("la .adam. cu gerku")`), but text queries are event-decomposed
-// (∃e. gerku(e) ∧ gerku_x1(e, adam) …) and structurally NEVER match a flat
-// direct-injected fact — the pin failed even with both records live, masking the
-// actual retraction bug behind a query-shape mismatch. We therefore verify
-// through the raw FOL contract (`engine.kb().query_entailment` with a flat
-// query buffer), which is exactly the shape `assert_fact_direct` stores. The
-// flat-injection-vs-text-query mismatch is filed separately in todo.md.
+// PIN RE-ENCODED (2026-06-17, flat-injection fix): the public injection API
+// (`assert_fact_direct` / `:assert`) now EVENT-DECOMPOSES, minting a fresh event
+// Skolem per call, so two `:assert gerku adam` calls are DISTINCT facts — no
+// longer the "same ground fact twice" this guard requires. To still exercise
+// HashSet multiplicity + incremental retraction at the FOL level, inject the
+// IDENTICAL flat `gerku(adam)` buffer twice via the low-level `kb().assert_fact`
+// (which stores flat buffers verbatim) and retract one record by id. The fact
+// must still hold while a second live record asserts it.
 fn duplicate_ground_fact_survives_retracting_one_copy() {
     let flat_gerku_adam = || nibli_types::logic::LogicBuffer {
         nodes: vec![nibli_types::logic::LogicNode::Predicate((
@@ -279,25 +279,21 @@ fn duplicate_ground_fact_survives_retracting_one_copy() {
 
     let engine = NibliEngine::new();
     let id1 = engine
-        .assert_fact_direct(
-            "gerku".to_string(),
-            vec![EngineLogicalTerm::Constant("adam".to_string())],
-        )
+        .kb()
+        .assert_fact(flat_gerku_adam(), ":assert gerku".to_string())
         .unwrap();
     let _id2 = engine
-        .assert_fact_direct(
-            "gerku".to_string(),
-            vec![EngineLogicalTerm::Constant("adam".to_string())],
-        )
+        .kb()
+        .assert_fact(flat_gerku_adam(), ":assert gerku".to_string())
         .unwrap();
-    // Sanity: the flat fact is queryable through the FOL contract while both live.
+    // Sanity: both records assert the flat fact (FOL contract) while live.
     let before = engine.kb().query_entailment(flat_gerku_adam()).unwrap();
     assert!(
         before.is_true(),
-        "sanity: flat direct-injected fact must be queryable via the FOL contract: {before:?}"
+        "sanity: two live records assert gerku(adam): {before:?}"
     );
     // Retract only the FIRST record; the second still asserts gerku(adam).
-    engine.retract_fact(id1).unwrap();
+    engine.kb().retract_fact(id1).unwrap();
     let r = engine.kb().query_entailment(flat_gerku_adam()).unwrap();
     assert!(
         r.is_true(),

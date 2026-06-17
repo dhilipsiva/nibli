@@ -1535,3 +1535,75 @@ fn surface_numeric_traced_verdicts_agree() {
         "trace should mention the computed relation: {trace}"
     );
 }
+
+// ════════════════════════════════════════════════════════════════════
+// Direct-injected facts are text-queryable (event-decompose at injection)
+// ════════════════════════════════════════════════════════════════════
+
+#[test]
+fn injected_fact_matches_surface_text_query() {
+    // A directly-injected fact must now match a surface text query — the public
+    // injection API event-decomposes to the same shape text assertion produces.
+    // RED before fix: flat gerku(adam) vs the query's ∃ev. gerku(ev) ∧
+    // gerku_x1(ev, adam) ∧ gerku_x2(ev, zo'e) never matched.
+    let engine = NibliEngine::new();
+    engine
+        .assert_fact_direct(
+            "gerku".to_string(),
+            vec![nibli_engine::EngineLogicalTerm::Constant(
+                "adam".to_string(),
+            )],
+        )
+        .unwrap();
+    assert_true(
+        &engine.query_holds("la .adam. cu gerku").unwrap(),
+        "directly-injected gerku(adam) must satisfy the surface text query",
+    );
+}
+
+#[test]
+fn injected_fact_multiplace_arity_padding_matches_text_query() {
+    // klama is 5-place. Injecting only x1,x2 must pad x3..x5 with zo'e to the
+    // SAME shape `la .adam. cu klama la .paris.` compiles to, so it matches.
+    let engine = NibliEngine::new();
+    engine
+        .assert_fact_direct(
+            "klama".to_string(),
+            vec![
+                nibli_engine::EngineLogicalTerm::Constant("adam".to_string()),
+                nibli_engine::EngineLogicalTerm::Constant("paris".to_string()),
+            ],
+        )
+        .unwrap();
+    assert_true(
+        &engine.query_holds("la .adam. cu klama la .paris.").unwrap(),
+        "injecting a 5-place predicate with 2 args must pad and still match the text query",
+    );
+}
+
+#[test]
+fn injected_fact_is_findable_as_witness() {
+    // The injected fact must also be discoverable through witness extraction.
+    let engine = NibliEngine::new();
+    engine
+        .assert_fact_direct(
+            "gerku".to_string(),
+            vec![nibli_engine::EngineLogicalTerm::Constant(
+                "adam".to_string(),
+            )],
+        )
+        .unwrap();
+    let witnesses = engine.query_find_text("ma gerku").unwrap();
+    assert!(
+        !witnesses.is_empty(),
+        "injected gerku(adam) should yield a witness binding"
+    );
+    let mentions_adam = witnesses
+        .iter()
+        .flat_map(|set| set.iter())
+        .any(|b| nibli_engine::display_term(&b.term).contains("adam"));
+    assert!(
+        mentions_adam,
+        "the discovered witness should be adam: {witnesses:?}"
+    );
+}

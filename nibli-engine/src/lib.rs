@@ -439,10 +439,10 @@ impl NibliEngine {
         args: Vec<EngineLogicalTerm>,
     ) -> Result<u64, String> {
         let label = format!(":assert {}", relation);
-        let buf = logji_logic::LogicBuffer {
-            nodes: vec![logji_logic::LogicNode::Predicate((relation, args))],
-            roots: vec![0],
-        };
+        // Event-decompose to the SAME shape a surface assertion produces, so the
+        // injected fact is matched by surface text queries (not just raw-FOL /
+        // same-shape direct queries). `du` stays flat — see compile_injected_fact.
+        let buf = smuni::compile_injected_fact(&relation, &args);
         self.kb.assert_fact(buf, label).map_err(|e| e.to_string())
     }
 

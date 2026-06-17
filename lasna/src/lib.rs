@@ -768,11 +768,10 @@ impl GuestSession for Session {
         let logji_args: Vec<logji_logic::LogicalTerm> =
             args.iter().map(convert_logical_term_from_export).collect();
         let label = format!(":assert {}", relation);
-        let nodes = vec![logji_logic::LogicNode::Predicate((relation, logji_args))];
-        let buf = logji_logic::LogicBuffer {
-            nodes,
-            roots: vec![0],
-        };
+        // Event-decompose to the SAME shape a surface assertion produces, so the
+        // injected fact is matched by surface text queries (not just raw-FOL /
+        // same-shape direct queries). `du` stays flat — see compile_injected_fact.
+        let buf = smuni::compile_injected_fact(&relation, &logji_args);
         self.kb
             .assert_fact(buf, label)
             .map_err(convert_pipeline_error)

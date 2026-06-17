@@ -199,3 +199,56 @@ fn flatten_form(form: &LogicalForm, nodes: &mut Vec<LogicNode>, interner: &lasso
 pub fn compile_from_gerna_ast(ast: gerna_ast::AstBuffer) -> Result<LogicBuffer, NibliError> {
     compile_ast(&ast)
 }
+
+/// Compile a directly-injected ground fact `(relation, args)` into the SAME
+/// event-decomposed, arity-padded FOL shape that a surface assertion of
+/// `relation` produces — so injected facts are matched by surface text queries
+/// (`la .adam. cu gerku` matches `:assert gerku adam`), not just by raw-FOL or
+/// same-shape direct facts.
+///
+/// Used by the trusted programmatic injection APIs (nibli-engine
+/// `assert_fact_direct`, lasna's WIT `assert-fact`, the REPL `:assert`). Mirrors
+/// `apply_selbri`'s `Selbri::Root` arm exactly so the stored shape is identical
+/// to text assertion: `fit_args` pads to `get_arity_or_default`, then
+/// `event_decompose`. `du` is the one exception — it stays a FLAT 2-arg
+/// `du(x1, x2)` predicate (NOT event-decomposed), because logji's union-find
+/// equality interception only fires on `relation == "du" && args.len() == 2`;
+/// the Neo-Davidsonian form would silently disable equality reasoning.
+pub fn compile_injected_fact(relation: &str, args: &[WitTerm]) -> LogicBuffer {
+    let mut compiler = SemanticCompiler::new();
+    let ir_args: Vec<LogicalTerm> = args
+        .iter()
+        .map(|t| wit_term_to_ir(t, &mut compiler.interner))
+        .collect();
+
+    let form = if relation == "du" {
+        let fitted = SemanticCompiler::fit_args(&ir_args, 2);
+        LogicalForm::Predicate {
+            relation: compiler.interner.get_or_intern("du"),
+            args: fitted,
+        }
+    } else {
+        let arity = crate::dictionary::JbovlasteSchema::get_arity_or_default(relation);
+        let fitted = SemanticCompiler::fit_args(&ir_args, arity);
+        compiler.event_decompose(relation, &fitted)
+    };
+
+    let mut nodes = Vec::new();
+    let root = flatten_form(&form, &mut nodes, &compiler.interner);
+    LogicBuffer {
+        nodes,
+        roots: vec![root],
+    }
+}
+
+/// Convert a flat WIT/IR `LogicalTerm` to the interned smuni IR `LogicalTerm`
+/// (the inverse of `flatten_form`'s Predicate arm).
+fn wit_term_to_ir(term: &WitTerm, interner: &mut lasso::Rodeo) -> LogicalTerm {
+    match term {
+        WitTerm::Variable(v) => LogicalTerm::Variable(interner.get_or_intern(v)),
+        WitTerm::Constant(c) => LogicalTerm::Constant(interner.get_or_intern(c)),
+        WitTerm::Description(d) => LogicalTerm::Description(interner.get_or_intern(d)),
+        WitTerm::Unspecified => LogicalTerm::Unspecified,
+        WitTerm::Number(n) => LogicalTerm::Number(*n),
+    }
+}
