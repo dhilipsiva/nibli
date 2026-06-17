@@ -565,7 +565,7 @@ pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner
     // tabling); cycle-cutting is a separate `visited` set, so this is
     // termination-safe. During normal assertion the cache is disabled+empty,
     // so this is a free no-op there.
-    clear_typed_pred_cache();
+    clear_typed_pred_cache(inner);
 
     // Check integrity constraints (permissive mode: warn, don't reject).
     if !inner.integrity_constraints.is_empty() && !inner.rebuilding {

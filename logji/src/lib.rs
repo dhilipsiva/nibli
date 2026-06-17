@@ -15,7 +15,11 @@
 //! - **Compute dispatch** — `ComputeNode` predicates are forwarded to the host-provided
 //!   `compute-backend` WIT interface for external evaluation.
 //!
-//! The knowledge base uses `RefCell` (not `Mutex`) — single-threaded WASI, no global state.
+//! The knowledge base uses `RefCell` (not `Mutex`) — single-threaded WASI. All
+//! mutable state — facts, rules, the predicate-result cache, the compute
+//! dispatch, and the cancel flag — lives PER-INSTANCE on `KnowledgeBaseInner`;
+//! there are no global or thread-local statics, so distinct KBs (e.g. one per
+//! request on the multithreaded server) never interfere.
 
 #![allow(dead_code)]
 
@@ -100,7 +104,7 @@ impl KnowledgeBase {
             // FactRecord, so rebuilding from the durable registry reproduces the
             // exact pre-assertion state, discarding the partial mutation.
             let rb = Self::rebuild_inner(&mut inner);
-            invalidate_pred_cache();
+            invalidate_pred_cache(&inner);
             return match rb {
                 Ok(()) => Err(e),
                 Err(re) => Err(format!("{e} (additionally, rollback failed: {re})")),
@@ -115,7 +119,7 @@ impl KnowledgeBase {
                 retracted: false,
             },
         );
-        invalidate_pred_cache(); // Tabling: KB mutated, clear cached derivations.
+        invalidate_pred_cache(&inner); // Tabling: KB mutated, clear cached derivations.
         Ok(id)
     }
 
@@ -139,7 +143,7 @@ impl KnowledgeBase {
         inner.current_assertion_id = None;
         if let Err(e) = result {
             let rb = Self::rebuild_inner(&mut inner);
-            invalidate_pred_cache();
+            invalidate_pred_cache(&inner);
             return match rb {
                 Ok(()) => Err(e),
                 Err(re) => Err(format!("{e} (additionally, rollback failed: {re})")),
@@ -154,7 +158,7 @@ impl KnowledgeBase {
                 retracted: false,
             },
         );
-        invalidate_pred_cache();
+        invalidate_pred_cache(&inner);
         Ok(())
     }
 
@@ -182,7 +186,7 @@ impl KnowledgeBase {
 
         if has_forward_rules {
             let result = Self::rebuild_inner(&mut inner);
-            invalidate_pred_cache();
+            invalidate_pred_cache(&inner);
             return result;
         }
 
@@ -212,7 +216,7 @@ impl KnowledgeBase {
         if has_skolems || has_negation || inner.rule_source_map.contains_key(&id) {
             // Complex assertion (rules, Skolems, or negations) — full rebuild.
             let result = Self::rebuild_inner(&mut inner);
-            invalidate_pred_cache();
+            invalidate_pred_cache(&inner);
             return result;
         }
 
@@ -292,7 +296,7 @@ impl KnowledgeBase {
         }
 
         inner.domain_members_dirty = true;
-        invalidate_pred_cache(); // Tabling: KB mutated.
+        invalidate_pred_cache(&inner); // Tabling: KB mutated.
         Ok(())
     }
 
@@ -404,8 +408,8 @@ impl KnowledgeBase {
         // Enable WITHOUT clearing: the cache is cleared once before the
         // iterative-deepening loop in query_entailment_inner, then definitive
         // results persist across depth passes (cross-depth tabling).
-        enable_pred_cache();
         let mut inner = self.inner.borrow_mut();
+        enable_pred_cache(&inner);
         inner.ensure_domain_members_cached();
         let mut overall = QueryResult::True;
         for &root_id in &logic.roots {
@@ -420,8 +424,12 @@ impl KnowledgeBase {
     /// Uses iterative deepening: tries depth 1, 2, ..., max_chain_depth.
     /// Guarantees finding the shallowest proof.
     fn query_entailment_inner(&self, logic: LogicBuffer) -> Result<QueryResult, String> {
-        clear_and_enable_pred_cache(); // Tabling: clear once, persist across depth iterations.
-        let configured_max = self.inner.borrow().max_chain_depth;
+        // Tabling: clear once, persist across depth iterations.
+        let configured_max = {
+            let inner = self.inner.borrow();
+            clear_and_enable_pred_cache(&inner);
+            inner.max_chain_depth
+        };
         for depth_limit in 1..=configured_max {
             self.inner.borrow_mut().max_chain_depth = depth_limit;
             // Restore the configured depth on EVERY exit, including the error
@@ -446,8 +454,8 @@ impl KnowledgeBase {
     /// Find all satisfying binding sets for existential variables in the query formula.
     /// Returns one `Vec<WitnessBinding>` per satisfying assignment.
     fn query_find_inner(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, String> {
-        clear_and_enable_pred_cache();
         let mut inner = self.inner.borrow_mut();
+        clear_and_enable_pred_cache(&inner);
         inner.ensure_domain_members_cached();
         let mut result_sets: Option<Vec<Vec<(String, GroundTerm)>>> = None;
         for &root_id in &logic.roots {
@@ -520,8 +528,8 @@ impl KnowledgeBase {
         // Enable WITHOUT clearing: cleared once before the iterative-deepening
         // loop in query_entailment_with_proof_inner; definitive results persist
         // across depth passes (cross-depth tabling).
-        enable_pred_cache();
         let mut inner = self.inner.borrow_mut();
+        enable_pred_cache(&inner);
         inner.ensure_domain_members_cached();
         let mut steps: Vec<ProofStep> = Vec::new();
         let mut memo: HashMap<String, u32> = HashMap::new();
@@ -558,8 +566,12 @@ impl KnowledgeBase {
         &self,
         logic: LogicBuffer,
     ) -> Result<(QueryResult, ProofTrace), String> {
-        clear_and_enable_pred_cache(); // Tabling: clear once, persist across phases.
-        let configured_max = self.inner.borrow().max_chain_depth;
+        // Tabling: clear once, persist across phases.
+        let configured_max = {
+            let inner = self.inner.borrow();
+            clear_and_enable_pred_cache(&inner);
+            inner.max_chain_depth
+        };
         // Phase 1: find the resolving depth with the CHEAP untraced walk — no proof
         // trace is built (then discarded) on the probe passes. The costly part of a
         // proof query is the ProofStep-tree construction, which (unlike the verdict,
@@ -772,8 +784,9 @@ impl KnowledgeBase {
 
     /// Clear all facts, rules, indexes, and derived state.
     pub fn reset(&self) -> Result<(), NibliError> {
-        self.inner.borrow_mut().reset();
-        invalidate_pred_cache(); // Tabling: KB cleared.
+        let mut inner = self.inner.borrow_mut();
+        inner.reset();
+        invalidate_pred_cache(&inner); // Tabling: KB cleared.
         Ok(())
     }
 

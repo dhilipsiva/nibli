@@ -2187,7 +2187,7 @@ fn assert_typed_fact_invalidates_pred_cache() {
         ],
     ));
 
-    clear_and_enable_pred_cache();
+    clear_and_enable_pred_cache(&kb.inner.borrow());
 
     // (1) danlu(adam) is not derivable yet (gerku(adam) absent) → caches False.
     {
@@ -2215,6 +2215,48 @@ fn assert_typed_fact_invalidates_pred_cache() {
             r.is_true(),
             "danlu(adam) must derive True once gerku(adam) is asserted — a stale \
              cached False means assert_typed_fact failed to invalidate the cache"
+        );
+    }
+}
+
+#[test]
+fn pred_cache_is_per_instance_no_cross_kb_leak() {
+    // Two KBs on the same thread. KB-A enables its cache and caches a False for
+    // danlu(adam) (gerku(adam) absent). KB-B has gerku(adam), so danlu(adam) IS
+    // derivable. With the old THREAD-LOCAL cache, KB-A's enabled+cached False
+    // leaked to KB-B on the same thread; per-instance caches keep them isolated.
+    let danlu_adam = StoredFact::Bare(GroundFact::new(
+        "danlu",
+        vec![
+            GroundTerm::Constant("adam".to_string()),
+            GroundTerm::Unspecified,
+        ],
+    ));
+
+    let kb_a = new_kb();
+    assert_buf(&kb_a, make_universal("gerku", "danlu")); // ∀x. gerku(x) → danlu(x)
+    {
+        let inner = kb_a.inner.borrow();
+        clear_and_enable_pred_cache(&inner);
+        let mut visited = std::collections::HashSet::new();
+        let r = check_predicate_in_kb_typed(&danlu_adam, &inner, 0, &mut visited);
+        assert!(
+            r.is_false(),
+            "KB-A: danlu(adam) is not derivable (no gerku) → caches False"
+        );
+    }
+
+    let kb_b = new_kb();
+    assert_buf(&kb_b, make_universal("gerku", "danlu"));
+    assert_buf(&kb_b, make_assertion("adam", "gerku")); // gerku(adam)
+    {
+        let inner = kb_b.inner.borrow();
+        let mut visited = std::collections::HashSet::new();
+        let r = check_predicate_in_kb_typed(&danlu_adam, &inner, 0, &mut visited);
+        assert!(
+            r.is_true(),
+            "KB-B: danlu(adam) IS derivable (gerku(adam) present); KB-A's cached \
+             False must not leak across per-instance caches"
         );
     }
 }
@@ -5879,15 +5921,18 @@ fn proof_trace_equals_pinned_resolving_depth() {
     // shallow depths hits the depth horizon (RE) before the chain resolves.
 
     // (A) Build the trace ONCE, pinned at the resolving depth. The resolving depth
-    //     is found with the cheap UNTRACED walk on a freshly-cleared thread-local
-    //     cache (the cache is shared across KB instances, so clear it so a prior
-    //     query's cached True can't make a shallow probe spuriously resolve).
+    //     is found with the cheap UNTRACED walk on a freshly-cleared per-KB cache
+    //     (clear it so a prior query's cached True can't make a shallow probe
+    //     spuriously resolve).
     let kb_pin = new_kb();
     assert_buf(&kb_pin, make_assertion("alis", "gerku"));
     assert_buf(&kb_pin, make_universal("gerku", "danlu"));
     assert_buf(&kb_pin, make_universal("danlu", "xanlu"));
-    clear_and_enable_pred_cache();
-    let configured_max = kb_pin.inner.borrow().max_chain_depth;
+    let configured_max = {
+        let inner = kb_pin.inner.borrow();
+        clear_and_enable_pred_cache(&inner);
+        inner.max_chain_depth
+    };
     let mut resolving_depth = configured_max;
     for depth_limit in 1..=configured_max {
         kb_pin.inner.borrow_mut().max_chain_depth = depth_limit;

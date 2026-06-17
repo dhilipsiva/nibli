@@ -1,5 +1,5 @@
 use super::*;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 // ═══════════════════════════════════════════════════════════════════
 // PREDICATE SIGNATURE VALIDATION
@@ -535,6 +535,17 @@ pub(super) struct KnowledgeBaseInner {
     /// external predicates return an error (built-in arithmetic still works).
     pub(super) compute_eval: Option<crate::compute::EvalFn>,
     pub(super) compute_batch_eval: Option<crate::compute::BatchEvalFn>,
+    /// Per-instance predicate-result cache (was a thread-local shared across all
+    /// KBs on a thread). Interior-mutable because the backward-chain reads/writes
+    /// it through a SHARED `&inner` (`check_predicate_in_kb_typed`). Only
+    /// definitive True/False are cached; cleared at every KB mutation and at
+    /// query start. `pred_cache_enabled` gates lookups (off during assertion
+    /// replay, on during a query so results table across iterative-deepening
+    /// passes). Per-KB isolation is a strict improvement for the multithreaded
+    /// server (the old thread-local leaked across distinct KBs on a reused
+    /// blocking-pool worker); byte-identical for single-KB embedders.
+    pub(super) pred_cache: RefCell<HashMap<StoredFact, QueryResult>>,
+    pub(super) pred_cache_enabled: Cell<bool>,
 }
 
 impl Clone for KnowledgeBaseInner {
@@ -570,6 +581,8 @@ impl Clone for KnowledgeBaseInner {
             cancel: self.cancel.clone(),
             compute_eval: self.compute_eval,
             compute_batch_eval: self.compute_batch_eval,
+            pred_cache: RefCell::new(HashMap::new()),
+            pred_cache_enabled: Cell::new(false),
         }
     }
 }
@@ -607,6 +620,8 @@ impl KnowledgeBaseInner {
             cancel: None,
             compute_eval: None,
             compute_batch_eval: None,
+            pred_cache: RefCell::new(HashMap::new()),
+            pred_cache_enabled: Cell::new(false),
         }
     }
 
@@ -633,8 +648,11 @@ impl KnowledgeBaseInner {
         self.current_assertion_id = None;
         self.forward_depth = 0;
         self.negative_facts.clear();
-        // Note: integrity_constraints are NOT cleared on reset — they're
-        // structural declarations, not derived state. Clear explicitly if needed.
+        self.pred_cache.borrow_mut().clear();
+        self.pred_cache_enabled.set(false);
+        // Note: integrity_constraints, compute_eval/compute_batch_eval, and
+        // cancel are NOT cleared on reset — they're structural declarations /
+        // configuration, not derived state. Clear explicitly if needed.
     }
 
     pub(super) fn fresh_fact_id(&mut self) -> u64 {
@@ -895,33 +913,28 @@ impl<'a> Iterator for GroundTermCartesianProduct<'a> {
     }
 }
 
-// ─── Thread-local predicate result cache ─────────────────────────────
-
-thread_local! {
-    /// Flag to enable/disable predicate caching (disabled during assertion replay).
-    pub(super) static PRED_CACHE_ENABLED: Cell<bool> = const { Cell::new(false) };
-}
+// ─── Per-instance predicate result cache (on `KnowledgeBaseInner`) ────
 
 /// Clear and enable the predicate result cache. Called at the start of
 /// each top-level query. The cache persists across iterative deepening
 /// iterations within a single query (tabling benefit) but is cleared
 /// between separate user queries for correctness.
-pub(super) fn clear_and_enable_pred_cache() {
-    clear_typed_pred_cache();
-    PRED_CACHE_ENABLED.with(|e| e.set(true));
+pub(super) fn clear_and_enable_pred_cache(inner: &KnowledgeBaseInner) {
+    clear_typed_pred_cache(inner);
+    inner.pred_cache_enabled.set(true);
 }
 
 /// Enable the predicate cache without clearing. Used within iterative
 /// deepening to preserve cached results across depth iterations.
-pub(super) fn enable_pred_cache() {
-    PRED_CACHE_ENABLED.with(|e| e.set(true));
+pub(super) fn enable_pred_cache(inner: &KnowledgeBaseInner) {
+    inner.pred_cache_enabled.set(true);
 }
 
 /// Invalidate the predicate result cache. Call after any KB mutation
 /// (assert, retract, reset) to prevent stale cached results.
-pub(super) fn invalidate_pred_cache() {
-    clear_typed_pred_cache();
-    PRED_CACHE_ENABLED.with(|e| e.set(false));
+pub(super) fn invalidate_pred_cache(inner: &KnowledgeBaseInner) {
+    clear_typed_pred_cache(inner);
+    inner.pred_cache_enabled.set(false);
 }
 
 pub(super) fn register_ground_material_conditional(

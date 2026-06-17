@@ -1166,13 +1166,8 @@ pub(super) fn find_witnesses(
 // These functions mirror the fact_repr-based backward-chaining above but
 // operate on StoredFact/GroundTerm directly, avoiding all string ops.
 
-thread_local! {
-    static TYPED_PRED_CACHE: RefCell<HashMap<StoredFact, QueryResult>> =
-        RefCell::new(HashMap::new());
-}
-
-pub(super) fn clear_typed_pred_cache() {
-    TYPED_PRED_CACHE.with(|c| c.borrow_mut().clear());
+pub(super) fn clear_typed_pred_cache(inner: &KnowledgeBaseInner) {
+    inner.pred_cache.borrow_mut().clear();
 }
 
 /// Check if a typed fact is asserted in the typed fact store.
@@ -1331,13 +1326,11 @@ pub(super) fn check_predicate_in_kb_typed(
     if typed_fact_is_asserted(fact, inner) {
         return QueryResult::True;
     }
-    let cached = PRED_CACHE_ENABLED.with(|e| {
-        if e.get() {
-            TYPED_PRED_CACHE.with(|c| c.borrow().get(fact).cloned())
-        } else {
-            None
-        }
-    });
+    let cached = if inner.pred_cache_enabled.get() {
+        inner.pred_cache.borrow().get(fact).cloned()
+    } else {
+        None
+    };
     if let Some(result) = cached {
         return result;
     }
@@ -1419,11 +1412,12 @@ pub(super) fn check_predicate_in_kb_typed(
     // depend on the current `visited` stack and `max_chain_depth` — so caching
     // them keyed by fact alone would poison sibling branches and later, deeper
     // iterative-deepening passes. True/False are context-independent for a fixed KB.
-    PRED_CACHE_ENABLED.with(|e| {
-        if e.get() && result.is_definitive() {
-            TYPED_PRED_CACHE.with(|c| c.borrow_mut().insert(fact.clone(), result.clone()));
-        }
-    });
+    if inner.pred_cache_enabled.get() && result.is_definitive() {
+        inner
+            .pred_cache
+            .borrow_mut()
+            .insert(fact.clone(), result.clone());
+    }
     result
 }
 
