@@ -44,6 +44,12 @@ impl SemanticCompiler {
         // THIS bridi's sumti are drained into THIS bridi's matrix; nested
         // bridi (rel clause bodies, abstractions) drain their own.
         let matrix_conjunct_checkpoint = self.pending_matrix_conjuncts.len();
+        // Frame-scoped `ma` closure: each `compile_bridi` frame drains only the
+        // `ma` vars pushed during ITS frame (see the drain near the end). A
+        // nested bridi (rel-clause body, abstraction body) takes its own
+        // checkpoint AFTER any ancestor pushes, so it can no longer steal an
+        // enclosing bridi's pending `ma` var (mirrors `matrix_conjunct_checkpoint`).
+        let ma_checkpoint = self.ma_vars.len();
 
         let all_terms: Vec<u32> = bridi
             .head_terms
@@ -216,21 +222,26 @@ impl SemanticCompiler {
         // Exists-over-ForAll shape dead-ended, silently losing the whole
         // assertion (panel finding 2026-06-10). Purely existential sentences
         // keep the original outermost wrap.
+        // Collect bare logic variables (da/de/di) for existential closure by
+        // walking the ALREADY-BUILT `final_form` — NOT just `&args`. This is the
+        // only way to reach a da/de/di inside a BAI modal predicate (`ri'a da`,
+        // conjoined just above) or a be/bei role predicate (merged inside
+        // `apply_selbri`); neither ever appears in `&args`. Binder tracking skips
+        // a da/de/di an abstraction body already closed (no double-wrap) and
+        // prenex-bound vars. The description ForAll/Exists and rel-clause
+        // restrictors are NOT folded into `final_form` yet (they wrap below / are
+        // closed by their own frame), so they are correctly out of scope here.
         let mut da_vars_seen = std::collections::HashSet::new();
         let mut da_vars: Vec<lasso::Spur> = Vec::new();
-        for arg in &args {
-            if let LogicalTerm::Variable(spur) = arg {
-                let name = self.interner.resolve(spur);
-                // Skip vars bound by an enclosing prenex — those are universally
-                // quantified by the prenex lowering, not existentially closed here.
-                if matches!(name, "da" | "de" | "di")
-                    && !self.prenex_vars.contains(spur)
-                    && da_vars_seen.insert(*spur)
-                {
-                    da_vars.push(*spur);
-                }
-            }
-        }
+        let mut bound_vars: Vec<lasso::Spur> = Vec::new();
+        Self::collect_free_logic_vars(
+            &final_form,
+            &self.interner,
+            &self.prenex_vars,
+            &mut bound_vars,
+            &mut da_vars_seen,
+            &mut da_vars,
+        );
         let has_universal_quantifier = quantifiers.iter().any(|e| {
             matches!(
                 e.kind,
@@ -361,7 +372,7 @@ impl SemanticCompiler {
             }
         }
 
-        for var in self.ma_vars.drain(..) {
+        for var in self.ma_vars.drain(ma_checkpoint..) {
             final_form = LogicalForm::Exists(var, Box::new(final_form));
         }
 
@@ -393,6 +404,62 @@ impl SemanticCompiler {
         }
 
         final_form
+    }
+
+    /// Walk a compiled `LogicalForm` collecting free `da`/`de`/`di` logic
+    /// variables for existential closure. Tracks binders (`Exists`/`ForAll`/
+    /// `Count`) so a var already bound (e.g. by an abstraction body's own
+    /// closure) is skipped — no double-wrap — and excludes prenex-bound vars.
+    /// Dedups via `seen`; `out` preserves first-appearance order.
+    fn collect_free_logic_vars(
+        form: &LogicalForm,
+        interner: &Rodeo,
+        prenex: &std::collections::HashSet<lasso::Spur>,
+        bound: &mut Vec<lasso::Spur>,
+        seen: &mut std::collections::HashSet<lasso::Spur>,
+        out: &mut Vec<lasso::Spur>,
+    ) {
+        match form {
+            LogicalForm::Predicate { args, .. } => {
+                for arg in args {
+                    if let LogicalTerm::Variable(spur) = arg {
+                        let name = interner.resolve(spur);
+                        if matches!(name, "da" | "de" | "di")
+                            && !bound.contains(spur)
+                            && !prenex.contains(spur)
+                            && seen.insert(*spur)
+                        {
+                            out.push(*spur);
+                        }
+                    }
+                }
+            }
+            LogicalForm::And(l, r)
+            | LogicalForm::Or(l, r)
+            | LogicalForm::Biconditional(l, r)
+            | LogicalForm::Xor(l, r) => {
+                Self::collect_free_logic_vars(l, interner, prenex, bound, seen, out);
+                Self::collect_free_logic_vars(r, interner, prenex, bound, seen, out);
+            }
+            LogicalForm::Not(inner)
+            | LogicalForm::Past(inner)
+            | LogicalForm::Present(inner)
+            | LogicalForm::Future(inner)
+            | LogicalForm::Obligatory(inner)
+            | LogicalForm::Permitted(inner) => {
+                Self::collect_free_logic_vars(inner, interner, prenex, bound, seen, out);
+            }
+            LogicalForm::Exists(v, body) | LogicalForm::ForAll(v, body) => {
+                bound.push(*v);
+                Self::collect_free_logic_vars(body, interner, prenex, bound, seen, out);
+                bound.pop();
+            }
+            LogicalForm::Count { var, body, .. } => {
+                bound.push(*var);
+                Self::collect_free_logic_vars(body, interner, prenex, bound, seen, out);
+                bound.pop();
+            }
+        }
     }
 
     /// Find the first term (in `head_terms ++ tail_terms` order) that is — or

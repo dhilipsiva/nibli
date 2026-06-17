@@ -243,6 +243,87 @@ mod tests {
         }
     }
 
+    /// Helper: collect the names of all FREE `Variable` occurrences in a form
+    /// (binder-tracking). A closed top-level form should have NONE — any free
+    /// da/de/di/ma var is an under-quantification soundness bug.
+    fn free_vars(form: &LogicalForm, compiler: &SemanticCompiler) -> Vec<String> {
+        let mut bound: Vec<lasso::Spur> = Vec::new();
+        let mut out: Vec<String> = Vec::new();
+        free_vars_inner(form, compiler, &mut bound, &mut out);
+        out
+    }
+
+    fn free_vars_inner(
+        form: &LogicalForm,
+        compiler: &SemanticCompiler,
+        bound: &mut Vec<lasso::Spur>,
+        out: &mut Vec<String>,
+    ) {
+        match form {
+            LogicalForm::Predicate { args, .. } => {
+                for arg in args {
+                    if let LogicalTerm::Variable(spur) = arg {
+                        if !bound.contains(spur) {
+                            out.push(resolve(compiler, spur));
+                        }
+                    }
+                }
+            }
+            LogicalForm::And(l, r)
+            | LogicalForm::Or(l, r)
+            | LogicalForm::Biconditional(l, r)
+            | LogicalForm::Xor(l, r) => {
+                free_vars_inner(l, compiler, bound, out);
+                free_vars_inner(r, compiler, bound, out);
+            }
+            LogicalForm::Not(inner)
+            | LogicalForm::Past(inner)
+            | LogicalForm::Present(inner)
+            | LogicalForm::Future(inner)
+            | LogicalForm::Obligatory(inner)
+            | LogicalForm::Permitted(inner) => {
+                free_vars_inner(inner, compiler, bound, out);
+            }
+            LogicalForm::Exists(v, body) | LogicalForm::ForAll(v, body) => {
+                bound.push(*v);
+                free_vars_inner(body, compiler, bound, out);
+                bound.pop();
+            }
+            LogicalForm::Count { var, body, .. } => {
+                bound.push(*var);
+                free_vars_inner(body, compiler, bound, out);
+                bound.pop();
+            }
+        }
+    }
+
+    /// Helper: count `Exists` nodes binding a variable with the given name.
+    /// (ForAll binders are NOT counted — a prenex-bound `da` is universal, not
+    /// existential.)
+    fn count_exists_binding(form: &LogicalForm, name: &str, compiler: &SemanticCompiler) -> usize {
+        match form {
+            LogicalForm::Exists(v, body) => {
+                let here = usize::from(resolve(compiler, v) == name);
+                here + count_exists_binding(body, name, compiler)
+            }
+            LogicalForm::ForAll(_, body) => count_exists_binding(body, name, compiler),
+            LogicalForm::And(l, r)
+            | LogicalForm::Or(l, r)
+            | LogicalForm::Biconditional(l, r)
+            | LogicalForm::Xor(l, r) => {
+                count_exists_binding(l, name, compiler) + count_exists_binding(r, name, compiler)
+            }
+            LogicalForm::Not(inner)
+            | LogicalForm::Past(inner)
+            | LogicalForm::Present(inner)
+            | LogicalForm::Future(inner)
+            | LogicalForm::Obligatory(inner)
+            | LogicalForm::Permitted(inner) => count_exists_binding(inner, name, compiler),
+            LogicalForm::Count { body, .. } => count_exists_binding(body, name, compiler),
+            LogicalForm::Predicate { .. } => 0,
+        }
+    }
+
     // ─── du (identity) selbri lowering ───────────────────────────
 
     #[test]
@@ -1672,6 +1753,298 @@ mod tests {
             }
             other => panic!("expected outer Exists, got {:?}", other),
         }
+    }
+
+    // ─── Quantifier-closure scoping: ma_vars frame isolation + da/de/di in
+    //     BAI modals / be-bei args get existential closure ───────────────
+
+    #[test]
+    fn test_ma_in_rel_clause_not_stolen() {
+        // `ma prami lo gerku poi ke'a barda` — the outer `ma` (prami x1) must be
+        // existentially closed at the OUTER matrix, not stolen by the nested
+        // rel-clause compile_bridi's drain. Pre-fix the nested drain emptied the
+        // shared `ma_vars`, leaving the outer ma var FREE.
+        let selbris = vec![
+            Selbri::Root("prami".into()), // 0
+            Selbri::Root("gerku".into()), // 1
+            Selbri::Root("barda".into()), // 2
+        ];
+        let sumtis = vec![
+            Sumti::ProSumti("ma".into()),       // 0: ma
+            Sumti::Description((Gadri::Lo, 1)), // 1: lo gerku
+            Sumti::Restricted((
+                1,
+                RelClause {
+                    kind: RelClauseKind::Poi,
+                    body_sentence: 1,
+                },
+            )), // 2: lo gerku poi ke'a barda
+        ];
+        let sentences = vec![
+            Sentence::Simple(Bridi {
+                relation: 0,
+                head_terms: vec![0],
+                tail_terms: vec![2],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+            Sentence::Simple(Bridi {
+                relation: 2, // barda (rel-clause body; implicit ke'a fills x1)
+                head_terms: vec![],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+        ];
+        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        assert!(
+            free_vars(&form, &compiler).is_empty(),
+            "the outer `ma` must be bound (not stolen by the rel clause): free={:?}",
+            free_vars(&form, &compiler)
+        );
+    }
+
+    #[test]
+    fn test_da_in_bai_modal_closed() {
+        // `mi klama ri'a da` — the `da` inside the BAI modal must be
+        // existentially closed. Pre-fix the args-scan never saw the modal arg.
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),                          // 0
+            Sumti::ProSumti("da".into()),                          // 1
+            Sumti::ModalTagged((ModalTag::Fixed(BaiTag::Ria), 1)), // 2: ri'a da
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![2],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        assert!(
+            free_vars(&form, &compiler).is_empty(),
+            "the modal `da` must be bound: free={:?}",
+            free_vars(&form, &compiler)
+        );
+        assert!(
+            count_exists_binding(&form, "da", &compiler) >= 1,
+            "an Exists must bind `da`"
+        );
+    }
+
+    #[test]
+    fn test_da_in_be_arg_closed() {
+        // `mi klama be da` — the `da` in the be-arg must be existentially closed.
+        let selbris = vec![
+            Selbri::Root("klama".into()),   // 0
+            Selbri::WithArgs((0, vec![1])), // 1: klama be da
+        ];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()), // 0
+            Sumti::ProSumti("da".into()), // 1 (be-arg)
+        ];
+        let bridi = Bridi {
+            relation: 1,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        assert!(
+            free_vars(&form, &compiler).is_empty(),
+            "the be-arg `da` must be bound: free={:?}",
+            free_vars(&form, &compiler)
+        );
+    }
+
+    #[test]
+    fn test_da_in_modal_under_universal_stays_inside_forall() {
+        // `ro lo gerku cu klama ri'a da` — the modal `da` is closed by an Exists
+        // UNDER the ForAll (∀g.∃d), keeping ForAll at the root (logji rule shape).
+        let selbris = vec![
+            Selbri::Root("klama".into()), // 0
+            Selbri::Root("gerku".into()), // 1
+        ];
+        let sumtis = vec![
+            Sumti::Description((Gadri::RoLo, 1)), // 0: ro lo gerku
+            Sumti::ProSumti("da".into()),         // 1
+            Sumti::ModalTagged((ModalTag::Fixed(BaiTag::Ria), 1)), // 2: ri'a da
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![2],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        assert!(
+            matches!(form, LogicalForm::ForAll(_, _)),
+            "root must stay ForAll (logji rule shape), got {:?}",
+            form
+        );
+        assert!(
+            free_vars(&form, &compiler).is_empty(),
+            "the modal `da` must be bound under the ForAll: free={:?}",
+            free_vars(&form, &compiler)
+        );
+        assert!(
+            count_exists_binding(&form, "da", &compiler) >= 1,
+            "an Exists must bind `da` inside the ForAll"
+        );
+    }
+
+    #[test]
+    fn test_prenex_da_in_modal_not_reclosed() {
+        // `ro da zo'u mi klama ri'a da` — `da` is universally bound by the prenex;
+        // the modal `da` must NOT be existentially re-closed (negative control for
+        // the preserved prenex exclusion).
+        let selbris = vec![Selbri::Root("klama".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),                          // 0
+            Sumti::ProSumti("da".into()),                          // 1
+            Sumti::ModalTagged((ModalTag::Fixed(BaiTag::Ria), 1)), // 2: ri'a da
+        ];
+        let sentences = vec![
+            Sentence::Prenex((vec!["da".into()], 1)),
+            Sentence::Simple(Bridi {
+                relation: 0,
+                head_terms: vec![0],
+                tail_terms: vec![2],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+        ];
+        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        assert!(
+            free_vars(&form, &compiler).is_empty(),
+            "prenex `da` must be bound by the ForAll: free={:?}",
+            free_vars(&form, &compiler)
+        );
+        assert_eq!(
+            count_exists_binding(&form, "da", &compiler),
+            0,
+            "prenex `da` must NOT be existentially re-closed"
+        );
+    }
+
+    #[test]
+    fn test_abstraction_da_not_double_wrapped() {
+        // `mi djuno lo nu da broda` — the abstraction body closes its own `da`;
+        // the outer existential walk must NOT re-wrap it (binder tracking).
+        let selbris = vec![
+            Selbri::Root("djuno".into()),                  // 0
+            Selbri::Abstraction((AbstractionKind::Nu, 1)), // 1 → sentences[1]
+            Selbri::Root("broda".into()),                  // 2
+        ];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),       // 0
+            Sumti::Description((Gadri::Lo, 1)), // 1: lo nu ...
+            Sumti::ProSumti("da".into()),       // 2 (broda body x1)
+        ];
+        let sentences = vec![
+            Sentence::Simple(Bridi {
+                relation: 0,
+                head_terms: vec![0],
+                tail_terms: vec![1],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+            Sentence::Simple(Bridi {
+                relation: 2, // broda
+                head_terms: vec![2],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+        ];
+        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        assert_eq!(
+            count_exists_binding(&form, "da", &compiler),
+            1,
+            "`da` must be wrapped exactly once (no double-wrap)"
+        );
+        assert!(
+            free_vars(&form, &compiler).is_empty(),
+            "free={:?}",
+            free_vars(&form, &compiler)
+        );
+    }
+
+    #[test]
+    fn test_be_arg_and_modal_da_de_both_closed() {
+        // `mi klama be da ri'a de` — both the be-arg `da` and the modal `de` must
+        // be existentially closed, each exactly once.
+        let selbris = vec![
+            Selbri::Root("klama".into()),   // 0
+            Selbri::WithArgs((0, vec![1])), // 1: klama be da
+        ];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),                          // 0
+            Sumti::ProSumti("da".into()),                          // 1 (be-arg)
+            Sumti::ProSumti("de".into()),                          // 2
+            Sumti::ModalTagged((ModalTag::Fixed(BaiTag::Ria), 2)), // 3: ri'a de
+        ];
+        let bridi = Bridi {
+            relation: 1,
+            head_terms: vec![0],
+            tail_terms: vec![3],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        assert!(
+            free_vars(&form, &compiler).is_empty(),
+            "both da and de must be bound: free={:?}",
+            free_vars(&form, &compiler)
+        );
+        assert_eq!(count_exists_binding(&form, "da", &compiler), 1, "da once");
+        assert_eq!(count_exists_binding(&form, "de", &compiler), 1, "de once");
+    }
+
+    #[test]
+    fn test_du_with_da_closed() {
+        // `da du mi` — flat du(da, mi); the `da` must be existentially closed
+        // (the flat-du shape must not hide the logic var from the walk).
+        let selbris = vec![Selbri::Root("du".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("da".into()), // 0
+            Sumti::ProSumti("mi".into()), // 1
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![1],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        assert!(
+            free_vars(&form, &compiler).is_empty(),
+            "the du `da` must be bound: free={:?}",
+            free_vars(&form, &compiler)
+        );
+        assert_eq!(count_exists_binding(&form, "da", &compiler), 1, "da once");
     }
 
     // ─── inject_variable ambiguity tests ────────────────────────
