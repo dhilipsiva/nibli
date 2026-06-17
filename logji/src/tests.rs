@@ -630,6 +630,25 @@ fn assert_trace_consistent(result: &QueryResult, trace: &ProofTrace) {
             );
         }
     }
+    assert_proof_refs_resolve_to_holds_true(trace);
+}
+
+/// Stage 2d invariant: the proof memo only caches `holds:true` derivations (the
+/// depth-relative `PredicateNotFound` is no longer memoized), so EVERY `ProofRef`
+/// leaf must resolve to a `holds:true` step. A `ProofRef` pointing at a `holds:false`
+/// step is the cross-recursion-depth not-found poisoning this stage removed.
+fn assert_proof_refs_resolve_to_holds_true(trace: &ProofTrace) {
+    for (i, step) in trace.steps.iter().enumerate() {
+        if matches!(step.rule, ProofRule::ProofRef(_)) {
+            let target = step.children[0] as usize;
+            assert!(
+                trace.steps[target].holds,
+                "ProofRef step #{i} resolves to a holds:false step #{target} ({:?}) — \
+                 stale not-found memo poisoning",
+                trace.steps[target].rule
+            );
+        }
+    }
 }
 
 #[test]
@@ -5209,6 +5228,72 @@ fn test_proof_memo_deduplication() {
         "2-hop event trace should have at least 3 ProofRef nodes (deduplicated conditions), got {}",
         proof_ref_count
     );
+}
+
+#[test]
+fn proof_ref_children_are_holds_true() {
+    // Stage 2d invariant: every ProofRef leaf resolves to a holds:true step, because
+    // only holds:true derivations (Asserted / Derived / EqualitySubstitution) are
+    // memoized — the depth-relative PredicateNotFound no longer is, so a stale
+    // not-found can never be reached via a ProofRef. Exercised across several
+    // memo-bearing trace shapes. (A direct RED reproduction of the cross-recursion-
+    // depth poisoning is unconstructible in the same way the 2a/2b divergence tests
+    // were — the verdict cache + horizon short-circuit collapse the scenario — so
+    // this asserts the resulting PROPERTY rather than the elusive walk order.)
+
+    // (a) Multi-hop event chain — heavy ProofRef dedup of repeated role conditions.
+    {
+        let kb = new_kb();
+        assert_buf(&kb, make_temporal_event_assertion("bob", "mlatu", present));
+        assert_buf(&kb, make_event_universal("mlatu", "danlu"));
+        assert_buf(&kb, make_event_universal("danlu", "jmive"));
+        let (_holds, trace) = kb
+            .query_entailment_with_proof_inner(make_temporal_event_query("bob", "jmive", present))
+            .unwrap();
+        assert_proof_refs_resolve_to_holds_true(&trace);
+    }
+    // (b) du-equivalence — exercises the EqualitySubstitution memo path.
+    {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("adam", "gerku"));
+        assert_buf(&kb, make_du("adam", "betty"));
+        let (_holds, trace) = kb
+            .query_entailment_with_proof_inner(make_query("betty", "gerku"))
+            .unwrap();
+        assert_proof_refs_resolve_to_holds_true(&trace);
+    }
+    // (c) Flat universal-rule syllogism.
+    {
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        let (_holds, trace) = kb
+            .query_entailment_with_proof_inner(make_query("alis", "danlu"))
+            .unwrap();
+        assert_proof_refs_resolve_to_holds_true(&trace);
+    }
+}
+
+#[test]
+fn proof_trace_byte_deterministic_3x() {
+    // The proof trace must be byte-reproducible run-to-run (no HashSet-order leakage
+    // into the recorded structure). Build a memo-heavy 2-hop event chain in three
+    // fresh KB instances and assert the serialized trace is identical each time.
+    let render = || {
+        let kb = new_kb();
+        assert_buf(&kb, make_temporal_event_assertion("bob", "mlatu", present));
+        assert_buf(&kb, make_event_universal("mlatu", "danlu"));
+        assert_buf(&kb, make_event_universal("danlu", "jmive"));
+        let (_holds, trace) = kb
+            .query_entailment_with_proof_inner(make_temporal_event_query("bob", "jmive", present))
+            .unwrap();
+        format!("{trace:?}")
+    };
+    let a = render();
+    let b = render();
+    let c = render();
+    assert_eq!(a, b, "proof trace not deterministic (run 1 vs run 2)");
+    assert_eq!(b, c, "proof trace not deterministic (run 2 vs run 3)");
 }
 
 #[test]

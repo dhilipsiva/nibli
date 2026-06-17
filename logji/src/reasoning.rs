@@ -2278,13 +2278,22 @@ pub(super) fn trace_predicate_provenance_typed(
 
     // Final fallback: the traced path could not derive the fact. Report it honestly as
     // not-found (holds:false) rather than claiming truth with no supporting derivation.
+    //
+    // This result is DEPTH-RELATIVE: a True-verdict fact reaches here only because the
+    // recording walk hit the depth horizon (`depth >= max_chain_depth` gated out the
+    // backward-chain above) before deriving it. Do NOT memoize it — mirroring the verdict
+    // cache's definitive-only policy. Caching a not-found keyed by display alone would let a
+    // SHALLOWER occurrence (where the fact DOES derive within budget) reuse this stale
+    // `holds:false` step via a `ProofRef` — "not found (see above)" for a derivable fact.
+    // Re-emitting a fresh leaf each time is strictly honest; the only cost is a few extra
+    // leaves in pathological traces. With this omitted, every memo entry — and therefore
+    // every `ProofRef` — points at a `holds:true` derivation.
     let idx = steps.len() as u32;
     steps.push(ProofStep {
-        rule: ProofRule::PredicateNotFound(display.clone()),
+        rule: ProofRule::PredicateNotFound(display),
         holds: false,
         children: vec![],
     });
-    memo.insert(display, idx);
     idx
 }
 
