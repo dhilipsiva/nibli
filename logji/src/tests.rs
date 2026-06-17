@@ -4315,6 +4315,43 @@ fn test_count_mismatch() {
     ));
 }
 
+#[test]
+fn retract_count_quantified_fact_removes_witnesses() {
+    // `Count(x, 2, gerku(x, _))` generates count-1 = 1 extra Skolem dog and
+    // asserts gerku(sk) for it. Retracting the count assertion must remove that
+    // generated witness — pre-fix a flat CountNode buffer took the incremental
+    // path (has_skolems matched only Exists/ForAll), leaking the witness fact +
+    // entity. Now CountNode routes to rebuild, which excludes the retracted
+    // assertion and never regenerates its witnesses.
+    let kb = new_kb();
+    let mut nodes = Vec::new();
+    let body = pred(
+        &mut nodes,
+        "gerku",
+        vec![LogicalTerm::Variable("x".into()), LogicalTerm::Unspecified],
+    );
+    let root = count(&mut nodes, "x", 2, body);
+    let id = assert_id(
+        &kb,
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        },
+        "count",
+    );
+    assert!(
+        kb.count_witnesses(make_find_query("gerku")).unwrap() >= 1,
+        "the count assertion should have generated a witness dog"
+    );
+
+    kb.retract_fact_inner(id).unwrap();
+    assert_eq!(
+        kb.count_witnesses(make_find_query("gerku")).unwrap(),
+        0,
+        "count-generated witnesses must not survive retraction"
+    );
+}
+
 // ─── Compute builtin arithmetic tests ────────────────────────
 
 #[test]

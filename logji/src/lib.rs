@@ -189,17 +189,23 @@ impl KnowledgeBase {
             return result;
         }
 
-        // Check if this assertion involved Skolemization (existential variables
-        // or ForAll). If so, fall back to full rebuild — re-deriving Skolem subs
-        // with a temporary counter won't match the originals. Negation-bearing
-        // buffers also take the rebuild path: a negated ground root is recorded
-        // in the negative-fact registry (see `record_negative_ground_fact`), and
-        // replaying the surviving records repopulates that registry exactly.
-        let has_skolems = record
-            .buffer
-            .nodes
-            .iter()
-            .any(|n| matches!(n, LogicNode::ExistsNode(_) | LogicNode::ForAllNode(_)));
+        // Check if this assertion involved Skolemization (existential variables,
+        // ForAll, or a numeric Count quantifier). If so, fall back to full rebuild
+        // — re-deriving Skolem subs with a temporary counter won't match the
+        // originals. A CountNode additionally generates `count-1` extra Skolem
+        // witnesses (`generate_count_extra_witnesses`: fresh_skolem + note_entity,
+        // plus an asserted witness fact for a flat body) that the incremental path
+        // never removes; rebuilding from the surviving records (the retracted
+        // count assertion excluded) drops them. Negation-bearing buffers also take
+        // the rebuild path: a negated ground root is recorded in the negative-fact
+        // registry (see `record_negative_ground_fact`), and replaying the surviving
+        // records repopulates that registry exactly.
+        let has_skolems = record.buffer.nodes.iter().any(|n| {
+            matches!(
+                n,
+                LogicNode::ExistsNode(_) | LogicNode::ForAllNode(_) | LogicNode::CountNode(_)
+            )
+        });
         let has_negation = record
             .buffer
             .nodes
