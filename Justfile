@@ -71,6 +71,22 @@ smoke-gasnu-trap-recovery: build-wasm build-gasnu
         if echo "$out" | grep -qF 'cannot remove owned resource'; then echo 'FAIL: resource-drop error at exit'; exit 1; fi; \
         echo 'PASS: fuel trap recovered — session rebuilt and replayed'
 
+# go'i snapshot-trap smoke: assert once, then run `? go'i` TWICE. Before the
+# graft-from-clone fix the second query grafted the drained snapshot, producing
+# an out-of-bounds selbri index that trapped the component instance. Both
+# queries must answer with no trap-rebuild and no brick. Pre-release gate like
+# the other smokes (needs the WASM build; not part of `ci`).
+smoke-gasnu-goi: build-wasm build-gasnu
+    @echo "Smoke-testing go'i snapshot trap (repeated ? go'i)..."
+    @out=$(printf 'la .adam. cu gerku\n? la .adam. go'\''i\n? la .adam. go'\''i\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$out"; \
+        n=$(echo "$out" | grep -cF '[Query] TRUE'); \
+        [ "$n" -ge 2 ] || { echo "FAIL: expected both ? la .adam. goi queries TRUE, got $n"; exit 1; }; \
+        if echo "$out" | grep -qF 'rebuilding and replaying'; then echo 'FAIL: repeated goi trapped the component'; exit 1; fi; \
+        if echo "$out" | grep -qF 'cannot enter component instance'; then echo 'FAIL: session bricked after goi'; exit 1; fi; \
+        echo 'PASS: repeated ? goi resolves correctly (TRUE) with no trap'
+
 # Executes the full pipeline: Builds WASM modules, then boots the native REPL
 run: build-wasm
     @echo "Launching Neuro-Symbolic Engine ({{profile}})..."

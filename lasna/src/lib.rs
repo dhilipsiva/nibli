@@ -589,7 +589,14 @@ fn resolve_go_i(
         .iter()
         .any(|s| matches!(s, gerna_ast::Selbri::Root(n) if n == "go'i"));
     let mut current: Option<u32> = if has_go_i {
-        last_snapshot.as_mut().map(|snap| graft_snapshot(ast, snap))
+        // Graft from a CLONE: `graft_snapshot` rebases + drains its vecs via
+        // `Vec::append`. Without the clone, a second `? go'i` would graft the
+        // drained husk, producing an out-of-bounds selbri index → a WASM
+        // component trap. Cloning keeps the stored snapshot intact, so go'i is
+        // idempotent across calls.
+        last_snapshot
+            .as_ref()
+            .map(|snap| graft_snapshot(ast, &mut snap.clone()))
     } else {
         None
     };
@@ -597,7 +604,115 @@ fn resolve_go_i(
         let root_idx = ast.roots[i] as usize;
         resolve_sentence_go_i(ast, root_idx, &mut current)?;
     }
+    // Fail-closed: any go'i still REACHABLE from a root after resolution sits in
+    // a position the resolver does not descend into (abstraction body, relative
+    // clause, tanru, …). Compiling it as a literal `go'i` predicate is silently
+    // wrong, so reject. A resolved top-level go'i leaves a residual node in
+    // `selbris`, but it is unreachable (its bridi was repointed), so this only
+    // catches genuinely-nested go'i.
+    if has_go_i {
+        let mut seen = HashSet::new();
+        for &root in &ast.roots {
+            if sentence_reaches_go_i(ast, root, &mut seen) {
+                return Err(
+                    "go'i in an unsupported position (abstraction / relative clause / \
+                            tanru) — only top-level go'i is resolved"
+                        .to_string(),
+                );
+            }
+        }
+    }
     Ok(current)
+}
+
+/// Read-only reachability walk: does any `Selbri::Root("go'i")` remain REACHABLE
+/// from sentence `id`, following the exact edges the compiler will follow? Used
+/// to fail closed on go'i the resolver does not descend into. The `(tag, id)`
+/// key disambiguates the three index spaces and guards against rel-clause /
+/// connective re-entry. Match arms mirror `rebase_*` (the nested-index ground
+/// truth) exactly — no `_` wildcard, so a new AST variant forces a revisit.
+fn sentence_reaches_go_i(
+    ast: &gerna_ast::AstBuffer,
+    id: u32,
+    seen: &mut std::collections::HashSet<(u8, u32)>,
+) -> bool {
+    if !seen.insert((0, id)) {
+        return false;
+    }
+    match &ast.sentences[id as usize] {
+        gerna_ast::Sentence::Simple(b) => {
+            selbri_reaches_go_i(ast, b.relation, seen)
+                || b.head_terms
+                    .iter()
+                    .chain(&b.tail_terms)
+                    .any(|&s| sumti_reaches_go_i(ast, s, seen))
+        }
+        gerna_ast::Sentence::Connected((_, l, r)) => {
+            sentence_reaches_go_i(ast, *l, seen) || sentence_reaches_go_i(ast, *r, seen)
+        }
+        gerna_ast::Sentence::Prenex((_, body)) => sentence_reaches_go_i(ast, *body, seen),
+    }
+}
+
+fn selbri_reaches_go_i(
+    ast: &gerna_ast::AstBuffer,
+    id: u32,
+    seen: &mut std::collections::HashSet<(u8, u32)>,
+) -> bool {
+    if !seen.insert((1, id)) {
+        return false;
+    }
+    match &ast.selbris[id as usize] {
+        gerna_ast::Selbri::Root(n) => n == "go'i",
+        gerna_ast::Selbri::Compound(_) => false,
+        gerna_ast::Selbri::Tanru((m, h)) => {
+            selbri_reaches_go_i(ast, *m, seen) || selbri_reaches_go_i(ast, *h, seen)
+        }
+        gerna_ast::Selbri::Converted((_, i))
+        | gerna_ast::Selbri::Negated(i)
+        | gerna_ast::Selbri::Grouped(i) => selbri_reaches_go_i(ast, *i, seen),
+        gerna_ast::Selbri::WithArgs((core, args)) => {
+            selbri_reaches_go_i(ast, *core, seen)
+                || args.iter().any(|&a| sumti_reaches_go_i(ast, a, seen))
+        }
+        gerna_ast::Selbri::Connected((l, _, r)) => {
+            selbri_reaches_go_i(ast, *l, seen) || selbri_reaches_go_i(ast, *r, seen)
+        }
+        gerna_ast::Selbri::Abstraction((_, s)) => sentence_reaches_go_i(ast, *s, seen),
+    }
+}
+
+fn sumti_reaches_go_i(
+    ast: &gerna_ast::AstBuffer,
+    id: u32,
+    seen: &mut std::collections::HashSet<(u8, u32)>,
+) -> bool {
+    if !seen.insert((2, id)) {
+        return false;
+    }
+    match &ast.sumtis[id as usize] {
+        gerna_ast::Sumti::Description((_, sid))
+        | gerna_ast::Sumti::QuantifiedDescription((_, _, sid)) => {
+            selbri_reaches_go_i(ast, *sid, seen)
+        }
+        gerna_ast::Sumti::Tagged((_, i)) => sumti_reaches_go_i(ast, *i, seen),
+        gerna_ast::Sumti::ModalTagged((mt, i)) => {
+            let fio_hit =
+                matches!(mt, gerna_ast::ModalTag::Fio(sid) if selbri_reaches_go_i(ast, *sid, seen));
+            fio_hit || sumti_reaches_go_i(ast, *i, seen)
+        }
+        gerna_ast::Sumti::Restricted((i, rc)) => {
+            sumti_reaches_go_i(ast, *i, seen) || sentence_reaches_go_i(ast, rc.body_sentence, seen)
+        }
+        gerna_ast::Sumti::Connected((l, _, _, r)) => {
+            sumti_reaches_go_i(ast, *l, seen) || sumti_reaches_go_i(ast, *r, seen)
+        }
+        gerna_ast::Sumti::ProSumti(_)
+        | gerna_ast::Sumti::Name(_)
+        | gerna_ast::Sumti::QuotedLiteral(_)
+        | gerna_ast::Sumti::Unspecified
+        | gerna_ast::Sumti::Number(_) => false,
+    }
 }
 
 // ─── Shared pipeline: text → AST → LogicBuffer ───
@@ -1098,6 +1213,97 @@ mod tests {
             gerna_ast::Selbri::Negated(_)
         ));
         assert!(result.is_some());
+    }
+
+    // ─── Session lifecycle: go'i snapshot must survive repeated resolution ───
+
+    #[test]
+    fn resolve_go_i_does_not_drain_snapshot() {
+        // The stored snapshot must NOT be drained by a graft — graft_snapshot
+        // appends (drains) its vecs, so it must operate on a clone.
+        let src = make_ast(
+            vec![gerna_ast::Selbri::Root("klama".to_string())],
+            0,
+            vec![0],
+        );
+        let snap = extract_selbri_snapshot(&src, 0);
+        let mut last = Some(snap);
+        let mut ast = make_ast(
+            vec![gerna_ast::Selbri::Root("go'i".to_string())],
+            0,
+            vec![0],
+        );
+        let res = resolve_go_i(&mut ast, &mut last).unwrap();
+        assert!(res.is_some());
+        let kept = last.expect("snapshot must survive the graft");
+        assert!(
+            !kept.selbris.is_empty(),
+            "snapshot selbris were drained by the graft"
+        );
+        assert!(
+            matches!(&kept.selbris[kept.root as usize], gerna_ast::Selbri::Root(n) if n == "klama")
+        );
+    }
+
+    #[test]
+    fn repeated_go_i_resolves_in_bounds() {
+        // `mi klama` then `? go'i` then `? go'i` — the second go'i must still
+        // resolve to a valid IN-BOUNDS klama selbri. Pre-fix the snapshot was
+        // drained, so the second graft appended empty vecs and the resolved
+        // relation index pointed one past the end of `selbris` (the dangling
+        // index that becomes the WASM component trap during compilation).
+        let src = make_ast(
+            vec![gerna_ast::Selbri::Root("klama".to_string())],
+            0,
+            vec![0],
+        );
+        let mut last = Some(extract_selbri_snapshot(&src, 0));
+
+        let mut ast1 = make_ast(
+            vec![gerna_ast::Selbri::Root("go'i".to_string())],
+            0,
+            vec![0],
+        );
+        resolve_go_i(&mut ast1, &mut last).unwrap();
+
+        let mut ast2 = make_ast(
+            vec![gerna_ast::Selbri::Root("go'i".to_string())],
+            0,
+            vec![0],
+        );
+        resolve_go_i(&mut ast2, &mut last).unwrap();
+        let rel = bridi_relation(&ast2, 0) as usize;
+        assert!(
+            rel < ast2.selbris.len(),
+            "resolved relation index out of bounds (drained snapshot)"
+        );
+        assert!(matches!(&ast2.selbris[rel], gerna_ast::Selbri::Root(n) if n == "klama"));
+    }
+
+    #[test]
+    fn nested_go_i_is_rejected() {
+        // go'i buried inside a tanru is never a direct bridi relation, so the
+        // resolver never reaches it. It must FAIL CLOSED with an explicit error
+        // rather than silently compiling a literal `go'i` predicate.
+        let src = make_ast(
+            vec![gerna_ast::Selbri::Root("klama".to_string())],
+            0,
+            vec![0],
+        );
+        let mut last = Some(extract_selbri_snapshot(&src, 0));
+        // selbris: [0]=sutra, [1]=go'i, [2]=Tanru(0,1); root bridi.relation = 2.
+        let mut ast = make_ast(
+            vec![
+                gerna_ast::Selbri::Root("sutra".to_string()),
+                gerna_ast::Selbri::Root("go'i".to_string()),
+                gerna_ast::Selbri::Tanru((0, 1)),
+            ],
+            2,
+            vec![0],
+        );
+        let res = resolve_go_i(&mut ast, &mut last);
+        assert!(res.is_err(), "nested go'i must be rejected, got {res:?}");
+        assert!(res.unwrap_err().contains("unsupported position"));
     }
 }
 
