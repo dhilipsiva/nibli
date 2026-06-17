@@ -1404,6 +1404,46 @@ fn find_witness_output_order_is_deterministic() {
     );
 }
 
+#[test]
+fn find_dependent_skolem_witness_event_decomposed_is_bound() {
+    // Ch9 verify-book-capture regression, through the REAL event-decomposed
+    // pipeline (the flat logji unit test does not exercise Neo-Davidsonian
+    // event decomposition). `?? la .adam. nelci ma` over `gerku(adam)` +
+    // `ro lo gerku cu nelci lo mlatu` must return witnesses whose dependent
+    // Skolem terms are BOUND (`sk_N(adam)`), never the unbound conclusion
+    // template (`sk_N(_)` / `sk_N(?..)`), with no duplicate binding sets.
+    let engine = engine_with_facts(&["la .adam. cu gerku", "ro lo gerku cu nelci lo mlatu"]);
+    let witnesses = engine.query_find_text("la .adam. nelci ma").unwrap();
+    assert!(!witnesses.is_empty(), "the rule provides a witness cat");
+
+    let terms: Vec<String> = witnesses
+        .iter()
+        .flat_map(|set| set.iter())
+        .map(|b| nibli_engine::display_term(&b.term))
+        .collect();
+    assert!(
+        terms.iter().all(|t| !t.contains("(_)") && !t.contains('?')),
+        "no witness term may be an unbound dependent Skolem, got {terms:?}"
+    );
+    assert!(
+        terms.iter().any(|t| t.contains("(adam)")),
+        "the dependent witness must be bound to its dependency adam, got {terms:?}"
+    );
+
+    // No duplicate binding sets (the dedup at the query_find boundary).
+    let mut seen = std::collections::HashSet::new();
+    for set in &witnesses {
+        let key: Vec<(String, String)> = set
+            .iter()
+            .map(|b| (b.variable.clone(), nibli_engine::display_term(&b.term)))
+            .collect();
+        assert!(
+            seen.insert(key),
+            "duplicate binding set in find output: {witnesses:?}"
+        );
+    }
+}
+
 // ════════════════════════════════════════════════════════════════════
 // Surface-numeric evaluation (todo.md: event decomposition shadowed the
 // numeric evaluators — every surface arithmetic/comparison query was FALSE)

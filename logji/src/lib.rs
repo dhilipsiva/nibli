@@ -405,17 +405,25 @@ impl KnowledgeBase {
             }
         }
         let mut binding_sets = result_sets.unwrap_or_default();
-        // Determinism: witness enumeration touches HashSet-backed candidate
-        // collections, so the order binding sets arrive in is hasher-seed
-        // dependent. Sort the outer list by each set's canonical key (its
+        // Determinism + dedup: witness enumeration touches HashSet-backed
+        // candidate collections, so the order binding sets arrive in is
+        // hasher-seed dependent, and the SAME solution can arrive via distinct
+        // candidates (an Or-overlap where one entity satisfies both disjuncts,
+        // equivalence-class expansion, or the shared entailment/find candidate
+        // superset). Sort the outer list by each set's canonical key (its
         // sorted (var, term) pairs) so `[Find]` output is byte-reproducible
-        // across runs and processes. Intra-set binding order (structural,
-        // inner-to-outer) is preserved; no dedup — count semantics unchanged.
-        binding_sets.sort_by_cached_key(|bindings| {
+        // across runs and processes, THEN drop adjacent canonical duplicates so
+        // `count_witnesses`/`aggregate` count each distinct binding exactly once
+        // (an inflated count would be a hallucinated quantity). Comparison is at
+        // GroundTerm level — distinct terms never collapse; intra-set binding
+        // order (structural, inner-to-outer) is preserved for display.
+        let canonical_key = |bindings: &Vec<(String, GroundTerm)>| {
             let mut key = bindings.clone();
             key.sort();
             key
-        });
+        };
+        binding_sets.sort_by_cached_key(&canonical_key);
+        binding_sets.dedup_by_key(|bindings| canonical_key(bindings));
         Ok(binding_sets
             .into_iter()
             .map(|bindings| {

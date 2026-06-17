@@ -2467,6 +2467,144 @@ fn test_find_witnesses_dependent_skolem_terms_stay_distinct() {
 }
 
 #[test]
+fn find_dependent_skolem_witness_is_bound_and_unique() {
+    // gerku(adam) + ∀x. gerku(x) → ∃y. nelci(x, y, _). The find `?? nelci(adam, y)`
+    // must return EXACTLY ONE binding set whose y witness is the BOUND dependent
+    // Skolem `sk_N(adam)` — not the unbound conclusion template `sk_N(_)` and not
+    // a duplicated binding. Regression (Ch9 verify-book-capture RED): the find
+    // path's old candidate collector inserted the raw template
+    // `SkolemFn("sk_N", PatternVar)` and appended a generic non-anchored registry
+    // cartesian, so the witness rendered `sk_N(_)` and the binding appeared twice,
+    // nondeterministically. Now find shares the verdict path's anchored,
+    // Unspecified-stripped collector.
+    let kb = new_kb();
+    assert_buf(&kb, make_assertion("adam", "gerku"));
+    assert_buf(&kb, make_dependent_skolem_universal("gerku", "nelci"));
+
+    let mut nodes = Vec::new();
+    let body = pred(
+        &mut nodes,
+        "nelci",
+        vec![
+            LogicalTerm::Constant("adam".to_string()),
+            LogicalTerm::Variable("y".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let root = exists(&mut nodes, "y", body);
+    let results = query_find(
+        &kb,
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        },
+    );
+
+    assert_eq!(
+        results.len(),
+        1,
+        "exactly one binding set (no duplicate), got {results:?}"
+    );
+    let y_term = results[0]
+        .iter()
+        .find(|b| b.variable == "y")
+        .map(|b| match &b.term {
+            LogicalTerm::Constant(c) => c.clone(),
+            other => format!("{other:?}"),
+        })
+        .expect("a binding for y");
+    assert!(
+        y_term.contains("(adam)"),
+        "dependent witness must be bound to its dependency `(adam)`, got {y_term:?}"
+    );
+    assert!(
+        !y_term.contains("(_)") && !y_term.contains('?'),
+        "dependent witness must not be unbound (`sk_N(_)` / `sk_N(?..)`), got {y_term:?}"
+    );
+}
+
+#[test]
+fn count_witnesses_dedups_or_overlap() {
+    // ∃x. (gerku(x) ∨ mlatu(x)) with adam satisfying BOTH disjuncts and bob only
+    // one. The OrNode arm concatenates left+right witnesses, so adam arrives
+    // twice; the return-boundary dedup must collapse it so the count is the
+    // number of DISTINCT entities (2), not the raw enumeration (3). An inflated
+    // count would be a hallucinated quantity.
+    let kb = new_kb();
+    assert_buf(&kb, make_assertion("adam", "gerku"));
+    assert_buf(&kb, make_assertion("adam", "mlatu"));
+    assert_buf(&kb, make_assertion("bob", "gerku"));
+
+    let mut nodes = Vec::new();
+    let g = pred(
+        &mut nodes,
+        "gerku",
+        vec![
+            LogicalTerm::Variable("x".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let m = pred(
+        &mut nodes,
+        "mlatu",
+        vec![
+            LogicalTerm::Variable("x".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let disj = or(&mut nodes, g, m);
+    let root = exists(&mut nodes, "x", disj);
+    let count = kb
+        .count_witnesses(LogicBuffer {
+            nodes,
+            roots: vec![root],
+        })
+        .unwrap();
+    assert_eq!(count, 2, "adam (both disjuncts) counts once; bob once → 2");
+}
+
+#[test]
+fn find_dependent_skolem_deterministic_across_instances() {
+    // Two fresh KBs, opposite assertion orders, same dependent-Skolem find. The
+    // deduped+canonically-sorted output must be byte-identical (hasher-seed
+    // independent) — locks determinism and dedup together for the dependent
+    // witness path.
+    let find_query = || {
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "nelci",
+            vec![
+                LogicalTerm::Constant("adam".to_string()),
+                LogicalTerm::Variable("y".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        );
+        let root = exists(&mut nodes, "y", body);
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
+    };
+
+    let kb1 = new_kb();
+    assert_buf(&kb1, make_assertion("adam", "gerku"));
+    assert_buf(&kb1, make_dependent_skolem_universal("gerku", "nelci"));
+
+    let kb2 = new_kb();
+    assert_buf(&kb2, make_dependent_skolem_universal("gerku", "nelci"));
+    assert_buf(&kb2, make_assertion("adam", "gerku"));
+
+    let r1 = query_find(&kb1, find_query());
+    let r2 = query_find(&kb2, find_query());
+    assert_eq!(
+        r1, r2,
+        "dependent-Skolem find must be identical across assertion orders"
+    );
+    assert_eq!(r1.len(), 1, "exactly one deduped binding set");
+}
+
+#[test]
 fn test_proof_trace_exists_witness_renders_dependent_skolem() {
     // ∀x. prenu(x) → ∃y. zdani(x, y, _); query ∃y. zdani(alis, y, _) with
     // proof. The ExistsWitness step's term must render the dependent Skolem

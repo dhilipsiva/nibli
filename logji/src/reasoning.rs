@@ -1073,36 +1073,34 @@ pub(super) fn find_witnesses(
         LogicNode::ExistsNode((v, body)) => {
             let mut results = Vec::new();
 
-            // Index-driven candidate extraction: walk the body to find
-            // positive predicates mentioning this variable, extract
-            // candidates from the predicate index + backward-chain rule
-            // conclusions. Falls back to full domain scan only when no
-            // positive predicate anchor exists (pure negation body).
+            // Candidate enumeration MUST match the verdict path's ExistsNode arm
+            // (`collect_entailment_candidates`, below): the anchored collector
+            // binds a dependent-Skolem conclusion position over real domain
+            // members (→ `sk_1(adam)`) and strips `Unspecified`. The old
+            // find-only path (`collect_candidates` + a generic, non-anchored
+            // registry cartesian) leaked the raw conclusion template
+            // `SkolemFn("sk_1", PatternVar)` as an *unbound* witness (`sk_1(_)`)
+            // and double-counted bound witnesses — nondeterministically, since
+            // it merged two HashSet-derived sources without dedup. Find still
+            // body-checks every candidate below, so sharing the verdict path's
+            // superset is sound and complete (any satisfying witness meets every
+            // mandatory anchor). Falls back to the full domain + registry
+            // cartesian only when no mandatory positive anchor exists
+            // (pure-negation / pure-Or body).
             let candidates: Vec<GroundTerm> =
-                if let Some(indexed) = collect_candidates(buffer, *body, v, subs, inner, tense) {
-                    // Also include SkolemFn witnesses — these may not appear
-                    // in the index but are valid existential witnesses.
-                    let members = inner.all_typed_domain_members();
-                    let entries = &inner.skolem_fn_registry;
-                    let mut all = indexed;
-                    for entry in entries {
-                        for combo in GroundTermCartesianProduct::new(members, entry.dep_count) {
-                            all.push(build_skolem_fn_term(&entry.base_name, &combo));
+                match collect_entailment_candidates(buffer, *body, v, subs, inner, tense) {
+                    Some(narrowed) => narrowed,
+                    None => {
+                        let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
+                        let mut all = members.clone();
+                        for entry in &inner.skolem_fn_registry {
+                            for combo in GroundTermCartesianProduct::new(&members, entry.dep_count)
+                            {
+                                all.push(build_skolem_fn_term(&entry.base_name, &combo));
+                            }
                         }
+                        all
                     }
-                    all
-                } else {
-                    // No positive anchor — must enumerate all domain members.
-                    // This only happens for bodies like ∃x.¬P(x).
-                    let members = inner.all_typed_domain_members();
-                    let entries = &inner.skolem_fn_registry;
-                    let mut all: Vec<GroundTerm> = members.to_vec();
-                    for entry in entries {
-                        for combo in GroundTermCartesianProduct::new(members, entry.dep_count) {
-                            all.push(build_skolem_fn_term(&entry.base_name, &combo));
-                        }
-                    }
-                    all
                 };
 
             for candidate in candidates {

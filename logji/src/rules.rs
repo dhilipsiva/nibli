@@ -725,25 +725,57 @@ pub(super) fn compile_forall_to_rule(
             let consequent_atoms = flatten_consequent(buffer, consequent_id, skolem_subs);
 
             // DepPair precision: a conclusion existential depends only on the
-            // universals it actually references, not on ALL enclosing universals.
+            // universals it is CONNECTED to, not on ALL enclosing universals.
             // Over-approximating inflates `dep_count`, which drives a
-            // `members^dep_count` witness cartesian in `build_all_candidates`.
-            // Refine each dependent skolem's deps to the universals that co-occur
-            // with its existential var in some consequent atom, preserving the
-            // `universals` order so DepPair nesting stays deterministic. (For a
-            // genuinely multi-dependency existential like `zdani(x, y, z)` this
-            // still yields both x and y; for `zenba(de)` it yields only `de`.)
-            for (k, val) in dependent_skolems.iter_mut() {
-                let mut precise: Vec<String> = Vec::new();
-                for u in &universals {
-                    let co_occurs = consequent_atoms.iter().any(|&aid| {
-                        let vars = atom_var_args(buffer, aid);
-                        vars.iter().any(|v| v == k) && vars.iter().any(|v| v == u)
-                    });
-                    if co_occurs {
-                        precise.push(pattern_vars[u].clone());
+            // `members^dep_count` witness cartesian during firing and witness
+            // search. Connectivity is TRANSITIVE over the consequent's
+            // variable-sharing graph (two vars are adjacent iff they appear in
+            // the same atom): direct co-occurrence is the 1-hop case, but a
+            // Neo-Davidsonian existential reaches its universal THROUGH a shared
+            // event variable — e.g. the cat `_v1` connects to the dog universal
+            // `_v0` only via the nelci event `_ev0` (`nelci_x1(ev, dog)` and
+            // `nelci_x2(ev, cat)` share `ev`). Restricting deps to the universals
+            // in the existential's connected component keeps them minimal (no
+            // blowup), while a 1-hop-only rule would mis-register the cat as
+            // INDEPENDENT (`sk_N(_)`): distinct dogs would then share one cat (a
+            // soundness bug) and find witnesses would render unbound. (`zdani(x,
+            // y, z)` still yields both x and y; `zenba(de)` still yields only
+            // `de` — both are single-atom, so 1-hop and transitive agree.)
+            let mut var_adjacency: HashMap<String, HashSet<String>> = HashMap::new();
+            for &aid in &consequent_atoms {
+                let vars = atom_var_args(buffer, aid);
+                for a in &vars {
+                    for b in &vars {
+                        if a != b {
+                            var_adjacency
+                                .entry(a.clone())
+                                .or_default()
+                                .insert(b.clone());
+                        }
                     }
                 }
+            }
+            for (k, val) in dependent_skolems.iter_mut() {
+                // Variables reachable from `k` over the sharing graph (its
+                // connected component), found by iterative DFS.
+                let mut reached: HashSet<String> = HashSet::new();
+                reached.insert(k.clone());
+                let mut stack = vec![k.clone()];
+                while let Some(node) = stack.pop() {
+                    if let Some(neighbors) = var_adjacency.get(&node) {
+                        for n in neighbors {
+                            if reached.insert(n.clone()) {
+                                stack.push(n.clone());
+                            }
+                        }
+                    }
+                }
+                // Keep `universals` order so DepPair nesting stays deterministic.
+                let precise: Vec<String> = universals
+                    .iter()
+                    .filter(|u| reached.contains(*u))
+                    .map(|u| pattern_vars[u].clone())
+                    .collect();
                 val.1 = precise;
             }
 
