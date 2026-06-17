@@ -214,3 +214,93 @@ pub struct FactSummary {
     pub label: String,
     pub root_count: u32,
 }
+
+/// Compile-time exhaustiveness anchor for the cross-crate conversion lattices.
+///
+/// `LogicNode`, `LogicalTerm`, and `ProofRule` are each converted by hand in
+/// several places that no single crate can see at once, so adding a variant to
+/// any of them silently leaves stale converters elsewhere — the build would
+/// break, but with scattered `E0004` errors and no roadmap. This function exists
+/// only to make that breakage land in ONE discoverable, documented location: its
+/// wildcard-free matches force `E0004` *here* the moment a variant is added, and
+/// the checklist below names every site that must then be updated.
+///
+/// When you add or remove a variant of any of these three enums, update:
+/// - `lasna/src/lib.rs` — `convert_logical_term_to_export` /
+///   `convert_logical_term_from_export` / `convert_proof_rule` (→ WIT guest types)
+/// - `nibli-engine/src/lib.rs` — `term_to_json` / `rule_to_json` (→ nibli-protocol)
+/// - `gasnu/src/main.rs` — `term_to_proto` / `rule_to_proto` (→ nibli-protocol)
+/// - `wit/world.wit` — the `logical-term` / `proof-rule` variant lists, then
+///   regenerate bindings with `cargo component build`
+/// - `nibli-protocol/src/lib.rs` — the `LogicalTerm` / `ProofRule` wire mirrors
+///   (note their RHS uses *named* fields, distinct per variant — not mechanical)
+/// - for a new `LogicNode`/`LogicalTerm` variant: logji lowering + evaluation, and
+///   the serde persistence round-trip test
+///   (`nibli-engine`'s `logic_buffer_serde_postcard_roundtrip_covers_all_variants`)
+///
+/// Never called at runtime; `#[doc(hidden)]` keeps it off the public API surface.
+/// (A macro-driven codegen of the conversion lattices was evaluated and declined
+/// on readability grounds — the JSON RHS field names are bespoke per variant, so a
+/// macro must spell every variant out anyway; see `todo.md`.)
+#[doc(hidden)]
+pub fn __exhaustiveness_guard(node: &LogicNode, term: &LogicalTerm, rule: &ProofRule) {
+    match node {
+        LogicNode::Predicate(_) => {}
+        LogicNode::ComputeNode(_) => {}
+        LogicNode::AndNode(_) => {}
+        LogicNode::OrNode(_) => {}
+        LogicNode::NotNode(_) => {}
+        LogicNode::ExistsNode(_) => {}
+        LogicNode::ForAllNode(_) => {}
+        LogicNode::PastNode(_) => {}
+        LogicNode::PresentNode(_) => {}
+        LogicNode::FutureNode(_) => {}
+        LogicNode::ObligatoryNode(_) => {}
+        LogicNode::PermittedNode(_) => {}
+        LogicNode::CountNode(_) => {}
+    }
+    match term {
+        LogicalTerm::Variable(_) => {}
+        LogicalTerm::Constant(_) => {}
+        LogicalTerm::Description(_) => {}
+        LogicalTerm::Unspecified => {}
+        LogicalTerm::Number(_) => {}
+    }
+    match rule {
+        ProofRule::Conjunction => {}
+        ProofRule::DisjunctionCheck(_) => {}
+        ProofRule::DisjunctionIntro(_) => {}
+        ProofRule::Negation => {}
+        ProofRule::ModalPassthrough(_) => {}
+        ProofRule::ExistsWitness(_) => {}
+        ProofRule::ExistsFailed => {}
+        ProofRule::ForallVacuous => {}
+        ProofRule::ForallVerified(_) => {}
+        ProofRule::ForallCounterexample(_) => {}
+        ProofRule::CountResult(_) => {}
+        ProofRule::PredicateCheck(_) => {}
+        ProofRule::ComputeCheck(_) => {}
+        ProofRule::Asserted(_) => {}
+        ProofRule::Derived(_) => {}
+        ProofRule::ProofRef(_) => {}
+        ProofRule::EqualitySubstitution(_) => {}
+        ProofRule::RuleAttemptFailed(_) => {}
+        ProofRule::PredicateNotFound(_) => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Exercises the exhaustiveness anchor with one variant of each enum, so the
+    /// guard has a live call site and the three enums are confirmed constructible.
+    #[test]
+    fn exhaustiveness_guard_is_callable() {
+        __exhaustiveness_guard(
+            &LogicNode::NotNode(0),
+            &LogicalTerm::Unspecified,
+            &ProofRule::Conjunction,
+        );
+    }
+}
