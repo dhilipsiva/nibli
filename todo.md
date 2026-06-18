@@ -101,10 +101,6 @@ Adjudicated with probes; each item cites the reproduction. Items here are NEW (n
 
 ## engine guarantees / soundness / firewall claims
 
-### Medium
-
-- [ ] **Engine never returns ResourceExceeded(Fuel) or ResourceExceeded(Memory); only Depth** — Appendix E and Chapter 2 state the engine returns `ResourceExceeded(kind)` for Depth/Fuel/Memory, but the only ResourceExceeded ever constructed in logji is `ResourceKind::Depth`. Fuel/Memory are enforced only at the Wasmtime host boundary in gasnu, where a trap is caught by `format_host_error` and rendered as a `[Limit]` string, NOT a `QueryResult::ResourceExceeded(Fuel|Memory)`; those variants are dead at the engine layer. _Location:_ `logji/src/reasoning.rs:663`; `gasnu/src/main.rs:612-623,289-297`. _Book:_ Appendix E lines 86-94; Chapter 2 line 434. _Fix:_ Clarify in Appendix E/Ch2 that Fuel/Memory limits are enforced at the WASM host and surface as a trapped `[Limit]` condition (not a returned ResourceExceeded QueryResult), or wire the host to translate a fuel/memory trap into a `ResourceExceeded(Fuel|Memory)` QueryResult. (docs-mismatch)
-
 ### Low
 
 - [ ] **Residual non-REPL output surfaces still HashSet-order dependent (ordering only, verdicts unaffected)** — surfaces NOT reachable from gasnu REPL output (the REPL witness/proof ordering is deterministic and test-pinned): (1) `check_contradictions` violation ORDER iterates `negative_facts: HashSet<Vec<StoredFact>>` and `all_facts()` (the arity-inconsistency message also reports whichever arity was first-seen in hash order) — engine/server API surface only; (2) `[Forward] Derived:` print order iterates a `lookup_predicate` HashSet clone — forward rules are off by default, latent. _Location:_ `logji/src/lib.rs:754-909` (check_contradictions); `logji/src/rules.rs:525-570` (trigger_forward_rules). _Fix:_ sort violations before returning; sort `matching_facts`/`to_derive` (StoredFact would need Ord or a display-string sort key). (correctness)

@@ -63,7 +63,7 @@ smoke-gasnu-trap-recovery: build-wasm build-gasnu
     @out=$(printf 'la .adam. cu gerku\n:fuel 1000\n? la .adam. cu gerku\n:fuel 10000000000\n? la .adam. cu gerku\n:facts\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out"; \
-        echo "$out" | grep -qF '[Limit] Execution fuel exhausted' || { echo 'FAIL: fuel trap not classified as [Limit]'; exit 1; }; \
+        echo "$out" | grep -qF '[Query] RESOURCE_EXCEEDED (fuel)' || { echo 'FAIL: query fuel trap not translated into a RESOURCE_EXCEEDED (fuel) verdict'; exit 1; }; \
         echo "$out" | grep -qF '[Session] Wasm trap poisoned the component instance; rebuilding and replaying 1 command(s)...' || { echo 'FAIL: missing rebuild message'; exit 1; }; \
         echo "$out" | grep -qF '[Query] TRUE' || { echo 'FAIL: post-recovery query did not answer TRUE'; exit 1; }; \
         echo "$out" | grep -qF '#0: la .adam. cu gerku' || { echo 'FAIL: replayed fact #0 missing from :facts'; exit 1; }; \

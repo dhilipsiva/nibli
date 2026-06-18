@@ -607,30 +607,64 @@ fn refuel(store: &mut Store<HostState>, budget: u64) {
     let _ = store.set_fuel(budget);
 }
 
-fn format_host_error(e: &anyhow::Error) -> String {
-    const FUEL_MSG: &str =
-        "[Limit] Execution fuel exhausted. Increase with NIBLI_FUEL env var or :fuel command.";
-    const MEMORY_MSG: &str =
-        "[Limit] Memory limit exceeded. Increase with NIBLI_MEMORY_MB env var or :memory command.";
-    // A wasmtime trap's Display is the wasm-backtrace context line; the cause
-    // ("all fuel consumed by WebAssembly", "forcing trap when growing
-    // memory...") sits deeper in the chain. Classify via the typed Trap
-    // first, then scan the full chain — never just the top line.
+/// Classify a Wasmtime host trap as a resource-limit kind, if it is one. Fuel
+/// exhaustion is the typed `wasmtime::Trap::OutOfFuel` (or a cause-chain mention
+/// of "fuel"); a memory-cap denial surfaces deeper in the chain
+/// ("forcing trap when growing memory..."). Returns `None` for a genuine
+/// non-resource trap (e.g. a guest panic). A query's resource trap is
+/// synthesized into a RESOURCE_EXCEEDED verdict (see the `?` handler); a
+/// non-query trap renders the `[Limit]`/`[Host Error]` message via
+/// `format_host_error`. (Depth is never a host trap — the engine returns it
+/// directly — so this only ever yields Fuel/Memory.)
+fn classify_resource_trap(e: &anyhow::Error) -> Option<EngineResourceKind> {
     if let Some(trap) = e.downcast_ref::<wasmtime::Trap>() {
         if matches!(trap, wasmtime::Trap::OutOfFuel) {
-            return FUEL_MSG.to_string();
+            return Some(EngineResourceKind::Fuel);
         }
     }
     let chain_contains = |needle: &str| e.chain().any(|cause| cause.to_string().contains(needle));
     if chain_contains("fuel") {
-        FUEL_MSG.to_string()
+        Some(EngineResourceKind::Fuel)
     } else if chain_contains("forcing trap when growing memory")
         || chain_contains("memory")
         || chain_contains("Memory")
     {
-        MEMORY_MSG.to_string()
+        Some(EngineResourceKind::Memory)
     } else {
-        format!("[Host Error] {:?}", e)
+        None
+    }
+}
+
+/// Actionable hint shown under a query's host-synthesized RESOURCE_EXCEEDED
+/// verdict, so the operator knows how to raise the budget and retry.
+fn resource_hint(kind: EngineResourceKind) -> &'static str {
+    match kind {
+        EngineResourceKind::Fuel => {
+            "WASM fuel budget exhausted; raise it with NIBLI_FUEL or :fuel, then re-run"
+        }
+        EngineResourceKind::Memory => {
+            "WASM memory cap exceeded; raise it with NIBLI_MEMORY_MB or :memory, then re-run"
+        }
+        EngineResourceKind::Depth => "backward-chaining depth limit hit; raise max_chain_depth",
+    }
+}
+
+/// Render a NON-query host trap (assertion / `:load` / find / `:retract`) as a
+/// friendly message: a resource trap becomes a `[Limit]` line, a genuine trap
+/// becomes `[Host Error]`. A QUERY trap is instead translated into a
+/// RESOURCE_EXCEEDED verdict at the `?` handler.
+fn format_host_error(e: &anyhow::Error) -> String {
+    match classify_resource_trap(e) {
+        Some(EngineResourceKind::Fuel) => {
+            "[Limit] Execution fuel exhausted. Increase with NIBLI_FUEL env var or :fuel command."
+                .to_string()
+        }
+        Some(EngineResourceKind::Memory) => {
+            "[Limit] Memory limit exceeded. Increase with NIBLI_MEMORY_MB env var or :memory command."
+                .to_string()
+        }
+        // Depth never traps the host; None is a genuine non-resource trap.
+        _ => format!("[Host Error] {:?}", e),
     }
 }
 
@@ -1474,7 +1508,22 @@ impl Repl {
                 }
                 Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                 Err(e) => {
-                    println!("{}", format_host_error(&e));
+                    // A query that traps on a Wasmtime fuel/memory limit is one
+                    // of the four-valued outputs: the host translates the trap
+                    // into a RESOURCE_EXCEEDED(Fuel|Memory) verdict (the engine
+                    // returns ResourceExceeded only for Depth). A genuine
+                    // (non-resource) trap stays a [Host Error]. Either way the
+                    // instance is poisoned, so the session still rebuilds.
+                    match classify_resource_trap(&e) {
+                        Some(kind) => {
+                            println!(
+                                "[Query] {}",
+                                format_query_result(&EngineQueryResult::ResourceExceeded(kind))
+                            );
+                            println!("  ({})", resource_hint(kind));
+                        }
+                        None => println!("{}", format_host_error(&e)),
+                    }
                     self.needs_rebuild = true;
                 }
             }
