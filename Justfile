@@ -112,6 +112,21 @@ smoke-gasnu-persist-replay: build-wasm build-gasnu
         rm -rf "$dir"; \
         echo 'PASS: persistent restart-replay keeps live==store fact-ids (gap preserved, high store id retractable)'
 
+# NAF-note smoke: the closed-world / negation-as-failure flag is now a first-class
+# WIT `proof-trace` field — computed once in the guest (ProofTrace::has_naf_dependency),
+# carried across the boundary, and READ by gasnu (no longer recomputed host-side). A
+# `na`-negated query over an absent fact (closed-world TRUE) must still print the NAF
+# note; this guards the wiring end-to-end (a dropped field would silently remove the
+# note). Pre-release gate (needs the WASM build; not part of `ci`).
+smoke-gasnu-naf: build-wasm build-gasnu
+    @echo "Smoke-testing gasnu NAF-dependent proof note (WIT proof-trace flag)..."
+    @out=$(printf '? la .adam. na gerku\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$out"; \
+        echo "$out" | grep -qF '[Query] TRUE' || { echo 'FAIL: NAF query did not answer TRUE'; exit 1; }; \
+        echo "$out" | grep -qF '[Note: result depends on negation-as-failure (closed-world assumption)]' || { echo 'FAIL: missing NAF note (naf-dependent flag not carried through the WIT proof-trace)'; exit 1; }; \
+        echo 'PASS: NAF-dependent proof carries the closed-world note through the WIT proof-trace'
+
 # Executes the full pipeline: Builds WASM modules, then boots the native REPL
 run: build-wasm
     @echo "Launching Neuro-Symbolic Engine ({{profile}})..."

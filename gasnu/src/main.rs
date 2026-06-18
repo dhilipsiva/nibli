@@ -386,10 +386,6 @@ fn rule_to_proto(rule: &ProofRule) -> ProtoRule {
 
 /// Convert a WIT ProofTrace to the protocol wire type for shared formatting.
 fn trace_to_proto(trace: &ProofTrace) -> ProtoTrace {
-    let naf = trace
-        .steps
-        .iter()
-        .any(|s| matches!(s.rule, ProofRule::Negation) && s.holds);
     ProtoTrace {
         steps: trace
             .steps
@@ -401,7 +397,9 @@ fn trace_to_proto(trace: &ProofTrace) -> ProtoTrace {
             })
             .collect(),
         root: trace.root,
-        naf_dependent: naf,
+        // Read the engine-computed flag from the WIT trace (single source of
+        // truth) instead of recomputing it from the steps.
+        naf_dependent: trace.naf_dependent,
     }
 }
 

@@ -165,6 +165,10 @@ fn convert_proof_trace(t: logji_logic::ProofTrace) -> export_logic::ProofTrace {
             })
             .collect(),
         root: t.root,
+        // Compute the closed-world / NAF note once, here in the guest, so the
+        // host need not recompute it from the steps (single source of truth:
+        // logji's ProofTrace::has_naf_dependency).
+        naf_dependent: t.has_naf_dependency(),
     }
 }
 
@@ -1362,6 +1366,40 @@ mod tests {
         let res = resolve_go_i(&mut ast, &mut last);
         assert!(res.is_err(), "nested go'i must be rejected, got {res:?}");
         assert!(res.unwrap_err().contains("unsupported position"));
+    }
+
+    #[test]
+    fn convert_proof_trace_carries_naf_dependent() {
+        // A trace with a holds:true Negation step is NAF-dependent (the verdict
+        // rests on the closed-world assumption). convert_proof_trace must carry
+        // the flag across the WIT boundary so a host need not recompute it from
+        // the steps (single source of truth: ProofTrace::has_naf_dependency).
+        let naf_trace = logji_logic::ProofTrace {
+            steps: vec![logji_logic::ProofStep {
+                rule: logji_logic::ProofRule::Negation,
+                holds: true,
+                children: vec![],
+            }],
+            root: 0,
+        };
+        assert!(
+            convert_proof_trace(naf_trace).naf_dependent,
+            "a holds:true Negation step must set naf_dependent on the WIT trace"
+        );
+
+        // A trace whose only step is a plain assertion is NOT NAF-dependent.
+        let plain_trace = logji_logic::ProofTrace {
+            steps: vec![logji_logic::ProofStep {
+                rule: logji_logic::ProofRule::Asserted("gerku(adam)".to_string()),
+                holds: true,
+                children: vec![],
+            }],
+            root: 0,
+        };
+        assert!(
+            !convert_proof_trace(plain_trace).naf_dependent,
+            "a non-negation trace must not be naf_dependent"
+        );
     }
 }
 

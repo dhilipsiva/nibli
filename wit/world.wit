@@ -356,6 +356,12 @@ interface logic-types {
     record proof-trace {
         steps: list<proof-step>,
         root: u32,
+        /// True if any step used negation-as-failure (a `Negation` step that
+        /// holds): the TRUE verdict rests on the closed-world assumption, so it
+        /// is weaker than a monotonic proof. Computed once in the engine
+        /// (`ProofTrace::has_naf_dependency`) and carried across the boundary so
+        /// a consumer need not recompute it from the steps.
+        naf-dependent: bool,
     }
 
     /// Unique identifier for a stored fact in the knowledge base.
