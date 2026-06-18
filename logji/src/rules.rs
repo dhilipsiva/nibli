@@ -548,16 +548,27 @@ pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner
 
     let rel_owned = rel.to_string();
 
-    // Populate argument-position index before inserting (need fact reference).
+    // Populate the argument-position index only for a fact not already in the
+    // store (the store is a HashSet, so this keeps the index consistent with it
+    // — exactly one index entry per fact). Re-ingesting an identical ground fact
+    // (e.g. compute auto-assert firing on every query) is then a no-op for the
+    // index, not a duplicate append; duplicates would both grow the index
+    // unboundedly and inflate `bind_join_vars_from_index`'s `matching.len() == 1`
+    // uniqueness check, suppressing a valid join binding. `fact_store.insert` is
+    // the only insert site, so "in the store" ⟺ "indexed". The leaf stays a Vec
+    // in insertion order (the consumer iterates it; output determinism depends on
+    // that order).
     let gf = fact.inner();
-    for (pos, arg) in gf.args.iter().enumerate() {
-        inner
-            .arg_position_index
-            .entry((gf.relation.clone(), pos))
-            .or_default()
-            .entry(arg.clone())
-            .or_default()
-            .push(fact.clone());
+    if !inner.fact_store.contains(&fact) {
+        for (pos, arg) in gf.args.iter().enumerate() {
+            inner
+                .arg_position_index
+                .entry((gf.relation.clone(), pos))
+                .or_default()
+                .entry(arg.clone())
+                .or_default()
+                .push(fact.clone());
+        }
     }
 
     inner.fact_store.insert(fact);

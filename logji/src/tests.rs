@@ -7477,6 +7477,27 @@ fn test_arg_index_populated() {
 }
 
 #[test]
+fn arg_index_dedups_reingested_fact() {
+    // Re-ingesting an Eq-identical ground fact (e.g. compute auto-assert firing
+    // on every query) must NOT append a duplicate to the arg_position_index leaf.
+    // Duplicates would grow the index unboundedly AND inflate
+    // bind_join_vars_from_index's `matching.len() == 1` uniqueness check,
+    // suppressing a valid join binding. The store (a HashSet) already dedups; the
+    // index now stays consistent with it. RED pre-fix (leaf len would be 2).
+    let kb = new_kb();
+    assert_buf(&kb, make_assertion("rex", "gerku"));
+    assert_buf(&kb, make_assertion("rex", "gerku")); // identical fact, re-ingested
+    let inner = kb.inner.borrow();
+    let leaf = &inner.arg_position_index[&("gerku".to_string(), 0)]
+        [&GroundTerm::Constant("rex".to_string())];
+    assert_eq!(
+        leaf.len(),
+        1,
+        "re-ingesting an identical fact must not duplicate its arg-index entry"
+    );
+}
+
+#[test]
 fn test_arg_index_cleared_on_reset() {
     let kb = new_kb();
     assert_buf(&kb, make_assertion("alis", "gerku"));
