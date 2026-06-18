@@ -19,6 +19,103 @@ impl SemanticCompiler {
         self.interner.get_or_intern(&v)
     }
 
+    /// Closes a single quantifier `entry` around `form_to_wrap` and returns the
+    /// wrapped form. The poi/voi domain restrictor (`entry.restrictor`) is folded
+    /// on the domain side (antecedent for ∀, conjunct for ∃/Count). Shared by the
+    /// bridi-level closure (`compile_bridi`) and the be/bei closure (`apply_selbri`)
+    /// so any change to quantifier lowering is made in exactly one place.
+    pub(crate) fn close_quantifier(
+        &mut self,
+        entry: QuantifierEntry,
+        form_to_wrap: LogicalForm,
+        selbris: &[Selbri],
+        sumtis: &[Sumti],
+        sentences: &[Sentence],
+    ) -> LogicalForm {
+        let desc_arity = self.get_selbri_arity(entry.desc_id, selbris);
+
+        let mut restrictor_args = Vec::with_capacity(desc_arity);
+        restrictor_args.push(LogicalTerm::Variable(entry.var));
+        while restrictor_args.len() < desc_arity {
+            restrictor_args.push(LogicalTerm::Unspecified);
+        }
+
+        let desc_restrictor =
+            self.apply_selbri(entry.desc_id, &restrictor_args, selbris, sumtis, sentences);
+
+        match entry.kind {
+            QuantifierKind::Universal => {
+                let mut body = LogicalForm::Or(
+                    Box::new(LogicalForm::Not(Box::new(desc_restrictor))),
+                    Box::new(form_to_wrap),
+                );
+
+                if let Some(rel_restrictor) = entry.restrictor {
+                    body = LogicalForm::Or(
+                        Box::new(LogicalForm::Not(Box::new(rel_restrictor))),
+                        Box::new(body),
+                    );
+                }
+
+                LogicalForm::ForAll(entry.var, Box::new(body))
+            }
+            QuantifierKind::Existential => {
+                let mut body = LogicalForm::And(Box::new(desc_restrictor), Box::new(form_to_wrap));
+
+                if let Some(rel_restrictor) = entry.restrictor {
+                    body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
+                }
+
+                LogicalForm::Exists(entry.var, Box::new(body))
+            }
+            QuantifierKind::ExactCount(n) => {
+                let mut body = LogicalForm::And(Box::new(desc_restrictor), Box::new(form_to_wrap));
+
+                if let Some(rel_restrictor) = entry.restrictor {
+                    body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
+                }
+
+                LogicalForm::Count {
+                    var: entry.var,
+                    count: n,
+                    body: Box::new(body),
+                }
+            }
+            QuantifierKind::UniversalLe => {
+                let le_restrictor =
+                    self.build_le_domain_restrictor(entry.desc_id, entry.var, selbris);
+                let mut body = LogicalForm::Or(
+                    Box::new(LogicalForm::Not(Box::new(le_restrictor))),
+                    Box::new(form_to_wrap),
+                );
+
+                if let Some(rel_restrictor) = entry.restrictor {
+                    body = LogicalForm::Or(
+                        Box::new(LogicalForm::Not(Box::new(rel_restrictor))),
+                        Box::new(body),
+                    );
+                }
+
+                LogicalForm::ForAll(entry.var, Box::new(body))
+            }
+            QuantifierKind::ExactCountLe(n) => {
+                let le_restrictor =
+                    self.build_le_domain_restrictor(entry.desc_id, entry.var, selbris);
+                let mut body = LogicalForm::And(Box::new(le_restrictor), Box::new(form_to_wrap));
+
+                if let Some(rel_restrictor) = entry.restrictor {
+                    body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
+                }
+
+                LogicalForm::Count {
+                    var: entry.var,
+                    count: n,
+                    body: Box::new(body),
+                }
+            }
+        }
+    }
+
     /// Maps a BAI modal tag to its underlying gismu relation name.
     pub(crate) fn bai_to_gismu(tag: &BaiTag) -> &'static str {
         match tag {
