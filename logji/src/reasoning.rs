@@ -1179,11 +1179,17 @@ pub(super) fn typed_fact_is_asserted(fact: &StoredFact, inner: &KnowledgeBaseInn
     if inner.equivalence_parent.is_empty() {
         return false;
     }
-    typed_fact_is_asserted_with_equivalence(fact, inner)
+    typed_fact_is_asserted_with_equivalence(fact, inner).is_some()
 }
 
-/// Check if a fact holds under any equivalence-class substitution of its arguments.
-fn typed_fact_is_asserted_with_equivalence(fact: &StoredFact, inner: &KnowledgeBaseInner) -> bool {
+/// If `fact` holds under some du-equivalence substitution of its arguments,
+/// return the directly-asserted equivalent variant (so a traced proof can render
+/// the substitution honestly as `EqualitySubstitution` rather than `Asserted`);
+/// `None` if no equivalent variant is directly asserted.
+fn typed_fact_is_asserted_with_equivalence(
+    fact: &StoredFact,
+    inner: &KnowledgeBaseInner,
+) -> Option<StoredFact> {
     let gf = fact.inner();
     // For each arg position, get the equivalence class.
     let equiv_args: Vec<Vec<GroundTerm>> = gf
@@ -1200,7 +1206,7 @@ fn typed_fact_is_asserted_with_equivalence(fact: &StoredFact, inner: &KnowledgeB
 
     // If no argument has equivalents beyond itself, nothing to try.
     if equiv_args.iter().all(|cls| cls.len() <= 1) {
-        return false;
+        return None;
     }
 
     // Enumerate cartesian product of equivalence classes (skip original combo).
@@ -1208,10 +1214,24 @@ fn typed_fact_is_asserted_with_equivalence(fact: &StoredFact, inner: &KnowledgeB
         let variant_gf = GroundFact::new(gf.relation.clone(), combo);
         let variant = StoredFact::with_tense_from(variant_gf, fact);
         if variant != *fact && inner.fact_store.contains(&variant) {
-            return true;
+            return Some(variant);
         }
     }
-    false
+    None
+}
+
+/// Format the du-equality substitution note for a proof step: the argument pairs
+/// where `orig` and `variant` differ, rendered as `"a du b, x du y"`. Shared by
+/// the asserted-via-equivalence and rule-derived-via-equivalence trace paths.
+fn du_substitution_note(orig: &StoredFact, variant: &StoredFact) -> String {
+    orig.inner()
+        .args
+        .iter()
+        .zip(variant.inner().args.iter())
+        .filter(|(o, v)| o != v)
+        .map(|(o, v)| format!("{} du {}", o.to_display_string(), v.to_display_string()))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Simple cartesian product iterator over Vec<Vec<T>>.
@@ -2189,7 +2209,8 @@ pub(super) fn trace_predicate_provenance_typed(
         return idx;
     }
 
-    if typed_fact_is_asserted(fact, inner) {
+    // Exact store hit → genuinely asserted.
+    if inner.fact_store.contains(fact) {
         let idx = steps.len() as u32;
         steps.push(ProofStep {
             rule: ProofRule::Asserted(display.clone()),
@@ -2198,6 +2219,38 @@ pub(super) fn trace_predicate_provenance_typed(
         });
         memo.insert(display, idx);
         return idx;
+    }
+
+    // Holds only via a directly-asserted du-equivalent variant → render the
+    // substitution honestly as EqualitySubstitution (the fact itself was never
+    // asserted). The combined condition (exact contains OR an asserted equivalent
+    // variant) is identical to `typed_fact_is_asserted`, so the trace fires in
+    // exactly the cases the verdict treats as asserted — only the LABEL of the
+    // asserted-via-equivalence sub-case changes. The recursive child trace bottoms
+    // out at the asserted variant (an exact store hit, above). A RULE-DERIVED
+    // equivalent variant is NOT caught here (it is not in the store); it flows to
+    // the rule-derived equality fallback further down.
+    if !inner.equivalence_parent.is_empty() {
+        if let Some(variant) = typed_fact_is_asserted_with_equivalence(fact, inner) {
+            let du_note = du_substitution_note(fact, &variant);
+            let substituted = variant.to_display_string();
+            let child = trace_predicate_provenance_typed(
+                &variant,
+                inner,
+                steps,
+                depth,
+                memo,
+                &mut HashSet::new(),
+            );
+            let idx = steps.len() as u32;
+            steps.push(ProofStep {
+                rule: ProofRule::EqualitySubstitution((display.clone(), du_note, substituted)),
+                holds: true,
+                children: vec![child],
+            });
+            memo.insert(display, idx);
+            return idx;
+        }
     }
 
     if depth < inner.max_chain_depth {
@@ -2260,14 +2313,7 @@ pub(super) fn trace_predicate_provenance_typed(
                 }
             }
             if let Some(variant) = satisfying {
-                let du_note = gf
-                    .args
-                    .iter()
-                    .zip(variant.inner().args.iter())
-                    .filter(|(o, v)| o != v)
-                    .map(|(o, v)| format!("{} du {}", o.to_display_string(), v.to_display_string()))
-                    .collect::<Vec<_>>()
-                    .join(", ");
+                let du_note = du_substitution_note(fact, &variant);
                 let substituted = variant.to_display_string();
                 let child = trace_predicate_provenance_typed(
                     &variant,

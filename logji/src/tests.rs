@@ -8053,6 +8053,56 @@ fn test_proof_trace_du_substitution_rule_derived() {
     );
 }
 
+/// du-equivalent ASSERTED facts must render as EqualitySubstitution, not Asserted.
+/// xukmi(coumadin) is DIRECTLY asserted; coumadin du warfarin. Querying
+/// xukmi(warfarin) holds only by substituting warfarin → coumadin through the du
+/// equality — the queried fact was never asserted, so labeling it Asserted hides
+/// the substitution. The honest proof is EqualitySubstitution whose child is the
+/// genuinely-asserted xukmi(coumadin). RED pre-fix (the trace had a bare
+/// Asserted(xukmi(warfarin)) and no EqualitySubstitution).
+#[test]
+fn test_proof_trace_du_substitution_directly_asserted() {
+    let kb = new_kb();
+    assert_buf(&kb, make_assertion("coumadin", "xukmi"));
+    assert_buf(&kb, make_du("coumadin", "warfarin"));
+
+    assert!(
+        query(&kb, make_query("warfarin", "xukmi")),
+        "xukmi(warfarin) should hold via asserted xukmi(coumadin) + coumadin du warfarin"
+    );
+
+    let (result, trace) = query_with_proof(&kb, make_query("warfarin", "xukmi"));
+    assert!(result, "traced verdict for xukmi(warfarin) should be True");
+    // Honest: a holds:true EqualitySubstitution step is present.
+    assert!(
+        trace
+            .steps
+            .iter()
+            .any(|s| matches!(s.rule, ProofRule::EqualitySubstitution(_)) && s.holds),
+        "trace should contain a holds:true EqualitySubstitution step for the asserted-via-du case"
+    );
+    // Dishonest label gone: no Asserted step claims the QUERIED xukmi(warfarin)
+    // fact was asserted (only xukmi(coumadin) genuinely was).
+    assert!(
+        !trace.steps.iter().any(|s| {
+            matches!(&s.rule, ProofRule::Asserted(d) if d.contains("warfarin") && d.contains("xukmi"))
+        }),
+        "no Asserted step may claim xukmi(warfarin) — it holds only via substitution"
+    );
+    // The substitution's child IS the genuinely-asserted xukmi(coumadin).
+    assert!(
+        trace.steps.iter().any(|s| {
+            matches!(&s.rule, ProofRule::Asserted(d) if d.contains("coumadin") && d.contains("xukmi"))
+                && s.holds
+        }),
+        "the substitution's child must be the asserted xukmi(coumadin)"
+    );
+    assert!(
+        trace.steps[trace.root as usize].holds,
+        "root step holds must match the True verdict"
+    );
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // DETERMINISM PINS (todo.md: witness/proof output ordering was
 // HashSet-derived and varied with the process hasher seed)

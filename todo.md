@@ -70,10 +70,6 @@ Adjudicated with probes; each item cites the reproduction. Items here are NEW (n
 
 ## logji: proof traces, provenance, belief revision
 
-### Medium
-
-- [ ] **du-equivalent ASSERTED facts are still labeled `Asserted` rather than `EqualitySubstitution`** — `trace_predicate_provenance_typed` now emits `ProofRule::EqualitySubstitution` when a fact holds via a du-equivalent RULE-DERIVED variant (the original "never emitted" gap is closed, and the bogus `holds:true` fallback is gone). Residual: the direct-assertion check (`typed_fact_is_asserted`, which itself has an equivalence path) runs FIRST, so a fact that holds because a du-equivalent variant is directly ASSERTED is still labeled `Asserted(fact)` — true up to equality, but it hides the du substitution from the proof. _Location:_ `logji/src/reasoning.rs` (`trace_predicate_provenance_typed` asserted check; `typed_fact_is_asserted_with_equivalence` at 442-474); `nibli-types/src/logic.rs:151`. _Book:_ Chapter 11 lines 119, 123, 522-523. _Fix:_ When the asserted match is via an equivalence variant (not exact `fact_store.contains`), emit `EqualitySubstitution` instead of `Asserted`; otherwise soften the book's claim. (completeness)
-
 ### Low
 
 
