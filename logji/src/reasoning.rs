@@ -196,11 +196,24 @@ fn combine_disjunction(left: QueryResult, right: QueryResult) -> QueryResult {
     }
 }
 
+/// Negate a sub-goal's result under negation-as-failure (every caller is a NAF
+/// check: the surface `na` NotNode and the rule-antecedent negated conditions).
+///
+/// `¬True → False` and `¬False → True` are DEFINITIVE: `¬False → True` is a
+/// successful NAF/closed-world conclusion, and the proof carries that note via
+/// `ProofTrace::has_naf_dependency` (a `Negation` step with `holds:true`) — NOT
+/// as an Unknown reason. But negating an UNDETERMINED sub-goal (`¬Unknown`)
+/// originates `UnknownReason::NafDependent` — "the answer depends on a NAF check
+/// that is itself undetermined" — the four-valued contract's promised reason
+/// (defined + documented but previously never constructed). The original inner
+/// reason (e.g. CycleCut) is the root cause and remains visible in the trace;
+/// the verdict reason becomes the negation-specific `NafDependent`.
+/// `ResourceExceeded` is polarity-independent and forwarded unchanged.
 fn negate_result(result: QueryResult) -> QueryResult {
     match result {
         QueryResult::True => QueryResult::False,
         QueryResult::False => QueryResult::True,
-        QueryResult::Unknown(reason) => QueryResult::Unknown(reason),
+        QueryResult::Unknown(_) => QueryResult::Unknown(UnknownReason::NafDependent),
         QueryResult::ResourceExceeded(kind) => QueryResult::ResourceExceeded(kind),
     }
 }

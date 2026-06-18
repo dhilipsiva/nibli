@@ -796,8 +796,11 @@ fn trace_does_not_show_counterexample_under_depth_exceeded() {
 #[test]
 fn trace_naf_flag_false_when_inner_is_unknown() {
     // ¬gerku(alis) where gerku(alis) is Unknown(CycleCut), NOT definitively False.
-    // negate_result preserves Unknown, so the verdict is Unknown and the trace
-    // must NOT claim a NAF dependency (a boolean !false would wrongly do so).
+    // The verdict is Unknown (negate_result yields Unknown(NafDependent) for an
+    // undetermined inner — see negate_unknown_inner_yields_naf_dependent), and the
+    // trace must NOT claim a NAF dependency: that PROOF flag marks a SUCCESSFUL NAF
+    // (a Negation step that holds), which an Unknown inner is not (a boolean !false
+    // would wrongly set it).
     let kb = new_kb();
     assert_buf(&kb, make_universal("gerku", "danlu"));
     assert_buf(&kb, make_universal("danlu", "gerku"));
@@ -821,6 +824,41 @@ fn trace_naf_flag_false_when_inner_is_unknown() {
         !trace.has_naf_dependency(),
         "NAF flag must be false when the negated inner is Unknown, not definitively False"
     );
+}
+
+#[test]
+fn negate_unknown_inner_yields_naf_dependent() {
+    // ¬gerku(alis) where gerku(alis) is Unknown(CycleCut) (gerku ⟸ danlu ⟸ gerku).
+    // Negating an UNDETERMINED sub-goal depends on a NAF check that is itself
+    // undetermined → the verdict reason is Unknown(NafDependent), the four-valued
+    // contract's promised reason (previously never constructed — negate_result
+    // forwarded the inner CycleCut). RED pre-fix.
+    let kb = new_kb();
+    assert_buf(&kb, make_universal("gerku", "danlu"));
+    assert_buf(&kb, make_universal("danlu", "gerku"));
+    let mut nodes = Vec::new();
+    let inner = pred(
+        &mut nodes,
+        "gerku",
+        vec![
+            LogicalTerm::Constant("alis".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let root = not(&mut nodes, inner);
+    let buf = LogicBuffer {
+        nodes,
+        roots: vec![root],
+    };
+    let (result, trace) = kb.query_entailment_with_proof_inner(buf).unwrap();
+    assert!(
+        matches!(result, QueryResult::Unknown(UnknownReason::NafDependent)),
+        "negating an Unknown sub-goal must yield Unknown(NafDependent), got {result:?}"
+    );
+    // Distinct from the PROOF flag: this is an UNDETERMINED NAF (no Negation step
+    // holds:true), so has_naf_dependency stays false and the trace stays consistent.
+    assert!(!trace.has_naf_dependency());
+    assert_trace_consistent(&result, &trace);
 }
 
 #[test]
