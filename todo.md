@@ -4,7 +4,7 @@ This backlog records the gaps found by auditing the source tree against the book
 
 ## Priority summary
 
-**Open (HIGH/MEDIUM):** the smuni/gerna/logji remainders below (tagged-connected-sumti right-operand drop, CLL place counter, `ma_vars`/BAI-`da` scoping, non-atomic assertion, rebuild registry-clearing, tense-wrapper discard during rule collection/matching); the production set (gasnu restart replay ID drift, dead WasiFactStore, compute trust puncture; nibli-server reasoning is now bounded/cancellable + GraphQL-guarded as of 2026-06-15, and per-client keyed rate limiting was considered and dropped — the global bucket is accepted by design); and the verification debt (no WASM behavioral tests in CI, bench_query_latency shape, DDI alert regimen-independence). The pre-existing book-vs-code audit backlog (medium/low) follows. (Panel provenance: 35 agents, 11 confirmed + 3 partial + 0 refuted findings; full output in `code-review-panel-2026-06-10.json`.)
+**Open (HIGH/MEDIUM):** HIGH soundness remainders, each with its substantive half already landed (whole-rule tense + deontic/disjunctive rule antecedents; position-aware `da`/`de`/`di` scope; lasna go'i bridi-snapshot remainders); HIGH production (compute-backend provenance marking — the cache-invalidation correctness fix + Python hardening half landed); the verification debt (no WASM behavioral tests in CI, bench_query_latency shape, DDI alert regimen-independence); and the architecture/feature set (typed error contract end-to-end, vestigial per-stage component worlds, native TCP compute-backend client). MEDIUM also covers the logji Skolem gaps (object-position universal sugar, negated `poi na` restrictor, forward-chaining NAF truth maintenance), the built-in-arithmetic 3× duplication, the Ollama 0.3-vs-0.0 temperature + the lasna/WIT `naf-dependent` field drop, and the engine-guarantee docs-mismatches (`Unknown(NafDependent)` never produced; `ResourceExceeded(Fuel/Memory)` never returned). The book-vs-code audit low-priority tail follows. (Closed since this summary was first written: connected-sumti right-operand drop + CLL place counter, `ma_vars`/BAI-`da` scoping, non-atomic assertion, rebuild registry-clearing, tense-wrapper discard, gasnu restart-replay ID drift, dead WasiFactStore, the thread-local→per-instance refactor, rule-bucket pre-sort, arg-index dedup, `noi` non-restrictive + `close_quantifier` DRY, and du-equivalent-asserted `EqualitySubstitution`. Panel provenance: 35 agents, 11 confirmed + 3 partial + 0 refuted findings; full output in `code-review-panel-2026-06-10.json`.)
 
 ## Deep code-review panel findings (2026-06-10)
 
@@ -67,11 +67,6 @@ Adjudicated with probes; each item cites the reproduction. Items here are NEW (n
 ### Low
 
 - [ ] **xorlo presupposition not asserted in the bare-universal branch** — the engine asserts a fresh Skolem witness satisfying the restrictor only in the implication branch (`Some((conditions, consequent))`); the bare-universal branch (`None`) registers the rule without any presupposition witness. NOTE: the xorlo claim is specifically about `ro lo`/`ro le`, which the semantic compiler ALWAYS routes through the implication branch, so the documented behavior DOES hold for the forms that exercise it; the bare branch is only reachable for a restrictor-less ∀ (no domain to witness — arguably correct to omit). _Location:_ `logji/src/rules.rs:711-735` (implication) vs 738-793 (bare). _Book:_ Chapter 9 lines 235-251; Chapter 10 Step 8 lines 230-234. _Fix:_ Document/decide bare-universal presupposition semantics (a restrictor-less ∀ ranges over the existing possibly-empty domain — no witness is correct), or reject bare universals at compile time; align code and book. (docs-mismatch)
-
-## logji: proof traces, provenance, belief revision
-
-### Low
-
 
 ## WASM/WASI runtime, arena, compute protocol, WIT
 
