@@ -7812,6 +7812,37 @@ fn test_priority_set_and_query() {
     }
 }
 
+#[test]
+fn matching_rules_bucket_stays_descending_after_late_registration() {
+    // INVARIANT: universal_rules buckets are kept sorted by descending priority
+    // at mutation time, so the backward-chain read path (matching_rules_typed)
+    // can borrow a pre-sorted slice without cloning or re-sorting. A
+    // low-priority rule registered AFTER a high-priority rule for the same
+    // conclusion must land AFTER it. (The suite-wide debug_assert in
+    // matching_rules_typed is the broader net; this pins one explicit case.)
+    let kb = new_kb();
+    assert_buf(&kb, make_universal("gerku", "danlu"));
+    kb.set_rule_priority("danlu", 10); // the gerku→danlu rule now has priority 10
+    assert_buf(&kb, make_universal("mlatu", "danlu")); // new rule, default priority 0
+    let inner = kb.inner.borrow();
+    let bucket = inner
+        .universal_rules
+        .get("danlu")
+        .expect("danlu bucket exists");
+    assert_eq!(
+        bucket.len(),
+        2,
+        "both rules concluding danlu are in the bucket"
+    );
+    assert!(
+        bucket.is_sorted_by_key(|r| std::cmp::Reverse(r.priority)),
+        "bucket must stay descending-sorted: {:?}",
+        bucket.iter().map(|r| r.priority).collect::<Vec<_>>()
+    );
+    assert_eq!(bucket[0].priority, 10, "high-priority rule comes first");
+    assert_eq!(bucket[1].priority, 0, "late low-priority rule comes last");
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // SORTED LOGIC / TYPE HIERARCHY TESTS
 // ═══════════════════════════════════════════════════════════════════

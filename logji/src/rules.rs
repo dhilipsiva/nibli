@@ -323,19 +323,25 @@ pub(super) fn register_rule(
     let rc = Arc::new(rule);
     let mut indexed = false;
     for concl in &rc.typed_conclusions {
-        inner
+        let bucket = inner
             .universal_rules
             .entry(concl.relation().to_string())
-            .or_default()
-            .push(Arc::clone(&rc));
+            .or_default();
+        bucket.push(Arc::clone(&rc));
+        // Keep the bucket descending-sorted by priority so the backward-chain
+        // read path (`matching_rules_typed`) can borrow it without re-sorting.
+        // (A new rule has priority 0, the minimum, so this is order-preserving
+        // today; the explicit sort makes the invariant robust to future changes.)
+        sort_rule_bucket(bucket);
         indexed = true;
     }
     if !indexed {
-        inner
+        let bucket = inner
             .universal_rules
             .entry("__fallback__".to_string())
-            .or_default()
-            .push(rc.clone());
+            .or_default();
+        bucket.push(rc.clone());
+        sort_rule_bucket(bucket);
     }
 
     // Track which assertion ID produced this rule (for incremental retraction).

@@ -837,6 +837,9 @@ impl KnowledgeBase {
                     *rule = Arc::new(cloned);
                 }
             }
+            // Re-establish the descending-priority order the backward-chain read
+            // path relies on (`matching_rules_typed` borrows the bucket as-is).
+            sort_rule_bucket(rules);
         }
     }
 

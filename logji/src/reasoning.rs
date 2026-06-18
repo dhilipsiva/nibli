@@ -902,9 +902,8 @@ fn check_formula_holds_core<S: TraceSink>(
                         // Definitively False — record which rules were tried and
                         // which condition failed.
                         let mut failed_children = Vec::new();
-                        let rules_snapshot =
-                            collect_matching_rules_typed(&fact, &inner.universal_rules);
-                        for rule in &rules_snapshot {
+                        let rules = matching_rules_typed(&fact, &inner.universal_rules);
+                        for rule in rules {
                             for concl in &rule.typed_conclusions {
                                 if let Some(bindings) = unify_facts(concl, &fact) {
                                     for ct in &rule.typed_conditions {
@@ -1266,15 +1265,32 @@ impl Iterator for CartesianProduct<'_> {
     }
 }
 
-/// Collect rules whose conclusion templates match the given fact's relation name.
-/// Returns rules sorted by priority descending (highest priority first).
-fn collect_matching_rules_typed(
+/// Re-establish the descending-priority order of a single `universal_rules`
+/// bucket. Call after any mutation that pushes a rule or changes a priority
+/// (`register_rule`, `set_rule_priority`). `sort_by_key` is stable, so
+/// equal-priority rules keep insertion order. This is the cold-path counterpart
+/// to `matching_rules_typed`'s hot-path borrow: the sort lives here, at mutation
+/// time, instead of on every backward-chaining node visit.
+pub(super) fn sort_rule_bucket(bucket: &mut [Arc<UniversalRuleRecord>]) {
+    bucket.sort_by_key(|r| std::cmp::Reverse(r.priority));
+}
+
+/// Borrow the rules whose conclusion templates match the given fact's relation
+/// name, as a pre-sorted (descending priority) slice. Buckets are kept sorted at
+/// mutation time (see `sort_rule_bucket`), so this is a zero-cost borrow — no
+/// clone, no per-call sort — on the backward-chaining hot path.
+fn matching_rules_typed<'a>(
     fact: &StoredFact,
-    universal_rules: &HashMap<String, Vec<Arc<UniversalRuleRecord>>>,
-) -> Vec<Arc<UniversalRuleRecord>> {
-    let rel = fact.relation();
-    let mut rules = universal_rules.get(rel).cloned().unwrap_or_default();
-    rules.sort_by_key(|r| std::cmp::Reverse(r.priority));
+    universal_rules: &'a HashMap<String, Vec<Arc<UniversalRuleRecord>>>,
+) -> &'a [Arc<UniversalRuleRecord>] {
+    let rules = universal_rules
+        .get(fact.relation())
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    debug_assert!(
+        rules.is_sorted_by_key(|r| std::cmp::Reverse(r.priority)),
+        "universal_rules bucket must be kept descending-sorted by priority"
+    );
     rules
 }
 
@@ -1696,21 +1712,21 @@ fn try_backward_chain_core<S: TraceSink>(
     // frames never reach that point. Shared across all rules in this frame.
     let mut candidates_slot: Option<Vec<GroundTerm>> = None;
 
-    let rules_snapshot = collect_matching_rules_typed(fact, &inner.universal_rules);
+    let rules = matching_rules_typed(fact, &inner.universal_rules);
     let is_traced = inner.traced_predicates.contains(fact.relation());
-    if is_traced && !rules_snapshot.is_empty() {
+    if is_traced && !rules.is_empty() {
         let indent = "  ".repeat(depth);
         eprintln!(
             "[Trace] {}depth={} backward-chain: {} ({} rule(s) to try)",
             indent,
             depth,
             fact.to_display_string(),
-            rules_snapshot.len()
+            rules.len()
         );
     }
     let mut best_result = None;
 
-    for rule in &rules_snapshot {
+    for rule in rules {
         for typed_concl in &rule.typed_conclusions {
             let Some(mut bindings) = unify_facts(typed_concl, fact) else {
                 continue;
@@ -1871,8 +1887,8 @@ fn try_backward_chain_core<S: TraceSink>(
             StoredFact::Future(_) => "future",
             _ => "?",
         };
-        let bare_rules = collect_matching_rules_typed(&bare_fact, &inner.universal_rules);
-        for rule in &bare_rules {
+        let bare_rules = matching_rules_typed(&bare_fact, &inner.universal_rules);
+        for rule in bare_rules {
             for typed_concl in &rule.typed_conclusions {
                 let Some(mut bindings) = unify_facts(typed_concl, &bare_fact) else {
                     continue;

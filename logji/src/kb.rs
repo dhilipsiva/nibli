@@ -465,7 +465,11 @@ pub(super) struct KnowledgeBaseInner {
     pub(super) fact_store: Box<dyn crate::fact_store::FactStore>,
     /// Compiled universal rule templates indexed by conclusion predicate name.
     /// Each predicate name maps to the rules whose conclusion templates mention it.
-    /// Rc-wrapped to avoid cloning rule records during backward-chain snapshots.
+    /// Arc-wrapped so the backward-chain read path can borrow rules without cloning.
+    /// INVARIANT: every bucket is kept sorted by DESCENDING priority at mutation
+    /// time (`register_rule`, `set_rule_priority` call `sort_rule_bucket`), so the
+    /// hot read path (`matching_rules_typed`) borrows a pre-sorted slice — no
+    /// per-node clone or re-sort.
     pub(super) universal_rules: HashMap<String, Vec<Arc<UniversalRuleRecord>>>,
     /// Monotonically increasing fact ID counter.
     pub(super) fact_counter: u64,
