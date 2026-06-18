@@ -302,6 +302,40 @@ fn binary_restrictor_negative_control() {
     );
 }
 
+// ─── noi (non-restrictive) vs poi (restrictive) relative clauses ─────
+
+#[test]
+fn noi_incidental_predicate_is_asserted() {
+    // "every dog, which is big, goes" — noi is NON-restrictive: it asserts the
+    // dogs ARE big (a side-fact about every domain member) rather than
+    // restricting the rule's domain to big dogs. So from gerku(rex) alone the
+    // engine derives BOTH klama(rex) and barda(rex).
+    let engine = engine_with_facts(&["la .rex. cu gerku", "ro lo gerku noi barda cu klama"]);
+    let (big, _trace, _json) = engine.query_text_with_proof("la .rex. cu barda").unwrap();
+    assert_true(
+        &big,
+        "noi asserts the incidental predicate about every dog (derived from gerku alone)",
+    );
+    let (goes, _trace, _json) = engine.query_text_with_proof("la .rex. cu klama").unwrap();
+    assert_true(
+        &goes,
+        "noi rule fires on the unrestricted domain regardless of the incidental property",
+    );
+}
+
+#[test]
+fn poi_restrictive_does_not_assert_incidental() {
+    // Same shape with poi: the clause RESTRICTS the domain, so `barda` is a
+    // premise (must be independently known), never a conclusion. Guards that
+    // the noi fix does not leak into poi.
+    let engine = engine_with_facts(&["la .rex. cu gerku", "ro lo gerku poi barda cu klama"]);
+    let (big, _trace, _json) = engine.query_text_with_proof("la .rex. cu barda").unwrap();
+    assert_false(
+        &big,
+        "poi keeps the restrictor as a premise, not a derived conclusion",
+    );
+}
+
 #[test]
 fn binary_restrictor_constant_second_place_fires() {
     // DDI-shape: "every drug metabolised-by CYP2C9 triggers an alert".

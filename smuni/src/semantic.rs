@@ -11,7 +11,11 @@
 //!   `And`/`Or`/`Not`/`Biconditional`/`Xor` combinations.
 //! - **Conversion**: `se`/`te`/`ve`/`xe` permute argument places.
 //! - **Abstraction**: `nu`/`du'u`/`ka`/`ni`/`si'o` reify inner bridi as 1-place predicates.
-//! - **Relative clauses**: `poi`/`noi`/`voi` clauses conjoin restrictor predicates.
+//! - **Relative clauses**: `poi`/`voi` (restrictive) conjoin a domain restrictor;
+//!   `noi` (non-restrictive) conjoins its body at the MATRIX level (consequent for
+//!   universals, body conjunct for existentials/counts) so it does not narrow the
+//!   quantifier domain. Residual: under exact-count quantifiers `noi` is still
+//!   treated restrictively (documented limitation).
 //! - **Modal tags**: BAI cmavo and `fi'o` produce conjoined modal predications.
 //! - **String interning**: all relation names and variable names use [`lasso::Rodeo`]
 //!   for zero-copy comparison and deduplication.
@@ -21,7 +25,7 @@ use crate::ir::{LogicalForm, LogicalTerm};
 use lasso::Rodeo;
 use nibli_types::ast::{
     AbstractionKind, Attitudinal, BaiTag, Bridi, Connective, Conversion, Gadri, ModalTag, PlaceTag,
-    Selbri, Sentence, SentenceConnective, Sumti, Tense,
+    RelClauseKind, Selbri, Sentence, SentenceConnective, Sumti, Tense,
 };
 
 mod compile;
@@ -50,8 +54,13 @@ pub(crate) struct QuantifierEntry {
     var: lasso::Spur,
     /// Index into the selbri array for the description predicate (restrictor source).
     desc_id: u32,
-    /// Optional relative clause restrictor (poi/noi/voi body, already compiled).
+    /// Optional restrictive (poi/voi) relative clause body, already compiled.
+    /// Folded on the domain side: antecedent for ∀, conjunct for ∃/Count.
     restrictor: Option<LogicalForm>,
+    /// Optional non-restrictive (noi) relative clause body, already compiled.
+    /// Folded on the MATRIX side (consequent for ∀, body conjunct for ∃/Count) so
+    /// it does not narrow the quantifier domain — see `close_quantifier`.
+    noi_restrictor: Option<LogicalForm>,
     /// What kind of quantifier this description introduces.
     kind: QuantifierKind,
 }
@@ -1805,6 +1814,147 @@ mod tests {
             "the outer `ma` must be bound (not stolen by the rel clause): free={:?}",
             free_vars(&form, &compiler)
         );
+    }
+
+    // ─── noi (non-restrictive) vs poi (restrictive) relative clauses ────
+
+    /// Compile `ro lo gerku [kind] barda cu klama` (universal). The rel-clause
+    /// body (sentence 1) is `barda` with implicit ke'a filling its x1.
+    fn compile_ro_lo_gerku_rel_barda_klama(kind: RelClauseKind) -> (LogicalForm, SemanticCompiler) {
+        let selbris = vec![
+            Selbri::Root("gerku".into()), // 0
+            Selbri::Root("barda".into()), // 1
+            Selbri::Root("klama".into()), // 2
+        ];
+        let sumtis = vec![
+            Sumti::Description((Gadri::RoLo, 0)), // 0: ro lo gerku
+            Sumti::Restricted((
+                0,
+                RelClause {
+                    kind,
+                    body_sentence: 1,
+                },
+            )), // 1: ro lo gerku [kind] barda
+        ];
+        let sentences = vec![
+            Sentence::Simple(Bridi {
+                relation: 2,
+                head_terms: vec![1],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+            Sentence::Simple(Bridi {
+                relation: 1, // barda (rel-clause body; implicit ke'a fills x1)
+                head_terms: vec![],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+        ];
+        compile_sentence_full(selbris, sumtis, sentences)
+    }
+
+    /// Split a `ForAll(_, Or(antecedent, consequent))` into (antecedent, consequent).
+    fn forall_or_split(form: &LogicalForm) -> (&LogicalForm, &LogicalForm) {
+        match form {
+            LogicalForm::ForAll(_, body) => match body.as_ref() {
+                LogicalForm::Or(l, r) => (l.as_ref(), r.as_ref()),
+                other => panic!("expected Or under ForAll, got {:?}", other),
+            },
+            other => panic!("expected ForAll root, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn noi_restrictor_is_in_universal_consequent_not_antecedent() {
+        // `ro lo gerku noi barda cu klama`: noi is NON-restrictive, so `barda`
+        // must land in the rule's CONSEQUENT (matrix), not its antecedent
+        // (domain guard). RED pre-fix (noi was folded into the antecedent).
+        let (form, compiler) = compile_ro_lo_gerku_rel_barda_klama(RelClauseKind::Noi);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        let (ante, cons) = forall_or_split(&form);
+        assert!(
+            has_pred(cons, "barda", &compiler),
+            "noi: barda must be in the consequent (matrix)"
+        );
+        assert!(
+            !has_pred(ante, "barda", &compiler),
+            "noi: barda must NOT be in the antecedent (domain restrictor)"
+        );
+    }
+
+    #[test]
+    fn poi_restrictor_stays_in_universal_antecedent() {
+        // Guard: poi is RESTRICTIVE, so `barda` stays in the antecedent. Green
+        // before AND after — pins that the noi fix does not leak into poi.
+        let (form, compiler) = compile_ro_lo_gerku_rel_barda_klama(RelClauseKind::Poi);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        let (ante, cons) = forall_or_split(&form);
+        assert!(
+            has_pred(ante, "barda", &compiler),
+            "poi: barda must be in the antecedent (domain restrictor)"
+        );
+        assert!(
+            !has_pred(cons, "barda", &compiler),
+            "poi: barda must NOT be in the consequent"
+        );
+    }
+
+    #[test]
+    fn noi_under_exact_count_is_restrictive_documented_residual() {
+        // DOCUMENTED RESIDUAL: under an exact-count quantifier, noi is folded into
+        // the counted body (== restrictive), because the principled non-restrictive
+        // form `Count(…) ∧ ∀x.(desc→noi)` would need close_quantifier to emit two
+        // conjuncts. Pin the current behavior so the limitation stays discoverable.
+        // `ci lo gerku noi barda cu klama` → Count{3, body} with barda IN the body.
+        let selbris = vec![
+            Selbri::Root("gerku".into()), // 0
+            Selbri::Root("barda".into()), // 1
+            Selbri::Root("klama".into()), // 2
+        ];
+        let sumtis = vec![
+            Sumti::QuantifiedDescription((3, Gadri::Lo, 0)), // 0: ci lo gerku
+            Sumti::Restricted((
+                0,
+                RelClause {
+                    kind: RelClauseKind::Noi,
+                    body_sentence: 1,
+                },
+            )), // 1: ci lo gerku noi barda
+        ];
+        let sentences = vec![
+            Sentence::Simple(Bridi {
+                relation: 2,
+                head_terms: vec![1],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+            Sentence::Simple(Bridi {
+                relation: 1,
+                head_terms: vec![],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+        ];
+        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        match &form {
+            LogicalForm::Count { count, body, .. } => {
+                assert_eq!(*count, 3);
+                assert!(
+                    has_pred(body, "barda", &compiler),
+                    "documented residual: noi under exact-count is folded into the counted body"
+                );
+            }
+            other => panic!("expected Count root, got {:?}", other),
+        }
     }
 
     #[test]

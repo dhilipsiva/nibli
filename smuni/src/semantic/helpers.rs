@@ -20,10 +20,18 @@ impl SemanticCompiler {
     }
 
     /// Closes a single quantifier `entry` around `form_to_wrap` and returns the
-    /// wrapped form. The poi/voi domain restrictor (`entry.restrictor`) is folded
-    /// on the domain side (antecedent for ∀, conjunct for ∃/Count). Shared by the
-    /// bridi-level closure (`compile_bridi`) and the be/bei closure (`apply_selbri`)
-    /// so any change to quantifier lowering is made in exactly one place.
+    /// wrapped form. The restrictive poi/voi clause (`entry.restrictor`) is folded
+    /// on the DOMAIN side (antecedent for ∀, conjunct for ∃/Count) — it narrows
+    /// what the quantifier ranges over. The non-restrictive noi clause
+    /// (`entry.noi_restrictor`) is folded on the MATRIX side (consequent for ∀,
+    /// body conjunct for ∃/Count) — it asserts an incidental property of the
+    /// domain members without narrowing the domain. `∀x. P(x) → (Q(x) ∧ noi(x))`
+    /// is exactly `(∀x. P→Q) ∧ (∀x. P→noi)`, the standard non-restrictive reading.
+    /// Residual: under an exact-count quantifier `noi` is folded into the counted
+    /// body (== restrictive) — a documented limitation, since the principled form
+    /// `Count(…) ∧ ∀x.(P→noi)` would need to return two conjuncts.
+    /// Shared by the bridi-level closure (`compile_bridi`) and the be/bei closure
+    /// (`apply_selbri`) so any change to quantifier lowering is made in one place.
     pub(crate) fn close_quantifier(
         &mut self,
         entry: QuantifierEntry,
@@ -45,9 +53,14 @@ impl SemanticCompiler {
 
         match entry.kind {
             QuantifierKind::Universal => {
+                // noi (non-restrictive): conjoin into the consequent (matrix side).
+                let matrix = match entry.noi_restrictor {
+                    Some(noi) => LogicalForm::And(Box::new(form_to_wrap), Box::new(noi)),
+                    None => form_to_wrap,
+                };
                 let mut body = LogicalForm::Or(
                     Box::new(LogicalForm::Not(Box::new(desc_restrictor))),
-                    Box::new(form_to_wrap),
+                    Box::new(matrix),
                 );
 
                 if let Some(rel_restrictor) = entry.restrictor {
@@ -66,6 +79,12 @@ impl SemanticCompiler {
                     body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
                 }
 
+                // noi: under ∃ a matrix conjunct is logically identical to a
+                // restrictor conjunct (∧ is flat), so folding into the body is exact.
+                if let Some(noi) = entry.noi_restrictor {
+                    body = LogicalForm::And(Box::new(noi), Box::new(body));
+                }
+
                 LogicalForm::Exists(entry.var, Box::new(body))
             }
             QuantifierKind::ExactCount(n) => {
@@ -73,6 +92,11 @@ impl SemanticCompiler {
 
                 if let Some(rel_restrictor) = entry.restrictor {
                     body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
+                }
+
+                // noi under exact-count stays restrictive (documented residual).
+                if let Some(noi) = entry.noi_restrictor {
+                    body = LogicalForm::And(Box::new(noi), Box::new(body));
                 }
 
                 LogicalForm::Count {
@@ -84,9 +108,13 @@ impl SemanticCompiler {
             QuantifierKind::UniversalLe => {
                 let le_restrictor =
                     self.build_le_domain_restrictor(entry.desc_id, entry.var, selbris);
+                let matrix = match entry.noi_restrictor {
+                    Some(noi) => LogicalForm::And(Box::new(form_to_wrap), Box::new(noi)),
+                    None => form_to_wrap,
+                };
                 let mut body = LogicalForm::Or(
                     Box::new(LogicalForm::Not(Box::new(le_restrictor))),
-                    Box::new(form_to_wrap),
+                    Box::new(matrix),
                 );
 
                 if let Some(rel_restrictor) = entry.restrictor {
@@ -105,6 +133,11 @@ impl SemanticCompiler {
 
                 if let Some(rel_restrictor) = entry.restrictor {
                     body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
+                }
+
+                // noi under exact-count stays restrictive (documented residual).
+                if let Some(noi) = entry.noi_restrictor {
+                    body = LogicalForm::And(Box::new(noi), Box::new(body));
                 }
 
                 LogicalForm::Count {
@@ -234,6 +267,7 @@ impl SemanticCompiler {
                             var,
                             desc_id: *desc_id,
                             restrictor: None,
+                            noi_restrictor: None,
                             kind: QuantifierKind::Existential,
                         }],
                     )
@@ -246,6 +280,7 @@ impl SemanticCompiler {
                             var,
                             desc_id: *desc_id,
                             restrictor: None,
+                            noi_restrictor: None,
                             kind: QuantifierKind::Universal,
                         }],
                     )
@@ -258,6 +293,7 @@ impl SemanticCompiler {
                             var,
                             desc_id: *desc_id,
                             restrictor: None,
+                            noi_restrictor: None,
                             kind: QuantifierKind::UniversalLe,
                         }],
                     )
@@ -289,6 +325,7 @@ impl SemanticCompiler {
                         var,
                         desc_id: *desc_id,
                         restrictor: None,
+                        noi_restrictor: None,
                         kind,
                     }],
                 )
@@ -366,15 +403,31 @@ impl SemanticCompiler {
                 };
 
                 if let Some(last) = quants.last_mut() {
-                    // Stacked clauses (`poi P poi Q`) nest as Restricted(Restricted(...)),
-                    // so the inner recursion already set a restrictor for this quantifier.
-                    // CONJOIN rather than overwrite, to keep every clause's predicate.
-                    last.restrictor = Some(match last.restrictor.take() {
-                        Some(existing) => {
-                            LogicalForm::And(Box::new(existing), Box::new(new_restrictor))
+                    // Stacked clauses (`poi P poi Q`, `noi P noi Q`) nest as
+                    // Restricted(Restricted(...)), so the inner recursion already set the
+                    // matching field for this quantifier. CONJOIN rather than overwrite,
+                    // to keep every clause's predicate. Route by clause kind: poi/voi
+                    // narrow the domain (`restrictor`); noi is non-restrictive and folds
+                    // at the matrix level (`noi_restrictor`, see `close_quantifier`).
+                    // Mixed stacks (`poi P noi Q`) populate both fields independently.
+                    match rel_clause.kind {
+                        RelClauseKind::Noi => {
+                            last.noi_restrictor = Some(match last.noi_restrictor.take() {
+                                Some(existing) => {
+                                    LogicalForm::And(Box::new(existing), Box::new(new_restrictor))
+                                }
+                                None => new_restrictor,
+                            });
                         }
-                        None => new_restrictor,
-                    });
+                        RelClauseKind::Poi | RelClauseKind::Voi => {
+                            last.restrictor = Some(match last.restrictor.take() {
+                                Some(existing) => {
+                                    LogicalForm::And(Box::new(existing), Box::new(new_restrictor))
+                                }
+                                None => new_restrictor,
+                            });
+                        }
+                    }
                 } else {
                     // No quantifier: the clause restricts a rigid term (la name,
                     // le description, pro-sumti). Substitute the term for the
