@@ -49,9 +49,12 @@ fn main() {
                         extract_glossword(block).unwrap_or(word)
                     };
                     let escaped_gloss = escape_str(gloss);
+                    let template = lookup_template(word);
                     let value = format!(
-                        "DictEntry {{ arity: Some({}), gloss: \"{}\" }}",
-                        arity, escaped_gloss
+                        "DictEntry {{ arity: Some({}), gloss: \"{}\", template: \"{}\" }}",
+                        arity,
+                        escaped_gloss,
+                        escape_str(template)
                     );
                     entries.push((word.to_string(), value));
 
@@ -70,8 +73,10 @@ fn main() {
                         extract_glossword(block).unwrap_or(word)
                     };
                     let escaped_gloss = escape_str(gloss);
-                    let value =
-                        format!("DictEntry {{ arity: None, gloss: \"{}\" }}", escaped_gloss);
+                    let value = format!(
+                        "DictEntry {{ arity: None, gloss: \"{}\", template: \"\" }}",
+                        escaped_gloss
+                    );
                     entries.push((word.to_string(), value));
                     cmavo_count += 1;
                 }
@@ -82,16 +87,17 @@ fn main() {
         println!("cargo:warning=jbovlaste-en.xml not found, using fallback dictionary entries");
         for (word, arity, gloss) in FALLBACK_GISMU_ENTRIES {
             let value = format!(
-                "DictEntry {{ arity: Some({}), gloss: \"{}\" }}",
+                "DictEntry {{ arity: Some({}), gloss: \"{}\", template: \"{}\" }}",
                 arity,
-                escape_str(gloss)
+                escape_str(gloss),
+                escape_str(lookup_template(word))
             );
             entries.push(((*word).to_string(), value));
             gismu_count += 1;
         }
         for (word, gloss) in CMAVO_GLOSS_OVERRIDES {
             let value = format!(
-                "DictEntry {{ arity: None, gloss: \"{}\" }}",
+                "DictEntry {{ arity: None, gloss: \"{}\", template: \"\" }}",
                 escape_str(gloss)
             );
             entries.push(((*word).to_string(), value));
@@ -188,6 +194,16 @@ fn extract_arity(definition: &str) -> usize {
     }
 
     max_place.max(1)
+}
+
+/// Look up a curated English place-frame template for a gismu/lujvo.
+/// Returns "" when none is curated (the renderer falls back to a generic frame).
+fn lookup_template(word: &str) -> &'static str {
+    GISMU_PLACE_TEMPLATES
+        .iter()
+        .find(|(w, _)| *w == word)
+        .map(|(_, t)| *t)
+        .unwrap_or("")
 }
 
 /// Escape a string for embedding in a Rust string literal.
@@ -315,6 +331,98 @@ const FALLBACK_GISMU_ENTRIES: &[(&str, usize, &str)] = &[
 /// glosswords are bitch/canine/dog — "dog" is the right back-translation).
 /// Consulted before FALLBACK_GISMU_ENTRIES and extract_glossword.
 const GISMU_GLOSS_OVERRIDES: &[(&str, &str)] = &[("bilga", "must"), ("curmi", "permit")];
+
+/// Curated English place-frame templates, keyed by gismu/lujvo, using `{x1}`..`{x5}`
+/// placeholders. Covers the predicates the shipped corpora (`readme.lojban`,
+/// `gdpr.lojban`, `drug-interactions.lojban`) actually use; everything else falls
+/// back to a generic gloss-based frame in the renderer. Templates are written so
+/// the filled form reads as a complete English clause. Keep to 1-/2-place frames
+/// where the reading is unambiguous; higher-arity frames spell every place so the
+/// renderer can drop trailing unfilled (`zo'e`) places cleanly.
+///
+/// NOTE: templates are keyed on the bare predicate name. `se`/`te`/… conversion is
+/// already reflected in the IR's argument order, so the same template renders both
+/// `prami` and `se prami` correctly (the swapped sumti land in the swapped `{xN}`).
+const GISMU_PLACE_TEMPLATES: &[(&str, &str)] = &[
+    // ── Motion / action verbs ──
+    ("klama", "{x1} goes to {x2} from {x3} via {x4} using {x5}"),
+    ("bevri", "{x1} carries {x2} to {x3} from {x4} via {x5}"),
+    ("cadzu", "{x1} walks on {x2} using {x3}"),
+    ("bajra", "{x1} runs on {x2} to {x3} from {x4}"),
+    ("citka", "{x1} eats {x2}"),
+    ("pinxe", "{x1} drinks {x2}"),
+    ("catra", "{x1} kills {x2}"),
+    ("gasnu", "{x1} does {x2}"),
+    ("zukte", "{x1} acts toward goal {x2}"),
+    ("zbasu", "{x1} makes {x2} from {x3}"),
+    // ── Mental / communicative ──
+    ("prami", "{x1} loves {x2}"),
+    ("nelci", "{x1} likes {x2}"),
+    ("djica", "{x1} desires {x2}"),
+    ("djuno", "{x1} knows {x2}"),
+    ("jimpe", "{x1} understands {x2}"),
+    ("viska", "{x1} sees {x2}"),
+    ("tirna", "{x1} hears {x2}"),
+    ("tavla", "{x1} talks to {x2} about {x3}"),
+    ("cusku", "{x1} expresses {x2} to {x3}"),
+    ("ctuca", "{x1} teaches {x2} to {x3}"),
+    ("tadni", "{x1} studies {x2}"),
+    ("nitcu", "{x1} needs {x2}"),
+    ("kakne", "{x1} is able to {x2}"),
+    ("kurji", "{x1} takes care of {x2}"),
+    ("ponse", "{x1} possesses {x2}"),
+    ("penmi", "{x1} meets {x2}"),
+    // ── Deontic / regulatory (incl. corpus proxy vocabulary) ──
+    ("bilga", "{x1} is obligated to {x2}"),
+    ("curmi", "{x1} permits {x2}"),
+    ("fanta", "{x1} prevents {x2}"),
+    ("kajde", "{x1} warns about {x2}"),
+    ("flalu", "{x1} is a law about {x2}"),
+    ("javni", "{x1} is a rule about {x2}"),
+    ("nibli", "{x1} logically entails {x2}"),
+    ("krinu", "{x1} is the reason for {x2}"),
+    // ── Class predicates (x1 is a …) ──
+    ("danlu", "{x1} is an animal"),
+    ("gerku", "{x1} is a dog"),
+    ("mlatu", "{x1} is a cat"),
+    ("cipni", "{x1} is a bird"),
+    ("finpe", "{x1} is a fish"),
+    ("prenu", "{x1} is a person"),
+    ("nanmu", "{x1} is a man"),
+    ("ninmu", "{x1} is a woman"),
+    ("verba", "{x1} is a child"),
+    ("remna", "{x1} is a human"),
+    ("xukmi", "{x1} is a chemical"),
+    ("dinju", "{x1} is a building"),
+    ("zdani", "{x1} is a home"),
+    ("zarci", "{x1} is a market"),
+    ("marce", "{x1} is a vehicle"),
+    ("cidja", "{x1} is food"),
+    ("litki", "{x1} is a liquid"),
+    ("datni", "{x1} is data"),
+    ("ciste", "{x1} is a system"),
+    ("logji", "{x1} is logical"),
+    // ── Property predicates (x1 is …) ──
+    ("jmive", "{x1} is alive"),
+    ("morsi", "{x1} is dead"),
+    ("barda", "{x1} is big"),
+    ("cmalu", "{x1} is small"),
+    ("sutra", "{x1} is fast"),
+    ("masno", "{x1} is slow"),
+    ("xamgu", "{x1} is good"),
+    ("xlali", "{x1} is bad"),
+    ("kanro", "{x1} is healthy"),
+    ("melbi", "{x1} is beautiful"),
+    ("birti", "{x1} is certain"),
+    ("xanri", "{x1} is imaginary"),
+    // ── Numeric / compute (arithmetic relations) ──
+    ("pilji", "{x1} is the product of {x2} and {x3}"),
+    ("sumji", "{x1} is the sum of {x2} and {x3}"),
+    ("dilcu", "{x1} is the quotient of {x2} and {x3}"),
+    ("zmadu", "{x1} is greater than {x2}"),
+    ("mleca", "{x1} is less than {x2}"),
+    ("dunli", "{x1} equals {x2}"),
+];
 
 /// Hardcoded gloss overrides for common cmavo where jbovlaste glosses
 /// are too technical for readable back-translation.

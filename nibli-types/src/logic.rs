@@ -228,13 +228,17 @@ pub struct FactSummary {
 /// When you add or remove a variant of any of these three enums, update:
 /// - `lasna/src/lib.rs` — `convert_logical_term_to_export` /
 ///   `convert_logical_term_from_export` / `convert_proof_rule` (→ WIT guest types)
-/// - `nibli-engine/src/lib.rs` — `term_to_json` / `rule_to_json` (→ nibli-protocol)
-/// - `gasnu/src/main.rs` — `term_to_proto` / `rule_to_proto` (→ nibli-protocol)
+/// - `nibli-protocol/src/lib.rs` — `from_canonical_term` / `from_canonical_rule`
+///   (the single canonical→wire converter, shared by nibli-engine + nibli-wasm),
+///   AND the `LogicalTerm` / `ProofRule` wire mirrors (RHS uses *named* fields,
+///   distinct per variant — not mechanical)
+/// - `gasnu/src/main.rs` — `term_to_proto` / `rule_to_proto` (WIT → nibli-protocol)
+/// - `nibli-render/src/proof.rs` — `icon` / `label` / `css_class` / `trace_display`
+///   for a new `ProofRule` variant (the readable rendering of the wire rule)
 /// - `wit/world.wit` — the `logical-term` / `proof-rule` variant lists, then
 ///   regenerate bindings with `cargo component build`
-/// - `nibli-protocol/src/lib.rs` — the `LogicalTerm` / `ProofRule` wire mirrors
-///   (note their RHS uses *named* fields, distinct per variant — not mechanical)
-/// - for a new `LogicNode`/`LogicalTerm` variant: logji lowering + evaluation, and
+/// - for a new `LogicNode`/`LogicalTerm` variant: logji lowering + evaluation,
+///   `nibli-render/src/logic.rs` + `term.rs` (IR back-translation rendering), and
 ///   the serde persistence round-trip test
 ///   (`nibli-engine`'s `logic_buffer_serde_postcard_roundtrip_covers_all_variants`)
 ///

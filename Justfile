@@ -152,7 +152,7 @@ fmt-check:
 
 # Strict clippy gate for the runtime crates under active hardening
 clippy-runtime:
-    cargo clippy --no-deps -p nibli-protocol -p nibli-store -p nibli-engine -p nibli -p tavla -p nibli-server --all-targets -- -D warnings
+    cargo clippy --no-deps -p nibli-protocol -p nibli-render -p nibli-store -p nibli-engine -p nibli -p tavla -p nibli-server --all-targets -- -D warnings
 
 # Run gerna unit tests only (bypasses cdylib linker issues)
 test-gerna:

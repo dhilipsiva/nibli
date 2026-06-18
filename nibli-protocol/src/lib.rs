@@ -1,9 +1,16 @@
 //! Shared wire-format types for the nibli proof trace protocol.
 //!
 //! Both nibli-engine (native, serializes) and nibli-ui (browser WASM, deserializes)
-//! depend on this crate. It has no heavy dependencies — just serde.
+//! depend on this crate. It has no heavy dependencies — serde plus the canonical
+//! `nibli-types` (for the single `from_canonical` converter).
+//!
+//! Human-readable RENDERING of these types (proof text, the `RenderedNode` tree,
+//! and fact humanization) lives in `nibli-render`, not here — this crate is the
+//! wire-format authority only.
 
 use serde::{Deserialize, Serialize};
+
+use nibli_types::logic as canon;
 
 // ── Proof trace wire types ──
 
@@ -112,453 +119,113 @@ impl ProofTrace {
     pub fn from_json(s: &str) -> Option<Self> {
         serde_json::from_str(s).ok()
     }
+}
 
-    /// Render the proof tree as compact indented text.
-    pub fn to_pretty_text(&self) -> String {
-        self.to_pretty_text_with_indent(0)
-    }
+// ── Canonical (nibli-types) → wire conversion ──
+//
+// The SINGLE logji→wire conversion lattice. nibli-engine and nibli-wasm both call
+// these (they previously hand-wrote identical copies); lasna's logji→WIT lattice
+// is separate by necessity (a WASM guest cannot depend on this crate). See the
+// `__exhaustiveness_guard` in nibli-types for the full list of conversion sites.
 
-    /// Render the proof tree as compact indented text with a base indent.
-    pub fn to_pretty_text_with_indent(&self, base_indent: usize) -> String {
-        let mut out = String::new();
-        if self.naf_dependent {
-            out.push_str(
-                "[Note: result depends on negation-as-failure (closed-world assumption)]\n",
-            );
-        }
-        format_proof_step(self, self.root, base_indent, &mut out);
-        out
+/// Convert a canonical logical term into its wire form.
+pub fn from_canonical_term(term: &canon::LogicalTerm) -> LogicalTerm {
+    match term {
+        canon::LogicalTerm::Constant(s) => LogicalTerm {
+            kind: "constant".to_string(),
+            value: Some(s.clone()),
+            number: None,
+        },
+        canon::LogicalTerm::Variable(s) => LogicalTerm {
+            kind: "variable".to_string(),
+            value: Some(s.clone()),
+            number: None,
+        },
+        canon::LogicalTerm::Description(s) => LogicalTerm {
+            kind: "description".to_string(),
+            value: Some(s.clone()),
+            number: None,
+        },
+        canon::LogicalTerm::Number(n) => LogicalTerm {
+            kind: "number".to_string(),
+            value: None,
+            number: Some(*n),
+        },
+        canon::LogicalTerm::Unspecified => LogicalTerm {
+            kind: "unspecified".to_string(),
+            value: None,
+            number: None,
+        },
     }
 }
 
-// ── Fact display humanizer ──
-
-/// Parse and humanize a logji internal representation into readable notation.
-///
-/// Converts internal representations like:
-///   `(Pred "danlu" (Cons (SkolemFn "sk_1" (Const "adam")) (Nil)))` → `danlu(#1(adam))`
-///   `(Past (Pred "klama" (Cons (Const "adam") (Nil))))` → `[past] klama(adam)`
-///   `(Const "adam")` → `adam`
-pub fn humanize_fact(input: &str) -> String {
-    let tokens = tokenize_repr(input);
-    let mut pos = 0;
-    match parse_fact_node(&tokens, &mut pos) {
-        Some(node) => format_fact_node(&node),
-        None => input.to_string(),
+/// Convert a canonical proof rule into its wire form.
+pub fn from_canonical_rule(rule: &canon::ProofRule) -> ProofRule {
+    match rule {
+        canon::ProofRule::Conjunction => ProofRule::Conjunction,
+        canon::ProofRule::DisjunctionCheck(s) => ProofRule::DisjunctionCheck { detail: s.clone() },
+        canon::ProofRule::DisjunctionIntro(s) => ProofRule::DisjunctionIntro { side: s.clone() },
+        canon::ProofRule::Negation => ProofRule::Negation,
+        canon::ProofRule::ModalPassthrough(s) => ProofRule::ModalPassthrough { kind: s.clone() },
+        canon::ProofRule::ExistsWitness((var, term)) => ProofRule::ExistsWitness {
+            var: var.clone(),
+            term: from_canonical_term(term),
+        },
+        canon::ProofRule::ExistsFailed => ProofRule::ExistsFailed,
+        canon::ProofRule::ForallVacuous => ProofRule::ForallVacuous,
+        canon::ProofRule::ForallVerified(entities) => ProofRule::ForallVerified {
+            entities: entities.iter().map(from_canonical_term).collect(),
+        },
+        canon::ProofRule::ForallCounterexample(term) => ProofRule::ForallCounterexample {
+            entity: from_canonical_term(term),
+        },
+        canon::ProofRule::CountResult((expected, actual)) => ProofRule::CountResult {
+            expected: *expected,
+            actual: *actual,
+        },
+        canon::ProofRule::PredicateCheck((method, detail)) => ProofRule::PredicateCheck {
+            method: method.clone(),
+            detail: detail.clone(),
+        },
+        canon::ProofRule::ComputeCheck((method, detail)) => ProofRule::ComputeCheck {
+            method: method.clone(),
+            detail: detail.clone(),
+        },
+        canon::ProofRule::Asserted(fact) => ProofRule::Asserted { fact: fact.clone() },
+        canon::ProofRule::Derived((label, fact)) => ProofRule::Derived {
+            label: label.clone(),
+            fact: fact.clone(),
+        },
+        canon::ProofRule::ProofRef(fact) => ProofRule::ProofRef { fact: fact.clone() },
+        canon::ProofRule::EqualitySubstitution((o, d, s)) => ProofRule::EqualitySubstitution {
+            original: o.clone(),
+            du_facts: d.clone(),
+            substituted: s.clone(),
+        },
+        canon::ProofRule::RuleAttemptFailed((l, c)) => ProofRule::RuleAttemptFailed {
+            rule_label: l.clone(),
+            failed_condition: c.clone(),
+        },
+        canon::ProofRule::PredicateNotFound(p) => ProofRule::PredicateNotFound {
+            predicate: p.clone(),
+        },
     }
 }
 
-enum FactNode {
-    Atom(String),
-    List(Vec<FactNode>),
-}
-
-fn tokenize_repr(s: &str) -> Vec<String> {
-    let mut tokens = Vec::new();
-    let mut chars = s.chars().peekable();
-    while let Some(&c) = chars.peek() {
-        match c {
-            '(' => {
-                tokens.push("(".to_string());
-                chars.next();
-            }
-            ')' => {
-                tokens.push(")".to_string());
-                chars.next();
-            }
-            '"' => {
-                chars.next();
-                let mut buf = String::new();
-                while let Some(&ch) = chars.peek() {
-                    if ch == '"' {
-                        chars.next();
-                        break;
-                    }
-                    buf.push(ch);
-                    chars.next();
-                }
-                tokens.push(format!("\"{}\"", buf));
-            }
-            c if c.is_whitespace() => {
-                chars.next();
-            }
-            _ => {
-                let mut word = String::new();
-                while let Some(&ch) = chars.peek() {
-                    if ch == '(' || ch == ')' || ch == '"' || ch.is_whitespace() {
-                        break;
-                    }
-                    word.push(ch);
-                    chars.next();
-                }
-                tokens.push(word);
-            }
-        }
-    }
-    tokens
-}
-
-fn parse_fact_node(tokens: &[String], pos: &mut usize) -> Option<FactNode> {
-    if *pos >= tokens.len() {
-        return None;
-    }
-    if tokens[*pos] == "(" {
-        *pos += 1;
-        let mut children = Vec::new();
-        while *pos < tokens.len() && tokens[*pos] != ")" {
-            if let Some(child) = parse_fact_node(tokens, pos) {
-                children.push(child);
-            } else {
-                break;
-            }
-        }
-        if *pos < tokens.len() {
-            *pos += 1; // skip )
-        }
-        Some(FactNode::List(children))
-    } else {
-        let tok = tokens[*pos].clone();
-        *pos += 1;
-        Some(FactNode::Atom(tok))
-    }
-}
-
-fn unquote(s: &str) -> &str {
-    s.strip_prefix('"')
-        .and_then(|s| s.strip_suffix('"'))
-        .unwrap_or(s)
-}
-
-fn format_fact_node(node: &FactNode) -> String {
-    match node {
-        FactNode::Atom(s) => unquote(s).to_string(),
-        FactNode::List(children) => {
-            if children.is_empty() {
-                return "()".to_string();
-            }
-            let tag = match &children[0] {
-                FactNode::Atom(s) => s.as_str(),
-                _ => return format_fact_generic(children),
-            };
-            match tag {
-                "Pred" => format_fact_pred(children),
-                "Const" => format_fact_extract(children),
-                "Var" => {
-                    if children.len() < 2 {
-                        "?".to_string()
-                    } else {
-                        format!("?{}", format_fact_node(&children[1]))
-                    }
-                }
-                "Num" => format_fact_num(children),
-                "Desc" => {
-                    if children.len() < 2 {
-                        "le ?".to_string()
-                    } else {
-                        format!("le {}", format_fact_node(&children[1]))
-                    }
-                }
-                "Zoe" => "_".to_string(),
-                "Nil" => String::new(),
-                "Cons" => {
-                    let items = collect_arg_items(children);
-                    items
-                        .iter()
-                        .map(|n| format_fact_node(n))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                }
-                "SkolemFn" => {
-                    if children.len() < 3 {
-                        "#?".to_string()
-                    } else {
-                        let name = format_fact_node(&children[1]);
-                        let dep = format_fact_node(&children[2]);
-                        format!("{}({})", humanize_term(name), humanize_term(dep))
-                    }
-                }
-                "DepPair" => {
-                    if children.len() < 3 {
-                        "?".to_string()
-                    } else {
-                        format!(
-                            "{}, {}",
-                            format_fact_node(&children[1]),
-                            format_fact_node(&children[2])
-                        )
-                    }
-                }
-                "Past" | "Present" | "Future" | "Obligatory" | "Permitted" => {
-                    let label = tag.to_lowercase();
-                    if children.len() < 2 {
-                        label
-                    } else {
-                        format!("[{}] {}", label, format_fact_node(&children[1]))
-                    }
-                }
-                "Or" => format_fact_binop("∨", children),
-                "And" => format_fact_binop("∧", children),
-                "Not" => {
-                    if children.len() < 2 {
-                        "¬?".to_string()
-                    } else {
-                        format!("¬{}", format_fact_node(&children[1]))
-                    }
-                }
-                _ => format_fact_generic(children),
-            }
-        }
-    }
-}
-
-fn format_fact_pred(children: &[FactNode]) -> String {
-    if children.len() < 3 {
-        return "?pred".to_string();
-    }
-    let name = format_fact_node(&children[1]);
-    let args = collect_arg_list(&children[2]);
-
-    // Collapse Neo-Davidsonian role predicates (e.g., "gerku_x1") into compact form.
-    // "gerku_x1(sk_0, adam)" → "gerku.x1(adam)" (hide event variable)
-    if let Some(base_and_role) = parse_role_predicate(&name) {
-        let formatted: Vec<String> = args
+/// Convert a canonical proof trace into its wire form.
+pub fn from_canonical(trace: &canon::ProofTrace) -> ProofTrace {
+    ProofTrace {
+        steps: trace
+            .steps
             .iter()
-            .map(|a| humanize_term(format_fact_node(a)))
-            .filter(|s| !is_event_skolem(s)) // hide event Skolem args
-            .collect();
-        if formatted.is_empty() {
-            base_and_role
-        } else {
-            format!("{}({})", base_and_role, formatted.join(", "))
-        }
-    } else {
-        let formatted: Vec<String> = args
-            .iter()
-            .map(|a| humanize_term(format_fact_node(a)))
-            .collect();
-        if formatted.is_empty() {
-            name
-        } else {
-            format!("{}({})", name, formatted.join(", "))
-        }
-    }
-}
-
-/// Detect Neo-Davidsonian role predicates: "gerku_x1" → "gerku.x1"
-fn parse_role_predicate(name: &str) -> Option<String> {
-    // Match patterns like "name_x1", "name_x2", etc.
-    if let Some(underscore_pos) = name.rfind('_') {
-        let suffix = &name[underscore_pos + 1..];
-        if suffix.starts_with('x') && suffix[1..].chars().all(|c| c.is_ascii_digit()) {
-            let base = &name[..underscore_pos];
-            return Some(format!("{}.{}", base, suffix));
-        }
-    }
-    None
-}
-
-/// Check if a term string looks like an event Skolem (starts with "sk_" and followed by digits).
-fn is_event_skolem(s: &str) -> bool {
-    s.starts_with("sk_") && s[3..].chars().all(|c| c.is_ascii_digit())
-}
-
-/// Humanize a single term: rename Skolem constants for readability.
-fn humanize_term(s: String) -> String {
-    // sk_N → #N (compact Skolem display)
-    if s.starts_with("sk_") && s[3..].chars().all(|c| c.is_ascii_digit()) {
-        return format!("#{}", &s[3..]);
-    }
-    // SkolemFn display: sk_N(arg) → #N(arg)
-    if s.starts_with("sk_")
-        && let Some(paren) = s.find('(')
-    {
-        let num_part = &s[3..paren];
-        if num_part.chars().all(|c| c.is_ascii_digit()) {
-            return format!("#{}{}", num_part, &s[paren..]);
-        }
-    }
-    s
-}
-
-fn format_fact_extract(children: &[FactNode]) -> String {
-    if children.len() < 2 {
-        "?".to_string()
-    } else {
-        humanize_term(format_fact_node(&children[1]))
-    }
-}
-
-fn format_fact_num(children: &[FactNode]) -> String {
-    if children.len() < 2 {
-        return "0".to_string();
-    }
-    match &children[1] {
-        FactNode::Atom(s) => {
-            if let Ok(n) = s.parse::<f64>() {
-                if n == (n as i64) as f64 {
-                    format!("{}", n as i64)
-                } else {
-                    format!("{}", n)
-                }
-            } else {
-                s.clone()
-            }
-        }
-        n => format_fact_node(n),
-    }
-}
-
-fn collect_arg_list(node: &FactNode) -> Vec<&FactNode> {
-    match node {
-        FactNode::List(children) => {
-            if children.is_empty() {
-                return vec![];
-            }
-            let tag = match &children[0] {
-                FactNode::Atom(s) => s.as_str(),
-                _ => return vec![node],
-            };
-            match tag {
-                "Cons" if children.len() >= 3 => {
-                    let mut result = vec![&children[1]];
-                    result.extend(collect_arg_list(&children[2]));
-                    result
-                }
-                "Nil" => vec![],
-                _ => vec![node],
-            }
-        }
-        _ => vec![node],
-    }
-}
-
-fn collect_arg_items(children: &[FactNode]) -> Vec<&FactNode> {
-    if children.len() < 3 {
-        return vec![];
-    }
-    let mut result = vec![&children[1]];
-    result.extend(collect_arg_list(&children[2]));
-    result
-}
-
-fn format_fact_binop(op: &str, children: &[FactNode]) -> String {
-    if children.len() < 3 {
-        return op.to_string();
-    }
-    format!(
-        "({} {} {})",
-        format_fact_node(&children[1]),
-        op,
-        format_fact_node(&children[2])
-    )
-}
-
-fn format_fact_generic(children: &[FactNode]) -> String {
-    let parts: Vec<String> = children.iter().map(format_fact_node).collect();
-    format!("({})", parts.join(" "))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_humanize_simple_pred() {
-        assert_eq!(
-            humanize_fact(r#"(Pred "gerku" (Cons (Const "adam") (Nil)))"#),
-            "gerku(adam)"
-        );
-    }
-
-    #[test]
-    fn test_humanize_skolem() {
-        assert_eq!(
-            humanize_fact(r#"(Pred "danlu" (Cons (SkolemFn "sk_1" (Const "adam")) (Nil)))"#),
-            "danlu(#1(adam))"
-        );
-    }
-
-    #[test]
-    fn test_humanize_tense() {
-        assert_eq!(
-            humanize_fact(r#"(Past (Pred "klama" (Cons (Const "adam") (Nil))))"#),
-            "[past] klama(adam)"
-        );
-    }
-
-    #[test]
-    fn test_humanize_multi_arg() {
-        assert_eq!(
-            humanize_fact(r#"(Pred "klama" (Cons (Const "adam") (Cons (Const "paris") (Nil))))"#),
-            "klama(adam, paris)"
-        );
-    }
-
-    #[test]
-    fn test_humanize_zoe() {
-        assert_eq!(
-            humanize_fact(r#"(Pred "klama" (Cons (Const "adam") (Cons (Zoe) (Nil))))"#),
-            "klama(adam, _)"
-        );
-    }
-
-    #[test]
-    fn test_humanize_number() {
-        assert_eq!(
-            humanize_fact(r#"(Pred "pilji" (Cons (Num 3) (Cons (Num 4) (Nil))))"#),
-            "pilji(3, 4)"
-        );
-    }
-
-    #[test]
-    fn test_humanize_desc() {
-        assert_eq!(
-            humanize_fact(r#"(Pred "klama" (Cons (Desc "gerku") (Nil)))"#),
-            "klama(le gerku)"
-        );
-    }
-
-    #[test]
-    fn test_humanize_negation() {
-        assert_eq!(
-            humanize_fact(r#"(Not (Pred "gerku" (Cons (Const "adam") (Nil))))"#),
-            "¬gerku(adam)"
-        );
-    }
-
-    #[test]
-    fn test_humanize_dep_pair_skolem() {
-        assert_eq!(
-            humanize_fact(r#"(SkolemFn "sk_2" (DepPair (Const "adam") (Const "bob")))"#),
-            "#2(adam, bob)"
-        );
-    }
-
-    #[test]
-    fn test_humanize_fallback() {
-        // Plain string that isn't a structured representation
-        assert_eq!(humanize_fact("hello"), "hello");
-    }
-
-    #[test]
-    fn test_proof_trace_pretty_text() {
-        let trace = ProofTrace {
-            steps: vec![ProofStep {
-                rule: ProofRule::Asserted {
-                    fact: r#"(Pred "gerku" (Cons (Const "adam") (Nil)))"#.to_string(),
-                },
-                holds: true,
-                children: vec![],
-            }],
-            root: 0,
-            naf_dependent: false,
-        };
-
-        assert_eq!(trace.to_pretty_text(), "Fact: gerku(adam) -> TRUE\n");
-        assert_eq!(
-            trace.to_pretty_text_with_indent(1),
-            "  Fact: gerku(adam) -> TRUE\n"
-        );
+            .map(|step| ProofStep {
+                rule: from_canonical_rule(&step.rule),
+                holds: step.holds,
+                children: step.children.clone(),
+            })
+            .collect(),
+        root: trace.root,
+        naf_dependent: trace.has_naf_dependency(),
     }
 }
 
@@ -658,15 +325,19 @@ pub struct NetworkSnapshot {
 }
 
 // ── Display helpers ──
+//
+// These are inherent display methods on the wire term, used by find-witness
+// formatting (nibli-engine `display_term`, gasnu) AND by `nibli-render`'s proof
+// labels. Proof-rule rendering itself lives in `nibli-render`.
 
 impl LogicalTerm {
     /// Human-readable rendering of a logical term.
     pub fn display(&self) -> String {
         match self.kind.as_str() {
             "constant" => self.value.clone().unwrap_or_default(),
-            "number" => self.number.map(|n| format!("{}", n)).unwrap_or_default(),
-            "variable" => self.value.clone().unwrap_or("?".to_string()),
-            "skolem" => self.value.clone().unwrap_or("sk?".to_string()),
+            "number" => self.number.map(|n| format!("{n}")).unwrap_or_default(),
+            "variable" => self.value.clone().unwrap_or_else(|| "?".to_string()),
+            "skolem" => self.value.clone().unwrap_or_else(|| "sk?".to_string()),
             "description" => format!("le_{}", self.value.as_deref().unwrap_or("?")),
             _ => format!("({})", self.kind),
         }
@@ -678,7 +349,7 @@ impl LogicalTerm {
             "constant" => self.value.clone().unwrap_or_default(),
             "number" => match self.number {
                 Some(n) if n == (n as i64) as f64 => format!("{}", n as i64),
-                Some(n) => format!("{}", n),
+                Some(n) => format!("{n}"),
                 None => String::new(),
             },
             "variable" => format!("?{}", self.value.clone().unwrap_or_default()),
@@ -689,239 +360,59 @@ impl LogicalTerm {
     }
 }
 
-impl ProofRule {
-    /// Unicode icon for this proof rule type.
-    pub fn icon(&self) -> &'static str {
-        match self {
-            Self::Conjunction => "∧",
-            Self::DisjunctionCheck { .. } | Self::DisjunctionIntro { .. } => "∨",
-            Self::Negation => "¬",
-            Self::ModalPassthrough { .. } => "◷",
-            Self::ExistsWitness { .. } | Self::ExistsFailed => "∃",
-            Self::ForallVacuous
-            | Self::ForallVerified { .. }
-            | Self::ForallCounterexample { .. } => "∀",
-            Self::CountResult { .. } => "#",
-            Self::PredicateCheck { .. } | Self::ComputeCheck { .. } => "⊢",
-            Self::Asserted { .. } => "▣",
-            Self::Derived { .. } => "⊢",
-            Self::ProofRef { .. } => "↑",
-            Self::EqualitySubstitution { .. } => "≡",
-            Self::RuleAttemptFailed { .. } => "✗",
-            Self::PredicateNotFound { .. } => "?",
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn proof_trace_json_roundtrip() {
+        let trace = ProofTrace {
+            steps: vec![ProofStep {
+                rule: ProofRule::Asserted {
+                    fact: "gerku(adam)".to_string(),
+                },
+                holds: true,
+                children: vec![],
+            }],
+            root: 0,
+            naf_dependent: false,
+        };
+        let json = trace.to_json();
+        let back = ProofTrace::from_json(&json).unwrap();
+        assert_eq!(trace, back);
     }
 
-    /// Human-readable label describing the proof step.
-    pub fn label(&self) -> String {
-        match self {
-            Self::Conjunction => "Conjunction".to_string(),
-            Self::DisjunctionCheck { detail } => format!("Disjunction Check: {}", detail),
-            Self::DisjunctionIntro { side } => format!("Disjunction Intro: {}", side),
-            Self::Negation => "Negation".to_string(),
-            Self::ModalPassthrough { kind } => kind.to_string(),
-            Self::ExistsWitness { var, term } => format!("Witness: {} = {}", var, term.display()),
-            Self::ExistsFailed => "No witness found".to_string(),
-            Self::ForallVacuous => "Vacuously true".to_string(),
-            Self::ForallVerified { entities } => {
-                let names: Vec<String> = entities.iter().map(|t| t.display()).collect();
-                format!("Verified: [{}]", names.join(", "))
-            }
-            Self::ForallCounterexample { entity } => {
-                format!("Counterexample: {}", entity.display())
-            }
-            Self::CountResult { expected, actual } => {
-                format!("Count: expected {}, got {}", expected, actual)
-            }
-            Self::PredicateCheck { method, detail } => {
-                format!("Predicate ({}): {}", method, humanize_fact(detail))
-            }
-            Self::ComputeCheck { method, detail } => {
-                format!("Compute ({}): {}", method, humanize_fact(detail))
-            }
-            Self::Asserted { fact } => format!("Asserted: {}", humanize_fact(fact)),
-            Self::Derived { label, fact } => {
-                format!("Derived ({}): {}", label, humanize_fact(fact))
-            }
-            Self::ProofRef { fact } => format!("(proved above): {}", humanize_fact(fact)),
-            Self::EqualitySubstitution {
-                original,
-                du_facts,
-                substituted,
-            } => format!(
-                "Equality: {} via {} → {}",
-                humanize_fact(original),
-                du_facts,
-                humanize_fact(substituted)
-            ),
-            Self::RuleAttemptFailed {
-                rule_label,
-                failed_condition,
-            } => format!(
-                "Rule failed ({}): condition {} not satisfied",
-                humanize_rule_label(rule_label),
-                humanize_fact(failed_condition)
-            ),
-            Self::PredicateNotFound { predicate } => {
-                format!("Not found: {}", humanize_fact(predicate))
-            }
-        }
+    #[test]
+    fn from_canonical_preserves_wire_json_shape() {
+        // The wire JSON the UI parses must be byte-stable across the consolidation:
+        // a canonical Asserted rule must serialize with the named `fact` field and
+        // the `asserted` tag.
+        let canon_trace = canon::ProofTrace {
+            steps: vec![canon::ProofStep {
+                rule: canon::ProofRule::Asserted("gerku(adam)".to_string()),
+                holds: true,
+                children: vec![],
+            }],
+            root: 0,
+        };
+        let wire = from_canonical(&canon_trace);
+        let json = wire.to_json();
+        assert!(json.contains(r#""type":"asserted""#), "json: {json}");
+        assert!(json.contains(r#""fact":"gerku(adam)""#), "json: {json}");
     }
 
-    /// CSS class for color-coding in the UI proof tree.
-    pub fn css_class(&self) -> &'static str {
-        match self {
-            Self::Asserted { .. } => "proof-asserted",
-            Self::Derived { .. } => "proof-derived",
-            Self::ProofRef { .. } => "proof-ref",
-            Self::ExistsWitness { .. } | Self::ModalPassthrough { .. } => "proof-exists",
-            Self::ExistsFailed | Self::ForallCounterexample { .. } => "proof-failed",
-            Self::Negation => "proof-negation",
-            Self::PredicateCheck { .. } | Self::ComputeCheck { .. } => "proof-check",
-            Self::Conjunction => "proof-conjunction",
-            Self::DisjunctionCheck { .. } | Self::DisjunctionIntro { .. } => "proof-derived",
-            Self::ForallVacuous | Self::ForallVerified { .. } => "proof-exists",
-            Self::CountResult { .. } => "proof-check",
-            Self::EqualitySubstitution { .. } => "proof-derived",
-            Self::RuleAttemptFailed { .. } | Self::PredicateNotFound { .. } => "proof-failed",
-        }
-    }
-
-    /// Compact textual rendering used in CLI proof traces.
-    pub fn trace_display(&self, result: bool) -> String {
-        let tag = if result { "TRUE" } else { "FALSE" };
-        match self {
-            Self::Conjunction => format!("Conjunction -> {}", tag),
-            Self::DisjunctionCheck { detail } => {
-                format!("Disjunction (check: {}) -> {}", detail, tag)
+    #[test]
+    fn from_canonical_maps_named_fields() {
+        let rule = from_canonical_rule(&canon::ProofRule::PredicateCheck((
+            "store".to_string(),
+            "gerku(adam)".to_string(),
+        )));
+        assert_eq!(
+            rule,
+            ProofRule::PredicateCheck {
+                method: "store".to_string(),
+                detail: "gerku(adam)".to_string(),
             }
-            Self::DisjunctionIntro { side } => {
-                format!("Disjunction ({}) -> {}", side, tag)
-            }
-            Self::Negation => {
-                if result {
-                    format!("Negation [NAF] -> {}", tag)
-                } else {
-                    format!("Negation -> {}", tag)
-                }
-            }
-            Self::ModalPassthrough { kind } => format!("Modal ({}) -> {}", kind, tag),
-            Self::ExistsWitness { var, term } => {
-                format!("Exists: {} = {} -> {}", var, term.trace_display(), tag)
-            }
-            Self::ExistsFailed => format!("Exists: no witness -> {}", tag),
-            Self::ForallVacuous => format!("ForAll: vacuous (empty domain) -> {}", tag),
-            Self::ForallVerified { entities } => {
-                let names: Vec<String> = entities.iter().map(LogicalTerm::trace_display).collect();
-                format!("ForAll: verified [{}] -> {}", names.join(", "), tag)
-            }
-            Self::ForallCounterexample { entity } => {
-                format!(
-                    "ForAll: counterexample {} -> {}",
-                    entity.trace_display(),
-                    tag
-                )
-            }
-            Self::CountResult { expected, actual } => {
-                format!("Count: expected={}, actual={} -> {}", expected, actual, tag)
-            }
-            Self::PredicateCheck { method, detail } => {
-                format!("{}: {} -> {}", method, humanize_fact(detail), tag)
-            }
-            Self::ComputeCheck { method, detail } => {
-                format!("Compute ({}): {} -> {}", method, humanize_fact(detail), tag)
-            }
-            Self::Asserted { fact } => format!("Fact: {} -> {}", humanize_fact(fact), tag),
-            Self::Derived { label, fact } => {
-                format!(
-                    "Rule ({}): {} -> {}",
-                    humanize_rule_label(label),
-                    humanize_fact(fact),
-                    tag
-                )
-            }
-            Self::ProofRef { fact } => {
-                format!("(see above): {} -> {}", humanize_fact(fact), tag)
-            }
-            Self::EqualitySubstitution {
-                original,
-                du_facts,
-                substituted,
-            } => {
-                format!(
-                    "Equality: {} via {} → {} -> {}",
-                    humanize_fact(original),
-                    du_facts,
-                    humanize_fact(substituted),
-                    tag
-                )
-            }
-            Self::RuleAttemptFailed {
-                rule_label,
-                failed_condition,
-            } => {
-                format!(
-                    "Rule failed ({}): {} not satisfied -> {}",
-                    humanize_rule_label(rule_label),
-                    humanize_fact(failed_condition),
-                    tag
-                )
-            }
-            Self::PredicateNotFound { predicate } => {
-                format!("Not found: {} -> {}", humanize_fact(predicate), tag)
-            }
-        }
-    }
-}
-
-/// Humanize a rule label: collapse event decomposition predicates.
-/// "gerku ∧ gerku_x1 ∧ gerku_x2 → danlu ∧ danlu_x1 ∧ danlu_x2" → "gerku → danlu"
-fn humanize_rule_label(label: &str) -> String {
-    if let Some((lhs, rhs)) = label.split_once(" → ") {
-        let lhs_base = collapse_role_predicates(lhs);
-        let rhs_base = collapse_role_predicates(rhs);
-        format!("{} → {}", lhs_base, rhs_base)
-    } else {
-        label.to_string()
-    }
-}
-
-/// Given "gerku ∧ gerku_x1 ∧ gerku_x2", return just "gerku".
-/// Strips all _xN role predicates, keeping only base predicate names.
-fn collapse_role_predicates(s: &str) -> String {
-    let parts: Vec<&str> = s.split(" ∧ ").collect();
-    let bases: Vec<&str> = parts
-        .iter()
-        .filter(|p| !p.contains("_x"))
-        .copied()
-        .collect();
-    if bases.is_empty() {
-        // All parts were role predicates — use the first one's base
-        if let Some(first) = parts.first()
-            && let Some(underscore) = first.rfind('_')
-        {
-            return first[..underscore].to_string();
-        }
-        s.to_string()
-    } else {
-        bases.join(" ∧ ")
-    }
-}
-
-fn format_proof_step(trace: &ProofTrace, idx: u32, indent: usize, out: &mut String) {
-    let Some(step) = trace.steps.get(idx as usize) else {
-        for _ in 0..indent {
-            out.push_str("  ");
-        }
-        out.push_str(&format!("[invalid step index {}]\n", idx));
-        return;
-    };
-    for _ in 0..indent {
-        out.push_str("  ");
-    }
-    out.push_str(&step.rule.trace_display(step.holds));
-    out.push('\n');
-    for &child in &step.children {
-        format_proof_step(trace, child, indent + 1, out);
+        );
     }
 }

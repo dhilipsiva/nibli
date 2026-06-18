@@ -10,6 +10,7 @@ reedline = "0.45.0"
 wasmtime = { version = "41.0.3", features = ["component-model"] }
 wasmtime-wasi = "41.0.3"
 nibli-protocol = { path = "../nibli-protocol" }
+nibli-render = { path = "../nibli-render" }
 nibli-store = { path = "../nibli-store" }
 postcard = { version = "1", features = ["alloc"] }
 serde = { version = "1", features = ["derive"] }

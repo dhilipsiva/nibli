@@ -6,10 +6,6 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::path::Path;
 
-use nibli_protocol::{
-    LogicalTerm as LogicalTermJson, ProofRule as ProofRuleJson, ProofStep as ProofStepJson,
-    ProofTrace as ProofTraceJson,
-};
 use nibli_store::NibliStore;
 
 pub use logji::ComputeRequest as EngineComputeRequest;
@@ -28,117 +24,15 @@ fn format_error(e: &PipelineError) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// PROOF TRACE CONVERSION (WIT types → nibli-protocol wire types)
+// PROOF TRACE CONVERSION
 // ═══════════════════════════════════════════════════════════════════════
-
-fn term_to_json(term: &logji_logic::LogicalTerm) -> LogicalTermJson {
-    match term {
-        logji_logic::LogicalTerm::Constant(s) => LogicalTermJson {
-            kind: "constant".to_string(),
-            value: Some(s.clone()),
-            number: None,
-        },
-        logji_logic::LogicalTerm::Variable(s) => LogicalTermJson {
-            kind: "variable".to_string(),
-            value: Some(s.clone()),
-            number: None,
-        },
-        logji_logic::LogicalTerm::Description(s) => LogicalTermJson {
-            kind: "description".to_string(),
-            value: Some(s.clone()),
-            number: None,
-        },
-        logji_logic::LogicalTerm::Number(n) => LogicalTermJson {
-            kind: "number".to_string(),
-            value: None,
-            number: Some(*n),
-        },
-        logji_logic::LogicalTerm::Unspecified => LogicalTermJson {
-            kind: "unspecified".to_string(),
-            value: None,
-            number: None,
-        },
-    }
-}
-
-fn rule_to_json(rule: &logji_logic::ProofRule) -> ProofRuleJson {
-    match rule {
-        logji_logic::ProofRule::Conjunction => ProofRuleJson::Conjunction,
-        logji_logic::ProofRule::DisjunctionCheck(s) => {
-            ProofRuleJson::DisjunctionCheck { detail: s.clone() }
-        }
-        logji_logic::ProofRule::DisjunctionIntro(s) => {
-            ProofRuleJson::DisjunctionIntro { side: s.clone() }
-        }
-        logji_logic::ProofRule::Negation => ProofRuleJson::Negation,
-        logji_logic::ProofRule::ModalPassthrough(s) => {
-            ProofRuleJson::ModalPassthrough { kind: s.clone() }
-        }
-        logji_logic::ProofRule::ExistsWitness((var, term)) => ProofRuleJson::ExistsWitness {
-            var: var.clone(),
-            term: term_to_json(term),
-        },
-        logji_logic::ProofRule::ExistsFailed => ProofRuleJson::ExistsFailed,
-        logji_logic::ProofRule::ForallVacuous => ProofRuleJson::ForallVacuous,
-        logji_logic::ProofRule::ForallVerified(entities) => ProofRuleJson::ForallVerified {
-            entities: entities.iter().map(term_to_json).collect(),
-        },
-        logji_logic::ProofRule::ForallCounterexample(term) => ProofRuleJson::ForallCounterexample {
-            entity: term_to_json(term),
-        },
-        logji_logic::ProofRule::CountResult((expected, actual)) => ProofRuleJson::CountResult {
-            expected: *expected,
-            actual: *actual,
-        },
-        logji_logic::ProofRule::PredicateCheck((method, detail)) => ProofRuleJson::PredicateCheck {
-            method: method.clone(),
-            detail: detail.clone(),
-        },
-        logji_logic::ProofRule::ComputeCheck((method, detail)) => ProofRuleJson::ComputeCheck {
-            method: method.clone(),
-            detail: detail.clone(),
-        },
-        logji_logic::ProofRule::Asserted(fact) => ProofRuleJson::Asserted { fact: fact.clone() },
-        logji_logic::ProofRule::Derived((label, fact)) => ProofRuleJson::Derived {
-            label: label.clone(),
-            fact: fact.clone(),
-        },
-        logji_logic::ProofRule::ProofRef(fact) => ProofRuleJson::ProofRef { fact: fact.clone() },
-        logji_logic::ProofRule::EqualitySubstitution((o, d, s)) => {
-            ProofRuleJson::EqualitySubstitution {
-                original: o.clone(),
-                du_facts: d.clone(),
-                substituted: s.clone(),
-            }
-        }
-        logji_logic::ProofRule::RuleAttemptFailed((l, c)) => ProofRuleJson::RuleAttemptFailed {
-            rule_label: l.clone(),
-            failed_condition: c.clone(),
-        },
-        logji_logic::ProofRule::PredicateNotFound(p) => ProofRuleJson::PredicateNotFound {
-            predicate: p.clone(),
-        },
-    }
-}
-
-fn proof_trace_to_wire(trace: &logji_logic::ProofTrace) -> ProofTraceJson {
-    ProofTraceJson {
-        steps: trace
-            .steps
-            .iter()
-            .map(|step| ProofStepJson {
-                rule: rule_to_json(&step.rule),
-                holds: step.holds,
-                children: step.children.clone(),
-            })
-            .collect(),
-        root: trace.root,
-        naf_dependent: trace.has_naf_dependency(),
-    }
-}
+//
+// The canonical -> wire conversion lives in `nibli_protocol::from_canonical*`
+// (shared with nibli-wasm — formerly duplicated here); readable rendering lives
+// in `nibli-render`.
 
 pub fn display_term(term: &EngineLogicalTerm) -> String {
-    term_to_json(term).trace_display()
+    nibli_protocol::from_canonical_term(term).trace_display()
 }
 
 pub fn display_query_result(result: &EngineQueryResult) -> String {
@@ -385,8 +279,8 @@ impl NibliEngine {
             .kb
             .query_entailment_with_proof(buf)
             .map_err(|e| e.to_string())?;
-        let wire = proof_trace_to_wire(&trace);
-        let formatted = wire.to_pretty_text();
+        let wire = nibli_protocol::from_canonical(&trace);
+        let formatted = nibli_render::render_proof_text(&wire, nibli_render::Register::Spec);
         let json = wire.to_json();
         Ok((result, formatted, json))
     }

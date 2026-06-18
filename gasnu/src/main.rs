@@ -1504,7 +1504,14 @@ impl Repl {
             match session.call_query_text_with_proof(&mut self.store, self.session_handle, text) {
                 Ok(Ok((result, trace))) => {
                     println!("[Query] {}", format_query_result(&result));
-                    print!("{}", trace_to_proto(&trace).to_pretty_text_with_indent(1));
+                    print!(
+                        "{}",
+                        nibli_render::render_proof_text_indented(
+                            &trace_to_proto(&trace),
+                            nibli_render::Register::Spec,
+                            1
+                        )
+                    );
                 }
                 Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                 Err(e) => {

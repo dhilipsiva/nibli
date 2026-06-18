@@ -17,6 +17,7 @@ members = [
     "nibli-types",
     "nibli-import",
     "nibli-wasm",
+    "nibli-render",
 ]
 exclude = ["fuzz"]
 resolver = "2"

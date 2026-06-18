@@ -1,8 +1,14 @@
-/// Dictionary entry with optional arity and English gloss.
+/// Dictionary entry with optional arity, English gloss, and place-frame template.
+///
+/// `template` is a curated English place-frame for the predicate using `{x1}`..`{x5}`
+/// placeholders (e.g. `gerku` -> `"{x1} is a dog"`, `klama` -> `"{x1} goes to {x2}
+/// from {x3} via {x4} using {x5}"`). An empty `template` means no curated frame
+/// exists; the IR renderer falls back to a generic gloss-based frame.
 #[derive(Clone, Copy, Debug)]
 pub struct DictEntry {
     pub arity: Option<usize>,
     pub gloss: &'static str,
+    pub template: &'static str,
 }
 
 include!(concat!(env!("OUT_DIR"), "/generated_dictionary.rs"));
@@ -15,6 +21,18 @@ pub fn get_arity(word: &str) -> Option<usize> {
 /// Look up the primary English gloss of a Lojban word.
 pub fn get_gloss(word: &str) -> Option<&'static str> {
     DICTIONARY.get(word).map(|e| e.gloss)
+}
+
+/// Look up the curated English place-frame template of a Lojban word.
+///
+/// Returns `None` when no curated template exists (the entry's `template` is
+/// empty) — callers should then build a generic frame from [`get_gloss`] and
+/// [`get_arity`]. e.g. `get_template("gerku")` -> `Some("{x1} is a dog")`.
+pub fn get_template(word: &str) -> Option<&'static str> {
+    DICTIONARY
+        .get(word)
+        .map(|e| e.template)
+        .filter(|t| !t.is_empty())
 }
 
 /// Word-by-word robotic back-translation of Lojban text to English glosses.

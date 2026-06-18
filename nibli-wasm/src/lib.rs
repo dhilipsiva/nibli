@@ -8,120 +8,11 @@ use std::collections::HashSet;
 
 use wasm_bindgen::prelude::*;
 
-use nibli_protocol::{
-    LogicalTerm as LogicalTermJson, ProofRule as ProofRuleJson, ProofStep as ProofStepJson,
-    ProofTrace as ProofTraceJson,
-};
 use nibli_types::error::NibliError as PipelineError;
 use nibli_types::logic as logji_logic;
 
-// ── proof trace conversion (verbatim from nibli-engine, minus store types) ──
-
-fn term_to_json(term: &logji_logic::LogicalTerm) -> LogicalTermJson {
-    match term {
-        logji_logic::LogicalTerm::Constant(s) => LogicalTermJson {
-            kind: "constant".to_string(),
-            value: Some(s.clone()),
-            number: None,
-        },
-        logji_logic::LogicalTerm::Variable(s) => LogicalTermJson {
-            kind: "variable".to_string(),
-            value: Some(s.clone()),
-            number: None,
-        },
-        logji_logic::LogicalTerm::Description(s) => LogicalTermJson {
-            kind: "description".to_string(),
-            value: Some(s.clone()),
-            number: None,
-        },
-        logji_logic::LogicalTerm::Number(n) => LogicalTermJson {
-            kind: "number".to_string(),
-            value: None,
-            number: Some(*n),
-        },
-        logji_logic::LogicalTerm::Unspecified => LogicalTermJson {
-            kind: "unspecified".to_string(),
-            value: None,
-            number: None,
-        },
-    }
-}
-
-fn rule_to_json(rule: &logji_logic::ProofRule) -> ProofRuleJson {
-    match rule {
-        logji_logic::ProofRule::Conjunction => ProofRuleJson::Conjunction,
-        logji_logic::ProofRule::DisjunctionCheck(s) => {
-            ProofRuleJson::DisjunctionCheck { detail: s.clone() }
-        }
-        logji_logic::ProofRule::DisjunctionIntro(s) => {
-            ProofRuleJson::DisjunctionIntro { side: s.clone() }
-        }
-        logji_logic::ProofRule::Negation => ProofRuleJson::Negation,
-        logji_logic::ProofRule::ModalPassthrough(s) => {
-            ProofRuleJson::ModalPassthrough { kind: s.clone() }
-        }
-        logji_logic::ProofRule::ExistsWitness((var, term)) => ProofRuleJson::ExistsWitness {
-            var: var.clone(),
-            term: term_to_json(term),
-        },
-        logji_logic::ProofRule::ExistsFailed => ProofRuleJson::ExistsFailed,
-        logji_logic::ProofRule::ForallVacuous => ProofRuleJson::ForallVacuous,
-        logji_logic::ProofRule::ForallVerified(entities) => ProofRuleJson::ForallVerified {
-            entities: entities.iter().map(term_to_json).collect(),
-        },
-        logji_logic::ProofRule::ForallCounterexample(term) => ProofRuleJson::ForallCounterexample {
-            entity: term_to_json(term),
-        },
-        logji_logic::ProofRule::CountResult((expected, actual)) => ProofRuleJson::CountResult {
-            expected: *expected,
-            actual: *actual,
-        },
-        logji_logic::ProofRule::PredicateCheck((method, detail)) => ProofRuleJson::PredicateCheck {
-            method: method.clone(),
-            detail: detail.clone(),
-        },
-        logji_logic::ProofRule::ComputeCheck((method, detail)) => ProofRuleJson::ComputeCheck {
-            method: method.clone(),
-            detail: detail.clone(),
-        },
-        logji_logic::ProofRule::Asserted(fact) => ProofRuleJson::Asserted { fact: fact.clone() },
-        logji_logic::ProofRule::Derived((label, fact)) => ProofRuleJson::Derived {
-            label: label.clone(),
-            fact: fact.clone(),
-        },
-        logji_logic::ProofRule::ProofRef(fact) => ProofRuleJson::ProofRef { fact: fact.clone() },
-        logji_logic::ProofRule::EqualitySubstitution((o, d, s)) => {
-            ProofRuleJson::EqualitySubstitution {
-                original: o.clone(),
-                du_facts: d.clone(),
-                substituted: s.clone(),
-            }
-        }
-        logji_logic::ProofRule::RuleAttemptFailed((l, c)) => ProofRuleJson::RuleAttemptFailed {
-            rule_label: l.clone(),
-            failed_condition: c.clone(),
-        },
-        logji_logic::ProofRule::PredicateNotFound(p) => ProofRuleJson::PredicateNotFound {
-            predicate: p.clone(),
-        },
-    }
-}
-
-fn proof_trace_to_wire(trace: &logji_logic::ProofTrace) -> ProofTraceJson {
-    ProofTraceJson {
-        steps: trace
-            .steps
-            .iter()
-            .map(|step| ProofStepJson {
-                rule: rule_to_json(&step.rule),
-                holds: step.holds,
-                children: step.children.clone(),
-            })
-            .collect(),
-        root: trace.root,
-        naf_dependent: trace.has_naf_dependency(),
-    }
-}
+// Proof-trace conversion (canonical -> wire) now lives in
+// `nibli_protocol::from_canonical`; readable rendering in `nibli-render`.
 
 // ── the session ──────────────────────────────────────────────────────────
 
@@ -169,12 +60,12 @@ impl Session {
             .kb
             .query_entailment_with_proof(buf)
             .map_err(|e| js_err(e.to_string()))?;
-        let wire = proof_trace_to_wire(&trace);
+        let wire = nibli_protocol::from_canonical(&trace);
         let out = serde_json::json!({
             "status": result.status_label(),
             "detail": result.detail_label(),
             "naf_dependent": wire.naf_dependent,
-            "proof_text": wire.to_pretty_text(),
+            "proof_text": nibli_render::render_proof_text(&wire, nibli_render::Register::Spec),
             "proof": serde_json::from_str::<serde_json::Value>(&wire.to_json())
                 .unwrap_or(serde_json::Value::Null),
         });
@@ -228,10 +119,33 @@ fn js_err(msg: impl std::fmt::Display) -> JsError {
 }
 
 /// Word-by-word robotic back-translation (smuni-dictionary, 10k+ jbovlaste
-/// entries). Mechanical by design — it is the verification surface, not prose.
+/// entries). Mechanical by design — the labeled "lexical gloss" fallback for
+/// tokens that do not compile.
 #[wasm_bindgen]
 pub fn back_translate(lojban: &str) -> String {
     smuni_dictionary::back_translate(lojban)
+}
+
+/// IR-driven back-translation: parse + compile to FOL, then render structure-
+/// exposing English via nibli-render. This is the default Transparency Triad
+/// reading; it falls back to the lexical gloss when the input does not compile.
+#[wasm_bindgen]
+pub fn back_translate_ir(lojban: &str) -> String {
+    match compile_for_render(lojban) {
+        Ok(buf) => nibli_render::render_logic_buffer(&buf, nibli_render::Register::Spec),
+        Err(_) => smuni_dictionary::back_translate(lojban),
+    }
+}
+
+/// Parse + compile a line to the FOL `LogicBuffer` for rendering (no compute
+/// transform, no assertion — display only).
+fn compile_for_render(input: &str) -> Result<logji_logic::LogicBuffer, String> {
+    let parse_result =
+        gerna::parse_text_native(input.to_string()).map_err(|e: PipelineError| e.to_string())?;
+    if !parse_result.errors.is_empty() {
+        return Err("parse error".to_string());
+    }
+    smuni::compile_from_gerna_ast(parse_result.buffer).map_err(|e: PipelineError| e.to_string())
 }
 
 // ── native tests: the book's headline queries against the real KBs ─────────

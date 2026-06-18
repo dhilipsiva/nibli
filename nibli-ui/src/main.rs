@@ -8,11 +8,40 @@
 
 use dioxus::prelude::*;
 use gloo_net::http::Request;
-use nibli_protocol::{KbStatus, ProofRule, ProofTrace};
+use nibli_protocol::{KbStatus, ProofTrace};
 use serde::Deserialize;
 
 fn main() {
     dioxus::launch(App);
+}
+
+/// IR-driven back-translation of the (multi-line) Lojban tab, computed entirely
+/// client-side: each non-comment line is parsed + compiled to FOL and rendered as
+/// structure-exposing English by `nibli-render`. A line that does not compile
+/// falls back to the lexical word-by-word gloss so the panel always shows
+/// something. This is the "What Nibli Understood" reading.
+fn back_translate_ir(lojban: &str) -> String {
+    lojban
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                None
+            } else {
+                Some(render_lojban_line(trimmed))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn render_lojban_line(line: &str) -> String {
+    match gerna::parse_text_native(line.to_string()) {
+        Ok(parsed) if parsed.errors.is_empty() => smuni::compile_from_gerna_ast(parsed.buffer)
+            .map(|buf| nibli_render::render_logic_buffer(&buf, nibli_render::Register::Spec))
+            .unwrap_or_else(|_| smuni_dictionary::back_translate(line)),
+        _ => smuni_dictionary::back_translate(line),
+    }
 }
 
 /// GraphQL endpoint URL. Override at build time: NIBLI_GRAPHQL_URL=http://host:port/graphql
@@ -654,7 +683,7 @@ fn SourceTabs(
         if text.is_empty() {
             String::new()
         } else {
-            smuni_dictionary::back_translate(&text)
+            back_translate_ir(&text)
         }
     });
 
@@ -1258,43 +1287,34 @@ fn ProofPanel(
 
 #[component]
 fn ProofTreeView(trace: ProofTrace) -> Element {
-    let root_idx = trace.root as usize;
-    if root_idx >= trace.steps.len() {
+    if trace.root as usize >= trace.steps.len() {
         return rsx! { div { class: "proof-error", "Invalid proof trace: root index out of bounds" } };
     }
-
+    // Render the whole trace once via the shared renderer; the component then
+    // walks the structured RenderedNode tree (no per-variant logic in the UI).
+    let root = nibli_render::render_proof(&trace, nibli_render::Register::Spec);
     rsx! {
         div { class: "proof-tree",
-            ProofNodeView { trace: trace.clone(), step_idx: trace.root, depth: 0 }
+            RenderedNodeView { node: root, depth: 0 }
         }
     }
 }
 
 #[component]
-fn ProofNodeView(trace: ProofTrace, step_idx: u32, depth: u32) -> Element {
-    let idx = step_idx as usize;
-    if idx >= trace.steps.len() {
-        return rsx! { span { class: "proof-error", "?" } };
-    }
-
-    let step = &trace.steps[idx];
-    let rule = &step.rule;
-    let holds = step.holds;
-    let children = &step.children;
-    let css_class = rule.css_class();
-    let icon = rule.icon();
-    let label = rule.label();
+fn RenderedNodeView(node: nibli_render::RenderedNode, depth: u32) -> Element {
     let auto_open = depth < 3;
-
-    let result_class = if holds {
+    let css_class = node.css_class;
+    let icon = node.icon;
+    let label = node.label.clone();
+    let result_class = if node.holds {
         "proof-result-true"
     } else {
         "proof-result-false"
     };
-    let result_label = if holds { "TRUE" } else { "FALSE" };
+    let result_label = if node.holds { "TRUE" } else { "FALSE" };
 
-    // ProofRef is a leaf node — render inline, no expand
-    if matches!(rule, ProofRule::ProofRef { .. }) {
+    // A memoized back-reference (ProofRef) — render inline, no expand.
+    if node.inline {
         return rsx! {
             div { class: "proof-node proof-ref-node",
                 span { class: "proof-icon proof-ref", "{icon}" }
@@ -1303,7 +1323,7 @@ fn ProofNodeView(trace: ProofTrace, step_idx: u32, depth: u32) -> Element {
         };
     }
 
-    if children.is_empty() {
+    if node.children.is_empty() {
         // Leaf node — no details/summary needed
         rsx! {
             div { class: "proof-node proof-leaf {css_class}",
@@ -1322,11 +1342,10 @@ fn ProofNodeView(trace: ProofTrace, step_idx: u32, depth: u32) -> Element {
                     span { class: "proof-result {result_class}", "{result_label}" }
                 }
                 div { class: "proof-children",
-                    for child_idx in children.iter() {
-                        ProofNodeView {
-                            key: "{child_idx}",
-                            trace: trace.clone(),
-                            step_idx: *child_idx,
+                    for (i, child) in node.children.iter().enumerate() {
+                        RenderedNodeView {
+                            key: "{i}",
+                            node: child.clone(),
                             depth: depth + 1,
                         }
                     }
