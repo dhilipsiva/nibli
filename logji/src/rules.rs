@@ -209,6 +209,47 @@ pub(super) fn flatten_conjuncts_through_exists(
     }
 }
 
+/// Detect a NEGATED event-decomposed restrictor condition `Not(Exists(ev, And-tree
+/// of flat leaves))` (the antecedent shape of `ro lo X poi na <selbri> cu …`) and
+/// return `(ev_var_name, leaf_node_ids)`. Returns `None` for any other shape — a
+/// flat negated atom `Not(P)` (handled by `negated_condition_indices`), a
+/// `Not(Or(..))`, a nested foreign quantifier, or a tensed inner — so the caller
+/// stays fail-closed.
+fn detect_negated_exists_group(buffer: &LogicBuffer, cond_id: u32) -> Option<(String, Vec<u32>)> {
+    let LogicNode::NotNode(inner) = get_node(buffer, cond_id).ok()? else {
+        return None;
+    };
+    let LogicNode::ExistsNode((ev, body)) = get_node(buffer, *inner).ok()? else {
+        return None;
+    };
+    let mut leaves = Vec::new();
+    if !flatten_group_leaves(buffer, *body, ev.as_str(), &mut leaves) || leaves.is_empty() {
+        return None;
+    }
+    Some((ev.clone(), leaves))
+}
+
+/// Walk the inner conjunction of a negated existential group, collecting only flat
+/// `Predicate`/`ComputeNode` leaf node ids. Descends `And` and the group's OWN
+/// existential (`Exists(ev)`); any `Or`/`Not`/foreign quantifier/tense wrapper
+/// returns `false`, so the whole group is rejected (fail-closed compilation
+/// preserved — no under-conditioned rule is registered).
+fn flatten_group_leaves(buffer: &LogicBuffer, id: u32, ev: &str, out: &mut Vec<u32>) -> bool {
+    match get_node(buffer, id) {
+        Ok(LogicNode::AndNode((l, r))) => {
+            flatten_group_leaves(buffer, *l, ev, out) && flatten_group_leaves(buffer, *r, ev, out)
+        }
+        Ok(LogicNode::ExistsNode((v, b))) if v.as_str() == ev => {
+            flatten_group_leaves(buffer, *b, ev, out)
+        }
+        Ok(LogicNode::Predicate(_)) | Ok(LogicNode::ComputeNode(_)) => {
+            out.push(id);
+            true
+        }
+        _ => false,
+    }
+}
+
 fn flatten_consequent(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -277,8 +318,17 @@ pub(super) fn register_rule(
     typed_conditions: Vec<StoredFact>,
     typed_conclusions: Vec<StoredFact>,
     negated_condition_indices: Vec<usize>,
+    negated_exists_groups: Vec<NegatedExistsGroup>,
     forward: bool,
 ) -> Result<(), String> {
+    // Each negated-exists group contributes one negative edge per inner condition
+    // relation (added below alongside the flat-condition edges), so the rollback
+    // must pop that many extra edges per conclusion.
+    let group_edge_count: usize = negated_exists_groups
+        .iter()
+        .map(|g| g.conditions.len())
+        .sum();
+
     // Update predicate dependency graph before inserting the rule.
     for concl in &typed_conclusions {
         let concl_rel = concl.relation().to_string();
@@ -290,6 +340,20 @@ pub(super) fn register_rule(
                 .or_default()
                 .push((cond.relation().to_string(), is_neg));
         }
+        // A negated event-decomposed restrictor (`poi na <selbri>`) reads its inner
+        // conjuncts under negation-as-failure, so each is a NEGATIVE dependency: a
+        // rule whose conclusion recurses through the negated existential (e.g.
+        // `ro lo X poi na danlu cu danlu`) becomes a negative self-loop and is
+        // rejected as unstratifiable by `check_stratification`.
+        for group in &negated_exists_groups {
+            for cond in &group.conditions {
+                inner
+                    .pred_dep_graph
+                    .entry(concl_rel.clone())
+                    .or_default()
+                    .push((cond.relation().to_string(), true));
+            }
+        }
     }
 
     // Check stratification (skip during rebuild — same rules passed before).
@@ -299,7 +363,7 @@ pub(super) fn register_rule(
             for concl in &typed_conclusions {
                 let concl_rel = concl.relation();
                 if let Some(edges) = inner.pred_dep_graph.get_mut(concl_rel) {
-                    for _ in 0..typed_conditions.len() {
+                    for _ in 0..(typed_conditions.len() + group_edge_count) {
                         edges.pop();
                     }
                     if edges.is_empty() {
@@ -317,6 +381,7 @@ pub(super) fn register_rule(
         typed_conclusions,
         pattern_var_names,
         negated_condition_indices,
+        negated_exists_groups,
         forward,
         priority: 0, // Default priority; can be changed via set_rule_priority.
     };
@@ -879,7 +944,44 @@ pub(super) fn compile_forall_to_rule(
 
             let mut typed_conds: Vec<StoredFact> = Vec::new();
             let mut negated_condition_indices: Vec<usize> = Vec::new();
+            let mut negated_exists_groups: Vec<NegatedExistsGroup> = Vec::new();
             for &(cid, tense) in &all_conditions {
+                // A NEGATED event-decomposed restrictor `Not(Exists(ev, And(..)))`
+                // (`poi na <selbri>`) is compiled as a NAF-over-existential group,
+                // NOT a flat condition: collect the inner conjuncts as templates with
+                // the universal's `x__vN` (shared) and a group-local event pvar. It is
+                // excluded from `typed_conditions` AND from the xorlo presupposition
+                // (a `poi na zanru` person must NOT get an asserted consent witness).
+                if let Some((ev_var, leaf_ids)) = detect_negated_exists_group(buffer, cid) {
+                    let ev_pvar = format!("ev__{}", ev_var);
+                    let mut group_pattern_vars = pattern_vars.clone();
+                    group_pattern_vars.insert(ev_var.clone(), ev_pvar.clone());
+                    let mut group_conditions = Vec::new();
+                    for &lid in &leaf_ids {
+                        match build_rule_template_fact(
+                            buffer,
+                            lid,
+                            &group_pattern_vars,
+                            &ground_skolems,
+                            &dependent_skolems,
+                            None,
+                        ) {
+                            Some(f) => group_conditions.push(f),
+                            None => {
+                                return Err(format!(
+                                    "cannot compile negated restrictor group for {rule_desc}: an \
+                                     inner atom is not a flat predicate. Rejecting the assertion \
+                                     to preserve soundness."
+                                ));
+                            }
+                        }
+                    }
+                    negated_exists_groups.push(NegatedExistsGroup {
+                        conditions: group_conditions,
+                        event_var: ev_pvar,
+                    });
+                    continue;
+                }
                 match build_rule_template_fact_with_negation(
                     buffer,
                     cid,
@@ -957,6 +1059,7 @@ pub(super) fn compile_forall_to_rule(
                     typed_conds,
                     typed_concls,
                     negated_condition_indices,
+                    negated_exists_groups,
                     false, // forward chaining disabled by default
                 ) {
                     eprintln!("[Stratification Error] {}", e);
@@ -1056,6 +1159,7 @@ pub(super) fn compile_forall_to_rule(
                     vec![],
                     typed_concls,
                     vec![], // bare universal — no conditions, no negation
+                    vec![], // bare universal — no negated-exists groups
                     false,  // forward chaining disabled by default
                 ) {
                     eprintln!("[Stratification Error] {}", e);

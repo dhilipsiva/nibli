@@ -19,6 +19,7 @@
 #   na se curmi           -> "no lawful basis remains" => right to erasure (Art 17)
 #   se bilga lo nu <X>    -> "is under a legal obligation that X"
 #   se curmi lo nu <X>    -> "has the right that X"
+#   se bilga lo nu se vimcu -> "is obligated to be erased" (Art 17 erasure)
 
 # ─── Article 4 / 9: categories of personal data ───────────────────
 # Names and addresses are personal data.
@@ -61,10 +62,20 @@ ro lo prenu poi bilga cu se curmi
 ro lo prenu cu se curmi lo nu datni facki
 
 # ─── Article 17: right to erasure ─────────────────────────────────
-# When no lawful basis remains (consent withdrawn and no other ground subsists),
-# the data subject acquires the right to erasure (Art 17(1)(b)). This is derived
-# at query time as the negation of a lawful basis: `la .adam. na se curmi`.
-# The belief-revision demo in Chapter 20 retracts consent and shows this flip.
+# A data subject who has NOT consented is obligated to have their data erased
+# (Art 17(1)(b)) — the natural negated-restrictor rule form `ro lo prenu poi na
+# zanru cu se bilga lo nu se vimcu`. `poi na zanru` compiles to a
+# negation-as-failure check over the consent event, so the obligation arises
+# exactly when no consent witness exists; the belief-revision demo in Chapter 20
+# retracts consent to make it flip from FALSE to TRUE. The rule itself is defined
+# at the END of this file (after the scenario) so that loading it does not
+# renumber the worked example's fact ids.
+# Keying on `na zanru` rather than the broader `na se curmi` is deliberate: the
+# corpus derives a lawful basis FROM a legal obligation (`poi bilga cu se curmi`
+# above), so a `poi na se curmi` rule would close a negative basis<->obligation
+# cycle and is correctly rejected as unstratifiable. Adam's only basis here is
+# consent, so the two coincide for him; the right can equivalently be queried as
+# the negation of a lawful basis (`la .adam. na se curmi`), evaluated by NAF.
 
 # ─── Article 33: breach notification ──────────────────────────────
 # A controller that has suffered a breach is obliged to notify.
@@ -83,3 +94,8 @@ la .ordrek. cu datni
 la .adam. cu zanru
 # AkmeCorp has suffered a personal-data breach; Google has not.
 la .akmes. cu cfila
+
+# ─── Article 17 rule (placed last; rationale in the Article 17 section above) ──
+# Defined after the scenario so that loading it leaves the scenario's fact ids
+# stable; a rule's position in the file does not affect reasoning.
+ro lo prenu poi na zanru cu se bilga lo nu se vimcu

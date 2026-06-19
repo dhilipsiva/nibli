@@ -5276,6 +5276,122 @@ fn test_event_decomposed_rule_fires() {
     );
 }
 
+/// Build a NEGATED event-decomposed universal rule (`ro lo X poi na P cu Q`):
+///   ForAll(_v0, Or(
+///     Not(Not(Exists(_ev0, And(P(_ev0), P_x1(_ev0, _v0))))),  // poi na P restrictor
+///     Exists(_ev1, And(Q(_ev1), Q_x1(_ev1, _v0)))             // consequent
+///   ))
+/// `decompose_implication` strips the OUTER `Not`, leaving `Not(Exists(...))` as the
+/// CONDITION — the negated existential group this fix compiles into a NAF check.
+fn make_negated_event_universal(restrictor: &str, consequent: &str) -> LogicBuffer {
+    let mut nodes = Vec::new();
+    let p_type = pred(
+        &mut nodes,
+        restrictor,
+        vec![LogicalTerm::Variable("_ev0".to_string())],
+    );
+    let p_role = pred(
+        &mut nodes,
+        &format!("{}_x1", restrictor),
+        vec![
+            LogicalTerm::Variable("_ev0".to_string()),
+            LogicalTerm::Variable("_v0".to_string()),
+        ],
+    );
+    let p_and = and(&mut nodes, p_type, p_role);
+    let p_exists = exists(&mut nodes, "_ev0", p_and);
+    let neg_restrictor = not(&mut nodes, p_exists); // Not(Exists(...)) — "x does NOT P"
+
+    let q_type = pred(
+        &mut nodes,
+        consequent,
+        vec![LogicalTerm::Variable("_ev1".to_string())],
+    );
+    let q_role = pred(
+        &mut nodes,
+        &format!("{}_x1", consequent),
+        vec![
+            LogicalTerm::Variable("_ev1".to_string()),
+            LogicalTerm::Variable("_v0".to_string()),
+        ],
+    );
+    let q_and = and(&mut nodes, q_type, q_role);
+    let q_exists = exists(&mut nodes, "_ev1", q_and);
+
+    let neg = not(&mut nodes, neg_restrictor); // Not(Not(Exists(...)))
+    let disj = or(&mut nodes, neg, q_exists);
+    let root = forall(&mut nodes, "_v0", disj);
+    LogicBuffer {
+        nodes,
+        roots: vec![root],
+    }
+}
+
+#[test]
+fn test_negated_event_decomposed_rule_compiles_and_fires() {
+    let kb = new_kb();
+    // "every X that does NOT zanru (consent) is bilga (obligated)".
+    assert_buf(&kb, make_negated_event_universal("zanru", "bilga"));
+    // alis is a known entity (a person) but has NOT consented.
+    assert_buf(&kb, make_event_assertion("alis", "prenu"));
+    assert!(
+        query(&kb, make_event_query("alis", "bilga")),
+        "no consent witness → ¬∃ holds (NAF) → the rule fires: bilga(alis) TRUE"
+    );
+    // Now alis consents → ¬∃ is false → the rule must not fire.
+    assert_buf(&kb, make_event_assertion("alis", "zanru"));
+    assert!(
+        matches!(
+            query_result(&kb, make_event_query("alis", "bilga")),
+            QueryResult::False
+        ),
+        "consent asserted → ¬∃ false → rule does not fire: bilga(alis) FALSE"
+    );
+}
+
+#[test]
+fn test_negated_event_group_rule_shape() {
+    let kb = new_kb();
+    assert_buf(&kb, make_negated_event_universal("zanru", "bilga"));
+    let inner = kb.inner.borrow();
+    let rule = inner
+        .universal_rules
+        .values()
+        .flatten()
+        .find(|r| r.typed_conclusions.iter().any(|c| c.relation() == "bilga"))
+        .expect("the bilga rule should be registered");
+    assert_eq!(
+        rule.negated_exists_groups.len(),
+        1,
+        "one negated-exists group"
+    );
+    let rels: Vec<&str> = rule.negated_exists_groups[0]
+        .conditions
+        .iter()
+        .map(|c| c.relation())
+        .collect();
+    assert_eq!(rels, vec!["zanru", "zanru_x1"], "group inner conjuncts");
+    assert!(
+        rule.typed_conditions.is_empty(),
+        "the negated group is NOT a flat typed condition"
+    );
+}
+
+#[test]
+fn test_negated_event_group_self_reference_rejected() {
+    let kb = new_kb();
+    // "every X that does NOT danlu is danlu" — the negated group anchors the rule's
+    // own conclusion → negative self-loop → unstratifiable → rejected.
+    let r = kb.assert_fact_inner(
+        make_negated_event_universal("danlu", "danlu"),
+        String::new(),
+    );
+    assert!(
+        r.is_err(),
+        "a negated group anchoring its own conclusion must be rejected as unstratifiable"
+    );
+}
+
 /// Build `Exists(ev, And(P(ev), P_x1(ev, entity)))` for a GROUND entity constant.
 fn event_operand(nodes: &mut Vec<LogicNode>, ev: &str, predicate: &str, entity: &str) -> u32 {
     let p_type = pred(

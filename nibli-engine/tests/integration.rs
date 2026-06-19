@@ -1145,6 +1145,81 @@ fn gdpr_breach_notification() {
     );
 }
 
+/// Article 17 in its NATURAL Lojban form: a person who does NOT consent is
+/// obligated to be erased — a NEGATED, event-decomposed relative-clause restrictor
+/// (`poi na zanru`) that compiles to a negation-as-failure check over an
+/// existential. This was fail-closed-rejected before the fix (the rule was
+/// modeled only as the query-time negation `na se curmi`); now the rule itself
+/// fires, and consent withdrawal flips the obligation. Mirrors
+/// `gdpr_belief_revision_consent_withdrawal` but at the RULE level.
+#[test]
+fn gdpr_erasure_rule_via_negated_consent_restrictor() {
+    let engine = NibliEngine::new();
+    engine.assert_text("la .adam. cu prenu").unwrap();
+    engine
+        .assert_text("ro lo prenu poi na zanru cu se bilga lo nu se vimcu")
+        .expect("the negated-restrictor erasure rule must now compile");
+
+    // ── No consent → the erasure obligation arises (NAF: no consent witness). ──
+    assert_true(
+        &engine
+            .query_holds("la .adam. cu se bilga lo nu se vimcu")
+            .unwrap(),
+        "No consent → erasure obligation holds (Art 17 as a stored rule)",
+    );
+
+    // ── Consent present → the negated restrictor is false → no obligation. ──
+    let consent_id = engine.assert_text("la .adam. cu zanru").unwrap();
+    assert_false(
+        &engine
+            .query_holds("la .adam. cu se bilga lo nu se vimcu")
+            .unwrap(),
+        "Consent present → no erasure obligation",
+    );
+
+    // ── Withdraw consent → the obligation re-arises, flagged NAF-dependent. ──
+    engine.retract_fact(consent_id).unwrap();
+    let (holds, trace, json) = engine
+        .query_text_with_proof("la .adam. cu se bilga lo nu se vimcu")
+        .unwrap();
+    assert_true(&holds, "After withdrawal, the erasure obligation re-arises");
+    assert!(!trace.is_empty(), "Erasure proof trace should be non-empty");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json).expect("Erasure proof JSON should parse");
+    assert_eq!(
+        parsed["naf_dependent"],
+        serde_json::Value::Bool(true),
+        "Erasure-rule verdict rests on a negation-as-failure dependency",
+    );
+}
+
+/// The negated-restrictor erasure rule is PER-SUBJECT, not global: a consenting
+/// person is not obligated while a non-consenting one is — the NAF check binds the
+/// universal `x` before evaluating the existential.
+#[test]
+fn gdpr_erasure_rule_is_per_subject() {
+    let engine = NibliEngine::new();
+    engine.assert_text("la .adam. cu prenu").unwrap();
+    engine.assert_text("la .bet. cu prenu").unwrap();
+    engine
+        .assert_text("ro lo prenu poi na zanru cu se bilga lo nu se vimcu")
+        .unwrap();
+    engine.assert_text("la .bet. cu zanru").unwrap(); // bet consents; adam does not
+
+    assert_true(
+        &engine
+            .query_holds("la .adam. cu se bilga lo nu se vimcu")
+            .unwrap(),
+        "adam (no consent) is obligated to be erased",
+    );
+    assert_false(
+        &engine
+            .query_holds("la .bet. cu se bilga lo nu se vimcu")
+            .unwrap(),
+        "bet (consented) is NOT obligated — the rule is per-subject, not global",
+    );
+}
+
 /// PERF REGRESSION PIN (Ch 20 reproducibility): the chapter tells readers to
 /// load the FULL shipped gdpr.lojban and run `la .adam. cu se curmi`. Before
 /// the 2026-06 backward-chaining fixes in logji (lazy candidate build,
@@ -1199,6 +1274,11 @@ fn gdpr_full_corpus_lawful_basis_query_completes() {
         &engine.query_holds("la .adam. na se curmi").unwrap(),
         "After withdrawal, the right to erasure (Art 17) is triggered",
     );
+    // (The Art 17 erasure RULE now lives in the shipped corpus; its belief-revision
+    // flip is exercised end-to-end by `gdpr_erasure_rule_via_negated_consent_restrictor`
+    // on a small engine. Querying `se bilga lo nu se vimcu` against the FULL corpus
+    // is deliberately NOT done here — it fans out across every Art 5/9 obligation
+    // rule, which would dominate this timing pin without testing anything new.)
 
     let elapsed = start.elapsed();
     assert!(

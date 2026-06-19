@@ -218,6 +218,104 @@ fn negate_result(result: QueryResult) -> QueryResult {
     }
 }
 
+/// Evaluate a negated event-decomposed restrictor (`poi na <selbri>`) by
+/// negation-as-failure over an existential. The condition HOLDS (the rule fires)
+/// iff NO binding of the group's `event_var` satisfies ALL inner conditions for the
+/// already-bound universal — i.e. "no witness exists" (`la .adam.` has not
+/// consented). Composes only the shared-`&inner` primitives, so it runs from the
+/// SHARED-`&inner` firing path (unlike `check_formula_holds_core`, which needs
+/// `&mut inner` for compute auto-assert): enumerate the same complete candidate
+/// pool the positive ExistsNode evaluator uses (`ensure_candidates`, incl. event
+/// Skolems — so a consenting person's witness is always found), check each via
+/// `check_predicate_in_kb_typed`, then `negate_result` the four-valued existential
+/// verdict. Short-circuits on the first full witness (the common "consented" case
+/// is fast). Returns True (no witness → obligation arises) / False (witness → no
+/// obligation) / `Unknown(NafDependent)` (the existential is undetermined).
+fn eval_negated_exists_group(
+    group: &NegatedExistsGroup,
+    bindings: &HashMap<String, GroundTerm>,
+    inner: &KnowledgeBaseInner,
+    candidates_slot: &mut Option<Vec<GroundTerm>>,
+    depth: usize,
+    visited: &mut HashSet<StoredFact>,
+) -> QueryResult {
+    // Narrow the event candidates to those that could actually satisfy the inner
+    // existential (asserted-fact index hits ∪ rule-derivable witnesses), falling
+    // back to the full pool only when no condition cleanly anchors the event var.
+    // Without this, the group enumerates the whole members^k pool per firing —
+    // the GDPR full-corpus erasure rule blows past its time budget.
+    let candidates =
+        match collect_group_event_candidates(&group.conditions, &group.event_var, inner) {
+            Some(narrowed) => narrowed,
+            None => ensure_candidates(candidates_slot, inner).to_vec(),
+        };
+    let mut best: Option<QueryResult> = None;
+    let mut any_witness = false;
+    for cand in &candidates {
+        let mut b = bindings.clone();
+        b.insert(group.event_var.clone(), cand.clone());
+        let mut all_inner_true = true;
+        let mut inner_pending: Option<QueryResult> = None;
+        for tmpl in &group.conditions {
+            let cs = substitute_fact(tmpl, &b);
+            let r = check_predicate_in_kb_typed(&cs, inner, depth + 1, visited);
+            if r.is_false() {
+                all_inner_true = false;
+                inner_pending = None;
+                break;
+            }
+            if !r.is_true() {
+                all_inner_true = false;
+                inner_pending = prefer_non_definitive(inner_pending, r);
+            }
+        }
+        if all_inner_true {
+            any_witness = true;
+            break;
+        }
+        best = prefer_non_definitive(best, inner_pending.unwrap_or(QueryResult::False));
+    }
+    let exists_verdict = if any_witness {
+        QueryResult::True
+    } else {
+        best.unwrap_or(QueryResult::False)
+    };
+    negate_result(exists_verdict)
+}
+
+/// Fold each negated-exists group's NAF verdict into a rule's condition
+/// accumulators (`hold` / `pending`), exactly as a positive condition would: a
+/// definitively-false group kills the firing, a non-definitive one keeps it
+/// pending. Called AFTER the positive condition loop (so the universal is bound);
+/// skipped when the positive conditions already failed definitively.
+#[allow(clippy::too_many_arguments)]
+fn fold_negated_groups(
+    rule: &UniversalRuleRecord,
+    bindings: &HashMap<String, GroundTerm>,
+    inner: &KnowledgeBaseInner,
+    candidates_slot: &mut Option<Vec<GroundTerm>>,
+    depth: usize,
+    visited: &mut HashSet<StoredFact>,
+    hold: &mut bool,
+    pending: &mut Option<QueryResult>,
+) {
+    if rule.negated_exists_groups.is_empty() || (!*hold && pending.is_none()) {
+        return;
+    }
+    for group in &rule.negated_exists_groups {
+        let gv = eval_negated_exists_group(group, bindings, inner, candidates_slot, depth, visited);
+        if gv.is_false() {
+            *hold = false;
+            *pending = None;
+            break;
+        }
+        if !gv.is_true() {
+            *hold = false;
+            *pending = prefer_non_definitive(pending.take(), gv);
+        }
+    }
+}
+
 /// Cooperative cancellation checkpoint. Returns `Err` when an installed cancel
 /// flag has been raised (by the native nibli-server request watchdog), aborting
 /// the in-flight query through the existing `Result` error channel. A `None` flag
@@ -1683,6 +1781,17 @@ fn emit_derived<S: TraceSink>(
             child_indices.push(child);
         }
     }
+    // A satisfied negated-exists group (`poi na <selbri>`) held by negation-as-
+    // failure (no witness), so the conclusion rests on a NAF dependency — emit one
+    // `Negation` leaf per group, mirroring the flat-negated-condition leaf above.
+    for _group in &rule.negated_exists_groups {
+        let leaf = sink.push(ProofStep {
+            rule: ProofRule::Negation,
+            holds: true,
+            children: vec![],
+        });
+        child_indices.push(leaf);
+    }
     let label = match tense_label {
         Some(t) => format!("{} [{}]", rule.label, t),
         None => rule.label.clone(),
@@ -1844,6 +1953,16 @@ fn try_backward_chain_core<S: TraceSink>(
                             pending_here = prefer_non_definitive(pending_here, verdict);
                         }
                     }
+                    fold_negated_groups(
+                        rule,
+                        &bindings,
+                        inner,
+                        &mut candidates_slot,
+                        depth,
+                        visited,
+                        &mut all_hold,
+                        &mut pending_here,
+                    );
                     if all_hold {
                         found = true;
                         break;
@@ -1891,6 +2010,16 @@ fn try_backward_chain_core<S: TraceSink>(
                     rule_pending = prefer_non_definitive(rule_pending, verdict);
                 }
             }
+            fold_negated_groups(
+                rule,
+                &bindings,
+                inner,
+                &mut candidates_slot,
+                depth,
+                visited,
+                &mut all_conditions_hold,
+                &mut rule_pending,
+            );
 
             if all_conditions_hold {
                 let root = if S::RECORDING {
@@ -2007,6 +2136,18 @@ fn try_backward_chain_core<S: TraceSink>(
                                 pending_here = prefer_non_definitive(pending_here, verdict);
                             }
                         }
+                        // Negated-exists groups are intrinsically tenseless (like the
+                        // positive event-decomposed conditions): checked bare, not lifted.
+                        fold_negated_groups(
+                            rule,
+                            &bindings,
+                            inner,
+                            &mut candidates_slot,
+                            depth,
+                            visited,
+                            &mut all_hold,
+                            &mut pending_here,
+                        );
                         if all_hold {
                             found = true;
                             break;
@@ -2050,6 +2191,17 @@ fn try_backward_chain_core<S: TraceSink>(
                         rule_pending = prefer_non_definitive(rule_pending, verdict);
                     }
                 }
+                // Negated-exists groups are tenseless (checked bare, not lifted).
+                fold_negated_groups(
+                    rule,
+                    &bindings,
+                    inner,
+                    &mut candidates_slot,
+                    depth,
+                    visited,
+                    &mut all_conditions_hold,
+                    &mut rule_pending,
+                );
 
                 if all_conditions_hold {
                     let root = if S::RECORDING {

@@ -416,6 +416,22 @@ pub(super) fn build_typed_rule_label(
     }
 }
 
+/// A negated, event-decomposed restrictor (`poi na <selbri>`) compiled as a
+/// negation-as-failure check over an existential group. The condition holds for a
+/// bound universal `x` iff NO binding of `event_var` satisfies ALL `conditions` —
+/// e.g. `Not(Exists(ev, zanru(ev) ∧ zanru_x1(ev, x__v0) ∧ zanru_x2(ev, zo'e)))`
+/// ("x has not consented"). The inner conjuncts are flat templates sharing the
+/// universal's pattern var (`x__v0`) and a group-local event pattern var
+/// (`ev___ev0`) enumerated during firing. A flat negated ATOM (`na broda`) stays
+/// in `negated_condition_indices`; only a negated EXISTENTIAL GROUP lands here.
+#[derive(Clone)]
+pub(super) struct NegatedExistsGroup {
+    /// Inner conjunct templates, e.g. `[zanru(ev), zanru_x1(ev, x__v0), zanru_x2(ev, zo'e)]`.
+    pub(super) conditions: Vec<StoredFact>,
+    /// Group-local event pattern-var name (e.g. `"ev___ev0"`), enumerated during firing.
+    pub(super) event_var: String,
+}
+
 /// Records the structure of a compiled universal rule for backward-chaining provenance.
 /// Templates use bare pattern variables (e.g., `x__v0`) instead of bound values.
 #[derive(Clone)]
@@ -432,6 +448,9 @@ pub(super) struct UniversalRuleRecord {
     /// Used for stratification checking — a negated condition creates a
     /// "negative" dependency edge in the predicate dependency graph.
     pub(super) negated_condition_indices: Vec<usize>,
+    /// Negated event-decomposed restrictor groups (`poi na <selbri>`), each
+    /// evaluated by NAF over an existential during firing. Empty for ordinary rules.
+    pub(super) negated_exists_groups: Vec<NegatedExistsGroup>,
     /// When true, this rule fires eagerly on fact assertion (forward chaining).
     /// When false (default), the rule only fires via backward-chaining queries.
     pub(super) forward: bool,
@@ -998,6 +1017,7 @@ pub(super) fn register_ground_material_conditional(
                     typed_conds,
                     typed_concls,
                     vec![],
+                    vec![],
                     false,
                 )?;
                 true
@@ -1401,6 +1421,70 @@ pub(super) fn collect_entailment_candidates(
 /// equivalence machinery) — never sound to narrow candidates from.
 fn is_non_indexable_relation(rel: &str) -> bool {
     matches!(rel, "du" | "zmadu" | "mleca" | "dunli")
+}
+
+/// Candidate narrowing for a negated-exists group's event variable — the
+/// firing-time analog of `collect_entailment_candidates`, driven by the group's
+/// `StoredFact` condition TEMPLATES rather than a buffer sub-tree. Returns the
+/// smallest superset of events that could satisfy the inner existential: index
+/// hits (events at the var position of an asserted fact of the relation,
+/// equivalence-expanded) ∪ rule-derivable witnesses. Soundness: a witness `ev`
+/// satisfying ALL conditions satisfies the anchor condition too, so it is in the
+/// anchor's candidate set — narrowing never drops a real witness (so it never
+/// produces a spurious "no witness" → spurious obligation). Without it the group
+/// enumerates the full `members^k` pool per firing. `None` when no condition
+/// cleanly anchors the event var (caller falls back to the full pool).
+pub(super) fn collect_group_event_candidates(
+    conditions: &[StoredFact],
+    event_var: &str,
+    inner: &KnowledgeBaseInner,
+) -> Option<Vec<GroundTerm>> {
+    let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
+    let mut best: Option<HashSet<GroundTerm>> = None;
+    for cond in conditions {
+        let gf = cond.inner();
+        if is_non_indexable_relation(&gf.relation) {
+            continue;
+        }
+        // The event var must appear exactly once (as a PatternVar) in this cond.
+        let positions: Vec<usize> = gf
+            .args
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| matches!(a, GroundTerm::PatternVar(s) if s == event_var))
+            .map(|(i, _)| i)
+            .collect();
+        if positions.len() != 1 {
+            continue;
+        }
+        let anchor = PredicateAnchor {
+            relation: gf.relation.clone(),
+            var_position: positions[0],
+            // Only the arity (`args.len()`) is consulted by `extract_from_index`;
+            // the values are ignored (the full per-binding check filters later).
+            args: vec![LogicalTerm::Unspecified; gf.args.len()],
+            tense: match cond {
+                StoredFact::Past(_) => Some("Past"),
+                StoredFact::Present(_) => Some("Present"),
+                StoredFact::Future(_) => Some("Future"),
+                _ => None,
+            },
+        };
+        let mut candidates = HashSet::new();
+        extract_from_index(&anchor, inner, &mut candidates);
+        extract_rule_candidates_for_entailment(&anchor, inner, &members, &mut candidates);
+        candidates.remove(&GroundTerm::Unspecified);
+        match &best {
+            None => best = Some(candidates),
+            Some(prev) if candidates.len() < prev.len() => best = Some(candidates),
+            _ => {}
+        }
+    }
+    best.map(|set| {
+        let mut v: Vec<GroundTerm> = set.into_iter().collect();
+        v.sort();
+        v
+    })
 }
 
 /// Like `collect_predicate_anchors`, but only MANDATORY anchors: descends
