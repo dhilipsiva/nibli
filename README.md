@@ -250,6 +250,8 @@ The server defaults to local-only development settings:
 | `NIBLI_SERVER_LOG` | `info,tower_http=info` | Tracing filter |
 | `NIBLI_SERVER_LOG_FORMAT` | `pretty` | Log format (`pretty` or `json`) |
 | `NIBLI_GOSSIP_HUB` | unset | Attach server to a tavla gossip hub |
+| `NIBLI_COMPUTE_ADDR` | unset | External compute backend address (enables `tenfa`/`dugri`/custom dispatch) |
+| `NIBLI_COMPUTE_PREDICATES` | `tenfa,dugri` | External predicate names to register (when a backend is set) |
 
 ---
 
@@ -275,6 +277,8 @@ li bi tenfa li re li ci             # Assert: 8 = 2^3
 **External predicates** (via backend): `tenfa` (exponentiation), `dugri` (logarithm), and any custom predicates you add to the backend server.
 
 Configure with `NIBLI_COMPUTE_ADDR=host:port` or `:backend host:port` in the REPL. Connection is lazy (connects on first dispatch) with auto-reconnect.
+
+The same protocol powers the GraphQL server: set `NIBLI_COMPUTE_ADDR` (and optionally `NIBLI_COMPUTE_PREDICATES`, default `tenfa,dugri`) and `nibli-server` dispatches external predicates per query, with a per-worker connection.
 
 ---
 

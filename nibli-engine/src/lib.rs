@@ -20,6 +20,8 @@ pub use nibli_types::logic::{
 use nibli_types::error::NibliError as PipelineError;
 use nibli_types::logic as logji_logic;
 
+mod compute_client;
+
 fn format_error(e: &PipelineError) -> String {
     e.to_string()
 }
@@ -95,6 +97,25 @@ impl NibliEngine {
         batch_eval: fn(&[logji::ComputeRequest]) -> Vec<Result<bool, String>>,
     ) {
         self.kb.set_compute_dispatch(eval, batch_eval);
+    }
+
+    /// Enable external compute dispatch to a Python-style JSON-Lines backend at
+    /// `addr` (e.g. `"127.0.0.1:5555"`). Wires the native TCP client as this
+    /// engine's compute dispatch, so registered external predicates (e.g.
+    /// `tenfa`/`dugri`) are evaluated by the backend; built-in arithmetic
+    /// (pilji/sumji/dilcu) is still resolved in-engine. Opt-in — engines that do
+    /// not call this leave external compute unregistered (`set_compute_dispatch`
+    /// isolation preserved). The address is stored per-thread; in the
+    /// multithreaded server each `spawn_blocking` worker connects lazily and
+    /// reuses its connection. Register the external predicate names separately
+    /// via `register_compute_predicate`. Trust boundary: the backend is a
+    /// plaintext, unauthenticated peer in the trusted computing base.
+    pub fn enable_compute_backend(&self, addr: &str) {
+        compute_client::set_addr(addr);
+        self.kb.set_compute_dispatch(
+            compute_client::native_eval_fn,
+            compute_client::native_batch_eval_fn,
+        );
     }
 
     fn default_compute_predicates() -> HashSet<String> {

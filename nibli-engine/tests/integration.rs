@@ -1778,6 +1778,107 @@ fn surface_numeric_float_tolerance() {
     );
 }
 
+/// A local TCP server that replies with a fixed JSON line to each request line —
+/// stands in for the Python compute backend (`python/nibli_backend.py`).
+fn mock_compute_server(response: &str) -> String {
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::TcpListener;
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+    let resp = response.to_string();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(stream) = stream else { continue };
+            let mut reader = BufReader::new(stream);
+            loop {
+                let mut line = String::new();
+                match reader.read_line(&mut line) {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {
+                        let mut r = resp.clone();
+                        r.push('\n');
+                        if reader.get_mut().write_all(r.as_bytes()).is_err() {
+                            break;
+                        }
+                        let _ = reader.get_mut().flush();
+                    }
+                }
+            }
+        }
+    });
+    addr
+}
+
+#[test]
+fn native_compute_backend_dispatches_external_predicate() {
+    // `tenfa` (exponent) is NOT built-in arithmetic, so it dispatches to the
+    // external backend. With the native client wired to a mock that returns
+    // `{"result": true}`, the query routes engine → logji → native client → mock.
+    // (`li bi` = 8, `li re` = 2, `li ci` = 3 → "is 8 = 2^3?")
+    let addr = mock_compute_server(r#"{"result": true}"#);
+    let mut engine = NibliEngine::new();
+    engine.enable_compute_backend(&addr);
+    engine.register_compute_predicate("tenfa".to_string());
+    assert_true(
+        &engine.query_holds("li bi cu tenfa li re li ci").unwrap(),
+        "tenfa dispatches through the native TCP client to the backend",
+    );
+}
+
+#[test]
+fn native_compute_backend_is_opt_in() {
+    // Without `enable_compute_backend`, an external predicate stays unprovable —
+    // the dispatch hook is unregistered (per-instance isolation).
+    let mut engine = NibliEngine::new();
+    engine.register_compute_predicate("tenfa".to_string());
+    let r = engine.query_holds("li bi cu tenfa li re li ci").unwrap();
+    assert!(
+        !r.is_true(),
+        "tenfa with no backend wired must not be TRUE: {r:?}"
+    );
+}
+
+/// End-to-end against the REAL Python reference backend (`python/nibli_backend.py`),
+/// which actually computes `tenfa` (exponent). Opt-in (needs python3 + the script);
+/// run with `cargo test -p nibli-engine --test integration -- --ignored`.
+#[test]
+#[ignore = "starts the Python compute backend; run with --ignored from the repo root"]
+fn native_compute_backend_real_python_tenfa() {
+    let port = "15556";
+    let addr = format!("127.0.0.1:{port}");
+    // The test CWD is the crate dir, so resolve the script from the workspace root.
+    let script = concat!(env!("CARGO_MANIFEST_DIR"), "/../python/nibli_backend.py");
+    let mut child = std::process::Command::new("python3")
+        .args([script, "--port", port])
+        .spawn()
+        .expect("failed to start python3 (needs python3 on PATH)");
+    // Wait for the backend to accept connections.
+    let mut ready = false;
+    for _ in 0..50 {
+        if std::net::TcpStream::connect(&addr).is_ok() {
+            ready = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let run = || {
+        let mut engine = NibliEngine::new();
+        engine.enable_compute_backend(&addr);
+        engine.register_compute_predicate("tenfa".to_string());
+        // 8 = 2^3 (TRUE); 9 = 2^3 (FALSE) — the backend does the arithmetic.
+        let t = engine.query_holds("li bi cu tenfa li re li ci").unwrap();
+        let f = engine.query_holds("li so cu tenfa li re li ci").unwrap();
+        (t, f)
+    };
+    let result = std::panic::catch_unwind(run);
+    let _ = child.kill();
+    let _ = child.wait(); // reap the child so it doesn't linger as a zombie
+    assert!(ready, "Python backend did not start on {addr}");
+    let (t, f) = result.expect("query panicked");
+    assert_true(&t, "8 = 2^3 must be TRUE through the real Python backend");
+    assert_false(&f, "9 = 2^3 must be FALSE through the real Python backend");
+}
+
 #[test]
 fn surface_numeric_comparison_zmadu_mleca_dunli() {
     let engine = NibliEngine::new();

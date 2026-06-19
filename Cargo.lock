@@ -3740,6 +3740,7 @@ dependencies = [
  "nibli-store",
  "nibli-types",
  "postcard",
+ "serde",
  "serde_json",
  "smuni",
 ]

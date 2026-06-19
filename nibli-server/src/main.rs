@@ -124,6 +124,14 @@ struct ServerConfig {
     cors_allowed_origins: Vec<String>,
     request_timeout_secs: u64,
     rate_limit_rps: u32,
+    /// External compute backend address (`NIBLI_COMPUTE_ADDR`, e.g.
+    /// `127.0.0.1:5555`). When set, each per-query engine dispatches external
+    /// predicates to it (the Python reference backend); when unset, only built-in
+    /// arithmetic works.
+    compute_addr: Option<String>,
+    /// External predicate names to register when a compute backend is configured
+    /// (`NIBLI_COMPUTE_PREDICATES`, comma-separated; default `tenfa,dugri`).
+    compute_predicates: Vec<String>,
     log_format: LogFormat,
     log_filter: String,
 }
@@ -165,6 +173,20 @@ impl ServerConfig {
                 .ok()
                 .and_then(|s| s.trim().parse().ok())
                 .unwrap_or(50),
+            compute_addr: std::env::var("NIBLI_COMPUTE_ADDR")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
+            compute_predicates: std::env::var("NIBLI_COMPUTE_PREDICATES")
+                .ok()
+                .map(|s| {
+                    s.split(',')
+                        .map(str::trim)
+                        .filter(|p| !p.is_empty())
+                        .map(String::from)
+                        .collect()
+                })
+                .unwrap_or_else(|| vec!["tenfa".to_string(), "dugri".to_string()]),
             log_format: match std::env::var("NIBLI_SERVER_LOG_FORMAT")
                 .unwrap_or_else(|_| "pretty".to_string())
                 .to_ascii_lowercase()
@@ -725,8 +747,20 @@ impl MutationRoot {
                 cancel.store(true, Ordering::Relaxed);
             })
         };
+        let compute_addr = config.compute_addr.clone();
+        let compute_predicates = config.compute_predicates.clone();
         let response = run_blocking(move || {
-            let engine = NibliEngine::new();
+            let mut engine = NibliEngine::new();
+            // Wire external compute (the Python backend) when configured, so
+            // registered predicates (tenfa/dugri/…) dispatch instead of failing.
+            // Register the names BEFORE asserting/querying so they compile to
+            // ComputeNodes. No-op when NIBLI_COMPUTE_ADDR is unset.
+            if let Some(addr) = &compute_addr {
+                engine.enable_compute_backend(addr);
+                for pred in &compute_predicates {
+                    engine.register_compute_predicate(pred.clone());
+                }
+            }
             engine.set_cancel_flag(cancel);
             let kb_status = assert_kb_lines(&engine, &kb);
             match engine.query_text_with_proof(&query) {
@@ -2136,6 +2170,8 @@ mod tests {
             cors_allowed_origins: Vec::new(),
             request_timeout_secs: 30,
             rate_limit_rps: 1000,
+            compute_addr: None,
+            compute_predicates: Vec::new(),
             log_format: LogFormat::Pretty,
             log_filter: "info".to_string(),
         })
@@ -2645,6 +2681,8 @@ mod tests {
             cors_allowed_origins: Vec::new(),
             request_timeout_secs: 30,
             rate_limit_rps: 1000,
+            compute_addr: None,
+            compute_predicates: Vec::new(),
             log_format: LogFormat::Pretty,
             log_filter: "info".to_string(),
         };
