@@ -29,6 +29,107 @@ pub fn render_logic_buffer(buf: &LogicBuffer, register: Register) -> String {
     sentences.join(" ")
 }
 
+/// Render a compiled `LogicBuffer` as an indented, one-node-per-line structural
+/// tree with functional term notation — the `[Logic]` half of `:debug`.
+///
+/// Unlike [`render_logic_buffer`] (which regroups Neo-Davidsonian role predicates
+/// into event place-frames and flattens And/Exists for readable English), this
+/// shows every node verbatim, so the reader sees the exact compiled FOL shape.
+/// The tree is always structural; `_register` is accepted only for signature
+/// symmetry with [`render_logic_buffer`] and is ignored. No LISP S-expression is
+/// ever emitted — terms render functionally (`gerku(_ev0)`, `tenfa_x1(_ev0, 1024)`).
+pub fn render_logic_tree(buf: &LogicBuffer, _register: Register) -> String {
+    let mut out = String::with_capacity(256);
+    for (i, &root) in buf.roots.iter().enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        write_tree(&mut out, buf, root, 0);
+    }
+    out
+}
+
+fn write_tree(out: &mut String, buf: &LogicBuffer, id: u32, depth: usize) {
+    for _ in 0..depth {
+        out.push_str("  ");
+    }
+    let Some(node) = buf.nodes.get(id as usize) else {
+        out.push_str(&format!("[invalid node {id}]\n"));
+        return;
+    };
+    match node {
+        LogicNode::Predicate((rel, args)) => {
+            out.push_str(&format!("{rel}({})\n", render_term_list(args)));
+        }
+        LogicNode::ComputeNode((rel, args)) => {
+            out.push_str(&format!("{rel}({}) [compute]\n", render_term_list(args)));
+        }
+        LogicNode::AndNode((l, r)) => {
+            out.push_str("And:\n");
+            write_tree(out, buf, *l, depth + 1);
+            write_tree(out, buf, *r, depth + 1);
+        }
+        LogicNode::OrNode((l, r)) => {
+            out.push_str("Or:\n");
+            write_tree(out, buf, *l, depth + 1);
+            write_tree(out, buf, *r, depth + 1);
+        }
+        LogicNode::NotNode(inner) => {
+            out.push_str("\u{00ac}:\n"); // ¬
+            write_tree(out, buf, *inner, depth + 1);
+        }
+        LogicNode::ExistsNode((v, body)) => {
+            out.push_str(&format!("\u{2203} {v}:\n")); // ∃
+            write_tree(out, buf, *body, depth + 1);
+        }
+        LogicNode::ForAllNode((v, body)) => {
+            out.push_str(&format!("\u{2200} {v}:\n")); // ∀
+            write_tree(out, buf, *body, depth + 1);
+        }
+        LogicNode::PastNode(inner) => {
+            out.push_str("Past:\n");
+            write_tree(out, buf, *inner, depth + 1);
+        }
+        LogicNode::PresentNode(inner) => {
+            out.push_str("Present:\n");
+            write_tree(out, buf, *inner, depth + 1);
+        }
+        LogicNode::FutureNode(inner) => {
+            out.push_str("Future:\n");
+            write_tree(out, buf, *inner, depth + 1);
+        }
+        LogicNode::ObligatoryNode(inner) => {
+            out.push_str("Obligatory:\n");
+            write_tree(out, buf, *inner, depth + 1);
+        }
+        LogicNode::PermittedNode(inner) => {
+            out.push_str("Permitted:\n");
+            write_tree(out, buf, *inner, depth + 1);
+        }
+        LogicNode::CountNode((v, count, body)) => {
+            out.push_str(&format!("Count {v} = {count}:\n"));
+            write_tree(out, buf, *body, depth + 1);
+        }
+    }
+}
+
+fn render_term_list(args: &[LogicalTerm]) -> String {
+    args.iter()
+        .map(render_tree_term)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn render_tree_term(t: &LogicalTerm) -> String {
+    match t {
+        LogicalTerm::Variable(v) => v.clone(),
+        LogicalTerm::Constant(c) => c.clone(),
+        LogicalTerm::Description(d) => format!("le {d}"),
+        LogicalTerm::Unspecified => "zo'e".to_string(),
+        LogicalTerm::Number(n) => format_number(*n),
+    }
+}
+
 struct Ctx {
     #[allow(dead_code)]
     register: Register,

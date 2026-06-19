@@ -264,8 +264,14 @@ use pipeline_bind::lojban::nibli::compute_backend;
 use pipeline_bind::lojban::nibli::error_types::NibliError;
 use pipeline_bind::lojban::nibli::logic_types::LogicalTerm as EngineLogicalTerm;
 use pipeline_bind::lojban::nibli::logic_types::{
-    ProofRule, ProofTrace, QueryResult as EngineQueryResult, ResourceKind as EngineResourceKind,
+    LogicBuffer as EngineLogicBuffer, LogicNode as EngineLogicNode, ProofRule, ProofTrace,
+    QueryResult as EngineQueryResult, ResourceKind as EngineResourceKind,
     UnknownReason as EngineUnknownReason,
+};
+// Target types for the WIT → canonical reverse converter (so the host can render
+// the `:debug` logic buffer via nibli-render).
+use nibli_types::logic::{
+    LogicBuffer as NibliBuffer, LogicNode as NibliNode, LogicalTerm as NibliTerm,
 };
 
 /// Format a LogicalTerm from the engine bindings for display.
@@ -295,6 +301,52 @@ fn format_query_result(result: &EngineQueryResult) -> String {
         EngineQueryResult::ResourceExceeded(EngineResourceKind::Memory) => {
             "RESOURCE_EXCEEDED (memory)".to_string()
         }
+    }
+}
+
+/// Convert a WIT `LogicalTerm` to the canonical `nibli_types` term (pure 1:1).
+fn wit_term_to_types(t: &EngineLogicalTerm) -> NibliTerm {
+    match t {
+        EngineLogicalTerm::Variable(v) => NibliTerm::Variable(v.clone()),
+        EngineLogicalTerm::Constant(c) => NibliTerm::Constant(c.clone()),
+        EngineLogicalTerm::Description(d) => NibliTerm::Description(d.clone()),
+        EngineLogicalTerm::Unspecified => NibliTerm::Unspecified,
+        EngineLogicalTerm::Number(n) => NibliTerm::Number(*n),
+    }
+}
+
+/// Convert a WIT `LogicNode` to the canonical `nibli_types` node (pure 1:1 — the
+/// WIT `logic-node` variant mirrors `nibli_types::logic::LogicNode` exactly).
+fn wit_logic_node_to_types(n: &EngineLogicNode) -> NibliNode {
+    use EngineLogicNode as W;
+    use NibliNode as N;
+    match n {
+        W::Predicate((rel, args)) => {
+            N::Predicate((rel.clone(), args.iter().map(wit_term_to_types).collect()))
+        }
+        W::ComputeNode((rel, args)) => {
+            N::ComputeNode((rel.clone(), args.iter().map(wit_term_to_types).collect()))
+        }
+        W::AndNode((l, r)) => N::AndNode((*l, *r)),
+        W::OrNode((l, r)) => N::OrNode((*l, *r)),
+        W::NotNode(i) => N::NotNode(*i),
+        W::ExistsNode((v, b)) => N::ExistsNode((v.clone(), *b)),
+        W::ForAllNode((v, b)) => N::ForAllNode((v.clone(), *b)),
+        W::PastNode(i) => N::PastNode(*i),
+        W::PresentNode(i) => N::PresentNode(*i),
+        W::FutureNode(i) => N::FutureNode(*i),
+        W::ObligatoryNode(i) => N::ObligatoryNode(*i),
+        W::PermittedNode(i) => N::PermittedNode(*i),
+        W::CountNode((v, c, b)) => N::CountNode((v.clone(), *c, *b)),
+    }
+}
+
+/// Convert the WIT `LogicBuffer` (returned by `:debug`) to the canonical
+/// `nibli_types` buffer so the host can render it via nibli-render.
+fn wit_logic_buffer_to_types(buf: &EngineLogicBuffer) -> NibliBuffer {
+    NibliBuffer {
+        nodes: buf.nodes.iter().map(wit_logic_node_to_types).collect(),
+        roots: buf.roots.clone(),
     }
 }
 
@@ -1107,7 +1159,14 @@ impl Repl {
             self.prepare_session();
             let session = self.pipeline.lojban_nibli_lasna().session();
             match session.call_compile_debug(&mut self.store, self.session_handle, text) {
-                Ok(Ok(debug_output)) => println!("[Logic] {}", debug_output),
+                Ok(Ok(wit_buf)) => {
+                    let buf = wit_logic_buffer_to_types(&wit_buf);
+                    let tree = nibli_render::render_logic_tree(&buf, nibli_render::Register::Spec);
+                    let english =
+                        nibli_render::render_logic_buffer(&buf, nibli_render::Register::Spec);
+                    println!("[Logic]\n{}", tree.trim_end());
+                    println!("\n[English] {}", english);
+                }
                 Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                 Err(e) => {
                     println!("{}", format_host_error(&e));

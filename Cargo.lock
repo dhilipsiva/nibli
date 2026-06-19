@@ -2473,6 +2473,7 @@ dependencies = [
  "nibli-protocol",
  "nibli-render",
  "nibli-store",
+ "nibli-types",
  "postcard",
  "reedline",
  "serde",
@@ -3708,6 +3709,7 @@ name = "nibli"
 version = "0.1.0"
 dependencies = [
  "nibli-engine",
+ "nibli-render",
  "reedline",
 ]
 

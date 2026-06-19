@@ -127,6 +127,24 @@ smoke-gasnu-naf: build-wasm build-gasnu
         echo "$out" | grep -qF '[Note: result depends on negation-as-failure (closed-world assumption)]' || { echo 'FAIL: missing NAF note (naf-dependent flag not carried through the WIT proof-trace)'; exit 1; }; \
         echo 'PASS: NAF-dependent proof carries the closed-world note through the WIT proof-trace'
 
+# Pre-release smoke: exercises the full WASM `:debug` round-trip — lasna guest
+# converter (logji -> WIT logic-buffer) -> WIT boundary -> gasnu reverse converter
+# (WIT -> nibli_types) -> nibli-render tree + English gloss. An ASYMMETRIC converter
+# field-swap (e.g. one side maps And -> Or) is type-valid, so `just check`/`ci` miss
+# it, but it corrupts the rendered structure here. NOT in `ci` (needs the WASM build).
+smoke-gasnu-debug: build-wasm build-gasnu
+    @echo "Smoke-testing gasnu :debug WASM round-trip (typed buffer -> host render)..."
+    @out=$(printf ':debug ro lo gerku cu danlu\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$out"; \
+        echo "$out" | grep -qF '[Logic]' || { echo 'FAIL: missing [Logic] block'; exit 1; }; \
+        echo "$out" | grep -qF '∀ _v0:' || { echo 'FAIL: ForAll node not rendered (converter regression?)'; exit 1; }; \
+        echo "$out" | grep -qF 'Or:' || { echo 'FAIL: material-conditional Or node not rendered'; exit 1; }; \
+        echo "$out" | grep -qF 'gerku_x1(' || { echo 'FAIL: role predicate not rendered functionally'; exit 1; }; \
+        echo "$out" | grep -qF '[English] For every X, if X is a dog, then X is an animal.' || { echo 'FAIL: English back-translation wrong (round-trip corrupted)'; exit 1; }; \
+        if echo "$out" | grep -qF '(Pred'; then echo 'FAIL: S-expression leaked into :debug output'; exit 1; fi; \
+        echo 'PASS: :debug renders the typed buffer host-side (tree + English), no S-expr'
+
 # Executes the full pipeline: Builds WASM modules, then boots the native REPL
 run: build-wasm
     @echo "Launching Neuro-Symbolic Engine ({{profile}})..."

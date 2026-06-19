@@ -227,18 +227,24 @@ pub struct FactSummary {
 ///
 /// When you add or remove a variant of any of these three enums, update:
 /// - `lasna/src/lib.rs` — `convert_logical_term_to_export` /
-///   `convert_logical_term_from_export` / `convert_proof_rule` (→ WIT guest types)
+///   `convert_logical_term_from_export` / `convert_proof_rule` (→ WIT guest types);
+///   for a new `LogicNode`/`LogicalTerm` variant also `convert_logic_node_to_export`
+///   / `convert_logic_buffer_to_export` (the `:debug` typed-buffer export)
 /// - `nibli-protocol/src/lib.rs` — `from_canonical_term` / `from_canonical_rule`
 ///   (the single canonical→wire converter, shared by nibli-engine + nibli-wasm),
 ///   AND the `LogicalTerm` / `ProofRule` wire mirrors (RHS uses *named* fields,
 ///   distinct per variant — not mechanical)
-/// - `gasnu/src/main.rs` — `term_to_proto` / `rule_to_proto` (WIT → nibli-protocol)
+/// - `gasnu/src/main.rs` — `term_to_proto` / `rule_to_proto` (WIT → nibli-protocol);
+///   for a new `LogicNode`/`LogicalTerm` variant also `wit_term_to_types` /
+///   `wit_logic_node_to_types` / `wit_logic_buffer_to_types` (WIT → `nibli_types`,
+///   the `:debug` reverse converter)
 /// - `nibli-render/src/proof.rs` — `icon` / `label` / `css_class` / `trace_display`
 ///   for a new `ProofRule` variant (the readable rendering of the wire rule)
 /// - `wit/world.wit` — the `logical-term` / `proof-rule` variant lists, then
 ///   regenerate bindings with `cargo component build`
 /// - for a new `LogicNode`/`LogicalTerm` variant: logji lowering + evaluation,
-///   `nibli-render/src/logic.rs` + `term.rs` (IR back-translation rendering), and
+///   `nibli-render/src/logic.rs` (`render_logic_buffer` English + `render_logic_tree`
+///   structural tree) + `term.rs` (IR back-translation rendering), and
 ///   the serde persistence round-trip test
 ///   (`nibli-engine`'s `logic_buffer_serde_postcard_roundtrip_covers_all_variants`)
 ///

@@ -66,6 +66,43 @@ fn convert_logical_term_to_export(t: &logji_logic::LogicalTerm) -> export_logic:
     }
 }
 
+/// Convert one logji `LogicNode` to the WIT export node (pure 1:1 — the WIT
+/// `logic-node` variant mirrors `nibli_types::logic::LogicNode` exactly).
+fn convert_logic_node_to_export(n: &logji_logic::LogicNode) -> export_logic::LogicNode {
+    use export_logic::LogicNode as E;
+    use logji_logic::LogicNode as L;
+    match n {
+        L::Predicate((rel, args)) => E::Predicate((
+            rel.clone(),
+            args.iter().map(convert_logical_term_to_export).collect(),
+        )),
+        L::ComputeNode((rel, args)) => E::ComputeNode((
+            rel.clone(),
+            args.iter().map(convert_logical_term_to_export).collect(),
+        )),
+        L::AndNode((l, r)) => E::AndNode((*l, *r)),
+        L::OrNode((l, r)) => E::OrNode((*l, *r)),
+        L::NotNode(i) => E::NotNode(*i),
+        L::ExistsNode((v, b)) => E::ExistsNode((v.clone(), *b)),
+        L::ForAllNode((v, b)) => E::ForAllNode((v.clone(), *b)),
+        L::PastNode(i) => E::PastNode(*i),
+        L::PresentNode(i) => E::PresentNode(*i),
+        L::FutureNode(i) => E::FutureNode(*i),
+        L::ObligatoryNode(i) => E::ObligatoryNode(*i),
+        L::PermittedNode(i) => E::PermittedNode(*i),
+        L::CountNode((v, c, b)) => E::CountNode((v.clone(), *c, *b)),
+    }
+}
+
+/// Convert the full logji `LogicBuffer` to the WIT export buffer (typed IR
+/// crosses the boundary; the host renders it — no S-expression string).
+fn convert_logic_buffer_to_export(buf: &logji_logic::LogicBuffer) -> export_logic::LogicBuffer {
+    export_logic::LogicBuffer {
+        nodes: buf.nodes.iter().map(convert_logic_node_to_export).collect(),
+        roots: buf.roots.clone(),
+    }
+}
+
 fn convert_logical_term_from_export(t: &export_logic::LogicalTerm) -> logji_logic::LogicalTerm {
     match t {
         export_logic::LogicalTerm::Variable(v) => logji_logic::LogicalTerm::Variable(v.clone()),
@@ -919,13 +956,16 @@ impl GuestSession for Session {
         ))
     }
 
-    fn compile_debug(&self, input: String) -> Result<String, export_err::NibliError> {
+    fn compile_debug(
+        &self,
+        input: String,
+    ) -> Result<export_logic::LogicBuffer, export_err::NibliError> {
         let (buf, _, _warnings) = compile_pipeline(
             &input,
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),
         )?;
-        Ok(logji::repr::debug_logic(&buf))
+        Ok(convert_logic_buffer_to_export(&buf))
     }
 
     fn reset_kb(&self) -> Result<(), export_err::NibliError> {

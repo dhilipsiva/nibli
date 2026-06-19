@@ -6,37 +6,16 @@ semantic compiler, reasoning core, WASM/WIT surface, and the Transparency Triad 
 describes; the deterministic firewall verdict is sound in the common cases; both case-study corpora
 (`gdpr.lojban`, `drug-interactions.lojban`) are fixed and test-pinned; and the four-valued contract is
 now honest end-to-end (`Unknown(NafDependent)` + host-translated `ResourceExceeded(Fuel/Memory)` both
-land). The human-readable rendering layer was consolidated into the `nibli-render` crate (WS1–WS5 of
-`triad-trace-improvement.md`, committed in `f68bd0e`): back-translation is now IR-driven and the proof
-trace renders through one walker. The long tail below covers correctness remainders, the last rendering
-workstream (WS6: eliminate S-expressions), documentation-vs-code mismatches, and DRY duplication.
+land). The human-readable rendering layer is fully consolidated into the `nibli-render` crate (WS1–WS6
+of `triad-trace-improvement.md`): back-translation is IR-driven, the proof trace renders through one
+walker, the S-expression debug emitter is gone, and `:debug` renders the typed `LogicBuffer` host-side
+as a `[Logic]` structural tree + `[English]` gloss — no S-expression string crosses any boundary. The
+long tail below covers correctness remainders, documentation-vs-code mismatches, and DRY duplication.
 (Panel provenance: 35 agents, 11 confirmed + 3 partial + 0 refuted; full output in
 `code-review-panel-2026-06-10.json`.)
 
-## P0 — Active: Triad + proof-trace rendering (final workstream)
+## P0 — Rendering consolidation (WS1–WS6 done; one deferred DRY remainder)
 
-- [ ] **WS6 — eliminate S-expressions completely (close the `repr.rs` carve-out)** — WS1–WS5 landed
-  (`nibli-render` is the single rendering layer; back-translation is IR-driven). WS6 removes the last
-  S-expr emitter so the IR crosses every boundary as typed data and humans read rendered English + a
-  structural tree. Full locked plan: **`triad-trace-improvement.md` (WS6 section)**. Remaining work:
-  (1) WIT — `wit/world.wit:517` `compile-debug: func(input) -> result<logic-buffer, nibli-error>` (add
-  `logic-buffer` to the lasna interface `use logic-types.{…}`; the WIT `logic-buffer`/`logic-node`/
-  `logical-term` types already mirror `nibli_types::logic` 1:1); regen lasna bindings via
-  `cargo component build -p lasna`. (2) Delete `logji/src/repr.rs` + `pub mod repr;`. (3) lasna
-  `compile_debug` returns the WIT `logic-buffer` (new 1:1 converter, 13 nodes + 5 terms; buffer already
-  in hand from `compile_pipeline`). (4) `nibli-render`: add `render_logic_tree(&LogicBuffer, Register)
-  -> String` (indented one-node-per-line, functional notation). (5) gasnu/nibli `:debug` receive the
-  WIT buffer (gasnu adds the reverse WIT→`nibli_types` converter), print `[Logic]` tree + `[English]`
-  gloss. (6) Migrate the S-expr-slicing tests (`role_segment` + `cll_place_counter_fi_then_untagged`
-  in integration.rs; two `abstraction_body_*` in known_failures.rs) to assert on the typed `LogicBuffer`
-  / `render_logic_tree`. (7) Add both new converters to `__exhaustiveness_guard`. Book: drop LISP
-  S-expr → functional/typed-term across `book/P3_C07*`–`P3_C10*` + `Appendix_B*`; regenerate the
-  capture-managed `:debug` block at `P5_C18*:301` AFTER the code lands; add the "functional/typed-term,
-  never LISP S-expr" notation rule to `book/CLAUDE.md`; the two grep gates in the doc must return zero.
-  _Location:_ `wit/world.wit`, `logji/src/{repr.rs,lib.rs}`, `lasna/src/lib.rs`,
-  `nibli-render/src/{logic.rs,lib.rs}`, `gasnu/src/main.rs`, `nibli-engine/src/lib.rs`,
-  `nibli/src/main.rs`, `nibli-engine/tests/{integration.rs,known_failures.rs}`,
-  `nibli-types/src/logic.rs`. (dry/feature)
 - [ ] **(deferred) canonical-`ProofRule`-as-wire-type rewrite** — WS3 consolidated the proof-trace /
   logical-term conversions (nibli-engine + nibli-wasm now call `nibli_protocol::from_canonical`;
   nibli-protocol is pure wire types). Three distinct-source lattices remain by design (lasna logji→WIT,
@@ -89,6 +68,7 @@ workstream (WS6: eliminate S-expressions), documentation-vs-code mismatches, and
 - [ ] **xorlo presupposition not asserted in the bare-universal branch** — the engine asserts the fresh restrictor-witness Skolem only in the implication branch; the bare-universal branch registers no presupposition witness. NOTE: `ro lo`/`ro le` ALWAYS route through the implication branch, so the documented behavior holds for the forms that exercise it; the bare branch is reachable only for a restrictor-less ∀. _Location:_ `logji/src/rules.rs:711-793`. _Fix:_ document/decide bare-universal presupposition (no witness is arguably correct), or reject bare universals at compile time. (docs-mismatch)
 
 ### full pipeline + Transparency Triad
+- [ ] **`render_logic_buffer` drops the whole clause when a non-trailing place is unspecified (empty `[English]` gloss)** — `fill_template` (`nibli-render/src/frame.rs`) truncates an event frame at the FIRST unfilled placeholder, so a valid compile whose x1 is `zo'e`/Unspecified but a LATER place is filled (e.g. `klama fi le zarci do` — x3/x4 filled, x1/x2 unspecified) renders an EMPTY English string. Pre-existing (frame.rs predates WS6) but newly user-visible since WS6 wired `render_logic_buffer` into `:debug` (the old S-expr `:debug` printed no `[English]` line at all), so `:debug klama fi le zarci do` now shows a blank `[English] ` line under a correct `[Logic]` tree. The `[Logic]` structural tree is unaffected (correct). _Location:_ `nibli-render/src/frame.rs:42-69` (`fill_template`). _Fix:_ only truncate a TRAILING run of unfilled places — render an interior/leading unspecified place with a generic filler ("something"/"someone") instead of collapsing the clause; add a render test for unspecified-x1-with-a-filled-higher-place (the existing `fill_drops_trailing_unfilled` covers only trailing). (robustness)
 - [ ] **compile-pipeline parse/error/compile sequence + 'Assertion aborted' message duplicated across nibli-engine and lasna, with divergent warning-handling** — both re-implement the pipeline driver, hardcode `{pilji,sumji,dilcu}` and the 'Assertion aborted: …' literal, and differ on parse-warning policy (nibli-engine hard-aborts even `query_text_with_proof`; lasna returns warnings and aborts only in `assert_text`). _Location:_ `nibli-engine/src/lib.rs:333-370`; `lasna/src/lib.rs:594-672`. _Fix:_ extract one shared `compile_text(text, &compute_predicates) -> Result<LogicBuffer, NibliError>` + a shared default-compute-predicate constructor; make the warning policy uniform. (dry)
 - [ ] **Every UI query constructs a brand-new NibliEngine (and prints a stdout banner)** — `queryWithKb` does `NibliEngine::new()` per call, and `NibliEngine::new` unconditionally prints 'Native engine ready' (server log noise); a `reset()` exists but is unused. _Location:_ `nibli-server/src/main.rs:707-738`; `nibli-engine/src/lib.rs:268-275`. _Fix:_ gate the println behind a verbosity flag, or pool a single NibliEngine in HttpState and `reset()` + re-assert per query. (performance)
 - [ ] **Arity is computed twice from the same jbovlaste XML by two independent build scripts** — `smuni-dictionary`'s DICTIONARY arities (used by `back_translate` + `smuni_dictionary::get_arity` for `SignatureSource`) and `smuni`'s `JBOVLASTE_ARITIES` (the actual compiler arity) are generated by different build scripts with different heuristics. (NOTE: logji uses `get_arity` only to pick `SignatureSource::Dictionary` vs `::Inferred`.) _Location:_ `smuni-dictionary/build.rs`; `smuni/build.rs` + `smuni/src/dictionary.rs`. _Fix:_ generate a single arity map in one crate and have both depend on it. (dry)

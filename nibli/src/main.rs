@@ -201,7 +201,16 @@ fn main() {
                         continue;
                     }
                     match engine.compile_debug(text) {
-                        Ok(debug_output) => println!("[Logic] {}", debug_output),
+                        Ok(buf) => {
+                            let tree =
+                                nibli_render::render_logic_tree(&buf, nibli_render::Register::Spec);
+                            let english = nibli_render::render_logic_buffer(
+                                &buf,
+                                nibli_render::Register::Spec,
+                            );
+                            println!("[Logic]\n{}", tree.trim_end());
+                            println!("\n[English] {}", english);
+                        }
                         Err(e) => println!("{}", e),
                     }
                 } else if let Some(compute_name) = input.strip_prefix(":compute ") {

@@ -101,7 +101,25 @@ just test
 [Witnesses] da = adam
 
 ~/nibli> :debug re lo gerku cu barda
-[Logic] (Count "_v0" 2 (And (Pred "gerku" ...) (Pred "barda" ...)))
+[Logic]
+Count _v0 = 2:
+  And:
+    ∃ _ev1:
+      And:
+        And:
+          gerku(_ev1)
+          gerku_x1(_ev1, _v0)
+        gerku_x2(_ev1, zo'e)
+    ∃ _ev0:
+      And:
+        And:
+          And:
+            barda(_ev0)
+            barda_x1(_ev0, _v0)
+          barda_x2(_ev0, zo'e)
+        barda_x3(_ev0, zo'e)
+
+[English] Exactly 2 things are such that X is a dog and X is big.
 
 ~/nibli> :assert tenfa 8 2 3
 [Fact #4] tenfa(8, 2, 3) asserted.

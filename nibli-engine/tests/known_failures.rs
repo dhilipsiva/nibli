@@ -22,7 +22,18 @@
 //! (the `best_result` ResourceExceeded wipe) live in separate files so a crash
 //! cannot take the rest of the backlog down with it.
 
-use nibli_engine::NibliEngine;
+use nibli_engine::{EngineLogicBuffer, EngineLogicNode, NibliEngine};
+
+/// True if the compiled `LogicBuffer` contains the `base` predicate or any of its
+/// Neo-Davidsonian role predicates (`base_xN`). `compile_debug` returns the typed
+/// IR, so we walk nodes instead of substring-matching an S-expr string.
+fn has_predicate_base(buf: &EngineLogicBuffer, base: &str) -> bool {
+    let role_prefix = format!("{base}_x");
+    buf.nodes.iter().any(|n| match n {
+        EngineLogicNode::Predicate((rel, _)) => rel == base || rel.starts_with(&role_prefix),
+        _ => false,
+    })
+}
 
 // ─── Fail-open rule compilation (todo.md: HIGH) ─────────────────────────────
 // `build_rule_template_fact`'s `_ => None` catch-all silently drops antecedent
@@ -224,13 +235,13 @@ fn abstraction_body_over_connected_must_reference_real_body() {
     // Its compiled form must contain BOTH the antecedent (gerku) and the
     // consequent (klama). Today the flattener binds the abstraction to the
     // antecedent bridi alone, so `klama` is dropped entirely.
-    let debug = engine
+    let buf = engine
         .compile_debug("mi djica lo nu ganai la .adam. gerku gi la .adam. klama kei")
         .expect("should compile");
     assert!(
-        debug.contains("klama"),
+        has_predicate_base(&buf, "klama"),
         "the abstraction body's consequent `klama` was dropped — flattener bound \
-         the wrong (antecedent) sentence index. FOL:\n{debug}"
+         the wrong (antecedent) sentence index. FOL:\n{buf:?}"
     );
 }
 
@@ -240,13 +251,13 @@ fn abstraction_body_over_rel_clause_must_reference_real_body() {
     // Abstraction body is `lo gerku poi ke'a barda cu klama`; the head predicate
     // is `klama`. The flattener instead binds the abstraction to the `barda`
     // rel-clause bridi, so `klama` is dropped from the compiled FOL.
-    let debug = engine
+    let buf = engine
         .compile_debug("mi djica lo nu lo gerku poi ke'a barda cu klama kei")
         .expect("should compile");
     assert!(
-        debug.contains("klama"),
+        has_predicate_base(&buf, "klama"),
         "the abstraction body head `klama` was dropped — flattener bound the \
-         rel-clause (`barda`) sentence index instead. FOL:\n{debug}"
+         rel-clause (`barda`) sentence index instead. FOL:\n{buf:?}"
     );
 }
 

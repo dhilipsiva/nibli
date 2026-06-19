@@ -36,8 +36,6 @@ mod compute;
 /// Fact store abstraction (trait + in-memory implementation).
 pub mod fact_store;
 mod reasoning;
-/// S-expression reconstruction for logic buffers (debug output).
-pub mod repr;
 mod rules;
 
 pub use compute::ComputeRequest;

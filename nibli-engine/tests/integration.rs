@@ -4,7 +4,8 @@
 //! No WASM, no HTTP — exercises gerna+smuni+logji directly via Rust crate calls.
 
 use nibli_engine::{
-    EngineAggregateOp, EngineComputeRequest, EngineLogicalTerm, EngineQueryResult, NibliEngine,
+    EngineAggregateOp, EngineComputeRequest, EngineLogicBuffer, EngineLogicNode, EngineLogicalTerm,
+    EngineQueryResult, NibliEngine,
 };
 use nibli_store::NibliStore;
 use std::fs;
@@ -35,19 +36,23 @@ fn temp_db_path(name: &str) -> PathBuf {
     dir.join(format!("{name}.redb"))
 }
 
-/// Return the slice of a `compile_debug` S-expression rendering from the named
-/// role predicate (e.g. `klama_x4`) up to the next `(Pred ` — i.e. that
-/// predicate's own argument list. Used to assert which place a term landed in.
-fn role_segment(dbg: &str, role: &str) -> String {
-    let needle = format!("\"{role}\"");
-    let Some(start) = dbg.find(&needle) else {
-        return String::new();
-    };
-    let rest = &dbg[start + needle.len()..];
-    match rest.find("(Pred ") {
-        Some(end) => rest[..end].to_string(),
-        None => rest.to_string(),
-    }
+/// Find the named Neo-Davidsonian role predicate (e.g. `klama_x4`) in the typed
+/// `LogicBuffer` and return its argument list. `compile_debug` returns the typed
+/// IR, so we walk nodes instead of substring-matching an S-expr string.
+fn find_role<'a>(buf: &'a EngineLogicBuffer, role: &str) -> Option<&'a [EngineLogicalTerm]> {
+    buf.nodes.iter().find_map(|n| match n {
+        EngineLogicNode::Predicate((rel, args)) if rel == role => Some(args.as_slice()),
+        _ => None,
+    })
+}
+
+/// True if the named role predicate exists and one of its argument places is the
+/// constant `value`. Used to assert which place a term landed in.
+fn role_has_const(buf: &EngineLogicBuffer, role: &str, value: &str) -> bool {
+    find_role(buf, role).is_some_and(|args| {
+        args.iter()
+            .any(|t| matches!(t, EngineLogicalTerm::Constant(c) if c == value))
+    })
 }
 
 fn cleanup(path: &Path) {
@@ -707,16 +712,16 @@ fn cll_place_counter_fi_then_untagged() {
     // `klama fi le zarci do` — CLL: `fi` sets the place counter to x3 (le zarci),
     // and the following UNTAGGED `do` resumes at x4 (NOT x1, the pre-fix bug).
     let engine = NibliEngine::new();
-    let dbg = engine
+    let buf = engine
         .compile_debug("klama fi le zarci do")
         .expect("`klama fi le zarci do` should compile");
     assert!(
-        role_segment(&dbg, "klama_x4").contains(r#"(Const "do")"#),
-        "untagged `do` must fill x4 after `fi`; debug: {dbg}"
+        role_has_const(&buf, "klama_x4", "do"),
+        "untagged `do` must fill x4 after `fi`; buffer: {buf:?}"
     );
     assert!(
-        !role_segment(&dbg, "klama_x1").contains(r#"(Const "do")"#),
-        "do must NOT land in x1 (pre-fix `first free slot` bug); debug: {dbg}"
+        !role_has_const(&buf, "klama_x1", "do"),
+        "do must NOT land in x1 (pre-fix `first free slot` bug); buffer: {buf:?}"
     );
 }
 

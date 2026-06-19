@@ -6,6 +6,7 @@ edition = "2024"
 
 [dependencies]
 nibli-engine = { path = "../nibli-engine" }
+nibli-render = { path = "../nibli-render" }
 reedline = "0.45.0"
 
 [[bin]]

@@ -230,7 +230,7 @@ interface logic-types {
         variable(string),
         /// A ground constant (e.g., entity names from `la`).
         constant(string),
-        /// An opaque description reference (from `le`/`la` gadri).
+        /// An opaque description reference (from `le` gadri).
         description(string),
         /// Unspecified placeholder (from `zo'e`).
         unspecified,
@@ -493,7 +493,7 @@ world logji-component {
 /// internally orchestrate the full pipeline. This is the primary API for
 /// end users (e.g., the REPL gasnu).
 interface lasna {
-    use logic-types.{fact-id, fact-summary, logical-term, proof-trace, query-result, witness-binding};
+    use logic-types.{fact-id, fact-summary, logic-buffer, logical-term, proof-trace, query-result, witness-binding};
     use error-types.{nibli-error};
 
     /// A user-facing session that wraps the full pipeline.
@@ -513,8 +513,10 @@ interface lasna {
         query-text-with-proof: func(input: string) -> result<tuple<query-result, proof-trace>, nibli-error>;
         /// Query Lojban text and return witness bindings for existential variables.
         query-find-text: func(input: string) -> result<list<list<witness-binding>>, nibli-error>;
-        /// Debug: compile text to logic representation without asserting.
-        compile-debug: func(input: string) -> result<string, nibli-error>;
+        /// Debug: compile text to the typed logic buffer without asserting.
+        /// The host renders it (structural tree + English gloss); no S-expression
+        /// string crosses the boundary.
+        compile-debug: func(input: string) -> result<logic-buffer, nibli-error>;
         /// Reset the session's KB to fresh state.
         reset-kb: func() -> result<_, nibli-error>;
         /// Register a predicate name for external computation dispatch.

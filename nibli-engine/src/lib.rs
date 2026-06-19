@@ -11,6 +11,7 @@ use nibli_store::NibliStore;
 pub use logji::ComputeRequest as EngineComputeRequest;
 pub use nibli_types::logic::{
     AggregateOp as EngineAggregateOp, FactSummary as EngineFactSummary,
+    LogicBuffer as EngineLogicBuffer, LogicNode as EngineLogicNode,
     LogicalTerm as EngineLogicalTerm, QueryResult as EngineQueryResult,
     ResourceKind as EngineResourceKind, UnknownReason as EngineUnknownReason,
     WitnessBinding as EngineWitnessBinding,
@@ -319,10 +320,13 @@ impl NibliEngine {
             .map_err(|e| e.to_string())
     }
 
-    /// Compile Lojban text to FOL and return a debug representation of the logic nodes.
-    pub fn compile_debug(&self, text: &str) -> Result<String, String> {
-        let buf = self.compile_text(text).map_err(|e| e.to_string())?;
-        Ok(logji::repr::debug_logic(&buf))
+    /// Compile Lojban text to the typed FOL `LogicBuffer` without asserting.
+    ///
+    /// Returns the IR directly — the caller renders it (e.g. via
+    /// `nibli_render::render_logic_tree` / `render_logic_buffer`). No
+    /// S-expression string is produced.
+    pub fn compile_debug(&self, text: &str) -> Result<EngineLogicBuffer, String> {
+        self.compile_text(text).map_err(|e| e.to_string())
     }
 
     /// List all active (non-retracted) facts with their IDs and labels.

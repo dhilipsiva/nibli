@@ -20,7 +20,7 @@ mod register;
 mod term;
 
 pub use fact::humanize_fact;
-pub use logic::render_logic_buffer;
+pub use logic::{render_logic_buffer, render_logic_tree};
 pub use proof::{
     RenderedNode, css_class, icon, label, render_proof, render_proof_text,
     render_proof_text_indented, trace_display,
@@ -113,6 +113,71 @@ mod tests {
         assert_eq!(
             render_logic_buffer(&buf, Register::Spec),
             "Adam is an animal."
+        );
+    }
+
+    #[test]
+    fn logic_tree_exposes_every_node_with_indentation() {
+        let tree = render_logic_tree(&syllogism_buffer(), Register::Spec);
+        // The structural tree shows the raw compiled FOL, NOT the regrouped English:
+        // every quantifier / connective / event binder is its own indented line.
+        assert!(tree.starts_with("\u{2200} _v0:\n"), "tree:\n{tree}");
+        assert!(tree.contains("\n  Or:\n"), "tree:\n{tree}");
+        assert!(tree.contains("\n    \u{00ac}:\n"), "tree:\n{tree}");
+        assert!(tree.contains("\n      \u{2203} _ev0:\n"), "tree:\n{tree}");
+        // Functional term notation (never LISP S-expr).
+        assert!(tree.contains("gerku(_ev0)\n"), "tree:\n{tree}");
+        assert!(tree.contains("gerku_x1(_ev0, _v0)\n"), "tree:\n{tree}");
+        assert!(tree.contains("gerku_x2(_ev0, zo'e)\n"), "tree:\n{tree}");
+        assert!(!tree.contains("(Pred"), "S-expr leaked: {tree}");
+        assert!(!tree.contains("(Cons"), "S-expr leaked: {tree}");
+    }
+
+    #[test]
+    fn logic_tree_renders_compute_and_integers() {
+        // A hand-built ComputeNode — the shape `tenfa` takes once it is registered
+        // for compute dispatch (as in the Ch 18 `:debug` after `:compute tenfa`);
+        // a bare `:debug li … tenfa …` in a default session compiles `tenfa` to a
+        // plain Predicate. Exercises the `[compute]` marker + integer term rendering.
+        let ev0 = || LogicalTerm::Variable("_ev0".to_string());
+        let buf = LogicBuffer {
+            nodes: vec![
+                LogicNode::ComputeNode(("tenfa".into(), vec![ev0()])), // 0
+                LogicNode::Predicate(("tenfa_x1".into(), vec![ev0(), LogicalTerm::Number(1024.0)])), // 1
+                LogicNode::AndNode((0, 1)), // 2
+                LogicNode::Predicate(("tenfa_x2".into(), vec![ev0(), LogicalTerm::Number(2.0)])), // 3
+                LogicNode::AndNode((2, 3)), // 4
+                LogicNode::Predicate(("tenfa_x3".into(), vec![ev0(), LogicalTerm::Number(10.0)])), // 5
+                LogicNode::AndNode((4, 5)),                // 6
+                LogicNode::ExistsNode(("_ev0".into(), 6)), // 7
+            ],
+            roots: vec![7],
+        };
+        let expected = "\u{2203} _ev0:\n  And:\n    And:\n      And:\n        tenfa(_ev0) [compute]\n        tenfa_x1(_ev0, 1024)\n      tenfa_x2(_ev0, 2)\n    tenfa_x3(_ev0, 10)\n";
+        assert_eq!(render_logic_tree(&buf, Register::Spec), expected);
+    }
+
+    #[test]
+    fn logic_tree_flat_fact() {
+        let buf = LogicBuffer {
+            nodes: vec![LogicNode::Predicate((
+                "danlu".into(),
+                vec![LogicalTerm::Constant("adam".into())],
+            ))],
+            roots: vec![0],
+        };
+        assert_eq!(render_logic_tree(&buf, Register::Spec), "danlu(adam)\n");
+    }
+
+    #[test]
+    fn logic_tree_invalid_root_is_reported() {
+        let buf = LogicBuffer {
+            nodes: vec![],
+            roots: vec![5],
+        };
+        assert_eq!(
+            render_logic_tree(&buf, Register::Spec),
+            "[invalid node 5]\n"
         );
     }
 }

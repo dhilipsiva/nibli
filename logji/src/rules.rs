@@ -1189,7 +1189,8 @@ pub(super) fn build_stored_fact_from_node(
     }
 }
 
-/// Collect leaf StoredFacts from an And-tree (typed equivalent of collect_ground_leaves + reconstruct_repr).
+/// Collect leaf StoredFacts from an And-tree (the typed structural walk that
+/// flattens a conjunction down to its ground leaf facts).
 pub(super) fn collect_ground_facts(
     buffer: &LogicBuffer,
     node_id: u32,
