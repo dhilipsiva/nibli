@@ -9,16 +9,21 @@
 //! Used by python/generate_training_data.py for batch validation.
 
 use nibli_engine::NibliEngine;
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead};
 
 fn main() {
-    // Suppress engine "Native engine ready" message by redirecting nothing —
-    // it prints to stdout which we parse as JSON. We just deal with it in Python.
+    // The engine prints diagnostics ("Native engine ready", "[Skolem] …",
+    // "[Rule] …") via `println!` to the global stdout. We MUST emit our JSON
+    // results through that same line-atomic writer — `println!` — rather than a
+    // separate BufWriter over `stdout.lock()`. Two independent buffers over fd 1
+    // interleave: a JSON line straddling the BufWriter's flush boundary gets an
+    // engine diagnostic spliced into it, corrupting it (the consumer then drops
+    // that line as unparseable). Using `println!` for both, each call takes the
+    // stdout lock and flushes a complete line on its newline, so no two lines
+    // can ever split each other. Consumers filter the non-`{…}` diagnostic lines.
     let engine = NibliEngine::new();
 
     let stdin = io::stdin();
-    let stdout = io::stdout();
-    let mut out = io::BufWriter::new(stdout.lock());
 
     for line in stdin.lock().lines() {
         let line = match line {
@@ -30,27 +35,24 @@ fn main() {
             continue;
         }
 
-        // Try to assert into a fresh KB to validate parse + compile.
-        // Reset KB each time to avoid cross-contamination.
+        // Validate parse + compile in a fresh KB. `reset()` clears all mutable
+        // state, so per-line reuse is equivalent to a fresh engine.
         engine.reset();
         match engine.assert_text(trimmed) {
             Ok(_fact_id) => {
                 let escaped_line = escape_json(trimmed);
-                let _ = writeln!(out, r#"{{"line":"{}","valid":true}}"#, escaped_line);
+                println!(r#"{{"line":"{}","valid":true}}"#, escaped_line);
             }
             Err(e) => {
                 let escaped_line = escape_json(trimmed);
                 let escaped_err = escape_json(&e);
-                let _ = writeln!(
-                    out,
+                println!(
                     r#"{{"line":"{}","valid":false,"error":"{}"}}"#,
                     escaped_line, escaped_err
                 );
             }
         }
     }
-
-    let _ = out.flush();
 }
 
 /// Escape a string for embedding in JSON.
