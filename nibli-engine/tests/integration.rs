@@ -1522,9 +1522,11 @@ fn ddi_toxicity_requires_both_conditions() {
 /// it is re-derived from current facts. The clinically canonical move: the
 /// interacting drug is discontinued. Retracting "fluconazole inhibits CYP2C9"
 /// removes the mechanism's entry premise, so the concentration rise, the toxicity
-/// risk, and the alert all dissolve in one step. Phenytoin shares the same
-/// inhibitor premise, so its alert dissolves too. Both substrates are in Adam's
-/// regimen here, so the patient-gated alert rule fires for both before the retraction.
+/// risk, and the alert all dissolve in one step. This mirrors the shipped corpus:
+/// warfarin is on Adam's chart (so it alerts), phenytoin is NOT (so it reaches
+/// toxicity RISK but no alert — the regimen gate). The shared inhibitor means
+/// retracting it dissolves the toxicity risk for BOTH substrates at once, and
+/// warfarin's alert with it.
 #[test]
 fn ddi_belief_revision_discontinue_inhibitor() {
     let engine = NibliEngine::new();
@@ -1537,7 +1539,6 @@ fn ddi_belief_revision_discontinue_inhibitor() {
         "la .varfarin. cu cinla",
         "la .fenituin. cu cinla",
         "la .adam. cu pilno la .varfarin.",
-        "la .adam. cu pilno la .fenituin.",
     ] {
         engine.assert_text(line).unwrap();
     }
@@ -1553,14 +1554,19 @@ fn ddi_belief_revision_discontinue_inhibitor() {
         engine.assert_text(line).unwrap();
     }
 
-    // ── Before discontinuation: both drugs alert ──
+    // ── Before discontinuation: warfarin alerts; phenytoin is at risk but not on
+    //    the chart, so it reaches ckape without an alert (the regimen gate) ──
     assert_true(
         &engine.query_holds("la .varfarin. cu kajde").unwrap(),
-        "While fluconazole inhibits CYP2C9, warfarin alerts",
+        "Warfarin alerts: at risk via the inhibitor AND on Adam's chart",
     );
     assert_true(
+        &engine.query_holds("la .fenituin. cu ckape").unwrap(),
+        "Phenytoin is at toxicity risk via the same shared inhibitor",
+    );
+    assert_false(
         &engine.query_holds("la .fenituin. cu kajde").unwrap(),
-        "While fluconazole inhibits CYP2C9, phenytoin alerts",
+        "But phenytoin raises no alert: Adam does not take it (regimen-gated)",
     );
 
     // ── Discontinue fluconazole: retract the inhibition fact ──
@@ -1579,8 +1585,8 @@ fn ddi_belief_revision_discontinue_inhibitor() {
         "After discontinuation, the warfarin alert is automatically withdrawn",
     );
     assert_false(
-        &engine.query_holds("la .fenituin. cu kajde").unwrap(),
-        "Discontinuing the shared inhibitor also clears the phenytoin alert",
+        &engine.query_holds("la .fenituin. cu ckape").unwrap(),
+        "Discontinuing the shared inhibitor also clears phenytoin's toxicity risk",
     );
 }
 
