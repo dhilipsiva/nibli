@@ -1764,6 +1764,21 @@ fn surface_numeric_sumji_dilcu() {
 }
 
 #[test]
+fn surface_numeric_float_tolerance() {
+    // `li no pi ci` = 0.3, `li no pi pa` = 0.1, `li no pi re` = 0.2 (the `pi`
+    // decimal point). 0.1 + 0.2 = 0.30000000000000004 in IEEE-754, but the
+    // engine uses tolerant equality, so `0.3 = 0.1 + 0.2` is TRUE end-to-end
+    // through gerna → smuni → logji (not the surprising exact-`==` FALSE).
+    let engine = NibliEngine::new();
+    assert_true(
+        &engine
+            .query_holds("li no pi ci cu sumji li no pi pa li no pi re")
+            .unwrap(),
+        "0.3 = 0.1 + 0.2 must be TRUE (tolerant float equality)",
+    );
+}
+
+#[test]
 fn surface_numeric_comparison_zmadu_mleca_dunli() {
     let engine = NibliEngine::new();
     assert_true(

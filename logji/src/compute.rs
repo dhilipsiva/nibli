@@ -44,17 +44,9 @@ pub(super) fn try_arithmetic_evaluation(
     let x1 = extract_num_value(args.get(0)?, subs)?;
     let x2 = extract_num_value(args.get(1)?, subs)?;
     let x3 = extract_num_value(args.get(2)?, subs)?;
-    match rel {
-        "pilji" => Some(x1 == x2 * x3),
-        "sumji" => Some(x1 == x2 + x3),
-        "dilcu" => {
-            if x3 == 0.0 {
-                return Some(false);
-            }
-            Some(x1 == x2 / x3)
-        }
-        _ => None,
-    }
+    // The relation match + tolerant-equality comparison is shared with the gasnu
+    // host fast path (and the Python reference backend) so the three agree.
+    nibli_types::eval_arithmetic(rel, &[x1, x2, x3])
 }
 
 /// Convert a GroundTerm back to a LogicalTerm for compute backend dispatch.

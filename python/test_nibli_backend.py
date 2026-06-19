@@ -89,6 +89,23 @@ class TestNibliBackend(unittest.TestCase):
         ]})
         self.assertTrue(resp["result"])
 
+    def test_sumji_float_tolerance(self):
+        # 0.1 + 0.2 = 0.30000000000000004 in IEEE-754, but math.isclose answers
+        # TRUE for 0.3. This is the canonical tolerant semantics the Rust engine
+        # and host now share. A genuinely-wrong claim stays FALSE.
+        resp = send_request({"relation": "sumji", "args": [
+            {"type": "number", "value": 0.3},
+            {"type": "number", "value": 0.1},
+            {"type": "number", "value": 0.2},
+        ]})
+        self.assertTrue(resp["result"])
+        resp = send_request({"relation": "sumji", "args": [
+            {"type": "number", "value": 0.4},
+            {"type": "number", "value": 0.1},
+            {"type": "number", "value": 0.2},
+        ]})
+        self.assertFalse(resp["result"])
+
     def test_dilcu(self):
         resp = send_request({"relation": "dilcu", "args": [
             {"type": "number", "value": 4.0},

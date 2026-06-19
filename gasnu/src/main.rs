@@ -472,18 +472,9 @@ fn try_builtin_arithmetic(relation: &str, args: &[compute_backend::LogicalTerm])
             extract_num(&args[1]),
             extract_num(&args[2]),
         ) {
-            return match relation {
-                "pilji" => Some(x1 == x2 * x3),
-                "sumji" => Some(x1 == x2 + x3),
-                "dilcu" => {
-                    if x3 == 0.0 {
-                        Some(false)
-                    } else {
-                        Some(x1 == x2 / x3)
-                    }
-                }
-                _ => None,
-            };
+            // The relation match + tolerant-equality comparison is shared with the
+            // logji engine fast path (and the Python reference backend).
+            return nibli_types::eval_arithmetic(relation, &[x1, x2, x3]);
         }
     }
     None
@@ -1886,6 +1877,19 @@ mod tests {
         ];
         // pilji: 6 == 2 * 3
         assert_eq!(host.evaluate("pilji".to_string(), args).unwrap(), true);
+    }
+
+    #[test]
+    fn test_builtin_arithmetic_float_tolerance() {
+        // The host fast path shares the tolerant comparison: 0.1 + 0.2 rounds to
+        // 0.30000000000000004, but `0.3 = 0.1 + 0.2` answers TRUE (matching the
+        // logji engine and the Python backend).
+        let args = vec![
+            compute_backend::LogicalTerm::Number(0.3),
+            compute_backend::LogicalTerm::Number(0.1),
+            compute_backend::LogicalTerm::Number(0.2),
+        ];
+        assert_eq!(try_builtin_arithmetic("sumji", &args), Some(true));
     }
 
     #[test]

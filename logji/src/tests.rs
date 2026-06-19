@@ -1400,6 +1400,16 @@ fn test_compute_dilcu_division_by_zero() {
     assert!(!query(&kb, make_compute_query("dilcu", 0.0, 5.0, 0.0)));
 }
 
+#[test]
+fn test_compute_sumji_float_tolerance() {
+    let kb = new_kb();
+    // 0.1 + 0.2 = 0.30000000000000004 in IEEE-754; tolerant equality answers
+    // TRUE (the user means 0.3). Exact `==` would wrongly say FALSE.
+    assert!(query(&kb, make_compute_query("sumji", 0.3, 0.1, 0.2)));
+    // A genuinely-wrong claim stays FALSE.
+    assert!(!query(&kb, make_compute_query("sumji", 0.4, 0.1, 0.2)));
+}
+
 // ─── Decomposed numeric groups (surface-Lojban shape) ─────────────
 //
 // Surface numeric bridi event-decompose to ∃ev. head(ev) ∧ rel_x1(ev, a) ∧
@@ -1461,6 +1471,17 @@ fn test_decomposed_pilji_true() {
     assert!(query(
         &kb,
         make_decomposed_compute_query("pilji", 10.0, 2.0, 5.0)
+    ));
+}
+
+#[test]
+fn test_decomposed_sumji_float_tolerance() {
+    let kb = new_kb();
+    // The surface (event-decomposed) path also uses tolerant equality:
+    // 0.3 = 0.1 + 0.2 is TRUE despite IEEE-754 rounding.
+    assert!(query(
+        &kb,
+        make_decomposed_compute_query("sumji", 0.3, 0.1, 0.2)
     ));
 }
 
