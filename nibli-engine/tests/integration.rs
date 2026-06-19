@@ -278,6 +278,62 @@ fn ganai_tensed_antecedent_fires_with_premise() {
     );
 }
 
+// A tense (pu/ca/ba) or deontic (ei/e'e) scoping a WHOLE universal rule cannot
+// be soundly compiled to a timeless backward-chaining rule, so it is rejected.
+
+#[test]
+fn whole_rule_tense_universal_rejected() {
+    // `pu ro lo gerku cu danlu` → Past(ForAll(...)) is rejected with the clear
+    // whole-rule message (not the misleading "bare disjunction" zero-ingest one).
+    let engine = NibliEngine::new();
+    let err = engine
+        .assert_text("pu ro lo gerku cu danlu")
+        .expect_err("a tense wrapping a whole universal must be rejected");
+    assert!(
+        err.contains("whole universal/conditional"),
+        "expected the whole-rule rejection, got: {err}"
+    );
+}
+
+#[test]
+fn whole_rule_deontic_universal_rejected() {
+    // `ei ro lo prenu cu xamgu` → Obligatory(ForAll(...)): deriving an actuality
+    // from an obligation is the same class of over-claim — rejected.
+    let engine = NibliEngine::new();
+    let err = engine
+        .assert_text("ei ro lo prenu cu xamgu")
+        .expect_err("a deontic wrapping a whole universal must be rejected");
+    assert!(
+        err.contains("whole universal/conditional"),
+        "expected the whole-rule rejection, got: {err}"
+    );
+}
+
+#[test]
+fn prenex_tensed_body_universal_rejected() {
+    // `ro da zo'u pu da prami` → ForAll(Past(...)): a tense on the rule spine,
+    // INSIDE the universal. Pre-fix it was silently stripped to a timeless rule.
+    let engine = NibliEngine::new();
+    let err = engine
+        .assert_text("ro da zo'u pu da prami")
+        .expect_err("a prenex with a tensed body must be rejected");
+    assert!(
+        err.contains("whole universal/conditional"),
+        "expected the whole-rule rejection, got: {err}"
+    );
+}
+
+#[test]
+fn untensed_universal_still_compiles_and_fires() {
+    // CONTROL: the untensed universal is unaffected — it compiles and fires.
+    let engine = engine_with_facts(&["ro lo gerku cu danlu", "la .rex. cu gerku"]);
+    let (holds, _trace, _json) = engine.query_text_with_proof("la .rex. cu danlu").unwrap();
+    assert_true(
+        &holds,
+        "an untensed universal must still compile and fire (only whole-rule tense is rejected)",
+    );
+}
+
 #[test]
 fn binary_restrictor_rule_fires() {
     // "every dog that is loved by alis is an animal"; rex is a dog AND loved by alis.

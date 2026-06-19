@@ -784,18 +784,34 @@ pub(super) fn compile_forall_to_rule(
                 universals.push(v.clone());
                 current = *body;
             }
-            // SCOPE: a WHOLE-RULE tense (`pu (ro lo gerku cu danlu)`) is stripped
-            // here and the rule compiles timeless. This is distinct from a tensed
-            // ANTECEDENT ATOM (`ro lo gerku poi pu citka cu xagji`), which is
-            // preserved by the per-condition tense threading in
-            // `flatten_conjuncts_through_exists` + `build_rule_template_fact`.
-            // Fail-closing whole-rule tense is a separate item (see todo.md).
-            LogicNode::PastNode(inner_node)
-            | LogicNode::PresentNode(inner_node)
-            | LogicNode::FutureNode(inner_node)
-            | LogicNode::ObligatoryNode(inner_node)
-            | LogicNode::PermittedNode(inner_node) => {
-                current = *inner_node;
+            // FAIL CLOSED: a tense (pu/ca/ba) or deontic attitudinal (ei/e'e)
+            // wrapping a WHOLE universal/conditional rule (`pu ro lo gerku cu
+            // danlu` → Past(ForAll(...))) cannot be soundly represented as a
+            // timeless backward-chaining rule. Stripping it (the old behavior)
+            // compiled the rule TIMELESS, so it fired on present/future/bare
+            // facts the tensed input never licensed — an over-claim. The engine
+            // has no interval/modal temporal semantics to thread whole-rule tense
+            // or modality, so reject rather than register an over-general rule.
+            //
+            // A tensed ANTECEDENT (`ro lo gerku poi pu citka cu xagji` →
+            // ForAll(_, Or(Not(Past(...)), ...))) keeps its tense INSIDE the Or's
+            // Not, off this spine; the loop breaks at the Or via the `_` arm
+            // below, so the per-condition tense threading
+            // (`flatten_conjuncts_through_exists` + `build_rule_template_fact`)
+            // still handles it. This rejection only fires for a tense/deontic
+            // node ON the spine, i.e. wrapping the whole rule.
+            LogicNode::PastNode(_)
+            | LogicNode::PresentNode(_)
+            | LogicNode::FutureNode(_)
+            | LogicNode::ObligatoryNode(_)
+            | LogicNode::PermittedNode(_) => {
+                return Err("cannot compile a tense (pu/ca/ba) or deontic (ei/e'e) \
+                     wrapping a whole universal/conditional rule: a timeless \
+                     backward-chaining rule cannot carry whole-rule tense or \
+                     modality without over-claiming on untensed facts. Rejecting \
+                     the assertion to preserve soundness; restate the \
+                     temporal/deontic scope on the relevant predicate instead."
+                    .to_string());
             }
             _ => break,
         }

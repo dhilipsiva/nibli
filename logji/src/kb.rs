@@ -1231,6 +1231,29 @@ pub(super) fn negative_group_holds(
 
 /// Process a logic buffer into the knowledge base without recording in the fact registry.
 /// Used by both initial assertion and rebuild-on-retract replay.
+/// True if `node_id` is a `ForAllNode`, possibly under leading tense/deontic
+/// wrappers (`pu ro lo gerku cu danlu` → `Past(ForAll(...))`). Such a
+/// whole-rule-tensed/deontic universal is routed to the RULE path so
+/// `compile_forall_to_rule` rejects it on its spine with the clear whole-rule
+/// message — instead of falling to the ground path, where it collects no fact
+/// and is rejected with the misleading "bare disjunction" zero-ingest message.
+/// A bare `ForAll` returns true immediately; `Past(Predicate)` / `Past(Or(..))`
+/// etc. return false (correctly staying on the ground path).
+fn node_is_forall_through_tense(buffer: &LogicBuffer, node_id: u32) -> bool {
+    let mut current = node_id;
+    loop {
+        match get_node(buffer, current) {
+            Ok(LogicNode::ForAllNode(_)) => return true,
+            Ok(LogicNode::PastNode(n))
+            | Ok(LogicNode::PresentNode(n))
+            | Ok(LogicNode::FutureNode(n))
+            | Ok(LogicNode::ObligatoryNode(n))
+            | Ok(LogicNode::PermittedNode(n)) => current = *n,
+            _ => return false,
+        }
+    }
+}
+
 pub(super) fn process_assertion(
     inner: &mut KnowledgeBaseInner,
     logic: &LogicBuffer,
@@ -1278,8 +1301,12 @@ pub(super) fn process_assertion(
             );
         }
 
-        // Phase 2: Dispatch based on formula structure
-        let is_forall = matches!(get_node(logic, root_id), Ok(LogicNode::ForAllNode(_)));
+        // Phase 2: Dispatch based on formula structure. A universal under leading
+        // tense/deontic (`pu ro lo gerku cu danlu` → Past(ForAll(...))) is routed
+        // to the rule path too, so compile_forall_to_rule rejects it on its spine
+        // with the clear whole-rule message rather than the ground path's
+        // misleading "bare disjunction" zero-ingest rejection.
+        let is_forall = node_is_forall_through_tense(logic, root_id);
 
         if is_forall {
             // ═══ NATIVE RULE PATH ═══

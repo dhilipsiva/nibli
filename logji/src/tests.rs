@@ -4348,6 +4348,155 @@ fn test_tensed_antecedent_bare_premise_does_not_fire() {
     );
 }
 
+// ─── Whole-rule tense/deontic is fail-closed ─────────────────
+
+/// `Wrap(ForAll("_v0", Or(Not(restrictor), consequent)))` — a tense/deontic
+/// wrapping the WHOLE universal (`pu ro lo gerku cu danlu` → Past(ForAll(...))).
+fn make_wrapped_universal(
+    restrictor: &str,
+    consequent: &str,
+    wrap: fn(&mut Vec<LogicNode>, u32) -> u32,
+) -> LogicBuffer {
+    let mut nodes = Vec::new();
+    let restrict = pred(
+        &mut nodes,
+        restrictor,
+        vec![
+            LogicalTerm::Variable("_v0".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let body = pred(
+        &mut nodes,
+        consequent,
+        vec![
+            LogicalTerm::Variable("_v0".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let neg = not(&mut nodes, restrict);
+    let disj = or(&mut nodes, neg, body);
+    let fa = forall(&mut nodes, "_v0", disj);
+    let root = wrap(&mut nodes, fa);
+    LogicBuffer {
+        nodes,
+        roots: vec![root],
+    }
+}
+
+/// `ForAll("_v0", Wrap(Or(Not(restrictor), consequent)))` — a tense/deontic on
+/// the rule's matrix, INSIDE a top-level universal (a prenex with a tensed body:
+/// `ro da zo'u pu ...`). The wrapper sits on the rule spine.
+fn make_universal_tensed_body(
+    restrictor: &str,
+    consequent: &str,
+    wrap: fn(&mut Vec<LogicNode>, u32) -> u32,
+) -> LogicBuffer {
+    let mut nodes = Vec::new();
+    let restrict = pred(
+        &mut nodes,
+        restrictor,
+        vec![
+            LogicalTerm::Variable("_v0".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let body = pred(
+        &mut nodes,
+        consequent,
+        vec![
+            LogicalTerm::Variable("_v0".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let neg = not(&mut nodes, restrict);
+    let disj = or(&mut nodes, neg, body);
+    let wrapped = wrap(&mut nodes, disj);
+    let root = forall(&mut nodes, "_v0", wrapped);
+    LogicBuffer {
+        nodes,
+        roots: vec![root],
+    }
+}
+
+/// Distinctive substring of the whole-rule-tense/deontic rejection — pins the
+/// clear message (vs the misleading "bare disjunction" zero-ingest message).
+const WHOLE_RULE_ERR: &str = "whole universal/conditional";
+
+#[test]
+fn test_whole_rule_past_tense_universal_rejected() {
+    // `pu ro lo gerku cu danlu` → Past(ForAll(...)). Rejected with the clear
+    // whole-rule message — routed to the rule path (pre-fix: the ground path's
+    // misleading "bare disjunction" zero-ingest rejection).
+    let kb = new_kb();
+    let err = kb
+        .assert_fact_inner(
+            make_wrapped_universal("gerku", "danlu", past),
+            String::new(),
+        )
+        .unwrap_err();
+    assert!(
+        err.contains(WHOLE_RULE_ERR),
+        "expected the whole-rule rejection, got: {err}"
+    );
+}
+
+#[test]
+fn test_whole_rule_obligatory_universal_rejected() {
+    // `ei ro lo prenu cu xamgu` → Obligatory(ForAll(...)) — same class (an
+    // actuality derived from an obligation), same clear message.
+    let kb = new_kb();
+    let err = kb
+        .assert_fact_inner(
+            make_wrapped_universal("prenu", "xamgu", obligatory),
+            String::new(),
+        )
+        .unwrap_err();
+    assert!(
+        err.contains(WHOLE_RULE_ERR),
+        "expected the whole-rule rejection, got: {err}"
+    );
+}
+
+#[test]
+fn test_tensed_body_universal_rejected() {
+    // `ro da zo'u pu ...` → ForAll(Past(Or(...))) — a tense on the rule spine,
+    // INSIDE the universal. Rejected (pre-fix: silently stripped → timeless).
+    let kb = new_kb();
+    let err = kb
+        .assert_fact_inner(
+            make_universal_tensed_body("gerku", "danlu", past),
+            String::new(),
+        )
+        .unwrap_err();
+    assert!(
+        err.contains(WHOLE_RULE_ERR),
+        "expected the whole-rule rejection, got: {err}"
+    );
+}
+
+#[test]
+fn test_tensed_body_universal_does_not_derive_timeless() {
+    // Soundness guard (the genuine RED→GREEN): the rejected ForAll(Past(gerku→
+    // danlu)) registers NO timeless rule, so bare `gerku(rex)` does NOT derive
+    // bare `danlu(rex)`. Pre-fix the stripped rule fires on the untensed fact
+    // (wrongly TRUE).
+    let kb = new_kb();
+    let rejected = kb.assert_fact_inner(
+        make_universal_tensed_body("gerku", "danlu", past),
+        String::new(),
+    );
+    assert!(
+        rejected.is_err(),
+        "the tensed-body universal must be rejected"
+    );
+    assert_buf(&kb, make_assertion("rex", "gerku"));
+    assert!(
+        !query(&kb, make_query("rex", "danlu")),
+        "a rejected tensed-body universal must not leave a timeless rule that fires on bare facts"
+    );
+}
+
 // ─── Multiple roots test ─────────────────────────────────────
 
 #[test]
