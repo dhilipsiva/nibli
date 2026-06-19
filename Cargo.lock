@@ -2476,8 +2476,6 @@ dependencies = [
  "nibli-types",
  "postcard",
  "reedline",
- "serde",
- "serde_json",
  "wasmtime",
  "wasmtime-wasi",
 ]
@@ -3740,7 +3738,6 @@ dependencies = [
  "nibli-store",
  "nibli-types",
  "postcard",
- "serde",
  "serde_json",
  "smuni",
 ]

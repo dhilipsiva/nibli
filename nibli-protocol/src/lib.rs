@@ -12,6 +12,12 @@ use serde::{Deserialize, Serialize};
 
 use nibli_types::logic as canon;
 
+/// The native TCP compute-backend JSON-Lines client, shared by gasnu (the WASM
+/// host) and nibli-engine (the native embedder). Gated behind the
+/// `compute-client` feature so `std::net` never enters the browser build.
+#[cfg(feature = "compute-client")]
+pub mod compute_client;
+
 // ── Proof trace wire types ──
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

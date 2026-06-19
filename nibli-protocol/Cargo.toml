@@ -7,3 +7,9 @@ edition = "2024"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 nibli-types = { path = "../nibli-types" }
+
+[features]
+# The native TCP compute-backend client (std::net::TcpStream). OFF by default so
+# the wasm32-unknown-unknown browser build (nibli-ui / nibli-wasm) never pulls in
+# std::net. Native consumers (gasnu, nibli-engine) enable it explicitly.
+compute-client = []

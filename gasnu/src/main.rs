@@ -18,232 +18,42 @@
 //! - **`:fuel`** / **`:memory`** — Show/set WASM execution limits
 
 use anyhow::Result;
+use nibli_protocol::compute_client::{BackendArg, BackendClient, BackendRequest};
 use nibli_protocol::{
     LogicalTerm as ProtoTerm, ProofRule as ProtoRule, ProofStep as ProtoStep,
     ProofTrace as ProtoTrace,
 };
 use nibli_store::{NibliStore, StoredAssertion, StoredLogicalTerm as StoredTerm};
 use reedline::{DefaultPrompt, Reedline, Signal};
-use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufRead, BufReader, IsTerminal, Write};
-use std::net::TcpStream;
 use std::path::Path;
-use std::time::Duration;
 use wasmtime::component::{Component, HasSelf, Linker, ResourceAny};
 use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder};
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
-// ── JSON Lines protocol types ──
-
-/// Request sent to the external compute backend over TCP + JSON Lines.
-#[derive(Serialize)]
-struct ComputeRequest {
-    relation: String,
-    args: Vec<ComputeArg>,
-}
-
-/// A logical term serialized for the JSON Lines compute backend protocol.
-#[derive(Serialize, Clone, Debug)]
-#[serde(tag = "type", content = "value")]
-enum ComputeArg {
-    #[serde(rename = "variable")]
-    Variable(String),
-    #[serde(rename = "constant")]
-    Constant(String),
-    #[serde(rename = "description")]
-    Description(String),
-    #[serde(rename = "unspecified")]
-    Unspecified,
-    #[serde(rename = "number")]
-    Number(f64),
-}
-
-/// Response received from the external compute backend.
-#[derive(Deserialize)]
-struct ComputeResponse {
-    result: Option<bool>,
-    error: Option<String>,
-}
-
 // ── Host state ──
 
 /// Wasmtime host state: WASI context, resource table, memory limits,
-/// and optional external compute backend TCP connection.
+/// and the (shared) external compute backend client.
 struct HostState {
     ctx: WasiCtx,
     table: ResourceTable,
     limits: StoreLimits,
-    backend_addr: Option<String>,
-    backend_conn: Option<BufReader<TcpStream>>,
-    /// Timestamp of last backend dispatch. Used for idle timeout cleanup.
-    backend_last_used: Option<std::time::Instant>,
+    /// External compute backend (JSON-Lines TCP). Client lives in nibli-protocol;
+    /// built-in arithmetic is resolved by `try_builtin_arithmetic` before dispatch.
+    backend: BackendClient,
 }
 
-impl HostState {
-    /// Lazily connect to the external compute backend.
-    /// Drops idle connections older than NIBLI_BACKEND_IDLE_TIMEOUT_SECS (default: 300s).
-    fn connect_backend(&mut self) -> std::result::Result<(), String> {
-        // Drop idle connections
-        if let (Some(conn_time), Some(_)) = (self.backend_last_used, &self.backend_conn) {
-            let idle_timeout = std::env::var("NIBLI_BACKEND_IDLE_TIMEOUT_SECS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(300u64);
-            if conn_time.elapsed().as_secs() > idle_timeout {
-                self.backend_conn = None;
-                self.backend_last_used = None;
-            }
-        }
-        if self.backend_conn.is_some() {
-            return Ok(());
-        }
-        let addr = self
-            .backend_addr
-            .as_ref()
-            .ok_or("No compute backend configured")?;
-        let stream =
-            TcpStream::connect(addr).map_err(|e| format!("Backend connect to {}: {}", addr, e))?;
-        stream
-            .set_read_timeout(Some(Duration::from_secs(
-                std::env::var("NIBLI_BACKEND_READ_TIMEOUT_SECS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(10),
-            )))
-            .map_err(|e| format!("Set read timeout: {}", e))?;
-        stream
-            .set_write_timeout(Some(Duration::from_secs(
-                std::env::var("NIBLI_BACKEND_WRITE_TIMEOUT_SECS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(5),
-            )))
-            .map_err(|e| format!("Set write timeout: {}", e))?;
-        stream
-            .set_nodelay(true)
-            .map_err(|e| format!("Set nodelay: {}", e))?;
-        self.backend_conn = Some(BufReader::new(stream));
-        Ok(())
-    }
-
-    /// Dispatch a compute request to the external backend.
-    /// On connection error, drops the connection and retries once.
-    fn dispatch_to_backend(
-        &mut self,
-        relation: &str,
-        args: &[compute_backend::LogicalTerm],
-    ) -> std::result::Result<bool, String> {
-        if self.backend_addr.is_none() {
-            return Err(format!("Unknown compute predicate: {}", relation));
-        }
-
-        let request = ComputeRequest {
-            relation: relation.to_string(),
-            args: args.iter().map(term_to_arg).collect(),
-        };
-        let mut payload =
-            serde_json::to_string(&request).map_err(|e| format!("Serialize: {}", e))?;
-        payload.push('\n');
-
-        // Try send+recv, on failure drop connection and retry once
-        match self.try_dispatch(&payload) {
-            Ok(result) => Ok(result),
-            Err(_first_err) => {
-                self.backend_conn = None;
-                self.try_dispatch(&payload)
-            }
-        }
-    }
-
-    /// Pipeline-dispatch a batch of pre-serialized JSON Lines requests.
-    /// Writes all requests in one burst (single flush), then reads all responses in order.
-    /// Eliminates N-1 TCP round trips compared to sequential dispatch.
-    fn try_dispatch_batch(
-        &mut self,
-        requests: &[(usize, String)],
-    ) -> std::result::Result<Vec<compute_backend::ComputeResult>, String> {
-        self.connect_backend()?;
-        let reader = self.backend_conn.as_mut().ok_or("No backend connection")?;
-
-        // Write all requests in one burst
-        for (_, payload) in requests {
-            reader
-                .get_mut()
-                .write_all(payload.as_bytes())
-                .map_err(|e| format!("Backend batch write: {}", e))?;
-        }
-        reader
-            .get_mut()
-            .flush()
-            .map_err(|e| format!("Backend batch flush: {}", e))?;
-
-        // Read all responses in order
-        let mut results = Vec::with_capacity(requests.len());
-        for _ in 0..requests.len() {
-            let mut line = String::new();
-            reader
-                .read_line(&mut line)
-                .map_err(|e| format!("Backend batch read: {}", e))?;
-
-            let resp: ComputeResponse = serde_json::from_str(&line)
-                .map_err(|e| format!("Backend batch response parse: {}", e))?;
-
-            if let Some(err) = resp.error {
-                results.push(compute_backend::ComputeResult::Err(err));
-            } else if let Some(result) = resp.result {
-                results.push(compute_backend::ComputeResult::Ok(result));
-            } else {
-                results.push(compute_backend::ComputeResult::Err(
-                    "Backend returned neither result nor error".to_string(),
-                ));
-            }
-        }
-        Ok(results)
-    }
-
-    fn try_dispatch(&mut self, payload: &str) -> std::result::Result<bool, String> {
-        self.connect_backend()?;
-        self.backend_last_used = Some(std::time::Instant::now());
-        let reader = self.backend_conn.as_mut().ok_or("No backend connection")?;
-
-        // Send request
-        reader
-            .get_mut()
-            .write_all(payload.as_bytes())
-            .map_err(|e| format!("Backend write: {}", e))?;
-        reader
-            .get_mut()
-            .flush()
-            .map_err(|e| format!("Backend flush: {}", e))?;
-
-        // Read response line
-        let mut line = String::new();
-        reader
-            .read_line(&mut line)
-            .map_err(|e| format!("Backend read: {}", e))?;
-
-        let resp: ComputeResponse =
-            serde_json::from_str(&line).map_err(|e| format!("Backend response parse: {}", e))?;
-
-        if let Some(err) = resp.error {
-            Err(err)
-        } else if let Some(result) = resp.result {
-            Ok(result)
-        } else {
-            Err("Backend returned neither result nor error".into())
-        }
-    }
-}
-
-fn term_to_arg(term: &compute_backend::LogicalTerm) -> ComputeArg {
+/// Convert a WIT `compute-backend.logical-term` into the shared wire arg type.
+fn term_to_arg(term: &compute_backend::LogicalTerm) -> BackendArg {
     use compute_backend::LogicalTerm;
     match term {
-        LogicalTerm::Variable(s) => ComputeArg::Variable(s.clone()),
-        LogicalTerm::Constant(s) => ComputeArg::Constant(s.clone()),
-        LogicalTerm::Description(s) => ComputeArg::Description(s.clone()),
-        LogicalTerm::Unspecified => ComputeArg::Unspecified,
-        LogicalTerm::Number(n) => ComputeArg::Number(*n),
+        LogicalTerm::Variable(s) => BackendArg::Variable(s.clone()),
+        LogicalTerm::Constant(s) => BackendArg::Constant(s.clone()),
+        LogicalTerm::Description(s) => BackendArg::Description(s.clone()),
+        LogicalTerm::Unspecified => BackendArg::Unspecified,
+        LogicalTerm::Number(n) => BackendArg::Number(*n),
     }
 }
 
@@ -491,8 +301,10 @@ impl compute_backend::Host for HostState {
             return Ok(r);
         }
 
-        // 2. Forward to external backend (if configured)
-        self.dispatch_to_backend(&relation, &args)
+        // 2. Forward to the external backend (if configured)
+        let wire_args: Vec<BackendArg> = args.iter().map(term_to_arg).collect();
+        self.backend
+            .dispatch(&relation, &wire_args)
             .map_err(|msg| NibliError::Backend((relation, msg)))
     }
 
@@ -501,66 +313,35 @@ impl compute_backend::Host for HostState {
         requests: Vec<compute_backend::ComputeRequest>,
     ) -> Vec<compute_backend::ComputeResult> {
         let mut results = vec![compute_backend::ComputeResult::Err(String::new()); requests.len()];
-        let mut pending: Vec<(usize, String)> = Vec::new(); // (original_index, json_line)
+        let mut pending_idx: Vec<usize> = Vec::new();
+        let mut pending_reqs: Vec<BackendRequest> = Vec::new();
 
-        // 1. Resolve arithmetic locally, collect external requests
+        // 1. Resolve built-in arithmetic locally; collect external requests.
         for (i, req) in requests.iter().enumerate() {
             if let Some(r) = try_builtin_arithmetic(&req.relation, &req.args) {
                 results[i] = compute_backend::ComputeResult::Ok(r);
             } else {
-                let json_req = ComputeRequest {
+                pending_idx.push(i);
+                pending_reqs.push(BackendRequest {
                     relation: req.relation.clone(),
                     args: req.args.iter().map(term_to_arg).collect(),
-                };
-                match serde_json::to_string(&json_req) {
-                    Ok(mut line) => {
-                        line.push('\n');
-                        pending.push((i, line));
-                    }
-                    Err(e) => {
-                        results[i] =
-                            compute_backend::ComputeResult::Err(format!("Serialize: {}", e));
-                    }
-                }
+                });
             }
         }
 
-        if pending.is_empty() {
+        if pending_reqs.is_empty() {
             return results;
         }
 
-        // 2. Pipeline: write ALL requests in one burst, then read ALL responses
-        if self.backend_addr.is_none() {
-            for (i, _) in &pending {
-                results[*i] = compute_backend::ComputeResult::Err(
-                    "No compute backend configured".to_string(),
-                );
-            }
-            return results;
-        }
-
-        // Try pipelined dispatch, on failure drop connection and retry once
-        match self.try_dispatch_batch(&pending) {
-            Ok(batch_results) => {
-                for ((i, _), result) in pending.iter().zip(batch_results) {
-                    results[*i] = result;
-                }
-            }
-            Err(_first_err) => {
-                self.backend_conn = None;
-                match self.try_dispatch_batch(&pending) {
-                    Ok(batch_results) => {
-                        for ((i, _), result) in pending.iter().zip(batch_results) {
-                            results[*i] = result;
-                        }
-                    }
-                    Err(e) => {
-                        for (i, _) in &pending {
-                            results[*i] = compute_backend::ComputeResult::Err(e.clone());
-                        }
-                    }
-                }
-            }
+        // 2. Pipeline the external requests. The shared client handles the
+        //    no-backend case (per-item "No compute backend configured"),
+        //    retry-once, and idle-connection reaping.
+        let batch = self.backend.dispatch_batch(&pending_reqs);
+        for (idx, result) in pending_idx.into_iter().zip(batch) {
+            results[idx] = match result {
+                Ok(r) => compute_backend::ComputeResult::Ok(r),
+                Err(e) => compute_backend::ComputeResult::Err(e),
+            };
         }
         results
     }
@@ -792,9 +573,13 @@ impl Repl {
                 .memory_size(memory_limit_mb * 1024 * 1024)
                 .trap_on_grow_failure(true)
                 .build(),
-            backend_addr,
-            backend_conn: None,
-            backend_last_used: None,
+            backend: {
+                let mut b = BackendClient::new();
+                if let Some(addr) = &backend_addr {
+                    b.set_addr(addr);
+                }
+                b
+            },
         };
         let mut store = Store::new(engine, state);
         store.set_fuel(fuel_budget)?;
@@ -830,7 +615,7 @@ impl Repl {
             "[Session] Wasm trap poisoned the component instance; rebuilding and replaying {} command(s)...",
             self.journal.len()
         );
-        let backend_addr = self.store.data().backend_addr.clone();
+        let backend_addr = self.store.data().backend.addr().map(str::to_string);
         match Self::instantiate_session(
             &self.engine,
             &self.component,
@@ -1077,9 +862,9 @@ impl Repl {
             }
             ":backend" | ":b" => {
                 let state = self.store.data();
-                match &state.backend_addr {
+                match state.backend.addr() {
                     Some(addr) => {
-                        let status = if state.backend_conn.is_some() {
+                        let status = if state.backend.is_connected() {
                             "connected"
                         } else {
                             "not connected (lazy)"
@@ -1168,14 +953,13 @@ impl Repl {
             let addr = backend_arg.trim();
             if addr.is_empty() {
                 let state = self.store.data();
-                match &state.backend_addr {
+                match state.backend.addr() {
                     Some(a) => println!("[Backend] {}", a),
                     None => println!("[Backend] Not configured"),
                 }
             } else {
-                let state = self.store.data_mut();
-                state.backend_conn = None; // drop existing connection
-                state.backend_addr = Some(addr.to_string());
+                // set_addr drops any stale connection when the address changes.
+                self.store.data_mut().backend.set_addr(addr);
                 println!("[Backend] Set to {} (connects on first use)", addr);
             }
         } else if let Some(fuel_arg) = input.strip_prefix(":fuel ") {
@@ -1810,61 +1594,22 @@ mod tests {
     }
 
     fn make_host(addr: Option<String>) -> HostState {
+        let mut backend = BackendClient::new();
+        if let Some(a) = &addr {
+            backend.set_addr(a);
+        }
         HostState {
             ctx: WasiCtxBuilder::new().build(),
             table: ResourceTable::new(),
             limits: StoreLimitsBuilder::new()
                 .memory_size(512 * 1024 * 1024)
                 .build(),
-            backend_addr: addr,
-            backend_conn: None,
-            backend_last_used: None,
+            backend,
         }
     }
 
-    #[test]
-    fn test_backend_dispatch_success() {
-        let (addr, _listener) = mock_server(r#"{"result": true}"#);
-        let mut host = make_host(Some(addr));
-
-        let args = vec![
-            compute_backend::LogicalTerm::Number(8.0),
-            compute_backend::LogicalTerm::Number(2.0),
-            compute_backend::LogicalTerm::Number(3.0),
-        ];
-        let result = host.dispatch_to_backend("tenfa", &args);
-        assert_eq!(result, Ok(true));
-    }
-
-    #[test]
-    fn test_backend_dispatch_false() {
-        let (addr, _listener) = mock_server(r#"{"result": false}"#);
-        let mut host = make_host(Some(addr));
-
-        let args = vec![compute_backend::LogicalTerm::Number(9.0)];
-        let result = host.dispatch_to_backend("tenfa", &args);
-        assert_eq!(result, Ok(false));
-    }
-
-    #[test]
-    fn test_backend_dispatch_error() {
-        let (addr, _listener) = mock_server(r#"{"error": "Unknown relation: foobar"}"#);
-        let mut host = make_host(Some(addr));
-
-        let args = vec![compute_backend::LogicalTerm::Number(1.0)];
-        let result = host.dispatch_to_backend("foobar", &args);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Unknown relation"));
-    }
-
-    #[test]
-    fn test_backend_not_configured() {
-        let mut host = make_host(None);
-        let args = vec![compute_backend::LogicalTerm::Number(1.0)];
-        let result = host.dispatch_to_backend("tenfa", &args);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Unknown compute predicate"));
-    }
+    // Pure-client dispatch tests (success/false/error/no-addr) now live in
+    // `nibli_protocol::compute_client::tests`, which owns the shared client.
 
     #[test]
     fn test_builtin_arithmetic_bypasses_backend() {
@@ -1906,26 +1651,8 @@ mod tests {
         assert_eq!(host.evaluate("tenfa".to_string(), args).unwrap(), true);
     }
 
-    #[test]
-    fn test_json_serialization() {
-        let req = ComputeRequest {
-            relation: "tenfa".to_string(),
-            args: vec![
-                ComputeArg::Number(8.0),
-                ComputeArg::Variable("x".to_string()),
-                ComputeArg::Constant("abc".to_string()),
-                ComputeArg::Description("lo gerku".to_string()),
-                ComputeArg::Unspecified,
-            ],
-        };
-        let json = serde_json::to_string(&req).unwrap();
-        assert!(json.contains(r#""relation":"tenfa""#));
-        assert!(json.contains(r#""type":"number""#));
-        assert!(json.contains(r#""type":"variable""#));
-        assert!(json.contains(r#""type":"constant""#));
-        assert!(json.contains(r#""type":"description""#));
-        assert!(json.contains(r#""type":"unspecified""#));
-    }
+    // JSON wire-shape serialization is tested in
+    // `nibli_protocol::compute_client::tests::json_serialization_shape`.
 
     // ── format_nibli_error tests ──
 
@@ -1966,8 +1693,8 @@ mod tests {
 
     #[test]
     fn test_evaluate_wraps_dispatch_error_as_backend() {
-        // No backend configured → dispatch_to_backend returns Err(String)
-        // evaluate should wrap it as NibliError::Backend((relation, msg))
+        // No backend configured → the client returns Err(String) ("Unknown
+        // compute predicate"); evaluate wraps it as NibliError::Backend.
         let mut host = make_host(None);
         let args = vec![compute_backend::LogicalTerm::Number(1.0)];
         let result = host.evaluate("tenfa".to_string(), args);
@@ -2083,9 +1810,7 @@ mod tests {
             ctx: WasiCtxBuilder::new().build(),
             table: ResourceTable::new(),
             limits,
-            backend_addr: None,
-            backend_conn: None,
-            backend_last_used: None,
+            backend: BackendClient::new(),
         };
     }
 
@@ -2103,9 +1828,7 @@ mod tests {
             limits: StoreLimitsBuilder::new()
                 .memory_size(64 * 1024 * 1024)
                 .build(),
-            backend_addr: None,
-            backend_conn: None,
-            backend_last_used: None,
+            backend: BackendClient::new(),
         };
         let mut store = Store::new(&engine, state);
         store.set_fuel(1_000_000).unwrap();
@@ -2140,40 +1863,8 @@ mod tests {
         assert!(parse_assert_args("").is_err());
     }
 
-    #[test]
-    fn test_backend_reconnect_after_drop() {
-        // Start a server, connect, then drop the server and start a new one on same port
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap().to_string();
-        let addr_clone = addr.clone();
-
-        // Server thread: accept one connection, respond, then accept another
-        thread::spawn(move || {
-            for stream in listener.incoming() {
-                let stream = stream.unwrap();
-                let mut reader = BufReader::new(stream);
-                let mut line = String::new();
-                if reader.read_line(&mut line).is_ok() && !line.is_empty() {
-                    let _ = reader.get_mut().write_all(b"{\"result\": true}\n");
-                    let _ = reader.get_mut().flush();
-                }
-            }
-        });
-
-        let mut host = make_host(Some(addr_clone));
-        let args = vec![compute_backend::LogicalTerm::Number(1.0)];
-
-        // First call — establishes connection
-        let r1 = host.dispatch_to_backend("test", &args);
-        assert_eq!(r1, Ok(true));
-
-        // Simulate connection drop
-        host.backend_conn = None;
-
-        // Second call — should reconnect
-        let r2 = host.dispatch_to_backend("test", &args);
-        assert_eq!(r2, Ok(true));
-    }
+    // Reconnect-after-drop is exercised by the shared client's retry-once path
+    // (`nibli_protocol::compute_client`).
 
     // ─── Built-in arithmetic edge cases ──────────────────────────
 
@@ -2349,27 +2040,8 @@ mod tests {
         }
     }
 
-    // ─── JSON deserialization tests ──────────────────────────────
-
-    #[test]
-    fn test_json_response_true() {
-        let resp: ComputeResponse = serde_json::from_str(r#"{"result": true}"#).unwrap();
-        assert_eq!(resp.result, Some(true));
-        assert!(resp.error.is_none());
-    }
-
-    #[test]
-    fn test_json_response_false() {
-        let resp: ComputeResponse = serde_json::from_str(r#"{"result": false}"#).unwrap();
-        assert_eq!(resp.result, Some(false));
-    }
-
-    #[test]
-    fn test_json_response_error() {
-        let resp: ComputeResponse = serde_json::from_str(r#"{"error": "fail"}"#).unwrap();
-        assert!(resp.result.is_none());
-        assert_eq!(resp.error, Some("fail".to_string()));
-    }
+    // JSON response deserialization is tested in the shared client
+    // (`nibli_protocol::compute_client::tests`).
 
     // ─── format_nibli_error comprehensive tests ──────────────────
 
@@ -2405,40 +2077,7 @@ mod tests {
         assert!(out.starts_with("[Limit]"));
     }
 
-    // ─── Backend with various LogicalTerm types ──────────────────
-
-    #[test]
-    fn test_backend_dispatch_with_constant_args() {
-        let (addr, _listener) = mock_server(r#"{"result": true}"#);
-        let mut host = make_host(Some(addr));
-
-        let args = vec![
-            compute_backend::LogicalTerm::Constant("alis".to_string()),
-            compute_backend::LogicalTerm::Variable("x".to_string()),
-        ];
-        let result = host.dispatch_to_backend("custom_rel", &args);
-        assert_eq!(result, Ok(true));
-    }
-
-    #[test]
-    fn test_backend_dispatch_with_description_arg() {
-        let (addr, _listener) = mock_server(r#"{"result": false}"#);
-        let mut host = make_host(Some(addr));
-
-        let args = vec![compute_backend::LogicalTerm::Description(
-            "lo gerku".to_string(),
-        )];
-        let result = host.dispatch_to_backend("test_rel", &args);
-        assert_eq!(result, Ok(false));
-    }
-
-    #[test]
-    fn test_backend_dispatch_with_unspecified_arg() {
-        let (addr, _listener) = mock_server(r#"{"result": true}"#);
-        let mut host = make_host(Some(addr));
-
-        let args = vec![compute_backend::LogicalTerm::Unspecified];
-        let result = host.dispatch_to_backend("test_rel", &args);
-        assert_eq!(result, Ok(true));
-    }
+    // Dispatch over the various LogicalTerm arg kinds (constant/variable/
+    // description/unspecified) is covered by the shared client's wire-shape +
+    // dispatch tests and gasnu's `term_to_arg` (exercised via `evaluate`).
 }
