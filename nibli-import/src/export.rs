@@ -9,7 +9,7 @@ use nibli_engine::NibliEngine;
 /// be needed. This v1 exports the fact registry labels which contain the
 /// original Lojban text (the canonical source of truth for the KB).
 pub fn export_fact_labels(engine: &NibliEngine) -> Result<String, String> {
-    let facts = engine.list_facts()?;
+    let facts = engine.list_facts().map_err(|e| e.to_string())?;
     let mut output = String::new();
     for fact in &facts {
         output.push_str(&format!("# fact:{} {}\n", fact.id, fact.label));

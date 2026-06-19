@@ -21,6 +21,12 @@ pub enum NibliError {
     Backend((String, String)),
 }
 
+// FORMAL CONTRACT: the `[Syntax Error]` / `[Semantic Error]` / `[Reasoning Error]`
+// / `[Backend Error]` prefixes below are a stable cross-consumer interface — they
+// are the de-facto error CLASS encoding wherever the typed `NibliError` has been
+// flattened to a `String` (tavla's public API → nibli-server's `error_class`
+// classifier; gasnu's `[Xxx Error]` REPL output; the nibli-ui `strip_prefix`
+// renderer). Do NOT change a prefix without updating those classifiers.
 impl std::fmt::Display for NibliError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

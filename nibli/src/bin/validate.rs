@@ -45,7 +45,7 @@ fn main() {
             }
             Err(e) => {
                 let escaped_line = escape_json(trimmed);
-                let escaped_err = escape_json(&e);
+                let escaped_err = escape_json(&e.to_string());
                 println!(
                     r#"{{"line":"{}","valid":false,"error":"{}"}}"#,
                     escaped_line, escaped_err

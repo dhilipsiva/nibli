@@ -17,14 +17,13 @@ pub use nibli_types::logic::{
     WitnessBinding as EngineWitnessBinding,
 };
 
-use nibli_types::error::NibliError as PipelineError;
+/// The pipeline's typed error (`Syntax`/`Semantic`/`Reasoning`/`Backend`),
+/// re-exported so embedders, tests, and the server can pattern-match the error
+/// CLASS instead of string-parsing the `[Xxx Error]` Display prefix.
+pub use nibli_types::error::NibliError as EngineError;
 use nibli_types::logic as logji_logic;
 
 mod compute_client;
-
-fn format_error(e: &PipelineError) -> String {
-    e.to_string()
-}
 
 // ═══════════════════════════════════════════════════════════════════════
 // PROOF TRACE CONVERSION
@@ -204,12 +203,12 @@ impl NibliEngine {
         self.compute_predicates.insert(name);
     }
 
-    fn compile_text(&self, input: &str) -> Result<logji_logic::LogicBuffer, PipelineError> {
+    fn compile_text(&self, input: &str) -> Result<logji_logic::LogicBuffer, EngineError> {
         let parse_result = gerna::parse_text_native(input.to_string())?;
 
         if parse_result.buffer.roots.is_empty() && !parse_result.errors.is_empty() {
             let first = &parse_result.errors[0];
-            return Err(PipelineError::Syntax(nibli_types::error::SyntaxDetail {
+            return Err(EngineError::Syntax(nibli_types::error::SyntaxDetail {
                 message: parse_result
                     .errors
                     .iter()
@@ -227,7 +226,7 @@ impl NibliEngine {
                 .iter()
                 .map(|e| e.message.clone())
                 .collect();
-            return Err(PipelineError::Syntax(nibli_types::error::SyntaxDetail {
+            return Err(EngineError::Syntax(nibli_types::error::SyntaxDetail {
                 message: format!(
                     "Assertion aborted: {} sentence(s) failed to parse: {}",
                     warnings.len(),
@@ -254,26 +253,30 @@ impl NibliEngine {
     }
 
     /// Parse Lojban text, compile to FOL, and assert into the knowledge base.
-    pub fn assert_text(&self, text: &str) -> Result<u64, String> {
-        let buf = self.compile_text(text).map_err(|e| e.to_string())?;
+    pub fn assert_text(&self, text: &str) -> Result<u64, EngineError> {
+        let buf = self.compile_text(text)?;
         let label = text.to_string();
-        let mut store = self
-            .store
-            .try_borrow_mut()
-            .map_err(|_| "Store error: persistence state is already borrowed".to_string())?;
+        let mut store = self.store.try_borrow_mut().map_err(|_| {
+            EngineError::Reasoning("Store error: persistence state is already borrowed".to_string())
+        })?;
 
         if let Some(s) = store.as_mut() {
-            let payload =
-                postcard::to_allocvec(&buf).map_err(|e| format!("Serialize error: {e}"))?;
-            let fact_id = s.next_fact_id().map_err(|e| format!("Store error: {e}"))?;
+            let payload = postcard::to_allocvec(&buf)
+                .map_err(|e| EngineError::Reasoning(format!("Serialize error: {e}")))?;
+            let fact_id = s
+                .next_fact_id()
+                .map_err(|e| EngineError::Reasoning(format!("Store error: {e}")))?;
             s.insert_fact(fact_id, label.clone(), payload)
-                .map_err(|e| format!("Store error: {e}"))?;
+                .map_err(|e| EngineError::Reasoning(format!("Store error: {e}")))?;
+            // logji's `assert_fact_with_id` returns String (it predates the typed
+            // KB API); the assert IS the reasoning stage, so classify as Reasoning
+            // (the old `Semantic` here was a mislabel).
             self.kb
                 .assert_fact_with_id(buf, label, fact_id)
-                .map_err(|e| format_error(&PipelineError::Semantic(e)))?;
+                .map_err(EngineError::Reasoning)?;
             Ok(fact_id)
         } else {
-            self.kb.assert_fact(buf, label).map_err(|e| e.to_string())
+            self.kb.assert_fact(buf, label)
         }
     }
 
@@ -282,25 +285,22 @@ impl NibliEngine {
         &self,
         relation: String,
         args: Vec<EngineLogicalTerm>,
-    ) -> Result<u64, String> {
+    ) -> Result<u64, EngineError> {
         let label = format!(":assert {}", relation);
         // Event-decompose to the SAME shape a surface assertion produces, so the
         // injected fact is matched by surface text queries (not just raw-FOL /
         // same-shape direct queries). `du` stays flat — see compile_injected_fact.
         let buf = smuni::compile_injected_fact(&relation, &args);
-        self.kb.assert_fact(buf, label).map_err(|e| e.to_string())
+        self.kb.assert_fact(buf, label)
     }
 
     /// Parse Lojban query, run entailment check, return result + formatted proof + JSON proof.
     pub fn query_text_with_proof(
         &self,
         text: &str,
-    ) -> Result<(EngineQueryResult, String, String), String> {
-        let buf = self.compile_text(text).map_err(|e| e.to_string())?;
-        let (result, trace) = self
-            .kb
-            .query_entailment_with_proof(buf)
-            .map_err(|e| e.to_string())?;
+    ) -> Result<(EngineQueryResult, String, String), EngineError> {
+        let buf = self.compile_text(text)?;
+        let (result, trace) = self.kb.query_entailment_with_proof(buf)?;
         let wire = nibli_protocol::from_canonical(&trace);
         let formatted = nibli_render::render_proof_text(&wire, nibli_render::Register::Spec);
         let json = wire.to_json();
@@ -308,22 +308,25 @@ impl NibliEngine {
     }
 
     /// Evaluate a Lojban query against the KB and return the typed query result.
-    pub fn query_holds(&self, text: &str) -> Result<EngineQueryResult, String> {
-        let buf = self.compile_text(text).map_err(|e| e.to_string())?;
-        self.kb.query_entailment(buf).map_err(|e| e.to_string())
+    pub fn query_holds(&self, text: &str) -> Result<EngineQueryResult, EngineError> {
+        let buf = self.compile_text(text)?;
+        self.kb.query_entailment(buf)
     }
 
     /// Parse Lojban query and extract all satisfying witness bindings.
-    pub fn query_find_text(&self, text: &str) -> Result<Vec<Vec<EngineWitnessBinding>>, String> {
-        let buf = self.compile_text(text).map_err(|e| e.to_string())?;
-        self.kb.query_find(buf).map_err(|e| e.to_string())
+    pub fn query_find_text(
+        &self,
+        text: &str,
+    ) -> Result<Vec<Vec<EngineWitnessBinding>>, EngineError> {
+        let buf = self.compile_text(text)?;
+        self.kb.query_find(buf)
     }
 
     /// Count the number of distinct witness binding sets satisfying a Lojban query.
     /// Exposes `logji::KnowledgeBase::count_witnesses` at the embedding level.
-    pub fn count_witnesses_text(&self, text: &str) -> Result<usize, String> {
-        let buf = self.compile_text(text).map_err(|e| e.to_string())?;
-        self.kb.count_witnesses(buf).map_err(|e| e.to_string())
+    pub fn count_witnesses_text(&self, text: &str) -> Result<usize, EngineError> {
+        let buf = self.compile_text(text)?;
+        self.kb.count_witnesses(buf)
     }
 
     /// Aggregate the numeric values bound to `variable` across all witness binding
@@ -334,11 +337,9 @@ impl NibliEngine {
         text: &str,
         variable: &str,
         op: nibli_types::logic::AggregateOp,
-    ) -> Result<Option<f64>, String> {
-        let buf = self.compile_text(text).map_err(|e| e.to_string())?;
-        self.kb
-            .aggregate(buf, variable, op)
-            .map_err(|e| e.to_string())
+    ) -> Result<Option<f64>, EngineError> {
+        let buf = self.compile_text(text)?;
+        self.kb.aggregate(buf, variable, op)
     }
 
     /// Compile Lojban text to the typed FOL `LogicBuffer` without asserting.
@@ -346,13 +347,13 @@ impl NibliEngine {
     /// Returns the IR directly — the caller renders it (e.g. via
     /// `nibli_render::render_logic_tree` / `render_logic_buffer`). No
     /// S-expression string is produced.
-    pub fn compile_debug(&self, text: &str) -> Result<EngineLogicBuffer, String> {
-        self.compile_text(text).map_err(|e| e.to_string())
+    pub fn compile_debug(&self, text: &str) -> Result<EngineLogicBuffer, EngineError> {
+        self.compile_text(text)
     }
 
     /// List all active (non-retracted) facts with their IDs and labels.
-    pub fn list_facts(&self) -> Result<Vec<EngineFactSummary>, String> {
-        self.kb.list_facts().map_err(|e| e.to_string())
+    pub fn list_facts(&self) -> Result<Vec<EngineFactSummary>, EngineError> {
+        self.kb.list_facts()
     }
 
     /// Retract a fact by ID and rebuild derived state.
@@ -362,13 +363,12 @@ impl NibliEngine {
     /// (resurrect) the retracted fact. The in-memory KB is retracted first (this
     /// validates the ID and rebuilds derived state); the durable tombstone is only
     /// written if that succeeds, keeping both layers consistent.
-    pub fn retract_fact(&self, id: u64) -> Result<(), String> {
-        self.kb.retract_fact(id).map_err(|e| e.to_string())?;
+    pub fn retract_fact(&self, id: u64) -> Result<(), EngineError> {
+        self.kb.retract_fact(id)?;
 
-        let mut store = self
-            .store
-            .try_borrow_mut()
-            .map_err(|_| "Store error: persistence state is already borrowed".to_string())?;
+        let mut store = self.store.try_borrow_mut().map_err(|_| {
+            EngineError::Reasoning("Store error: persistence state is already borrowed".to_string())
+        })?;
         if let Some(s) = store.as_mut() {
             // Idempotent at the store layer: retracting an already-tombstoned or
             // never-persisted-but-known fact is fine. A NotFound here means the id
@@ -377,7 +377,7 @@ impl NibliEngine {
             match s.retract_fact(id) {
                 Ok(()) => {}
                 Err(nibli_store::StoreError::NotFound(_)) => {}
-                Err(e) => return Err(format!("Store error: {e}")),
+                Err(e) => return Err(EngineError::Reasoning(format!("Store error: {e}"))),
             }
         }
         Ok(())
@@ -476,7 +476,7 @@ mod tests {
             .assert_text("lo gerku cu barda")
             .expect_err("Store borrow conflict should abort assertion");
         assert!(
-            err.contains("Store error"),
+            err.to_string().contains("Store error"),
             "Expected store error, got: {err}"
         );
         assert!(

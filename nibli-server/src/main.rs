@@ -32,7 +32,9 @@ use tower_http::cors::CorsLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::{Level, error, info, warn};
 
-use nibli_engine::{EngineQueryResult, EngineResourceKind, EngineUnknownReason, NibliEngine};
+use nibli_engine::{
+    EngineError, EngineQueryResult, EngineResourceKind, EngineUnknownReason, NibliEngine,
+};
 use nibli_protocol::{
     ContradictionSummary, EnvelopeSummary, GossipEvent, NetworkAgent, NetworkSnapshot, StanceCounts,
 };
@@ -675,15 +677,18 @@ impl MutationRoot {
                 Ok((fact_id, _envelope)) => AssertResult {
                     fact_id: Some(fact_id),
                     error: None,
+                    error_class: None,
                 },
                 Err(e) => AssertResult {
                     fact_id: None,
+                    error_class: ErrorClassGql::from_message(&e),
                     error: Some(e),
                 },
             },
             Err(_) => AssertResult {
                 fact_id: None,
                 error: Some("gossip state lock poisoned".to_string()),
+                error_class: None,
             },
         })
         .await
@@ -701,6 +706,7 @@ impl MutationRoot {
                     proof_trace_json: Some(json),
                     kb_status: None,
                     error: None,
+                    error_class: None,
                 },
                 Err(e) => QueryResponse {
                     status: None,
@@ -709,6 +715,7 @@ impl MutationRoot {
                     proof_trace: None,
                     proof_trace_json: None,
                     kb_status: None,
+                    error_class: ErrorClassGql::from_message(&e),
                     error: Some(e),
                 },
             },
@@ -720,6 +727,7 @@ impl MutationRoot {
                 proof_trace_json: None,
                 kb_status: None,
                 error: Some("gossip state lock poisoned".to_string()),
+                error_class: None,
             },
         })
         .await
@@ -772,6 +780,7 @@ impl MutationRoot {
                     proof_trace_json: Some(json),
                     kb_status: Some(kb_status),
                     error: None,
+                    error_class: None,
                 },
                 Err(e) => QueryResponse {
                     status: None,
@@ -780,7 +789,8 @@ impl MutationRoot {
                     proof_trace: None,
                     proof_trace_json: None,
                     kb_status: Some(kb_status),
-                    error: Some(e),
+                    error_class: Some(ErrorClassGql::from(&e)),
+                    error: Some(e.to_string()),
                 },
             }
         })
@@ -840,6 +850,7 @@ impl MutationRoot {
             Err(e) => {
                 return GossipAssertResult {
                     envelope_id: None,
+                    error_class: ErrorClassGql::from_message(&e),
                     error: Some(e),
                 };
             }
@@ -855,12 +866,14 @@ impl MutationRoot {
             return GossipAssertResult {
                 envelope_id: Some(envelope.id),
                 error: Some(format!("local assert succeeded, but broadcast failed: {e}")),
+                error_class: None,
             };
         }
 
         GossipAssertResult {
             envelope_id: Some(envelope.id),
             error: None,
+            error_class: None,
         }
     }
 
@@ -923,6 +936,7 @@ impl MutationRoot {
             Err(e) => {
                 return GossipAssertResult {
                     envelope_id: None,
+                    error_class: ErrorClassGql::from_message(&e),
                     error: Some(e),
                 };
             }
@@ -940,12 +954,14 @@ impl MutationRoot {
                 error: Some(format!(
                     "local retraction succeeded, but broadcast failed: {e}"
                 )),
+                error_class: None,
             };
         }
 
         GossipAssertResult {
             envelope_id: Some(tombstone.id),
             error: None,
+            error_class: None,
         }
     }
 
@@ -1251,6 +1267,7 @@ fn assert_kb_lines(engine: &NibliEngine, kb: &str) -> KbStatusGql {
                     success: true,
                     fact_id: Some(fact_id),
                     error: None,
+                    error_class: None,
                 });
             }
             Err(e) => {
@@ -1260,7 +1277,8 @@ fn assert_kb_lines(engine: &NibliEngine, kb: &str) -> KbStatusGql {
                     text: trimmed.to_string(),
                     success: false,
                     fact_id: None,
-                    error: Some(e),
+                    error_class: Some(ErrorClassGql::from(&e)),
+                    error: Some(e.to_string()),
                 });
             }
         }
@@ -1291,6 +1309,8 @@ struct TranslateResult {
 struct AssertResult {
     fact_id: Option<u64>,
     error: Option<String>,
+    /// Structured class of `error` (Syntax/Semantic/Reasoning/Backend), or null.
+    error_class: Option<ErrorClassGql>,
 }
 
 #[derive(async_graphql::SimpleObject)]
@@ -1303,6 +1323,8 @@ struct SimpleResult {
 struct GossipAssertResult {
     envelope_id: Option<String>,
     error: Option<String>,
+    /// Structured class of `error` (Syntax/Semantic/Reasoning/Backend), or null.
+    error_class: Option<ErrorClassGql>,
 }
 
 #[derive(async_graphql::SimpleObject)]
@@ -1312,6 +1334,8 @@ struct LineResultGql {
     success: bool,
     fact_id: Option<u64>,
     error: Option<String>,
+    /// Structured class of `error` (Syntax/Semantic/Reasoning/Backend), or null.
+    error_class: Option<ErrorClassGql>,
 }
 
 #[derive(async_graphql::SimpleObject)]
@@ -1381,6 +1405,49 @@ impl ResourceKindGql {
     }
 }
 
+/// The CLASS of a pipeline error, derived from the `NibliError` Display prefix.
+/// The `[Xxx Error]` prefix is a formal cross-consumer contract (see
+/// `nibli_types::error::NibliError` and the UI's `strip_prefix` classifier), so
+/// the server can expose the class as a structured field without threading the
+/// typed error through tavla. `None` for non-pipeline errors (Ollama, gossip,
+/// lock, network).
+#[derive(async_graphql::Enum, Copy, Clone, Debug, Eq, PartialEq)]
+enum ErrorClassGql {
+    Syntax,
+    Semantic,
+    Reasoning,
+    Backend,
+}
+
+impl ErrorClassGql {
+    fn from_message(msg: &str) -> Option<Self> {
+        if msg.starts_with("[Syntax Error]") {
+            Some(Self::Syntax)
+        } else if msg.starts_with("[Semantic Error]") {
+            Some(Self::Semantic)
+        } else if msg.starts_with("[Reasoning Error]") {
+            Some(Self::Reasoning)
+        } else if msg.starts_with("[Backend Error]") {
+            Some(Self::Backend)
+        } else {
+            None
+        }
+    }
+}
+
+/// Direct mapping from the typed engine error (the `query_with_kb` /
+/// `assert_kb_lines` resolvers hold the `EngineError`, not a flattened String).
+impl From<&EngineError> for ErrorClassGql {
+    fn from(e: &EngineError) -> Self {
+        match e {
+            EngineError::Syntax(_) => Self::Syntax,
+            EngineError::Semantic(_) => Self::Semantic,
+            EngineError::Reasoning(_) => Self::Reasoning,
+            EngineError::Backend(_) => Self::Backend,
+        }
+    }
+}
+
 #[derive(async_graphql::SimpleObject)]
 struct QueryResponse {
     status: Option<QueryStatusGql>,
@@ -1390,6 +1457,8 @@ struct QueryResponse {
     proof_trace_json: Option<String>,
     kb_status: Option<KbStatusGql>,
     error: Option<String>,
+    /// Structured class of `error` (Syntax/Semantic/Reasoning/Backend), or null.
+    error_class: Option<ErrorClassGql>,
 }
 
 #[derive(async_graphql::SimpleObject)]
@@ -2296,6 +2365,77 @@ mod tests {
         assert!(
             wait_for_query_result(&schema, "la .adam. cu gerku", true).await,
             "gossipAssert should make the asserted fact queryable through queryText"
+        );
+    }
+
+    #[test]
+    fn error_class_classifier_maps_prefix_and_typed_error() {
+        // From the Display prefix (the tavla-String boundary — assert_text/query_text).
+        assert_eq!(
+            ErrorClassGql::from_message("[Syntax Error] line 1:1: bad"),
+            Some(ErrorClassGql::Syntax)
+        );
+        assert_eq!(
+            ErrorClassGql::from_message("[Semantic Error] nope"),
+            Some(ErrorClassGql::Semantic)
+        );
+        assert_eq!(
+            ErrorClassGql::from_message("[Reasoning Error] nope"),
+            Some(ErrorClassGql::Reasoning)
+        );
+        assert_eq!(
+            ErrorClassGql::from_message("[Backend Error] tenfa — refused"),
+            Some(ErrorClassGql::Backend)
+        );
+        // Non-pipeline errors (gossip / lock / broadcast) carry no class.
+        assert_eq!(
+            ErrorClassGql::from_message("gossip state lock poisoned"),
+            None
+        );
+        // From the typed engine error (the direct-engine path — query_with_kb /
+        // assert_kb_lines). Syntax is covered by the from_message arm above
+        // (constructing it needs SyntaxDetail, a non-dep of nibli-server).
+        assert_eq!(
+            ErrorClassGql::from(&EngineError::Semantic("x".into())),
+            ErrorClassGql::Semantic
+        );
+        assert_eq!(
+            ErrorClassGql::from(&EngineError::Reasoning("x".into())),
+            ErrorClassGql::Reasoning
+        );
+        assert_eq!(
+            ErrorClassGql::from(&EngineError::Backend(("tenfa".into(), "refused".into()))),
+            ErrorClassGql::Backend
+        );
+    }
+
+    #[tokio::test]
+    async fn assert_text_surfaces_structured_error_class() {
+        // A parse failure surfaces a STRUCTURED error_class (SYNTAX), not just a
+        // string the UI must prefix-parse. This rides the tavla-String boundary:
+        // engine returns EngineError::Syntax → tavla flattens to "[Syntax Error] …"
+        // → the server classifies the prefix back into error_class.
+        let gossip_state = Arc::new(Mutex::new(GossipNode::new("server")));
+        let gossip_events = Arc::new(Mutex::new(Vec::new()));
+        let config = test_server_config();
+        let metrics = Arc::new(ServerMetrics::default());
+        let schema = build_test_schema(gossip_state, gossip_events, None, config, metrics);
+
+        let mutation = format!(
+            "mutation {{ assertText(input: {}) {{ factId error errorClass }} }}",
+            gql_string("not valid lojban at all !!!")
+        );
+        let json = execute_json(&schema, mutation).await;
+        assert!(
+            json["assertText"]["error"].is_string(),
+            "an invalid assertion must carry an error message; got {:?}",
+            json["assertText"]
+        );
+        assert_eq!(
+            json["assertText"]["errorClass"].as_str(),
+            Some("SYNTAX"),
+            "a parse failure must surface errorClass = SYNTAX; got {:?}",
+            json["assertText"]
         );
     }
 

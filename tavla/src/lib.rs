@@ -835,7 +835,9 @@ impl GossipNode {
         let has_contradiction = self.check_contradiction(lojban);
 
         // Assert into engine first — if gerna rejects, fail before creating envelope.
-        let fact_id = self.engine.assert_text(lojban)?;
+        // tavla's public API is String-typed (its own errors aren't pipeline
+        // classes); the engine's typed error is flattened to its Display form here.
+        let fact_id = self.engine.assert_text(lojban).map_err(|e| e.to_string())?;
 
         // Tick the vector clock.
         self.clock.tick(&self.agent_id);
@@ -1060,7 +1062,7 @@ impl GossipNode {
                 } else {
                     // Check for contradiction before asserting.
                     let has_contradiction = self.check_contradiction(text);
-                    let fid = self.engine.assert_text(text)?;
+                    let fid = self.engine.assert_text(text).map_err(|e| e.to_string())?;
                     println!(
                         "[tavla] {} ← {} [{}]: {:?} (accepted, fact #{})",
                         self.agent_id, envelope.author, envelope.stance, text, fid
@@ -1247,7 +1249,9 @@ impl GossipNode {
         &self,
         lojban: &str,
     ) -> Result<(EngineQueryResult, String, String), String> {
-        self.engine.query_text_with_proof(lojban)
+        self.engine
+            .query_text_with_proof(lojban)
+            .map_err(|e| e.to_string())
     }
 
     /// Get the current vector clock.

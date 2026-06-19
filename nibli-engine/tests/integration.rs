@@ -4,8 +4,8 @@
 //! No WASM, no HTTP — exercises gerna+smuni+logji directly via Rust crate calls.
 
 use nibli_engine::{
-    EngineAggregateOp, EngineComputeRequest, EngineLogicBuffer, EngineLogicNode, EngineLogicalTerm,
-    EngineQueryResult, NibliEngine,
+    EngineAggregateOp, EngineComputeRequest, EngineError, EngineLogicBuffer, EngineLogicNode,
+    EngineLogicalTerm, EngineQueryResult, NibliEngine,
 };
 use nibli_store::NibliStore;
 use std::fs;
@@ -151,7 +151,13 @@ fn engine_cancel_flag_aborts_query() {
         proof.is_err(),
         "cancelled proof query must Err, got {proof:?}"
     );
-    assert!(proof.unwrap_err().to_lowercase().contains("cancel"));
+    assert!(
+        proof
+            .unwrap_err()
+            .to_string()
+            .to_lowercase()
+            .contains("cancel")
+    );
 
     let holds = engine.query_holds("la .adam. cu danlu");
     assert!(
@@ -290,7 +296,7 @@ fn whole_rule_tense_universal_rejected() {
         .assert_text("pu ro lo gerku cu danlu")
         .expect_err("a tense wrapping a whole universal must be rejected");
     assert!(
-        err.contains("whole universal/conditional"),
+        err.to_string().contains("whole universal/conditional"),
         "expected the whole-rule rejection, got: {err}"
     );
 }
@@ -304,7 +310,7 @@ fn whole_rule_deontic_universal_rejected() {
         .assert_text("ei ro lo prenu cu xamgu")
         .expect_err("a deontic wrapping a whole universal must be rejected");
     assert!(
-        err.contains("whole universal/conditional"),
+        err.to_string().contains("whole universal/conditional"),
         "expected the whole-rule rejection, got: {err}"
     );
 }
@@ -318,7 +324,7 @@ fn prenex_tensed_body_universal_rejected() {
         .assert_text("ro da zo'u pu da prami")
         .expect_err("a prenex with a tensed body must be rejected");
     assert!(
-        err.contains("whole universal/conditional"),
+        err.to_string().contains("whole universal/conditional"),
         "expected the whole-rule rejection, got: {err}"
     );
 }
@@ -561,13 +567,31 @@ fn la_name_assertion() {
 #[test]
 fn parse_error_returns_syntax_error() {
     let engine = NibliEngine::new();
-    let result = engine.assert_text("not valid lojban at all !!!");
-    assert!(result.is_err(), "Invalid Lojban should produce an error");
-    let err = result.unwrap_err();
+    // The error CLASS is now first-class on the engine API (not merely recoverable
+    // from the `[Syntax Error]` Display prefix): a parse failure is the typed
+    // `EngineError::Syntax`.
+    let err = engine
+        .assert_text("not valid lojban at all !!!")
+        .expect_err("Invalid Lojban should produce an error");
     assert!(
-        err.contains("[Syntax Error]"),
-        "Error should be a syntax error, got: {}",
-        err
+        matches!(err, EngineError::Syntax(_)),
+        "a parse failure must be EngineError::Syntax, got: {err}"
+    );
+}
+
+#[test]
+fn assert_stage_failure_is_not_syntax_class() {
+    let engine = NibliEngine::new();
+    // A well-formed sentence the reasoner rejects at ASSERTION time (a tense over a
+    // whole universal) is a non-Syntax class — the typed contract distinguishes a
+    // parse failure from an assertion-stage rejection. (No-store path → logji's
+    // `assert_fact` classes it `Semantic`.)
+    let err = engine
+        .assert_text("pu ro lo gerku cu danlu")
+        .expect_err("a whole-rule tense must be rejected");
+    assert!(
+        matches!(err, EngineError::Semantic(_)),
+        "an assertion-stage rejection must not be classed Syntax, got: {err}"
     );
 }
 
