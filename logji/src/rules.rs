@@ -1082,10 +1082,18 @@ pub(super) fn compile_forall_to_rule(
                     return Err(e);
                 }
 
-                // xorlo presupposition applies only to genuine universals (ro lo / ro le):
-                // a ground material conditional (zero universals, e.g. `ganai A gi B`) carries
-                // no existential import and must NOT assert its antecedent/consequent witnesses.
-                if !universals.is_empty() {
+                // xorlo presupposition applies ONLY to DESCRIPTION universals (`ro lo` /
+                // `ro le`), which carry existential import — "there is such a thing" — so a
+                // fresh witness satisfying the restrictor is asserted. It must NOT fire for:
+                //   - a ground material conditional (`ganai A gi B`, zero universals), and
+                //   - a PRENEX universal (`ro da zo'u …`), a pure logical ∀ with NO existential
+                //     import — asserting an antecedent/consequent witness there over-claims
+                //     (e.g. a phantom `pilno(adam, sk)` polluting regimen queries).
+                // smuni names description universals `_v{n}` (`fresh_var`) and prenex universals
+                // `da`/`de`/`di`, so a `_v`-prefix on every universal var distinguishes them.
+                let is_description_universal =
+                    !universals.is_empty() && universals.iter().all(|v| v.starts_with("_v"));
+                if is_description_universal {
                     let xp_name = inner.fresh_skolem();
                     inner.note_entity(&xp_name);
                     let mut xp_subs: HashMap<String, GroundTerm> = HashMap::new();

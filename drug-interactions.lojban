@@ -66,7 +66,8 @@ la .adam. cu pilno la .flukonazol.
 # "for all inhibitor, substrate, enzyme ..." requires multi-variable join-rule
 # compilation, which is not yet available from Lojban surface syntax, so this
 # step alone remains grounded per substrate (see Chapter 21, "Honest
-# Boundaries"). The toxicity step (step 2) and the alert step are both general.
+# Boundaries"). The toxicity step (step 2) is a general drug-level rule; the
+# alert step (step 3) is patient-gated on the regimen (see below).
 ganai ge la .flukonazol. cu fanta la .siptucin. gi la .varfarin. cu se katna la .siptucin. gi la .varfarin. cu zenba
 ganai ge la .flukonazol. cu fanta la .siptucin. gi la .fenituin. cu se katna la .siptucin. gi la .fenituin. cu zenba
 
@@ -78,7 +79,16 @@ ganai ge la .flukonazol. cu fanta la .siptucin. gi la .fenituin. cu se katna la 
 # drug satisfying both conditions, with no per-substrate rule.
 ro lo xukmi poi zenba poi cinla cu ckape
 
-# ─── General clinical rule (fires for ANY drug) ───────────────────
-# Any drug at toxicity risk warrants a safety alert. This rule is fully general:
-# add another at-risk drug and the alert fires with no rule change.
-ro lo xukmi poi ckape cu kajde
+# ─── Mechanism step 3: the alert is patient-gated on the regimen ──
+# Toxicity RISK (ckape) is a property of the drug's pharmacology and holds
+# regardless of who takes it; the actionable ALERT (kajde), however, is only
+# raised for an at-risk drug THIS patient actually takes. Written as a prenex
+# universal so the regimen condition (`la .adam. cu pilno da`) is in the rule's
+# antecedent: for all da, if da is at toxicity risk AND Adam takes da, then da
+# warrants a safety alert. Consequences: a pharmacologically at-risk drug Adam
+# does NOT take (e.g. phenytoin) reaches ckape but raises no alert; and
+# discontinuing a drug — retracting `la .adam. cu pilno <drug>` — withdraws its
+# alert while the drug-level risk stays derivable. (A prenex `ro da` carries no
+# existential import, so it asserts no presupposition witness — unlike a `ro lo`
+# description — keeping the regimen unpolluted.)
+ro da zo'u ganai ge da ckape gi la .adam. cu pilno da gi da kajde

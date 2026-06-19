@@ -1458,15 +1458,21 @@ fn ddi_headline_warfarin_fluconazole_alert() {
     );
 }
 
-/// The downstream clinical rules are GENERAL: phenytoin, a different narrow-index
-/// CYP2C9 substrate, reaches a safety alert through the SAME toxicity/alert rules
-/// (no per-drug alert rule is written).
+/// The toxicity rule is GENERAL: phenytoin, a different narrow-index CYP2C9
+/// substrate, reaches toxicity risk (ckape) through the SAME general rule as
+/// warfarin (no per-drug rule). But the ALERT is patient-gated — phenytoin is NOT
+/// in Adam's regimen, so it warrants no alert. Pharmacological risk is general;
+/// the actionable alert is patient-specific.
 #[test]
 fn ddi_general_rules_fire_for_second_drug() {
     let engine = engine_with_ddi_corpus();
     assert_true(
+        &engine.query_holds("la .fenituin. cu ckape").unwrap(),
+        "Phenytoin reaches toxicity risk via the same general toxicity rule as warfarin",
+    );
+    assert_false(
         &engine.query_holds("la .fenituin. cu kajde").unwrap(),
-        "Phenytoin alerts via the same general toxicity/alert rules as warfarin",
+        "But phenytoin warrants NO alert: Adam does not take it (the alert is regimen-gated)",
     );
 }
 
@@ -1512,13 +1518,13 @@ fn ddi_toxicity_requires_both_conditions() {
     );
 }
 
-/// Belief revision (non-monotonic): an alert is not "baked in" — it is re-derived
-/// from current facts. The clinically canonical move: the interacting drug is
-/// discontinued. Retracting "fluconazole inhibits CYP2C9" removes the mechanism's
-/// entry premise, so the concentration rise, the toxicity risk, and the alert all
-/// dissolve in one step. Phenytoin shares the same inhibitor premise, so its alert
-/// dissolves too — exactly the intended clinical consequence of stopping the
-/// inhibitor.
+/// Belief revision (non-monotonic), mechanism-side: an alert is not "baked in" —
+/// it is re-derived from current facts. The clinically canonical move: the
+/// interacting drug is discontinued. Retracting "fluconazole inhibits CYP2C9"
+/// removes the mechanism's entry premise, so the concentration rise, the toxicity
+/// risk, and the alert all dissolve in one step. Phenytoin shares the same
+/// inhibitor premise, so its alert dissolves too. Both substrates are in Adam's
+/// regimen here, so the patient-gated alert rule fires for both before the retraction.
 #[test]
 fn ddi_belief_revision_discontinue_inhibitor() {
     let engine = NibliEngine::new();
@@ -1530,6 +1536,8 @@ fn ddi_belief_revision_discontinue_inhibitor() {
         "la .fenituin. cu se katna la .siptucin.",
         "la .varfarin. cu cinla",
         "la .fenituin. cu cinla",
+        "la .adam. cu pilno la .varfarin.",
+        "la .adam. cu pilno la .fenituin.",
     ] {
         engine.assert_text(line).unwrap();
     }
@@ -1540,7 +1548,7 @@ fn ddi_belief_revision_discontinue_inhibitor() {
         "ganai ge la .flukonazol. cu fanta la .siptucin. gi la .varfarin. cu se katna la .siptucin. gi la .varfarin. cu zenba",
         "ganai ge la .flukonazol. cu fanta la .siptucin. gi la .fenituin. cu se katna la .siptucin. gi la .fenituin. cu zenba",
         "ro lo xukmi poi zenba poi cinla cu ckape",
-        "ro lo xukmi poi ckape cu kajde",
+        "ro da zo'u ganai ge da ckape gi la .adam. cu pilno da gi da kajde",
     ] {
         engine.assert_text(line).unwrap();
     }
@@ -1573,6 +1581,59 @@ fn ddi_belief_revision_discontinue_inhibitor() {
     assert_false(
         &engine.query_holds("la .fenituin. cu kajde").unwrap(),
         "Discontinuing the shared inhibitor also clears the phenytoin alert",
+    );
+}
+
+/// Belief revision (non-monotonic), patient-side: discontinuing a drug from the
+/// REGIMEN withdraws its alert while the drug-level toxicity risk stays derivable.
+/// Retracting "Adam takes warfarin" flips the warfarin alert FALSE, but warfarin is
+/// still pharmacologically at risk (ckape) — the alert is gated on the regimen, the
+/// risk is not. This is the patient-specific belief-revision move the regimen-gated
+/// alert rule enables (and it exercises retract+rebuild over a `pilno` ground fact
+/// without the historical ground-conditional hang).
+#[test]
+fn ddi_belief_revision_discontinue_drug() {
+    let engine = NibliEngine::new();
+    for line in [
+        "la .varfarin. cu xukmi",
+        "la .flukonazol. cu xukmi",
+        "la .varfarin. cu se katna la .siptucin.",
+        "la .varfarin. cu cinla",
+        "la .flukonazol. cu fanta la .siptucin.",
+    ] {
+        engine.assert_text(line).unwrap();
+    }
+    let takes_id = engine
+        .assert_text("la .adam. cu pilno la .varfarin.")
+        .unwrap();
+    for line in [
+        "ganai ge la .flukonazol. cu fanta la .siptucin. gi la .varfarin. cu se katna la .siptucin. gi la .varfarin. cu zenba",
+        "ro lo xukmi poi zenba poi cinla cu ckape",
+        "ro da zo'u ganai ge da ckape gi la .adam. cu pilno da gi da kajde",
+    ] {
+        engine.assert_text(line).unwrap();
+    }
+
+    // ── Before: warfarin is at risk AND Adam takes it → alert ──
+    assert_true(
+        &engine.query_holds("la .varfarin. cu ckape").unwrap(),
+        "Warfarin is at toxicity risk",
+    );
+    assert_true(
+        &engine.query_holds("la .varfarin. cu kajde").unwrap(),
+        "Adam takes warfarin, so its alert fires",
+    );
+
+    // ── Discontinue warfarin for Adam: retract the regimen fact ──
+    engine.retract_fact(takes_id).unwrap();
+
+    assert_true(
+        &engine.query_holds("la .varfarin. cu ckape").unwrap(),
+        "Warfarin is STILL pharmacologically at toxicity risk (drug-level, not regimen-gated)",
+    );
+    assert_false(
+        &engine.query_holds("la .varfarin. cu kajde").unwrap(),
+        "But the alert is withdrawn: Adam no longer takes warfarin",
     );
 }
 

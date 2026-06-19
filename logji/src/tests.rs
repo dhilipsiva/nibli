@@ -294,6 +294,90 @@ fn test_xorlo_presupposition_with_real_entity() {
 }
 
 #[test]
+fn test_prenex_universal_asserts_no_presupposition_witness() {
+    // A PRENEX universal (var `da`, no `lo`/`le` gadri) is a pure logical ∀ with
+    // NO existential import, so it must NOT assert a presupposition witness —
+    // unlike a DESCRIPTION universal (`_v`-named, from `ro lo`/`ro le`). This
+    // guards both the suppression (the DDI alert prenex would otherwise assert a
+    // phantom `pilno(adam, sk)`, polluting the regimen count) and the preserved
+    // `ro lo` contract.
+    let kb = new_kb();
+    // ForAll("da", Or(Not(broda(da)), brodb(da))) — a prenex-named universal var.
+    let mut nodes = Vec::new();
+    let restrict = pred(
+        &mut nodes,
+        "broda",
+        vec![
+            LogicalTerm::Variable("da".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let body = pred(
+        &mut nodes,
+        "brodb",
+        vec![
+            LogicalTerm::Variable("da".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let neg = not(&mut nodes, restrict);
+    let disj = or(&mut nodes, neg, body);
+    let root = forall(&mut nodes, "da", disj);
+    assert_buf(
+        &kb,
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        },
+    );
+    // ∃x. broda(x) must be FALSE — no presupposition witness was asserted.
+    let mut q = Vec::new();
+    let qb = pred(
+        &mut q,
+        "broda",
+        vec![
+            LogicalTerm::Variable("x".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let qroot = exists(&mut q, "x", qb);
+    assert!(
+        !query(
+            &kb,
+            LogicBuffer {
+                nodes: q,
+                roots: vec![qroot]
+            }
+        ),
+        "a prenex universal must NOT assert a presupposition witness"
+    );
+
+    // Contrast: a DESCRIPTION universal (`_v`-named) DOES assert the witness.
+    let kb2 = new_kb();
+    assert_buf(&kb2, make_universal("gerku", "danlu"));
+    let mut q2 = Vec::new();
+    let qb2 = pred(
+        &mut q2,
+        "gerku",
+        vec![
+            LogicalTerm::Variable("x".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let qroot2 = exists(&mut q2, "x", qb2);
+    assert!(
+        query(
+            &kb2,
+            LogicBuffer {
+                nodes: q2,
+                roots: vec![qroot2]
+            }
+        ),
+        "a description universal must still assert its presupposition witness"
+    );
+}
+
+#[test]
 fn test_xorlo_presupposition_transitive() {
     // ro lo gerku cu danlu, ro lo danlu cu xanlu
     // Each universal creates its own presupposition Skolem
