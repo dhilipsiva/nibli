@@ -4,7 +4,7 @@
 //! Results stored in `target/criterion/`.
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nibli_engine::{EngineLogicalTerm, NibliEngine};
+use nibli_engine::{EngineLogicalTerm, EngineQueryResult, NibliEngine};
 
 /// Assert N ground facts via direct assertion (bypasses parser).
 fn populate_kb(engine: &NibliEngine, n: usize) {
@@ -43,8 +43,32 @@ fn bench_query_latency(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &n| {
             let engine = NibliEngine::new();
             populate_kb(&engine, n);
+            // Assert one target fact for a valid cmevla so the query RESOLVES (a
+            // hit) instead of scanning all N facts to fail. `adam` is nameable from
+            // surface-Lojban query text; the `entN` fillers are direct-injected
+            // constants and are not valid Lojban names, so the query cannot target
+            // them — which is why the old `.i la .adam. gerku` query was a guaranteed
+            // miss (it timed the failure path, not real query resolution).
+            engine
+                .assert_fact_direct(
+                    "gerku".to_string(),
+                    vec![
+                        EngineLogicalTerm::Constant("adam".to_string()),
+                        EngineLogicalTerm::Unspecified,
+                    ],
+                )
+                .unwrap();
+            // Guard so the bench can never silently regress to a miss: the query
+            // must resolve TRUE against the KB, else we are timing the failure path.
+            assert!(
+                matches!(
+                    engine.query_holds("la .adam. cu gerku").unwrap(),
+                    EngineQueryResult::True
+                ),
+                "query_latency bench must measure a hit, not a miss"
+            );
             b.iter(|| {
-                engine.query_holds(".i la .adam. gerku").unwrap();
+                engine.query_holds("la .adam. cu gerku").unwrap();
             });
         });
     }

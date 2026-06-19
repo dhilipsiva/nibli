@@ -188,6 +188,13 @@ test-engine:
 test-server:
     cargo test -p nibli-server -- --nocapture
 
+# Run gasnu host unit tests (pure functions: trap classification, error/verdict
+# formatting, arithmetic). gasnu is a normal bin with no lib target, so the
+# workspace `test` recipe (`cargo test --lib`) skips it — this gates it in `ci`.
+# WASM-independent: does not need the lasna build.
+test-gasnu:
+    cargo test -p gasnu
+
 # Start the Python reference compute backend
 backend:
     python3 python/nibli_backend.py
@@ -269,8 +276,20 @@ gossip-webrtc-b:
 # Run every test suite (unit + integration + Python + store + tavla)
 test-all: test test-engine test-store test-tavla test-backend test-classifier
 
-# CI gate for the hardened runtime and transport surface
-ci: fmt-check clippy-runtime test test-engine test-backend test-store test-server test-gossip-e2e test-persistence-replay test-sync-retraction verify-harness verify-book-vocab
+# CI gate for the hardened runtime and transport surface (fast; native only — no
+# WASM build). For the WASM behavioral smokes too, run `just ci-all`.
+ci: fmt-check clippy-runtime test test-engine test-gasnu test-backend test-store test-server test-gossip-e2e test-persistence-replay test-sync-retraction verify-harness verify-book-vocab
+
+# WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
+# verify-book-capture). Bundles the six gasnu smokes; each depends on
+# `build-wasm build-gasnu`, so `just` builds the component + host once, then runs
+# all six: fuel exhaustion + post-trap recovery + journal replay (trap-recovery),
+# plus the script transcript, go'i, persist-replay, NAF-note, and :debug round-trip.
+ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-debug
+
+# Comprehensive pre-push / pre-release gate: the fast native `ci` plus the WASM
+# behavioral smokes. `ci` alone does not exercise the WASM component.
+ci-all: ci ci-wasm
 
 # Build the nibli-validate binary (batch Lojban validation via stdin)
 build-validate:

@@ -1799,6 +1799,68 @@ mod tests {
         assert!(out.starts_with("[Host Error]"), "got: {out}");
     }
 
+    // ── classify_resource_trap + query-verdict formatting ──
+    //
+    // The non-query path (`format_host_error`, above) renders a trap as a `[Limit]`
+    // line; a `?` query instead translates the SAME trap into a four-valued
+    // RESOURCE_EXCEEDED verdict. These pin both halves deterministically — the
+    // classification of a real grow-denial / fuel chain, and the verdict rendering
+    // — so the Memory path is gated in CI without a (build-fragile) live grow-trap.
+
+    #[test]
+    fn test_classify_resource_trap_memory_grow_denial() {
+        // StoreLimits with trap_on_grow_failure(true) denies growth with this
+        // message as the CAUSE under a backtrace context line.
+        let e = anyhow::anyhow!("forcing trap when growing memory to 1073741824 bytes")
+            .context("error while executing at wasm backtrace: ...");
+        assert!(matches!(
+            classify_resource_trap(&e),
+            Some(EngineResourceKind::Memory)
+        ));
+    }
+
+    #[test]
+    fn test_classify_resource_trap_fuel_typed() {
+        // The real shape of a fuel trap: the typed Trap::OutOfFuel is the root cause.
+        let e = anyhow::Error::from(wasmtime::Trap::OutOfFuel)
+            .context("error while executing at wasm backtrace: ...");
+        assert!(matches!(
+            classify_resource_trap(&e),
+            Some(EngineResourceKind::Fuel)
+        ));
+    }
+
+    #[test]
+    fn test_classify_resource_trap_other_is_none() {
+        // A genuine non-resource trap (post-trap re-entry) is not a resource limit.
+        let e = anyhow::anyhow!("wasm trap: cannot enter component instance");
+        assert!(classify_resource_trap(&e).is_none());
+    }
+
+    #[test]
+    fn test_format_query_result_resource_exceeded_kinds() {
+        // A query that traps on a host limit becomes one of the four-valued
+        // outputs; each kind renders with its lowercase tag.
+        assert_eq!(
+            format_query_result(&EngineQueryResult::ResourceExceeded(
+                EngineResourceKind::Memory
+            )),
+            "RESOURCE_EXCEEDED (memory)"
+        );
+        assert_eq!(
+            format_query_result(&EngineQueryResult::ResourceExceeded(
+                EngineResourceKind::Fuel
+            )),
+            "RESOURCE_EXCEEDED (fuel)"
+        );
+        assert_eq!(
+            format_query_result(&EngineQueryResult::ResourceExceeded(
+                EngineResourceKind::Depth
+            )),
+            "RESOURCE_EXCEEDED (depth)"
+        );
+    }
+
     #[test]
     fn test_store_limits_builder_creates_valid_limits() {
         // Verify StoreLimitsBuilder API works as expected
