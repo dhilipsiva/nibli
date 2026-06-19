@@ -29,13 +29,16 @@ struct LasnaPipeline;
 pub struct Session {
     kb: logji::KnowledgeBase,
     compute_predicates: RefCell<HashSet<String>>,
-    last_relation: RefCell<Option<SelbriSnapshot>>,
+    last_relation: RefCell<Option<BridiSnapshot>>,
 }
 
-/// A self-contained clone of a selbri subtree, storable across calls.
-/// All indices are internal to the snapshot's own vecs.
+/// A self-contained clone of a full bridi (its sentence + selbri + sumti
+/// subtrees), storable across calls. All indices are internal to the snapshot's
+/// own vecs; `root` is a SENTENCE id (the antecedent bridi) so a bare `go'i`
+/// can repeat the whole previous predication — relation AND sumti — not just the
+/// selbri.
 #[derive(Clone)]
-struct SelbriSnapshot {
+struct BridiSnapshot {
     selbris: Vec<gerna_ast::Selbri>,
     sumtis: Vec<gerna_ast::Sumti>,
     sentences: Vec<gerna_ast::Sentence>,
@@ -284,9 +287,12 @@ fn batch_eval_via_host(requests: &[logji::ComputeRequest]) -> Vec<Result<bool, S
 
 // ─── Selbri snapshot: extract & graft subtrees for cross-call go'i ───
 
-/// Extract the self-contained subtree rooted at `root_id` from `ast`.
-fn extract_selbri_snapshot(ast: &gerna_ast::AstBuffer, root_id: u32) -> SelbriSnapshot {
-    let mut snap = SelbriSnapshot {
+/// Extract the self-contained full-bridi subtree rooted at the SENTENCE
+/// `sentence_id` from `ast` (relation + every head/tail term sumti, preserving
+/// tense/negation/attitudinal). `visit_sentence` already deep-clones a `Simple`
+/// bridi, so this is a thin wrapper over it.
+fn extract_bridi_snapshot(ast: &gerna_ast::AstBuffer, sentence_id: u32) -> BridiSnapshot {
+    let mut snap = BridiSnapshot {
         selbris: Vec::new(),
         sumtis: Vec::new(),
         sentences: Vec::new(),
@@ -295,14 +301,14 @@ fn extract_selbri_snapshot(ast: &gerna_ast::AstBuffer, root_id: u32) -> SelbriSn
     let mut sm = HashMap::new();
     let mut um = HashMap::new();
     let mut tm = HashMap::new();
-    snap.root = visit_selbri(ast, root_id, &mut snap, &mut sm, &mut um, &mut tm);
+    snap.root = visit_sentence(ast, sentence_id, &mut snap, &mut sm, &mut um, &mut tm);
     snap
 }
 
 fn visit_selbri(
     ast: &gerna_ast::AstBuffer,
     id: u32,
-    snap: &mut SelbriSnapshot,
+    snap: &mut BridiSnapshot,
     sm: &mut HashMap<u32, u32>,
     um: &mut HashMap<u32, u32>,
     tm: &mut HashMap<u32, u32>,
@@ -358,7 +364,7 @@ fn visit_selbri(
 fn visit_sumti(
     ast: &gerna_ast::AstBuffer,
     id: u32,
-    snap: &mut SelbriSnapshot,
+    snap: &mut BridiSnapshot,
     sm: &mut HashMap<u32, u32>,
     um: &mut HashMap<u32, u32>,
     tm: &mut HashMap<u32, u32>,
@@ -422,7 +428,7 @@ fn visit_sumti(
 fn visit_sentence(
     ast: &gerna_ast::AstBuffer,
     id: u32,
-    snap: &mut SelbriSnapshot,
+    snap: &mut BridiSnapshot,
     sm: &mut HashMap<u32, u32>,
     um: &mut HashMap<u32, u32>,
     tm: &mut HashMap<u32, u32>,
@@ -478,9 +484,10 @@ fn visit_sentence(
     new_id
 }
 
-/// Graft a snapshot into an existing AstBuffer, consuming it. Returns the new selbri root index.
-/// Mutates indices in place then moves nodes via `append` — zero cloning.
-fn graft_snapshot(ast: &mut gerna_ast::AstBuffer, snap: &mut SelbriSnapshot) -> u32 {
+/// Graft a snapshot into an existing AstBuffer, consuming it. Returns the new
+/// SENTENCE (bridi) root index. Mutates indices in place then moves nodes via
+/// `append` — zero cloning.
+fn graft_snapshot(ast: &mut gerna_ast::AstBuffer, snap: &mut BridiSnapshot) -> u32 {
     let sb = ast.selbris.len() as u32;
     let ub = ast.sumtis.len() as u32;
     let tb = ast.sentences.len() as u32;
@@ -493,7 +500,8 @@ fn graft_snapshot(ast: &mut gerna_ast::AstBuffer, snap: &mut SelbriSnapshot) -> 
     for s in &mut snap.sentences {
         rebase_sentence_inplace(s, sb, ub, tb);
     }
-    let root = snap.root + sb;
+    // `root` is a SENTENCE id, so it rebases by the sentence base (`tb`).
+    let root = snap.root + tb;
     ast.selbris.append(&mut snap.selbris);
     ast.sumtis.append(&mut snap.sumtis);
     ast.sentences.append(&mut snap.sentences);
@@ -593,18 +601,38 @@ fn resolve_sentence_go_i(
     match sentence {
         gerna_ast::Sentence::Simple(mut bridi) => {
             let selbri_id = bridi.relation;
-            match &ast.selbris[selbri_id as usize] {
-                gerna_ast::Selbri::Root(name) if name == "go'i" => {
-                    let resolved_id = current.ok_or_else(|| {
-                        "go'i has no antecedent (no previous assertion)".to_string()
-                    })?;
-                    bridi.relation = resolved_id;
+            let is_go_i = matches!(&ast.selbris[selbri_id as usize], gerna_ast::Selbri::Root(n) if n == "go'i");
+            if is_go_i {
+                let antecedent_sid = current
+                    .ok_or_else(|| "go'i has no antecedent (no previous assertion)".to_string())?;
+                let antecedent = match &ast.sentences[antecedent_sid as usize] {
+                    gerna_ast::Sentence::Simple(b) => b.clone(),
+                    _ => return Err("go'i antecedent is not a simple bridi".to_string()),
+                };
+                // A BARE go'i (`go'i` / `? go'i`) supplies no sumti, tense,
+                // negation, or attitudinal of its own → repeat the WHOLE previous
+                // bridi. The antecedent's term ids are already valid in
+                // `ast.sumtis` (grafted from a snapshot or a live in-buffer
+                // sentence), so the bridi is copied with NO extra offset.
+                let bare = bridi.head_terms.is_empty()
+                    && bridi.tail_terms.is_empty()
+                    && bridi.tense.is_none()
+                    && !bridi.negated
+                    && bridi.attitudinal.is_none();
+                if bare {
+                    ast.sentences[sentence_idx] = gerna_ast::Sentence::Simple(antecedent);
+                } else {
+                    // Partial go'i (`do go'i`, `na go'i`, `ba go'i`): keep the
+                    // go'i bridi's own sumti/tense/negation and only repoint the
+                    // relation. Full place/modifier merge is a documented remainder.
+                    bridi.relation = antecedent.relation;
                     ast.sentences[sentence_idx] = gerna_ast::Sentence::Simple(bridi);
                 }
-                _ => {
-                    *current = Some(selbri_id);
-                }
             }
+            // The resolved bridi (whether it was go'i or explicit) becomes the
+            // antecedent for the next go'i — `mi klama .i do go'i .i go'i` must
+            // chain the resolved `klama(do)`, not the original `klama(mi)`.
+            *current = Some(sentence_idx as u32);
             Ok(())
         }
         gerna_ast::Sentence::Connected((_, left_idx, right_idx)) => {
@@ -623,7 +651,7 @@ fn resolve_sentence_go_i(
 /// Skips snapshot grafting entirely if no go'i is present in the parsed text.
 fn resolve_go_i(
     ast: &mut gerna_ast::AstBuffer,
-    last_snapshot: &mut Option<SelbriSnapshot>,
+    last_snapshot: &mut Option<BridiSnapshot>,
 ) -> Result<Option<u32>, String> {
     let has_go_i = ast
         .selbris
@@ -632,9 +660,9 @@ fn resolve_go_i(
     let mut current: Option<u32> = if has_go_i {
         // Graft from a CLONE: `graft_snapshot` rebases + drains its vecs via
         // `Vec::append`. Without the clone, a second `? go'i` would graft the
-        // drained husk, producing an out-of-bounds selbri index → a WASM
-        // component trap. Cloning keeps the stored snapshot intact, so go'i is
-        // idempotent across calls.
+        // drained husk, producing an out-of-bounds index → a WASM component
+        // trap. Cloning keeps the stored snapshot intact, so go'i is idempotent
+        // across calls.
         last_snapshot
             .as_ref()
             .map(|snap| graft_snapshot(ast, &mut snap.clone()))
@@ -760,16 +788,10 @@ fn sumti_reaches_go_i(
 
 fn compile_pipeline(
     text: &str,
-    last_snapshot: &mut Option<SelbriSnapshot>,
+    last_snapshot: &mut Option<BridiSnapshot>,
     compute_predicates: &HashSet<String>,
-) -> Result<
-    (
-        logji_logic::LogicBuffer,
-        Option<SelbriSnapshot>,
-        Vec<String>,
-    ),
-    export_err::NibliError,
-> {
+) -> Result<(logji_logic::LogicBuffer, Option<BridiSnapshot>, Vec<String>), export_err::NibliError>
+{
     let parse_result =
         gerna::parse_text_native(text.to_string()).map_err(convert_pipeline_error)?;
 
@@ -790,9 +812,9 @@ fn compile_pipeline(
         }));
     }
 
-    let last_selbri_id =
+    let last_bridi_sid =
         resolve_go_i(&mut ast, last_snapshot).map_err(|e| export_err::NibliError::Semantic(e))?;
-    let new_snapshot = last_selbri_id.map(|id| extract_selbri_snapshot(&ast, id));
+    let new_snapshot = last_bridi_sid.map(|sid| extract_bridi_snapshot(&ast, sid));
 
     // Call smuni (converts gerna AST → logic buffer internally)
     let mut buf = smuni::compile_from_gerna_ast(ast).map_err(convert_pipeline_error)?;
@@ -860,10 +882,21 @@ impl Session {
         args: Vec<export_logic::LogicalTerm>,
         id: Option<u64>,
     ) -> Result<u64, export_err::NibliError> {
-        *self.last_relation.borrow_mut() = Some(SelbriSnapshot {
+        // Sentence-rooted snapshot: a Simple bridi with EMPTY terms. The
+        // direct-API path does not carry sumti, so a following bare `? go'i`
+        // repeats `relation(zo'e)` (args lost) — same as before this change; the
+        // surface-text path is where the full-bridi go'i fix applies.
+        *self.last_relation.borrow_mut() = Some(BridiSnapshot {
             selbris: vec![gerna_ast::Selbri::Root(relation.clone())],
             sumtis: vec![],
-            sentences: vec![],
+            sentences: vec![gerna_ast::Sentence::Simple(gerna_ast::Bridi {
+                relation: 0,
+                head_terms: vec![],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            })],
             root: 0,
         });
         let logji_args: Vec<logji_logic::LogicalTerm> =
@@ -1036,6 +1069,15 @@ mod tests {
         }
     }
 
+    /// The selbri at a snapshot's root bridi. The snapshot root is a SENTENCE id,
+    /// so reach the selbri through `sentences[root]` → `Simple(b)` → `b.relation`.
+    fn snapshot_root_selbri(snap: &BridiSnapshot) -> &gerna_ast::Selbri {
+        match &snap.sentences[snap.root as usize] {
+            gerna_ast::Sentence::Simple(b) => &snap.selbris[b.relation as usize],
+            _ => panic!("expected Simple bridi at snapshot root"),
+        }
+    }
+
     fn make_two_sentence_ast(
         mut selbris: Vec<gerna_ast::Selbri>,
         first_relation: u32,
@@ -1079,15 +1121,16 @@ mod tests {
 
     #[test]
     fn test_snapshot_root() {
+        // make_ast builds ONE sentence (id 0); extract from the SENTENCE.
         let ast = make_ast(
             vec![gerna_ast::Selbri::Root("klama".to_string())],
             0,
             vec![0],
         );
-        let snap = extract_selbri_snapshot(&ast, 0);
+        let snap = extract_bridi_snapshot(&ast, 0);
         assert_eq!(snap.selbris.len(), 1);
         assert_eq!(snap.root, 0);
-        assert!(matches!(&snap.selbris[0], gerna_ast::Selbri::Root(n) if n == "klama"));
+        assert!(matches!(snapshot_root_selbri(&snap), gerna_ast::Selbri::Root(n) if n == "klama"));
     }
 
     #[test]
@@ -1100,10 +1143,10 @@ mod tests {
             1,
             vec![0],
         );
-        let snap = extract_selbri_snapshot(&ast, 1);
+        let snap = extract_bridi_snapshot(&ast, 0);
         assert_eq!(snap.selbris.len(), 2);
         assert!(matches!(
-            &snap.selbris[snap.root as usize],
+            snapshot_root_selbri(&snap),
             gerna_ast::Selbri::Negated(_)
         ));
     }
@@ -1118,10 +1161,10 @@ mod tests {
             1,
             vec![0],
         );
-        let snap = extract_selbri_snapshot(&ast, 1);
+        let snap = extract_bridi_snapshot(&ast, 0);
         assert_eq!(snap.selbris.len(), 2);
         assert!(matches!(
-            &snap.selbris[snap.root as usize],
+            snapshot_root_selbri(&snap),
             gerna_ast::Selbri::Converted((Conversion::Se, _))
         ));
     }
@@ -1137,10 +1180,10 @@ mod tests {
             2,
             vec![0],
         );
-        let snap = extract_selbri_snapshot(&ast, 2);
+        let snap = extract_bridi_snapshot(&ast, 0);
         assert_eq!(snap.selbris.len(), 3);
         assert!(
-            matches!(&snap.selbris[snap.root as usize], gerna_ast::Selbri::Negated(inner) if {
+            matches!(snapshot_root_selbri(&snap), gerna_ast::Selbri::Negated(inner) if {
                 matches!(&snap.selbris[*inner as usize], gerna_ast::Selbri::Converted((Conversion::Se, inner2)) if {
                     matches!(&snap.selbris[*inner2 as usize], gerna_ast::Selbri::Root(n) if n == "klama")
                 })
@@ -1150,26 +1193,46 @@ mod tests {
 
     #[test]
     fn test_graft_rebase_indices() {
+        // A sentence-rooted snapshot of `klama(mi)` grafted onto a non-empty
+        // buffer: every selbri/sumti/sentence index shifts by the base lengths.
         let mut ast = gerna_ast::AstBuffer {
             selbris: vec![gerna_ast::Selbri::Root("existing".to_string())],
+            sumtis: vec![Sumti::ProSumti("ti".to_string())],
+            sentences: vec![gerna_ast::Sentence::Simple(Bridi {
+                relation: 0,
+                head_terms: vec![0],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            })],
+            roots: vec![0],
+        };
+        let mut snap = BridiSnapshot {
+            selbris: vec![gerna_ast::Selbri::Root("klama".to_string())],
             sumtis: vec![Sumti::ProSumti("mi".to_string())],
-            sentences: vec![],
-            roots: vec![],
+            sentences: vec![gerna_ast::Sentence::Simple(Bridi {
+                relation: 0,
+                head_terms: vec![0],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            })],
+            root: 0,
         };
-        let mut snap = SelbriSnapshot {
-            selbris: vec![
-                gerna_ast::Selbri::Root("klama".to_string()),
-                gerna_ast::Selbri::Negated(0),
-            ],
-            sumtis: vec![],
-            sentences: vec![],
-            root: 1,
-        };
+        // sb=1, ub=1, tb=1 → the grafted sentence lands at index 1.
         let grafted_root = graft_snapshot(&mut ast, &mut snap);
-        assert_eq!(grafted_root, 2);
-        assert_eq!(ast.selbris.len(), 3);
+        assert_eq!(grafted_root, 1);
         assert!(matches!(&ast.selbris[1], gerna_ast::Selbri::Root(n) if n == "klama"));
-        assert!(matches!(&ast.selbris[2], gerna_ast::Selbri::Negated(id) if *id == 1));
+        assert!(matches!(&ast.sumtis[1], Sumti::ProSumti(n) if n == "mi"));
+        match &ast.sentences[1] {
+            gerna_ast::Sentence::Simple(b) => {
+                assert_eq!(b.relation, 1, "relation rebased by sb");
+                assert_eq!(b.head_terms, vec![1], "head_terms rebased by ub");
+            }
+            _ => panic!("expected Simple bridi"),
+        }
     }
 
     #[test]
@@ -1273,10 +1336,19 @@ mod tests {
 
     #[test]
     fn test_resolve_go_i_cross_call_root() {
-        let snap = SelbriSnapshot {
+        // `mi go'i` (a PARTIAL go'i, head_terms=[mi]) against a `klama` snapshot:
+        // repoint-only keeps `mi`, repoints the relation to klama.
+        let snap = BridiSnapshot {
             selbris: vec![gerna_ast::Selbri::Root("klama".to_string())],
             sumtis: vec![],
-            sentences: vec![],
+            sentences: vec![gerna_ast::Sentence::Simple(Bridi {
+                relation: 0,
+                head_terms: vec![],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            })],
             root: 0,
         };
         let mut ast = make_ast(
@@ -1294,14 +1366,21 @@ mod tests {
 
     #[test]
     fn test_resolve_go_i_cross_call_negated() {
-        let snap = SelbriSnapshot {
+        let snap = BridiSnapshot {
             selbris: vec![
                 gerna_ast::Selbri::Root("klama".to_string()),
                 gerna_ast::Selbri::Negated(0),
             ],
             sumtis: vec![],
-            sentences: vec![],
-            root: 1,
+            sentences: vec![gerna_ast::Sentence::Simple(Bridi {
+                relation: 1,
+                head_terms: vec![],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            })],
+            root: 0,
         };
         let mut ast = make_ast(
             vec![gerna_ast::Selbri::Root("go'i".to_string())],
@@ -1328,7 +1407,7 @@ mod tests {
             0,
             vec![0],
         );
-        let snap = extract_selbri_snapshot(&src, 0);
+        let snap = extract_bridi_snapshot(&src, 0);
         let mut last = Some(snap);
         let mut ast = make_ast(
             vec![gerna_ast::Selbri::Root("go'i".to_string())],
@@ -1342,8 +1421,61 @@ mod tests {
             !kept.selbris.is_empty(),
             "snapshot selbris were drained by the graft"
         );
+        assert!(matches!(snapshot_root_selbri(&kept), gerna_ast::Selbri::Root(n) if n == "klama"));
+    }
+
+    #[test]
+    fn go_i_bare_inherits_full_bridi_terms() {
+        // `mi klama` (snapshot) then a BARE `? go'i` (no terms) repeats the WHOLE
+        // bridi — the resolved go'i bridi inherits the antecedent's `mi` term.
+        // RED before the full-bridi snapshot fix (head_terms stayed empty →
+        // `klama(zo'e)` → FALSE).
+        let src = make_ast(
+            vec![gerna_ast::Selbri::Root("klama".to_string())],
+            0,
+            vec![0], // head_terms = [mi]
+        );
+        let mut last = Some(extract_bridi_snapshot(&src, 0));
+        // Bare `? go'i`: empty head/tail terms (the observative parse).
+        let mut ast = make_ast(vec![gerna_ast::Selbri::Root("go'i".to_string())], 0, vec![]);
+        resolve_go_i(&mut ast, &mut last).unwrap();
+        let b = match &ast.sentences[0] {
+            gerna_ast::Sentence::Simple(b) => b.clone(),
+            _ => panic!("expected Simple"),
+        };
         assert!(
-            matches!(&kept.selbris[kept.root as usize], gerna_ast::Selbri::Root(n) if n == "klama")
+            !b.head_terms.is_empty(),
+            "bare go'i did not inherit the antecedent's terms"
+        );
+        assert!(matches!(
+            &ast.sumtis[b.head_terms[0] as usize],
+            gerna_ast::Sumti::ProSumti(n) if n == "mi"
+        ));
+    }
+
+    #[test]
+    fn go_i_bare_inherits_tense() {
+        // `mi pu klama` (past) then bare `? go'i` repeats the TENSE too — a win
+        // the selbri-only snapshot could never produce (tense lives on the Bridi,
+        // not the Selbri).
+        let mut src = make_ast(
+            vec![gerna_ast::Selbri::Root("klama".to_string())],
+            0,
+            vec![0],
+        );
+        if let gerna_ast::Sentence::Simple(b) = &mut src.sentences[0] {
+            b.tense = Some(gerna_ast::Tense::Pu);
+        }
+        let mut last = Some(extract_bridi_snapshot(&src, 0));
+        let mut ast = make_ast(vec![gerna_ast::Selbri::Root("go'i".to_string())], 0, vec![]);
+        resolve_go_i(&mut ast, &mut last).unwrap();
+        let b = match &ast.sentences[0] {
+            gerna_ast::Sentence::Simple(b) => b.clone(),
+            _ => panic!("expected Simple"),
+        };
+        assert!(
+            matches!(b.tense, Some(gerna_ast::Tense::Pu)),
+            "bare go'i did not inherit the antecedent's tense"
         );
     }
 
@@ -1359,7 +1491,7 @@ mod tests {
             0,
             vec![0],
         );
-        let mut last = Some(extract_selbri_snapshot(&src, 0));
+        let mut last = Some(extract_bridi_snapshot(&src, 0));
 
         let mut ast1 = make_ast(
             vec![gerna_ast::Selbri::Root("go'i".to_string())],
@@ -1392,7 +1524,7 @@ mod tests {
             0,
             vec![0],
         );
-        let mut last = Some(extract_selbri_snapshot(&src, 0));
+        let mut last = Some(extract_bridi_snapshot(&src, 0));
         // selbris: [0]=sutra, [1]=go'i, [2]=Tanru(0,1); root bridi.relation = 2.
         let mut ast = make_ast(
             vec![

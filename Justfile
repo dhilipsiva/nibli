@@ -87,6 +87,19 @@ smoke-gasnu-goi: build-wasm build-gasnu
         if echo "$out" | grep -qF 'cannot enter component instance'; then echo 'FAIL: session bricked after goi'; exit 1; fi; \
         echo 'PASS: repeated ? goi resolves correctly (TRUE) with no trap'
 
+# go'i full-bridi smoke: a BARE `? go'i` (no sumti) must repeat the WHOLE previous
+# bridi, inheriting its sumti. After `la .adam. cu gerku`, a bare `? go'i` queries
+# gerku(adam) -> TRUE. Pre-fix the selbri-only snapshot queried gerku(zo'e) -> FALSE.
+# Pre-release gate (needs the WASM build; not part of `ci`).
+smoke-gasnu-goi-bare: build-wasm build-gasnu
+    @echo "Smoke-testing bare go'i full-bridi inheritance (? go'i repeats the whole bridi)..."
+    @out=$(printf 'la .adam. cu gerku\n? go'\''i\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$out"; \
+        echo "$out" | grep -qF '[Query] TRUE' || { echo 'FAIL: bare ? goi did not inherit the subject (gerku(zoe) instead of gerku(adam))'; exit 1; }; \
+        if echo "$out" | grep -qF 'cannot enter component instance'; then echo 'FAIL: session bricked'; exit 1; fi; \
+        echo 'PASS: bare ? goi repeats the full previous bridi (gerku(adam) TRUE)'
+
 # Persistent restart-replay smoke: prove the live session's fact-ids stay equal
 # to the durable store's across a reopen, INCLUDING a tombstone gap. Run-1
 # asserts 3 facts and retracts the middle one; run-2 reopens the SAME db and must
@@ -285,7 +298,7 @@ ci: fmt-check clippy-runtime test test-engine test-gasnu test-backend test-store
 # `build-wasm build-gasnu`, so `just` builds the component + host once, then runs
 # all six: fuel exhaustion + post-trap recovery + journal replay (trap-recovery),
 # plus the script transcript, go'i, persist-replay, NAF-note, and :debug round-trip.
-ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-debug
+ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-debug
 
 # Comprehensive pre-push / pre-release gate: the fast native `ci` plus the WASM
 # behavioral smokes. `ci` alone does not exercise the WASM component.
