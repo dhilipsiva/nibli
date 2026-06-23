@@ -313,9 +313,15 @@ build-validate:
 verify-book: build-validate
     python3 book/tools/verify_book.py --validate-bin target/debug/nibli-validate
 
-# Manuscript gate, vocab-only (fast; no build needed)
+# Manuscript gate, vocab-only (fast; no build needed). book/ is a SEPARATE repo
+# (gitignored here), so it is absent on a fresh checkout / in CI — skip gracefully
+# then, mirroring verify_book.py's own XML-absent skip. Runs the gate when present.
 verify-book-vocab:
-    python3 book/tools/verify_book.py --vocab-only
+    @if [ -f book/tools/verify_book.py ]; then \
+        python3 book/tools/verify_book.py --vocab-only; \
+    else \
+        echo "verify-book-vocab: book/ not checked out (separate repo) — skipping"; \
+    fi
 
 # Capture-regeneration gate: every transcript block in book/ must match a fresh
 # engine capture (book's "captured verbatim" claims, re-checked). Pre-release
