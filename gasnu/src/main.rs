@@ -19,10 +19,7 @@
 
 use anyhow::Result;
 use nibli_protocol::compute_client::{BackendArg, BackendClient, BackendRequest};
-use nibli_protocol::{
-    LogicalTerm as ProtoTerm, ProofRule as ProtoRule, ProofStep as ProtoStep,
-    ProofTrace as ProtoTrace,
-};
+use nibli_protocol::{ProofRule as ProtoRule, ProofStep as ProtoStep, ProofTrace as ProtoTrace};
 use nibli_store::{NibliStore, StoredAssertion, StoredLogicalTerm as StoredTerm};
 use reedline::{DefaultPrompt, Reedline, Signal};
 use std::fs::File;
@@ -86,7 +83,7 @@ use nibli_types::logic::{
 
 /// Format a LogicalTerm from the engine bindings for display.
 fn format_term(term: &EngineLogicalTerm) -> String {
-    term_to_proto(term).trace_display()
+    wit_term_to_types(term).trace_display()
 }
 
 fn format_query_result(result: &EngineQueryResult) -> String {
@@ -160,38 +157,9 @@ fn wit_logic_buffer_to_types(buf: &EngineLogicBuffer) -> NibliBuffer {
     }
 }
 
-/// Convert a WIT LogicalTerm to the protocol wire type.
-fn term_to_proto(term: &EngineLogicalTerm) -> ProtoTerm {
-    match term {
-        EngineLogicalTerm::Constant(s) => ProtoTerm {
-            kind: "constant".to_string(),
-            value: Some(s.clone()),
-            number: None,
-        },
-        EngineLogicalTerm::Variable(s) => ProtoTerm {
-            kind: "variable".to_string(),
-            value: Some(s.clone()),
-            number: None,
-        },
-        EngineLogicalTerm::Description(s) => ProtoTerm {
-            kind: "description".to_string(),
-            value: Some(s.clone()),
-            number: None,
-        },
-        EngineLogicalTerm::Number(n) => ProtoTerm {
-            kind: "number".to_string(),
-            value: None,
-            number: Some(*n),
-        },
-        EngineLogicalTerm::Unspecified => ProtoTerm {
-            kind: "unspecified".to_string(),
-            value: None,
-            number: None,
-        },
-    }
-}
-
-/// Convert a WIT ProofRule to the protocol wire type.
+/// Convert a WIT ProofRule to the protocol wire type. Embedded terms reuse
+/// `wit_term_to_types` (WIT enum → canonical `LogicalTerm` enum) — the proto term
+/// is now that same canonical enum, so no separate term converter is needed.
 fn rule_to_proto(rule: &ProofRule) -> ProtoRule {
     match rule {
         ProofRule::Conjunction => ProtoRule::Conjunction,
@@ -201,15 +169,15 @@ fn rule_to_proto(rule: &ProofRule) -> ProtoRule {
         ProofRule::ModalPassthrough(s) => ProtoRule::ModalPassthrough { kind: s.clone() },
         ProofRule::ExistsWitness((var, term)) => ProtoRule::ExistsWitness {
             var: var.clone(),
-            term: term_to_proto(term),
+            term: wit_term_to_types(term),
         },
         ProofRule::ExistsFailed => ProtoRule::ExistsFailed,
         ProofRule::ForallVacuous => ProtoRule::ForallVacuous,
         ProofRule::ForallVerified(entities) => ProtoRule::ForallVerified {
-            entities: entities.iter().map(term_to_proto).collect(),
+            entities: entities.iter().map(wit_term_to_types).collect(),
         },
         ProofRule::ForallCounterexample(term) => ProtoRule::ForallCounterexample {
-            entity: term_to_proto(term),
+            entity: wit_term_to_types(term),
         },
         ProofRule::CountResult((expected, actual)) => ProtoRule::CountResult {
             expected: *expected,

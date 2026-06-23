@@ -14,17 +14,6 @@ long tail below covers correctness remainders, documentation-vs-code mismatches,
 (Panel provenance: 35 agents, 11 confirmed + 3 partial + 0 refuted; full output in
 `code-review-panel-2026-06-10.json`.)
 
-## P0 — Rendering consolidation (WS1–WS6 done; one deferred DRY remainder)
-
-- [ ] **(deferred) canonical-`ProofRule`-as-wire-type rewrite** — WS3 consolidated the proof-trace /
-  logical-term conversions (nibli-engine + nibli-wasm now call `nibli_protocol::from_canonical`;
-  nibli-protocol is pure wire types). Three distinct-source lattices remain by design (lasna logji→WIT,
-  gasnu WIT→wire, nibli-protocol canon→wire), so a new `ProofRule` variant still touches a few
-  converters + the WIT + the exhaustiveness guard. The deeper dedup — rewriting the canonical
-  `ProofRule` into the serde/named-field wire shape so a single type crosses all boundaries — was
-  deferred as higher-risk (touches the GraphQL JSON contract). _Location:_ `nibli-types/src/logic.rs`;
-  `nibli-protocol/src/lib.rs`. (dry)
-
 ## P1 — High (soundness + production)
 
 - [ ] **Represent deontic/disjunctive rule ANTECEDENTS (whole-rule tense/deontic is now FAIL-CLOSED; tensed antecedents already work)** — two halves CLOSED: (a) a TENSED ANTECEDENT (`ro lo gerku poi pu citka cu xagji`) compiles and fires (per-condition tense threading in `flatten_conjuncts_through_exists` + `collect_condition_exists` + `build_rule_template_fact[_with_negation]` emitting `StoredFact::with_tense`; matching is tense-exact via `unify_facts`); (b) **WHOLE-RULE tense/deontic is now REJECTED** instead of silently stripped → timeless (the old over-claim). Both shapes are caught with one clear message: a LEADING wrapper (`pu ro lo gerku cu danlu` → `Past(ForAll(...))`, `ei ro lo prenu cu xamgu` → `Obligatory(ForAll(...))`) is routed to the rule path by `node_is_forall_through_tense` (logji/src/kb.rs) — so it gets the clear "whole universal/conditional" message instead of the ground path's misleading "bare disjunction" zero-ingest message — and a SPINE-INTERNAL wrapper from a prenex with a tensed body (`ro da zo'u pu da prami` → `ForAll(Past(...))`) is rejected in `compile_forall_to_rule`'s spine walk. Pinned by `test_whole_rule_*` / `test_tensed_body_universal_*` (logji, incl. a soundness guard that the rejected rule does NOT derive timeless) + `whole_rule_*` / `prenex_tensed_body_universal_rejected` / `untensed_universal_still_compiles_and_fires` (integration); live-probed through the WASM/gasnu component. **Remaining (deferred, completeness not soundness):** DEONTIC (`Obligatory`/`Permitted`) + DISJUNCTIVE rule ANTECEDENTS still fail-closed (`build_rule_template_fact` → `None` → rejection), as does a tensed CONCLUSION — representing them is a future feature. Also: a ground tensed material conditional `Past(Or(Not(P),Q))` is unreachable from surface Lojban (`pu ganai P gi Q` does not parse — tense cannot wrap a sentence connective), so `register_ground_material_conditional`'s tense/deontic strip (logji/src/kb.rs) is dead for the surface path; if a future construct produces it, mirror the rejection there. _Location:_ `logji/src/rules.rs` (`build_rule_template_fact`); `logji/src/kb.rs` (`register_ground_material_conditional` defensive). (completeness)

@@ -556,7 +556,17 @@ impl KnowledgeBase {
             });
             idx
         };
-        Ok((overall, ProofTrace { steps, root }))
+        let naf_dependent = steps
+            .iter()
+            .any(|s| matches!(s.rule, ProofRule::Negation) && s.holds);
+        Ok((
+            overall,
+            ProofTrace {
+                steps,
+                root,
+                naf_dependent,
+            },
+        ))
     }
 
     /// Check entailment with proof trace using iterative deepening.

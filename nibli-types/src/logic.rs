@@ -6,6 +6,7 @@
 /// A logical term — the typed representation of an FOL argument.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 pub enum LogicalTerm {
     /// A bound or free variable (e.g., Skolem variables, universally quantified vars).
     Variable(String),
@@ -17,6 +18,38 @@ pub enum LogicalTerm {
     Unspecified,
     /// Numeric literal (from `li` + PA).
     Number(f64),
+}
+
+impl LogicalTerm {
+    /// Human-readable rendering of a logical term (UI labels / witness display).
+    /// Ported from the former `nibli-protocol` wire-term display.
+    pub fn display(&self) -> String {
+        match self {
+            LogicalTerm::Constant(s) => s.clone(),
+            LogicalTerm::Number(n) => format!("{n}"),
+            LogicalTerm::Variable(s) => s.clone(),
+            LogicalTerm::Description(s) => format!("le_{s}"),
+            LogicalTerm::Unspecified => "(unspecified)".to_string(),
+        }
+    }
+
+    /// Compact textual rendering used in CLI proof traces.
+    /// Ported from the former `nibli-protocol` wire-term `trace_display`.
+    pub fn trace_display(&self) -> String {
+        match self {
+            LogicalTerm::Constant(s) => s.clone(),
+            LogicalTerm::Number(n) => {
+                if *n == (*n as i64) as f64 {
+                    format!("{}", *n as i64)
+                } else {
+                    format!("{n}")
+                }
+            }
+            LogicalTerm::Variable(s) => format!("?{s}"),
+            LogicalTerm::Description(s) => format!("lo {s}"),
+            LogicalTerm::Unspecified => "zo'e".to_string(),
+        }
+    }
 }
 
 /// A node in the flat logic graph. Each variant corresponds to an FOL constructor.
@@ -131,35 +164,70 @@ impl QueryResult {
 }
 
 /// Proof rule applied at a single proof step.
+///
+/// This IS the serde wire type (named fields, `#[serde(tag = "type")]`): the same
+/// type crosses every native boundary (logji → nibli-engine/nibli-wasm → JSON →
+/// nibli-ui). `nibli-protocol` re-exports it and owns only the JSON helpers; the WIT
+/// boundary (lasna/gasnu) keeps its generated tuple-shaped mirror by necessity.
+/// The serde attributes are the JSON contract — do not rename a field or tag.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "type"))]
 pub enum ProofRule {
+    #[cfg_attr(feature = "serde", serde(rename = "conjunction"))]
     Conjunction,
-    DisjunctionCheck(String),
-    DisjunctionIntro(String),
+    #[cfg_attr(feature = "serde", serde(rename = "disjunction_check"))]
+    DisjunctionCheck { detail: String },
+    #[cfg_attr(feature = "serde", serde(rename = "disjunction_intro"))]
+    DisjunctionIntro { side: String },
+    #[cfg_attr(feature = "serde", serde(rename = "negation"))]
     Negation,
-    ModalPassthrough(String),
-    ExistsWitness((String, LogicalTerm)),
+    #[cfg_attr(feature = "serde", serde(rename = "modal_passthrough"))]
+    ModalPassthrough { kind: String },
+    #[cfg_attr(feature = "serde", serde(rename = "exists_witness"))]
+    ExistsWitness { var: String, term: LogicalTerm },
+    #[cfg_attr(feature = "serde", serde(rename = "exists_failed"))]
     ExistsFailed,
+    #[cfg_attr(feature = "serde", serde(rename = "forall_vacuous"))]
     ForallVacuous,
-    ForallVerified(Vec<LogicalTerm>),
-    ForallCounterexample(LogicalTerm),
-    CountResult((u32, u32)),
-    PredicateCheck((String, String)),
-    ComputeCheck((String, String)),
-    Asserted(String),
-    Derived((String, String)),
-    ProofRef(String),
+    #[cfg_attr(feature = "serde", serde(rename = "forall_verified"))]
+    ForallVerified { entities: Vec<LogicalTerm> },
+    #[cfg_attr(feature = "serde", serde(rename = "forall_counterexample"))]
+    ForallCounterexample { entity: LogicalTerm },
+    #[cfg_attr(feature = "serde", serde(rename = "count_result"))]
+    CountResult { expected: u32, actual: u32 },
+    #[cfg_attr(feature = "serde", serde(rename = "predicate_check"))]
+    PredicateCheck { method: String, detail: String },
+    #[cfg_attr(feature = "serde", serde(rename = "compute_check"))]
+    ComputeCheck { method: String, detail: String },
+    #[cfg_attr(feature = "serde", serde(rename = "asserted"))]
+    Asserted { fact: String },
+    #[cfg_attr(feature = "serde", serde(rename = "derived"))]
+    Derived { label: String, fact: String },
+    #[cfg_attr(feature = "serde", serde(rename = "proof_ref"))]
+    ProofRef { fact: String },
     /// Equality substitution: fact proved by substituting equivalent terms.
-    /// Fields: (original fact, du facts used, substituted fact that was found).
-    EqualitySubstitution((String, String, String)),
-    /// Rule was tried but a condition failed. Fields: (rule_label, failed_condition_display).
-    RuleAttemptFailed((String, String)),
-    /// Predicate not found in fact store and no rule could derive it. Field: predicate display.
-    PredicateNotFound(String),
+    /// Fields: original fact, du facts used, substituted fact that was found.
+    #[cfg_attr(feature = "serde", serde(rename = "equality_substitution"))]
+    EqualitySubstitution {
+        original: String,
+        du_facts: String,
+        substituted: String,
+    },
+    /// Rule was tried but a condition failed.
+    #[cfg_attr(feature = "serde", serde(rename = "rule_attempt_failed"))]
+    RuleAttemptFailed {
+        rule_label: String,
+        failed_condition: String,
+    },
+    /// Predicate not found in fact store and no rule could derive it.
+    #[cfg_attr(feature = "serde", serde(rename = "predicate_not_found"))]
+    PredicateNotFound { predicate: String },
 }
 
 /// A single step in a proof trace.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ProofStep {
     pub rule: ProofRule,
     pub holds: bool,
@@ -167,10 +235,16 @@ pub struct ProofStep {
 }
 
 /// Complete proof trace: steps array + root index.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ProofTrace {
     pub steps: Vec<ProofStep>,
     pub root: u32,
+    /// True if any step in this trace used negation-as-failure (CWA assumption).
+    /// Under open-world semantics, NAF-dependent conclusions would be Unknown.
+    /// Populated by logji at trace construction; serialized over the wire.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub naf_dependent: bool,
 }
 
 impl ProofTrace {
@@ -230,11 +304,13 @@ pub struct FactSummary {
 ///   `convert_logical_term_from_export` / `convert_proof_rule` (→ WIT guest types);
 ///   for a new `LogicNode`/`LogicalTerm` variant also `convert_logic_node_to_export`
 ///   / `convert_logic_buffer_to_export` (the `:debug` typed-buffer export)
-/// - `nibli-protocol/src/lib.rs` — `from_canonical_term` / `from_canonical_rule`
-///   (the single canonical→wire converter, shared by nibli-engine + nibli-wasm),
-///   AND the `LogicalTerm` / `ProofRule` wire mirrors (RHS uses *named* fields,
-///   distinct per variant — not mechanical)
-/// - `gasnu/src/main.rs` — `term_to_proto` / `rule_to_proto` (WIT → nibli-protocol);
+/// - `nibli-protocol/src/lib.rs` — **re-exports** `ProofRule`/`ProofStep`/`ProofTrace`
+///   (and `LogicalTerm`) from this crate and owns only the `proof_trace_to_json` /
+///   `proof_trace_from_json` free fns. No wire mirror or `from_canonical_*` converter
+///   remains — `ProofRule` IS the serde wire type (named fields, `serde(tag = "type")`),
+///   so it crosses every native boundary unchanged. The serde renames here are the
+///   JSON contract.
+/// - `gasnu/src/main.rs` — `rule_to_proto` (WIT `proof-rule` → canonical `ProofRule`);
 ///   for a new `LogicNode`/`LogicalTerm` variant also `wit_term_to_types` /
 ///   `wit_logic_node_to_types` / `wit_logic_buffer_to_types` (WIT → `nibli_types`,
 ///   the `:debug` reverse converter)
@@ -278,24 +354,24 @@ pub fn __exhaustiveness_guard(node: &LogicNode, term: &LogicalTerm, rule: &Proof
     }
     match rule {
         ProofRule::Conjunction => {}
-        ProofRule::DisjunctionCheck(_) => {}
-        ProofRule::DisjunctionIntro(_) => {}
+        ProofRule::DisjunctionCheck { .. } => {}
+        ProofRule::DisjunctionIntro { .. } => {}
         ProofRule::Negation => {}
-        ProofRule::ModalPassthrough(_) => {}
-        ProofRule::ExistsWitness(_) => {}
+        ProofRule::ModalPassthrough { .. } => {}
+        ProofRule::ExistsWitness { .. } => {}
         ProofRule::ExistsFailed => {}
         ProofRule::ForallVacuous => {}
-        ProofRule::ForallVerified(_) => {}
-        ProofRule::ForallCounterexample(_) => {}
-        ProofRule::CountResult(_) => {}
-        ProofRule::PredicateCheck(_) => {}
-        ProofRule::ComputeCheck(_) => {}
-        ProofRule::Asserted(_) => {}
-        ProofRule::Derived(_) => {}
-        ProofRule::ProofRef(_) => {}
-        ProofRule::EqualitySubstitution(_) => {}
-        ProofRule::RuleAttemptFailed(_) => {}
-        ProofRule::PredicateNotFound(_) => {}
+        ProofRule::ForallVerified { .. } => {}
+        ProofRule::ForallCounterexample { .. } => {}
+        ProofRule::CountResult { .. } => {}
+        ProofRule::PredicateCheck { .. } => {}
+        ProofRule::ComputeCheck { .. } => {}
+        ProofRule::Asserted { .. } => {}
+        ProofRule::Derived { .. } => {}
+        ProofRule::ProofRef { .. } => {}
+        ProofRule::EqualitySubstitution { .. } => {}
+        ProofRule::RuleAttemptFailed { .. } => {}
+        ProofRule::PredicateNotFound { .. } => {}
     }
 }
 

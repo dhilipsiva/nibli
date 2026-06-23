@@ -154,16 +154,16 @@ pub fn label(rule: &ProofRule) -> String {
         ProofRule::Negation => "Negation".to_string(),
         ProofRule::ModalPassthrough { kind } => kind.to_string(),
         ProofRule::ExistsWitness { var, term } => {
-            format!("Witness: {} = {}", var, term_display(term))
+            format!("Witness: {} = {}", var, term.display())
         }
         ProofRule::ExistsFailed => "No witness found".to_string(),
         ProofRule::ForallVacuous => "Vacuously true".to_string(),
         ProofRule::ForallVerified { entities } => {
-            let names: Vec<String> = entities.iter().map(term_display).collect();
+            let names: Vec<String> = entities.iter().map(LogicalTerm::display).collect();
             format!("Verified: [{}]", names.join(", "))
         }
         ProofRule::ForallCounterexample { entity } => {
-            format!("Counterexample: {}", term_display(entity))
+            format!("Counterexample: {}", entity.display())
         }
         ProofRule::CountResult { expected, actual } => {
             format!("Count: expected {expected}, got {actual}")
@@ -223,18 +223,18 @@ pub fn trace_display(rule: &ProofRule, result: bool) -> String {
         }
         ProofRule::ModalPassthrough { kind } => format!("Modal ({kind}) -> {tag}"),
         ProofRule::ExistsWitness { var, term } => {
-            format!("Exists: {} = {} -> {}", var, term_trace_display(term), tag)
+            format!("Exists: {} = {} -> {}", var, term.trace_display(), tag)
         }
         ProofRule::ExistsFailed => format!("Exists: no witness -> {tag}"),
         ProofRule::ForallVacuous => format!("ForAll: vacuous (empty domain) -> {tag}"),
         ProofRule::ForallVerified { entities } => {
-            let names: Vec<String> = entities.iter().map(term_trace_display).collect();
+            let names: Vec<String> = entities.iter().map(LogicalTerm::trace_display).collect();
             format!("ForAll: verified [{}] -> {}", names.join(", "), tag)
         }
         ProofRule::ForallCounterexample { entity } => {
             format!(
                 "ForAll: counterexample {} -> {}",
-                term_trace_display(entity),
+                entity.trace_display(),
                 tag
             )
         }
@@ -319,33 +319,9 @@ fn collapse_role_predicates(s: &str) -> String {
     }
 }
 
-// ── Wire LogicalTerm rendering (ported verbatim from nibli-protocol) ──
-
-fn term_display(t: &LogicalTerm) -> String {
-    match t.kind.as_str() {
-        "constant" => t.value.clone().unwrap_or_default(),
-        "number" => t.number.map(|n| format!("{n}")).unwrap_or_default(),
-        "variable" => t.value.clone().unwrap_or_else(|| "?".to_string()),
-        "skolem" => t.value.clone().unwrap_or_else(|| "sk?".to_string()),
-        "description" => format!("le_{}", t.value.as_deref().unwrap_or("?")),
-        _ => format!("({})", t.kind),
-    }
-}
-
-fn term_trace_display(t: &LogicalTerm) -> String {
-    match t.kind.as_str() {
-        "constant" => t.value.clone().unwrap_or_default(),
-        "number" => match t.number {
-            Some(n) if n == (n as i64) as f64 => format!("{}", n as i64),
-            Some(n) => format!("{n}"),
-            None => String::new(),
-        },
-        "variable" => format!("?{}", t.value.clone().unwrap_or_default()),
-        "description" => format!("lo {}", t.value.as_deref().unwrap_or("?")),
-        "unspecified" => "zo'e".to_string(),
-        _ => term_display(t),
-    }
-}
+// Term rendering (`display` / `trace_display`) lives as inherent methods on the
+// canonical `LogicalTerm` enum (re-exported via `nibli_protocol`); the per-rule
+// renderers above call them directly.
 
 #[cfg(test)]
 mod tests {

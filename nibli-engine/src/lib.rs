@@ -29,12 +29,13 @@ mod compute_client;
 // PROOF TRACE CONVERSION
 // ═══════════════════════════════════════════════════════════════════════
 //
-// The canonical -> wire conversion lives in `nibli_protocol::from_canonical*`
-// (shared with nibli-wasm — formerly duplicated here); readable rendering lives
-// in `nibli-render`.
+// The canonical proof types ARE the wire types now (serde-derived in nibli-types),
+// so there is no canonical->wire conversion; `nibli-protocol` only supplies JSON
+// helpers. Readable rendering lives in `nibli-render`. Term display is an inherent
+// method on the canonical `LogicalTerm` enum.
 
 pub fn display_term(term: &EngineLogicalTerm) -> String {
-    nibli_protocol::from_canonical_term(term).trace_display()
+    term.trace_display()
 }
 
 pub fn display_query_result(result: &EngineQueryResult) -> String {
@@ -301,9 +302,9 @@ impl NibliEngine {
     ) -> Result<(EngineQueryResult, String, String), EngineError> {
         let buf = self.compile_text(text)?;
         let (result, trace) = self.kb.query_entailment_with_proof(buf)?;
-        let wire = nibli_protocol::from_canonical(&trace);
-        let formatted = nibli_render::render_proof_text(&wire, nibli_render::Register::Spec);
-        let json = wire.to_json();
+        // `trace` IS the wire `ProofTrace` (canonical == wire now) — no conversion.
+        let formatted = nibli_render::render_proof_text(&trace, nibli_render::Register::Spec);
+        let json = nibli_protocol::proof_trace_to_json(&trace);
         Ok((result, formatted, json))
     }
 

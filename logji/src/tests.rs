@@ -705,9 +705,9 @@ fn assert_trace_consistent(result: &QueryResult, trace: &ProofTrace) {
             assert!(
                 !matches!(
                     root.rule,
-                    ProofRule::ForallCounterexample(_)
+                    ProofRule::ForallCounterexample { .. }
                         | ProofRule::ExistsFailed
-                        | ProofRule::PredicateNotFound(_)
+                        | ProofRule::PredicateNotFound { .. }
                 ),
                 "non-definitive verdict {result:?} but root asserts a decided failure: {:?}",
                 root.rule
@@ -723,7 +723,7 @@ fn assert_trace_consistent(result: &QueryResult, trace: &ProofTrace) {
 /// step is the cross-recursion-depth not-found poisoning this stage removed.
 fn assert_proof_refs_resolve_to_holds_true(trace: &ProofTrace) {
     for (i, step) in trace.steps.iter().enumerate() {
-        if matches!(step.rule, ProofRule::ProofRef(_)) {
+        if matches!(step.rule, ProofRule::ProofRef { .. }) {
             let target = step.children[0] as usize;
             assert!(
                 trace.steps[target].holds,
@@ -872,7 +872,7 @@ fn trace_does_not_show_counterexample_under_depth_exceeded() {
         !trace
             .steps
             .iter()
-            .any(|s| matches!(s.rule, ProofRule::ForallCounterexample(_))),
+            .any(|s| matches!(s.rule, ProofRule::ForallCounterexample { .. })),
         "depth-exceeded ForAll must not display a decided counterexample"
     );
 }
@@ -1000,7 +1000,7 @@ fn forall_genuine_counterexample_still_traced() {
         trace
             .steps
             .iter()
-            .any(|s| matches!(s.rule, ProofRule::ForallCounterexample(_))),
+            .any(|s| matches!(s.rule, ProofRule::ForallCounterexample { .. })),
         "a genuine False member must still be shown as a counterexample"
     );
 }
@@ -1750,7 +1750,7 @@ fn test_decomposed_traced_compute_check() {
         trace
             .steps
             .iter()
-            .any(|s| matches!(&s.rule, ProofRule::ComputeCheck(_)) && s.holds),
+            .any(|s| matches!(&s.rule, ProofRule::ComputeCheck { .. }) && s.holds),
         "trace must contain a holding ComputeCheck step"
     );
 
@@ -1761,7 +1761,7 @@ fn test_decomposed_traced_compute_check() {
         trace_f
             .steps
             .iter()
-            .any(|s| matches!(&s.rule, ProofRule::ComputeCheck(_)) && !s.holds),
+            .any(|s| matches!(&s.rule, ProofRule::ComputeCheck { .. }) && !s.holds),
         "trace must contain a non-holding ComputeCheck step"
     );
 }
@@ -2973,7 +2973,10 @@ fn test_proof_trace_exists_witness_renders_dependent_skolem() {
         .steps
         .iter()
         .filter_map(|s| match &s.rule {
-            ProofRule::ExistsWitness((_, LogicalTerm::Constant(c))) => Some(c.clone()),
+            ProofRule::ExistsWitness {
+                term: LogicalTerm::Constant(c),
+                ..
+            } => Some(c.clone()),
             _ => None,
         })
         .collect();
@@ -3094,7 +3097,7 @@ fn test_proof_trace_simple_predicate() {
     assert!(!trace.steps.is_empty());
     let root_step = &trace.steps[trace.root as usize];
     assert!(root_step.holds);
-    assert!(matches!(&root_step.rule, ProofRule::Asserted(_)));
+    assert!(matches!(&root_step.rule, ProofRule::Asserted { .. }));
 }
 
 #[test]
@@ -3107,7 +3110,7 @@ fn test_proof_trace_false_predicate() {
     let root_step = &trace.steps[trace.root as usize];
     assert!(!root_step.holds);
     assert!(
-        matches!(&root_step.rule, ProofRule::PredicateNotFound(_)),
+        matches!(&root_step.rule, ProofRule::PredicateNotFound { .. }),
         "expected PredicateNotFound, got {:?}",
         root_step.rule
     );
@@ -3149,7 +3152,7 @@ fn test_proof_trace_conjunction() {
     for &child in &root_step.children {
         let child_step = &trace.steps[child as usize];
         assert!(child_step.holds);
-        assert!(matches!(&child_step.rule, ProofRule::Asserted(_)));
+        assert!(matches!(&child_step.rule, ProofRule::Asserted { .. }));
     }
 }
 
@@ -3206,8 +3209,8 @@ fn test_proof_trace_exists_witness() {
     assert!(result);
     let root_step = &trace.steps[trace.root as usize];
     assert!(root_step.holds);
-    assert!(matches!(&root_step.rule, ProofRule::ExistsWitness(_)));
-    if let ProofRule::ExistsWitness((var, term)) = &root_step.rule {
+    assert!(matches!(&root_step.rule, ProofRule::ExistsWitness { .. }));
+    if let ProofRule::ExistsWitness { var, term } = &root_step.rule {
         assert_eq!(var, "x");
         assert!(matches!(term, LogicalTerm::Constant(c) if c == "alis"));
     }
@@ -3266,8 +3269,8 @@ fn test_proof_trace_forall() {
     assert!(result);
     let root_step = &trace.steps[trace.root as usize];
     assert!(root_step.holds);
-    assert!(matches!(&root_step.rule, ProofRule::ForallVerified(_)));
-    if let ProofRule::ForallVerified(entities) = &root_step.rule {
+    assert!(matches!(&root_step.rule, ProofRule::ForallVerified { .. }));
+    if let ProofRule::ForallVerified { entities } = &root_step.rule {
         assert_eq!(entities.len(), 2);
     }
     // Each child should be a predicate-check with result true
@@ -3288,8 +3291,8 @@ fn test_proof_trace_asserted_fact() {
     assert!(result);
     let root_step = &trace.steps[trace.root as usize];
     assert!(root_step.holds);
-    assert!(matches!(&root_step.rule, ProofRule::Asserted(_)));
-    if let ProofRule::Asserted(fact) = &root_step.rule {
+    assert!(matches!(&root_step.rule, ProofRule::Asserted { .. }));
+    if let ProofRule::Asserted { fact } = &root_step.rule {
         assert!(fact.contains("gerku"));
         assert!(fact.contains("alis"));
     }
@@ -3305,8 +3308,8 @@ fn test_proof_trace_single_hop_derived() {
     assert!(result);
     let root_step = &trace.steps[trace.root as usize];
     assert!(root_step.holds);
-    assert!(matches!(&root_step.rule, ProofRule::Derived(_)));
-    if let ProofRule::Derived((label, fact)) = &root_step.rule {
+    assert!(matches!(&root_step.rule, ProofRule::Derived { .. }));
+    if let ProofRule::Derived { label, fact } = &root_step.rule {
         assert!(fact.contains("danlu"));
         assert!(label.contains("gerku"));
         assert!(label.contains("danlu"));
@@ -3315,7 +3318,7 @@ fn test_proof_trace_single_hop_derived() {
     // The child should be Asserted (gerku(alis))
     let child_step = &trace.steps[root_step.children[0] as usize];
     assert!(child_step.holds);
-    assert!(matches!(&child_step.rule, ProofRule::Asserted(_)));
+    assert!(matches!(&child_step.rule, ProofRule::Asserted { .. }));
 }
 
 #[test]
@@ -3331,8 +3334,8 @@ fn test_proof_trace_multi_hop_derived() {
     // Root: Derived(danlu → xanlu)
     let root_step = &trace.steps[trace.root as usize];
     assert!(root_step.holds);
-    assert!(matches!(&root_step.rule, ProofRule::Derived(_)));
-    if let ProofRule::Derived((label, _)) = &root_step.rule {
+    assert!(matches!(&root_step.rule, ProofRule::Derived { .. }));
+    if let ProofRule::Derived { label, .. } = &root_step.rule {
         assert!(label.contains("xanlu"));
     }
     assert_eq!(root_step.children.len(), 1);
@@ -3340,13 +3343,13 @@ fn test_proof_trace_multi_hop_derived() {
     // Child: Derived(gerku → danlu)
     let mid_step = &trace.steps[root_step.children[0] as usize];
     assert!(mid_step.holds);
-    assert!(matches!(&mid_step.rule, ProofRule::Derived(_)));
+    assert!(matches!(&mid_step.rule, ProofRule::Derived { .. }));
     assert_eq!(mid_step.children.len(), 1);
 
     // Grandchild: Asserted(gerku(alis))
     let leaf_step = &trace.steps[mid_step.children[0] as usize];
     assert!(leaf_step.holds);
-    assert!(matches!(&leaf_step.rule, ProofRule::Asserted(_)));
+    assert!(matches!(&leaf_step.rule, ProofRule::Asserted { .. }));
 }
 
 #[test]
@@ -3361,7 +3364,7 @@ fn test_proof_trace_derived_depth_limit() {
     // Should not panic or infinite-loop. Asserted is checked first.
     let root_step = &trace.steps[trace.root as usize];
     assert!(root_step.holds);
-    assert!(matches!(&root_step.rule, ProofRule::Asserted(_)));
+    assert!(matches!(&root_step.rule, ProofRule::Asserted { .. }));
 }
 
 #[test]
@@ -3375,7 +3378,7 @@ fn test_proof_trace_xorlo_presup_is_asserted() {
     assert!(result);
     let root_step = &trace.steps[trace.root as usize];
     assert!(root_step.holds);
-    assert!(matches!(&root_step.rule, ProofRule::Asserted(_)));
+    assert!(matches!(&root_step.rule, ProofRule::Asserted { .. }));
 }
 
 // ─── Conjunction Introduction (Guarded) Tests ────────────────────
@@ -5871,7 +5874,7 @@ fn test_event_decomposed_proof_trace() {
     let has_derived = trace
         .steps
         .iter()
-        .any(|step| matches!(&step.rule, ProofRule::Derived(_)));
+        .any(|step| matches!(&step.rule, ProofRule::Derived { .. }));
     assert!(
         has_derived,
         "proof trace should contain at least one Derived step for rule-derived fact"
@@ -6161,7 +6164,7 @@ fn test_zoo_proof_trace_multi_hop_temporal() {
     let derived_count = trace
         .steps
         .iter()
-        .filter(|step| matches!(&step.rule, ProofRule::Derived(_)))
+        .filter(|step| matches!(&step.rule, ProofRule::Derived { .. }))
         .count();
     assert!(
         derived_count >= 2,
@@ -6173,7 +6176,7 @@ fn test_zoo_proof_trace_multi_hop_temporal() {
     let has_modal = trace
         .steps
         .iter()
-        .any(|step| matches!(&step.rule, ProofRule::ModalPassthrough(t) if t == "past"));
+        .any(|step| matches!(&step.rule, ProofRule::ModalPassthrough { kind: t } if t == "past"));
     assert!(
         has_modal,
         "proof trace should contain a ModalPassthrough(past) step"
@@ -6197,7 +6200,7 @@ fn backchain_temporal_trace_label_present() {
     assert!(holds.is_true(), "Past(danlu(alis)) should hold");
 
     let has_tensed_derived = trace.steps.iter().any(
-        |step| matches!(&step.rule, ProofRule::Derived((label, _)) if label.contains("[past]")),
+        |step| matches!(&step.rule, ProofRule::Derived { label, .. } if label.contains("[past]")),
     );
     assert!(
         has_tensed_derived,
@@ -6206,7 +6209,7 @@ fn backchain_temporal_trace_label_present() {
             .steps
             .iter()
             .filter_map(|s| match &s.rule {
-                ProofRule::Derived((l, _)) => Some(l.clone()),
+                ProofRule::Derived { label: l, .. } => Some(l.clone()),
                 _ => None,
             })
             .collect::<Vec<_>>()
@@ -6234,7 +6237,7 @@ fn test_proof_memo_deduplication() {
     let proof_ref_count = trace
         .steps
         .iter()
-        .filter(|step| matches!(&step.rule, ProofRule::ProofRef(_)))
+        .filter(|step| matches!(&step.rule, ProofRule::ProofRef { .. }))
         .count();
     assert!(
         proof_ref_count > 0,
@@ -6402,7 +6405,7 @@ fn test_proof_memo_correctness() {
     let derived_count = trace
         .steps
         .iter()
-        .filter(|step| matches!(&step.rule, ProofRule::Derived(_)))
+        .filter(|step| matches!(&step.rule, ProofRule::Derived { .. }))
         .count();
     assert!(
         derived_count >= 1,
@@ -6412,8 +6415,8 @@ fn test_proof_memo_correctness() {
 
     // First occurrence of base facts should be Asserted or PredicateCheck (not ProofRef)
     let has_asserted_or_check = trace.steps.iter().any(|step| {
-        matches!(&step.rule, ProofRule::Asserted(_))
-            || matches!(&step.rule, ProofRule::PredicateCheck(_))
+        matches!(&step.rule, ProofRule::Asserted { .. })
+            || matches!(&step.rule, ProofRule::PredicateCheck { .. })
     });
     assert!(
         has_asserted_or_check,
@@ -6441,7 +6444,7 @@ fn test_proof_memo_single_hop_no_unnecessary_refs() {
     let proof_ref_count = trace
         .steps
         .iter()
-        .filter(|step| matches!(&step.rule, ProofRule::ProofRef(_)))
+        .filter(|step| matches!(&step.rule, ProofRule::ProofRef { .. }))
         .count();
     // Allow a small number — the point is it's not the cubic blowup
     assert!(
@@ -6699,7 +6702,7 @@ fn test_proof_ref_carries_cached_index() {
     // Every ProofRef step should have exactly one child pointing to the
     // original step, and its holds value should match the referenced step.
     for step in &trace.steps {
-        if let ProofRule::ProofRef(_) = &step.rule {
+        if let ProofRule::ProofRef { .. } = &step.rule {
             assert_eq!(
                 step.children.len(),
                 1,
@@ -7557,7 +7560,7 @@ fn test_failure_trace_predicate_not_found() {
     let has_not_found = trace
         .steps
         .iter()
-        .any(|s| matches!(s.rule, ProofRule::PredicateNotFound(_)));
+        .any(|s| matches!(s.rule, ProofRule::PredicateNotFound { .. }));
     assert!(
         has_not_found,
         "failure trace should contain PredicateNotFound for mlatu(alis)"
@@ -7578,7 +7581,7 @@ fn test_failure_trace_rule_attempt_failed() {
     let has_rule_failed = trace
         .steps
         .iter()
-        .any(|s| matches!(s.rule, ProofRule::RuleAttemptFailed(_)));
+        .any(|s| matches!(s.rule, ProofRule::RuleAttemptFailed { .. }));
     assert!(
         has_rule_failed,
         "failure trace should show the gerku→danlu rule was tried and gerku condition failed"
@@ -7621,7 +7624,7 @@ fn test_failure_trace_conjunction_partial() {
     let has_not_found = trace
         .steps
         .iter()
-        .any(|s| matches!(s.rule, ProofRule::PredicateNotFound(_)));
+        .any(|s| matches!(s.rule, ProofRule::PredicateNotFound { .. }));
     assert!(
         has_not_found,
         "conjunction failure should show mlatu not found"
@@ -8446,12 +8449,13 @@ fn test_proof_trace_du_substitution_rule_derived() {
         trace
             .steps
             .iter()
-            .any(|s| matches!(s.rule, ProofRule::EqualitySubstitution(_)) && s.holds),
+            .any(|s| matches!(s.rule, ProofRule::EqualitySubstitution { .. }) && s.holds),
         "trace should contain a holds:true EqualitySubstitution step"
     );
     assert!(
         !trace.steps.iter().any(|s| {
-            matches!(&s.rule, ProofRule::PredicateCheck((src, _)) if src == "unknown") && s.holds
+            matches!(&s.rule, ProofRule::PredicateCheck { method: src, .. } if src == "unknown")
+                && s.holds
         }),
         "trace must not contain a holds:true PredicateCheck(\"unknown\", ...) leaf"
     );
@@ -8486,21 +8490,21 @@ fn test_proof_trace_du_substitution_directly_asserted() {
         trace
             .steps
             .iter()
-            .any(|s| matches!(s.rule, ProofRule::EqualitySubstitution(_)) && s.holds),
+            .any(|s| matches!(s.rule, ProofRule::EqualitySubstitution { .. }) && s.holds),
         "trace should contain a holds:true EqualitySubstitution step for the asserted-via-du case"
     );
     // Dishonest label gone: no Asserted step claims the QUERIED xukmi(warfarin)
     // fact was asserted (only xukmi(coumadin) genuinely was).
     assert!(
         !trace.steps.iter().any(|s| {
-            matches!(&s.rule, ProofRule::Asserted(d) if d.contains("warfarin") && d.contains("xukmi"))
+            matches!(&s.rule, ProofRule::Asserted { fact: d } if d.contains("warfarin") && d.contains("xukmi"))
         }),
         "no Asserted step may claim xukmi(warfarin) — it holds only via substitution"
     );
     // The substitution's child IS the genuinely-asserted xukmi(coumadin).
     assert!(
         trace.steps.iter().any(|s| {
-            matches!(&s.rule, ProofRule::Asserted(d) if d.contains("coumadin") && d.contains("xukmi"))
+            matches!(&s.rule, ProofRule::Asserted { fact: d } if d.contains("coumadin") && d.contains("xukmi"))
                 && s.holds
         }),
         "the substitution's child must be the asserted xukmi(coumadin)"

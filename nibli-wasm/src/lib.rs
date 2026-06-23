@@ -11,8 +11,8 @@ use wasm_bindgen::prelude::*;
 use nibli_types::error::NibliError as PipelineError;
 use nibli_types::logic as logji_logic;
 
-// Proof-trace conversion (canonical -> wire) now lives in
-// `nibli_protocol::from_canonical`; readable rendering in `nibli-render`.
+// The canonical proof types ARE the wire types now; `nibli_protocol` only
+// supplies the JSON helper. Readable rendering lives in `nibli-render`.
 
 // ── the session ──────────────────────────────────────────────────────────
 
@@ -60,13 +60,13 @@ impl Session {
             .kb
             .query_entailment_with_proof(buf)
             .map_err(|e| js_err(e.to_string()))?;
-        let wire = nibli_protocol::from_canonical(&trace);
+        // `trace` IS the wire `ProofTrace` (canonical == wire now) — no conversion.
         let out = serde_json::json!({
             "status": result.status_label(),
             "detail": result.detail_label(),
-            "naf_dependent": wire.naf_dependent,
-            "proof_text": nibli_render::render_proof_text(&wire, nibli_render::Register::Spec),
-            "proof": serde_json::from_str::<serde_json::Value>(&wire.to_json())
+            "naf_dependent": trace.naf_dependent,
+            "proof_text": nibli_render::render_proof_text(&trace, nibli_render::Register::Spec),
+            "proof": serde_json::from_str::<serde_json::Value>(&nibli_protocol::proof_trace_to_json(&trace))
                 .unwrap_or(serde_json::Value::Null),
         });
         Ok(out.to_string())

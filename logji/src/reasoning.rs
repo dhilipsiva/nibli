@@ -433,7 +433,9 @@ fn check_formula_holds_core<S: TraceSink>(
             if lv.is_true() {
                 let idx = if S::RECORDING {
                     sink.push(ProofStep {
-                        rule: ProofRule::DisjunctionIntro("left".to_string()),
+                        rule: ProofRule::DisjunctionIntro {
+                            side: "left".to_string(),
+                        },
                         holds: true,
                         children: vec![li],
                     })
@@ -448,13 +450,17 @@ fn check_formula_holds_core<S: TraceSink>(
             let idx = if S::RECORDING {
                 if rv_is_true {
                     sink.push(ProofStep {
-                        rule: ProofRule::DisjunctionIntro("right".to_string()),
+                        rule: ProofRule::DisjunctionIntro {
+                            side: "right".to_string(),
+                        },
                         holds: true,
                         children: vec![ri],
                     })
                 } else {
                     sink.push(ProofStep {
-                        rule: ProofRule::DisjunctionIntro("neither".to_string()),
+                        rule: ProofRule::DisjunctionIntro {
+                            side: "neither".to_string(),
+                        },
                         holds: verdict.is_true(),
                         children: vec![li, ri],
                     })
@@ -497,7 +503,9 @@ fn check_formula_holds_core<S: TraceSink>(
             )?;
             let idx = if S::RECORDING {
                 sink.push(ProofStep {
-                    rule: ProofRule::ModalPassthrough("past".to_string()),
+                    rule: ProofRule::ModalPassthrough {
+                        kind: "past".to_string(),
+                    },
                     holds: verdict.is_true(),
                     children: vec![ci],
                 })
@@ -517,7 +525,9 @@ fn check_formula_holds_core<S: TraceSink>(
             )?;
             let idx = if S::RECORDING {
                 sink.push(ProofStep {
-                    rule: ProofRule::ModalPassthrough("present".to_string()),
+                    rule: ProofRule::ModalPassthrough {
+                        kind: "present".to_string(),
+                    },
                     holds: verdict.is_true(),
                     children: vec![ci],
                 })
@@ -537,7 +547,9 @@ fn check_formula_holds_core<S: TraceSink>(
             )?;
             let idx = if S::RECORDING {
                 sink.push(ProofStep {
-                    rule: ProofRule::ModalPassthrough("future".to_string()),
+                    rule: ProofRule::ModalPassthrough {
+                        kind: "future".to_string(),
+                    },
                     holds: verdict.is_true(),
                     children: vec![ci],
                 })
@@ -551,7 +563,9 @@ fn check_formula_holds_core<S: TraceSink>(
                 check_formula_holds_core::<S>(buffer, *inner_node, subs, inner, tense, sink)?;
             let idx = if S::RECORDING {
                 sink.push(ProofStep {
-                    rule: ProofRule::ModalPassthrough("obligatory".to_string()),
+                    rule: ProofRule::ModalPassthrough {
+                        kind: "obligatory".to_string(),
+                    },
                     holds: verdict.is_true(),
                     children: vec![ci],
                 })
@@ -565,7 +579,9 @@ fn check_formula_holds_core<S: TraceSink>(
                 check_formula_holds_core::<S>(buffer, *inner_node, subs, inner, tense, sink)?;
             let idx = if S::RECORDING {
                 sink.push(ProofStep {
-                    rule: ProofRule::ModalPassthrough("permitted".to_string()),
+                    rule: ProofRule::ModalPassthrough {
+                        kind: "permitted".to_string(),
+                    },
                     holds: verdict.is_true(),
                     children: vec![ci],
                 })
@@ -601,10 +617,10 @@ fn check_formula_holds_core<S: TraceSink>(
                                 })?
                                 .1;
                                 sink.push(ProofStep {
-                                    rule: ProofRule::ExistsWitness((
-                                        v.clone(),
-                                        witness_term_to_logical_term(&winning_member),
-                                    )),
+                                    rule: ProofRule::ExistsWitness {
+                                        var: v.clone(),
+                                        term: witness_term_to_logical_term(&winning_member),
+                                    },
                                     holds: true,
                                     children: vec![body_idx],
                                 })
@@ -627,10 +643,10 @@ fn check_formula_holds_core<S: TraceSink>(
                 };
                 let idx = if S::RECORDING {
                     sink.push(ProofStep {
-                        rule: ProofRule::ComputeCheck((
-                            verdict.method.to_string(),
-                            verdict.relation,
-                        )),
+                        rule: ProofRule::ComputeCheck {
+                            method: verdict.method.to_string(),
+                            detail: verdict.relation,
+                        },
                         holds: verdict.holds,
                         children: vec![],
                     })
@@ -681,10 +697,10 @@ fn check_formula_holds_core<S: TraceSink>(
                         })?
                         .1;
                         sink.push(ProofStep {
-                            rule: ProofRule::ExistsWitness((
-                                v.clone(),
-                                witness_term_to_logical_term(candidate),
-                            )),
+                            rule: ProofRule::ExistsWitness {
+                                var: v.clone(),
+                                term: witness_term_to_logical_term(candidate),
+                            },
                             holds: true,
                             children: vec![body_idx],
                         })
@@ -704,10 +720,10 @@ fn check_formula_holds_core<S: TraceSink>(
             let idx = if S::RECORDING {
                 if saw_non_definitive {
                     sink.push(ProofStep {
-                        rule: ProofRule::PredicateCheck((
-                            "indeterminate".to_string(),
-                            "exists".to_string(),
-                        )),
+                        rule: ProofRule::PredicateCheck {
+                            method: "indeterminate".to_string(),
+                            detail: "exists".to_string(),
+                        },
                         holds: false,
                         children: vec![],
                     })
@@ -766,9 +782,9 @@ fn check_formula_holds_core<S: TraceSink>(
                                 })?
                                 .1;
                                 sink.push(ProofStep {
-                                    rule: ProofRule::ForallCounterexample(
-                                        ground_term_to_logical_term(&counter),
-                                    ),
+                                    rule: ProofRule::ForallCounterexample {
+                                        entity: ground_term_to_logical_term(&counter),
+                                    },
                                     holds: false,
                                     children: vec![body_idx],
                                 })
@@ -782,7 +798,9 @@ fn check_formula_holds_core<S: TraceSink>(
                                 buffer, *body, v, &members, subs, inner, tense, sink,
                             )?;
                             sink.push(ProofStep {
-                                rule: ProofRule::ForallVerified(entity_terms),
+                                rule: ProofRule::ForallVerified {
+                                    entities: entity_terms,
+                                },
                                 holds: true,
                                 children: child_indices,
                             })
@@ -829,9 +847,9 @@ fn check_formula_holds_core<S: TraceSink>(
                     })?
                     .1;
                     sink.push(ProofStep {
-                        rule: ProofRule::ForallCounterexample(ground_term_to_logical_term(
-                            &counter,
-                        )),
+                        rule: ProofRule::ForallCounterexample {
+                            entity: ground_term_to_logical_term(&counter),
+                        },
                         holds: false,
                         children: vec![body_idx],
                     })
@@ -849,10 +867,10 @@ fn check_formula_holds_core<S: TraceSink>(
                     })?
                     .1;
                     sink.push(ProofStep {
-                        rule: ProofRule::PredicateCheck((
-                            "indeterminate".to_string(),
-                            "forall".to_string(),
-                        )),
+                        rule: ProofRule::PredicateCheck {
+                            method: "indeterminate".to_string(),
+                            detail: "forall".to_string(),
+                        },
                         holds: false,
                         children: vec![body_idx],
                     })
@@ -867,7 +885,9 @@ fn check_formula_holds_core<S: TraceSink>(
                     buffer, *body, v, &members, subs, inner, tense, sink,
                 )?;
                 sink.push(ProofStep {
-                    rule: ProofRule::ForallVerified(entity_terms),
+                    rule: ProofRule::ForallVerified {
+                        entities: entity_terms,
+                    },
                     holds: true,
                     children: child_indices,
                 })
@@ -895,7 +915,10 @@ fn check_formula_holds_core<S: TraceSink>(
                         };
                         let idx = if S::RECORDING {
                             sink.push(ProofStep {
-                                rule: ProofRule::CountResult((*count, satisfying)),
+                                rule: ProofRule::CountResult {
+                                    expected: *count,
+                                    actual: satisfying,
+                                },
                                 holds: verdict.is_true(),
                                 children: vec![],
                             })
@@ -944,7 +967,10 @@ fn check_formula_holds_core<S: TraceSink>(
             };
             let idx = if S::RECORDING {
                 sink.push(ProofStep {
-                    rule: ProofRule::CountResult((*count, satisfying)),
+                    rule: ProofRule::CountResult {
+                        expected: *count,
+                        actual: satisfying,
+                    },
                     holds: verdict.is_true(),
                     children: vec![],
                 })
@@ -978,7 +1004,10 @@ fn check_formula_holds_core<S: TraceSink>(
                         result
                     );
                     sink.push(ProofStep {
-                        rule: ProofRule::PredicateCheck(("numeric".to_string(), detail)),
+                        rule: ProofRule::PredicateCheck {
+                            method: "numeric".to_string(),
+                            detail,
+                        },
                         holds: result,
                         children: vec![],
                     })
@@ -1005,7 +1034,10 @@ fn check_formula_holds_core<S: TraceSink>(
                             _ => "indeterminate".to_string(),
                         };
                         sink.push(ProofStep {
-                            rule: ProofRule::PredicateCheck(("indeterminate".to_string(), reason)),
+                            rule: ProofRule::PredicateCheck {
+                                method: "indeterminate".to_string(),
+                                detail: reason,
+                            },
                             holds: false,
                             children: vec![],
                         })
@@ -1027,10 +1059,10 @@ fn check_formula_holds_core<S: TraceSink>(
                                         );
                                         if !cond_result.is_true() {
                                             let child_idx = sink.push(ProofStep {
-                                                rule: ProofRule::RuleAttemptFailed((
-                                                    rule.label.clone(),
-                                                    cond_fact.to_display_string(),
-                                                )),
+                                                rule: ProofRule::RuleAttemptFailed {
+                                                    rule_label: rule.label.clone(),
+                                                    failed_condition: cond_fact.to_display_string(),
+                                                },
                                                 holds: false,
                                                 children: vec![],
                                             });
@@ -1042,7 +1074,9 @@ fn check_formula_holds_core<S: TraceSink>(
                             }
                         }
                         sink.push(ProofStep {
-                            rule: ProofRule::PredicateNotFound(fact.to_display_string()),
+                            rule: ProofRule::PredicateNotFound {
+                                predicate: fact.to_display_string(),
+                            },
                             holds: false,
                             children: failed_children,
                         })
@@ -1054,10 +1088,10 @@ fn check_formula_holds_core<S: TraceSink>(
             } else {
                 let idx = if S::RECORDING {
                     sink.push(ProofStep {
-                        rule: ProofRule::PredicateCheck((
-                            "build_failed".to_string(),
-                            String::new(),
-                        )),
+                        rule: ProofRule::PredicateCheck {
+                            method: "build_failed".to_string(),
+                            detail: String::new(),
+                        },
                         holds: false,
                         children: vec![],
                     })
@@ -1085,7 +1119,10 @@ fn check_formula_holds_core<S: TraceSink>(
                 };
                 let idx = if S::RECORDING {
                     sink.push(ProofStep {
-                        rule: ProofRule::ComputeCheck(("arithmetic".to_string(), rel.clone())),
+                        rule: ProofRule::ComputeCheck {
+                            method: "arithmetic".to_string(),
+                            detail: rel.clone(),
+                        },
                         holds: result,
                         children: vec![],
                     })
@@ -1108,7 +1145,10 @@ fn check_formula_holds_core<S: TraceSink>(
                 };
                 let idx = if S::RECORDING {
                     sink.push(ProofStep {
-                        rule: ProofRule::ComputeCheck(("backend".to_string(), rel.clone())),
+                        rule: ProofRule::ComputeCheck {
+                            method: "backend".to_string(),
+                            detail: rel.clone(),
+                        },
                         holds: result,
                         children: vec![],
                     })
@@ -1138,7 +1178,10 @@ fn check_formula_holds_core<S: TraceSink>(
                     QueryResult::False | QueryResult::True => "kb",
                 };
                 sink.push(ProofStep {
-                    rule: ProofRule::ComputeCheck((method.to_string(), rel.clone())),
+                    rule: ProofRule::ComputeCheck {
+                        method: method.to_string(),
+                        detail: rel.clone(),
+                    },
                     holds: verdict.is_true(),
                     children: vec![],
                 })
@@ -1797,7 +1840,10 @@ fn emit_derived<S: TraceSink>(
         None => rule.label.clone(),
     };
     sink.push(ProofStep {
-        rule: ProofRule::Derived((label, display)),
+        rule: ProofRule::Derived {
+            label,
+            fact: display,
+        },
         holds: true,
         children: child_indices,
     })
@@ -2367,7 +2413,7 @@ pub(super) fn trace_predicate_provenance_typed(
         // so consumers can follow the back-reference if needed.
         let idx = steps.len() as u32;
         steps.push(ProofStep {
-            rule: ProofRule::ProofRef(display),
+            rule: ProofRule::ProofRef { fact: display },
             holds: steps[cached_idx as usize].holds,
             children: vec![cached_idx],
         });
@@ -2378,7 +2424,9 @@ pub(super) fn trace_predicate_provenance_typed(
     if inner.fact_store.contains(fact) {
         let idx = steps.len() as u32;
         steps.push(ProofStep {
-            rule: ProofRule::Asserted(display.clone()),
+            rule: ProofRule::Asserted {
+                fact: display.clone(),
+            },
             holds: true,
             children: vec![],
         });
@@ -2409,7 +2457,11 @@ pub(super) fn trace_predicate_provenance_typed(
             );
             let idx = steps.len() as u32;
             steps.push(ProofStep {
-                rule: ProofRule::EqualitySubstitution((display.clone(), du_note, substituted)),
+                rule: ProofRule::EqualitySubstitution {
+                    original: display.clone(),
+                    du_facts: du_note,
+                    substituted,
+                },
                 holds: true,
                 children: vec![child],
             });
@@ -2490,7 +2542,11 @@ pub(super) fn trace_predicate_provenance_typed(
                 );
                 let idx = steps.len() as u32;
                 steps.push(ProofStep {
-                    rule: ProofRule::EqualitySubstitution((display.clone(), du_note, substituted)),
+                    rule: ProofRule::EqualitySubstitution {
+                        original: display.clone(),
+                        du_facts: du_note,
+                        substituted,
+                    },
                     holds: true,
                     children: vec![child],
                 });
@@ -2514,7 +2570,7 @@ pub(super) fn trace_predicate_provenance_typed(
     // every `ProofRef` — points at a `holds:true` derivation.
     let idx = steps.len() as u32;
     steps.push(ProofStep {
-        rule: ProofRule::PredicateNotFound(display),
+        rule: ProofRule::PredicateNotFound { predicate: display },
         holds: false,
         children: vec![],
     });

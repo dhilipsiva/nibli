@@ -343,7 +343,9 @@ async fn execute_query(kb: &str, query_text: &str) -> OutputEntry {
                     .as_str()
                     .or_else(|| r["unknownReason"].as_str());
                 let trace = r["proofTrace"].as_str().map(|s| s.to_string());
-                let trace_data = r["proofTraceJson"].as_str().and_then(ProofTrace::from_json);
+                let trace_data = r["proofTraceJson"]
+                    .as_str()
+                    .and_then(nibli_protocol::proof_trace_from_json);
                 OutputEntry {
                     input: query_text.to_string(),
                     result: match detail {

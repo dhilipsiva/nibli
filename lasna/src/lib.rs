@@ -143,52 +143,76 @@ fn convert_query_result_to_export(result: &logji_logic::QueryResult) -> export_l
     }
 }
 
+// logji's `ProofRule` is now the named-field canonical type; the WIT export type
+// stays tuple-shaped (generated from world.wit), so this maps named fields → tuples.
 fn convert_proof_rule(r: &logji_logic::ProofRule) -> export_logic::ProofRule {
     match r {
         logji_logic::ProofRule::Conjunction => export_logic::ProofRule::Conjunction,
-        logji_logic::ProofRule::DisjunctionCheck(s) => {
-            export_logic::ProofRule::DisjunctionCheck(s.clone())
+        logji_logic::ProofRule::DisjunctionCheck { detail } => {
+            export_logic::ProofRule::DisjunctionCheck(detail.clone())
         }
-        logji_logic::ProofRule::DisjunctionIntro(s) => {
-            export_logic::ProofRule::DisjunctionIntro(s.clone())
+        logji_logic::ProofRule::DisjunctionIntro { side } => {
+            export_logic::ProofRule::DisjunctionIntro(side.clone())
         }
         logji_logic::ProofRule::Negation => export_logic::ProofRule::Negation,
-        logji_logic::ProofRule::ModalPassthrough(s) => {
-            export_logic::ProofRule::ModalPassthrough(s.clone())
+        logji_logic::ProofRule::ModalPassthrough { kind } => {
+            export_logic::ProofRule::ModalPassthrough(kind.clone())
         }
-        logji_logic::ProofRule::ExistsWitness((v, t)) => {
-            export_logic::ProofRule::ExistsWitness((v.clone(), convert_logical_term_to_export(t)))
+        logji_logic::ProofRule::ExistsWitness { var, term } => {
+            export_logic::ProofRule::ExistsWitness((
+                var.clone(),
+                convert_logical_term_to_export(term),
+            ))
         }
         logji_logic::ProofRule::ExistsFailed => export_logic::ProofRule::ExistsFailed,
         logji_logic::ProofRule::ForallVacuous => export_logic::ProofRule::ForallVacuous,
-        logji_logic::ProofRule::ForallVerified(terms) => export_logic::ProofRule::ForallVerified(
-            terms.iter().map(convert_logical_term_to_export).collect(),
-        ),
-        logji_logic::ProofRule::ForallCounterexample(t) => {
-            export_logic::ProofRule::ForallCounterexample(convert_logical_term_to_export(t))
+        logji_logic::ProofRule::ForallVerified { entities } => {
+            export_logic::ProofRule::ForallVerified(
+                entities
+                    .iter()
+                    .map(convert_logical_term_to_export)
+                    .collect(),
+            )
         }
-        logji_logic::ProofRule::CountResult((expected, actual)) => {
+        logji_logic::ProofRule::ForallCounterexample { entity } => {
+            export_logic::ProofRule::ForallCounterexample(convert_logical_term_to_export(entity))
+        }
+        logji_logic::ProofRule::CountResult { expected, actual } => {
             export_logic::ProofRule::CountResult((*expected, *actual))
         }
-        logji_logic::ProofRule::PredicateCheck((m, d)) => {
-            export_logic::ProofRule::PredicateCheck((m.clone(), d.clone()))
+        logji_logic::ProofRule::PredicateCheck { method, detail } => {
+            export_logic::ProofRule::PredicateCheck((method.clone(), detail.clone()))
         }
-        logji_logic::ProofRule::ComputeCheck((m, d)) => {
-            export_logic::ProofRule::ComputeCheck((m.clone(), d.clone()))
+        logji_logic::ProofRule::ComputeCheck { method, detail } => {
+            export_logic::ProofRule::ComputeCheck((method.clone(), detail.clone()))
         }
-        logji_logic::ProofRule::Asserted(f) => export_logic::ProofRule::Asserted(f.clone()),
-        logji_logic::ProofRule::Derived((l, f)) => {
-            export_logic::ProofRule::Derived((l.clone(), f.clone()))
+        logji_logic::ProofRule::Asserted { fact } => {
+            export_logic::ProofRule::Asserted(fact.clone())
         }
-        logji_logic::ProofRule::ProofRef(f) => export_logic::ProofRule::ProofRef(f.clone()),
-        logji_logic::ProofRule::EqualitySubstitution((o, d, s)) => {
-            export_logic::ProofRule::EqualitySubstitution((o.clone(), d.clone(), s.clone()))
+        logji_logic::ProofRule::Derived { label, fact } => {
+            export_logic::ProofRule::Derived((label.clone(), fact.clone()))
         }
-        logji_logic::ProofRule::RuleAttemptFailed((l, c)) => {
-            export_logic::ProofRule::RuleAttemptFailed((l.clone(), c.clone()))
+        logji_logic::ProofRule::ProofRef { fact } => {
+            export_logic::ProofRule::ProofRef(fact.clone())
         }
-        logji_logic::ProofRule::PredicateNotFound(p) => {
-            export_logic::ProofRule::PredicateNotFound(p.clone())
+        logji_logic::ProofRule::EqualitySubstitution {
+            original,
+            du_facts,
+            substituted,
+        } => export_logic::ProofRule::EqualitySubstitution((
+            original.clone(),
+            du_facts.clone(),
+            substituted.clone(),
+        )),
+        logji_logic::ProofRule::RuleAttemptFailed {
+            rule_label,
+            failed_condition,
+        } => export_logic::ProofRule::RuleAttemptFailed((
+            rule_label.clone(),
+            failed_condition.clone(),
+        )),
+        logji_logic::ProofRule::PredicateNotFound { predicate } => {
+            export_logic::ProofRule::PredicateNotFound(predicate.clone())
         }
     }
 }
@@ -1553,6 +1577,7 @@ mod tests {
                 children: vec![],
             }],
             root: 0,
+            naf_dependent: true,
         };
         assert!(
             convert_proof_trace(naf_trace).naf_dependent,
@@ -1562,11 +1587,14 @@ mod tests {
         // A trace whose only step is a plain assertion is NOT NAF-dependent.
         let plain_trace = logji_logic::ProofTrace {
             steps: vec![logji_logic::ProofStep {
-                rule: logji_logic::ProofRule::Asserted("gerku(adam)".to_string()),
+                rule: logji_logic::ProofRule::Asserted {
+                    fact: "gerku(adam)".to_string(),
+                },
                 holds: true,
                 children: vec![],
             }],
             root: 0,
+            naf_dependent: false,
         };
         assert!(
             !convert_proof_trace(plain_trace).naf_dependent,
