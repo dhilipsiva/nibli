@@ -95,6 +95,29 @@ fn main() {
             entries.push(((*word).to_string(), value));
             gismu_count += 1;
         }
+        // Tier-1 curated gloss overrides (e.g. bilga->must, curmi->permit) win over
+        // the jbovlaste glossword in the XML branch above; reproduce them here so the
+        // no-XML build exposes the same glosses (the 3-tier chain documented in the
+        // dictionary). Skip any word the fallback list already provides to avoid a
+        // phf duplicate key; arity mirrors the XML branch's default (CORE or 2).
+        for (word, gloss) in GISMU_GLOSS_OVERRIDES {
+            if FALLBACK_GISMU_ENTRIES.iter().any(|(w, _, _)| w == word) {
+                continue;
+            }
+            let arity = CORE_GISMU_ARITIES
+                .iter()
+                .find(|(w, _)| w == word)
+                .map(|(_, a)| *a)
+                .unwrap_or(2);
+            let value = format!(
+                "DictEntry {{ arity: Some({}), gloss: \"{}\", template: \"{}\" }}",
+                arity,
+                escape_str(gloss),
+                escape_str(lookup_template(word))
+            );
+            entries.push(((*word).to_string(), value));
+            gismu_count += 1;
+        }
         for (word, gloss) in CMAVO_GLOSS_OVERRIDES {
             let value = format!(
                 "DictEntry {{ arity: None, gloss: \"{}\", template: \"\" }}",
