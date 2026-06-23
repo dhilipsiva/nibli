@@ -311,7 +311,7 @@ The parser (`gerna`) accepts a practical subset of Lojban sufficient for formal 
 - **Place tags:** `fa`/`fe`/`fi`/`fo`/`fu` (explicit argument positions)
 - **Modal tags:** BAI (`ri'a`, `ni'i`, `mu'i`, `ki'u`, `pi'o`, `ba'i`) and `fi'o`...`fe'u`
 - **Selbri (predicates):** root, tanru with Neo-Davidsonian event semantics (resolves the intersective fallacy), conversion (`se`/`te`/`ve`/`xe`), negation (`na`), grouping (`ke`...`ke'e`), compounds (`zei`), argument attachment (`be`...`bei`...`be'o`)
-- **Relative clauses:** `poi`/`noi`/`voi` with `ke'a` bound variable and clause stacking
+- **Relative clauses:** `poi`/`noi`/`voi` with `ke'a` bound variable and clause stacking. A **disjunctive** restrictor in a universal (`ro lo X poi P ja Q cu R`, also `ganai ga P gi Q gi R`) compiles to one backward-chaining rule per disjunct (DNF rule-splitting) and fires when either disjunct holds; `je` (AND) restrictors still require all conjuncts
 - **Connectives:** sumti (`.e`/`.a`/`.o`/`.u` + `nai`), selbri (`je`/`ja`/`jo`/`ju`), sentence (forethought: `ge`...`gi`, `ga`...`gi`, `ganai`...`gi`; afterthought: `.i je`/`ja`/`jo`/`ju` with `na`/`nai`)
 - **Abstractions:** `nu` (event), `du'u` (proposition), `ka` with `ce'u` (property), `ni` (amount), `si'o` (concept)
 - **Tense:** `pu` (past), `ca` (present), `ba` (future)

@@ -268,6 +268,85 @@ fn tensed_restrictor_bare_premise_control() {
     assert_false(&holds, "a bare premise must not satisfy a Past antecedent");
 }
 
+// ── Disjunctive rule antecedents (DNF rule-splitting) ──
+// `ro lo X poi P ja Q cu R` is `∀x.(P(x)∨Q(x))→R(x)`, compiled as one
+// backward-chaining rule per disjunct. Previously fail-closed-rejected.
+
+#[test]
+fn disjunctive_restrictor_fires_via_left_branch() {
+    // "every dog that loves or befriends [something] is an animal." The poi clause
+    // leaves x2 unspecified (zo'e), so the premise is the objectless `la .rex. cu
+    // prami` (matching how the existing tensed-restrictor test uses objectless citka).
+    let engine = engine_with_facts(&[
+        "ro lo gerku poi prami ja pendo cu danlu",
+        "la .rex. cu gerku",
+        "la .rex. cu prami",
+    ]);
+    let (holds, _t, _j) = engine.query_text_with_proof("la .rex. cu danlu").unwrap();
+    assert_true(
+        &holds,
+        "disjunctive antecedent fires via the left disjunct (prami)",
+    );
+}
+
+#[test]
+fn disjunctive_restrictor_fires_via_right_branch() {
+    let engine = engine_with_facts(&[
+        "ro lo gerku poi prami ja pendo cu danlu",
+        "la .rex. cu gerku",
+        "la .rex. cu pendo",
+    ]);
+    let (holds, _t, _j) = engine.query_text_with_proof("la .rex. cu danlu").unwrap();
+    assert_true(
+        &holds,
+        "disjunctive antecedent fires via the right disjunct (pendo)",
+    );
+}
+
+#[test]
+fn disjunctive_restrictor_negative_control() {
+    // rex is a dog but neither loves nor befriends → neither disjunct holds.
+    let engine = engine_with_facts(&[
+        "ro lo gerku poi prami ja pendo cu danlu",
+        "la .rex. cu gerku",
+    ]);
+    let (holds, _t, _j) = engine.query_text_with_proof("la .rex. cu danlu").unwrap();
+    assert_false(
+        &holds,
+        "neither disjunct satisfied → disjunctive rule does not fire",
+    );
+}
+
+#[test]
+fn conjunctive_poi_je_requires_both() {
+    // Control: `poi prami je pendo` (AND) still requires both — one is not enough.
+    let engine = engine_with_facts(&[
+        "ro lo gerku poi prami je pendo cu danlu",
+        "la .rex. cu gerku",
+        "la .rex. cu prami",
+    ]);
+    let (holds, _t, _j) = engine.query_text_with_proof("la .rex. cu danlu").unwrap();
+    assert_false(
+        &holds,
+        "conjunctive `je` restrictor requires both conjuncts — one is not enough",
+    );
+}
+
+#[test]
+fn disjunctive_forethought_ganai_ga_fires() {
+    // `ganai ga P gi Q gi R` — (P ∨ Q) → R, a ground conditional with a disjunctive
+    // antecedent. Fires when either disjunct holds.
+    let engine = engine_with_facts(&[
+        "la .rex. cu prami la .alis.",
+        "ganai ga la .rex. cu prami la .alis. gi la .rex. cu pendo la .alis. gi la .rex. cu danlu",
+    ]);
+    let (holds, _t, _j) = engine.query_text_with_proof("la .rex. cu danlu").unwrap();
+    assert_true(
+        &holds,
+        "forethought disjunctive antecedent (ganai ga…gi…gi) fires via a held disjunct",
+    );
+}
+
 #[test]
 fn ganai_tensed_antecedent_fires_with_premise() {
     // Positive companion to the `ganai_tensed_antecedent_must_not_fire_unconditionally`

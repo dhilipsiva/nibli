@@ -166,13 +166,14 @@ pub(super) fn collect_condition_exists(
     }
 }
 
-/// Flatten an And-tree of condition atoms, descending condition-∃ AND tense
-/// wrappers. Each returned leaf carries the tense accumulated on the path to it
-/// (`Some("Past")` etc.), so a tensed antecedent atom (`poi pu broda` →
+/// Flatten an And-tree of condition atoms, descending condition-∃, tense wrappers,
+/// AND deontic wrappers. Each returned leaf carries the tense accumulated on the
+/// path to it (`Some("Past")` etc.), so a tensed antecedent atom (`poi pu broda` →
 /// `Past(Exists(ev, And(broda(ev), broda_x1(ev, x))))`) flattens to tensed leaf
 /// atoms instead of one opaque `Past(...)` node that would be rejected. Deontic
-/// `Obligatory/Permitted` are intentionally NOT descended here — they fall to
-/// the `_` arm and `build_rule_template_fact` rejects them (out of scope).
+/// `Obligatory/Permitted` are descended TRANSPARENTLY (tense unchanged) — a deontic
+/// antecedent compiles as its bare inner, matching the transparent-deontic
+/// semantics (asserting `ei P` stores bare `P`).
 pub(super) fn flatten_conjuncts_through_exists(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -205,8 +206,96 @@ pub(super) fn flatten_conjuncts_through_exists(
         LogicNode::FutureNode(inner) => {
             flatten_conjuncts_through_exists(buffer, *inner, condition_exists, Some("Future"))
         }
+        // Deontic wrappers (ei/e'e → Obligatory/Permitted) are transparent: descend
+        // to the inner condition keeping tense unchanged, mirroring the assert path
+        // (`collect_ground_facts`). Surface-unreachable today (attitudinals only wrap
+        // whole bridi), so this is raw-FOL completeness, consistent with the documented
+        // transparent-deontic semantics.
+        LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) => {
+            flatten_conjuncts_through_exists(buffer, *inner, condition_exists, tense)
+        }
         _ => vec![(node_id, tense)],
     }
+}
+
+/// Upper bound on the number of conjunctive clauses a disjunctive antecedent may
+/// DNF-expand to. A pathological `(A∨B)∧(C∨D)∧…` blows up combinatorially; cap it
+/// and fail closed rather than register thousands of rules from one assertion.
+pub(super) const MAX_DNF_CLAUSES: usize = 32;
+
+/// Cross-product two clause lists (conjunction distributes over disjunction):
+/// `{c1,c2} × {d1,d2}` → `{c1∪d1, c1∪d2, c2∪d1, c2∪d2}`. Deterministic (left
+/// outer, right inner). Fails closed if the product would exceed `cap`.
+fn dnf_cross_product(
+    a: Vec<Vec<u32>>,
+    b: &[Vec<u32>],
+    cap: usize,
+) -> Result<Vec<Vec<u32>>, String> {
+    let count = a.len().saturating_mul(b.len());
+    if count > cap {
+        return Err(format!(
+            "disjunctive rule antecedent expands to {count} conjunctive clauses, exceeding the \
+             cap of {cap}; restate with fewer alternations (ja/ga) to keep rule compilation \
+             bounded."
+        ));
+    }
+    let mut out = Vec::with_capacity(count);
+    for x in &a {
+        for y in b {
+            let mut clause = x.clone();
+            clause.extend(y.iter().copied());
+            out.push(clause);
+        }
+    }
+    Ok(out)
+}
+
+/// DNF-expand a single condition node into a list of conjunctive clauses (each a
+/// list of leaf node ids). `Or` → the union of its branches' clause lists; `And` →
+/// the cross product; ANY other node (`Not`/`Exists`/tense/deontic/`Predicate`) →
+/// a single one-leaf clause — NOT descended, so the per-clause pipeline
+/// (`flatten_conjuncts_through_exists` + negated-exists-group detection +
+/// deontic-strip + template building) handles it. Distributing under `Not`/`∃`
+/// would be unsound, so those stay opaque. Deterministic (left-first); capped.
+fn dnf_of_node(buffer: &LogicBuffer, id: u32, cap: usize) -> Result<Vec<Vec<u32>>, String> {
+    match get_node(buffer, id) {
+        Ok(LogicNode::OrNode((l, r))) => {
+            let mut out = dnf_of_node(buffer, *l, cap)?;
+            out.extend(dnf_of_node(buffer, *r, cap)?);
+            if out.len() > cap {
+                return Err(format!(
+                    "disjunctive rule antecedent expands to {} conjunctive clauses, exceeding \
+                     the cap of {cap}; restate with fewer alternations (ja/ga).",
+                    out.len()
+                ));
+            }
+            Ok(out)
+        }
+        Ok(LogicNode::AndNode((l, r))) => {
+            let lc = dnf_of_node(buffer, *l, cap)?;
+            let rc = dnf_of_node(buffer, *r, cap)?;
+            dnf_cross_product(lc, &rc, cap)
+        }
+        _ => Ok(vec![vec![id]]),
+    }
+}
+
+/// DNF-expand the antecedent condition forest into conjunctive clauses, conjoining
+/// the top-level `condition_ids` and distributing `And` over `Or`. One clause for a
+/// pure conjunction (byte-identical to the pre-split path), one clause per disjunct
+/// for a disjunctive antecedent. Each clause is a list of condition LEAF node ids
+/// with the `Or`s removed; the caller registers one backward-chaining rule per clause.
+pub(super) fn dnf_condition_clauses(
+    buffer: &LogicBuffer,
+    condition_ids: &[u32],
+    cap: usize,
+) -> Result<Vec<Vec<u32>>, String> {
+    let mut clauses: Vec<Vec<u32>> = vec![Vec::new()];
+    for &cid in condition_ids {
+        let node_clauses = dnf_of_node(buffer, cid, cap)?;
+        clauses = dnf_cross_product(clauses, &node_clauses, cap)?;
+    }
+    Ok(clauses)
 }
 
 /// Detect a NEGATED event-decomposed restrictor condition `Not(Exists(ev, And-tree
@@ -767,6 +856,214 @@ fn atom_var_args(buffer: &LogicBuffer, node_id: u32) -> Vec<String> {
     }
 }
 
+/// Register ONE backward-chaining rule for a single DNF clause of a (possibly
+/// disjunctive) rule antecedent. The clause-independent work (consequent templates
+/// `typed_concls`, universals, pattern vars, and the precise `dependent_skolems`)
+/// is computed once by the caller and passed in; this builds the clause's condition
+/// templates, dedups, registers, and (for `branch_idx == 0`) asserts the xorlo
+/// presupposition. Returns `Err` (fail-closed, aborting the whole assertion) on any
+/// untemplatable condition atom or stratification violation.
+#[allow(clippy::too_many_arguments)]
+fn register_clause_rule(
+    buffer: &LogicBuffer,
+    clause: &[u32],
+    branch_idx: usize,
+    clause_count: usize,
+    universals: &[String],
+    pattern_vars: &HashMap<String, String>,
+    pattern_var_names: &[String],
+    ground_skolems: &HashMap<String, String>,
+    dependent_skolems: &HashMap<String, (String, Vec<String>)>,
+    typed_concls: &[StoredFact],
+    rule_desc: &str,
+    inner: &mut KnowledgeBaseInner,
+) -> Result<(), String> {
+    // This clause's own condition ∃ vars (sorted → deterministic pattern-var order),
+    // a subset of the caller's union. Drives which `Exists` flatten descends and the
+    // clause's event pattern-var list.
+    let clause_exists: Vec<String> = {
+        let mut s: HashSet<String> = HashSet::new();
+        for &lid in clause {
+            collect_condition_exists(buffer, lid, &mut s);
+        }
+        let mut v: Vec<String> = s.into_iter().collect();
+        v.sort();
+        v
+    };
+    let clause_exists_set: HashSet<String> = clause_exists.iter().cloned().collect();
+
+    let all_pattern_var_names: Vec<String> = {
+        let mut names = pattern_var_names.to_vec();
+        for var in &clause_exists {
+            if let Some(pvar) = pattern_vars.get(var) {
+                names.push(pvar.clone());
+            }
+        }
+        names
+    };
+
+    let mut all_conditions: Vec<(u32, Option<&str>)> = Vec::new();
+    for &lid in clause {
+        all_conditions.extend(flatten_conjuncts_through_exists(
+            buffer,
+            lid,
+            &clause_exists_set,
+            None,
+        ));
+    }
+
+    let mut typed_conds: Vec<StoredFact> = Vec::new();
+    let mut negated_condition_indices: Vec<usize> = Vec::new();
+    let mut negated_exists_groups: Vec<NegatedExistsGroup> = Vec::new();
+    for &(cid, tense) in &all_conditions {
+        // A NEGATED event-decomposed restrictor `Not(Exists(ev, And(..)))`
+        // (`poi na <selbri>`) is compiled as a NAF-over-existential group, NOT a flat
+        // condition: collect the inner conjuncts as templates with the universal's
+        // `x__vN` (shared) and a group-local event pvar. It is excluded from
+        // `typed_conditions` AND from the xorlo presupposition (a `poi na zanru`
+        // person must NOT get an asserted consent witness).
+        if let Some((ev_var, leaf_ids)) = detect_negated_exists_group(buffer, cid) {
+            let ev_pvar = format!("ev__{}", ev_var);
+            let mut group_pattern_vars: HashMap<String, String> = pattern_vars.clone();
+            group_pattern_vars.insert(ev_var.clone(), ev_pvar.clone());
+            let mut group_conditions = Vec::new();
+            for &lid in &leaf_ids {
+                match build_rule_template_fact(
+                    buffer,
+                    lid,
+                    &group_pattern_vars,
+                    ground_skolems,
+                    dependent_skolems,
+                    None,
+                ) {
+                    Some(f) => group_conditions.push(f),
+                    None => {
+                        return Err(format!(
+                            "cannot compile negated restrictor group for {rule_desc}: an \
+                             inner atom is not a flat predicate. Rejecting the assertion \
+                             to preserve soundness."
+                        ));
+                    }
+                }
+            }
+            negated_exists_groups.push(NegatedExistsGroup {
+                conditions: group_conditions,
+                event_var: ev_pvar,
+            });
+            continue;
+        }
+        match build_rule_template_fact_with_negation(
+            buffer,
+            cid,
+            pattern_vars,
+            ground_skolems,
+            dependent_skolems,
+            tense,
+        ) {
+            Some((fact, is_negated)) => {
+                if is_negated {
+                    negated_condition_indices.push(typed_conds.len());
+                }
+                typed_conds.push(fact);
+            }
+            // FAIL CLOSED: an antecedent atom we cannot represent as a flat
+            // backward-chaining template (a tense wrapper, nested quantifier, or
+            // negated-complex form) would otherwise be silently dropped — leaving an
+            // UNDER-CONDITIONED rule that fires when it should not. (Disjunction is now
+            // handled by DNF rule-splitting; deontic wrappers are transparently
+            // stripped.) Reject the assertion instead.
+            None => {
+                return Err(format!(
+                    "cannot compile rule antecedent for {rule_desc}: an atom is not a \
+                     flat predicate (tense, nested quantifier, or negated-complex \
+                     antecedents are unsupported). Rejecting the assertion to preserve \
+                     soundness rather than registering an under-conditioned rule."
+                ));
+            }
+        }
+    }
+
+    let dedup_key = rule_dedup_hash(0, &typed_conds, typed_concls);
+    if !inner.known_rules.insert(dedup_key) {
+        if !inner.rebuilding {
+            println!("[Rule] ∀{} already present, skipping", universals.join(","));
+        }
+        return Ok(());
+    }
+    if !inner.rebuilding {
+        println!(
+            "[Rule] Compiled ∀{} to backward-chaining rule",
+            universals.join(",")
+        );
+    }
+
+    let base_label = build_typed_rule_label(&typed_conds, typed_concls);
+    let label = if clause_count > 1 {
+        format!(
+            "[branch {}/{}] {}",
+            branch_idx + 1,
+            clause_count,
+            base_label
+        )
+    } else {
+        base_label
+    };
+    if let Err(e) = register_rule(
+        inner,
+        label,
+        all_pattern_var_names,
+        typed_conds,
+        typed_concls.to_vec(),
+        negated_condition_indices,
+        negated_exists_groups,
+        false, // forward chaining disabled by default
+    ) {
+        eprintln!("[Stratification Error] {}", e);
+        return Err(e);
+    }
+
+    // xorlo presupposition applies ONLY to DESCRIPTION universals (`ro lo` / `ro le`),
+    // which carry existential import — "there is such a thing" — so a fresh witness
+    // satisfying the restrictor is asserted. Asserted ONCE, for branch 0 only: for a
+    // disjunctive antecedent the import only needs the restricted domain non-empty, so
+    // a witness for the FIRST disjunct is a sound minimal choice (asserting every
+    // branch would over-commit, injecting a witness for each disjunct the author never
+    // stated). It must NOT fire for a ground material conditional (zero universals) or
+    // a PRENEX universal (`ro da zo'u …`, no existential import). smuni names
+    // description universals `_v{n}` and prenex universals `da`/`de`/`di`.
+    let is_description_universal =
+        !universals.is_empty() && universals.iter().all(|v| v.starts_with("_v"));
+    if branch_idx == 0 && is_description_universal {
+        let xp_name = inner.fresh_skolem();
+        inner.note_entity(&xp_name);
+        let mut xp_subs: HashMap<String, GroundTerm> = HashMap::new();
+        for v in universals {
+            xp_subs.insert(v.clone(), GroundTerm::Constant(xp_name.clone()));
+        }
+        for (k, v) in ground_skolems {
+            xp_subs
+                .entry(k.clone())
+                .or_insert_with(|| GroundTerm::Constant(v.clone()));
+        }
+        for var in &clause_exists {
+            let ev_sk = inner.fresh_skolem();
+            if var.starts_with("_ev") {
+                inner.note_event_entity(&ev_sk);
+            } else {
+                inner.note_entity(&ev_sk);
+            }
+            xp_subs.insert(var.clone(), GroundTerm::Constant(ev_sk));
+        }
+        for &(cid, tense) in &all_conditions {
+            if let Some(fact) = build_stored_fact_from_node(buffer, cid, &xp_subs, tense) {
+                assert_typed_fact(fact, inner);
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub(super) fn compile_forall_to_rule(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -855,11 +1152,25 @@ pub(super) fn compile_forall_to_rule(
 
     match decompose_implication(buffer, inner_body_id) {
         Some((condition_ids, consequent_id)) => {
-            let mut condition_exists_vars: HashSet<String> = HashSet::new();
-            for &cid in &condition_ids {
-                collect_condition_exists(buffer, cid, &mut condition_exists_vars);
+            // DNF-split the antecedent into conjunctive clauses and register ONE
+            // backward-chaining rule per clause: `∀x.(P(x)∨Q(x))→R(x)` is the
+            // conjunction of `∀x.P(x)→R(x)` and `∀x.Q(x)→R(x)`. A pure conjunction
+            // yields a single clause (byte-identical to the pre-split path); a
+            // disjunctive antecedent (`ro lo X poi P ja Q cu R`, `ganai ga P gi Q gi R`)
+            // yields one clause per disjunct.
+            let clauses = dnf_condition_clauses(buffer, &condition_ids, MAX_DNF_CLAUSES)?;
+
+            // The condition event ∃ vars across ALL clauses become pattern vars (not
+            // skolems); what remains in `dependent_skolems` are the CONCLUSION
+            // existentials, shared by every clause. (collect_condition_exists does not
+            // descend `Or`, so this union mirrors the pre-split single-condition set.)
+            let mut all_condition_exists: HashSet<String> = HashSet::new();
+            for clause in &clauses {
+                for &lid in clause {
+                    collect_condition_exists(buffer, lid, &mut all_condition_exists);
+                }
             }
-            for var in &condition_exists_vars {
+            for var in &all_condition_exists {
                 dependent_skolems.remove(var);
                 ground_skolems.remove(var);
                 let pvar = format!("ev__{}", var);
@@ -938,97 +1249,7 @@ pub(super) fn compile_forall_to_rule(
                 }
             }
 
-            let all_pattern_var_names: Vec<String> = {
-                let mut names = pattern_var_names.clone();
-                for var in &condition_exists_vars {
-                    if let Some(pvar) = pattern_vars.get(var) {
-                        names.push(pvar.clone());
-                    }
-                }
-                names
-            };
-
-            let mut all_conditions: Vec<(u32, Option<&str>)> = Vec::new();
-            for cid in &condition_ids {
-                all_conditions.extend(flatten_conjuncts_through_exists(
-                    buffer,
-                    *cid,
-                    &condition_exists_vars,
-                    None,
-                ));
-            }
-
-            let mut typed_conds: Vec<StoredFact> = Vec::new();
-            let mut negated_condition_indices: Vec<usize> = Vec::new();
-            let mut negated_exists_groups: Vec<NegatedExistsGroup> = Vec::new();
-            for &(cid, tense) in &all_conditions {
-                // A NEGATED event-decomposed restrictor `Not(Exists(ev, And(..)))`
-                // (`poi na <selbri>`) is compiled as a NAF-over-existential group,
-                // NOT a flat condition: collect the inner conjuncts as templates with
-                // the universal's `x__vN` (shared) and a group-local event pvar. It is
-                // excluded from `typed_conditions` AND from the xorlo presupposition
-                // (a `poi na zanru` person must NOT get an asserted consent witness).
-                if let Some((ev_var, leaf_ids)) = detect_negated_exists_group(buffer, cid) {
-                    let ev_pvar = format!("ev__{}", ev_var);
-                    let mut group_pattern_vars = pattern_vars.clone();
-                    group_pattern_vars.insert(ev_var.clone(), ev_pvar.clone());
-                    let mut group_conditions = Vec::new();
-                    for &lid in &leaf_ids {
-                        match build_rule_template_fact(
-                            buffer,
-                            lid,
-                            &group_pattern_vars,
-                            &ground_skolems,
-                            &dependent_skolems,
-                            None,
-                        ) {
-                            Some(f) => group_conditions.push(f),
-                            None => {
-                                return Err(format!(
-                                    "cannot compile negated restrictor group for {rule_desc}: an \
-                                     inner atom is not a flat predicate. Rejecting the assertion \
-                                     to preserve soundness."
-                                ));
-                            }
-                        }
-                    }
-                    negated_exists_groups.push(NegatedExistsGroup {
-                        conditions: group_conditions,
-                        event_var: ev_pvar,
-                    });
-                    continue;
-                }
-                match build_rule_template_fact_with_negation(
-                    buffer,
-                    cid,
-                    &pattern_vars,
-                    &ground_skolems,
-                    &dependent_skolems,
-                    tense,
-                ) {
-                    Some((fact, is_negated)) => {
-                        if is_negated {
-                            negated_condition_indices.push(typed_conds.len());
-                        }
-                        typed_conds.push(fact);
-                    }
-                    // FAIL CLOSED: an antecedent atom we cannot represent as a flat
-                    // backward-chaining template (a tense wrapper, disjunction, nested
-                    // quantifier, or negated-complex form) would otherwise be silently
-                    // dropped — leaving an UNDER-CONDITIONED rule that fires when it
-                    // should not. That is exactly the fail-open unsoundness the
-                    // zero-hallucination contract forbids. Reject the assertion instead.
-                    None => {
-                        return Err(format!(
-                            "cannot compile rule antecedent for {rule_desc}: an atom is not a \
-                             flat predicate (tense, disjunction, nested quantifier, or \
-                             negated-complex antecedents are unsupported). Rejecting the \
-                             assertion to preserve soundness rather than registering an \
-                             under-conditioned rule."
-                        ));
-                    }
-                }
-            }
+            // Conclusion templates are clause-independent — build + validate once.
             let mut typed_concls: Vec<StoredFact> = Vec::new();
             for &aid in &consequent_atoms {
                 match build_rule_template_fact(
@@ -1040,10 +1261,6 @@ pub(super) fn compile_forall_to_rule(
                     None, // conclusions stay bare (tensed conclusions out of scope)
                 ) {
                     Some(fact) => typed_concls.push(fact),
-                    // FAIL CLOSED: a conclusion atom we cannot template (negated,
-                    // disjunctive, or nested) would make the rule conclude less than
-                    // written — a dead `__fallback__` rule or silently-lost negative
-                    // information. Reject rather than register a misleading rule.
                     None => {
                         return Err(format!(
                             "cannot compile rule conclusion for {rule_desc}: a consequent \
@@ -1054,74 +1271,24 @@ pub(super) fn compile_forall_to_rule(
                 }
             }
 
-            let dedup_key = rule_dedup_hash(0, &typed_conds, &typed_concls);
-            if !inner.known_rules.insert(dedup_key) {
-                if !inner.rebuilding {
-                    println!("[Rule] ∀{} already present, skipping", universals.join(","));
-                }
-            } else {
-                if !inner.rebuilding {
-                    println!(
-                        "[Rule] Compiled ∀{} to backward-chaining rule",
-                        universals.join(",")
-                    );
-                }
-
-                let label = build_typed_rule_label(&typed_conds, &typed_concls);
-                if let Err(e) = register_rule(
+            // One rule per DNF clause; all clauses share the consequent + universals
+            // + dependent-Skolem analysis, only the conditions differ.
+            let clause_count = clauses.len();
+            for (branch_idx, clause) in clauses.iter().enumerate() {
+                register_clause_rule(
+                    buffer,
+                    clause,
+                    branch_idx,
+                    clause_count,
+                    &universals,
+                    &pattern_vars,
+                    &pattern_var_names,
+                    &ground_skolems,
+                    &dependent_skolems,
+                    &typed_concls,
+                    &rule_desc,
                     inner,
-                    label,
-                    all_pattern_var_names.clone(),
-                    typed_conds,
-                    typed_concls,
-                    negated_condition_indices,
-                    negated_exists_groups,
-                    false, // forward chaining disabled by default
-                ) {
-                    eprintln!("[Stratification Error] {}", e);
-                    return Err(e);
-                }
-
-                // xorlo presupposition applies ONLY to DESCRIPTION universals (`ro lo` /
-                // `ro le`), which carry existential import — "there is such a thing" — so a
-                // fresh witness satisfying the restrictor is asserted. It must NOT fire for:
-                //   - a ground material conditional (`ganai A gi B`, zero universals), and
-                //   - a PRENEX universal (`ro da zo'u …`), a pure logical ∀ with NO existential
-                //     import — asserting an antecedent/consequent witness there over-claims
-                //     (e.g. a phantom `pilno(adam, sk)` polluting regimen queries).
-                // smuni names description universals `_v{n}` (`fresh_var`) and prenex universals
-                // `da`/`de`/`di`, so a `_v`-prefix on every universal var distinguishes them.
-                let is_description_universal =
-                    !universals.is_empty() && universals.iter().all(|v| v.starts_with("_v"));
-                if is_description_universal {
-                    let xp_name = inner.fresh_skolem();
-                    inner.note_entity(&xp_name);
-                    let mut xp_subs: HashMap<String, GroundTerm> = HashMap::new();
-                    for v in &universals {
-                        xp_subs.insert(v.clone(), GroundTerm::Constant(xp_name.clone()));
-                    }
-                    for (k, v) in &ground_skolems {
-                        xp_subs
-                            .entry(k.clone())
-                            .or_insert_with(|| GroundTerm::Constant(v.clone()));
-                    }
-                    for var in &condition_exists_vars {
-                        let ev_sk = inner.fresh_skolem();
-                        if var.starts_with("_ev") {
-                            inner.note_event_entity(&ev_sk);
-                        } else {
-                            inner.note_entity(&ev_sk);
-                        }
-                        xp_subs.insert(var.clone(), GroundTerm::Constant(ev_sk));
-                    }
-                    for &(cid, tense) in &all_conditions {
-                        if let Some(fact) =
-                            build_stored_fact_from_node(buffer, cid, &xp_subs, tense)
-                        {
-                            assert_typed_fact(fact, inner);
-                        }
-                    }
-                }
+                )?;
             }
         }
         None => {
@@ -1464,6 +1631,20 @@ pub(super) fn build_rule_template_fact(
             } else {
                 None
             }
+        }
+        // Deontic wrappers are transparent — descend to the inner atom (mirrors the
+        // assert path `build_stored_fact_from_node`). Handles a flat or `Not(..)`-wrapped
+        // deontic antecedent atom; the And/∃ case is pre-stripped by
+        // `flatten_conjuncts_through_exists`.
+        LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) => {
+            build_rule_template_fact(
+                buffer,
+                *inner,
+                pattern_vars,
+                ground_skolems,
+                dependent_skolems,
+                tense,
+            )
         }
         _ => None,
     }

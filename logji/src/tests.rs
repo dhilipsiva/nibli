@@ -8585,3 +8585,320 @@ fn domain_member_cache_order_is_deterministic() {
     sorted.sort();
     assert_eq!(m1, sorted, "domain member cache must be sorted");
 }
+
+// ─── Disjunctive + deontic rule antecedents ─────────────────────────────────
+
+#[test]
+fn test_dnf_condition_clauses_splits_or_and_distributes_and() {
+    // Or(P, Q) → two single-leaf clauses.
+    let mut nodes = Vec::new();
+    let p = pred(&mut nodes, "p", vec![]);
+    let q = pred(&mut nodes, "q", vec![]);
+    let o = or(&mut nodes, p, q);
+    let buf = LogicBuffer {
+        nodes,
+        roots: vec![],
+    };
+    assert_eq!(
+        dnf_condition_clauses(&buf, &[o], MAX_DNF_CLAUSES).unwrap(),
+        vec![vec![p], vec![q]]
+    );
+
+    // Pure And → a single clause with both leaves.
+    let mut nodes = Vec::new();
+    let p = pred(&mut nodes, "p", vec![]);
+    let q = pred(&mut nodes, "q", vec![]);
+    let a = and(&mut nodes, p, q);
+    let buf = LogicBuffer {
+        nodes,
+        roots: vec![],
+    };
+    assert_eq!(
+        dnf_condition_clauses(&buf, &[a], MAX_DNF_CLAUSES).unwrap(),
+        vec![vec![p, q]]
+    );
+
+    // And(Or(P,Q), R) → distributes to [P,R], [Q,R].
+    let mut nodes = Vec::new();
+    let p = pred(&mut nodes, "p", vec![]);
+    let q = pred(&mut nodes, "q", vec![]);
+    let r = pred(&mut nodes, "r", vec![]);
+    let o = or(&mut nodes, p, q);
+    let a = and(&mut nodes, o, r);
+    let buf = LogicBuffer {
+        nodes,
+        roots: vec![],
+    };
+    assert_eq!(
+        dnf_condition_clauses(&buf, &[a], MAX_DNF_CLAUSES).unwrap(),
+        vec![vec![p, r], vec![q, r]]
+    );
+
+    // Nested Or(Or(P,Q),R) → three clauses.
+    let mut nodes = Vec::new();
+    let p = pred(&mut nodes, "p", vec![]);
+    let q = pred(&mut nodes, "q", vec![]);
+    let r = pred(&mut nodes, "r", vec![]);
+    let o1 = or(&mut nodes, p, q);
+    let o2 = or(&mut nodes, o1, r);
+    let buf = LogicBuffer {
+        nodes,
+        roots: vec![],
+    };
+    assert_eq!(
+        dnf_condition_clauses(&buf, &[o2], MAX_DNF_CLAUSES).unwrap(),
+        vec![vec![p], vec![q], vec![r]]
+    );
+}
+
+#[test]
+fn test_dnf_condition_clauses_cap_rejects_blowup() {
+    // (a∨b)∧(c∨d) expands to 4 clauses.
+    let mut nodes = Vec::new();
+    let a = pred(&mut nodes, "a", vec![]);
+    let b = pred(&mut nodes, "b", vec![]);
+    let c = pred(&mut nodes, "c", vec![]);
+    let d = pred(&mut nodes, "d", vec![]);
+    let o1 = or(&mut nodes, a, b);
+    let o2 = or(&mut nodes, c, d);
+    let conj = and(&mut nodes, o1, o2);
+    let buf = LogicBuffer {
+        nodes,
+        roots: vec![],
+    };
+    assert!(
+        dnf_condition_clauses(&buf, &[conj], 2).is_err(),
+        "4 clauses must exceed a cap of 2 (fail closed)"
+    );
+    assert!(
+        dnf_condition_clauses(&buf, &[conj], 4).is_ok(),
+        "4 clauses fit a cap of 4"
+    );
+}
+
+/// Build a DISJUNCTIVE event-decomposed universal rule (`ro lo X poi P ja Q cu R`):
+///   ForAll(_v0, Or(
+///     Not(Or(Exists(_ev0, P-event), Exists(_ev1, Q-event))),  // poi P ja Q restrictor
+///     Exists(_ev2, R-event)                                    // consequent
+///   ))
+/// If `conjunctive`, the restrictor is `And` instead of `Or` (the `je` control).
+fn make_branched_event_universal(
+    r1: &str,
+    r2: &str,
+    consequent: &str,
+    conjunctive: bool,
+) -> LogicBuffer {
+    let mut nodes = Vec::new();
+    let event_pred = |nodes: &mut Vec<LogicNode>, rel: &str, ev: &str| -> u32 {
+        let t = pred(nodes, rel, vec![LogicalTerm::Variable(ev.to_string())]);
+        let role = pred(
+            nodes,
+            &format!("{}_x1", rel),
+            vec![
+                LogicalTerm::Variable(ev.to_string()),
+                LogicalTerm::Variable("_v0".to_string()),
+            ],
+        );
+        let a = and(nodes, t, role);
+        exists(nodes, ev, a)
+    };
+    let p1 = event_pred(&mut nodes, r1, "_ev0");
+    let p2 = event_pred(&mut nodes, r2, "_ev1");
+    let restrictor = if conjunctive {
+        and(&mut nodes, p1, p2)
+    } else {
+        or(&mut nodes, p1, p2)
+    };
+    let q = event_pred(&mut nodes, consequent, "_ev2");
+    let neg = not(&mut nodes, restrictor);
+    let disj = or(&mut nodes, neg, q);
+    let root = forall(&mut nodes, "_v0", disj);
+    LogicBuffer {
+        nodes,
+        roots: vec![root],
+    }
+}
+
+#[test]
+fn test_disjunctive_antecedent_fires_either_branch() {
+    // `ro lo X poi prami ja pendo cu danlu` — fires if X loves OR befriends.
+    let kb = new_kb();
+    assert_buf(
+        &kb,
+        make_branched_event_universal("prami", "pendo", "danlu", false),
+    );
+    assert_buf(&kb, make_event_assertion("alis", "prami")); // left disjunct
+    assert!(
+        query(&kb, make_event_query("alis", "danlu")),
+        "left disjunct (prami) satisfied → disjunctive rule fires"
+    );
+
+    let kb2 = new_kb();
+    assert_buf(
+        &kb2,
+        make_branched_event_universal("prami", "pendo", "danlu", false),
+    );
+    assert_buf(&kb2, make_event_assertion("bemo", "pendo")); // right disjunct
+    assert!(
+        query(&kb2, make_event_query("bemo", "danlu")),
+        "right disjunct (pendo) satisfied → disjunctive rule fires"
+    );
+}
+
+#[test]
+fn test_disjunctive_antecedent_neither_false() {
+    let kb = new_kb();
+    assert_buf(
+        &kb,
+        make_branched_event_universal("prami", "pendo", "danlu", false),
+    );
+    assert_buf(&kb, make_event_assertion("alis", "prenu")); // neither prami nor pendo
+    assert!(
+        matches!(
+            query_result(&kb, make_event_query("alis", "danlu")),
+            QueryResult::False
+        ),
+        "neither disjunct satisfied → disjunctive rule does not fire"
+    );
+}
+
+#[test]
+fn test_disjunctive_registers_one_rule_per_branch() {
+    let kb = new_kb();
+    assert_buf(
+        &kb,
+        make_branched_event_universal("prami", "pendo", "danlu", false),
+    );
+    let inner = kb.inner.borrow();
+    let danlu_rules = inner
+        .universal_rules
+        .get("danlu")
+        .map(|v| v.len())
+        .unwrap_or(0);
+    assert_eq!(
+        danlu_rules, 2,
+        "a 2-way disjunctive antecedent registers one rule per disjunct"
+    );
+}
+
+#[test]
+fn test_conjunctive_je_still_requires_both() {
+    // `poi prami je pendo` must require BOTH (the conjunctive control).
+    let kb = new_kb();
+    assert_buf(
+        &kb,
+        make_branched_event_universal("prami", "pendo", "danlu", true),
+    );
+    assert_buf(&kb, make_event_assertion("alis", "prami")); // only one
+    assert!(
+        matches!(
+            query_result(&kb, make_event_query("alis", "danlu")),
+            QueryResult::False
+        ),
+        "conjunctive restrictor requires both — one is not enough"
+    );
+
+    let kb2 = new_kb();
+    assert_buf(
+        &kb2,
+        make_branched_event_universal("prami", "pendo", "danlu", true),
+    );
+    assert_buf(&kb2, make_event_assertion("bemo", "prami"));
+    assert_buf(&kb2, make_event_assertion("bemo", "pendo")); // both
+    assert!(
+        query(&kb2, make_event_query("bemo", "danlu")),
+        "conjunctive restrictor with both satisfied fires"
+    );
+}
+
+/// Build a DEONTIC event-decomposed universal rule (raw-FOL only — surface
+/// unreachable): `ForAll(_v0, Or(Not(<deontic>(Exists(_ev0, P-event))), R-event))`.
+/// The deontic wrapper is transparent, so this compiles as `P(x) → R(x)`.
+fn make_deontic_event_universal(
+    restrictor: &str,
+    consequent: &str,
+    permitted: bool,
+) -> LogicBuffer {
+    let mut nodes = Vec::new();
+    let p_type = pred(
+        &mut nodes,
+        restrictor,
+        vec![LogicalTerm::Variable("_ev0".to_string())],
+    );
+    let p_role = pred(
+        &mut nodes,
+        &format!("{}_x1", restrictor),
+        vec![
+            LogicalTerm::Variable("_ev0".to_string()),
+            LogicalTerm::Variable("_v0".to_string()),
+        ],
+    );
+    let p_and = and(&mut nodes, p_type, p_role);
+    let p_exists = exists(&mut nodes, "_ev0", p_and);
+    let deontic = {
+        let id = nodes.len() as u32;
+        nodes.push(if permitted {
+            LogicNode::PermittedNode(p_exists)
+        } else {
+            LogicNode::ObligatoryNode(p_exists)
+        });
+        id
+    };
+    let q_type = pred(
+        &mut nodes,
+        consequent,
+        vec![LogicalTerm::Variable("_ev1".to_string())],
+    );
+    let q_role = pred(
+        &mut nodes,
+        &format!("{}_x1", consequent),
+        vec![
+            LogicalTerm::Variable("_ev1".to_string()),
+            LogicalTerm::Variable("_v0".to_string()),
+        ],
+    );
+    let q_and = and(&mut nodes, q_type, q_role);
+    let q_exists = exists(&mut nodes, "_ev1", q_and);
+    let neg = not(&mut nodes, deontic);
+    let disj = or(&mut nodes, neg, q_exists);
+    let root = forall(&mut nodes, "_v0", disj);
+    LogicBuffer {
+        nodes,
+        roots: vec![root],
+    }
+}
+
+#[test]
+fn test_deontic_obligatory_antecedent_compiles_and_fires() {
+    // raw-FOL `Obligatory(P(x)) → R(x)` compiles as `P(x) → R(x)` (transparent deontic).
+    let kb = new_kb();
+    assert_buf(&kb, make_deontic_event_universal("bilga", "kajde", false));
+    assert_buf(&kb, make_event_assertion("alis", "bilga"));
+    assert!(
+        query(&kb, make_event_query("alis", "kajde")),
+        "transparent deontic antecedent fires when the bare inner condition holds"
+    );
+
+    // Negative control: inner condition absent → no fire.
+    let kb2 = new_kb();
+    assert_buf(&kb2, make_deontic_event_universal("bilga", "kajde", false));
+    assert_buf(&kb2, make_event_assertion("alis", "prenu"));
+    assert!(
+        matches!(
+            query_result(&kb2, make_event_query("alis", "kajde")),
+            QueryResult::False
+        ),
+        "deontic antecedent does not fire without the inner condition"
+    );
+}
+
+#[test]
+fn test_deontic_permitted_antecedent_compiles_and_fires() {
+    let kb = new_kb();
+    assert_buf(&kb, make_deontic_event_universal("curmi", "kajde", true));
+    assert_buf(&kb, make_event_assertion("alis", "curmi"));
+    assert!(
+        query(&kb, make_event_query("alis", "kajde")),
+        "transparent Permitted antecedent fires when the bare inner condition holds"
+    );
+}
