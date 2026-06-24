@@ -883,11 +883,23 @@ fn trigger_forward_rules(new_rel: &str, inner: &mut KnowledgeBaseInner) {
     }
 
     // Collect forward rules whose conditions mention the newly-asserted predicate.
+    // FAIL CLOSED: a NAF-bearing rule (a flat negated condition or a `poi na
+    // <selbri>` group) must never forward-fire — a forward-derived conclusion would
+    // go stale when a later assertion makes the negated dependency true, and there
+    // is no truth maintenance to retract it. `set_rule_forward` refuses to enable
+    // these, but exclude them here too so the invariant holds regardless of how
+    // `forward` was set; they stay sound via backward chaining (re-evaluates `¬Q`
+    // at query time).
     let mut forward_rules: Vec<Arc<UniversalRuleRecord>> = inner
         .universal_rules
         .values()
         .flat_map(|v| v.iter())
-        .filter(|r| r.forward && r.typed_conditions.iter().any(|c| c.relation() == new_rel))
+        .filter(|r| {
+            r.forward
+                && r.negated_condition_indices.is_empty()
+                && r.negated_exists_groups.is_empty()
+                && r.typed_conditions.iter().any(|c| c.relation() == new_rel)
+        })
         .cloned()
         .collect();
     forward_rules.sort_by_key(|r| std::cmp::Reverse(r.priority));
@@ -923,8 +935,10 @@ fn trigger_forward_rules(new_rel: &str, inner: &mut KnowledgeBaseInner) {
                 };
                 // Check all OTHER conditions hold against the fact store: positive
                 // conditions must be asserted; negated conditions hold via NAF (absent).
-                // TODO(naf-forward): no truth maintenance when a negated condition flips
-                // after a forward derivation; forward rules are off by default. See todo.md.
+                // A NAF-bearing rule is excluded by the filter above (kept
+                // backward-only — forward chaining + NAF has no truth maintenance), so
+                // the negated branch here is dead for forward firing; retained as
+                // defensive code (a forwarded rule has no negated indices).
                 let all_others = rule
                     .typed_conditions
                     .iter()

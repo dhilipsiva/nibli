@@ -813,10 +813,33 @@ impl KnowledgeBase {
     /// Mark all rules concluding the given predicate as forward-chaining enabled.
     /// Forward-enabled rules fire eagerly on fact assertion when all conditions
     /// are directly asserted in the fact store.
+    ///
+    /// FAIL CLOSED: a rule with a negation-as-failure condition (a flat negated
+    /// condition or a `poi na <selbri>` group) is NOT forward-enabled — it stays
+    /// backward-only, where it is sound (backward chaining re-evaluates `¬Q` at
+    /// query time). Forward chaining + NAF has no truth maintenance: a
+    /// forward-derived conclusion would never be retracted when a later assertion
+    /// makes the negated dependency true. Positive (negation-free) rules enable
+    /// normally; `forward = false` (disabling) always applies.
     pub fn set_rule_forward(&self, conclusion_predicate: &str, forward: bool) {
         let mut inner = self.inner.borrow_mut();
+        let rebuilding = inner.rebuilding;
         if let Some(rules) = inner.universal_rules.get_mut(conclusion_predicate) {
             for rule in rules.iter_mut() {
+                if forward
+                    && (!rule.negated_condition_indices.is_empty()
+                        || !rule.negated_exists_groups.is_empty())
+                {
+                    if !rebuilding {
+                        eprintln!(
+                            "[Forward] rule '{}' has a negation-as-failure condition; \
+                             keeping it backward-only (forward chaining + NAF has no \
+                             truth maintenance).",
+                            rule.label
+                        );
+                    }
+                    continue;
+                }
                 // Arc::get_mut only succeeds if there's one strong reference.
                 // If shared, clone-on-write.
                 if let Some(r) = Arc::get_mut(rule) {

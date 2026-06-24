@@ -115,6 +115,46 @@ fn make_query(entity: &str, predicate: &str) -> LogicBuffer {
     make_assertion(entity, predicate)
 }
 
+/// `∀x. (pos(x) ∧ ¬neg(x)) → consequent(x)` — a rule with a negation-as-failure
+/// condition. Compiles to a `UniversalRuleRecord` with a non-empty
+/// `negated_condition_indices`.
+fn make_universal_naf(pos: &str, neg: &str, consequent: &str) -> LogicBuffer {
+    let mut nodes = Vec::new();
+    let p = pred(
+        &mut nodes,
+        pos,
+        vec![
+            LogicalTerm::Variable("_v0".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let n = pred(
+        &mut nodes,
+        neg,
+        vec![
+            LogicalTerm::Variable("_v0".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let not_n = not(&mut nodes, n);
+    let ante = and(&mut nodes, p, not_n);
+    let body = pred(
+        &mut nodes,
+        consequent,
+        vec![
+            LogicalTerm::Variable("_v0".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let not_ante = not(&mut nodes, ante);
+    let disj = or(&mut nodes, not_ante, body);
+    let root = forall(&mut nodes, "_v0", disj);
+    LogicBuffer {
+        nodes,
+        roots: vec![root],
+    }
+}
+
 #[test]
 fn test_native_rule_simple_universal() {
     let kb = new_kb();
@@ -8245,6 +8285,99 @@ fn test_forward_chain_skipped_during_rebuild() {
     assert!(
         !query(&kb, make_query("alis", "danlu")),
         "danlu(alis) should be gone after retracting gerku(alis)"
+    );
+}
+
+#[test]
+fn test_forward_chain_naf_rule_kept_backward_only() {
+    // A forward rule with a negation-as-failure condition must stay BACKWARD-ONLY:
+    // forward chaining + NAF has no truth maintenance (a forward-derived conclusion
+    // would go stale when the negated dependency flips). Backward chaining stays
+    // sound — it re-evaluates ¬xange at query time. RED before the fail-closed fix:
+    // danlu(alis) was forward-derived and survived the later xange(alis) assertion.
+    let kb = new_kb();
+    assert_buf(&kb, make_universal_naf("gerku", "xange", "danlu"));
+
+    // Sanity: the test buffer really produces a negated-condition rule.
+    {
+        let inner = kb.inner.borrow();
+        let rules = inner.universal_rules.get("danlu").expect("rule registered");
+        assert!(
+            rules
+                .iter()
+                .any(|r| !r.negated_condition_indices.is_empty()),
+            "test buffer must produce a negated-condition rule"
+        );
+    }
+
+    // Attempt to forward-enable: the NAF rule must be REFUSED (stays backward-only).
+    kb.set_rule_forward("danlu", true);
+    {
+        let inner = kb.inner.borrow();
+        let rules = inner.universal_rules.get("danlu").unwrap();
+        assert!(
+            rules.iter().all(|r| !r.forward),
+            "a NAF rule must not be forward-enabled"
+        );
+    }
+
+    // Assert gerku(alis): danlu(alis) must NOT be forward-derived into the store.
+    assert_buf(&kb, make_assertion("alis", "gerku"));
+    {
+        let inner = kb.inner.borrow();
+        let has_danlu_alis = inner
+            .fact_store
+            .lookup_predicate("danlu")
+            .map(|set| {
+                set.iter().any(|f| {
+                    f.inner().relation == "danlu"
+                        && f.inner().args.first() == Some(&GroundTerm::Constant("alis".to_string()))
+                })
+            })
+            .unwrap_or(false);
+        assert!(
+            !has_danlu_alis,
+            "a NAF rule must not forward-derive danlu(alis)"
+        );
+    }
+
+    // Backward chaining is sound: while xange(alis) is absent, ¬xange holds and
+    // gerku(alis) holds → danlu(alis) is TRUE on demand.
+    assert!(
+        query(&kb, make_query("alis", "danlu")),
+        "backward chaining derives danlu while xange is absent"
+    );
+
+    // Flip the negated dependency: assert xange(alis). Backward chaining
+    // re-evaluates ¬xange → danlu(alis) must now be FALSE (no stale fact).
+    assert_buf(&kb, make_assertion("alis", "xange"));
+    assert!(
+        !query(&kb, make_query("alis", "danlu")),
+        "backward chaining re-evaluates ¬xange — danlu must no longer hold"
+    );
+}
+
+#[test]
+fn test_forward_chain_positive_still_enabled() {
+    // The fail-closed guard restricts ONLY NAF rules — a positive (negation-free)
+    // forward rule is still enabled and forward-derives eagerly.
+    let kb = new_kb();
+    assert_buf(&kb, make_universal("gerku", "danlu"));
+    kb.set_rule_forward("danlu", true);
+    {
+        let inner = kb.inner.borrow();
+        let rules = inner.universal_rules.get("danlu").unwrap();
+        assert!(
+            rules.iter().all(|r| r.forward),
+            "a positive (negation-free) rule must be forward-enabled"
+        );
+    }
+    assert_buf(&kb, make_assertion("alis", "gerku"));
+    let inner = kb.inner.borrow();
+    let danlu_facts = inner.fact_store.lookup_predicate("danlu");
+    assert!(
+        danlu_facts.is_some() && !danlu_facts.unwrap().is_empty(),
+        "a positive forward rule should forward-derive danlu(alis)"
     );
 }
 
