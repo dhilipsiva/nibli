@@ -119,6 +119,41 @@ pub(super) fn decompose_implication(buffer: &LogicBuffer, body_id: u32) -> Optio
     }
 }
 
+/// Prenex-normalize an OBJECT-POSITION universal. `ro lo gerku cu pendo ro lo
+/// mlatu` ("every dog befriends every cat") lowers to
+/// `Or(Not(gerku(x)), ForAll(y, Or(Not(mlatu(y)), <pendo>)))` — the inner `∀y`
+/// sits in the CONSEQUENT of the outer `∀x` material conditional. Starting from a
+/// rule body (after the leading `ForAll`s are stripped), this INTERLEAVES
+/// `decompose_implication` (harvest `Or(Not(cond), rest)` conditions) with peeling
+/// a nested `ForAll(y, body)` out of the resulting consequent, lifting each `y` +
+/// its restrictor into the universals + conditions — producing the SAME
+/// `(universals += [y], conditions = [gerku(x), mlatu(y)], consequent = <pendo>)`
+/// the prenex form `ro da ro de zo'u …` yields. Sound: `∀x.(P → ∀y.(Q → R)) ≡
+/// ∀x∀y.(P ∧ Q → R)` (y not free in P). Only a BARE `ForAllNode` consequent is
+/// peeled — a `Count`/`Exists`/tense-wrapped consequent is left intact (it fails
+/// closed downstream). A no-op for the existing single-universal and prenex
+/// shapes (nothing nested to peel → returns `([], conditions, consequent)`).
+/// Returns `(peeled universal vars outer→inner, condition node ids, final
+/// consequent node id)`.
+fn prenex_flatten(buffer: &LogicBuffer, body_id: u32) -> (Vec<String>, Vec<u32>, u32) {
+    let mut extra_universals = Vec::new();
+    let mut conditions = Vec::new();
+    let mut current = body_id;
+    loop {
+        if let Some((conds, rest)) = decompose_implication(buffer, current) {
+            conditions.extend(conds);
+            current = rest;
+        }
+        if let Ok(LogicNode::ForAllNode((y, inner_body))) = get_node(buffer, current) {
+            extra_universals.push(y.clone());
+            current = *inner_body;
+            continue;
+        }
+        break;
+    }
+    (extra_universals, conditions, current)
+}
+
 #[allow(dead_code)]
 pub(super) fn flatten_conjuncts(buffer: &LogicBuffer, node_id: u32) -> Vec<u32> {
     let Ok(node) = get_node(buffer, node_id) else {
@@ -1120,11 +1155,17 @@ fn register_clause_rule(
     let is_description_universal =
         !universals.is_empty() && universals.iter().all(|v| v.starts_with("_v"));
     if branch_idx == 0 && is_description_universal {
-        let xp_name = inner.fresh_skolem();
-        inner.note_entity(&xp_name);
+        // One FRESH witness PER universal. `ro lo gerku cu pendo ro lo mlatu`
+        // presupposes ≥1 dog AND ≥1 cat as DISTINCT entities; a single shared
+        // witness would assert `gerku(xp) ∧ mlatu(xp)` — a phantom dog-cat (an
+        // unsoundness reachable only once object-position multi-`_v`-universal
+        // rules compile). Behavior-identical for the single-universal case (one
+        // universal → one witness).
         let mut xp_subs: HashMap<String, GroundTerm> = HashMap::new();
         for v in universals {
-            xp_subs.insert(v.clone(), GroundTerm::Constant(xp_name.clone()));
+            let xp_name = inner.fresh_skolem();
+            inner.note_entity(&xp_name);
+            xp_subs.insert(v.clone(), GroundTerm::Constant(xp_name));
         }
         for (k, v) in ground_skolems {
             xp_subs
@@ -1201,6 +1242,16 @@ pub(super) fn compile_forall_to_rule(
     }
     let inner_body_id = current;
 
+    // Prenex-flatten an OBJECT-POSITION universal (`ro lo gerku cu pendo ro lo
+    // mlatu`): lift a nested `∀y` + its restrictor from the consequent into the
+    // rule's universals + conditions, producing the SAME rule the prenex
+    // `ro da ro de zo'u …` form does. A no-op for single-universal / prenex
+    // shapes. `pattern_vars` etc. below are then built from the COMPLETE
+    // `universals`, and the DepPair connected-component gives the conclusion
+    // event-Skolem `dep_count 2` (co-occurs with x AND y).
+    let (extra_universals, pf_conditions, pf_consequent) = prenex_flatten(buffer, inner_body_id);
+    universals.extend(extra_universals);
+
     // For fail-closed diagnostics: how to refer to this rule in an error message.
     let rule_desc = if universals.is_empty() {
         "ground conditional".to_string()
@@ -1236,7 +1287,12 @@ pub(super) fn compile_forall_to_rule(
         })
         .collect();
 
-    match decompose_implication(buffer, inner_body_id) {
+    let implication = if pf_conditions.is_empty() {
+        None
+    } else {
+        Some((pf_conditions, pf_consequent))
+    };
+    match implication {
         Some((condition_ids, consequent_id)) => {
             // DNF-split the antecedent into conjunctive clauses and register ONE
             // backward-chaining rule per clause: `∀x.(P(x)∨Q(x))→R(x)` is the
@@ -1492,7 +1548,7 @@ pub(super) fn compile_forall_to_rule(
 
             let typed_concls: Vec<StoredFact> = match build_rule_template_fact(
                 buffer,
-                inner_body_id,
+                pf_consequent,
                 &pattern_vars,
                 &ground_skolems,
                 &dependent_skolems,

@@ -684,9 +684,64 @@ fn binary_restrictor_constant_second_place_fires() {
     );
 }
 
-// NOTE: the OBJECT-POSITION multi-universal shape (`ro lo gerku cu pendo ro lo mlatu`)
-// is a separate defect (the conclusion is a nested ∀, rejected at compilation). The
-// idiomatic multi-variable rule uses the PRENEX form below.
+// ─── Object-position multi-universal rules (ro lo X cu R ro lo Y) ────
+// `ro lo gerku cu pendo ro lo mlatu` ("every dog befriends every cat") compiles
+// to a nested universal `∀x.(gerku(x) → ∀y.(mlatu(y) → pendo(x,y)))`; the rule
+// compiler prenex-flattens it into the SAME rule the prenex form below produces
+// (and fires via the same multi-variable join).
+
+#[test]
+fn object_position_universal_fires() {
+    // every dog befriends every cat; rex is a dog, tom is a cat → rex pendo tom.
+    // RED before prenex-flattening (the nested ∀ was rejected at compilation).
+    let engine = engine_with_facts(&[
+        "ro lo gerku cu pendo ro lo mlatu",
+        "la .rex. cu gerku",
+        "la .tom. cu mlatu",
+    ]);
+    let (holds, _t, _j) = engine
+        .query_text_with_proof("la .rex. cu pendo la .tom.")
+        .unwrap();
+    assert_true(
+        &holds,
+        "object-position universal: every dog befriends every cat",
+    );
+}
+
+#[test]
+fn object_position_universal_negative_control() {
+    // tom is NOT asserted to be a cat → the (rex, tom) pair must NOT fire.
+    let engine = engine_with_facts(&["ro lo gerku cu pendo ro lo mlatu", "la .rex. cu gerku"]);
+    let (holds, _t, _j) = engine
+        .query_text_with_proof("la .rex. cu pendo la .tom.")
+        .unwrap();
+    assert_false(&holds, "tom is not a cat → no friendship derived");
+}
+
+#[test]
+fn object_position_xorlo_no_phantom_entity() {
+    // The xorlo existential-import presupposition for `ro lo gerku cu pendo ro lo
+    // mlatu` must assert a dog witness and a cat witness as DISTINCT entities — NOT
+    // one phantom entity that is both. So "is some dog a cat?" is FALSE. RED before
+    // the per-universal-witness fix (a single shared witness satisfied both).
+    let engine = engine_with_facts(&["ro lo gerku cu pendo ro lo mlatu"]);
+    let (holds, _t, _j) = engine.query_text_with_proof("lo gerku cu mlatu").unwrap();
+    assert_false(&holds, "no single xorlo witness is both a dog and a cat");
+}
+
+#[test]
+fn object_position_count_object_fails_closed() {
+    // An exact-count object (`ci lo mlatu` = "exactly three cats") is NOT a
+    // universal, so it is not prenex-peeled; the Count consequent fails closed.
+    let engine = NibliEngine::new();
+    let err = engine
+        .assert_text("ro lo gerku cu pendo ci lo mlatu")
+        .expect_err("an exact-count object position must be rejected");
+    assert!(
+        err.to_string().contains("not a flat predicate") || err.to_string().contains("Rejecting"),
+        "expected a fail-closed rejection, got: {err}"
+    );
+}
 
 // ─── Prenex multi-variable rules (ro da ro de zo'u) ─────────────────
 
