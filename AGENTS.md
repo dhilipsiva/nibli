@@ -65,10 +65,10 @@ Core component crates + runtime surfaces:
 | `nibli` | — | Native debug REPL and `nibli-validate` tooling | `main.rs`, `src/bin/validate.rs` |
 | `python/` | — | Reference compute backend server (TCP + JSON Lines) | `nibli_backend.py` |
 
-- **WIT interfaces:** `wit/world.wit` defines `ast-types` (gerna output), `logic-types` (FOL IR), `gerna`, `smuni`, `logji`, `compute-backend`, `lasna`. `cargo component build` regenerates `src/bindings.rs` in each crate.
-- **WIT worlds:** `gerna-component`, `smuni-component`, `logji-component`, `lasna-pipeline`.
-- **Rust structs:** `GernaComponent`, `SmuniComponent`, `LogjiComponent`, `LasnaPipeline`.
-- **Cross-component data:** Flat index-based arrays (`AstBuffer`, `LogicBuffer`) with `u32` indices — no pointers across WASM boundaries.
+- **WIT interfaces:** `wit/world.wit` defines only the shipping component's boundary: `logic-types` (FOL IR), `error-types`, `compute-backend` (host import), `lasna` (session export). `cargo component build -p lasna` regenerates `lasna/src/bindings.rs` (the only crate with WIT bindings; gerna/smuni/logji use `nibli-types` directly).
+- **WIT worlds:** `lasna-pipeline` only (single WASM component; gerna/smuni/logji are internal Rust crate stages). The legacy per-stage `*-component` worlds + their interfaces were removed as vestigial.
+- **Rust structs:** `LasnaPipeline` (the only WIT-binding struct).
+- **Boundary data:** Flat index-based arrays (`LogicBuffer`, `LogicalTerm`) with `u32` indices cross the single host↔lasna WASM boundary — no heap pointers. Internal stages are Rust calls over `nibli-types` flat buffers.
 
 ## Canonical Runtime Surfaces
 

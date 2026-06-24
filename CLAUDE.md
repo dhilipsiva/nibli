@@ -80,10 +80,10 @@ Core component crates + runtime surfaces:
 | `nibli` | — | Native debug REPL and `nibli-validate` tooling | `main.rs`, `src/bin/validate.rs` |
 | `python/` | — | Reference compute backend server (TCP + JSON Lines) | `nibli_backend.py` |
 
-- **WIT interfaces:** `wit/world.wit` defines `ast-types` (gerna output), `logic-types` (FOL IR), `gerna`, `smuni`, `logji`, `compute-backend`, `lasna`. `wit/gossip.wit` defines gossip protocol types (agent identity, vector clocks, envelopes, trust, transport). `cargo component build -p lasna` regenerates `lasna/src/bindings.rs`; individual crate bindings regenerate with `cargo component build -p <crate>`.
-- **WIT worlds:** `lasna-pipeline` (single WASM component importing `compute-backend`, exporting `lasna`; gerna/smuni/logji linked as internal Rust crate deps). Legacy `gerna-component`, `smuni-component`, `logji-component` worlds retained for individual crate binding regeneration.
-- **Rust structs:** `LasnaPipeline` (WASM component), `GernaComponent`, `SmuniComponent`, `LogjiComponent` (binding stubs, not deployed as separate components).
-- **Cross-component data:** Flat index-based arrays (`AstBuffer`, `LogicBuffer`) with `u32` indices — no pointers across WASM boundaries.
+- **WIT interfaces:** `wit/world.wit` defines only the SHIPPING component's boundary: `logic-types` (FOL IR), `error-types`, `compute-backend` (host import), `lasna` (session export). `wit/gossip.wit` defines gossip protocol types (agent identity, vector clocks, envelopes, trust, transport). `cargo component build -p lasna` regenerates `lasna/src/bindings.rs` (the ONLY crate with WIT bindings; gerna/smuni/logji are plain Rust libs using `nibli-types` directly).
+- **WIT worlds:** `lasna-pipeline` is the SOLE world — a single WASM component importing `compute-backend`, exporting `lasna`, with gerna/smuni/logji linked as internal Rust crate deps. (The legacy per-stage `gerna-component`/`smuni-component`/`logji-component` worlds + `gerna`/`smuni`/`logji`/`ast-types` interfaces were removed — they were never built and misled contributors into thinking a per-component architecture existed.)
+- **Rust structs:** `LasnaPipeline` (the WASM component) is the only WIT-binding struct.
+- **Boundary data:** Flat index-based arrays (`LogicBuffer` for `:debug`/proof output, `LogicalTerm` args) with `u32` indices cross the SINGLE host↔lasna WASM boundary — no heap pointers. The internal gerna→smuni→logji stages are Rust function calls (no WASM boundary), using `nibli-types` flat buffers directly.
 - **Compute dispatch:** logji uses injectable function pointers (`logji::register_compute_dispatch`) instead of cfg-gated WIT imports. Lasna registers host-bridge functions at Session creation; native mode (nibli-engine) leaves dispatch unregistered (returns error for external predicates).
 
 ## Canonical Runtime Surfaces

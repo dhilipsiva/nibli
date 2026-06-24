@@ -1,7 +1,6 @@
-//! Lojban gerna (grammar/parser) WASM component.
-//!
-//! Entry point for the `gerna-component` WIT world. Implements the full
-//! text-to-flat-buffer pipeline:
+//! Lojban gerna (grammar/parser): an internal Rust pipeline stage of the single
+//! `lasna` WASM component (gerna → smuni → logji are crate deps, NOT separate
+//! WIT components). Implements the full text-to-flat-buffer pipeline:
 //!
 //! 1. **Lex** — Logos DFA tokenizer ([`lexer::tokenize`])
 //! 2. **Preprocess** — Metalinguistic resolution: si/sa/su/zo/zoi/zei ([`preprocessor::preprocess`])

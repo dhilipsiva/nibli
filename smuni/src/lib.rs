@@ -1,6 +1,6 @@
-//! Smuni (meaning/semantics) WASM component: flat AST buffer → FOL logic buffer.
-//!
-//! Entry point for the `smuni-component` WIT world. Compiles the gerna's
+//! Smuni (meaning/semantics): flat AST buffer → FOL logic buffer. An internal
+//! Rust pipeline stage of the single `lasna` WASM component (NOT a standalone
+//! WIT component). Compiles the gerna's
 //! flat AST buffer into a flat First-Order Logic buffer via the [`SemanticCompiler`],
 //! then flattens the tree-structured [`LogicalForm`] IR into the WIT-compatible
 //! index-based [`LogicBuffer`].
