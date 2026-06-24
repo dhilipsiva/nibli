@@ -615,47 +615,134 @@ fn rebase_sentence_inplace(s: &mut gerna_ast::Sentence, sb: u32, ub: u32, tb: u3
     }
 }
 
-/// Resolve go'i references in a single sentence.
+/// Map a bridi's head+tail term ids to place positions (x1=0, x2=1, …) using the
+/// SAME positional FA rule as smuni's `compile_bridi`: an untagged term fills the
+/// next free place; a `Sumti::Tagged((tag, inner))` sets the place to
+/// `tag.to_index()` and stores the INNER id (the tag is stripped — the merged
+/// bridi is positional), resuming after it.
+fn place_map(sumtis: &[gerna_ast::Sumti], head: &[u32], tail: &[u32]) -> Vec<Option<u32>> {
+    let mut places: Vec<Option<u32>> = Vec::new();
+    let mut next = 0usize;
+    for &t in head.iter().chain(tail.iter()) {
+        let (place, id) = match &sumtis[t as usize] {
+            gerna_ast::Sumti::Tagged((tag, inner)) => (tag.to_index(), *inner),
+            _ => {
+                while next < places.len() && places[next].is_some() {
+                    next += 1;
+                }
+                (next, t)
+            }
+        };
+        if place >= places.len() {
+            places.resize(place + 1, None);
+        }
+        places[place] = Some(id);
+        next = place + 1;
+    }
+    places
+}
+
+/// Resolve a Simple bridi's go'i (when its relation selbri is `Root("go'i")`)
+/// against the antecedent identified by `current`. BARE go'i (`go'i` / `? go'i`,
+/// no own sumti/tense/negation/attitudinal) repeats the WHOLE antecedent bridi;
+/// a PARTIAL go'i (`do go'i`, `na go'i`, `pu go'i`) merges per place — the go'i's
+/// supplied places override, unsupplied places inherit from the antecedent, and
+/// tense/negation/attitudinal are overridden only when the go'i supplies them.
+/// The antecedent's term ids are already valid in `ast.sumtis` (grafted from a
+/// snapshot or a live in-buffer sentence), so the merge is pure id-selection — no
+/// rebasing. Does NOT touch `current` (the caller owns antecedent advancement);
+/// no-op if the bridi is not a go'i.
+fn resolve_simple_bridi_go_i(
+    ast: &mut gerna_ast::AstBuffer,
+    sentence_idx: usize,
+    current: &Option<u32>,
+) -> Result<(), String> {
+    let gerna_ast::Sentence::Simple(mut bridi) = ast.sentences[sentence_idx].clone() else {
+        return Ok(());
+    };
+    let is_go_i =
+        matches!(&ast.selbris[bridi.relation as usize], gerna_ast::Selbri::Root(n) if n == "go'i");
+    if !is_go_i {
+        return Ok(());
+    }
+    let antecedent_sid =
+        current.ok_or_else(|| "go'i has no antecedent (no previous assertion)".to_string())?;
+    let antecedent = match &ast.sentences[antecedent_sid as usize] {
+        gerna_ast::Sentence::Simple(b) => b.clone(),
+        _ => return Err("go'i antecedent is not a simple bridi".to_string()),
+    };
+
+    let bare = bridi.head_terms.is_empty()
+        && bridi.tail_terms.is_empty()
+        && bridi.tense.is_none()
+        && !bridi.negated
+        && bridi.attitudinal.is_none();
+    if bare {
+        ast.sentences[sentence_idx] = gerna_ast::Sentence::Simple(antecedent);
+        return Ok(());
+    }
+
+    // Per-place merge: overlay the go'i's supplied places over the antecedent's.
+    let ant = place_map(&ast.sumtis, &antecedent.head_terms, &antecedent.tail_terms);
+    let goi = place_map(&ast.sumtis, &bridi.head_terms, &bridi.tail_terms);
+    let n = ant.len().max(goi.len());
+    let mut head_terms = Vec::with_capacity(n);
+    for i in 0..n {
+        let id = goi
+            .get(i)
+            .copied()
+            .flatten()
+            .or_else(|| ant.get(i).copied().flatten())
+            .unwrap_or_else(|| {
+                // A place neither side supplies becomes a fresh `zo'e` so smuni's
+                // positional counter stays aligned.
+                let uid = ast.sumtis.len() as u32;
+                ast.sumtis.push(gerna_ast::Sumti::Unspecified);
+                uid
+            });
+        head_terms.push(id);
+    }
+    bridi.relation = antecedent.relation;
+    bridi.head_terms = head_terms;
+    bridi.tail_terms = vec![];
+    bridi.negated = antecedent.negated || bridi.negated;
+    bridi.tense = bridi.tense.or(antecedent.tense);
+    bridi.attitudinal = bridi.attitudinal.or(antecedent.attitudinal);
+    ast.sentences[sentence_idx] = gerna_ast::Sentence::Simple(bridi);
+    Ok(())
+}
+
+/// Resolve go'i references in a single TOP-LEVEL sentence, advancing `current`.
 fn resolve_sentence_go_i(
     ast: &mut gerna_ast::AstBuffer,
     sentence_idx: usize,
     current: &mut Option<u32>,
 ) -> Result<(), String> {
-    let sentence = ast.sentences[sentence_idx].clone();
-    match sentence {
-        gerna_ast::Sentence::Simple(mut bridi) => {
-            let selbri_id = bridi.relation;
-            let is_go_i = matches!(&ast.selbris[selbri_id as usize], gerna_ast::Selbri::Root(n) if n == "go'i");
-            if is_go_i {
-                let antecedent_sid = current
-                    .ok_or_else(|| "go'i has no antecedent (no previous assertion)".to_string())?;
-                let antecedent = match &ast.sentences[antecedent_sid as usize] {
-                    gerna_ast::Sentence::Simple(b) => b.clone(),
-                    _ => return Err("go'i antecedent is not a simple bridi".to_string()),
-                };
-                // A BARE go'i (`go'i` / `? go'i`) supplies no sumti, tense,
-                // negation, or attitudinal of its own → repeat the WHOLE previous
-                // bridi. The antecedent's term ids are already valid in
-                // `ast.sumtis` (grafted from a snapshot or a live in-buffer
-                // sentence), so the bridi is copied with NO extra offset.
-                let bare = bridi.head_terms.is_empty()
-                    && bridi.tail_terms.is_empty()
-                    && bridi.tense.is_none()
-                    && !bridi.negated
-                    && bridi.attitudinal.is_none();
-                if bare {
-                    ast.sentences[sentence_idx] = gerna_ast::Sentence::Simple(antecedent);
-                } else {
-                    // Partial go'i (`do go'i`, `na go'i`, `ba go'i`): keep the
-                    // go'i bridi's own sumti/tense/negation and only repoint the
-                    // relation. Full place/modifier merge is a documented remainder.
-                    bridi.relation = antecedent.relation;
-                    ast.sentences[sentence_idx] = gerna_ast::Sentence::Simple(bridi);
-                }
+    match ast.sentences[sentence_idx].clone() {
+        gerna_ast::Sentence::Simple(_) => {
+            // Resolve this bridi's own top-level go'i (bare → whole antecedent;
+            // partial → per-place merge).
+            resolve_simple_bridi_go_i(ast, sentence_idx, &*current)?;
+            // Descend into NESTED positions (abstraction / relative-clause bodies)
+            // and resolve any go'i there, reading `current` as the PRIOR top-level
+            // antecedent — so `mi klama .i mi nelci lo nu go'i` resolves the nested
+            // go'i to `klama(mi)`, not to this sentence. Descend BEFORE advancing
+            // `current`. A SELBRI-position go'i (`sutra go'i` in a tanru) is NOT
+            // resolved here — the fail-closed net rejects it (deferred).
+            let (relation, terms): (u32, Vec<u32>) = match &ast.sentences[sentence_idx] {
+                gerna_ast::Sentence::Simple(b) => (
+                    b.relation,
+                    b.head_terms.iter().chain(&b.tail_terms).copied().collect(),
+                ),
+                _ => unreachable!(),
+            };
+            let mut seen = std::collections::HashSet::new();
+            resolve_selbri_go_i(ast, relation, &*current, &mut seen)?;
+            for t in terms {
+                resolve_sumti_go_i(ast, t, &*current, &mut seen)?;
             }
-            // The resolved bridi (whether it was go'i or explicit) becomes the
-            // antecedent for the next go'i — `mi klama .i do go'i .i go'i` must
-            // chain the resolved `klama(do)`, not the original `klama(mi)`.
+            // The resolved bridi becomes the antecedent for the next go'i —
+            // `mi klama .i do go'i .i go'i` chains the resolved `klama(do)`.
             *current = Some(sentence_idx as u32);
             Ok(())
         }
@@ -669,6 +756,125 @@ fn resolve_sentence_go_i(
             Ok(())
         }
     }
+}
+
+/// Mutating twin of `selbri_reaches_go_i`: descend a selbri and resolve any
+/// nested SENTENCE-position go'i (an abstraction body, `lo nu go'i`). A
+/// SELBRI-position go'i (a bare `Root("go'i")` in a tanru, `sutra go'i`) is left
+/// unresolved for the fail-closed net (deferred). Reads `current` (never advances
+/// it). Clone-then-recurse to dodge the `&mut ast[i]` borrow; `seen` cycle-guards.
+fn resolve_selbri_go_i(
+    ast: &mut gerna_ast::AstBuffer,
+    id: u32,
+    current: &Option<u32>,
+    seen: &mut std::collections::HashSet<(u8, u32)>,
+) -> Result<(), String> {
+    if !seen.insert((1, id)) {
+        return Ok(());
+    }
+    match ast.selbris[id as usize].clone() {
+        gerna_ast::Selbri::Root(_) | gerna_ast::Selbri::Compound(_) => {}
+        gerna_ast::Selbri::Tanru((m, h)) => {
+            resolve_selbri_go_i(ast, m, current, seen)?;
+            resolve_selbri_go_i(ast, h, current, seen)?;
+        }
+        gerna_ast::Selbri::Converted((_, i))
+        | gerna_ast::Selbri::Negated(i)
+        | gerna_ast::Selbri::Grouped(i) => resolve_selbri_go_i(ast, i, current, seen)?,
+        gerna_ast::Selbri::WithArgs((core, args)) => {
+            resolve_selbri_go_i(ast, core, current, seen)?;
+            for a in args {
+                resolve_sumti_go_i(ast, a, current, seen)?;
+            }
+        }
+        gerna_ast::Selbri::Connected((l, _, r)) => {
+            resolve_selbri_go_i(ast, l, current, seen)?;
+            resolve_selbri_go_i(ast, r, current, seen)?;
+        }
+        gerna_ast::Selbri::Abstraction((_, s)) => {
+            resolve_nested_sentence_go_i(ast, s, current, seen)?;
+        }
+    }
+    Ok(())
+}
+
+/// Mutating twin of `sumti_reaches_go_i`: descend a sumti and resolve any nested
+/// SENTENCE-position go'i (a relative-clause body, `poi go'i`). Reads `current`.
+fn resolve_sumti_go_i(
+    ast: &mut gerna_ast::AstBuffer,
+    id: u32,
+    current: &Option<u32>,
+    seen: &mut std::collections::HashSet<(u8, u32)>,
+) -> Result<(), String> {
+    if !seen.insert((2, id)) {
+        return Ok(());
+    }
+    match ast.sumtis[id as usize].clone() {
+        gerna_ast::Sumti::Description((_, sid))
+        | gerna_ast::Sumti::QuantifiedDescription((_, _, sid)) => {
+            resolve_selbri_go_i(ast, sid, current, seen)?;
+        }
+        gerna_ast::Sumti::Tagged((_, i)) => resolve_sumti_go_i(ast, i, current, seen)?,
+        gerna_ast::Sumti::ModalTagged((mt, i)) => {
+            if let gerna_ast::ModalTag::Fio(sid) = mt {
+                resolve_selbri_go_i(ast, sid, current, seen)?;
+            }
+            resolve_sumti_go_i(ast, i, current, seen)?;
+        }
+        gerna_ast::Sumti::Restricted((i, rc)) => {
+            resolve_sumti_go_i(ast, i, current, seen)?;
+            resolve_nested_sentence_go_i(ast, rc.body_sentence, current, seen)?;
+        }
+        gerna_ast::Sumti::Connected((l, _, _, r)) => {
+            resolve_sumti_go_i(ast, l, current, seen)?;
+            resolve_sumti_go_i(ast, r, current, seen)?;
+        }
+        gerna_ast::Sumti::ProSumti(_)
+        | gerna_ast::Sumti::Name(_)
+        | gerna_ast::Sumti::QuotedLiteral(_)
+        | gerna_ast::Sumti::Unspecified
+        | gerna_ast::Sumti::Number(_) => {}
+    }
+    Ok(())
+}
+
+/// Mutating twin of `sentence_reaches_go_i` for a NESTED sentence (abstraction /
+/// relative-clause body): resolve its Simple bridi's go'i (reading `current`,
+/// never advancing it) and recurse into its selbri + terms (handles
+/// `lo nu lo nu go'i`).
+fn resolve_nested_sentence_go_i(
+    ast: &mut gerna_ast::AstBuffer,
+    id: u32,
+    current: &Option<u32>,
+    seen: &mut std::collections::HashSet<(u8, u32)>,
+) -> Result<(), String> {
+    if !seen.insert((0, id)) {
+        return Ok(());
+    }
+    match ast.sentences[id as usize].clone() {
+        gerna_ast::Sentence::Simple(_) => {
+            resolve_simple_bridi_go_i(ast, id as usize, current)?;
+            let (relation, terms): (u32, Vec<u32>) = match &ast.sentences[id as usize] {
+                gerna_ast::Sentence::Simple(b) => (
+                    b.relation,
+                    b.head_terms.iter().chain(&b.tail_terms).copied().collect(),
+                ),
+                _ => unreachable!(),
+            };
+            resolve_selbri_go_i(ast, relation, current, seen)?;
+            for t in terms {
+                resolve_sumti_go_i(ast, t, current, seen)?;
+            }
+        }
+        gerna_ast::Sentence::Connected((_, l, r)) => {
+            resolve_nested_sentence_go_i(ast, l, current, seen)?;
+            resolve_nested_sentence_go_i(ast, r, current, seen)?;
+        }
+        gerna_ast::Sentence::Prenex((_, body)) => {
+            resolve_nested_sentence_go_i(ast, body, current, seen)?;
+        }
+    }
+    Ok(())
 }
 
 /// Walk all root sentences and resolve any go'i references.
@@ -697,19 +903,20 @@ fn resolve_go_i(
         let root_idx = ast.roots[i] as usize;
         resolve_sentence_go_i(ast, root_idx, &mut current)?;
     }
-    // Fail-closed: any go'i still REACHABLE from a root after resolution sits in
-    // a position the resolver does not descend into (abstraction body, relative
-    // clause, tanru, …). Compiling it as a literal `go'i` predicate is silently
-    // wrong, so reject. A resolved top-level go'i leaves a residual node in
-    // `selbris`, but it is unreachable (its bridi was repointed), so this only
-    // catches genuinely-nested go'i.
+    // Fail-closed net: any go'i still REACHABLE after resolution sits in a
+    // SELBRI position the resolver intentionally does not handle yet — a tanru /
+    // selbri-position go'i (`sutra go'i`). Top-level, abstraction-body, and
+    // relative-clause-body go'i are resolved above; a resolved go'i leaves only an
+    // unreachable residual node. Compiling a remaining go'i as a literal predicate
+    // is silently wrong, so reject.
     if has_go_i {
         let mut seen = HashSet::new();
         for &root in &ast.roots {
             if sentence_reaches_go_i(ast, root, &mut seen) {
                 return Err(
-                    "go'i in an unsupported position (abstraction / relative clause / \
-                            tanru) — only top-level go'i is resolved"
+                    "go'i in an unsupported position (a tanru / selbri-position go'i \
+                            such as `sutra go'i`) — abstraction and relative-clause go'i \
+                            are resolved, but selbri-position go'i is not yet supported"
                         .to_string(),
                 );
             }
@@ -806,6 +1013,28 @@ fn sumti_reaches_go_i(
         | gerna_ast::Sumti::Unspecified
         | gerna_ast::Sumti::Number(_) => false,
     }
+}
+
+/// Synthesize positional `Sumti` nodes (and their head-term ids) from direct-API
+/// `assert-fact` args for the go'i snapshot. `Constant`→`Name`, `Number`→`Number`
+/// (both round-trip through smuni to the same shape `compile_injected_fact`
+/// stored); `Description`/`Variable`/`Unspecified`→`Unspecified` (place-preserving
+/// `zo'e` — a faithful node would need a selbri id / `da`-`de`-`di` we lack here).
+fn synth_snapshot_terms(args: &[export_logic::LogicalTerm]) -> (Vec<gerna_ast::Sumti>, Vec<u32>) {
+    let mut sumtis = Vec::with_capacity(args.len());
+    let mut head_terms = Vec::with_capacity(args.len());
+    for a in args {
+        let id = sumtis.len() as u32;
+        sumtis.push(match a {
+            export_logic::LogicalTerm::Constant(c) => gerna_ast::Sumti::Name(c.clone()),
+            export_logic::LogicalTerm::Number(n) => gerna_ast::Sumti::Number(*n),
+            export_logic::LogicalTerm::Description(_)
+            | export_logic::LogicalTerm::Variable(_)
+            | export_logic::LogicalTerm::Unspecified => gerna_ast::Sumti::Unspecified,
+        });
+        head_terms.push(id);
+    }
+    (sumtis, head_terms)
 }
 
 // ─── Shared pipeline: text → AST → LogicBuffer ───
@@ -906,16 +1135,18 @@ impl Session {
         args: Vec<export_logic::LogicalTerm>,
         id: Option<u64>,
     ) -> Result<u64, export_err::NibliError> {
-        // Sentence-rooted snapshot: a Simple bridi with EMPTY terms. The
-        // direct-API path does not carry sumti, so a following bare `? go'i`
-        // repeats `relation(zo'e)` (args lost) — same as before this change; the
-        // surface-text path is where the full-bridi go'i fix applies.
+        // Sentence-rooted snapshot carrying the args as positional sumti, so a
+        // following bare `? go'i` reproduces `relation(a, b, …)`. Ground
+        // `Constant`/`Number` args round-trip; `Description`/`Variable` degrade to
+        // a place-preserving `zo'e` (no selbri id / da-de-di binding available
+        // here) — never a wrong constant. See `synth_snapshot_terms`.
+        let (sumtis, head_terms) = synth_snapshot_terms(&args);
         *self.last_relation.borrow_mut() = Some(BridiSnapshot {
             selbris: vec![gerna_ast::Selbri::Root(relation.clone())],
-            sumtis: vec![],
+            sumtis,
             sentences: vec![gerna_ast::Sentence::Simple(gerna_ast::Bridi {
                 relation: 0,
-                head_terms: vec![],
+                head_terms,
                 tail_terms: vec![],
                 negated: false,
                 tense: None,
@@ -970,11 +1201,16 @@ impl GuestSession for Session {
         &self,
         input: String,
     ) -> Result<export_logic::QueryResult, export_err::NibliError> {
-        let (buf, _, _warnings) = compile_pipeline(
+        let (buf, new_last, _warnings) = compile_pipeline(
             &input,
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),
         )?;
+        // go'i tracks the last QUERIED bridi too, not just the last asserted one
+        // (the pipeline-arg borrow is dropped before this write-back). The
+        // snapshot is TRANSIENT: queries are not journaled, so a WASM-trap rebuild
+        // (which replays asserts only) reconstructs it from the last assertion.
+        *self.last_relation.borrow_mut() = new_last;
         self.kb
             .query_entailment(buf)
             .map(|result| convert_query_result_to_export(&result))
@@ -985,11 +1221,13 @@ impl GuestSession for Session {
         &self,
         input: String,
     ) -> Result<Vec<Vec<export_logic::WitnessBinding>>, export_err::NibliError> {
-        let (buf, _, _warnings) = compile_pipeline(
+        let (buf, new_last, _warnings) = compile_pipeline(
             &input,
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),
         )?;
+        // go'i tracks the last queried bridi (transient — see `query_text`).
+        *self.last_relation.borrow_mut() = new_last;
         let result = self.kb.query_find(buf).map_err(convert_pipeline_error)?;
         Ok(convert_witness_bindings(result))
     }
@@ -998,11 +1236,13 @@ impl GuestSession for Session {
         &self,
         input: String,
     ) -> Result<(export_logic::QueryResult, export_logic::ProofTrace), export_err::NibliError> {
-        let (buf, _, _warnings) = compile_pipeline(
+        let (buf, new_last, _warnings) = compile_pipeline(
             &input,
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),
         )?;
+        // go'i tracks the last queried bridi (transient — see `query_text`).
+        *self.last_relation.borrow_mut() = new_last;
         let (result, trace) = self
             .kb
             .query_entailment_with_proof(buf)
@@ -1539,10 +1779,11 @@ mod tests {
     }
 
     #[test]
-    fn nested_go_i_is_rejected() {
-        // go'i buried inside a tanru is never a direct bridi relation, so the
-        // resolver never reaches it. It must FAIL CLOSED with an explicit error
-        // rather than silently compiling a literal `go'i` predicate.
+    fn tanru_go_i_still_rejected() {
+        // `mi sutra go'i` — a SELBRI-position go'i inside a tanru is the deferred
+        // phase-2 case. The resolver does not graft a selbri-position go'i, so the
+        // fail-closed net must still reject it (rather than compile a literal
+        // `go'i` predicate). Phase-2 guard.
         let src = make_ast(
             vec![gerna_ast::Selbri::Root("klama".to_string())],
             0,
@@ -1560,8 +1801,293 @@ mod tests {
             vec![0],
         );
         let res = resolve_go_i(&mut ast, &mut last);
-        assert!(res.is_err(), "nested go'i must be rejected, got {res:?}");
+        assert!(res.is_err(), "tanru go'i must be rejected, got {res:?}");
         assert!(res.unwrap_err().contains("unsupported position"));
+    }
+
+    // ─── (a) partial go'i per-place merge ───
+
+    #[test]
+    fn test_partial_go_i_inherits_antecedent_place() {
+        // `mi pu klama` then `? pu go'i`: a PARTIAL go'i (supplies a tense, no
+        // terms) inherits the antecedent's x1 (`mi`) per place and keeps its own
+        // tense. RED before the merge — the partial path kept the empty go'i terms
+        // (`pu klama(zo'e)`).
+        let src = make_ast(
+            vec![gerna_ast::Selbri::Root("klama".to_string())],
+            0,
+            vec![0],
+        );
+        let mut last = Some(extract_bridi_snapshot(&src, 0));
+        let mut ast = make_ast(vec![gerna_ast::Selbri::Root("go'i".to_string())], 0, vec![]);
+        if let gerna_ast::Sentence::Simple(b) = &mut ast.sentences[0] {
+            b.tense = Some(gerna_ast::Tense::Pu);
+        }
+        resolve_go_i(&mut ast, &mut last).unwrap();
+        let b = match &ast.sentences[0] {
+            gerna_ast::Sentence::Simple(b) => b.clone(),
+            _ => panic!(),
+        };
+        assert_eq!(b.head_terms.len(), 1, "partial go'i must inherit x1");
+        assert!(
+            matches!(&ast.sumtis[b.head_terms[0] as usize], gerna_ast::Sumti::ProSumti(n) if n == "mi")
+        );
+        assert!(
+            matches!(b.tense, Some(gerna_ast::Tense::Pu)),
+            "keeps its own tense"
+        );
+        assert!(
+            matches!(&ast.selbris[b.relation as usize], gerna_ast::Selbri::Root(n) if n == "klama")
+        );
+    }
+
+    #[test]
+    fn test_partial_go_i_supplied_place_overrides() {
+        // `mi klama .i do go'i`: the supplied x1 (`do`) overrides the antecedent's.
+        let mut ast = make_two_sentence_ast(vec![gerna_ast::Selbri::Root("klama".to_string())], 0);
+        let mut last: Option<BridiSnapshot> = None;
+        resolve_go_i(&mut ast, &mut last).unwrap();
+        let b = match &ast.sentences[1] {
+            gerna_ast::Sentence::Simple(b) => b.clone(),
+            _ => panic!(),
+        };
+        assert!(
+            matches!(&ast.sumtis[b.head_terms[0] as usize], gerna_ast::Sumti::ProSumti(n) if n == "do"),
+            "supplied place must override the antecedent's"
+        );
+        assert!(
+            matches!(&ast.selbris[b.relation as usize], gerna_ast::Selbri::Root(n) if n == "klama")
+        );
+    }
+
+    #[test]
+    fn test_partial_go_i_na_negates() {
+        // `mi klama` then `na go'i`: a partial go'i adds negation, inheriting x1.
+        let src = make_ast(
+            vec![gerna_ast::Selbri::Root("klama".to_string())],
+            0,
+            vec![0],
+        );
+        let mut last = Some(extract_bridi_snapshot(&src, 0));
+        let mut ast = make_ast(vec![gerna_ast::Selbri::Root("go'i".to_string())], 0, vec![]);
+        if let gerna_ast::Sentence::Simple(b) = &mut ast.sentences[0] {
+            b.negated = true;
+        }
+        resolve_go_i(&mut ast, &mut last).unwrap();
+        let b = match &ast.sentences[0] {
+            gerna_ast::Sentence::Simple(b) => b.clone(),
+            _ => panic!(),
+        };
+        assert!(b.negated, "na go'i must negate");
+        assert!(
+            matches!(&ast.sumtis[b.head_terms[0] as usize], gerna_ast::Sumti::ProSumti(n) if n == "mi")
+        );
+    }
+
+    #[test]
+    fn test_partial_go_i_fe_tagged_place() {
+        // `mi klama` then `fe do go'i`: the FA-tagged `do` fills x2, x1 inherits.
+        let src = make_ast(
+            vec![gerna_ast::Selbri::Root("klama".to_string())],
+            0,
+            vec![0],
+        );
+        let mut last = Some(extract_bridi_snapshot(&src, 0));
+        let mut ast = gerna_ast::AstBuffer {
+            selbris: vec![gerna_ast::Selbri::Root("go'i".to_string())],
+            sumtis: vec![
+                Sumti::ProSumti("do".to_string()),           // 0
+                Sumti::Tagged((gerna_ast::PlaceTag::Fe, 0)), // 1: fe do
+            ],
+            sentences: vec![gerna_ast::Sentence::Simple(Bridi {
+                relation: 0,
+                head_terms: vec![1],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            })],
+            roots: vec![0],
+        };
+        resolve_go_i(&mut ast, &mut last).unwrap();
+        let b = match &ast.sentences[0] {
+            gerna_ast::Sentence::Simple(b) => b.clone(),
+            _ => panic!(),
+        };
+        assert_eq!(b.head_terms.len(), 2, "x1 inherited + x2 from `fe do`");
+        assert!(
+            matches!(&ast.sumtis[b.head_terms[0] as usize], gerna_ast::Sumti::ProSumti(n) if n == "mi")
+        );
+        assert!(
+            matches!(&ast.sumtis[b.head_terms[1] as usize], gerna_ast::Sumti::ProSumti(n) if n == "do")
+        );
+    }
+
+    // ─── (d) direct-API assert_fact snapshot carries sumti ───
+
+    #[test]
+    fn assert_fact_snapshot_carries_args() {
+        // Ground Constant/Number args become positional Name/Number sumti;
+        // Variable/Description degrade to a place-preserving zo'e.
+        let (sumtis, head) = synth_snapshot_terms(&[
+            export_logic::LogicalTerm::Constant("adam".to_string()),
+            export_logic::LogicalTerm::Number(42.0),
+            export_logic::LogicalTerm::Variable("da".to_string()),
+        ]);
+        assert_eq!(head, vec![0, 1, 2]);
+        assert!(matches!(&sumtis[0], gerna_ast::Sumti::Name(n) if n == "adam"));
+        assert!(matches!(&sumtis[1], gerna_ast::Sumti::Number(n) if *n == 42.0));
+        assert!(matches!(&sumtis[2], gerna_ast::Sumti::Unspecified));
+    }
+
+    // ─── (c1) nested SENTENCE-position go'i resolution ───
+
+    #[test]
+    fn nested_go_i_abstraction_body_bare() {
+        // `mi nelci lo nu go'i` — a BARE go'i as the whole `nu` abstraction body
+        // resolves to the antecedent bridi (`klama(mi)`). RED before c1 (rejected).
+        let src = make_ast(
+            vec![gerna_ast::Selbri::Root("klama".to_string())],
+            0,
+            vec![0],
+        );
+        let mut last = Some(extract_bridi_snapshot(&src, 0));
+        let mut ast = gerna_ast::AstBuffer {
+            selbris: vec![
+                gerna_ast::Selbri::Root("nelci".to_string()), // 0
+                gerna_ast::Selbri::Root("go'i".to_string()),  // 1 (nu body relation)
+                gerna_ast::Selbri::Abstraction((gerna_ast::AbstractionKind::Nu, 1)), // 2
+            ],
+            sumtis: vec![
+                Sumti::ProSumti("mi".to_string()),             // 0
+                Sumti::Description((gerna_ast::Gadri::Lo, 2)), // 1: lo nu ...
+            ],
+            sentences: vec![
+                gerna_ast::Sentence::Simple(Bridi {
+                    relation: 0,
+                    head_terms: vec![0],
+                    tail_terms: vec![1],
+                    negated: false,
+                    tense: None,
+                    attitudinal: None,
+                }), // 0: mi nelci [lo nu go'i]
+                gerna_ast::Sentence::Simple(Bridi {
+                    relation: 1,
+                    head_terms: vec![],
+                    tail_terms: vec![],
+                    negated: false,
+                    tense: None,
+                    attitudinal: None,
+                }), // 1: go'i (nu body)
+            ],
+            roots: vec![0],
+        };
+        resolve_go_i(&mut ast, &mut last).unwrap();
+        let b = match &ast.sentences[1] {
+            gerna_ast::Sentence::Simple(b) => b.clone(),
+            _ => panic!(),
+        };
+        assert!(
+            matches!(&ast.selbris[b.relation as usize], gerna_ast::Selbri::Root(n) if n == "klama"),
+            "nested go'i body must resolve to the klama antecedent"
+        );
+    }
+
+    #[test]
+    fn nested_go_i_relclause_body_bare() {
+        // `mi prami do poi go'i` — a BARE go'i as a relative-clause body resolves.
+        let src = make_ast(
+            vec![gerna_ast::Selbri::Root("klama".to_string())],
+            0,
+            vec![0],
+        );
+        let mut last = Some(extract_bridi_snapshot(&src, 0));
+        let mut ast = gerna_ast::AstBuffer {
+            selbris: vec![
+                gerna_ast::Selbri::Root("prami".to_string()), // 0
+                gerna_ast::Selbri::Root("go'i".to_string()),  // 1 (rel-clause body relation)
+            ],
+            sumtis: vec![
+                Sumti::ProSumti("mi".to_string()), // 0
+                Sumti::ProSumti("do".to_string()), // 1 (restricted inner)
+                Sumti::Restricted((
+                    1,
+                    gerna_ast::RelClause {
+                        kind: gerna_ast::RelClauseKind::Poi,
+                        body_sentence: 1,
+                    },
+                )), // 2: do poi <sentence 1>
+            ],
+            sentences: vec![
+                gerna_ast::Sentence::Simple(Bridi {
+                    relation: 0,
+                    head_terms: vec![0],
+                    tail_terms: vec![2],
+                    negated: false,
+                    tense: None,
+                    attitudinal: None,
+                }), // 0: mi prami [do poi go'i]
+                gerna_ast::Sentence::Simple(Bridi {
+                    relation: 1,
+                    head_terms: vec![],
+                    tail_terms: vec![],
+                    negated: false,
+                    tense: None,
+                    attitudinal: None,
+                }), // 1: go'i
+            ],
+            roots: vec![0],
+        };
+        resolve_go_i(&mut ast, &mut last).unwrap();
+        let b = match &ast.sentences[1] {
+            gerna_ast::Sentence::Simple(b) => b.clone(),
+            _ => panic!(),
+        };
+        assert!(
+            matches!(&ast.selbris[b.relation as usize], gerna_ast::Selbri::Root(n) if n == "klama")
+        );
+    }
+
+    #[test]
+    fn nested_go_i_no_antecedent_errors() {
+        // A nested go'i with NO antecedent (no prior bridi, no snapshot) errors.
+        let mut last: Option<BridiSnapshot> = None;
+        let mut ast = gerna_ast::AstBuffer {
+            selbris: vec![
+                gerna_ast::Selbri::Root("nelci".to_string()),
+                gerna_ast::Selbri::Root("go'i".to_string()),
+                gerna_ast::Selbri::Abstraction((gerna_ast::AbstractionKind::Nu, 1)),
+            ],
+            sumtis: vec![
+                Sumti::ProSumti("mi".to_string()),
+                Sumti::Description((gerna_ast::Gadri::Lo, 2)),
+            ],
+            sentences: vec![
+                gerna_ast::Sentence::Simple(Bridi {
+                    relation: 0,
+                    head_terms: vec![0],
+                    tail_terms: vec![1],
+                    negated: false,
+                    tense: None,
+                    attitudinal: None,
+                }),
+                gerna_ast::Sentence::Simple(Bridi {
+                    relation: 1,
+                    head_terms: vec![],
+                    tail_terms: vec![],
+                    negated: false,
+                    tense: None,
+                    attitudinal: None,
+                }),
+            ],
+            roots: vec![0],
+        };
+        let res = resolve_go_i(&mut ast, &mut last);
+        assert!(
+            res.is_err(),
+            "nested go'i with no antecedent must error, got {res:?}"
+        );
+        assert!(res.unwrap_err().contains("no antecedent"));
     }
 
     #[test]

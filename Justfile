@@ -100,6 +100,54 @@ smoke-gasnu-goi-bare: build-wasm build-gasnu
         if echo "$out" | grep -qF 'cannot enter component instance'; then echo 'FAIL: session bricked'; exit 1; fi; \
         echo 'PASS: bare ? goi repeats the full previous bridi (gerku(adam) TRUE)'
 
+# Partial go'i per-place merge: `? la .karl. go'i` after `... prami la .bel.`
+# overrides x1 (karl) and INHERITS x2 (bel) -> prami(karl,bel) FALSE. Pre-fix the
+# partial path dropped the antecedent's places (prami(karl,zo'e) -> TRUE).
+smoke-gasnu-goi-partial: build-wasm build-gasnu
+    @echo "Smoke-testing partial go'i per-place merge (supplied x1 + inherited x2)..."
+    @out=$(printf 'la .karl. cu prami la .kim.\nla .adam. cu prami la .bel.\n? la .karl. go'\''i\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$out"; \
+        echo "$out" | grep -qF '[Query] FALSE' || { echo 'FAIL: partial go'\''i produced no verdict'; exit 1; }; \
+        if echo "$out" | grep -qF '[Query] TRUE'; then echo 'FAIL: partial go'\''i lost the inherited x2 (prami(karl,zoe) matched instead of prami(karl,bel))'; exit 1; fi; \
+        echo 'PASS: partial go'\''i merges per place (prami(karl,bel) FALSE — x1 overridden, x2 inherited)'
+
+# Queries update the go'i antecedent: after asserting gerku(adam), querying
+# gerku(bel) (FALSE) makes a following `? go'i` repeat gerku(bel) -> FALSE. Pre-fix
+# `? go'i` tracked only the last ASSERT (gerku(adam)) -> TRUE.
+smoke-gasnu-goi-after-query: build-wasm build-gasnu
+    @echo "Smoke-testing go'i tracks the last QUERIED bridi (not just the last assert)..."
+    @out=$(printf 'la .adam. cu gerku\n? la .bel. cu gerku\n? go'\''i\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$out"; \
+        echo "$out" | grep -qF '[Query] FALSE' || { echo 'FAIL: no FALSE verdict'; exit 1; }; \
+        if echo "$out" | grep -qF '[Query] TRUE'; then echo 'FAIL: ? goi tracked the last ASSERT (gerku(adam) TRUE) not the last QUERY (gerku(bel) FALSE)'; exit 1; fi; \
+        echo 'PASS: ? goi repeats the last queried bridi (gerku(bel) FALSE)'
+
+# Direct-API :assert go'i snapshot carries sumti: after `:assert prami adam bel`,
+# `? la .karl. go'i` inherits x2=bel -> prami(karl,bel) FALSE. Pre-fix the synthetic
+# snapshot had empty terms (prami(karl,zo'e) -> TRUE).
+smoke-gasnu-goi-assert-fact: build-wasm build-gasnu
+    @echo "Smoke-testing direct-API :assert go'i snapshot carries sumti..."
+    @out=$(printf ':assert prami karl kim\n:assert prami adam bel\n? la .karl. go'\''i\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$out"; \
+        echo "$out" | grep -qF '[Query] FALSE' || { echo 'FAIL: no FALSE verdict'; exit 1; }; \
+        if echo "$out" | grep -qF '[Query] TRUE'; then echo 'FAIL: :assert snapshot lost args (prami(karl,zoe) matched instead of prami(karl,bel))'; exit 1; fi; \
+        echo 'PASS: :assert go'\''i snapshot carries args (prami(karl,bel) FALSE)'
+
+# Nested go'i in a `lo nu` abstraction body resolves instead of fail-closing.
+# `? mi nelci lo nu go'i` after `mi klama` must produce a [Query] verdict, NOT the
+# pre-fix "unsupported position" rejection.
+smoke-gasnu-goi-nested: build-wasm build-gasnu
+    @echo "Smoke-testing nested go'i in a lo nu abstraction body resolves (not fail-closed)..."
+    @out=$(printf 'mi klama\n? mi nelci lo nu go'\''i\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$out"; \
+        if echo "$out" | grep -qF 'unsupported position'; then echo 'FAIL: nested go'\''i still rejected (not resolved)'; exit 1; fi; \
+        echo "$out" | grep -qF '[Query]' || { echo 'FAIL: nested go'\''i did not produce a query verdict'; exit 1; }; \
+        echo 'PASS: nested go'\''i in lo nu resolves (no unsupported-position reject)'
+
 # Persistent restart-replay smoke: prove the live session's fact-ids stay equal
 # to the durable store's across a reopen, INCLUDING a tombstone gap. Run-1
 # asserts 3 facts and retracts the middle one; run-2 reopens the SAME db and must
@@ -298,7 +346,7 @@ ci: fmt-check clippy-runtime test test-engine test-gasnu test-backend test-store
 # `build-wasm build-gasnu`, so `just` builds the component + host once, then runs
 # all six: fuel exhaustion + post-trap recovery + journal replay (trap-recovery),
 # plus the script transcript, go'i, persist-replay, NAF-note, and :debug round-trip.
-ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-debug
+ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-debug
 
 # Comprehensive pre-push / pre-release gate: the fast native `ci` plus the WASM
 # behavioral smokes. `ci` alone does not exercise the WASM component.
