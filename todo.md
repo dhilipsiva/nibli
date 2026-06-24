@@ -20,6 +20,7 @@ _No open items — the high-priority soundness/production backlog is clear; the 
 
 ## P2 — Medium
 
+_No open items._
 
 ## P3 — Low (long tail)
 
