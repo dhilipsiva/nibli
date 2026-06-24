@@ -1115,7 +1115,9 @@ impl Session {
             Some(i) => {
                 self.kb
                     .assert_fact_with_id(buf, input, i)
-                    .map_err(|e| export_err::NibliError::Semantic(e))?;
+                    // The assert is the reasoning stage (buffer already past smuni);
+                    // logji's `assert_fact_with_id` returns a String, so wrap as Reasoning.
+                    .map_err(export_err::NibliError::Reasoning)?;
                 i
             }
             None => self
@@ -1165,7 +1167,9 @@ impl Session {
             Some(i) => {
                 self.kb
                     .assert_fact_with_id(buf, label, i)
-                    .map_err(|e| export_err::NibliError::Semantic(e))?;
+                    // The assert is the reasoning stage (buffer already past smuni);
+                    // logji's `assert_fact_with_id` returns a String, so wrap as Reasoning.
+                    .map_err(export_err::NibliError::Reasoning)?;
                 Ok(i)
             }
             None => self

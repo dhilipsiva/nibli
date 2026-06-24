@@ -696,8 +696,12 @@ impl KnowledgeBase {
 
     /// Assert a compiled FOL formula into the knowledge base. Returns the fact ID.
     pub fn assert_fact(&self, logic: LogicBuffer, label: String) -> Result<u64, NibliError> {
+        // The assert IS the reasoning stage: by the time this runs the buffer has
+        // already passed smuni, so every failure here (stratification, fail-closed
+        // rule compilation, the zero-ingest guard, rebuild replay) is reasoning-layer.
+        // The layer contract is Syntax=gerna / Semantic=smuni / Reasoning=logji.
         self.assert_fact_inner(logic, label)
-            .map_err(NibliError::Semantic)
+            .map_err(NibliError::Reasoning)
     }
 
     /// Run a query under temporary assumptions without mutating the real KB.

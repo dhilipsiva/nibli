@@ -899,18 +899,18 @@ fn parse_error_returns_syntax_error() {
 }
 
 #[test]
-fn assert_stage_failure_is_not_syntax_class() {
+fn assert_stage_failure_is_reasoning_class() {
     let engine = NibliEngine::new();
     // A well-formed sentence the reasoner rejects at ASSERTION time (a tense over a
-    // whole universal) is a non-Syntax class — the typed contract distinguishes a
-    // parse failure from an assertion-stage rejection. (No-store path → logji's
-    // `assert_fact` classes it `Semantic`.)
+    // whole universal) is a REASONING-class error — the assert is the reasoning
+    // stage (the buffer already passed smuni), so logji's `assert_fact` classes it
+    // `Reasoning`, distinct from a smuni `Semantic` or a gerna `Syntax` error.
     let err = engine
         .assert_text("pu ro lo gerku cu danlu")
         .expect_err("a whole-rule tense must be rejected");
     assert!(
-        matches!(err, EngineError::Semantic(_)),
-        "an assertion-stage rejection must not be classed Syntax, got: {err}"
+        matches!(err, EngineError::Reasoning(_)),
+        "an assertion-stage rejection is a Reasoning class, got: {err}"
     );
 }
 
