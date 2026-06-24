@@ -347,6 +347,99 @@ fn disjunctive_forethought_ganai_ga_fires() {
     );
 }
 
+// ── Tensed rule conclusions ──
+// `ganai A gi pu B` → `Or(Not(A), Past(B))` — a ground conditional with a tensed
+// CONSEQUENT operand. Derives the Past fact only (the simple `ro lo X cu pu Q` is
+// whole-rule `Past(ForAll(...))` and stays correctly rejected).
+
+#[test]
+fn tensed_conclusion_ganai_fires() {
+    let engine = engine_with_facts(&[
+        "ganai la .rex. cu gerku gi pu la .rex. cu danlu",
+        "la .rex. cu gerku",
+    ]);
+    let (past_holds, _t, _j) = engine
+        .query_text_with_proof("pu la .rex. cu danlu")
+        .unwrap();
+    assert_true(
+        &past_holds,
+        "tensed conclusion derives the Past fact when the antecedent holds",
+    );
+    let (bare_holds, _t, _j) = engine.query_text_with_proof("la .rex. cu danlu").unwrap();
+    assert_false(
+        &bare_holds,
+        "tensed conclusion must NOT derive a bare fact (tense-exact)",
+    );
+}
+
+#[test]
+fn tensed_conclusion_prenex_fires() {
+    // `ro da zo'u ganai da gerku gi pu da danlu` → ∀da. gerku(da) → Past(danlu(da)).
+    let engine = engine_with_facts(&[
+        "ro da zo'u ganai da gerku gi pu da danlu",
+        "la .rex. cu gerku",
+    ]);
+    let (past_holds, _t, _j) = engine
+        .query_text_with_proof("pu la .rex. cu danlu")
+        .unwrap();
+    assert_true(
+        &past_holds,
+        "prenex tensed conclusion derives the Past fact",
+    );
+    let (bare_holds, _t, _j) = engine.query_text_with_proof("la .rex. cu danlu").unwrap();
+    assert_false(
+        &bare_holds,
+        "prenex tensed conclusion must NOT derive a bare fact",
+    );
+}
+
+// ── Disjunctive rule conclusions as integrity constraints ──
+// `ro lo X cu Q ja R` (a disjunctive HEAD) is registered as ¬(P ∧ ¬Q ∧ ¬R), not a
+// Horn rule (deriving a disjunct is unsound). check_contradictions flags it when P
+// holds and BOTH disjuncts are explicitly denied (`na`). The positive use is a query.
+
+#[test]
+fn disjunctive_conclusion_contradiction_flagged() {
+    let engine = engine_with_facts(&[
+        "ro lo gerku cu danlu ja xanlu",
+        "la .rex. cu gerku",
+        "la .rex. na danlu",
+        "la .rex. na xanlu",
+    ]);
+    let v = engine.check_contradictions();
+    assert!(
+        v.iter()
+            .any(|m| m.contains("Disjunctive constraint violated")),
+        "gerku(rex) holds and both disjuncts explicitly denied → contradiction: {v:?}"
+    );
+}
+
+#[test]
+fn disjunctive_conclusion_one_denied_no_contradiction() {
+    let engine = engine_with_facts(&[
+        "ro lo gerku cu danlu ja xanlu",
+        "la .rex. cu gerku",
+        "la .rex. na danlu",
+    ]);
+    assert!(
+        engine.check_contradictions().is_empty(),
+        "only one disjunct denied → the other could hold → no contradiction"
+    );
+}
+
+#[test]
+fn disjunctive_query_still_works() {
+    // The positive use of a disjunction is a QUERY, not a rule: `is rex Q or R?`.
+    let engine = engine_with_facts(&["la .rex. cu danlu"]);
+    let (holds, _t, _j) = engine
+        .query_text_with_proof("la .rex. cu danlu ja xanlu")
+        .unwrap();
+    assert_true(
+        &holds,
+        "a disjunctive query is TRUE when one disjunct holds (handled by the query evaluator)",
+    );
+}
+
 #[test]
 fn ganai_tensed_antecedent_fires_with_premise() {
     // Positive companion to the `ganai_tensed_antecedent_must_not_fire_unconditionally`

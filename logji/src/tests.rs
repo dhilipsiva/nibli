@@ -4435,6 +4435,102 @@ fn test_tensed_antecedent_bare_premise_does_not_fire() {
     );
 }
 
+// ─── Tensed rule CONCLUSIONS ─────────────────────────────────
+
+/// Assert ∀x. citka(x) → Past(xagji(x)) — a BARE antecedent with a tensed (Past)
+/// CONCLUSION. The rule derives the PAST fact xagji, not a bare/future one.
+fn assert_citka_then_pu_xagji(kb: &KnowledgeBase) {
+    let mut r = Vec::new();
+    let citka = pred(
+        &mut r,
+        "citka",
+        vec![
+            LogicalTerm::Variable("_v0".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let neg = not(&mut r, citka);
+    let xagji = pred(
+        &mut r,
+        "xagji",
+        vec![
+            LogicalTerm::Variable("_v0".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let past_xagji = past(&mut r, xagji);
+    let body = or(&mut r, neg, past_xagji);
+    let forall = {
+        let id = r.len() as u32;
+        r.push(LogicNode::ForAllNode(("_v0".into(), body)));
+        id
+    };
+    assert_buf(
+        kb,
+        LogicBuffer {
+            nodes: r,
+            roots: vec![forall],
+        },
+    );
+}
+
+/// Query `xagji(rex)` under the given tense wrapper (`None` = bare).
+fn query_xagji_rex_tense(kb: &KnowledgeBase, tense: Option<&str>) -> bool {
+    let mut q = Vec::new();
+    let xagji = pred(
+        &mut q,
+        "xagji",
+        vec![
+            LogicalTerm::Constant("rex".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let root = match tense {
+        Some("Past") => past(&mut q, xagji),
+        Some("Future") => future(&mut q, xagji),
+        Some("Present") => present(&mut q, xagji),
+        _ => xagji,
+    };
+    query(
+        kb,
+        LogicBuffer {
+            nodes: q,
+            roots: vec![root],
+        },
+    )
+}
+
+#[test]
+fn test_tensed_conclusion_rule_fires_on_matching_tense() {
+    // ∀x. citka(x) → Past(xagji(x)); a bare citka(rex) premise derives Past(xagji(rex)),
+    // and ONLY the Past fact (not bare, not Future) — tense-exact via unify_facts.
+    let kb = new_kb();
+    assert_citka_then_pu_xagji(&kb);
+    assert_citka_rex(&kb, None); // bare antecedent premise
+    assert!(
+        query_xagji_rex_tense(&kb, Some("Past")),
+        "tensed conclusion derives the Past fact"
+    );
+    assert!(
+        !query_xagji_rex_tense(&kb, None),
+        "tensed conclusion must NOT derive a bare fact"
+    );
+    assert!(
+        !query_xagji_rex_tense(&kb, Some("Future")),
+        "tensed conclusion must NOT derive a Future fact"
+    );
+}
+
+#[test]
+fn test_tensed_conclusion_no_premise_does_not_fire() {
+    let kb = new_kb();
+    assert_citka_then_pu_xagji(&kb);
+    assert!(
+        !query_xagji_rex_tense(&kb, Some("Past")),
+        "tensed-conclusion rule must NOT fire without the antecedent premise"
+    );
+}
+
 // ─── Whole-rule tense/deontic is fail-closed ─────────────────
 
 /// `Wrap(ForAll("_v0", Or(Not(restrictor), consequent)))` — a tense/deontic
@@ -8900,5 +8996,133 @@ fn test_deontic_permitted_antecedent_compiles_and_fires() {
     assert!(
         query(&kb, make_event_query("alis", "kajde")),
         "transparent Permitted antecedent fires when the bare inner condition holds"
+    );
+}
+
+// ─── Disjunctive rule CONCLUSIONS as integrity constraints ──────────────────
+
+/// Build `ro lo R cu D1 ja D2` → ForAll(_v0, Or(Not(R(_v0)), Or(D1(_v0), D2(_v0)))).
+/// A disjunctive HEAD — not a Horn clause; compiled to a `DisjunctiveConstraint`.
+fn make_disjunctive_conclusion(restrictor: &str, d1: &str, d2: &str) -> LogicBuffer {
+    let mut nodes = Vec::new();
+    let restrict = pred(
+        &mut nodes,
+        restrictor,
+        vec![
+            LogicalTerm::Variable("_v0".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let neg = not(&mut nodes, restrict);
+    let q = pred(
+        &mut nodes,
+        d1,
+        vec![
+            LogicalTerm::Variable("_v0".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let r = pred(
+        &mut nodes,
+        d2,
+        vec![
+            LogicalTerm::Variable("_v0".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let disj = or(&mut nodes, q, r);
+    let body = or(&mut nodes, neg, disj);
+    let forall = {
+        let id = nodes.len() as u32;
+        nodes.push(LogicNode::ForAllNode(("_v0".into(), body)));
+        id
+    };
+    LogicBuffer {
+        nodes,
+        roots: vec![forall],
+    }
+}
+
+#[test]
+fn test_disjunctive_conclusion_registers_constraint() {
+    let kb = new_kb();
+    assert_buf(&kb, make_disjunctive_conclusion("gerku", "danlu", "xanlu"));
+    let inner = kb.inner.borrow();
+    assert_eq!(
+        inner.disjunctive_constraints.len(),
+        1,
+        "a disjunctive conclusion registers one integrity constraint"
+    );
+    assert!(
+        inner.universal_rules.get("danlu").is_none()
+            && inner.universal_rules.get("xanlu").is_none(),
+        "no Horn rule is registered for a disjunctive head (deriving a disjunct is unsound)"
+    );
+}
+
+#[test]
+fn test_disjunctive_conclusion_flags_when_all_disjuncts_denied() {
+    let kb = new_kb();
+    assert_buf(&kb, make_disjunctive_conclusion("gerku", "danlu", "xanlu"));
+    assert_buf(&kb, make_assertion("rex", "gerku")); // P(rex) holds
+    assert_buf(&kb, make_negated_assertion("rex", "danlu")); // na danlu(rex)
+    assert_buf(&kb, make_negated_assertion("rex", "xanlu")); // na xanlu(rex)
+    let v = kb.check_contradictions();
+    assert!(
+        v.iter()
+            .any(|m| m.contains("Disjunctive constraint violated")),
+        "P holds and both disjuncts explicitly denied → contradiction: {v:?}"
+    );
+}
+
+#[test]
+fn test_disjunctive_conclusion_one_disjunct_denied_no_violation() {
+    let kb = new_kb();
+    assert_buf(&kb, make_disjunctive_conclusion("gerku", "danlu", "xanlu"));
+    assert_buf(&kb, make_assertion("rex", "gerku"));
+    assert_buf(&kb, make_negated_assertion("rex", "danlu")); // only one denied
+    assert!(
+        kb.check_contradictions().is_empty(),
+        "only one disjunct denied → the other could hold → no contradiction"
+    );
+}
+
+#[test]
+fn test_disjunctive_conclusion_antecedent_absent_no_violation() {
+    let kb = new_kb();
+    assert_buf(&kb, make_disjunctive_conclusion("gerku", "danlu", "xanlu"));
+    // P (gerku) NOT asserted, though both disjuncts denied.
+    assert_buf(&kb, make_negated_assertion("rex", "danlu"));
+    assert_buf(&kb, make_negated_assertion("rex", "xanlu"));
+    assert!(
+        kb.check_contradictions().is_empty(),
+        "antecedent does not hold → no contradiction"
+    );
+}
+
+#[test]
+fn test_disjunctive_conclusion_retraction_clears_constraint() {
+    let kb = new_kb();
+    let rule_id = assert_id(
+        &kb,
+        make_disjunctive_conclusion("gerku", "danlu", "xanlu"),
+        "disjunctive rule",
+    );
+    assert_buf(&kb, make_assertion("rex", "gerku"));
+    assert_buf(&kb, make_negated_assertion("rex", "danlu"));
+    assert_buf(&kb, make_negated_assertion("rex", "xanlu"));
+    assert!(
+        !kb.check_contradictions().is_empty(),
+        "precondition: the constraint is violated before retraction"
+    );
+    // Retracting the rule (skolem-free) must trigger a rebuild that drops the constraint.
+    kb.retract_fact_inner(rule_id).unwrap();
+    assert!(
+        kb.inner.borrow().disjunctive_constraints.is_empty(),
+        "retracting the disjunctive rule clears the constraint registry"
+    );
+    assert!(
+        kb.check_contradictions().is_empty(),
+        "no constraint → no contradiction after retraction"
     );
 }

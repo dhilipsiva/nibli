@@ -333,6 +333,7 @@ impl KnowledgeBase {
         inner.arg_position_index.clear();
         inner.rule_source_map.clear();
         inner.negative_facts.clear();
+        inner.disjunctive_constraints.clear();
 
         // Collect non-retracted buffers + their ids ordered by ID (owned, to avoid
         // a borrow conflict with the mutable replay below).
@@ -1117,6 +1118,34 @@ impl KnowledgeBase {
                     if !violations.contains(&msg) {
                         violations.push(msg);
                     }
+                }
+            }
+        }
+
+        // 6. Disjunctive-conclusion constraints `¬(P ∧ ¬Q ∧ ¬R)` (from a rule with a
+        //    disjunctive head, `ro lo X cu Q ja R`). Flag a contradiction when, for some
+        //    binding, ALL P-conditions hold in the positive store AND EVERY disjunct is
+        //    explicitly denied (a stored `na <selbri>` covers it). A disjunct is never
+        //    DERIVED (unsound in a Horn engine — `R` might hold instead); the positive
+        //    use is served by a disjunctive QUERY. P uses store-membership only (sound,
+        //    conservative — a rule-DERIVED P does not trigger this; documented).
+        for dc in &inner.disjunctive_constraints {
+            let bindings = solve_group_bindings(&dc.conditions, &*inner.fact_store);
+            let violated = bindings.iter().any(|b| {
+                dc.disjuncts.iter().all(|disj| {
+                    let substituted: Vec<StoredFact> =
+                        disj.iter().map(|f| substitute_fact(f, b)).collect();
+                    disjunct_explicitly_denied(&substituted, &inner.negative_facts)
+                })
+            });
+            if violated {
+                let msg = format!(
+                    "Disjunctive constraint violated '{}': the antecedent holds but every \
+                     disjunct is explicitly denied (na)",
+                    dc.label
+                );
+                if !violations.contains(&msg) {
+                    violations.push(msg);
                 }
             }
         }

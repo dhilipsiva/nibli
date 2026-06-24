@@ -40,6 +40,23 @@ pub struct IntegrityConstraint {
     pub predicates: Vec<String>,
 }
 
+/// A disjunctive rule conclusion `∀x. P(x) → (Q(x) ∨ R(x))`, kept as the integrity
+/// constraint `¬(P(x) ∧ ¬Q(x) ∧ ¬R(x))` rather than a derivation rule — a disjunctive
+/// head is NOT a Horn clause, so deriving either disjunct alone would be unsound.
+/// `check_contradictions` flags it when, for one consistent binding, every `conditions`
+/// template (P) holds in the positive store AND every disjunct group is EXPLICITLY
+/// denied (a stored `na <selbri>` covers it). The positive use ("is X a Q or an R?")
+/// is served by a disjunctive QUERY, not by this constraint.
+#[derive(Clone, Debug)]
+pub(super) struct DisjunctiveConstraint {
+    /// Human-readable label, e.g. "gerku → danlu ∨ xanlu".
+    pub(super) label: String,
+    /// Antecedent P templates (pattern vars), like a rule's `typed_conditions`.
+    pub(super) conditions: Vec<StoredFact>,
+    /// One template group per disjunct; each event-decomposes to ≥1 leaf template.
+    pub(super) disjuncts: Vec<Vec<StoredFact>>,
+}
+
 /// Check integrity constraints relevant to a predicate after a fact insertion.
 /// Returns Err with a violation message if any constraint is fully satisfied.
 pub(super) fn check_constraints_for_predicate(
@@ -544,6 +561,11 @@ pub(super) struct KnowledgeBaseInner {
     /// `record_negative_ground_fact`). Negatives never enter the positive fact
     /// store or predicate index — queries keep NAF/CWA semantics unchanged.
     pub(super) negative_facts: HashSet<Vec<StoredFact>>,
+    /// Disjunctive rule conclusions registered as integrity constraints (see
+    /// `DisjunctiveConstraint`). DERIVED from assertions → cleared on reset/rebuild
+    /// and re-derived on replay (mirrors `negative_facts`/rules, NOT the standalone
+    /// programmatic `integrity_constraints`).
+    pub(super) disjunctive_constraints: Vec<DisjunctiveConstraint>,
     /// Cooperative cancellation flag (None = never cancels). Set by a native
     /// caller (the nibli-server request watchdog) when a query's wall-clock
     /// budget elapses; checked at the central reasoning entry points, which
@@ -601,6 +623,7 @@ impl Clone for KnowledgeBaseInner {
             entity_sorts: self.entity_sorts.clone(),
             traced_predicates: self.traced_predicates.clone(),
             negative_facts: self.negative_facts.clone(),
+            disjunctive_constraints: self.disjunctive_constraints.clone(),
             cancel: self.cancel.clone(),
             compute_eval: self.compute_eval,
             compute_batch_eval: self.compute_batch_eval,
@@ -640,6 +663,7 @@ impl KnowledgeBaseInner {
             entity_sorts: HashMap::new(),
             traced_predicates: HashSet::new(),
             negative_facts: HashSet::new(),
+            disjunctive_constraints: Vec::new(),
             cancel: None,
             compute_eval: None,
             compute_batch_eval: None,
@@ -671,6 +695,7 @@ impl KnowledgeBaseInner {
         self.current_assertion_id = None;
         self.forward_depth = 0;
         self.negative_facts.clear();
+        self.disjunctive_constraints.clear();
         self.pred_cache.borrow_mut().clear();
         self.pred_cache_enabled.set(false);
         // Note: integrity_constraints, compute_eval/compute_batch_eval, and
@@ -1227,6 +1252,87 @@ pub(super) fn negative_group_holds(
         false
     }
     solve(templates, 0, &HashMap::new(), store)
+}
+
+/// Enumerate ALL consistent bindings of a template group's pattern variables against
+/// the asserted positive store — the all-bindings analog of `negative_group_holds`.
+/// Used by the disjunctive-conclusion constraint check, which must try each binding
+/// where the antecedent P holds. (Same one-consistent-binding-per-template solve.)
+pub(super) fn solve_group_bindings(
+    templates: &[StoredFact],
+    store: &dyn crate::fact_store::FactStore,
+) -> Vec<HashMap<String, GroundTerm>> {
+    fn solve(
+        templates: &[StoredFact],
+        idx: usize,
+        bindings: &HashMap<String, GroundTerm>,
+        store: &dyn crate::fact_store::FactStore,
+        out: &mut Vec<HashMap<String, GroundTerm>>,
+    ) {
+        let Some(template) = templates.get(idx) else {
+            out.push(bindings.clone());
+            return;
+        };
+        let bound = substitute_fact(template, bindings);
+        let Some(candidates) = store.lookup_predicate(bound.relation()) else {
+            return;
+        };
+        for fact in candidates {
+            if let Some(new_bindings) = unify_facts(&bound, fact) {
+                let mut merged = bindings.clone();
+                merged.extend(new_bindings);
+                solve(templates, idx + 1, &merged, store, out);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    solve(templates, 0, &HashMap::new(), store, &mut out);
+    out
+}
+
+/// True if a stored `na <selbri>` group (its `__neg_ev` pattern vars bindable) unifies
+/// ENTIRELY against `facts` under one consistent binding — i.e. the (already
+/// P-substituted, ground) disjunct group is explicitly denied. Mirrors
+/// `negative_group_holds` but matches against a fact list rather than the store.
+fn neg_group_covers(templates: &[StoredFact], facts: &[StoredFact]) -> bool {
+    fn solve(
+        templates: &[StoredFact],
+        idx: usize,
+        bindings: &HashMap<String, GroundTerm>,
+        facts: &[StoredFact],
+    ) -> bool {
+        let Some(template) = templates.get(idx) else {
+            return true;
+        };
+        let bound = substitute_fact(template, bindings);
+        for fact in facts {
+            if bound.relation() != fact.relation() {
+                continue;
+            }
+            if let Some(new_bindings) = unify_facts(&bound, fact) {
+                let mut merged = bindings.clone();
+                merged.extend(new_bindings);
+                if solve(templates, idx + 1, &merged, facts) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+    solve(templates, 0, &HashMap::new(), facts)
+}
+
+/// True if `disjunct` (a P-substituted, ground disjunct template group) is explicitly
+/// denied by some stored `na <selbri>` group. The disjunct's event is an existential
+/// witness (SkolemFn) and the `na` group's event is a `__neg_ev` pattern var, so they
+/// unify freely; only the entity arguments (and tense, via `unify_facts`) must agree.
+pub(super) fn disjunct_explicitly_denied(
+    disjunct: &[StoredFact],
+    negative_facts: &HashSet<Vec<StoredFact>>,
+) -> bool {
+    negative_facts
+        .iter()
+        .any(|neg_group| neg_group_covers(neg_group, disjunct))
 }
 
 /// Process a logic buffer into the knowledge base without recording in the fact registry.

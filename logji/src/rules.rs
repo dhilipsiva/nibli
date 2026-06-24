@@ -339,25 +339,111 @@ fn flatten_group_leaves(buffer: &LogicBuffer, id: u32, ev: &str, out: &mut Vec<u
     }
 }
 
+/// Flatten the consequent to leaf atom node ids, descending skolemized `Exists` +
+/// `And`, threading tense through `Past`/`Present`/`Future` wrappers (so a tensed
+/// conclusion `→ pu Q` becomes a `StoredFact::Past` template via the same mechanism
+/// as a tensed antecedent), and descending deontic `Obligatory`/`Permitted`
+/// transparently (tense unchanged — this also flattens an event-decomposed deontic
+/// conclusion that `build_rule_template_fact`'s deontic arm alone cannot reach
+/// through the inner `And`). Each returned leaf carries the tense accumulated on the
+/// path to it. A top-level `Or` is returned opaque (one leaf with its tense) — the
+/// caller detects it for the disjunctive-conclusion-constraint path.
 fn flatten_consequent(
     buffer: &LogicBuffer,
     node_id: u32,
     skolem_subs: &HashMap<String, GroundTerm>,
-) -> Vec<u32> {
+    tense: Option<&'static str>,
+) -> Vec<(u32, Option<&'static str>)> {
     let Ok(node) = get_node(buffer, node_id) else {
-        return vec![node_id];
+        return vec![(node_id, tense)];
     };
     match node {
         LogicNode::ExistsNode((v, body)) if skolem_subs.contains_key(v.as_str()) => {
-            flatten_consequent(buffer, *body, skolem_subs)
+            flatten_consequent(buffer, *body, skolem_subs, tense)
         }
         LogicNode::AndNode((l, r)) => {
-            let mut result = flatten_consequent(buffer, *l, skolem_subs);
-            result.extend(flatten_consequent(buffer, *r, skolem_subs));
+            let mut result = flatten_consequent(buffer, *l, skolem_subs, tense);
+            result.extend(flatten_consequent(buffer, *r, skolem_subs, tense));
             result
         }
-        _ => vec![node_id],
+        LogicNode::PastNode(inner) => flatten_consequent(buffer, *inner, skolem_subs, Some("Past")),
+        LogicNode::PresentNode(inner) => {
+            flatten_consequent(buffer, *inner, skolem_subs, Some("Present"))
+        }
+        LogicNode::FutureNode(inner) => {
+            flatten_consequent(buffer, *inner, skolem_subs, Some("Future"))
+        }
+        LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) => {
+            flatten_consequent(buffer, *inner, skolem_subs, tense)
+        }
+        _ => vec![(node_id, tense)],
     }
+}
+
+/// Flatten an `Or`-tree of a disjunctive conclusion into its branch node ids
+/// (descending `Or`, collecting any non-`Or` node as one branch). `Or(A, B)` → `[A,
+/// B]`; `Or(Or(A, B), C)` → `[A, B, C]`.
+fn collect_disjunct_branches(buffer: &LogicBuffer, node_id: u32, out: &mut Vec<u32>) {
+    match get_node(buffer, node_id) {
+        Ok(LogicNode::OrNode((l, r))) => {
+            collect_disjunct_branches(buffer, *l, out);
+            collect_disjunct_branches(buffer, *r, out);
+        }
+        _ => out.push(node_id),
+    }
+}
+
+/// Build the POSITIVE flat condition templates for one antecedent DNF clause — the
+/// `P` of a disjunctive-conclusion constraint `¬(P ∧ ¬Q ∧ ¬R)`. Fails closed (v1) if
+/// the clause carries a negated atom or a negated-exists group: "P holds" is checked
+/// by store-membership in `check_contradictions`, which a negated/NAF antecedent
+/// condition would not soundly support.
+fn build_positive_clause_conditions(
+    buffer: &LogicBuffer,
+    clause: &[u32],
+    pattern_vars: &HashMap<String, String>,
+    ground_skolems: &HashMap<String, String>,
+    dependent_skolems: &HashMap<String, (String, Vec<String>)>,
+    rule_desc: &str,
+) -> Result<Vec<StoredFact>, String> {
+    let mut clause_exists: HashSet<String> = HashSet::new();
+    for &lid in clause {
+        collect_condition_exists(buffer, lid, &mut clause_exists);
+    }
+    let mut conds = Vec::new();
+    for &lid in clause {
+        for (cid, tense) in flatten_conjuncts_through_exists(buffer, lid, &clause_exists, None) {
+            if detect_negated_exists_group(buffer, cid).is_some() {
+                return Err(format!(
+                    "cannot represent disjunctive conclusion for {rule_desc}: a negated \
+                     restrictor in the antecedent is unsupported. Rejecting to preserve soundness."
+                ));
+            }
+            match build_rule_template_fact_with_negation(
+                buffer,
+                cid,
+                pattern_vars,
+                ground_skolems,
+                dependent_skolems,
+                tense,
+            ) {
+                Some((fact, false)) => conds.push(fact),
+                Some((_, true)) => {
+                    return Err(format!(
+                        "cannot represent disjunctive conclusion for {rule_desc}: a negated \
+                         antecedent condition is unsupported. Rejecting to preserve soundness."
+                    ));
+                }
+                None => {
+                    return Err(format!(
+                        "cannot represent disjunctive conclusion for {rule_desc}: an antecedent \
+                         atom is not a flat predicate. Rejecting to preserve soundness."
+                    ));
+                }
+            }
+        }
+    }
+    Ok(conds)
 }
 
 pub(super) fn collect_and_note_constants(
@@ -1177,7 +1263,102 @@ pub(super) fn compile_forall_to_rule(
                 pattern_vars.insert(var.clone(), pvar);
             }
 
-            let consequent_atoms = flatten_consequent(buffer, consequent_id, skolem_subs);
+            let consequent_atoms = flatten_consequent(buffer, consequent_id, skolem_subs, None);
+
+            // DISJUNCTIVE CONCLUSION: `∀x. P(x) → (Q(x) ∨ R(x))` is not a Horn clause
+            // (deriving either disjunct would be unsound). Instead of fail-closing,
+            // register it as the integrity constraint `¬(P ∧ ¬Q ∧ ¬R)` —
+            // `check_contradictions` flags it when P holds and every disjunct is
+            // explicitly denied (`na`). The positive use is served by a disjunctive
+            // QUERY. Detected here (before the DepPair/Horn-conclusion machinery) when
+            // a consequent atom is a top-level `Or`. v1: only a PURE disjunctive head
+            // (a single Or atom); a mixed `And(P, Or(..))` head (>1 atom) stays
+            // fail-closed below. `dependent_skolems` still carries the over-approximated
+            // deps here (DepPair precision runs after this), which is fine — the disjunct
+            // templates are only ever unified against `na` groups, never fired, and the
+            // event term is existential on both sides (only the entity args constrain).
+            if let Some(&(or_id, _)) = consequent_atoms
+                .iter()
+                .find(|&&(aid, _)| matches!(get_node(buffer, aid), Ok(LogicNode::OrNode(_))))
+            {
+                if consequent_atoms.len() != 1 {
+                    return Err(format!(
+                        "cannot compile rule conclusion for {rule_desc}: a mixed \
+                         conjunction/disjunction head is unsupported. Rejecting the assertion \
+                         to preserve soundness."
+                    ));
+                }
+                let mut branches = Vec::new();
+                collect_disjunct_branches(buffer, or_id, &mut branches);
+                let mut disjuncts: Vec<Vec<StoredFact>> = Vec::new();
+                for &br in &branches {
+                    let mut leaves = Vec::new();
+                    for (aid, tense) in flatten_consequent(buffer, br, skolem_subs, None) {
+                        match build_rule_template_fact(
+                            buffer,
+                            aid,
+                            &pattern_vars,
+                            &ground_skolems,
+                            &dependent_skolems,
+                            tense,
+                        ) {
+                            Some(fact) => leaves.push(fact),
+                            None => {
+                                return Err(format!(
+                                    "cannot represent disjunctive conclusion for {rule_desc}: a \
+                                     disjunct atom is not a flat predicate. Rejecting to preserve \
+                                     soundness."
+                                ));
+                            }
+                        }
+                    }
+                    disjuncts.push(leaves);
+                }
+                // One constraint per antecedent DNF clause (a disjunctive antecedent
+                // splits P into clauses, exactly as the rule path does).
+                for clause in &clauses {
+                    let conditions = build_positive_clause_conditions(
+                        buffer,
+                        clause,
+                        &pattern_vars,
+                        &ground_skolems,
+                        &dependent_skolems,
+                        &rule_desc,
+                    )?;
+                    let cond_label = conditions
+                        .iter()
+                        .map(|c| c.relation().to_string())
+                        .collect::<Vec<_>>()
+                        .join(" ∧ ");
+                    let disj_label = disjuncts
+                        .iter()
+                        .map(|d| {
+                            d.iter()
+                                .map(|f| f.relation().to_string())
+                                .collect::<Vec<_>>()
+                                .join(" ∧ ")
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ∨ ");
+                    inner.disjunctive_constraints.push(DisjunctiveConstraint {
+                        label: format!("{cond_label} → {disj_label}"),
+                        conditions,
+                        disjuncts: disjuncts.clone(),
+                    });
+                }
+                // Record the assertion id so retracting a (possibly skolem-free)
+                // disjunctive conclusion triggers a rebuild that drops the constraint.
+                if let Some(aid) = inner.current_assertion_id {
+                    inner.rule_source_map.entry(aid).or_default();
+                }
+                if !inner.rebuilding {
+                    println!(
+                        "[Constraint] Registered disjunctive conclusion {} as ¬(P ∧ ¬Q ∧ ¬R)",
+                        rule_desc
+                    );
+                }
+                return Ok(());
+            }
 
             // DepPair precision: a conclusion existential depends only on the
             // universals it is CONNECTED to, not on ALL enclosing universals.
@@ -1197,7 +1378,7 @@ pub(super) fn compile_forall_to_rule(
             // y, z)` still yields both x and y; `zenba(de)` still yields only
             // `de` — both are single-atom, so 1-hop and transitive agree.)
             let mut var_adjacency: HashMap<String, HashSet<String>> = HashMap::new();
-            for &aid in &consequent_atoms {
+            for &(aid, _) in &consequent_atoms {
                 let vars = atom_var_args(buffer, aid);
                 for a in &vars {
                     for b in &vars {
@@ -1250,15 +1431,17 @@ pub(super) fn compile_forall_to_rule(
             }
 
             // Conclusion templates are clause-independent — build + validate once.
+            // Each leaf carries its own tense (threaded by `flatten_consequent`), so a
+            // tensed conclusion (`ganai A gi pu B` → `Past(B)`) becomes a `Past` template.
             let mut typed_concls: Vec<StoredFact> = Vec::new();
-            for &aid in &consequent_atoms {
+            for &(aid, tense) in &consequent_atoms {
                 match build_rule_template_fact(
                     buffer,
                     aid,
                     &pattern_vars,
                     &ground_skolems,
                     &dependent_skolems,
-                    None, // conclusions stay bare (tensed conclusions out of scope)
+                    tense,
                 ) {
                     Some(fact) => typed_concls.push(fact),
                     None => {
