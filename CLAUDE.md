@@ -335,7 +335,7 @@ Completed through all Tier 1 items + full Tier 2 + full Tier 3 + full Tier 4 (pr
 - Step 5: smuni-dictionary crate with PHF glosses + robotic back-translation (10,521 entries)
 - Step 6: Ollama integration — English→Lojban translation via server proxy (qwen3-coder:30b default)
 - Step 7: Proof trace visualization with human-readable internal representation formatting
-- Step 8: Fact management — KB status bar with per-line validation, .lojban file loading, clear button; Ollama temperature fixed to 0.0
+- Step 8: Fact management — KB status bar with per-line validation, .lojban file loading, clear button; Ollama translation temperature 0.3 (better draft quality; the translation is outside the firewall — a human-verified draft via the Transparency Triad's back-translation — so determinism is the reasoning engine's guarantee, not the LLM draft)
 - Step 9: UI polish — keyboard shortcuts (Ctrl+L/K/O plus Ctrl+Enter in the Source tab), loading spinners, structured error display, output log improvements (cap/clear/auto-scroll), proof tree connectors, default example syllogism; unified query/proof across entire stack (engine, server, REPL, UI)
 - Step 10: Integration tests (16 tests via nibli-engine), Justfile targets (check, test-engine, test-all), README documentation (updated REPL examples, added Transparency Triad UI section)
 

@@ -280,7 +280,10 @@ impl LlmClient {
         let translator = client
             .agent(model)
             .preamble(trans_prompt)
-            .temperature(0.0)
+            // 0.3 for better draft quality: the translation is outside the
+            // firewall (human-verified via back-translation), not part of the
+            // determinism guarantee. Do not "fix" to 0.0.
+            .temperature(0.3)
             .max_tokens(256)
             .build();
 
@@ -320,7 +323,10 @@ impl LlmClient {
         let translator = client
             .agent(model)
             .preamble(trans_prompt)
-            .temperature(0.0)
+            // 0.3 for better draft quality: the translation is outside the
+            // firewall (human-verified via back-translation), not part of the
+            // determinism guarantee. Do not "fix" to 0.0.
+            .temperature(0.3)
             .max_tokens(256)
             .build();
 

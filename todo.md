@@ -20,7 +20,6 @@ _No open items — the high-priority soundness/production backlog is clear; the 
 
 ## P2 — Medium
 
-- [ ] **Ollama translation temperature is 0.3, contradicting the documented 0.0 determinism guarantee** — the `translateToLojban` mutation sends temperature 0.3 to Ollama, but Chapter 19 and CLAUDE.md Step 8 state temperature is fixed at 0.0 for deterministic output (the sibling translator in `nibli-agent/src/main.rs` uses 0.0). Outside the firewall and human-reviewed, so no soundness break, but contradicts a named book claim and makes the draft non-deterministic. _Location:_ `nibli-server/src/main.rs:621`. _Book:_ Chapter 19 line 30. _Fix:_ Set temperature to 0.0 to match the book (or make it env-configurable defaulting to 0.0). (docs-mismatch)
 
 ## P3 — Low (long tail)
 

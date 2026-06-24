@@ -642,6 +642,10 @@ impl MutationRoot {
                 },
             ],
             stream: false,
+            // 0.3 for better draft quality. The English->Lojban translation is
+            // OUTSIDE the firewall: it is a human-verified draft (the Transparency
+            // Triad's back-translation), NOT part of the determinism guarantee
+            // (that belongs to the reasoning engine). Do not "fix" this to 0.0.
             options: OllamaOptions { temperature: 0.3 },
         };
         let url = format!("{}/api/chat", config.url);

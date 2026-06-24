@@ -270,7 +270,8 @@ class Translator:
         if temperature is not None:
             kwargs["temperature"] = temperature
         else:
-            kwargs["temperature"] = 0.0
+            # 0.3 default: better translation draft quality (outside the firewall).
+            kwargs["temperature"] = 0.3
 
         response = self.api_client.messages.create(**kwargs)
         return response.content[0].text.strip()
@@ -399,8 +400,8 @@ class NibliAgent:
 
         lojban = None
         for attempt in range(1, MAX_RETRIES + 1):
-            # Increase temperature on retries.
-            temp = None if attempt == 1 else 0.3 * attempt
+            # Translate at 0.3; escalate further on retries for diversity.
+            temp = round(0.3 * attempt, 1)
 
             candidate = self.translator.translate_to_lojban(english, temperature=temp)
             print(f"[{self.name}] Candidate ({attempt}/{MAX_RETRIES}): \"{candidate}\"")
