@@ -1360,6 +1360,69 @@ fn node_is_forall_through_tense(buffer: &LogicBuffer, node_id: u32) -> bool {
     }
 }
 
+/// If `node_id` is a chain of leading ground-skolemized `Exists` nodes wrapping a
+/// `ForAll` (`da citka ro lo gerku` → `Exists(da, ForAll(x, …))`), return the
+/// inner `ForAll` node id. Phase-1 skolemization (`collect_exists_for_skolem`)
+/// maps each leading ∃ — which has no enclosing universals at the root — to a
+/// fresh ground constant in `subs`, so routing the inner ∀ to
+/// `compile_forall_to_rule` (which substitutes those ground skolems into the rule
+/// templates) is sound: `∃y.∀x.P(x,y)` is equisatisfiable with `∀x.P(x,sk₀)` for
+/// a fresh constant sk₀. Returns `None` unless at least one ground-skolemized ∃
+/// wraps a `ForAll` (so a pure ∃∃ ground assertion stays on the ground path).
+/// Does NOT strip tense/deontic — a whole-rule-tensed ∃∀ is handled separately.
+fn leading_skolemized_exists_over_forall(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    subs: &HashMap<String, GroundTerm>,
+) -> Option<u32> {
+    let mut current = node_id;
+    let mut peeled = false;
+    loop {
+        match get_node(buffer, current) {
+            Ok(LogicNode::ExistsNode((v, body))) => match subs.get(v.as_str()) {
+                Some(gt) if !is_skdep(gt) => {
+                    peeled = true;
+                    current = *body;
+                }
+                _ => return None,
+            },
+            Ok(LogicNode::ForAllNode(_)) if peeled => return Some(current),
+            _ => return None,
+        }
+    }
+}
+
+/// True if a tense (`pu`/`ca`/`ba`) or deontic (`ei`/`e'e`) wrapper sits over a
+/// leading-∃-over-∀ rule (`pu da citka ro lo gerku` → `Past(Exists(da, ForAll))`).
+/// Such a whole-rule tense cannot be soundly carried by a timeless
+/// backward-chaining rule (mirrors `compile_forall_to_rule`'s spine rejection),
+/// so the caller rejects it with the clear whole-rule-tense message instead of
+/// letting the ground path misreport it as a "bare disjunction".
+fn tense_wraps_skolemized_exists_over_forall(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    subs: &HashMap<String, GroundTerm>,
+) -> bool {
+    let mut current = node_id;
+    let mut saw_tense = false;
+    loop {
+        match get_node(buffer, current) {
+            Ok(LogicNode::PastNode(n))
+            | Ok(LogicNode::PresentNode(n))
+            | Ok(LogicNode::FutureNode(n))
+            | Ok(LogicNode::ObligatoryNode(n))
+            | Ok(LogicNode::PermittedNode(n)) => {
+                saw_tense = true;
+                current = *n;
+            }
+            _ => {
+                return saw_tense
+                    && leading_skolemized_exists_over_forall(buffer, current, subs).is_some();
+            }
+        }
+    }
+}
+
 pub(super) fn process_assertion(
     inner: &mut KnowledgeBaseInner,
     logic: &LogicBuffer,
@@ -1407,42 +1470,54 @@ pub(super) fn process_assertion(
             );
         }
 
-        // Phase 2: Dispatch based on formula structure. A universal under leading
-        // tense/deontic (`pu ro lo gerku cu danlu` → Past(ForAll(...))) is routed
-        // to the rule path too, so compile_forall_to_rule rejects it on its spine
-        // with the clear whole-rule message rather than the ground path's
-        // misleading "bare disjunction" zero-ingest rejection.
+        // Phase 2: Note skolem witness + ground constants — identical for every
+        // dispatch path below, so done once up front.
+        for (var, gt) in &skolem_subs {
+            if !is_skdep(gt) {
+                if let GroundTerm::Constant(sk) = gt {
+                    if var.starts_with("_ev") {
+                        inner.note_event_entity(sk);
+                    } else {
+                        inner.note_entity(sk);
+                    }
+                }
+            }
+        }
+        collect_and_note_constants(logic, root_id, inner);
+
+        // Dispatch on root shape. A universal (optionally under whole-rule
+        // tense/deontic, which `compile_forall_to_rule` rejects on its spine with
+        // the clear message) takes the rule path. A leading bare variable
+        // outscoping a universal (`da citka ro lo gerku` → ∃da.∀x) takes the ∃∀
+        // rule path. Everything else is a ground formula.
         let is_forall = node_is_forall_through_tense(logic, root_id);
 
         if is_forall {
             // ═══ NATIVE RULE PATH ═══
-            for (var, gt) in &skolem_subs {
-                if !is_skdep(gt) {
-                    if let GroundTerm::Constant(sk) = gt {
-                        if var.starts_with("_ev") {
-                            inner.note_event_entity(sk);
-                        } else {
-                            inner.note_entity(sk);
-                        }
-                    }
-                }
-            }
-            collect_and_note_constants(logic, root_id, inner);
             compile_forall_to_rule(logic, root_id, &skolem_subs, inner)?;
+        } else if let Some(inner_forall_id) =
+            leading_skolemized_exists_over_forall(logic, root_id, &skolem_subs)
+        {
+            // ═══ ∃∀ RULE PATH ═══ A leading bare variable outscopes a universal.
+            // Phase-1 already skolemized each leading ∃ to a fresh ground constant
+            // (no enclosing universals at the root), so route the inner ForAll to
+            // rule compilation; `compile_forall_to_rule` substitutes the ground
+            // skolem into the rule templates. Sound: ∃y.∀x.P(x,y) ≡ ∀x.P(x,sk₀).
+            compile_forall_to_rule(logic, inner_forall_id, &skolem_subs, inner)?;
+        } else if tense_wraps_skolemized_exists_over_forall(logic, root_id, &skolem_subs) {
+            // A tense/deontic wrapping a whole ∃∀ rule (`pu da citka ro lo gerku`)
+            // cannot carry whole-rule tense soundly — reject with the same clear
+            // message `compile_forall_to_rule` uses for `pu ro lo gerku cu danlu`,
+            // rather than the ground path's misleading "bare disjunction" error.
+            return Err("cannot compile a tense (pu/ca/ba) or deontic (ei/e'e) \
+                 wrapping a whole universal/conditional rule: a timeless \
+                 backward-chaining rule cannot carry whole-rule tense or \
+                 modality without over-claiming on untensed facts. Rejecting \
+                 the assertion to preserve soundness; restate the \
+                 temporal/deontic scope on the relevant predicate instead."
+                .to_string());
         } else {
             // ═══ GROUND FORMULA PATH ═══
-            for (var, gt) in &skolem_subs {
-                if !is_skdep(gt) {
-                    if let GroundTerm::Constant(sk) = gt {
-                        if var.starts_with("_ev") {
-                            inner.note_event_entity(sk);
-                        } else {
-                            inner.note_entity(sk);
-                        }
-                    }
-                }
-            }
-            collect_and_note_constants(logic, root_id, inner);
 
             // Flatten top-level conjunctions and assert each leaf as a typed fact.
             let mut typed_leaves = Vec::new();

@@ -440,6 +440,98 @@ fn disjunctive_query_still_works() {
     );
 }
 
+// ── Position-aware da/de/di quantifier scope ──
+// A bare logic variable scopes by Lojban surface order. `da citka ro lo gerku`
+// ("something eats every dog") is ∃da.∀x — a single witness eats ALL dogs —
+// whereas `ro lo gerku cu se citka da` ("every dog is eaten by something") is
+// ∀x.∃da (a possibly-different eater per dog). Before the fix both collapsed to
+// ∀x.∃da regardless of word order.
+
+#[test]
+fn query_leading_da_is_existential_over_universal() {
+    // ∃da.∀x is TRUE only when ONE entity eats every dog. Pre-fix the query
+    // compiled to ∀x.∃da, wrongly returning TRUE for the split-eater KB.
+    let one_eater = engine_with_facts(&[
+        "la .adam. cu citka la .rex.",
+        "la .adam. cu citka la .spot.",
+        "la .rex. cu gerku",
+        "la .spot. cu gerku",
+    ]);
+    let (holds, _t, _j) = one_eater
+        .query_text_with_proof("da citka ro lo gerku")
+        .unwrap();
+    assert_true(&holds, "adam eats every dog → ∃ one eater of all dogs");
+
+    let split_eaters = engine_with_facts(&[
+        "la .adam. cu citka la .rex.",
+        "la .ben. cu citka la .spot.",
+        "la .rex. cu gerku",
+        "la .spot. cu gerku",
+    ]);
+    let (holds, _t, _j) = split_eaters
+        .query_text_with_proof("da citka ro lo gerku")
+        .unwrap();
+    assert_false(
+        &holds,
+        "different eaters per dog → NO single eater of all (∃∀, not ∀∃)",
+    );
+}
+
+#[test]
+fn assert_leading_da_over_universal_compiles_and_round_trips() {
+    // Asserting `da citka ro lo gerku` (∃da.∀x) must SUCCEED — logji skolemizes
+    // the leading ∃ to a fresh constant and compiles the inner ∀ as a rule (sk₀
+    // eats every dog). Before the dispatch change this errored as a "bare
+    // disjunction". The asserted single witness then satisfies the ∃∀ query.
+    let engine = NibliEngine::new();
+    engine
+        .assert_text("da citka ro lo gerku")
+        .expect("∃∀ assertion must compile via the leading-∃ skolemization path");
+    engine.assert_text("la .rex. cu gerku").unwrap();
+    engine.assert_text("la .spot. cu gerku").unwrap();
+    let (holds, _t, _j) = engine
+        .query_text_with_proof("da citka ro lo gerku")
+        .unwrap();
+    assert_true(
+        &holds,
+        "the asserted single witness eats every dog (∃∀ round-trips)",
+    );
+}
+
+#[test]
+fn tensed_leading_da_over_universal_rejected() {
+    // `pu da citka ro lo gerku` → Past(Exists(ForAll)): a tense wrapping a whole
+    // ∃∀ rule is rejected with the clear whole-rule message, not the ground
+    // path's misleading "bare disjunction" error.
+    let engine = NibliEngine::new();
+    let err = engine
+        .assert_text("pu da citka ro lo gerku")
+        .expect_err("a tense wrapping a whole ∃∀ rule must be rejected");
+    assert!(
+        err.to_string().contains("whole universal/conditional"),
+        "expected the whole-rule rejection, got: {err}"
+    );
+}
+
+#[test]
+fn trailing_da_after_universal_is_per_witness() {
+    // CONTROL: `ro lo gerku cu se citka da` (every dog is eaten by something) is
+    // ∀x.∃da — a possibly-different eater per dog — so the ∃∀ query "is there one
+    // eater of all dogs?" is FALSE. Confirms the after-case stays ∀∃ (unchanged).
+    let engine = engine_with_facts(&[
+        "ro lo gerku cu se citka da",
+        "la .rex. cu gerku",
+        "la .spot. cu gerku",
+    ]);
+    let (holds, _t, _j) = engine
+        .query_text_with_proof("da citka ro lo gerku")
+        .unwrap();
+    assert_false(
+        &holds,
+        "∀∃ gives per-dog eaters → NO single eater of all dogs",
+    );
+}
+
 #[test]
 fn ganai_tensed_antecedent_fires_with_premise() {
     // Positive companion to the `ganai_tensed_antecedent_must_not_fire_unconditionally`

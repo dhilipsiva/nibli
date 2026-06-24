@@ -65,6 +65,18 @@ pub(crate) struct QuantifierEntry {
     kind: QuantifierKind,
 }
 
+/// One scope introduction in a bridi, recorded in left-to-right SURFACE order so
+/// quantifier nesting can follow Lojban scope (leftmost = outermost). Folding the
+/// list in reverse interleaves bare-variable existentials among the description
+/// quantifiers, so `da citka ro lo gerku` compiles `∃da.∀x` and `ro lo gerku cu
+/// citka da` compiles `∀x.∃da`.
+pub(crate) enum ScopeMarker {
+    /// A gadri description (lo/le/ro lo/ro le/PA lo) → closed via `close_quantifier`.
+    Desc(QuantifierEntry),
+    /// A bare logic variable (da/de/di), first occurrence → closed via `Exists`.
+    Bare(lasso::Spur),
+}
+
 /// Stateful compiler that transforms flat AST buffers into FOL logic forms.
 ///
 /// Maintains a string interner, fresh variable counter, and context state for
@@ -330,6 +342,104 @@ mod tests {
             | LogicalForm::Permitted(inner) => count_exists_binding(inner, name, compiler),
             LogicalForm::Count { body, .. } => count_exists_binding(body, name, compiler),
             LogicalForm::Predicate { .. } => 0,
+        }
+    }
+
+    /// A quantifier binder, for asserting nesting ORDER (which `free_vars` /
+    /// `count_exists_binding` do not capture). `ForAll`/`Count` carry no var name
+    /// (description vars are fresh `_vN`); `Exists` carries the bound name so a
+    /// test can assert it is exactly `da`/`de`/`di`.
+    #[derive(Debug, PartialEq)]
+    enum Binder {
+        Exists(String),
+        ForAll,
+        Count(u32),
+    }
+
+    /// The quantifier-binder sequence from the ROOT inward, following the single
+    /// body branch through transparent Not/tense/deontic wrappers and stopping at
+    /// the first And/Or/Predicate. Lets a test distinguish `∃da.∀x`
+    /// (`[Exists("da"), ForAll]`) from `∀x.∃da` (`[ForAll]`, the `da` hidden in
+    /// the universal's matrix Or). Use `exists_outscopes_forall` for ∃-over-∀
+    /// nesting that the Or/And hides from the spine.
+    fn binder_spine(form: &LogicalForm, compiler: &SemanticCompiler) -> Vec<Binder> {
+        let mut out = Vec::new();
+        let mut cur = form;
+        loop {
+            match cur {
+                LogicalForm::Exists(v, body) => {
+                    out.push(Binder::Exists(resolve(compiler, v)));
+                    cur = body;
+                }
+                LogicalForm::ForAll(_, body) => {
+                    out.push(Binder::ForAll);
+                    cur = body;
+                }
+                LogicalForm::Count { count, body, .. } => {
+                    out.push(Binder::Count(*count));
+                    cur = body;
+                }
+                LogicalForm::Not(inner)
+                | LogicalForm::Past(inner)
+                | LogicalForm::Present(inner)
+                | LogicalForm::Future(inner)
+                | LogicalForm::Obligatory(inner)
+                | LogicalForm::Permitted(inner) => cur = inner,
+                _ => break,
+            }
+        }
+        out
+    }
+
+    /// True if a `ForAll` appears anywhere in `form`'s subtree.
+    fn subtree_has_forall(form: &LogicalForm) -> bool {
+        match form {
+            LogicalForm::ForAll(_, _) => true,
+            LogicalForm::Exists(_, b)
+            | LogicalForm::Not(b)
+            | LogicalForm::Past(b)
+            | LogicalForm::Present(b)
+            | LogicalForm::Future(b)
+            | LogicalForm::Obligatory(b)
+            | LogicalForm::Permitted(b) => subtree_has_forall(b),
+            LogicalForm::Count { body, .. } => subtree_has_forall(body),
+            LogicalForm::And(l, r)
+            | LogicalForm::Or(l, r)
+            | LogicalForm::Biconditional(l, r)
+            | LogicalForm::Xor(l, r) => subtree_has_forall(l) || subtree_has_forall(r),
+            LogicalForm::Predicate { .. } => false,
+        }
+    }
+
+    /// True if some `Exists` binding `name` has a `ForAll` in its subtree — i.e.
+    /// the existential OUTSCOPES a universal (∃-over-∀). Reaches through the
+    /// matrix-side Or/And that `binder_spine` stops at.
+    fn exists_outscopes_forall(
+        form: &LogicalForm,
+        name: &str,
+        compiler: &SemanticCompiler,
+    ) -> bool {
+        match form {
+            LogicalForm::Exists(v, body) => {
+                (resolve(compiler, v) == name && subtree_has_forall(body))
+                    || exists_outscopes_forall(body, name, compiler)
+            }
+            LogicalForm::ForAll(_, body) => exists_outscopes_forall(body, name, compiler),
+            LogicalForm::Count { body, .. } => exists_outscopes_forall(body, name, compiler),
+            LogicalForm::Not(b)
+            | LogicalForm::Past(b)
+            | LogicalForm::Present(b)
+            | LogicalForm::Future(b)
+            | LogicalForm::Obligatory(b)
+            | LogicalForm::Permitted(b) => exists_outscopes_forall(b, name, compiler),
+            LogicalForm::And(l, r)
+            | LogicalForm::Or(l, r)
+            | LogicalForm::Biconditional(l, r)
+            | LogicalForm::Xor(l, r) => {
+                exists_outscopes_forall(l, name, compiler)
+                    || exists_outscopes_forall(r, name, compiler)
+            }
+            LogicalForm::Predicate { .. } => false,
         }
     }
 
@@ -2135,6 +2245,225 @@ mod tests {
             "free={:?}",
             free_vars(&form, &compiler)
         );
+    }
+
+    // ─── position-aware da/de/di quantifier scope ────────────────
+
+    #[test]
+    fn test_da_before_universal_outscopes_it() {
+        // `da citka ro lo gerku` ("something eats every dog") — the leading bare
+        // var is textually BEFORE the universal, so it OUTSCOPES it: ∃da.∀x.
+        // RED before the fix (da was forced inside the universal → ∀x.∃da).
+        let selbris = vec![
+            Selbri::Root("citka".into()), // 0
+            Selbri::Root("gerku".into()), // 1
+        ];
+        let sumtis = vec![
+            Sumti::ProSumti("da".into()),         // 0: da (x1)
+            Sumti::Description((Gadri::RoLo, 1)), // 1: ro lo gerku (x2)
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![1],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        assert_eq!(
+            binder_spine(&form, &compiler),
+            vec![Binder::Exists("da".into()), Binder::ForAll],
+            "leading `da` must outscope the universal (∃da.∀x): got {:?}",
+            binder_spine(&form, &compiler)
+        );
+        assert!(
+            exists_outscopes_forall(&form, "da", &compiler),
+            "`da` existential must dominate the universal"
+        );
+        assert!(free_vars(&form, &compiler).is_empty());
+    }
+
+    #[test]
+    fn test_da_after_universal_is_inside_it() {
+        // `ro lo gerku cu citka da` ("every dog eats something") — the bare var is
+        // textually AFTER the universal, so it stays INSIDE: ∀x.∃da. Contrasts
+        // with the before-case; the pair proves surface order now matters (the two
+        // were identical before the fix).
+        let selbris = vec![
+            Selbri::Root("citka".into()), // 0
+            Selbri::Root("gerku".into()), // 1
+        ];
+        let sumtis = vec![
+            Sumti::Description((Gadri::RoLo, 1)), // 0: ro lo gerku (x1)
+            Sumti::ProSumti("da".into()),         // 1: da (x2)
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![1],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        assert_eq!(
+            binder_spine(&form, &compiler).first(),
+            Some(&Binder::ForAll),
+            "trailing `da` must stay under the universal (∀x.∃da)"
+        );
+        assert!(
+            !exists_outscopes_forall(&form, "da", &compiler),
+            "`da` must NOT outscope the universal in the after-case"
+        );
+        assert!(count_exists_binding(&form, "da", &compiler) >= 1);
+        assert!(free_vars(&form, &compiler).is_empty());
+    }
+
+    #[test]
+    fn test_da_interleaved_between_count_and_universal() {
+        // `re lo gerku cu klama da ro lo mlatu` — a bare var between an
+        // exact-count description (x1) and a universal (x3). The uniform fold
+        // nests them Count > ∃da > ∀ by surface order.
+        let selbris = vec![
+            Selbri::Root("klama".into()), // 0
+            Selbri::Root("gerku".into()), // 1
+            Selbri::Root("mlatu".into()), // 2
+        ];
+        let sumtis = vec![
+            Sumti::QuantifiedDescription((2, Gadri::Lo, 1)), // 0: re lo gerku (x1)
+            Sumti::ProSumti("da".into()),                    // 1: da (x2)
+            Sumti::Description((Gadri::RoLo, 2)),            // 2: ro lo mlatu (x3)
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![1, 2],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        assert_eq!(
+            binder_spine(&form, &compiler).first(),
+            Some(&Binder::Count(2)),
+            "root must be the exact-count quantifier: got {:?}",
+            binder_spine(&form, &compiler)
+        );
+        assert!(
+            exists_outscopes_forall(&form, "da", &compiler),
+            "`da` (x2) must outscope the universal (x3) it precedes"
+        );
+        assert_eq!(count_exists_binding(&form, "da", &compiler), 1);
+        assert!(free_vars(&form, &compiler).is_empty());
+    }
+
+    #[test]
+    fn test_be_arg_da_with_universal_stays_innermost() {
+        // `ro lo gerku cu klama be da` — the be-arg `da` has no surface position
+        // (merged inside apply_selbri), so the safety net closes it INNERMOST,
+        // under the universal. The deferred-position default: bound, not free,
+        // not double-wrapped.
+        let selbris = vec![
+            Selbri::Root("klama".into()),   // 0
+            Selbri::WithArgs((0, vec![1])), // 1: klama be da
+            Selbri::Root("gerku".into()),   // 2
+        ];
+        let sumtis = vec![
+            Sumti::Description((Gadri::RoLo, 2)), // 0: ro lo gerku (x1)
+            Sumti::ProSumti("da".into()),         // 1: da (be-arg)
+        ];
+        let bridi = Bridi {
+            relation: 1,
+            head_terms: vec![0],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        assert_eq!(
+            binder_spine(&form, &compiler).first(),
+            Some(&Binder::ForAll),
+            "root must stay ForAll (logji rule shape)"
+        );
+        assert!(
+            !exists_outscopes_forall(&form, "da", &compiler),
+            "a be-arg `da` is closed innermost, under the universal"
+        );
+        assert_eq!(count_exists_binding(&form, "da", &compiler), 1);
+        assert!(free_vars(&form, &compiler).is_empty());
+    }
+
+    #[test]
+    fn test_prenex_da_top_level_not_reclosed() {
+        // `ro da zo'u da citka lo gerku` — `da` is universally bound by the
+        // prenex; the new surface-marker hook must respect `prenex_vars` and NOT
+        // record a Bare marker for the top-level `da` arg (no existential re-wrap).
+        let selbris = vec![
+            Selbri::Root("citka".into()), // 0
+            Selbri::Root("gerku".into()), // 1
+        ];
+        let sumtis = vec![
+            Sumti::ProSumti("da".into()),       // 0: da (x1)
+            Sumti::Description((Gadri::Lo, 1)), // 1: lo gerku (x2)
+        ];
+        let sentences = vec![
+            Sentence::Prenex((vec!["da".into()], 1)),
+            Sentence::Simple(Bridi {
+                relation: 0,
+                head_terms: vec![0],
+                tail_terms: vec![1],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+        ];
+        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        assert_eq!(
+            count_exists_binding(&form, "da", &compiler),
+            0,
+            "prenex `da` must NOT be existentially re-closed"
+        );
+        assert_eq!(
+            binder_spine(&form, &compiler).first(),
+            Some(&Binder::ForAll),
+            "prenex `da` is the outermost ∀"
+        );
+        assert!(free_vars(&form, &compiler).is_empty());
+    }
+
+    #[test]
+    fn test_da_repeated_dedups_to_one_exists() {
+        // `da citka da` — the same bare var in two places co-refers and is
+        // wrapped by exactly one Exists (the surface hook's `introduced` dedup +
+        // the safety-net subtraction).
+        let selbris = vec![Selbri::Root("citka".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("da".into()), // 0: da (x1)
+            Sumti::ProSumti("da".into()), // 1: da (x2)
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![1],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        assert_eq!(
+            count_exists_binding(&form, "da", &compiler),
+            1,
+            "co-referring `da` must wrap exactly once"
+        );
+        assert!(free_vars(&form, &compiler).is_empty());
     }
 
     #[test]

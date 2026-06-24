@@ -88,7 +88,13 @@ impl SemanticCompiler {
             }
         }
 
-        let mut quantifiers: Vec<QuantifierEntry> = Vec::new();
+        // Surface-ordered scope introductions (descriptions + bare da/de/di),
+        // folded in reverse below so the leftmost binder is outermost.
+        let mut markers: Vec<ScopeMarker> = Vec::new();
+        // da/de/di already recorded as a `Bare` marker — dedups a co-referring
+        // `da` and lets the safety-net residual pass skip surface-captured vars.
+        let mut introduced: std::collections::HashSet<lasso::Spur> =
+            std::collections::HashSet::new();
         let mut modal_entries: Vec<(ModalTag, LogicalTerm, Vec<QuantifierEntry>)> = Vec::new();
         // Untagged sumti that overflowed the selbri's arity (placed nowhere).
         // Preserves the prior silent-drop behaviour for over-arity untagged
@@ -105,7 +111,8 @@ impl SemanticCompiler {
                 Sumti::Tagged((tag, inner_id)) => {
                     let inner = &sumtis[*inner_id as usize];
                     let (term, quants) = self.resolve_sumti(inner, sumtis, selbris, sentences);
-                    quantifiers.extend(quants);
+                    self.record_bare_marker(&term, &mut introduced, &mut markers);
+                    markers.extend(quants.into_iter().map(ScopeMarker::Desc));
                     let idx = tag.to_index();
                     if idx < target_arity {
                         positioned[idx] = Some(term);
@@ -126,13 +133,19 @@ impl SemanticCompiler {
                 Sumti::ModalTagged((modal_tag, inner_id)) => {
                     let inner = &sumtis[*inner_id as usize];
                     let (term, quants) = self.resolve_sumti(inner, sumtis, selbris, sentences);
+                    // A bare `da`/`de`/`di` carried by a BAI modal (`ri'a da`) is
+                    // introduced at this surface position. Its description quants
+                    // (rare: `ri'a lo broda`) stay innermost (appended after the
+                    // loop, with the modal predicate).
+                    self.record_bare_marker(&term, &mut introduced, &mut markers);
                     // BAI modals are not place-filling — they do NOT advance the
                     // place counter.
                     modal_entries.push((*modal_tag, term, quants));
                 }
                 other => {
                     let (term, quants) = self.resolve_sumti(other, sumtis, selbris, sentences);
-                    quantifiers.extend(quants);
+                    self.record_bare_marker(&term, &mut introduced, &mut markers);
+                    markers.extend(quants.into_iter().map(ScopeMarker::Desc));
                     // Skip slots already filled (ke'a x1, or an out-of-order tag),
                     // then fill the current place and advance.
                     while next_place < target_arity && positioned[next_place].is_some() {
@@ -169,7 +182,7 @@ impl SemanticCompiler {
         let mut final_form = self.apply_selbri(bridi.relation, &args, selbris, sumtis, sentences);
 
         for (modal_tag, tagged_term, modal_quants) in modal_entries {
-            quantifiers.extend(modal_quants);
+            markers.extend(modal_quants.into_iter().map(ScopeMarker::Desc));
 
             let (modal_gismu, modal_arity) = match &modal_tag {
                 ModalTag::Fixed(bai) => {
@@ -213,49 +226,57 @@ impl SemanticCompiler {
             final_form = LogicalForm::And(Box::new(final_form), Box::new(conj));
         }
 
-        // Bare logic variables (da/de/di) used as arguments get existential
-        // closure. Lojban scope is left-to-right: in `ro lo gerku cu citka da`
-        // the universal outscopes the existential (∀x.∃y), so when a universal
-        // description is closed, bare-var existentials are wrapped INSIDE
-        // (before the ForAll), keeping ForAll at the root — logji's assertion
-        // dispatch compiles rules only from a ForAll root, and the old
-        // Exists-over-ForAll shape dead-ended, silently losing the whole
-        // assertion (panel finding 2026-06-10). Purely existential sentences
-        // keep the original outermost wrap.
-        // Collect bare logic variables (da/de/di) for existential closure by
-        // walking the ALREADY-BUILT `final_form` — NOT just `&args`. This is the
-        // only way to reach a da/de/di inside a BAI modal predicate (`ri'a da`,
-        // conjoined just above) or a be/bei role predicate (merged inside
-        // `apply_selbri`); neither ever appears in `&args`. Binder tracking skips
-        // a da/de/di an abstraction body already closed (no double-wrap) and
-        // prenex-bound vars. The description ForAll/Exists and rel-clause
-        // restrictors are NOT folded into `final_form` yet (they wrap below / are
-        // closed by their own frame), so they are correctly out of scope here.
-        let mut da_vars_seen = std::collections::HashSet::new();
-        let mut da_vars: Vec<lasso::Spur> = Vec::new();
+        // Quantifier scope follows Lojban surface order (leftmost = outermost).
+        // `markers` recorded every scope introduction — description quantifiers
+        // AND bare logic variables (da/de/di) — in source order during the term
+        // loop above. Folding the list in REVERSE makes the first-introduced
+        // quantifier the outermost binder, so `da citka ro lo gerku` yields
+        // `∃da.∀x` (the leading bare var outscopes the universal — an
+        // Exists-over-ForAll root that logji's assertion dispatch now accepts by
+        // skolemizing the leading ∃) while `ro lo gerku cu citka da` yields
+        // `∀x.∃da` (unchanged).
+        //
+        // Safety net: a da/de/di reachable only via a merged predicate — a be/bei
+        // role arg (`klama be da`) or any var the surface loop did not capture —
+        // has no well-defined surface position, so it is collected from the built
+        // `final_form` and closed INNERMOST (the conservative default). This
+        // guarantees no bare var is ever left free; `introduced` excludes the
+        // surface-captured vars so none is double-wrapped. Binder tracking in
+        // `collect_free_logic_vars` skips abstraction-bound and prenex-bound vars,
+        // and the description bodies / rel-clause restrictors are not folded into
+        // `final_form` yet (they wrap below), so they are correctly out of scope.
+        let mut all_free_seen = std::collections::HashSet::new();
+        let mut all_free: Vec<lasso::Spur> = Vec::new();
         let mut bound_vars: Vec<lasso::Spur> = Vec::new();
         Self::collect_free_logic_vars(
             &final_form,
             &self.interner,
             &self.prenex_vars,
             &mut bound_vars,
-            &mut da_vars_seen,
-            &mut da_vars,
+            &mut all_free_seen,
+            &mut all_free,
         );
-        let has_universal_quantifier = quantifiers.iter().any(|e| {
-            matches!(
-                e.kind,
-                QuantifierKind::Universal | QuantifierKind::UniversalLe
-            )
-        });
-        if has_universal_quantifier {
-            for var in &da_vars {
+        for var in &all_free {
+            if !introduced.contains(var) {
                 final_form = LogicalForm::Exists(*var, Box::new(final_form));
             }
         }
 
-        for entry in quantifiers.into_iter().rev() {
-            final_form = self.close_quantifier(entry, final_form, selbris, sumtis, sentences);
+        let has_universal_quantifier = markers.iter().any(|m| {
+            matches!(
+                m,
+                ScopeMarker::Desc(e)
+                    if matches!(e.kind, QuantifierKind::Universal | QuantifierKind::UniversalLe)
+            )
+        });
+
+        for marker in markers.into_iter().rev() {
+            final_form = match marker {
+                ScopeMarker::Desc(entry) => {
+                    self.close_quantifier(entry, final_form, selbris, sumtis, sentences)
+                }
+                ScopeMarker::Bare(var) => LogicalForm::Exists(var, Box::new(final_form)),
+            };
         }
 
         // Rare corner: a rel clause on a non-quantifier sumti nested inside a
@@ -280,12 +301,6 @@ impl SemanticCompiler {
                 for conj in late {
                     final_form = LogicalForm::And(Box::new(final_form), Box::new(conj));
                 }
-            }
-        }
-
-        if !has_universal_quantifier {
-            for var in &da_vars {
-                final_form = LogicalForm::Exists(*var, Box::new(final_form));
             }
         }
 
@@ -375,6 +390,26 @@ impl SemanticCompiler {
                 bound.push(*var);
                 Self::collect_free_logic_vars(body, interner, prenex, bound, seen, out);
                 bound.pop();
+            }
+        }
+    }
+
+    /// Record a surface-ordered `Bare` scope marker if `term` is a bare logic
+    /// variable (`da`/`de`/`di`) seen for the first time in this bridi frame and
+    /// not prenex-bound. Dedups a co-referring var via `introduced`. Reads only
+    /// `self.interner`/`self.prenex_vars`; mutates the caller's frame-local
+    /// `introduced`/`markers`.
+    fn record_bare_marker(
+        &self,
+        term: &LogicalTerm,
+        introduced: &mut std::collections::HashSet<lasso::Spur>,
+        markers: &mut Vec<ScopeMarker>,
+    ) {
+        if let LogicalTerm::Variable(spur) = term {
+            let spur = *spur;
+            let is_logic_var = matches!(self.interner.resolve(&spur), "da" | "de" | "di");
+            if is_logic_var && !self.prenex_vars.contains(&spur) && introduced.insert(spur) {
+                markers.push(ScopeMarker::Bare(spur));
             }
         }
     }
