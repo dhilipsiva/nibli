@@ -1859,6 +1859,238 @@ fn emit_derived<S: TraceSink>(
 /// fired). This replaces the former untraced/traced × normal/temporal block
 /// duplication; sharing `visited` with the recording path closes the old
 /// traced-path per-condition cycle asymmetry (LP-L2).
+/// Map a tensed `StoredFact` to its proof-trace tense label.
+fn tense_label_of(f: &StoredFact) -> &'static str {
+    match f {
+        StoredFact::Past(_) => "past",
+        StoredFact::Present(_) => "present",
+        StoredFact::Future(_) => "future",
+        _ => "?",
+    }
+}
+
+/// Run one backward-chain phase (the per-rule firing loop) for `match_fact`.
+///
+/// `tense_fact` is `None` for the NORMAL phase (rules matching the goal
+/// directly, conditions checked bare) and `Some(tensed_goal)` for the
+/// TEMPORAL-LIFTING phase (timeless rules fired against the bare goal, each
+/// condition re-tensed with the goal's tense). It is the SOLE difference
+/// between the two phases — it drives the candidate-filter tense, the
+/// per-condition re-tensing, and the proof-step tense label.
+///
+/// Returns `Some(root)` if a rule fired definitively True (the caller returns
+/// `(True, root)`); `None` if no rule fired, accumulating any non-definitive
+/// verdict into `*best_result`. The caller owns `visited.remove(fact)`.
+fn process_phase<S: TraceSink>(
+    match_fact: &StoredFact,
+    tense_fact: Option<&StoredFact>,
+    inner: &KnowledgeBaseInner,
+    depth: usize,
+    visited: &mut HashSet<StoredFact>,
+    sink: &mut S,
+    candidates_slot: &mut Option<Vec<GroundTerm>>,
+    best_result: &mut Option<QueryResult>,
+) -> Option<Option<u32>> {
+    // The original goal carries the proof emission + (when lifting) the tense
+    // source; in the normal phase it is just `match_fact`.
+    let orig_fact = tense_fact.unwrap_or(match_fact);
+    let tense_label = tense_fact.map(tense_label_of);
+
+    let rules = matching_rules_typed(match_fact, &inner.universal_rules);
+    for rule in rules {
+        for typed_concl in &rule.typed_conclusions {
+            let Some(mut bindings) = unify_facts(typed_concl, match_fact) else {
+                continue;
+            };
+
+            // Handle unbound event variables (same logic as fact_repr version).
+            let unbound_event_vars: Vec<String> = rule
+                .pattern_var_names
+                .iter()
+                .filter(|pv| pv.starts_with("ev__") && !bindings.contains_key(pv.as_str()))
+                .cloned()
+                .collect();
+
+            if !unbound_event_vars.is_empty() {
+                let mut per_var_candidates: Vec<Vec<GroundTerm>> = Vec::new();
+                for ev_var in &unbound_event_vars {
+                    let single_var_cond_indices: Vec<usize> = rule
+                        .typed_conditions
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, ct)| {
+                            stored_fact_contains_var(ct, ev_var)
+                                && unbound_event_vars.iter().all(|other| {
+                                    other == ev_var || !stored_fact_contains_var(ct, other)
+                                })
+                        })
+                        .map(|(i, _)| i)
+                        .collect();
+
+                    if single_var_cond_indices.is_empty() {
+                        per_var_candidates.push(ensure_candidates(candidates_slot, inner).to_vec());
+                    } else {
+                        // Temporal lifting (tense_fact = Some): the candidate filter
+                        // applies the queried fact's tense to each condition (the
+                        // shared helper handles the decidable/recursive split + NAF).
+                        let cand = ensure_candidates(candidates_slot, inner).to_vec();
+                        let filtered = filter_event_candidates(
+                            rule,
+                            ev_var,
+                            &bindings,
+                            &single_var_cond_indices,
+                            &cand,
+                            inner,
+                            depth,
+                            visited,
+                            tense_fact,
+                        );
+                        per_var_candidates.push(filtered);
+                    }
+                }
+
+                if per_var_candidates.iter().any(|pvc| pvc.is_empty()) {
+                    continue;
+                }
+
+                let mut found = false;
+                let mut combo_pending = None;
+                for combo in TypedMultiCartesian::new(&per_var_candidates, inner.cancel.clone()) {
+                    for (i, ev_var) in unbound_event_vars.iter().enumerate() {
+                        bindings.insert(ev_var.clone(), combo[i].clone());
+                    }
+                    // Index-anchored join: bind condition-only individual vars
+                    // (e.g. the inhibitor/enzyme of a multi-variable prenex rule)
+                    // from the bound events' role facts, instead of enumerating
+                    // them over a members^k domain cartesian.
+                    let joined_vars = bind_join_vars_from_index(rule, &mut bindings, inner);
+                    let mut all_hold = true;
+                    let mut pending_here = None;
+                    for (idx, ct) in rule.typed_conditions.iter().enumerate() {
+                        // Temporal lifting re-tenses each condition with the goal's
+                        // tense; the normal phase checks it bare.
+                        let cs = match tense_fact {
+                            Some(src) => apply_tense_to_fact(&substitute_fact(ct, &bindings), src),
+                            None => substitute_fact(ct, &bindings),
+                        };
+                        let result = check_predicate_in_kb_typed(&cs, inner, depth + 1, visited);
+                        let verdict = if rule.negated_condition_indices.contains(&idx) {
+                            negate_result(result)
+                        } else {
+                            result
+                        };
+                        if verdict.is_false() {
+                            all_hold = false;
+                            pending_here = None;
+                            break;
+                        }
+                        if !verdict.is_true() {
+                            all_hold = false;
+                            pending_here = prefer_non_definitive(pending_here, verdict);
+                        }
+                    }
+                    // Negated-exists groups are intrinsically tenseless: checked
+                    // bare, not lifted, in both phases.
+                    fold_negated_groups(
+                        rule,
+                        &bindings,
+                        inner,
+                        candidates_slot,
+                        depth,
+                        visited,
+                        &mut all_hold,
+                        &mut pending_here,
+                    );
+                    if all_hold {
+                        found = true;
+                        break;
+                    }
+                    combo_pending = pending_here.or(combo_pending);
+                    for ev_var in &unbound_event_vars {
+                        bindings.remove(ev_var.as_str());
+                    }
+                    for v in &joined_vars {
+                        bindings.remove(v.as_str());
+                    }
+                }
+                if !found {
+                    // Merge any pending non-definitive result WITHOUT wiping an
+                    // already-pending one: if combo_pending is None (every combo
+                    // failed definitively), keep best_result intact. Using
+                    // `and_then` here would erase a pending ResourceExceeded into
+                    // None and cache a wrong definitive False.
+                    if let Some(r) = combo_pending {
+                        *best_result = prefer_non_definitive(best_result.take(), r);
+                    }
+                    continue;
+                }
+            }
+
+            let mut all_conditions_hold = true;
+            let mut rule_pending = None;
+            for (idx, ct) in rule.typed_conditions.iter().enumerate() {
+                let cs = match tense_fact {
+                    Some(src) => apply_tense_to_fact(&substitute_fact(ct, &bindings), src),
+                    None => substitute_fact(ct, &bindings),
+                };
+                let result = check_predicate_in_kb_typed(&cs, inner, depth + 1, visited);
+                // Negated antecedent conditions hold via negation-as-failure: invert
+                // the verdict so ¬P holds iff P is unprovable (False), not iff P is True.
+                let verdict = if rule.negated_condition_indices.contains(&idx) {
+                    negate_result(result)
+                } else {
+                    result
+                };
+                if verdict.is_false() {
+                    all_conditions_hold = false;
+                    rule_pending = None;
+                    break;
+                }
+                if !verdict.is_true() {
+                    all_conditions_hold = false;
+                    rule_pending = prefer_non_definitive(rule_pending, verdict);
+                }
+            }
+            fold_negated_groups(
+                rule,
+                &bindings,
+                inner,
+                candidates_slot,
+                depth,
+                visited,
+                &mut all_conditions_hold,
+                &mut rule_pending,
+            );
+
+            if all_conditions_hold {
+                let root = if S::RECORDING {
+                    Some(emit_derived(
+                        sink,
+                        rule,
+                        &bindings,
+                        orig_fact,
+                        inner,
+                        depth,
+                        visited,
+                        tense_fact,
+                        tense_label,
+                    ))
+                } else {
+                    None
+                };
+                return Some(root);
+            }
+            // Never wipe an already-pending non-definitive result: when
+            // rule_pending is None (this rule failed definitively), leave
+            // best_result intact rather than erasing it via `and_then`.
+            if let Some(r) = rule_pending {
+                *best_result = prefer_non_definitive(best_result.take(), r);
+            }
+        }
+    }
+    None
+}
+
 fn try_backward_chain_core<S: TraceSink>(
     fact: &StoredFact,
     inner: &KnowledgeBaseInner,
@@ -1914,366 +2146,36 @@ fn try_backward_chain_core<S: TraceSink>(
     }
     let mut best_result = None;
 
-    for rule in rules {
-        for typed_concl in &rule.typed_conclusions {
-            let Some(mut bindings) = unify_facts(typed_concl, fact) else {
-                continue;
-            };
-
-            // Handle unbound event variables (same logic as fact_repr version).
-            let unbound_event_vars: Vec<String> = rule
-                .pattern_var_names
-                .iter()
-                .filter(|pv| pv.starts_with("ev__") && !bindings.contains_key(pv.as_str()))
-                .cloned()
-                .collect();
-
-            if !unbound_event_vars.is_empty() {
-                let mut per_var_candidates: Vec<Vec<GroundTerm>> = Vec::new();
-                for ev_var in &unbound_event_vars {
-                    let single_var_cond_indices: Vec<usize> = rule
-                        .typed_conditions
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, ct)| {
-                            stored_fact_contains_var(ct, ev_var)
-                                && unbound_event_vars.iter().all(|other| {
-                                    other == ev_var || !stored_fact_contains_var(ct, other)
-                                })
-                        })
-                        .map(|(i, _)| i)
-                        .collect();
-
-                    if single_var_cond_indices.is_empty() {
-                        per_var_candidates
-                            .push(ensure_candidates(&mut candidates_slot, inner).to_vec());
-                    } else {
-                        let cand = ensure_candidates(&mut candidates_slot, inner).to_vec();
-                        let filtered = filter_event_candidates(
-                            rule,
-                            ev_var,
-                            &bindings,
-                            &single_var_cond_indices,
-                            &cand,
-                            inner,
-                            depth,
-                            visited,
-                            None,
-                        );
-                        per_var_candidates.push(filtered);
-                    }
-                }
-
-                if per_var_candidates.iter().any(|pvc| pvc.is_empty()) {
-                    continue;
-                }
-
-                let mut found = false;
-                let mut combo_pending = None;
-                for combo in TypedMultiCartesian::new(&per_var_candidates, inner.cancel.clone()) {
-                    for (i, ev_var) in unbound_event_vars.iter().enumerate() {
-                        bindings.insert(ev_var.clone(), combo[i].clone());
-                    }
-                    // Index-anchored join: bind condition-only individual vars
-                    // (e.g. the inhibitor/enzyme of a multi-variable prenex rule)
-                    // from the bound events' role facts, instead of enumerating
-                    // them over a members^k domain cartesian.
-                    let joined_vars = bind_join_vars_from_index(rule, &mut bindings, inner);
-                    let mut all_hold = true;
-                    let mut pending_here = None;
-                    for (idx, ct) in rule.typed_conditions.iter().enumerate() {
-                        let cs = substitute_fact(ct, &bindings);
-                        let result = check_predicate_in_kb_typed(&cs, inner, depth + 1, visited);
-                        let verdict = if rule.negated_condition_indices.contains(&idx) {
-                            negate_result(result)
-                        } else {
-                            result
-                        };
-                        if verdict.is_false() {
-                            all_hold = false;
-                            pending_here = None;
-                            break;
-                        }
-                        if !verdict.is_true() {
-                            all_hold = false;
-                            pending_here = prefer_non_definitive(pending_here, verdict);
-                        }
-                    }
-                    fold_negated_groups(
-                        rule,
-                        &bindings,
-                        inner,
-                        &mut candidates_slot,
-                        depth,
-                        visited,
-                        &mut all_hold,
-                        &mut pending_here,
-                    );
-                    if all_hold {
-                        found = true;
-                        break;
-                    }
-                    combo_pending = pending_here.or(combo_pending);
-                    for ev_var in &unbound_event_vars {
-                        bindings.remove(ev_var.as_str());
-                    }
-                    for v in &joined_vars {
-                        bindings.remove(v.as_str());
-                    }
-                }
-                if !found {
-                    // Merge any pending non-definitive result WITHOUT wiping an
-                    // already-pending one: if combo_pending is None (every combo
-                    // failed definitively), keep best_result intact. Using
-                    // `and_then` here would erase a pending ResourceExceeded into
-                    // None and cache a wrong definitive False.
-                    if let Some(r) = combo_pending {
-                        best_result = prefer_non_definitive(best_result, r);
-                    }
-                    continue;
-                }
-            }
-
-            let mut all_conditions_hold = true;
-            let mut rule_pending = None;
-            for (idx, ct) in rule.typed_conditions.iter().enumerate() {
-                let cs = substitute_fact(ct, &bindings);
-                let result = check_predicate_in_kb_typed(&cs, inner, depth + 1, visited);
-                // Negated antecedent conditions hold via negation-as-failure: invert
-                // the verdict so ¬P holds iff P is unprovable (False), not iff P is True.
-                let verdict = if rule.negated_condition_indices.contains(&idx) {
-                    negate_result(result)
-                } else {
-                    result
-                };
-                if verdict.is_false() {
-                    all_conditions_hold = false;
-                    rule_pending = None;
-                    break;
-                }
-                if !verdict.is_true() {
-                    all_conditions_hold = false;
-                    rule_pending = prefer_non_definitive(rule_pending, verdict);
-                }
-            }
-            fold_negated_groups(
-                rule,
-                &bindings,
-                inner,
-                &mut candidates_slot,
-                depth,
-                visited,
-                &mut all_conditions_hold,
-                &mut rule_pending,
-            );
-
-            if all_conditions_hold {
-                let root = if S::RECORDING {
-                    Some(emit_derived(
-                        sink, rule, &bindings, fact, inner, depth, visited, None, None,
-                    ))
-                } else {
-                    None
-                };
-                visited.remove(fact);
-                return (QueryResult::True, root);
-            }
-            // Never wipe an already-pending non-definitive result: when
-            // rule_pending is None (this rule failed definitively), leave
-            // best_result intact rather than erasing it via `and_then`.
-            if let Some(r) = rule_pending {
-                best_result = prefer_non_definitive(best_result, r);
-            }
-        }
+    // Normal phase: fire rules matching the goal directly (no tense lifting).
+    if let Some(root) = process_phase(
+        fact,
+        None,
+        inner,
+        depth,
+        visited,
+        sink,
+        &mut candidates_slot,
+        &mut best_result,
+    ) {
+        visited.remove(fact);
+        return (QueryResult::True, root);
     }
 
-    // Temporal lifting: if querying a tensed fact, try bare (timeless) rules.
+    // Temporal lifting: a tensed goal also tries bare (timeless) rules, re-tensing
+    // each condition with the goal's tense.
     if let Some(bare_fact) = strip_tense_from_fact(fact) {
-        let tense_label = match fact {
-            StoredFact::Past(_) => "past",
-            StoredFact::Present(_) => "present",
-            StoredFact::Future(_) => "future",
-            _ => "?",
-        };
-        let bare_rules = matching_rules_typed(&bare_fact, &inner.universal_rules);
-        for rule in bare_rules {
-            for typed_concl in &rule.typed_conclusions {
-                let Some(mut bindings) = unify_facts(typed_concl, &bare_fact) else {
-                    continue;
-                };
-
-                let unbound_event_vars: Vec<String> = rule
-                    .pattern_var_names
-                    .iter()
-                    .filter(|pv| pv.starts_with("ev__") && !bindings.contains_key(pv.as_str()))
-                    .cloned()
-                    .collect();
-
-                if !unbound_event_vars.is_empty() {
-                    let mut per_var_candidates: Vec<Vec<GroundTerm>> = Vec::new();
-                    for ev_var in &unbound_event_vars {
-                        let single_var_cond_indices: Vec<usize> = rule
-                            .typed_conditions
-                            .iter()
-                            .enumerate()
-                            .filter(|(_, ct)| {
-                                stored_fact_contains_var(ct, ev_var)
-                                    && unbound_event_vars.iter().all(|other| {
-                                        other == ev_var || !stored_fact_contains_var(ct, other)
-                                    })
-                            })
-                            .map(|(i, _)| i)
-                            .collect();
-
-                        if single_var_cond_indices.is_empty() {
-                            per_var_candidates
-                                .push(ensure_candidates(&mut candidates_slot, inner).to_vec());
-                        } else {
-                            // Temporal lifting: the candidate filter applies the
-                            // queried fact's tense to each condition (the shared
-                            // helper handles the decidable/recursive split + NAF).
-                            let cand = ensure_candidates(&mut candidates_slot, inner).to_vec();
-                            let filtered = filter_event_candidates(
-                                rule,
-                                ev_var,
-                                &bindings,
-                                &single_var_cond_indices,
-                                &cand,
-                                inner,
-                                depth,
-                                visited,
-                                Some(fact),
-                            );
-                            per_var_candidates.push(filtered);
-                        }
-                    }
-
-                    if per_var_candidates.iter().any(|pvc| pvc.is_empty()) {
-                        continue;
-                    }
-
-                    let mut found = false;
-                    let mut combo_pending = None;
-                    for combo in TypedMultiCartesian::new(&per_var_candidates, inner.cancel.clone())
-                    {
-                        for (i, ev_var) in unbound_event_vars.iter().enumerate() {
-                            bindings.insert(ev_var.clone(), combo[i].clone());
-                        }
-                        let joined_vars = bind_join_vars_from_index(rule, &mut bindings, inner);
-                        let mut all_hold = true;
-                        let mut pending_here = None;
-                        for (idx, ct) in rule.typed_conditions.iter().enumerate() {
-                            let bare_cs = substitute_fact(ct, &bindings);
-                            let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
-                            let result =
-                                check_predicate_in_kb_typed(&tensed_cs, inner, depth + 1, visited);
-                            let verdict = if rule.negated_condition_indices.contains(&idx) {
-                                negate_result(result)
-                            } else {
-                                result
-                            };
-                            if verdict.is_false() {
-                                all_hold = false;
-                                pending_here = None;
-                                break;
-                            }
-                            if !verdict.is_true() {
-                                all_hold = false;
-                                pending_here = prefer_non_definitive(pending_here, verdict);
-                            }
-                        }
-                        // Negated-exists groups are intrinsically tenseless (like the
-                        // positive event-decomposed conditions): checked bare, not lifted.
-                        fold_negated_groups(
-                            rule,
-                            &bindings,
-                            inner,
-                            &mut candidates_slot,
-                            depth,
-                            visited,
-                            &mut all_hold,
-                            &mut pending_here,
-                        );
-                        if all_hold {
-                            found = true;
-                            break;
-                        }
-                        combo_pending = pending_here.or(combo_pending);
-                        for ev_var in &unbound_event_vars {
-                            bindings.remove(ev_var.as_str());
-                        }
-                        for v in &joined_vars {
-                            bindings.remove(v.as_str());
-                        }
-                    }
-                    if !found {
-                        // Preserve any already-pending non-definitive result; do
-                        // not erase best_result when combo_pending is None.
-                        if let Some(r) = combo_pending {
-                            best_result = prefer_non_definitive(best_result, r);
-                        }
-                        continue;
-                    }
-                }
-
-                let mut all_conditions_hold = true;
-                let mut rule_pending = None;
-                for (idx, ct) in rule.typed_conditions.iter().enumerate() {
-                    let bare_cs = substitute_fact(ct, &bindings);
-                    let tensed_cs = apply_tense_to_fact(&bare_cs, fact);
-                    let result = check_predicate_in_kb_typed(&tensed_cs, inner, depth + 1, visited);
-                    let verdict = if rule.negated_condition_indices.contains(&idx) {
-                        negate_result(result)
-                    } else {
-                        result
-                    };
-                    if verdict.is_false() {
-                        all_conditions_hold = false;
-                        rule_pending = None;
-                        break;
-                    }
-                    if !verdict.is_true() {
-                        all_conditions_hold = false;
-                        rule_pending = prefer_non_definitive(rule_pending, verdict);
-                    }
-                }
-                // Negated-exists groups are tenseless (checked bare, not lifted).
-                fold_negated_groups(
-                    rule,
-                    &bindings,
-                    inner,
-                    &mut candidates_slot,
-                    depth,
-                    visited,
-                    &mut all_conditions_hold,
-                    &mut rule_pending,
-                );
-
-                if all_conditions_hold {
-                    let root = if S::RECORDING {
-                        Some(emit_derived(
-                            sink,
-                            rule,
-                            &bindings,
-                            fact,
-                            inner,
-                            depth,
-                            visited,
-                            Some(fact),
-                            Some(tense_label),
-                        ))
-                    } else {
-                        None
-                    };
-                    visited.remove(fact);
-                    return (QueryResult::True, root);
-                }
-                // Preserve any already-pending non-definitive result; do not
-                // erase best_result when rule_pending is None.
-                if let Some(r) = rule_pending {
-                    best_result = prefer_non_definitive(best_result, r);
-                }
-            }
+        if let Some(root) = process_phase(
+            &bare_fact,
+            Some(fact),
+            inner,
+            depth,
+            visited,
+            sink,
+            &mut candidates_slot,
+            &mut best_result,
+        ) {
+            visited.remove(fact);
+            return (QueryResult::True, root);
         }
     }
 
