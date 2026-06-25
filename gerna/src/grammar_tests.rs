@@ -3449,6 +3449,38 @@ fn test_error_recovery_across_dot_i() {
 }
 
 #[test]
+fn test_recovers_after_garbage_before_dot_i() {
+    // `mi klama ku'o .i do prami` — the stray terminator `ku'o` sits where a `.i`
+    // separator is expected. The loop must localize the error to the garbage AND
+    // recover to the next `.i`, so the SECOND sentence still parses (instead of
+    // giving up on the rest of the text).
+    let arena = Bump::new();
+    let result = parse_tokens_to_ast(
+        &[
+            cmavo("mi"),
+            gismu("klama"),
+            cmavo("ku'o"), // stray terminator where `.i` is expected
+            pause(),
+            cmavo("i"),
+            cmavo("do"),
+            gismu("prami"),
+        ],
+        "",
+        &arena,
+    );
+    assert_eq!(
+        result.parsed.sentences.len(),
+        2,
+        "both sentences must parse after recovery, got {:?}",
+        result.parsed.sentences
+    );
+    assert!(
+        !result.errors.is_empty(),
+        "the stray `ku'o` must be reported"
+    );
+}
+
+#[test]
 fn test_error_recovery_multiple_bad_sentences() {
     // Two bad sentences followed by a good one
     let arena = Bump::new();

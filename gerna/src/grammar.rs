@@ -398,6 +398,16 @@ impl<'a, 'arena> Parser<'a, 'arena> {
             if !self.eat_dot_i() {
                 while self.eat_pause() {}
                 if !self.eat_dot_i() {
+                    // Garbage where a `.i` separator was expected. If a later `.i`
+                    // exists, localize the error to the offending token and recover
+                    // to it so the following sentences still parse (instead of
+                    // giving up on the rest of the text). Trailing garbage / end
+                    // falls through to the terminal unconsumed-tokens check.
+                    if !self.at_end() && self.has_dot_i_ahead() {
+                        errors.push(self.error(self.unconsumed_error_msg()));
+                        self.skip_to_next_dot_i();
+                        continue;
+                    }
                     break;
                 }
             }
@@ -465,16 +475,9 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         while self.eat_pause() {}
 
         if !self.at_end() {
-            // A dangling sumti connective (`mi .e` with no operand) is left as an
-            // unconsumed `e`/`a`/`o`/`u` cmavo here (the leading pause was just
-            // eaten); report it specifically at the connective instead of the
-            // generic "unconsumed tokens".
-            let msg = if self.is_dangling_sumti_connective() {
-                "sumti connective has no valid operand"
-            } else {
-                "unconsumed tokens remaining"
-            };
-            errors.push(self.error(msg));
+            // Trailing garbage with no further `.i` (e.g. a dangling sumti
+            // connective `mi .e`); localize the error to it.
+            errors.push(self.error(self.unconsumed_error_msg()));
         }
 
         ParseResult {
@@ -498,6 +501,38 @@ impl<'a, 'arena> Parser<'a, 'arena> {
                 "e" | "a" | "o" | "u"
             ))
         )
+    }
+
+    /// Error message for unconsumed/garbage tokens at `self.pos`: a dangling
+    /// sumti connective gets a specific message, anything else the generic one.
+    /// Shared by the in-loop garbage recovery and the terminal check.
+    fn unconsumed_error_msg(&self) -> &'static str {
+        if self.is_dangling_sumti_connective() {
+            "sumti connective has no valid operand"
+        } else {
+            "unconsumed tokens remaining"
+        }
+    }
+
+    /// Whether a `.i` sentence separator appears at or after `self.pos` (a
+    /// non-consuming forward scan). Decides whether garbage where a `.i` was
+    /// expected is recovered (skip to the next `.i`) or left for the terminal
+    /// unconsumed-tokens check.
+    fn has_dot_i_ahead(&self) -> bool {
+        let mut i = self.pos;
+        while i + 1 < self.tokens.len() {
+            if matches!(
+                (&self.tokens[i], &self.tokens[i + 1]),
+                (
+                    NormalizedToken::Standard(LojbanToken::Pause, _),
+                    NormalizedToken::Standard(LojbanToken::Cmavo, "i")
+                )
+            ) {
+                return true;
+            }
+            i += 1;
+        }
+        false
     }
 
     /// Construct a ParseError at the current position with line:column context.

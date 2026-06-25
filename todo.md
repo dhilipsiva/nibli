@@ -25,7 +25,6 @@ _No open items._
 ## P3 — Low (long tail)
 
 ### gerna (parser/lexer)
-- [ ] **Top-level parse loop breaks instead of recovering after post-sentence garbage** — garbage instead of `.i` makes the loop `break` (grammar.rs ~381) rather than recovering; fail-closed, the only latent improvement is the error POSITION (cosmetic). _Fix:_ skip to the next `.i` and continue, or localize the error to the garbage token. (robustness)
 
 ### smuni (AST → FOL IR)
 - [ ] **Position-aware bare-var scope for NESTED positions (the surface fold LANDED)** — `da`/`de`/`di` now scope by surface order for TOP-LEVEL args, place-tagged args, and BAI modals (a `da` before a `ro lo` compiles `∃∀`, after compiles `∀∃`; `ExactCount` interleaves by construction; logji accepts the `∃∀` assertion root by skolemizing the leading `∃`). **Remaining (deferred, minor — completeness):** a `da` reachable ONLY via a be/bei role arg (`klama be da`, merged inside `apply_selbri`) or a description's poi-restrictor has no well-defined bridi-level surface index, so it is closed at the INNERMOST default (sound, never left free) rather than interleaved by source position. Surfacing those positions would require threading `WithArgs`/restrictor quants up through `apply_selbri`/`resolve_sumti` with a surface index. _Location:_ `smuni/src/semantic/compile.rs` (`record_bare_marker` capture sites + the `all_free − introduced` residual close); `selbri.rs` (`WithArgs` be/bei closure). (completeness)

@@ -591,18 +591,29 @@ fn pipeline_unlexable_char_surfaces_positioned_error() {
     assert_eq!(r.errors[0].line, 1);
     assert_eq!(r.errors[0].column, 10); // "mi klama " is 9 bytes → col 10
 
-    // The skip leaves `do prami` wreckage in sentence 1, which the grammar
-    // also reports (unconsumed tokens) — at least two errors total. NOTE:
-    // the trailing `.i lo gerku cu danlu` is currently ALSO lost, but at the
-    // GRAMMAR level: the top-level loop `break`s when a successfully parsed
-    // sentence is followed by garbage instead of `.i`, instead of recovering
-    // to the next `.i`. That is a separate, pre-existing recovery limitation
-    // (adjacent to the filed connective re-pairing finding), not lexer
-    // truncation — the tokens ARE produced (see the lexer test).
+    // The `do prami` wreckage (where a `.i` separator is expected) is reported
+    // by the grammar — at least two errors total (lex `7` + grammar). The
+    // top-level loop now RECOVERS to the next `.i` instead of giving up, so the
+    // trailing `lo gerku cu danlu` sentence still parses (it was previously lost:
+    // the loop used to `break` when a parsed sentence was followed by garbage
+    // instead of `.i`).
     assert!(
         r.errors.len() >= 2,
         "expected lex error + grammar error, got: {:?}",
         r.errors
+    );
+    use nibli_types::ast as flat;
+    let recovered_danlu = r.buffer.roots.iter().any(|&root| {
+        matches!(
+            &r.buffer.sentences[root as usize],
+            flat::Sentence::Simple(b)
+                if matches!(&r.buffer.selbris[b.relation as usize], flat::Selbri::Root(s) if s == "danlu")
+        )
+    });
+    assert!(
+        recovered_danlu,
+        "the `lo gerku cu danlu` sentence must recover to the next `.i`, got roots {:?}",
+        r.buffer.roots
     );
 }
 
