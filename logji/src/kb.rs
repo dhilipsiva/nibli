@@ -1522,6 +1522,23 @@ pub(super) fn process_assertion(
             // Flatten top-level conjunctions and assert each leaf as a typed fact.
             let mut typed_leaves = Vec::new();
             collect_ground_facts(logic, root_id, &skolem_subs, None, &mut typed_leaves);
+
+            // FAIL CLOSED: a numeric comparison (zmadu/mleca/dunli over number
+            // literals) is computed ground truth — the engine evaluates it at query
+            // time and the computed value always wins (try_numeric_comparison runs
+            // before the store), so an asserted one could only ever be a shadowed,
+            // unreachable fact. Reject it rather than store a lie. (A non-numeric
+            // comparison like `zmadu(alis, bob)` is a relational fact and stores.)
+            if let Some(rel) = asserted_numeric_comparison(&typed_leaves) {
+                return Err(format!(
+                    "`{rel}` over numeric literals is a computed comparison, not an \
+                     assertable fact: the engine evaluates it at query time and the \
+                     computed value always wins, so an asserted fact could never be \
+                     consulted. (A non-numeric comparison like `la .alis. cu zmadu \
+                     la .bob.` is a relational fact and asserts normally.)"
+                ));
+            }
+
             let nothing_collected = typed_leaves.is_empty();
             for fact in &typed_leaves {
                 // Intercept `du` facts for equality equivalence indexing.
@@ -1568,6 +1585,50 @@ pub(super) fn process_assertion(
         generate_count_extra_witnesses(logic, root_id, &skolem_subs, inner);
     }
     Ok(())
+}
+
+/// Detect an asserted NUMERIC comparison (zmadu/mleca/dunli over number
+/// LITERALS) among the collected ground leaves — both the flat 2-arg form
+/// `rel(num, num)` and the event-decomposed form `rel_x1(ev, num) ∧
+/// rel_x2(ev, num)` (the todo requires covering both). Returns the relation
+/// name if found. A non-numeric comparison (`zmadu(alis, bob)`, the relational
+/// "taller-than" reading) returns None and asserts/stores normally, since it is
+/// answered from the store, not the built-in evaluator.
+fn asserted_numeric_comparison(leaves: &[StoredFact]) -> Option<&'static str> {
+    const CMP: [&str; 3] = ["zmadu", "mleca", "dunli"];
+    let is_num = |t: &GroundTerm| matches!(t, GroundTerm::Number(_));
+    // Flat: rel(num, num, ...) — the evaluator (`try_numeric_comparison`) reads
+    // only the first two operands, so a flat fact at full arity (`zmadu(5,3,_,_)`)
+    // counts whenever those two are numeric.
+    for f in leaves {
+        let gf = f.inner();
+        if gf.args.len() >= 2 && is_num(&gf.args[0]) && is_num(&gf.args[1]) {
+            if let Some(rel) = CMP.iter().copied().find(|&c| c == gf.relation.as_str()) {
+                return Some(rel);
+            }
+        }
+    }
+    // Decomposed: rel_x1(ev, num) ∧ rel_x2(ev, num) sharing the event arg.
+    for &base in &CMP {
+        let (x1, x2) = (format!("{base}_x1"), format!("{base}_x2"));
+        for a in leaves {
+            let ga = a.inner();
+            if ga.relation == x1
+                && ga.args.len() == 2
+                && is_num(&ga.args[1])
+                && leaves.iter().any(|b| {
+                    let gb = b.inner();
+                    gb.relation == x2
+                        && gb.args.len() == 2
+                        && gb.args[0] == ga.args[0]
+                        && is_num(&gb.args[1])
+                })
+            {
+                return Some(base);
+            }
+        }
+    }
+    None
 }
 
 /// Entailment-side ∃ candidate narrowing (the ∃-heavy query blowup fix).

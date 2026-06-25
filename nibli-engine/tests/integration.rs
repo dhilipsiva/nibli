@@ -2388,6 +2388,40 @@ fn surface_numeric_comparison_zmadu_mleca_dunli() {
 }
 
 #[test]
+fn assert_numeric_comparison_rejected() {
+    // A zmadu/mleca/dunli comparison over numeric literals is computed ground
+    // truth, not an assertable fact — the engine evaluates it at query time and
+    // the computed value always wins, so an asserted fact could only ever be a
+    // shadowed (unreachable) fact. Fail closed at assert time rather than store it.
+    let engine = NibliEngine::new();
+    for line in [
+        "li ci cu zmadu li mu",
+        "li mu cu mleca li ci",
+        "li mu cu dunli li ci",
+    ] {
+        let err = engine
+            .assert_text(line)
+            .expect_err("asserting a numeric comparison must be rejected");
+        assert!(
+            err.to_string().contains("computed comparison"),
+            "expected the computed-comparison rejection for `{line}`, got: {err}"
+        );
+    }
+
+    // GUARD: a NON-numeric comparison is a relational fact (the taller-than
+    // reading) and still asserts + stores normally.
+    engine
+        .assert_text("la .alis. cu zmadu la .bob.")
+        .expect("a non-numeric relational comparison must still assert");
+
+    // GUARD: the QUERY path is unchanged — comparisons still compute.
+    assert_true(
+        &engine.query_holds("li mu cu zmadu li ci").unwrap(),
+        "5 > 3 must still compute TRUE at query time",
+    );
+}
+
+#[test]
 fn surface_numeric_negation() {
     let engine = NibliEngine::new();
     assert_true(

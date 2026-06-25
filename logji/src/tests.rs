@@ -1779,6 +1779,20 @@ fn test_decomposed_asserted_true_group_still_true() {
 }
 
 #[test]
+fn test_assert_flat_numeric_comparison_rejected() {
+    // The flat 2-arg form `zmadu(5, 3)` over number literals is computed ground
+    // truth, not an assertable fact — reject it at assert time (the surface path
+    // decomposes, so this guards the flat detection arm). A non-numeric flat
+    // comparison still asserts (covered by test_zmadu_non_numeric_fallback).
+    let kb = new_kb();
+    assert!(
+        kb.assert_fact_inner(make_numeric_query("zmadu", 5.0, 3.0), String::new())
+            .is_err(),
+        "asserting a flat numeric comparison must be rejected"
+    );
+}
+
+#[test]
 fn test_decomposed_traced_compute_check() {
     // The traced evaluator must agree with the untraced verdict and record
     // a ComputeCheck step for the group.
