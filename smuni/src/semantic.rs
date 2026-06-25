@@ -1345,6 +1345,43 @@ mod tests {
     }
 
     #[test]
+    fn test_fio_arity_one_selbri_errors() {
+        // `mi barda fi'o prenu fe'u do` — `prenu` (person) is a 1-place selbri, so
+        // the modal has no x2 slot to carry the main bridi's x1 (`mi`). A 1-place
+        // modal that silently drops that link loses meaning, so it must fail closed.
+        // (Only `fi'o` reaches this — every BAI modal gismu is arity >= 2.) `prenu`
+        // is a curated-fallback arity-1 gismu, so this fires in both the XML and
+        // no-XML builds.
+        let selbris = vec![
+            Selbri::Root("barda".into()), // 0
+            Selbri::Root("prenu".into()), // 1 (arity 1)
+        ];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()),              // 0
+            Sumti::ProSumti("do".into()),              // 1
+            Sumti::ModalTagged((ModalTag::Fio(1), 1)), // 2: fi'o prenu, inner=do
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![2],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (_form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(
+            !compiler.errors.is_empty(),
+            "a 1-place fi'o modal must fail closed"
+        );
+        assert!(
+            compiler.errors.iter().any(|e| e.contains("Modal tag")),
+            "error should name the modal-arity limitation, got: {:?}",
+            compiler.errors
+        );
+    }
+
+    #[test]
     fn test_multiple_bai_tags_conjoin() {
         // mi klama ri'a do pi'o ti → And(And(klama(...), rinka(do,mi,...)), pilno(ti,mi,...))
         let selbris = vec![Selbri::Root("klama".into())]; // 0

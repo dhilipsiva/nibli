@@ -27,7 +27,6 @@ _No open items._
 ### gerna (parser/lexer)
 
 ### smuni (AST → FOL IR)
-- [ ] **Modal tag mapped to an arity-1 gismu silently drops the main bridi x1 link** — `main_x1` goes into `modal_args[1]` only when `modal_arity > 1`; a `fi'o` modal over an arity-1 selbri (e.g. `fi'o morsi`) discards the main-x1 link with no error (latent: all BAI gismu are arity ≥ 2). _Location:_ `smuni/src/semantic/compile.rs:124-155`. _Fix:_ reject or warn rather than silently dropping `main_x1`. (correctness)
 
 ### logji core
 - [ ] **Numeric builtins intercept zmadu/mleca/dunli before the fact store, shadowing asserted numeric facts** — `try_numeric_comparison` runs before the store lookup for 2-arg zmadu/mleca/dunli with numeric args, so an asserted ground numeric fact (`zmadu(5,3)`) is never consulted; a computed verdict overrides asserted knowledge. Must apply to BOTH the flat arms and the decomposed-group path (`try_evaluate_numeric_group`). _Fix:_ either document compute-first (warn/reject asserting these) or consult the store first, falling back to computation when absent. (correctness)

@@ -594,6 +594,23 @@ fn prenex_tensed_body_universal_rejected() {
 }
 
 #[test]
+fn fio_arity_one_modal_rejected() {
+    // `mi barda fi'o prenu fe'u do` — `prenu` (person) is a 1-place selbri, so the
+    // fi'o modal has no x2 slot to carry the main bridi's x1 (`mi`). The engine
+    // fails closed rather than silently dropping that link. (Latent end-to-end:
+    // gerna parses `fi'o <selbri> fe'u`, and every BAI modal gismu is arity >= 2,
+    // so only fi'o over an arity-1 selbri reaches this.)
+    let engine = NibliEngine::new();
+    let err = engine
+        .assert_text("mi barda fi'o prenu fe'u do")
+        .expect_err("a 1-place fi'o modal must be rejected");
+    assert!(
+        err.to_string().contains("Modal tag"),
+        "expected the modal-arity rejection, got: {err}"
+    );
+}
+
+#[test]
 fn untensed_universal_still_compiles_and_fires() {
     // CONTROL: the untensed universal is unaffected — it compiles and fires.
     let engine = engine_with_facts(&["ro lo gerku cu danlu", "la .rex. cu gerku"]);

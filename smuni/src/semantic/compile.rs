@@ -219,14 +219,26 @@ impl SemanticCompiler {
                 }
             };
 
+            // FAIL CLOSED: a modal relates its tagged sumti (the modal selbri's x1)
+            // to the main bridi's x1 (its x2), so the modal selbri needs at least 2
+            // places. A 1-place selbri has no x2 to carry the main-bridi link — only
+            // reachable via `fi'o` over an arity-1 selbri (every BAI gismu is
+            // arity >= 2). Silently dropping `main_x1` loses meaning, so reject.
+            if modal_arity < 2 {
+                let modal_name = self.interner.resolve(&modal_gismu).to_string();
+                self.errors.push(format!(
+                    "Modal tag `{}` maps to a {}-place selbri, but a modal needs at \
+                     least 2 places (x1 = the tag's own sumti, x2 = the main bridi's \
+                     x1 link); the main bridi's x1 cannot be carried.",
+                    modal_name, modal_arity
+                ));
+                continue;
+            }
+
             let main_x1 = args.first().cloned().unwrap_or(LogicalTerm::Unspecified);
             let mut modal_args = vec![LogicalTerm::Unspecified; modal_arity];
-            if modal_arity > 0 {
-                modal_args[0] = tagged_term;
-            }
-            if modal_arity > 1 {
-                modal_args[1] = main_x1;
-            }
+            modal_args[0] = tagged_term;
+            modal_args[1] = main_x1;
 
             let modal_form = LogicalForm::Predicate {
                 relation: modal_gismu,
