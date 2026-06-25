@@ -25,7 +25,6 @@ _No open items._
 ## P3 — Low (long tail)
 
 ### gerna (parser/lexer)
-- [ ] **Gismu regex does not enforce valid consonant clusters** — accepts any two consonants, so `bkalu`/`pdaca` lex as Gismu (the lexer comment admits the gap). NOT a book mismatch (book specifies only the CVCCV/CCVCV shape). _Location:_ `gerna/src/lexer.rs:56`. _Fix:_ optionally tighten to valid initial/medial pairs, or leave as-is. (correctness)
 - [ ] **Three quantified-description parsers duplicate gadri + selbri + ku logic** — `try_parse_suho_description`/`try_parse_numeric_quantified_description`/`try_parse_ro_description` (+ `try_parse_description`) each repeat the lo/le dispatch + selbri + `ku` + Description construction. _Location:_ `gerna/src/grammar/sumti.rs:274-401`. _Fix:_ extract `parse_gadri_body(&mut self) -> Option<(Gadri, &'arena Selbri)>`. (dry)
 - [ ] **`li` number parser implements decimal `pi` (and swallows `lo'o`) beyond documented `li PA+`** — `try_parse_li_number` parses an optional `pi` fractional part + eats `lo'o`, more permissive than Appendix D's `li PA+`. _Location:_ `gerna/src/grammar/sumti.rs:205-244`. _Fix:_ reconcile code and Appendix D (update the production or remove the `pi`/`lo'o` handling). (docs-mismatch)
 - [ ] **Sumti connective at end of token stream is silently dropped (imprecise localization)** — a dangling connective (`mi .e`) surfaces only as the generic 'unconsumed tokens' error at the wrong position. _Location:_ `gerna/src/grammar/sumti.rs:127-160`. _Fix:_ emit a targeted ParseError at the connective's position. (correctness)

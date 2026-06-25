@@ -51,8 +51,11 @@ pub enum LojbanToken {
     // Morphological Classes
     // --------------------------------------------------
 
-    // Gismu: CVCCV or CCVCV structure (simplified for demonstration,
-    // real phonotactics check for specific valid consonant clusters)
+    // Gismu: CVCCV or CCVCV structure. This regex enforces only the 5-letter
+    // SHAPE; the `validate_gismu_clusters` post-lex pass then enforces Lojban's
+    // phonotactic consonant-cluster rules (the 48 valid initial pairs / the
+    // medial-pair rules), rejecting shape-valid but cluster-invalid roots like
+    // `bkalu` as a lex error (fail-closed) rather than a misclassified gismu.
     #[regex(r"([bcdfghjklmnprstvxz][aeiou][bcdfghjklmnprstvxz][bcdfghjklmnprstvxz][aeiou])|([bcdfghjklmnprstvxz][bcdfghjklmnprstvxz][aeiou][bcdfghjklmnprstvxz][aeiou])")]
     /// Root predicate word (CVCCV or CCVCV, 5 letters).
     Gismu,
@@ -197,6 +200,99 @@ fn fix_sumti_connective_nai<'a>(tokens: &mut Vec<(LojbanToken, &'a str)>, input:
     }
 }
 
+/// Voiced obstruent consonants (for the gismu medial voicing-agreement check).
+fn is_voiced_obstruent(c: u8) -> bool {
+    matches!(c, b'b' | b'd' | b'g' | b'v' | b'z' | b'j')
+}
+
+/// Unvoiced obstruent consonants.
+fn is_unvoiced_obstruent(c: u8) -> bool {
+    matches!(c, b'p' | b't' | b'k' | b'f' | b's' | b'c' | b'x')
+}
+
+/// Any Lojban consonant: an obstruent or a sonorant (`l m n r`). Excludes `h`,
+/// which is not a Lojban consonant, so any pair containing it is invalid.
+fn is_lojban_consonant(c: u8) -> bool {
+    is_voiced_obstruent(c) || is_unvoiced_obstruent(c) || matches!(c, b'l' | b'm' | b'n' | b'r')
+}
+
+/// The 48 permissible Lojban initial consonant pairs (the onset of a CCVCV gismu).
+const VALID_INITIAL_PAIRS: &[[u8; 2]] = &[
+    *b"bl", *b"br", *b"cf", *b"ck", *b"cl", *b"cm", *b"cn", *b"cp", *b"cr", *b"ct", *b"dj", *b"dr",
+    *b"dz", *b"fl", *b"fr", *b"gl", *b"gr", *b"jb", *b"jd", *b"jg", *b"jm", *b"jv", *b"kl", *b"kr",
+    *b"ml", *b"mr", *b"pl", *b"pr", *b"sf", *b"sk", *b"sl", *b"sm", *b"sn", *b"sp", *b"sr", *b"st",
+    *b"tc", *b"tr", *b"ts", *b"vl", *b"vr", *b"xl", *b"xr", *b"zb", *b"zd", *b"zg", *b"zm", *b"zv",
+];
+
+/// CCVCV onset rule: the initial pair must be one of the 48 permissible pairs.
+fn is_valid_initial_pair(c1: u8, c2: u8) -> bool {
+    VALID_INITIAL_PAIRS.contains(&[c1, c2])
+}
+
+/// CVCCV medial rule (CLL): not a doubled consonant, not a forbidden pair, and
+/// not a voiced/unvoiced obstruent clash (sonorants `l m n r` pair with anything).
+fn is_valid_medial_pair(c1: u8, c2: u8) -> bool {
+    if c1 == c2 || !is_lojban_consonant(c1) || !is_lojban_consonant(c2) {
+        return false;
+    }
+    const FORBIDDEN: &[[u8; 2]] = &[*b"cx", *b"kx", *b"xc", *b"xk", *b"mz"];
+    if FORBIDDEN.contains(&[c1, c2]) {
+        return false;
+    }
+    let clash = (is_voiced_obstruent(c1) && is_unvoiced_obstruent(c2))
+        || (is_unvoiced_obstruent(c1) && is_voiced_obstruent(c2));
+    !clash
+}
+
+/// Whether a shape-matched gismu has a valid consonant cluster. `char[1]` being a
+/// vowel marks the CVCCV shape (check the medial pair); otherwise CCVCV (initial).
+fn is_valid_gismu(word: &str) -> bool {
+    let b = word.as_bytes();
+    if b.len() != 5 {
+        return false;
+    }
+    if matches!(b[1], b'a' | b'e' | b'i' | b'o' | b'u') {
+        is_valid_medial_pair(b[2], b[3])
+    } else {
+        is_valid_initial_pair(b[0], b[1])
+    }
+}
+
+/// Post-lex pass: reject gismu tokens whose consonant cluster is invalid.
+///
+/// The Gismu regex enforces only the CVCCV/CCVCV shape, not Lojban's phonotactic
+/// cluster rules — so `bkalu` (invalid initial `bk`) or a voiced/unvoiced medial
+/// clash lexed as a Gismu and then silently became an arity-2 unknown predicate.
+/// This pass removes such tokens and records each as a [`LexError`] span
+/// (fail-closed), so a malformed root surfaces as a positioned error instead.
+fn validate_gismu_clusters<'a>(
+    tokens: &mut Vec<(LojbanToken, &'a str)>,
+    input: &'a str,
+    errors: &mut Vec<LexError>,
+) {
+    let base = input.as_ptr() as usize;
+    let mut rejected = false;
+    let mut i = 0;
+    while i < tokens.len() {
+        if tokens[i].0 == LojbanToken::Gismu && !is_valid_gismu(tokens[i].1) {
+            let off = tokens[i].1.as_ptr() as usize - base;
+            errors.push(LexError {
+                start: off,
+                end: off + tokens[i].1.len(),
+            });
+            tokens.remove(i);
+            rejected = true;
+            continue;
+        }
+        i += 1;
+    }
+    // A rejected gismu may sit before an earlier main-loop error in source order;
+    // restore the start-ordered invariant the error consumers rely on.
+    if rejected {
+        errors.sort_by_key(|e| e.start);
+    }
+}
+
 /// A lexical error: a maximal run of unlexable characters in the input.
 ///
 /// `start..end` is the byte span of the run in the original input string.
@@ -245,6 +341,7 @@ pub fn tokenize_with_errors(input: &str) -> (Vec<(LojbanToken, &str)>, Vec<LexEr
 
     reclassify_compounds(&mut tokens, input);
     fix_sumti_connective_nai(&mut tokens, input);
+    validate_gismu_clusters(&mut tokens, input, &mut errors);
     (tokens, errors)
 }
 
@@ -655,6 +752,62 @@ mod tests {
         assert_eq!(&input[errors[0].start..errors[0].end], "y");
         assert_eq!(&input[errors[1].start..errors[1].end], "by");
         assert_eq!(&input[errors[2].start..errors[2].end], "cy");
+    }
+
+    #[test]
+    fn valid_gismu_clusters_lex() {
+        // Real gismu (both shapes) plus the GDPR/DDI proxy vocab must still lex
+        // as a single Gismu with no errors — the cluster check rejects nothing valid.
+        for w in [
+            "klama", "prami", "gerku", "bridi", "mlatu", "ckape", "xukmi", "kajde", "zenba",
+            "fanta", "cfila", "djacu",
+        ] {
+            let (tokens, errors) = tokenize_with_errors(w);
+            assert!(
+                errors.is_empty(),
+                "`{w}` is a valid gismu, got errors {errors:?}"
+            );
+            assert_eq!(
+                tokens,
+                vec![(LojbanToken::Gismu, w)],
+                "`{w}` should lex as one Gismu"
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_gismu_clusters_rejected() {
+        // Invalid initial pairs (bk/pd), a voiced/unvoiced medial clash (t-b),
+        // forbidden medials (mz/cx), and a doubled medial (t-t) all fail closed:
+        // no Gismu token, one LexError spanning the whole word.
+        for w in ["bkalu", "pdaca", "katba", "samza", "bacxa", "katta"] {
+            let (tokens, errors) = tokenize_with_errors(w);
+            assert!(
+                !tokens.iter().any(|(t, _)| *t == LojbanToken::Gismu),
+                "`{w}` must not lex as a Gismu, got {tokens:?}"
+            );
+            assert_eq!(
+                errors.len(),
+                1,
+                "`{w}` should be one lex error, got {errors:?}"
+            );
+            assert_eq!(&w[errors[0].start..errors[0].end], w);
+        }
+    }
+
+    #[test]
+    fn invalid_gismu_in_sentence_rejected_rest_lexes() {
+        // A malformed root mid-sentence is a positioned error; the rest still lexes.
+        let input = "mi bkalu lo gerku";
+        let (tokens, errors) = tokenize_with_errors(input);
+        assert_eq!(errors.len(), 1, "expected one lex error, got {errors:?}");
+        assert_eq!(&input[errors[0].start..errors[0].end], "bkalu");
+        for expected in ["mi", "lo", "gerku"] {
+            assert!(
+                tokens.iter().any(|(_, s)| *s == expected),
+                "token `{expected}` missing — input truncated"
+            );
+        }
     }
 
     #[test]
