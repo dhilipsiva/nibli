@@ -25,7 +25,6 @@ _No open items._
 ## P3 — Low (long tail)
 
 ### gerna (parser/lexer)
-- [ ] **`gonai`/`gu`/`gunai` compound cmavo recognized by lexer but unreachable in the parser** — `classify_cmavo` GA-classifies them + COMPOUND_CMAVO includes them, but the forethought match handles only ganai/ge/ga/go. _Location:_ `gerna/src/lexer.rs:98-104`; `grammar/sentence.rs:38-48`. _Fix:_ implement `gonai` (= `go … gi` negated right operand), or remove the unreachable forms. (robustness)
 - [ ] **Top-level parse loop breaks instead of recovering after post-sentence garbage** — garbage instead of `.i` makes the loop `break` (grammar.rs ~381) rather than recovering; fail-closed, the only latent improvement is the error POSITION (cosmetic). _Fix:_ skip to the next `.i` and continue, or localize the error to the garbage token. (robustness)
 
 ### smuni (AST → FOL IR)

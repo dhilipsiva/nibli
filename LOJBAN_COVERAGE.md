@@ -103,8 +103,8 @@ Current coverage of Lojban grammar, semantics, and reasoning in Nibli.
 | `ge`...`gi` (forethought AND) | Done | |
 | `ga`...`gi` (forethought OR) | Done | |
 | `ganai`...`gi` (forethought conditional) | Done | Material conditional |
-| `go`...`gi` (forethought IFF) | -- | |
-| `gu`...`gi` (forethought XOR) | -- | |
+| `go`...`gi` (forethought IFF) | Done | Biconditional |
+| `gu`/`genai`/`ginai`/`gonai`/`gunai` | Not supported | Removed from the lexer; parser handles only ge/ga/ganai/go |
 | `.i je/ja/jo/ju` (afterthought) | Done | With `na`/`nai` |
 
 ## Abstractions

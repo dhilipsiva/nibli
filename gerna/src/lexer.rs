@@ -106,9 +106,8 @@ pub enum LojbanToken {
 // when adding new selma'o compounds that hit the same pattern.
 
 const COMPOUND_CMAVO: &[&str] = &[
-    // GA selma'o + nai — forethought connectives
-    "ganai", "genai", "ginai", "gonai", "gunai",
-    // JA selma'o + nai — afterthought logical connectives
+    // GA selma'o + nai — the only parser-handled forethought conditional
+    "ganai", // JA selma'o + nai — afterthought logical connectives
     "janai", "jenai", "jonai", "junai", // PU selma'o + nai — tense negation
     "punai", "canai", "banai",
 ];
@@ -366,9 +365,13 @@ mod tests {
     }
 
     #[test]
-    fn gonai_lexes_as_cmavo() {
+    fn gonai_is_not_a_recognized_forethought_compound() {
+        // gu/genai/ginai/gonai/gunai are not parser-handled forethought
+        // connectives (only ge/ga/go/ganai are), so the lexer no longer fuses
+        // `gonai` into one GA cmavo — it falls back to the greedy Cmevla split
+        // (fail-closed: a later parse rejects it).
         let tokens = tokenize("gonai mi klama gi do ciska");
-        assert_eq!(tokens[0], (LojbanToken::Cmavo, "gonai"));
+        assert_ne!(tokens[0], (LojbanToken::Cmavo, "gonai"));
     }
 
     #[test]
@@ -616,11 +619,12 @@ mod tests {
 
     #[test]
     fn test_multiple_compounds_in_sentence() {
-        let tokens = tokenize("ganai mi klama gi gonai do sutra gi lo mlatu");
+        // The reclassify pass fuses multiple compound cmavo in one sentence
+        // (ganai = forethought conditional, janai = afterthought connective; both kept).
+        let tokens = tokenize("ganai mi klama gi janai do sutra");
         assert_eq!(tokens[0], (LojbanToken::Cmavo, "ganai"));
-        // Find gonai
-        let gonai_tok = tokens.iter().find(|(_, s)| *s == "gonai");
-        assert_eq!(gonai_tok, Some(&(LojbanToken::Cmavo, "gonai")));
+        let janai_tok = tokens.iter().find(|(_, s)| *s == "janai");
+        assert_eq!(janai_tok, Some(&(LojbanToken::Cmavo, "janai")));
     }
 
     // ─── Gismu morphology edge cases ──────────────────────────

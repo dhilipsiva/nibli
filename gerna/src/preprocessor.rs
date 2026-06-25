@@ -29,7 +29,7 @@ enum Selmaho {
     FA,     // Place tags: fa, fe, fi, fo, fu
     JA,     // Selbri connectives: je, ja, jo, ju (+ nai compounds)
     A,      // Sumti connectives: e, a, o, u (+ nai compounds)
-    GA,     // Forethought: ge, ga, go, gu, ganai, gonai, etc.
+    GA,     // Forethought: ge, ga, go, ganai
     GI,     // Forethought separator: gi
     PU,     // Tense: pu, ca, ba (+ nai compounds)
     NU,     // Abstractions: nu, du'u, ka, ni, si'o
@@ -80,10 +80,9 @@ fn classify_cmavo(text: &str) -> Option<Selmaho> {
         "je" | "ja" | "jo" | "ju" | "jenai" | "janai" | "jonai" | "junai" => Some(Selmaho::JA),
         // A — Sumti connectives (+ nai)
         "e" | "a" | "o" | "u" => Some(Selmaho::A),
-        // GA — Forethought connectives (+ nai compounds)
-        "ge" | "ga" | "go" | "gu" | "ganai" | "genai" | "ginai" | "gonai" | "gunai" => {
-            Some(Selmaho::GA)
-        }
+        // GA — Forethought connectives (only ge/ga/go + the ganai conditional are
+        // parser-handled; gu/genai/ginai/gonai/gunai are deliberately unrecognized)
+        "ge" | "ga" | "go" | "ganai" => Some(Selmaho::GA),
         // GI — Forethought separator
         "gi" => Some(Selmaho::GI),
         // PU — Tense (+ nai compounds)
