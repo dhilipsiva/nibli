@@ -2400,6 +2400,65 @@ mod tests {
     }
 
     #[test]
+    fn test_restrictor_internal_da_closed_innermost() {
+        // `ro lo gerku poi prami fe da cu klama` ("every dog that loves something
+        // goes") — the `da` inside the poi-restrictor (x2, via `fe`, leaving x1 for
+        // the implicit ke'a) has no bridi-level surface index, so it is bound
+        // INSIDE the restrictor's own frame. A DELIBERATE sound default: surface
+        // order cannot change a restrictor that defines the quantifier's domain.
+        // Characterization lock — `da` is bound (never free) and the root stays a
+        // universal.
+        let selbris = vec![
+            Selbri::Root("gerku".into()), // 0
+            Selbri::Root("prami".into()), // 1
+            Selbri::Root("klama".into()), // 2
+        ];
+        let sumtis = vec![
+            Sumti::Description((Gadri::RoLo, 0)), // 0: ro lo gerku
+            Sumti::Restricted((
+                0,
+                RelClause {
+                    kind: RelClauseKind::Poi,
+                    body_sentence: 1,
+                },
+            )), // 1: ro lo gerku poi <body>
+            Sumti::ProSumti("da".into()),         // 2: da
+            Sumti::Tagged((PlaceTag::Fe, 2)),     // 3: fe da (x2 of the poi body)
+        ];
+        let sentences = vec![
+            Sentence::Simple(Bridi {
+                relation: 2, // klama
+                head_terms: vec![1],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+            Sentence::Simple(Bridi {
+                relation: 1, // prami (rel-clause body: `prami fe da`; ke'a fills x1)
+                head_terms: vec![],
+                tail_terms: vec![3],
+                negated: false,
+                tense: None,
+                attitudinal: None,
+            }),
+        ];
+        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        assert!(
+            free_vars(&form, &compiler).is_empty(),
+            "the restrictor-internal `da` must be bound: free={:?}",
+            free_vars(&form, &compiler)
+        );
+        assert_eq!(
+            binder_spine(&form, &compiler).first(),
+            Some(&Binder::ForAll),
+            "root must stay ForAll (the `da` is closed inside the restrictor)"
+        );
+        assert_eq!(count_exists_binding(&form, "da", &compiler), 1);
+    }
+
+    #[test]
     fn test_prenex_da_top_level_not_reclosed() {
         // `ro da zo'u da citka lo gerku` — `da` is universally bound by the
         // prenex; the new surface-marker hook must respect `prenex_vars` and NOT

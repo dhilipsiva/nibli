@@ -245,6 +245,19 @@ impl SemanticCompiler {
         // `collect_free_logic_vars` skips abstraction-bound and prenex-bound vars,
         // and the description bodies / rel-clause restrictors are not folded into
         // `final_form` yet (they wrap below), so they are correctly out of scope.
+        //
+        // This innermost closure is a DELIBERATE, ACCEPTED boundary (not a
+        // deferred TODO): a be/bei-arg or restrictor-internal `da` is soundly
+        // closed innermost. A restrictor-internal `da` can never diverge (it is
+        // bound inside the very quantifier whose domain the restrictor defines);
+        // the ONLY construct where surface order would differ is an obscure
+        // be-arg `da` preceding a tail-term universal (`klama be da ro lo gerku`),
+        // where innermost gives ∀∃ vs surface ∃∀ — and even there innermost
+        // merely under-claims (sound for assertions). Surface interleaving would
+        // need source spans the flat AST does not carry, for ~zero semantic gain.
+        // Locked by `test_da_in_be_arg_closed`,
+        // `test_be_arg_da_with_universal_stays_innermost`, and
+        // `test_restrictor_internal_da_closed_innermost`.
         let mut all_free_seen = std::collections::HashSet::new();
         let mut all_free: Vec<lasso::Spur> = Vec::new();
         let mut bound_vars: Vec<lasso::Spur> = Vec::new();
