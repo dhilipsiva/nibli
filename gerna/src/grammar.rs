@@ -465,7 +465,16 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         while self.eat_pause() {}
 
         if !self.at_end() {
-            errors.push(self.error("unconsumed tokens remaining"));
+            // A dangling sumti connective (`mi .e` with no operand) is left as an
+            // unconsumed `e`/`a`/`o`/`u` cmavo here (the leading pause was just
+            // eaten); report it specifically at the connective instead of the
+            // generic "unconsumed tokens".
+            let msg = if self.is_dangling_sumti_connective() {
+                "sumti connective has no valid operand"
+            } else {
+                "unconsumed tokens remaining"
+            };
+            errors.push(self.error(msg));
         }
 
         ParseResult {
@@ -475,6 +484,21 @@ impl<'a, 'arena> Parser<'a, 'arena> {
     }
 
     // ─── Error helpers ────────────────────────────────────────
+
+    /// At the terminal unconsumed-token check, whether the current token is a
+    /// sumti-connective cmavo (`e`/`a`/`o`/`u`) left dangling — `.e`/`.a`/`.o`/`.u`
+    /// with no valid operand. These cmavo are ONLY sumti connectives, so an
+    /// unconsumed one is always a dangling connective; the leading pause has
+    /// already been consumed by the terminal `while self.eat_pause()`.
+    fn is_dangling_sumti_connective(&self) -> bool {
+        matches!(
+            self.tokens.get(self.pos),
+            Some(NormalizedToken::Standard(
+                LojbanToken::Cmavo,
+                "e" | "a" | "o" | "u"
+            ))
+        )
+    }
 
     /// Construct a ParseError at the current position with line:column context.
     fn error(&self, message: &str) -> ParseError {

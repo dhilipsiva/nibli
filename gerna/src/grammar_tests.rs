@@ -2829,13 +2829,12 @@ fn test_nested_abstractions() {
 
 #[test]
 fn test_sumti_connective_at_end_errors() {
-    // mi klama .e → trailing .e with nothing after it
-    // The parser backtracks the connective but can't consume the
-    // remaining Pause+Cmavo tokens → "unconsumed tokens" error
+    // mi klama .e → trailing .e with nothing after it. The dangling connective
+    // is reported specifically at the connective, not as a generic "unconsumed".
     let err = parse_err(&[cmavo("mi"), gismu("klama"), pause(), cmavo("e")]);
     assert!(
-        err.contains("unconsumed"),
-        "expected unconsumed error, got: {}",
+        err.contains("sumti connective has no valid operand"),
+        "expected a targeted connective error, got: {}",
         err
     );
 }
@@ -2843,8 +2842,8 @@ fn test_sumti_connective_at_end_errors() {
 #[test]
 fn test_sumti_connective_trailing_in_tail_errors() {
     // mi klama .e do prami → after "mi klama", the tail position sees
-    // Pause(".") which is not a valid bare sumti start, so the .e is not
-    // consumed, resulting in "unconsumed tokens" error
+    // Pause(".") which is not a valid bare sumti start, so the .e is left
+    // dangling and reported specifically at the connective.
     let err = parse_err(&[
         cmavo("mi"),
         gismu("klama"),
@@ -2854,9 +2853,31 @@ fn test_sumti_connective_trailing_in_tail_errors() {
         gismu("prami"),
     ]);
     assert!(
-        err.contains("unconsumed"),
-        "expected unconsumed error, got: {}",
+        err.contains("sumti connective has no valid operand"),
+        "expected a targeted connective error, got: {}",
         err
+    );
+}
+
+#[test]
+fn test_dangling_sumti_connective_positioned() {
+    // `mi .e` — a head connective with no right operand. Targeted error pointed
+    // at the connective cmavo (token index 2 in [mi, ., e]).
+    let arena = Bump::new();
+    let result = parse_tokens_to_ast(&[cmavo("mi"), pause(), cmavo("e")], "mi .e", &arena);
+    let conn_err = result
+        .errors
+        .iter()
+        .find(|e| e.message.contains("sumti connective has no valid operand"))
+        .unwrap_or_else(|| {
+            panic!(
+                "expected a targeted connective error, got {:?}",
+                result.errors
+            )
+        });
+    assert_eq!(
+        conn_err.position, 2,
+        "error should point at the connective cmavo token"
     );
 }
 
