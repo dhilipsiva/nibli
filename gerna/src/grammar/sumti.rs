@@ -201,7 +201,8 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         None
     }
 
-    /// Try to parse a li-number sumti (li + PA digits + optional pi fraction).
+    /// Try to parse a li-number sumti (li + PA digits + optional pi fraction +
+    /// elidable lo'o terminator).
     pub(crate) fn try_parse_li_number(&mut self) -> Option<Sumti<'arena>> {
         if !self.peek_is_cmavo("li") {
             return None;

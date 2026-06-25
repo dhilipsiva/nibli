@@ -25,7 +25,6 @@ _No open items._
 ## P3 — Low (long tail)
 
 ### gerna (parser/lexer)
-- [ ] **`li` number parser implements decimal `pi` (and swallows `lo'o`) beyond documented `li PA+`** — `try_parse_li_number` parses an optional `pi` fractional part + eats `lo'o`, more permissive than Appendix D's `li PA+`. _Location:_ `gerna/src/grammar/sumti.rs:205-244`. _Fix:_ reconcile code and Appendix D (update the production or remove the `pi`/`lo'o` handling). (docs-mismatch)
 - [ ] **Sumti connective at end of token stream is silently dropped (imprecise localization)** — a dangling connective (`mi .e`) surfaces only as the generic 'unconsumed tokens' error at the wrong position. _Location:_ `gerna/src/grammar/sumti.rs:127-160`. _Fix:_ emit a targeted ParseError at the connective's position. (correctness)
 - [ ] **`gonai`/`gu`/`gunai` compound cmavo recognized by lexer but unreachable in the parser** — `classify_cmavo` GA-classifies them + COMPOUND_CMAVO includes them, but the forethought match handles only ganai/ge/ga/go. _Location:_ `gerna/src/lexer.rs:98-104`; `grammar/sentence.rs:38-48`. _Fix:_ implement `gonai` (= `go … gi` negated right operand), or remove the unreachable forms. (robustness)
 - [ ] **Top-level parse loop breaks instead of recovering after post-sentence garbage** — garbage instead of `.i` makes the loop `break` (grammar.rs ~381) rather than recovering; fail-closed, the only latent improvement is the error POSITION (cosmetic). _Fix:_ skip to the next `.i` and continue, or localize the error to the garbage token. (robustness)

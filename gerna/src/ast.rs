@@ -168,7 +168,7 @@ pub enum Sumti<'a> {
         inner: &'a Sumti<'a>,
         clause: RelClause<'a>,
     },
-    /// Numeric literal: li + PA digits
+    /// Numeric literal: li + PA digits + optional pi decimal (and elidable lo'o)
     Number(f64),
 
     /// Sumti connective: sumti + (.e|.a|.o|.u)[nai] + sumti
