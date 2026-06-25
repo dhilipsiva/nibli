@@ -121,6 +121,29 @@ fn du_surface_negative_control() {
 }
 
 #[test]
+fn du_over_numeric_literals() {
+    // `du` (identity) over `li` number literals resolves by reflexivity with nothing
+    // asserted: identical literals are TRUE, distinct literals FALSE. Pins the resolved
+    // sub-part (c) of the former "numeric-group only covers ∃-query" item — the
+    // surface-du fix made `du` reachable and the du-query arm's `args[0] == args[1]`
+    // short-circuit handles identical `GroundTerm::Number` operands. Constant
+    // reflexivity is the sanity peer.
+    let engine = NibliEngine::new();
+    assert_true(
+        &engine.query_holds("li pa du li pa").unwrap(),
+        "1 du 1 must be TRUE by reflexivity",
+    );
+    assert_false(
+        &engine.query_holds("li pa du li re").unwrap(),
+        "1 du 2 must be FALSE (distinct literals, nothing asserted)",
+    );
+    assert_true(
+        &engine.query_holds("la .djan. cu du la .djan.").unwrap(),
+        "constant reflexivity sanity: djan du djan must be TRUE",
+    );
+}
+
+#[test]
 fn na_du_surface_contradiction() {
     // Asserting both an identity and an inequality for the same pair is flagged.
     let engine = engine_with_facts(&["la .djan. cu du la .jan.", "la .djan. na du la .jan."]);
