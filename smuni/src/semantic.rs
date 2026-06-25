@@ -3011,6 +3011,135 @@ mod tests {
     }
 
     #[test]
+    fn test_untagged_overflow_known_arity_errors() {
+        // `gerku mi do ti` — gerku is a KNOWN 2-place gismu, so the 3rd untagged
+        // sumti (`ti`) overflows with no slot: fail closed instead of silently
+        // dropping it.
+        let selbris = vec![Selbri::Root("gerku".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()), // 0
+            Sumti::ProSumti("do".into()), // 1
+            Sumti::ProSumti("ti".into()), // 2
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![1, 2],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (_form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(
+            !compiler.errors.is_empty(),
+            "untagged sumti over a known arity must error"
+        );
+        assert!(
+            compiler.errors.iter().any(|e| e.contains("overflow")),
+            "error should mention the overflow, got: {:?}",
+            compiler.errors
+        );
+    }
+
+    #[test]
+    fn test_untagged_overflow_unknown_arity_no_error() {
+        // An UNKNOWN selbri defaults to arity 2, but its real arity may be higher,
+        // so an untagged overflow is NOT an error there (matches today's behavior —
+        // the no-XML build defaults many proxy words to 2).
+        let selbris = vec![Selbri::Root("zzzzz".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()), // 0
+            Sumti::ProSumti("do".into()), // 1
+            Sumti::ProSumti("ti".into()), // 2
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![0],
+            tail_terms: vec![1, 2],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (_form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(
+            compiler.errors.is_empty(),
+            "unknown-arity overflow must not error, got: {:?}",
+            compiler.errors
+        );
+    }
+
+    #[test]
+    fn test_tag_collision_errors() {
+        // `fe do fe ti gerku` — both `fe` tags target x2: a place set twice must
+        // error, not silently last-wins (dropping `do`).
+        let selbris = vec![Selbri::Root("gerku".into())];
+        let sumtis = vec![
+            Sumti::ProSumti("do".into()),     // 0
+            Sumti::ProSumti("ti".into()),     // 1
+            Sumti::Tagged((PlaceTag::Fe, 0)), // 2: fe do
+            Sumti::Tagged((PlaceTag::Fe, 1)), // 3: fe ti
+        ];
+        let bridi = Bridi {
+            relation: 0,
+            head_terms: vec![2, 3],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (_form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(
+            !compiler.errors.is_empty(),
+            "a tag re-targeting a filled place must error"
+        );
+        assert!(
+            compiler.errors.iter().any(|e| e.contains("already filled")),
+            "error should mention the collision, got: {:?}",
+            compiler.errors
+        );
+    }
+
+    #[test]
+    fn test_connected_in_be_arg_errors() {
+        // `mi klama be lo gerku .e lo mlatu` — the be-arg is a connected sumti,
+        // a position the distributor does not descend into. It must fail closed,
+        // not silently keep only the left operand (`lo gerku`).
+        let selbris = vec![
+            Selbri::Root("klama".into()),   // 0
+            Selbri::Root("gerku".into()),   // 1
+            Selbri::Root("mlatu".into()),   // 2
+            Selbri::WithArgs((0, vec![2])), // 3: klama be <be-arg id 2>
+        ];
+        let sumtis = vec![
+            Sumti::Description((Gadri::Lo, 1)),              // 0: lo gerku
+            Sumti::Description((Gadri::Lo, 2)),              // 1: lo mlatu
+            Sumti::Connected((0, Connective::Je, false, 1)), // 2: lo gerku .e lo mlatu
+            Sumti::ProSumti("mi".into()),                    // 3: mi
+        ];
+        let bridi = Bridi {
+            relation: 3,
+            head_terms: vec![3],
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (_form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(
+            !compiler.errors.is_empty(),
+            "a connected sumti in a be-arg must error"
+        );
+        assert!(
+            compiler
+                .errors
+                .iter()
+                .any(|e| e.contains("Connected sumti")),
+            "error should name the connected-sumti limitation, got: {:?}",
+            compiler.errors
+        );
+    }
+
+    #[test]
     fn test_tanru_in_poi_not_falsely_rejected() {
         // lo gerku poi sutra bajra cu klama — the tanru `sutra bajra` shares
         // ONE event, so its two unfilled x1 roles are one candidate subject

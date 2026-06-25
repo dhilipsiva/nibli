@@ -449,13 +449,21 @@ impl SemanticCompiler {
             Sumti::Number(n) => (LogicalTerm::Number(*n), vec![]),
             Sumti::Unspecified => (LogicalTerm::Unspecified, vec![]),
             Sumti::Connected((left_id, _conn, _negated, _right_id)) => {
-                // Residual fallback. A connected sumti filling a place — bare, or
-                // under a place tag / BAI modal — is distributed in `compile_bridi`
-                // (see `find_connected_term`/`distribute_connected`) and never
-                // reaches here. This arm is only hit for connected sumti in
-                // positions the distributor doesn't descend into (e.g. `be`-args
-                // or relative-clause bodies), where it currently keeps the left
-                // operand best-effort. Fail-closing those is a separate follow-up.
+                // A connected sumti filling a place — bare, or under a place tag /
+                // BAI modal — is distributed in `compile_bridi` (see
+                // `find_connected_term`/`distribute_connected`) and never reaches
+                // here. This arm is only hit for a connected sumti in a position the
+                // distributor doesn't descend into (a be/bei argument or a
+                // relative-clause body), where keeping the left operand silently
+                // drops the right. FAIL CLOSED instead of losing meaning.
+                self.errors.push(
+                    "Connected sumti (`.e`/`.a`/`.o`/`.u`) in a be/bei argument or \
+                     relative-clause body is not supported; restate it as separate \
+                     sentences or place the connective at the bridi level."
+                        .to_string(),
+                );
+                // Still resolve the left operand best-effort so a term is returned;
+                // the pushed error fail-closes the assertion.
                 let left = &sumtis[*left_id as usize];
                 self.resolve_sumti(left, sumtis, selbris, sentences)
             }

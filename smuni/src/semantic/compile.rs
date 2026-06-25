@@ -114,10 +114,7 @@ impl SemanticCompiler {
                     self.record_bare_marker(&term, &mut introduced, &mut markers);
                     markers.extend(quants.into_iter().map(ScopeMarker::Desc));
                     let idx = tag.to_index();
-                    if idx < target_arity {
-                        positioned[idx] = Some(term);
-                        next_place = idx + 1; // CLL: resume AFTER the tagged place
-                    } else {
+                    if idx >= target_arity {
                         // FAIL CLOSED: a place tag beyond the selbri's arity has no
                         // slot to bind into. Silently dropping the tagged term loses
                         // meaning (panel finding 2026-06-10) — reject instead.
@@ -128,6 +125,19 @@ impl SemanticCompiler {
                             idx + 1,
                             target_arity
                         ));
+                    } else if positioned[idx].is_some() {
+                        // FAIL CLOSED: a tag re-targeting an already-filled place
+                        // (`fe X fe Y`, or a tag colliding with an untagged term /
+                        // ke'a) would last-win and drop the earlier term.
+                        self.errors.push(format!(
+                            "Place tag `{}` targets place x{}, which is already filled; \
+                             the same place cannot be set twice.",
+                            tag.name(),
+                            idx + 1
+                        ));
+                    } else {
+                        positioned[idx] = Some(term);
+                        next_place = idx + 1; // CLL: resume AFTER the tagged place
                     }
                 }
                 Sumti::ModalTagged((modal_tag, inner_id)) => {
@@ -166,17 +176,29 @@ impl SemanticCompiler {
             .map(|slot| slot.unwrap_or(LogicalTerm::Unspecified))
             .collect();
 
-        // Fail-closed: `du` (identity) is a 2-place relation and logji's
-        // union-find consumes only 2-arg du facts. Any sumti beyond x2 overflow
-        // arity 2 and are silently dropped above, so reject n-ary du rather than
-        // lose meaning.
-        let head_is_du = self.get_selbri_head_name(bridi.relation, selbris) == "du";
-        if head_is_du && overflow_untagged > 0 {
-            self.errors.push(format!(
-                "`du` (identity) is a 2-place relation, but {} extra sumti were supplied; \
-                 n-ary identity is unsupported.",
-                overflow_untagged
-            ));
+        // Fail-closed: untagged sumti that overflow the selbri's places were
+        // dropped above (counted in `overflow_untagged`); reject rather than lose
+        // meaning. `du` (a 2-place identity, consumed binary by logji's union-find)
+        // gets a specific message; any other selbri errors too — but ONLY when its
+        // arity is KNOWN in jbovlaste (an unknown word defaults to arity 2 and its
+        // real arity may be higher, so an "overflow" there is unprovable; this also
+        // keeps the no-XML build, where many proxy words default to 2, from
+        // false-firing).
+        let head_name = self.get_selbri_head_name(bridi.relation, selbris);
+        if overflow_untagged > 0 {
+            if head_name == "du" {
+                self.errors.push(format!(
+                    "`du` (identity) is a 2-place relation, but {} extra sumti were supplied; \
+                     n-ary identity is unsupported.",
+                    overflow_untagged
+                ));
+            } else if JbovlasteSchema::get_arity(head_name).is_some() {
+                self.errors.push(format!(
+                    "{} untagged sumti overflow the selbri `{}`'s {} place(s); the extra \
+                     sumti cannot be placed.",
+                    overflow_untagged, head_name, target_arity
+                ));
+            }
         }
 
         let mut final_form = self.apply_selbri(bridi.relation, &args, selbris, sumtis, sentences);
