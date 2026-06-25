@@ -276,36 +276,16 @@ impl<'a, 'arena> Parser<'a, 'arena> {
             return None;
         }
         let saved = self.save();
-        self.pos += 1;
+        self.pos += 1; // consume su'o
 
-        let gadri = match self.peek_cmavo() {
-            Some("lo") => {
-                self.pos += 1;
-                Gadri::Lo
-            }
-            Some("le") => {
-                self.pos += 1;
-                Gadri::Le
-            }
-            _ => {
-                self.restore(saved);
-                return None;
-            }
+        let Some((gadri, selbri)) = self.parse_gadri_body(Gadri::Lo, Gadri::Le) else {
+            self.restore(saved);
+            return None;
         };
-
-        let selbri = match self.try_parse_selbri_for_description() {
-            Some(s) => s,
-            None => {
-                self.restore(saved);
-                return None;
-            }
-        };
-
-        self.eat_cmavo("ku");
 
         Some(Sumti::Description {
             gadri,
-            inner: self.arena.alloc(selbri),
+            inner: selbri,
         })
     }
 
@@ -323,30 +303,10 @@ impl<'a, 'arena> Parser<'a, 'arena> {
             return None;
         }
 
-        let gadri = match self.peek_cmavo() {
-            Some("lo") => {
-                self.pos += 1;
-                Gadri::Lo
-            }
-            Some("le") => {
-                self.pos += 1;
-                Gadri::Le
-            }
-            _ => {
-                self.restore(saved);
-                return None;
-            }
+        let Some((gadri, selbri)) = self.parse_gadri_body(Gadri::Lo, Gadri::Le) else {
+            self.restore(saved);
+            return None;
         };
-
-        let selbri = match self.try_parse_selbri_for_description() {
-            Some(s) => s,
-            None => {
-                self.restore(saved);
-                return None;
-            }
-        };
-
-        self.eat_cmavo("ku");
 
         let mut count: u32 = 0;
         for d in &digits {
@@ -356,7 +316,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         Some(Sumti::QuantifiedDescription {
             count,
             gadri,
-            inner: self.arena.alloc(selbri),
+            inner: selbri,
         })
     }
 
@@ -367,36 +327,16 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         }
 
         let saved = self.save();
-        self.pos += 1;
+        self.pos += 1; // consume ro
 
-        let gadri = match self.peek_cmavo() {
-            Some("lo") => {
-                self.pos += 1;
-                Gadri::RoLo
-            }
-            Some("le") => {
-                self.pos += 1;
-                Gadri::RoLe
-            }
-            _ => {
-                self.restore(saved);
-                return None;
-            }
+        let Some((gadri, selbri)) = self.parse_gadri_body(Gadri::RoLo, Gadri::RoLe) else {
+            self.restore(saved);
+            return None;
         };
-
-        let selbri = match self.try_parse_selbri_for_description() {
-            Some(s) => s,
-            None => {
-                self.restore(saved);
-                return None;
-            }
-        };
-
-        self.eat_cmavo("ku");
 
         Some(Sumti::Description {
             gadri,
-            inner: self.arena.alloc(selbri),
+            inner: selbri,
         })
     }
 
@@ -435,29 +375,46 @@ impl<'a, 'arena> Parser<'a, 'arena> {
 
     /// Try to parse a lo/le description.
     pub(crate) fn try_parse_description(&mut self) -> Option<Sumti<'arena>> {
-        let gadri = match self.peek_cmavo()? {
-            "lo" => Gadri::Lo,
-            "le" => Gadri::Le,
-            _ => return None,
-        };
-
         let saved = self.save();
-        self.pos += 1;
 
-        let selbri = match self.try_parse_selbri_for_description() {
-            Some(s) => s,
-            None => {
-                self.restore(saved);
-                return None;
-            }
+        let Some((gadri, selbri)) = self.parse_gadri_body(Gadri::Lo, Gadri::Le) else {
+            self.restore(saved);
+            return None;
         };
-
-        self.eat_cmavo("ku");
 
         Some(Sumti::Description {
             gadri,
-            inner: self.arena.alloc(selbri),
+            inner: selbri,
         })
+    }
+
+    /// Parse a description body after any quantifier prefix: a `lo`/`le` gadri, a
+    /// selbri, and an optional `ku` terminator. `lo_gadri`/`le_gadri` are the AST
+    /// `Gadri` variants for this quantifier context (`Lo`/`Le` for plain/su'o/
+    /// numeric, `RoLo`/`RoLe` for `ro`). Returns `None` WITHOUT backtracking when
+    /// the next token is not `lo`/`le` or the selbri fails to parse — the CALLER
+    /// restores to its pre-quantifier checkpoint on `None`.
+    fn parse_gadri_body(
+        &mut self,
+        lo_gadri: Gadri,
+        le_gadri: Gadri,
+    ) -> Option<(Gadri, &'arena Selbri<'arena>)> {
+        let gadri = match self.peek_cmavo() {
+            Some("lo") => {
+                self.pos += 1;
+                lo_gadri
+            }
+            Some("le") => {
+                self.pos += 1;
+                le_gadri
+            }
+            _ => return None,
+        };
+
+        let selbri = self.try_parse_selbri_for_description()?;
+        self.eat_cmavo("ku");
+
+        Some((gadri, self.arena.alloc(selbri)))
     }
 
     /// Parse a selbri inside a description (supports na-negation and tanru).

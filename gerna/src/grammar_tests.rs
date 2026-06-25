@@ -3185,6 +3185,33 @@ fn test_suho_lo_is_plain_existential() {
 }
 
 #[test]
+fn test_suho_le_is_existential() {
+    // su'o le mlatu cu barda → plain Description(Le); su'o is not preserved in
+    // the AST, mirroring su'o lo. Characterization lock for the parse_gadri_body
+    // refactor (the existing suite covered su'o lo but not su'o le).
+    let arena = Bump::new();
+    let r = parse_ok(
+        &[
+            cmavo("su'o"),
+            cmavo("le"),
+            gismu("mlatu"),
+            cmavo("cu"),
+            gismu("barda"),
+        ],
+        &arena,
+    );
+    match &as_bridi(&r.sentences[0]).head_terms[0] {
+        Sumti::Description {
+            gadri: Gadri::Le,
+            inner,
+        } => {
+            assert_eq!(**inner, Selbri::Root("mlatu".into()));
+        }
+        other => panic!("expected plain Description(Le), got {:?}", other),
+    }
+}
+
+#[test]
 fn test_ro_lo_still_universal() {
     // Regression: ro lo gerku cu barda → RoLo (not affected by new code)
     let arena = Bump::new();
