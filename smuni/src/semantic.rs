@@ -3924,6 +3924,43 @@ mod tests {
         assert!(matches!(form, LogicalForm::Xor(_, _)));
     }
 
+    #[test]
+    fn test_connected_selbri_uses_max_arity_for_right_operand() {
+        // `mi prami je klama do ti` — left `prami` is 2-place, right `klama` is
+        // 5-place. The connected selbri's effective arity must be max(2,5)=5 so
+        // the place counter captures `ti` (x3) instead of dropping it; the right
+        // operand `klama` then receives `ti` in its x3. `prami je klama` is a valid
+        // mixed-arity selbri connective (each operand fits its own arity) — no error.
+        let selbris = vec![
+            Selbri::Root("prami".into()),              // 0 (2-place)
+            Selbri::Root("klama".into()),              // 1 (5-place)
+            Selbri::Connected((0, Connective::Je, 1)), // 2: prami je klama
+        ];
+        let sumtis = vec![
+            Sumti::ProSumti("mi".into()), // 0
+            Sumti::ProSumti("do".into()), // 1
+            Sumti::ProSumti("ti".into()), // 2
+        ];
+        let bridi = Bridi {
+            relation: 2,
+            head_terms: vec![0],
+            tail_terms: vec![1, 2],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        };
+        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        assert!(
+            compiler.errors.is_empty(),
+            "mixed-arity selbri connective must not error/overflow, got: {:?}",
+            compiler.errors
+        );
+        let x3 = get_pred_args(&form, "klama_x3", &compiler)
+            .expect("klama_x3 role predicate must exist");
+        let ti = LogicalTerm::Constant(compiler.interner.get("ti").unwrap());
+        assert_eq!(x3[1], ti, "klama's x3 must be `ti`, not Unspecified");
+    }
+
     // ─── Arity from dictionary ────────────────────────────────
 
     #[test]

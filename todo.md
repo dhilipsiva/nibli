@@ -27,7 +27,6 @@ _No open items._
 ### gerna (parser/lexer)
 
 ### smuni (AST → FOL IR)
-- [ ] **Connected selbri arity taken from left operand only; mismatch printed to stderr** — `get_selbri_arity` for a Connected selbri returns only the LEFT operand's arity, so a higher-arity right operand's slots can't be filled; the mismatch is `eprintln!`'d (invisible to the NibliError channel). _Location:_ `smuni/src/semantic/selbri.rs:227-248`. _Fix:_ use `max(left, right)` arity + push through `self.errors`. (correctness)
 - [ ] **Modal tag mapped to an arity-1 gismu silently drops the main bridi x1 link** — `main_x1` goes into `modal_args[1]` only when `modal_arity > 1`; a `fi'o` modal over an arity-1 selbri (e.g. `fi'o morsi`) discards the main-x1 link with no error (latent: all BAI gismu are arity ≥ 2). _Location:_ `smuni/src/semantic/compile.rs:124-155`. _Fix:_ reject or warn rather than silently dropping `main_x1`. (correctness)
 
 ### logji core

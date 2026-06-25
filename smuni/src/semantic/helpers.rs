@@ -170,7 +170,14 @@ impl SemanticCompiler {
             Selbri::Negated(inner_id) => self.get_selbri_arity(*inner_id, selbris),
             Selbri::Grouped(inner_id) => self.get_selbri_arity(*inner_id, selbris),
             Selbri::WithArgs((core_id, _)) => self.get_selbri_arity(*core_id, selbris),
-            Selbri::Connected((left_id, _, _)) => self.get_selbri_arity(*left_id, selbris),
+            // A connected selbri (`broda je brode`) shares its sumti across both
+            // operands; each takes only its own arity's worth (via `fit_args` in
+            // `apply_selbri`). The EFFECTIVE arity is max(left, right) so the place
+            // counter sizes for — and captures — every sumti the larger operand
+            // needs; a left-only arity dropped the higher operand's slots.
+            Selbri::Connected((left_id, _, right_id)) => self
+                .get_selbri_arity(*left_id, selbris)
+                .max(self.get_selbri_arity(*right_id, selbris)),
             Selbri::Compound(parts) => parts
                 .last()
                 .map(|s| JbovlasteSchema::get_arity_or_default(s.as_str()))

@@ -161,15 +161,13 @@ impl SemanticCompiler {
                 form
             }
             Selbri::Connected((left_id, conn, right_id)) => {
+                // The shared sumti fill each operand to its OWN arity (`fit_args`
+                // truncates/pads per operand), so a mixed-arity connective like
+                // `barda je xunre` (3+2 place) is valid Lojban — not an error. The
+                // place counter already sized for max(left, right) (see
+                // `get_selbri_arity`), so every supplied sumti reached `args`.
                 let left_arity = self.get_selbri_arity(*left_id, selbris);
                 let right_arity = self.get_selbri_arity(*right_id, selbris);
-                if left_arity != right_arity {
-                    eprintln!(
-                        "[Arity Warning] Connected selbri: left arity {} != right arity {}. \
-                         Arguments will be fitted independently to each predicate.",
-                        left_arity, right_arity
-                    );
-                }
                 let left_args = Self::fit_args(args, left_arity);
                 let right_args = Self::fit_args(args, right_arity);
                 let left = self.apply_selbri(*left_id, &left_args, selbris, sumtis, sentences);
