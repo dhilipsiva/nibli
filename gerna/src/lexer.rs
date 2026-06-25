@@ -71,9 +71,16 @@ pub enum LojbanToken {
     /// Name word (ends in a consonant, preceded by a pause).
     Cmevla,
 
-    // Cmavo (Structure words): 1-to-many vowels, optionally preceded by one consonant
+    // Cmavo (Structure words): one-to-many of the five Lojban vowels (a/e/i/o/u),
+    // optionally preceded by one consonant (apostrophe allowed between vowels, e.g.
+    // `du'u`/`go'i`/`ri'a`). `y` is deliberately excluded — it is not a structural
+    // cmavo vowel (it appears only in the hesitation cmavo `.y.`, the BY letterals
+    // like `by`/`cy`, and as a lujvo hyphen, none of which are supported here), so a
+    // `y`-containing token fails closed as an unlexable run instead of a misclassified
+    // cmavo. Lujvo internal `y` is matched by the Lujvo regex's `[a-z']` body. This
+    // vowel class matches the Gismu/Lujvo regexes above.
     // This acts as a fallback for structural words not explicitly tokenized above.
-    #[regex(r"[bcdfghjklmnprstvxz]?[aeiouy']+")]
+    #[regex(r"[bcdfghjklmnprstvxz]?[aeiou']+")]
     /// Structure word (vowel-based, optionally one leading consonant).
     Cmavo,
 
@@ -631,6 +638,23 @@ mod tests {
         // Both surrounding words still lex.
         assert!(tokens.iter().any(|(_, s)| *s == "mi"));
         assert!(tokens.iter().any(|(_, s)| *s == "klama"));
+    }
+
+    #[test]
+    fn cmavo_regex_excludes_y() {
+        // `y` is not a structural-cmavo vowel (a/e/i/o/u). A bare `y` and the
+        // BY-letteral forms `by`/`cy` are unsupported: they lex as unlexable
+        // runs (fail-closed), not as Cmavo tokens.
+        let input = "y by cy";
+        let (tokens, errors) = tokenize_with_errors(input);
+        assert!(
+            tokens.is_empty(),
+            "y/by/cy must not lex as cmavo, got {tokens:?}"
+        );
+        assert_eq!(errors.len(), 3, "expected 3 unlexable runs, got {errors:?}");
+        assert_eq!(&input[errors[0].start..errors[0].end], "y");
+        assert_eq!(&input[errors[1].start..errors[1].end], "by");
+        assert_eq!(&input[errors[2].start..errors[2].end], "cy");
     }
 
     #[test]
