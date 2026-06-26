@@ -103,19 +103,26 @@ fn summarize_false(trace: &ProofTrace, register: Register) -> Option<String> {
     Some("This could not be derived from the known facts and rules.".to_string())
 }
 
-/// Collect the asserted (given) facts, regrouped from role predicates back to
-/// surface facts and translated to English. Distinct, first-seen order.
-fn collect_givens(trace: &ProofTrace, register: Register) -> Vec<String> {
-    // Key = (wrapper, base relation, event Skolem); value = {place -> filler}.
-    type Key = (Option<String>, String, String);
-    let mut order: Vec<Key> = Vec::new();
-    let mut places: BTreeMap<Key, BTreeMap<usize, String>> = BTreeMap::new();
+/// Key for an event group: (tense/deontic wrapper, base relation, event Skolem).
+pub(crate) type LeafKey = (Option<String>, String, String);
+
+/// One regrouped event: its key + a `{place -> filler}` map.
+pub(crate) type EventGroup = (LeafKey, BTreeMap<usize, String>);
+
+/// Regroup raw fact strings (Neo-Davidsonian role + event-type predicates) back
+/// to surface facts: bucket `base_xN(event, filler)` / `base(event)` by
+/// `(wrapper, base, event Skolem)` into `{place -> filler}` maps (first-seen
+/// order), returning non-event "flat" facts (rendered to English directly) on the
+/// side. The shared DRY core of the `[Why]` summary and the macro-DAG collapse.
+pub(crate) fn regroup_event_leaves(
+    facts: &[String],
+    register: Register,
+) -> (Vec<EventGroup>, Vec<String>) {
+    let mut order: Vec<LeafKey> = Vec::new();
+    let mut places: BTreeMap<LeafKey, BTreeMap<usize, String>> = BTreeMap::new();
     let mut flat: Vec<String> = Vec::new();
 
-    for step in &trace.steps {
-        let ProofRule::Asserted { fact } = &step.rule else {
-            continue;
-        };
+    for fact in facts {
         let Some((wrapper, relation, args)) = parse_raw_fact(fact) else {
             flat.push(humanize_fact(fact));
             continue;
@@ -152,9 +159,32 @@ fn collect_givens(trace: &ProofTrace, register: Register) -> Vec<String> {
         }
     }
 
+    let groups = order
+        .into_iter()
+        .map(|k| {
+            let pm = places.remove(&k).unwrap_or_default();
+            (k, pm)
+        })
+        .collect();
+    (groups, flat)
+}
+
+/// Collect the asserted (given) facts, regrouped from role predicates back to
+/// surface facts and translated to English. Distinct, first-seen order.
+fn collect_givens(trace: &ProofTrace, register: Register) -> Vec<String> {
+    let facts: Vec<String> = trace
+        .steps
+        .iter()
+        .filter_map(|s| match &s.rule {
+            ProofRule::Asserted { fact } => Some(fact.clone()),
+            _ => None,
+        })
+        .collect();
+    let (groups, flat) = regroup_event_leaves(&facts, register);
+
     let mut out: Vec<String> = Vec::new();
-    for key in &order {
-        if let Some(e) = render_group(key.0.as_deref(), &key.1, &places[key])
+    for (key, pm) in &groups {
+        if let Some(e) = render_group(key.0.as_deref(), &key.1, pm)
             && !out.contains(&e)
         {
             out.push(e);
@@ -169,7 +199,7 @@ fn collect_givens(trace: &ProofTrace, register: Register) -> Vec<String> {
 }
 
 /// Render a regrouped event's place-map via the frame template.
-fn render_group(
+pub(crate) fn render_group(
     wrapper: Option<&str>,
     base: &str,
     place_map: &BTreeMap<usize, String>,
@@ -213,7 +243,7 @@ fn collect_rules(trace: &ProofTrace) -> Vec<String> {
 /// `gerku → danlu` -> "if X is a dog then X is an animal". Each side may carry
 /// several base predicates (`nu ∧ curmi ∧ bilga`); abstraction operators
 /// (`nu`/`du'u`/…) have no surface frame and are dropped.
-fn rule_to_english(label: &str) -> Option<String> {
+pub(crate) fn rule_to_english(label: &str) -> Option<String> {
     let (lhs, rhs) = label.split_once(" → ")?;
     let conds: Vec<String> = lhs
         .split(" ∧ ")
@@ -341,7 +371,7 @@ fn wrapper_label(name: &str) -> Option<&'static str> {
 
 /// Parse a raw logji fact string into `(wrapper, relation, args)`. `None` for
 /// anything that is not the `relation(args)` / `Wrapper(relation(args))` form.
-fn parse_raw_fact(raw: &str) -> Option<(Option<String>, String, Vec<String>)> {
+pub(crate) fn parse_raw_fact(raw: &str) -> Option<(Option<String>, String, Vec<String>)> {
     let s = raw.trim();
     if s.is_empty() || s.starts_with('(') {
         return None;

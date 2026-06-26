@@ -32,7 +32,7 @@ pub fn render_proof(trace: &ProofTrace, _register: Register) -> RenderedNode {
     build_node(trace, trace.root)
 }
 
-fn build_node(trace: &ProofTrace, idx: u32) -> RenderedNode {
+pub(crate) fn build_node(trace: &ProofTrace, idx: u32) -> RenderedNode {
     let Some(step) = trace.steps.get(idx as usize) else {
         return RenderedNode {
             icon: "?",

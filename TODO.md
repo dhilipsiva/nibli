@@ -20,5 +20,14 @@ long tail below covers correctness remainders, documentation-vs-code mismatches,
 
 ### Others
 
-The proof trace is more user-friendly now: a render-only plain-English `[Why]` summary (`nibli_render::summarize_proof`, reusing the place-frame templates) sits above the detailed trace on every human surface — the gasnu REPL (`[Why] …` line), nibli-server (the `proofSummary` GraphQL field), and nibli-ui (a `.proof-why` callout above the proof tree). Remaining (follow-up): (1) the fuller per-step collapse — a compressed macro-logical DAG (Modus Ponens / Universal Instantiation) that hides the role/event scaffolding inside expandable clusters (the product-vision proof viz), replacing rather than summarizing the trace; (2) better English for complex multi-predicate / deontic / abstraction conclusions (today they gracefully degrade — a clean conclusion drops rather than renders rough).
+The proof trace is more user-friendly now: a render-only plain-English `[Why]` summary (`nibli_render::summarize_proof`, reusing the place-frame templates) sits above the detailed trace on every human surface — the gasnu REPL (`[Why] …` line), nibli-server (the `proofSummary` GraphQL field), and nibli-ui (a `.proof-why` callout above the proof tree).
+
+**Per-step macro-logical-DAG collapse (in progress, phased):** the product-vision proof viz — a compressed DAG of surface-level steps (Modus Ponens / Universal Instantiation) with the role/event scaffolding folded into expandable clusters, REPLACING the verbose trace everywhere (UI + gasnu + book) while keeping the verbose trace reachable (a gasnu `:proof-verbose`, the UI's expandable clusters, a book "Under the Hood" section).
+- **Phase 1 (DONE):** the render-only engine in nibli-render — `collapse_proof(trace) -> RenderedNode` + `render_node_text` (reuses `RenderedNode`/`RenderedNodeView`, no parallel type; shares `regroup_event_leaves` with `summarize_proof`). Ships inert.
+- **Phase 2 (pending):** nibli-ui — `ProofTreeView` calls `collapse_proof`; the `proof-role-detail` cluster is an expandable `<details>`; `auto_open`/CSS tuning.
+- **Phase 3 (pending):** gasnu — `?` shows the collapsed text by default; a `:proof-verbose` command keeps the verbose trace.
+- **Phase 4 (pending):** book — Ch 11 rewrite (collapsed default, verbose demoted to "Under the Hood") + recapture C08/C11 (the case studies elide their traces).
+- **Phase 5 (pending):** nibli-server (`proof_trace` text → collapsed; `proof_trace_json` stays the full canonical trace) + nibli-wasm.
+
+Also remaining: better English for complex multi-predicate / deontic / abstraction conclusions (today they gracefully degrade — a clean conclusion drops rather than renders rough).
 

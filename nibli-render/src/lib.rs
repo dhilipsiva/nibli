@@ -12,6 +12,7 @@
 //! verdict or a proof's tree shape. Unknown predicates fall back to a generic
 //! `relation(args)` / gloss-based frame — never invented English.
 
+mod collapse;
 mod fact;
 mod frame;
 mod logic;
@@ -20,6 +21,7 @@ mod register;
 mod summary;
 mod term;
 
+pub use collapse::{collapse_proof, render_node_text};
 pub use fact::humanize_fact;
 pub use logic::{render_logic_buffer, render_logic_tree};
 pub use proof::{
