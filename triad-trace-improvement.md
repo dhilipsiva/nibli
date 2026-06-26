@@ -30,7 +30,7 @@ Spec register is the default (structure-exposing: quantifier scope stays visible
 ### WS1 — Place-frame template data (`smuni-dictionary`)
 - Extend `DictEntry` (`smuni-dictionary/src/lib.rs:1`) with `template: &'static str`; add `get_template(word)`.
 - In `smuni-dictionary/build.rs`: add a curated `GISMU_PLACE_TEMPLATES` table (e.g. `gerku`→`"{x1} is a dog"`, `danlu`→`"{x1} is an animal"`, `klama`→`"{x1} goes to {x2} from {x3} via {x4} using {x5}"`) covering the gismu the corpora (`readme.lojban`, `gdpr.lojban`, `drug-interactions.lojban`) use; generic `{x1} <gloss> {x2}…` fallback for the rest. Emit the new field at the existing `DictEntry { … }` format sites (XML-present **and** fallback branches). Reuse `extract_arity`/definition machinery; XML place-text scraping deferred.
-- Do **not** touch `smuni`'s separate arity-only `JBOVLASTE_ARITIES` (`smuni/src/dictionary.rs`).
+- Do **not** touch `smuni`'s separate arity-only `JBOVLASTE_ARITIES` (`smuni/src/dictionary.rs`). _(Superseded by the later single-source-arity DRY pass: `smuni/build.rs` + `JBOVLASTE_ARITIES` were deleted entirely; `smuni::JbovlasteSchema` now delegates to `smuni_dictionary::get_arity`, so there is one arity map workspace-wide.)_
 
 ### WS2 — `nibli-render` crate
 Modules: `register` (`enum Register { Spec, Fluent }`), `frame` (place-template lookup over `DictEntry`), `term`, `fact`, `logic`, `proof`.

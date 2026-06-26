@@ -5509,8 +5509,7 @@ dependencies = [
  "gerna",
  "lasso",
  "nibli-types",
- "phf",
- "phf_codegen",
+ "smuni-dictionary",
 ]
 
 [[package]]
