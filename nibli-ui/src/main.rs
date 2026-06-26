@@ -1296,9 +1296,11 @@ fn ProofTreeView(trace: ProofTrace) -> Element {
     // same shared renderer (the trace data is unchanged). `None` for an
     // unsummarizable trace — then nothing extra is shown.
     let summary = nibli_render::summarize_proof(&trace, nibli_render::Register::Spec);
-    // Render the whole trace once via the shared renderer; the component then
-    // walks the structured RenderedNode tree (no per-variant logic in the UI).
-    let root = nibli_render::render_proof(&trace, nibli_render::Register::Spec);
+    // Collapse the verbose trace into the macro-logical DAG once via the shared
+    // renderer; the component then walks the structured RenderedNode tree (no
+    // per-variant logic in the UI). The folded role/event scaffolding rides along
+    // as `proof-role-detail` clusters the user can expand.
+    let root = nibli_render::collapse_proof(&trace, nibli_render::Register::Spec);
     rsx! {
         div { class: "proof-tree",
             if let Some(why) = summary {
@@ -1314,7 +1316,10 @@ fn ProofTreeView(trace: ProofTrace) -> Element {
 
 #[component]
 fn RenderedNodeView(node: nibli_render::RenderedNode, depth: u32) -> Element {
-    let auto_open = depth < 3;
+    // Macro nodes open by default; the folded role-level scaffolding cluster
+    // starts collapsed — it is the expandable "under the hood" detail of the
+    // collapsed macro view.
+    let auto_open = depth < 3 && node.css_class != "proof-role-detail";
     let css_class = node.css_class;
     let icon = node.icon;
     let label = node.label.clone();

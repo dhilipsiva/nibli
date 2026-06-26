@@ -403,6 +403,24 @@ details[open].proof-node > summary::before {
     color: #4caf50;
 }
 
+/* Folded role/event scaffolding of the collapsed macro view — the muted,
+   collapsed-by-default "under the hood" cluster the user can expand. */
+.proof-role-detail {
+    border-left-color: #475569;
+}
+.proof-role-detail > .proof-summary {
+    color: #64748b;
+    font-size: 0.85em;
+    font-style: italic;
+}
+.proof-role-detail > .proof-summary .proof-icon,
+.proof-role-detail > .proof-summary .proof-label {
+    color: #64748b;
+}
+.proof-role-detail > .proof-summary .proof-result {
+    display: none;
+}
+
 /* Row 2: query section */
 .query-row {
     height: 30vh;
