@@ -964,6 +964,13 @@ fn trigger_forward_rules(new_rel: &str, inner: &mut KnowledgeBaseInner) {
         }
     }
 
+    // Determinism: `to_derive` is built from a `lookup_predicate` HashSet clone,
+    // so its order (driving the `[Forward] Derived:` print + the assertion order)
+    // is otherwise hasher-seed dependent. Sort by canonical display — the SET of
+    // derived facts is unchanged (forward chaining is monotonic). This also makes
+    // the output independent of the equal-priority `forward_rules` tie-break.
+    to_derive.sort_by(|a, b| a.to_display_string().cmp(&b.to_display_string()));
+
     // Assert derived facts (may trigger further forward chaining recursively).
     for fact in to_derive {
         if !inner.rebuilding {

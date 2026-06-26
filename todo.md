@@ -17,7 +17,6 @@ long tail below covers correctness remainders, documentation-vs-code mismatches,
 ### case studies
 
 ### engine guarantees / firewall claims
-- [ ] **Residual non-REPL output surfaces still HashSet-order dependent (ordering only, verdicts unaffected)** — surfaces NOT reachable from gasnu REPL output: (1) `check_contradictions` violation order iterates `negative_facts`/`all_facts()` (engine/server API only); (2) `[Forward] Derived:` print order iterates a `lookup_predicate` HashSet clone (forward rules off by default). _Location:_ `logji/src/lib.rs` (check_contradictions); `logji/src/rules.rs` (trigger_forward_rules). _Fix:_ sort before returning/printing. (correctness)
 - [ ] **Direct ForAll/Exists query quantifies over event Skolems and le-descriptions, risking spurious counterexamples for bare universal bodies** — `ensure_domain_members_cached` unions `known_entities`/`known_event_entities`/`known_descriptions` into one flat cache the ForAll/Exists evaluators iterate. Latent: a bare-predicate ForAllNode body would yield a spurious event-Skolem counterexample, but no current compilation path produces one (the guarded `Or(Not(P),Q)` makes event/desc members vacuously satisfy). _Location:_ `logji/src/reasoning.rs`; `kb.rs`. _Fix:_ have the quantifier evaluators range only over the appropriate sort (defensive). (correctness)
 
 ### Others

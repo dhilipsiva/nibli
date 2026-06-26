@@ -8265,6 +8265,40 @@ fn test_contradictions_arity_inconsistency() {
     );
 }
 
+#[test]
+fn check_contradictions_order_is_deterministic() {
+    // §4 (negation) iterates the `negative_facts` HashSet, so the violation
+    // order is hasher-seed dependent without the global sort. Two FRESH KB
+    // instances (each std HashSet gets its own RandomState in-process) with the
+    // SAME multi-contradiction content — asserted in opposite orders — must
+    // return byte-identical ordered violations.
+    let preds = ["gerku", "mlatu", "cipni", "finpe", "since", "cribe"];
+    let build = |rev: bool| {
+        let kb = new_kb();
+        let order: Vec<&str> = if rev {
+            preds.iter().rev().copied().collect()
+        } else {
+            preds.to_vec()
+        };
+        for p in order {
+            assert_id(&kb, make_negated_assertion("adam", p), "na");
+            assert_id(&kb, make_assertion("adam", p), "pos");
+        }
+        kb
+    };
+    let v1 = build(false).check_contradictions();
+    let v2 = build(true).check_contradictions();
+    assert_eq!(
+        v1.len(),
+        preds.len(),
+        "one negation contradiction per predicate: {v1:?}"
+    );
+    assert_eq!(
+        v1, v2,
+        "check_contradictions order must be deterministic across fresh KB instances"
+    );
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // SELECTIVE FORWARD CHAINING TESTS
 // ═══════════════════════════════════════════════════════════════════

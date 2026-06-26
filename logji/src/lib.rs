@@ -1205,6 +1205,11 @@ impl KnowledgeBase {
             }
         }
 
+        // Determinism: §2 (arity) iterates `all_facts()` and §4/§5 iterate the
+        // `negative_facts` HashSet, so the violation order is otherwise
+        // hasher-seed dependent. A single global sort fixes the order of every
+        // section at once (ordering only — the SET of violations is unchanged).
+        violations.sort();
         violations
     }
 }
