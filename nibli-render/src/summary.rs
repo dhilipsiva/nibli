@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 use nibli_protocol::{ProofRule, ProofTrace};
 
 use crate::fact::humanize_fact;
-use crate::frame::{fill_template, frame_template};
+use crate::frame::{fill_template, frame_template, template_max_place};
 use crate::proof::humanize_rule_label;
 use crate::register::Register;
 use crate::term::{humanize_skolem, is_event_skolem, is_event_skolem_arg, role_base, role_index};
@@ -265,13 +265,28 @@ pub(crate) fn rule_to_english(label: &str) -> Option<String> {
     ))
 }
 
-/// Fill a relation's frame with a generic subject in x1 (the other places drop).
+/// Render a single rule-clause predicate with `subject` in x1 and a generic
+/// "something" in every other place of its frame, so a multi-place predicate
+/// reads "X permits something" / "X is a rule about something" instead of
+/// collapsing to the bare subject (which `fill_template` would truncate to "X",
+/// triggering the degenerate-fill `None` below and the `[by rule: …]` fallback).
 /// `None` for an abstraction operator (no surface frame) or an empty fill.
+///
+/// HONEST LIMIT: the rule LABEL this is rendered from has lost variable identity,
+/// so every clause shares the subject `X`. For a SINGLE-variable rule (the common
+/// case — `ro lo X cu Y`, `ganai P gi Q`) that is correct; for a MULTI-variable
+/// join (a prenex `ro da ro de …` rule, where the clauses are about distinct
+/// entities) the shared `X` is an approximation — `:proof-verbose` is the
+/// authoritative view. The renderer cannot distinguish the two from the label.
 fn relation_clause(relation: &str, subject: &str) -> Option<String> {
     if is_abstraction(relation) {
         return None;
     }
-    let filled = fill_template(&frame_template(relation), &[Some(subject.to_string())]);
+    let tmpl = frame_template(relation);
+    let n = template_max_place(&tmpl).max(1);
+    let mut places = vec![Some("something".to_string()); n];
+    places[0] = Some(subject.to_string());
+    let filled = fill_template(&tmpl, &places);
     let trimmed = filled.trim();
     // Reject a degenerate fill that is just the bare subject (the relation had no
     // usable gloss/frame text) — dropping the clause beats emitting "X".
@@ -600,6 +615,48 @@ mod tests {
         assert!(!s.contains('∧'), "abstraction/raw-conjunction leaked: {s}");
         assert!(!s.contains(" X and X"), "broken output: {s}");
         assert!(s.contains("animal"), "danlu conclusion missing: {s}"); // nu skipped, danlu kept
+    }
+
+    #[test]
+    fn rule_clause_pads_multi_place_instead_of_falling_back() {
+        // A 2-place rule (`curmi → javni`) used to collapse to the bare subject
+        // (the connective before the trailing place is dropped → "X" → None →
+        // `[by rule: …]`). Padding the other places with "something" renders it.
+        let e = rule_to_english("curmi → javni").expect("multi-place rule now renders");
+        assert!(e.starts_with("if ") && e.contains(" then "), "got: {e}");
+        assert!(e.contains("permits something"), "curmi truncated: {e}");
+        assert!(
+            e.contains("is a rule about something"),
+            "javni truncated: {e}"
+        );
+        // No dangling clause (a multi-place verb with no object).
+        assert!(!e.ends_with("permits"), "dangling: {e}");
+    }
+
+    #[test]
+    fn rule_clause_single_place_is_byte_identical() {
+        // 1-place predicates have no trailing place, so padding is a no-op — the
+        // common syllogism rule must read exactly as before.
+        assert_eq!(
+            rule_to_english("gerku → danlu").as_deref(),
+            Some("if X is a dog then X is an animal")
+        );
+        // …and no spurious "something" leaks into a 1-place clause.
+        let e = rule_to_english("gerku → danlu").unwrap();
+        assert!(!e.contains("something"), "1-place leaked a filler: {e}");
+    }
+
+    #[test]
+    fn deontic_wrapper_is_preserved_on_the_statement() {
+        // A conclusion fact carrying an `Obligatory(…)` wrapper keeps its mood
+        // ("it must be that …") — render-only, no code change (the guard).
+        let e = fact_to_english("Obligatory(prenu(adam))", Register::Spec)
+            .expect("deontic flat fact renders");
+        assert!(e.contains("it must be that"), "mood dropped: {e}");
+        assert!(e.contains("person"), "predicate dropped: {e}");
+        // Permitted likewise.
+        let p = fact_to_english("Permitted(prenu(adam))", Register::Spec).unwrap();
+        assert!(p.contains("it is permitted that"), "mood dropped: {p}");
     }
 
     #[test]

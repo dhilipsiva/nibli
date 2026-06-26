@@ -18,6 +18,27 @@ pub(crate) fn frame_template(relation: &str) -> String {
     generic_template(gloss, arity)
 }
 
+/// The highest place index `N` appearing in a `{xN}` placeholder (0 if none).
+/// Used to size the filler vector when rendering a RULE clause, so the trailing
+/// places of a multi-place frame render a generic "something" rather than being
+/// truncated to the bare subject (the proof-trace rule-justification path; facts,
+/// which have concrete args, keep truncating trailing places).
+pub(crate) fn template_max_place(template: &str) -> usize {
+    let mut max = 0;
+    let mut rest = template;
+    while let Some(pos) = rest.find("{x") {
+        let Some(close_rel) = rest[pos..].find('}') else {
+            break;
+        };
+        let close = pos + close_rel;
+        if let Ok(n) = rest[pos + 2..close].parse::<usize>() {
+            max = max.max(n);
+        }
+        rest = &rest[close + 1..];
+    }
+    max
+}
+
 /// Generic frame when no curated template exists. Imperfect but honest: a 1-place
 /// predicate reads "X is <gloss>", an n-place reads "X <gloss> Y Z …".
 fn generic_template(gloss: &str, arity: usize) -> String {
@@ -157,5 +178,18 @@ mod tests {
             fill_template("{x1} loves {x2}", &[None, Some("eve".into())]),
             "something loves eve"
         );
+    }
+
+    #[test]
+    fn template_max_place_counts_placeholders() {
+        assert_eq!(template_max_place("{x1} permits {x2}"), 2);
+        assert_eq!(template_max_place("{x1} is a dog"), 1);
+        assert_eq!(
+            template_max_place("{x1} goes to {x2} from {x3} via {x4} using {x5}"),
+            5
+        );
+        assert_eq!(template_max_place("no placeholders here"), 0);
+        // Out-of-order placeholders return the max, not the count.
+        assert_eq!(template_max_place("{x2} loves {x1}"), 2);
     }
 }

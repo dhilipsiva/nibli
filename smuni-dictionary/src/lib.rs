@@ -98,6 +98,22 @@ mod tests {
     }
 
     #[test]
+    fn test_corpus_proxy_templates() {
+        // Curated place-frames for the GDPR / drug-interaction proxy vocabulary
+        // (identical in the XML and no-XML build modes — single-sourced).
+        assert_eq!(get_template("zanru"), Some("{x1} approves of {x2}"));
+        assert_eq!(get_template("pilno"), Some("{x1} uses {x2}"));
+        assert_eq!(get_template("katna"), Some("{x1} cuts {x2}"));
+        assert_eq!(get_template("zenba"), Some("{x1} increases"));
+        assert_eq!(get_template("cinla"), Some("{x1} is thin"));
+        assert_eq!(get_template("ckape"), Some("{x1} is in danger"));
+        assert_eq!(get_template("vimcu"), Some("{x1} is removed"));
+        // Already-curated regulatory words stay curated.
+        assert_eq!(get_template("curmi"), Some("{x1} permits {x2}"));
+        assert_eq!(get_template("javni"), Some("{x1} is a rule about {x2}"));
+    }
+
+    #[test]
     fn test_back_translate_basic() {
         let result = back_translate("lo gerku cu klama lo zarci");
         // Should contain glosses for gerku and klama (whatever jbovlaste provides)

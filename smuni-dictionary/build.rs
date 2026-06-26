@@ -404,6 +404,18 @@ const GISMU_PLACE_TEMPLATES: &[(&str, &str)] = &[
     ("javni", "{x1} is a rule about {x2}"),
     ("nibli", "{x1} logically entails {x2}"),
     ("krinu", "{x1} is the reason for {x2}"),
+    // ── Corpus proxy vocabulary (GDPR + drug-interaction case studies) ──
+    // Literal, grammatical gismu frames, place-count matched to how the corpora
+    // use them; the proxy reading (consent / toxicity risk / metabolism / …) is
+    // the reader's overlay, not the dictionary's. `se`-converted uses (se vimcu,
+    // se katna) swap args at compile time, so these key on the BARE gismu.
+    ("zanru", "{x1} approves of {x2}"), // GDPR: consents to a plan/treatment
+    ("vimcu", "{x1} is removed"),       // GDPR se vimcu: data is erased (Art 17)
+    ("pilno", "{x1} uses {x2}"),        // DDI: a patient takes a drug
+    ("katna", "{x1} cuts {x2}"),        // DDI se katna: substrate metabolised by enzyme
+    ("zenba", "{x1} increases"),        // DDI: drug concentration rises
+    ("cinla", "{x1} is thin"),          // DDI: narrow therapeutic index
+    ("ckape", "{x1} is in danger"),     // DDI: toxicity risk
     // ── Class predicates (x1 is a …) ──
     ("danlu", "{x1} is an animal"),
     ("gerku", "{x1} is a dog"),
