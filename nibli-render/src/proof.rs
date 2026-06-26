@@ -287,7 +287,7 @@ pub fn trace_display(rule: &ProofRule, result: bool) -> String {
 
 /// Collapse event decomposition predicates in a rule label.
 /// "gerku ∧ gerku_x1 ∧ gerku_x2 → danlu ∧ danlu_x1 ∧ danlu_x2" → "gerku → danlu".
-fn humanize_rule_label(label: &str) -> String {
+pub(crate) fn humanize_rule_label(label: &str) -> String {
     if let Some((lhs, rhs)) = label.split_once(" → ") {
         format!(
             "{} → {}",

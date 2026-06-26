@@ -17,6 +17,7 @@ mod frame;
 mod logic;
 mod proof;
 mod register;
+mod summary;
 mod term;
 
 pub use fact::humanize_fact;
@@ -26,6 +27,7 @@ pub use proof::{
     render_proof_text_indented, trace_display,
 };
 pub use register::Register;
+pub use summary::{fact_to_english, summarize_proof};
 
 #[cfg(test)]
 mod tests {

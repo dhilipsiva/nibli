@@ -1306,10 +1306,18 @@ impl Repl {
             match session.call_query_text_with_proof(&mut self.store, self.session_handle, text) {
                 Ok(Ok((result, trace))) => {
                     println!("[Query] {}", format_query_result(&result));
+                    let proto = trace_to_proto(&trace);
+                    // Plain-English "why" summary above the detailed trace (the
+                    // technical trace below is unchanged — experts keep it).
+                    if let Some(why) =
+                        nibli_render::summarize_proof(&proto, nibli_render::Register::Spec)
+                    {
+                        println!("[Why] {why}");
+                    }
                     print!(
                         "{}",
                         nibli_render::render_proof_text_indented(
-                            &trace_to_proto(&trace),
+                            &proto,
                             nibli_render::Register::Spec,
                             1
                         )
