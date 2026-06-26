@@ -516,6 +516,12 @@ pub(super) struct KnowledgeBaseInner {
     /// Configuration parameter preserved across reset/rebuild (kept for WIT API compatibility).
     /// Cached typed domain members — invalidated when entities/descriptions change.
     pub(super) typed_domain_members_cache: Vec<GroundTerm>,
+    /// Cached domain members of the INDIVIDUAL sort only (entities + le-descriptions,
+    /// excluding event Skolems). The direct ForAll evaluator quantifies an
+    /// individual variable, so it ranges over this — an event Skolem is never a
+    /// legitimate counterexample for an individual universal. Built alongside the
+    /// full cache; same dirty flag.
+    pub(super) typed_non_event_members_cache: Vec<GroundTerm>,
     pub(super) domain_members_dirty: bool,
     /// Maximum backward-chaining depth for inference (default: 10).
     pub(super) max_chain_depth: usize,
@@ -615,6 +621,7 @@ impl Clone for KnowledgeBaseInner {
             fact_registry: self.fact_registry.clone(),
             rebuilding: false,
             typed_domain_members_cache: self.typed_domain_members_cache.clone(),
+            typed_non_event_members_cache: self.typed_non_event_members_cache.clone(),
             domain_members_dirty: self.domain_members_dirty,
             max_chain_depth: self.max_chain_depth,
             pred_dep_graph: self.pred_dep_graph.clone(),
@@ -656,6 +663,7 @@ impl KnowledgeBaseInner {
             fact_registry: HashMap::new(),
             rebuilding: false,
             typed_domain_members_cache: Vec::new(),
+            typed_non_event_members_cache: Vec::new(),
             domain_members_dirty: true,
             max_chain_depth: 10,
             pred_dep_graph: HashMap::new(),
@@ -694,6 +702,7 @@ impl KnowledgeBaseInner {
         self.fact_registry.clear();
         self.rebuilding = false;
         self.typed_domain_members_cache.clear();
+        self.typed_non_event_members_cache.clear();
         self.domain_members_dirty = true;
         self.pred_dep_graph.clear();
         self.equivalence_parent.clear();
@@ -759,14 +768,22 @@ impl KnowledgeBaseInner {
             return;
         }
         let mut typed_members = Vec::new();
+        // The non-event (individual) cache: entities + le-descriptions, no event
+        // Skolems. Built in the SAME pass — individual-sort members go into both.
+        let mut non_event_members = Vec::new();
         for e in &self.known_entities {
-            typed_members.push(GroundTerm::Constant(e.clone()));
+            let t = GroundTerm::Constant(e.clone());
+            typed_members.push(t.clone());
+            non_event_members.push(t);
         }
         for e in &self.known_event_entities {
+            // Event Skolems are a distinct sort — full cache only.
             typed_members.push(GroundTerm::Constant(e.clone()));
         }
         for d in &self.known_descriptions {
-            typed_members.push(GroundTerm::Description(d.clone()));
+            let t = GroundTerm::Description(d.clone());
+            typed_members.push(t.clone());
+            non_event_members.push(t);
         }
 
         // Determinism: the source sets are HashSets whose iteration order
@@ -774,14 +791,24 @@ impl KnowledgeBaseInner {
         // so domain iteration (ForAll/Exists evaluation, witness search,
         // ForallVerified proof output) is byte-reproducible across runs.
         typed_members.sort();
+        non_event_members.sort();
 
         self.typed_domain_members_cache = typed_members;
+        self.typed_non_event_members_cache = non_event_members;
         self.domain_members_dirty = false;
     }
 
     /// Return typed domain members. Call ensure_domain_members_cached() first.
     pub(super) fn all_typed_domain_members(&self) -> &[GroundTerm] {
         &self.typed_domain_members_cache
+    }
+
+    /// Return the INDIVIDUAL-sort domain members (entities + le-descriptions,
+    /// excluding event Skolems). Used by the direct ForAll evaluator — an event
+    /// Skolem is never a legitimate counterexample for an individual universal.
+    /// Call ensure_domain_members_cached() first.
+    pub(super) fn all_non_event_domain_members(&self) -> &[GroundTerm] {
+        &self.typed_non_event_members_cache
     }
 }
 

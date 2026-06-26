@@ -740,7 +740,12 @@ fn check_formula_holds_core<S: TraceSink>(
             Ok((verdict, idx))
         }
         LogicNode::ForAllNode((v, body)) => {
-            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
+            // A ForAll variable is always an INDIVIDUAL (event vars are
+            // existentials inside the body), so range over the non-event domain —
+            // an event Skolem must never be a spurious counterexample for a bare
+            // body. Verdict-preserving for the guarded `Or(Not(P),Q)` form (events
+            // vacuously satisfy it) and keeps them out of the ForallVerified list.
+            let members: Vec<GroundTerm> = inner.all_non_event_domain_members().to_vec();
             if members.is_empty() {
                 let idx = if S::RECORDING {
                     sink.push(ProofStep {
@@ -756,7 +761,7 @@ fn check_formula_holds_core<S: TraceSink>(
             // Batch compute fast path (slice, no .to_vec()).
             if let Ok(body_node) = get_node(buffer, *body) {
                 if let LogicNode::ComputeNode((rel, args)) = body_node {
-                    let members_slice = inner.all_typed_domain_members();
+                    let members_slice = inner.all_non_event_domain_members();
                     if let Some(batch) = batch_evaluate_compute_for_members(
                         &*inner,
                         rel,

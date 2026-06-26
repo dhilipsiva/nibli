@@ -17,7 +17,6 @@ long tail below covers correctness remainders, documentation-vs-code mismatches,
 ### case studies
 
 ### engine guarantees / firewall claims
-- [ ] **Direct ForAll/Exists query quantifies over event Skolems and le-descriptions, risking spurious counterexamples for bare universal bodies** — `ensure_domain_members_cached` unions `known_entities`/`known_event_entities`/`known_descriptions` into one flat cache the ForAll/Exists evaluators iterate. Latent: a bare-predicate ForAllNode body would yield a spurious event-Skolem counterexample, but no current compilation path produces one (the guarded `Or(Not(P),Q)` makes event/desc members vacuously satisfy). _Location:_ `logji/src/reasoning.rs`; `kb.rs`. _Fix:_ have the quantifier evaluators range only over the appropriate sort (defensive). (correctness)
 
 ### Others
 

@@ -8913,6 +8913,54 @@ fn domain_member_cache_order_is_deterministic() {
     assert_eq!(m1, sorted, "domain member cache must be sorted");
 }
 
+#[test]
+fn forall_does_not_quantify_over_event_skolems() {
+    // A ForAll variable is an INDIVIDUAL; an event Skolem must never be a spurious
+    // counterexample. Hand-build a BARE `∀x. p(x)` (no guard — no current
+    // compilation produces one, so this pins the defensive sort invariant
+    // directly). KB: p(adam) asserted (known_entities = {adam}) + an injected
+    // event Skolem `sk_ev0`. Ranging over individuals only, p(adam) holds → TRUE.
+    // If the event Skolem leaked into the domain, p(sk_ev0) would be a false
+    // counterexample → FALSE.
+    let kb = new_kb();
+    let fact = {
+        let mut nodes = Vec::new();
+        let root = pred(
+            &mut nodes,
+            "p",
+            vec![LogicalTerm::Constant("adam".to_string())],
+        );
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
+    };
+    assert_buf(&kb, fact);
+    {
+        let mut inner = kb.inner.borrow_mut();
+        inner.note_event_entity("sk_ev0");
+        inner.domain_members_dirty = true;
+    }
+    let bare_forall = {
+        let mut nodes = Vec::new();
+        let body = pred(
+            &mut nodes,
+            "p",
+            vec![LogicalTerm::Variable("_v0".to_string())],
+        );
+        let root = forall(&mut nodes, "_v0", body);
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
+    };
+    assert!(
+        query(&kb, bare_forall),
+        "bare ∀x.p(x) must be TRUE over individuals (p(adam) holds); an event \
+         Skolem must not be a spurious counterexample"
+    );
+}
+
 // ─── Disjunctive + deontic rule antecedents ─────────────────────────────────
 
 #[test]
