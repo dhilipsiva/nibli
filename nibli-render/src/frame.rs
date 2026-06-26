@@ -35,11 +35,19 @@ fn generic_template(gloss: &str, arity: usize) -> String {
 /// Fill a template with rendered place fillers. `places[i]` is the filler for
 /// place `x(i+1)`; `None` means the place was unspecified (`zo'e`) or absent.
 ///
-/// Unfilled places are dropped by truncating the template at the first unfilled
-/// placeholder (Lojban leaves trailing places implicit, so this reads cleanly:
-/// `klama` with only x1,x2 filled renders "X goes to the market", not
-/// "X goes to the market from  via  using ").
+/// Placeholders BEYOND the last filled place are a TRAILING run and are truncated
+/// (Lojban leaves trailing places implicit, so `klama` with only x1,x2 filled
+/// reads "X goes to the market", not "X goes to the market from  via  using ").
+/// An INTERIOR or LEADING unspecified place — one where a LATER place IS filled —
+/// renders a generic "something" so the clause is not collapsed to nothing
+/// (`klama fi le zarci do` → "something goes to something from the market via do",
+/// not an empty string). No sort info is available, so the filler is uniformly
+/// "something" (animacy-aware "someone" would need type info threaded through).
 pub(crate) fn fill_template(template: &str, places: &[Option<String>]) -> String {
+    let last_filled = places
+        .iter()
+        .rposition(|f| f.is_some())
+        .map_or(0, |i| i + 1);
     let mut out = String::new();
     let mut rest = template;
     while let Some(pos) = rest.find("{x") {
@@ -50,19 +58,17 @@ pub(crate) fn fill_template(template: &str, places: &[Option<String>]) -> String
         let close = pos + close_rel;
         let ph = &rest[pos + 2..close]; // the "N" in "{xN}"
         let n: usize = ph.parse().unwrap_or(0);
-        match places.get(n.wrapping_sub(1)).and_then(|f| f.as_ref()) {
-            Some(filler) => {
-                out.push_str(before);
-                out.push_str(filler);
-                rest = &rest[close + 1..];
-            }
-            None => {
-                // Unfilled place: drop this placeholder AND the connective text
-                // leading into it ("… the market" not "… the market from").
-                rest = "";
-                break;
-            }
+        if n > last_filled {
+            // Trailing unfilled place: drop the connective leading in + the rest.
+            rest = "";
+            break;
         }
+        out.push_str(before);
+        match places.get(n.wrapping_sub(1)).and_then(|f| f.as_ref()) {
+            Some(filler) => out.push_str(filler),
+            None => out.push_str("something"), // interior/leading unspecified place
+        }
+        rest = &rest[close + 1..];
     }
     out.push_str(rest);
     out.trim().to_string()
@@ -120,6 +126,36 @@ mod tests {
                 &[Some("adam".into()), Some("eve".into())]
             ),
             "adam loves eve"
+        );
+    }
+
+    #[test]
+    fn fill_renders_interior_unspecified() {
+        // x1/x2 unspecified but x3/x4 filled: render "something" for the interior
+        // places (a later place is filled) rather than collapsing the whole clause.
+        // x5 is a TRAILING unfilled place and is still truncated.
+        let t = "{x1} goes to {x2} from {x3} via {x4} using {x5}";
+        assert_eq!(
+            fill_template(
+                t,
+                &[
+                    None,
+                    None,
+                    Some("the market".into()),
+                    Some("do".into()),
+                    None
+                ]
+            ),
+            "something goes to something from the market via do"
+        );
+    }
+
+    #[test]
+    fn fill_renders_leading_unspecified() {
+        // x1 unspecified, x2 filled → leading "something", clause not collapsed.
+        assert_eq!(
+            fill_template("{x1} loves {x2}", &[None, Some("eve".into())]),
+            "something loves eve"
         );
     }
 }

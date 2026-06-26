@@ -117,6 +117,37 @@ mod tests {
     }
 
     #[test]
+    fn interior_unspecified_place_is_not_dropped() {
+        // `klama fi le zarci` — x1 is unspecified (zo'e) but x3 is filled (le zarci).
+        // The English gloss must NOT collapse to empty (the pre-fix `:debug` bug);
+        // the interior/leading x1 renders the generic "something".
+        let ev0 = || LogicalTerm::Variable("_ev0".to_string());
+        let buf = LogicBuffer {
+            nodes: vec![
+                LogicNode::Predicate(("klama".into(), vec![ev0()])), // 0
+                LogicNode::Predicate(("klama_x1".into(), vec![ev0(), LogicalTerm::Unspecified])), // 1
+                LogicNode::Predicate((
+                    "klama_x3".into(),
+                    vec![ev0(), LogicalTerm::Description("zarci".into())],
+                )), // 2
+                LogicNode::AndNode((0, 1)),                // 3
+                LogicNode::AndNode((3, 2)),                // 4
+                LogicNode::ExistsNode(("_ev0".into(), 4)), // 5
+            ],
+            roots: vec![5],
+        };
+        let out = render_logic_buffer(&buf, Register::Spec);
+        assert!(
+            !out.is_empty(),
+            "an interior-unspecified frame must not render an empty gloss"
+        );
+        assert!(
+            out.to_lowercase().contains("something"),
+            "the unspecified x1 should render a generic filler, got: {out}"
+        );
+    }
+
+    #[test]
     fn logic_tree_exposes_every_node_with_indentation() {
         let tree = render_logic_tree(&syllogism_buffer(), Register::Spec);
         // The structural tree shows the raw compiled FOL, NOT the regrouped English:
