@@ -591,6 +591,13 @@ pub(super) struct KnowledgeBaseInner {
     /// blocking-pool worker); byte-identical for single-KB embedders.
     pub(super) pred_cache: RefCell<HashMap<StoredFact, QueryResult>>,
     pub(super) pred_cache_enabled: Cell<bool>,
+    /// Diagnostic verbosity. When `false` (the default) the informational stdout
+    /// `println!` diagnostics (`[Rule]`/`[Skolem]`/`[Constraint] Registered`) are
+    /// suppressed — a silent library for the server/validate/tavla. lasna (the
+    /// gasnu REPL) and the native `nibli` REPL opt in via `set_verbose(true)`.
+    /// Like `cancel`/`compute_eval`, this is CONFIGURATION, not derived state —
+    /// NOT cleared by `reset()`. The `eprintln!` warning/error sites ignore it.
+    pub(super) verbose: bool,
 }
 
 impl Clone for KnowledgeBaseInner {
@@ -629,6 +636,7 @@ impl Clone for KnowledgeBaseInner {
             compute_batch_eval: self.compute_batch_eval,
             pred_cache: RefCell::new(HashMap::new()),
             pred_cache_enabled: Cell::new(false),
+            verbose: self.verbose,
         }
     }
 }
@@ -669,6 +677,7 @@ impl KnowledgeBaseInner {
             compute_batch_eval: None,
             pred_cache: RefCell::new(HashMap::new()),
             pred_cache_enabled: Cell::new(false),
+            verbose: false,
         }
     }
 
@@ -698,9 +707,17 @@ impl KnowledgeBaseInner {
         self.disjunctive_constraints.clear();
         self.pred_cache.borrow_mut().clear();
         self.pred_cache_enabled.set(false);
-        // Note: integrity_constraints, compute_eval/compute_batch_eval, and
-        // cancel are NOT cleared on reset — they're structural declarations /
+        // Note: integrity_constraints, compute_eval/compute_batch_eval, cancel,
+        // and verbose are NOT cleared on reset — they're structural declarations /
         // configuration, not derived state. Clear explicitly if needed.
+    }
+
+    /// Whether informational stdout diagnostics should print: only when the
+    /// caller opted into verbosity AND we are not mid-rebuild (replay re-emits
+    /// already-seen state). The `eprintln!` warning/error sites are independent.
+    #[inline]
+    pub(super) fn diag_enabled(&self) -> bool {
+        !self.rebuilding && self.verbose
     }
 
     pub(super) fn fresh_fact_id(&mut self) -> u64 {
@@ -1452,8 +1469,8 @@ pub(super) fn process_assertion(
             &mut inner.skolem_counter,
         );
 
-        // Log Skolem substitutions (suppressed during rebuild)
-        if !inner.rebuilding && !skolem_subs.is_empty() {
+        // Log Skolem substitutions (suppressed during rebuild + when not verbose)
+        if inner.diag_enabled() && !skolem_subs.is_empty() {
             // Determinism: skolem_subs is a HashMap — sort by variable name so
             // the printed mapping order is byte-reproducible across runs.
             let mut entries: Vec<(&String, &GroundTerm)> = skolem_subs.iter().collect();

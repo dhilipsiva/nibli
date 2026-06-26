@@ -1165,6 +1165,11 @@ impl GuestSession for Session {
         // compute-backend (was a thread-local global — now per-instance).
         let kb = logji::KnowledgeBase::new();
         kb.set_compute_dispatch(eval_via_host, batch_eval_via_host);
+        // The gasnu REPL is interactive (and the book captures its `[Skolem]`/
+        // `[Rule]` diagnostics), so the guest opts INTO verbose stdout — unlike the
+        // native nibli-engine library, which stays quiet by default. A post-trap
+        // rebuild re-runs this constructor, so replayed assertions stay verbose too.
+        kb.set_verbose(true);
         Session {
             kb,
             compute_predicates: RefCell::new(logji::default_compute_predicates()),

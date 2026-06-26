@@ -12,15 +12,10 @@ use nibli_engine::NibliEngine;
 use std::io::{self, BufRead};
 
 fn main() {
-    // The engine prints diagnostics ("Native engine ready", "[Skolem] …",
-    // "[Rule] …") via `println!` to the global stdout. We MUST emit our JSON
-    // results through that same line-atomic writer — `println!` — rather than a
-    // separate BufWriter over `stdout.lock()`. Two independent buffers over fd 1
-    // interleave: a JSON line straddling the BufWriter's flush boundary gets an
-    // engine diagnostic spliced into it, corrupting it (the consumer then drops
-    // that line as unparseable). Using `println!` for both, each call takes the
-    // stdout lock and flushes a complete line on its newline, so no two lines
-    // can ever split each other. Consumers filter the non-`{…}` diagnostic lines.
+    // nibli-engine is quiet by default (verbose off — we never call
+    // `set_verbose`), so the engine emits no stdout diagnostics: our JSON result
+    // lines are the only thing on stdout. We use `println!` for them (simple,
+    // line-atomic); consumers parse the `{…}` lines.
     let engine = NibliEngine::new();
 
     let stdin = io::stdin();

@@ -1120,12 +1120,12 @@ fn register_clause_rule(
 
     let dedup_key = rule_dedup_hash(0, &typed_conds, typed_concls);
     if !inner.known_rules.insert(dedup_key) {
-        if !inner.rebuilding {
+        if inner.diag_enabled() {
             println!("[Rule] ∀{} already present, skipping", universals.join(","));
         }
         return Ok(());
     }
-    if !inner.rebuilding {
+    if inner.diag_enabled() {
         println!(
             "[Rule] Compiled ∀{} to backward-chaining rule",
             universals.join(",")
@@ -1417,7 +1417,7 @@ pub(super) fn compile_forall_to_rule(
                 if let Some(aid) = inner.current_assertion_id {
                     inner.rule_source_map.entry(aid).or_default();
                 }
-                if !inner.rebuilding {
+                if inner.diag_enabled() {
                     println!(
                         "[Constraint] Registered disjunctive conclusion {} as ¬(P ∧ ¬Q ∧ ¬R)",
                         rule_desc
@@ -1605,14 +1605,14 @@ pub(super) fn compile_forall_to_rule(
 
             let dedup_key = rule_dedup_hash(1, &[], &typed_concls);
             if !inner.known_rules.insert(dedup_key) {
-                if !inner.rebuilding {
+                if inner.diag_enabled() {
                     println!(
                         "[Rule] bare ∀{} already present, skipping",
                         universals.join(",")
                     );
                 }
             } else {
-                if !inner.rebuilding {
+                if inner.diag_enabled() {
                     println!(
                         "[Rule] Compiled bare ∀{} backward-chaining rule",
                         universals.join(",")

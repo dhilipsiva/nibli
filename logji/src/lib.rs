@@ -681,6 +681,19 @@ impl KnowledgeBase {
         self.inner.borrow_mut().cancel = None;
     }
 
+    /// Enable/disable informational stdout diagnostics (`[Rule]`/`[Skolem]`/
+    /// `[Constraint] Registered`). Default OFF — a silent library; the
+    /// server/validate/tavla stay quiet. lasna (the gasnu REPL) and the native
+    /// `nibli` REPL opt in. Configuration, not derived state — survives `reset()`.
+    pub fn set_verbose(&self, verbose: bool) {
+        self.inner.borrow_mut().verbose = verbose;
+    }
+
+    /// Whether diagnostic verbosity is enabled.
+    pub fn is_verbose(&self) -> bool {
+        self.inner.borrow().verbose
+    }
+
     /// Register this KB's external compute dispatch (per-instance — replaces the
     /// old thread-local `register_compute_dispatch`, which the multithreaded
     /// server could never register because each tokio blocking-pool worker had

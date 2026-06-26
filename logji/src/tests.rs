@@ -9528,3 +9528,36 @@ fn test_mixed_conclusion_event_decomposed_no_registry_pollution() {
         inner.skolem_fn_registry.len()
     );
 }
+
+#[test]
+fn verbose_flag_defaults_off_and_survives_reset_and_clone() {
+    // The diagnostic-verbosity flag gates the informational stdout prints
+    // (`[Rule]`/`[Skolem]`/`[Constraint] Registered`). It is CONFIGURATION, not
+    // derived state: a silent default, flipped by lasna (gasnu) + the native
+    // REPL, and it must survive `reset()` (so a UI-style reset-and-reassert cycle
+    // does not silently re-enable diagnostics) and a clone (hypothetical queries).
+    let kb = KnowledgeBase::new();
+    assert!(
+        !kb.is_verbose(),
+        "verbose must default OFF (silent library)"
+    );
+
+    kb.set_verbose(true);
+    assert!(kb.is_verbose(), "set_verbose(true) must enable diagnostics");
+
+    kb.reset().expect("reset");
+    assert!(
+        kb.is_verbose(),
+        "reset() must PRESERVE verbose — it is configuration, not derived state"
+    );
+
+    // The Clone (used by hypothetical-query snapshots) must carry verbose through.
+    let cloned = kb.inner.borrow().clone();
+    assert!(cloned.verbose, "Clone must preserve verbose");
+
+    kb.set_verbose(false);
+    assert!(
+        !kb.is_verbose(),
+        "set_verbose(false) must disable diagnostics"
+    );
+}

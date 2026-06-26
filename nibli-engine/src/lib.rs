@@ -86,6 +86,15 @@ impl NibliEngine {
         self.kb.clear_cancel_flag();
     }
 
+    /// Enable/disable the engine's informational stdout diagnostics
+    /// (`[Rule]`/`[Skolem]`/`[Constraint] Registered`). Default OFF — nibli-engine
+    /// is a silent library, so the server/validate/tavla do not spam stdout on a
+    /// per-query corpus re-assertion. Interactive callers (the native `nibli`
+    /// REPL) opt in. Configuration — survives `reset()`.
+    pub fn set_verbose(&self, verbose: bool) {
+        self.kb.set_verbose(verbose);
+    }
+
     /// Register this engine's external compute dispatch (per-instance). Without
     /// it, external predicates (e.g. `tenfa`/`dugri`) return an error; built-in
     /// arithmetic (pilji/sumji/dilcu) works regardless. Replaces the old
@@ -120,7 +129,6 @@ impl NibliEngine {
 
     /// Create an engine without persistence (existing behavior).
     pub fn new() -> Self {
-        println!("Native engine ready");
         NibliEngine {
             kb: logji::KnowledgeBase::new(),
             compute_predicates: logji::default_compute_predicates(),
@@ -158,7 +166,6 @@ impl NibliEngine {
             store: RefCell::new(Some(store)),
         };
         engine.replay_from_store()?;
-        println!("Native engine ready (persistent: {})", db_path.display());
         Ok(engine)
     }
 
@@ -177,9 +184,6 @@ impl NibliEngine {
             self.kb
                 .assert_fact_with_id(buf, fact.label.clone(), fact.id)
                 .map_err(|e| format!("Replay error (fact {}): {e}", fact.id))?;
-        }
-        if !facts.is_empty() {
-            println!("[Store] Replayed {} persisted facts", facts.len());
         }
         Ok(())
     }

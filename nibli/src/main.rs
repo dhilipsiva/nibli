@@ -81,6 +81,9 @@ fn main() {
     println!("==================================================");
 
     let mut engine = NibliEngine::new();
+    // Interactive debug REPL: opt into the engine's [Rule]/[Skolem]/[Constraint]
+    // diagnostics (off by default — nibli-engine is a silent library).
+    engine.set_verbose(true);
 
     let mut line_editor = Reedline::create();
     let prompt = DefaultPrompt::default();
