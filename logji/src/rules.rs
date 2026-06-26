@@ -1545,6 +1545,15 @@ pub(super) fn compile_forall_to_rule(
             }
         }
         None => {
+            // BARE-UNIVERSAL branch: a restrictor-less ∀ (a bare prenex
+            // `ro da zo'u da broda`, no `lo`/`le` gadri). Unlike the implication
+            // branch above, it asserts NO xorlo presupposition witness — and that
+            // is correct: a prenex `ro da`/`de`/`di` is a plain logical universal
+            // with no existential import (vacuously true on an empty domain),
+            // whereas the DESCRIPTION universals that carry import (`ro lo`/`ro le`,
+            // smuni-named `_v{n}`) ALWAYS compile to `∀x. R(x) → C(x)` and route
+            // through `register_clause_rule`, whose `is_description_universal` guard
+            // asserts the witness. So a description universal never reaches here.
             if !dependent_skolems.is_empty() {
                 for (_, (base, pvars)) in &dependent_skolems {
                     if !inner

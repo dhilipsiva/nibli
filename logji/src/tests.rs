@@ -418,6 +418,56 @@ fn test_prenex_universal_asserts_no_presupposition_witness() {
 }
 
 #[test]
+fn test_bare_universal_asserts_no_presupposition_witness() {
+    // A BARE universal `ForAll("da", brodb(da))` ("everything is brodb") — a
+    // restrictor-less prenex body, no `Or(Not(R), ..)`. `decompose_implication`
+    // returns None, so it takes the BARE branch of `compile_forall_to_rule`,
+    // which (correctly) asserts no xorlo witness: a prenex `ro da` is a plain ∀
+    // with no existential import. The existing prenex test exercises the
+    // IMPLICATION-branch prenex (it has a restrictor condition); this pins the
+    // bare branch itself.
+    let kb = new_kb();
+    let mut nodes = Vec::new();
+    let body = pred(
+        &mut nodes,
+        "brodb",
+        vec![
+            LogicalTerm::Variable("da".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let root = forall(&mut nodes, "da", body);
+    assert_buf(
+        &kb,
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        },
+    );
+    // ∃x. brodb(x) must be FALSE — no presupposition witness, empty domain.
+    let mut q = Vec::new();
+    let qb = pred(
+        &mut q,
+        "brodb",
+        vec![
+            LogicalTerm::Variable("x".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let qroot = exists(&mut q, "x", qb);
+    assert!(
+        !query(
+            &kb,
+            LogicBuffer {
+                nodes: q,
+                roots: vec![qroot]
+            }
+        ),
+        "a bare (restrictor-less) universal must NOT assert a presupposition witness"
+    );
+}
+
+#[test]
 fn test_xorlo_presupposition_transitive() {
     // ro lo gerku cu danlu, ro lo danlu cu xanlu
     // Each universal creates its own presupposition Skolem
