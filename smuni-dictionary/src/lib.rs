@@ -40,14 +40,14 @@ pub fn back_translate(lojban: &str) -> String {
     lojban
         .split_whitespace()
         .map(|token| {
-            // cmevla: starts and ends with '.'
+            // cmevla (a dot-delimited proper name like `.adam.`): the
+            // back-translation of a name is the name itself — return the inner
+            // form verbatim, never a dictionary gloss. Consulting the dictionary
+            // would DROP a name whose inner collides with a suppressed-gloss cmavo
+            // (`.cu.`/`.la.` -> "" -> filtered out) and MISTRANSLATE one colliding
+            // with a real gloss (`.lo.` -> "the").
             if token.starts_with('.') && token.ends_with('.') && token.len() > 2 {
-                let inner = &token[1..token.len() - 1];
-                // Could be a cmavo like ".i" — check dictionary first
-                if let Some(entry) = DICTIONARY.get(inner) {
-                    return entry.gloss.to_string();
-                }
-                return inner.to_string();
+                return token[1..token.len() - 1].to_string();
             }
             // Regular token: look up in dictionary
             if let Some(entry) = DICTIONARY.get(token) {
@@ -116,6 +116,19 @@ mod tests {
         let result = back_translate(".adam. prami .evas.");
         assert!(result.contains("adam"), "Expected 'adam' in: {}", result);
         assert!(result.contains("evas"), "Expected 'evas' in: {}", result);
+    }
+
+    #[test]
+    fn test_back_translate_cmevla_collides_with_dictionary_entry() {
+        // A dot-delimited name is a proper name: return the inner form verbatim,
+        // never the dictionary gloss. Regression for two collision cases:
+        //   - inner is a SUPPRESSED-gloss cmavo (`cu` -> "") — the name must NOT
+        //     vanish through the empty-gloss filter.
+        assert_eq!(back_translate(".cu."), "cu");
+        assert_eq!(back_translate(".cu. prami"), "cu love");
+        //   - inner has a REAL gloss (`lo` -> "the") — the name must stay the
+        //     name, not become the content word.
+        assert_eq!(back_translate(".lo."), "lo");
     }
 
     #[test]

@@ -31,7 +31,6 @@ _No open items._
 ### logji core
 
 ### full pipeline + Transparency Triad
-- [ ] **Cmevla whose inner form collides with a suppressed cmavo is silently dropped in the LEXICAL-gloss fallback** — now that WS4 made IR back-translation the primary path, this is a FALLBACK-path nit: `smuni_dictionary::back_translate` treats any dotted token as a cmevla, strips the dots, and consults the DICTIONARY first; a name like `.la.`/`.cu.` maps to the suppressed empty gloss and is dropped by `.filter(|s| !s.is_empty())`. _Location:_ `smuni-dictionary/src/lib.rs:25-33`. _Fix:_ in the cmevla branch return the inner name directly. (robustness)
 
 ### case studies
 - [ ] **readme.lojban data-protection rule has convoluted polarity vs its comment** — `readme.lojban:107` `ro lo se kurji datni cu se fanta lo na se curmi` ties data protection to a double-negative whose intent is unclear; compiles but the predication doesn't cleanly express the stated intent. _Fix:_ reformulate so the agent holds the permission/right; verify via the back-translation. (correctness)
