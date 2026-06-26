@@ -1154,8 +1154,13 @@ impl KnowledgeBase {
         //    binding, ALL P-conditions hold in the positive store AND EVERY disjunct is
         //    explicitly denied (a stored `na <selbri>` covers it). A disjunct is never
         //    DERIVED (unsound in a Horn engine — `R` might hold instead); the positive
-        //    use is served by a disjunctive QUERY. P uses store-membership only (sound,
-        //    conservative — a rule-DERIVED P does not trigger this; documented).
+        //    use is served by a disjunctive QUERY. P uses store-membership only (via
+        //    `solve_group_bindings` over `fact_store`): a rule-DERIVED P does NOT trigger
+        //    this — sound + conservative (it can only MISS a contradiction, never falsely
+        //    flag one). The check holds `self.inner.borrow()` and stays store-bound by
+        //    design (re-entering the query engine here would be a borrow / re-entrancy
+        //    hazard). Pinned by
+        //    `test_mixed_conclusion_conservative_p_check_misses_derived_antecedent`.
         for dc in &inner.disjunctive_constraints {
             let bindings = solve_group_bindings(&dc.conditions, &*inner.fact_store);
             let violated = bindings.iter().any(|b| {

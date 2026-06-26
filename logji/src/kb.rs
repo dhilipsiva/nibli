@@ -1001,6 +1001,11 @@ pub(super) fn register_ground_material_conditional(
         LogicNode::ExistsNode((v, body)) if subs.contains_key(v.as_str()) => {
             register_ground_material_conditional(buffer, *body, subs, inner)?
         }
+        // Transparent tense/deontic strip. SURFACE-UNREACHABLE: tense (pu/ca/ba) and
+        // attitudinals (ei/e'e) are bridi-level, never wrapping a sentence connective —
+        // `pu ganai P gi Q` does not parse — so smuni never produces a tensed/deontic
+        // ground material conditional `Past(Or(Not(P), Q))`. Kept as dead-defensive
+        // raw-FOL completeness (mirrors the assert-path strip in `collect_ground_facts`).
         LogicNode::PastNode(n)
         | LogicNode::PresentNode(n)
         | LogicNode::FutureNode(n)

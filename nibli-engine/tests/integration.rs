@@ -463,6 +463,31 @@ fn disjunctive_query_still_works() {
     );
 }
 
+#[test]
+fn disjunctive_conclusion_jo_ju_stay_fail_closed() {
+    // `jo` (biconditional) and `ju` (xor) are the only surface selbri connectives that
+    // produce a MIXED conclusion head, but their expansions carry Not(..) / Not(And(..)),
+    // which are not Horn-able — so they correctly stay fail-closed. (The clean mixed head
+    // `And(P, Or)` is reachable only via raw FOL; its positive case lives in the logji
+    // `test_mixed_conclusion_*` unit tests, since `gi'e` is unimplemented.)
+    let engine = NibliEngine::new();
+    assert!(
+        engine.assert_text("ro lo gerku cu danlu jo xanlu").is_err(),
+        "a `jo` (biconditional) conclusion head must fail closed (Not-bearing, not Horn)"
+    );
+    let engine2 = NibliEngine::new();
+    assert!(
+        engine2
+            .assert_text("ro lo gerku cu danlu ju xanlu")
+            .is_err(),
+        "a `ju` (xor) conclusion head must fail closed (Not(And(..)), not Horn)"
+    );
+    assert!(
+        engine2.check_contradictions().is_empty(),
+        "a failed `ju` assertion leaves no constraint (rollback)"
+    );
+}
+
 // ── Position-aware da/de/di quantifier scope ──
 // A bare logic variable scopes by Lojban surface order. `da citka ro lo gerku`
 // ("something eats every dog") is ∃da.∀x — a single witness eats ALL dogs —

@@ -1333,88 +1333,84 @@ pub(super) fn compile_forall_to_rule(
                 pattern_vars.insert(var.clone(), pvar);
             }
 
-            let consequent_atoms = flatten_consequent(buffer, consequent_id, skolem_subs, None);
+            let mut consequent_atoms = flatten_consequent(buffer, consequent_id, skolem_subs, None);
 
-            // DISJUNCTIVE CONCLUSION: `∀x. P(x) → (Q(x) ∨ R(x))` is not a Horn clause
-            // (deriving either disjunct would be unsound). Instead of fail-closing,
-            // register it as the integrity constraint `¬(P ∧ ¬Q ∧ ¬R)` —
-            // `check_contradictions` flags it when P holds and every disjunct is
-            // explicitly denied (`na`). The positive use is served by a disjunctive
-            // QUERY. Detected here (before the DepPair/Horn-conclusion machinery) when
-            // a consequent atom is a top-level `Or`. v1: only a PURE disjunctive head
-            // (a single Or atom); a mixed `And(P, Or(..))` head (>1 atom) stays
-            // fail-closed below. `dependent_skolems` still carries the over-approximated
-            // deps here (DepPair precision runs after this), which is fine — the disjunct
-            // templates are only ever unified against `na` groups, never fired, and the
-            // event term is existential on both sides (only the entity args constrain).
-            if let Some(&(or_id, _)) = consequent_atoms
+            // DISJUNCTIVE CONCLUSION: a top-level `Or` consequent atom is not a Horn
+            // clause (deriving a disjunct would be unsound), so it is registered as the
+            // integrity constraint `¬(P ∧ ¬Q ∧ ¬R)` — `check_contradictions` flags it
+            // when P holds and every disjunct is explicitly denied (`na`); the positive
+            // use is a disjunctive QUERY. A MIXED head `∀x. P → (A ∧ (Q∨R))` SPLITS:
+            // `≡ [∀x.P→A]` (the Horn conclusion A, registered by the fall-through below)
+            // `∧ [∀x.P→(Q∨R)]` (this constraint). So register a constraint per Or atom,
+            // then keep the non-Or atoms for the Horn path. `dependent_skolems` still
+            // carries the over-approximated deps here (DepPair precision runs after this)
+            // — fine, the disjunct templates only ever unify against `na` groups, never
+            // fired, and the event term is existential on both sides.
+            let or_atom_ids: Vec<u32> = consequent_atoms
                 .iter()
-                .find(|&&(aid, _)| matches!(get_node(buffer, aid), Ok(LogicNode::OrNode(_))))
-            {
-                if consequent_atoms.len() != 1 {
-                    return Err(format!(
-                        "cannot compile rule conclusion for {rule_desc}: a mixed \
-                         conjunction/disjunction head is unsupported. Rejecting the assertion \
-                         to preserve soundness."
-                    ));
-                }
-                let mut branches = Vec::new();
-                collect_disjunct_branches(buffer, or_id, &mut branches);
-                let mut disjuncts: Vec<Vec<StoredFact>> = Vec::new();
-                for &br in &branches {
-                    let mut leaves = Vec::new();
-                    for (aid, tense) in flatten_consequent(buffer, br, skolem_subs, None) {
-                        match build_rule_template_fact(
+                .filter(|&&(aid, _)| matches!(get_node(buffer, aid), Ok(LogicNode::OrNode(_))))
+                .map(|&(aid, _)| aid)
+                .collect();
+            if !or_atom_ids.is_empty() {
+                for &or_id in &or_atom_ids {
+                    let mut branches = Vec::new();
+                    collect_disjunct_branches(buffer, or_id, &mut branches);
+                    let mut disjuncts: Vec<Vec<StoredFact>> = Vec::new();
+                    for &br in &branches {
+                        let mut leaves = Vec::new();
+                        for (aid, tense) in flatten_consequent(buffer, br, skolem_subs, None) {
+                            match build_rule_template_fact(
+                                buffer,
+                                aid,
+                                &pattern_vars,
+                                &ground_skolems,
+                                &dependent_skolems,
+                                tense,
+                            ) {
+                                Some(fact) => leaves.push(fact),
+                                None => {
+                                    return Err(format!(
+                                        "cannot represent disjunctive conclusion for {rule_desc}: \
+                                         a disjunct atom is not a flat predicate. Rejecting to \
+                                         preserve soundness."
+                                    ));
+                                }
+                            }
+                        }
+                        disjuncts.push(leaves);
+                    }
+                    // One constraint per antecedent DNF clause (a disjunctive antecedent
+                    // splits P into clauses, exactly as the rule path does).
+                    for clause in &clauses {
+                        let conditions = build_positive_clause_conditions(
                             buffer,
-                            aid,
+                            clause,
                             &pattern_vars,
                             &ground_skolems,
                             &dependent_skolems,
-                            tense,
-                        ) {
-                            Some(fact) => leaves.push(fact),
-                            None => {
-                                return Err(format!(
-                                    "cannot represent disjunctive conclusion for {rule_desc}: a \
-                                     disjunct atom is not a flat predicate. Rejecting to preserve \
-                                     soundness."
-                                ));
-                            }
-                        }
+                            &rule_desc,
+                        )?;
+                        let cond_label = conditions
+                            .iter()
+                            .map(|c| c.relation().to_string())
+                            .collect::<Vec<_>>()
+                            .join(" ∧ ");
+                        let disj_label = disjuncts
+                            .iter()
+                            .map(|d| {
+                                d.iter()
+                                    .map(|f| f.relation().to_string())
+                                    .collect::<Vec<_>>()
+                                    .join(" ∧ ")
+                            })
+                            .collect::<Vec<_>>()
+                            .join(" ∨ ");
+                        inner.disjunctive_constraints.push(DisjunctiveConstraint {
+                            label: format!("{cond_label} → {disj_label}"),
+                            conditions,
+                            disjuncts: disjuncts.clone(),
+                        });
                     }
-                    disjuncts.push(leaves);
-                }
-                // One constraint per antecedent DNF clause (a disjunctive antecedent
-                // splits P into clauses, exactly as the rule path does).
-                for clause in &clauses {
-                    let conditions = build_positive_clause_conditions(
-                        buffer,
-                        clause,
-                        &pattern_vars,
-                        &ground_skolems,
-                        &dependent_skolems,
-                        &rule_desc,
-                    )?;
-                    let cond_label = conditions
-                        .iter()
-                        .map(|c| c.relation().to_string())
-                        .collect::<Vec<_>>()
-                        .join(" ∧ ");
-                    let disj_label = disjuncts
-                        .iter()
-                        .map(|d| {
-                            d.iter()
-                                .map(|f| f.relation().to_string())
-                                .collect::<Vec<_>>()
-                                .join(" ∧ ")
-                        })
-                        .collect::<Vec<_>>()
-                        .join(" ∨ ");
-                    inner.disjunctive_constraints.push(DisjunctiveConstraint {
-                        label: format!("{cond_label} → {disj_label}"),
-                        conditions,
-                        disjuncts: disjuncts.clone(),
-                    });
                 }
                 // Record the assertion id so retracting a (possibly skolem-free)
                 // disjunctive conclusion triggers a rebuild that drops the constraint.
@@ -1427,7 +1423,26 @@ pub(super) fn compile_forall_to_rule(
                         rule_desc
                     );
                 }
-                return Ok(());
+                // Keep only the non-Or atoms for the Horn path. A PURE disjunctive head
+                // has none (done); a MIXED `And(P, Or)` head registers P below.
+                consequent_atoms
+                    .retain(|&(aid, _)| !matches!(get_node(buffer, aid), Ok(LogicNode::OrNode(_))));
+                if consequent_atoms.is_empty() {
+                    return Ok(());
+                }
+                // MIXED head: drop the Or-part's conclusion existentials from
+                // `dependent_skolems` — they appear ONLY in the Or subtree (a fresh
+                // `_evN` per operand), so without this they would DepPair-refine to
+                // dep_count 0 and register spurious entries into the GLOBAL
+                // skolem_fn_registry (polluting `members^k` witness enumeration for
+                // unrelated queries). The constraint templates above already captured
+                // them with the over-approximated deps. No-op for a pure-conjunction
+                // head (every conclusion existential appears in a retained atom).
+                let retained_vars: HashSet<String> = consequent_atoms
+                    .iter()
+                    .flat_map(|&(aid, _)| atom_var_args(buffer, aid))
+                    .collect();
+                dependent_skolems.retain(|k, _| retained_vars.contains(k));
             }
 
             // DepPair precision: a conclusion existential depends only on the

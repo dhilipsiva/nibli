@@ -9323,3 +9323,208 @@ fn test_disjunctive_conclusion_retraction_clears_constraint() {
         "no constraint → no contradiction after retraction"
     );
 }
+
+/// Build a MIXED conclusion head `∀x. R(x) → (P(x) ∧ (Q(x) ∨ S(x)))`:
+///   ForAll(_v0, Or(Not(R(_v0)), And(P(_v0), Or(Q(_v0), S(_v0)))))
+/// Soundly splits into a Horn rule (R → P) + a `DisjunctiveConstraint` (R → Q ∨ S).
+/// Not surface-reachable today (gi'e is unimplemented) — a raw-FOL / forward-compat shape.
+fn make_mixed_conclusion(restrictor: &str, p: &str, q: &str, s: &str) -> LogicBuffer {
+    let mut nodes = Vec::new();
+    let v = || {
+        vec![
+            LogicalTerm::Variable("_v0".into()),
+            LogicalTerm::Unspecified,
+        ]
+    };
+    let restrict = pred(&mut nodes, restrictor, v());
+    let neg = not(&mut nodes, restrict);
+    let p_atom = pred(&mut nodes, p, v());
+    let q_atom = pred(&mut nodes, q, v());
+    let s_atom = pred(&mut nodes, s, v());
+    let disj = or(&mut nodes, q_atom, s_atom);
+    let conj = and(&mut nodes, p_atom, disj);
+    let body = or(&mut nodes, neg, conj);
+    let root = forall(&mut nodes, "_v0", body);
+    LogicBuffer {
+        nodes,
+        roots: vec![root],
+    }
+}
+
+#[test]
+fn test_mixed_conclusion_registers_horn_and_constraint() {
+    // ∀x. gerku(x) → (broda(x) ∧ (danlu(x) ∨ xanlu(x))) splits into a Horn rule
+    // (gerku → broda) + one DisjunctiveConstraint (gerku → danlu ∨ xanlu).
+    let kb = new_kb();
+    assert_buf(
+        &kb,
+        make_mixed_conclusion("gerku", "broda", "danlu", "xanlu"),
+    );
+    let inner = kb.inner.borrow();
+    assert!(
+        inner.universal_rules.get("broda").is_some(),
+        "the non-Or conjunct compiles to a Horn rule"
+    );
+    assert_eq!(
+        inner.disjunctive_constraints.len(),
+        1,
+        "the Or conjunct compiles to one integrity constraint"
+    );
+    assert!(
+        inner.universal_rules.get("danlu").is_none()
+            && inner.universal_rules.get("xanlu").is_none(),
+        "no Horn rule is registered for a disjunct (deriving one is unsound)"
+    );
+}
+
+#[test]
+fn test_mixed_conclusion_derives_horn_and_fires_constraint() {
+    let kb = new_kb();
+    let rule_id = assert_id(
+        &kb,
+        make_mixed_conclusion("gerku", "broda", "danlu", "xanlu"),
+        "mixed",
+    );
+    assert_buf(&kb, make_assertion("rex", "gerku"));
+    // The Horn conjunct derives broda(rex).
+    assert!(
+        query(&kb, make_query("rex", "broda")),
+        "the Horn conjunct derives broda(rex)"
+    );
+    // The constraint fires when both disjuncts are explicitly denied.
+    assert_buf(&kb, make_negated_assertion("rex", "danlu"));
+    assert_buf(&kb, make_negated_assertion("rex", "xanlu"));
+    assert!(
+        kb.check_contradictions()
+            .iter()
+            .any(|m| m.contains("Disjunctive constraint violated")),
+        "gerku(rex) holds + both disjuncts denied → contradiction"
+    );
+    // Retracting the mixed-head assertion drops BOTH the constraint and the Horn rule.
+    kb.retract_fact_inner(rule_id).unwrap();
+    let inner = kb.inner.borrow();
+    assert!(
+        inner.disjunctive_constraints.is_empty(),
+        "retraction clears the constraint"
+    );
+    assert!(
+        inner.universal_rules.get("broda").is_none(),
+        "retraction clears the Horn rule"
+    );
+}
+
+#[test]
+fn test_mixed_conclusion_conservative_p_check_misses_derived_antecedent() {
+    // (sub-part a) `check_contradictions` §6 binds the antecedent P by STORE MEMBERSHIP
+    // only. A rule-DERIVED gerku(rex) does NOT trigger the constraint — sound +
+    // conservative (it can only MISS a contradiction, never falsely flag one).
+    let kb = new_kb();
+    assert_buf(&kb, make_universal("mlatu", "gerku")); // mlatu → gerku (DERIVES P)
+    assert_buf(
+        &kb,
+        make_mixed_conclusion("gerku", "broda", "danlu", "xanlu"),
+    );
+    assert_buf(&kb, make_assertion("rex", "mlatu")); // derives gerku(rex); NOT stored as gerku
+    assert_buf(&kb, make_negated_assertion("rex", "danlu"));
+    assert_buf(&kb, make_negated_assertion("rex", "xanlu"));
+    assert!(
+        kb.check_contradictions().is_empty(),
+        "a DERIVED antecedent does not trigger the disjunctive constraint (store-membership only)"
+    );
+}
+
+#[test]
+fn test_mixed_conclusion_dirty_horn_atom_rejected() {
+    // A Not-bearing retained (Horn) atom — the shape `jo`/`ju` selbri-connective
+    // expansions produce — is not a flat predicate, so the mixed head stays
+    // fail-closed (its remainder is not a Horn clause).
+    let kb = new_kb();
+    let mut nodes = Vec::new();
+    let v = || {
+        vec![
+            LogicalTerm::Variable("_v0".into()),
+            LogicalTerm::Unspecified,
+        ]
+    };
+    let restrict = pred(&mut nodes, "gerku", v());
+    let neg_r = not(&mut nodes, restrict);
+    let broda = pred(&mut nodes, "broda", v());
+    let not_broda = not(&mut nodes, broda); // dirty: Not-bearing Horn atom
+    let danlu = pred(&mut nodes, "danlu", v());
+    let xanlu = pred(&mut nodes, "xanlu", v());
+    let disj = or(&mut nodes, danlu, xanlu);
+    let conj = and(&mut nodes, not_broda, disj);
+    let body = or(&mut nodes, neg_r, conj);
+    let root = forall(&mut nodes, "_v0", body);
+    let buf = LogicBuffer {
+        nodes,
+        roots: vec![root],
+    };
+    assert!(
+        kb.assert_fact_inner(buf, String::new()).is_err(),
+        "a Not-bearing Horn atom must fail closed"
+    );
+    assert!(
+        kb.inner.borrow().disjunctive_constraints.is_empty(),
+        "the failed assertion leaves no constraint (rollback)"
+    );
+}
+
+/// Build an event-decomposed group `∃ev. name(ev) ∧ name_x1(ev, _v0)`.
+fn event_group(nodes: &mut Vec<LogicNode>, name: &str, ev: &str) -> u32 {
+    let t = pred(nodes, name, vec![LogicalTerm::Variable(ev.into())]);
+    let role = pred(
+        nodes,
+        &format!("{name}_x1"),
+        vec![
+            LogicalTerm::Variable(ev.into()),
+            LogicalTerm::Variable("_v0".into()),
+        ],
+    );
+    let conj = and(nodes, t, role);
+    exists(nodes, ev, conj)
+}
+
+#[test]
+fn test_mixed_conclusion_event_decomposed_no_registry_pollution() {
+    // The realistic (event-decomposed) mixed head — what a future `gi'e` would lower to:
+    // ∀x. gerku(x) → (broda(x) ∧ (danlu(x) ∨ xanlu(x))), every predicate a Neo-Davidsonian
+    // group with a DISTINCT event var. Verifies the Horn part compiles AND the Or-part's
+    // conclusion event existentials are filtered out of the GLOBAL skolem_fn_registry.
+    let kb = new_kb();
+    let mut nodes = Vec::new();
+    let r_grp = event_group(&mut nodes, "gerku", "_ev0"); // restrictor (condition)
+    let neg = not(&mut nodes, r_grp);
+    let p_grp = event_group(&mut nodes, "broda", "_ev1"); // Horn conclusion
+    let q_grp = event_group(&mut nodes, "danlu", "_ev2"); // disjunct
+    let s_grp = event_group(&mut nodes, "xanlu", "_ev3"); // disjunct
+    let disj = or(&mut nodes, q_grp, s_grp);
+    let conj = and(&mut nodes, p_grp, disj);
+    let body = or(&mut nodes, neg, conj);
+    let root = forall(&mut nodes, "_v0", body);
+    assert_buf(
+        &kb,
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        },
+    );
+    let inner = kb.inner.borrow();
+    assert!(
+        inner.universal_rules.get("broda").is_some(),
+        "the Horn conjunct (broda) compiles"
+    );
+    assert_eq!(
+        inner.disjunctive_constraints.len(),
+        1,
+        "one constraint for the Or part"
+    );
+    // Only the Horn conjunct's event skolem registers; the Or-part's danlu/xanlu event
+    // existentials are filtered out (without the filter this would be 3).
+    assert_eq!(
+        inner.skolem_fn_registry.len(),
+        1,
+        "Or-part event existentials must not pollute skolem_fn_registry (got {})",
+        inner.skolem_fn_registry.len()
+    );
+}
