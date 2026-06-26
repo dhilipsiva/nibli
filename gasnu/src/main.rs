@@ -1361,17 +1361,15 @@ impl Repl {
                         )
                     );
                 } else {
-                    // The NAF caveat is a trace-level honesty note (the verbose
-                    // renderer prepends it from `naf_dependent`); the node-only
-                    // collapsed renderer does not, so carry it explicitly.
-                    if proto.naf_dependent {
-                        println!(
-                            "[Note: result depends on negation-as-failure (closed-world assumption)]"
-                        );
-                    }
-                    let collapsed =
-                        nibli_render::collapse_proof(&proto, nibli_render::Register::Spec);
-                    print!("{}", nibli_render::render_node_text(&collapsed, 1, false));
+                    print!(
+                        "{}",
+                        nibli_render::render_collapsed_text(
+                            &proto,
+                            nibli_render::Register::Spec,
+                            1,
+                            false
+                        )
+                    );
                 }
             }
             Ok(Err(e)) => println!("{}", format_nibli_error(&e)),

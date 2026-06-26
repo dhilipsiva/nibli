@@ -61,7 +61,8 @@ impl Session {
             "status": result.status_label(),
             "detail": result.detail_label(),
             "naf_dependent": trace.naf_dependent,
-            "proof_text": nibli_render::render_proof_text(&trace, nibli_render::Register::Spec),
+            // The collapsed macro-logical DAG (the full canonical trace is in `proof`).
+            "proof_text": nibli_render::render_collapsed_text(&trace, nibli_render::Register::Spec, 0, false),
             "proof": serde_json::from_str::<serde_json::Value>(&nibli_protocol::proof_trace_to_json(&trace))
                 .unwrap_or(serde_json::Value::Null),
         });

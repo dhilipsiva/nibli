@@ -21,7 +21,7 @@ mod register;
 mod summary;
 mod term;
 
-pub use collapse::{collapse_proof, render_node_text};
+pub use collapse::{collapse_proof, render_collapsed_text, render_node_text};
 pub use fact::humanize_fact;
 pub use logic::{render_logic_buffer, render_logic_tree};
 pub use proof::{

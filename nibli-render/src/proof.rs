@@ -12,6 +12,12 @@ use nibli_protocol::{LogicalTerm, ProofRule, ProofTrace};
 use crate::fact::humanize_fact;
 use crate::register::Register;
 
+/// The closed-world honesty caveat prepended to a proof whose TRUE verdict rests
+/// on negation-as-failure. One definition shared by the verbose and collapsed
+/// text renderers.
+pub(crate) const NAF_NOTE: &str =
+    "[Note: result depends on negation-as-failure (closed-world assumption)]";
+
 /// A rendered proof node: everything the text and component renderers need,
 /// computed once. Children are rendered recursively.
 #[derive(Clone, Debug, PartialEq)]
@@ -78,7 +84,8 @@ pub fn render_proof_text_indented(
 ) -> String {
     let mut out = String::new();
     if trace.naf_dependent {
-        out.push_str("[Note: result depends on negation-as-failure (closed-world assumption)]\n");
+        out.push_str(NAF_NOTE);
+        out.push('\n');
     }
     format_step(trace, trace.root, base_indent, &mut out);
     out

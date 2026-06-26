@@ -27,7 +27,7 @@ The proof trace is more user-friendly now: a render-only plain-English `[Why]` s
 - **Phase 2 (DONE):** nibli-ui — `ProofTreeView` calls `collapse_proof`; the `proof-role-detail` cluster is an expandable `<details>` (reusing `RenderedNodeView`); `auto_open`/CSS tuned.
 - **Phase 3 (DONE):** gasnu — `?` shows the collapsed text by default (`run_proof_query`); a `:proof-verbose` command keeps the verbose trace; `smoke-gasnu-collapse` in `ci-wasm`. (Also fixed a dependent-Skolem grouping bug via `term::is_event_skolem_arg`.)
 - **Phase 4 (pending):** book — Ch 11 rewrite (collapsed default, verbose demoted to "Under the Hood") + recapture C08/C11 (the case studies elide their traces).
-- **Phase 5 (pending):** nibli-server (`proof_trace` text → collapsed; `proof_trace_json` stays the full canonical trace) + nibli-wasm.
+- **Phase 5 (DONE):** nibli-server (`proof_trace` text → collapsed via `collapsed_text_from_json`; `proof_trace_json` stays the full canonical trace) + nibli-wasm. The shared `render_collapsed_text` (NAF note + collapse + render) is the one call every text surface uses.
 
 Also remaining: better English for complex multi-predicate / deontic / abstraction conclusions (today they gracefully degrade — a clean conclusion drops rather than renders rough).
 

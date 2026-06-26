@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 use nibli_protocol::{ProofRule, ProofTrace};
 
 use crate::fact::humanize_fact;
-use crate::proof::{RenderedNode, build_node, humanize_rule_label};
+use crate::proof::{NAF_NOTE, RenderedNode, build_node, humanize_rule_label};
 use crate::register::Register;
 use crate::summary::{
     LeafKey, fact_to_english, parse_raw_fact, regroup_event_leaves, render_group, rule_to_english,
@@ -58,9 +58,30 @@ pub fn collapse_proof(trace: &ProofTrace, register: Register) -> RenderedNode {
     }
 }
 
-/// Render any [`RenderedNode`] tree as indented text (the collapsed view for the
-/// REPL / book). With `include_detail = false`, `proof-role-detail` clusters are
-/// skipped (the clean macro view); with `true`, they render too.
+/// The collapsed macro-logical-DAG proof of a whole trace as indented text (the
+/// REPL / server / book view): the closed-world NAF caveat (when the verdict
+/// rests on it), then the collapsed tree. With `include_detail = false` the
+/// role-level clusters are omitted (the clean macro view). One call every text
+/// surface shares — gasnu, nibli-server, nibli-wasm.
+pub fn render_collapsed_text(
+    trace: &ProofTrace,
+    register: Register,
+    base_indent: usize,
+    include_detail: bool,
+) -> String {
+    let mut out = String::new();
+    if trace.naf_dependent {
+        out.push_str(NAF_NOTE);
+        out.push('\n');
+    }
+    let node = collapse_proof(trace, register);
+    out.push_str(&render_node_text(&node, base_indent, include_detail));
+    out
+}
+
+/// Render any [`RenderedNode`] tree as indented text (the building block of
+/// [`render_collapsed_text`]). With `include_detail = false`, `proof-role-detail`
+/// clusters are skipped (the clean macro view); with `true`, they render too.
 pub fn render_node_text(node: &RenderedNode, base_indent: usize, include_detail: bool) -> String {
     let mut out = String::new();
     write_node_text(node, base_indent, include_detail, &mut out);

@@ -704,11 +704,14 @@ impl MutationRoot {
             Ok(node) => match node.query_with_proof(&input) {
                 Ok((result, trace, json)) => {
                     let proof_summary = proof_summary_from_json(&json);
+                    // The proof_trace TEXT field is the collapsed macro-logical
+                    // DAG; the full canonical trace stays in proof_trace_json.
+                    let collapsed = collapsed_text_from_json(&json).unwrap_or(trace);
                     QueryResponse {
                         status: Some(QueryStatusGql::from(&result)),
                         unknown_reason: UnknownReasonGql::from_result(&result),
                         resource_kind: ResourceKindGql::from_result(&result),
-                        proof_trace: Some(trace),
+                        proof_trace: Some(collapsed),
                         proof_trace_json: Some(json),
                         proof_summary,
                         kb_status: None,
@@ -784,11 +787,14 @@ impl MutationRoot {
             match engine.query_text_with_proof(&query) {
                 Ok((result, trace, json)) => {
                     let proof_summary = proof_summary_from_json(&json);
+                    // The proof_trace TEXT field is the collapsed macro-logical
+                    // DAG; the full canonical trace stays in proof_trace_json.
+                    let collapsed = collapsed_text_from_json(&json).unwrap_or(trace);
                     QueryResponse {
                         status: Some(QueryStatusGql::from(&result)),
                         unknown_reason: UnknownReasonGql::from_result(&result),
                         resource_kind: ResourceKindGql::from_result(&result),
-                        proof_trace: Some(trace),
+                        proof_trace: Some(collapsed),
                         proof_trace_json: Some(json),
                         proof_summary,
                         kb_status: Some(kb_status),
@@ -1469,6 +1475,15 @@ impl From<&EngineError> for ErrorClassGql {
 fn proof_summary_from_json(json: &str) -> Option<String> {
     nibli_protocol::proof_trace_from_json(json)
         .and_then(|t| nibli_render::summarize_proof(&t, nibli_render::Register::Spec))
+}
+
+/// The collapsed macro-logical-DAG proof TEXT, computed from the wire JSON
+/// (render-only — the `ProofTrace` data is unchanged). `None` when the JSON does
+/// not parse (the caller keeps the verbose text). The full canonical trace stays
+/// available in `proof_trace_json` for clients that render their own tree.
+fn collapsed_text_from_json(json: &str) -> Option<String> {
+    nibli_protocol::proof_trace_from_json(json)
+        .map(|t| nibli_render::render_collapsed_text(&t, nibli_render::Register::Spec, 0, false))
 }
 
 #[derive(async_graphql::SimpleObject)]
@@ -3023,7 +3038,7 @@ mod tests {
         );
         let kb = "ro lo gerku cu danlu\nla .adam. cu gerku";
         let query = format!(
-            "mutation {{ queryWithKb(kb: {}, query: {}) {{ status error proofSummary }} }}",
+            "mutation {{ queryWithKb(kb: {}, query: {}) {{ status error proofSummary proofTrace proofTraceJson }} }}",
             gql_string(kb),
             gql_string("la .adam. cu danlu")
         );
@@ -3048,6 +3063,27 @@ mod tests {
         assert!(
             why.contains("dog") && why.contains("animal"),
             "summary: {why}"
+        );
+        // proof_trace TEXT is the collapsed macro-logical DAG (surface steps in
+        // English, no role/event scaffolding); proof_trace_json stays the FULL
+        // canonical trace so clients can render their own tree.
+        let collapsed = json["queryWithKb"]["proofTrace"]
+            .as_str()
+            .expect("proofTrace should be a non-null collapsed proof for a TRUE proof");
+        assert!(
+            collapsed.contains("by the rule") && collapsed.contains("animal"),
+            "collapsed proof_trace should read as surface steps: {collapsed}"
+        );
+        assert!(
+            !collapsed.contains("_x1"),
+            "role-level scaffolding leaked into the collapsed proof_trace: {collapsed}"
+        );
+        let full = json["queryWithKb"]["proofTraceJson"]
+            .as_str()
+            .expect("proofTraceJson should be the full canonical trace");
+        assert!(
+            full.contains("_x1"),
+            "proofTraceJson should carry the full role-level trace: {full}"
         );
     }
 
