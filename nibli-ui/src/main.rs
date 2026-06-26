@@ -1292,11 +1292,21 @@ fn ProofTreeView(trace: ProofTrace) -> Element {
     if trace.root as usize >= trace.steps.len() {
         return rsx! { div { class: "proof-error", "Invalid proof trace: root index out of bounds" } };
     }
+    // A render-only plain-English "why" summary above the detailed tree, from the
+    // same shared renderer (the trace data is unchanged). `None` for an
+    // unsummarizable trace — then nothing extra is shown.
+    let summary = nibli_render::summarize_proof(&trace, nibli_render::Register::Spec);
     // Render the whole trace once via the shared renderer; the component then
     // walks the structured RenderedNode tree (no per-variant logic in the UI).
     let root = nibli_render::render_proof(&trace, nibli_render::Register::Spec);
     rsx! {
         div { class: "proof-tree",
+            if let Some(why) = summary {
+                div { class: "proof-why",
+                    span { class: "proof-why-label", "Why" }
+                    span { class: "proof-why-text", "{why}" }
+                }
+            }
             RenderedNodeView { node: root, depth: 0 }
         }
     }

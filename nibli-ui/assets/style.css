@@ -215,6 +215,34 @@ body {
     padding: 4px 0;
 }
 
+/* Plain-English "why" summary above the detailed proof tree. */
+.proof-why {
+    margin: 0 0 10px 0;
+    padding: 8px 10px;
+    background: #1e293b;
+    border-left: 3px solid #38bdf8;
+    border-radius: 4px;
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.proof-why-label {
+    display: inline-block;
+    margin-right: 8px;
+    padding: 1px 7px;
+    background: #38bdf8;
+    color: #0f172a;
+    border-radius: 3px;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+}
+
+.proof-why-text {
+    color: #e2e8f0;
+}
+
 .proof-error {
     color: #f87171;
     padding: 8px;

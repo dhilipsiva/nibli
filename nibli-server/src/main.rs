@@ -702,22 +702,27 @@ impl MutationRoot {
         let gossip = ctx.data::<SharedGossip>().unwrap().clone();
         run_blocking(move || match gossip.lock() {
             Ok(node) => match node.query_with_proof(&input) {
-                Ok((result, trace, json)) => QueryResponse {
-                    status: Some(QueryStatusGql::from(&result)),
-                    unknown_reason: UnknownReasonGql::from_result(&result),
-                    resource_kind: ResourceKindGql::from_result(&result),
-                    proof_trace: Some(trace),
-                    proof_trace_json: Some(json),
-                    kb_status: None,
-                    error: None,
-                    error_class: None,
-                },
+                Ok((result, trace, json)) => {
+                    let proof_summary = proof_summary_from_json(&json);
+                    QueryResponse {
+                        status: Some(QueryStatusGql::from(&result)),
+                        unknown_reason: UnknownReasonGql::from_result(&result),
+                        resource_kind: ResourceKindGql::from_result(&result),
+                        proof_trace: Some(trace),
+                        proof_trace_json: Some(json),
+                        proof_summary,
+                        kb_status: None,
+                        error: None,
+                        error_class: None,
+                    }
+                }
                 Err(e) => QueryResponse {
                     status: None,
                     unknown_reason: None,
                     resource_kind: None,
                     proof_trace: None,
                     proof_trace_json: None,
+                    proof_summary: None,
                     kb_status: None,
                     error_class: ErrorClassGql::from_message(&e),
                     error: Some(e),
@@ -729,6 +734,7 @@ impl MutationRoot {
                 resource_kind: None,
                 proof_trace: None,
                 proof_trace_json: None,
+                proof_summary: None,
                 kb_status: None,
                 error: Some("gossip state lock poisoned".to_string()),
                 error_class: None,
@@ -776,22 +782,27 @@ impl MutationRoot {
             engine.set_cancel_flag(cancel);
             let kb_status = assert_kb_lines(&engine, &kb);
             match engine.query_text_with_proof(&query) {
-                Ok((result, trace, json)) => QueryResponse {
-                    status: Some(QueryStatusGql::from(&result)),
-                    unknown_reason: UnknownReasonGql::from_result(&result),
-                    resource_kind: ResourceKindGql::from_result(&result),
-                    proof_trace: Some(trace),
-                    proof_trace_json: Some(json),
-                    kb_status: Some(kb_status),
-                    error: None,
-                    error_class: None,
-                },
+                Ok((result, trace, json)) => {
+                    let proof_summary = proof_summary_from_json(&json);
+                    QueryResponse {
+                        status: Some(QueryStatusGql::from(&result)),
+                        unknown_reason: UnknownReasonGql::from_result(&result),
+                        resource_kind: ResourceKindGql::from_result(&result),
+                        proof_trace: Some(trace),
+                        proof_trace_json: Some(json),
+                        proof_summary,
+                        kb_status: Some(kb_status),
+                        error: None,
+                        error_class: None,
+                    }
+                }
                 Err(e) => QueryResponse {
                     status: None,
                     unknown_reason: None,
                     resource_kind: None,
                     proof_trace: None,
                     proof_trace_json: None,
+                    proof_summary: None,
                     kb_status: Some(kb_status),
                     error_class: Some(ErrorClassGql::from(&e)),
                     error: Some(e.to_string()),
@@ -1452,6 +1463,14 @@ impl From<&EngineError> for ErrorClassGql {
     }
 }
 
+/// Plain-English one-line "why" summary of a proof, computed from the wire JSON
+/// (render-only — the `ProofTrace` data is unchanged). `None` when the JSON does
+/// not parse or the trace is not summarizable.
+fn proof_summary_from_json(json: &str) -> Option<String> {
+    nibli_protocol::proof_trace_from_json(json)
+        .and_then(|t| nibli_render::summarize_proof(&t, nibli_render::Register::Spec))
+}
+
 #[derive(async_graphql::SimpleObject)]
 struct QueryResponse {
     status: Option<QueryStatusGql>,
@@ -1459,6 +1478,9 @@ struct QueryResponse {
     resource_kind: Option<ResourceKindGql>,
     proof_trace: Option<String>,
     proof_trace_json: Option<String>,
+    /// Plain-English one-line "why" summary of the proof (render-only, computed
+    /// from the trace via `nibli_render::summarize_proof`), or null.
+    proof_summary: Option<String>,
     kb_status: Option<KbStatusGql>,
     error: Option<String>,
     /// Structured class of `error` (Syntax/Semantic/Reasoning/Backend), or null.
@@ -3001,7 +3023,7 @@ mod tests {
         );
         let kb = "ro lo gerku cu danlu\nla .adam. cu gerku";
         let query = format!(
-            "mutation {{ queryWithKb(kb: {}, query: {}) {{ status error }} }}",
+            "mutation {{ queryWithKb(kb: {}, query: {}) {{ status error proofSummary }} }}",
             gql_string(kb),
             gql_string("la .adam. cu danlu")
         );
@@ -3017,6 +3039,15 @@ mod tests {
             json["queryWithKb"]["status"].as_str(),
             Some("TRUE"),
             "syllogism should resolve TRUE under the watchdog"
+        );
+        // The render-only plain-English proof summary is exposed (proofSummary).
+        let why = json["queryWithKb"]["proofSummary"]
+            .as_str()
+            .expect("proofSummary should be a non-null string for a TRUE proof");
+        assert!(why.starts_with("Because"), "unexpected summary: {why}");
+        assert!(
+            why.contains("dog") && why.contains("animal"),
+            "summary: {why}"
         );
     }
 

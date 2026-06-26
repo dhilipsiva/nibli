@@ -3779,6 +3779,7 @@ dependencies = [
  "governor",
  "nibli-engine",
  "nibli-protocol",
+ "nibli-render",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
