@@ -21,7 +21,7 @@ use crate::fact::humanize_fact;
 use crate::frame::{fill_template, frame_template};
 use crate::proof::humanize_rule_label;
 use crate::register::Register;
-use crate::term::{humanize_skolem, is_event_skolem, role_base, role_index};
+use crate::term::{humanize_skolem, is_event_skolem, is_event_skolem_arg, role_base, role_index};
 
 /// Build a one-block plain-English "why" explanation of the trace, or `None` if
 /// there is nothing summarizable (callers then print nothing extra).
@@ -127,10 +127,12 @@ pub(crate) fn regroup_event_leaves(
             flat.push(humanize_fact(fact));
             continue;
         };
-        // Role predicate `base_xN(event, filler)`.
+        // Role predicate `base_xN(event, filler)` — the arg0 event may be a bare
+        // (`sk_N`) OR a dependent (`sk_N(rex)`, a universal rule's conclusion
+        // event) Skolem, hence the loose check.
         if let (Some(base), Some(idx)) = (role_base(&relation), role_index(&relation))
             && args.len() >= 2
-            && is_event_skolem(&args[0])
+            && is_event_skolem_arg(&args[0])
         {
             let key = (wrapper.clone(), base.to_string(), args[0].clone());
             if !places.contains_key(&key) {
@@ -143,7 +145,7 @@ pub(crate) fn regroup_event_leaves(
             continue;
         }
         // Event-type predicate `base(event)` — registers the group (no place).
-        if args.len() == 1 && is_event_skolem(&args[0]) {
+        if args.len() == 1 && is_event_skolem_arg(&args[0]) {
             let key = (wrapper.clone(), relation.clone(), args[0].clone());
             if !places.contains_key(&key) {
                 order.push(key.clone());

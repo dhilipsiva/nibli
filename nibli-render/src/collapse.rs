@@ -25,7 +25,7 @@ use crate::register::Register;
 use crate::summary::{
     LeafKey, fact_to_english, parse_raw_fact, regroup_event_leaves, render_group, rule_to_english,
 };
-use crate::term::{is_event_skolem, role_base, role_index};
+use crate::term::{is_event_skolem_arg, role_base, role_index};
 
 /// Recursion backstop (proofs are depth-limited at ~10; this only guards a
 /// malformed trace from unbounded recursion).
@@ -158,11 +158,11 @@ fn goal_event_key(trace: &ProofTrace, g: u32) -> Option<LeafKey> {
     let (wrapper, relation, args) = parse_raw_fact(&fact)?;
     if let (Some(base), Some(_)) = (role_base(&relation), role_index(&relation))
         && args.len() >= 2
-        && is_event_skolem(&args[0])
+        && is_event_skolem_arg(&args[0])
     {
         return Some((wrapper, base.to_string(), args[0].clone()));
     }
-    if args.len() == 1 && is_event_skolem(&args[0]) {
+    if args.len() == 1 && is_event_skolem_arg(&args[0]) {
         return Some((wrapper, relation, args[0].clone()));
     }
     None
@@ -532,28 +532,31 @@ mod tests {
     /// The exact ~15-step shape gasnu captures for `? la .adam. cu danlu` over
     /// `gerku(adam)` + `ro lo gerku cu danlu`: an ExistsWitness over a left-leaning
     /// Conjunction spine of three per-role `Derived(danlu*)` steps, each re-tracing
-    /// the same `gerku*` conditions (deduped to ProofRefs after the first).
+    /// the same `gerku*` conditions (deduped to ProofRefs after the first). The
+    /// asserted dog event is a BARE Skolem (`sk_2`); the derived animal event is a
+    /// DEPENDENT Skolem (`sk_3(adam)`) — a universal rule's conclusion event
+    /// depends on the quantified individual, exactly as the engine emits.
     fn syllogism_trace() -> ProofTrace {
         ProofTrace {
             steps: vec![
                 step(asserted("gerku(sk_2)"), true, vec![]),          // 0
                 step(asserted("gerku_x1(sk_2, adam)"), true, vec![]), // 1
                 step(asserted("gerku_x2(sk_2, zo'e)"), true, vec![]), // 2
-                step(derived("danlu(sk_3)"), true, vec![0, 1, 2]),    // 3
+                step(derived("danlu(sk_3(adam))"), true, vec![0, 1, 2]), // 3
                 step(proofref("gerku(sk_2)"), true, vec![]),          // 4
                 step(proofref("gerku_x1(sk_2, adam)"), true, vec![]), // 5
                 step(proofref("gerku_x2(sk_2, zo'e)"), true, vec![]), // 6
-                step(derived("danlu_x1(sk_3, adam)"), true, vec![4, 5, 6]), // 7
+                step(derived("danlu_x1(sk_3(adam), adam)"), true, vec![4, 5, 6]), // 7
                 step(proofref("gerku(sk_2)"), true, vec![]),          // 8
                 step(proofref("gerku_x1(sk_2, adam)"), true, vec![]), // 9
                 step(proofref("gerku_x2(sk_2, zo'e)"), true, vec![]), // 10
-                step(derived("danlu_x2(sk_3, zo'e)"), true, vec![8, 9, 10]), // 11
+                step(derived("danlu_x2(sk_3(adam), zo'e)"), true, vec![8, 9, 10]), // 11
                 step(ProofRule::Conjunction, true, vec![3, 7]),       // 12
                 step(ProofRule::Conjunction, true, vec![12, 11]),     // 13
                 step(
                     ProofRule::ExistsWitness {
                         var: "_ev0".to_string(),
-                        term: nibli_protocol::LogicalTerm::Constant("sk_3".to_string()),
+                        term: nibli_protocol::LogicalTerm::Constant("sk_3(adam)".to_string()),
                     },
                     true,
                     vec![13],

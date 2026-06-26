@@ -871,7 +871,8 @@ impl Repl {
             }
             ":help" | ":h" => {
                 println!("  <text>              Assert Lojban as fact");
-                println!("  ? <text>            Query with proof trace");
+                println!("  ? <text>            Query (collapsed macro-logical proof)");
+                println!("  :proof-verbose <text> Query (full role-level proof trace)");
                 println!("  ?? <text>           Find witnesses (answer variables)");
                 println!("  :debug <text>       Show compiled logic tree");
                 println!("  :load <filepath>    Load a .lojban file (assert each line)");
@@ -1267,6 +1268,15 @@ impl Repl {
                     Err(e) => println!("[Export] Error: {}", e),
                 },
             }
+        } else if let Some(verbose_query) = input.strip_prefix(":proof-verbose ") {
+            let text = verbose_query.trim();
+            if text.is_empty() {
+                println!("[Host] Usage: :proof-verbose <lojban query>");
+                return false;
+            }
+            // The full role-level trace (the "under the hood" view); `?` shows
+            // the collapsed macro-logical DAG by default.
+            self.run_proof_query(text, true);
         } else if let Some(find_text) = input.strip_prefix("??") {
             let text = find_text.trim();
             if text.is_empty() {
@@ -1301,49 +1311,7 @@ impl Repl {
                 println!("[Host] Usage: ? <lojban query>");
                 return false;
             }
-            self.prepare_session();
-            let session = self.pipeline.lojban_nibli_lasna().session();
-            match session.call_query_text_with_proof(&mut self.store, self.session_handle, text) {
-                Ok(Ok((result, trace))) => {
-                    println!("[Query] {}", format_query_result(&result));
-                    let proto = trace_to_proto(&trace);
-                    // Plain-English "why" summary above the detailed trace (the
-                    // technical trace below is unchanged — experts keep it).
-                    if let Some(why) =
-                        nibli_render::summarize_proof(&proto, nibli_render::Register::Spec)
-                    {
-                        println!("[Why] {why}");
-                    }
-                    print!(
-                        "{}",
-                        nibli_render::render_proof_text_indented(
-                            &proto,
-                            nibli_render::Register::Spec,
-                            1
-                        )
-                    );
-                }
-                Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
-                Err(e) => {
-                    // A query that traps on a Wasmtime fuel/memory limit is one
-                    // of the four-valued outputs: the host translates the trap
-                    // into a RESOURCE_EXCEEDED(Fuel|Memory) verdict (the engine
-                    // returns ResourceExceeded only for Depth). A genuine
-                    // (non-resource) trap stays a [Host Error]. Either way the
-                    // instance is poisoned, so the session still rebuilds.
-                    match classify_resource_trap(&e) {
-                        Some(kind) => {
-                            println!(
-                                "[Query] {}",
-                                format_query_result(&EngineQueryResult::ResourceExceeded(kind))
-                            );
-                            println!("  ({})", resource_hint(kind));
-                        }
-                        None => println!("{}", format_host_error(&e)),
-                    }
-                    self.needs_rebuild = true;
-                }
-            }
+            self.run_proof_query(text, false);
         } else {
             self.prepare_session();
             let session = self.pipeline.lojban_nibli_lasna().session();
@@ -1364,6 +1332,69 @@ impl Repl {
             }
         }
         false
+    }
+
+    /// Run a proof query and print the verdict, the `[Why]` summary, and the
+    /// proof. `verbose = false` (the `?` default) prints the collapsed
+    /// macro-logical DAG; `verbose = true` (the `:proof-verbose` escape hatch)
+    /// prints the full role-level trace.
+    fn run_proof_query(&mut self, text: &str, verbose: bool) {
+        self.prepare_session();
+        let session = self.pipeline.lojban_nibli_lasna().session();
+        match session.call_query_text_with_proof(&mut self.store, self.session_handle, text) {
+            Ok(Ok((result, trace))) => {
+                println!("[Query] {}", format_query_result(&result));
+                let proto = trace_to_proto(&trace);
+                // Plain-English "why" summary above the proof.
+                if let Some(why) =
+                    nibli_render::summarize_proof(&proto, nibli_render::Register::Spec)
+                {
+                    println!("[Why] {why}");
+                }
+                if verbose {
+                    print!(
+                        "{}",
+                        nibli_render::render_proof_text_indented(
+                            &proto,
+                            nibli_render::Register::Spec,
+                            1
+                        )
+                    );
+                } else {
+                    // The NAF caveat is a trace-level honesty note (the verbose
+                    // renderer prepends it from `naf_dependent`); the node-only
+                    // collapsed renderer does not, so carry it explicitly.
+                    if proto.naf_dependent {
+                        println!(
+                            "[Note: result depends on negation-as-failure (closed-world assumption)]"
+                        );
+                    }
+                    let collapsed =
+                        nibli_render::collapse_proof(&proto, nibli_render::Register::Spec);
+                    print!("{}", nibli_render::render_node_text(&collapsed, 1, false));
+                }
+            }
+            Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
+            Err(e) => {
+                // A query that traps on a Wasmtime fuel/memory limit is one of
+                // the four-valued outputs: the host translates the trap into a
+                // RESOURCE_EXCEEDED(Fuel|Memory) verdict (the engine returns
+                // ResourceExceeded only for Depth). A genuine (non-resource)
+                // trap stays a [Host Error]. Either way the instance is
+                // poisoned, so the session still rebuilds.
+                match classify_resource_trap(&e) {
+                    Some(kind) => {
+                        println!(
+                            "[Query] {}",
+                            format_query_result(&EngineQueryResult::ResourceExceeded(kind))
+                        );
+                        println!("  ({})", resource_hint(kind));
+                    }
+                    None => println!("{}", format_host_error(&e)),
+                }
+                self.needs_rebuild = true;
+            }
+        }
     }
 
     /// Release the session resource. Errors are deliberately ignored: if a

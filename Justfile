@@ -219,6 +219,26 @@ smoke-gasnu-debug: build-wasm build-gasnu
         if echo "$out" | grep -qF '(Pred'; then echo 'FAIL: S-expression leaked into :debug output'; exit 1; fi; \
         echo 'PASS: :debug renders the typed buffer host-side (tree + English), no S-expr'
 
+# Pre-release smoke: the collapsed macro-logical-DAG proof view. `?` shows the
+# compressed surface-level steps (no role/event scaffolding); `:proof-verbose`
+# keeps the full role-level trace. NOT in `ci` (needs the WASM build).
+smoke-gasnu-collapse: build-wasm build-gasnu
+    @echo "Smoke-testing gasnu collapsed proof (? default) + :proof-verbose escape hatch..."
+    @collapsed=$(printf 'la .rex. cu gerku\nro lo gerku cu danlu\n? la .rex. cu danlu\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$collapsed"; \
+        echo "$collapsed" | grep -qF '[Query] TRUE' || { echo 'FAIL: collapsed query did not answer TRUE'; exit 1; }; \
+        echo "$collapsed" | grep -qF 'by the rule' || { echo 'FAIL: collapsed proof missing the macro rule step'; exit 1; }; \
+        if echo "$collapsed" | grep -qF 'Conjunction'; then echo 'FAIL: verbose scaffolding leaked into the collapsed ? view'; exit 1; fi; \
+        if echo "$collapsed" | grep -qF 'role-level detail'; then echo 'FAIL: role-level detail cluster shown in collapsed text'; exit 1; fi; \
+        echo 'PASS: ? shows the clean collapsed macro-logical DAG'
+    @verbose=$(printf 'la .rex. cu gerku\nro lo gerku cu danlu\n:proof-verbose la .rex. cu danlu\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$verbose"; \
+        echo "$verbose" | grep -qF '[Query] TRUE' || { echo 'FAIL: :proof-verbose query did not answer TRUE'; exit 1; }; \
+        echo "$verbose" | grep -qF 'Conjunction' || { echo 'FAIL: :proof-verbose did not show the full role-level trace'; exit 1; }; \
+        echo 'PASS: :proof-verbose shows the full role-level trace'
+
 # Executes the full pipeline: Builds WASM modules, then boots the native REPL
 run: build-wasm
     @echo "Launching Neuro-Symbolic Engine ({{profile}})..."
@@ -359,7 +379,7 @@ ci: fmt-check clippy-runtime test test-engine test-gasnu test-backend test-store
 # `build-wasm build-gasnu`, so `just` builds the component + host once, then runs
 # all six: fuel exhaustion + post-trap recovery + journal replay (trap-recovery),
 # plus the script transcript, go'i, persist-replay, NAF-note, and :debug round-trip.
-ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-debug
+ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-debug smoke-gasnu-collapse
 
 # Comprehensive pre-push / pre-release gate: the fast native `ci` plus the WASM
 # behavioral smokes. `ci` alone does not exercise the WASM component.

@@ -36,6 +36,18 @@ pub(crate) fn is_event_skolem(s: &str) -> bool {
         .is_some_and(|r| !r.is_empty() && r.bytes().all(|b| b.is_ascii_digit()))
 }
 
+/// Like [`is_event_skolem`], but also accepts a DEPENDENT event Skolem
+/// (`sk_N(args)`). A universal rule's conclusion event depends on the quantified
+/// individual, so its role predicates carry `sk_N(rex)` in arg0 — when
+/// regrouping role predicates back to a surface fact, the arg0 event is the
+/// group key regardless of dependency. (Distinct from [`is_event_skolem`], which
+/// is correctly strict where a `sk_N(arg)` is an exposed witness, not plumbing.)
+pub(crate) fn is_event_skolem_arg(s: &str) -> bool {
+    s.strip_prefix("sk_")
+        .and_then(|r| r.bytes().next())
+        .is_some_and(|b| b.is_ascii_digit())
+}
+
 /// Humanize a Skolem token for display: `sk_N` -> `#N`, `sk_N(arg)` -> `#N(arg)`.
 /// Non-Skolem strings pass through unchanged.
 pub(crate) fn humanize_skolem(s: &str) -> String {
