@@ -44,6 +44,16 @@ use compute::*;
 use reasoning::*;
 use rules::*;
 
+/// The built-in arithmetic predicates marked as `ComputeNode` by default —
+/// `pilji` (×), `sumji` (+), `dilcu` (÷). The shared default for every embedder
+/// (nibli-engine, lasna, nibli-wasm), paired with `transform_compute_nodes`.
+pub fn default_compute_predicates() -> HashSet<String> {
+    ["pilji", "sumji", "dilcu"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+}
+
 /// Transform registered compute predicates from Predicate → ComputeNode in a logic buffer.
 /// Call this after smuni compilation and before asserting/querying.
 pub fn transform_compute_nodes(buf: &mut LogicBuffer, compute_preds: &HashSet<String>) {

@@ -34,13 +34,9 @@ impl Default for Session {
 impl Session {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Session {
-        let mut compute_predicates = HashSet::new();
-        compute_predicates.insert("pilji".to_string());
-        compute_predicates.insert("sumji".to_string());
-        compute_predicates.insert("dilcu".to_string());
         Session {
             kb: logji::KnowledgeBase::new(),
-            compute_predicates,
+            compute_predicates: logji::default_compute_predicates(),
         }
     }
 
@@ -95,20 +91,11 @@ impl Session {
 
 impl Session {
     fn compile_text(&self, input: &str) -> Result<logji_logic::LogicBuffer, String> {
-        let parse_result = gerna::parse_text_native(input.to_string())
-            .map_err(|e: PipelineError| e.to_string())?;
-
-        if !parse_result.errors.is_empty() {
-            let msgs: Vec<String> = parse_result
-                .errors
-                .iter()
-                .map(|e| e.message.clone())
-                .collect();
-            return Err(format!("syntax: {}", msgs.join("; ")));
-        }
-
-        let mut buf = smuni::compile_from_gerna_ast(parse_result.buffer)
-            .map_err(|e: PipelineError| e.to_string())?;
+        // Shared parse front-end (fail-closed on any parse error) + smuni compile
+        // + compute-node marking. String-error surface preserved via `to_string`.
+        let ast = gerna::parse_checked(input).map_err(|e: PipelineError| e.to_string())?;
+        let mut buf =
+            smuni::compile_from_gerna_ast(ast).map_err(|e: PipelineError| e.to_string())?;
         logji::transform_compute_nodes(&mut buf, &self.compute_predicates);
         Ok(buf)
     }
@@ -140,12 +127,8 @@ pub fn back_translate_ir(lojban: &str) -> String {
 /// Parse + compile a line to the FOL `LogicBuffer` for rendering (no compute
 /// transform, no assertion — display only).
 fn compile_for_render(input: &str) -> Result<logji_logic::LogicBuffer, String> {
-    let parse_result =
-        gerna::parse_text_native(input.to_string()).map_err(|e: PipelineError| e.to_string())?;
-    if !parse_result.errors.is_empty() {
-        return Err("parse error".to_string());
-    }
-    smuni::compile_from_gerna_ast(parse_result.buffer).map_err(|e: PipelineError| e.to_string())
+    let ast = gerna::parse_checked(input).map_err(|e: PipelineError| e.to_string())?;
+    smuni::compile_from_gerna_ast(ast).map_err(|e: PipelineError| e.to_string())
 }
 
 // ── native tests: the book's headline queries against the real KBs ─────────

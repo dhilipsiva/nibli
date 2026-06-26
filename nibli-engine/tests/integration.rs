@@ -986,6 +986,23 @@ fn query_parse_error() {
     assert!(result.is_err(), "Invalid query should produce an error");
 }
 
+#[test]
+fn partial_parse_fails_closed_for_query() {
+    // The unified fail-closed policy: gerna recovers per sentence, so this input
+    // has a valid first sentence and an unlexable second. A QUERY must abort on
+    // the parse error (don't answer when the input didn't fully parse), not
+    // silently proceed with the partial parse. `gerna::parse_checked` is shared by
+    // every embedder (nibli-engine, lasna, nibli-wasm), so all three agree.
+    let engine = engine_with_facts(&["la .adam. cu gerku"]);
+    let err = engine
+        .query_holds("la .adam. cu gerku .i \u{ff}\u{ff}\u{ff}")
+        .expect_err("a partial-parse query must fail closed");
+    assert!(
+        matches!(err, EngineError::Syntax(_)),
+        "a parse error must be the Syntax class, got: {err:?}"
+    );
+}
+
 // ─── Proof trace structure ──────────────────────────────────────────
 
 #[test]

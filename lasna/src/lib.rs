@@ -45,16 +45,6 @@ struct BridiSnapshot {
     root: u32,
 }
 
-// ─── Default compute predicates ───
-
-fn default_compute_predicates() -> HashSet<String> {
-    let mut set = HashSet::new();
-    set.insert("pilji".to_string());
-    set.insert("sumji".to_string());
-    set.insert("dilcu".to_string());
-    set
-}
-
 // ─── Type conversion: logji → lasna export boundary ───
 
 fn convert_logical_term_to_export(t: &logji_logic::LogicalTerm) -> export_logic::LogicalTerm {
@@ -1061,39 +1051,20 @@ fn compile_pipeline(
     text: &str,
     last_snapshot: &mut Option<BridiSnapshot>,
     compute_predicates: &HashSet<String>,
-) -> Result<(logji_logic::LogicBuffer, Option<BridiSnapshot>, Vec<String>), export_err::NibliError>
-{
-    let parse_result =
-        gerna::parse_text_native(text.to_string()).map_err(convert_pipeline_error)?;
-
-    let parse_warnings: Vec<String> = parse_result
-        .errors
-        .iter()
-        .map(|e| e.message.clone())
-        .collect();
-
-    let mut ast = parse_result.buffer;
-
-    if ast.roots.is_empty() && !parse_warnings.is_empty() {
-        let first = &parse_result.errors[0];
-        return Err(export_err::NibliError::Syntax(export_err::SyntaxDetail {
-            message: parse_warnings.join("; "),
-            line: first.line,
-            column: first.column,
-        }));
-    }
+) -> Result<(logji_logic::LogicBuffer, Option<BridiSnapshot>), export_err::NibliError> {
+    // Shared parse front-end (fail-closed on any parse error — assert AND query),
+    // then the lasna-specific go'i resolution, then smuni compile + compute-node
+    // marking.
+    let mut ast = gerna::parse_checked(text).map_err(convert_pipeline_error)?;
 
     let last_bridi_sid =
-        resolve_go_i(&mut ast, last_snapshot).map_err(|e| export_err::NibliError::Semantic(e))?;
+        resolve_go_i(&mut ast, last_snapshot).map_err(export_err::NibliError::Semantic)?;
     let new_snapshot = last_bridi_sid.map(|sid| extract_bridi_snapshot(&ast, sid));
 
-    // Call smuni (converts gerna AST → logic buffer internally)
     let mut buf = smuni::compile_from_gerna_ast(ast).map_err(convert_pipeline_error)?;
-
-    // Transform registered predicates to ComputeNode
     logji::transform_compute_nodes(&mut buf, compute_predicates);
 
-    Ok((buf, new_snapshot, parse_warnings))
+    Ok((buf, new_snapshot))
 }
 
 // ─── WIT exports ───
@@ -1107,28 +1078,18 @@ impl Session {
     /// `Some`, the fact is asserted with that CALLER-CHOSEN id (persistent
     /// restart-replay keeps the live KB's fact-id namespace equal to the durable
     /// store's); when `None`, the KB mints a fresh id. The `last_relation` go'i
-    /// snapshot update and the parse-warnings abort apply on BOTH paths.
+    /// snapshot update applies on BOTH paths. (`compile_pipeline` fails closed on
+    /// any parse error, so no per-caller warning check is needed.)
     fn assert_text_inner(
         &self,
         input: String,
         id: Option<u64>,
     ) -> Result<u64, export_err::NibliError> {
-        let (buf, new_last, warnings) = compile_pipeline(
+        let (buf, new_last) = compile_pipeline(
             &input,
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),
         )?;
-        if !warnings.is_empty() {
-            return Err(export_err::NibliError::Syntax(export_err::SyntaxDetail {
-                message: format!(
-                    "Assertion aborted: {} sentence(s) failed to parse: {}",
-                    warnings.len(),
-                    warnings.join("; ")
-                ),
-                line: 0,
-                column: 0,
-            }));
-        }
         let fact_id = match id {
             Some(i) => {
                 self.kb
@@ -1206,7 +1167,7 @@ impl GuestSession for Session {
         kb.set_compute_dispatch(eval_via_host, batch_eval_via_host);
         Session {
             kb,
-            compute_predicates: RefCell::new(default_compute_predicates()),
+            compute_predicates: RefCell::new(logji::default_compute_predicates()),
             last_relation: RefCell::new(None),
         }
     }
@@ -1223,7 +1184,7 @@ impl GuestSession for Session {
         &self,
         input: String,
     ) -> Result<export_logic::QueryResult, export_err::NibliError> {
-        let (buf, new_last, _warnings) = compile_pipeline(
+        let (buf, new_last) = compile_pipeline(
             &input,
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),
@@ -1243,7 +1204,7 @@ impl GuestSession for Session {
         &self,
         input: String,
     ) -> Result<Vec<Vec<export_logic::WitnessBinding>>, export_err::NibliError> {
-        let (buf, new_last, _warnings) = compile_pipeline(
+        let (buf, new_last) = compile_pipeline(
             &input,
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),
@@ -1258,7 +1219,7 @@ impl GuestSession for Session {
         &self,
         input: String,
     ) -> Result<(export_logic::QueryResult, export_logic::ProofTrace), export_err::NibliError> {
-        let (buf, new_last, _warnings) = compile_pipeline(
+        let (buf, new_last) = compile_pipeline(
             &input,
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),
@@ -1279,7 +1240,7 @@ impl GuestSession for Session {
         &self,
         input: String,
     ) -> Result<export_logic::LogicBuffer, export_err::NibliError> {
-        let (buf, _, _warnings) = compile_pipeline(
+        let (buf, _) = compile_pipeline(
             &input,
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),

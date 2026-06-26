@@ -77,6 +77,37 @@ pub fn parse_text_native(input: String) -> Result<flat::ParseResult, NibliError>
     Ok(flat::ParseResult { buffer, errors })
 }
 
+/// Parse Lojban text and FAIL CLOSED on any parse error. gerna recovers per
+/// sentence (skipping a malformed one and continuing), so a non-empty `errors`
+/// means at least one sentence failed — a zero-hallucination engine rejects the
+/// whole input (assert AND query) rather than silently proceeding with a partial
+/// parse. The message is caller-agnostic (used by both assertion and query
+/// paths) and positioned at the first error.
+///
+/// The shared parse front-end for every embedder (nibli-engine, lasna,
+/// nibli-wasm): each then runs `smuni::compile_from_gerna_ast` (lasna interposes
+/// `resolve_go_i`) + `logji::transform_compute_nodes`.
+pub fn parse_checked(text: &str) -> Result<flat::AstBuffer, NibliError> {
+    let result = parse_text_native(text.to_string())?;
+    if let Some(first) = result.errors.first() {
+        let joined = result
+            .errors
+            .iter()
+            .map(|e| e.message.clone())
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(NibliError::Syntax(nibli_types::error::SyntaxDetail {
+            message: format!(
+                "{} sentence(s) failed to parse: {joined}",
+                result.errors.len()
+            ),
+            line: first.line,
+            column: first.column,
+        }));
+    }
+    Ok(result.buffer)
+}
+
 // ─── AST → WIT Buffer Flattener ─────────────────────────────────
 
 /// Converts the tree-structured AST into the flat index-based WIT buffer.
@@ -425,3 +456,30 @@ mod flattener_tests;
 #[cfg(test)]
 #[path = "pipeline_tests.rs"]
 mod pipeline_tests;
+
+#[cfg(test)]
+mod parse_checked_tests {
+    #[test]
+    fn parse_checked_ok_for_clean_input() {
+        let buf = crate::parse_checked("la .adam. cu gerku").expect("clean parse");
+        assert!(!buf.roots.is_empty());
+    }
+
+    #[test]
+    fn parse_checked_fails_closed_on_parse_error() {
+        // gerna recovers per sentence, so this may parse `la .adam. cu gerku` and
+        // skip the unlexable run — but `parse_checked` fails CLOSED on ANY parse
+        // error (assert AND query), rather than silently proceeding with the
+        // partial parse.
+        let err = crate::parse_checked("la .adam. cu gerku .i \u{ff}\u{ff}\u{ff}")
+            .expect_err("a parse error must fail closed");
+        match err {
+            nibli_types::error::NibliError::Syntax(detail) => assert!(
+                detail.message.contains("failed to parse"),
+                "message: {}",
+                detail.message
+            ),
+            other => panic!("expected a Syntax error, got {other:?}"),
+        }
+    }
+}

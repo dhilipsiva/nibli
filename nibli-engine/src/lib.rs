@@ -118,20 +118,12 @@ impl NibliEngine {
         );
     }
 
-    fn default_compute_predicates() -> HashSet<String> {
-        let mut preds = HashSet::new();
-        preds.insert("pilji".to_string());
-        preds.insert("sumji".to_string());
-        preds.insert("dilcu".to_string());
-        preds
-    }
-
     /// Create an engine without persistence (existing behavior).
     pub fn new() -> Self {
         println!("Native engine ready");
         NibliEngine {
             kb: logji::KnowledgeBase::new(),
-            compute_predicates: Self::default_compute_predicates(),
+            compute_predicates: logji::default_compute_predicates(),
             store: RefCell::new(None),
         }
     }
@@ -162,7 +154,7 @@ impl NibliEngine {
 
         let engine = NibliEngine {
             kb: logji::KnowledgeBase::with_store(Box::new(typed_store)),
-            compute_predicates: Self::default_compute_predicates(),
+            compute_predicates: logji::default_compute_predicates(),
             store: RefCell::new(Some(store)),
         };
         engine.replay_from_store()?;
@@ -205,40 +197,9 @@ impl NibliEngine {
     }
 
     fn compile_text(&self, input: &str) -> Result<logji_logic::LogicBuffer, EngineError> {
-        let parse_result = gerna::parse_text_native(input.to_string())?;
-
-        if parse_result.buffer.roots.is_empty() && !parse_result.errors.is_empty() {
-            let first = &parse_result.errors[0];
-            return Err(EngineError::Syntax(nibli_types::error::SyntaxDetail {
-                message: parse_result
-                    .errors
-                    .iter()
-                    .map(|e| e.message.clone())
-                    .collect::<Vec<_>>()
-                    .join("; "),
-                line: first.line,
-                column: first.column,
-            }));
-        }
-
-        if !parse_result.errors.is_empty() {
-            let warnings: Vec<String> = parse_result
-                .errors
-                .iter()
-                .map(|e| e.message.clone())
-                .collect();
-            return Err(EngineError::Syntax(nibli_types::error::SyntaxDetail {
-                message: format!(
-                    "Assertion aborted: {} sentence(s) failed to parse: {}",
-                    warnings.len(),
-                    warnings.join("; ")
-                ),
-                line: 0,
-                column: 0,
-            }));
-        }
-
-        let mut buf = smuni::compile_from_gerna_ast(parse_result.buffer)?;
+        // Shared parse front-end (fail-closed on any parse error) + smuni compile
+        // + compute-node marking. `EngineError` is the re-exported `NibliError`.
+        let mut buf = smuni::compile_from_gerna_ast(gerna::parse_checked(input)?)?;
         logji::transform_compute_nodes(&mut buf, &self.compute_predicates);
         Ok(buf)
     }
