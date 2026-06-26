@@ -727,8 +727,8 @@ fn resolve_sentence_go_i(
             // and resolve any go'i there, reading `current` as the PRIOR top-level
             // antecedent — so `mi klama .i mi nelci lo nu go'i` resolves the nested
             // go'i to `klama(mi)`, not to this sentence. Descend BEFORE advancing
-            // `current`. A SELBRI-position go'i (`sutra go'i` in a tanru) is NOT
-            // resolved here — the fail-closed net rejects it (deferred).
+            // `current`. This descent ALSO resolves a SELBRI-position go'i (`sutra
+            // go'i` in a tanru) via `resolve_selbri_go_i` → the antecedent relation.
             let (relation, terms): (u32, Vec<u32>) = match &ast.sentences[sentence_idx] {
                 gerna_ast::Sentence::Simple(b) => (
                     b.relation,
@@ -758,11 +758,12 @@ fn resolve_sentence_go_i(
     }
 }
 
-/// Mutating twin of `selbri_reaches_go_i`: descend a selbri and resolve any
-/// nested SENTENCE-position go'i (an abstraction body, `lo nu go'i`). A
-/// SELBRI-position go'i (a bare `Root("go'i")` in a tanru, `sutra go'i`) is left
-/// unresolved for the fail-closed net (deferred). Reads `current` (never advances
-/// it). Clone-then-recurse to dodge the `&mut ast[i]` borrow; `seen` cycle-guards.
+/// Mutating twin of `selbri_reaches_go_i`: descend a selbri and resolve any go'i.
+/// A SELBRI-position go'i (a bare `Root("go'i")` in a tanru, `sutra go'i`) becomes
+/// the antecedent's RELATION selbri; a nested SENTENCE-position go'i (an
+/// abstraction body, `lo nu go'i`) is resolved by recursing. Reads `current`
+/// (never advances it). Clone-then-recurse to dodge the `&mut ast[i]` borrow;
+/// `seen` cycle-guards.
 fn resolve_selbri_go_i(
     ast: &mut gerna_ast::AstBuffer,
     id: u32,
@@ -773,6 +774,22 @@ fn resolve_selbri_go_i(
         return Ok(());
     }
     match ast.selbris[id as usize].clone() {
+        gerna_ast::Selbri::Root(n) if n == "go'i" => {
+            // SELBRI-position go'i (a tanru arm, `mi sutra go'i`): replace it with
+            // the antecedent bridi's RELATION selbri. The antecedent is already in
+            // the live buffer (grafted at dispatch / a live sentence), so its
+            // relation subtree's child indices are valid — copy the top node,
+            // sharing the subtree exactly as the bare-bridi case copies the
+            // antecedent bridi. After `mi klama`, `mi sutra go'i` → `mi sutra klama`.
+            let antecedent_sid = current
+                .ok_or_else(|| "go'i has no antecedent (no previous assertion)".to_string())?;
+            let ant_relation = match &ast.sentences[antecedent_sid as usize] {
+                gerna_ast::Sentence::Simple(b) => b.relation,
+                _ => return Err("go'i antecedent is not a simple bridi".to_string()),
+            };
+            let cloned = ast.selbris[ant_relation as usize].clone();
+            ast.selbris[id as usize] = cloned;
+        }
         gerna_ast::Selbri::Root(_) | gerna_ast::Selbri::Compound(_) => {}
         gerna_ast::Selbri::Tanru((m, h)) => {
             resolve_selbri_go_i(ast, m, current, seen)?;
@@ -903,20 +920,21 @@ fn resolve_go_i(
         let root_idx = ast.roots[i] as usize;
         resolve_sentence_go_i(ast, root_idx, &mut current)?;
     }
-    // Fail-closed net: any go'i still REACHABLE after resolution sits in a
-    // SELBRI position the resolver intentionally does not handle yet — a tanru /
-    // selbri-position go'i (`sutra go'i`). Top-level, abstraction-body, and
-    // relative-clause-body go'i are resolved above; a resolved go'i leaves only an
-    // unreachable residual node. Compiling a remaining go'i as a literal predicate
-    // is silently wrong, so reject.
+    // Defensive backstop: every reachable go'i position — top-level, partial,
+    // abstraction / relative-clause body, AND selbri-position (a tanru arm) — is
+    // resolved above; a resolved go'i leaves only an unreachable residual node. A
+    // go'i still REACHABLE here would mean a future AST variant was added to the
+    // `*_reaches_go_i` walks but not the `resolve_*` twins (the arm-for-arm mirror
+    // broke). Compiling a stray go'i as a literal predicate is silently wrong, so
+    // reject rather than miscompile.
     if has_go_i {
         let mut seen = HashSet::new();
         for &root in &ast.roots {
             if sentence_reaches_go_i(ast, root, &mut seen) {
                 return Err(
-                    "go'i in an unsupported position (a tanru / selbri-position go'i \
-                            such as `sutra go'i`) — abstraction and relative-clause go'i \
-                            are resolved, but selbri-position go'i is not yet supported"
+                    "go'i in an unsupported position — the resolver did not descend \
+                            into it (a `*_reaches_go_i` / `resolve_*` mismatch). This \
+                            should not occur for any currently-supported construct."
                         .to_string(),
                 );
             }
@@ -1783,11 +1801,10 @@ mod tests {
     }
 
     #[test]
-    fn tanru_go_i_still_rejected() {
-        // `mi sutra go'i` — a SELBRI-position go'i inside a tanru is the deferred
-        // phase-2 case. The resolver does not graft a selbri-position go'i, so the
-        // fail-closed net must still reject it (rather than compile a literal
-        // `go'i` predicate). Phase-2 guard.
+    fn tanru_go_i_resolves_to_antecedent_relation() {
+        // `mi sutra go'i` after `mi klama` — the SELBRI-position go'i (the tanru's
+        // head arm) resolves to the antecedent's relation selbri, giving
+        // `mi sutra klama`.
         let src = make_ast(
             vec![gerna_ast::Selbri::Root("klama".to_string())],
             0,
@@ -1805,8 +1822,72 @@ mod tests {
             vec![0],
         );
         let res = resolve_go_i(&mut ast, &mut last);
-        assert!(res.is_err(), "tanru go'i must be rejected, got {res:?}");
-        assert!(res.unwrap_err().contains("unsupported position"));
+        assert!(res.is_ok(), "tanru go'i must resolve, got {res:?}");
+        // The go'i arm (selbri index 1) is now the antecedent relation `klama`.
+        assert!(
+            matches!(&ast.selbris[1], gerna_ast::Selbri::Root(n) if n == "klama"),
+            "the go'i tanru arm resolves to the antecedent relation klama, got {:?}",
+            ast.selbris[1]
+        );
+        // The tanru structure (sutra + resolved arm) is intact.
+        assert!(matches!(&ast.selbris[2], gerna_ast::Selbri::Tanru((0, 1))));
+    }
+
+    #[test]
+    fn tanru_go_i_complex_antecedent_relation() {
+        // Antecedent relation is itself a tanru `barda klama`. `mi sutra go'i`
+        // resolves the go'i arm to that whole tanru node (sharing its grafted
+        // children) — no fresh subtree graft needed.
+        let src = make_ast(
+            vec![
+                gerna_ast::Selbri::Root("barda".to_string()),
+                gerna_ast::Selbri::Root("klama".to_string()),
+                gerna_ast::Selbri::Tanru((0, 1)),
+            ],
+            2,
+            vec![0],
+        );
+        let mut last = Some(extract_bridi_snapshot(&src, 0));
+        let mut ast = make_ast(
+            vec![
+                gerna_ast::Selbri::Root("sutra".to_string()),
+                gerna_ast::Selbri::Root("go'i".to_string()),
+                gerna_ast::Selbri::Tanru((0, 1)),
+            ],
+            2,
+            vec![0],
+        );
+        let res = resolve_go_i(&mut ast, &mut last);
+        assert!(
+            res.is_ok(),
+            "complex-relation tanru go'i must resolve, got {res:?}"
+        );
+        // selbris[1] (the go'i arm) is now a Tanru whose arms are the grafted barda/klama.
+        let gerna_ast::Selbri::Tanru((m, h)) = &ast.selbris[1] else {
+            panic!(
+                "go'i arm should resolve to the antecedent tanru, got {:?}",
+                ast.selbris[1]
+            );
+        };
+        assert!(matches!(&ast.selbris[*m as usize], gerna_ast::Selbri::Root(n) if n == "barda"));
+        assert!(matches!(&ast.selbris[*h as usize], gerna_ast::Selbri::Root(n) if n == "klama"));
+    }
+
+    #[test]
+    fn tanru_go_i_no_antecedent_rejected() {
+        // `mi sutra go'i` with NO prior bridi → the go'i arm has no antecedent.
+        let mut ast = make_ast(
+            vec![
+                gerna_ast::Selbri::Root("sutra".to_string()),
+                gerna_ast::Selbri::Root("go'i".to_string()),
+                gerna_ast::Selbri::Tanru((0, 1)),
+            ],
+            2,
+            vec![0],
+        );
+        let res = resolve_go_i(&mut ast, &mut None);
+        assert!(res.is_err(), "a tanru go'i with no antecedent must error");
+        assert!(res.unwrap_err().contains("no antecedent"));
     }
 
     // ─── (a) partial go'i per-place merge ───

@@ -148,6 +148,19 @@ smoke-gasnu-goi-nested: build-wasm build-gasnu
         echo "$out" | grep -qF '[Query]' || { echo 'FAIL: nested go'\''i did not produce a query verdict'; exit 1; }; \
         echo 'PASS: nested go'\''i in lo nu resolves (no unsupported-position reject)'
 
+# Selbri-position go'i in a tanru: `mi sutra go'i` after `mi klama` resolves the
+# tanru arm to the antecedent's relation selbri (`mi sutra klama`). Asserting
+# `mi sutra klama` first makes the resolved query match -> TRUE. Pre-fix it was
+# rejected with "unsupported position". Pre-release gate (needs the WASM build).
+smoke-gasnu-goi-tanru: build-wasm build-gasnu
+    @echo "Smoke-testing selbri-position go'i in a tanru (mi sutra go'i resolves)..."
+    @out=$(printf 'mi sutra klama\nmi klama\n? mi sutra go'\''i\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$out"; \
+        if echo "$out" | grep -qF 'unsupported position'; then echo 'FAIL: tanru go'\''i still rejected (not resolved)'; exit 1; fi; \
+        echo "$out" | grep -qF '[Query] TRUE' || { echo 'FAIL: ? mi sutra go'\''i did not resolve to mi sutra klama (TRUE)'; exit 1; }; \
+        echo 'PASS: selbri-position go'\''i resolves (mi sutra go'\''i -> mi sutra klama, TRUE)'
+
 # Persistent restart-replay smoke: prove the live session's fact-ids stay equal
 # to the durable store's across a reopen, INCLUDING a tombstone gap. Run-1
 # asserts 3 facts and retracts the middle one; run-2 reopens the SAME db and must
@@ -346,7 +359,7 @@ ci: fmt-check clippy-runtime test test-engine test-gasnu test-backend test-store
 # `build-wasm build-gasnu`, so `just` builds the component + host once, then runs
 # all six: fuel exhaustion + post-trap recovery + journal replay (trap-recovery),
 # plus the script transcript, go'i, persist-replay, NAF-note, and :debug round-trip.
-ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-debug
+ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-debug
 
 # Comprehensive pre-push / pre-release gate: the fast native `ci` plus the WASM
 # behavioral smokes. `ci` alone does not exercise the WASM component.
