@@ -15,7 +15,6 @@ long tail below covers correctness remainders, documentation-vs-code mismatches,
 `code-review-panel-2026-06-10.json`.)
 
 ### case studies
-- [ ] **readme.lojban data-protection rule has convoluted polarity vs its comment** — `readme.lojban:107` `ro lo se kurji datni cu se fanta lo na se curmi` ties data protection to a double-negative whose intent is unclear; compiles but the predication doesn't cleanly express the stated intent. _Fix:_ reformulate so the agent holds the permission/right; verify via the back-translation. (correctness)
 
 ### engine guarantees / firewall claims
 - [ ] **Residual non-REPL output surfaces still HashSet-order dependent (ordering only, verdicts unaffected)** — surfaces NOT reachable from gasnu REPL output: (1) `check_contradictions` violation order iterates `negative_facts`/`all_facts()` (engine/server API only); (2) `[Forward] Derived:` print order iterates a `lookup_predicate` HashSet clone (forward rules off by default). _Location:_ `logji/src/lib.rs` (check_contradictions); `logji/src/rules.rs` (trigger_forward_rules). _Fix:_ sort before returning/printing. (correctness)

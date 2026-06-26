@@ -4321,8 +4321,10 @@ fn test_readme_ro_lo_se_ponse_datni_cu_se_kurji() {
 }
 
 #[test]
-fn test_readme_se_kurji_datni_cu_se_fanta_lo_na_se_curmi() {
-    // "ro lo se kurji datni cu se fanta lo na se curmi" — line 107 of readme.lojban
+fn test_lo_na_se_curmi_tail_is_negated_converted_description() {
+    // A `lo na se curmi` tail term parses to a negated, converted description.
+    // (The construct is used in gdpr.lojban — `poi na se curmi` etc.; this test
+    // pins the parse independent of any corpus line.)
     let arena = Bump::new();
     let r = parse_ok(
         &[
