@@ -53,12 +53,39 @@ fn generic_template(gloss: &str, arity: usize) -> String {
     t
 }
 
+/// English particles that, in a frame template, exist only to introduce a place
+/// (`goes to {x2}`, `from {x3}`). When that place is elided we keep the verb but
+/// strip such a now-dangling particle (`goes to` → `goes`).
+const TRAILING_PARTICLES: &[&str] = &[
+    "to", "from", "of", "with", "by", "at", "in", "on", "for", "via", "using", "into", "onto",
+    "about", "as", "than", "that",
+];
+
+/// Trim trailing whitespace and any dangling particle words from a kept
+/// connective, preserving leading whitespace so the join keeps its separator
+/// (`" eats "` → `" eats"`, `" goes to "` → `" goes"`, `" from "` → `""`).
+fn strip_trailing_particle(before: &str) -> &str {
+    let mut s = before.trim_end();
+    loop {
+        let start = s.rfind(char::is_whitespace).map_or(0, |i| i + 1);
+        let last = &s[start..];
+        if start > 0 && TRAILING_PARTICLES.contains(&last) {
+            s = s[..start].trim_end();
+        } else {
+            return s;
+        }
+    }
+}
+
 /// Fill a template with rendered place fillers. `places[i]` is the filler for
 /// place `x(i+1)`; `None` means the place was unspecified (`zo'e`) or absent.
 ///
 /// Placeholders BEYOND the last filled place are a TRAILING run and are truncated
 /// (Lojban leaves trailing places implicit, so `klama` with only x1,x2 filled
 /// reads "X goes to the market", not "X goes to the market from  via  using ").
+/// The verb connective leading into the first dropped place is KEPT, minus any
+/// dangling particle — so `citka` with only x1 reads "X eats" (not "X"), and
+/// `klama` with only x1 reads "X goes" (not "X" or a dangling "X goes to").
 /// An INTERIOR or LEADING unspecified place — one where a LATER place IS filled —
 /// renders a generic "something" so the clause is not collapsed to nothing
 /// (`klama fi le zarci do` → "something goes to something from the market via do",
@@ -80,7 +107,12 @@ pub(crate) fn fill_template(template: &str, places: &[Option<String>]) -> String
         let ph = &rest[pos + 2..close]; // the "N" in "{xN}"
         let n: usize = ph.parse().unwrap_or(0);
         if n > last_filled {
-            // Trailing unfilled place: drop the connective leading in + the rest.
+            // Trailing unfilled place(s): Lojban elides them. Keep the connective
+            // that introduced the FIRST dropped place — it carries the verb
+            // ("eats" in "{x1} eats {x2}", so `la .adam. cu citka` reads "Adam
+            // eats", not "Adam") — but strip any dangling particle that only
+            // existed to introduce the now-elided place ("goes to" → "goes").
+            out.push_str(strip_trailing_particle(before));
             rest = "";
             break;
         }
@@ -137,6 +169,29 @@ mod tests {
             ),
             "adam goes to the market"
         );
+    }
+
+    #[test]
+    fn trailing_object_keeps_verb() {
+        // The reported bug: "{x1} eats {x2}" with x2 elided (zo'e) must read
+        // "adam eats", NOT "adam" (the verb was being dropped with the place).
+        assert_eq!(
+            fill_template("{x1} eats {x2}", &[Some("adam".into())]),
+            "adam eats"
+        );
+        // Rule consequent path: "X eats" for the elided object.
+        assert_eq!(
+            fill_template("{x1} eats {x2}", &[Some("X".into()), None]),
+            "X eats"
+        );
+    }
+
+    #[test]
+    fn trailing_strips_dangling_particle() {
+        // Only x1 filled → "x goes" (the "to {x2}" run is dropped, and the now-
+        // dangling preposition "to" goes with it — not "x goes to").
+        let t = "{x1} goes to {x2} from {x3} via {x4} using {x5}";
+        assert_eq!(fill_template(t, &[Some("x".into())]), "x goes");
     }
 
     #[test]
