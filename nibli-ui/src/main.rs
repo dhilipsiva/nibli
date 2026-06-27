@@ -389,6 +389,17 @@ fn KbStatusBar(kb_status: Signal<Option<KbStatus>>) -> Element {
     }
 }
 
+/// The live reading of the query being typed: empty input, a clean IR
+/// back-translation, or an "incomplete / invalid" indicator (transient while
+/// typing). A 3-state value (not just an optional string) so the gloss never
+/// blanks out mid-keystroke — it flips between the reading and the indicator.
+#[derive(Clone, PartialEq)]
+enum QueryReading {
+    Empty,
+    Reads(String),
+    Incomplete,
+}
+
 #[component]
 fn QueryBar(
     output_log: Signal<Vec<OutputEntry>>,
@@ -399,16 +410,27 @@ fn QueryBar(
 ) -> Element {
     let mut query_text = use_signal(|| DEFAULT_QUERY.to_string());
 
-    // Live "reads as" gloss of the query being typed — reuses the same IR-driven
-    // back-translation as the Source / Back-translation tabs, so the user sees
-    // what the engine will understand the query as, on every keystroke.
-    let query_gloss = use_memo(move || {
+    // Live back-translation of the query being typed, on every keystroke. Unlike
+    // the tabs, the query reading is shown ONLY for a cleanly-parsed query; a
+    // transient parse error mid-typing shows a stable "incomplete" indicator
+    // (not a blank flicker, and not a misleading lexical-gloss fallback).
+    let query_reading = use_memo(move || {
         let q = query_text.read();
         let q = q.trim();
         if q.is_empty() {
-            String::new()
-        } else {
-            back_translate_ir(q)
+            return QueryReading::Empty;
+        }
+        match gerna::parse_text_native(q.to_string()) {
+            Ok(parsed) if parsed.errors.is_empty() => {
+                match smuni::compile_from_gerna_ast(parsed.buffer) {
+                    Ok(buf) => QueryReading::Reads(nibli_render::render_logic_buffer(
+                        &buf,
+                        nibli_render::Register::Spec,
+                    )),
+                    Err(_) => QueryReading::Incomplete,
+                }
+            }
+            _ => QueryReading::Incomplete,
         }
     });
 
@@ -457,7 +479,7 @@ fn QueryBar(
         }
     };
 
-    let gloss = query_gloss.read().clone();
+    let reading = query_reading.read().clone();
 
     rsx! {
         div { class: "query-bar",
@@ -477,11 +499,29 @@ fn QueryBar(
                 "Run"
             }
         }
-        if !gloss.is_empty() {
-            div { class: "query-gloss",
-                span { class: "query-gloss__label", "reads as" }
-                span { class: "query-gloss__text", "{gloss}" }
+        match reading {
+            QueryReading::Empty => rsx! {},
+            QueryReading::Reads(g) => {
+                // Drop a trailing period so "Query if Adam eats" reads as prose.
+                let g = g.trim().trim_end_matches('.').trim().to_string();
+                rsx! {
+                    div { class: "query-gloss",
+                        span { class: "nb-eyebrow", "back-translation" }
+                        div { class: "query-gloss__reading",
+                            span { class: "query-gloss__prefix", "Query if " }
+                            span { class: "query-gloss__text", "{g}" }
+                        }
+                    }
+                }
             }
+            QueryReading::Incomplete => rsx! {
+                div { class: "query-gloss",
+                    span { class: "nb-eyebrow", "back-translation" }
+                    div { class: "query-gloss__reading query-gloss__reading--pending",
+                        "\u{26A0} incomplete or invalid Lojban"
+                    }
+                }
+            },
         }
     }
 }
