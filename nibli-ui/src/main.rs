@@ -588,7 +588,7 @@ fn QueryTabs(
                                 oninput: move |e| query_text.set(e.value()),
                                 onkeydown: on_query_keydown,
                             }
-                            button { class: "query-btn", onclick: submit_click, "Run" }
+                            button { class: "query-btn", onclick: submit_click, "Query" }
                         }
                         match reading {
                             QueryReading::Empty => rsx! {},
