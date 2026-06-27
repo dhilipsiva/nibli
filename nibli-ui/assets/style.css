@@ -653,6 +653,24 @@ body {
   position: absolute; left: var(--s3); top: 50%; transform: translateY(-50%);
   font-family: var(--font-mono); font-size: var(--fs-code); color: var(--accent); pointer-events: none;
 }
+
+/* Live "reads as" gloss under the query input — the IR back-translation of the
+   query being typed, so the user sees how the engine reads it (same renderer as
+   the Back-translation tab). */
+.query-gloss {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  font-size: var(--fs-cap);
+  line-height: 1.45;
+}
+.query-gloss__label {
+  flex: none;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+.query-gloss__text { color: var(--text-muted); font-style: italic; min-width: 0; }
 .query-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
   height: var(--control-h); padding: 0 var(--s4);

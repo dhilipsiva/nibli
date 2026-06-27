@@ -399,6 +399,19 @@ fn QueryBar(
 ) -> Element {
     let mut query_text = use_signal(|| DEFAULT_QUERY.to_string());
 
+    // Live "reads as" gloss of the query being typed — reuses the same IR-driven
+    // back-translation as the Source / Back-translation tabs, so the user sees
+    // what the engine will understand the query as, on every keystroke.
+    let query_gloss = use_memo(move || {
+        let q = query_text.read();
+        let q = q.trim();
+        if q.is_empty() {
+            String::new()
+        } else {
+            back_translate_ir(q)
+        }
+    });
+
     let mut do_submit = move || {
         let text = query_text.read().clone();
         let trimmed = text.trim();
@@ -444,6 +457,8 @@ fn QueryBar(
         }
     };
 
+    let gloss = query_gloss.read().clone();
+
     rsx! {
         div { class: "query-bar",
             span { class: "query-bar__affix", "xu" }
@@ -460,6 +475,12 @@ fn QueryBar(
                 class: "query-btn",
                 onclick: submit_click,
                 "Run"
+            }
+        }
+        if !gloss.is_empty() {
+            div { class: "query-gloss",
+                span { class: "query-gloss__label", "reads as" }
+                span { class: "query-gloss__text", "{gloss}" }
             }
         }
     }
