@@ -116,19 +116,6 @@ body {
 .app-header__credit-link:hover { color: var(--accent-hover); text-decoration: underline; }
 .app-header__credit-link:focus-visible { box-shadow: var(--ring); border-radius: var(--r-sm); }
 
-/* Quiet mono link to the repo, sitting between the credit and the theme toggle. */
-.app-header__link {
-  flex: none;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-  text-decoration: none;
-  transition: color var(--dur-fast) var(--ease-out);
-}
-.app-header__link:hover { color: var(--text-strong); }
-.app-header__link:focus-visible { outline: none; box-shadow: var(--ring); border-radius: var(--r-sm); }
-
 /* Theme toggle — quiet inset chip, mono caps; matches the handoff masthead. */
 .app-header__theme {
   flex: none;
@@ -148,6 +135,53 @@ body {
 .app-header__theme:hover { color: var(--text-strong); border-color: var(--border-strong); }
 .app-header__theme:active { transform: translateY(1px); }
 .app-header__theme:focus-visible { box-shadow: var(--ring); }
+
+/* ── Footer — the serverless/in-browser provenance line + a star CTA. Mirrors
+   the masthead chrome (slim mono bar, bg-raised, border) at the shell's foot. */
+.app-footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+  min-height: 38px;
+  padding: var(--s2) var(--s4);
+  background: var(--bg-raised);
+  border-top: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+}
+.app-footer__text {
+  flex: 1 1 16rem;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  color: var(--text-muted);
+}
+.app-footer__brand { color: var(--text-strong); font-weight: 600; }
+.app-footer__star {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  height: 26px;
+  padding: 0 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  background: var(--surface-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  transition: color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out);
+}
+.app-footer__star:hover { color: var(--text-strong); border-color: var(--border-strong); }
+.app-footer__star:active { transform: translateY(1px); }
+.app-footer__star:focus-visible { outline: none; box-shadow: var(--ring); }
+.app-footer__star-icon { color: var(--accent); font-size: 12px; line-height: 1; }
 
 .main-row {
   display: grid;

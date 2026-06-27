@@ -282,14 +282,6 @@ fn App() -> Element {
                         "@dhilipsiva"
                     }
                 }
-                a {
-                    class: "app-header__link",
-                    href: "https://github.com/dhilipsiva/nibli",
-                    target: "_blank",
-                    rel: "noopener noreferrer",
-                    title: "Source on GitHub",
-                    "GitHub"
-                }
                 select {
                     class: "nb-select app-header__examples",
                     title: "Load a preloaded example from the book, or Custom to write your own",
@@ -335,6 +327,21 @@ fn App() -> Element {
                         }
                     }
                     OutputLog { output_log }
+                }
+            }
+            footer { class: "app-footer",
+                span { class: "app-footer__text",
+                    span { class: "app-footer__brand", "nibli" }
+                    " \u{2014} a Symbolic Reasoning Engine & Hallucination Firewall, built in Rust and compiled to WebAssembly. There are no servers: the engine runs entirely in your browser, and nothing leaves the tab."
+                }
+                a {
+                    class: "app-footer__star",
+                    href: "https://github.com/dhilipsiva/nibli",
+                    target: "_blank",
+                    rel: "noopener noreferrer",
+                    title: "Star nibli on GitHub",
+                    span { class: "app-footer__star-icon", "\u{2605}" }
+                    " Star on GitHub"
                 }
             }
             if *modal_open.read() {
