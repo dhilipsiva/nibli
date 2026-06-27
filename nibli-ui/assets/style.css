@@ -596,20 +596,9 @@ body {
   gap: var(--s3);
   min-height: 0;
 }
-.query-section {
-  display: flex; flex-direction: column; gap: var(--s3);
-  padding: var(--s4);
-  background: var(--surface-card);
-  border: var(--bw-hair) solid var(--border-subtle);
-  border-radius: var(--r-lg);
-  min-height: 0;
-}
-.query-header { display: flex; align-items: center; gap: var(--s3); }
-.query-header__label {
-  font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: var(--w-semibold);
-  text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--text-muted);
-}
-.query-header__sp { flex: 1; }
+/* The query column now reuses the `.col-tabs` card + `.tabs-container` chrome (a
+   tabbed mirror of the top column: Source | Lojban | Back-translation), so the
+   old `.query-section` / `.query-header` rules are gone. */
 
 /* Status badge — dot + label, colored per connection state. */
 .status-badge {
@@ -654,11 +643,9 @@ body {
   font-family: var(--font-mono); font-size: var(--fs-code); color: var(--accent); pointer-events: none;
 }
 
-/* Live query back-translation under the input — the IR reading of the query being
-   typed, shown as "Query if <reading>" under a back-translation eyebrow. While a
-   query is incomplete/invalid mid-typing it shows a stable pending indicator
-   instead of blanking out. (Same renderer as the Back-translation tab.) */
-.query-gloss { display: flex; flex-direction: column; gap: var(--s1); }
+/* The query's IR back-translation, shown in the query column's Back-translation
+   tab as "Query if <reading>". While a query is incomplete/invalid mid-typing it
+   shows a stable pending indicator instead of blanking. */
 .query-gloss__reading {
   font-size: var(--fs-code);
   line-height: 1.45;

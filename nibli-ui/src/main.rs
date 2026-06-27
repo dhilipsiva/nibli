@@ -305,15 +305,16 @@ fn App() -> Element {
                     }
                 }
                 div { class: "query-row",
-                    div { class: "query-section",
-                        div { class: "query-header",
-                            span { class: "query-header__label", "query" }
-                            span { class: "query-header__sp" }
-                            // No server: the engine runs in the browser. A static
-                            // "ready" badge stands in for the old connection status.
-                            span { class: "status-badge connected", "in-browser" }
+                    div { class: "col-tabs",
+                        QueryTabs {
+                            output_log,
+                            proof_text,
+                            proof_data,
+                            lojban_text,
+                            kb_status,
+                            llm_config,
+                            modal_open,
                         }
-                        QueryBar { output_log, proof_text, proof_data, lojban_text, kb_status }
                     }
                     OutputLog { output_log }
                 }
@@ -400,20 +401,29 @@ enum QueryReading {
     Incomplete,
 }
 
+/// The bottom-left query card — a tabbed mirror of the top column: Source (ask in
+/// English, translate to a Lojban query via the LLM), Lojban (the query + Run),
+/// and Back-translation (the "Query if …" reading). Output goes to the OutputLog.
 #[component]
-fn QueryBar(
+fn QueryTabs(
     output_log: Signal<Vec<OutputEntry>>,
     proof_text: Signal<Option<String>>,
     proof_data: Signal<Option<ProofTrace>>,
     lojban_text: Signal<String>,
     kb_status: Signal<Option<KbStatus>>,
+    llm_config: Signal<Option<LlmConfig>>,
+    modal_open: Signal<bool>,
 ) -> Element {
     let mut query_text = use_signal(|| DEFAULT_QUERY.to_string());
+    let mut query_source = use_signal(String::new);
+    let mut translating = use_signal(|| false);
+    let mut translate_error = use_signal(|| Option::<String>::None);
+    // Default to the Lojban tab so the pre-filled query can be Run immediately.
+    let mut query_tab = use_signal(|| ActiveTab::Lojban);
 
-    // Live back-translation of the query being typed, on every keystroke. Unlike
-    // the tabs, the query reading is shown ONLY for a cleanly-parsed query; a
-    // transient parse error mid-typing shows a stable "incomplete" indicator
-    // (not a blank flicker, and not a misleading lexical-gloss fallback).
+    // Live back-translation of the query being typed (Back-translation tab). Shown
+    // only for a cleanly-parsed query; a transient parse error mid-typing shows a
+    // stable "incomplete" indicator, not a blank or a misleading lexical fallback.
     let query_reading = use_memo(move || {
         let q = query_text.read();
         let q = q.trim();
@@ -468,60 +478,148 @@ fn QueryBar(
             ).await;
         });
     };
-
     let submit_click = move |_: Event<MouseData>| {
         do_submit();
     };
-
-    let on_keydown = move |e: KeyboardEvent| {
+    let on_query_keydown = move |e: KeyboardEvent| {
         if e.key() == Key::Enter {
             do_submit();
+        }
+    };
+
+    // Translate the English question (Source tab) into the Lojban query. With no
+    // provider configured, open the integration modal instead of erroring.
+    let mut do_translate = move || {
+        let text = query_source.read().clone();
+        if text.trim().is_empty() || *translating.read() {
+            return;
+        }
+        let Some(cfg) = llm_config.read().clone() else {
+            modal_open.set(true);
+            return;
+        };
+        translating.set(true);
+        translate_error.set(None);
+        spawn(async move {
+            match llm::translate(&cfg, &text).await {
+                Ok(lojban) => {
+                    query_text.set(lojban);
+                    query_tab.set(ActiveTab::Lojban);
+                }
+                Err(e) => translate_error.set(Some(e.to_string())),
+            }
+            translating.set(false);
+        });
+    };
+    let translate_click = move |_: Event<MouseData>| {
+        do_translate();
+    };
+    let on_source_keydown = move |e: KeyboardEvent| {
+        if e.key() == Key::Enter && e.modifiers().ctrl() {
+            e.prevent_default();
+            do_translate();
         }
     };
 
     let reading = query_reading.read().clone();
 
     rsx! {
-        div { class: "query-bar",
-            span { class: "query-bar__affix", "xu" }
-            input {
-                id: "query-input",
-                class: "query-input",
-                r#type: "text",
-                placeholder: "Enter Lojban query \u{2014} Ctrl+K focus",
-                value: "{query_text}",
-                oninput: move |e| query_text.set(e.value()),
-                onkeydown: on_keydown,
+        div { class: "tabs-container",
+            div { class: "tab-bar",
+                button {
+                    class: if *query_tab.read() == ActiveTab::Source { "tab active" } else { "tab" },
+                    onclick: move |_| query_tab.set(ActiveTab::Source),
+                    "Source"
+                }
+                button {
+                    class: if *query_tab.read() == ActiveTab::Lojban { "tab active" } else { "tab" },
+                    onclick: move |_| query_tab.set(ActiveTab::Lojban),
+                    "Lojban"
+                }
+                button {
+                    class: if *query_tab.read() == ActiveTab::BackTranslation { "tab active" } else { "tab" },
+                    onclick: move |_| query_tab.set(ActiveTab::BackTranslation),
+                    "Back-translation"
+                }
             }
-            button {
-                class: "query-btn",
-                onclick: submit_click,
-                "Run"
-            }
-        }
-        match reading {
-            QueryReading::Empty => rsx! {},
-            QueryReading::Reads(g) => {
-                // Drop a trailing period so "Query if Adam eats" reads as prose.
-                let g = g.trim().trim_end_matches('.').trim().to_string();
-                rsx! {
-                    div { class: "query-gloss",
-                        span { class: "nb-eyebrow", "back-translation" }
-                        div { class: "query-gloss__reading",
-                            span { class: "query-gloss__prefix", "Query if " }
-                            span { class: "query-gloss__text", "{g}" }
+            div { class: "tab-content",
+                match *query_tab.read() {
+                    ActiveTab::Source => {
+                        let hint = match llm_config.read().as_ref().map(|c| c.provider.short_name()) {
+                            Some(p) => format!("english question \u{2192} lojban via {p}"),
+                            None => "english question \u{2192} lojban \u{2014} configure an llm".to_string(),
+                        };
+                        rsx! {
+                            span { class: "nb-eyebrow", "query \u{2014} plain english" }
+                            textarea {
+                                class: "source-input",
+                                placeholder: "Ask in English, e.g. \"Does Adam eat?\"\u{2026}",
+                                value: "{query_source}",
+                                oninput: move |e| query_source.set(e.value()),
+                                onkeydown: on_source_keydown,
+                            }
+                            if let Some(err) = translate_error.read().as_ref() {
+                                div { class: "translate-error", "{err}" }
+                            }
+                            div { class: "translate-row",
+                                button {
+                                    class: if *translating.read() { "translate-btn busy" } else { "translate-btn" },
+                                    onclick: translate_click,
+                                    disabled: *translating.read(),
+                                    "Translate"
+                                }
+                                button {
+                                    class: "translate-row__config",
+                                    title: "Configure LLM integration",
+                                    onclick: move |_| modal_open.set(true),
+                                    "\u{2699}"
+                                }
+                                span { class: "translate-row__hint", "{hint}" }
+                            }
                         }
                     }
+                    ActiveTab::Lojban => rsx! {
+                        div { class: "query-bar",
+                            span { class: "query-bar__affix", "xu" }
+                            input {
+                                id: "query-input",
+                                class: "query-input",
+                                r#type: "text",
+                                placeholder: "Enter Lojban query \u{2014} Ctrl+K focus",
+                                value: "{query_text}",
+                                oninput: move |e| query_text.set(e.value()),
+                                onkeydown: on_query_keydown,
+                            }
+                            button { class: "query-btn", onclick: submit_click, "Run" }
+                        }
+                    },
+                    ActiveTab::BackTranslation => rsx! {
+                        span { class: "nb-eyebrow", "back-translation" }
+                        match reading {
+                            QueryReading::Empty => rsx! {
+                                span { class: "back-translation__placeholder",
+                                    "Type a query in the Lojban tab to see how the engine reads it."
+                                }
+                            },
+                            QueryReading::Reads(g) => {
+                                // Drop a trailing period so it reads as prose.
+                                let g = g.trim().trim_end_matches('.').trim().to_string();
+                                rsx! {
+                                    div { class: "query-gloss__reading",
+                                        span { class: "query-gloss__prefix", "Query if " }
+                                        span { class: "query-gloss__text", "{g}" }
+                                    }
+                                }
+                            }
+                            QueryReading::Incomplete => rsx! {
+                                div { class: "query-gloss__reading query-gloss__reading--pending",
+                                    "\u{26A0} incomplete or invalid Lojban"
+                                }
+                            },
+                        }
+                    },
                 }
             }
-            QueryReading::Incomplete => rsx! {
-                div { class: "query-gloss",
-                    span { class: "nb-eyebrow", "back-translation" }
-                    div { class: "query-gloss__reading query-gloss__reading--pending",
-                        "\u{26A0} incomplete or invalid Lojban"
-                    }
-                }
-            },
         }
     }
 }
