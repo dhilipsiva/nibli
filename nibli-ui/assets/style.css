@@ -622,9 +622,11 @@ body {
   font-family: var(--font-mono); font-size: var(--fs-code); color: var(--accent); pointer-events: none;
 }
 
-/* The query's IR back-translation, shown in the query column's Back-translation
-   tab as "Query if <reading>". While a query is incomplete/invalid mid-typing it
-   shows a stable pending indicator instead of blanking. */
+/* The query's IR back-translation, shown inline under the query input on the
+   Lojban tab as "Query if <reading>" beneath a back-translation eyebrow. While a
+   query is incomplete/invalid mid-typing it shows a stable pending indicator
+   instead of blanking. */
+.query-gloss { display: flex; flex-direction: column; gap: var(--s1); }
 .query-gloss__reading {
   font-size: var(--fs-code);
   line-height: 1.45;

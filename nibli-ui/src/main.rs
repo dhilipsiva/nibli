@@ -536,11 +536,6 @@ fn QueryTabs(
                     onclick: move |_| query_tab.set(ActiveTab::Lojban),
                     "Lojban"
                 }
-                button {
-                    class: if *query_tab.read() == ActiveTab::BackTranslation { "tab active" } else { "tab" },
-                    onclick: move |_| query_tab.set(ActiveTab::BackTranslation),
-                    "Back-translation"
-                }
             }
             div { class: "tab-content",
                 match *query_tab.read() {
@@ -578,7 +573,10 @@ fn QueryTabs(
                             }
                         }
                     }
-                    ActiveTab::Lojban => rsx! {
+                    // Lojban tab: the query input + Run, with the live "Query if …"
+                    // back-translation shown inline below (not a separate tab).
+                    // Source is the only other tab, so `_` covers Lojban here.
+                    _ => rsx! {
                         div { class: "query-bar",
                             span { class: "query-bar__affix", "xu" }
                             input {
@@ -592,28 +590,27 @@ fn QueryTabs(
                             }
                             button { class: "query-btn", onclick: submit_click, "Run" }
                         }
-                    },
-                    ActiveTab::BackTranslation => rsx! {
-                        span { class: "nb-eyebrow", "back-translation" }
                         match reading {
-                            QueryReading::Empty => rsx! {
-                                span { class: "back-translation__placeholder",
-                                    "Type a query in the Lojban tab to see how the engine reads it."
-                                }
-                            },
+                            QueryReading::Empty => rsx! {},
                             QueryReading::Reads(g) => {
                                 // Drop a trailing period so it reads as prose.
                                 let g = g.trim().trim_end_matches('.').trim().to_string();
                                 rsx! {
-                                    div { class: "query-gloss__reading",
-                                        span { class: "query-gloss__prefix", "Query if " }
-                                        span { class: "query-gloss__text", "{g}" }
+                                    div { class: "query-gloss",
+                                        span { class: "nb-eyebrow", "back-translation" }
+                                        div { class: "query-gloss__reading",
+                                            span { class: "query-gloss__prefix", "Query if " }
+                                            span { class: "query-gloss__text", "{g}" }
+                                        }
                                     }
                                 }
                             }
                             QueryReading::Incomplete => rsx! {
-                                div { class: "query-gloss__reading query-gloss__reading--pending",
-                                    "\u{26A0} incomplete or invalid Lojban"
+                                div { class: "query-gloss",
+                                    span { class: "nb-eyebrow", "back-translation" }
+                                    div { class: "query-gloss__reading query-gloss__reading--pending",
+                                        "\u{26A0} incomplete or invalid Lojban"
+                                    }
                                 }
                             },
                         }
