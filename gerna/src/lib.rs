@@ -457,6 +457,14 @@ mod flattener_tests;
 #[path = "pipeline_tests.rs"]
 mod pipeline_tests;
 
+// Parser unit-test suite (connectives, conversions, si/sa/su erasure, error
+// recovery, relative clauses, …). Migrated from the orphaned external
+// `tests/integration.rs` (which predated the parser_test→gerna rename and no
+// longer compiled) into a `--lib` module so it runs under `just test-gerna`/`ci`.
+#[cfg(test)]
+#[path = "integration_tests.rs"]
+mod integration_tests;
+
 #[cfg(test)]
 mod parse_checked_tests {
     #[test]

@@ -1,8 +1,9 @@
 use bumpalo::Bump;
-use parser_test::ast::*;
-use parser_test::grammar::{ParseResult, parse_tokens_to_ast};
-use parser_test::lexer::tokenize;
-use parser_test::preprocessor::preprocess;
+
+use crate::ast::*;
+use crate::grammar::{ParseResult, parse_tokens_to_ast};
+use crate::lexer::tokenize;
+use crate::preprocessor::preprocess;
 
 /// Parse a raw Lojban string through the full pipeline.
 fn parse<'a>(input: &str, arena: &'a Bump) -> ParsedText<'a> {
@@ -283,7 +284,7 @@ fn triple_tanru_right_groups() {
     match &as_bridi(&p.sentences[0]).selbri {
         Selbri::Tanru(a, bc) => {
             assert_eq!(**a, Selbri::Root("barda".into()));
-            match bc.as_ref() {
+            match *bc {
                 Selbri::Tanru(b, c) => {
                     assert_eq!(**b, Selbri::Root("sutra".into()));
                     assert_eq!(**c, Selbri::Root("gerku".into()));
@@ -330,7 +331,7 @@ fn ke_grouping() {
     let arena = Bump::new();
     let p = parse("mi ke sutra gerku ke'e", &arena);
     match &as_bridi(&p.sentences[0]).selbri {
-        Selbri::Grouped(inner) => match inner.as_ref() {
+        Selbri::Grouped(inner) => match *inner {
             Selbri::Tanru(_, _) => {}
             other => panic!("expected Tanru inside Grouped, got {:?}", other),
         },
@@ -380,7 +381,7 @@ fn poi_relative_clause() {
     match &s.tail_terms[0] {
         Sumti::Restricted { inner, clause } => {
             assert_eq!(clause.kind, RelClauseKind::Poi);
-            match inner.as_ref() {
+            match *inner {
                 Sumti::Description { gadri, .. } => assert_eq!(*gadri, Gadri::Lo),
                 other => panic!("expected Description inside Restricted, got {:?}", other),
             }
@@ -505,7 +506,7 @@ fn se_with_tanru() {
     let arena = Bump::new();
     let p = parse("do se sutra klama", &arena);
     match &as_bridi(&p.sentences[0]).selbri {
-        Selbri::Converted(Conversion::Se, inner) => match inner.as_ref() {
+        Selbri::Converted(Conversion::Se, inner) => match *inner {
             Selbri::Tanru(_, _) => {}
             other => panic!("expected Tanru after se, got {:?}", other),
         },
@@ -619,14 +620,14 @@ fn sumti_connective_descriptions_full_pipeline() {
             ..
         } => {
             assert!(matches!(
-                left.as_ref(),
+                *left,
                 Sumti::Description {
                     gadri: Gadri::Lo,
                     ..
                 }
             ));
             assert!(matches!(
-                right.as_ref(),
+                *right,
                 Sumti::Description {
                     gadri: Gadri::Lo,
                     ..
@@ -684,7 +685,7 @@ fn sumti_connective_chained_full_pipeline() {
         } => {
             assert_eq!(**left, Sumti::ProSumti("mi".into()));
             // Right is nested: Connected(do, Je, di)
-            match right.as_ref() {
+            match *right {
                 Sumti::Connected {
                     left: inner_left,
                     connective: Connective::Je,
@@ -714,8 +715,8 @@ fn sumti_connective_with_names_full_pipeline() {
             right,
             ..
         } => {
-            assert!(matches!(left.as_ref(), Sumti::Name(_)));
-            assert!(matches!(right.as_ref(), Sumti::Name(_)));
+            assert!(matches!(*left, Sumti::Name(_)));
+            assert!(matches!(*right, Sumti::Name(_)));
         }
         other => panic!("expected Connected names, got {:?}", other),
     }
