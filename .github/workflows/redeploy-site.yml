@@ -1,0 +1,18 @@
+name: Redeploy dhilipsiva.dev
+# On every push to main, tell the website to rebuild so it re-pulls this crate.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:        # lets you trigger it by hand too
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    env:
+      TOKEN: ${{ secrets.SITE_DISPATCH_TOKEN }}
+    steps:
+      - name: Trigger dhilipsiva.dev rebuild
+        if: ${{ env.TOKEN != '' }}     # self-skips (stays green) until the secret exists
+        env:
+          GH_TOKEN: ${{ env.TOKEN }}
+        run: gh api -X POST repos/dhilipsiva/dhilipsiva.dev/dispatches -f event_type=nibli-updated
