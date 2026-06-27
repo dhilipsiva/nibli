@@ -24,9 +24,8 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | `just test-engine` | Run nibli-engine integration tests (full pipeline: parse → compile → reason) |
 | `just test-gerna` | Run gerna (parser) tests only |
 | `just test-backend` | Run Python backend tests |
-| `just test-tavla` | Run tavla gossip tests |
 | `just test-gasnu` | Run gasnu host unit tests (trap classification, error/verdict formatting, arithmetic) |
-| `just test-all` | Run every test suite (unit + integration + Python + tavla) |
+| `just test-all` | Run every test suite (unit + integration + Python) |
 | `just ci` | Fast native CI gate (fmt-check, clippy, all native test suites incl. `test-gasnu`). No WASM build. |
 | `just ci-wasm` | WASM behavioral gate: build the lasna component + run the six gasnu smokes (fuel exhaustion, post-trap recovery, go'i, persist-replay, NAF note, `:debug`) |
 | `just ci-all` | Comprehensive pre-push / pre-release gate: `ci` + `ci-wasm` |
@@ -34,8 +33,7 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | `just build-gasnu` | Build native Wasmtime host gasnu (runner) |
 | `just backend` | Start the Python reference compute backend (port 5555) |
 | `just run-with-backend` | Build + run with `NIBLI_COMPUTE_ADDR=127.0.0.1:5555` |
-| `just server` | Start GraphQL API server for Transparency Triad (port 8081) |
-| `just ui` | Launch Transparency Triad web UI dev server (Dioxus, port 8080) |
+| `just ui` | Launch the standalone Transparency Triad web UI (Dioxus, port 8080) — engine runs fully in-browser |
 | `just clean` | `cargo clean` |
 | `just fuzz-parse [SECS]` | Fuzz gerna parser (requires `cargo +nightly`). Pass seconds to limit run time. |
 | `just fuzz-assert [SECS]` | Fuzz nibli-engine assert_text (full pipeline) |
@@ -72,30 +70,27 @@ Core component crates + runtime surfaces:
 | `logji` | logic | FOL logic buffer -> backward-chaining assert/query | `lib.rs` (single file, all logic) |
 | `lasna` | fasten/connect | Glue: chains gerna -> smuni -> logji | `lib.rs` |
 | `gasnu` | agent/doer | Native Wasmtime host, REPL, external compute backend TCP client | `main.rs` |
-| `nibli-engine` | — | Wasmtime engine wrapper library (shared by nibli-server, tavla) | `lib.rs` |
-| `nibli-server` | — | GraphQL API server (async-graphql + axum, port 8081) | `main.rs` |
-| `nibli-ui` | — | Dioxus web UI for Transparency Triad (browser, port 8080) | `main.rs` |
-| `tavla` | talk | Gossip daemon: federated knowledge propagation over TCP/WebRTC | `lib.rs`, `main.rs` |
-| `nibli-agent` | — | LLM-driven gossip peer that connects to `tavla` | `main.rs` |
+| `nibli-engine` | — | Native in-process embedding of the pipeline (used by tests + the store layer; no Wasmtime) | `lib.rs` |
+| `nibli-ui` | — | Standalone Dioxus web UI (browser, port 8080) — gerna/smuni/logji compiled in, reasons fully in-browser | `main.rs` |
+| `nibli-wasm` | — | wasm-bindgen wrapper exposing the in-browser pipeline (powers the live demo) | `lib.rs` |
 | `nibli` | — | Native debug REPL and `nibli-validate` tooling | `main.rs`, `src/bin/validate.rs` |
 | `python/` | — | Reference compute backend server (TCP + JSON Lines) | `nibli_backend.py` |
 
-- **WIT interfaces:** `wit/world.wit` defines only the SHIPPING component's boundary: `logic-types` (FOL IR), `error-types`, `compute-backend` (host import), `lasna` (session export). `wit/gossip.wit` defines gossip protocol types (agent identity, vector clocks, envelopes, trust, transport). `cargo component build -p lasna` regenerates `lasna/src/bindings.rs` (the ONLY crate with WIT bindings; gerna/smuni/logji are plain Rust libs using `nibli-types` directly).
+- **WIT interfaces:** `wit/world.wit` defines only the SHIPPING component's boundary: `logic-types` (FOL IR), `error-types`, `compute-backend` (host import), `lasna` (session export). `cargo component build -p lasna` regenerates `lasna/src/bindings.rs` (the ONLY crate with WIT bindings; gerna/smuni/logji are plain Rust libs using `nibli-types` directly).
 - **WIT worlds:** `lasna-pipeline` is the SOLE world — a single WASM component importing `compute-backend`, exporting `lasna`, with gerna/smuni/logji linked as internal Rust crate deps. (The legacy per-stage `gerna-component`/`smuni-component`/`logji-component` worlds + `gerna`/`smuni`/`logji`/`ast-types` interfaces were removed — they were never built and misled contributors into thinking a per-component architecture existed.)
 - **Rust structs:** `LasnaPipeline` (the WASM component) is the only WIT-binding struct.
 - **Boundary data:** Flat index-based arrays (`LogicBuffer` for `:debug`/proof output, `LogicalTerm` args) with `u32` indices cross the SINGLE host↔lasna WASM boundary — no heap pointers. The internal gerna→smuni→logji stages are Rust function calls (no WASM boundary), using `nibli-types` flat buffers directly.
-- **Compute dispatch:** logji uses injectable function pointers (`logji::register_compute_dispatch`) instead of cfg-gated WIT imports. Lasna registers host-bridge functions at Session creation; native mode (nibli-engine) leaves dispatch unregistered (returns error for external predicates).
+- **Compute dispatch:** logji uses injectable function pointers (`logji::register_compute_dispatch`) instead of cfg-gated WIT imports. Lasna registers host-bridge functions at Session creation; native (nibli-engine) and in-browser (nibli-ui/nibli-wasm) modes leave dispatch unregistered — built-in arithmetic (pilji/sumji/dilcu) still resolves locally, external predicates (tenfa/dugri) return an error.
 
 ## Canonical Runtime Surfaces
 
 Use these assumptions when selecting entrypoints:
 
 - `gasnu` is the canonical local/operator runtime for the theorem prover. It is the main single-node REPL and the default way to exercise the WASM-hosted pipeline.
-- `nibli-server` is the canonical API/runtime for the Transparency Triad stack. `nibli-ui` is the canonical browser frontend for that server.
-- `tavla` is the canonical gossip transport/runtime. It owns peer transport, sync, and hub-style deployment. The server can attach to a `tavla` peer; it is not the transport owner.
-- `nibli-engine` is an internal embedding library, not a user-facing runtime surface.
+- `nibli-ui` is the canonical browser frontend — a standalone Dioxus app with the engine (gerna→smuni→logji) compiled into the WASM bundle. It reasons fully in-browser; there is no server.
+- `nibli-wasm` is the wasm-bindgen wrapper exposing the same in-browser pipeline to JS (powers the live demo at dhilipsiva.dev/nibli).
+- `nibli-engine` is an internal native embedding library, not a user-facing runtime surface.
 - `nibli` is developer tooling: a native direct-crate REPL and the `nibli-validate` binary used for validation/data-generation workflows. It is not the canonical production runtime.
-- `nibli-agent` is a specialized LLM gossip peer built on the canonical `tavla` network. Treat it as an integration/demo runtime, not the base theorem-prover runtime.
 
 ## Code Conventions
 

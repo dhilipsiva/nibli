@@ -3,7 +3,7 @@
 //! Both nibli-engine (native, serializes) and nibli-ui (browser WASM, deserializes)
 //! depend on this crate. The proof types (`ProofRule`/`ProofStep`/`ProofTrace`/
 //! `LogicalTerm`) ARE the canonical `nibli-types` types, re-exported here; this
-//! crate owns only their JSON helpers and the gossip/KB-status wire types.
+//! crate owns only their JSON helpers and the KB-status wire types.
 //!
 //! Human-readable RENDERING of these types (proof text, the `RenderedNode` tree,
 //! and fact humanization) lives in `nibli-render`, not here — this crate is the
@@ -56,101 +56,6 @@ pub fn proof_trace_to_json(trace: &ProofTrace) -> String {
 /// Deserialize a proof trace from its wire JSON string.
 pub fn proof_trace_from_json(s: &str) -> Option<ProofTrace> {
     serde_json::from_str(s).ok()
-}
-
-// ── Gossip network types (shared between nibli-server and nibli-ui) ──
-
-/// A gossip event pushed to the UI via GraphQL subscription or WebRTC.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind")]
-pub enum GossipEvent {
-    /// New envelope received and ingested.
-    #[serde(rename = "envelope")]
-    NewEnvelope {
-        envelope_id: String,
-        author: String,
-        lojban: Option<String>,
-        stance: String,
-        topics: Vec<String>,
-        timestamp: String,
-    },
-    /// Contradiction detected between two assertions.
-    #[serde(rename = "contradiction")]
-    Contradiction {
-        id: usize,
-        envelope_id: String,
-        assertion: String,
-        author: String,
-    },
-    /// Trust change (trust or distrust).
-    #[serde(rename = "trust_change")]
-    TrustChange {
-        from: String,
-        to: String,
-        trusted: bool,
-    },
-    /// Peer connected or disconnected.
-    #[serde(rename = "peer_change")]
-    PeerChange { peer_id: String, connected: bool },
-    /// Sync completed with a peer.
-    #[serde(rename = "sync")]
-    Sync {
-        peer_id: String,
-        envelope_count: usize,
-    },
-}
-
-/// Summary of a gossip agent visible on the network.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct NetworkAgent {
-    pub name: String,
-    pub envelope_count: u32,
-    pub stance_counts: StanceCounts,
-    pub topics: Vec<String>,
-    pub is_local: bool,
-}
-
-/// Distribution of epistemic stances for an agent.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct StanceCounts {
-    pub deduced: u32,
-    pub expected: u32,
-    pub opinion: u32,
-    pub hearsay: u32,
-}
-
-/// Summary of an envelope for the UI.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct EnvelopeSummary {
-    pub id: String,
-    pub author: String,
-    pub lojban: Option<String>,
-    pub stance: String,
-    pub topics: Vec<String>,
-    pub timestamp: String,
-    pub is_retraction: bool,
-    pub is_quarantined: bool,
-}
-
-/// Summary of a contradiction for the UI.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ContradictionSummary {
-    pub id: usize,
-    pub envelope_id: String,
-    pub assertion: String,
-    pub author: String,
-    pub resolved: bool,
-}
-
-/// Full gossip network state snapshot.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct NetworkSnapshot {
-    pub agents: Vec<NetworkAgent>,
-    pub envelopes: Vec<EnvelopeSummary>,
-    pub contradictions: Vec<ContradictionSummary>,
-    pub peers: Vec<String>,
-    pub local_agent: String,
-    pub total_facts: u32,
 }
 
 // Term display (`LogicalTerm::display` / `trace_display`) now lives as inherent

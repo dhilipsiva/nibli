@@ -31,11 +31,9 @@ Supporting crates:
 
 | Crate | Role |
 |-------|------|
-| **nibli-engine** | Wasmtime engine wrapper library (shared by server, tests, store) |
-| **nibli-server** | GraphQL API server for the Transparency Triad (async-graphql + axum) |
-| **nibli-ui** | Dioxus web UI for the Transparency Triad |
-| **tavla** | Gossip daemon: federated knowledge propagation over TCP/WebRTC |
-| **nibli-agent** | LLM-driven gossip peer that connects to tavla |
+| **nibli-engine** | Native in-process embedding of the pipeline (used by tests and the store layer) |
+| **nibli-ui** | Standalone Dioxus web UI — the engine is compiled in and runs fully in-browser |
+| **nibli-wasm** | wasm-bindgen wrapper exposing the in-browser pipeline (powers the live demo) |
 | **nibli** | Native debug REPL and `nibli-validate` tooling |
 
 ---
@@ -45,15 +43,13 @@ Supporting crates:
 **Canonical entrypoints:**
 
 - **`gasnu`** — Local REPL and operator runtime for the theorem prover. The main single-node runtime. Use `just run`.
-- **`nibli-server`** — GraphQL API for the Transparency Triad stack. Use `just server`.
-- **`nibli-ui`** — Browser frontend (Dioxus). Client of nibli-server. Use `just ui`.
-- **`tavla`** — Gossip and federation runtime. Owns TCP/WebRTC peer transport, sync, and hub deployment. Use `just gossip-hub`.
+- **`nibli-ui`** — Standalone browser frontend (Dioxus). The engine is compiled into the WASM bundle and runs fully in-browser — no server. Use `just ui`.
 
 **Supporting surfaces:**
 
-- **`nibli-engine`** — Shared embedding library. Not a user-facing runtime.
+- **`nibli-engine`** — Shared native embedding library. Not a user-facing runtime.
+- **`nibli-wasm`** — wasm-bindgen wrapper exposing the in-browser pipeline (powers the live demo at dhilipsiva.dev/nibli).
 - **`nibli`** — Native direct-crate REPL and `nibli-validate`. Developer tooling, not the canonical production path.
-- **`nibli-agent`** — LLM gossip peer for agent demos and domain peers.
 
 ---
 
@@ -172,17 +168,14 @@ Query results use a four-valued contract: `TRUE`, `FALSE`, `UNKNOWN` (with reaso
 
 ## Transparency Triad UI
 
-Nibli includes a web UI (Dioxus) with a GraphQL backend for the Transparency Triad workflow:
+Nibli includes a standalone web UI (Dioxus) — the full reasoning engine (gerna → smuni → logji) is compiled into the WASM bundle and runs **entirely in the browser**. No server, no network calls.
 
 ```bash
-# Terminal 1: Start the GraphQL server (127.0.0.1:8081)
-just server
-
-# Terminal 2: Start the web UI (port 8080)
+# Start the web UI (port 8080)
 just ui
 ```
 
-The UI uses a stateless KB model: every query resets the engine, re-asserts the full Lojban tab as the knowledge base, then runs the query. The query bar is queries only (no assertions). The Lojban tab is the single source of truth.
+The UI uses a stateless KB model: every query builds a fresh engine, re-asserts the full Lojban tab as the knowledge base, then runs the query. The query bar is queries only (no assertions). The Lojban tab is the single source of truth.
 
 ```
 ro lo gerku cu danlu          # Every dog is an animal
@@ -192,68 +185,7 @@ la .adam. cu gerku            # Adam is a dog
 Query: la .adam. cu citka     # -> TRUE + proof tree
 ```
 
-The UI includes a Network tab showing gossip state: agent cards, envelope list, contradiction panel, and gossip assertion bar.
-
-The interface is styled with the **QUINE** design system — an instrument-grade, terminal-first look (IBM Plex Mono, ember accent, blueprint-grid proof well) where every meaning-bearing color is a semantic token (verdicts, proof rule types, connection status, gossip stances, error classes) paired with a glyph for colorblind safety. Styling lives in `nibli-ui/assets/tokens.css` (design tokens) + `nibli-ui/assets/style.css`. Dark is the default; a header toggle switches to the light "paper" theme via `data-theme="light"`.
-
----
-
-## Gossip Network
-
-Nibli supports federated knowledge propagation via the `tavla` gossip daemon, using OR-Set CRDTs with vector clocks:
-
-```bash
-# Start a gossip hub
-just gossip-hub
-
-# Start LLM gossip agents (connect via tavla)
-just agent-fitness
-just agent-nutrition
-just agent-rights
-```
-
-Envelopes are signed with ed25519 (ephemeral keypair per node). Forged envelopes are rejected before trust evaluation. Signature policy is configurable (`AcceptUnsigned` default, `RequireSigned` for strict mode).
-
----
-
-## `nibli-server` Configuration
-
-The server defaults to local-only development settings:
-
-- **Bind:** `127.0.0.1:8081`
-- **GraphQL playground:** enabled only on loopback
-- **CORS:** local allowlist only (no wildcard)
-- **Request body limit:** 1 MB
-- **Request timeout:** 30s (configurable via `NIBLI_SERVER_REQUEST_TIMEOUT_SECS`)
-- **Rate limit:** 50 req/s (configurable via `NIBLI_SERVER_RATE_LIMIT_RPS`)
-
-**Operational endpoints:**
-
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /healthz` | Process liveness |
-| `GET /readyz` | Readiness (includes optional gossip-peer check) |
-| `GET /metrics` | Prometheus-style counters and gauges |
-| `POST /graphql` | GraphQL API |
-| `GET /graphql` | GraphQL playground (when enabled) |
-
-**Environment variables:**
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NIBLI_SERVER_BIND` | `127.0.0.1:8081` | Bind address |
-| `NIBLI_SERVER_ENABLE_PLAYGROUND` | loopback only | Force playground on/off |
-| `NIBLI_SERVER_CORS_ALLOW_ORIGINS` | local allowlist | Explicit CORS origins |
-| `NIBLI_SERVER_MAX_REQUEST_BYTES` | `1048576` | Request body cap |
-| `NIBLI_SERVER_MAX_GOSSIP_EVENTS` | `500` | In-memory gossip event cap |
-| `NIBLI_SERVER_REQUIRE_GOSSIP_PEER` | `false` | Fail readiness until a gossip peer connects |
-| `NIBLI_SERVER_REQUEST_TIMEOUT_SECS` | `30` | Per-request timeout |
-| `NIBLI_SERVER_RATE_LIMIT_RPS` | `50` | Rate limit (requests per second) |
-| `NIBLI_SERVER_LOG` | `info,tower_http=info` | Tracing filter |
-| `NIBLI_SERVER_LOG_FORMAT` | `pretty` | Log format (`pretty` or `json`) |
-| `NIBLI_GOSSIP_HUB` | unset | Attach server to a tavla gossip hub |
-| `NIBLI_COMPUTE_ADDR` | unset | External compute backend address (enables `tenfa`/`dugri`/custom dispatch) |
-| `NIBLI_COMPUTE_PREDICATES` | `tenfa,dugri` | External predicate names to register (when a backend is set) |
+The interface is styled with the **QUINE** design system — an instrument-grade, terminal-first look (IBM Plex Mono, ember accent, blueprint-grid proof well) where every meaning-bearing color is a semantic token (verdicts, proof rule types, error classes) paired with a glyph for colorblind safety. Styling lives in `nibli-ui/assets/tokens.css` (design tokens) + `nibli-ui/assets/style.css`. Dark is the default; a header toggle switches to the light "paper" theme via `data-theme="light"`.
 
 ---
 
@@ -278,9 +210,7 @@ li bi tenfa li re li ci             # Assert: 8 = 2^3
 
 **External predicates** (via backend): `tenfa` (exponentiation), `dugri` (logarithm), and any custom predicates you add to the backend server.
 
-Configure with `NIBLI_COMPUTE_ADDR=host:port` or `:backend host:port` in the REPL. Connection is lazy (connects on first dispatch) with auto-reconnect.
-
-The same protocol powers the GraphQL server: set `NIBLI_COMPUTE_ADDR` (and optionally `NIBLI_COMPUTE_PREDICATES`, default `tenfa,dugri`) and `nibli-server` dispatches external predicates per query, with a per-worker connection.
+Configure with `NIBLI_COMPUTE_ADDR=host:port` or `:backend host:port` in the REPL. Connection is lazy (connects on first dispatch) with auto-reconnect. The browser UI has no TCP, so external predicates resolve only in the `gasnu` REPL; built-in arithmetic still works everywhere.
 
 ---
 
@@ -297,9 +227,7 @@ The same protocol powers the GraphQL server: set `NIBLI_COMPUTE_ADDR` (and optio
 | Dev environment | Nix flake |
 | Compute protocol | TCP + JSON Lines |
 | Task runner | Just |
-| Web UI | Dioxus |
-| API server | async-graphql + axum |
-| Gossip | OR-Set CRDT + vector clocks + ed25519 signatures |
+| Web UI | Dioxus (standalone — engine compiled into the WASM bundle) |
 
 ---
 
@@ -373,14 +301,11 @@ The parser (`gerna`) accepts a practical subset of Lojban sufficient for formal 
 | `just test` | Run all 661 unit tests |
 | `just test-engine` | Integration tests (full parse → compile → reason pipeline) |
 | `just test-gerna` | Parser tests only |
-| `just test-tavla` | Gossip tests |
 | `just test-backend` | Python backend tests |
 | `just test-all` | Every test suite |
-| `just server` | GraphQL API server (port 8081) |
-| `just ui` | Transparency Triad web UI (port 8080) |
+| `just ui` | Standalone Transparency Triad web UI (port 8080) |
 | `just backend` | Python reference compute backend (port 5555) |
 | `just run-with-backend` | Build + run with compute backend |
-| `just gossip-hub` | Start gossip hub |
 | `just run-persist` | Run with persistent Redb fact store |
 | `just fuzz-parse [SECS]` | Fuzz the parser |
 | `just fuzz-assert [SECS]` | Fuzz assertion pipeline |
