@@ -7,6 +7,10 @@ use nibli_engine::{
     EngineAggregateOp, EngineComputeRequest, EngineError, EngineLogicBuffer, EngineLogicNode,
     EngineLogicalTerm, EngineQueryResult, NibliEngine,
 };
+use nibli_render::{
+    DRUG_INTERACTIONS_OVERLAY, GDPR_OVERLAY, Register, render_collapsed_text_with,
+    summarize_proof_with,
+};
 use nibli_store::NibliStore;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -1465,6 +1469,39 @@ fn gdpr_file_loads_clean() {
     }
 }
 
+/// The GDPR overlay reads the lawful-basis proof in legal-domain terms — the
+/// `se curmi` conclusion as "has a lawful basis for processing", with the data
+/// subject named — instantiated and `X`-free. The dictionary fallback stays
+/// literal ("permits"). Confirms the DRY overlay->fallback chain generalizes
+/// beyond the drug corpus.
+#[test]
+fn gdpr_why_lawful_basis_is_domain_termed() {
+    let engine = engine_with_facts(&[
+        "ro lo prenu poi zanru cu se curmi",
+        "la .adam. cu prenu",
+        "la .adam. cu zanru",
+    ]);
+    let (_r, trace) = engine
+        .query_text_raw_proof("la .adam. cu se curmi")
+        .unwrap();
+
+    let overlay = summarize_proof_with(&trace, Register::Spec, Some(&GDPR_OVERLAY))
+        .expect("lawful-basis proof has a why summary");
+    assert!(overlay.contains("Adam consents"), "why: {overlay}");
+    assert!(
+        overlay.contains("Adam has a lawful basis for processing"),
+        "why: {overlay}"
+    );
+    assert!(!overlay.contains('X'), "bare variable leaked: {overlay}");
+
+    let fallback = summarize_proof_with(&trace, Register::Spec, None).unwrap();
+    assert!(
+        !fallback.contains("lawful basis"),
+        "fallback must stay literal: {fallback}"
+    );
+    assert!(!fallback.contains('X'), "bare variable leaked: {fallback}");
+}
+
 /// THE HEADLINE: consent-withdrawal belief revision.
 /// With consent, processing has a lawful basis (Art 6) and there is no erasure
 /// right. Retract consent and BOTH flip: no lawful basis remains, so the right
@@ -1881,6 +1918,93 @@ fn ddi_headline_warfarin_fluconazole_alert() {
         &engine.query_holds("la .apiksaban. cu kajde").unwrap(),
         "Apixaban co-administration produces NO alert (deduced False, not unknown)",
     );
+}
+
+/// The plain-English "why" of the toxicity-risk proof reads in real DOMAIN terms
+/// under the curated overlay — instantiated with the real entities (warfarin,
+/// CYP2C9), never a bare variable `X`. The dictionary-fallback (no overlay) is
+/// likewise concrete and `X`-free; it just keeps the engine's literal glosses.
+#[test]
+fn ddi_why_toxicity_is_concrete_and_domain_termed() {
+    let engine = engine_with_ddi_corpus();
+    let (_r, trace) = engine
+        .query_text_raw_proof("la .varfarin. cu ckape")
+        .unwrap();
+
+    let overlay = summarize_proof_with(&trace, Register::Spec, Some(&DRUG_INTERACTIONS_OVERLAY))
+        .expect("toxicity proof has a why summary");
+    // Real domain language + real names, sourced from the proof's own entities.
+    assert!(
+        overlay.contains("fluconazole inhibits CYP2C9"),
+        "why: {overlay}"
+    );
+    assert!(
+        overlay.contains("warfarin is metabolized by CYP2C9"),
+        "why: {overlay}"
+    );
+    assert!(
+        overlay.contains("warfarin is at toxicity risk"),
+        "why: {overlay}"
+    );
+    assert!(
+        overlay.contains("narrow therapeutic index"),
+        "why: {overlay}"
+    );
+    // No bare algebra variable, and no raw transliterated cmevla leaked.
+    assert!(!overlay.contains('X'), "bare variable leaked: {overlay}");
+    assert!(
+        !overlay.contains("varfarin"),
+        "raw cmevla leaked: {overlay}"
+    );
+    assert!(
+        !overlay.contains("siptucin"),
+        "raw cmevla leaked: {overlay}"
+    );
+
+    // Fallback (no overlay): concrete + X-free, with the engine's literal glosses.
+    let fallback = summarize_proof_with(&trace, Register::Spec, None).unwrap();
+    assert!(
+        fallback.contains("varfarin is in danger"),
+        "why: {fallback}"
+    );
+    assert!(!fallback.contains('X'), "bare variable leaked: {fallback}");
+    assert!(
+        !fallback.contains("toxicity risk"),
+        "fallback must stay literal: {fallback}"
+    );
+
+    // The collapsed tree's universal rule reads "every drug …", not "if X …".
+    let tree = render_collapsed_text_with(
+        &trace,
+        Register::Spec,
+        0,
+        false,
+        Some(&DRUG_INTERACTIONS_OVERLAY),
+    );
+    assert!(
+        tree.contains("every drug that has a raised concentration and has a narrow therapeutic index is at toxicity risk"),
+        "tree:\n{tree}"
+    );
+    assert!(!tree.contains('X'), "bare variable leaked in tree:\n{tree}");
+}
+
+/// The 3-hop safety-alert "why" chains all the way to the alert, instantiated and
+/// patient-gated ("Adam takes warfarin"), with no bare variable.
+#[test]
+fn ddi_why_alert_chains_to_the_regimen() {
+    let engine = engine_with_ddi_corpus();
+    let (_r, trace) = engine
+        .query_text_raw_proof("la .varfarin. cu kajde")
+        .unwrap();
+    let why = summarize_proof_with(&trace, Register::Spec, Some(&DRUG_INTERACTIONS_OVERLAY))
+        .expect("alert proof has a why summary");
+    assert!(why.contains("warfarin is at toxicity risk"), "why: {why}");
+    assert!(why.contains("Adam takes warfarin"), "why: {why}");
+    assert!(
+        why.contains("warfarin warrants a safety alert"),
+        "why: {why}"
+    );
+    assert!(!why.contains('X'), "bare variable leaked: {why}");
 }
 
 /// The toxicity rule is GENERAL: phenytoin, a different narrow-index CYP2C9

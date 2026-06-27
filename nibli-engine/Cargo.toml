@@ -18,6 +18,8 @@ serde_json = "1"
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 serde_json = "1"
+nibli-render = { path = "../nibli-render" }
+nibli-protocol = { path = "../nibli-protocol", features = ["compute-client"] }
 
 [[bench]]
 name = "engine_bench"

@@ -273,6 +273,18 @@ impl NibliEngine {
         Ok((result, formatted, json))
     }
 
+    /// Parse a Lojban query, run the entailment check, and return the typed
+    /// result together with the raw wire [`nibli_protocol::ProofTrace`] — for
+    /// callers/tests that need structured proof access (the plain-English "why"
+    /// summary, the collapsed macro-DAG view) rather than the pre-formatted text.
+    pub fn query_text_raw_proof(
+        &self,
+        text: &str,
+    ) -> Result<(EngineQueryResult, nibli_protocol::ProofTrace), EngineError> {
+        let buf = self.compile_text(text)?;
+        self.kb.query_entailment_with_proof(buf)
+    }
+
     /// Evaluate a Lojban query against the KB and return the typed query result.
     pub fn query_holds(&self, text: &str) -> Result<EngineQueryResult, EngineError> {
         let buf = self.compile_text(text)?;

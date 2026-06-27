@@ -20,6 +20,7 @@ use std::collections::BTreeMap;
 use nibli_protocol::{ProofRule, ProofTrace};
 
 use crate::fact::humanize_fact;
+use crate::overlay::DomainGloss;
 use crate::proof::{NAF_NOTE, RenderedNode, build_node, humanize_rule_label};
 use crate::register::Register;
 use crate::summary::{
@@ -37,13 +38,12 @@ pub fn collapse_proof(trace: &ProofTrace, register: Register) -> RenderedNode {
     if trace.steps.is_empty() {
         return build_node(trace, trace.root);
     }
-    let mut seen: Vec<String> = Vec::new();
-    let leaves = collect_goal_leaves(trace, trace.root, 0);
-    let mut nodes = collapse_goals(trace, &leaves, register, &mut seen, 0);
-    match nodes.len() {
-        1 => nodes.pop().unwrap(),
+    let mut steps = collapse_to_macrosteps(trace, register);
+    match steps.len() {
+        1 => step_to_rendered(&steps.pop().unwrap()),
         0 => build_node(trace, trace.root),
         _ => {
+            let nodes: Vec<RenderedNode> = steps.iter().map(step_to_rendered).collect();
             let holds = nodes.iter().all(|n| n.holds);
             RenderedNode {
                 icon: "∧",
@@ -56,6 +56,117 @@ pub fn collapse_proof(trace: &ProofTrace, register: Register) -> RenderedNode {
             }
         }
     }
+}
+
+/// One structured step of the collapsed macro-logical derivation: an already
+/// INSTANTIATED surface statement (real entities — `varfarin is in danger`), how
+/// it was established, and its immediate premises. This is the single source of
+/// truth both the [`RenderedNode`] tree ([`step_to_rendered`]) and the
+/// plain-English [`crate::summary`] narrative are built from — so the two never
+/// drift, and neither has to re-parse the other's display strings.
+#[derive(Clone)]
+pub(crate) struct MacroStep {
+    pub statement: String,
+    pub kind: MacroKind,
+    pub holds: bool,
+    pub premises: Vec<MacroStep>,
+    /// Foldable role-level scaffolding cluster (UI-only); carried verbatim.
+    pub role_detail: Option<RenderedNode>,
+}
+
+/// How a [`MacroStep`]'s surface statement was established.
+#[derive(Clone)]
+pub(crate) enum MacroKind {
+    Given,
+    /// Derived by a rule; the string is the (relation-only) rule label.
+    Derived(String),
+    Computed,
+    Checked,
+    NotDerivable,
+    /// A back-reference to a statement already shown (deduped).
+    Reference,
+    /// A shape the collapse could not phrase: keep the verbose rendering verbatim
+    /// (never fabricate English). The narrative skips these.
+    Raw(Box<RenderedNode>),
+}
+
+/// Build the structured macro-step forest for a whole trace (shared by the
+/// collapsed tree and the `[Why]` summary).
+pub(crate) fn collapse_to_macrosteps(trace: &ProofTrace, register: Register) -> Vec<MacroStep> {
+    if trace.steps.is_empty() {
+        return Vec::new();
+    }
+    let mut seen: Vec<String> = Vec::new();
+    let leaves = collect_goal_leaves(trace, trace.root, 0);
+    collapse_goal_steps(trace, &leaves, register, &mut seen, 0)
+}
+
+/// Render a structured [`MacroStep`] to the display [`RenderedNode`] — the
+/// labels/icons/classes are byte-for-byte what the old direct builders produced.
+fn step_to_rendered(step: &MacroStep) -> RenderedNode {
+    match &step.kind {
+        MacroKind::Raw(node) => (**node).clone(),
+        MacroKind::Reference => reference_node(step.statement.clone()),
+        MacroKind::Given => macro_leaf(
+            &step.statement,
+            "given",
+            "▣",
+            "proof-asserted",
+            step.holds,
+            step.role_detail.clone(),
+        ),
+        MacroKind::Computed => macro_leaf(
+            &step.statement,
+            "computed",
+            "⊢",
+            "proof-check",
+            step.holds,
+            step.role_detail.clone(),
+        ),
+        MacroKind::Checked => macro_leaf(
+            &step.statement,
+            "checked",
+            "⊢",
+            "proof-check",
+            step.holds,
+            step.role_detail.clone(),
+        ),
+        MacroKind::NotDerivable => macro_leaf(
+            &step.statement,
+            "not derivable",
+            "✗",
+            "proof-failed",
+            false,
+            step.role_detail.clone(),
+        ),
+        MacroKind::Derived(label) => {
+            let just = rule_justification(label);
+            let mut children: Vec<RenderedNode> =
+                step.premises.iter().map(step_to_rendered).collect();
+            if let Some(rd) = &step.role_detail {
+                children.push(rd.clone());
+            }
+            RenderedNode {
+                icon: "⊢",
+                label: format!("{}  [{just}]", step.statement),
+                css_class: "proof-derived",
+                holds: step.holds,
+                is_leaf: children.is_empty(),
+                inline: false,
+                children,
+            }
+        }
+    }
+}
+
+/// As [`collapse_proof`], rendering under a domain-gloss `overlay` (`None` = the
+/// dictionary-fallback default).
+pub fn collapse_proof_with(
+    trace: &ProofTrace,
+    register: Register,
+    overlay: Option<&'static DomainGloss>,
+) -> RenderedNode {
+    crate::overlay::with_overlay(overlay, || collapse_proof(trace, register))
 }
 
 /// The collapsed macro-logical-DAG proof of a whole trace as indented text (the
@@ -77,6 +188,20 @@ pub fn render_collapsed_text(
     let node = collapse_proof(trace, register);
     out.push_str(&render_node_text(&node, base_indent, include_detail));
     out
+}
+
+/// As [`render_collapsed_text`], rendering under a domain-gloss `overlay`
+/// (`None` = the dictionary-fallback default).
+pub fn render_collapsed_text_with(
+    trace: &ProofTrace,
+    register: Register,
+    base_indent: usize,
+    include_detail: bool,
+    overlay: Option<&'static DomainGloss>,
+) -> String {
+    crate::overlay::with_overlay(overlay, || {
+        render_collapsed_text(trace, register, base_indent, include_detail)
+    })
 }
 
 /// Render any [`RenderedNode`] tree as indented text (the building block of
@@ -130,17 +255,20 @@ fn collect_goal_leaves(trace: &ProofTrace, idx: u32, depth: usize) -> Vec<u32> {
     }
 }
 
-/// Group goal leaves by event into surface-fact macro nodes (one node per
-/// distinct surface fact, first-seen order).
-fn collapse_goals(
+/// Group goal leaves by event into surface-fact macro STEPS (one per distinct
+/// surface fact, first-seen order).
+fn collapse_goal_steps(
     trace: &ProofTrace,
     goals: &[u32],
     register: Register,
     seen: &mut Vec<String>,
     depth: usize,
-) -> Vec<RenderedNode> {
+) -> Vec<MacroStep> {
     if depth > MAX_DEPTH {
-        return goals.iter().map(|&g| build_node(trace, g)).collect();
+        return goals
+            .iter()
+            .map(|&g| raw_step(build_node(trace, g)))
+            .collect();
     }
     let mut order: Vec<LeafKey> = Vec::new();
     let mut buckets: BTreeMap<LeafKey, Vec<u32>> = BTreeMap::new();
@@ -157,7 +285,7 @@ fn collapse_goals(
     }
     let mut out = Vec::new();
     for key in &order {
-        out.push(build_macro_node(
+        out.push(build_macro_step(
             trace,
             &buckets[key],
             register,
@@ -166,9 +294,38 @@ fn collapse_goals(
         ));
     }
     for &g in &singles {
-        out.push(build_single_node(trace, g, register, seen, depth));
+        out.push(build_single_step(trace, g, register, seen, depth));
     }
     out
+}
+
+/// A leaf macro-step (no premises).
+fn leaf_step(
+    statement: String,
+    kind: MacroKind,
+    holds: bool,
+    role_detail: Option<RenderedNode>,
+) -> MacroStep {
+    MacroStep {
+        statement,
+        kind,
+        holds,
+        premises: Vec::new(),
+        role_detail,
+    }
+}
+
+/// Wrap a pre-rendered (un-phraseable) node as an opaque macro-step.
+fn raw_step(node: RenderedNode) -> MacroStep {
+    let statement = node.label.clone();
+    let holds = node.holds;
+    MacroStep {
+        statement,
+        kind: MacroKind::Raw(Box::new(node)),
+        holds,
+        premises: Vec::new(),
+        role_detail: None,
+    }
 }
 
 /// The (wrapper, base, event) key of a role/event-type goal, or `None` for a
@@ -262,63 +419,54 @@ fn classify_group(trace: &ProofTrace, steps: &[u32]) -> GroupKind {
     }
 }
 
-/// Build the macro node for one surface fact (a bucket of its role goals).
-fn build_macro_node(
+/// Build the macro step for one surface fact (a bucket of its role goals).
+fn build_macro_step(
     trace: &ProofTrace,
     steps: &[u32],
     register: Register,
     seen: &mut Vec<String>,
     depth: usize,
-) -> RenderedNode {
+) -> MacroStep {
     let facts: Vec<String> = steps
         .iter()
         .filter_map(|&g| goal_fact(&trace.steps[g as usize].rule))
         .collect();
     let holds = steps.iter().all(|&g| trace.steps[g as usize].holds);
     let Some(statement) = surface_statement(&facts, register) else {
-        return verbose_group(trace, steps, holds); // degrade, never fabricate
+        return raw_step(verbose_group(trace, steps, holds)); // degrade, never fabricate
     };
     if seen.contains(&statement) {
-        return reference_node(statement);
+        return leaf_step(statement, MacroKind::Reference, true, None);
     }
     seen.push(statement.clone());
 
     match classify_group(trace, steps) {
-        GroupKind::Reference => reference_node(statement),
-        GroupKind::NotDerivable => macro_leaf(
-            &statement,
-            "not derivable",
-            "✗",
-            "proof-failed",
+        GroupKind::Reference => leaf_step(statement, MacroKind::Reference, true, None),
+        GroupKind::NotDerivable => leaf_step(
+            statement,
+            MacroKind::NotDerivable,
             false,
             role_detail(trace, steps),
         ),
-        GroupKind::Given => macro_leaf(
-            &statement,
-            "given",
-            "▣",
-            "proof-asserted",
+        GroupKind::Given => leaf_step(
+            statement,
+            MacroKind::Given,
             holds,
             role_detail(trace, steps),
         ),
-        GroupKind::Computed => macro_leaf(
-            &statement,
-            "computed",
-            "⊢",
-            "proof-check",
+        GroupKind::Computed => leaf_step(
+            statement,
+            MacroKind::Computed,
             holds,
             role_detail(trace, steps),
         ),
-        GroupKind::Checked => macro_leaf(
-            &statement,
-            "checked",
-            "⊢",
-            "proof-check",
+        GroupKind::Checked => leaf_step(
+            statement,
+            MacroKind::Checked,
             holds,
             role_detail(trace, steps),
         ),
         GroupKind::Derived(label) => {
-            let just = rule_justification(&label);
             let mut cond_leaves: Vec<u32> = Vec::new();
             for &g in steps {
                 if matches!(trace.steps[g as usize].rule, ProofRule::Derived { .. }) {
@@ -327,94 +475,85 @@ fn build_macro_node(
                     }
                 }
             }
-            let mut children = collapse_goals(trace, &cond_leaves, register, seen, depth + 1);
-            if let Some(rd) = role_detail(trace, steps) {
-                children.push(rd);
-            }
-            RenderedNode {
-                icon: "⊢",
-                label: format!("{statement}  [{just}]"),
-                css_class: "proof-derived",
+            let premises = collapse_goal_steps(trace, &cond_leaves, register, seen, depth + 1);
+            MacroStep {
+                statement,
+                kind: MacroKind::Derived(label),
                 holds,
-                is_leaf: children.is_empty(),
-                inline: false,
-                children,
+                premises,
+                role_detail: role_detail(trace, steps),
             }
         }
     }
 }
 
-/// Build a node for a non-event ("flat") goal (a directly-asserted flat fact, a
-/// not-found leaf, a compute check, …). Degrades to [`build_node`] for anything
-/// it cannot phrase.
-fn build_single_node(
+/// Build a step for a non-event ("flat") goal (a directly-asserted flat fact, a
+/// not-found leaf, a compute check, …). Degrades to a [`build_node`] raw step for
+/// anything it cannot phrase.
+fn build_single_step(
     trace: &ProofTrace,
     g: u32,
     register: Register,
     seen: &mut Vec<String>,
     depth: usize,
-) -> RenderedNode {
+) -> MacroStep {
     let rule = &trace.steps[g as usize].rule;
     let holds = trace.steps[g as usize].holds;
     match rule {
         ProofRule::Asserted { fact } => {
             let stmt = flat_statement(fact, register);
             if seen.contains(&stmt) {
-                return reference_node(stmt);
+                return leaf_step(stmt, MacroKind::Reference, true, None);
             }
             seen.push(stmt.clone());
-            macro_leaf(&stmt, "given", "▣", "proof-asserted", holds, None)
+            leaf_step(stmt, MacroKind::Given, holds, None)
         }
-        ProofRule::ProofRef { fact } => reference_node(flat_statement(fact, register)),
-        ProofRule::PredicateNotFound { predicate } => macro_leaf(
-            &flat_statement(predicate, register),
-            "not derivable",
-            "✗",
-            "proof-failed",
+        ProofRule::ProofRef { fact } => leaf_step(
+            flat_statement(fact, register),
+            MacroKind::Reference,
+            true,
+            None,
+        ),
+        ProofRule::PredicateNotFound { predicate } => leaf_step(
+            flat_statement(predicate, register),
+            MacroKind::NotDerivable,
             false,
             None,
         ),
-        ProofRule::ComputeCheck { detail, .. } => macro_leaf(
-            &flat_statement(detail, register),
-            "computed",
-            "⊢",
-            "proof-check",
+        ProofRule::ComputeCheck { detail, .. } => leaf_step(
+            flat_statement(detail, register),
+            MacroKind::Computed,
             holds,
             None,
         ),
-        ProofRule::PredicateCheck { detail, .. } => macro_leaf(
-            &flat_statement(detail, register),
-            "checked",
-            "⊢",
-            "proof-check",
+        ProofRule::PredicateCheck { detail, .. } => leaf_step(
+            flat_statement(detail, register),
+            MacroKind::Checked,
             holds,
             None,
         ),
         ProofRule::Derived { label, fact } => {
             let stmt = flat_statement(fact, register);
             if seen.contains(&stmt) {
-                return reference_node(stmt);
+                return leaf_step(stmt, MacroKind::Reference, true, None);
             }
             seen.push(stmt.clone());
-            let just = rule_justification(label);
             let mut cond_leaves: Vec<u32> = Vec::new();
             for &c in &trace.steps[g as usize].children {
                 cond_leaves.extend(collect_goal_leaves(trace, c, depth + 1));
             }
-            let children = collapse_goals(trace, &cond_leaves, register, seen, depth + 1);
-            RenderedNode {
-                icon: "⊢",
-                label: format!("{stmt}  [{just}]"),
-                css_class: "proof-derived",
+            let premises = collapse_goal_steps(trace, &cond_leaves, register, seen, depth + 1);
+            MacroStep {
+                statement: stmt,
+                kind: MacroKind::Derived(label.clone()),
                 holds,
-                is_leaf: children.is_empty(),
-                inline: false,
-                children,
+                premises,
+                role_detail: None,
             }
         }
         // Negation / ForallCounterexample / CountResult / … : keep the honest
         // functional rendering rather than invent English.
-        _ => build_node(trace, g),
+        _ => raw_step(build_node(trace, g)),
     }
 }
 

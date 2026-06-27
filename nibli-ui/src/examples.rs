@@ -30,6 +30,11 @@ pub struct Example {
     pub lojban: &'static str,
     /// The preset queries offered for this KB.
     pub queries: &'static [ExampleQuery],
+    /// Domain-term overlay for this curated corpus's proof rendering (the
+    /// documented reader's overlay — `fanta` -> "inhibits", `varfarin` ->
+    /// "warfarin"). `None` keeps the engine's literal glosses. Applied only to the
+    /// proof "why"/tree, never the back-translation tab.
+    pub overlay: Option<&'static nibli_render::DomainGloss>,
 }
 
 // ── Syllogism (Chapter 19) — the minimal worked example, inlined ──
@@ -91,6 +96,7 @@ pub const EXAMPLES: &[Example] = &[
                 lojban: "la .adam. cu cipni",
             },
         ],
+        overlay: None,
     },
     Example {
         name: "GDPR compliance (Ch 20)",
@@ -114,6 +120,7 @@ pub const EXAMPLES: &[Example] = &[
                 lojban: "la .kanrek. cu datni",
             },
         ],
+        overlay: Some(&nibli_render::GDPR_OVERLAY),
     },
     Example {
         name: "Drug interactions (Ch 21)",
@@ -137,5 +144,6 @@ pub const EXAMPLES: &[Example] = &[
                 lojban: "la .apiksaban. cu kajde",
             },
         ],
+        overlay: Some(&nibli_render::DRUG_INTERACTIONS_OVERLAY),
     },
 ];

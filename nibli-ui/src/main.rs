@@ -310,7 +310,7 @@ fn App() -> Element {
                         SourceTabs { lojban_text, kb_status, active_tab, llm_config, modal_open, example }
                     }
                     div { class: "col-proof",
-                        ProofPanel { proof_text, proof_data }
+                        ProofPanel { proof_text, proof_data, example }
                     }
                 }
                 div { class: "query-row",
@@ -1215,6 +1215,7 @@ fn LlmConfigModal(llm_config: Signal<Option<LlmConfig>>, modal_open: Signal<bool
 fn ProofPanel(
     proof_text: Signal<Option<String>>,
     proof_data: Signal<Option<ProofTrace>>,
+    example: Signal<Option<usize>>,
 ) -> Element {
     let text = proof_text.read();
     let data = proof_data.read();
@@ -1223,7 +1224,7 @@ fn ProofPanel(
         div { class: "proof-panel",
             if let Some(trace_data) = data.as_ref() {
                 div { class: "proof-tree-container",
-                    ProofTreeView { trace: trace_data.clone() }
+                    ProofTreeView { trace: trace_data.clone(), example }
                 }
             } else if let Some(trace) = text.as_ref() {
                 pre { class: "proof-trace", "{trace}" }
@@ -1244,19 +1245,22 @@ fn ProofPanel(
 }
 
 #[component]
-fn ProofTreeView(trace: ProofTrace) -> Element {
+fn ProofTreeView(trace: ProofTrace, example: Signal<Option<usize>>) -> Element {
     if trace.root as usize >= trace.steps.len() {
         return rsx! { div { class: "proof-error", "Invalid proof trace: root index out of bounds" } };
     }
+    // A loaded curated example reads its proof in domain terms (the documented
+    // overlay); Custom KBs fall through to the engine's literal glosses.
+    let overlay = (*example.read()).and_then(|i| EXAMPLES[i].overlay);
     // A render-only plain-English "why" summary above the detailed tree, from the
     // same shared renderer (the trace data is unchanged). `None` for an
     // unsummarizable trace — then nothing extra is shown.
-    let summary = nibli_render::summarize_proof(&trace, nibli_render::Register::Spec);
+    let summary = nibli_render::summarize_proof_with(&trace, nibli_render::Register::Spec, overlay);
     // Collapse the verbose trace into the macro-logical DAG once via the shared
     // renderer; the component then walks the structured RenderedNode tree (no
     // per-variant logic in the UI). The folded role/event scaffolding rides along
     // as `proof-role-detail` clusters the user can expand.
-    let root = nibli_render::collapse_proof(&trace, nibli_render::Register::Spec);
+    let root = nibli_render::collapse_proof_with(&trace, nibli_render::Register::Spec, overlay);
     rsx! {
         div { class: "proof-tree",
             if let Some(why) = summary {

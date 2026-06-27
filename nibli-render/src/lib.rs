@@ -13,23 +13,30 @@
 //! `relation(args)` / gloss-based frame — never invented English.
 
 mod collapse;
+mod corpus_overlay;
 mod fact;
 mod frame;
 mod logic;
+mod overlay;
 mod proof;
 mod register;
 mod summary;
 mod term;
 
-pub use collapse::{collapse_proof, render_collapsed_text, render_node_text};
+pub use collapse::{
+    collapse_proof, collapse_proof_with, render_collapsed_text, render_collapsed_text_with,
+    render_node_text,
+};
+pub use corpus_overlay::{DRUG_INTERACTIONS_OVERLAY, GDPR_OVERLAY};
 pub use fact::humanize_fact;
 pub use logic::{render_logic_buffer, render_logic_tree};
+pub use overlay::DomainGloss;
 pub use proof::{
     RenderedNode, css_class, icon, label, render_proof, render_proof_text,
     render_proof_text_indented, trace_display,
 };
 pub use register::Register;
-pub use summary::{fact_to_english, summarize_proof};
+pub use summary::{fact_to_english, summarize_proof, summarize_proof_with};
 
 #[cfg(test)]
 mod tests {

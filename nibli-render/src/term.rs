@@ -49,7 +49,8 @@ pub(crate) fn is_event_skolem_arg(s: &str) -> bool {
 }
 
 /// Humanize a Skolem token for display: `sk_N` -> `#N`, `sk_N(arg)` -> `#N(arg)`.
-/// Non-Skolem strings pass through unchanged.
+/// A non-Skolem constant passes through, but routes through the active domain
+/// overlay first (`varfarin` -> "warfarin") — `None` overlay = verbatim.
 pub(crate) fn humanize_skolem(s: &str) -> String {
     if let Some(rest) = s.strip_prefix("sk_") {
         // Bare `sk_N`.
@@ -63,6 +64,9 @@ pub(crate) fn humanize_skolem(s: &str) -> String {
                 return format!("#{num}{}", &rest[paren..]);
             }
         }
+    }
+    if let Some(name) = crate::overlay::active().and_then(|o| o.name(s)) {
+        return name.to_string();
     }
     s.to_string()
 }
@@ -95,5 +99,21 @@ mod tests {
         assert_eq!(humanize_skolem("sk_2"), "#2");
         assert_eq!(humanize_skolem("sk_1(adam)"), "#1(adam)");
         assert_eq!(humanize_skolem("adam"), "adam");
+    }
+
+    #[test]
+    fn overlay_name_override_then_restores() {
+        use crate::corpus_overlay::DRUG_INTERACTIONS_OVERLAY;
+        use crate::overlay::with_overlay;
+        // Fallback: the raw cmevla passes through verbatim.
+        assert_eq!(humanize_skolem("varfarin"), "varfarin");
+        with_overlay(Some(&DRUG_INTERACTIONS_OVERLAY), || {
+            assert_eq!(humanize_skolem("varfarin"), "warfarin");
+            assert_eq!(humanize_skolem("siptucin"), "CYP2C9");
+            // Non-name tokens still pass through; Skolems still humanize.
+            assert_eq!(humanize_skolem("zo'e"), "zo'e");
+            assert_eq!(humanize_skolem("sk_2"), "#2");
+        });
+        assert_eq!(humanize_skolem("varfarin"), "varfarin");
     }
 }

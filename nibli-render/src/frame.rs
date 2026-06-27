@@ -7,15 +7,33 @@
 
 use smuni_dictionary::{get_arity, get_gloss, get_template};
 
+use crate::overlay;
+
 /// Resolve a fill-template (a string with `{x1}`..`{xN}` placeholders) for a
-/// relation: the curated template if present, else a generic gloss+arity frame.
+/// relation. DRY resolution chain: the active domain overlay (if any) wins, then
+/// the curated engine dictionary template, then a generic gloss+arity frame. The
+/// overlay is just the first tier — Custom KBs and non-UI surfaces fall straight
+/// through to the dictionary.
 pub(crate) fn frame_template(relation: &str) -> String {
+    if let Some(t) = overlay::active().and_then(|o| o.template(relation)) {
+        return t.to_string();
+    }
     if let Some(t) = get_template(relation) {
         return t.to_string();
     }
-    let gloss = get_gloss(relation).unwrap_or(relation);
+    let gloss = gloss_for(relation);
     let arity = get_arity(relation).unwrap_or(1).max(1);
-    generic_template(gloss, arity)
+    generic_template(&gloss, arity)
+}
+
+/// Single-word gloss for a relation via the same overlay -> dictionary -> bare
+/// chain. Used for the generic frame fallback and the "a &lt;noun&gt;" rendering.
+pub(crate) fn gloss_for(relation: &str) -> String {
+    overlay::active()
+        .and_then(|o| o.gloss(relation))
+        .or_else(|| get_gloss(relation))
+        .unwrap_or(relation)
+        .to_string()
 }
 
 /// The highest place index `N` appearing in a `{xN}` placeholder (0 if none).
@@ -64,7 +82,7 @@ const TRAILING_PARTICLES: &[&str] = &[
 /// Trim trailing whitespace and any dangling particle words from a kept
 /// connective, preserving leading whitespace so the join keeps its separator
 /// (`" eats "` → `" eats"`, `" goes to "` → `" goes"`, `" from "` → `""`).
-fn strip_trailing_particle(before: &str) -> &str {
+pub(crate) fn strip_trailing_particle(before: &str) -> &str {
     let mut s = before.trim_end();
     loop {
         let start = s.rfind(char::is_whitespace).map_or(0, |i| i + 1);
@@ -143,6 +161,23 @@ mod tests {
         // An invented predicate falls back to a generic frame.
         let t = frame_template("frobnicatezzzz");
         assert!(t.starts_with("{x1}"), "got: {t}");
+    }
+
+    #[test]
+    fn overlay_template_wins_then_restores() {
+        use crate::corpus_overlay::DRUG_INTERACTIONS_OVERLAY;
+        use crate::overlay::with_overlay;
+        // Fallback tier: the engine dictionary's literal proxy gloss.
+        assert_eq!(frame_template("ckape"), "{x1} is in danger");
+        // Overlay tier: the domain term wins, and `se katna` reorders its places.
+        with_overlay(Some(&DRUG_INTERACTIONS_OVERLAY), || {
+            assert_eq!(frame_template("ckape"), "{x1} is at toxicity risk");
+            assert_eq!(frame_template("katna"), "{x2} is metabolized by {x1}");
+            // A relation the overlay does not cover still falls through.
+            assert_eq!(frame_template("gerku"), "{x1} is a dog");
+        });
+        // Restored after the scope.
+        assert_eq!(frame_template("ckape"), "{x1} is in danger");
     }
 
     #[test]
