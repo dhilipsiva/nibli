@@ -600,30 +600,9 @@ body {
    tabbed mirror of the top column: Source | Lojban | Back-translation), so the
    old `.query-section` / `.query-header` rules are gone. */
 
-/* Status badge — dot + label, colored per connection state. */
-.status-badge {
-  display: inline-flex; align-items: center; gap: var(--s2);
-  height: var(--control-h-sm); padding: 0 var(--s3);
-  font-family: var(--font-mono); font-size: var(--fs-cap); font-weight: var(--w-medium);
-  letter-spacing: var(--track-wide); text-transform: uppercase; white-space: nowrap;
-  border-radius: var(--r-full);
-  border: var(--bw-hair) solid var(--border-subtle); background: var(--surface-inset);
-  color: var(--text-muted);
-}
-.status-badge::before {                     /* the state dot/shape            */
-  content: ""; width: 8px; height: 8px; border-radius: 50%;
-  background: currentColor; flex: none;
-}
-.status-badge.connected    { color: var(--status-ready);        border-color: color-mix(in oklab, var(--status-ready) 36%, transparent); }
-.status-badge.connected::before { box-shadow: 0 0 0 3px color-mix(in oklab, var(--status-ready) 22%, transparent); }
-.status-badge.checking     { color: var(--status-checking);     border-color: color-mix(in oklab, var(--status-checking) 36%, transparent); }
-.status-badge.checking::before { animation: pulse 1s var(--ease-out) infinite; }
-.status-badge.waiting      { color: var(--status-waiting);      border-color: color-mix(in oklab, var(--status-waiting) 36%, transparent); }
-.status-badge.waiting::before { border-radius: 50%; background: radial-gradient(circle at 50% 50%, transparent 40%, currentColor 42%); }
-.status-badge.not-ready    { color: var(--status-notready);     border-color: var(--border-subtle); }
-.status-badge.not-ready::before { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
-.status-badge.disconnected { color: var(--status-disconnected); border-color: color-mix(in oklab, var(--status-disconnected) 36%, transparent); }
-.status-badge.disconnected::before { width: auto; height: auto; border-radius: 0; background: none; content: "✕"; font-size: var(--fs-cap); line-height: 1; }
+/* (The connection `.status-badge` was removed with the serverless rewrite — the
+   in-browser engine has no connection state, and the old "in-browser" badge in
+   the query header is gone with the tabbed query column.) */
 
 /* Query bar — mono input with an ember `xu` affix + primary Run. */
 .query-bar { display: flex; gap: var(--s2); align-items: stretch; }
