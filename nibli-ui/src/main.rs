@@ -455,34 +455,58 @@ fn App() -> Element {
     rsx! {
         document::Link { rel: "stylesheet", href: asset!("/assets/tokens.css") }
         document::Link { rel: "stylesheet", href: asset!("/assets/style.css") }
-        div { class: "app", "data-theme": "{theme}", tabindex: "0", onkeydown: on_global_keydown,
-            div { class: "main-row",
-                div { class: "col-tabs",
-                    SourceTabs { lojban_text, kb_status, active_tab, network_snapshot }
+        // Outer shell owns the viewport: the QUINE masthead sits above the
+        // instrument. data-theme rides here (not on `.app`) so the header
+        // themes alongside the panels.
+        div { class: "app-shell", "data-theme": "{theme}",
+            header { class: "app-header",
+                div { class: "app-header__brand",
+                    span { class: "app-header__name", "nibli" }
+                    span { class: "app-header__tagline", "the transparency triad" }
                 }
-                div { class: "col-proof",
-                    ProofPanel { proof_text, proof_data, is_busy }
+                span { class: "app-header__sp" }
+                span { class: "app-header__credit",
+                    "Built with "
+                    span { class: "app-header__heart", "\u{2665}" }
+                    " by "
+                    a {
+                        class: "app-header__credit-link",
+                        href: "https://dhilipsiva.dev/",
+                        target: "_blank",
+                        rel: "noopener noreferrer",
+                        "@dhilipsiva"
+                    }
+                }
+                button {
+                    class: "app-header__theme",
+                    title: "Toggle theme",
+                    onclick: move |_| {
+                        let next = if *theme.read() == "light" { "" } else { "light" };
+                        theme.set(next);
+                    },
+                    if *theme.read() == "light" { "\u{263E} dark" } else { "\u{2600} light" }
                 }
             }
-            div { class: "query-row",
-                div { class: "query-section",
-                    div { class: "query-header",
-                        span { class: "query-header__label", "query" }
-                        span { class: "query-header__sp" }
-                        StatusBadge {}
-                        button {
-                            class: "toolbar-btn",
-                            title: "Toggle theme",
-                            onclick: move |_| {
-                                let next = if *theme.read() == "light" { "" } else { "light" };
-                                theme.set(next);
-                            },
-                            "\u{25D0}"
-                        }
+            div { class: "app", tabindex: "0", onkeydown: on_global_keydown,
+                div { class: "main-row",
+                    div { class: "col-tabs",
+                        SourceTabs { lojban_text, kb_status, active_tab, network_snapshot }
                     }
-                    QueryBar { output_log, proof_text, proof_data, lojban_text, kb_status, is_busy }
+                    div { class: "col-proof",
+                        ProofPanel { proof_text, proof_data, is_busy }
+                    }
                 }
-                OutputLog { output_log }
+                div { class: "query-row",
+                    div { class: "query-section",
+                        div { class: "query-header",
+                            span { class: "query-header__label", "query" }
+                            span { class: "query-header__sp" }
+                            StatusBadge {}
+                        }
+                        QueryBar { output_log, proof_text, proof_data, lojban_text, kb_status, is_busy }
+                    }
+                    OutputLog { output_log }
+                }
             }
         }
     }

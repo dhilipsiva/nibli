@@ -52,6 +52,90 @@ body {
   overflow: hidden;
 }
 
+/* ── Masthead header + app shell ───────────────────────────────────────────
+   A slim masthead sits above the instrument (per the QUINE handoff top bar):
+   brand + tagline on the left, build credit + theme toggle on the right.
+   The shell owns the viewport height; `.app` fills the space the header
+   leaves rather than claiming a full 100vh of its own.                       */
+.app-shell {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-sunken);
+}
+.app-shell > .app {
+  height: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.app-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  height: 46px;
+  padding: 0 var(--s4);
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+}
+.app-header__brand { display: inline-flex; align-items: baseline; gap: var(--s2); }
+.app-header__name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+  color: var(--text-strong);
+}
+.app-header__tagline {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.app-header__sp { flex: 1; }
+
+/* Build credit — ember is reserved for action, but the author's mark is the
+   one sanctioned ember flourish in the chrome: the heart and the handle burn. */
+.app-header__credit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.app-header__heart { color: var(--accent); font-size: 12px; line-height: 1; }
+.app-header__credit-link {
+  color: var(--accent);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.app-header__credit-link:hover { color: var(--accent-hover); text-decoration: underline; }
+.app-header__credit-link:focus-visible { box-shadow: var(--ring); border-radius: var(--r-sm); }
+
+/* Theme toggle — quiet inset chip, mono caps; matches the handoff masthead. */
+.app-header__theme {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: var(--surface-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  height: 26px;
+  padding: 0 12px;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out);
+}
+.app-header__theme:hover { color: var(--text-strong); border-color: var(--border-strong); }
+.app-header__theme:active { transform: translateY(1px); }
+.app-header__theme:focus-visible { box-shadow: var(--ring); }
+
 .main-row {
   display: grid;
   grid-template-columns: minmax(420px, 0.92fr) minmax(480px, 1.08fr);
