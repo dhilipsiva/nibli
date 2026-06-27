@@ -142,6 +142,8 @@ Count _v0 = 2:
 
 Query results use a four-valued contract: `TRUE`, `FALSE`, `UNKNOWN` (with reason: cycle cut, incomplete knowledge, or NAF dependence), or `RESOURCE_EXCEEDED` (depth, fuel, or memory limit hit). The engine never guesses.
 
+You query by **stating the proposition you want checked**, not by asking a question. `? la .adam. cu danlu` reads *"is `Adam is an animal` entailed?"* — and the verdict *is* the answer. The engine has no interrogative form: Lojban's `xu` (the spoken yes/no marker) is not a query operator, so `? xu la .adam. cu danlu` is a syntax error. State `la .adam. cu danlu` ("Adam is an animal"), never `xu la .adam. cu danlu` ("Is Adam an animal?").
+
 ### REPL Commands
 
 | Command | Description |
@@ -179,12 +181,14 @@ The three tabs are **Source** (plain English), **Lojban** (the formal encoding),
 
 The UI uses a stateless KB model: every query builds a fresh engine, re-asserts the full Lojban tab as the knowledge base, then runs the query. The query bar is queries only (no assertions). The Lojban tab is the single source of truth.
 
+As in the REPL, you **state the claim to check, not ask a question**: type `la .adam. cu citka` ("Adam eats"), not `xu la .adam. cu citka` ("Does Adam eat?"). The query box shows a fixed `xu` purely as a reading cue — it is never typed into the field and never reaches the engine; the verdict (`TRUE` / `FALSE` / `UNKNOWN`) is the answer.
+
 ```
 ro lo gerku cu danlu          # Every dog is an animal
 ro lo danlu cu citka          # Every animal eats
 la .adam. cu gerku            # Adam is a dog
 
-Query: la .adam. cu citka     # -> TRUE + proof tree
+Query: la .adam. cu citka     # state the claim -> TRUE + proof tree
 ```
 
 The interface is styled with the **QUINE** design system — an instrument-grade, terminal-first look (IBM Plex Mono, ember accent, blueprint-grid proof well) where every meaning-bearing color is a semantic token (verdicts, proof rule types, error classes) paired with a glyph for colorblind safety. Styling lives in `nibli-ui/assets/tokens.css` (design tokens) + `nibli-ui/assets/style.css`. Dark is the default; a header toggle switches to the light "paper" theme via `data-theme="light"`.

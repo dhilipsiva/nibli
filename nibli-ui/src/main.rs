@@ -487,7 +487,7 @@ fn QueryTabs(
         }
     };
 
-    // Translate the English question (Source tab) into the Lojban query. With no
+    // Translate the English claim (Source tab) into the Lojban query. With no
     // provider configured, open the integration modal instead of erroring.
     let mut do_translate = move || {
         let text = query_source.read().clone();
@@ -541,14 +541,14 @@ fn QueryTabs(
                 match *query_tab.read() {
                     ActiveTab::Source => {
                         let hint = match llm_config.read().as_ref().map(|c| c.provider.short_name()) {
-                            Some(p) => format!("english question \u{2192} lojban via {p}"),
-                            None => "english question \u{2192} lojban \u{2014} configure an llm".to_string(),
+                            Some(p) => format!("english claim \u{2192} lojban via {p}"),
+                            None => "english claim \u{2192} lojban \u{2014} configure an llm".to_string(),
                         };
                         rsx! {
-                            span { class: "nb-eyebrow", "query \u{2014} plain english" }
+                            span { class: "nb-eyebrow", "query \u{2014} state a claim in english" }
                             textarea {
                                 class: "source-input",
-                                placeholder: "Ask in English, e.g. \"Does Adam eat?\"\u{2026}",
+                                placeholder: "State the claim to check, e.g. \"Adam eats\"\u{2026}",
                                 value: "{query_source}",
                                 oninput: move |e| query_source.set(e.value()),
                                 onkeydown: on_source_keydown,
@@ -573,22 +573,33 @@ fn QueryTabs(
                             }
                         }
                     }
-                    // Lojban tab: the query input + Run, with the live "Query if …"
-                    // back-translation shown inline below (not a separate tab).
-                    // Source is the only other tab, so `_` covers Lojban here.
+                    // Lojban tab: you STATE a proposition to check (not ask a
+                    // question) — the engine answers TRUE / FALSE / UNKNOWN. The
+                    // `xu` shown is a decorative reading cue: it is not part of
+                    // `query_text` and never reaches the engine (typing it is a
+                    // syntax error). The live "Query if …" back-translation shows
+                    // inline below. Source is the only other tab, so `_` covers
+                    // Lojban here.
                     _ => rsx! {
                         div { class: "query-bar",
-                            span { class: "query-bar__affix", "xu" }
+                            span {
+                                class: "query-bar__affix",
+                                title: "xu just marks this box as a query \u{2014} a reading cue only, never typed or sent. You state a claim (e.g. la .adam. cu citka); the engine answers TRUE / FALSE / UNKNOWN.",
+                                "xu"
+                            }
                             input {
                                 id: "query-input",
                                 class: "query-input",
                                 r#type: "text",
-                                placeholder: "Enter Lojban query \u{2014} Ctrl+K focus",
+                                placeholder: "State a proposition to check \u{2014} Ctrl+K focus",
                                 value: "{query_text}",
                                 oninput: move |e| query_text.set(e.value()),
                                 onkeydown: on_query_keydown,
                             }
                             button { class: "query-btn", onclick: submit_click, "Query" }
+                        }
+                        div { class: "query-hint",
+                            "State a claim to check \u{2014} e.g. \u{201C}Adam eats\u{201D} \u{2014} not a question (\u{201C}Does Adam eat?\u{201D})."
                         }
                         match reading {
                             QueryReading::Empty => rsx! {},

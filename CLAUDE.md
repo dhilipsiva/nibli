@@ -88,6 +88,7 @@ Use these assumptions when selecting entrypoints:
 
 - `gasnu` is the canonical local/operator runtime for the theorem prover. It is the main single-node REPL and the default way to exercise the WASM-hosted pipeline.
 - `nibli-ui` is the canonical browser frontend — a standalone Dioxus app with the engine (gerna→smuni→logji) compiled into the WASM bundle. It reasons fully in-browser; there is no server. The one optional network call is the Source→Lojban **Translate** (`nibli-ui/src/llm.rs`): a bring-your-own-key request sent directly from the browser to a user-chosen LLM (Anthropic/OpenAI/OpenRouter/Gemini/Custom), with the key held in tab memory only.
+  - **Query model (state, don't ask):** a query is an entailment check of a *proposition* — you state `la .adam. cu citka` ("Adam eats") and the engine returns `TRUE`/`FALSE`/`UNKNOWN`. There is no interrogative form: `xu`/"Does Adam eat?" is **not** a query (`xu la .adam. cu citka` is a parse error). The `xu` shown in the UI query box is a decorative reading cue — not part of `query_text`, never sent to the engine. Keep UI/docs/book copy phrased as "state a claim," never "ask a question."
 - `nibli-wasm` is the wasm-bindgen wrapper exposing the same in-browser pipeline to JS (powers the live demo at dhilipsiva.dev/nibli).
 - `nibli-engine` is an internal native embedding library, not a user-facing runtime surface.
 - `nibli` is developer tooling: a native direct-crate REPL and the `nibli-validate` binary used for validation/data-generation workflows. It is not the canonical production runtime.

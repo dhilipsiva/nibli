@@ -604,7 +604,7 @@ body {
    in-browser engine has no connection state, and the old "in-browser" badge in
    the query header is gone with the tabbed query column.) */
 
-/* Query bar — mono input with an ember `xu` affix + primary Run. */
+/* Query bar — mono input with a decorative `xu` cue + primary Query. */
 .query-bar { display: flex; gap: var(--s2); align-items: stretch; }
 .query-input {
   flex: 1; min-width: 0; height: var(--control-h);
@@ -617,9 +617,18 @@ body {
 .query-input:hover { border-color: var(--border-strong); }
 .query-input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring-field); }
 .query-bar { position: relative; }
-.query-bar__affix {                         /* the ember `xu` evidential prefix */
+/* Decorative `xu` reading cue (Lojban yes/no marker) — purely a visual hint that
+   this box is a query; it is never part of the typed text and never sent to the
+   engine. `cursor: help` + a `title` tooltip explain it on hover. */
+.query-bar__affix {
   position: absolute; left: var(--s3); top: 50%; transform: translateY(-50%);
-  font-family: var(--font-mono); font-size: var(--fs-code); color: var(--accent); pointer-events: none;
+  font-family: var(--font-mono); font-size: var(--fs-code); color: var(--accent);
+  cursor: help;
+}
+
+/* Caption under the query bar: you state a claim, not ask a question. */
+.query-hint {
+  font-size: var(--fs-cap); color: var(--text-faint); line-height: 1.4;
 }
 
 /* The query's IR back-translation, shown inline under the query input on the
