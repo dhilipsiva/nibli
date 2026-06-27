@@ -56,7 +56,8 @@ gitignored here, so this skill file itself was force-added — keep that in mind
    - Re-read / re-run to confirm the change does what the item asked. If verification fails, fix and
      re-verify. **Do not commit broken work.**
 
-4. **Update the tracker.** If a `TODO.md`/tracker holds the item: fully done → delete the bullet entirely
+4. **Update the tracker.** Items are plain `-` bullets — never `- [ ]` checkboxes (the workflow deletes
+   or rewrites items, it never checks them off). If a `TODO.md`/tracker holds the item: fully done → delete the bullet entirely
    (no `~~strikethrough~~`, no "DONE" marker); partial → rewrite it to state exactly what remains; stale
    → say so and remove it. If there is no tracker, note in the commit what was completed.
 
