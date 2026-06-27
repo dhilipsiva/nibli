@@ -14,6 +14,12 @@
       "port": 8080
     },
     {
+      "name": "ui-nix",
+      "runtimeExecutable": "wsl",
+      "runtimeArgs": ["-d", "Ubuntu", "-e", "bash", "-lc", "cd ~/projects/dhilipsiva/nibli && nix --extra-experimental-features 'nix-command flakes' develop --command just ui"],
+      "port": 8080
+    },
+    {
       "name": "python-backend",
       "runtimeExecutable": "python3",
       "runtimeArgs": ["python/nibli_backend.py"],

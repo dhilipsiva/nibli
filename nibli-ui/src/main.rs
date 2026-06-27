@@ -97,8 +97,11 @@ struct GraphQLResponse {
     errors: Option<Vec<serde_json::Value>>,
 }
 
+// NOTE: keys are snake_case to match nibli-server's /readyz wire format
+// (its ReadyResponse derives plain serde::Serialize with no rename). Do NOT
+// add `#[serde(rename_all = "camelCase")]` here — it makes deserialization
+// fail and the StatusBadge falsely reports "Disconnected".
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct ReadyResponse {
     ready: bool,
     require_gossip_peer: bool,
@@ -370,6 +373,41 @@ async fn execute_query(kb: &str, query_text: &str) -> OutputEntry {
     }
 }
 
+/// Maps a known error-message prefix to its semantic CSS class + the cleaned body.
+/// The leading icon glyph is drawn by the stylesheet from this class, so the body
+/// no longer carries the prefix.
+fn classify_error(message: &str) -> (&'static str, String) {
+    const TABLE: [(&str, &str); 5] = [
+        ("[Syntax Error]", "error-syntax"),
+        ("[Semantic Error]", "error-semantic"),
+        ("[Reasoning Error]", "error-reasoning"),
+        ("[Backend Error]", "error-backend"),
+        ("[Limit]", "error-limit"),
+    ];
+    for (prefix, class) in TABLE {
+        if let Some(rest) = message.strip_prefix(prefix) {
+            return (class, rest.trim().to_string());
+        }
+    }
+    ("error-generic", message.to_string())
+}
+
+/// Verdict modifier for the result chip, derived from the leading status word.
+/// The chip glyph (⊤/⊥/?/◴) is drawn by the stylesheet from this class.
+fn result_modifier(result: &str) -> &'static str {
+    if result.starts_with("TRUE") {
+        "is-true"
+    } else if result.starts_with("FALSE") {
+        "is-false"
+    } else if result.starts_with("UNKNOWN") {
+        "is-unknown"
+    } else if result.starts_with("RESOURCE_EXCEEDED") {
+        "is-limit"
+    } else {
+        ""
+    }
+}
+
 // ── Components ──
 
 #[component]
@@ -410,10 +448,14 @@ fn App() -> Element {
 
     let network_snapshot: Signal<Option<NetworkSnapshotData>> = use_signal(|| None);
     let active_tab: Signal<ActiveTab> = use_signal(|| ActiveTab::Source);
+    // "" = dark (the instrument default); "light" = the QUINE paper theme. The
+    // attribute rides on `.app`, so the [data-theme="light"] overrides cascade.
+    let mut theme = use_signal(|| "");
 
     rsx! {
+        document::Link { rel: "stylesheet", href: asset!("/assets/tokens.css") }
         document::Link { rel: "stylesheet", href: asset!("/assets/style.css") }
-        div { class: "app", tabindex: "0", onkeydown: on_global_keydown,
+        div { class: "app", "data-theme": "{theme}", tabindex: "0", onkeydown: on_global_keydown,
             div { class: "main-row",
                 div { class: "col-tabs",
                     SourceTabs { lojban_text, kb_status, active_tab, network_snapshot }
@@ -425,11 +467,22 @@ fn App() -> Element {
             div { class: "query-row",
                 div { class: "query-section",
                     div { class: "query-header",
+                        span { class: "query-header__label", "query" }
+                        span { class: "query-header__sp" }
                         StatusBadge {}
-                        QueryBar { output_log, proof_text, proof_data, lojban_text, kb_status, is_busy }
+                        button {
+                            class: "toolbar-btn",
+                            title: "Toggle theme",
+                            onclick: move |_| {
+                                let next = if *theme.read() == "light" { "" } else { "light" };
+                                theme.set(next);
+                            },
+                            "\u{25D0}"
+                        }
                     }
-                    OutputLog { output_log }
+                    QueryBar { output_log, proof_text, proof_data, lojban_text, kb_status, is_busy }
                 }
+                OutputLog { output_log }
             }
         }
     }
@@ -437,15 +490,10 @@ fn App() -> Element {
 
 #[component]
 fn KbStatusBar(kb_status: Signal<Option<KbStatus>>) -> Element {
+    let mut expanded = use_signal(|| false);
     let status = kb_status.read();
     let Some(ref s) = *status else {
         return rsx! {};
-    };
-
-    let status_class = if s.errors > 0 {
-        "kb-status-bar kb-status-warn"
-    } else {
-        "kb-status-bar kb-status-ok"
     };
 
     let summary_text = format!(
@@ -461,23 +509,34 @@ fn KbStatusBar(kb_status: Signal<Option<KbStatus>>) -> Element {
     );
 
     let has_errors = s.errors > 0;
+    let summary_state = if has_errors {
+        "kb-status-warn"
+    } else {
+        "kb-status-ok"
+    };
 
     rsx! {
-        div { class: "{status_class}",
+        div { class: "kb-status-bar",
             if has_errors {
-                details { class: "kb-status-details",
-                    summary { class: "kb-status-summary", "{summary_text}" }
+                button {
+                    class: "kb-status-summary {summary_state}",
+                    "aria-expanded": "{expanded}",
+                    onclick: move |_| {
+                        let v = *expanded.read();
+                        expanded.set(!v);
+                    },
+                    span { class: "kb-status-summary__caret", "\u{25B8}" }
+                    "{summary_text}"
+                    span { class: "kb-status-summary__sp" }
+                }
+                div { class: "kb-status-details",
                     div { class: "kb-line-results",
                         for lr in s.line_results.iter() {
                             div {
                                 key: "{lr.line_number}",
                                 class: if lr.success { "kb-line-result kb-line-ok" } else { "kb-line-result kb-line-error" },
-                                span { class: "kb-line-num", "L{lr.line_number}" }
-                                if lr.success {
-                                    span { class: "kb-line-icon", "✓" }
-                                } else {
-                                    span { class: "kb-line-icon", "✗" }
-                                }
+                                span { class: "kb-line-num", "{lr.line_number}" }
+                                span { class: "kb-line-icon" }
                                 span { class: "kb-line-text", "{lr.text}" }
                                 if let Some(ref err) = lr.error {
                                     span { class: "kb-line-err", "{err}" }
@@ -487,7 +546,7 @@ fn KbStatusBar(kb_status: Signal<Option<KbStatus>>) -> Element {
                     }
                 }
             } else {
-                span { class: "kb-status-summary", "{summary_text}" }
+                div { class: "kb-status-summary {summary_state}", "{summary_text}" }
             }
         }
     }
@@ -582,14 +641,11 @@ fn QueryBar(
     };
 
     let busy = *is_busy.read();
-    let btn_class = if busy {
-        "query-btn btn-busy"
-    } else {
-        "query-btn"
-    };
+    let btn_class = if busy { "query-btn busy" } else { "query-btn" };
 
     rsx! {
         div { class: "query-bar",
+            span { class: "query-bar__affix", "xu" }
             input {
                 id: "query-input",
                 class: "query-input",
@@ -604,7 +660,7 @@ fn QueryBar(
                 class: "{btn_class}",
                 onclick: submit_click,
                 disabled: busy,
-                if busy { "\u{23F3}" } else { "Run" }
+                "Run"
             }
         }
     }
@@ -612,13 +668,52 @@ fn QueryBar(
 
 #[component]
 fn OutputLog(output_log: Signal<Vec<OutputEntry>>) -> Element {
+    /// Flattened display row — all formatting decided up front so the rsx only
+    /// reads plain fields (rsx text interpolation can't call functions).
+    struct Row {
+        key: usize,
+        class: String,
+        input: String,
+        is_error: bool,
+        text: String,
+        result_mod: &'static str,
+    }
+
     let entries = output_log.read();
     let is_empty = entries.is_empty();
+    let rows: Vec<Row> = entries
+        .iter()
+        .enumerate()
+        .map(|(i, e)| {
+            if e.is_error {
+                let (err_class, body) = classify_error(&e.result);
+                Row {
+                    key: i,
+                    class: format!("output-entry output-error {err_class}"),
+                    input: e.input.clone(),
+                    is_error: true,
+                    text: body,
+                    result_mod: "",
+                }
+            } else {
+                Row {
+                    key: i,
+                    class: "output-entry".to_string(),
+                    input: e.input.clone(),
+                    is_error: false,
+                    text: e.result.clone(),
+                    result_mod: result_modifier(&e.result),
+                }
+            }
+        })
+        .collect();
 
     rsx! {
         div { class: "output-log-container",
             if !is_empty {
                 div { class: "output-log-header",
+                    span { class: "output-log-header__label", "log" }
+                    span { class: "output-log-header__sp" }
                     button {
                         class: "output-clear-btn",
                         onclick: move |_| output_log.set(vec![]),
@@ -628,44 +723,22 @@ fn OutputLog(output_log: Signal<Vec<OutputEntry>>) -> Element {
                 }
             }
             div { id: "output-log", class: "output-log",
-                for (i, entry) in entries.iter().enumerate() {
+                for row in rows.iter() {
                     div {
-                        key: "{i}",
-                        class: if entry.is_error { "output-entry output-error" } else { "output-entry" },
-                        span { class: "output-input", "> {entry.input}" }
-                        if entry.is_error {
-                            ErrorDisplay { message: entry.result.clone() }
+                        key: "{row.key}",
+                        class: "{row.class}",
+                        span { class: "output-input", "{row.input}" }
+                        if row.is_error {
+                            span { class: "output-error-display",
+                                span { class: "error-icon" }
+                                span { class: "error-message", "{row.text}" }
+                            }
                         } else {
-                            span { class: "output-result", "  {entry.result}" }
+                            span { class: "output-result {row.result_mod}", "{row.text}" }
                         }
                     }
                 }
             }
-        }
-    }
-}
-
-/// Parses error strings for known prefixes and renders with distinct icons/colors.
-#[component]
-fn ErrorDisplay(message: String) -> Element {
-    let (icon, css_class, body) = if let Some(rest) = message.strip_prefix("[Syntax Error]") {
-        ("\u{1F524}", "error-syntax", rest.trim())
-    } else if let Some(rest) = message.strip_prefix("[Semantic Error]") {
-        ("\u{1F517}", "error-semantic", rest.trim())
-    } else if let Some(rest) = message.strip_prefix("[Reasoning Error]") {
-        ("\u{1F50D}", "error-reasoning", rest.trim())
-    } else if let Some(rest) = message.strip_prefix("[Backend Error]") {
-        ("\u{2699}\u{FE0F}", "error-backend", rest.trim())
-    } else if let Some(rest) = message.strip_prefix("[Limit]") {
-        ("\u{23F1}\u{FE0F}", "error-limit", rest.trim())
-    } else {
-        ("\u{274C}", "error-generic", message.as_str())
-    };
-
-    rsx! {
-        span { class: "output-error-display {css_class}",
-            span { class: "error-icon", "{icon}" }
-            span { class: "error-message", "  {body}" }
         }
     }
 }
@@ -748,6 +821,7 @@ fn SourceTabs(
             div { class: "tab-content",
                 match *active_tab.read() {
                     ActiveTab::Source => rsx! {
+                        span { class: "nb-eyebrow", "source \u{2014} plain english" }
                         textarea {
                             class: "source-input",
                             placeholder: "Enter English text...",
@@ -763,11 +837,14 @@ fn SourceTabs(
                         if let Some(err) = translate_error.read().as_ref() {
                             div { class: "translate-error", "{err}" }
                         }
-                        button {
-                            class: if *translating.read() { "translate-btn btn-busy" } else { "translate-btn" },
-                            onclick: on_translate,
-                            disabled: *translating.read(),
-                            if *translating.read() { "Translating..." } else { "Translate" }
+                        div { class: "translate-row",
+                            button {
+                                class: if *translating.read() { "translate-btn busy" } else { "translate-btn" },
+                                onclick: on_translate,
+                                disabled: *translating.read(),
+                                "Translate"
+                            }
+                            span { class: "translate-row__hint", "english \u{2192} lojban via llm" }
                         }
                     },
                     ActiveTab::Lojban => rsx! {
@@ -829,12 +906,29 @@ fn SourceTabs(
                         }
                         KbStatusBar { kb_status }
                     },
-                    ActiveTab::BackTranslation => rsx! {
-                        pre { class: "back-translation",
-                            if back_translation.read().is_empty() {
-                                "Type Lojban text in the Lojban tab to see back-translation..."
-                            } else {
-                                "{back_translation}"
+                    ActiveTab::BackTranslation => {
+                        let bt = back_translation.read();
+                        let lines: Vec<(usize, String)> = bt
+                            .lines()
+                            .enumerate()
+                            .map(|(i, l)| (i + 1, l.to_string()))
+                            .collect();
+                        let empty = lines.is_empty();
+                        rsx! {
+                            span { class: "nb-eyebrow", "what nibli understood" }
+                            div { class: "back-translation",
+                                if empty {
+                                    span { class: "back-translation__placeholder",
+                                        "Type Lojban in the Lojban tab to see the structure-exposing gloss."
+                                    }
+                                } else {
+                                    for (n, line) in lines.iter() {
+                                        div { key: "{n}", class: "back-translation__line",
+                                            span { class: "back-translation__num", "{n}" }
+                                            span { class: "back-translation__gloss", "{line}" }
+                                        }
+                                    }
+                                }
                             }
                         }
                     },
@@ -951,7 +1045,7 @@ fn NetworkView(network_snapshot: Signal<Option<NetworkSnapshotData>>) -> Element
                     option { value: "Hearsay", "ti'e (hearsay)" }
                 }
                 button {
-                    class: if *gossip_busy.read() { "gossip-btn btn-busy" } else { "gossip-btn" },
+                    class: "gossip-btn",
                     onclick: do_gossip_assert,
                     disabled: *gossip_busy.read(),
                     if *gossip_busy.read() { "..." } else { "Assert" }
@@ -963,24 +1057,30 @@ fn NetworkView(network_snapshot: Signal<Option<NetworkSnapshotData>>) -> Element
             if let Some(ref snap) = *snapshot {
                 // Summary bar
                 div { class: "network-summary",
-                    span { class: "network-stat",
-                        strong { "{snap.agents.len()}" }
-                        " agents"
+                    div { class: "network-stat",
+                        span { class: "network-stat__num", "{snap.agents.len()}" }
+                        span { class: "network-stat__label", "agents" }
                     }
-                    span { class: "network-stat",
-                        strong { "{snap.total_facts}" }
-                        " active facts"
+                    div { class: "network-stat",
+                        span { class: "network-stat__num", "{snap.total_facts}" }
+                        span { class: "network-stat__label", "active facts" }
                     }
-                    span { class: "network-stat",
-                        strong { "{snap.envelopes.len()}" }
-                        " envelopes"
+                    div { class: "network-stat",
+                        span { class: "network-stat__num", "{snap.envelopes.len()}" }
+                        span { class: "network-stat__label", "envelopes" }
                     }
-                    span { class: "network-stat",
-                        strong { "{snap.contradictions.iter().filter(|c| !c.resolved).count()}" }
-                        " contradictions"
+                    {
+                        let unresolved = snap.contradictions.iter().filter(|c| !c.resolved).count();
+                        let stat_class = if unresolved > 0 { "network-stat is-alert" } else { "network-stat" };
+                        rsx! {
+                            div { class: "{stat_class}",
+                                span { class: "network-stat__num", "{unresolved}" }
+                                span { class: "network-stat__label", "contradictions" }
+                            }
+                        }
                     }
                     if *loading.read() {
-                        span { class: "network-refresh", "..." }
+                        span { class: "network-refresh", "sync" }
                     }
                 }
                 div { class: "network-panels",
@@ -1069,7 +1169,10 @@ fn AgentCard(agent: AgentData, selected: bool, on_select: EventHandler<String>) 
                 "{agent.name}"
             }
             div { class: "agent-stats",
-                span { class: "agent-stat", "{agent.envelope_count} env" }
+                span { class: "agent-stat",
+                    b { "{agent.envelope_count}" }
+                    " env"
+                }
                 if total > 0 {
                     span { class: "stance-bar",
                         if agent.stance_counts.deduced > 0 {
@@ -1125,9 +1228,9 @@ fn EnvelopeCard(envelope: EnvelopeData) -> Element {
         _ => "stance-badge",
     };
     let card_class = if envelope.is_quarantined {
-        "envelope-card envelope-quarantined"
+        "envelope-card envelope-card-quarantined"
     } else if envelope.is_retraction {
-        "envelope-card envelope-retraction"
+        "envelope-card envelope-card-retraction"
     } else {
         "envelope-card"
     };
@@ -1135,7 +1238,7 @@ fn EnvelopeCard(envelope: EnvelopeData) -> Element {
     rsx! {
         div { class: "{card_class}",
             div { class: "envelope-header",
-                span { class: "envelope-id", "{short_id}..." }
+                span { class: "envelope-id", "{short_id}" }
                 span { class: "{stance_class}", "{envelope.stance}" }
                 span { class: "envelope-author", "{envelope.author}" }
                 if envelope.is_quarantined {
@@ -1161,9 +1264,10 @@ fn EnvelopeCard(envelope: EnvelopeData) -> Element {
 
 #[component]
 fn EventCard(event: GossipEventData) -> Element {
-    let (icon, label) = match event.kind.as_str() {
+    // The kind modifier drives the left-rule color + the CSS-drawn glyph.
+    let (kind_class, label) = match event.kind.as_str() {
         "envelope" => (
-            ">>",
+            "event-card is-envelope",
             format!(
                 "{} {} [{}]",
                 event.author.as_deref().unwrap_or("?"),
@@ -1172,14 +1276,14 @@ fn EventCard(event: GossipEventData) -> Element {
             ),
         ),
         "contradiction" => (
-            "!!",
+            "event-card is-contradiction",
             format!(
                 "Contradiction: {}",
                 event.assertion.as_deref().unwrap_or("?"),
             ),
         ),
         "peer_change" => (
-            "--",
+            "event-card is-peer",
             format!(
                 "Peer {} {}",
                 event.peer_id.as_deref().unwrap_or("?"),
@@ -1191,15 +1295,15 @@ fn EventCard(event: GossipEventData) -> Element {
             ),
         ),
         "sync" => (
-            "<>",
+            "event-card is-sync",
             format!("Sync with {}", event.peer_id.as_deref().unwrap_or("?"),),
         ),
-        _ => ("??", event.kind.clone()),
+        _ => ("event-card", event.kind.clone()),
     };
 
     rsx! {
-        div { class: "event-card",
-            span { class: "event-icon", "{icon}" }
+        div { class: "{kind_class}",
+            span { class: "event-icon" }
             span { class: "event-label", "{label}" }
         }
     }
@@ -1264,8 +1368,10 @@ fn ProofPanel(
     rsx! {
         div { class: "proof-panel",
             if busy {
-                div { class: "proof-placeholder proof-busy",
-                    "Running query\u{2026}"
+                div { class: "proof-busy",
+                    span { class: "proof-busy__glyph", "\u{25F4}" }
+                    div { class: "proof-busy__bar" }
+                    "running query\u{2026}"
                 }
             } else if let Some(trace_data) = data.as_ref() {
                 div { class: "proof-tree-container",
@@ -1275,12 +1381,14 @@ fn ProofPanel(
                 pre { class: "proof-trace", "{trace}" }
             } else {
                 div { class: "proof-placeholder",
-                    "No proof trace yet."
-                    br {}
-                    span { class: "proof-hint", "Run a query to see the proof trace" }
-                    br {}
-                    span { class: "proof-hint", "Example: " }
-                    code { class: "proof-hint-code", "la .adam. cu citka" }
+                    span { class: "proof-placeholder__glyph", "\u{2234}" }
+                    div { class: "proof-hint",
+                        "No proof yet. Run a query to see the derivation."
+                    }
+                    code { class: "proof-hint-code",
+                        "la .adam. cu "
+                        span { class: "q", "citka" }
+                    }
                 }
             }
         }
@@ -1318,10 +1426,13 @@ fn ProofTreeView(trace: ProofTrace) -> Element {
 fn RenderedNodeView(node: nibli_render::RenderedNode, depth: u32) -> Element {
     // Macro nodes open by default; the folded role-level scaffolding cluster
     // starts collapsed — it is the expandable "under the hood" detail of the
-    // collapsed macro view.
+    // collapsed macro view. The rule-type glyph (⊢ → ⊨ ↺ ∧ ∃ ¬ ✗ ⋯) and the
+    // result glyph (⊤/⊥) are drawn by the stylesheet from the rule class, so the
+    // icon span is rendered empty.
     let auto_open = depth < 3 && node.css_class != "proof-role-detail";
+    // Hook must run unconditionally (only used by the branch arm below).
+    let mut expanded = use_signal(|| auto_open);
     let css_class = node.css_class;
-    let icon = node.icon;
     let label = node.label.clone();
     let result_class = if node.holds {
         "proof-result-true"
@@ -1330,31 +1441,42 @@ fn RenderedNodeView(node: nibli_render::RenderedNode, depth: u32) -> Element {
     };
     let result_label = if node.holds { "TRUE" } else { "FALSE" };
 
-    // A memoized back-reference (ProofRef) — render inline, no expand.
+    // A memoized back-reference (ProofRef) — render inline, no disclosure.
     if node.inline {
         return rsx! {
-            div { class: "proof-node proof-ref-node",
-                span { class: "proof-icon proof-ref", "{icon}" }
-                span { class: "proof-label proof-ref", "{label}" }
+            div { class: "proof-node proof-ref-node {css_class}",
+                div { class: "proof-row",
+                    span { class: "proof-icon" }
+                    span { class: "proof-label", "{label}" }
+                }
             }
         };
     }
 
     if node.children.is_empty() {
-        // Leaf node — no details/summary needed
+        // Leaf node — a row with no disclosure / no children.
         rsx! {
             div { class: "proof-node proof-leaf {css_class}",
-                span { class: "proof-icon", "{icon}" }
-                span { class: "proof-label", "{label}" }
-                span { class: "proof-result {result_class}", "{result_label}" }
+                div { class: "proof-row",
+                    span { class: "proof-icon" }
+                    span { class: "proof-label", "{label}" }
+                    span { class: "proof-result {result_class}", "{result_label}" }
+                }
             }
         }
     } else {
-        // Branch node — use details/summary
+        // Branch node — collapse is pure CSS off `aria-expanded` on the row.
         rsx! {
-            details { class: "proof-node {css_class}", open: auto_open,
-                summary { class: "proof-summary",
-                    span { class: "proof-icon", "{icon}" }
+            div { class: "proof-node {css_class}",
+                div {
+                    class: "proof-row",
+                    "aria-expanded": "{expanded}",
+                    onclick: move |_| {
+                        let v = *expanded.read();
+                        expanded.set(!v);
+                    },
+                    button { class: "proof-disclosure" }
+                    span { class: "proof-icon" }
                     span { class: "proof-label", "{label}" }
                     span { class: "proof-result {result_class}", "{result_label}" }
                 }

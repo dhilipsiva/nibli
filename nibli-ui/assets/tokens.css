@@ -1,0 +1,271 @@
+/* ============================================================================
+   nibli — DESIGN TOKENS
+   QUINE Design System (dhilipsiva), applied to the symbolic reasoning engine.
+
+   Dark-first (the instrument default). Light theme via [data-theme="light"].
+   Self-contained: no dependency on the QUINE bundle. Link this BEFORE style.css.
+
+   Layer model:
+     1. QUINE base palette          (raw void / ember / phosphor / quanta / signal)
+     2. Semantic surface/text/border (what components consume for chrome)
+     3. nibli SEMANTIC ROLE tokens   (verdicts, proof rules, status, stances,
+                                       errors, flags — the meaning-bearing layer)
+
+   Every meaning-bearing color is a NAMED role token. Components reference role
+   tokens only — never a raw hex, never a raw palette step. Remap a meaning here
+   once and it stays consistent everywhere.
+
+   Colorblind safety: each role is paired in style.css with a distinct GLYPH and,
+   where two roles share a hue family, a distinct BORDER STYLE (failed = dashed,
+   scaffolding = dotted). Color is reinforcement, never the only channel.
+   ========================================================================== */
+
+/* Webfonts — Google Fonts CDN. OFL / FOSS, matching the brand ethos.
+   For production: self-host the woff2 files and replace this @import with local
+   @font-face rules (see FONTS.md). */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+:root {
+  /* ── 1 · QUINE BASE PALETTE ─────────────────────────────────────────── */
+  /* Void — the indifferent universe; our canvas. Surfaces stack upward.     */
+  --void-1000:#07070A;   /* deepest — page void / app frame              */
+  --void-900: #0B0B10;   /* app background                                */
+  --void-800: #111119;   /* raised surface                                */
+  --void-700: #181822;   /* card                                          */
+  --void-600: #20202C;   /* inset / hover surface                         */
+  --void-500: #2A2A38;   /* borders, hairlines                            */
+  --void-400: #3A3A4A;   /* strong border / disabled fill                 */
+
+  /* Foreground — warm off-whites, never pure #FFF                          */
+  --paper-100:#F4F3EF;   /* primary text                                  */
+  --paper-200:#C9C8C2;   /* body text                                     */
+  --fg-muted: #908F9A;   /* secondary text                                */
+  --fg-faint: #5E5E6C;   /* tertiary / placeholder                        */
+  --fg-ghost: #3C3C49;   /* grid lines / watermark                        */
+
+  /* Ember — the Rust homage; primary accent (action, focus, the spark)     */
+  --ember-50: #FFE9E0;
+  --ember-300:#FF9A6F;
+  --ember-500:#F2542D;   /* signature                                     */
+  --ember-600:#D8431B;
+  --ember-700:#B23413;
+
+  /* Phosphor — terminal mint: alive, nodes, success, "it holds"            */
+  --phosphor-300:#8BF0CE;
+  --phosphor-500:#38E3A6;
+  --phosphor-700:#16A877;
+
+  /* Quanta — violet: the symbolic / formal layer (Lojban, structure)       */
+  --quanta-300:#B6A8FF;
+  --quanta-500:#8B7CF6;
+  --quanta-700:#5B4ACB;
+
+  /* Signal — amber / sky / crimson for status & semantics                  */
+  --amber-500:  #F5B544;
+  --sky-500:    #4DB8FF;
+  --crimson-500:#FF4D5E;
+
+  /* ── 2 · SEMANTIC SURFACE / TEXT / BORDER (dark) ────────────────────── */
+  --bg-base:       var(--void-900);
+  --bg-sunken:     var(--void-1000);   /* the frame behind the instrument panels */
+  --bg-raised:     var(--void-800);
+  --surface-card:  var(--void-700);
+  --surface-inset: var(--void-600);    /* fields, code wells                */
+  --surface-hover: var(--void-600);
+
+  --text-strong:   var(--paper-100);
+  --text-body:     var(--paper-200);
+  --text-muted:    var(--fg-muted);
+  --text-faint:    var(--fg-faint);
+  --text-on-ember: #2A0A00;
+
+  --border-subtle: var(--void-500);
+  --border-strong: var(--void-400);
+  --border-focus:  var(--ember-500);
+
+  --accent:        var(--ember-500);
+  --accent-hover:  var(--ember-300);
+  --accent-press:  var(--ember-600);
+  --accent-soft:   color-mix(in oklab, var(--ember-500) 16%, var(--void-900));
+
+  --alive:         var(--phosphor-500);
+  --symbol:        var(--quanta-500);
+
+  --success:       var(--phosphor-500);
+  --warning:       var(--amber-500);
+  --info:          var(--sky-500);
+  --danger:        var(--crimson-500);
+
+  --grid-line:     color-mix(in oklab, var(--fg-ghost) 60%, transparent);
+
+  /* ── Type ───────────────────────────────────────────────────────────── */
+  --font-mono:    'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --font-sans:    'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Space Grotesk', 'IBM Plex Sans', system-ui, sans-serif;
+
+  /* Instrument-compact ramp. Dense technical content, never below 11px.     */
+  --fs-micro: 11px;   /* legend, line numbers, micro-labels                  */
+  --fs-cap:   12px;   /* eyebrows, badges, provenance, captions              */
+  --fs-code:  13px;   /* THE workhorse: Lojban, formulas, proof rows, I/O    */
+  --fs-ui:    14px;   /* prose ("why"), section titles, body                 */
+  --fs-title: 15px;   /* panel headlines                                     */
+  --fs-lead:  18px;   /* verdict subtitle, lead                              */
+  --fs-hero:  22px;   /* verdict headline, hero numbers                      */
+  --fs-glyph: 28px;   /* verdict glyph                                       */
+
+  --lh-tight:  1.2;
+  --lh-snug:   1.4;
+  --lh-normal: 1.6;
+  --lh-code:   1.65;
+
+  --track-caps: 0.12em;   /* signature wide-tracked mono uppercase           */
+  --track-wide: 0.04em;
+
+  --w-regular: 400;
+  --w-medium:  500;
+  --w-semibold:600;
+  --w-bold:    700;
+
+  /* ── Spacing — strict 4px grid ──────────────────────────────────────── */
+  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
+  --s5: 24px; --s6: 32px; --s7: 48px;
+
+  --control-h:    36px;
+  --control-h-sm: 28px;
+  --control-h-lg: 44px;
+
+  /* ── Radii / borders ────────────────────────────────────────────────── */
+  --r-xs: 2px; --r-sm: 4px; --r-md: 6px; --r-lg: 10px; --r-xl: 16px; --r-full: 9999px;
+  --bw-hair: 1px; --bw-bold: 2px;
+
+  /* ── Elevation — restrained shadows; the signature lift is a GLOW ─────── */
+  --shadow-1: 0 1px 2px rgba(0,0,0,.40);
+  --shadow-2: 0 4px 14px rgba(0,0,0,.45);
+  --shadow-3: 0 18px 48px rgba(0,0,0,.55);
+  --glow-ember:    0 0 0 1px color-mix(in oklab, var(--ember-500) 50%, transparent),
+                   0 6px 28px color-mix(in oklab, var(--ember-500) 32%, transparent);
+  --glow-phosphor: 0 0 0 1px color-mix(in oklab, var(--phosphor-500) 45%, transparent),
+                   0 6px 26px color-mix(in oklab, var(--phosphor-500) 28%, transparent);
+
+  /* ── Focus ring — ember, 2px, offset from the surface ────────────────── */
+  --ring:       0 0 0 2px var(--surface-card), 0 0 0 4px var(--ember-500);
+  --ring-field: 0 0 0 3px var(--accent-soft);
+
+  /* ── Blueprint grid — engineered panels (proof well, network) ────────── */
+  --bg-grid: linear-gradient(var(--grid-line) 1px, transparent 1px) 0 0 / 100% 24px,
+             linear-gradient(90deg, var(--grid-line) 1px, transparent 1px) 0 0 / 24px 100%;
+
+  /* ── Motion ─────────────────────────────────────────────────────────── */
+  --dur-instant: 80ms; --dur-fast: 140ms; --dur-normal: 220ms; --dur-slow: 360ms;
+  --ease-out:    cubic-bezier(.20,.80,.20,1.00);
+  --ease-in-out: cubic-bezier(.65,.00,.35,1.00);
+  --ease-spring: cubic-bezier(.34,1.56,.64,1.00);   /* the one optimistic overshoot */
+
+  /* ════════════════════════════════════════════════════════════════════
+     3 · nibli SEMANTIC ROLE TOKENS — the meaning-bearing layer
+     Each `-bg` is a tint for badges/wells, derived from the role hue so it
+     tracks the role and the theme automatically.
+     ════════════════════════════════════════════════════════════════════ */
+
+  /* ── VERDICTS ── pair: glyph ─────────────────────────────────────────── */
+  --verdict-true:      var(--phosphor-500);   /* TRUE             ⊤  */
+  --verdict-false:     var(--crimson-500);    /* FALSE            ⊥  */
+  --verdict-unknown:   var(--amber-500);      /* UNKNOWN          ?  */
+  --verdict-limit:     var(--ember-500);      /* RESOURCE-EXCEEDED ◴ */
+  --verdict-true-bg:    color-mix(in oklab, var(--verdict-true)    14%, transparent);
+  --verdict-false-bg:   color-mix(in oklab, var(--verdict-false)   14%, transparent);
+  --verdict-unknown-bg: color-mix(in oklab, var(--verdict-unknown) 14%, transparent);
+  --verdict-limit-bg:   color-mix(in oklab, var(--verdict-limit)   14%, transparent);
+
+  /* ── PROOF RULE TYPES ── the left-border + glyph color of each node ────
+     Families read as a teachable system:
+       blue = you gave it · green = the engine affirmed it ·
+       violet = structural bookkeeping · ember = a witness found ·
+       amber = careful (epistemic) · red = it failed · gray = scaffolding.
+     Same-hue pairs (derived/check, ref/conjunction) are split by glyph.     */
+  --proof-asserted:    var(--sky-500);      /* asserted-fact          ⊢  solid  */
+  --proof-derived:     var(--phosphor-500); /* derived-by-rule        →  solid  */
+  --proof-check:       var(--phosphor-300); /* consistency-check      ⊨  solid  */
+  --proof-ref:         var(--quanta-500);   /* memoized-reference     ↺  solid  */
+  --proof-conjunction: var(--quanta-300);   /* conjunction            ∧  solid  */
+  --proof-exists:      var(--ember-300);    /* existential-witness    ∃  solid  */
+  --proof-negation:    var(--amber-500);    /* negation-as-failure    ¬  solid  */
+  --proof-failed:      var(--crimson-500);  /* failed-branch          ✗  DASHED */
+  --proof-role:        var(--fg-muted);     /* role/event scaffolding ⋯  DOTTED · muted/collapsed */
+
+  /* ── CONNECTION STATUS ── 5 states, 5 distinct hues + dot shape ───────── */
+  --status-ready:        var(--phosphor-500); /* ●  ready              */
+  --status-checking:     var(--sky-500);      /* ◐  checking (pulse)   */
+  --status-waiting:      var(--amber-500);    /* ◔  waiting for peer   */
+  --status-notready:     var(--fg-faint);     /* ○  not ready (idle)   */
+  --status-disconnected: var(--crimson-500);  /* ✕  disconnected       */
+
+  /* ── GOSSIP STANCES ── 4 evidentials; also the stacked stance-bar ─────── */
+  --stance-deduced:  var(--phosphor-500);   /* ja'o · deduced   */
+  --stance-expected: var(--sky-500);        /* ba'a · expected  */
+  --stance-opinion:  var(--quanta-500);     /* pe'i · opinion   */
+  --stance-hearsay:  var(--amber-500);      /* ti'e · hearsay   */
+
+  /* ── ERROR CLASSES ── 5 + generic, each its own icon + tint ───────────── */
+  --error-syntax:    var(--crimson-500);    /* ⊗  broke the grammar          */
+  --error-semantic:  var(--amber-500);      /* ≠  parsed, ill-formed meaning */
+  --error-reasoning: var(--quanta-500);     /* ⊥  logical dead-end           */
+  --error-backend:   var(--sky-500);        /* ⇄  infra / peer / transport   */
+  --error-limit:     var(--ember-500);      /* ◴  resource exceeded          */
+  --error-generic:   var(--fg-muted);       /* !  unclassified               */
+
+  /* ── ENVELOPE FLAGS ───────────────────────────────────────────────────── */
+  --flag-quarantine: var(--amber-500);      /* ⚠  held, not trusted */
+  --flag-retracted:  var(--crimson-500);    /* ⊖  withdrawn (dimmed + strike) */
+}
+
+/* ============================================================================
+   LIGHT THEME — "daylight nihilism": paper & ink, ember still burns.
+   Surfaces/text/borders invert; the meaning-bearing hues deepen for AA
+   contrast on white while preserving intra-scale distinctness.
+   ========================================================================== */
+[data-theme="light"] {
+  --bg-base:       #F4F3EF;
+  --bg-sunken:     #E7E6E0;
+  --bg-raised:     #FBFAF7;
+  --surface-card:  #FFFFFF;
+  --surface-inset: #EFEEE8;
+  --surface-hover: #EFEEE8;
+
+  --text-strong:   #16161C;
+  --text-body:     #2E2E38;
+  --text-muted:    #5E5E6C;
+  --text-faint:    #8A8A95;
+  --text-on-ember: #2A0A00;
+
+  --border-subtle: #DAD8D0;
+  --border-strong: #C2BFB5;
+
+  --accent-soft:   color-mix(in oklab, var(--ember-500) 12%, #FFFFFF);
+  --grid-line:     color-mix(in oklab, #16161C 8%, transparent);
+
+  --ring:          0 0 0 2px var(--surface-card), 0 0 0 4px var(--ember-500);
+
+  /* Deepened semantic hues (foreground-legible on light surfaces).          */
+  --verdict-true:    #0F9E6C; --verdict-false:  #D62A3C;
+  --verdict-unknown: #B5791A; --verdict-limit:  #C8401A;
+
+  --proof-asserted:    #1A82D6; --proof-derived:  #0E8F60; --proof-check: #16A877;
+  --proof-ref:         #6A4DE6; --proof-conjunction:#8B6CF0; --proof-exists:#C8401A;
+  --proof-negation:    #B5791A; --proof-failed:   #D62A3C; --proof-role:  #6E6E7A;
+
+  --status-ready:#0F9E6C; --status-checking:#1A82D6; --status-waiting:#B5791A;
+  --status-notready:#8A8A95; --status-disconnected:#D62A3C;
+
+  --stance-deduced:#0F9E6C; --stance-expected:#1A82D6; --stance-opinion:#6A4DE6; --stance-hearsay:#B5791A;
+
+  --error-syntax:#D62A3C; --error-semantic:#B5791A; --error-reasoning:#6A4DE6;
+  --error-backend:#1A82D6; --error-limit:#C8401A; --error-generic:#6E6E7A;
+
+  --flag-quarantine:#B5791A; --flag-retracted:#D62A3C;
+}
+
+/* Honor the OS reduced-motion preference everywhere. */
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-instant:0ms; --dur-fast:0ms; --dur-normal:0ms; --dur-slow:0ms; }
+}

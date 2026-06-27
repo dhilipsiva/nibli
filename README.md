@@ -194,6 +194,8 @@ Query: la .adam. cu citka     # -> TRUE + proof tree
 
 The UI includes a Network tab showing gossip state: agent cards, envelope list, contradiction panel, and gossip assertion bar.
 
+The interface is styled with the **QUINE** design system — an instrument-grade, terminal-first look (IBM Plex Mono, ember accent, blueprint-grid proof well) where every meaning-bearing color is a semantic token (verdicts, proof rule types, connection status, gossip stances, error classes) paired with a glyph for colorblind safety. Styling lives in `nibli-ui/assets/tokens.css` (design tokens) + `nibli-ui/assets/style.css`. Dark is the default; a header toggle switches to the light "paper" theme via `data-theme="light"`.
+
 ---
 
 ## Gossip Network
