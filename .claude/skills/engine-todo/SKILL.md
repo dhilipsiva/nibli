@@ -1,6 +1,6 @@
 ---
-name: todo-item
-description: Work a single engine TODO item end-to-end — plan, implement, test/verify, then remove it from the tracker (or update it if only partially done), commit, and push to the nibli repo. Use when the user points to a specific engine task to execute, one item at a time.
+name: engine-todo
+description: Work a single engine TODO item end-to-end — plan, implement, test/verify, then remove it from the tracker (or update it if only partially done), commit, and push to the nibli repo. Use for engine/runtime-crate tasks, one at a time (the book-manuscript variant is book-todo).
 ---
 
 # Work one nibli (engine) TODO item
@@ -13,7 +13,7 @@ tracker file exists, work the item the user pasted directly and ask where (if an
 recorded. If a tracker file does exist, treat it as the source of truth. If the reference is ambiguous,
 ask before doing anything.
 
-> For book-manuscript items, use the book repo's own `todo-item` skill (`book/.claude/skills/`) — this
+> For book-manuscript items, use the `book-todo` skill (in the book repo, `book/.claude/skills/`) — this
 > one is for the engine/runtime crates.
 
 ## Environment
