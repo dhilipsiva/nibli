@@ -138,7 +138,7 @@ body {
 
 .main-row {
   display: grid;
-  grid-template-columns: minmax(420px, 0.92fr) minmax(480px, 1.08fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));  /* equal-width, fluid */
   gap: var(--s3);
   min-height: 0;            /* allow children to scroll, not the page       */
 }
@@ -579,7 +579,7 @@ body {
 /* ── 8 · QUERY ROW + STATUS BADGE ─────────────────────────────────────── */
 .query-row {
   display: grid;
-  grid-template-columns: minmax(360px, 34%) 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));  /* equal-width, fluid */
   gap: var(--s3);
   min-height: 0;
 }
