@@ -998,3 +998,181 @@ body {
 .envelope-list::-webkit-scrollbar-thumb, .event-list::-webkit-scrollbar-thumb {
   background: var(--border-strong); border-radius: var(--r-full); border: 3px solid transparent; background-clip: content-box;
 }
+
+/* ── LLM integration: config gear, modal, provider picker ──────────────────
+   The optional, bring-your-own-key Source→Lojban translate. The modal makes the
+   "your key never leaves this tab" guarantee visible; styling stays on QUINE
+   tokens. The translate-row/translate-btn/source-input/nb-eyebrow it sits beside
+   are defined above.                                                          */
+
+/* Small gear next to Translate that opens the integration modal. */
+.translate-row__config {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font-size: 14px;
+  color: var(--text-muted);
+  background: var(--surface-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out);
+}
+.translate-row__config:hover { color: var(--text-strong); border-color: var(--border-strong); }
+.translate-row__config:focus-visible { outline: none; box-shadow: var(--ring); }
+
+/* ── Modal shell ─────────────────────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s4);
+  background: color-mix(in oklab, var(--void-1000, #000) 62%, transparent);
+  backdrop-filter: blur(3px);
+  animation: modal-fade var(--dur-fast) var(--ease-out);
+}
+.modal-card {
+  width: 100%;
+  max-width: 540px;
+  max-height: 88vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding: var(--s5);
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-3);
+  font-family: var(--font-mono);
+  animation: modal-rise var(--dur-normal) var(--ease-out);
+}
+.modal-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+}
+.modal-subtitle { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+.modal-actions { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); }
+.modal-actions__sp { flex: 1; }
+
+@keyframes modal-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modal-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* ── Provider picker (segmented) ─────────────────────────────────────────── */
+.llm-provider-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  padding: var(--s1);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+}
+.llm-provider-btn {
+  flex: 1 1 auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  height: 26px;
+  padding: 0 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease-out),
+              background var(--dur-fast) var(--ease-out);
+}
+.llm-provider-btn:hover { color: var(--text-strong); }
+.llm-provider-btn.active {
+  color: var(--text-on-ember);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── Fields ──────────────────────────────────────────────────────────────── */
+.llm-field { display: flex; flex-direction: column; gap: var(--s1); }
+.llm-field__label {
+  font-size: var(--fs-cap, 11px);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+.llm-field__input {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-body);
+  background: var(--surface-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-sm);
+  height: 32px;
+  padding: 0 10px;
+}
+.llm-field__input:hover { border-color: var(--border-strong); }
+.llm-field__input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring-field); }
+
+/* ── Security note (the transparency promise) ────────────────────────────── */
+.llm-security-note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  border-left: 2px solid var(--phosphor-500, var(--accent));
+  border-radius: var(--r-md);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+.llm-security-note__title { font-weight: 600; color: var(--text-strong); }
+.llm-security-note b { color: var(--text-strong); }
+.llm-security-note__links { display: flex; flex-wrap: wrap; gap: var(--s3); }
+.llm-security-note__links a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 11px;
+}
+.llm-security-note__links a:hover { color: var(--accent-hover); text-decoration: underline; }
+
+/* ── Hallucination warning ───────────────────────────────────────────────── */
+.llm-warning {
+  padding: var(--s3);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--warning);
+  background: color-mix(in oklab, var(--warning) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--warning) 40%, transparent);
+  border-radius: var(--r-md);
+}
+
+/* ── Test result ─────────────────────────────────────────────────────────── */
+.llm-test-result {
+  padding: var(--s2) var(--s3);
+  font-size: 12px;
+  border-radius: var(--r-sm);
+  word-break: break-word;
+}
+.llm-test-result.is-ok {
+  color: var(--verdict-true);
+  background: color-mix(in oklab, var(--verdict-true) 14%, transparent);
+}
+.llm-test-result.is-err {
+  color: var(--verdict-false);
+  background: var(--verdict-false-bg, color-mix(in oklab, var(--verdict-false) 14%, transparent));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-backdrop, .modal-card { animation: none; }
+}

@@ -71,7 +71,7 @@ Core component crates + runtime surfaces:
 | `lasna` | fasten/connect | Glue: chains gerna -> smuni -> logji | `lib.rs` |
 | `gasnu` | agent/doer | Native Wasmtime host, REPL, external compute backend TCP client | `main.rs` |
 | `nibli-engine` | — | Native in-process embedding of the pipeline (used by tests + the store layer; no Wasmtime) | `lib.rs` |
-| `nibli-ui` | — | Standalone Dioxus web UI (browser, port 8080) — gerna/smuni/logji compiled in, reasons fully in-browser | `main.rs` |
+| `nibli-ui` | — | Standalone Dioxus web UI (browser, port 8080) — gerna/smuni/logji compiled in, reasons fully in-browser; optional client-side BYO-key LLM Translate (Source→Lojban), key held in-tab-memory only, no server | `main.rs`, `llm.rs` |
 | `nibli-wasm` | — | wasm-bindgen wrapper exposing the in-browser pipeline (powers the live demo) | `lib.rs` |
 | `nibli` | — | Native debug REPL and `nibli-validate` tooling | `main.rs`, `src/bin/validate.rs` |
 | `python/` | — | Reference compute backend server (TCP + JSON Lines) | `nibli_backend.py` |
@@ -87,7 +87,7 @@ Core component crates + runtime surfaces:
 Use these assumptions when selecting entrypoints:
 
 - `gasnu` is the canonical local/operator runtime for the theorem prover. It is the main single-node REPL and the default way to exercise the WASM-hosted pipeline.
-- `nibli-ui` is the canonical browser frontend — a standalone Dioxus app with the engine (gerna→smuni→logji) compiled into the WASM bundle. It reasons fully in-browser; there is no server.
+- `nibli-ui` is the canonical browser frontend — a standalone Dioxus app with the engine (gerna→smuni→logji) compiled into the WASM bundle. It reasons fully in-browser; there is no server. The one optional network call is the Source→Lojban **Translate** (`nibli-ui/src/llm.rs`): a bring-your-own-key request sent directly from the browser to a user-chosen LLM (Anthropic/OpenAI/OpenRouter/Gemini/Custom), with the key held in tab memory only.
 - `nibli-wasm` is the wasm-bindgen wrapper exposing the same in-browser pipeline to JS (powers the live demo at dhilipsiva.dev/nibli).
 - `nibli-engine` is an internal native embedding library, not a user-facing runtime surface.
 - `nibli` is developer tooling: a native direct-crate REPL and the `nibli-validate` binary used for validation/data-generation workflows. It is not the canonical production runtime.

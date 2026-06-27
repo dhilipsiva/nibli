@@ -1,10 +1,13 @@
 //! Nibli Transparency Triad web UI (Dioxus).
 //!
-//! A standalone, in-browser interface with two tabs: Lojban (formal encoding
-//! with per-line validation) and Back-translation (structure-exposing English
-//! gloss). A bottom query bar runs proof-queries. The reasoning engine
+//! A standalone, in-browser interface with three tabs: Source (plain English,
+//! optionally translated to Lojban by a bring-your-own-key LLM), Lojban (formal
+//! encoding with per-line validation), and Back-translation (structure-exposing
+//! English gloss). A bottom query bar runs proof-queries. The reasoning engine
 //! (gerna → smuni → logji) is compiled into the WASM bundle and runs entirely
-//! client-side — no server, no network calls. Mirrors the `nibli-wasm` pipeline.
+//! client-side (mirrors `nibli-wasm`). The ONLY network call is the optional
+//! Source→Lojban translate, sent directly from the browser to the user's chosen
+//! LLM provider — see `llm.rs`. nibli itself has no server.
 
 use std::collections::HashSet;
 
@@ -13,6 +16,9 @@ use logji::KnowledgeBase;
 use nibli_protocol::{KbStatus, LineResult, ProofTrace};
 use nibli_types::error::NibliError;
 use nibli_types::logic::LogicBuffer;
+
+mod llm;
+use llm::{LlmConfig, Provider};
 
 fn main() {
     dioxus::launch(App);
@@ -49,6 +55,7 @@ fn render_lojban_line(line: &str) -> String {
 
 const MAX_OUTPUT_ENTRIES: usize = 200;
 
+const DEFAULT_SOURCE: &str = "All dogs are animals.\nAll animals eat.\nAdam is a dog.";
 const DEFAULT_LOJBAN: &str = "ro lo gerku cu danlu\nro lo danlu cu citka\nla .adam. cu gerku";
 const DEFAULT_QUERY: &str = "la .adam. cu citka";
 
@@ -56,6 +63,7 @@ const DEFAULT_QUERY: &str = "la .adam. cu citka";
 
 #[derive(Clone, Copy, PartialEq)]
 enum ActiveTab {
+    Source,
     Lojban,
     BackTranslation,
 }
@@ -206,6 +214,10 @@ fn App() -> Element {
     let proof_data: Signal<Option<ProofTrace>> = use_signal(|| None);
     let lojban_text: Signal<String> = use_signal(|| DEFAULT_LOJBAN.to_string());
     let kb_status: Signal<Option<KbStatus>> = use_signal(|| None);
+    // The LLM translate config lives ONLY here, in memory — never persisted to
+    // storage, cleared on tab close/reload. `None` until the user configures it.
+    let llm_config: Signal<Option<LlmConfig>> = use_signal(|| None);
+    let modal_open: Signal<bool> = use_signal(|| false);
 
     let on_global_keydown = move |e: KeyboardEvent| {
         if e.modifiers().ctrl() {
@@ -234,7 +246,8 @@ fn App() -> Element {
         }
     };
 
-    let active_tab: Signal<ActiveTab> = use_signal(|| ActiveTab::Lojban);
+    // Source is the triad's natural entry point (English → Lojban → back-trans).
+    let active_tab: Signal<ActiveTab> = use_signal(|| ActiveTab::Source);
     // "" = dark (the instrument default); "light" = the QUINE paper theme. The
     // attribute rides on `.app-shell`, so the [data-theme="light"] overrides cascade.
     let mut theme = use_signal(|| "");
@@ -277,7 +290,7 @@ fn App() -> Element {
             div { class: "app", tabindex: "0", onkeydown: on_global_keydown,
                 div { class: "main-row",
                     div { class: "col-tabs",
-                        SourceTabs { lojban_text, kb_status, active_tab }
+                        SourceTabs { lojban_text, kb_status, active_tab, llm_config, modal_open }
                     }
                     div { class: "col-proof",
                         ProofPanel { proof_text, proof_data }
@@ -296,6 +309,9 @@ fn App() -> Element {
                     }
                     OutputLog { output_log }
                 }
+            }
+            if *modal_open.read() {
+                LlmConfigModal { llm_config, modal_open }
             }
         }
     }
@@ -523,7 +539,13 @@ fn SourceTabs(
     lojban_text: Signal<String>,
     kb_status: Signal<Option<KbStatus>>,
     active_tab: Signal<ActiveTab>,
+    llm_config: Signal<Option<LlmConfig>>,
+    modal_open: Signal<bool>,
 ) -> Element {
+    let mut source_text = use_signal(|| DEFAULT_SOURCE.to_string());
+    let mut translating = use_signal(|| false);
+    let mut translate_error = use_signal(|| Option::<String>::None);
+
     let back_translation = use_memo(move || {
         let text = lojban_text.read();
         if text.is_empty() {
@@ -533,9 +555,48 @@ fn SourceTabs(
         }
     });
 
+    // Translate the Source tab → Lojban via the configured LLM. With no provider
+    // configured yet, open the integration modal instead of erroring.
+    let mut do_translate = move || {
+        let text = source_text.read().clone();
+        if text.trim().is_empty() || *translating.read() {
+            return;
+        }
+        let Some(cfg) = llm_config.read().clone() else {
+            modal_open.set(true);
+            return;
+        };
+        translating.set(true);
+        translate_error.set(None);
+        spawn(async move {
+            match llm::translate(&cfg, &text).await {
+                Ok(lojban) => {
+                    lojban_text.set(lojban);
+                    active_tab.set(ActiveTab::Lojban);
+                }
+                Err(e) => translate_error.set(Some(e.to_string())),
+            }
+            translating.set(false);
+        });
+    };
+    let translate_click = move |_: Event<MouseData>| {
+        do_translate();
+    };
+    let on_source_keydown = move |e: KeyboardEvent| {
+        if e.key() == Key::Enter && e.modifiers().ctrl() {
+            e.prevent_default();
+            do_translate();
+        }
+    };
+
     rsx! {
         div { class: "tabs-container",
             div { class: "tab-bar",
+                button {
+                    class: if *active_tab.read() == ActiveTab::Source { "tab active" } else { "tab" },
+                    onclick: move |_| active_tab.set(ActiveTab::Source),
+                    "Source"
+                }
                 button {
                     class: if *active_tab.read() == ActiveTab::Lojban { "tab active" } else { "tab" },
                     onclick: move |_| active_tab.set(ActiveTab::Lojban),
@@ -549,6 +610,40 @@ fn SourceTabs(
             }
             div { class: "tab-content",
                 match *active_tab.read() {
+                    ActiveTab::Source => {
+                        let hint = match llm_config.read().as_ref().map(|c| c.provider.short_name()) {
+                            Some(p) => format!("english \u{2192} lojban via {p}"),
+                            None => "english \u{2192} lojban \u{2014} configure an llm".to_string(),
+                        };
+                        rsx! {
+                            span { class: "nb-eyebrow", "source \u{2014} plain english" }
+                            textarea {
+                                class: "source-input",
+                                placeholder: "Enter English text\u{2026}",
+                                value: "{source_text}",
+                                oninput: move |e| source_text.set(e.value()),
+                                onkeydown: on_source_keydown,
+                            }
+                            if let Some(err) = translate_error.read().as_ref() {
+                                div { class: "translate-error", "{err}" }
+                            }
+                            div { class: "translate-row",
+                                button {
+                                    class: if *translating.read() { "translate-btn busy" } else { "translate-btn" },
+                                    onclick: translate_click,
+                                    disabled: *translating.read(),
+                                    "Translate"
+                                }
+                                button {
+                                    class: "translate-row__config",
+                                    title: "Configure LLM integration",
+                                    onclick: move |_| modal_open.set(true),
+                                    "\u{2699}"
+                                }
+                                span { class: "translate-row__hint", "{hint}" }
+                            }
+                        }
+                    }
                     ActiveTab::Lojban => rsx! {
                         div { class: "lojban-toolbar",
                             button {
@@ -634,6 +729,176 @@ fn SourceTabs(
                             }
                         }
                     },
+                }
+            }
+        }
+    }
+}
+
+/// Bring-your-own-key LLM integration modal. Edits a draft config held in local
+/// signals; on Save it lands in the App's in-memory `llm_config`. The key never
+/// leaves this tab (see the security note + `llm.rs`).
+#[component]
+fn LlmConfigModal(llm_config: Signal<Option<LlmConfig>>, modal_open: Signal<bool>) -> Element {
+    let initial = llm_config
+        .read()
+        .clone()
+        .unwrap_or_else(|| LlmConfig::new(Provider::Anthropic));
+    let mut provider = use_signal(|| initial.provider);
+    let mut api_key = use_signal(|| initial.api_key.clone());
+    let mut model = use_signal(|| initial.model.clone());
+    let mut base_url = use_signal(|| initial.base_url.clone());
+    let mut testing = use_signal(|| false);
+    let mut test_msg = use_signal(|| Option::<(bool, String)>::None);
+
+    let prov = *provider.read();
+
+    let build_cfg = move || LlmConfig {
+        provider: *provider.read(),
+        api_key: api_key.read().trim().to_string(),
+        model: model.read().trim().to_string(),
+        base_url: base_url.read().trim().to_string(),
+    };
+    // A key is required for everyone except Custom (which may be a local server).
+    let needs_key =
+        move |cfg: &LlmConfig| cfg.api_key.is_empty() && cfg.provider != Provider::Custom;
+
+    let on_save = move |_: Event<MouseData>| {
+        let cfg = build_cfg();
+        if needs_key(&cfg) {
+            test_msg.set(Some((false, "Enter your API key first.".to_string())));
+            return;
+        }
+        llm_config.set(Some(cfg));
+        modal_open.set(false);
+    };
+    let on_test = move |_: Event<MouseData>| {
+        if *testing.read() {
+            return;
+        }
+        let cfg = build_cfg();
+        if needs_key(&cfg) {
+            test_msg.set(Some((false, "Enter your API key first.".to_string())));
+            return;
+        }
+        testing.set(true);
+        test_msg.set(None);
+        spawn(async move {
+            match llm::translate(&cfg, "Adam is a dog").await {
+                Ok(lojban) => test_msg.set(Some((true, format!("OK \u{2014} {lojban}")))),
+                Err(e) => test_msg.set(Some((false, e.to_string()))),
+            }
+            testing.set(false);
+        });
+    };
+
+    rsx! {
+        // Backdrop click closes; the card stops propagation so inner clicks don't.
+        div { class: "modal-backdrop", onclick: move |_| modal_open.set(false),
+            div { class: "modal-card", onclick: move |e: Event<MouseData>| e.stop_propagation(),
+                div { class: "modal-title", "Integrate an LLM to translate" }
+                p { class: "modal-subtitle",
+                    "Use your own LLM to draft Lojban from plain English. The draft is reviewed before the engine reasons over it."
+                }
+
+                div { class: "llm-provider-picker",
+                    for p in Provider::ALL {
+                        button {
+                            key: "{p.short_name()}",
+                            class: if *provider.read() == p { "llm-provider-btn active" } else { "llm-provider-btn" },
+                            onclick: move |_| {
+                                provider.set(p);
+                                model.set(p.default_model().to_string());
+                                base_url.set(p.default_base_url().to_string());
+                                test_msg.set(None);
+                            },
+                            "{p.short_name()}"
+                        }
+                    }
+                }
+
+                label { class: "llm-field",
+                    span { class: "llm-field__label", "API key" }
+                    input {
+                        class: "llm-field__input",
+                        r#type: "password",
+                        autocomplete: "off",
+                        placeholder: if prov == Provider::Custom { "optional for local servers" } else { "your provider api key" },
+                        value: "{api_key}",
+                        oninput: move |e| api_key.set(e.value()),
+                    }
+                }
+                label { class: "llm-field",
+                    span { class: "llm-field__label", "Model" }
+                    input {
+                        class: "llm-field__input",
+                        r#type: "text",
+                        placeholder: "{prov.default_model()}",
+                        value: "{model}",
+                        oninput: move |e| model.set(e.value()),
+                    }
+                }
+                if prov.needs_base_url() {
+                    label { class: "llm-field",
+                        span { class: "llm-field__label", "Base URL" }
+                        input {
+                            class: "llm-field__input",
+                            r#type: "text",
+                            placeholder: "http://localhost:11434/v1",
+                            value: "{base_url}",
+                            oninput: move |e| base_url.set(e.value()),
+                        }
+                    }
+                }
+
+                div { class: "llm-security-note",
+                    span { class: "llm-security-note__title", "\u{1F512} Your key stays in this tab" }
+                    p {
+                        "Held only in this browser tab's memory \u{2014} never written to disk or storage, and erased the moment you close or reload the tab. nibli has no server: the request goes straight from your browser to "
+                        b { "{prov.display_name()}" }
+                        ". It is open source \u{2014} verify in DevTools \u{2192} Network that the only call is to the provider."
+                    }
+                    div { class: "llm-security-note__links",
+                        a {
+                            href: "https://github.com/dhilipsiva/nibli/blob/main/nibli-ui/src/llm.rs",
+                            target: "_blank",
+                            rel: "noopener noreferrer",
+                            "llm.rs \u{2014} the request code"
+                        }
+                        a {
+                            href: "https://github.com/dhilipsiva/nibli/blob/main/nibli-ui/Cargo.toml",
+                            target: "_blank",
+                            rel: "noopener noreferrer",
+                            "Cargo.toml \u{2014} no server dependency"
+                        }
+                    }
+                }
+
+                div { class: "llm-warning",
+                    "\u{26A0} LLMs can hallucinate and give a wrong translation. Always review the Lojban (and its back-translation) before trusting it \u{2014} only the formal Lojban you verify is what nibli reasons over."
+                }
+
+                if let Some((ok, msg)) = test_msg.read().clone() {
+                    div {
+                        class: if ok { "llm-test-result is-ok" } else { "llm-test-result is-err" },
+                        "{msg}"
+                    }
+                }
+
+                div { class: "modal-actions",
+                    button {
+                        class: "toolbar-btn",
+                        disabled: *testing.read(),
+                        onclick: on_test,
+                        if *testing.read() { "Testing\u{2026}" } else { "Test" }
+                    }
+                    span { class: "modal-actions__sp" }
+                    button {
+                        class: "toolbar-btn",
+                        onclick: move |_| modal_open.set(false),
+                        "Cancel"
+                    }
+                    button { class: "translate-btn", onclick: on_save, "Save" }
                 }
             }
         }

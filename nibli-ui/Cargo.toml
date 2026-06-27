@@ -6,6 +6,7 @@ edition = "2024"
 
 [dependencies]
 dioxus = { version = "0.7.3", features = ["web"] }
+gloo-net = { version = "0.6", features = ["http"] }
 nibli-protocol = { path = "../nibli-protocol" }
 nibli-render = { path = "../nibli-render" }
 nibli-types = { path = "../nibli-types" }
@@ -13,3 +14,4 @@ gerna = { path = "../gerna" }
 smuni = { path = "../smuni" }
 logji = { path = "../logji" }
 smuni-dictionary = { path = "../smuni-dictionary" }
+serde_json = "1"

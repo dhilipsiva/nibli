@@ -2787,10 +2787,12 @@ version = "0.1.0"
 dependencies = [
  "dioxus",
  "gerna",
+ "gloo-net",
  "logji",
  "nibli-protocol",
  "nibli-render",
  "nibli-types",
+ "serde_json",
  "smuni",
  "smuni-dictionary",
 ]

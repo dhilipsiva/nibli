@@ -168,12 +168,14 @@ Query results use a four-valued contract: `TRUE`, `FALSE`, `UNKNOWN` (with reaso
 
 ## Transparency Triad UI
 
-Nibli includes a standalone web UI (Dioxus) — the full reasoning engine (gerna → smuni → logji) is compiled into the WASM bundle and runs **entirely in the browser**. No server, no network calls.
+Nibli includes a standalone web UI (Dioxus) — the full reasoning engine (gerna → smuni → logji) is compiled into the WASM bundle and runs **entirely in the browser**. nibli has no server.
 
 ```bash
 # Start the web UI (port 8080)
 just ui
 ```
+
+The three tabs are **Source** (plain English), **Lojban** (the formal encoding), and **Back-translation** (the structure-exposing gloss). The reasoning is fully local; the **only** optional network call is **Translate** on the Source tab — a *bring-your-own-key* LLM request sent **directly from your browser** to a provider you choose (Anthropic, OpenAI, OpenRouter, Google Gemini, or any OpenAI-compatible/local endpoint). Configure it via the gear button: the API key is held **in that tab's memory only** — never persisted to storage and never routed through any nibli server (there is none), and it is erased on tab close/reload. Translation is a *draft outside the reasoning firewall* — you review the Lojban (and its back-translation) before the deterministic engine reasons over it. You can also skip Translate entirely and type Lojban directly. See `nibli-ui/src/llm.rs`.
 
 The UI uses a stateless KB model: every query builds a fresh engine, re-asserts the full Lojban tab as the knowledge base, then runs the query. The query bar is queries only (no assertions). The Lojban tab is the single source of truth.
 
