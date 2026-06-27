@@ -759,9 +759,11 @@ body {
 }
 .gossip-input:hover { border-color: var(--border-strong); }
 .gossip-input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring-field); }
-.gossip-stance-select {
-  height: var(--control-h); padding: 0 var(--s5) 0 var(--s3);
-  background: var(--surface-inset) ; color: var(--text-body);
+/* ── QUINE dropdown (.nb-select) — header example picker + query preset picker.
+   Native caret suppressed; the chevron is drawn via two layered gradients. ── */
+.nb-select {
+  height: var(--control-h); padding: 0 calc(var(--s5) + 4px) 0 var(--s3);
+  background: var(--surface-inset); color: var(--text-body);
   font-family: var(--font-mono); font-size: var(--fs-cap);
   border: var(--bw-hair) solid var(--border-subtle); border-radius: var(--r-md); cursor: pointer;
   appearance: none;
@@ -769,8 +771,16 @@ body {
                     linear-gradient(135deg, var(--text-faint) 50%, transparent 50%);
   background-position: calc(100% - 16px) 52%, calc(100% - 11px) 52%;
   background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
-.gossip-stance-select:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring-field); }
+.nb-select:hover { border-color: var(--border-strong); }
+.nb-select:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring-field); }
+/* Header example picker: compact, among the right-side controls. */
+.app-header__examples { flex: none; height: 26px; font-size: 11px; max-width: 15rem; }
+/* Query preset dropdown fills the query bar; pad-left clears the `xu` affix. */
+.query-select { flex: 1; min-width: 0; padding-left: calc(var(--s3) + 3ch); }
+/* Read-only KB fields in example mode: a muted, non-editable affordance. */
+.source-input[readonly], .lojban-input[readonly] { cursor: default; background: var(--bg-sunken); }
 .gossip-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
   height: var(--control-h); padding: 0 var(--s4);

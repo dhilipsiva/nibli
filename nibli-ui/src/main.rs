@@ -17,7 +17,9 @@ use nibli_protocol::{KbStatus, LineResult, ProofTrace};
 use nibli_types::error::NibliError;
 use nibli_types::logic::LogicBuffer;
 
+mod examples;
 mod llm;
+use examples::EXAMPLES;
 use llm::{LlmConfig, Provider};
 
 fn main() {
@@ -218,6 +220,9 @@ fn App() -> Element {
     // storage, cleared on tab close/reload. `None` until the user configures it.
     let llm_config: Signal<Option<LlmConfig>> = use_signal(|| None);
     let modal_open: Signal<bool> = use_signal(|| false);
+    // Preloaded example selection: `None` = Custom (editable + translatable);
+    // `Some(i)` indexes `examples::EXAMPLES` (read-only KB + a query dropdown).
+    let mut example: Signal<Option<usize>> = use_signal(|| None);
 
     let on_global_keydown = move |e: KeyboardEvent| {
         if e.modifiers().ctrl() {
@@ -285,6 +290,18 @@ fn App() -> Element {
                     title: "Source on GitHub",
                     "GitHub"
                 }
+                select {
+                    class: "nb-select app-header__examples",
+                    title: "Load a preloaded example from the book, or Custom to write your own",
+                    onchange: move |e| match e.value().parse::<usize>() {
+                        Ok(i) => example.set(Some(i)),
+                        Err(_) => example.set(None),
+                    },
+                    option { value: "custom", selected: example.read().is_none(), "Custom" }
+                    for (i, ex) in EXAMPLES.iter().enumerate() {
+                        option { value: "{i}", selected: *example.read() == Some(i), "{ex.name}" }
+                    }
+                }
                 button {
                     class: "app-header__theme",
                     title: "Toggle theme",
@@ -298,7 +315,7 @@ fn App() -> Element {
             div { class: "app", tabindex: "0", onkeydown: on_global_keydown,
                 div { class: "main-row",
                     div { class: "col-tabs",
-                        SourceTabs { lojban_text, kb_status, active_tab, llm_config, modal_open }
+                        SourceTabs { lojban_text, kb_status, active_tab, llm_config, modal_open, example }
                     }
                     div { class: "col-proof",
                         ProofPanel { proof_text, proof_data }
@@ -314,6 +331,7 @@ fn App() -> Element {
                             kb_status,
                             llm_config,
                             modal_open,
+                            example,
                         }
                     }
                     OutputLog { output_log }
@@ -413,6 +431,7 @@ fn QueryTabs(
     kb_status: Signal<Option<KbStatus>>,
     llm_config: Signal<Option<LlmConfig>>,
     modal_open: Signal<bool>,
+    example: Signal<Option<usize>>,
 ) -> Element {
     let mut query_text = use_signal(|| DEFAULT_QUERY.to_string());
     let mut query_source = use_signal(String::new);
@@ -420,13 +439,23 @@ fn QueryTabs(
     let mut translate_error = use_signal(|| Option::<String>::None);
     // Default to the Lojban tab so the pre-filled query can be Run immediately.
     let mut query_tab = use_signal(|| ActiveTab::Lojban);
+    // In example mode the query box is a dropdown; this indexes the active
+    // example's `queries`.
+    let mut selected_query = use_signal(|| 0usize);
 
-    // Live back-translation of the query being typed (Back-translation tab). Shown
-    // only for a cleanly-parsed query; a transient parse error mid-typing shows a
-    // stable "incomplete" indicator, not a blank or a misleading lexical fallback.
+    // Live back-translation of the ACTIVE query — the typed Custom query, or the
+    // selected example query. Shown only for a cleanly-parsed query; a transient
+    // parse error shows a stable "incomplete" indicator, never a blank.
     let query_reading = use_memo(move || {
-        let q = query_text.read();
-        let q = q.trim();
+        let owned = match *example.read() {
+            Some(i) => EXAMPLES[i]
+                .queries
+                .get(*selected_query.read())
+                .map(|q| q.lojban.to_string())
+                .unwrap_or_default(),
+            None => query_text.read().clone(),
+        };
+        let q = owned.trim();
         if q.is_empty() {
             return QueryReading::Empty;
         }
@@ -444,23 +473,21 @@ fn QueryTabs(
         }
     });
 
-    let mut do_submit = move || {
-        let text = query_text.read().clone();
-        let trimmed = text.trim();
+    // Reason over a (kb, query) pair in-browser and push the result to the proof
+    // panel + output log. Arg-driven so the auto-run effect can call it WITHOUT
+    // reading `selected_query` (which would make the effect re-fire — and reset —
+    // every time the dropdown changes).
+    let mut run_into_log = move |kb: &str, query: &str| {
+        let trimmed = query.trim();
         if trimmed.is_empty() {
             return;
         }
-
         // The engine runs in-browser and synchronously — no await, no server.
-        let kb = lojban_text.read().clone();
-        let entry = run_query(&kb, trimmed);
-        query_text.set(String::new());
-
+        let entry = run_query(kb, trimmed);
         // Always reflect the latest query in the proof panel (clear on error).
         proof_text.set(entry.proof_trace.clone());
         proof_data.set(entry.proof_trace_data.clone());
         kb_status.set(entry.kb_status.clone());
-
         // Push entry and cap at MAX_OUTPUT_ENTRIES.
         {
             let mut log = output_log.write();
@@ -470,7 +497,6 @@ fn QueryTabs(
                 log.drain(0..drain_count);
             }
         }
-
         // Auto-scroll output log to bottom.
         spawn(async move {
             let _ = document::eval(
@@ -478,6 +504,39 @@ fn QueryTabs(
             ).await;
         });
     };
+
+    // Resolve the active (KB, query) by mode, then run it. The editable Custom
+    // query clears after running; an example selection persists.
+    let mut do_submit = move || {
+        let ex = *example.read();
+        let (kb, query) = match ex {
+            Some(i) => (
+                EXAMPLES[i].lojban.to_string(),
+                EXAMPLES[i]
+                    .queries
+                    .get(*selected_query.read())
+                    .map(|q| q.lojban.to_string())
+                    .unwrap_or_default(),
+            ),
+            None => (lojban_text.read().clone(), query_text.read().clone()),
+        };
+        run_into_log(&kb, &query);
+        if ex.is_none() {
+            query_text.set(String::new());
+        }
+    };
+
+    // Loading an example auto-runs its first query so a verdict shows at once.
+    // Reads only `example` (resolving query 0 directly), so changing the dropdown
+    // does not re-fire this.
+    use_effect(move || {
+        if let Some(i) = *example.read() {
+            selected_query.set(0);
+            if let Some(q) = EXAMPLES[i].queries.first() {
+                run_into_log(EXAMPLES[i].lojban, q.lojban);
+            }
+        }
+    });
     let submit_click = move |_: Event<MouseData>| {
         do_submit();
     };
@@ -521,25 +580,29 @@ fn QueryTabs(
         }
     };
 
+    let ex = *example.read();
+    let is_example = ex.is_some();
     let reading = query_reading.read().clone();
 
     rsx! {
         div { class: "tabs-container",
             div { class: "tab-bar",
-                button {
-                    class: if *query_tab.read() == ActiveTab::Source { "tab active" } else { "tab" },
-                    onclick: move |_| query_tab.set(ActiveTab::Source),
-                    "Source"
+                if !is_example {
+                    button {
+                        class: if *query_tab.read() == ActiveTab::Source { "tab active" } else { "tab" },
+                        onclick: move |_| query_tab.set(ActiveTab::Source),
+                        "Source"
+                    }
                 }
                 button {
-                    class: if *query_tab.read() == ActiveTab::Lojban { "tab active" } else { "tab" },
+                    class: if is_example || *query_tab.read() == ActiveTab::Lojban { "tab active" } else { "tab" },
                     onclick: move |_| query_tab.set(ActiveTab::Lojban),
                     "Lojban"
                 }
             }
             div { class: "tab-content",
-                match *query_tab.read() {
-                    ActiveTab::Source => {
+                match (is_example, *query_tab.read()) {
+                    (false, ActiveTab::Source) => {
                         let hint = match llm_config.read().as_ref().map(|c| c.provider.short_name()) {
                             Some(p) => format!("english claim \u{2192} lojban via {p}"),
                             None => "english claim \u{2192} lojban \u{2014} configure an llm".to_string(),
@@ -581,25 +644,51 @@ fn QueryTabs(
                     // inline below. Source is the only other tab, so `_` covers
                     // Lojban here.
                     _ => rsx! {
-                        div { class: "query-bar",
-                            span {
-                                class: "query-bar__affix",
-                                title: "xu just marks this box as a query \u{2014} a reading cue only, never typed or sent. You state a claim (e.g. la .adam. cu citka); the engine answers TRUE / FALSE / UNKNOWN.",
-                                "xu"
+                        if is_example {
+                            // Example mode: pick a preset query; it runs on select.
+                            div { class: "query-bar",
+                                span { class: "query-bar__affix", "xu" }
+                                select {
+                                    class: "nb-select query-select",
+                                    onchange: move |e| {
+                                        if let Ok(idx) = e.value().parse::<usize>() {
+                                            selected_query.set(idx);
+                                            do_submit();
+                                        }
+                                    },
+                                    for (i , q) in ex.map(|j| EXAMPLES[j].queries).unwrap_or(&[]).iter().enumerate() {
+                                        option {
+                                            value: "{i}",
+                                            selected: i == *selected_query.read(),
+                                            "{q.lojban} \u{2014} {q.label}"
+                                        }
+                                    }
+                                }
                             }
-                            input {
-                                id: "query-input",
-                                class: "query-input",
-                                r#type: "text",
-                                placeholder: "State a proposition to check \u{2014} Ctrl+K focus",
-                                value: "{query_text}",
-                                oninput: move |e| query_text.set(e.value()),
-                                onkeydown: on_query_keydown,
+                            div { class: "query-hint",
+                                "Preset queries \u{2014} pick one to run it against the loaded knowledge base."
                             }
-                            button { class: "query-btn", onclick: submit_click, "Query" }
-                        }
-                        div { class: "query-hint",
-                            "State a claim to check \u{2014} e.g. \u{201C}Adam eats\u{201D} \u{2014} not a question (\u{201C}Does Adam eat?\u{201D})."
+                        } else {
+                            div { class: "query-bar",
+                                span {
+                                    class: "query-bar__affix",
+                                    title: "xu just marks this box as a query \u{2014} a reading cue only, never typed or sent. You state a claim (e.g. la .adam. cu citka); the engine answers TRUE / FALSE / UNKNOWN.",
+                                    "xu"
+                                }
+                                input {
+                                    id: "query-input",
+                                    class: "query-input",
+                                    r#type: "text",
+                                    placeholder: "State a proposition to check \u{2014} Ctrl+K focus",
+                                    value: "{query_text}",
+                                    oninput: move |e| query_text.set(e.value()),
+                                    onkeydown: on_query_keydown,
+                                }
+                                button { class: "query-btn", onclick: submit_click, "Query" }
+                            }
+                            div { class: "query-hint",
+                                "State a claim to check \u{2014} e.g. \u{201C}Adam eats\u{201D} \u{2014} not a question (\u{201C}Does Adam eat?\u{201D})."
+                            }
                         }
                         match reading {
                             QueryReading::Empty => rsx! {},
@@ -716,13 +805,19 @@ fn SourceTabs(
     active_tab: Signal<ActiveTab>,
     llm_config: Signal<Option<LlmConfig>>,
     modal_open: Signal<bool>,
+    example: Signal<Option<usize>>,
 ) -> Element {
     let mut source_text = use_signal(|| DEFAULT_SOURCE.to_string());
     let mut translating = use_signal(|| false);
     let mut translate_error = use_signal(|| Option::<String>::None);
 
+    // Back-translation reflects the ACTIVE KB: a loaded example's corpus, else
+    // the user's editable Lojban tab.
     let back_translation = use_memo(move || {
-        let text = lojban_text.read();
+        let text = match *example.read() {
+            Some(i) => EXAMPLES[i].lojban.to_string(),
+            None => lojban_text.read().clone(),
+        };
         if text.is_empty() {
             String::new()
         } else {
@@ -764,6 +859,19 @@ fn SourceTabs(
         }
     };
 
+    // In example mode the KB is a read-only preview of the loaded corpus; the
+    // user's Custom buffers (`source_text`/`lojban_text`) are left untouched.
+    let ex = *example.read();
+    let is_example = ex.is_some();
+    let active_source = match ex {
+        Some(i) => EXAMPLES[i].source.to_string(),
+        None => source_text.read().clone(),
+    };
+    let active_lojban = match ex {
+        Some(i) => EXAMPLES[i].lojban.to_string(),
+        None => lojban_text.read().clone(),
+    };
+
     rsx! {
         div { class: "tabs-container",
             div { class: "tab-bar",
@@ -786,17 +894,26 @@ fn SourceTabs(
             div { class: "tab-content",
                 match *active_tab.read() {
                     ActiveTab::Source => {
-                        let hint = match llm_config.read().as_ref().map(|c| c.provider.short_name()) {
-                            Some(p) => format!("english \u{2192} lojban via {p}"),
-                            None => "english \u{2192} lojban \u{2014} configure an llm".to_string(),
+                        let hint = if is_example {
+                            "loaded example \u{2014} read-only".to_string()
+                        } else {
+                            match llm_config.read().as_ref().map(|c| c.provider.short_name()) {
+                                Some(p) => format!("english \u{2192} lojban via {p}"),
+                                None => "english \u{2192} lojban \u{2014} configure an llm".to_string(),
+                            }
                         };
                         rsx! {
                             span { class: "nb-eyebrow", "source \u{2014} plain english" }
                             textarea {
                                 class: "source-input",
                                 placeholder: "Enter English text\u{2026}",
-                                value: "{source_text}",
-                                oninput: move |e| source_text.set(e.value()),
+                                value: "{active_source}",
+                                readonly: is_example,
+                                oninput: move |e| {
+                                    if example.read().is_none() {
+                                        source_text.set(e.value());
+                                    }
+                                },
                                 onkeydown: on_source_keydown,
                             }
                             if let Some(err) = translate_error.read().as_ref() {
@@ -806,7 +923,7 @@ fn SourceTabs(
                                 button {
                                     class: if *translating.read() { "translate-btn busy" } else { "translate-btn" },
                                     onclick: translate_click,
-                                    disabled: *translating.read(),
+                                    disabled: *translating.read() || is_example,
                                     "Translate"
                                 }
                                 button {
@@ -820,6 +937,7 @@ fn SourceTabs(
                         }
                     }
                     ActiveTab::Lojban => rsx! {
+                        if !is_example {
                         div { class: "lojban-toolbar",
                             button {
                                 class: "toolbar-btn",
@@ -870,11 +988,17 @@ fn SourceTabs(
                                 },
                             }
                         }
+                        }
                         textarea {
                             class: "lojban-input",
                             placeholder: "Enter Lojban facts and rules (one per line)...",
-                            value: "{lojban_text}",
-                            oninput: move |e| lojban_text.set(e.value()),
+                            value: "{active_lojban}",
+                            readonly: is_example,
+                            oninput: move |e| {
+                                if example.read().is_none() {
+                                    lojban_text.set(e.value());
+                                }
+                            },
                         }
                         KbStatusBar { kb_status }
                     },
