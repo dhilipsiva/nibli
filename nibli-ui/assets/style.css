@@ -116,6 +116,19 @@ body {
 .app-header__credit-link:hover { color: var(--accent-hover); text-decoration: underline; }
 .app-header__credit-link:focus-visible { box-shadow: var(--ring); border-radius: var(--r-sm); }
 
+/* Quiet mono link to the repo, sitting between the credit and the theme toggle. */
+.app-header__link {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.app-header__link:hover { color: var(--text-strong); }
+.app-header__link:focus-visible { outline: none; box-shadow: var(--ring); border-radius: var(--r-sm); }
+
 /* Theme toggle — quiet inset chip, mono caps; matches the handoff masthead. */
 .app-header__theme {
   flex: none;

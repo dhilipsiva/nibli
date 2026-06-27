@@ -305,11 +305,11 @@ classify:
 test-classifier:
     python3 -m pytest python/test_classifier.py -v 2>/dev/null || python3 python/test_classifier.py
 
-# Launch the standalone Transparency Triad web UI (dev server with hot-reload).
-# Reasoning runs fully in-browser (gerna→smuni→logji compiled into the WASM
-# bundle) — no server, no network calls.
-ui:
-    cd nibli-ui && dx serve
+# Launch the standalone Transparency Triad web UI (dev server with hot-reload) on
+# a fixed port (default 8080; override e.g. `just ui 9000`). Reasoning runs fully
+# in-browser; the only optional network call is the client-side Translate.
+ui PORT="8080":
+    cd nibli-ui && dx serve --port {{PORT}}
 
 # Run nibli-store unit tests
 test-store:

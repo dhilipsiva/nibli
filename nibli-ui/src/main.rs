@@ -277,6 +277,14 @@ fn App() -> Element {
                         "@dhilipsiva"
                     }
                 }
+                a {
+                    class: "app-header__link",
+                    href: "https://github.com/dhilipsiva/nibli",
+                    target: "_blank",
+                    rel: "noopener noreferrer",
+                    title: "Source on GitHub",
+                    "GitHub"
+                }
                 button {
                     class: "app-header__theme",
                     title: "Toggle theme",
