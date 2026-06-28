@@ -301,4 +301,44 @@ mod tests {
         assert_eq!(why, "No example could be found that satisfies the query.");
         assert_eq!(proof, "∃ No witness found -> FALSE");
     }
+
+    /// The back-translations Chapter 19's two draft-error examples reproduce in
+    /// the playground (the Transparency Triad catching an LLM mistake). These are
+    /// the structure-exposing IR gloss (`back_translate_ir`), NOT the lexical
+    /// `(swap-2)` fallback. If this breaks, C19's quoted glosses are stale.
+    #[test]
+    fn c19_draft_error_glosses_are_verbatim() {
+        // Quantifier swap (GDPR Art 33): `su'o` reads as a flat existential
+        // assertion; `ro` reads as a universal "For every X, if … then …" rule.
+        assert_eq!(
+            super::back_translate_ir("su'o lo datni turni cu bilga lo nu notci"),
+            "X govern, X is data, Y is event-of, and X is obligated to Y."
+        );
+        assert_eq!(
+            super::back_translate_ir("ro lo datni turni cu bilga lo nu notci"),
+            "For every X, if X govern and X is data, then Y is event-of and X is obligated to Y."
+        );
+        // Missing negation (GDPR Art 17), single-condition restrictor so the
+        // gloss has no spurious person-split — the dropped `na` is isolated in
+        // the antecedent.
+        assert_eq!(
+            super::back_translate_ir("ro lo se curmi cu se bilga lo nu lo datni cu se vimcu"),
+            "For every X, if something permits X, then Y is event-of, Z is data, \
+             something is removed, and Y is obligated to X."
+        );
+        assert_eq!(
+            super::back_translate_ir("ro lo na se curmi cu se bilga lo nu lo datni cu se vimcu"),
+            "For every X, if it is not the case that something permits X, then Y is \
+             event-of, Z is data, something is removed, and Y is obligated to X."
+        );
+        // The corrected negated-restrictor rule compiles and enters the KB — the
+        // "engine refuses to compile it" claim C19 used to make is stale.
+        let session = Session::new();
+        assert!(
+            session
+                .assert_text("ro lo na se curmi cu se bilga lo nu lo datni cu se vimcu")
+                .is_ok(),
+            "negated-restrictor universal rule should assert, not be rejected"
+        );
+    }
 }
