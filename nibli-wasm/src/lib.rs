@@ -230,10 +230,75 @@ mod tests {
     }
 
     #[test]
-    fn back_translation_matches_the_book() {
+    fn lexical_fallback_gloss_is_word_level() {
+        // `back_translate` is the LEXICAL fallback (smuni-dictionary), used only
+        // when a line does not compile. It is the word-salad gloss — NOT what the
+        // Transparency Triad's Back-translation tab shows for a compiling line
+        // (that is `back_translate_ir`, pinned below).
         assert_eq!(
             super::back_translate("ro lo gerku cu danlu"),
             "all the dog animal"
         );
+    }
+
+    /// The exact bytes Chapter 19's Syllogism walkthrough reproduces click-for-
+    /// click in the playground: the Back-translation tab (`back_translate_ir`),
+    /// and the verdict + "why" + collapsed proof panel (`query_with_proof`).
+    /// If this breaks, the book's "verbatim" claim is stale — re-capture and
+    /// update both the book and these asserts together. Pairs with the verdict
+    /// pin `syllogism_two_hop_proof` above.
+    #[test]
+    fn syllogism_playground_bytes_are_verbatim() {
+        // Back-translation tab: structure-exposing IR English (not the fallback).
+        assert_eq!(
+            super::back_translate_ir("ro lo gerku cu danlu"),
+            "For every X, if X is a dog, then X is an animal."
+        );
+        assert_eq!(
+            super::back_translate_ir("ro lo danlu cu citka"),
+            "For every X, if X is an animal, then X eats."
+        );
+        assert_eq!(super::back_translate_ir("la .adam. cu gerku"), "Adam is a dog.");
+
+        let session = load("ro lo gerku cu danlu\nro lo danlu cu citka\nla .adam. cu gerku");
+        let q = |query: &str| -> (String, String, String) {
+            let json = session.query_with_proof(query).expect("query failed");
+            let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+            (
+                v["status"].as_str().unwrap().to_string(),
+                v["why"].as_str().unwrap_or("").to_string(),
+                v["proof_text"].as_str().unwrap_or("").trim_end().to_string(),
+            )
+        };
+
+        // 2-hop: does Adam eat?  (the preset's first/auto-run query)
+        let (status, why, proof) = q("la .adam. cu citka");
+        assert_eq!(status, "TRUE");
+        assert_eq!(
+            why,
+            "Because adam is a dog, adam is an animal; and because adam is an animal, adam eats _."
+        );
+        assert_eq!(
+            proof,
+            "⊢ adam eats _  [by the rule: every animal eats something] -> TRUE\n  \
+             ⊢ adam is an animal  [by the rule: every dog is an animal] -> TRUE\n    \
+             ▣ adam is a dog  [given] -> TRUE"
+        );
+
+        // 1-hop: is Adam an animal?
+        let (status, why, proof) = q("la .adam. cu danlu");
+        assert_eq!(status, "TRUE");
+        assert_eq!(why, "Because adam is a dog, adam is an animal.");
+        assert_eq!(
+            proof,
+            "⊢ adam is an animal  [by the rule: every dog is an animal] -> TRUE\n  \
+             ▣ adam is a dog  [given] -> TRUE"
+        );
+
+        // A real FALSE: is Adam a bird?
+        let (status, why, proof) = q("la .adam. cu cipni");
+        assert_eq!(status, "FALSE");
+        assert_eq!(why, "No example could be found that satisfies the query.");
+        assert_eq!(proof, "∃ No witness found -> FALSE");
     }
 }

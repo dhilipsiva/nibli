@@ -229,6 +229,13 @@ fn universal_rule_chain_syllogism() {
         trace.contains("Rule"),
         "Proof trace should show derivation chain"
     );
+
+    // Real FALSE: a bird is not in the KB (the preset's negative control —
+    // Ch 19's "is Adam a bird?" query). Exact playground bytes for the verdict,
+    // back-translation, "why", and collapsed proof are pinned in nibli-wasm's
+    // `syllogism_playground_bytes_are_verbatim`.
+    let (holds, _trace, _json) = engine.query_text_with_proof("la .adam. cu cipni").unwrap();
+    assert_false(&holds, "cipni (bird) is a real FALSE — not derivable");
 }
 
 // ─── Binary-condition universal rules (poi se R) ────────────────────
