@@ -258,7 +258,10 @@ mod tests {
             super::back_translate_ir("ro lo danlu cu citka"),
             "For every X, if X is an animal, then X eats."
         );
-        assert_eq!(super::back_translate_ir("la .adam. cu gerku"), "Adam is a dog.");
+        assert_eq!(
+            super::back_translate_ir("la .adam. cu gerku"),
+            "Adam is a dog."
+        );
 
         let session = load("ro lo gerku cu danlu\nro lo danlu cu citka\nla .adam. cu gerku");
         let q = |query: &str| -> (String, String, String) {
@@ -267,7 +270,11 @@ mod tests {
             (
                 v["status"].as_str().unwrap().to_string(),
                 v["why"].as_str().unwrap_or("").to_string(),
-                v["proof_text"].as_str().unwrap_or("").trim_end().to_string(),
+                v["proof_text"]
+                    .as_str()
+                    .unwrap_or("")
+                    .trim_end()
+                    .to_string(),
             )
         };
 
