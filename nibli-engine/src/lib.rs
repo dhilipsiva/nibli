@@ -57,6 +57,11 @@ pub struct NibliEngine {
     kb: logji::KnowledgeBase,
     compute_predicates: HashSet<String>,
     store: RefCell<Option<NibliStore>>,
+    /// Prior-bridi snapshot for `go'i` resolution — the native analog of lasna's
+    /// `Session.last_relation`, so both runtimes resolve the pro-bridi identically
+    /// (shared `gerna::goi::resolve_go_i`). Updated on every text compile (assert
+    /// and query); cleared by `reset`.
+    last_relation: RefCell<Option<gerna::goi::BridiSnapshot>>,
 }
 
 impl Default for NibliEngine {
@@ -133,6 +138,7 @@ impl NibliEngine {
             kb: logji::KnowledgeBase::new(),
             compute_predicates: logji::default_compute_predicates(),
             store: RefCell::new(None),
+            last_relation: RefCell::new(None),
         }
     }
 
@@ -164,6 +170,7 @@ impl NibliEngine {
             kb: logji::KnowledgeBase::with_store(Box::new(typed_store)),
             compute_predicates: logji::default_compute_predicates(),
             store: RefCell::new(Some(store)),
+            last_relation: RefCell::new(None),
         };
         engine.replay_from_store()?;
         Ok(engine)
@@ -201,16 +208,31 @@ impl NibliEngine {
     }
 
     fn compile_text(&self, input: &str) -> Result<logji_logic::LogicBuffer, EngineError> {
-        // Shared parse front-end (fail-closed on any parse error) + smuni compile
-        // + compute-node marking. `EngineError` is the re-exported `NibliError`.
-        let mut buf = smuni::compile_from_gerna_ast(gerna::parse_checked(input)?)?;
+        // Shared parse front-end (fail-closed on any parse error), then the SAME
+        // `go'i` resolution lasna runs (shared `gerna::goi`) so native and WASM
+        // agree, then smuni compile + compute-node marking. `EngineError` is the
+        // re-exported `NibliError`.
+        let mut ast = gerna::parse_checked(input)?;
+        // Resolve `go'i` against the prior bridi, then snapshot the (resolved)
+        // antecedent so a FOLLOWING go'i can repeat THIS bridi. Mirrors lasna's
+        // `compile_pipeline`; the snapshot updates for asserts AND queries.
+        let last_bridi_sid =
+            gerna::goi::resolve_go_i(&mut ast, &mut self.last_relation.borrow_mut())
+                .map_err(EngineError::Semantic)?;
+        let new_snapshot = last_bridi_sid.map(|sid| gerna::goi::extract_bridi_snapshot(&ast, sid));
+        let mut buf = smuni::compile_from_gerna_ast(ast)?;
         logji::transform_compute_nodes(&mut buf, &self.compute_predicates);
+        *self.last_relation.borrow_mut() = new_snapshot;
         Ok(buf)
     }
 
     /// Reset the knowledge base, clearing all facts and rules.
     pub fn reset(&self) {
         self.kb.reset().ok();
+        // Clear go'i context too, so a post-reset `go'i` has no stale antecedent
+        // (mirrors lasna's reset). `nibli-validate` resets per line → each line
+        // stays independent.
+        *self.last_relation.borrow_mut() = None;
         if let Ok(mut store) = self.store.try_borrow_mut()
             && let Some(s) = store.as_mut()
         {

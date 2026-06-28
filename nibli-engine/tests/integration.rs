@@ -2811,3 +2811,85 @@ fn abstraction_subject_does_not_leak_inner_predicate() {
         "an abstraction used as a subject must not leak its inner predicate",
     );
 }
+
+// ─── go'i (pro-bridi) resolution — native↔WASM parity (shared gerna::goi) ───
+//
+// nibli-engine now resolves `go'i` against a prior-bridi snapshot exactly as the
+// lasna WASM Session does (the divergence fix): these mirror lasna's ci-wasm go'i
+// smokes at the native-engine level. Before the fix, `go'i` compiled to a literal
+// `go'i(...)` predicate and these all silently mismatched.
+
+#[test]
+fn goi_partial_subject_resolves() {
+    // `la .adam. go'i` after `la .adam. cu gerku` → repeats the selbri (gerku),
+    // x1 supplied (adam) → gerku(adam) → TRUE.
+    let engine = engine_with_facts(&["la .adam. cu gerku"]);
+    assert_true(
+        &engine.query_holds("la .adam. go'i").unwrap(),
+        "go'i should inherit the prior selbri (gerku) for adam",
+    );
+}
+
+#[test]
+fn goi_bare_repeats_whole_bridi() {
+    // Bare `go'i` repeats the WHOLE prior bridi — relation AND sumti → gerku(adam).
+    let engine = engine_with_facts(&["la .adam. cu gerku"]);
+    assert_true(
+        &engine.query_holds("go'i").unwrap(),
+        "bare go'i should repeat the entire prior bridi gerku(adam)",
+    );
+}
+
+#[test]
+fn goi_partial_inherits_unsupplied_place() {
+    // After prami(adam, bel) is the last bridi: `la .karl. go'i` overrides x1 (karl)
+    // but INHERITS x2 (bel) → prami(karl, bel), which is NOT asserted → FALSE;
+    // `la .adam. go'i` → prami(adam, bel) IS asserted → TRUE.
+    let engine = engine_with_facts(&["la .karl. cu prami la .kim.", "la .adam. cu prami la .bel."]);
+    assert_true(
+        &engine.query_holds("la .adam. go'i").unwrap(),
+        "partial go'i inherits x2=bel → prami(adam, bel) holds",
+    );
+    assert_false(
+        &engine.query_holds("la .karl. go'i").unwrap(),
+        "partial go'i inherits x2=bel → prami(karl, bel) does not hold",
+    );
+}
+
+#[test]
+fn goi_tracks_last_queried_bridi() {
+    // go'i tracks the last BRIDI seen — assert gerku(adam), then a FALSE query
+    // gerku(bel); bare `go'i` now repeats gerku(bel) (the query), not gerku(adam).
+    let engine = engine_with_facts(&["la .adam. cu gerku"]);
+    assert_false(
+        &engine.query_holds("la .bel. cu gerku").unwrap(),
+        "bel is not a gerku",
+    );
+    assert_false(
+        &engine.query_holds("go'i").unwrap(),
+        "go'i must repeat the last QUERIED bridi gerku(bel), not the asserted gerku(adam)",
+    );
+}
+
+#[test]
+fn goi_with_no_antecedent_errs() {
+    // A `go'i` with no prior bridi must FAIL CLOSED (Semantic), never compile to a
+    // bogus literal `go'i` predicate.
+    let engine = NibliEngine::new();
+    let err = engine.query_holds("go'i").unwrap_err();
+    assert!(
+        matches!(err, EngineError::Semantic(_)),
+        "go'i with no antecedent should be a Semantic error, got {err:?}"
+    );
+}
+
+#[test]
+fn goi_reset_clears_antecedent() {
+    // reset() clears go'i context (mirrors lasna + nibli-validate's per-line reset).
+    let engine = engine_with_facts(&["la .adam. cu gerku"]);
+    engine.reset();
+    assert!(
+        engine.query_holds("go'i").is_err(),
+        "after reset, go'i has no antecedent and must error"
+    );
+}

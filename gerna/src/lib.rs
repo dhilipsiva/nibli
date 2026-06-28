@@ -12,6 +12,8 @@
 
 /// Lojban AST types (arena-allocated tree nodes).
 pub mod ast;
+/// `go'i` pro-bridi resolution, shared by lasna (WASM) + nibli-engine (native).
+pub mod goi;
 /// Recursive descent parser producing an arena-allocated AST.
 pub mod grammar;
 /// Logos-based lexer with post-lex compound cmavo correction.
@@ -85,8 +87,9 @@ pub fn parse_text_native(input: String) -> Result<flat::ParseResult, NibliError>
 /// paths) and positioned at the first error.
 ///
 /// The shared parse front-end for every embedder (nibli-engine, lasna,
-/// nibli-wasm): each then runs `smuni::compile_from_gerna_ast` (lasna interposes
-/// `resolve_go_i`) + `logji::transform_compute_nodes`.
+/// nibli-wasm): each then interposes the shared `goi::resolve_go_i` (lasna AND
+/// nibli-engine, against their own prior-bridi snapshot) before running
+/// `smuni::compile_from_gerna_ast` + `logji::transform_compute_nodes`.
 pub fn parse_checked(text: &str) -> Result<flat::AstBuffer, NibliError> {
     let result = parse_text_native(text.to_string())?;
     if let Some(first) = result.errors.first() {

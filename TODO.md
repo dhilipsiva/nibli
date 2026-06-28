@@ -20,11 +20,7 @@ Legend: 🐞 genuine bug · ⚖️ honesty/framing · 🧪 test rigor.
 
 ## P1 — Soundness bugs (contradict the "zero-hallucination" contract)
 
-- [ ] 🐞 **HIGH** — Native (`nibli-engine`) vs WASM (`lasna`) `go'i` divergence. lasna
-  resolves `go'i` against the prior bridi; nibli-engine doesn't and doesn't reject it —
-  silently compiles to a literal `go'i(...)` predicate. Reaches nibli-store replay,
-  validate, integration tests.
-  **Fix:** run the same `resolve_go_i` in nibli-engine, or fail closed on reachable `go'i`.
+_(none open)_
 
 ---
 

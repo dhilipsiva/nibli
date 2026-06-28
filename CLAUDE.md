@@ -65,12 +65,12 @@ Core component crates + runtime surfaces:
 
 | Crate | Lojban meaning | Role | Key files |
 |-------|---------------|------|-----------|
-| `gerna` | grammar | Lojban text -> AST -> flat WIT buffer | `grammar.rs`, `ast.rs`, `lib.rs` (flattener), `lexer.rs` |
+| `gerna` | grammar | Lojban text -> AST -> flat WIT buffer; shared `go'i` pro-bridi resolver | `grammar.rs`, `ast.rs`, `lib.rs` (flattener), `lexer.rs`, `goi.rs` (`resolve_go_i`, shared by lasna + nibli-engine) |
 | `smuni` | meaning | Flat AST buffer -> FOL logic IR -> flat WIT logic buffer | `semantic.rs`, `ir.rs`, `lib.rs` (flattener) |
 | `logji` | logic | FOL logic buffer -> backward-chaining assert/query | `lib.rs` (single file, all logic) |
 | `lasna` | fasten/connect | Glue: chains gerna -> smuni -> logji | `lib.rs` |
 | `gasnu` | agent/doer | Native Wasmtime host, REPL, external compute backend TCP client | `main.rs` |
-| `nibli-engine` | — | Native in-process embedding of the pipeline (used by tests + the store layer; no Wasmtime) | `lib.rs` |
+| `nibli-engine` | — | Native in-process embedding of the pipeline (used by tests + the store layer; no Wasmtime). Stateful prior-bridi snapshot resolves `go'i` identically to lasna (shared `gerna::goi`) | `lib.rs` |
 | `nibli-ui` | — | Standalone Dioxus web UI (browser, port 8080) — gerna/smuni/logji compiled in, reasons fully in-browser; optional client-side BYO-key LLM Translate (Source→Lojban), key held in-tab-memory only, no server | `main.rs`, `llm.rs` |
 | `nibli-wasm` | — | wasm-bindgen wrapper exposing the in-browser pipeline (powers the live demo) | `lib.rs` |
 | `nibli` | — | Native debug REPL and `nibli-validate` tooling | `main.rs`, `src/bin/validate.rs` |
