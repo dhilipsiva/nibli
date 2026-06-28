@@ -20,13 +20,6 @@ Legend: 🐞 genuine bug · ⚖️ honesty/framing · 🧪 test rigor.
 
 ## P1 — Soundness bugs (contradict the "zero-hallucination" contract)
 
-- [ ] 🐞 **HIGH** — Backend outage degrades to `FALSE`. Unreachable compute backend → plain
-  FALSE, indistinguishable from logical falsehood; structured `NibliError::Backend`
-  flattened in `lasna` (`lib.rs:276-279`) then dropped by `if let Ok(...)` at
-  `reasoning.rs:1140`; result cached and mislabeled `method:"kb"`. Same path makes external
-  predicates read FALSE in-browser (dispatch unregistered).
-  **Fix:** propagate the `Err`, or map to a new `Unknown(BackendUnavailable)` — never `False`.
-
 - [ ] 🐞 **HIGH** — `find`/`count`/`aggregate` silently undercount at the depth/cycle
   horizon. That path is two-valued (`reasoning.rs:1313` maps Depth/CycleCut/NafDependent all
   to "no witness"); `count_witnesses`/`aggregate` then return a *definitive* number from an

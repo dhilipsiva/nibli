@@ -2436,9 +2436,18 @@ fn per_instance_compute_dispatch_is_isolated() {
     // unresolved (no built-in, no backend) and the query is not TRUE.
     let mut engine_b = NibliEngine::new();
     engine_b.register_compute_predicate("tenfa".to_string());
-    assert_false(
-        &engine_b.query_holds("li bi cu tenfa li re li ci").unwrap(),
-        "an engine WITHOUT dispatch must not resolve external `tenfa`",
+    let r = engine_b.query_holds("li bi cu tenfa li re li ci").unwrap();
+    // Isolation: engine_a's dispatch must NOT leak here, so `tenfa` stays unresolved.
+    assert!(
+        !r.is_true(),
+        "an engine WITHOUT dispatch must not resolve external `tenfa`: got {r:?}"
+    );
+    // And an unresolved compute predicate is UNKNOWN(backend-unavailable), never a
+    // definitive FALSE (a backend we cannot consult is not a derived falsehood).
+    assert_eq!(
+        r.detail_label(),
+        Some("backend-unavailable"),
+        "unresolved compute dispatch must surface backend-unavailable, not FALSE: got {r:?}"
     );
 }
 

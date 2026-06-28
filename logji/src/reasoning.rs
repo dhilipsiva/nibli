@@ -676,19 +676,15 @@ fn check_formula_holds_core<S: TraceSink>(
             // Decomposed numeric group (surface arithmetic/comparison): evaluate
             // the operands gathered from the role predicates directly — the
             // verdict is definitive, matching the flat ComputeNode arm.
-            if let Some(verdict) = try_evaluate_numeric_group(&*inner, buffer, v, *body, subs) {
-                let res = if verdict.holds {
-                    QueryResult::True
-                } else {
-                    QueryResult::False
-                };
+            if let Some(group) = try_evaluate_numeric_group(&*inner, buffer, v, *body, subs) {
+                let res = group.verdict.clone();
                 let idx = if S::RECORDING {
                     sink.push(ProofStep {
                         rule: ProofRule::ComputeCheck {
-                            method: verdict.method.to_string(),
-                            detail: verdict.relation,
+                            method: group.method.to_string(),
+                            detail: group.relation,
                         },
-                        holds: verdict.holds,
+                        holds: res.is_true(),
                         children: vec![],
                     })
                 } else {
@@ -1203,13 +1199,22 @@ fn check_formula_holds_core<S: TraceSink>(
                 };
                 return Ok((verdict, idx));
             }
-            // Fallback: check typed store for the compute predicate.
+            // This fallback is reached ONLY when `dispatch_to_backend` returned `Err`
+            // (the arithmetic fast path and the `Ok(_)` branch both returned early).
+            // A backend outage / unregistered backend must NOT read as a derived
+            // falsehood: honor a prior successful computation that auto-asserted this
+            // exact fact (so a cached result survives a transient outage), but
+            // otherwise surface `Unknown(BackendUnavailable)` — we genuinely could not
+            // determine the result — never a definitive `False`.
             let verdict =
                 if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
                     let mut visited = HashSet::new();
-                    check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited)
+                    match check_predicate_in_kb_typed(&fact, &*inner, 0, &mut visited) {
+                        QueryResult::True => QueryResult::True,
+                        _ => QueryResult::Unknown(UnknownReason::BackendUnavailable),
+                    }
                 } else {
-                    QueryResult::False
+                    QueryResult::Unknown(UnknownReason::BackendUnavailable)
                 };
             let idx = if S::RECORDING {
                 let method = match &verdict {
@@ -1218,6 +1223,9 @@ fn check_formula_holds_core<S: TraceSink>(
                         "incomplete_knowledge"
                     }
                     QueryResult::Unknown(UnknownReason::NafDependent) => "naf_dependent",
+                    QueryResult::Unknown(UnknownReason::BackendUnavailable) => {
+                        "backend_unavailable"
+                    }
                     QueryResult::ResourceExceeded(ResourceKind::Depth) => "depth_limit",
                     QueryResult::ResourceExceeded(ResourceKind::Fuel) => "fuel_limit",
                     QueryResult::ResourceExceeded(ResourceKind::Memory) => "memory_limit",

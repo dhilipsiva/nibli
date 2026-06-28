@@ -109,6 +109,9 @@ pub enum UnknownReason {
     IncompleteKnowledge,
     /// Result depends on negation-as-failure and is therefore not classically proved.
     NafDependent,
+    /// An external compute predicate could not be evaluated because its backend was
+    /// unreachable or unregistered — the result is genuinely undetermined, NOT false.
+    BackendUnavailable,
 }
 
 /// Which resource or search bound prevented a definitive answer.
@@ -155,6 +158,7 @@ impl QueryResult {
             Self::Unknown(UnknownReason::CycleCut) => Some("cycle-cut"),
             Self::Unknown(UnknownReason::IncompleteKnowledge) => Some("incomplete-knowledge"),
             Self::Unknown(UnknownReason::NafDependent) => Some("naf-dependent"),
+            Self::Unknown(UnknownReason::BackendUnavailable) => Some("backend-unavailable"),
             Self::ResourceExceeded(ResourceKind::Depth) => Some("depth"),
             Self::ResourceExceeded(ResourceKind::Fuel) => Some("fuel"),
             Self::ResourceExceeded(ResourceKind::Memory) => Some("memory"),

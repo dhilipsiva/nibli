@@ -220,6 +220,8 @@ li bi tenfa li re li ci             # Assert: 8 = 2^3
 
 Configure with `NIBLI_COMPUTE_ADDR=host:port` or `:backend host:port` in the REPL. Connection is lazy (connects on first dispatch) with auto-reconnect. The browser UI has no TCP, so external predicates resolve only in the `gasnu` REPL; built-in arithmetic still works everywhere.
 
+If an external predicate's backend is unreachable (or unconfigured), the query returns `UNKNOWN (backend-unavailable)` — never a definitive `FALSE`. A backend the engine cannot consult is genuinely undetermined, not a derived falsehood.
+
 ---
 
 ## Tech Stack

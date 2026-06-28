@@ -110,6 +110,7 @@ interface logic-types {
         cycle-cut,
         incomplete-knowledge,
         naf-dependent,
+        backend-unavailable,
     }
 
     /// Which execution limit prevented a definitive answer.

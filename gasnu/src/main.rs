@@ -99,6 +99,9 @@ fn format_query_result(result: &EngineQueryResult) -> String {
         EngineQueryResult::Unknown(EngineUnknownReason::NafDependent) => {
             "UNKNOWN (naf-dependent)".to_string()
         }
+        EngineQueryResult::Unknown(EngineUnknownReason::BackendUnavailable) => {
+            "UNKNOWN (backend-unavailable)".to_string()
+        }
         EngineQueryResult::ResourceExceeded(EngineResourceKind::Depth) => {
             "RESOURCE_EXCEEDED (depth)".to_string()
         }
@@ -1863,6 +1866,19 @@ mod tests {
                 EngineResourceKind::Depth
             )),
             "RESOURCE_EXCEEDED (depth)"
+        );
+    }
+
+    #[test]
+    fn test_format_query_result_backend_unavailable() {
+        // An unreachable/unregistered compute backend surfaces as a distinct
+        // UNKNOWN reason — never FALSE — so the operator can tell "the oracle is
+        // down" from "the math is false".
+        assert_eq!(
+            format_query_result(&EngineQueryResult::Unknown(
+                EngineUnknownReason::BackendUnavailable
+            )),
+            "UNKNOWN (backend-unavailable)"
         );
     }
 

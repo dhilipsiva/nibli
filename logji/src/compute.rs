@@ -90,9 +90,10 @@ pub(super) fn witness_term_to_logical_term(gt: &GroundTerm) -> LogicalTerm {
 /// (the tag feeds the traced evaluator's ComputeCheck step).
 pub(super) struct NumericGroupVerdict {
     pub relation: String,
-    /// "numeric" (comparison), "arithmetic" (built-in), or "backend" (dispatch).
+    /// "numeric" (comparison), "arithmetic" (built-in), "backend" (dispatch ok),
+    /// or "backend_unavailable" (dispatch failed → Unknown, never False).
     pub method: &'static str,
-    pub holds: bool,
+    pub verdict: QueryResult,
 }
 
 /// Evaluate an event-decomposed numeric group at its `∃ev` boundary.
@@ -203,14 +204,14 @@ pub(super) fn try_evaluate_numeric_group(
         return Some(NumericGroupVerdict {
             relation: rel.to_string(),
             method: "numeric",
-            holds,
+            verdict: bool_verdict(holds),
         });
     }
     if let Some(holds) = try_arithmetic_evaluation(rel, &collected, subs) {
         return Some(NumericGroupVerdict {
             relation: rel.to_string(),
             method: "arithmetic",
-            holds,
+            verdict: bool_verdict(holds),
         });
     }
     if head_is_compute {
@@ -220,16 +221,34 @@ pub(super) fn try_evaluate_numeric_group(
             .iter()
             .all(|t| matches!(t, LogicalTerm::Number(_) | LogicalTerm::Unspecified));
         if dispatchable {
-            if let Ok(holds) = dispatch_to_backend(inner, rel, &resolved) {
-                return Some(NumericGroupVerdict {
+            return Some(match dispatch_to_backend(inner, rel, &resolved) {
+                Ok(holds) => NumericGroupVerdict {
                     relation: rel.to_string(),
                     method: "backend",
-                    holds,
-                });
-            }
+                    verdict: bool_verdict(holds),
+                },
+                // Backend unreachable/unregistered: the computation is genuinely
+                // undetermined — surface Unknown(BackendUnavailable), never FALSE.
+                // (This path does not auto-assert, so there is no cached result to
+                // honor; returning here is equivalent to the no-witness fallback.)
+                Err(_) => NumericGroupVerdict {
+                    relation: rel.to_string(),
+                    method: "backend_unavailable",
+                    verdict: QueryResult::Unknown(UnknownReason::BackendUnavailable),
+                },
+            });
         }
     }
     None
+}
+
+/// True → `QueryResult::True`, false → `QueryResult::False`.
+fn bool_verdict(holds: bool) -> QueryResult {
+    if holds {
+        QueryResult::True
+    } else {
+        QueryResult::False
+    }
 }
 
 pub(super) fn resolve_args_for_dispatch(

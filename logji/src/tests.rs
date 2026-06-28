@@ -7020,31 +7020,82 @@ fn test_and_flattening_prevents_rewrite_explosion() {
 
 // ─── Compute error propagation tests ─────────────────────────
 
-#[test]
-fn test_compute_backend_error_surfaces() {
-    // ComputeNode for unknown predicate without registered backend
-    // should return false (no backend = cannot prove), not panic.
-    let kb = new_kb();
+fn tenfa_query() -> LogicBuffer {
     let mut nodes = Vec::new();
     let root = compute(
         &mut nodes,
-        "tenfa", // not a built-in arithmetic predicate
+        "tenfa", // external compute predicate, not built-in arithmetic
         vec![
             LogicalTerm::Number(8.0),
             LogicalTerm::Number(2.0),
             LogicalTerm::Number(3.0),
         ],
     );
-    // Without a registered backend, this falls back to KB lookup (fails)
-    // and then dispatch_to_backend returns Err. The error should propagate
-    // as false (not provable), not crash.
-    assert!(!query(
-        &kb,
-        LogicBuffer {
-            nodes,
-            roots: vec![root],
-        }
-    ));
+    LogicBuffer {
+        nodes,
+        roots: vec![root],
+    }
+}
+
+fn failing_eval(_rel: &str, _args: &[LogicalTerm]) -> Result<bool, String> {
+    Err("backend unreachable".to_string())
+}
+fn failing_batch(reqs: &[ComputeRequest]) -> Vec<Result<bool, String>> {
+    reqs.iter()
+        .map(|_| Err("backend unreachable".to_string()))
+        .collect()
+}
+fn ok_eval(_rel: &str, _args: &[LogicalTerm]) -> Result<bool, String> {
+    Ok(true)
+}
+fn ok_batch(reqs: &[ComputeRequest]) -> Vec<Result<bool, String>> {
+    reqs.iter().map(|_| Ok(true)).collect()
+}
+
+#[test]
+fn test_compute_no_backend_is_unknown_not_false() {
+    // A compute predicate with NO backend registered (the in-browser / native case)
+    // must surface Unknown(BackendUnavailable) — a backend that cannot be consulted is
+    // not a derived falsehood. Previously this returned a definitive FALSE.
+    let kb = new_kb();
+    let r = query_result(&kb, tenfa_query());
+    assert!(
+        matches!(r, QueryResult::Unknown(UnknownReason::BackendUnavailable)),
+        "no backend → Unknown(BackendUnavailable), got {r:?}"
+    );
+}
+
+#[test]
+fn test_compute_backend_failure_is_unknown_not_false() {
+    // A registered backend that ERRORS (unreachable mid-session) must also surface
+    // Unknown(BackendUnavailable), never FALSE.
+    let kb = new_kb();
+    kb.set_compute_dispatch(failing_eval, failing_batch);
+    let r = query_result(&kb, tenfa_query());
+    assert!(
+        matches!(r, QueryResult::Unknown(UnknownReason::BackendUnavailable)),
+        "backend error → Unknown(BackendUnavailable), got {r:?}"
+    );
+}
+
+#[test]
+fn test_cached_compute_result_survives_backend_outage() {
+    // A prior SUCCESSFUL computation auto-asserts its fact; that result must keep
+    // answering TRUE even after the backend starts failing — only genuinely
+    // undetermined compute predicates degrade to Unknown.
+    let kb = new_kb();
+    kb.set_compute_dispatch(ok_eval, ok_batch);
+    assert!(
+        query(&kb, tenfa_query()),
+        "working backend → TRUE (auto-asserted into the KB)"
+    );
+    // Backend goes away.
+    kb.set_compute_dispatch(failing_eval, failing_batch);
+    let r = query_result(&kb, tenfa_query());
+    assert!(
+        matches!(r, QueryResult::True),
+        "the auto-asserted prior result survives the outage, got {r:?}"
+    );
 }
 
 // ─── ProofRef memo back-reference validation ─────────────────
