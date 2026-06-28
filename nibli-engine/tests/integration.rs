@@ -2280,6 +2280,36 @@ fn ddi_dose_sum_aggregation() {
     assert_eq!(total, Some(12.0), "Summed dose across drugs should be 12");
 }
 
+/// Regression (query-level DoS): cyclic rules through the FULL pipeline must not hang
+/// the witness search. `ro lo gerku cu danlu` + `ro lo danlu cu gerku` is a
+/// relation-level cycle; before the `cycle_key` backward-chain guard,
+/// `count_witnesses_text("da gerku")` spun at ~100% CPU for 30+ minutes (each step
+/// mints a fresh event Skolem, so the raw cycle guard never fired). Now the cycle is
+/// cut → enumeration incomplete → count REFUSES with `Err`. Watchdog-guarded so a
+/// regression FAILS rather than hangs CI.
+#[test]
+fn cyclic_rules_do_not_hang_count() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let engine = engine_with_facts(&[
+            "ro lo gerku cu danlu",
+            "ro lo danlu cu gerku",
+            "la .rex. cu mlatu",
+        ]);
+        let _ = tx.send(engine.count_witnesses_text("da gerku").is_err());
+    });
+    match rx.recv_timeout(Duration::from_secs(20)) {
+        Ok(true) => {}
+        Ok(false) => panic!("cyclic count_witnesses_text must refuse (Err), not undercount"),
+        Err(_) => panic!(
+            "cyclic count_witnesses_text did NOT terminate within 20s \
+             — the backward-chain cycle guard regressed"
+        ),
+    }
+}
+
 /// Temporal reasoning: a present-tense alert holds; a past-tense query for the
 /// same alert does not (tense discrimination), matching the engine's temporal
 /// contract used elsewhere in the book.

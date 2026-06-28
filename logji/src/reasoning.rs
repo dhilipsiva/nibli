@@ -1281,6 +1281,15 @@ pub(super) fn find_witnesses(
     inner: &mut KnowledgeBaseInner,
     tense: Option<&str>,
 ) -> Result<Vec<Vec<(String, GroundTerm)>>, String> {
+    // Once any leaf has been CUT at the depth/cycle horizon the enumeration is known
+    // incomplete and `query_find_inner` will refuse with `Err` regardless of what the
+    // remaining candidates yield — so stop the (potentially huge) candidate sweep
+    // immediately instead of exploring it to the end. Without this, a cyclic
+    // event-decomposed find terminates but only after enumerating the full
+    // member×Skolem cartesian (seconds), even though the verdict is already decided.
+    if inner.find_horizon_hit {
+        return Ok(Vec::new());
+    }
     match get_node(buffer, node_id)? {
         LogicNode::ExistsNode((v, body)) => {
             let mut results = Vec::new();
@@ -1627,7 +1636,7 @@ pub(super) fn check_predicate_in_kb_typed(
     if result.is_false()
         && !inner.equivalence_parent.is_empty()
         && fact.relation() != "du"
-        && !visited.contains(fact)
+        && !visited.contains(&cycle_key(fact))
     {
         let gf = fact.inner();
         let equiv_args: Vec<Vec<GroundTerm>> = gf
@@ -1645,11 +1654,11 @@ pub(super) fn check_predicate_in_kb_typed(
             // Guard against re-deriving `fact` itself while exploring its
             // equivalence variants. Inserted here (not by the inner backward
             // chainer, which removes its own entry on return).
-            let reinserted = visited.insert(fact.clone());
+            let reinserted = visited.insert(cycle_key(fact));
             for combo in CartesianProduct::new(&equiv_args) {
                 let variant_gf = GroundFact::new(gf.relation.clone(), combo);
                 let variant = StoredFact::with_tense_from(variant_gf, fact);
-                if variant != *fact && !visited.contains(&variant) {
+                if variant != *fact && !visited.contains(&cycle_key(&variant)) {
                     let variant_result =
                         check_predicate_in_kb_typed(&variant, inner, depth, visited);
                     if variant_result.is_true() {
@@ -1661,7 +1670,7 @@ pub(super) fn check_predicate_in_kb_typed(
             // Only remove `fact` if WE inserted it (don't clobber an entry an
             // outer frame is relying on for its own cycle guard).
             if reinserted {
-                visited.remove(fact);
+                visited.remove(&cycle_key(fact));
             }
         }
     }
@@ -2171,6 +2180,58 @@ fn process_phase<S: TraceSink>(
     None
 }
 
+/// Reserved sentinel that collapses every event Skolem term when keying the
+/// `visited` cycle guard. Prefixed with a control char so it cannot collide with a
+/// real constant/entity name.
+const CYCLE_SKOLEM_SENTINEL: &str = "\u{1}__cyc_skolem__";
+
+/// An engine-minted event Skolem term: a dependent `SkolemFn` (`sk_5(rex)`) or an
+/// independent Skolem constant (`sk_<n>`, from [`KnowledgeBaseInner::fresh_skolem`]
+/// / `rules.rs`). These vary per derivation step; collapsing them is what lets the
+/// cycle guard recognize a relation-level cycle (see [`cycle_key`]).
+fn is_event_skolem_term(t: &GroundTerm) -> bool {
+    match t {
+        GroundTerm::SkolemFn(_, _) => true,
+        // Skolem constants are `sk_<digits>`; a real entity is never numeric-suffixed
+        // this way, so the naming match cannot collapse a user individual.
+        GroundTerm::Constant(s) => s
+            .strip_prefix("sk_")
+            .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit())),
+        _ => false,
+    }
+}
+
+/// Canonicalize a fact for the `visited` cycle guard. Event-decomposed reasoning
+/// mints a FRESH event Skolem every time an unbound event variable is searched, so a
+/// relation-level cycle through event rules
+/// (`gerku(sk_5(rex)) ⟸ danlu(sk_1(rex)) ⟸ gerku(sk_5(sk_2)) ⟸ …`) never repeats an
+/// exact `StoredFact`: the raw guard never fires and the search re-derives the same
+/// relation exponentially out to the depth horizon (a query-level hang / DoS).
+/// Collapsing every event-Skolem argument ([`is_event_skolem_term`]) to a single
+/// sentinel makes a re-entered relation+individual goal hash-equal, so the second
+/// visit on the SAME PATH is cut (`CycleCut`). Constant/individual args are preserved,
+/// so distinct individuals stay distinct (no over-cut of legitimate per-individual
+/// recursion). Facts with no event-Skolem arg are returned unchanged (fast path) —
+/// behavior is identical to the old raw key for the overwhelming majority of goals.
+fn cycle_key(fact: &StoredFact) -> StoredFact {
+    let gf = fact.inner();
+    if !gf.args.iter().any(is_event_skolem_term) {
+        return fact.clone();
+    }
+    let args = gf
+        .args
+        .iter()
+        .map(|a| {
+            if is_event_skolem_term(a) {
+                GroundTerm::Constant(CYCLE_SKOLEM_SENTINEL.to_string())
+            } else {
+                a.clone()
+            }
+        })
+        .collect();
+    StoredFact::with_tense_from(GroundFact::new(gf.relation.clone(), args), fact)
+}
+
 fn try_backward_chain_core<S: TraceSink>(
     fact: &StoredFact,
     inner: &KnowledgeBaseInner,
@@ -2203,7 +2264,7 @@ fn try_backward_chain_core<S: TraceSink>(
         }
         return (QueryResult::ResourceExceeded(ResourceKind::Depth), None);
     }
-    if !visited.insert(fact.clone()) {
+    if !visited.insert(cycle_key(fact)) {
         return (QueryResult::Unknown(UnknownReason::CycleCut), None);
     }
 
@@ -2237,7 +2298,7 @@ fn try_backward_chain_core<S: TraceSink>(
         &mut candidates_slot,
         &mut best_result,
     ) {
-        visited.remove(fact);
+        visited.remove(&cycle_key(fact));
         return (QueryResult::True, root);
     }
 
@@ -2254,12 +2315,12 @@ fn try_backward_chain_core<S: TraceSink>(
             &mut candidates_slot,
             &mut best_result,
         ) {
-            visited.remove(fact);
+            visited.remove(&cycle_key(fact));
             return (QueryResult::True, root);
         }
     }
 
-    visited.remove(fact);
+    visited.remove(&cycle_key(fact));
     (best_result.unwrap_or(QueryResult::False), None)
 }
 

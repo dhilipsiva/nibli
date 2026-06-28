@@ -8153,6 +8153,69 @@ fn make_find_query(predicate: &str) -> LogicBuffer {
     }
 }
 
+// THROWAWAY diagnostic repro for the find-path non-termination on event-decomposed
+// cyclic rules. #[ignore]d so it never runs in CI. Default max_chain_depth → hangs.
+// Used only to capture a stack sample; removed before commit.
+// Event-decomposed find query: ∃x. ∃_ev0. gerku(_ev0) ∧ gerku_x1(_ev0, x)
+// (what the real pipeline compiles `da gerku` into — NOT the flat make_find_query).
+fn make_event_find_query(predicate: &str) -> LogicBuffer {
+    let mut nodes = Vec::new();
+    let p_type = pred(
+        &mut nodes,
+        predicate,
+        vec![LogicalTerm::Variable("_ev0".to_string())],
+    );
+    let p_role = pred(
+        &mut nodes,
+        &format!("{}_x1", predicate),
+        vec![
+            LogicalTerm::Variable("_ev0".to_string()),
+            LogicalTerm::Variable("x".to_string()),
+        ],
+    );
+    let p_and = and(&mut nodes, p_type, p_role);
+    let inner = exists(&mut nodes, "_ev0", p_and);
+    let root = exists(&mut nodes, "x", inner);
+    LogicBuffer {
+        nodes,
+        roots: vec![root],
+    }
+}
+
+/// Regression: event-decomposed cyclic rules must NOT hang the witness search.
+/// `gerku ⟺ danlu` is a relation-level cycle; each backward-chain step mints a
+/// fresh dependent Skolem (`sk_5(rex)`, `sk_5(sk_2)`, …), so before the `cycle_key`
+/// guard the raw `visited` set never matched and the search re-derived the relation
+/// exponentially out to the depth horizon — a ~30-minute, 100%-CPU query-level DoS.
+/// With `cycle_key`, the relation re-entry on a path is cut (`CycleCut`), so the
+/// enumeration is incomplete and find/count REFUSE with `Err` (consistent with the
+/// depth/cycle UNDERCOUNT contract). Runs on a watchdog thread at DEFAULT depth (so
+/// it exercises the real cycle, not a shallow depth-horizon cutoff) and FAILS rather
+/// than hangs CI if the guard ever regresses.
+#[test]
+fn test_find_event_cycle_terminates_and_errs() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let kb = new_kb();
+        assert_buf(&kb, make_event_universal("gerku", "danlu"));
+        assert_buf(&kb, make_event_universal("danlu", "gerku"));
+        assert_buf(&kb, make_event_assertion("rex", "mlatu"));
+        let find_err = kb.query_find(make_event_find_query("gerku")).is_err();
+        let count_err = kb.count_witnesses(make_event_find_query("gerku")).is_err();
+        let _ = tx.send(find_err && count_err);
+    });
+    match rx.recv_timeout(Duration::from_secs(20)) {
+        Ok(true) => {}
+        Ok(false) => panic!("cyclic event-decomposed find/count must refuse (Err)"),
+        Err(_) => panic!(
+            "cyclic event-decomposed find did NOT terminate within 20s — \
+             the cycle_key guard is not cutting the relation-level cycle"
+        ),
+    }
+}
+
 #[test]
 fn test_count_witnesses_zero() {
     let kb = new_kb();
