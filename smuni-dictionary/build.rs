@@ -4,6 +4,12 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
+// Canonical arity extraction, shared with the crate's tests (compiled here as a
+// build-script module; `#[cfg(test)]` is false for a build script, so its test
+// submodule is excluded).
+#[path = "src/arity.rs"]
+mod arity;
+
 fn main() {
     println!("cargo:rerun-if-changed=../jbovlaste-en.xml");
 
@@ -32,7 +38,7 @@ fn main() {
                     {
                         a
                     } else if let Some(definition) = extract_definition(block) {
-                        extract_arity(definition)
+                        arity::definition_arity(definition)
                     } else {
                         2
                     };
@@ -178,45 +184,6 @@ fn extract_glossword<'a>(block: &'a str) -> Option<&'a str> {
     let end = rest.find('"')?;
     let gloss = &rest[..end];
     if gloss.is_empty() { None } else { Some(gloss) }
-}
-
-/// Extracts the highest place variable (x1..x5) from a jbovlaste definition.
-fn extract_arity(definition: &str) -> usize {
-    let mut max_place: usize = 0;
-    let bytes = definition.as_bytes();
-    let len = bytes.len();
-    let mut i = 0;
-
-    while i < len {
-        if bytes[i] == b'x' || bytes[i] == b'X' {
-            let has_boundary = i == 0 || !bytes[i - 1].is_ascii_alphanumeric();
-            if has_boundary {
-                let mut j = i + 1;
-                while j < len {
-                    match bytes[j] {
-                        b'_' | b'$' | b'{' | b'}' | b' ' => j += 1,
-                        b'<' => {
-                            if let Some(close) = definition[j..].find('>') {
-                                j += close + 1;
-                            } else {
-                                break;
-                            }
-                        }
-                        _ => break,
-                    }
-                }
-                if j < len && bytes[j].is_ascii_digit() {
-                    let digit = (bytes[j] - b'0') as usize;
-                    if digit >= 1 && digit <= 5 {
-                        max_place = max_place.max(digit);
-                    }
-                }
-            }
-        }
-        i += 1;
-    }
-
-    max_place.max(1)
 }
 
 /// Look up a curated English place-frame template for a gismu/lujvo.

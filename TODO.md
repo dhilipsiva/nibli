@@ -26,11 +26,6 @@ _(none open)_
 
 ## P2 — Correctness / robustness
 
-- [ ] 🐞 **MEDIUM** — Predicate arity heuristically regexed from English definition prose
-  for all but ~44 curated gismu (`smuni .../build.rs`). Under-arity is caught fail-closed,
-  but over-arity from a parenthetical `xN` silently adds roles, altering entailment.
-  **Fix:** load arity from the canonical machine-readable gismu place-structure dataset.
-
 - [ ] 🐞 **MEDIUM** — Parser fail-OPEN holes (contradict the fail-closed posture).
   Unterminated `zoi` swallows the rest of input as one opaque constant with no error;
   dangling `zo` at end-of-stream silently dropped; predicate-less clause (`mi do`) fabricates

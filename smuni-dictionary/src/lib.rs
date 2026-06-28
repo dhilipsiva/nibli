@@ -13,6 +13,12 @@ pub struct DictEntry {
 
 include!(concat!(env!("OUT_DIR"), "/generated_dictionary.rs"));
 
+/// Canonical place-count extraction from a jbovlaste definition. Used by `build.rs`
+/// (via `#[path]`) to derive arity; exposed here so it is unit-tested by
+/// `cargo test -p smuni-dictionary` (CI runs the no-XML build, which never calls it,
+/// so the pure-function tests are the coverage).
+pub mod arity;
+
 /// Look up the arity of a Lojban word (gismu/lujvo only; cmavo returns None).
 pub fn get_arity(word: &str) -> Option<usize> {
     DICTIONARY.get(word).and_then(|e| e.arity)
