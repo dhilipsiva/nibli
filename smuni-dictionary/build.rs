@@ -347,6 +347,23 @@ const FALLBACK_GISMU_ENTRIES: &[(&str, usize, &str)] = &[
     ("dilcu", 3, "divide"),
     ("danlu", 2, "animal"),
     ("jmive", 1, "live"),
+    // GDPR / drug-interaction corpus proxy + regulatory vocabulary. Without the
+    // jbovlaste XML these would vanish from the no-XML build, so `get_template` and
+    // the rendered place-frames silently diverge from the XML build and the render /
+    // corpus-proxy / C19 back-translation tests fail only in CI. Arities and glosses
+    // mirror exactly what the XML build derives from jbovlaste (verified against the
+    // generated dictionary), so adding them as tier-2 entries leaves the XML build
+    // unchanged. Templates come from GISMU_PLACE_TEMPLATES via lookup_template.
+    ("zanru", 2, "approve"),
+    ("pilno", 3, "use"),
+    ("katna", 3, "cut"),
+    ("zenba", 3, "increase"),
+    ("cinla", 3, "thin"),
+    ("ckape", 3, "peril"),
+    ("vimcu", 4, "delete"),
+    ("javni", 3, "rule"),
+    ("datni", 3, "data"),
+    ("turni", 2, "govern"),
 ];
 
 /// Curated gloss overrides for gismu where the first jbovlaste glossword
