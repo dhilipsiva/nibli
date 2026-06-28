@@ -623,6 +623,13 @@ pub(super) struct KnowledgeBaseInner {
     /// Like `cancel`/`compute_eval`, this is CONFIGURATION, not derived state —
     /// NOT cleared by `reset()`. The `eprintln!` warning/error sites ignore it.
     pub(super) verbose: bool,
+    /// Transient (per `query_find`): set when witness enumeration drops a candidate
+    /// because its leaf check hit the depth/cycle horizon (`ResourceExceeded` /
+    /// `Unknown(CycleCut)` / …) rather than a genuine False. `query_find_inner`
+    /// resets it before enumeration and checks it after, so `count_witnesses` /
+    /// `aggregate` REFUSE to emit a definitive (under)count when the search was cut.
+    /// Not configuration; not cleared by `reset()` (query_find owns its lifecycle).
+    pub(super) find_horizon_hit: bool,
 }
 
 impl Clone for KnowledgeBaseInner {
@@ -663,6 +670,7 @@ impl Clone for KnowledgeBaseInner {
             pred_cache: RefCell::new(HashMap::new()),
             pred_cache_enabled: Cell::new(false),
             verbose: self.verbose,
+            find_horizon_hit: false,
         }
     }
 }
@@ -705,6 +713,7 @@ impl KnowledgeBaseInner {
             pred_cache: RefCell::new(HashMap::new()),
             pred_cache_enabled: Cell::new(false),
             verbose: false,
+            find_horizon_hit: false,
         }
     }
 

@@ -1359,13 +1359,39 @@ pub(super) fn find_witnesses(
             Ok(results)
         }
         _ => {
-            if check_formula_holds(buffer, node_id, subs, inner, tense)?.is_true() {
+            let verdict = check_formula_holds(buffer, node_id, subs, inner, tense)?;
+            if verdict.is_true() {
                 Ok(vec![vec![]])
             } else {
+                // Not a witness. Distinguish a genuine "no" (`False` /
+                // `Unknown(NafDependent)`) from the search being CUT at the
+                // depth/cycle horizon — the latter means a witness may exist beyond
+                // the budget, so flag the enumeration incomplete. `query_find_inner`
+                // then refuses a definitive count/aggregate rather than silently
+                // undercounting.
+                if witness_search_cut(&verdict) {
+                    inner.find_horizon_hit = true;
+                }
                 Ok(vec![])
             }
         }
     }
+}
+
+/// True when a non-`True` witness-leaf verdict means the search was CUT (a witness
+/// may exist beyond the depth budget or behind a cut cycle), as opposed to a
+/// genuine/defensible absence. `False` is a real no; `Unknown(NafDependent)` is a
+/// defensibly-excluded NAF-dependent existential. Everything else
+/// (`ResourceExceeded(_)`, `CycleCut`, `IncompleteKnowledge`, `BackendUnavailable`)
+/// marks the witness set INCOMPLETE.
+fn witness_search_cut(v: &QueryResult) -> bool {
+    matches!(
+        v,
+        QueryResult::ResourceExceeded(_)
+            | QueryResult::Unknown(UnknownReason::CycleCut)
+            | QueryResult::Unknown(UnknownReason::IncompleteKnowledge)
+            | QueryResult::Unknown(UnknownReason::BackendUnavailable)
+    )
 }
 
 // ─── Typed Backward-Chaining (Phase 4-5b) ────────────────────────

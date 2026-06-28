@@ -8274,6 +8274,93 @@ fn test_iterative_deepening_exceeds_max() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// FIND/COUNT/AGGREGATE INCOMPLETENESS AT THE DEPTH/CYCLE HORIZON
+// ═══════════════════════════════════════════════════════════════════
+
+/// Build a `max_chain_depth=2` KB whose only `xanlu` witnesses (alis, bob) sit
+/// behind a depth-3 rule chain — so every witness leaf hits ResourceExceeded(Depth).
+fn kb_with_witnesses_beyond_depth() -> KnowledgeBase {
+    let kb = new_kb();
+    kb.inner.borrow_mut().max_chain_depth = 2;
+    assert_buf(&kb, make_universal("gerku", "danlu"));
+    assert_buf(&kb, make_universal("danlu", "jmive"));
+    assert_buf(&kb, make_universal("jmive", "xanlu"));
+    assert_buf(&kb, make_assertion("alis", "gerku"));
+    assert_buf(&kb, make_assertion("bob", "gerku"));
+    kb
+}
+
+#[test]
+fn test_count_undercount_at_depth_horizon_errs() {
+    // Pre-fix: `count_witnesses` returned a confident wrong count (the witnesses were
+    // silently dropped at the depth horizon). Now it REFUSES with an Err rather than
+    // undercount.
+    let kb = kb_with_witnesses_beyond_depth();
+    assert!(
+        kb.count_witnesses(make_find_query("xanlu")).is_err(),
+        "count must refuse (Err) when a witness exceeds the depth budget, not undercount"
+    );
+}
+
+#[test]
+fn test_find_at_depth_horizon_errs() {
+    let kb = kb_with_witnesses_beyond_depth();
+    assert!(
+        kb.query_find(make_find_query("xanlu")).is_err(),
+        "find must refuse (Err) an incomplete witness enumeration"
+    );
+}
+
+#[test]
+fn test_aggregate_at_depth_horizon_errs() {
+    // aggregate funnels through query_find, so it inherits the incompleteness refusal
+    // before it ever sums — no confident under-sum.
+    let kb = kb_with_witnesses_beyond_depth();
+    assert!(
+        kb.aggregate(
+            make_find_query("xanlu"),
+            "x",
+            nibli_types::logic::AggregateOp::Sum,
+        )
+        .is_err(),
+        "aggregate must refuse (Err) when the witness enumeration is incomplete"
+    );
+}
+
+#[test]
+fn test_count_within_budget_is_exact() {
+    // Control: the SAME depth-3 chain is within the default budget (10), so the
+    // enumeration is complete and count is exact — no false-positive incompleteness.
+    let kb = new_kb();
+    assert_buf(&kb, make_universal("gerku", "danlu"));
+    assert_buf(&kb, make_universal("danlu", "jmive"));
+    assert_buf(&kb, make_universal("jmive", "xanlu"));
+    assert_buf(&kb, make_assertion("alis", "gerku"));
+    assert_buf(&kb, make_assertion("bob", "gerku"));
+    let count = kb
+        .count_witnesses(make_find_query("xanlu"))
+        .expect("within-budget enumeration must succeed");
+    assert!(
+        count >= 2,
+        "both witnesses are within the depth budget, got {count}"
+    );
+}
+
+#[test]
+fn test_find_cycle_cut_errs() {
+    // A cyclic rule (gerku ⟸ danlu ⟸ gerku) makes a witness leaf hit CycleCut, which
+    // is incompleteness (the search was cut), not a genuine absence → find refuses.
+    let kb = new_kb();
+    assert_buf(&kb, make_universal("gerku", "danlu"));
+    assert_buf(&kb, make_universal("danlu", "gerku"));
+    assert_buf(&kb, make_assertion("rex", "mlatu")); // a domain member to enumerate
+    assert!(
+        kb.query_find(make_find_query("gerku")).is_err(),
+        "a cycle-cut witness leaf must make find refuse (Err), not silently drop"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // ARGUMENT-POSITION INDEX TESTS
 // ═══════════════════════════════════════════════════════════════════
 

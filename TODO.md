@@ -20,13 +20,16 @@ Legend: 🐞 genuine bug · ⚖️ honesty/framing · 🧪 test rigor.
 
 ## P1 — Soundness bugs (contradict the "zero-hallucination" contract)
 
-- [ ] 🐞 **HIGH** — `find`/`count`/`aggregate` silently undercount at the depth/cycle
-  horizon. That path is two-valued (`reasoning.rs:1313` maps Depth/CycleCut/NafDependent all
-  to "no witness"); `count_witnesses`/`aggregate` then return a *definitive* number from an
-  incomplete search. (The entailment path correctly iteratively-deepens + surfaces
-  ResourceExceeded — the find path doesn't.)
-  **Fix:** thread an incompleteness flag out of `find_witnesses` (or iteratively deepen) so
-  count/aggregate refuse a definitive number when any leaf hit the horizon.
+- [ ] 🐞 **HIGH** — `find`/`count`/`aggregate` NON-TERMINATION on cyclic rules (query-level
+  DoS). Witness enumeration (`find_witnesses`) spins at ~100% CPU when a relation is
+  recursively cyclic AND event-decomposed — e.g. `ro lo gerku cu danlu` + `ro lo danlu cu
+  gerku`, then `count_witnesses_text("da gerku")`. The entailment path cuts cycles
+  (`CycleCut`), and the FLAT find path now refuses incomplete enumerations
+  (`find_horizon_hit`, added with the depth/cycle UNDERCOUNT fix), but the event-decomposed
+  enumeration loops *before* reaching a leaf, so the cut never fires. Discovered while fixing
+  the undercount. **Fix:** add cycle/visited protection (or an enumeration budget) to
+  `find_witnesses` so the event-decomposed cyclic case terminates → `CycleCut` → the existing
+  horizon refusal Errs. (Plain depth-horizon undercount is already fixed + tested.)
 
 - [ ] 🐞 **HIGH** — Native (`nibli-engine`) vs WASM (`lasna`) `go'i` divergence. lasna
   resolves `go'i` against the prior bridi; nibli-engine doesn't and doesn't reject it —

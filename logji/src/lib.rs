@@ -458,9 +458,17 @@ impl KnowledgeBase {
     /// Find all satisfying binding sets for existential variables in the query formula.
     /// Returns one `Vec<WitnessBinding>` per satisfying assignment.
     fn query_find_inner(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, String> {
+        // Surfaced (as an Err) when witness enumeration is CUT at the depth/cycle
+        // horizon: find/count/aggregate must refuse a definitive (under)count rather
+        // than silently report a wrong quantity. See `find_witnesses` /
+        // `find_horizon_hit` — this is the find-path analog of the entailment path's
+        // `ResourceExceeded(Depth)` verdict.
+        const INCOMPLETE_MSG: &str = "witness enumeration incomplete: a witness exceeds the depth/cycle budget, so \
+             find/count/aggregate would undercount — raise the depth limit or simplify the rules";
         let mut inner = self.inner.borrow_mut();
         clear_and_enable_pred_cache(&inner);
         inner.ensure_domain_members_cached();
+        inner.find_horizon_hit = false;
         let mut result_sets: Option<Vec<Vec<(String, GroundTerm)>>> = None;
         for &root_id in &logic.roots {
             let mut subs = HashMap::new();
@@ -469,6 +477,9 @@ impl KnowledgeBase {
                 None => result_sets = Some(witnesses),
                 Some(prev) => {
                     if witnesses.is_empty() {
+                        if inner.find_horizon_hit {
+                            return Err(INCOMPLETE_MSG.to_string());
+                        }
                         return Ok(vec![]);
                     }
                     // Join binding sets across roots: shared variables must agree,
@@ -484,11 +495,19 @@ impl KnowledgeBase {
                         }
                     }
                     if joined.is_empty() {
+                        if inner.find_horizon_hit {
+                            return Err(INCOMPLETE_MSG.to_string());
+                        }
                         return Ok(vec![]);
                     }
                     result_sets = Some(joined);
                 }
             }
+        }
+        // Enumeration finished — but if any witness leaf was cut at the depth/cycle
+        // horizon, the result is an under-count, not a definitive one. Refuse it.
+        if inner.find_horizon_hit {
+            return Err(INCOMPLETE_MSG.to_string());
         }
         let mut binding_sets = result_sets.unwrap_or_default();
         // Determinism + dedup: witness enumeration touches HashSet-backed
