@@ -168,6 +168,25 @@ mod tests {
         assert_eq!(status(&session, "la .adam. cu cipni"), "FALSE");
     }
 
+    #[test]
+    fn c02_intro_repl_verdicts() {
+        // Chapter 2's three intro REPL sessions (dog/animal, the made-up glorp
+        // words, GDPR consent). The captured Show-It/Glorp blocks are byte-gated;
+        // the GDPR-consent block is flagged (its long proof is elided), so pin its
+        // verdict here so the transcript cannot drift to a wrong answer.
+        let syllog = load("la .adam. gerku\nro lo gerku cu danlu");
+        assert_eq!(status(&syllog, "la .adam. danlu"), "TRUE");
+
+        let glorp = load("la .adam. glorpi\nro lo glorpi cu flimbi");
+        assert_eq!(status(&glorp, "la .adam. flimbi"), "TRUE");
+
+        let gdpr = load(
+            "lo prenu cu ponse lo datni\n\
+             ro lo prenu poi ke'a ponse lo datni cu bilga lo nu curmi",
+        );
+        assert_eq!(status(&gdpr, "lo prenu cu bilga lo nu curmi"), "TRUE");
+    }
+
     // NOTE: the Ch 20 breach-notification queries (`... se bilga lo nu notci`)
     // are deliberately NOT exercised here or in the /nibli demo: against the
     // FULL gdpr.lojban corpus the traced query does not return in bounded time
