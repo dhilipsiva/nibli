@@ -46,8 +46,10 @@ pub fn parse_text_native(input: String) -> Result<flat::ParseResult, NibliError>
     //    input is never silently truncated.
     let (raw_tokens, lex_errors) = crate::lexer::tokenize_with_errors(&input);
 
-    // 2. Resolve metalinguistic operators (si/sa/su/zo/zoi/zei)
-    let normalized = crate::preprocessor::preprocess(raw_tokens.into_iter(), &input);
+    // 2. Resolve metalinguistic operators (si/sa/su/zo/zoi/zei). Truncated
+    //    zo/zoi/zei are reported (fail closed) rather than silently mangled.
+    let (normalized, preprocess_errors) =
+        crate::preprocessor::preprocess(raw_tokens.into_iter(), &input);
 
     // 3. Recursive descent parse (with per-sentence error recovery)
     let arena = bumpalo::Bump::new();
@@ -67,6 +69,15 @@ pub fn parse_text_native(input: String) -> Result<flat::ParseResult, NibliError>
             }
         })
         .collect();
+    // Preprocessor errors occur between lex and parse — report them in pipeline order.
+    errors.extend(preprocess_errors.iter().map(|e| {
+        let (line, column) = line_col_at(&input, e.start);
+        flat::ParseError {
+            message: e.message.clone(),
+            line,
+            column,
+        }
+    }));
     errors.extend(result.errors.iter().map(|e| flat::ParseError {
         message: e.message.clone(),
         line: e.line,

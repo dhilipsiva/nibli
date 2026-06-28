@@ -147,13 +147,37 @@ pub enum NormalizedToken<'a> {
     Glued(Vec<&'a str>),
 }
 
+/// A fail-CLOSED preprocessing error: a truncated metalinguistic operator
+/// (`zo`/`zoi`/`zei`) that the old infallible pass silently swallowed/dropped.
+/// Byte offsets into the original input (like [`crate::lexer::LexError`]) so
+/// `parse_text_native` can report line:column.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreprocessError {
+    /// Byte offset of the offending operator.
+    pub start: usize,
+    /// Byte offset one past the offending span.
+    pub end: usize,
+    /// Human-readable description.
+    pub message: String,
+}
+
 /// Consumes the raw lexical stream and resolves metalinguistic operations in O(n) time.
+/// Returns the normalized token stream PLUS any fail-closed errors for truncated
+/// `zo`/`zoi`/`zei` (the caller aggregates them like lex/parse errors). Erasure
+/// operators (`si`/`sa`/`su`) with nothing to erase are a defined no-op, not an error.
 pub fn preprocess<'a>(
     raw_tokens: impl Iterator<Item = (LojbanToken, &'a str)>,
     original_input: &'a str,
-) -> Vec<NormalizedToken<'a>> {
+) -> (Vec<NormalizedToken<'a>>, Vec<PreprocessError>) {
     let mut output: Vec<NormalizedToken<'a>> = Vec::with_capacity(128);
+    let mut errors: Vec<PreprocessError> = Vec::new();
     let mut iter = raw_tokens.peekable();
+    // Byte offset of a token slice within the original input (the same pointer
+    // arithmetic the `zoi` payload extraction uses). `saturating_sub` is exact in
+    // real use (lexer slices point into `original_input`) and merely avoids an
+    // underflow panic if a caller passes mismatched literal tokens (unit tests).
+    let offset_of =
+        |s: &str| (s.as_ptr() as usize).saturating_sub(original_input.as_ptr() as usize);
 
     while let Some((token, text)) = iter.next() {
         match token {
@@ -210,37 +234,68 @@ pub fn preprocess<'a>(
                 // `zo` treats the immediately following token as a literal string.
                 if let Some((_, quoted_text)) = iter.next() {
                     output.push(NormalizedToken::Quoted(quoted_text));
+                } else {
+                    // Dangling `zo` at end of input: fail closed (was silently dropped).
+                    let start = offset_of(text);
+                    errors.push(PreprocessError {
+                        start,
+                        end: start + text.len(),
+                        message: "`zo` quotes the following word, but reached end of input"
+                            .to_string(),
+                    });
                 }
             }
 
             LojbanToken::QuoteDelimited => {
                 // `zoi` requires a delimiter, arbitrary text, and the same delimiter.
                 if let Some((_, delimiter)) = iter.next() {
-                    let start_ptr = delimiter.as_ptr() as usize - original_input.as_ptr() as usize
-                        + delimiter.len();
+                    let start_ptr = offset_of(delimiter) + delimiter.len();
                     let mut end_ptr = start_ptr;
 
                     // Consume until we hit the exact same delimiter token
+                    let mut closed = false;
                     while let Some((_, next_text)) = iter.next() {
                         if next_text == delimiter {
+                            closed = true;
                             break;
                         }
-                        end_ptr = next_text.as_ptr() as usize - original_input.as_ptr() as usize
-                            + next_text.len();
+                        end_ptr = offset_of(next_text) + next_text.len();
                     }
 
-                    // Extract the zero-copy payload slice from the original input
-                    if end_ptr > start_ptr && end_ptr <= original_input.len() {
-                        let payload = &original_input[start_ptr..end_ptr].trim();
-                        output.push(NormalizedToken::Quoted(payload));
+                    if closed {
+                        // Extract the zero-copy payload slice from the original input.
+                        if end_ptr > start_ptr && end_ptr <= original_input.len() {
+                            let payload = &original_input[start_ptr..end_ptr].trim();
+                            output.push(NormalizedToken::Quoted(payload));
+                        }
+                    } else {
+                        // Unterminated `zoi`: fail closed (was silently swallowing the
+                        // rest of the input as one opaque Quoted constant).
+                        let start = offset_of(text);
+                        errors.push(PreprocessError {
+                            start,
+                            end: original_input.len(),
+                            message: format!(
+                                "`zoi` quote opened with delimiter `{delimiter}` is never closed"
+                            ),
+                        });
                     }
+                } else {
+                    // `zoi` with no delimiter token at all.
+                    let start = offset_of(text);
+                    errors.push(PreprocessError {
+                        start,
+                        end: start + text.len(),
+                        message: "`zoi` requires a delimiter and quoted text".to_string(),
+                    });
                 }
             }
 
             // ── Word Gluing ──────────────────────────────────────
             LojbanToken::GlueWords => {
                 // `zei` joins the previous token and the next token into a single
-                // lujvo-like unit.
+                // lujvo-like unit. It REQUIRES a word on both sides; a truncated `zei`
+                // fails closed (was silently dropping the previous token).
                 if let Some(prev) = output.pop() {
                     if let Some((_, next_text)) = iter.next() {
                         let mut parts = match prev {
@@ -249,7 +304,28 @@ pub fn preprocess<'a>(
                         };
                         parts.push(next_text);
                         output.push(NormalizedToken::Glued(parts));
+                    } else {
+                        // No following word: restore the previous token and report.
+                        output.push(prev);
+                        let start = offset_of(text);
+                        errors.push(PreprocessError {
+                            start,
+                            end: start + text.len(),
+                            message: "`zei` glues the previous and following words, but reached \
+                                      end of input"
+                                .to_string(),
+                        });
                     }
+                } else {
+                    // No preceding word.
+                    let start = offset_of(text);
+                    errors.push(PreprocessError {
+                        start,
+                        end: start + text.len(),
+                        message: "`zei` glues the previous and following words, but has no \
+                                  preceding word"
+                            .to_string(),
+                    });
                 }
             }
 
@@ -260,7 +336,7 @@ pub fn preprocess<'a>(
         }
     }
 
-    output
+    (output, errors)
 }
 
 // ─── Tests ───
@@ -340,7 +416,7 @@ mod tests {
             (LojbanToken::Gismu, "sutra"),
         ];
         let input = "lo gerku cu klama sa lo mlatu cu sutra";
-        let result = preprocess(tokens.into_iter(), input);
+        let (result, _errors) = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 4);
         assert_eq!(
             result[0],
@@ -373,7 +449,7 @@ mod tests {
             (LojbanToken::Cmavo, "do"),
         ];
         let input = "mi klama sa prami do";
-        let result = preprocess(tokens.into_iter(), input);
+        let (result, _errors) = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 3);
         assert_eq!(
             result[0],
@@ -402,7 +478,7 @@ mod tests {
             (LojbanToken::Gismu, "gerku"),
         ];
         let input = "mi klama sa lo gerku";
-        let result = preprocess(tokens.into_iter(), input);
+        let (result, _errors) = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 3);
         assert_eq!(
             result[0],
@@ -441,7 +517,7 @@ mod tests {
             (LojbanToken::Gismu, "sutra"),
         ];
         let input = "lo gerku cu barda .e lo mlatu cu klama sa lo prenu cu sutra";
-        let result = preprocess(tokens.into_iter(), input);
+        let (result, _errors) = preprocess(tokens.into_iter(), input);
         // After sa: erases back to second "lo" (index 6), truncating [lo, mlatu, cu, klama]
         // Then continues with: lo, prenu, cu, sutra
         assert_eq!(result.len(), 10);
@@ -502,7 +578,7 @@ mod tests {
             (LojbanToken::Cmavo, "do"),
         ];
         let input = "mi klama si prami do";
-        let result = preprocess(tokens.into_iter(), input);
+        let (result, _errors) = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 3);
         assert_eq!(
             result[0],
@@ -526,7 +602,7 @@ mod tests {
             (LojbanToken::Gismu, "klama"),
         ];
         let input = "si klama";
-        let result = preprocess(tokens.into_iter(), input);
+        let (result, _errors) = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 1);
         assert_eq!(
             result[0],
@@ -545,7 +621,7 @@ mod tests {
             (LojbanToken::Gismu, "klama"),
         ];
         let input = "mi do si si klama";
-        let result = preprocess(tokens.into_iter(), input);
+        let (result, _errors) = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 1);
         assert_eq!(
             result[0],
@@ -569,7 +645,7 @@ mod tests {
             (LojbanToken::Gismu, "sutra"),
         ];
         let input = "mi klama do su lo gerku cu sutra";
-        let result = preprocess(tokens.into_iter(), input);
+        let (result, _errors) = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 4);
         assert_eq!(
             result[0],
@@ -597,7 +673,7 @@ mod tests {
             (LojbanToken::Gismu, "klama"),
         ];
         let input = "su klama";
-        let result = preprocess(tokens.into_iter(), input);
+        let (result, _errors) = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 1);
         assert_eq!(
             result[0],
@@ -617,7 +693,7 @@ mod tests {
             (LojbanToken::Gismu, "selbri"),
         ];
         let input = "zo klama cu selbri";
-        let result = preprocess(tokens.into_iter(), input);
+        let (result, _errors) = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 3);
         assert_eq!(result[0], NormalizedToken::Quoted("klama"));
         assert_eq!(
@@ -627,15 +703,19 @@ mod tests {
     }
 
     #[test]
-    fn test_zo_at_end_of_stream() {
-        // "mi zo" → just "mi" (zo at end has no next token to quote)
+    fn test_zo_at_end_of_stream_errs() {
+        // "mi zo" → a dangling `zo` has no next word to quote: FAIL CLOSED (was
+        // silently dropped). The earlier "mi" is still emitted, but an error is raised.
         let tokens = vec![(LojbanToken::Cmavo, "mi"), (LojbanToken::QuoteNext, "zo")];
         let input = "mi zo";
-        let result = preprocess(tokens.into_iter(), input);
-        assert_eq!(result.len(), 1);
+        let (result, errors) = preprocess(tokens.into_iter(), input);
         assert_eq!(
             result[0],
             NormalizedToken::Standard(LojbanToken::Cmavo, "mi")
+        );
+        assert!(
+            !errors.is_empty(),
+            "dangling zo must be reported, not silently dropped"
         );
     }
 
@@ -650,7 +730,7 @@ mod tests {
             (LojbanToken::Gismu, "pilno"),
         ];
         let input = "skami zei pilno";
-        let result = preprocess(tokens.into_iter(), input);
+        let (result, _errors) = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], NormalizedToken::Glued(vec!["skami", "pilno"]));
     }
@@ -666,7 +746,7 @@ mod tests {
             (LojbanToken::Gismu, "tadni"),
         ];
         let input = "skami zei pilno zei tadni";
-        let result = preprocess(tokens.into_iter(), input);
+        let (result, _errors) = preprocess(tokens.into_iter(), input);
         assert_eq!(result.len(), 1);
         assert_eq!(
             result[0],
@@ -675,20 +755,78 @@ mod tests {
     }
 
     #[test]
-    fn test_zei_at_beginning_no_previous() {
-        // "zei klama" → no previous token, zei is no-op; klama remains in stream
+    fn test_zei_at_beginning_no_previous_errs() {
+        // "zei klama" → `zei` with no preceding word: FAIL CLOSED (was a silent no-op).
         let tokens = vec![
             (LojbanToken::GlueWords, "zei"),
             (LojbanToken::Gismu, "klama"),
         ];
         let input = "zei klama";
-        let result = preprocess(tokens.into_iter(), input);
-        // zei pops nothing (output is empty), if-let fails, klama stays in stream
-        assert_eq!(result.len(), 1);
-        assert_eq!(
-            result[0],
-            NormalizedToken::Standard(LojbanToken::Gismu, "klama")
+        let (_result, errors) = preprocess(tokens.into_iter(), input);
+        assert!(
+            !errors.is_empty(),
+            "zei with no preceding word must be reported"
         );
+    }
+
+    #[test]
+    fn test_zei_dangling_at_end_errs() {
+        // "skami zei" → `zei` with no following word: FAIL CLOSED (was dropping `skami`).
+        let tokens = vec![
+            (LojbanToken::Gismu, "skami"),
+            (LojbanToken::GlueWords, "zei"),
+        ];
+        let input = "skami zei";
+        let (_result, errors) = preprocess(tokens.into_iter(), input);
+        assert!(
+            !errors.is_empty(),
+            "zei with no following word must be reported"
+        );
+    }
+
+    #[test]
+    fn test_zoi_unterminated_errs() {
+        // `zoi gy. foo bar` with no closing `gy.` → FAIL CLOSED (was swallowing the
+        // rest of the input as one opaque Quoted constant).
+        let tokens = vec![
+            (LojbanToken::QuoteDelimited, "zoi"),
+            (LojbanToken::Cmavo, "gy"),
+            (LojbanToken::Gismu, "foo"),
+            (LojbanToken::Gismu, "bar"),
+        ];
+        let input = "zoi gy foo bar";
+        let (result, errors) = preprocess(tokens.into_iter(), input);
+        assert!(
+            !errors.is_empty(),
+            "unterminated zoi must be reported, not swallow the rest of input"
+        );
+        // The rest of the input is NOT emitted as an opaque Quoted constant.
+        assert!(
+            !result
+                .iter()
+                .any(|t| matches!(t, NormalizedToken::Quoted(_))),
+            "unterminated zoi must not produce a Quoted token"
+        );
+    }
+
+    #[test]
+    fn test_valid_metalinguistic_no_errors() {
+        // Regression guard: well-formed zo / zoi / zei produce NO errors.
+        let cases: &[Vec<(LojbanToken, &str)>] = &[
+            vec![
+                (LojbanToken::QuoteNext, "zo"),
+                (LojbanToken::Gismu, "klama"),
+            ],
+            vec![
+                (LojbanToken::Gismu, "skami"),
+                (LojbanToken::GlueWords, "zei"),
+                (LojbanToken::Gismu, "pilno"),
+            ],
+        ];
+        for toks in cases {
+            let (_r, errors) = preprocess(toks.iter().cloned(), "");
+            assert!(errors.is_empty(), "valid input produced errors: {errors:?}");
+        }
     }
 
     // ─── sa edge cases ────────────────────────────────────────
@@ -702,7 +840,7 @@ mod tests {
             (LojbanToken::EraseClass, "sa"),
         ];
         let input = "mi klama sa";
-        let result = preprocess(tokens.into_iter(), input);
+        let (result, _errors) = preprocess(tokens.into_iter(), input);
         // sa at end: peek returns None, nothing happens
         assert_eq!(result.len(), 2);
         assert_eq!(
@@ -727,7 +865,7 @@ mod tests {
             (LojbanToken::Gismu, "sutra"),
         ];
         let input = "mi klama sa . sutra";
-        let result = preprocess(tokens.into_iter(), input);
+        let (result, _errors) = preprocess(tokens.into_iter(), input);
         // Pause has no selmaho classification → fallback to single-word erase
         // Removes "klama", then ". sutra" continues
         assert_eq!(
@@ -788,7 +926,7 @@ mod tests {
     #[test]
     fn test_preprocess_empty_input() {
         let tokens: Vec<(LojbanToken, &str)> = vec![];
-        let result = preprocess(tokens.into_iter(), "");
+        let (result, _errors) = preprocess(tokens.into_iter(), "");
         assert!(result.is_empty());
     }
 
@@ -807,7 +945,7 @@ mod tests {
             (LojbanToken::Gismu, "gerku"),
         ];
         let input = "mi do si klama sa gerku";
-        let result = preprocess(tokens.into_iter(), input);
+        let (result, _errors) = preprocess(tokens.into_iter(), input);
         // After si: [mi]
         // After "klama": [mi, klama]
         // sa peeks "gerku" (Brivla), walks back, finds "klama" (Brivla) at idx 1

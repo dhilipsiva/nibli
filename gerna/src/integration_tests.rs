@@ -8,7 +8,7 @@ use crate::preprocessor::preprocess;
 /// Parse a raw Lojban string through the full pipeline.
 fn parse<'a>(input: &str, arena: &'a Bump) -> ParsedText<'a> {
     let raw = tokenize(input);
-    let normalized = preprocess(raw.into_iter(), input);
+    let (normalized, _) = preprocess(raw.into_iter(), input);
     let result = parse_tokens_to_ast(&normalized, input, arena);
     assert!(
         result.errors.is_empty(),
@@ -22,7 +22,7 @@ fn parse<'a>(input: &str, arena: &'a Bump) -> ParsedText<'a> {
 fn parse_err(input: &str) -> String {
     let arena = Bump::new();
     let raw = tokenize(input);
-    let normalized = preprocess(raw.into_iter(), input);
+    let (normalized, _) = preprocess(raw.into_iter(), input);
     let result = parse_tokens_to_ast(&normalized, input, &arena);
     assert!(
         !result.errors.is_empty(),
@@ -35,7 +35,7 @@ fn parse_err(input: &str) -> String {
 /// Parse and return the full result (for testing recovery).
 fn parse_result<'a>(input: &str, arena: &'a Bump) -> ParseResult<'a> {
     let raw = tokenize(input);
-    let normalized = preprocess(raw.into_iter(), input);
+    let (normalized, _) = preprocess(raw.into_iter(), input);
     parse_tokens_to_ast(&normalized, input, arena)
 }
 

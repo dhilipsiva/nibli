@@ -20,18 +20,26 @@ Legend: 🐞 genuine bug · ⚖️ honesty/framing · 🧪 test rigor.
 
 ## P1 — Soundness bugs (contradict the "zero-hallucination" contract)
 
-_(none open)_
+- [ ] 🐞 **HIGH** — `go'i`-bare resolution is NONDETERMINISTIC under WASM:
+  `smoke-gasnu-goi-bare` intermittently (~1 in 4 `ci-all` runs) drops the x1 subject — bare
+  `? go'i` after `la .adam. cu gerku` resolves to `gerku(zo'e)` (FALSE) instead of
+  `gerku(adam)` (TRUE), flipping the verdict (a zero-hallucination violation). Native
+  (nibli-engine) is stable — the 6 native go'i tests pass deterministically — so it is
+  WASM/seed-specific. Likely a HashMap-iteration-ordered place mapping in the snapshot graft
+  (`gerna::goi`) or smuni's compile of the grafted AST. **Fix:** make the go'i snapshot graft +
+  place assignment deterministic (stable-order the place map); add a seed-varying regression
+  test.
 
 ---
 
 ## P2 — Correctness / robustness
 
-- [ ] 🐞 **MEDIUM** — Parser fail-OPEN holes (contradict the fail-closed posture).
-  Unterminated `zoi` swallows the rest of input as one opaque constant with no error;
-  dangling `zo` at end-of-stream silently dropped; predicate-less clause (`mi do`) fabricates
-  a `go'i` selbri with no distinction from an explicit one (`gerna/src/preprocessor.rs`). The
-  preprocessor has no error channel.
-  **Fix:** give `preprocess` an error channel; reject truncated `zo/zoi/zei`.
+- [ ] 🐞 **MEDIUM** — Predicate-less clause (`mi do`) fabricates a `go'i` selbri (observative),
+  indistinguishable from an explicit `go'i` (`gerna/src/grammar/sentence.rs`): a forgotten
+  selbri silently becomes "repeat the previous bridi" instead of an error. (The `zo`/`zoi`/`zei`
+  truncation holes + the preprocessor error channel are now FIXED.)
+  **Fix:** mark the implicit go'i distinctly (or reject observatives) — a design call, since
+  observatives are currently a deliberate, tested feature.
 
 - [ ] 🐞 **MEDIUM** — `lasna` `go'i` per-place merge bypasses smuni's fail-closed guards:
   duplicate FA places (`fe X fe Y go'i`) silently overwritten (smuni rejects "same place set

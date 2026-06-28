@@ -6,7 +6,7 @@ use bumpalo::Bump;
 
 fn parse<'a>(input: &str, arena: &'a Bump) -> ParsedText<'a> {
     let raw = tokenize(input);
-    let normalized = preprocess(raw.into_iter(), input);
+    let (normalized, _) = preprocess(raw.into_iter(), input);
     let result = parse_tokens_to_ast(&normalized, input, arena);
     assert!(
         result.errors.is_empty(),
@@ -498,7 +498,7 @@ use crate::grammar::ParseResult;
 
 fn parse_result<'a>(input: &str, arena: &'a Bump) -> ParseResult<'a> {
     let raw = tokenize(input);
-    let normalized = preprocess(raw.into_iter(), input);
+    let (normalized, _) = preprocess(raw.into_iter(), input);
     parse_tokens_to_ast(&normalized, input, arena)
 }
 
@@ -767,5 +767,35 @@ fn pipeline_drug_interactions_lojban_all_lines_parse() {
         failures.is_empty(),
         "drug-interactions.lojban parse failures:\n{}",
         failures.join("\n")
+    );
+}
+
+// ─── Fail-closed: truncated metalinguistic operators (end-to-end) ───
+//
+// A truncated `zo`/`zoi`/`zei` used to be silently swallowed/dropped by the
+// preprocessor. It now surfaces through `parse_text_native` as a positioned error,
+// so `parse_checked` (the fail-closed front-end every embedder uses) rejects it.
+
+#[test]
+fn dangling_zo_fails_closed() {
+    assert!(
+        crate::parse_checked("mi zo").is_err(),
+        "a dangling `zo` (no following word) must fail closed, not be silently dropped"
+    );
+}
+
+#[test]
+fn unterminated_zoi_fails_closed() {
+    assert!(
+        crate::parse_checked("zoi gy foo bar").is_err(),
+        "an unterminated `zoi` must fail closed, not swallow the rest of the input"
+    );
+}
+
+#[test]
+fn truncated_zei_fails_closed() {
+    assert!(
+        crate::parse_checked("skami zei").is_err(),
+        "a `zei` with no following word must fail closed, not drop the previous word"
     );
 }
