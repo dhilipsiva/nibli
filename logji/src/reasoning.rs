@@ -575,8 +575,18 @@ fn check_formula_holds_core<S: TraceSink>(
             Ok((verdict, idx))
         }
         LogicNode::ObligatoryNode(inner_node) => {
-            let (verdict, ci) =
-                check_formula_holds_core::<S>(buffer, *inner_node, subs, inner, tense, sink)?;
+            // Thread the deontic context into the leaf (like PastNode → Some("Past")),
+            // so the predicate is checked as `StoredFact::Obligatory` and matches ONLY a
+            // stored obligation — never a bare actuality. Deriving "is" from "ought"
+            // would be an over-claim.
+            let (verdict, ci) = check_formula_holds_core::<S>(
+                buffer,
+                *inner_node,
+                subs,
+                inner,
+                Some("Obligatory"),
+                sink,
+            )?;
             let idx = if S::RECORDING {
                 sink.push(ProofStep {
                     rule: ProofRule::ModalPassthrough {
@@ -591,8 +601,16 @@ fn check_formula_holds_core<S: TraceSink>(
             Ok((verdict, idx))
         }
         LogicNode::PermittedNode(inner_node) => {
-            let (verdict, ci) =
-                check_formula_holds_core::<S>(buffer, *inner_node, subs, inner, tense, sink)?;
+            // Mirror the Obligatory arm: check the predicate as `StoredFact::Permitted`
+            // so a permission is never conflated with an actuality.
+            let (verdict, ci) = check_formula_holds_core::<S>(
+                buffer,
+                *inner_node,
+                subs,
+                inner,
+                Some("Permitted"),
+                sink,
+            )?;
             let idx = if S::RECORDING {
                 sink.push(ProofStep {
                     rule: ProofRule::ModalPassthrough {

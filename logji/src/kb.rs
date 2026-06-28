@@ -1953,6 +1953,8 @@ fn tense_to_static(tense: Option<&str>) -> Option<&'static str> {
         Some("Past") => Some("Past"),
         Some("Present") => Some("Present"),
         Some("Future") => Some("Future"),
+        Some("Obligatory") => Some("Obligatory"),
+        Some("Permitted") => Some("Permitted"),
         _ => None,
     }
 }
@@ -1986,6 +1988,8 @@ fn extract_from_index(
             (Some("Past"), StoredFact::Past(_)) => true,
             (Some("Present"), StoredFact::Present(_)) => true,
             (Some("Future"), StoredFact::Future(_)) => true,
+            (Some("Obligatory"), StoredFact::Obligatory(_)) => true,
+            (Some("Permitted"), StoredFact::Permitted(_)) => true,
             _ => false,
         };
         if !tense_matches {

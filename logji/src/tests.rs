@@ -2289,8 +2289,11 @@ fn test_permitted_assert_query() {
 }
 
 #[test]
-fn test_obligatory_transparent() {
-    // Assert Obligatory(klama(alis, zo'e)) then query without wrapper → TRUE (transparent)
+fn test_obligatory_distinct_from_bare() {
+    // `Obligatory(klama(alis))` is "ought", NOT "is": a bare actuality query must NOT
+    // match a stored obligation, while the obligation stays queryable with its wrapper.
+    // Deriving "is" from "ought" is an over-claim. (Replaces the former
+    // `test_obligatory_transparent`, which enshrined the now-fixed collapse.)
     let kb = new_kb();
     let mut a_nodes = Vec::new();
     let inner = pred(
@@ -2310,8 +2313,88 @@ fn test_obligatory_transparent() {
         },
     );
 
-    // Query without obligatory wrapper → still TRUE (pass-through)
-    assert!(query(&kb, make_query("alis", "klama")));
+    // Bare actuality query must NOT match the stored obligation.
+    assert!(
+        !query(&kb, make_query("alis", "klama")),
+        "ought must not imply is"
+    );
+
+    // The obligation itself is still queryable with the wrapper.
+    let mut q_nodes = Vec::new();
+    let q_inner = pred(
+        &mut q_nodes,
+        "klama",
+        vec![
+            LogicalTerm::Constant("alis".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let q_root = obligatory(&mut q_nodes, q_inner);
+    assert!(
+        query(
+            &kb,
+            LogicBuffer {
+                nodes: q_nodes,
+                roots: vec![q_root]
+            }
+        ),
+        "the obligation itself is preserved"
+    );
+}
+
+#[test]
+fn test_bare_does_not_imply_obligation() {
+    // The converse direction: a bare fact ("is") must NOT satisfy a deontic query
+    // ("ought").
+    let kb = new_kb();
+    assert_buf(&kb, make_assertion("alis", "klama"));
+    let mut q_nodes = Vec::new();
+    let q_inner = pred(
+        &mut q_nodes,
+        "klama",
+        vec![
+            LogicalTerm::Constant("alis".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let q_root = obligatory(&mut q_nodes, q_inner);
+    assert!(
+        !query(
+            &kb,
+            LogicBuffer {
+                nodes: q_nodes,
+                roots: vec![q_root]
+            }
+        ),
+        "is must not imply ought"
+    );
+}
+
+#[test]
+fn test_permitted_distinct_from_bare() {
+    // `e'e` analog: a permission is not an actuality.
+    let kb = new_kb();
+    let mut a_nodes = Vec::new();
+    let inner = pred(
+        &mut a_nodes,
+        "klama",
+        vec![
+            LogicalTerm::Constant("alis".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let root = permitted(&mut a_nodes, inner);
+    assert_buf(
+        &kb,
+        LogicBuffer {
+            nodes: a_nodes,
+            roots: vec![root],
+        },
+    );
+    assert!(
+        !query(&kb, make_query("alis", "klama")),
+        "permitted must not imply is"
+    );
 }
 
 // ── Compute result ingestion tests ──

@@ -639,6 +639,27 @@ fn whole_rule_deontic_universal_rejected() {
 }
 
 #[test]
+fn ground_obligation_does_not_imply_actuality() {
+    // `ei la .adam. cu vimcu` ("Adam OUGHT to be removed") must NOT make the bare
+    // actuality `la .adam. cu vimcu` ("Adam IS removed") hold — deriving "is" from
+    // "ought" is an over-claim. The obligation itself stays queryable with its wrapper.
+    // (A GROUND deontic fact is allowed; only a deontic over a WHOLE rule is rejected.)
+    let engine = NibliEngine::new();
+    engine
+        .assert_text("ei la .adam. cu vimcu")
+        .expect("a ground deontic fact should assert");
+
+    assert_false(
+        &engine.query_holds("la .adam. cu vimcu").unwrap(),
+        "ought must not imply is (ground obligation is not actuality)",
+    );
+    assert_true(
+        &engine.query_holds("ei la .adam. cu vimcu").unwrap(),
+        "the obligation itself is preserved and queryable",
+    );
+}
+
+#[test]
 fn prenex_tensed_body_universal_rejected() {
     // `ro da zo'u pu da prami` → ForAll(Past(...)): a tense on the rule spine,
     // INSIDE the universal. Pre-fix it was silently stripped to a timeless rule.

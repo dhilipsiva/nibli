@@ -20,14 +20,6 @@ Legend: 🐞 genuine bug · ⚖️ honesty/framing · 🧪 test rigor.
 
 ## P1 — Soundness bugs (contradict the "zero-hallucination" contract)
 
-- [ ] 🐞 **HIGH** — Deontic "ought" silently collapses to "is". `ei`/`e'e` reach
-  `ObligatoryNode`/`PermittedNode` but logji threads `None` tense through them on assert AND
-  query, so they store as `StoredFact::Bare`. `ei la .adam. cu vimcu` makes
-  `la .adam. cu vimcu` return TRUE (bidirectional). Enshrined by `test_obligatory_transparent`.
-  **Fix:** set `Some("Obligatory")/Some("Permitted")` at the deontic arms (`reasoning.rs`
-  ~561-579) and thread context through `collect_ground_facts`; the `unify_facts` wrapper
-  arms (`kb.rs:276-284`) already separate them. Replace the test.
-
 - [ ] 🐞 **HIGH** — Abstraction / propositional-attitude leakage: "believe P" ⇒ "P".
   `nu/du'u/ka/ni/si'o` complements are asserted as ground facts; `mi krici lo du'u <P>`
   leaks `P` as truth (referential opacity broken).

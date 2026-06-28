@@ -1760,9 +1760,15 @@ pub(super) fn build_stored_fact_from_node(
         LogicNode::FutureNode(inner) => {
             build_stored_fact_from_node(buffer, *inner, subs, Some("Future"))
         }
-        LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) => {
-            // Deontic wrappers are transparent — same as fact_repr path.
-            build_stored_fact_from_node(buffer, *inner, subs, tense)
+        LogicNode::ObligatoryNode(inner) => {
+            // Deontic context is preserved (mirrors the tense arms) so the leaf becomes a
+            // `StoredFact::Obligatory`. Reached only via a direct deontic node — the
+            // assert (collect_ground_facts) and query (reasoning.rs) paths strip the
+            // wrapper first; kept here so the "deontic is opaque" invariant is uniform.
+            build_stored_fact_from_node(buffer, *inner, subs, Some("Obligatory"))
+        }
+        LogicNode::PermittedNode(inner) => {
+            build_stored_fact_from_node(buffer, *inner, subs, Some("Permitted"))
         }
         _ => None, // And/Or/Not/ForAll/Count — not a leaf fact.
     }
@@ -1799,9 +1805,13 @@ pub(super) fn collect_ground_facts(
         LogicNode::FutureNode(inner) => {
             collect_ground_facts(buffer, *inner, subs, Some("Future"), out);
         }
-        LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) => {
-            // Deontic wrappers are transparent — same as fact_repr path.
-            collect_ground_facts(buffer, *inner, subs, tense, out);
+        LogicNode::ObligatoryNode(inner) => {
+            // Deontic context is preserved (mirrors the tense arms): a ground `ei`
+            // fact is stored as `StoredFact::Obligatory`, kept distinct from actuality.
+            collect_ground_facts(buffer, *inner, subs, Some("Obligatory"), out);
+        }
+        LogicNode::PermittedNode(inner) => {
+            collect_ground_facts(buffer, *inner, subs, Some("Permitted"), out);
         }
         _ => {
             if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {
