@@ -311,7 +311,17 @@ impl<'a, 'arena> Parser<'a, 'arena> {
 
         let mut count: u32 = 0;
         for d in &digits {
-            count = count * 10 + (*d as u32);
+            count = match count.checked_mul(10).and_then(|c| c.checked_add(*d as u32)) {
+                Some(v) => v,
+                // A PA quantifier count that overflows u32 (≥ ~10 digits) is rejected:
+                // restore and fail so the sentence is a clean syntax error — never a
+                // wrapped/fabricated count (release/WASM) or an overflow panic
+                // (debug/fuzz). Identical, fail-closed behavior in both profiles.
+                None => {
+                    self.restore(saved);
+                    return None;
+                }
+            };
         }
 
         Some(Sumti::QuantifiedDescription {

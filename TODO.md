@@ -26,12 +26,6 @@ _(none open)_
 
 ## P2 — Correctness / robustness
 
-- [ ] 🐞 **MEDIUM** — `u32` overflow in PA numeric-quantifier count.
-  `count = count*10 + d`, no `checked_mul`/digit cap (`gerna/src/grammar/sumti.rs:312-315`).
-  ≥11 `pa` digits: release/WASM **wraps to a fabricated count** the engine reasons over;
-  debug/fuzz **panics** (DoS).
-  **Fix:** `checked_*` → parse error on overflow; identical release/debug behavior, fail closed.
-
 - [ ] 🐞 **MEDIUM** — Predicate arity heuristically regexed from English definition prose
   for all but ~44 curated gismu (`smuni .../build.rs`). Under-arity is caught fail-closed,
   but over-arity from a parenthetical `xN` silently adds roles, altering entailment.

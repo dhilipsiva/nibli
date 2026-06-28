@@ -3181,6 +3181,40 @@ fn test_multi_digit_pa_no() {
 }
 
 #[test]
+fn test_pa_count_overflow_rejected() {
+    // 11 PA ones (11_111_111_111) overflow u32 — must be REJECTED with a parse error,
+    // never a wrapped/fabricated count (release/WASM) nor an overflow panic
+    // (debug/fuzz). This test passing in the debug profile IS the regression proof:
+    // the old `count = count * 10 + d` panicked here.
+    let mut tokens = Vec::new();
+    for _ in 0..11 {
+        tokens.push(cmavo("pa"));
+    }
+    tokens.extend([cmavo("lo"), gismu("gerku"), cmavo("cu"), gismu("barda")]);
+    let _ = parse_err(&tokens);
+}
+
+#[test]
+fn test_pa_count_large_in_range_ok() {
+    // 9 PA ones = 111_111_111 — comfortably within u32, so the in-range count still
+    // parses EXACTLY (guards against over-rejection or an accidental digit cap).
+    let mut tokens = Vec::new();
+    for _ in 0..9 {
+        tokens.push(cmavo("pa"));
+    }
+    tokens.extend([cmavo("lo"), gismu("gerku"), cmavo("cu"), gismu("barda")]);
+    let arena = Bump::new();
+    let r = parse_ok(&tokens, &arena);
+    match &as_bridi(&r.sentences[0]).head_terms[0] {
+        Sumti::QuantifiedDescription { count, .. } => assert_eq!(*count, 111_111_111),
+        other => panic!(
+            "expected QuantifiedDescription with count 111111111, got {:?}",
+            other
+        ),
+    }
+}
+
+#[test]
 fn test_suho_lo_is_plain_existential() {
     // su'o lo gerku cu barda → plain Description(Lo) (existential)
     let arena = Bump::new();
