@@ -172,15 +172,33 @@ fn prefer_non_definitive(
     }
 }
 
+/// Resolve the non-definitive region of And/Or: the callers' `is_false()`/`is_true()`
+/// guards have already decided every case where the verdict is definitive, so at least
+/// one operand here is non-definitive and the result is too. `ResourceExceeded` outranks
+/// `Unknown` (it is the more actionable reason); within the same rank the left operand
+/// wins. This is the single source of truth shared with `KnowledgeBase::combine_root_results`
+/// — keep them identical so the two cannot drift apart.
+///
+/// (Replaces a `prefer_non_definitive(None, left)`-seeded fold that wrongly collapsed to
+/// `False` whenever the *left* operand was definitive — e.g. `True ∧ Unknown` → `False`.)
+pub(crate) fn combine_indeterminate(left: QueryResult, right: QueryResult) -> QueryResult {
+    match (left, right) {
+        (QueryResult::ResourceExceeded(kind), _) => QueryResult::ResourceExceeded(kind),
+        (_, QueryResult::ResourceExceeded(kind)) => QueryResult::ResourceExceeded(kind),
+        (QueryResult::Unknown(reason), _) => QueryResult::Unknown(reason),
+        (_, QueryResult::Unknown(reason)) => QueryResult::Unknown(reason),
+        // Unreachable: both-definitive cases are decided by the callers before this runs.
+        _ => QueryResult::False,
+    }
+}
+
 fn combine_conjunction(left: QueryResult, right: QueryResult) -> QueryResult {
     if left.is_false() || right.is_false() {
         QueryResult::False
     } else if left.is_true() && right.is_true() {
         QueryResult::True
     } else {
-        prefer_non_definitive(None, left)
-            .and_then(|acc| prefer_non_definitive(Some(acc), right))
-            .unwrap_or(QueryResult::False)
+        combine_indeterminate(left, right)
     }
 }
 
@@ -190,9 +208,7 @@ fn combine_disjunction(left: QueryResult, right: QueryResult) -> QueryResult {
     } else if left.is_false() && right.is_false() {
         QueryResult::False
     } else {
-        prefer_non_definitive(None, left)
-            .and_then(|acc| prefer_non_definitive(Some(acc), right))
-            .unwrap_or(QueryResult::False)
+        combine_indeterminate(left, right)
     }
 }
 
@@ -2485,3 +2501,62 @@ pub(super) fn trace_predicate_provenance_typed(
 }
 
 // ─── End Typed Backward-Chaining ─────────────────────────────────
+
+#[cfg(test)]
+mod combiner_tests {
+    use super::*;
+    use QueryResult::{False as F, True as T};
+
+    fn unk_a() -> QueryResult {
+        QueryResult::Unknown(UnknownReason::CycleCut)
+    }
+    fn unk_b() -> QueryResult {
+        QueryResult::Unknown(UnknownReason::IncompleteKnowledge)
+    }
+    fn re_a() -> QueryResult {
+        QueryResult::ResourceExceeded(ResourceKind::Fuel)
+    }
+    fn re_b() -> QueryResult {
+        QueryResult::ResourceExceeded(ResourceKind::Depth)
+    }
+
+    #[test]
+    fn conjunction_truth_table() {
+        // Definitive / short-circuit region.
+        assert_eq!(combine_conjunction(T, T), T);
+        assert_eq!(combine_conjunction(F, T), F);
+        assert_eq!(combine_conjunction(T, F), F);
+        assert_eq!(combine_conjunction(F, unk_a()), F);
+        assert_eq!(combine_conjunction(unk_a(), F), F);
+        // The bug: a definitive-True operand must NOT swallow a non-definitive sibling.
+        assert_eq!(combine_conjunction(T, unk_a()), unk_a());
+        assert_eq!(combine_conjunction(unk_a(), T), unk_a());
+        assert_eq!(combine_conjunction(T, re_a()), re_a());
+        assert_eq!(combine_conjunction(re_a(), T), re_a());
+        // Non-definitive precedence: RE outranks Unknown (either side); left wins ties.
+        assert_eq!(combine_conjunction(unk_a(), unk_b()), unk_a());
+        assert_eq!(combine_conjunction(unk_a(), re_a()), re_a());
+        assert_eq!(combine_conjunction(re_a(), unk_a()), re_a());
+        assert_eq!(combine_conjunction(re_a(), re_b()), re_a());
+    }
+
+    #[test]
+    fn disjunction_truth_table() {
+        // Definitive / short-circuit region.
+        assert_eq!(combine_disjunction(F, F), F);
+        assert_eq!(combine_disjunction(T, F), T);
+        assert_eq!(combine_disjunction(F, T), T);
+        assert_eq!(combine_disjunction(T, unk_a()), T);
+        assert_eq!(combine_disjunction(unk_a(), T), T);
+        // The bug: a definitive-False operand must NOT swallow a non-definitive sibling.
+        assert_eq!(combine_disjunction(F, unk_a()), unk_a());
+        assert_eq!(combine_disjunction(unk_a(), F), unk_a());
+        assert_eq!(combine_disjunction(F, re_a()), re_a());
+        assert_eq!(combine_disjunction(re_a(), F), re_a());
+        // Non-definitive precedence: RE outranks Unknown (either side); left wins ties.
+        assert_eq!(combine_disjunction(unk_a(), unk_b()), unk_a());
+        assert_eq!(combine_disjunction(unk_a(), re_a()), re_a());
+        assert_eq!(combine_disjunction(re_a(), unk_a()), re_a());
+        assert_eq!(combine_disjunction(re_a(), re_b()), re_a());
+    }
+}

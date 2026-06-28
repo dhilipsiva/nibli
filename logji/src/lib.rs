@@ -84,13 +84,8 @@ impl KnowledgeBase {
         } else if left.is_true() && right.is_true() {
             QueryResult::True
         } else {
-            match (left, right) {
-                (QueryResult::ResourceExceeded(kind), _) => QueryResult::ResourceExceeded(kind),
-                (_, QueryResult::ResourceExceeded(kind)) => QueryResult::ResourceExceeded(kind),
-                (QueryResult::Unknown(reason), _) => QueryResult::Unknown(reason),
-                (_, QueryResult::Unknown(reason)) => QueryResult::Unknown(reason),
-                _ => QueryResult::False,
-            }
+            // Shared with And/Or so the four-valued non-definitive precedence cannot drift.
+            reasoning::combine_indeterminate(left, right)
         }
     }
 

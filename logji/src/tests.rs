@@ -932,6 +932,86 @@ fn unknown_left_and_evaluates_right_conjunct() {
 }
 
 #[test]
+fn true_and_unknown_right_is_unknown() {
+    // Regression for the four-valued combiner bug: `True ∧ Unknown` must be Unknown,
+    // never a fabricated definitive FALSE. The sibling test above
+    // (`unknown_left_and_evaluates_right_conjunct`) pins the LEFT-unknown order, which
+    // always folded correctly; this pins the RIGHT-unknown order, which
+    // `combine_conjunction` previously collapsed to FALSE via `.unwrap_or(False)`.
+    let kb = new_kb();
+    assert_buf(&kb, make_universal("gerku", "danlu"));
+    assert_buf(&kb, make_universal("danlu", "gerku")); // gerku ⟸ danlu ⟸ gerku cycle
+    assert_buf(&kb, make_assertion("rex", "mlatu")); // definitively-True conjunct
+
+    let mut nodes = Vec::new();
+    let mlatu_rex = pred(
+        &mut nodes,
+        "mlatu",
+        vec![
+            LogicalTerm::Constant("rex".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let gerku_rex = pred(
+        &mut nodes,
+        "gerku",
+        vec![
+            LogicalTerm::Constant("rex".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let root = and(&mut nodes, mlatu_rex, gerku_rex); // True (left) ∧ Unknown (right)
+    let buf = LogicBuffer {
+        nodes,
+        roots: vec![root],
+    };
+
+    let (result, _trace) = kb.query_entailment_with_proof_inner(buf).unwrap();
+    assert!(
+        matches!(result, QueryResult::Unknown(UnknownReason::CycleCut)),
+        "True ∧ Unknown(CycleCut) should be Unknown(CycleCut), got {result:?}"
+    );
+}
+
+#[test]
+fn false_or_unknown_right_is_unknown() {
+    // Regression: `False ∨ Unknown` must be Unknown, never a fabricated FALSE — the
+    // disjunction side of the same combiner bug.
+    let kb = new_kb();
+    assert_buf(&kb, make_universal("gerku", "danlu"));
+    assert_buf(&kb, make_universal("danlu", "gerku")); // cycle → Unknown(CycleCut)
+
+    let mut nodes = Vec::new();
+    let absent = pred(
+        &mut nodes,
+        "blanu",
+        vec![
+            LogicalTerm::Constant("rex".into()),
+            LogicalTerm::Unspecified,
+        ],
+    ); // no facts/rules for blanu → definitively False (CWA)
+    let gerku_rex = pred(
+        &mut nodes,
+        "gerku",
+        vec![
+            LogicalTerm::Constant("rex".into()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let root = or(&mut nodes, absent, gerku_rex); // False (left) ∨ Unknown (right)
+    let buf = LogicBuffer {
+        nodes,
+        roots: vec![root],
+    };
+
+    let (result, _trace) = kb.query_entailment_with_proof_inner(buf).unwrap();
+    assert!(
+        matches!(result, QueryResult::Unknown(UnknownReason::CycleCut)),
+        "False ∨ Unknown(CycleCut) should be Unknown(CycleCut), got {result:?}"
+    );
+}
+
+#[test]
 fn trace_does_not_show_counterexample_under_depth_exceeded() {
     // max depth 1, chain gerku→danlu→xanlu, gerku(alis). ∀x. xanlu(x) over the
     // singleton domain {alis} exceeds the depth budget → ResourceExceeded(Depth);

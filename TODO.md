@@ -20,18 +20,6 @@ Legend: 🐞 genuine bug · ⚖️ honesty/framing · 🧪 test rigor.
 
 ## P1 — Soundness bugs (contradict the "zero-hallucination" contract)
 
-- [ ] 🐞 **HIGH** — `True ∧ Unknown` → `FALSE` (and `False ∨ Unknown` → `FALSE`).
-  `combine_conjunction`/`combine_disjunction` (`logji/src/reasoning.rs:175-197`, called
-  live at `:418` and `:449`) seed the else-fold with `prefer_non_definitive(None, left)`,
-  which returns `None` for a *definitive* left operand → collapses through
-  `.unwrap_or(QueryResult::False)`. Reachable via `A ∧ ¬B` (A true, B undetermined →
-  `Unknown(NafDependent)`), `A ∧ (∀x.Px)` with an indeterminate forall, or a conjunct in a
-  cycle. Order-dependent (right-definitive folds correctly). Reports a definitive falsehood
-  for something genuinely unknown.
-  **Fix:** rewrite the else-branch to fold *both* operands' non-definitive contributions,
-  mirroring the correct `combine_root_results` (`logji/src/lib.rs:81-95`): RE > Unknown > else.
-  Add direct unit tests for both operand orders. (No existing test covers these fns.)
-
 - [ ] 🐞 **HIGH** — Deontic "ought" silently collapses to "is". `ei`/`e'e` reach
   `ObligatoryNode`/`PermittedNode` but logji threads `None` tense through them on assert AND
   query, so they store as `StoredFact::Bare`. `ei la .adam. cu vimcu` makes
