@@ -5,6 +5,7 @@
 //! zei compounds, and abstraction (nu/du'u/ka/ni/si'o). All predicates
 //! are event-decomposed into Neo-Davidsonian form.
 use super::*;
+use lasso::Spur;
 
 impl SemanticCompiler {
     /// Decomposes a predicate into Neo-Davidsonian event form with role predicates.
@@ -28,6 +29,143 @@ impl SemanticCompiler {
         }
 
         LogicalForm::Exists(ev, Box::new(form))
+    }
+
+    /// Stable content key for an abstraction body, used to give two abstractions
+    /// with the SAME content the SAME opaque marker (so `lo du'u P` matches `lo du'u P`
+    /// across assert/query) while DIFFERENT contents get different markers (so
+    /// `believe P` does not satisfy a `believe Q` query). The key resolves interned
+    /// relation/constant names to strings and renames bound/event variables to
+    /// first-seen positional indices, so it is invariant to the fresh event-var names
+    /// each compile mints. Reasoning never reads the inner body (logji skips it behind
+    /// the marker), so this key IS the only content identity that survives.
+    fn abstraction_content_key(&self, body: &LogicalForm) -> String {
+        let mut vars: std::collections::HashMap<Spur, usize> = std::collections::HashMap::new();
+        let mut out = String::new();
+        self.canon_form(body, &mut vars, &mut out);
+        out
+    }
+
+    fn canon_var(spur: Spur, vars: &mut std::collections::HashMap<Spur, usize>) -> usize {
+        let next = vars.len();
+        *vars.entry(spur).or_insert(next)
+    }
+
+    fn canon_term(
+        &self,
+        term: &LogicalTerm,
+        vars: &mut std::collections::HashMap<Spur, usize>,
+        out: &mut String,
+    ) {
+        match term {
+            LogicalTerm::Variable(s) => {
+                out.push('v');
+                out.push_str(&Self::canon_var(*s, vars).to_string());
+            }
+            LogicalTerm::Constant(s) => {
+                out.push_str("c:");
+                out.push_str(self.interner.resolve(s));
+            }
+            LogicalTerm::Description(s) => {
+                out.push_str("d:");
+                out.push_str(self.interner.resolve(s));
+            }
+            LogicalTerm::Unspecified => out.push('_'),
+            LogicalTerm::Number(n) => {
+                out.push_str("n:");
+                out.push_str(&n.to_bits().to_string());
+            }
+        }
+        out.push(';');
+    }
+
+    fn canon_form(
+        &self,
+        form: &LogicalForm,
+        vars: &mut std::collections::HashMap<Spur, usize>,
+        out: &mut String,
+    ) {
+        match form {
+            LogicalForm::Predicate { relation, args } => {
+                out.push('P');
+                out.push_str(self.interner.resolve(relation));
+                out.push('(');
+                for a in args {
+                    self.canon_term(a, vars, out);
+                }
+                out.push(')');
+            }
+            LogicalForm::And(l, r) => {
+                out.push_str("&(");
+                self.canon_form(l, vars, out);
+                self.canon_form(r, vars, out);
+                out.push(')');
+            }
+            LogicalForm::Or(l, r) => {
+                out.push_str("|(");
+                self.canon_form(l, vars, out);
+                self.canon_form(r, vars, out);
+                out.push(')');
+            }
+            LogicalForm::Not(i) => {
+                out.push_str("!(");
+                self.canon_form(i, vars, out);
+                out.push(')');
+            }
+            LogicalForm::Exists(v, b) => {
+                out.push('E');
+                out.push_str(&Self::canon_var(*v, vars).to_string());
+                out.push('(');
+                self.canon_form(b, vars, out);
+                out.push(')');
+            }
+            LogicalForm::ForAll(v, b) => {
+                out.push('A');
+                out.push_str(&Self::canon_var(*v, vars).to_string());
+                out.push('(');
+                self.canon_form(b, vars, out);
+                out.push(')');
+            }
+            LogicalForm::Past(i) => self.canon_wrap("pu", i, vars, out),
+            LogicalForm::Present(i) => self.canon_wrap("ca", i, vars, out),
+            LogicalForm::Future(i) => self.canon_wrap("ba", i, vars, out),
+            LogicalForm::Obligatory(i) => self.canon_wrap("ei", i, vars, out),
+            LogicalForm::Permitted(i) => self.canon_wrap("ee", i, vars, out),
+            LogicalForm::Count { var, count, body } => {
+                out.push('#');
+                out.push_str(&count.to_string());
+                out.push(':');
+                out.push_str(&Self::canon_var(*var, vars).to_string());
+                out.push('(');
+                self.canon_form(body, vars, out);
+                out.push(')');
+            }
+            LogicalForm::Biconditional(l, r) => {
+                out.push_str("<->(");
+                self.canon_form(l, vars, out);
+                self.canon_form(r, vars, out);
+                out.push(')');
+            }
+            LogicalForm::Xor(l, r) => {
+                out.push_str("^(");
+                self.canon_form(l, vars, out);
+                self.canon_form(r, vars, out);
+                out.push(')');
+            }
+        }
+    }
+
+    fn canon_wrap(
+        &self,
+        tag: &str,
+        inner: &LogicalForm,
+        vars: &mut std::collections::HashMap<Spur, usize>,
+        out: &mut String,
+    ) {
+        out.push_str(tag);
+        out.push('(');
+        self.canon_form(inner, vars, out);
+        out.push(')');
     }
 
     /// Compiles a selbri node with given arguments into a FOL logic form.
@@ -210,8 +348,38 @@ impl SemanticCompiler {
                     relation: self.interner.get_or_intern(type_name),
                     args: Self::fit_args(args, 1),
                 };
-                LogicalForm::And(Box::new(type_pred), Box::new(inner_form))
+                // Opacity marker: a content-hashed unary predicate over the abstraction
+                // referent. logji MATCHES it (same-content abstractions unify; different
+                // contents do not) but SKIPS the body behind it, so the body's predicates
+                // never become free-standing ground facts — asserting `mi krici lo du'u P`
+                // ("I believe that P") no longer makes a bare query `P` return TRUE. The
+                // body is retained only for rendering; `__abs_` markers and the type
+                // predicate are dropped by the renderer.
+                let key = self.abstraction_content_key(&inner_form);
+                let marker_rel = format!("__abs_{:016x}", fnv1a_hash(&key));
+                let referent = args.first().cloned().unwrap_or(LogicalTerm::Unspecified);
+                let marker = LogicalForm::Predicate {
+                    relation: self.interner.get_or_intern(&marker_rel),
+                    args: vec![referent],
+                };
+                LogicalForm::And(
+                    Box::new(type_pred),
+                    Box::new(LogicalForm::And(Box::new(marker), Box::new(inner_form))),
+                )
             }
         }
     }
+}
+
+/// Deterministic FNV-1a 64-bit hash of the abstraction content key. Stability is
+/// only required within a single process (assert + query share the same binary),
+/// which FNV-1a trivially satisfies; collisions are astronomically unlikely for the
+/// short structural keys produced by `abstraction_content_key`.
+fn fnv1a_hash(s: &str) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in s.bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    h
 }

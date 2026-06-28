@@ -20,12 +20,6 @@ Legend: 🐞 genuine bug · ⚖️ honesty/framing · 🧪 test rigor.
 
 ## P1 — Soundness bugs (contradict the "zero-hallucination" contract)
 
-- [ ] 🐞 **HIGH** — Abstraction / propositional-attitude leakage: "believe P" ⇒ "P".
-  `nu/du'u/ka/ni/si'o` complements are asserted as ground facts; `mi krici lo du'u <P>`
-  leaks `P` as truth (referential opacity broken).
-  **Fix:** reify complements as opaque terms / sub-KB instead of conjoining their leaves
-  into the asserted store.
-
 - [ ] 🐞 **HIGH** — Backend outage degrades to `FALSE`. Unreachable compute backend → plain
   FALSE, indistinguishable from logical falsehood; structured `NibliError::Backend`
   flattened in `lasna` (`lib.rs:276-279`) then dropped by `if let Ok(...)` at

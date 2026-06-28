@@ -99,6 +99,25 @@ pub(super) fn get_node(buffer: &LogicBuffer, node_id: u32) -> Result<&LogicNode,
     })
 }
 
+/// Relation-name prefix of the opaque abstraction marker emitted by smuni for
+/// `nu`/`du'u`/`ka`/`ni`/`si'o`. The marker is a content-hashed unary predicate
+/// over the abstraction referent; in `And(marker, body)` the right sibling is the
+/// abstraction BODY, which reasoning treats as OPAQUE — never collected as ground
+/// facts, never checked — so asserting an abstraction (a belief, an obligation's
+/// content) does not leak its inner predicates as free-standing truths. The marker
+/// itself IS reasoned over: same content → same marker (abstractions unify),
+/// different content → different marker (no spurious match). The body survives only
+/// for rendering. See smuni `apply_selbri` (Abstraction arm).
+pub(super) const ABSTRACTION_MARKER_PREFIX: &str = "__abs_";
+
+/// True if `node_id` is the opaque abstraction marker predicate.
+pub(super) fn is_abstraction_marker(buffer: &LogicBuffer, node_id: u32) -> bool {
+    matches!(
+        get_node(buffer, node_id),
+        Ok(LogicNode::Predicate((rel, _))) if rel.starts_with(ABSTRACTION_MARKER_PREFIX)
+    )
+}
+
 // ─── Typed Fact Representation ────────────────────────────────────
 //
 // These types replace the internal representation string layer. Facts are stored and

@@ -415,6 +415,13 @@ fn check_formula_holds_core<S: TraceSink>(
     check_cancelled(inner)?;
     match get_node(buffer, node_id)? {
         LogicNode::AndNode((l, r)) => {
+            // Abstraction opacity: `And(__abs_<hash>(referent), body)`. The body is
+            // OPAQUE to reasoning — the conjunction's verdict is just the marker's
+            // (left). This is what keeps `believe P` from leaking or being satisfied by
+            // bare P, while same-content abstractions still match via the marker.
+            if is_abstraction_marker(buffer, *l) {
+                return check_formula_holds_core::<S>(buffer, *l, subs, inner, tense, sink);
+            }
             let (lv, li) = check_formula_holds_core::<S>(buffer, *l, subs, inner, tense, sink)?;
             // Short-circuit on a definitively-False left: `False ∧ x = False`
             // regardless of x (verdict-identical to combine_conjunction).

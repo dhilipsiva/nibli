@@ -1788,8 +1788,15 @@ pub(super) fn collect_ground_facts(
     };
     match node {
         LogicNode::AndNode((l, r)) => {
-            collect_ground_facts(buffer, *l, subs, tense, out);
-            collect_ground_facts(buffer, *r, subs, tense, out);
+            // Abstraction opacity: `And(__abs_<hash>(referent), body)` — collect the
+            // marker (its content identity matters) but SKIP the body so its inner
+            // predicates never become free-standing ground facts.
+            if is_abstraction_marker(buffer, *l) {
+                collect_ground_facts(buffer, *l, subs, tense, out);
+            } else {
+                collect_ground_facts(buffer, *l, subs, tense, out);
+                collect_ground_facts(buffer, *r, subs, tense, out);
+            }
         }
         LogicNode::ExistsNode((v, body)) => {
             if subs.contains_key(v.as_str()) {

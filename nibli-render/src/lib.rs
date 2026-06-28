@@ -38,6 +38,14 @@ pub use proof::{
 pub use register::Register;
 pub use summary::{fact_to_english, summarize_proof, summarize_proof_with};
 
+/// True for relations that are internal reasoning artifacts, not surface content —
+/// currently the opaque abstraction marker (`__abs_<hash>`) smuni emits for
+/// `nu`/`du'u`/`ka`/`ni`/`si'o`. The renderer drops these everywhere so they never
+/// appear in back-translation, proof summaries, or fact listings.
+pub(crate) fn is_internal_relation(rel: &str) -> bool {
+    rel.starts_with("__abs_")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

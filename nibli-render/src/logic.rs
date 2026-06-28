@@ -248,6 +248,11 @@ fn collect(
         // collection — descend into the body.
         LogicNode::ExistsNode((_var, body)) => collect(buf, *body, ctx, preds, extras),
         LogicNode::Predicate((rel, args)) | LogicNode::ComputeNode((rel, args)) => {
+            // The opaque abstraction marker (`__abs_<hash>`) is an internal
+            // reasoning artifact, not surface content — never render it.
+            if crate::is_internal_relation(rel) {
+                return;
+            }
             preds.push((rel.clone(), args.clone()));
         }
         // Any logical structure nested inside the conjunction is rendered as its

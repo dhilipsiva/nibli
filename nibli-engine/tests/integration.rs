@@ -2737,3 +2737,38 @@ fn injected_fact_is_findable_as_witness() {
         "the discovered witness should be adam: {witnesses:?}"
     );
 }
+
+#[test]
+fn belief_does_not_leak_as_actuality() {
+    // Referential opacity: asserting `mi krici lo du'u mi klama` ("I believe that I
+    // go") must NOT make the bare actuality `mi klama` ("I go") hold — believing P
+    // does not entail P. The belief itself stays queryable, and believing a DIFFERENT
+    // proposition is not satisfied (abstraction content is not conflated).
+    let engine = NibliEngine::new();
+    engine.assert_text("mi krici lo du'u mi klama").unwrap();
+
+    assert_false(
+        &engine.query_holds("mi klama").unwrap(),
+        "believing P must not entail P (no abstraction-content leak)",
+    );
+    assert_true(
+        &engine.query_holds("mi krici lo du'u mi klama").unwrap(),
+        "the belief itself is preserved and queryable",
+    );
+    assert_false(
+        &engine.query_holds("mi krici lo du'u mi citka").unwrap(),
+        "believing P must not satisfy a query about believing a different proposition",
+    );
+}
+
+#[test]
+fn abstraction_subject_does_not_leak_inner_predicate() {
+    // The review's example: `lo du'u mi klama kei cu barda` ("the fact-that-I-go is
+    // big") must not assert `mi klama` ("I go") as a queryable truth.
+    let engine = NibliEngine::new();
+    engine.assert_text("lo du'u mi klama kei cu barda").unwrap();
+    assert_false(
+        &engine.query_holds("mi klama").unwrap(),
+        "an abstraction used as a subject must not leak its inner predicate",
+    );
+}

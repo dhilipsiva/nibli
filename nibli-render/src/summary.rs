@@ -415,20 +415,21 @@ fn relation_clause(relation: &str, subject: &str) -> Option<String> {
 /// Lojban abstraction operators (NU-class): they wrap an event/property and have
 /// no surface place-frame, so they are skipped when glossing a rule.
 fn is_abstraction(relation: &str) -> bool {
-    matches!(
-        relation,
-        "nu" | "du'u"
-            | "ka"
-            | "ni"
-            | "si'o"
-            | "jei"
-            | "su'u"
-            | "li'i"
-            | "mu'e"
-            | "zu'o"
-            | "za'i"
-            | "pu'u"
-    )
+    crate::is_internal_relation(relation)
+        || matches!(
+            relation,
+            "nu" | "du'u"
+                | "ka"
+                | "ni"
+                | "si'o"
+                | "jei"
+                | "su'u"
+                | "li'i"
+                | "mu'e"
+                | "zu'o"
+                | "za'i"
+                | "pu'u"
+        )
 }
 
 /// Compute results + equality substitutions, as supporting clauses.
