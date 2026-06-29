@@ -26,12 +26,6 @@ _(none open)_
 
 ## P2 — Correctness / robustness
 
-- [ ] 🐞 **MEDIUM** (multi-node only) — 2P-Set CRDT merges on a non-namespaced `u64` id;
-  independently-minted facts collide and one is silently dropped (no `MergeResult.added`, no
-  error). Gated behind `:merge` (experimental).
-  **Fix:** key fact identity on `(node_id, local-id)` / a UUID dot; detect payload mismatch
-  and surface a conflict.
-
 - [ ] 🐞 **LOW** — `gasnu` rebuild/replay-on-trap can SPIN under an extreme-low fuel budget
   (observed at `NIBLI_FUEL=1e8`): a query that traps re-enters the rebuild→replay path and
   loops at ~100% CPU instead of bounding the retry. NOT reachable at the default 1e10 budget.
