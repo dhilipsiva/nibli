@@ -132,14 +132,27 @@ impl<'a, 'arena> Parser<'a, 'arena> {
             attitudinal = self.try_parse_attitudinal();
         }
 
-        let selbri = if let Some(s) = self.try_parse_selbri()? {
-            s
-        } else {
-            if head_terms.is_empty() {
+        let selbri = match self.try_parse_selbri()? {
+            Some(s) => s,
+            None => {
+                // No selbri. A clause with head terms but no predicate is a bare
+                // sumti / observative — NOT a complete bridi. Fail closed with a
+                // clear, distinct error rather than fabricating a `go'i` selbri
+                // (which is indistinguishable from an explicit `go'i` and, once
+                // resolved with no antecedent, reports the cryptic "go'i has no
+                // antecedent"). A dangling sumti connective keeps its precise,
+                // positioned diagnostic (matching the terminal unconsumed-token
+                // check). Explicit `go'i` is the `Some(_)` branch above.
                 self.leave();
-                return Err(self.error("expected selbri or terms"));
+                let msg = if head_terms.is_empty() {
+                    "expected selbri or terms"
+                } else if self.is_dangling_sumti_connective() {
+                    self.unconsumed_error_msg()
+                } else {
+                    "a bridi needs a selbri: a bare sumti is not a complete statement"
+                };
+                return Err(self.error(msg));
             }
-            Selbri::Root("go'i".to_string())
         };
 
         let (selbri, negated) = match selbri {

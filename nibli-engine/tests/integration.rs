@@ -2893,3 +2893,24 @@ fn goi_reset_clears_antecedent() {
         "after reset, go'i has no antecedent and must error"
     );
 }
+
+#[test]
+fn predicate_less_clause_rejected() {
+    // A bare sumti / predicate-less clause (`ro lo gerku`) is NOT a complete bridi.
+    // gerna now rejects it at PARSE with a clear, distinct Syntax error, instead of
+    // fabricating a `go'i` that fail-closes downstream with the cryptic "go'i has no
+    // antecedent". This is what `nibli-validate` / the book's verify tool now see.
+    let engine = NibliEngine::new();
+    let err = engine.assert_text("ro lo gerku").unwrap_err();
+    assert!(
+        matches!(err, EngineError::Syntax(_)),
+        "a bare sumti must be a Syntax error, got {err:?}"
+    );
+    assert!(
+        err.to_string()
+            .contains("a bare sumti is not a complete statement"),
+        "expected the distinct bare-sumti message, got: {err}"
+    );
+    // A complete bridi still asserts fine (the change is scoped to selbri-less clauses).
+    assert!(engine.assert_text("la .adam. cu gerku").is_ok());
+}

@@ -34,13 +34,6 @@ Legend: 🐞 genuine bug · ⚖️ honesty/framing · 🧪 test rigor.
 
 ## P2 — Correctness / robustness
 
-- [ ] 🐞 **MEDIUM** — Predicate-less clause (`mi do`) fabricates a `go'i` selbri (observative),
-  indistinguishable from an explicit `go'i` (`gerna/src/grammar/sentence.rs`): a forgotten
-  selbri silently becomes "repeat the previous bridi" instead of an error. (The `zo`/`zoi`/`zei`
-  truncation holes + the preprocessor error channel are now FIXED.)
-  **Fix:** mark the implicit go'i distinctly (or reject observatives) — a design call, since
-  observatives are currently a deliberate, tested feature.
-
 - [ ] 🐞 **MEDIUM** — `lasna` `go'i` per-place merge bypasses smuni's fail-closed guards:
   duplicate FA places (`fe X fe Y go'i`) silently overwritten (smuni rejects "same place set
   twice"). Confined to the go'i merge path.

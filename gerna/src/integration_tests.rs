@@ -470,17 +470,16 @@ fn sa_erasure_brivla_class() {
 
 #[test]
 fn sa_erasure_no_match_fallback() {
-    // "mi klama sa lo gerku" → no LE-class in output → falls back to single-word erase
-    // Removes "klama" → "mi lo gerku" → parses as observative with head=[mi, lo gerku]
-    // Actually: "mi" + "lo gerku" → mi is head, "lo gerku" is also head, implicit go'i
-    // Let's use a simpler case: "klama sa lo gerku" → no LE before sa → removes "klama"
-    // → "lo gerku" → description with implicit go'i
+    // "klama sa lo gerku cu sutra" → `sa` peeks "lo" (LE class); no LE-class token
+    // precedes `sa` in the output ([klama] is Brivla), so it falls back to a
+    // single-word erase, removing "klama". The remainder "lo gerku cu sutra" then
+    // parses as a complete bridi — confirming the fallback erase fired (a bare
+    // post-erasure sumti would now be rejected, so we give it a selbri).
     let arena = Bump::new();
-    let p = parse("klama sa lo gerku", &arena);
-    // After fallback erase: "lo gerku" → observative with go'i and lo gerku as head term
+    let p = parse("klama sa lo gerku cu sutra", &arena);
     assert_eq!(
         as_bridi(&p.sentences[0]).selbri,
-        Selbri::Root("go'i".into())
+        Selbri::Root("sutra".into())
     );
 }
 

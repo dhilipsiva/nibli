@@ -3361,25 +3361,24 @@ fn test_explicit_go_i_as_selbri() {
 }
 
 #[test]
-fn test_observative_implicit_go_i() {
-    // mi do → observative, implicit go'i
-    // Previously errored with "observative sentences not yet supported"
-    let arena = Bump::new();
-    let r = parse_ok(&[cmavo("mi"), cmavo("do")], &arena);
-    let b = as_bridi(&r.sentences[0]);
-    assert_eq!(b.selbri, Selbri::Root("go'i".to_string()));
-    assert_eq!(b.head_terms.len(), 2);
-    assert_eq!(b.tail_terms.len(), 0);
+fn test_predicate_less_clause_rejected() {
+    // `mi do` (two sumti, NO selbri) is a bare sumti / observative — not a complete
+    // bridi. It is now REJECTED at parse rather than fabricating a `go'i` selbri.
+    let msg = parse_err(&[cmavo("mi"), cmavo("do")]);
+    assert!(
+        msg.contains("bare sumti is not a complete statement"),
+        "expected the bare-sumti rejection, got: {msg}"
+    );
 }
 
 #[test]
-fn test_observative_single_description() {
-    // lo gerku → observative with single description term
-    let arena = Bump::new();
-    let r = parse_ok(&[cmavo("lo"), gismu("gerku")], &arena);
-    let b = as_bridi(&r.sentences[0]);
-    assert_eq!(b.selbri, Selbri::Root("go'i".to_string()));
-    assert_eq!(b.head_terms.len(), 1);
+fn test_observative_single_description_rejected() {
+    // `lo gerku` (a lone description, no selbri) is likewise rejected.
+    let msg = parse_err(&[cmavo("lo"), gismu("gerku")]);
+    assert!(
+        msg.contains("bare sumti is not a complete statement"),
+        "expected the bare-sumti rejection, got: {msg}"
+    );
 }
 
 // ─── du (identity) selbri (G-M1) ────────────────────────────
