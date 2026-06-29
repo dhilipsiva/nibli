@@ -258,6 +258,19 @@ smoke-gasnu-backend-unavailable: build-wasm build-gasnu
         if echo "$out" | grep -qF '[Query] FALSE'; then echo 'FAIL: backend outage degraded to a definitive FALSE'; exit 1; fi; \
         echo 'PASS: an unreachable compute backend yields UNKNOWN (backend-unavailable), not FALSE'
 
+# Non-finite smoke: a numeric literal too large for an f64 (~309+ digits overflows to ±inf)
+# makes the comparison/arithmetic undetermined — the query must surface UNKNOWN (non-finite),
+# NEVER a confident TRUE/FALSE. Exercises the new four-valued reason across the WIT boundary.
+smoke-gasnu-non-finite: build-wasm build-gasnu
+    @echo "Smoke-testing gasnu non-finite numeric verdict (literal overflows f64)..."
+    @nines=$(printf 'so %.0s' $(seq 320)); \
+        out=$(printf "? li ${nines}cu dunli li ${nines}\n" \
+        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$out"; \
+        echo "$out" | grep -qF '[Query] UNKNOWN (non-finite)' || { echo 'FAIL: a non-finite numeric literal did not surface UNKNOWN (non-finite)'; exit 1; }; \
+        if echo "$out" | grep -qE '\[Query\] (TRUE|FALSE)'; then echo 'FAIL: non-finite input degraded to a confident verdict'; exit 1; fi; \
+        echo 'PASS: a non-finite numeric literal yields UNKNOWN (non-finite), not a confident verdict'
+
 # Executes the full pipeline: Builds WASM modules, then boots the native REPL
 run: build-wasm
     @echo "Launching Neuro-Symbolic Engine ({{profile}})..."
@@ -354,7 +367,7 @@ ci: fmt-check clippy-runtime test test-engine test-gasnu test-backend test-store
 # `build-wasm build-gasnu`, so `just` builds the component + host once, then runs
 # all six: fuel exhaustion + post-trap recovery + journal replay (trap-recovery),
 # plus the script transcript, go'i, persist-replay, NAF-note, and :debug round-trip.
-ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable
+ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable smoke-gasnu-non-finite
 
 # Comprehensive pre-push / pre-release gate: the fast native `ci` plus the WASM
 # behavioral smokes. `ci` alone does not exercise the WASM component.

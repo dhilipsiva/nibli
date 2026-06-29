@@ -18,12 +18,29 @@
 /// exact `== 0.0` guard (a guard, not a result comparison).
 pub fn eval_arithmetic(relation: &str, args: &[f64]) -> Option<bool> {
     let (&x1, &x2, &x3) = (args.first()?, args.get(1)?, args.get(2)?);
-    match relation {
-        "pilji" => Some(isclose(x1, x2 * x3)),
-        "sumji" => Some(isclose(x1, x2 + x3)),
-        "dilcu" => Some(x3 != 0.0 && isclose(x1, x2 / x3)),
-        _ => None,
+    // A non-finite operand (a literal too large for an f64 overflows to ±inf) makes the
+    // relation meaningless — DECLINE (None) rather than return a confident TRUE/FALSE.
+    // logji turns this into `Unknown(NonFinite)`; the gasnu host fast path declines too.
+    let nonfinite_operand = !x1.is_finite() || !x2.is_finite() || !x3.is_finite();
+    let result = match relation {
+        "pilji" => x2 * x3,
+        "sumji" => x2 + x3,
+        "dilcu" => {
+            if x3 == 0.0 {
+                // Divide-by-zero (exact guard): never equal — but only DECIDE that for
+                // finite operands; with a non-finite operand it is the undetermined case.
+                return if nonfinite_operand { None } else { Some(false) };
+            }
+            x2 / x3
+        }
+        _ => return None,
+    };
+    // Even finite operands can overflow (e.g. `1e200 * 1e200 -> inf`); an out-of-range
+    // result is equally undetermined.
+    if nonfinite_operand || !result.is_finite() {
+        return None;
     }
+    Some(isclose(x1, result))
 }
 
 /// Tolerant float equality, mirroring Python `math.isclose(a, b, rel_tol=1e-9,
@@ -60,6 +77,23 @@ mod tests {
     #[test]
     fn dilcu_divide_by_zero_is_false_not_none() {
         assert_eq!(eval_arithmetic("dilcu", &[0.0, 5.0, 0.0]), Some(false));
+    }
+
+    #[test]
+    fn non_finite_operand_or_result_declines() {
+        let inf = f64::INFINITY;
+        // A non-finite operand makes the relation undetermined → None (logji surfaces
+        // Unknown(NonFinite)); never a confident TRUE/FALSE.
+        assert_eq!(eval_arithmetic("sumji", &[inf, inf, 1.0]), None);
+        assert_eq!(eval_arithmetic("pilji", &[1.0, inf, 2.0]), None);
+        assert_eq!(eval_arithmetic("dilcu", &[1.0, inf, 2.0]), None);
+        assert_eq!(eval_arithmetic("sumji", &[f64::NAN, 1.0, 2.0]), None);
+        // Finite operands whose product overflows to ±inf are equally undetermined.
+        assert_eq!(eval_arithmetic("pilji", &[1.0, 1e200, 1e200]), None);
+        // A divide-by-zero with FINITE operands is still a decided false (not None).
+        assert_eq!(eval_arithmetic("dilcu", &[0.0, 5.0, 0.0]), Some(false));
+        // A non-finite operand on a divide-by-zero is undetermined, not a decided false.
+        assert_eq!(eval_arithmetic("dilcu", &[inf, 5.0, 0.0]), None);
     }
 
     #[test]

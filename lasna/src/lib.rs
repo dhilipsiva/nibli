@@ -114,6 +114,9 @@ fn convert_query_result_to_export(result: &logji_logic::QueryResult) -> export_l
         logji_logic::QueryResult::Unknown(logji_logic::UnknownReason::BackendUnavailable) => {
             export_logic::QueryResult::Unknown(export_logic::UnknownReason::BackendUnavailable)
         }
+        logji_logic::QueryResult::Unknown(logji_logic::UnknownReason::NonFinite) => {
+            export_logic::QueryResult::Unknown(export_logic::UnknownReason::NonFinite)
+        }
         logji_logic::QueryResult::ResourceExceeded(logji_logic::ResourceKind::Depth) => {
             export_logic::QueryResult::ResourceExceeded(export_logic::ResourceKind::Depth)
         }

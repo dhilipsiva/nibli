@@ -86,7 +86,7 @@ Every query returns exactly one of four results:
 |--------|---------|
 | `True` | The formula is derivable from the KB. A proof trace is available. |
 | `False` | The formula is not derivable (CWA: assumed false). |
-| `Unknown(reason)` | The engine cannot determine the answer: `CycleCut` (recursive cycle detected), `IncompleteKnowledge`, or `NafDependent`. |
+| `Unknown(reason)` | The engine cannot determine the answer: `CycleCut` (recursive cycle detected), `IncompleteKnowledge`, `NafDependent`, `BackendUnavailable` (compute backend unreachable), or `NonFinite` (a numeric operand or result is ±inf/NaN). |
 | `ResourceExceeded(kind)` | A resource limit was hit: `Depth`, `Fuel`, or `Memory`. The answer may exist but cannot be found within the configured bounds. |
 
 There is no confident-sounding middle ground. The engine never guesses.

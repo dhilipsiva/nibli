@@ -42,10 +42,6 @@ _(none open)_
   not for the equally-CWA-dependent positive `FALSE`. Consider flagging CWA-dependent FALSE
   too, or document that every non-numeric FALSE is closed-world.
 
-- [ ] ⚖️ **LOW** — No NaN/Infinity guards in built-in arithmetic (only reachable via
-  ~309-digit input → non-finite result returns a confident FALSE). Return None/Unknown on
-  non-finite operands or results.
-
 ---
 
 ## Verified NON-issues (do not act on)

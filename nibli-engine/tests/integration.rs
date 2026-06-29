@@ -2435,6 +2435,28 @@ fn per_instance_compute_dispatch_is_isolated() {
 }
 
 #[test]
+fn non_finite_numeric_input_is_unknown_not_false() {
+    // A numeric literal too large for an f64 overflows to +inf (here ~320 nines). A
+    // comparison or arithmetic over a non-finite operand is genuinely undetermined —
+    // it MUST surface UNKNOWN(non-finite), never a confident TRUE/FALSE (the old
+    // behaviour returned a confident verdict on the meaningless ±inf comparison).
+    let nines = "so ".repeat(320); // 999…9 > f64::MAX → +inf
+    let engine = NibliEngine::new();
+    let r = engine
+        .query_holds(&format!("li {nines}cu dunli li {nines}"))
+        .unwrap();
+    assert_eq!(
+        r.detail_label(),
+        Some("non-finite"),
+        "a non-finite numeric operand must be UNKNOWN(non-finite), not a confident verdict: got {r:?}"
+    );
+    assert!(
+        !r.is_definitive(),
+        "non-finite must not be a definitive TRUE/FALSE: got {r:?}"
+    );
+}
+
+#[test]
 fn surface_numeric_sumji_dilcu() {
     let engine = NibliEngine::new();
     assert_true(

@@ -157,7 +157,7 @@ Count _v0 = 2:
 [Reset] Knowledge base cleared.
 ```
 
-Query results use a four-valued contract: `TRUE`, `FALSE`, `UNKNOWN` (with reason: cycle cut, incomplete knowledge, or NAF dependence), or `RESOURCE_EXCEEDED` (depth, fuel, or memory limit hit). The engine never guesses.
+Query results use a four-valued contract: `TRUE`, `FALSE`, `UNKNOWN` (with reason: cycle cut, incomplete knowledge, NAF dependence, backend unavailable, or non-finite numeric), or `RESOURCE_EXCEEDED` (depth, fuel, or memory limit hit). The engine never guesses.
 
 You query by **stating the proposition you want checked**, not by asking a question. `? la .adam. cu danlu` reads *"is `Adam is an animal` entailed?"* — and the verdict *is* the answer. The engine has no interrogative form: Lojban's `xu` (the spoken yes/no marker) is not a query operator, so `? xu la .adam. cu danlu` is a syntax error. State `la .adam. cu danlu` ("Adam is an animal"), never `xu la .adam. cu danlu` ("Is Adam an animal?").
 
@@ -292,7 +292,7 @@ The parser (`gerna`) accepts a practical subset of Lojban sufficient for formal 
 - **Proof traces:** every query produces a proof tree (20 `ProofRule` variants) with DAG memoization via `ProofRef`
 - **Witness extraction:** `query-find` returns all satisfying binding sets for existential variables
 - **Belief revision:** retract-and-rebuild with monotonic fact IDs; `:retract <id>` and `:facts` REPL commands
-- **Four-valued query result:** `TRUE`, `FALSE`, `UNKNOWN` (cycle cut / incomplete knowledge / NAF dependent), `RESOURCE_EXCEEDED` (depth / fuel / memory)
+- **Four-valued query result:** `TRUE`, `FALSE`, `UNKNOWN` (cycle cut / incomplete knowledge / NAF dependent / backend unavailable / non-finite), `RESOURCE_EXCEEDED` (depth / fuel / memory)
 - **Temporal reasoning:** `Past`/`Present`/`Future` wrappers preserved end-to-end; timeless rules automatically derive tensed conclusions
 - **Neo-Davidsonian event semantics:** every predication decomposes into event type + role predicates; tanru share event variables
 - **Conjunction introduction:** `And(A, B)` verified recursively with mutual `InDomain` entities (bounded, no exponential blowup)

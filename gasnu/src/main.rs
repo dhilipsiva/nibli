@@ -102,6 +102,9 @@ fn format_query_result(result: &EngineQueryResult) -> String {
         EngineQueryResult::Unknown(EngineUnknownReason::BackendUnavailable) => {
             "UNKNOWN (backend-unavailable)".to_string()
         }
+        EngineQueryResult::Unknown(EngineUnknownReason::NonFinite) => {
+            "UNKNOWN (non-finite)".to_string()
+        }
         EngineQueryResult::ResourceExceeded(EngineResourceKind::Depth) => {
             "RESOURCE_EXCEEDED (depth)".to_string()
         }

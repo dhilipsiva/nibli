@@ -112,6 +112,10 @@ pub enum UnknownReason {
     /// An external compute predicate could not be evaluated because its backend was
     /// unreachable or unregistered — the result is genuinely undetermined, NOT false.
     BackendUnavailable,
+    /// A numeric operand or computed result is non-finite (±inf/NaN) — e.g. a literal
+    /// too large for an f64 (~309+ digits overflows to ±inf). The comparison/arithmetic
+    /// is genuinely undetermined, NOT a confident TRUE/FALSE.
+    NonFinite,
 }
 
 /// Which resource or search bound prevented a definitive answer.
@@ -159,6 +163,7 @@ impl QueryResult {
             Self::Unknown(UnknownReason::IncompleteKnowledge) => Some("incomplete-knowledge"),
             Self::Unknown(UnknownReason::NafDependent) => Some("naf-dependent"),
             Self::Unknown(UnknownReason::BackendUnavailable) => Some("backend-unavailable"),
+            Self::Unknown(UnknownReason::NonFinite) => Some("non-finite"),
             Self::ResourceExceeded(ResourceKind::Depth) => Some("depth"),
             Self::ResourceExceeded(ResourceKind::Fuel) => Some("fuel"),
             Self::ResourceExceeded(ResourceKind::Memory) => Some("memory"),

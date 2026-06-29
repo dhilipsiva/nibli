@@ -111,6 +111,8 @@ interface logic-types {
         incomplete-knowledge,
         naf-dependent,
         backend-unavailable,
+        /// A numeric operand or computed result is non-finite (±inf/NaN).
+        non-finite,
     }
 
     /// Which execution limit prevented a definitive answer.

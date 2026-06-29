@@ -199,6 +199,35 @@ pub(super) fn try_evaluate_numeric_group(
     }
     let collected: Vec<LogicalTerm> = roles.into_iter().map(|r| r.unwrap().clone()).collect();
 
+    // Non-finite numeric input (a literal too large for an f64 overflows to ±inf), or a
+    // finite-operand arithmetic whose RESULT overflows, makes any comparison/arithmetic
+    // undetermined — surface `Unknown(NonFinite)`, NEVER a confident TRUE/FALSE. (Returning
+    // None here would degrade to `PredicateNotFound` → a confident FALSE.) Divide-by-zero
+    // over finite operands stays a decided FALSE: `eval_arithmetic` returns `Some(false)`,
+    // not `None`, for it.
+    {
+        let operands: Vec<f64> = collected
+            .iter()
+            .filter_map(|t| extract_num_value(t, subs))
+            .collect();
+        let non_finite = match rel {
+            "pilji" | "sumji" | "dilcu" => {
+                operands.len() == 3 && nibli_types::eval_arithmetic(rel, &operands).is_none()
+            }
+            "zmadu" | "mleca" | "dunli" => {
+                operands.len() >= 2 && operands.iter().take(2).any(|n| !n.is_finite())
+            }
+            _ => false,
+        };
+        if non_finite {
+            return Some(NumericGroupVerdict {
+                relation: rel.to_string(),
+                method: "non_finite",
+                verdict: QueryResult::Unknown(UnknownReason::NonFinite),
+            });
+        }
+    }
+
     // Route by relation name, arithmetic-first.
     if let Some(holds) = try_numeric_comparison(rel, &collected, subs) {
         return Some(NumericGroupVerdict {

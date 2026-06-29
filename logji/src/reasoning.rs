@@ -1226,6 +1226,7 @@ fn check_formula_holds_core<S: TraceSink>(
                     QueryResult::Unknown(UnknownReason::BackendUnavailable) => {
                         "backend_unavailable"
                     }
+                    QueryResult::Unknown(UnknownReason::NonFinite) => "non_finite",
                     QueryResult::ResourceExceeded(ResourceKind::Depth) => "depth_limit",
                     QueryResult::ResourceExceeded(ResourceKind::Fuel) => "fuel_limit",
                     QueryResult::ResourceExceeded(ResourceKind::Memory) => "memory_limit",
