@@ -216,9 +216,14 @@ impl NibliEngine {
         // Resolve `go'i` against the prior bridi, then snapshot the (resolved)
         // antecedent so a FOLLOWING go'i can repeat THIS bridi. Mirrors lasna's
         // `compile_pipeline`; the snapshot updates for asserts AND queries.
-        let last_bridi_sid =
-            gerna::goi::resolve_go_i(&mut ast, &mut self.last_relation.borrow_mut())
-                .map_err(EngineError::Semantic)?;
+        // Bound a partial go'i's FA places by the relation's arity (smuni's dictionary),
+        // so a beyond-arity tag fails closed instead of being silently dropped post-merge.
+        let last_bridi_sid = gerna::goi::resolve_go_i_with_arity(
+            &mut ast,
+            &mut self.last_relation.borrow_mut(),
+            &|n| smuni::dictionary::JbovlasteSchema::get_arity(n),
+        )
+        .map_err(EngineError::Semantic)?;
         let new_snapshot = last_bridi_sid.map(|sid| gerna::goi::extract_bridi_snapshot(&ast, sid));
         let mut buf = smuni::compile_from_gerna_ast(ast)?;
         logji::transform_compute_nodes(&mut buf, &self.compute_predicates);

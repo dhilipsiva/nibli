@@ -20,7 +20,7 @@ use nibli_types::logic as logji_logic;
 
 // `go'i` resolution now lives in the shared `gerna::goi` module (also used by
 // nibli-engine), so native and WASM resolve the pro-bridi identically.
-use gerna::goi::{BridiSnapshot, extract_bridi_snapshot, resolve_go_i};
+use gerna::goi::{BridiSnapshot, extract_bridi_snapshot, resolve_go_i_with_arity};
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -326,8 +326,12 @@ fn compile_pipeline(
     // marking.
     let mut ast = gerna::parse_checked(text).map_err(convert_pipeline_error)?;
 
-    let last_bridi_sid =
-        resolve_go_i(&mut ast, last_snapshot).map_err(export_err::NibliError::Semantic)?;
+    // Bound a partial go'i's FA places by the relation's arity (smuni's dictionary),
+    // so a beyond-arity tag fails closed instead of being silently dropped post-merge.
+    let last_bridi_sid = resolve_go_i_with_arity(&mut ast, last_snapshot, &|n| {
+        smuni::dictionary::JbovlasteSchema::get_arity(n)
+    })
+    .map_err(export_err::NibliError::Semantic)?;
     let new_snapshot = last_bridi_sid.map(|sid| extract_bridi_snapshot(&ast, sid));
 
     let mut buf = smuni::compile_from_gerna_ast(ast).map_err(convert_pipeline_error)?;
@@ -563,6 +567,9 @@ impl GuestSession for Session {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // The no-bound entry: these unit tests exercise the merge mechanics directly,
+    // without a dictionary, so they're unaffected by the beyond-arity bound.
+    use gerna::goi::resolve_go_i;
     use gerna_ast::{Bridi, Conversion, Sumti};
 
     fn make_ast(

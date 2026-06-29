@@ -26,14 +26,6 @@ _(none open)_
 
 ## P2 — Correctness / robustness
 
-- [ ] 🐞 **LOW** — `go'i` per-place merge (`gerna::goi`) doesn't apply smuni's BEYOND-ARITY place
-  guard: a FA tag targeting a place ≥ the relation's arity in a partial go'i (e.g. `fu X go'i` on
-  a 2-place relation) isn't rejected — the merge strips tags to positional, so smuni then silently
-  drops the over-arity term. (The DUPLICATE-place bypass — `fe X fe Y go'i` — is now FIXED:
-  `place_map` fails closed, mirroring smuni's "same place cannot be set twice".)
-  **Fix:** needs the relation's arity in the merge (gerna::goi has no dictionary) — either carry
-  the arity in, or keep the FA tags through to smuni so its authoritative arity guard fires.
-
 - [ ] 🐞 **MEDIUM** (multi-node only) — 2P-Set CRDT merges on a non-namespaced `u64` id;
   independently-minted facts collide and one is silently dropped (no `MergeResult.added`, no
   error). Gated behind `:merge` (experimental).

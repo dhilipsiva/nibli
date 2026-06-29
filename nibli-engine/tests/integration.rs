@@ -2935,3 +2935,22 @@ fn goi_duplicate_fa_place_rejected() {
         "single-place go'i override must still resolve"
     );
 }
+
+#[test]
+fn goi_beyond_arity_fa_place_rejected() {
+    // A partial `go'i` whose FA tag targets a place BEYOND the antecedent relation's
+    // arity (`fi X` = x3 on the 2-place `prami`) must FAIL CLOSED, mirroring smuni's
+    // "the selbri only has N place(s)" guard. Pre-fix the merge stripped the tag to a
+    // positional over-arity term, which smuni then silently DROPPED — losing `X`.
+    let engine = engine_with_facts(&["la .adam. cu prami la .bel."]);
+    let err = engine.assert_text("fi la .kim. go'i").unwrap_err();
+    assert!(
+        err.to_string().contains("the selbri only has 2 place(s)"),
+        "beyond-arity FA place in go'i must be rejected, got: {err}"
+    );
+    // An IN-ARITY override (`fe X` = x2 on the 2-place `prami`) still resolves cleanly.
+    assert!(
+        engine.assert_text("fe la .kim. go'i").is_ok(),
+        "in-arity go'i override must still resolve"
+    );
+}

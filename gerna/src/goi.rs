@@ -338,6 +338,7 @@ fn place_map(
     sumtis: &[gerna_ast::Sumti],
     head: &[u32],
     tail: &[u32],
+    arity_bound: Option<usize>,
 ) -> Result<Vec<Option<u32>>, String> {
     let mut places: Vec<Option<u32>> = Vec::new();
     let mut next = 0usize;
@@ -351,6 +352,22 @@ fn place_map(
                 (next, t, None)
             }
         };
+        // FAIL CLOSED on a TAGGED place beyond the relation's arity, mirroring smuni's
+        // authoritative guard: the merge strips tags to positional, so smuni would
+        // otherwise SILENTLY DROP the over-arity term. Only tagged terms are checked
+        // (smuni silently drops untagged over-arity for non-`du`, so the merge does too);
+        // `arity_bound` is None for the antecedent and for dictionary-less callers.
+        if let (Some(tg), Some(a)) = (tag, arity_bound) {
+            if place >= a {
+                return Err(format!(
+                    "Place tag `{}` targets place x{}, but the selbri only has {} place(s); \
+                     the tagged term cannot be placed.",
+                    tg.name(),
+                    place + 1,
+                    a
+                ));
+            }
+        }
         if place >= places.len() {
             places.resize(place + 1, None);
         }
@@ -386,6 +403,7 @@ fn resolve_simple_bridi_go_i(
     ast: &mut gerna_ast::AstBuffer,
     sentence_idx: usize,
     current: &Option<u32>,
+    arity_of: &dyn Fn(&str) -> Option<usize>,
 ) -> Result<(), String> {
     let gerna_ast::Sentence::Simple(mut bridi) = ast.sentences[sentence_idx].clone() else {
         return Ok(());
@@ -413,10 +431,21 @@ fn resolve_simple_bridi_go_i(
     }
 
     // Per-place merge: overlay the go'i's supplied places over the antecedent's.
-    // `place_map` fails closed on a duplicate FA place (the antecedent can't trigger
-    // it — a duplicate-place bridi would have failed smuni before becoming one).
-    let ant = place_map(&ast.sumtis, &antecedent.head_terms, &antecedent.tail_terms)?;
-    let goi = place_map(&ast.sumtis, &bridi.head_terms, &bridi.tail_terms)?;
+    // `place_map` fails closed on a duplicate FA place AND (for the go'i side) on a
+    // tagged place beyond the antecedent relation's arity. The antecedent side is
+    // already valid, so it's unbounded. The relation's arity comes from the caller's
+    // dictionary lookup; a non-`Root` relation (tanru/compound) has no simple arity → None.
+    let ant_arity = match &ast.selbris[antecedent.relation as usize] {
+        gerna_ast::Selbri::Root(name) => arity_of(name),
+        _ => None,
+    };
+    let ant = place_map(
+        &ast.sumtis,
+        &antecedent.head_terms,
+        &antecedent.tail_terms,
+        None,
+    )?;
+    let goi = place_map(&ast.sumtis, &bridi.head_terms, &bridi.tail_terms, ant_arity)?;
     let n = ant.len().max(goi.len());
     let mut head_terms = Vec::with_capacity(n);
     for i in 0..n {
@@ -449,12 +478,13 @@ fn resolve_sentence_go_i(
     ast: &mut gerna_ast::AstBuffer,
     sentence_idx: usize,
     current: &mut Option<u32>,
+    arity_of: &dyn Fn(&str) -> Option<usize>,
 ) -> Result<(), String> {
     match ast.sentences[sentence_idx].clone() {
         gerna_ast::Sentence::Simple(_) => {
             // Resolve this bridi's own top-level go'i (bare → whole antecedent;
             // partial → per-place merge).
-            resolve_simple_bridi_go_i(ast, sentence_idx, &*current)?;
+            resolve_simple_bridi_go_i(ast, sentence_idx, &*current, arity_of)?;
             // Descend into NESTED positions (abstraction / relative-clause bodies)
             // and resolve any go'i there, reading `current` as the PRIOR top-level
             // antecedent — so `mi klama .i mi nelci lo nu go'i` resolves the nested
@@ -469,9 +499,9 @@ fn resolve_sentence_go_i(
                 _ => unreachable!(),
             };
             let mut seen = std::collections::HashSet::new();
-            resolve_selbri_go_i(ast, relation, &*current, &mut seen)?;
+            resolve_selbri_go_i(ast, relation, &*current, &mut seen, arity_of)?;
             for t in terms {
-                resolve_sumti_go_i(ast, t, &*current, &mut seen)?;
+                resolve_sumti_go_i(ast, t, &*current, &mut seen, arity_of)?;
             }
             // The resolved bridi becomes the antecedent for the next go'i —
             // `mi klama .i do go'i .i go'i` chains the resolved `klama(do)`.
@@ -479,12 +509,12 @@ fn resolve_sentence_go_i(
             Ok(())
         }
         gerna_ast::Sentence::Connected((_, left_idx, right_idx)) => {
-            resolve_sentence_go_i(ast, left_idx as usize, current)?;
-            resolve_sentence_go_i(ast, right_idx as usize, current)?;
+            resolve_sentence_go_i(ast, left_idx as usize, current, arity_of)?;
+            resolve_sentence_go_i(ast, right_idx as usize, current, arity_of)?;
             Ok(())
         }
         gerna_ast::Sentence::Prenex((_, body_idx)) => {
-            resolve_sentence_go_i(ast, body_idx as usize, current)?;
+            resolve_sentence_go_i(ast, body_idx as usize, current, arity_of)?;
             Ok(())
         }
     }
@@ -501,6 +531,7 @@ fn resolve_selbri_go_i(
     id: u32,
     current: &Option<u32>,
     seen: &mut std::collections::HashSet<(u8, u32)>,
+    arity_of: &dyn Fn(&str) -> Option<usize>,
 ) -> Result<(), String> {
     if !seen.insert((1, id)) {
         return Ok(());
@@ -524,24 +555,24 @@ fn resolve_selbri_go_i(
         }
         gerna_ast::Selbri::Root(_) | gerna_ast::Selbri::Compound(_) => {}
         gerna_ast::Selbri::Tanru((m, h)) => {
-            resolve_selbri_go_i(ast, m, current, seen)?;
-            resolve_selbri_go_i(ast, h, current, seen)?;
+            resolve_selbri_go_i(ast, m, current, seen, arity_of)?;
+            resolve_selbri_go_i(ast, h, current, seen, arity_of)?;
         }
         gerna_ast::Selbri::Converted((_, i))
         | gerna_ast::Selbri::Negated(i)
-        | gerna_ast::Selbri::Grouped(i) => resolve_selbri_go_i(ast, i, current, seen)?,
+        | gerna_ast::Selbri::Grouped(i) => resolve_selbri_go_i(ast, i, current, seen, arity_of)?,
         gerna_ast::Selbri::WithArgs((core, args)) => {
-            resolve_selbri_go_i(ast, core, current, seen)?;
+            resolve_selbri_go_i(ast, core, current, seen, arity_of)?;
             for a in args {
-                resolve_sumti_go_i(ast, a, current, seen)?;
+                resolve_sumti_go_i(ast, a, current, seen, arity_of)?;
             }
         }
         gerna_ast::Selbri::Connected((l, _, r)) => {
-            resolve_selbri_go_i(ast, l, current, seen)?;
-            resolve_selbri_go_i(ast, r, current, seen)?;
+            resolve_selbri_go_i(ast, l, current, seen, arity_of)?;
+            resolve_selbri_go_i(ast, r, current, seen, arity_of)?;
         }
         gerna_ast::Selbri::Abstraction((_, s)) => {
-            resolve_nested_sentence_go_i(ast, s, current, seen)?;
+            resolve_nested_sentence_go_i(ast, s, current, seen, arity_of)?;
         }
     }
     Ok(())
@@ -554,6 +585,7 @@ fn resolve_sumti_go_i(
     id: u32,
     current: &Option<u32>,
     seen: &mut std::collections::HashSet<(u8, u32)>,
+    arity_of: &dyn Fn(&str) -> Option<usize>,
 ) -> Result<(), String> {
     if !seen.insert((2, id)) {
         return Ok(());
@@ -561,22 +593,22 @@ fn resolve_sumti_go_i(
     match ast.sumtis[id as usize].clone() {
         gerna_ast::Sumti::Description((_, sid))
         | gerna_ast::Sumti::QuantifiedDescription((_, _, sid)) => {
-            resolve_selbri_go_i(ast, sid, current, seen)?;
+            resolve_selbri_go_i(ast, sid, current, seen, arity_of)?;
         }
-        gerna_ast::Sumti::Tagged((_, i)) => resolve_sumti_go_i(ast, i, current, seen)?,
+        gerna_ast::Sumti::Tagged((_, i)) => resolve_sumti_go_i(ast, i, current, seen, arity_of)?,
         gerna_ast::Sumti::ModalTagged((mt, i)) => {
             if let gerna_ast::ModalTag::Fio(sid) = mt {
-                resolve_selbri_go_i(ast, sid, current, seen)?;
+                resolve_selbri_go_i(ast, sid, current, seen, arity_of)?;
             }
-            resolve_sumti_go_i(ast, i, current, seen)?;
+            resolve_sumti_go_i(ast, i, current, seen, arity_of)?;
         }
         gerna_ast::Sumti::Restricted((i, rc)) => {
-            resolve_sumti_go_i(ast, i, current, seen)?;
-            resolve_nested_sentence_go_i(ast, rc.body_sentence, current, seen)?;
+            resolve_sumti_go_i(ast, i, current, seen, arity_of)?;
+            resolve_nested_sentence_go_i(ast, rc.body_sentence, current, seen, arity_of)?;
         }
         gerna_ast::Sumti::Connected((l, _, _, r)) => {
-            resolve_sumti_go_i(ast, l, current, seen)?;
-            resolve_sumti_go_i(ast, r, current, seen)?;
+            resolve_sumti_go_i(ast, l, current, seen, arity_of)?;
+            resolve_sumti_go_i(ast, r, current, seen, arity_of)?;
         }
         gerna_ast::Sumti::ProSumti(_)
         | gerna_ast::Sumti::Name(_)
@@ -596,13 +628,14 @@ fn resolve_nested_sentence_go_i(
     id: u32,
     current: &Option<u32>,
     seen: &mut std::collections::HashSet<(u8, u32)>,
+    arity_of: &dyn Fn(&str) -> Option<usize>,
 ) -> Result<(), String> {
     if !seen.insert((0, id)) {
         return Ok(());
     }
     match ast.sentences[id as usize].clone() {
         gerna_ast::Sentence::Simple(_) => {
-            resolve_simple_bridi_go_i(ast, id as usize, current)?;
+            resolve_simple_bridi_go_i(ast, id as usize, current, arity_of)?;
             let (relation, terms): (u32, Vec<u32>) = match &ast.sentences[id as usize] {
                 gerna_ast::Sentence::Simple(b) => (
                     b.relation,
@@ -610,17 +643,17 @@ fn resolve_nested_sentence_go_i(
                 ),
                 _ => unreachable!(),
             };
-            resolve_selbri_go_i(ast, relation, current, seen)?;
+            resolve_selbri_go_i(ast, relation, current, seen, arity_of)?;
             for t in terms {
-                resolve_sumti_go_i(ast, t, current, seen)?;
+                resolve_sumti_go_i(ast, t, current, seen, arity_of)?;
             }
         }
         gerna_ast::Sentence::Connected((_, l, r)) => {
-            resolve_nested_sentence_go_i(ast, l, current, seen)?;
-            resolve_nested_sentence_go_i(ast, r, current, seen)?;
+            resolve_nested_sentence_go_i(ast, l, current, seen, arity_of)?;
+            resolve_nested_sentence_go_i(ast, r, current, seen, arity_of)?;
         }
         gerna_ast::Sentence::Prenex((_, body)) => {
-            resolve_nested_sentence_go_i(ast, body, current, seen)?;
+            resolve_nested_sentence_go_i(ast, body, current, seen, arity_of)?;
         }
     }
     Ok(())
@@ -628,9 +661,16 @@ fn resolve_nested_sentence_go_i(
 
 /// Walk all root sentences and resolve any go'i references.
 /// Skips snapshot grafting entirely if no go'i is present in the parsed text.
-pub fn resolve_go_i(
+///
+/// `arity_of` looks up a relation's place count so a partial go'i whose FA tag
+/// targets a place beyond the antecedent relation's arity fails closed (mirroring
+/// smuni's authoritative guard) instead of being silently dropped after the merge
+/// strips tags. `gerna::goi` has no dictionary, so the caller supplies the lookup;
+/// callers without one use [`resolve_go_i`] (no arity bound).
+pub fn resolve_go_i_with_arity(
     ast: &mut gerna_ast::AstBuffer,
     last_snapshot: &mut Option<BridiSnapshot>,
+    arity_of: &dyn Fn(&str) -> Option<usize>,
 ) -> Result<Option<u32>, String> {
     let has_go_i = ast
         .selbris
@@ -650,7 +690,7 @@ pub fn resolve_go_i(
     };
     for i in 0..ast.roots.len() {
         let root_idx = ast.roots[i] as usize;
-        resolve_sentence_go_i(ast, root_idx, &mut current)?;
+        resolve_sentence_go_i(ast, root_idx, &mut current, arity_of)?;
     }
     // Defensive backstop: every reachable go'i position — top-level, partial,
     // abstraction / relative-clause body, AND selbri-position (a tanru arm) — is
@@ -673,6 +713,17 @@ pub fn resolve_go_i(
         }
     }
     Ok(current)
+}
+
+/// Resolve go'i references WITHOUT a beyond-arity place bound — for callers that
+/// have no dictionary (lasna unit tests, in-browser/native modes that already
+/// validate arity in smuni). The duplicate-place guard still applies. Production
+/// callers with a dictionary use [`resolve_go_i_with_arity`].
+pub fn resolve_go_i(
+    ast: &mut gerna_ast::AstBuffer,
+    last_snapshot: &mut Option<BridiSnapshot>,
+) -> Result<Option<u32>, String> {
+    resolve_go_i_with_arity(ast, last_snapshot, &|_| None)
 }
 
 /// Read-only reachability walk: does any `Selbri::Root("go'i")` remain REACHABLE
