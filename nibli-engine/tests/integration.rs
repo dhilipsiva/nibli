@@ -2914,3 +2914,24 @@ fn predicate_less_clause_rejected() {
     // A complete bridi still asserts fine (the change is scoped to selbri-less clauses).
     assert!(engine.assert_text("la .adam. cu gerku").is_ok());
 }
+
+#[test]
+fn goi_duplicate_fa_place_rejected() {
+    // A partial `go'i` that supplies the SAME place twice (`fe X fe Y` — both target
+    // x2) must FAIL CLOSED, mirroring smuni's "same place cannot be set twice" guard,
+    // instead of silently last-winning. Pre-fix the go'i per-place merge dropped the
+    // earlier term (yielding `prami(adam, kim)`), bypassing smuni's check.
+    let engine = engine_with_facts(&["la .adam. cu prami la .bel."]);
+    let err = engine
+        .assert_text("fe la .karl. fe la .kim. go'i")
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("same place cannot be set twice"),
+        "duplicate FA place in go'i must be rejected, got: {err}"
+    );
+    // A SINGLE-place override still resolves cleanly (the fix is scoped to duplicates).
+    assert!(
+        engine.assert_text("fe la .kim. go'i").is_ok(),
+        "single-place go'i override must still resolve"
+    );
+}

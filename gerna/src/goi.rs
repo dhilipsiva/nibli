@@ -334,26 +334,42 @@ fn rebase_sentence_inplace(s: &mut gerna_ast::Sentence, sb: u32, ub: u32, tb: u3
 /// next free place; a `Sumti::Tagged((tag, inner))` sets the place to
 /// `tag.to_index()` and stores the INNER id (the tag is stripped — the merged
 /// bridi is positional), resuming after it.
-fn place_map(sumtis: &[gerna_ast::Sumti], head: &[u32], tail: &[u32]) -> Vec<Option<u32>> {
+fn place_map(
+    sumtis: &[gerna_ast::Sumti],
+    head: &[u32],
+    tail: &[u32],
+) -> Result<Vec<Option<u32>>, String> {
     let mut places: Vec<Option<u32>> = Vec::new();
     let mut next = 0usize;
     for &t in head.iter().chain(tail.iter()) {
-        let (place, id) = match &sumtis[t as usize] {
-            gerna_ast::Sumti::Tagged((tag, inner)) => (tag.to_index(), *inner),
+        let (place, id, tag) = match &sumtis[t as usize] {
+            gerna_ast::Sumti::Tagged((tag, inner)) => (tag.to_index(), *inner, Some(*tag)),
             _ => {
                 while next < places.len() && places[next].is_some() {
                     next += 1;
                 }
-                (next, t)
+                (next, t, None)
             }
         };
         if place >= places.len() {
             places.resize(place + 1, None);
         }
+        if places[place].is_some() {
+            // FAIL CLOSED, mirroring smuni's authoritative compiler: a tag re-targeting
+            // an already-filled place (`fe X fe Y go'i`) would last-win and silently drop
+            // the earlier term. Only reachable for a `Tagged` term — an untagged term
+            // always advances `next` to a free slot.
+            return Err(format!(
+                "Place tag `{}` targets place x{}, which is already filled; \
+                 the same place cannot be set twice.",
+                tag.map(|t| t.name()).unwrap_or(""),
+                place + 1
+            ));
+        }
         places[place] = Some(id);
         next = place + 1;
     }
-    places
+    Ok(places)
 }
 
 /// Resolve a Simple bridi's go'i (when its relation selbri is `Root("go'i")`)
@@ -397,8 +413,10 @@ fn resolve_simple_bridi_go_i(
     }
 
     // Per-place merge: overlay the go'i's supplied places over the antecedent's.
-    let ant = place_map(&ast.sumtis, &antecedent.head_terms, &antecedent.tail_terms);
-    let goi = place_map(&ast.sumtis, &bridi.head_terms, &bridi.tail_terms);
+    // `place_map` fails closed on a duplicate FA place (the antecedent can't trigger
+    // it — a duplicate-place bridi would have failed smuni before becoming one).
+    let ant = place_map(&ast.sumtis, &antecedent.head_terms, &antecedent.tail_terms)?;
+    let goi = place_map(&ast.sumtis, &bridi.head_terms, &bridi.tail_terms)?;
     let n = ant.len().max(goi.len());
     let mut head_terms = Vec::with_capacity(n);
     for i in 0..n {
