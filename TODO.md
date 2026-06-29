@@ -26,10 +26,7 @@ _(none open)_
 
 ## P2 — Correctness / robustness
 
-- [ ] 🐞 **LOW** — `gasnu` rebuild/replay-on-trap can SPIN under an extreme-low fuel budget
-  (observed at `NIBLI_FUEL=1e8`): a query that traps re-enters the rebuild→replay path and
-  loops at ~100% CPU instead of bounding the retry. NOT reachable at the default 1e10 budget.
-  **Fix:** bound rebuild/replay-on-trap (no re-trap loop; surface a single host error).
+_(none open)_
 
 ---
 
@@ -119,8 +116,15 @@ retained only as a record:
   repeated standalone runs). The one observed `ci-all` flake was a rare WASM-host/CI transient,
   NOT a reasoning nondeterminism (the original P1 framing was wrong). `smoke-gasnu-goi-bare` now
   RETRIES ONCE so a transient cannot false-red CI, while a persistent fail across both attempts
-  still fails as a real regression. (Residual robustness finding logged under P2-LOW: the
-  rebuild/replay-on-trap can spin at an extreme-low fuel budget.)
+  still fails as a real regression. (Follow-up 2026-06-29: the suspected "rebuild/replay-on-trap
+  spin" was investigated and found INVALID — the trap-recovery retry IS bounded: the rebuild runs
+  once per command, the journal replay breaks on first failure, and a trapped command is never
+  auto-retried (whole 11-command low-fuel session completes in ~4s). The ~800% CPU was Wasmtime's
+  parallel cranelift compilation of the component at each gasnu startup, amplified by the repro
+  loop spawning many processes — not a reasoning spin. A separate, bounded, pathological residual
+  remains: at fuel set below the session constructor's cost (≤~1000 vs the 1e10 default), the
+  rebuild can't reconstruct the session, so each command prints a raw backtrace + "cannot enter
+  component instance" until fuel is raised. Cosmetic, not a soundness issue.)
 - **Better English for complex conclusions** — multi-place rule clauses pad non-x1 places
   with "something" (`frame::template_max_place`); curated literal place-frames for corpus
   proxy words (`zanru`/`pilno`/`katna`/`zenba`/`cinla`/`ckape`/`vimcu`). Render-only.
