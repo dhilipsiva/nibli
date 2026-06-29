@@ -56,6 +56,7 @@ The gasnu (runner) acts as a TCP client to an external compute backend server vi
 - **REPL command:** `:backend [host:port]` — show or change backend address at runtime
 - **Protocol:** One JSON object per line. Request: `{"relation":"tenfa","args":[{"type":"number","value":8.0},...]}`. Response: `{"result":true}` or `{"error":"..."}`.
 - **Fallback:** Built-in arithmetic (pilji/sumji/dilcu) always handled locally. Unknown predicates forward to external backend. If no backend configured, returns error.
+  - **Tolerant equality (disclosed):** pilji/sumji/dilcu compare the result with `isclose` (rel_tol `1e-9`, abs_tol `0`) — a deliberate float approximation so `0.3 = 0.1 + 0.2` is TRUE — in the single shared evaluator `nibli-types/src/arithmetic.rs` (logji guest + gasnu host + `nibli_backend.py` all mirror it). The equality predicate `dunli` is EXACT `==` (`logji/src/compute.rs`). README's "Compute Backend" discloses this to users.
 - **Lazy connection:** TCP connects on first external dispatch, auto-reconnects on failure.
 - **Reference server:** `python/nibli_backend.py` — handles pilji, sumji, dilcu, tenfa (exponent), dugri (log). Extend via `HANDLERS` dict.
 

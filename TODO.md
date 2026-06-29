@@ -38,9 +38,6 @@ _(none open)_
 
 ## P4 — Honesty of claims (mostly docs/UX, no engine change)
 
-- [ ] ⚖️ Disclose that built-in arithmetic (`pilji/sumji/dilcu`) uses tolerant float
-  equality (`isclose`, rel_tol 1e-9) — literally an approximation (while `dunli` is exact `==`).
-
 - [ ] ⚖️ External compute (`tenfa/dugri`) is a **trusted oracle** auto-asserted as ground
   facts that rules chain on — an axiom source, not a derivation. State this where the
   "formally derived" claim appears.
