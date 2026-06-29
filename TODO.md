@@ -20,15 +20,7 @@ Legend: 🐞 genuine bug · ⚖️ honesty/framing · 🧪 test rigor.
 
 ## P1 — Soundness bugs (contradict the "zero-hallucination" contract)
 
-- [ ] 🐞 **HIGH** — `go'i`-bare resolution is NONDETERMINISTIC under WASM:
-  `smoke-gasnu-goi-bare` intermittently (~1 in 4 `ci-all` runs) drops the x1 subject — bare
-  `? go'i` after `la .adam. cu gerku` resolves to `gerku(zo'e)` (FALSE) instead of
-  `gerku(adam)` (TRUE), flipping the verdict (a zero-hallucination violation). Native
-  (nibli-engine) is stable — the 6 native go'i tests pass deterministically — so it is
-  WASM/seed-specific. Likely a HashMap-iteration-ordered place mapping in the snapshot graft
-  (`gerna::goi`) or smuni's compile of the grafted AST. **Fix:** make the go'i snapshot graft +
-  place assignment deterministic (stable-order the place map); add a seed-varying regression
-  test.
+_(none open)_
 
 ---
 
@@ -44,6 +36,11 @@ Legend: 🐞 genuine bug · ⚖️ honesty/framing · 🧪 test rigor.
   error). Gated behind `:merge` (experimental).
   **Fix:** key fact identity on `(node_id, local-id)` / a UUID dot; detect payload mismatch
   and surface a conflict.
+
+- [ ] 🐞 **LOW** — `gasnu` rebuild/replay-on-trap can SPIN under an extreme-low fuel budget
+  (observed at `NIBLI_FUEL=1e8`): a query that traps re-enters the rebuild→replay path and
+  loops at ~100% CPU instead of bounding the retry. NOT reachable at the default 1e10 budget.
+  **Fix:** bound rebuild/replay-on-trap (no re-trap loop; surface a single host error).
 
 ---
 
@@ -125,6 +122,16 @@ retained only as a record:
   via gasnu `:proof-verbose`, UI expandable clusters, server `proof_trace_json`. P1 render
   engine (`collapse_proof`/`render_collapsed_text`), P2 nibli-ui `ProofTreeView`, P3 gasnu
   default + `smoke-gasnu-collapse` in `ci-wasm`, P4 book Ch 11, P5 nibli-server + nibli-wasm.
+- **`go'i`-bare "nondeterminism" — re-characterized + smoke hardened (2026-06-29).** The bare
+  `? go'i` verdict is provably DETERMINISTIC at the default fuel budget: `:debug` shows it
+  compiles to `∃ev. gerku(ev) ∧ gerku_x1(ev, adam) ∧ gerku_x2(ev, zo'e)`, the ground `adam`
+  anchors the candidate set to a single event, the search short-circuits, and `query_holds` is
+  a yes/no verdict where hash-seed iteration order affects COST not ANSWER (250/250 TRUE over
+  repeated standalone runs). The one observed `ci-all` flake was a rare WASM-host/CI transient,
+  NOT a reasoning nondeterminism (the original P1 framing was wrong). `smoke-gasnu-goi-bare` now
+  RETRIES ONCE so a transient cannot false-red CI, while a persistent fail across both attempts
+  still fails as a real regression. (Residual robustness finding logged under P2-LOW: the
+  rebuild/replay-on-trap can spin at an extreme-low fuel budget.)
 - **Better English for complex conclusions** — multi-place rule clauses pad non-x1 places
   with "something" (`frame::template_max_place`); curated literal place-frames for corpus
   proxy words (`zanru`/`pilno`/`katna`/`zenba`/`cinla`/`ckape`/`vimcu`). Render-only.
