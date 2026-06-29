@@ -432,13 +432,28 @@ fn is_abstraction(relation: &str) -> bool {
         )
 }
 
+/// `[Why]` supporting-clause phrasing for a computed result, distinguishing a
+/// LOCAL computation from a value TRUSTED from the external backend (an oracle,
+/// not a derivation) — the same honesty distinction the collapsed proof label makes.
+fn computed_extra_label(method: &str) -> &'static str {
+    match method {
+        "backend" => "computed by the trusted backend",
+        "arithmetic" | "numeric" => "computed locally",
+        _ => "computed",
+    }
+}
+
 /// Compute results + equality substitutions, as supporting clauses.
 fn collect_extras(trace: &ProofTrace) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for step in &trace.steps {
         let clause = match &step.rule {
-            ProofRule::ComputeCheck { detail, .. } => {
-                format!("{} (computed)", humanize_fact(detail))
+            ProofRule::ComputeCheck { detail, method } => {
+                format!(
+                    "{} ({})",
+                    humanize_fact(detail),
+                    computed_extra_label(method)
+                )
             }
             ProofRule::EqualitySubstitution {
                 original,
@@ -690,9 +705,11 @@ mod tests {
             root: 0,
             naf_dependent: false,
         };
-        // No givens/rules, but a compute extra -> still summarized.
+        // No givens/rules, but a compute extra -> still summarized. A local
+        // arithmetic method is labelled "computed locally" (distinct from a
+        // trusted-backend result).
         let s = summarize_proof(&trace, Register::Spec).unwrap();
-        assert!(s.contains("(computed)"));
+        assert!(s.contains("(computed locally)"), "got: {s}");
     }
 
     #[test]

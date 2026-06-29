@@ -38,10 +38,6 @@ _(none open)_
 
 ## P4 — Honesty of claims (mostly docs/UX, no engine change)
 
-- [ ] ⚖️ Default proof views collapse trusted-backend and local-arithmetic to the same
-  `⊢ computed` label, erasing the derived-vs-trusted distinction (recoverable only via
-  `:proof-verbose`). Thread `method` through `MacroKind::Computed`.
-
 - [ ] ⚖️ The CWA-honesty flag (`ProofTrace.naf_dependent`) fires for `na→True` NAF steps but
   not for the equally-CWA-dependent positive `FALSE`. Consider flagging CWA-dependent FALSE
   too, or document that every non-numeric FALSE is closed-world.

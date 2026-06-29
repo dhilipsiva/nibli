@@ -80,7 +80,11 @@ pub(crate) enum MacroKind {
     Given,
     /// Derived by a rule; the string is the (relation-only) rule label.
     Derived(String),
-    Computed,
+    /// A computed leaf; the string is the `ComputeCheck` source method, so the
+    /// rendered label can distinguish a LOCAL computation (built-in arithmetic /
+    /// numeric comparison) from a value TRUSTED from the external backend (an
+    /// oracle, not a derivation).
+    Computed(String),
     Checked,
     NotDerivable,
     /// A back-reference to a statement already shown (deduped).
@@ -101,6 +105,21 @@ pub(crate) fn collapse_to_macrosteps(trace: &ProofTrace, register: Register) -> 
     collapse_goal_steps(trace, &leaves, register, &mut seen, 0)
 }
 
+/// Collapsed-view label for a computed leaf, by its `ComputeCheck` method.
+/// Surfaces the honesty distinction: a LOCAL computation (built-in arithmetic
+/// `pilji`/`sumji`/`dilcu`, or a `zmadu`/`mleca`/`dunli` numeric comparison) vs a
+/// value TRUSTED from the external backend (an axiom from an oracle, not derived).
+/// Only a SUCCESSFUL backend reply (`backend`) earns the trusted label — an
+/// unavailable backend (`backend_unavailable`) computed nothing, and the edge
+/// methods (`indeterminate`/`build_failed`) keep the bare "computed".
+fn computed_label(method: &str) -> &'static str {
+    match method {
+        "backend" => "computed (trusted backend)",
+        "arithmetic" | "numeric" => "computed (local)",
+        _ => "computed",
+    }
+}
+
 /// Render a structured [`MacroStep`] to the display [`RenderedNode`] — the
 /// labels/icons/classes are byte-for-byte what the old direct builders produced.
 fn step_to_rendered(step: &MacroStep) -> RenderedNode {
@@ -115,9 +134,9 @@ fn step_to_rendered(step: &MacroStep) -> RenderedNode {
             step.holds,
             step.role_detail.clone(),
         ),
-        MacroKind::Computed => macro_leaf(
+        MacroKind::Computed(method) => macro_leaf(
             &step.statement,
-            "computed",
+            computed_label(method),
             "⊢",
             "proof-check",
             step.holds,
@@ -364,7 +383,8 @@ fn goal_fact(rule: &ProofRule) -> Option<String> {
 enum GroupKind {
     Given,
     Derived(String),
-    Computed,
+    /// String is the `ComputeCheck` source method (see [`computed_label`]).
+    Computed(String),
     Checked,
     NotDerivable,
     Reference,
@@ -372,8 +392,8 @@ enum GroupKind {
 
 fn classify_group(trace: &ProofTrace, steps: &[u32]) -> GroupKind {
     let mut derived: Option<String> = None;
-    let (mut given, mut computed, mut checked, mut notfound, mut nonref) =
-        (false, false, false, false, false);
+    let mut computed_method: Option<String> = None;
+    let (mut given, mut checked, mut notfound, mut nonref) = (false, false, false, false);
     for &g in steps {
         match &trace.steps[g as usize].rule {
             ProofRule::Derived { label, .. } => {
@@ -384,8 +404,8 @@ fn classify_group(trace: &ProofTrace, steps: &[u32]) -> GroupKind {
                 given = true;
                 nonref = true;
             }
-            ProofRule::ComputeCheck { .. } => {
-                computed = true;
+            ProofRule::ComputeCheck { method, .. } => {
+                computed_method = Some(method.clone());
                 nonref = true;
             }
             ProofRule::PredicateCheck { .. } => {
@@ -406,8 +426,8 @@ fn classify_group(trace: &ProofTrace, steps: &[u32]) -> GroupKind {
         GroupKind::Derived(l)
     } else if given {
         GroupKind::Given
-    } else if computed {
-        GroupKind::Computed
+    } else if let Some(m) = computed_method {
+        GroupKind::Computed(m)
     } else if checked {
         GroupKind::Checked
     } else if notfound {
@@ -454,9 +474,9 @@ fn build_macro_step(
             holds,
             role_detail(trace, steps),
         ),
-        GroupKind::Computed => leaf_step(
+        GroupKind::Computed(method) => leaf_step(
             statement,
-            MacroKind::Computed,
+            MacroKind::Computed(method),
             holds,
             role_detail(trace, steps),
         ),
@@ -520,9 +540,9 @@ fn build_single_step(
             false,
             None,
         ),
-        ProofRule::ComputeCheck { detail, .. } => leaf_step(
+        ProofRule::ComputeCheck { detail, method } => leaf_step(
             flat_statement(detail, register),
-            MacroKind::Computed,
+            MacroKind::Computed(method.clone()),
             holds,
             None,
         ),
