@@ -15,7 +15,7 @@ Nibli derives every conclusion **from the facts and rules you assert**, under tw
 - **Closed world** — a fact you did not assert is taken to be *false*, not unknown.
 - **Closed domain** — quantifiers range only over the entities the knowledge base knows.
 
-Values returned by the external compute backend (arithmetic and similar predicates) are **trusted as axioms**, not re-derived. So a verdict reads as:
+Results from the **external compute backend** (`tenfa`, `dugri`, or any predicate you register) are a **trusted oracle**, not a derivation: a `true` reply is auto-asserted into the knowledge base as a ground fact mid-query, and downstream rules chain on it as if you had asserted it yourself. The backend is part of the *trusted computing base* — an axiom source — so any conclusion that passes through it is only as sound as that oracle. (Built-in arithmetic, `pilji`/`sumji`/`dilcu`, is computed locally — see [Compute Backend](#compute-backend).) So a verdict reads as:
 
 - **`TRUE`** — a proof exists from those premises (your facts + rules + trusted backend results).
 - **`FALSE`** — *not derivable* from those premises. This is **not** a proof of ¬P.
@@ -236,6 +236,8 @@ li bi tenfa li re li ci             # Assert: 8 = 2^3
 > **One deliberate approximation.** `pilji`/`sumji`/`dilcu` check `x1 = x2 ∘ x3` with **tolerant** float equality — `isclose` with relative tolerance `1e-9` (matching Python's `math.isclose`), i.e. `|a − b| ≤ 1e-9 · max(|a|, |b|)`. So `0.3 = 0.1 + 0.2` answers `TRUE` despite IEEE-754 rounding making the sum `0.30000000000000004`. That is a real, bounded approximation on the numeric result — the one place Nibli is not bit-exact. The equality predicate **`dunli` (`=`) is exact** (`==`, tolerates no rounding); `dilcu`'s divide-by-zero check is likewise an exact guard. The single evaluator (`nibli-types/src/arithmetic.rs`) is shared by the in-WASM engine, the `gasnu` host, and the Python reference backend, so all three agree.
 
 **External predicates** (via backend): `tenfa` (exponentiation), `dugri` (logarithm), and any custom predicates you add to the backend server.
+
+> **Trust boundary.** An external predicate is a **trusted oracle**, not something Nibli proves. When the backend replies `true`, that result is auto-asserted into the knowledge base as a ground fact mid-query, and the reasoner's rules chain on it exactly like a premise you asserted. Nibli never re-derives or checks it — the backend (and whoever operates it) is part of the trusted computing base. A proof that passes through `tenfa`/`dugri` is sound only relative to that oracle.
 
 Configure with `NIBLI_COMPUTE_ADDR=host:port` or `:backend host:port` in the REPL. Connection is lazy (connects on first dispatch) with auto-reconnect. The browser UI has no TCP, so external predicates resolve only in the `gasnu` REPL; built-in arithmetic still works everywhere.
 

@@ -38,10 +38,6 @@ _(none open)_
 
 ## P4 — Honesty of claims (mostly docs/UX, no engine change)
 
-- [ ] ⚖️ External compute (`tenfa/dugri`) is a **trusted oracle** auto-asserted as ground
-  facts that rules chain on — an axiom source, not a derivation. State this where the
-  "formally derived" claim appears.
-
 - [ ] ⚖️ Default proof views collapse trusted-backend and local-arithmetic to the same
   `⊢ computed` label, erasing the derived-vs-trusted distinction (recoverable only via
   `:proof-verbose`). Thread `method` through `MacroKind::Computed`.
