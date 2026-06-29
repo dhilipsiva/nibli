@@ -62,6 +62,14 @@ fn query(kb: &KnowledgeBase, buf: LogicBuffer) -> bool {
     kb.query_entailment_inner(buf).unwrap().is_true()
 }
 
+/// Like `query`, but asserts the DEFINITIVE FALSE verdict — distinct from Unknown
+/// / ResourceExceeded. Use for negatives that must be derivably FALSE: a bare
+/// `query_false(...)` also passes for Unknown/ResourceExceeded, blunting the
+/// safety-critical False-vs-Unknown boundary this engine is built to keep.
+fn query_false(kb: &KnowledgeBase, buf: LogicBuffer) -> bool {
+    kb.query_entailment_inner(buf).unwrap().is_false()
+}
+
 fn query_result(kb: &KnowledgeBase, buf: LogicBuffer) -> QueryResult {
     kb.query_entailment_inner(buf).unwrap()
 }
@@ -178,7 +186,7 @@ fn test_native_rule_selective_application() {
     assert_buf(&kb, make_assertion("bob", "mlatu"));
     assert_buf(&kb, make_universal("gerku", "danlu"));
     assert!(query(&kb, make_query("alis", "danlu")));
-    assert!(!query(&kb, make_query("bob", "danlu")));
+    assert!(query_false(&kb, make_query("bob", "danlu")));
 }
 
 // ─── Cooperative cancellation (server watchdog) ──────────────
@@ -382,7 +390,7 @@ fn test_prenex_universal_asserts_no_presupposition_witness() {
     );
     let qroot = exists(&mut q, "x", qb);
     assert!(
-        !query(
+        query_false(
             &kb,
             LogicBuffer {
                 nodes: q,
@@ -456,7 +464,7 @@ fn test_bare_universal_asserts_no_presupposition_witness() {
     );
     let qroot = exists(&mut q, "x", qb);
     assert!(
-        !query(
+        query_false(
             &kb,
             LogicBuffer {
                 nodes: q,
@@ -511,7 +519,7 @@ fn test_xorlo_presupposition_no_false_positives() {
         ],
     );
     let root = exists(&mut nodes, "x", body);
-    assert!(!query(
+    assert!(query_false(
         &kb,
         LogicBuffer {
             nodes,
@@ -587,7 +595,7 @@ fn test_native_rule_negated_universal() {
     );
 
     // danlu(alis) must not be derivable either way.
-    assert!(!query(&kb, make_query("alis", "danlu")));
+    assert!(query_false(&kb, make_query("alis", "danlu")));
 }
 
 /// Build the rule ∀x. (gerku(x) ∧ ¬mlatu(x)) → danlu(x)
@@ -1246,7 +1254,7 @@ fn test_dependent_skolem_query_existential() {
     assert_buf(&kb, make_assertion("alis", "prenu"));
     assert_buf(&kb, make_dependent_skolem_universal("prenu", "zdani"));
     assert!(query(&kb, make_exists_query("alis", "zdani")));
-    assert!(!query(&kb, make_exists_query("bob", "zdani")));
+    assert!(query_false(&kb, make_exists_query("bob", "zdani")));
 }
 
 #[test]
@@ -1430,7 +1438,10 @@ fn test_multi_dep_skolem_different_entities() {
     assert!(query(&kb, make_multi_dep_exists_query("bob", "felix")));
     assert!(query(&kb, make_multi_dep_exists_query("bob", "garfield")));
     // Non-prenu or non-mlatu entities should NOT have zdani witnesses
-    assert!(!query(&kb, make_multi_dep_exists_query("felix", "alis")));
+    assert!(query_false(
+        &kb,
+        make_multi_dep_exists_query("felix", "alis")
+    ));
 }
 
 #[test]
@@ -1477,13 +1488,13 @@ fn test_zmadu_numeric_true() {
 #[test]
 fn test_zmadu_numeric_false() {
     let kb = new_kb();
-    assert!(!query(&kb, make_numeric_query("zmadu", 1.0, 2.0)));
+    assert!(query_false(&kb, make_numeric_query("zmadu", 1.0, 2.0)));
 }
 
 #[test]
 fn test_zmadu_numeric_equal_false() {
     let kb = new_kb();
-    assert!(!query(&kb, make_numeric_query("zmadu", 2.0, 2.0)));
+    assert!(query_false(&kb, make_numeric_query("zmadu", 2.0, 2.0)));
 }
 
 #[test]
@@ -1495,7 +1506,7 @@ fn test_mleca_numeric_true() {
 #[test]
 fn test_mleca_numeric_false() {
     let kb = new_kb();
-    assert!(!query(&kb, make_numeric_query("mleca", 2.0, 1.0)));
+    assert!(query_false(&kb, make_numeric_query("mleca", 2.0, 1.0)));
 }
 
 #[test]
@@ -1507,7 +1518,7 @@ fn test_dunli_numeric_true() {
 #[test]
 fn test_dunli_numeric_false() {
     let kb = new_kb();
-    assert!(!query(&kb, make_numeric_query("dunli", 5.0, 3.0)));
+    assert!(query_false(&kb, make_numeric_query("dunli", 5.0, 3.0)));
 }
 
 #[test]
@@ -1582,7 +1593,7 @@ fn test_zmadu_large_numbers() {
 fn test_zmadu_negative_numbers() {
     let kb = new_kb();
     assert!(query(&kb, make_numeric_query("zmadu", -1.0, -2.0)));
-    assert!(!query(&kb, make_numeric_query("zmadu", -2.0, -1.0)));
+    assert!(query_false(&kb, make_numeric_query("zmadu", -2.0, -1.0)));
 }
 
 // ─── ComputeNode Tests ───────────────────────────────────────
@@ -1623,7 +1634,7 @@ fn test_compute_pilji_true() {
 fn test_compute_pilji_false() {
     let kb = new_kb();
     // 7 != 2 * 3
-    assert!(!query(&kb, make_compute_query("pilji", 7.0, 2.0, 3.0)));
+    assert!(query_false(&kb, make_compute_query("pilji", 7.0, 2.0, 3.0)));
 }
 
 #[test]
@@ -1637,7 +1648,7 @@ fn test_compute_sumji_true() {
 fn test_compute_sumji_false() {
     let kb = new_kb();
     // 4 != 2 + 3
-    assert!(!query(&kb, make_compute_query("sumji", 4.0, 2.0, 3.0)));
+    assert!(query_false(&kb, make_compute_query("sumji", 4.0, 2.0, 3.0)));
 }
 
 #[test]
@@ -1651,7 +1662,7 @@ fn test_compute_dilcu_true() {
 fn test_compute_dilcu_division_by_zero() {
     let kb = new_kb();
     // x / 0 is always false
-    assert!(!query(&kb, make_compute_query("dilcu", 0.0, 5.0, 0.0)));
+    assert!(query_false(&kb, make_compute_query("dilcu", 0.0, 5.0, 0.0)));
 }
 
 #[test]
@@ -1661,7 +1672,7 @@ fn test_compute_sumji_float_tolerance() {
     // TRUE (the user means 0.3). Exact `==` would wrongly say FALSE.
     assert!(query(&kb, make_compute_query("sumji", 0.3, 0.1, 0.2)));
     // A genuinely-wrong claim stays FALSE.
-    assert!(!query(&kb, make_compute_query("sumji", 0.4, 0.1, 0.2)));
+    assert!(query_false(&kb, make_compute_query("sumji", 0.4, 0.1, 0.2)));
 }
 
 // ─── Decomposed numeric groups (surface-Lojban shape) ─────────────
@@ -1742,7 +1753,7 @@ fn test_decomposed_sumji_float_tolerance() {
 #[test]
 fn test_decomposed_pilji_false() {
     let kb = new_kb();
-    assert!(!query(
+    assert!(query_false(
         &kb,
         make_decomposed_compute_query("pilji", 11.0, 2.0, 5.0)
     ));
@@ -1755,7 +1766,7 @@ fn test_decomposed_sumji_true_false() {
         &kb,
         make_decomposed_compute_query("sumji", 5.0, 2.0, 3.0)
     ));
-    assert!(!query(
+    assert!(query_false(
         &kb,
         make_decomposed_compute_query("sumji", 6.0, 2.0, 3.0)
     ));
@@ -1769,7 +1780,7 @@ fn test_decomposed_dilcu_true_and_division_by_zero() {
         make_decomposed_compute_query("dilcu", 3.0, 6.0, 2.0)
     ));
     // Division by zero is a definitive FALSE, not an error or fall-through.
-    assert!(!query(
+    assert!(query_false(
         &kb,
         make_decomposed_compute_query("dilcu", 3.0, 6.0, 0.0)
     ));
@@ -1782,7 +1793,7 @@ fn test_decomposed_zmadu_true_false() {
         &kb,
         make_decomposed_comparison_query("zmadu", 5.0, 3.0)
     ));
-    assert!(!query(
+    assert!(query_false(
         &kb,
         make_decomposed_comparison_query("zmadu", 3.0, 5.0)
     ));
@@ -1795,7 +1806,7 @@ fn test_decomposed_mleca_true_false() {
         &kb,
         make_decomposed_comparison_query("mleca", 2.0, 3.0)
     ));
-    assert!(!query(
+    assert!(query_false(
         &kb,
         make_decomposed_comparison_query("mleca", 3.0, 2.0)
     ));
@@ -1808,7 +1819,7 @@ fn test_decomposed_dunli_true_false() {
         &kb,
         make_decomposed_comparison_query("dunli", 3.0, 3.0)
     ));
-    assert!(!query(
+    assert!(query_false(
         &kb,
         make_decomposed_comparison_query("dunli", 3.0, 2.0)
     ));
@@ -1857,7 +1868,7 @@ fn test_decomposed_extra_conjunct_falls_through() {
         roots: vec![root],
     };
     assert!(
-        !query(&kb, buf),
+        query_false(&kb, buf),
         "an unrelated conjunct must disable the numeric-group shortcut"
     );
 }
@@ -1938,9 +1949,10 @@ fn test_decomposed_traced_compute_check() {
         "trace must contain a holding ComputeCheck step"
     );
 
-    let (result_f, trace_f) =
-        query_with_proof(&kb, make_decomposed_comparison_query("zmadu", 3.0, 5.0));
-    assert!(!result_f, "traced 3 > 5 must be FALSE");
+    let (result_f, trace_f) = kb
+        .query_entailment_with_proof_inner(make_decomposed_comparison_query("zmadu", 3.0, 5.0))
+        .unwrap();
+    assert!(result_f.is_false(), "traced 3 > 5 must be FALSE");
     assert!(
         trace_f
             .steps
@@ -2094,7 +2106,7 @@ fn test_material_conditional_modus_tollens() {
     );
 
     // Query: barda(sol) should be FALSE (modus tollens derives Not(barda(sol)))
-    assert!(!query(&kb, make_query("sol", "barda")));
+    assert!(query_false(&kb, make_query("sol", "barda")));
 }
 
 #[test]
@@ -2104,7 +2116,7 @@ fn test_material_conditional_antecedent_not_satisfied() {
     // → la .sol. tsali should be FALSE (antecedent not satisfied)
     let kb = new_kb();
     assert_buf(&kb, make_material_conditional("sol", "barda", "tsali"));
-    assert!(!query(&kb, make_query("sol", "tsali")));
+    assert!(query_false(&kb, make_query("sol", "tsali")));
 }
 
 #[test]
@@ -2143,7 +2155,10 @@ fn test_deontic_bilga_assert_query() {
     let kb = new_kb();
     assert_buf(&kb, make_deontic_assertion("alis", "bilga", "klama"));
     assert!(query(&kb, make_deontic_assertion("alis", "bilga", "klama")));
-    assert!(!query(&kb, make_deontic_assertion("bob", "bilga", "klama")));
+    assert!(query_false(
+        &kb,
+        make_deontic_assertion("bob", "bilga", "klama")
+    ));
 }
 
 #[test]
@@ -2152,7 +2167,7 @@ fn test_deontic_curmi_assert_query() {
     let kb = new_kb();
     assert_buf(&kb, make_deontic_assertion("alis", "curmi", "klama"));
     assert!(query(&kb, make_deontic_assertion("alis", "curmi", "klama")));
-    assert!(!query(
+    assert!(query_false(
         &kb,
         make_deontic_assertion("alis", "curmi", "tavla")
     ));
@@ -2164,7 +2179,7 @@ fn test_deontic_nitcu_assert_query() {
     let kb = new_kb();
     assert_buf(&kb, make_deontic_assertion("alis", "nitcu", "klama"));
     assert!(query(&kb, make_deontic_assertion("alis", "nitcu", "klama")));
-    assert!(!query(
+    assert!(query_false(
         &kb,
         make_deontic_assertion("alis", "nitcu", "tavla")
     ));
@@ -2177,7 +2192,7 @@ fn test_deontic_universal_obligation() {
     assert_buf(&kb, make_assertion("alis", "prenu"));
     assert_buf(&kb, make_universal("prenu", "bilga"));
     assert!(query(&kb, make_query("alis", "bilga")));
-    assert!(!query(&kb, make_query("bob", "bilga")));
+    assert!(query_false(&kb, make_query("bob", "bilga")));
 }
 
 #[test]
@@ -2315,7 +2330,7 @@ fn test_obligatory_distinct_from_bare() {
 
     // Bare actuality query must NOT match the stored obligation.
     assert!(
-        !query(&kb, make_query("alis", "klama")),
+        query_false(&kb, make_query("alis", "klama")),
         "ought must not imply is"
     );
 
@@ -2359,7 +2374,7 @@ fn test_bare_does_not_imply_obligation() {
     );
     let q_root = obligatory(&mut q_nodes, q_inner);
     assert!(
-        !query(
+        query_false(
             &kb,
             LogicBuffer {
                 nodes: q_nodes,
@@ -2392,7 +2407,7 @@ fn test_permitted_distinct_from_bare() {
         },
     );
     assert!(
-        !query(&kb, make_query("alis", "klama")),
+        query_false(&kb, make_query("alis", "klama")),
         "permitted must not imply is"
     );
 }
@@ -2459,7 +2474,7 @@ fn test_compute_false_not_ingested() {
             LogicalTerm::Number(3.0),
         ],
     );
-    assert!(!query(
+    assert!(query_false(
         &kb,
         LogicBuffer {
             nodes: q_nodes,
@@ -2478,7 +2493,7 @@ fn test_compute_false_not_ingested() {
             LogicalTerm::Number(3.0),
         ],
     );
-    assert!(!query(
+    assert!(query_false(
         &kb,
         LogicBuffer {
             nodes: p_nodes,
@@ -2562,7 +2577,7 @@ fn test_ingested_result_available_for_reasoning() {
         ],
     );
     let root2 = and(&mut q3_nodes, l2, r2);
-    assert!(!query(
+    assert!(query_false(
         &kb,
         LogicBuffer {
             nodes: q3_nodes,
@@ -3371,9 +3386,11 @@ fn test_proof_trace_simple_predicate() {
 fn test_proof_trace_false_predicate() {
     // Query non-existent fact → PredicateNotFound with result false
     let kb = new_kb();
-    let (result, trace) = query_with_proof(&kb, make_query("mi", "klama"));
+    let (result, trace) = kb
+        .query_entailment_with_proof_inner(make_query("mi", "klama"))
+        .unwrap();
 
-    assert!(!result);
+    assert!(result.is_false());
     let root_step = &trace.steps[trace.root as usize];
     assert!(!root_step.holds);
     assert!(
@@ -3495,15 +3512,14 @@ fn test_proof_trace_exists_failed() {
         vec![LogicalTerm::Variable("x".into()), LogicalTerm::Unspecified],
     );
     let root = exists(&mut nodes, "x", body);
-    let (result, trace) = query_with_proof(
-        &kb,
-        LogicBuffer {
+    let (result, trace) = kb
+        .query_entailment_with_proof_inner(LogicBuffer {
             nodes,
             roots: vec![root],
-        },
-    );
+        })
+        .unwrap();
 
-    assert!(!result);
+    assert!(result.is_false());
     let root_step = &trace.steps[trace.root as usize];
     assert!(!root_step.holds);
     assert!(matches!(&root_step.rule, ProofRule::ExistsFailed));
@@ -3545,6 +3561,69 @@ fn test_proof_trace_forall() {
         let child_step = &trace.steps[child as usize];
         assert!(child_step.holds);
     }
+}
+
+/// Pins that the engine's `False`-for-a-missing-fact and a `True` `ForallVerified`
+/// are BOTH relative to the Closed-World / Closed-Domain Assumption — not absolute
+/// truths. Under an open-world / open-domain reading the same queries would be
+/// Unknown. This regression documents that boundary: a future change that (say)
+/// makes a missing fact `Unknown`, or verifies a `∀` against an open domain, must
+/// be a deliberate, test-visible decision rather than a silent drift.
+#[test]
+fn cwa_cda_relativity_of_false_and_forall_verified() {
+    let kb = new_kb();
+    assert_buf(&kb, make_assertion("alis", "gerku"));
+    assert_buf(&kb, make_assertion("bob", "gerku"));
+    assert_buf(&kb, make_assertion("alis", "danlu"));
+    assert_buf(&kb, make_assertion("bob", "danlu"));
+
+    // (1) CWA: a ground fact that was never asserted is *definitively FALSE*, NOT
+    // Unknown. The engine treats the KB as complete (closed world), so the absence
+    // of `danlu(carl)` is read as ¬danlu(carl). Under an open-world assumption the
+    // honest verdict would instead be Unknown(IncompleteKnowledge).
+    assert_eq!(
+        query_result(&kb, make_query("carl", "danlu")),
+        QueryResult::False,
+        "a missing fact must be FALSE under the closed-world assumption, not Unknown"
+    );
+
+    // (2) CDA: `∀x. gerku(x) → danlu(x)` is verified TRUE by ENUMERATING the closed
+    // domain of known individuals {alis, bob} and checking each — a `ForallVerified`.
+    // This True is relative to that closed domain; it is not a claim about all
+    // possible gerku, only the ones the KB knows about.
+    let (verdict, trace) = kb
+        .query_entailment_with_proof_inner(make_universal("gerku", "danlu"))
+        .unwrap();
+    assert_eq!(
+        verdict,
+        QueryResult::True,
+        "a ∀ satisfied across the whole closed domain must be TRUE"
+    );
+    let root_rule = &trace.steps[trace.root as usize].rule;
+    assert!(
+        matches!(root_rule, ProofRule::ForallVerified { entities } if entities.len() == 2),
+        "the True verdict must be a ForallVerified over the 2 known individuals, got {root_rule:?}"
+    );
+
+    // (3) CDA-relativity made concrete: introduce a NEW domain member that breaks
+    // the rule. The SAME ∀ query now flips to FALSE (ForallCounterexample), proving
+    // the earlier True was an artifact of the closed domain — not an absolute truth.
+    assert_buf(&kb, make_assertion("carl", "gerku")); // carl is gerku but NOT danlu
+    let (verdict2, trace2) = kb
+        .query_entailment_with_proof_inner(make_universal("gerku", "danlu"))
+        .unwrap();
+    assert_eq!(
+        verdict2,
+        QueryResult::False,
+        "adding a counterexample to the closed domain must flip the ∀ to FALSE"
+    );
+    assert!(
+        matches!(
+            &trace2.steps[trace2.root as usize].rule,
+            ProofRule::ForallCounterexample { .. }
+        ),
+        "the flipped verdict must be a ForallCounterexample over the new member"
+    );
 }
 
 // ─── Derivation Provenance Tests ──────────────────────────────────
@@ -3918,7 +3997,7 @@ fn test_se_conversion_universal_multiple_entities() {
             LogicalTerm::Unspecified,
         ],
     );
-    assert!(!query(
+    assert!(query_false(
         &kb,
         LogicBuffer {
             nodes: n3,
@@ -4045,7 +4124,7 @@ fn test_kb_reset_clears_facts() {
     kb.inner.borrow_mut().reset();
 
     // After reset, previously asserted fact should no longer hold
-    assert!(!query(&kb, make_query("alis", "gerku")));
+    assert!(query_false(&kb, make_query("alis", "gerku")));
 }
 
 #[test]
@@ -4060,7 +4139,7 @@ fn test_kb_reset_clears_rules() {
     // After reset, re-assert the fact but not the rule
     assert_buf(&kb, make_assertion("alis", "gerku"));
     // Rule should not exist anymore
-    assert!(!query(&kb, make_query("alis", "danlu")));
+    assert!(query_false(&kb, make_query("alis", "danlu")));
 }
 
 #[test]
@@ -4080,7 +4159,7 @@ fn test_kb_reset_resets_skolem_counter() {
 #[test]
 fn test_query_with_no_facts() {
     let kb = new_kb();
-    assert!(!query(&kb, make_query("alis", "gerku")));
+    assert!(query_false(&kb, make_query("alis", "gerku")));
 }
 
 #[test]
@@ -4180,7 +4259,7 @@ fn test_disjunction_both_false() {
         ],
     );
     let root = or(&mut nodes, left, right);
-    assert!(!query(
+    assert!(query_false(
         &kb,
         LogicBuffer {
             nodes,
@@ -4301,7 +4380,7 @@ fn test_tense_not_transparent() {
         },
     );
 
-    assert!(!query(&kb, make_query("alis", "klama")));
+    assert!(query_false(&kb, make_query("alis", "klama")));
 }
 
 #[test]
@@ -4336,7 +4415,7 @@ fn test_tense_discrimination_past_vs_future() {
         ],
     );
     let q_root = future(&mut q_nodes, q_inner);
-    assert!(!query(
+    assert!(query_false(
         &kb,
         LogicBuffer {
             nodes: q_nodes,
@@ -4377,7 +4456,7 @@ fn test_tense_discrimination_present_vs_past() {
         ],
     );
     let q_root = past(&mut q_nodes, q_inner);
-    assert!(!query(
+    assert!(query_false(
         &kb,
         LogicBuffer {
             nodes: q_nodes,
@@ -4402,7 +4481,7 @@ fn test_untensed_assert_tensed_query() {
         ],
     );
     let q_root = past(&mut q_nodes, q_inner);
-    assert!(!query(
+    assert!(query_false(
         &kb,
         LogicBuffer {
             nodes: q_nodes,
@@ -4560,7 +4639,7 @@ fn test_temporal_rule_no_cross_tense() {
         ],
     );
     let future_danlu = future(&mut q_nodes, danlu_alis);
-    assert!(!query(
+    assert!(query_false(
         &kb,
         LogicBuffer {
             nodes: q_nodes,
@@ -4942,7 +5021,7 @@ fn test_tensed_body_universal_does_not_derive_timeless() {
     );
     assert_buf(&kb, make_assertion("rex", "gerku"));
     assert!(
-        !query(&kb, make_query("rex", "danlu")),
+        query_false(&kb, make_query("rex", "danlu")),
         "a rejected tensed-body universal must not leave a timeless rule that fires on bare facts"
     );
 }
@@ -5026,7 +5105,7 @@ fn multi_root_partial_failure_is_atomic() {
     );
     assert!(result.is_err(), "the assertion must fail on root1");
     assert!(
-        !query(&kb, make_query("adam", "gerku")),
+        query_false(&kb, make_query("adam", "gerku")),
         "root0's fact must be rolled back, not orphaned"
     );
     assert!(
@@ -5139,7 +5218,7 @@ fn test_count_mismatch() {
         vec![LogicalTerm::Variable("x".into()), LogicalTerm::Unspecified],
     );
     let root = count(&mut nodes, "x", 2, body);
-    assert!(!query(
+    assert!(query_false(
         &kb,
         LogicBuffer {
             nodes,
@@ -5198,7 +5277,7 @@ fn test_compute_pilji_correct() {
 fn test_compute_pilji_incorrect() {
     let kb = new_kb();
     let buf = make_compute_query("pilji", 7.0, 2.0, 3.0);
-    assert!(!query(&kb, buf));
+    assert!(query_false(&kb, buf));
 }
 
 #[test]
@@ -5212,7 +5291,7 @@ fn test_compute_sumji_correct() {
 fn test_compute_sumji_incorrect() {
     let kb = new_kb();
     let buf = make_compute_query("sumji", 6.0, 2.0, 3.0);
-    assert!(!query(&kb, buf));
+    assert!(query_false(&kb, buf));
 }
 
 #[test]
@@ -5226,7 +5305,7 @@ fn test_compute_dilcu_correct() {
 fn test_compute_dilcu_incorrect() {
     let kb = new_kb();
     let buf = make_compute_query("dilcu", 3.0, 6.0, 3.0);
-    assert!(!query(&kb, buf));
+    assert!(query_false(&kb, buf));
 }
 
 // ─── Numerical comparison predicate tests ────────────────────
@@ -5240,7 +5319,7 @@ fn test_zmadu_greater_than() {
 #[test]
 fn test_zmadu_not_greater() {
     let kb = new_kb();
-    assert!(!query(&kb, make_numeric_query("zmadu", 3.0, 5.0)));
+    assert!(query_false(&kb, make_numeric_query("zmadu", 3.0, 5.0)));
 }
 
 #[test]
@@ -5258,7 +5337,7 @@ fn test_dunli_equal() {
 #[test]
 fn test_dunli_not_equal() {
     let kb = new_kb();
-    assert!(!query(&kb, make_numeric_query("dunli", 5.0, 3.0)));
+    assert!(query_false(&kb, make_numeric_query("dunli", 5.0, 3.0)));
 }
 
 // ─── Assert fact with various term types ──────────────────────
@@ -5351,7 +5430,7 @@ fn test_retract_basic() {
     let id = assert_id(&kb, make_assertion("alis", "gerku"), "la alis gerku");
     assert!(query(&kb, make_query("alis", "gerku")));
     kb.retract_fact_inner(id).unwrap();
-    assert!(!query(&kb, make_query("alis", "gerku")));
+    assert!(query_false(&kb, make_query("alis", "gerku")));
 }
 
 #[test]
@@ -5360,7 +5439,7 @@ fn test_retract_preserves_other_facts() {
     let id1 = assert_id(&kb, make_assertion("alis", "gerku"), "");
     let _id2 = assert_id(&kb, make_assertion("bob", "mlatu"), "");
     kb.retract_fact_inner(id1).unwrap();
-    assert!(!query(&kb, make_query("alis", "gerku")));
+    assert!(query_false(&kb, make_query("alis", "gerku")));
     assert!(query(&kb, make_query("bob", "mlatu")));
 }
 
@@ -5373,7 +5452,7 @@ fn test_retract_derived_facts_gone() {
     assert!(query(&kb, make_query("alis", "danlu")));
     kb.retract_fact_inner(base_id).unwrap();
     // After retracting the base fact, "alis danlu" should no longer hold
-    assert!(!query(&kb, make_query("alis", "danlu")));
+    assert!(query_false(&kb, make_query("alis", "danlu")));
 }
 
 #[test]
@@ -5386,7 +5465,7 @@ fn test_retract_rule_preserves_base_facts() {
     // Base fact preserved
     assert!(query(&kb, make_query("alis", "gerku")));
     // Derived fact gone (rule retracted)
-    assert!(!query(&kb, make_query("alis", "danlu")));
+    assert!(query_false(&kb, make_query("alis", "danlu")));
 }
 
 #[test]
@@ -5411,7 +5490,7 @@ fn test_retract_idempotent() {
     let id = assert_id(&kb, make_assertion("alis", "gerku"), "");
     kb.retract_fact_inner(id).unwrap();
     kb.retract_fact_inner(id).unwrap(); // second retract is no-op
-    assert!(!query(&kb, make_query("alis", "gerku")));
+    assert!(query_false(&kb, make_query("alis", "gerku")));
 }
 
 #[test]
@@ -5430,7 +5509,7 @@ fn test_retract_duplicate_ground_fact_keeps_live_copy() {
     );
     // Retracting the second (last) record removes the fact for real.
     kb.retract_fact_inner(id2).unwrap();
-    assert!(!query(&kb, make_query("alis", "gerku")));
+    assert!(query_false(&kb, make_query("alis", "gerku")));
 }
 
 #[test]
@@ -5467,11 +5546,11 @@ fn test_retract_multi_root_removes_all_roots() {
     assert!(query(&kb, make_query("bob", "mlatu")));
     kb.retract_fact_inner(id).unwrap();
     assert!(
-        !query(&kb, make_query("alis", "gerku")),
+        query_false(&kb, make_query("alis", "gerku")),
         "first root's fact must be retracted"
     );
     assert!(
-        !query(&kb, make_query("bob", "mlatu")),
+        query_false(&kb, make_query("bob", "mlatu")),
         "second root's fact must be retracted too (not just roots.first())"
     );
 }
@@ -5545,7 +5624,7 @@ fn test_negated_ground_fact_alone_is_not_a_contradiction() {
     // NAF query semantics are unchanged: the positive is simply not derivable.
     let kb = new_kb();
     assert_id(&kb, make_negated_assertion("alis", "gerku"), "na gerku");
-    assert!(!query(&kb, make_query("alis", "gerku")));
+    assert!(query_false(&kb, make_query("alis", "gerku")));
     assert!(
         kb.check_contradictions().is_empty(),
         "a lone negative fact is not a contradiction"
@@ -5651,7 +5730,7 @@ fn test_reset_clears_registry() {
     kb.inner.borrow_mut().reset();
     let facts = kb.list_facts_inner().unwrap();
     assert!(facts.is_empty());
-    assert!(!query(&kb, make_query("alis", "gerku")));
+    assert!(query_false(&kb, make_query("alis", "gerku")));
 }
 
 // ─── C5: Description term opacity tests ──────────────────────
@@ -5737,7 +5816,7 @@ fn test_desc_does_not_trigger_rule_without_restrictor() {
     assert_buf(&kb, make_desc_assertion("gerku", "sutra"));
     assert_buf(&kb, make_universal("gerku", "danlu"));
     assert!(
-        !query(&kb, make_desc_query("gerku", "danlu")),
+        query_false(&kb, make_desc_query("gerku", "danlu")),
         "universal rule should NOT fire without restrictor being satisfied for Desc term"
     );
 }
@@ -6091,7 +6170,7 @@ fn test_event_decomposed_ground_material_conditional_no_antecedent() {
         make_event_material_conditional("adam", "gerku", "danlu"),
     );
     assert!(
-        !query(&kb, make_event_query("adam", "danlu")),
+        query_false(&kb, make_event_query("adam", "danlu")),
         "danlu(adam) must NOT hold without gerku(adam)"
     );
 }
@@ -6127,7 +6206,7 @@ fn test_event_decomposed_rule_selective() {
         "danlu(alis) should hold (alis is a gerku)"
     );
     assert!(
-        !query(&kb, make_event_query("bob", "danlu")),
+        query_false(&kb, make_event_query("bob", "danlu")),
         "danlu(bob) should NOT hold (bob is a mlatu, not gerku)"
     );
 }
@@ -6369,7 +6448,7 @@ fn test_zoo_tense_discrimination() {
     );
     // Present query should FAIL — alice was a dog in the past, not present
     assert!(
-        !query(&kb, make_temporal_event_query("alis", "jmive", present)),
+        query_false(&kb, make_temporal_event_query("alis", "jmive", present)),
         "Present(jmive(alis)) should NOT hold — wrong tense"
     );
 }
@@ -6392,11 +6471,14 @@ fn test_zoo_mixed_tenses() {
         make_temporal_event_query("bob", "jmive", present)
     ));
     // Cross-tense queries fail
-    assert!(!query(
+    assert!(query_false(
         &kb,
         make_temporal_event_query("alis", "jmive", present)
     ));
-    assert!(!query(&kb, make_temporal_event_query("bob", "jmive", past)));
+    assert!(query_false(
+        &kb,
+        make_temporal_event_query("bob", "jmive", past)
+    ));
 }
 
 #[test]
@@ -6497,7 +6579,7 @@ fn test_zoo_retraction_with_event_decomposition() {
 
     // Alice's derivation should be gone
     assert!(
-        !query(&kb, make_temporal_event_query("alis", "jmive", past)),
+        query_false(&kb, make_temporal_event_query("alis", "jmive", past)),
         "after retracting alis's gerku fact, Past(jmive(alis)) should be FALSE"
     );
     // Bob's derivation should still hold
@@ -7586,7 +7668,7 @@ fn test_du_retraction_rebuild() {
 
     kb.retract_fact_inner(du_id).unwrap();
     assert!(
-        !query(&kb, make_query("bob", "gerku")),
+        query_false(&kb, make_query("bob", "gerku")),
         "gerku(bob) should be FALSE after retracting du(alis, bob)"
     );
 }
@@ -7618,7 +7700,7 @@ fn test_du_no_tensed() {
     );
     assert_buf(&kb, make_assertion("alis", "gerku"));
     assert!(
-        !query(&kb, make_query("bob", "gerku")),
+        query_false(&kb, make_query("bob", "gerku")),
         "gerku(bob) should be FALSE — tensed du does not activate equivalence"
     );
 }
@@ -7683,7 +7765,7 @@ fn test_na_du_inequality_query() {
         "na du(alis, carol) should hold — they are not equivalent"
     );
     assert!(
-        !query(&kb, make_negated_du("alis", "bob")),
+        query_false(&kb, make_negated_du("alis", "bob")),
         "na du(alis, bob) should fail — they ARE equivalent"
     );
 }
@@ -8064,7 +8146,7 @@ fn test_hypothetical_doesnt_persist() {
 
     // Back in real KB: mlatu(alis) should NOT hold.
     assert!(
-        !query(&kb, make_query("alis", "mlatu")),
+        query_false(&kb, make_query("alis", "mlatu")),
         "mlatu(alis) should NOT persist after hypothetical"
     );
     // Original fact should still hold.
@@ -8126,7 +8208,7 @@ fn test_hypothetical_with_rule() {
 
     // Back in real KB: danlu(alis) should NOT hold (no gerku(alis) asserted).
     assert!(
-        !query(&kb, make_query("alis", "danlu")),
+        query_false(&kb, make_query("alis", "danlu")),
         "danlu(alis) should NOT persist after hypothetical"
     );
 }
@@ -8509,7 +8591,7 @@ fn test_incremental_retract_fact() {
     kb.retract_fact_inner(id1).unwrap();
 
     assert!(
-        !query(&kb, make_query("alis", "gerku")),
+        query_false(&kb, make_query("alis", "gerku")),
         "alis gerku should be gone after retraction"
     );
     assert!(
@@ -8537,7 +8619,7 @@ fn test_incremental_retract_rule() {
     kb.retract_fact_inner(rule_id).unwrap();
 
     assert!(
-        !query(&kb, make_query("alis", "danlu")),
+        query_false(&kb, make_query("alis", "danlu")),
         "danlu(alis) should be gone after retracting the rule"
     );
     assert!(
@@ -8561,7 +8643,7 @@ fn test_incremental_retract_du() {
     kb.retract_fact_inner(du_id).unwrap();
 
     assert!(
-        !query(&kb, make_query("bob", "gerku")),
+        query_false(&kb, make_query("bob", "gerku")),
         "gerku(bob) should be gone after retracting du"
     );
     assert!(
@@ -8745,7 +8827,7 @@ fn test_forward_chain_skipped_during_rebuild() {
 
     // After retraction, danlu(alis) should NOT hold.
     assert!(
-        !query(&kb, make_query("alis", "danlu")),
+        query_false(&kb, make_query("alis", "danlu")),
         "danlu(alis) should be gone after retracting gerku(alis)"
     );
 }
@@ -8814,7 +8896,7 @@ fn test_forward_chain_naf_rule_kept_backward_only() {
     // re-evaluates ¬xange → danlu(alis) must now be FALSE (no stale fact).
     assert_buf(&kb, make_assertion("alis", "xange"));
     assert!(
-        !query(&kb, make_query("alis", "danlu")),
+        query_false(&kb, make_query("alis", "danlu")),
         "backward chaining re-evaluates ¬xange — danlu must no longer hold"
     );
 }
@@ -8864,7 +8946,7 @@ fn test_tabling_cache_survives_queries() {
 fn test_tabling_invalidated_on_assert() {
     // Query P(a) → False, assert P(a), query again → True.
     let kb = new_kb();
-    assert!(!query(&kb, make_query("alis", "gerku")));
+    assert!(query_false(&kb, make_query("alis", "gerku")));
     // Cache now has gerku(alis) → False.
     assert_buf(&kb, make_assertion("alis", "gerku"));
     // After assertion, cache should be invalidated.
@@ -8884,7 +8966,7 @@ fn test_tabling_invalidated_on_retract() {
     kb.retract_fact_inner(id).unwrap();
     // After retraction, cache should be invalidated.
     assert!(
-        !query(&kb, make_query("alis", "gerku")),
+        query_false(&kb, make_query("alis", "gerku")),
         "gerku(alis) should be False after retraction (cache invalidated)"
     );
 }

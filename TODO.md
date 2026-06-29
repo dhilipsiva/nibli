@@ -32,14 +32,7 @@ _(none open)_
 
 ## P3 — Test rigor
 
-- [ ] 🧪 **MEDIUM** — ~80 negative assertions use `!is_true()`, which passes for `False`,
-  `Unknown`, AND `ResourceExceeded` alike — blunting the safety-critical False-vs-Unknown
-  boundary. (This blind spot is why the P1 combiner bug survived.)
-  **Fix:** sweep `assert!(!query(...))` → `assert!(query_result(...).is_false())` wherever
-  the intended verdict is FALSE.
-
-- [ ] 🧪 **LOW** — No test pins the CWA/CDA-relativity of `ForallVerified` / "False for
-  missing fact". Add a regression test documenting these verdicts are closed-world-relative.
+_(none open)_
 
 ---
 
