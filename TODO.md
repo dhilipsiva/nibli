@@ -38,11 +38,6 @@ _(none open)_
 
 ## P4 — Honesty of claims (mostly docs/UX, no engine change)
 
-- [ ] ⚖️ Scope the README headline. "Every conclusion is formally derived — no
-  hallucination, no approximation" should read as: derived **from asserted facts/rules under
-  a closed-world + closed-domain assumption, plus results trusted from the compute backend.**
-  `FALSE` = "not derivable," not "proved ¬P".
-
 - [ ] ⚖️ Disclose that built-in arithmetic (`pilji/sumji/dilcu`) uses tolerant float
   equality (`isclose`, rel_tol 1e-9) — literally an approximation (while `dunli` is exact `==`).
 

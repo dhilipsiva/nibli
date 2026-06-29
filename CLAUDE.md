@@ -2,7 +2,7 @@
 
 A Zero-Hallucination Symbolic Reasoning Engine.
 
-Nibli is a deterministic theorem prover compiled to WebAssembly (WASI P2). It compiles Lojban natural language syntax into First-Order Logic and performs inference via demand-driven backward-chaining over an indexed fact store. Every conclusion is formally derived — no hallucination, no approximation.
+Nibli is a deterministic theorem prover compiled to WebAssembly (WASI P2). It compiles Lojban natural language syntax into First-Order Logic and performs inference via demand-driven backward-chaining over an indexed fact store. Every conclusion is a formal derivation from the facts + rules you assert, under a closed-world + closed-domain assumption (compute-backend results are trusted as axioms); nothing is fabricated. A `FALSE` verdict means "not derivable," not "proved ¬P". (README's "What zero-hallucination means here" has the full scoping.)
 
 ## Environment
 

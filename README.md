@@ -2,9 +2,26 @@
 
 **A zero-hallucination symbolic reasoning engine.**
 
-Nibli is a deterministic theorem prover compiled to WebAssembly (WASI P2). It compiles Lojban natural language syntax into First-Order Logic and performs inference via demand-driven backward chaining over an indexed fact store. Every conclusion has a formal derivation. No hallucination. No approximation.
+Nibli is a deterministic theorem prover compiled to WebAssembly (WASI P2). It compiles Lojban natural language syntax into First-Order Logic and performs inference via demand-driven backward chaining over an indexed fact store. Every conclusion is a formal derivation — never a guess, never a generated step.
 
 > *nibli* (Lojban): x1 logically entails x2 under rules x3
+
+---
+
+## What "zero-hallucination" means here
+
+Nibli derives every conclusion **from the facts and rules you assert**, under two explicit assumptions:
+
+- **Closed world** — a fact you did not assert is taken to be *false*, not unknown.
+- **Closed domain** — quantifiers range only over the entities the knowledge base knows.
+
+Values returned by the external compute backend (arithmetic and similar predicates) are **trusted as axioms**, not re-derived. So a verdict reads as:
+
+- **`TRUE`** — a proof exists from those premises (your facts + rules + trusted backend results).
+- **`FALSE`** — *not derivable* from those premises. This is **not** a proof of ¬P.
+- **`UNKNOWN`** — the search could not decide: a cycle, incomplete knowledge, or a negation over an undecided sub-goal.
+
+The guarantee is **soundness relative to what you asserted**, not omniscience — change the premises and the verdict can change. What Nibli rules out is *fabrication*: it never invents a fact, a rule, or a proof step.
 
 ---
 
