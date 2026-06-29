@@ -75,6 +75,7 @@ mod tests {
             }],
             root: 0,
             naf_dependent: false,
+            cwa_false: false,
         }
     }
 

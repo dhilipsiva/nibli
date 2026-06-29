@@ -314,7 +314,7 @@ The parser (`gerna`) accepts a practical subset of Lojban sufficient for formal 
 - **Failure traces:** `PredicateNotFound`, `RuleAttemptFailed`, `EqualitySubstitution` proof rule variants explain why derivations fail
 - **Argument-position indexing:** `(relation, position, value)` secondary index for efficient witness extraction
 - **Predicate signature validation:** arity checking from PHF dictionary with permissive warnings
-- **NAF visibility:** `has_naf_dependency()` on proof traces marks CWA-dependent conclusions
+- **Closed-world visibility:** `naf_dependent` (a `na→True` NAF result) and its dual `cwa_false` (a `FALSE` that is closed-world — "not derivable", not a disproof — vs. a numeric FALSE that was decided) flag CWA-dependent conclusions on every proof trace; both render a closed-world caveat
 - **Interactive debugging:** `:trace`/`:untrace`/`:traces` REPL commands
 - **WASM fuel limits:** configurable via `NIBLI_FUEL` or `:fuel` REPL command
 - **WASM memory limits:** configurable via `NIBLI_MEMORY_MB` or `:memory` REPL command

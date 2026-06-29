@@ -2680,6 +2680,30 @@ fn surface_numeric_traced_verdicts_agree() {
     );
 }
 
+#[test]
+fn closed_world_false_carries_cwa_note_but_numeric_false_does_not() {
+    let engine = NibliEngine::new();
+    // Absence-driven FALSE: `gerku(adam)` is simply not derivable → a closed-world FALSE,
+    // which must carry the CWA caveat (the dual of the NAF note) so a reader does not
+    // mistake "not derivable" for "proved false".
+    let (v1, proof1, _) = engine.query_text_with_proof("la .adam. cu gerku").unwrap();
+    assert!(v1.is_false(), "a missing fact must be FALSE: got {v1:?}");
+    assert!(
+        proof1.contains("FALSE is closed-world"),
+        "an absence-driven FALSE must carry the closed-world caveat: {proof1}"
+    );
+    // Numeric-decided FALSE: `5 = 3` is genuinely false (a decided computation), NOT
+    // closed-world — it must NOT carry the caveat.
+    let (v2, proof2, _) = engine
+        .query_text_with_proof("li mu cu dunli li ci")
+        .unwrap();
+    assert!(v2.is_false(), "`5 = 3` must be FALSE: got {v2:?}");
+    assert!(
+        !proof2.contains("FALSE is closed-world"),
+        "a numeric-decided FALSE must NOT carry the closed-world caveat: {proof2}"
+    );
+}
+
 // ════════════════════════════════════════════════════════════════════
 // Direct-injected facts are text-queryable (event-decompose at injection)
 // ════════════════════════════════════════════════════════════════════

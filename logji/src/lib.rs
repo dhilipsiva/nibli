@@ -584,12 +584,25 @@ impl KnowledgeBase {
         let naf_dependent = steps
             .iter()
             .any(|s| matches!(s.rule, ProofRule::Negation) && s.holds);
+        // A FALSE verdict is closed-world ("not derivable from the KB") UNLESS a
+        // numeric/arithmetic compute DECIDED it (e.g. `5 dunli 3` is genuinely false).
+        // The dual of `naf_dependent`: under open-world semantics it would be Unknown.
+        let cwa_false = overall.is_false()
+            && !steps.iter().any(|s| {
+                !s.holds
+                    && matches!(
+                        &s.rule,
+                        ProofRule::ComputeCheck { method, .. }
+                            if method == "numeric" || method == "arithmetic"
+                    )
+            });
         Ok((
             overall,
             ProofTrace {
                 steps,
                 root,
                 naf_dependent,
+                cwa_false,
             },
         ))
     }

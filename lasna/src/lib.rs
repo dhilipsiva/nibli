@@ -219,6 +219,9 @@ fn convert_proof_trace(t: logji_logic::ProofTrace) -> export_logic::ProofTrace {
         // host need not recompute it from the steps (single source of truth:
         // logji's ProofTrace::has_naf_dependency).
         naf_dependent: t.has_naf_dependency(),
+        // The dual CWA-FALSE flag needs the verdict (not recomputable from steps),
+        // so it is read from the field logji already populated.
+        cwa_false: t.cwa_false,
     }
 }
 
@@ -1434,6 +1437,7 @@ mod tests {
             }],
             root: 0,
             naf_dependent: true,
+            cwa_false: false,
         };
         assert!(
             convert_proof_trace(naf_trace).naf_dependent,
@@ -1451,6 +1455,7 @@ mod tests {
             }],
             root: 0,
             naf_dependent: false,
+            cwa_false: false,
         };
         assert!(
             !convert_proof_trace(plain_trace).naf_dependent,

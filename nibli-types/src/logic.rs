@@ -254,6 +254,15 @@ pub struct ProofTrace {
     /// Populated by logji at trace construction; serialized over the wire.
     #[cfg_attr(feature = "serde", serde(default))]
     pub naf_dependent: bool,
+    /// True if the verdict is a CLOSED-WORLD `FALSE`: not derivable from the KB
+    /// (the closed-world assumption), as opposed to a numeric/arithmetic FALSE that
+    /// was genuinely DECIDED (e.g. `5 dunli 3`). A closed-world FALSE is the dual of
+    /// `naf_dependent` — under open-world semantics it would be Unknown, not a proof
+    /// of the negation. Computed by logji from the verdict (it needs to distinguish
+    /// FALSE from Unknown, both of which have a non-holding root), so unlike
+    /// `naf_dependent` it cannot be recomputed from the steps alone.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub cwa_false: bool,
 }
 
 impl ProofTrace {

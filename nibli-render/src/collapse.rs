@@ -21,7 +21,7 @@ use nibli_protocol::{ProofRule, ProofTrace};
 
 use crate::fact::humanize_fact;
 use crate::overlay::DomainGloss;
-use crate::proof::{NAF_NOTE, RenderedNode, build_node, humanize_rule_label};
+use crate::proof::{CWA_FALSE_NOTE, NAF_NOTE, RenderedNode, build_node, humanize_rule_label};
 use crate::register::Register;
 use crate::summary::{
     LeafKey, fact_to_english, parse_raw_fact, regroup_event_leaves, render_group, rule_to_english,
@@ -202,6 +202,10 @@ pub fn render_collapsed_text(
     let mut out = String::new();
     if trace.naf_dependent {
         out.push_str(NAF_NOTE);
+        out.push('\n');
+    }
+    if trace.cwa_false {
+        out.push_str(CWA_FALSE_NOTE);
         out.push('\n');
     }
     let node = collapse_proof(trace, register);
@@ -744,6 +748,7 @@ mod tests {
             ],
             root: 14,
             naf_dependent: false,
+            cwa_false: false,
         }
     }
 
@@ -825,6 +830,7 @@ mod tests {
             )],
             root: 0,
             naf_dependent: false,
+            cwa_false: false,
         };
         let node = collapse_proof(&trace, Register::Spec);
         assert!(!node.holds);
@@ -843,6 +849,7 @@ mod tests {
             steps: vec![step(asserted("danlu(adam)"), true, vec![])],
             root: 0,
             naf_dependent: false,
+            cwa_false: false,
         };
         let node = collapse_proof(&trace, Register::Spec);
         assert_eq!(node.css_class, "proof-asserted");
@@ -896,6 +903,7 @@ mod tests {
             ],
             root: 11,
             naf_dependent: false,
+            cwa_false: false,
         };
         let node = collapse_proof(&trace, Register::Spec);
         let text = render_node_text(&node, 0, false);
@@ -928,6 +936,7 @@ mod tests {
             steps: vec![step(ProofRule::Negation, true, vec![])],
             root: 0,
             naf_dependent: false,
+            cwa_false: false,
         };
         let node = collapse_proof(&trace, Register::Spec);
         let _ = render_node_text(&node, 0, false); // no panic
@@ -940,6 +949,7 @@ mod tests {
             steps: vec![],
             root: 0,
             naf_dependent: false,
+            cwa_false: false,
         };
         let node = collapse_proof(&trace, Register::Spec);
         let _ = render_node_text(&node, 0, false);

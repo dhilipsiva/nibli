@@ -207,6 +207,23 @@ smoke-gasnu-naf: build-wasm build-gasnu
         echo "$out" | grep -qF '[Note: result depends on negation-as-failure (closed-world assumption)]' || { echo 'FAIL: missing NAF note (naf-dependent flag not carried through the WIT proof-trace)'; exit 1; }; \
         echo 'PASS: NAF-dependent proof carries the closed-world note through the WIT proof-trace'
 
+# CWA-FALSE-note smoke (dual of the NAF note): a positive FALSE that rests on the closed-world
+# assumption (a missing fact, not derivable) must print the closed-world caveat, carried as the
+# first-class `cwa-false` WIT proof-trace field. A numeric-decided FALSE (`5 = 3`) must NOT — it
+# is genuinely false, not closed-world. Guards both directions end-to-end across the WIT boundary.
+smoke-gasnu-cwa-false: build-wasm build-gasnu
+    @echo "Smoke-testing gasnu closed-world FALSE note (WIT proof-trace cwa-false flag)..."
+    @out=$(printf '? la .adam. cu gerku\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$out"; \
+        echo "$out" | grep -qF '[Query] FALSE' || { echo 'FAIL: missing-fact query did not answer FALSE'; exit 1; }; \
+        echo "$out" | grep -qF '[Note: FALSE is closed-world' || { echo 'FAIL: missing closed-world FALSE note (cwa-false flag not carried through the WIT proof-trace)'; exit 1; }; \
+        num=$(printf '? li mu cu dunli li ci\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$num"; \
+        if echo "$num" | grep -qF '[Note: FALSE is closed-world'; then echo 'FAIL: a numeric-decided FALSE wrongly carried the closed-world note'; exit 1; fi; \
+        echo 'PASS: closed-world FALSE carries the caveat; numeric-decided FALSE does not'
+
 # Pre-release smoke: exercises the full WASM `:debug` round-trip — lasna guest
 # converter (logji -> WIT logic-buffer) -> WIT boundary -> gasnu reverse converter
 # (WIT -> nibli_types) -> nibli-render tree + English gloss. An ASYMMETRIC converter
@@ -367,7 +384,7 @@ ci: fmt-check clippy-runtime test test-engine test-gasnu test-backend test-store
 # `build-wasm build-gasnu`, so `just` builds the component + host once, then runs
 # all six: fuel exhaustion + post-trap recovery + journal replay (trap-recovery),
 # plus the script transcript, go'i, persist-replay, NAF-note, and :debug round-trip.
-ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable smoke-gasnu-non-finite
+ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-cwa-false smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable smoke-gasnu-non-finite
 
 # Comprehensive pre-push / pre-release gate: the fast native `ci` plus the WASM
 # behavioral smokes. `ci` alone does not exercise the WASM component.

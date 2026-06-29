@@ -233,9 +233,10 @@ fn trace_to_proto(trace: &ProofTrace) -> ProtoTrace {
             })
             .collect(),
         root: trace.root,
-        // Read the engine-computed flag from the WIT trace (single source of
-        // truth) instead of recomputing it from the steps.
+        // Read the engine-computed flags from the WIT trace (single source of
+        // truth) instead of recomputing them from the steps.
         naf_dependent: trace.naf_dependent,
+        cwa_false: trace.cwa_false,
     }
 }
 

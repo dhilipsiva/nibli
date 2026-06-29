@@ -61,6 +61,7 @@ impl Session {
             "status": result.status_label(),
             "detail": result.detail_label(),
             "naf_dependent": trace.naf_dependent,
+            "cwa_false": trace.cwa_false,
             // The collapsed macro-logical DAG (the full canonical trace is in `proof`).
             "proof_text": nibli_render::render_collapsed_text(&trace, nibli_render::Register::Spec, 0, false),
             "why": nibli_render::summarize_proof(&trace, nibli_render::Register::Spec),
@@ -321,11 +322,16 @@ mod tests {
              ▣ adam is a dog  [given] -> TRUE"
         );
 
-        // A real FALSE: is Adam a bird?
+        // A real FALSE: is Adam a bird? Closed-world (not derivable), so the proof
+        // now carries the symmetric CWA-FALSE caveat.
         let (status, why, proof) = q("la .adam. cu cipni");
         assert_eq!(status, "FALSE");
         assert_eq!(why, "No example could be found that satisfies the query.");
-        assert_eq!(proof, "∃ No witness found -> FALSE");
+        assert_eq!(
+            proof,
+            "[Note: FALSE is closed-world — not derivable from the KB, not a proof of the negation]\n\
+             ∃ No witness found -> FALSE"
+        );
     }
 
     /// The back-translations Chapter 19's two draft-error examples reproduce in

@@ -631,6 +631,7 @@ mod tests {
             ],
             root: 1,
             naf_dependent: false,
+            cwa_false: false,
         };
         let s = summarize_proof(&trace, Register::Spec).unwrap();
         // The instantiated narrative: "Because adam is a dog, adam is an animal."
@@ -662,6 +663,7 @@ mod tests {
             ],
             root: 1,
             naf_dependent: true,
+            cwa_false: false,
         };
         let s = summarize_proof(&trace, Register::Spec).unwrap();
         // The negation root is unphraseable as a derivation, so the fallback lists
@@ -685,6 +687,7 @@ mod tests {
             )],
             root: 0,
             naf_dependent: false,
+            cwa_false: false,
         };
         let s = summarize_proof(&trace, Register::Spec).unwrap();
         assert!(s.starts_with("Nothing known establishes that"), "got: {s}");
@@ -704,6 +707,7 @@ mod tests {
             )],
             root: 0,
             naf_dependent: false,
+            cwa_false: false,
         };
         // No givens/rules, but a compute extra -> still summarized. A local
         // arithmetic method is labelled "computed locally" (distinct from a
@@ -739,6 +743,7 @@ mod tests {
             )],
             root: 0,
             naf_dependent: false,
+            cwa_false: false,
         };
         let s = summarize_proof(&trace, Register::Spec).expect("renders the danlu conclusion");
         assert!(!s.contains('∧'), "abstraction/raw-conjunction leaked: {s}");

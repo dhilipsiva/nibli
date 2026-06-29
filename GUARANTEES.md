@@ -28,6 +28,8 @@ If the engine says TRUE, a formal proof trace exists showing the derivation chai
 
 **NAF visibility:** Proof traces mark Negation steps with `holds: true` as NAF-dependent. The `ProofTrace::has_naf_dependency()` method reports whether a conclusion relies on the CWA. Under open-world semantics, the same conclusion would be Unknown rather than True.
 
+**Closed-world FALSE visibility:** Dually, a positive `FALSE` that rests on the closed-world assumption — *not derivable* from the KB, as opposed to a numeric/arithmetic FALSE that was genuinely *decided* (e.g. `5 dunli 3`) — is flagged `ProofTrace.cwa_false` and renders a symmetric caveat in every proof view. Under open-world semantics such a FALSE would be Unknown, not a proof of the negation.
+
 **CWA implication:** `FALSE` means "not derivable from the current KB and therefore assumed false." It does NOT mean "known to be false in the real world." If the KB is incomplete, NAF may give True for conclusions that would be Unknown with complete information.
 
 ## Equality Semantics

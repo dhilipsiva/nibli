@@ -187,6 +187,10 @@ interface logic-types {
         /// (`ProofTrace::has_naf_dependency`) and carried across the boundary so
         /// a consumer need not recompute it from the steps.
         naf-dependent: bool,
+        /// True if the verdict is a CLOSED-WORLD FALSE: not derivable from the KB
+        /// (rather than a numeric/arithmetic FALSE that was genuinely decided). The
+        /// dual of `naf-dependent` — under open-world semantics it would be Unknown.
+        cwa-false: bool,
     }
 
     /// Unique identifier for a stored fact in the knowledge base.

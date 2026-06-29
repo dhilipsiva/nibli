@@ -3563,6 +3563,28 @@ fn test_proof_trace_forall() {
     }
 }
 
+/// The `cwa_false` flag (dual of `naf_dependent`) marks an absence-driven FALSE that
+/// rests on the closed-world assumption ("not derivable"). The complementary direction
+/// — a numeric/arithmetic FALSE (`5 = 3`) must NOT be flagged — is pinned end-to-end in
+/// `nibli-engine`'s `closed_world_false_carries_cwa_note_but_numeric_false_does_not`,
+/// because the flat helper here skips the event/compute decomposition that records the
+/// deciding `ComputeCheck(numeric)` step.
+#[test]
+fn cwa_false_flag_set_for_absence_false() {
+    let kb = new_kb();
+    let (verdict, trace) = kb
+        .query_entailment_with_proof_inner(make_query("bob", "danlu"))
+        .unwrap();
+    assert!(
+        verdict.is_false(),
+        "a missing fact must be FALSE: got {verdict:?}"
+    );
+    assert!(
+        trace.cwa_false,
+        "an absence-driven FALSE must set cwa_false (the closed-world caveat)"
+    );
+}
+
 /// Pins that the engine's `False`-for-a-missing-fact and a `True` `ForallVerified`
 /// are BOTH relative to the Closed-World / Closed-Domain Assumption — not absolute
 /// truths. Under an open-world / open-domain reading the same queries would be

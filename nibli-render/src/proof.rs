@@ -18,6 +18,12 @@ use crate::register::Register;
 pub(crate) const NAF_NOTE: &str =
     "[Note: result depends on negation-as-failure (closed-world assumption)]";
 
+/// The closed-world honesty caveat prepended to a proof whose FALSE verdict rests on
+/// the closed-world assumption ("not derivable from the KB"), as opposed to a
+/// numeric/arithmetic FALSE that was genuinely decided. The dual of [`NAF_NOTE`].
+pub(crate) const CWA_FALSE_NOTE: &str =
+    "[Note: FALSE is closed-world — not derivable from the KB, not a proof of the negation]";
+
 /// A rendered proof node: everything the text and component renderers need,
 /// computed once. Children are rendered recursively.
 #[derive(Clone, Debug, PartialEq)]
@@ -85,6 +91,10 @@ pub fn render_proof_text_indented(
     let mut out = String::new();
     if trace.naf_dependent {
         out.push_str(NAF_NOTE);
+        out.push('\n');
+    }
+    if trace.cwa_false {
+        out.push_str(CWA_FALSE_NOTE);
         out.push('\n');
     }
     format_step(trace, trace.root, base_indent, &mut out);
@@ -344,6 +354,7 @@ mod tests {
             }],
             root: 0,
             naf_dependent: false,
+            cwa_false: false,
         }
     }
 
