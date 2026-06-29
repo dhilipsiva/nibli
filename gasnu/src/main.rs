@@ -888,7 +888,6 @@ impl Repl {
                 println!("  :fuel [amount]      Show or set WASM fuel budget per command");
                 println!("  :memory [mb]        Show or set WASM memory limit in MB");
                 println!("  :db                 Show persistent store info");
-                println!("  :merge <redb-file>  Merge facts from another store (CRDT)");
                 println!("  :export <redb-file> Export store to a new redb file");
                 println!("  :reset              Clear all facts (fresh KB)");
                 println!("  :quit               Exit");
@@ -1149,110 +1148,6 @@ impl Repl {
                     println!("{}", format_host_error(&e));
                     self.needs_rebuild = true;
                 }
-            }
-        } else if let Some(merge_arg) = input.strip_prefix(":merge ") {
-            let filepath = merge_arg.trim();
-            if filepath.is_empty() {
-                println!("[Host] Usage: :merge <redb-filepath>");
-                return false;
-            }
-            if self.nibli_store.is_none() {
-                println!("[Merge] No persistent store. Set NIBLI_DB_PATH to enable.");
-                return false;
-            }
-            let merge_path = Path::new(filepath);
-            if !merge_path.exists() {
-                println!("[Merge] File not found: {}", filepath);
-                return false;
-            }
-            let merge_result = self
-                .nibli_store
-                .as_mut()
-                .expect("checked above")
-                .merge_from_file(merge_path);
-            match merge_result {
-                Ok(result) => {
-                    println!(
-                        "[Merge] {} added, {} tombstoned from {}",
-                        result.added, result.tombstoned, filepath
-                    );
-                    if result.added > 0 || result.tombstoned > 0 {
-                        // Rebuild WASM session from merged store. The journal is
-                        // rebuilt alongside it so a later trap recovery replays
-                        // the MERGED state, not the pre-merge one.
-                        self.prepare_session();
-                        let session = self.pipeline.lojban_nibli_lasna().session();
-                        let _ = session.call_reset_kb(&mut self.store, self.session_handle);
-                        self.journal.clear();
-                        let facts = self
-                            .nibli_store
-                            .as_ref()
-                            .expect("checked above")
-                            .all_active_facts();
-                        match facts {
-                            Ok(facts) => {
-                                let mut replayed = 0u32;
-                                for fact in &facts {
-                                    let assertion: StoredAssertion =
-                                        match postcard::from_bytes(&fact.payload) {
-                                            Ok(a) => a,
-                                            Err(_) => continue,
-                                        };
-                                    self.prepare_session();
-                                    let session = self.pipeline.lojban_nibli_lasna().session();
-                                    // Replay merged facts with their DURABLE store
-                                    // ids (the with-id path), so live==store after a
-                                    // merge. CRDT id-collision across nodes is
-                                    // pre-existing/out of scope — this faithfully
-                                    // reflects the store's post-merge id assignment.
-                                    match &assertion {
-                                        StoredAssertion::Text(text) => {
-                                            if matches!(
-                                                session.call_assert_text_with_id(
-                                                    &mut self.store,
-                                                    self.session_handle,
-                                                    text,
-                                                    fact.id,
-                                                ),
-                                                Ok(Ok(_))
-                                            ) {
-                                                self.journal.push(JournalEntry::AssertText {
-                                                    text: text.clone(),
-                                                    id: fact.id,
-                                                });
-                                                replayed += 1;
-                                            }
-                                        }
-                                        StoredAssertion::Direct { relation, args } => {
-                                            let wit_args: Vec<EngineLogicalTerm> =
-                                                args.iter().map(stored_term_to_wit).collect();
-                                            if matches!(
-                                                session.call_assert_fact_with_id(
-                                                    &mut self.store,
-                                                    self.session_handle,
-                                                    relation,
-                                                    &wit_args,
-                                                    fact.id,
-                                                ),
-                                                Ok(Ok(_))
-                                            ) {
-                                                self.journal.push(JournalEntry::AssertDirect {
-                                                    relation: relation.clone(),
-                                                    args: wit_args,
-                                                    id: fact.id,
-                                                });
-                                                replayed += 1;
-                                            }
-                                        }
-                                    }
-                                }
-                                println!("[Merge] KB rebuilt with {} facts", replayed);
-                            }
-                            Err(e) => println!("[Merge] Replay error: {}", e),
-                        }
-                    }
-                }
-                Err(e) => println!("[Merge] Error: {}", e),
             }
         } else if let Some(export_arg) = input.strip_prefix(":export ") {
             let filepath = export_arg.trim();

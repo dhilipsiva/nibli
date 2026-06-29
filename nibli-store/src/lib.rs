@@ -1,8 +1,8 @@
 //! Persistent disk-backed knowledge base store for Nibli.
 //!
 //! Uses redb (pure Rust, ACID, embedded key-value store) with postcard
-//! serialization. The store persists FactRecords to disk and supports
-//! 2P-Set CRDT merge semantics for multi-node replication.
+//! serialization. The store persists FactRecords to disk with soft-delete
+//! (tombstone) retraction.
 
 /// Persistent typed fact store (StoredFact → redb) with lazy loading.
 pub mod typed_store;
@@ -47,13 +47,13 @@ pub struct StoredFactRecord {
     pub payload: Vec<u8>,
     /// Human-readable label (Lojban source or `:assert rel args`).
     pub label: String,
-    /// Soft-delete flag (2P-Set tombstone).
+    /// Soft-delete (tombstone) flag.
     pub retracted: bool,
-    /// CRDT: which node asserted this fact.
+    /// Provenance: which node asserted this fact.
     pub node_id: String,
-    /// CRDT: monotonic logical clock for causal ordering.
+    /// Monotonic logical (HLC) clock, stamped per fact for ordering.
     pub hlc_timestamp: u64,
-    /// Predicate names referenced by this fact for index rebuilds and sync.
+    /// Predicate names referenced by this fact for index rebuilds.
     #[serde(default)]
     pub predicates: Vec<String>,
 }
@@ -73,13 +73,6 @@ pub enum StoredAssertion {
         relation: String,
         args: Vec<StoredLogicalTerm>,
     },
-}
-
-/// Result of a CRDT merge operation.
-#[derive(Debug, Default)]
-pub struct MergeResult {
-    pub added: u32,
-    pub tombstoned: u32,
 }
 
 /// Store error type.
@@ -507,61 +500,6 @@ impl NibliStore {
         Ok(results)
     }
 
-    /// Merge facts from a remote node using 2P-Set semantics.
-    /// Tombstone wins: once retracted, stays retracted.
-    pub fn merge_remote(
-        &mut self,
-        remote_facts: Vec<StoredFactRecord>,
-    ) -> Result<MergeResult, StoreError> {
-        let mut result = MergeResult::default();
-
-        let txn = self.db.begin_write()?;
-        {
-            let mut table = txn.open_table(FACTS_TABLE)?;
-
-            for remote in &remote_facts {
-                // Witness remote HLC for clock sync.
-                if remote.hlc_timestamp > self.hlc {
-                    self.hlc = remote.hlc_timestamp;
-                }
-
-                // Read first, drop the guard, then mutate.
-                let local_opt: Option<StoredFactRecord> = table
-                    .get(remote.id)?
-                    .map(|g| decode_stored_fact_record(g.value()))
-                    .transpose()?;
-
-                match local_opt {
-                    None => {
-                        // New fact from remote — insert as-is.
-                        let bytes = postcard::to_allocvec(remote)?;
-                        table.insert(remote.id, bytes.as_slice())?;
-                        if remote.retracted {
-                            result.tombstoned += 1;
-                        } else {
-                            result.added += 1;
-                        }
-                    }
-                    Some(local) => {
-                        if remote.retracted && !local.retracted {
-                            // Tombstone wins — apply retraction.
-                            let mut merged = local;
-                            merged.retracted = true;
-                            merged.hlc_timestamp = merged.hlc_timestamp.max(remote.hlc_timestamp);
-                            let bytes = postcard::to_allocvec(&merged)?;
-                            table.insert(merged.id, bytes.as_slice())?;
-                            result.tombstoned += 1;
-                        }
-                        // Other cases: local wins or no-op.
-                    }
-                }
-            }
-        }
-        Self::rebuild_predicate_index(&txn)?;
-        txn.commit()?;
-        Ok(result)
-    }
-
     /// Get the store's node ID.
     pub fn node_id(&self) -> &str {
         &self.node_id
@@ -573,13 +511,6 @@ impl NibliStore {
         let rtxn = self.db.begin_read()?;
         let table = rtxn.open_table(FACTS_TABLE)?;
         Ok(table.len()? as usize)
-    }
-
-    /// Merge facts from another redb file using 2P-Set semantics.
-    pub fn merge_from_file(&mut self, path: &Path) -> Result<MergeResult, StoreError> {
-        let remote = NibliStore::open(path, "remote".to_string())?;
-        let remote_facts = remote.export_all()?;
-        self.merge_remote(remote_facts)
     }
 
     /// Export all facts (including retracted) to a new redb file.
@@ -852,82 +783,6 @@ mod tests {
     }
 
     #[test]
-    fn test_merge_remote_add() {
-        let path = temp_db_path("merge_add");
-        cleanup(&path);
-
-        let mut store = NibliStore::open(&path, "local".into()).unwrap();
-        store.insert_fact(1, "local".into(), vec![1]).unwrap();
-
-        let remote_facts = vec![StoredFactRecord {
-            id: 2,
-            payload: vec![2],
-            label: "remote".into(),
-            retracted: false,
-            node_id: "remote-node".into(),
-            hlc_timestamp: 100,
-            predicates: vec!["gerku".into()],
-        }];
-
-        let result = store.merge_remote(remote_facts).unwrap();
-        assert_eq!(result.added, 1);
-        assert_eq!(result.tombstoned, 0);
-
-        let active = store.all_active_facts().unwrap();
-        assert_eq!(active.len(), 2);
-        assert_eq!(store.facts_for_predicate("gerku").unwrap(), vec![2]);
-
-        cleanup(&path);
-    }
-
-    #[test]
-    fn test_merge_remote_tombstone_wins() {
-        let path = temp_db_path("merge_tombstone");
-        cleanup(&path);
-
-        let mut store = NibliStore::open(&path, "local".into()).unwrap();
-        store.insert_fact(1, "shared".into(), vec![1]).unwrap();
-
-        // Remote says fact 1 is retracted.
-        let remote_facts = vec![StoredFactRecord {
-            id: 1,
-            payload: vec![1],
-            label: "shared".into(),
-            retracted: true,
-            node_id: "remote-node".into(),
-            hlc_timestamp: 200,
-            predicates: vec!["gerku".into()],
-        }];
-
-        let result = store.merge_remote(remote_facts).unwrap();
-        assert_eq!(result.tombstoned, 1);
-
-        let active = store.all_active_facts().unwrap();
-        assert!(active.is_empty());
-
-        // Local tombstone should not be overridden by remote active.
-        let remote_active = vec![StoredFactRecord {
-            id: 1,
-            payload: vec![1],
-            label: "shared".into(),
-            retracted: false,
-            node_id: "another-node".into(),
-            hlc_timestamp: 300,
-            predicates: vec!["gerku".into()],
-        }];
-        let result2 = store.merge_remote(remote_active).unwrap();
-        assert_eq!(result2.added, 0);
-        assert_eq!(result2.tombstoned, 0);
-
-        // Still retracted.
-        let active = store.all_active_facts().unwrap();
-        assert!(active.is_empty());
-        assert!(store.facts_for_predicate("gerku").unwrap().is_empty());
-
-        cleanup(&path);
-    }
-
-    #[test]
     fn test_persistence_across_reopen() {
         let path = temp_db_path("reopen");
         cleanup(&path);
@@ -998,103 +853,5 @@ mod tests {
 
         cleanup(&src_path);
         cleanup(&dst_path);
-    }
-
-    #[test]
-    fn test_merge_from_file() {
-        let local_path = temp_db_path("merge_file_local");
-        let remote_path = temp_db_path("merge_file_remote");
-        cleanup(&local_path);
-        cleanup(&remote_path);
-
-        // Local has fact 1
-        let mut local = NibliStore::open(&local_path, "node-a".into()).unwrap();
-        local
-            .insert_fact_with_predicates(1, "local fact".into(), vec![1], &["gerku"])
-            .unwrap();
-
-        // Remote has facts 2 and 3
-        let mut remote = NibliStore::open(&remote_path, "node-b".into()).unwrap();
-        remote
-            .insert_fact_with_predicates(2, "remote fact 2".into(), vec![2], &["danlu"])
-            .unwrap();
-        remote
-            .insert_fact_with_predicates(3, "remote fact 3".into(), vec![3], &["mlatu"])
-            .unwrap();
-        drop(remote);
-
-        // Merge remote into local
-        let result = local.merge_from_file(&remote_path).unwrap();
-        assert_eq!(result.added, 2);
-        assert_eq!(result.tombstoned, 0);
-
-        let active = local.all_active_facts().unwrap();
-        assert_eq!(active.len(), 3);
-        assert_eq!(local.facts_for_predicate("gerku").unwrap(), vec![1]);
-        assert_eq!(local.facts_for_predicate("danlu").unwrap(), vec![2]);
-        assert_eq!(local.facts_for_predicate("mlatu").unwrap(), vec![3]);
-
-        cleanup(&local_path);
-        cleanup(&remote_path);
-    }
-
-    #[test]
-    fn test_merge_from_file_tombstone() {
-        let local_path = temp_db_path("merge_file_tomb_local");
-        let remote_path = temp_db_path("merge_file_tomb_remote");
-        cleanup(&local_path);
-        cleanup(&remote_path);
-
-        // Both have fact 1, but remote retracted it
-        let mut local = NibliStore::open(&local_path, "node-a".into()).unwrap();
-        local
-            .insert_fact_with_predicates(1, "shared".into(), vec![1], &["gerku"])
-            .unwrap();
-
-        let mut remote = NibliStore::open(&remote_path, "node-b".into()).unwrap();
-        remote
-            .insert_fact_with_predicates(1, "shared".into(), vec![1], &["gerku"])
-            .unwrap();
-        remote.retract_fact(1).unwrap();
-        drop(remote);
-
-        let result = local.merge_from_file(&remote_path).unwrap();
-        assert_eq!(result.tombstoned, 1);
-
-        let active = local.all_active_facts().unwrap();
-        assert!(active.is_empty());
-        assert!(local.facts_for_predicate("gerku").unwrap().is_empty());
-
-        cleanup(&local_path);
-        cleanup(&remote_path);
-    }
-
-    #[test]
-    fn test_merge_from_file_tombstone_survives_reopen() {
-        let local_path = temp_db_path("merge_file_tomb_reopen_local");
-        let remote_path = temp_db_path("merge_file_tomb_reopen_remote");
-        cleanup(&local_path);
-        cleanup(&remote_path);
-
-        {
-            let mut local = NibliStore::open(&local_path, "node-a".into()).unwrap();
-            local.insert_fact(1, "shared".into(), vec![1]).unwrap();
-
-            let mut remote = NibliStore::open(&remote_path, "node-b".into()).unwrap();
-            remote.insert_fact(1, "shared".into(), vec![1]).unwrap();
-            remote.retract_fact(1).unwrap();
-            drop(remote);
-
-            let result = local.merge_from_file(&remote_path).unwrap();
-            assert_eq!(result.tombstoned, 1);
-        }
-
-        let reopened = NibliStore::open(&local_path, "node-a".into()).unwrap();
-        assert_eq!(reopened.active_fact_count().unwrap(), 0);
-        let fact = reopened.get_fact(1).unwrap().unwrap();
-        assert!(fact.retracted, "Merged tombstone should survive reopen");
-
-        cleanup(&local_path);
-        cleanup(&remote_path);
     }
 }

@@ -341,7 +341,6 @@ run-persist: build-wasm
 # Persistence and replay regressions across engine and store layers
 test-persistence-replay:
     cargo test -p nibli-engine --test integration persistent_engine_honors_store_retractions_after_reopen -- --nocapture --test-threads=1
-    cargo test -p nibli-store test_merge_from_file_tombstone_survives_reopen -- --nocapture
 
 # Run every test suite (unit + integration + Python + store)
 test-all: test test-engine test-store test-backend test-classifier

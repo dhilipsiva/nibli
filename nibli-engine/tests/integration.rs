@@ -1421,53 +1421,6 @@ fn persistent_engine_retraction_via_engine_api_survives_reopen() {
     cleanup(&path);
 }
 
-#[test]
-fn persistent_engine_queries_merged_remote_facts_after_reopen() {
-    let local_path = temp_db_path("merge_local");
-    let remote_path = temp_db_path("merge_remote");
-    cleanup(&local_path);
-    cleanup(&remote_path);
-
-    {
-        let local_engine = NibliEngine::open(&local_path).expect("Local engine should open");
-        local_engine
-            .assert_text("ro lo gerku cu danlu")
-            .expect("Local rule should persist");
-    }
-
-    {
-        let remote_engine = NibliEngine::open(&remote_path).expect("Remote engine should open");
-        remote_engine
-            .assert_text("la .skip. cu mlatu")
-            .expect("Remote dummy fact should persist");
-        remote_engine
-            .assert_text("la .adam. cu gerku")
-            .expect("Remote fact should persist");
-    }
-
-    {
-        let mut local_store =
-            NibliStore::open(&local_path, "local".into()).expect("Local store should open");
-        local_store
-            .merge_from_file(&remote_path)
-            .expect("Store merge should succeed");
-    }
-
-    {
-        let reopened = NibliEngine::open(&local_path).expect("Merged engine should reopen");
-        assert!(
-            reopened
-                .query_holds("la .adam. cu danlu")
-                .expect("Merged query should run after reopen")
-                .is_true(),
-            "Merged remote facts should replay into the reopened engine"
-        );
-    }
-
-    cleanup(&local_path);
-    cleanup(&remote_path);
-}
-
 // ════════════════════════════════════════════════════════════════════
 // GDPR compliance engine (Chapter 20 case study)
 //
