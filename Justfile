@@ -388,7 +388,7 @@ test-all: test test-engine test-store test-backend test-classifier
 
 # CI gate for the hardened runtime surface (fast; native only — no WASM build).
 # For the WASM behavioral smokes too, run `just ci-all`.
-ci: fmt-check clippy-runtime test test-engine test-gasnu test-backend test-store test-persistence-replay verify-harness verify-book-vocab
+ci: fmt-check clippy-runtime test test-engine test-gasnu test-backend test-store test-persistence-replay verify-harness verify-soundness verify-book-vocab
 
 # WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
 # verify-book-capture). Bundles the six gasnu smokes; each depends on
@@ -436,6 +436,12 @@ verify-book-capture: build-wasm
 verify-harness:
     cargo test -p logji --test known_failures_fol {{cargo_profile_flag}} -- --test-threads=1
     cargo test -p nibli-engine --test known_failures {{cargo_profile_flag}} -- --test-threads=1
+
+# Differential SOUNDNESS gate (Track A): for the Horn/NAF-free fragment, nibli's verdict
+# must agree with the Vampire FOL prover over the curated corpus. The Nix dev shell
+# provides `vampire`; the test skips cleanly if the prover is absent.
+verify-soundness:
+    cargo test -p nibli-verify {{cargo_profile_flag}} -- --nocapture --test-threads=1
 
 # Generate training data (requires ANTHROPIC_API_KEY env var)
 generate-training: build-validate

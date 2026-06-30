@@ -2798,6 +2798,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nibli-verify"
+version = "0.1.0"
+dependencies = [
+ "nibli-engine",
+ "nibli-types",
+]
+
+[[package]]
 name = "nibli-wasm"
 version = "0.1.0"
 dependencies = [

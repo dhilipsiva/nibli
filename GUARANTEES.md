@@ -10,6 +10,8 @@ If the engine says TRUE, a formal proof trace exists showing the derivation chai
 
 **Caveat:** The engine is software. A bug in the parser (gerna), semantic compiler (smuni), or reasoning engine (logji) could produce a valid-looking proof of a wrong statement. Such a bug would be deterministic, reproducible, and testable — fundamentally different from stochastic hallucination. The engine is tested with 639+ unit tests and 21 integration tests across the full pipeline.
 
+**Differential soundness gate (Track A):** Beyond unit/integration tests, the reasoner is differentially checked against an external classical prover. For the cleanly-mappable **Horn / NAF-free fragment**, the `nibli-verify` harness exports the compiled FOL IR (`LogicBuffer`) to TPTP and asserts nibli's `TRUE`/`FALSE` agrees with classical entailment as decided by **Vampire** — `TRUE ⟺ Theorem`, `FALSE ⟺ CounterSatisfiable` — over a curated corpus, gated in CI (`just verify-soundness`). On that fragment nibli's derivation equals the least Herbrand model equals classical entailment, so a disagreement is a genuine reasoner-soundness signal. This validates **logji against the classical semantics of smuni's IR**; it does not yet cover the stratified-NAF / closed-domain fragment (an ASP oracle — future work) and does not independently validate smuni's decomposition.
+
 ## Completeness
 
 **Guarantee:** For non-recursive rule sets with chain depth <= N (default 10), backward chaining with iterative deepening is complete — if a proof exists within the depth bound, it will be found.
@@ -48,7 +50,7 @@ If the engine says TRUE, a formal proof trace exists showing the derivation chai
 
 ## Predicate Validation
 
-**Arity checking:** The engine tracks predicate arities via a `PredicateRegistry`. First assertion of a predicate registers its arity (from the 10,521-entry PHF dictionary if known, otherwise inferred from first use). Subsequent assertions with mismatched arity produce a warning.
+**Arity checking:** The engine tracks predicate arities via a `PredicateRegistry`. First assertion of a predicate registers its arity (from the ~10,900-entry PHF dictionary if known, otherwise inferred from first use). Subsequent assertions with mismatched arity produce a warning.
 
 **Mode:** Permissive (v1). Arity mismatches are warned, not rejected. The fact is still inserted. Strict mode (rejection on mismatch) is future work.
 

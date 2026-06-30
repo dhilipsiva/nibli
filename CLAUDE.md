@@ -26,7 +26,8 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | `just test-backend` | Run Python backend tests |
 | `just test-gasnu` | Run gasnu host unit tests (trap classification, error/verdict formatting, arithmetic) |
 | `just test-all` | Run every test suite (unit + integration + Python) |
-| `just ci` | Fast native CI gate (fmt-check, clippy, all native test suites incl. `test-gasnu`). No WASM build. |
+| `just ci` | Fast native CI gate (fmt-check, clippy, all native test suites incl. `test-gasnu` + `verify-soundness`). No WASM build. |
+| `just verify-soundness` | Differential soundness gate: nibli's verdict must agree with Vampire over the Horn/NAF-free corpus (needs `vampire`, provided by the Nix shell; skips if absent). Part of `ci`. |
 | `just ci-wasm` | WASM behavioral gate: build the lasna component + run the six gasnu smokes (fuel exhaustion, post-trap recovery, go'i, persist-replay, NAF note, `:debug`) |
 | `just ci-all` | Comprehensive pre-push / pre-release gate: `ci` + `ci-wasm` |
 | `just build-wasm` | Build single lasna WASM component |
@@ -97,6 +98,7 @@ Core component crates + runtime surfaces:
 | `nibli-ui` | — | Standalone Dioxus web UI (browser, port 8080) — gerna/smuni/logji compiled in, reasons fully in-browser; optional client-side BYO-key LLM Translate (Source→Lojban), key held in-tab-memory only, no server | `main.rs`, `llm.rs` |
 | `nibli-wasm` | — | wasm-bindgen wrapper exposing the in-browser pipeline (powers the live demo) | `lib.rs` |
 | `nibli` | — | Native debug REPL and `nibli-validate` tooling | `main.rs`, `src/bin/validate.rs` |
+| `nibli-verify` | — | Differential SOUNDNESS gate (Track A): exports the smuni FOL IR (`LogicBuffer`) of the Horn/NAF-free fragment to TPTP and checks nibli's verdict against the Vampire prover. Not a runtime surface — a CI gate | `lib.rs`, `tptp.rs`, `filter.rs`, `oracle.rs`, `corpus.rs` |
 | `python/` | — | Reference compute backend server (TCP + JSON Lines) | `nibli_backend.py` |
 
 - **WIT interfaces:** `wit/world.wit` defines only the SHIPPING component's boundary: `logic-types` (FOL IR), `error-types`, `compute-backend` (host import), `lasna` (session export). `cargo component build -p lasna` regenerates `lasna/src/bindings.rs` (the ONLY crate with WIT bindings; gerna/smuni/logji are plain Rust libs using `nibli-types` directly).

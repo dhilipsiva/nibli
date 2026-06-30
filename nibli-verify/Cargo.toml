@@ -1,0 +1,17 @@
+[package]
+name = "nibli-verify"
+description = "Differential soundness gate: check nibli's verdict against an external FOL prover (Vampire) over the Horn/NAF-free fragment"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+nibli-engine = { path = "../nibli-engine" }
+nibli-types = { path = "../nibli-types" }
+
+[[bin]]
+name = "nibli-verify"
+path = "src/main.rs"
+
+[lib]
+name = "nibli_verify"
+path = "src/lib.rs"

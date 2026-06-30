@@ -53,24 +53,28 @@ into phases.
   `GUARANTEES.md` openly admits a bug in gerna/smuni/logji could mint a valid-looking proof
   of a false statement. Two tracks:
   - **Track A — differential testing against an established prover (near-term, high ROI).**
-    Build a `nibli-verify` harness: export the smuni FOL IR (`LogicBuffer`) to a standard
-    format — TPTP FOF (Vampire / E / Prover9) and/or SMT-LIB (Z3 / cvc5) — and check nibli's
-    verdict agrees with the reference oracle over a large `(KB, query)` corpus (reuse the
-    `fuzz-assert` / `fuzz-query` generators + the `gdpr`/`ddi` corpora + property-based gen).
-    **The semantics gap is the hard part:** nibli is closed-world + closed-domain with
-    stratified NAF; classical FOL provers are open-world. START with the fragment where
-    nibli ≡ classical entailment (NAF-free, no closed-domain quantifier dependence, Horn):
-    there, nibli-True ⇒ reference entails, nibli-False ⇒ reference does NOT entail. Then
-    extend the oracle to an ASP/Datalog solver (clingo / DLV) for the stratified-NAF +
-    closed-domain fragment, where the perfect/stable-model semantics actually matches. Gate
-    the mappable fragment in CI.
+    **Phase 1 — Horn/NAF-free gate: DONE.** The `nibli-verify` crate exports the smuni FOL IR
+    (`LogicBuffer`) of the cleanly-mappable fragment to TPTP FOF and checks nibli's verdict
+    against **Vampire** over a curated corpus; gated in CI via `just verify-soundness` (part of
+    `ci`). A conservative filter (source-level negation scan, since a rule's implication arrow
+    and a real `na` both flatten to `Not`; + a buffer non-classical-node scan; + a
+    definitive-verdict / non-NAF check) keeps only the negation-free definite-Horn fragment,
+    where nibli-True ⟺ Vampire `Theorem` and nibli-False ⟺ `CounterSatisfiable` both hold. 14/14
+    curated cases agree; an anti-vacuity check (negated conjecture) confirms the gate detects
+    divergence and is not passing by skipping. **Remaining:** (a) feed the
+    `fuzz-assert`/`fuzz-query` generators + property-based gen so the corpus is large/random,
+    not just curated; (b) map the mappable sub-slice of the `gdpr`/`ddi` corpora; (c) **Phase 2**
+    — extend the oracle to an ASP/Datalog solver (clingo / DLV) for the stratified-NAF +
+    closed-domain fragment, where perfect/stable-model semantics matches (the semantics gap a
+    classical open-world prover cannot cover).
   - **Track B — mechanized proof (long-term).** Formalize the soundness-critical core in a
     proof assistant (Lean 4 / Coq / Isabelle): the unifier (one-directional pattern-vs-ground),
     rule firing, the NAF stratification check, and the four-valued combiner (which had a real
     bug — `True ∧ Unknown` must be Unknown). Prove: a recorded proof trace ⇒ the conclusion
     holds in the stratified/perfect model. Scope to the core, not the parser.
-  - **Milestone order:** Track-A Horn-fragment differential gate first (cheap, catches real
-    bugs), then the ASP oracle for NAF, then optionally Track B.
+  - **Milestone order:** Track-A Horn-fragment differential gate ✓ DONE (cheap, catches real
+    bugs), then the fuzz/corpus expansion + the ASP oracle for NAF (Phase 2), then optionally
+    Track B.
 
 - [ ] 🧪 **Close the flat-vs-surface test gap so the unit layer can't lie.** logji's flat test
   helpers (`logji/src/tests.rs`: `make_query` / `make_numeric_query` / `make_compute_query` /

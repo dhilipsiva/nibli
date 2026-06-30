@@ -47,6 +47,11 @@
             # Compute Backend (Python reference server)
             python3
 
+            # Differential-testing oracle: classical FOL prover for nibli-verify
+            # (Track A soundness gate — checks the Horn/NAF-free fragment against
+            # an external prover). Driven as a subprocess on TPTP FOF problems.
+            vampire
+
             # Native build dependencies
             pkg-config
             openssl
