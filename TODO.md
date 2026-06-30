@@ -14,7 +14,7 @@ soundness-critical paths) surfaced a handful of genuine soundness/honesty gaps a
 "zero-hallucination / every conclusion formally derived" headline. Those are the live P1–P4
 items below.
 
-Legend: 🐞 genuine bug · ⚖️ honesty/framing · 🧪 test rigor.
+Legend: 🐞 genuine bug · ⚖️ honesty/framing · 🧪 test rigor · 📐 verification · 🚪 adoption.
 
 ---
 
@@ -39,6 +39,69 @@ _(none open)_
 ## P4 — Honesty of claims (mostly docs/UX, no engine change)
 
 _(none open)_
+
+---
+
+## P5 — Foundations & adoption (raising the ceiling)
+
+These are NOT gaps against the current headline (P1–P4 cleared all of those). They are the
+frontier the honest engine review identified: the ceiling now is soundness-by-PROOF and the
+adoption story, not code quality. Each is bigger than a single `engine-todo` item — scope
+into phases.
+
+- [ ] 📐 **Soundness by proof, not just tests.** Today soundness is empirical (639+ tests);
+  `GUARANTEES.md` openly admits a bug in gerna/smuni/logji could mint a valid-looking proof
+  of a false statement. Two tracks:
+  - **Track A — differential testing against an established prover (near-term, high ROI).**
+    Build a `nibli-verify` harness: export the smuni FOL IR (`LogicBuffer`) to a standard
+    format — TPTP FOF (Vampire / E / Prover9) and/or SMT-LIB (Z3 / cvc5) — and check nibli's
+    verdict agrees with the reference oracle over a large `(KB, query)` corpus (reuse the
+    `fuzz-assert` / `fuzz-query` generators + the `gdpr`/`ddi` corpora + property-based gen).
+    **The semantics gap is the hard part:** nibli is closed-world + closed-domain with
+    stratified NAF; classical FOL provers are open-world. START with the fragment where
+    nibli ≡ classical entailment (NAF-free, no closed-domain quantifier dependence, Horn):
+    there, nibli-True ⇒ reference entails, nibli-False ⇒ reference does NOT entail. Then
+    extend the oracle to an ASP/Datalog solver (clingo / DLV) for the stratified-NAF +
+    closed-domain fragment, where the perfect/stable-model semantics actually matches. Gate
+    the mappable fragment in CI.
+  - **Track B — mechanized proof (long-term).** Formalize the soundness-critical core in a
+    proof assistant (Lean 4 / Coq / Isabelle): the unifier (one-directional pattern-vs-ground),
+    rule firing, the NAF stratification check, and the four-valued combiner (which had a real
+    bug — `True ∧ Unknown` must be Unknown). Prove: a recorded proof trace ⇒ the conclusion
+    holds in the stratified/perfect model. Scope to the core, not the parser.
+  - **Milestone order:** Track-A Horn-fragment differential gate first (cheap, catches real
+    bugs), then the ASP oracle for NAF, then optionally Track B.
+
+- [ ] 🧪 **Close the flat-vs-surface test gap so the unit layer can't lie.** logji's flat test
+  helpers (`logji/src/tests.rs`: `make_query` / `make_numeric_query` / `make_compute_query` /
+  `query_with_proof`) hand-build `LogicBuffer`s, skipping the event/Neo-Davidsonian
+  decomposition smuni emits on the real path — so a flat unit test can pass/fail DIFFERENTLY
+  from the shipped pipeline. Proven this session: the `cwa_false` numeric case was correct
+  through nibli-engine (surface) but the flat helper mis-flagged it (no `ComputeCheck(numeric)`
+  step). Whole behavior classes (witness/skolem dependency, compute decomposition, the
+  numeric-vs-absence FALSE distinction) are only catchable at integration level. Options:
+  (a) generate flat buffers FROM smuni (`smuni::compile_from_gerna_ast(gerna::parse_checked(..))`)
+  so the unit shape matches the real one; (b) a metamorphic/differential test that builds each
+  query BOTH ways and asserts verdict + trace-shape agree; (c) route the `make_*` helpers
+  through the same event decomposition; (d) a CLAUDE.md/CI discipline requiring a paired
+  nibli-engine integration test for any reasoning behavior. **Recommend (a)+(b) for the
+  compute/numeric helpers (proven-divergent), (d) as the standing guard.** Audit every flat
+  helper for shapes smuni builds differently.
+
+- [ ] 🚪 **Demonstrate the authoring problem is tractable for a non-Lojbanist.** The engine is
+  sound + transparent, but knowledge-in requires writing Lojban (or the BYO-key LLM Translate).
+  No evidence yet that a non-Lojbanist can author a CORRECT KB — and "sound relative to what
+  you asserted" is hollow if authoring silently asserts the wrong thing. Build a reproducible
+  **authoring study/benchmark** (a study, not just code): a non-Lojbanist + the playground
+  (Translate + Transparency Triad) authors a KB for a real domain (GDPR subset / drug
+  interactions / an eligibility or access-control ruleset). Measure (1) round-trip fidelity
+  (does the LLM's Lojban back-translate to the author's intent?), (2) error-catch rate (how
+  often the back-translation + proof let the author catch a mistranslation BEFORE it corrupts
+  the KB), (3) time-to-correct-KB + iterations, and — most important — (4) the **silent
+  mistranslation rate** (wrong premises that pass undetected → a confident wrong proof; the
+  worst case for a "zero-hallucination" engine). Deliverable: the benchmark + a written report
+  (book appendix), and any authoring-assist UX the failure modes demand (back-translation
+  diffing, ambiguity flags, a "did you mean" loop).
 
 ---
 
