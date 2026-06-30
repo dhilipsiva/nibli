@@ -388,7 +388,7 @@ test-all: test test-engine test-store test-backend test-classifier
 
 # CI gate for the hardened runtime surface (fast; native only — no WASM build).
 # For the WASM behavioral smokes too, run `just ci-all`.
-ci: fmt-check clippy-runtime test test-engine test-gasnu test-backend test-store test-persistence-replay verify-harness verify-soundness verify-book-vocab
+ci: fmt-check clippy-runtime test test-engine test-gasnu test-backend test-store test-persistence-replay verify-harness verify-soundness verify-proofs verify-book-vocab
 
 # WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
 # verify-book-capture). Bundles the six gasnu smokes; each depends on
@@ -442,6 +442,17 @@ verify-harness:
 # provides `vampire`; the test skips cleanly if the prover is absent.
 verify-soundness:
     cargo test -p nibli-verify {{cargo_profile_flag}} -- --nocapture --test-threads=1
+
+# Mechanized-proof gate (Track B): check the Lean 4 soundness proofs in `proofs/`. The Nix
+# dev shell provides `lean`; `lean` exits non-zero on any unproved/false theorem. Skips
+# cleanly if `lean` is absent (the proofs are still conformance-checked from Rust via the
+# `exhaustive_soundness_matches_lean_model` test in `cargo test -p logji`).
+verify-proofs:
+    @if command -v lean >/dev/null 2>&1; then \
+        lean proofs/Combiner.lean && echo "verify-proofs: proofs/Combiner.lean checks (combiner soundness mechanized)"; \
+    else \
+        echo "verify-proofs: lean not found (the Nix dev shell provides it) — skipping"; \
+    fi
 
 # Generate training data (requires ANTHROPIC_API_KEY env var)
 generate-training: build-validate

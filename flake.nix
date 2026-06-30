@@ -52,6 +52,10 @@
             # an external prover). Driven as a subprocess on TPTP FOF problems.
             vampire
 
+            # Proof assistant for the mechanized soundness proofs (Track B). The
+            # `proofs/` Lean files are checked by `lean` in `just verify-proofs`.
+            lean4
+
             # Native build dependencies
             pkg-config
             openssl

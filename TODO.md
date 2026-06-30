@@ -67,14 +67,20 @@ into phases.
     — extend the oracle to an ASP/Datalog solver (clingo / DLV) for the stratified-NAF +
     closed-domain fragment, where perfect/stable-model semantics matches (the semantics gap a
     classical open-world prover cannot cover).
-  - **Track B — mechanized proof (long-term).** Formalize the soundness-critical core in a
-    proof assistant (Lean 4 / Coq / Isabelle): the unifier (one-directional pattern-vs-ground),
-    rule firing, the NAF stratification check, and the four-valued combiner (which had a real
-    bug — `True ∧ Unknown` must be Unknown). Prove: a recorded proof trace ⇒ the conclusion
-    holds in the stratified/perfect model. Scope to the core, not the parser.
-  - **Milestone order:** Track-A Horn-fragment differential gate ✓ DONE (cheap, catches real
-    bugs), then the fuzz/corpus expansion + the ASP oracle for NAF (Phase 2), then optionally
-    Track B.
+  - **Track B — mechanized proof (long-term).** **Phase 1 — the four-valued combiner: DONE**
+    (Lean 4 chosen as the assistant). `proofs/Combiner.lean` proves the verdict combiner's
+    soundness algebra — conjunction/disjunction/negation never fabricate a definitive verdict
+    nor swallow a non-definitive operand (the `True ∧ Unknown → False` bug closed), plus the
+    RE-precedence and negation laws. Bridged to the real Rust by the exhaustive
+    `exhaustive_soundness_matches_lean_model` conformance test in `logji` — for the finite
+    combiner, model proof + exhaustive conformance = a complete guarantee. Gated in CI via
+    `just verify-proofs`. **Remaining** (roughly tractability order): the NAF stratification
+    check (Tarjan SCC, `logji/src/rules.rs:647`), the one-directional unifier
+    (`logji/src/kb.rs:326`), rule firing, and the headline theorem — a recorded proof trace ⇒
+    the conclusion holds in the stratified/perfect model. Scope to the core, not the parser.
+  - **Milestone order:** Track-A Horn-fragment differential gate ✓ DONE; Track-B combiner
+    proof ✓ DONE. Next: Track-A fuzz/corpus expansion + the ASP oracle for NAF (Phase 2), and
+    the Track-B stratification / unifier / rule-firing proofs.
 
 - [ ] 🧪 **Close the flat-vs-surface test gap so the unit layer can't lie.** logji's flat test
   helpers (`logji/src/tests.rs`: `make_query` / `make_numeric_query` / `make_compute_query` /

@@ -2680,4 +2680,95 @@ mod combiner_tests {
         assert_eq!(combine_disjunction(re_a(), unk_a()), re_a());
         assert_eq!(combine_disjunction(re_a(), re_b()), re_a());
     }
+
+    /// Every one of the 10 distinct `QueryResult` values (the finite combiner domain).
+    fn all_results() -> Vec<QueryResult> {
+        use ResourceKind::*;
+        use UnknownReason::*;
+        vec![
+            T,
+            F,
+            QueryResult::Unknown(CycleCut),
+            QueryResult::Unknown(IncompleteKnowledge),
+            QueryResult::Unknown(NafDependent),
+            QueryResult::Unknown(BackendUnavailable),
+            QueryResult::Unknown(NonFinite),
+            QueryResult::ResourceExceeded(Depth),
+            QueryResult::ResourceExceeded(Fuel),
+            QueryResult::ResourceExceeded(Memory),
+        ]
+    }
+
+    /// EXHAUSTIVE model↔code bridge for the mechanized proof in `proofs/Combiner.lean`.
+    ///
+    /// The Lean file PROVES these soundness properties of the four-valued combiner; here we
+    /// check that the real Rust `combine_conjunction` / `combine_disjunction` / `negate_result`
+    /// satisfy the SAME properties over every one of the 10×10 inputs. The combiner's domain
+    /// is finite, so an exhaustive check is a complete proof of conformance — a regression that
+    /// reintroduced the historical `True ∧ Unknown → False` bug would fail here immediately.
+    /// Keep the asserted properties in lock-step with the theorems in `proofs/Combiner.lean`.
+    #[test]
+    fn exhaustive_soundness_matches_lean_model() {
+        let all = all_results();
+        for a in &all {
+            // Negation: the four laws (neg_*) + non-fabrication (neg_preserves_indefinite).
+            let na = negate_result(a.clone());
+            let expected_neg = match a {
+                QueryResult::True => QueryResult::False,
+                QueryResult::False => QueryResult::True,
+                QueryResult::Unknown(_) => QueryResult::Unknown(UnknownReason::NafDependent),
+                QueryResult::ResourceExceeded(k) => QueryResult::ResourceExceeded(k.clone()),
+            };
+            assert_eq!(na, expected_neg, "negate_result({a:?})");
+            assert_eq!(
+                na.is_definitive(),
+                a.is_definitive(),
+                "negation must preserve definiteness for {a:?}"
+            );
+
+            for b in &all {
+                let conj = combine_conjunction(a.clone(), b.clone());
+                let disj = combine_disjunction(a.clone(), b.clone());
+
+                // Soundness characterization (conj_true_iff / conj_false_iff / disj_*):
+                // a definitive verdict appears in EXACTLY the classically-correct case.
+                assert_eq!(
+                    conj.is_true(),
+                    a.is_true() && b.is_true(),
+                    "conj TRUE iff both TRUE: {a:?} ∧ {b:?}"
+                );
+                assert_eq!(
+                    conj.is_false(),
+                    a.is_false() || b.is_false(),
+                    "conj FALSE iff some FALSE: {a:?} ∧ {b:?}"
+                );
+                assert_eq!(
+                    disj.is_true(),
+                    a.is_true() || b.is_true(),
+                    "disj TRUE iff some TRUE: {a:?} ∨ {b:?}"
+                );
+                assert_eq!(
+                    disj.is_false(),
+                    a.is_false() && b.is_false(),
+                    "disj FALSE iff both FALSE: {a:?} ∨ {b:?}"
+                );
+
+                // ResourceExceeded outranks Unknown in the indeterminate region (indet_re_*).
+                if !a.is_definitive() && !b.is_definitive() {
+                    let re_present = matches!(a, QueryResult::ResourceExceeded(_))
+                        || matches!(b, QueryResult::ResourceExceeded(_));
+                    assert_eq!(
+                        matches!(conj, QueryResult::ResourceExceeded(_)),
+                        re_present,
+                        "conj RE-precedence: {a:?} ∧ {b:?}"
+                    );
+                    assert_eq!(
+                        matches!(disj, QueryResult::ResourceExceeded(_)),
+                        re_present,
+                        "disj RE-precedence: {a:?} ∨ {b:?}"
+                    );
+                }
+            }
+        }
+    }
 }
