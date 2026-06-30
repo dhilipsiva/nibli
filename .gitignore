@@ -2,6 +2,11 @@
 fuzz/target
 fuzz/corpus
 fuzz/artifacts
+# Local dictionary data — download with `just fetch-dict` (lensisku English bulk export).
+# Gitignored like the legacy jbovlaste-en.xml was; CI builds use the in-tree fallback.
+dictionary-en.json
+dictionary-en.json:Zone.Identifier
+# Legacy jbovlaste XML export (no longer read by the build; ignore any leftover copy).
 jbovlaste-en.xml
 jbovlaste-en.xml:Zone.Identifier
 

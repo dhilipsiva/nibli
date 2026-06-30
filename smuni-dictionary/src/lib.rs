@@ -13,9 +13,9 @@ pub struct DictEntry {
 
 include!(concat!(env!("OUT_DIR"), "/generated_dictionary.rs"));
 
-/// Canonical place-count extraction from a jbovlaste definition. Used by `build.rs`
+/// Canonical place-count extraction from a lensisku definition. Used by `build.rs`
 /// (via `#[path]`) to derive arity; exposed here so it is unit-tested by
-/// `cargo test -p smuni-dictionary` (CI runs the no-XML build, which never calls it,
+/// `cargo test -p smuni-dictionary` (CI runs the no-data build, which never calls it,
 /// so the pure-function tests are the coverage).
 pub mod arity;
 
@@ -106,7 +106,7 @@ mod tests {
     #[test]
     fn test_corpus_proxy_templates() {
         // Curated place-frames for the GDPR / drug-interaction proxy vocabulary
-        // (identical in the XML and no-XML build modes — single-sourced).
+        // (identical in the data and no-data build modes — single-sourced).
         assert_eq!(get_template("zanru"), Some("{x1} approves of {x2}"));
         assert_eq!(get_template("pilno"), Some("{x1} uses {x2}"));
         assert_eq!(get_template("katna"), Some("{x1} cuts {x2}"));

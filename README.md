@@ -89,6 +89,12 @@ just run
 just test
 ```
 
+> **Dictionary data.** The build reads `dictionary-en.json` at the repo root — the English
+> bulk export from the [lensisku](https://lensisku.lojban.org) Lojban dictionary (jbovlaste
+> data, CC-BY-SA). It is gitignored; fetch it with `just fetch-dict` (needs a `LENSISKU_TOKEN`
+> from lensisku.lojban.org) or drop the file in manually. Without it the build falls back to a
+> small in-tree curated dictionary, so `just run`/`just test` and CI work with no token.
+
 ### REPL Usage
 
 ```

@@ -1,6 +1,6 @@
-//! Canonical gismu/lujvo arity (place count) from a jbovlaste `<definition>`.
+//! Canonical gismu/lujvo arity (place count) from a lensisku `definition` field.
 //!
-//! jbovlaste marks each REAL place with the structured token `$x_{N}$` (and the
+//! lensisku/jbovlaste marks each REAL place with the structured token `$x_{N}$` (and the
 //! brace-less `$x_N$`). [`definition_arity`] takes the MAX N over those markers
 //! ONLY — distinct from loose prose mentions of `xN` — so a parenthetical / prose
 //! `xN` (e.g. "x 4 times", "(cf. x4)") can no longer fabricate an extra place (the
@@ -8,7 +8,7 @@
 //! `#[path]`) and the crate's tests.
 
 /// Highest place index N over the canonical `$x_{N}$` / `$x_N$` place markers in a
-/// jbovlaste definition. Bare prose `xN` (no `$…$` delimiters) is ignored. N is
+/// lensisku definition. Bare prose `xN` (no `$…$` delimiters) is ignored. N is
 /// kept within `1..=5` (the gismu place range — preserves the historical cap, so
 /// no collateral change to lujvo arity). Defaults to 1 when no marker is present.
 pub fn definition_arity(definition: &str) -> usize {

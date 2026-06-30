@@ -10,11 +10,32 @@ use std::path::Path;
 #[path = "src/arity.rs"]
 mod arity;
 
-fn main() {
-    println!("cargo:rerun-if-changed=../jbovlaste-en.xml");
+/// A single entry from the lensisku `dictionary-en.json` bulk export (the file is a JSON
+/// array of these, one per word). Only the fields the dictionary build consumes are
+/// declared; serde ignores the rest (rafsi, selmaho, notes, score, place_keywords, …).
+/// Mirrors `lojban/lensisku` `src/export/models.rs::DictionaryEntry`.
+#[derive(serde::Deserialize)]
+struct LensiskuEntry {
+    word: String,
+    word_type: String,
+    definition: String,
+    /// jbovlaste glosswords; the back-translation gloss is the first one. Omitted from the
+    /// JSON when empty, so default to an empty list.
+    #[serde(default)]
+    gloss_keywords: Vec<GlossKeyword>,
+}
 
-    let xml_path = "../jbovlaste-en.xml";
-    let content = fs::read_to_string(xml_path).ok();
+/// One gloss keyword; only `word` (the single-word English gloss) is consumed.
+#[derive(serde::Deserialize)]
+struct GlossKeyword {
+    word: String,
+}
+
+fn main() {
+    println!("cargo:rerun-if-changed=../dictionary-en.json");
+
+    let json_path = "../dictionary-en.json";
+    let content = fs::read_to_string(json_path).ok();
 
     // Collect entries first (phf_codegen borrows value strings for the map's lifetime)
     let mut entries: Vec<(String, String)> = Vec::new();
@@ -22,10 +43,14 @@ fn main() {
     let mut lujvo_count: usize = 0;
     let mut cmavo_count: usize = 0;
 
-    if let Some(content) = content {
-        for block in content.split("<valsi ") {
-            let word = extract_attribute(block, "word=\"");
-            let typ = extract_attribute(block, "type=\"");
+    let lensisku: Option<Vec<LensiskuEntry>> = content.as_deref().map(|c| {
+        serde_json::from_str(c).expect("dictionary-en.json is not a valid lensisku export array")
+    });
+
+    if let Some(dict) = lensisku {
+        for entry in &dict {
+            let word = entry.word.as_str();
+            let typ = entry.word_type.as_str();
 
             if word.is_empty() {
                 continue;
@@ -37,10 +62,8 @@ fn main() {
                         CORE_GISMU_ARITIES.iter().find(|(w, _)| *w == word)
                     {
                         a
-                    } else if let Some(definition) = extract_definition(block) {
-                        arity::definition_arity(definition)
                     } else {
-                        2
+                        arity::definition_arity(&entry.definition)
                     };
 
                     let gloss = if let Some(&(_, g)) =
@@ -52,7 +75,11 @@ fn main() {
                     {
                         g
                     } else {
-                        extract_glossword(block).unwrap_or(word)
+                        entry
+                            .gloss_keywords
+                            .first()
+                            .map(|k| k.word.as_str())
+                            .unwrap_or(word)
                     };
                     let escaped_gloss = escape_str(gloss);
                     let template = lookup_template(word);
@@ -76,7 +103,11 @@ fn main() {
                     {
                         g
                     } else {
-                        extract_glossword(block).unwrap_or(word)
+                        entry
+                            .gloss_keywords
+                            .first()
+                            .map(|k| k.word.as_str())
+                            .unwrap_or(word)
                     };
                     let escaped_gloss = escape_str(gloss);
                     let value = format!(
@@ -90,7 +121,7 @@ fn main() {
             }
         }
     } else {
-        println!("cargo:warning=jbovlaste-en.xml not found, using fallback dictionary entries");
+        println!("cargo:warning=dictionary-en.json not found, using fallback dictionary entries");
         for (word, arity, gloss) in FALLBACK_GISMU_ENTRIES {
             let value = format!(
                 "DictEntry {{ arity: Some({}), gloss: \"{}\", template: \"{}\" }}",
@@ -102,10 +133,10 @@ fn main() {
             gismu_count += 1;
         }
         // Tier-1 curated gloss overrides (e.g. bilga->must, curmi->permit) win over
-        // the jbovlaste glossword in the XML branch above; reproduce them here so the
-        // no-XML build exposes the same glosses (the 3-tier chain documented in the
+        // the lensisku gloss keyword in the data branch above; reproduce them here so the
+        // no-data build exposes the same glosses (the 3-tier chain documented in the
         // dictionary). Skip any word the fallback list already provides to avoid a
-        // phf duplicate key; arity mirrors the XML branch's default (CORE or 2).
+        // phf duplicate key; arity is CORE_GISMU_ARITIES here, else the 2 default.
         for (word, gloss) in GISMU_GLOSS_OVERRIDES {
             if FALLBACK_GISMU_ENTRIES.iter().any(|(w, _, _)| w == word) {
                 continue;
@@ -157,35 +188,6 @@ fn main() {
     .unwrap();
 }
 
-/// Extracts an XML attribute value from a block using string scanning.
-fn extract_attribute<'a>(block: &'a str, attr: &str) -> &'a str {
-    if let Some(start) = block.find(attr) {
-        let after_attr = &block[start + attr.len()..];
-        if let Some(end) = after_attr.find('"') {
-            return &after_attr[..end];
-        }
-    }
-    ""
-}
-
-/// Extracts the <definition> text from a valsi block.
-fn extract_definition(block: &str) -> Option<&str> {
-    let start = block.find("<definition>")?;
-    let rest = &block[start + 12..];
-    let end = rest.find("</definition>")?;
-    Some(&rest[..end])
-}
-
-/// Extracts the first <glossword word="..."> value from a valsi block.
-fn extract_glossword<'a>(block: &'a str) -> Option<&'a str> {
-    let attr = "<glossword word=\"";
-    let start = block.find(attr)?;
-    let rest = &block[start + attr.len()..];
-    let end = rest.find('"')?;
-    let gloss = &rest[..end];
-    if gloss.is_empty() { None } else { Some(gloss) }
-}
-
 /// Look up a curated English place-frame template for a gismu/lujvo.
 /// Returns "" when none is curated (the renderer falls back to a generic frame).
 fn lookup_template(word: &str) -> &'static str {
@@ -196,19 +198,10 @@ fn lookup_template(word: &str) -> &'static str {
         .unwrap_or("")
 }
 
-/// Escape a string for embedding in a Rust string literal.
-/// Decodes XML entities first, then escapes for Rust.
+/// Escape a string for embedding in a Rust string literal. The lensisku JSON is already
+/// decoded by serde (no XML entities), so only Rust-literal escaping is needed.
 fn escape_str(s: &str) -> String {
-    // 1. Decode XML entities
-    let decoded = s
-        .replace("&amp;", "&")
-        .replace("&apos;", "'")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"");
-    // 2. Escape for Rust string literal
-    decoded
-        .replace('\\', "\\\\")
+    s.replace('\\', "\\\\")
         .replace('"', "\\\"")
         .replace('\n', "\\n")
         .replace('\r', "\\r")
@@ -262,7 +255,7 @@ const CORE_GISMU_ARITIES: &[(&str, usize)] = &[
     ("crino", 1),
 ];
 
-/// Minimal fallback when the jbovlaste XML export is absent locally.
+/// Minimal fallback when dictionary-en.json is absent locally.
 const FALLBACK_GISMU_ENTRIES: &[(&str, usize, &str)] = &[
     ("klama", 5, "come"),
     ("ctuca", 5, "teach"),
@@ -314,12 +307,12 @@ const FALLBACK_GISMU_ENTRIES: &[(&str, usize, &str)] = &[
     ("dilcu", 3, "divide"),
     ("danlu", 2, "animal"),
     ("jmive", 1, "live"),
-    // GDPR / drug-interaction corpus proxy + regulatory vocabulary. Without the
-    // jbovlaste XML these would vanish from the no-XML build, so `get_template` and
-    // the rendered place-frames silently diverge from the XML build and the render /
+    // GDPR / drug-interaction corpus proxy + regulatory vocabulary. Without
+    // dictionary-en.json these would vanish from the no-data build, so `get_template` and
+    // the rendered place-frames silently diverge from the data build and the render /
     // corpus-proxy / C19 back-translation tests fail only in CI. Arities and glosses
-    // mirror exactly what the XML build derives from jbovlaste (verified against the
-    // generated dictionary), so adding them as tier-2 entries leaves the XML build
+    // mirror exactly what the data build derives from lensisku (verified against the
+    // generated dictionary), so adding them as tier-2 entries leaves the data build
     // unchanged. Templates come from GISMU_PLACE_TEMPLATES via lookup_template.
     ("zanru", 2, "approve"),
     ("pilno", 3, "use"),
@@ -333,10 +326,10 @@ const FALLBACK_GISMU_ENTRIES: &[(&str, usize, &str)] = &[
     ("turni", 2, "govern"),
 ];
 
-/// Curated gloss overrides for gismu where the first jbovlaste glossword
+/// Curated gloss overrides for gismu where the first lensisku gloss keyword
 /// is alphabetically accidental rather than canonical (e.g. gerku's
-/// glosswords are bitch/canine/dog — "dog" is the right back-translation).
-/// Consulted before FALLBACK_GISMU_ENTRIES and extract_glossword.
+/// gloss keywords are bitch/canine/dog — "dog" is the right back-translation).
+/// Consulted before FALLBACK_GISMU_ENTRIES and the lensisku gloss keywords.
 const GISMU_GLOSS_OVERRIDES: &[(&str, &str)] = &[("bilga", "must"), ("curmi", "permit")];
 
 /// Curated English place-frame templates, keyed by gismu/lujvo, using `{x1}`..`{x5}`

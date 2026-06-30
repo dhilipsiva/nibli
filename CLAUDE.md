@@ -34,6 +34,7 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | `just backend` | Start the Python reference compute backend (port 5555) |
 | `just run-with-backend` | Build + run with `NIBLI_COMPUTE_ADDR=127.0.0.1:5555` |
 | `just ui` | Launch the standalone Transparency Triad web UI (Dioxus, port 8080) — engine runs fully in-browser |
+| `just fetch-dict` | Download the lensisku English dictionary to `dictionary-en.json` (needs `LENSISKU_TOKEN`) — see Dictionary Data below |
 | `just clean` | `cargo clean` |
 | `just fuzz-parse [SECS]` | Fuzz gerna parser (requires `cargo +nightly`). Pass seconds to limit run time. |
 | `just fuzz-assert [SECS]` | Fuzz nibli-engine assert_text (full pipeline) |
@@ -47,6 +48,26 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
   - Note: full build fails on `io-extras` crate (`#![feature]` on stable). Bindings still generate successfully before the failure.
 - **REPL uses reedline** — does not work with piped stdin
 - Logji (reasoning) tests require `--test-threads=1` (shared global state via RefCell). The Justfile handles this.
+
+## Dictionary Data
+
+`smuni-dictionary` (arity + English gloss + place-frame for every gismu/lujvo/cmavo) is built
+at compile time by `smuni-dictionary/build.rs`, which parses **`dictionary-en.json`** at the
+repo root — the **lensisku** English bulk export (`lojban/lensisku`,
+`DictionaryEntry`: a JSON array, one canonical entry per word, with `word`, `word_type`,
+`definition` (place structure as `$x_{N}$` markers), and `gloss_keywords`). This replaced the
+legacy reCAPTCHA-gated `jbovlaste-en.xml`.
+
+- The file is **gitignored** and bulk-download needs a login token, so it is NOT in the repo.
+  Get it with **`just fetch-dict`** (`export LENSISKU_TOKEN=<bearer token from lensisku.lojban.org>`)
+  or download `dictionary-en.json` manually and drop it at the repo root.
+- **Without the file** the build falls back to the in-tree `FALLBACK_GISMU_ENTRIES` +
+  gloss/cmavo override tables (~140 curated entries) — this is exactly what CI uses, so CI
+  needs no network/token. With the file you get the full dictionary — 10,907 entries in
+  the current export (1,338 gismu, 8,308 lujvo, 1,261 cmavo).
+- Arity/gloss/template for all curated/corpus/test words come from the in-tree tables
+  *before* the data file is consulted, so those are **identical with or without** the file;
+  only the non-curated long tail differs.
 
 ## Compute Backend
 
