@@ -1967,3 +1967,164 @@ pub(super) fn build_skolem_fn_term(base_name: &str, deps: &[GroundTerm]) -> Grou
     };
     GroundTerm::SkolemFn(base_name.to_string(), Box::new(dep_term))
 }
+
+#[cfg(test)]
+mod stratification_conformance {
+    //! Bridge from the mechanized criterion proof (`proofs/Stratification.lean`) to the real
+    //! Tarjan-based check. `proofs/Stratification.lean` PROVES the criterion — "no negative edge
+    //! whose target reaches back to its source" ⟺ a valid stratification exists. Here we check
+    //! that the production `check_stratification` (which decides that via `compute_sccs`) agrees
+    //! with a naive reachability implementation of the *same* criterion, over a corpus of
+    //! hand-crafted + deterministically-randomized graphs. Honest scope: graphs are unbounded, so
+    //! this is a corpus conformance test (not exhaustive, unlike the finite combiner), and it
+    //! conformance-tests `compute_sccs` rather than proving it.
+
+    use super::*;
+    use std::collections::{BTreeSet, HashSet};
+
+    /// Reachable-set per node (reflexive-transitive closure of the edges, ignoring sign),
+    /// computed by a naive fixpoint — the independent reference for "tgt reaches src".
+    fn reachable_sets(
+        graph: &HashMap<String, Vec<(String, bool)>>,
+    ) -> HashMap<String, HashSet<String>> {
+        let mut nodes: BTreeSet<String> = BTreeSet::new();
+        for (k, edges) in graph {
+            nodes.insert(k.clone());
+            for (d, _) in edges {
+                nodes.insert(d.clone());
+            }
+        }
+        let mut reach: HashMap<String, HashSet<String>> = nodes
+            .iter()
+            .map(|n| (n.clone(), HashSet::from([n.clone()])))
+            .collect();
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for u in &nodes {
+                let Some(edges) = graph.get(u) else { continue };
+                let mut additions: Vec<String> = Vec::new();
+                for (v, _) in edges {
+                    if let Some(rv) = reach.get(v) {
+                        additions.extend(rv.iter().cloned());
+                    }
+                }
+                let ru = reach.get_mut(u).unwrap();
+                for w in additions {
+                    if ru.insert(w) {
+                        changed = true;
+                    }
+                }
+            }
+        }
+        reach
+    }
+
+    /// Naive criterion: stratifiable iff NO negative edge `u → v` has `v` reaching `u`.
+    /// (An edge already gives `u` reaches `v`, so "v reaches u" ⟺ same SCC.) Mirrors the Lean
+    /// `RejectsByCriterion` / `NoNegCycle`.
+    fn stratifiable_naive(graph: &HashMap<String, Vec<(String, bool)>>) -> bool {
+        let reach = reachable_sets(graph);
+        for (u, edges) in graph {
+            for (v, is_neg) in edges {
+                if *is_neg && reach.get(v).is_some_and(|rv| rv.contains(u)) {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    fn graph_of(edges: &[(&str, &str, bool)]) -> HashMap<String, Vec<(String, bool)>> {
+        let mut g: HashMap<String, Vec<(String, bool)>> = HashMap::new();
+        for (u, v, neg) in edges {
+            g.entry(u.to_string())
+                .or_default()
+                .push((v.to_string(), *neg));
+        }
+        g
+    }
+
+    /// Deterministic small pseudo-random graph (LCG seeded by `seed`); used for differential
+    /// coverage beyond the hand-crafted cases — includes self-loops, cycles, and negative cycles.
+    fn pseudo_random_graph(seed: u64, num_nodes: usize) -> HashMap<String, Vec<(String, bool)>> {
+        let mut state = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        let mut next = || {
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            state >> 33
+        };
+        let names: Vec<String> = (0..num_nodes).map(|i| format!("p{i}")).collect();
+        let mut g: HashMap<String, Vec<(String, bool)>> = HashMap::new();
+        for u in 0..num_nodes {
+            for v in 0..num_nodes {
+                if next() % 5 < 2 {
+                    let is_neg = next() % 2 == 0;
+                    g.entry(names[u].clone())
+                        .or_default()
+                        .push((names[v].clone(), is_neg));
+                }
+            }
+        }
+        g
+    }
+
+    /// The real Tarjan-based `check_stratification` must agree with the naive criterion
+    /// (proven correct in `proofs/Stratification.lean`) on every corpus graph.
+    #[test]
+    fn check_stratification_matches_proven_criterion() {
+        let mut corpus: Vec<(String, HashMap<String, Vec<(String, bool)>>)> = vec![
+            ("empty".into(), graph_of(&[])),
+            ("neg_self_loop".into(), graph_of(&[("a", "a", true)])),
+            ("pos_self_loop".into(), graph_of(&[("a", "a", false)])),
+            (
+                "positive_cycle".into(),
+                graph_of(&[("a", "b", false), ("b", "c", false), ("c", "a", false)]),
+            ),
+            (
+                "neg_cycle".into(),
+                graph_of(&[("a", "b", true), ("b", "c", true), ("c", "b", false)]),
+            ),
+            (
+                "stratified_with_negation".into(),
+                graph_of(&[("a", "b", true), ("b", "c", false)]),
+            ),
+            (
+                "neg_edge_into_cycle_ok".into(),
+                // a negative edge feeding INTO a positive cycle (but not inside it) is fine.
+                graph_of(&[("x", "a", true), ("a", "b", false), ("b", "a", false)]),
+            ),
+            (
+                "dag".into(),
+                graph_of(&[("a", "b", true), ("a", "c", false), ("b", "d", true)]),
+            ),
+        ];
+        // Deterministic randomized small graphs for differential coverage.
+        for seed in 0u64..300 {
+            let num_nodes = 2 + (seed as usize % 4); // 2..=5 nodes
+            corpus.push((
+                format!("rand_seed{seed}_n{num_nodes}"),
+                pseudo_random_graph(seed, num_nodes),
+            ));
+        }
+
+        let mut checked = 0usize;
+        for (name, g) in &corpus {
+            let check_ok = check_stratification(g).is_ok();
+            let naive_ok = stratifiable_naive(g);
+            assert_eq!(
+                check_ok, naive_ok,
+                "check_stratification disagreed with the proven criterion on '{name}': \
+                 check_ok={check_ok}, naive_ok={naive_ok}, graph={g:?}"
+            );
+            checked += 1;
+        }
+        assert!(
+            checked >= 300,
+            "corpus too small ({checked}); gate near-vacuous"
+        );
+    }
+}

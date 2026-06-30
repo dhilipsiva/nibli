@@ -74,13 +74,22 @@ into phases.
     RE-precedence and negation laws. Bridged to the real Rust by the exhaustive
     `exhaustive_soundness_matches_lean_model` conformance test in `logji` — for the finite
     combiner, model proof + exhaustive conformance = a complete guarantee. Gated in CI via
-    `just verify-proofs`. **Remaining** (roughly tractability order): the NAF stratification
-    check (Tarjan SCC, `logji/src/rules.rs:647`), the one-directional unifier
-    (`logji/src/kb.rs:326`), rule firing, and the headline theorem — a recorded proof trace ⇒
-    the conclusion holds in the stratified/perfect model. Scope to the core, not the parser.
+    `just verify-proofs`. **Phase 2 — the NAF stratification criterion: DONE.**
+    `proofs/Stratification.lean` proves the dependency-graph condition the engine checks
+    ("no negative edge with both endpoints in one SCC") is equivalent to the existence of a
+    valid stratification (level function) — so the check accepts ⇒ genuinely stratifiable
+    (soundness) and never wrongly rejects a stratifiable program (completeness). Mathlib-free
+    (`level = |reachable set|`). Bridged to the real Tarjan-based `check_stratification` by the
+    `check_stratification_matches_proven_criterion` corpus conformance test (hand-crafted +
+    randomized graphs; corpus, not exhaustive — graphs are unbounded). **Remaining** (roughly
+    tractability order): verifying Tarjan `compute_sccs` itself (currently only
+    conformance-tested), the one-directional unifier (`logji/src/kb.rs:326`), rule firing, and
+    the headline theorem — a recorded proof trace ⇒ the conclusion holds in the stratified/perfect
+    model. Scope to the core, not the parser.
   - **Milestone order:** Track-A Horn-fragment differential gate ✓ DONE; Track-B combiner
-    proof ✓ DONE. Next: Track-A fuzz/corpus expansion + the ASP oracle for NAF (Phase 2), and
-    the Track-B stratification / unifier / rule-firing proofs.
+    proof ✓ DONE; Track-B stratification-criterion proof ✓ DONE. Next: Track-A fuzz/corpus
+    expansion + the ASP oracle for NAF (Phase 2), and the Track-B `compute_sccs` / unifier /
+    rule-firing proofs.
 
 - [ ] 🧪 **Close the flat-vs-surface test gap so the unit layer can't lie.** logji's flat test
   helpers (`logji/src/tests.rs`: `make_query` / `make_numeric_query` / `make_compute_query` /

@@ -449,7 +449,8 @@ verify-soundness:
 # `exhaustive_soundness_matches_lean_model` test in `cargo test -p logji`).
 verify-proofs:
     @if command -v lean >/dev/null 2>&1; then \
-        lean proofs/Combiner.lean && echo "verify-proofs: proofs/Combiner.lean checks (combiner soundness mechanized)"; \
+        for f in proofs/*.lean; do echo "checking $f"; lean "$f" || exit 1; done; \
+        echo "verify-proofs: all proofs/*.lean check (mechanized soundness)"; \
     else \
         echo "verify-proofs: lean not found (the Nix dev shell provides it) — skipping"; \
     fi
