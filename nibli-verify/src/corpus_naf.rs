@@ -127,4 +127,27 @@ pub const NAF_CASES: &[Case] = &[
         query: "la .adam. cu melbi",
         expect: Expect::False,
     },
+    // ── The REAL GDPR erasure rule (deontic head + `lo nu` abstraction): a person who has not
+    // consented is obligated to be erased. `se bilga` is a plain gismu; the `lo nu se vimcu`
+    // abstraction is modeled as an opaque constant keyed by its content hash, so the head +
+    // query resolve to the same obligation atom. This is `gdpr.lojban:101`. ──
+    Case {
+        name: "gdpr_erasure_no_consent",
+        kb: &[
+            "ro lo prenu poi na zanru cu se bilga lo nu se vimcu",
+            "la .adam. cu prenu",
+        ],
+        query: "la .adam. cu se bilga lo nu se vimcu",
+        expect: Expect::True,
+    },
+    Case {
+        name: "gdpr_erasure_with_consent",
+        kb: &[
+            "ro lo prenu poi na zanru cu se bilga lo nu se vimcu",
+            "la .adam. cu prenu",
+            "la .adam. cu zanru",
+        ],
+        query: "la .adam. cu se bilga lo nu se vimcu",
+        expect: Expect::False,
+    },
 ];

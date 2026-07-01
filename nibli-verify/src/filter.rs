@@ -44,25 +44,29 @@ pub fn buffer_non_classical(buf: &LogicBuffer) -> Option<&'static str> {
 }
 
 /// `Some(reason)` if the buffer is outside the **ASP-mappable** (stratified-NAF +
-/// closed-world) fragment. Unlike [`buffer_non_classical`], negation-as-failure (`NotNode`)
-/// is ACCEPTED — it is the whole point of the clingo oracle. The same non-classical node
-/// kinds (compute / tense / deontic / exact-count / abstraction) are still rejected, plus
-/// `du` equality, which is not event-decomposed and would need explicit congruence rules to
-/// model soundly in ASP (out of the first-slice scope).
+/// closed-world) fragment. Two differences from `buffer_non_classical`: negation-as-failure
+/// (`NotNode`) is ACCEPTED (the whole point of the clingo oracle), and `__abs_` ABSTRACTIONS
+/// (`lo nu`/`lo du'u`/…) are ACCEPTED — the translator models an abstraction as an opaque constant
+/// keyed by its content hash (`asp::abs_const_of`), so a deontic-NAF rule like GDPR's
+/// `ro lo prenu poi na zanru cu se bilga lo nu se vimcu` maps. The other non-classical node kinds
+/// (compute / tense / deontic modal / exact-count) are still rejected, plus `du` equality (not
+/// event-decomposed; would need explicit congruence rules).
 ///
-/// Kept a named function (not a re-export of `buffer_non_classical`) so its contract is
-/// documented at the call site and can diverge later (e.g. admitting `CountNode` via clingo
-/// cardinality constraints).
+/// (`se bilga` / `se curmi` compile to the PLAIN gismu `bilga`/`curmi`, not a deontic modal node,
+/// so the deontic reading rides for free once the abstraction in the head is mapped.)
 pub fn buffer_asp_mappable(buf: &LogicBuffer) -> Option<&'static str> {
-    if let Some(reason) = buffer_non_classical(buf) {
-        return Some(reason);
-    }
     for node in &buf.nodes {
-        if let LogicNode::Predicate((rel, _)) = node {
-            if rel == "du" {
-                return Some("equality");
+        let reason = match node {
+            LogicNode::ComputeNode(_) => "compute predicate",
+            LogicNode::PastNode(_) | LogicNode::PresentNode(_) | LogicNode::FutureNode(_) => {
+                "tense"
             }
-        }
+            LogicNode::ObligatoryNode(_) | LogicNode::PermittedNode(_) => "deontic",
+            LogicNode::CountNode(_) => "exact-count quantifier",
+            LogicNode::Predicate((rel, _)) if rel == "du" => "equality",
+            _ => continue,
+        };
+        return Some(reason);
     }
     None
 }
@@ -139,5 +143,17 @@ mod tests {
             roots: vec![0],
         };
         assert_eq!(buffer_asp_mappable(&compute), Some("compute predicate"));
+
+        // Abstractions (`lo nu` → `__abs_`) are ACCEPTED by the ASP filter (modeled as opaque
+        // constants) though still rejected by the classical one.
+        let abs = LogicBuffer {
+            nodes: vec![LogicNode::Predicate((
+                "__abs_ab12".into(),
+                vec![LogicalTerm::Variable("v".into())],
+            ))],
+            roots: vec![0],
+        };
+        assert_eq!(buffer_non_classical(&abs), Some("abstraction"));
+        assert_eq!(buffer_asp_mappable(&abs), None);
     }
 }

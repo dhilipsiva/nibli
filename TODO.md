@@ -81,12 +81,15 @@ into phases.
     membership in clingo's unique stable model = nibli's closed-world verdict (sound because a
     stratified program's perfect model = its unique answer set, per `proofs/Stratification.lean`;
     and nibli rejects unstratified KBs at assert time, so only unique-model programs reach
-    clingo). Gated in CI via `just verify-soundness`: a curated NAF corpus (`corpus_naf.rs`, 11/11
-    agree) + random stratified-NAF programs (`generator::random_naf_case`, stratified by
-    construction; `NIBLI_VERIFY_NAF_RANDOM_COUNT`, default 100; 95/100 checked, 0 diverge). Needs
-    `clingo` (Nix shell; skips if absent). **Remaining:** deontic-headed NAF (the real
-    `gdpr.lojban:101` erasure rule) and `du`-equality are conservatively skipped — a later slice
-    could model deontic heads as plain ASP atoms.
+    clingo). Gated in CI via `just verify-soundness`: a curated NAF corpus (`corpus_naf.rs`, 13/13
+    agree — including the real `gdpr.lojban:101` deontic-NAF erasure rule) + random stratified-NAF
+    programs (`generator::random_naf_case`, stratified by construction; `NIBLI_VERIFY_NAF_RANDOM_COUNT`,
+    default 100; 95/100 checked, 0 diverge). Needs `clingo` (Nix shell; skips if absent).
+    **Deontic-NAF coverage DONE:** `se bilga`/`se curmi` compile to plain gismu (no modal node), and
+    the `lo nu` abstraction in the head is modeled as an opaque constant keyed by its `__abs_<hash>`
+    content marker (`asp::abs_const_of` — the same hash resolves the head and the query to the same
+    obligation atom), so `ro lo prenu poi na zanru cu se bilga lo nu se vimcu` now maps. **Remaining:**
+    only `du`-equality is conservatively skipped (would need explicit congruence rules).
   - **Track B — mechanized proof (long-term).** **Phase 1 — the four-valued combiner: DONE**
     (Lean 4 chosen as the assistant). `proofs/Combiner.lean` proves the verdict combiner's
     soundness algebra — conjunction/disjunction/negation never fabricate a definitive verdict
@@ -133,15 +136,16 @@ into phases.
     `cert_sound` proves `Pos → M` (TRUE trace ⇒ conclusion in the model, composing `ruleClosed`) and
     `Neg → ¬M` (closed-world FALSE ⇒ not in the model — no fabrication), with `qproof_sound` lifting
     it to compound queries through the connective algebra. Bridged by the `trace_soundness_conformance`
-    validator (every recorded trace is a structurally valid certificate). **Remaining:** none —
-    optionally, deontic-NAF coverage in the ASP oracle, a source-text-to-model end-to-end pipeline,
-    and the non-core `ProofRule` variants are natural extensions, not core soundness.
+    validator (every recorded trace is a structurally valid certificate). **Remaining:** none — a
+    source-text-to-model end-to-end pipeline and the non-core `ProofRule` variants are natural
+    extensions, not core soundness.
   - **Milestone order:** Track-A Horn-fragment differential gate ✓ DONE; Track-A random-corpus
     coverage ✓ DONE; Track-A gdpr/ddi mappable-slice coverage ✓ DONE; Track-A Phase 2 ASP/clingo
     stratified-NAF oracle ✓ DONE; Track-B combiner proof ✓ DONE; Track-B stratification-criterion
     proof ✓ DONE; Track-B SCC-decomposition proof ✓ DONE; Track-B unifier proof ✓ DONE; Track-B
     rule-firing proof ✓ DONE; Track-B capstone trace ⇒ perfect-model theorem ✓ DONE (**Track B
-    complete**). Optional follow-ups only: deontic-NAF coverage in the ASP oracle.
+    complete**); Track-A ASP deontic-NAF (abstraction) coverage ✓ DONE. The soundness-by-proof
+    frontier (both differential gates + all six mechanized proofs) is closed.
 
 - [ ] 🚪 **Demonstrate the authoring problem is tractable for a non-Lojbanist.** The engine is
   sound + transparent, but knowledge-in requires writing Lojban (or the BYO-key LLM Translate).

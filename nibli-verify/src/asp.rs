@@ -243,8 +243,35 @@ fn regroup_event(buf: &LogicBuffer, id: u32, vars: &mut VarMap) -> Result<Surfac
     match node_at(buf, id)? {
         LogicNode::Predicate((rel, args)) => Ok(SurfaceAtom {
             rel: sanitize(rel),
-            args: args.iter().map(|t| term(t, vars)).collect(),
+            args: args.iter().map(|t| term(buf, t, vars)).collect(),
         }),
+        // An abstraction wrapper `∃absvar. (nu(absvar) ∧ __abs_<hash>(absvar) ∧ <content> ∧
+        // <atom that USES absvar>)`. nibli treats `lo nu P` as an opaque referent (matched by the
+        // `__abs_<hash>` marker, never by its content), so keep only the atom that uses the referent
+        // — the referent itself is the opaque constant (see `term`/`abs_const_of`) — and drop the
+        // abstraction's inert typing markers and inner content.
+        LogicNode::ExistsNode((ev, body)) if abs_const_of(buf, ev).is_some() => {
+            let mut using: Vec<u32> = Vec::new();
+            for c in flatten_and(buf, *body)? {
+                // Skip a bare abstraction-typing marker (`nu(absvar)` / `__abs_<hash>(absvar)`).
+                if let LogicNode::Predicate((_, cargs)) = node_at(buf, c)? {
+                    if cargs.len() == 1 && is_var(&cargs[0], ev) {
+                        continue;
+                    }
+                }
+                if references_var(buf, c, ev) {
+                    using.push(c); // the atom that fills a role with the referent
+                }
+                // else: the abstraction's own inner content — inert, dropped.
+            }
+            match using.as_slice() {
+                [one] => regroup_event(buf, *one, vars),
+                _ => Err(format!(
+                    "abstraction referent {ev} is used by {} atoms (expected exactly one)",
+                    using.len()
+                )),
+            }
+        }
         LogicNode::ExistsNode((ev, body)) => {
             let mut type_pred: Option<String> = None;
             let mut roles: BTreeMap<usize, AspTerm> = BTreeMap::new();
@@ -262,7 +289,7 @@ fn regroup_event(buf: &LogicBuffer, id: u32, vars: &mut VarMap) -> Result<Surfac
                 } else if cargs.len() == 2 && is_var(&cargs[0], ev) {
                     // Role predicate `type_xk(ev, arg)`.
                     let k = parse_role_slot(rel)?;
-                    roles.insert(k, term(&cargs[1], vars));
+                    roles.insert(k, term(buf, &cargs[1], vars));
                 } else {
                     return Err(format!("unrecognized conjunct shape in event group: {rel}"));
                 }
@@ -323,9 +350,16 @@ fn check_safety(head: &SurfaceAtom, body: &[BodyLit]) -> Result<(), String> {
     Ok(())
 }
 
-fn term(t: &LogicalTerm, vars: &mut VarMap) -> AspTerm {
+fn term(buf: &LogicBuffer, t: &LogicalTerm, vars: &mut VarMap) -> AspTerm {
     match t {
-        LogicalTerm::Variable(v) => AspTerm::Var(vars.bind(v)),
+        // An abstraction referent (`lo nu P`) is an OPAQUE individual named by its content hash —
+        // nibli matches abstractions by the `__abs_<hash>` marker, never by re-deriving content, so
+        // both the rule head and the query resolve the same `lo nu` to the same constant. Map the
+        // variable to that constant (a stable opaque id) rather than a fresh clingo variable.
+        LogicalTerm::Variable(v) => match abs_const_of(buf, v) {
+            Some(c) => AspTerm::Const(c),
+            None => AspTerm::Var(vars.bind(v)),
+        },
         LogicalTerm::Constant(c) => AspTerm::Const(sanitize(c)),
         LogicalTerm::Description(d) => AspTerm::Const(sanitize(&format!("le_{d}"))),
         // Numbers belong to the compute fragment (filtered out); render defensively.
@@ -334,6 +368,35 @@ fn term(t: &LogicalTerm, vars: &mut VarMap) -> AspTerm {
         // `tptp.rs`. A role filled with a specific constant must NOT satisfy a `zoe` query
         // (the existential-vs-rigid distinction the tptp fix established).
         LogicalTerm::Unspecified => AspTerm::Const("zoe".to_string()),
+    }
+}
+
+/// If `var` is an abstraction referent (some `__abs_<hash>(var)` marker exists in the buffer),
+/// return the opaque constant naming it (the sanitized `__abs_<hash>`). Both the rule head and the
+/// query share the SAME hash for the same `lo nu` content, so this constant matches across them.
+fn abs_const_of(buf: &LogicBuffer, var: &str) -> Option<String> {
+    for node in &buf.nodes {
+        if let LogicNode::Predicate((rel, args)) = node {
+            if rel.starts_with("__abs_") && args.len() == 1 && is_var(&args[0], var) {
+                return Some(sanitize(rel));
+            }
+        }
+    }
+    None
+}
+
+/// Whether `var` appears as an argument anywhere in the sub-tree rooted at `id`.
+fn references_var(buf: &LogicBuffer, id: u32, var: &str) -> bool {
+    match node_at(buf, id) {
+        Ok(LogicNode::Predicate((_, args))) => args.iter().any(|t| is_var(t, var)),
+        Ok(LogicNode::AndNode((l, r))) | Ok(LogicNode::OrNode((l, r))) => {
+            references_var(buf, *l, var) || references_var(buf, *r, var)
+        }
+        Ok(LogicNode::NotNode(x)) => references_var(buf, *x, var),
+        Ok(LogicNode::ExistsNode((_, b))) | Ok(LogicNode::ForAllNode((_, b))) => {
+            references_var(buf, *b, var)
+        }
+        _ => false,
     }
 }
 
@@ -476,6 +539,21 @@ mod tests {
         let out = render_program(&[], &q).unwrap();
         assert!(out.contains("goal :- prenu(adam)."), "{out}");
         assert!(out.contains("#show goal/0."), "{out}");
+    }
+
+    #[test]
+    fn abstraction_referent_is_opaque_constant() {
+        // ∃absv. ( __abs_H(absv) ∧ ∃ev. bilga(ev) ∧ bilga_x1(ev, absv) )  →  bilga(c___abs_H).
+        // The `lo nu` abstraction referent is modeled as an opaque constant keyed by its content
+        // hash; the typing marker + inert content are dropped, keeping only the atom that uses it.
+        let mut n = Vec::new();
+        let marker = pred(&mut n, "__abs_H", vec![var("_absv")]);
+        let ev = event1(&mut n, "_ev", "bilga", var("_absv"));
+        let body = and(&mut n, marker, ev);
+        let root = exists(&mut n, "_absv", body);
+        let q = buf(n, vec![root]);
+        let out = render_program(&[], &q).unwrap();
+        assert!(out.contains("goal :- bilga(c___abs_H)."), "{out}");
     }
 
     #[test]
