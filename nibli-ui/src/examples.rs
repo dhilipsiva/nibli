@@ -84,15 +84,15 @@ pub const EXAMPLES: &[Example] = &[
         lojban: SYLLOGISM_LOJBAN,
         queries: &[
             ExampleQuery {
-                label: "does Adam eat? — a 2-hop proof",
+                label: "does Adam eat?—a 2-hop proof",
                 lojban: "la .adam. cu citka",
             },
             ExampleQuery {
-                label: "is Adam an animal? — 1 hop",
+                label: "is Adam an animal?—1 hop",
                 lojban: "la .adam. cu danlu",
             },
             ExampleQuery {
-                label: "is Adam a bird? — a real FALSE",
+                label: "is Adam a bird?—a real FALSE",
                 lojban: "la .adam. cu cipni",
             },
         ],
@@ -112,7 +112,7 @@ pub const EXAMPLES: &[Example] = &[
                 lojban: "la .adam. na se curmi",
             },
             ExampleQuery {
-                label: "a controller is not a consenting person — exhaustive FALSE",
+                label: "a controller is not a consenting person—exhaustive FALSE",
                 lojban: "la .gugli. cu se curmi",
             },
             ExampleQuery {
@@ -136,11 +136,11 @@ pub const EXAMPLES: &[Example] = &[
                 lojban: "la .varfarin. cu ckape",
             },
             ExampleQuery {
-                label: "safety alert? — a 3-hop proof",
+                label: "safety alert?—a 3-hop proof",
                 lojban: "la .varfarin. cu kajde",
             },
             ExampleQuery {
-                label: "negative control — no alert",
+                label: "negative control—no alert",
                 lojban: "la .apiksaban. cu kajde",
             },
         ],
