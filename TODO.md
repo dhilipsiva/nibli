@@ -61,12 +61,15 @@ into phases.
     definitive-verdict / non-NAF check) keeps only the negation-free definite-Horn fragment,
     where nibli-True ⟺ Vampire `Theorem` and nibli-False ⟺ `CounterSatisfiable` both hold. 14/14
     curated cases agree; an anti-vacuity check (negated conjecture) confirms the gate detects
-    divergence and is not passing by skipping. **Remaining:** (a) feed the
-    `fuzz-assert`/`fuzz-query` generators + property-based gen so the corpus is large/random,
-    not just curated; (b) map the mappable sub-slice of the `gdpr`/`ddi` corpora; (c) **Phase 2**
-    — extend the oracle to an ASP/Datalog solver (clingo / DLV) for the stratified-NAF +
-    closed-domain fragment, where perfect/stable-model semantics matches (the semantics gap a
-    classical open-world prover cannot cover).
+    divergence and is not passing by skipping. **Random-corpus coverage DONE:** a deterministic
+    property-based generator (`nibli-verify/src/generator.rs`) builds random NAF-free
+    definite-Horn programs (facts + `ro lo P cu Q` taxonomy rules + an atomic query over the
+    fallback vocabulary); the CI gate runs a seeded batch (`NIBLI_VERIFY_RANDOM_COUNT`, default
+    200) and asserts nibli agrees with Vampire on every mappable case (200/200 agree). **Remaining:**
+    (b) map the mappable sub-slice of the `gdpr`/`ddi` corpora; (c) **Phase 2** — extend the
+    oracle to an ASP/Datalog solver (clingo / DLV) for the stratified-NAF + closed-domain
+    fragment, where perfect/stable-model semantics matches (the semantics gap a classical
+    open-world prover cannot cover).
   - **Track B — mechanized proof (long-term).** **Phase 1 — the four-valued combiner: DONE**
     (Lean 4 chosen as the assistant). `proofs/Combiner.lean` proves the verdict combiner's
     soundness algebra — conjunction/disjunction/negation never fabricate a definitive verdict
@@ -86,10 +89,10 @@ into phases.
     conformance-tested), the one-directional unifier (`logji/src/kb.rs:326`), rule firing, and
     the headline theorem — a recorded proof trace ⇒ the conclusion holds in the stratified/perfect
     model. Scope to the core, not the parser.
-  - **Milestone order:** Track-A Horn-fragment differential gate ✓ DONE; Track-B combiner
-    proof ✓ DONE; Track-B stratification-criterion proof ✓ DONE. Next: Track-A fuzz/corpus
-    expansion + the ASP oracle for NAF (Phase 2), and the Track-B `compute_sccs` / unifier /
-    rule-firing proofs.
+  - **Milestone order:** Track-A Horn-fragment differential gate ✓ DONE; Track-A random-corpus
+    coverage ✓ DONE; Track-B combiner proof ✓ DONE; Track-B stratification-criterion proof ✓ DONE.
+    Next: Track-A gdpr/ddi mapping + the ASP oracle for NAF (Phase 2), and the Track-B
+    `compute_sccs` / unifier / rule-firing proofs.
 
 - [ ] 🚪 **Demonstrate the authoring problem is tractable for a non-Lojbanist.** The engine is
   sound + transparent, but knowledge-in requires writing Lojban (or the BYO-key LLM Translate).

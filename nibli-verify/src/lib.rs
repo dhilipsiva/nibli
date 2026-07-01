@@ -14,6 +14,7 @@
 
 pub mod corpus;
 pub mod filter;
+pub mod generator;
 pub mod oracle;
 pub mod tptp;
 
@@ -133,15 +134,22 @@ fn entail_word(e: bool) -> &'static str {
     if e { "entailed" } else { "not-entailed" }
 }
 
-/// Run a single case end-to-end (filter → nibli → translate → oracle → compare).
-/// Resets the engine first, so cases are independent.
-pub fn run_case(engine: &NibliEngine, case: &Case, cfg: &OracleConfig) -> Outcome {
-    let name = case.name.to_string();
+/// Run a single `(name, kb, query)` end-to-end (filter → nibli → translate → oracle →
+/// compare). Resets the engine first, so cases are independent. Shared by the curated
+/// `run_case` and the generated `run_random`.
+pub fn run_lines(
+    engine: &NibliEngine,
+    name: &str,
+    kb: &[&str],
+    query: &str,
+    cfg: &OracleConfig,
+) -> Outcome {
+    let name = name.to_string();
     engine.reset();
 
     // 1. Source-level negation pre-filter (KB + query). A rule's implication arrow and
     //    a genuine `na` both flatten to `Not`, so genuine negation is caught here.
-    for line in case.kb.iter().chain(std::iter::once(&case.query)) {
+    for line in kb.iter().chain(std::iter::once(&query)) {
         if filter::source_has_negation(line) {
             return Outcome::SkipNonMappable {
                 name,
@@ -151,8 +159,8 @@ pub fn run_case(engine: &NibliEngine, case: &Case, cfg: &OracleConfig) -> Outcom
     }
 
     // 2. Assert the KB, capturing each statement's compiled buffer for translation.
-    let mut kb_buffers = Vec::with_capacity(case.kb.len());
-    for line in case.kb {
+    let mut kb_buffers = Vec::with_capacity(kb.len());
+    for line in kb {
         if let Err(e) = engine.assert_text(line) {
             return Outcome::Error {
                 name,
@@ -169,12 +177,12 @@ pub fn run_case(engine: &NibliEngine, case: &Case, cfg: &OracleConfig) -> Outcom
             }
         }
     }
-    let query_buf = match engine.compile_debug(case.query) {
+    let query_buf = match engine.compile_debug(query) {
         Ok(b) => b,
         Err(e) => {
             return Outcome::Error {
                 name,
-                error: format!("compile query '{}': {e}", case.query),
+                error: format!("compile query '{}': {e}", query),
             };
         }
     };
@@ -190,12 +198,12 @@ pub fn run_case(engine: &NibliEngine, case: &Case, cfg: &OracleConfig) -> Outcom
     }
 
     // 4. nibli's verdict + proof (the proof tells us if NAF was used).
-    let (verdict, trace) = match engine.query_text_raw_proof(case.query) {
+    let (verdict, trace) = match engine.query_text_raw_proof(query) {
         Ok(x) => x,
         Err(e) => {
             return Outcome::Error {
                 name,
-                error: format!("query '{}': {e}", case.query),
+                error: format!("query '{}': {e}", query),
             };
         }
     };
@@ -288,9 +296,30 @@ impl Report {
     }
 }
 
-/// Run the whole corpus on a fresh engine.
+/// Run a single curated [`Case`].
+pub fn run_case(engine: &NibliEngine, case: &Case, cfg: &OracleConfig) -> Outcome {
+    run_lines(engine, case.name, case.kb, case.query, cfg)
+}
+
+/// Run the whole curated corpus on a fresh engine.
 pub fn run_corpus(cases: &[Case], cfg: &OracleConfig) -> Report {
     let engine = NibliEngine::new();
     let outcomes = cases.iter().map(|c| run_case(&engine, c, cfg)).collect();
+    Report { outcomes }
+}
+
+/// Run `count` deterministically-generated random cases (seeds `base_seed .. base_seed+count`)
+/// through the differential gate on a fresh engine. Each case is a NAF-free definite-Horn
+/// program by construction (see [`generator`]); the filter still skips any that fall outside
+/// the mappable fragment, so this only broadens coverage — it can never mis-judge.
+pub fn run_random(count: u64, base_seed: u64, cfg: &OracleConfig) -> Report {
+    let engine = NibliEngine::new();
+    let outcomes = (0..count)
+        .map(|i| {
+            let case = generator::random_case(base_seed.wrapping_add(i));
+            let kb: Vec<&str> = case.kb.iter().map(String::as_str).collect();
+            run_lines(&engine, &case.name, &kb, &case.query, cfg)
+        })
+        .collect();
     Report { outcomes }
 }
