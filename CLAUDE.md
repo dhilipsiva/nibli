@@ -27,7 +27,7 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | `just test-gasnu` | Run gasnu host unit tests (trap classification, error/verdict formatting, arithmetic) |
 | `just test-all` | Run every test suite (unit + integration + Python) |
 | `just ci` | Fast native CI gate (fmt-check, clippy, all native test suites incl. `test-gasnu` + `verify-soundness` + `verify-proofs`). No WASM build. |
-| `just verify-soundness` | Differential soundness gate (Track A): nibli's verdict must agree with Vampire over the Horn/NAF-free corpus — curated cases + a seeded batch of random Horn programs (`NIBLI_VERIFY_RANDOM_COUNT`, default 200; `nibli-verify --random N` for a manual sweep). Needs `vampire` (Nix shell; skips if absent). Part of `ci`. |
+| `just verify-soundness` | Differential soundness gate (Track A): nibli's verdict must agree with Vampire over the Horn/NAF-free fragment — curated cases, a seeded batch of random Horn programs (`NIBLI_VERIFY_RANDOM_COUNT`, default 200; `nibli-verify --random N` for a manual sweep), and the auto-extracted mappable slice of the `gdpr`/`ddi` corpora. Needs `vampire` (Nix shell; skips if absent). Part of `ci`. |
 | `just verify-proofs` | Mechanized-proof gate (Track B): check the Lean 4 soundness proofs in `proofs/` (needs `lean`, provided by the Nix shell; skips if absent). Part of `ci`. |
 | `just ci-wasm` | WASM behavioral gate: build the lasna component + run the six gasnu smokes (fuel exhaustion, post-trap recovery, go'i, persist-replay, NAF note, `:debug`) |
 | `just ci-all` | Comprehensive pre-push / pre-release gate: `ci` + `ci-wasm` |

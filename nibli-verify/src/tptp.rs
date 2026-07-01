@@ -88,12 +88,6 @@ fn render_node(buf: &LogicBuffer, id: u32, vars: &mut VarMap) -> Result<String, 
 }
 
 fn render_atom(rel: &str, args: &[LogicalTerm], vars: &mut VarMap) -> String {
-    // A `zo'e` (Unspecified) filler carries no information: an atom mentioning one is
-    // an arity-padding role predicate. Drop it to `$true` so it vanishes from the
-    // surrounding conjunction / implication without changing meaning.
-    if args.iter().any(|a| matches!(a, LogicalTerm::Unspecified)) {
-        return "$true".to_string();
-    }
     if args.is_empty() {
         return sanitize_functor(rel);
     }
@@ -108,7 +102,12 @@ fn render_term(t: &LogicalTerm, vars: &mut VarMap) -> String {
         LogicalTerm::Description(d) => sanitize_functor(&format!("le_{d}")),
         // Numbers belong to the compute fragment (filtered out); render defensively.
         LogicalTerm::Number(n) => sanitize_functor(&format!("num_{n}")),
-        // Unreachable: render_atom drops any atom containing an Unspecified arg.
+        // `zo'e` is a single RIGID unspecified referent — one shared constant, NOT an
+        // existential drop-to-`$true`. That matches nibli's closed-world semantics: a role
+        // asserted with a specific filler (`pilno_x2(ev, varfarin)`) does NOT satisfy a query
+        // for the unspecified filler (`pilno_x2(ev, zo'e)`), so `la .adam. cu pilno` is FALSE
+        // even when Adam takes warfarin. (Dropping to `$true` wrongly made it existential and
+        // diverged from nibli on the gdpr/ddi slices.)
         LogicalTerm::Unspecified => "zoe".to_string(),
     }
 }
@@ -179,8 +178,9 @@ mod tests {
     }
 
     #[test]
-    fn unspecified_arg_drops_to_true() {
-        // gerku_x2(ev, zo'e) is arity padding -> $true.
+    fn unspecified_arg_is_rigid_zoe_constant() {
+        // `zo'e` is a rigid unspecified referent, translated to the shared constant `zoe` —
+        // NOT dropped to `$true` (which would wrongly make it existential; see render_term).
         let b = buf(
             vec![LogicNode::Predicate((
                 "gerku_x2".into(),
@@ -189,7 +189,7 @@ mod tests {
             vec![0],
         );
         let out = render_problem(&[], &b).unwrap();
-        assert!(out.contains("conjecture, $true)."), "{out}");
+        assert!(out.contains("conjecture, gerku_x2(V0, zoe))."), "{out}");
     }
 
     #[test]

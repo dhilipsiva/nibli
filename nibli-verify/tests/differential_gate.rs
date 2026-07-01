@@ -3,7 +3,9 @@
 //! If the prover is unavailable the test skips cleanly (so `cargo test` is green in any
 //! environment); inside the Nix dev shell Vampire is present, so it runs for real.
 
-use nibli_verify::{corpus, oracle::OracleConfig, run_corpus, run_random};
+use nibli_verify::{
+    corpora, corpus, oracle::OracleConfig, run_corpus, run_corpus_slice, run_random,
+};
 
 /// The gate must actually compare a meaningful number of cases — otherwise a future
 /// over-eager filter (or a broken oracle) could make it pass by skipping everything.
@@ -101,5 +103,51 @@ fn random_horn_cases_agree_with_vampire() {
         report.checked() as u64 >= count * 3 / 4,
         "only {} of {count} random cases reached the oracle; sweep near-vacuous",
         report.checked()
+    );
+}
+
+/// Real-vocabulary coverage: the mappable Horn/NAF-free sub-slice of each shipped case-study
+/// corpus (`gdpr.lojban`, `drug-interactions.lojban`) must have nibli agree with Vampire on
+/// every atomic query. The filter skips the deontic/NAF lines; the classical remainder — GDPR's
+/// data-category rules, DDI's whole interaction chain — is checked against the oracle.
+#[test]
+fn gdpr_ddi_mappable_slices_agree_with_vampire() {
+    let cfg = OracleConfig::default();
+    if !nibli_verify::oracle::available(&cfg) {
+        eprintln!(
+            "nibli-verify corpora gate SKIPPED: prover '{}' unavailable.",
+            cfg.binary
+        );
+        return;
+    }
+
+    let mut total_checked = 0usize;
+    let mut all_div: Vec<String> = Vec::new();
+    let mut all_err: Vec<String> = Vec::new();
+    for (label, corpus) in [("gdpr", corpora::GDPR), ("ddi", corpora::DDI)] {
+        let report = run_corpus_slice(label, corpus, &cfg);
+        let (agree, diverge, skip, error) = report.tally();
+        eprintln!(
+            "nibli-verify {label} slice: {agree} agree / {diverge} diverge / {skip} skip /              {error} error ({} checked)",
+            report.checked()
+        );
+        total_checked += report.checked();
+        all_div.extend(report.divergences().iter().map(|o| o.summary()));
+        all_err.extend(report.errors().iter().map(|o| o.summary()));
+    }
+
+    assert!(
+        all_err.is_empty(),
+        "harness errors on corpora slices:\n{}",
+        all_err.join("\n")
+    );
+    assert!(
+        all_div.is_empty(),
+        "soundness divergences on gdpr/ddi mappable slices (nibli disagreed with Vampire):\n{}",
+        all_div.join("\n")
+    );
+    assert!(
+        total_checked >= 20,
+        "only {total_checked} corpora-slice cases reached the oracle; gate near-vacuous"
     );
 }

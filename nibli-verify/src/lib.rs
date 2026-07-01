@@ -12,6 +12,7 @@
 //! stratified-NAF + closed-domain fragment (an ASP/Datalog oracle) and mechanized proof
 //! are later, separate items.
 
+pub mod corpora;
 pub mod corpus;
 pub mod filter;
 pub mod generator;
@@ -305,6 +306,84 @@ pub fn run_case(engine: &NibliEngine, case: &Case, cfg: &OracleConfig) -> Outcom
 pub fn run_corpus(cases: &[Case], cfg: &OracleConfig) -> Report {
     let engine = NibliEngine::new();
     let outcomes = cases.iter().map(|c| run_case(&engine, c, cfg)).collect();
+    Report { outcomes }
+}
+
+/// Run the **mappable sub-slice** of a case-study corpus through the differential gate: filter
+/// the corpus to its classical Horn/NAF-free lines (the gate's own filter decides — no
+/// hand-picked list), mine the entities and type-predicates from the compiled buffers, and check
+/// every atomic `la .E. cu P` query against Vampire. Real case-study vocabulary; the deontic/NAF
+/// lines are skipped (they need the Track A (c) ASP oracle), never mis-judged.
+pub fn run_corpus_slice(label: &str, corpus: &str, cfg: &OracleConfig) -> Report {
+    use nibli_types::logic::{LogicNode, LogicalTerm};
+    use std::collections::BTreeSet;
+
+    let engine = NibliEngine::new();
+
+    // 1. Keep the mappable lines; mine entities (constants) + candidate type-predicates.
+    let mut kb_lines: Vec<String> = Vec::new();
+    let mut entities: BTreeSet<String> = BTreeSet::new();
+    let mut preds: BTreeSet<String> = BTreeSet::new();
+    for line in corpora::lines(corpus) {
+        if filter::source_has_negation(line) {
+            continue;
+        }
+        let buf = match engine.compile_debug(line) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        if filter::buffer_non_classical(&buf).is_some() {
+            continue;
+        }
+        kb_lines.push(line.to_string());
+        for node in &buf.nodes {
+            if let LogicNode::Predicate((rel, args)) = node {
+                // A type predicate is the event-typing atom `rel(ev)`; role predicates are
+                // `rel_xN(ev, arg)`, and `du` stays flat (not a type predicate).
+                if args.len() == 1
+                    && matches!(args[0], LogicalTerm::Variable(_))
+                    && !rel.contains("_x")
+                    && rel != "du"
+                {
+                    preds.insert(rel.clone());
+                }
+                for a in args {
+                    if let LogicalTerm::Constant(c) = a {
+                        entities.insert(c.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Keep only predicates that form a parseable, mappable atomic query (drops any
+    //    tanru-derived compound name cleanly — it won't compile as a bare selbri).
+    let queryable: Vec<String> = preds
+        .into_iter()
+        .filter(|p| {
+            let q = format!("la .adam. cu {p}");
+            engine
+                .compile_debug(&q)
+                .map(|b| filter::buffer_non_classical(&b).is_none())
+                .unwrap_or(false)
+        })
+        .collect();
+
+    // 3. Enumerate atomic queries entity × predicate through the gate.
+    let kb_refs: Vec<&str> = kb_lines.iter().map(String::as_str).collect();
+    let mut outcomes = Vec::new();
+    for e in &entities {
+        for p in &queryable {
+            let query = format!("la .{e}. cu {p}");
+            outcomes.push(run_lines(
+                &engine,
+                &format!("{label}:{e}:{p}"),
+                &kb_refs,
+                &query,
+                cfg,
+            ));
+        }
+    }
     Report { outcomes }
 }
 

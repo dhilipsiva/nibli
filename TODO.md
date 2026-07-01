@@ -65,11 +65,17 @@ into phases.
     property-based generator (`nibli-verify/src/generator.rs`) builds random NAF-free
     definite-Horn programs (facts + `ro lo P cu Q` taxonomy rules + an atomic query over the
     fallback vocabulary); the CI gate runs a seeded batch (`NIBLI_VERIFY_RANDOM_COUNT`, default
-    200) and asserts nibli agrees with Vampire on every mappable case (200/200 agree). **Remaining:**
-    (b) map the mappable sub-slice of the `gdpr`/`ddi` corpora; (c) **Phase 2** — extend the
-    oracle to an ASP/Datalog solver (clingo / DLV) for the stratified-NAF + closed-domain
-    fragment, where perfect/stable-model semantics matches (the semantics gap a classical
-    open-world prover cannot cover).
+    200) and asserts nibli agrees with Vampire on every mappable case (200/200 agree).
+    **gdpr/ddi mappable-slice coverage DONE:** `run_corpus_slice` (`nibli-verify/src/corpora.rs`
+    + lib) auto-extracts the classical Horn/NAF-free sub-slice of `gdpr.lojban` /
+    `drug-interactions.lojban` (the filter decides — deontic/NAF lines skipped), mines the
+    entities + type-predicates, and checks every atomic `la .E. cu P` query vs Vampire (gdpr
+    50/50, ddi 56/56 agree). This caught + fixed a real translator bug — `zo'e` was dropped to
+    `$true` (existential) instead of a rigid `zoe` constant, diverging from nibli on
+    specified-vs-unspecified fillers. **Remaining:** (c) **Phase 2** — extend the oracle to an
+    ASP/Datalog solver (clingo / DLV) for the stratified-NAF + closed-domain fragment, where
+    perfect/stable-model semantics matches (the semantics gap a classical open-world prover
+    cannot cover).
   - **Track B — mechanized proof (long-term).** **Phase 1 — the four-valued combiner: DONE**
     (Lean 4 chosen as the assistant). `proofs/Combiner.lean` proves the verdict combiner's
     soundness algebra — conjunction/disjunction/negation never fabricate a definitive verdict
@@ -90,9 +96,9 @@ into phases.
     the headline theorem — a recorded proof trace ⇒ the conclusion holds in the stratified/perfect
     model. Scope to the core, not the parser.
   - **Milestone order:** Track-A Horn-fragment differential gate ✓ DONE; Track-A random-corpus
-    coverage ✓ DONE; Track-B combiner proof ✓ DONE; Track-B stratification-criterion proof ✓ DONE.
-    Next: Track-A gdpr/ddi mapping + the ASP oracle for NAF (Phase 2), and the Track-B
-    `compute_sccs` / unifier / rule-firing proofs.
+    coverage ✓ DONE; Track-A gdpr/ddi mappable-slice coverage ✓ DONE; Track-B combiner proof
+    ✓ DONE; Track-B stratification-criterion proof ✓ DONE. Next: Track-A Phase 2 — the ASP oracle
+    for NAF, and the Track-B `compute_sccs` / unifier / rule-firing proofs.
 
 - [ ] 🚪 **Demonstrate the authoring problem is tractable for a non-Lojbanist.** The engine is
   sound + transparent, but knowledge-in requires writing Lojban (or the BYO-key LLM Translate).
