@@ -89,6 +89,28 @@ association-list `Subst`, `subst`, and the accumulator-threading `unify`, and pr
 Mathlib-free (prelude only). The `Number` payload is abstracted to `Nat` — only decidable equality
 matters for match soundness, not f64 bit-semantics.
 
+### `RuleFiring.lean` — one firing step is sound modus-ponens
+
+Formalizes how backward chaining derives a goal by FIRING a universal rule (`logji/src/reasoning.rs`
+`process_phase` / `emit_derived`; `UniversalRuleRecord`): unify the rule's conclusion template
+against the goal (σ), discharge each condition under σ (positive conditions hold; the
+`negated_condition_indices` FAIL, by negation-as-failure), and conclude the σ-instantiated head. It
+lifts `Unify.lean`'s `unify_sound` from terms to atoms and then to a firing step:
+
+- **`unifyArgs_sound`** / **`unifyAtom_sound`**: the arg-wise fold that mirrors the argument loop in
+  the real `unify_facts` — a successful head match instantiates the conclusion template to *exactly*
+  the ground goal (same `unify_extends` + `subst_stable` reasoning as `Unify.lean`'s `depPair` case,
+  now over an argument list).
+- **`firing_sound`**: if the rule holds in the model M (the perfect/least model is closed under
+  every registered rule; the NAF conditions are well-defined *because* the program is stratified —
+  `Stratification.lean` + `Scc.lean`), the head unifies with the ground goal via σ, and σ discharges
+  the conditions, then the goal is in M. Composes `unifyAtom_sound`, so the instantiated head *is*
+  the goal.
+- **`firing_no_fabrication`** (contrapositive): if the goal is not in M, no firing of a model-sound
+  rule can conclude it — some condition must be undischarged. Firing never fabricates.
+
+Mathlib-free; the term-level unifier is duplicated from `Unify.lean` (each proof file stands alone).
+
 ## Model ↔ code correspondence
 
 A Lean proof guarantees the *model* is sound; a Rust conformance test ties it to the real code.
@@ -110,14 +132,20 @@ A Lean proof guarantees the *model* is sound; a Rust conformance test ties it to
   concrete`) on every successful match, plus determinism + minimal bindings, over hand-crafted +
   random `(template, ground-concrete)` pairs. Ties the real substitution engine to `Unify.lean`;
   corpus, not exhaustive.
+- **Rule firing** (`rule_firing_conformance`, `logji/src/tests.rs`): drives the real engine on the
+  rule `∀x. (gerku(x) ∧ ¬mlatu(x)) → danlu(x)` and checks it fires *exactly* when the conditions are
+  discharged (positive present, negated absent — all four corners), never fabricates when one is
+  undischarged, and records the σ-instantiated head (`danlu(alis)`, not `danlu(bob)`). Ties the real
+  firing step to `RuleFiring.lean`'s `firing_sound` / `firing_no_fabrication`.
 
 Keep the two sides in lock-step: when a Rust component changes, update both its `.lean` model and
 its conformance test.
 
 ## Roadmap (remaining Track B)
 
-Next soundness-critical slices, in rough tractability order: **rule firing** (one firing step is a
-sound universal-instantiation + modus-ponens step — composes `Unify.lean`'s `unify_sound`, with
-NAF-condition soundness delegated to `Stratification.lean` + `Scc.lean`), and ultimately the
-headline theorem — *a recorded proof trace ⇒ the conclusion holds in the stratified/perfect model*
-(per-`ProofRule` local soundness + induction over the trace DAG, composing all four proofs).
+One slice remains — the capstone **headline theorem**: *a recorded proof trace ⇒ the conclusion
+holds in the stratified/perfect model*. The tractable mathlib-free shape is per-`ProofRule` local
+soundness (Asserted → in model, Conjunction → combiner algebra, Negation → NAF-under-stratification,
+Derived → rule firing, ProofRef → memo consistency) composed by induction over the trace DAG —
+pulling together all five existing proofs (`Combiner`, `Stratification`, `Scc`, `Unify`,
+`RuleFiring`).

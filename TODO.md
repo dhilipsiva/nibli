@@ -115,17 +115,23 @@ into phases.
     template to exactly the ground goal), via the `unify_extends` + `subst_stable` lemmas that
     discharge the `depPair` accumulator case, plus `unify_minimal` (no extraneous bindings). Bridged
     to the real `unify_facts`/`substitute_fact` by the `unify_conformance` corpus test (soundness +
-    determinism + minimal bindings over hand-crafted + random term pairs). **Remaining** (roughly
-    tractability order): rule firing (one firing step is a sound universal-instantiation +
-    modus-ponens step composing `unify_sound`; NAF-condition soundness delegated to Phases 2–3), and
-    the headline theorem — a recorded proof trace ⇒ the conclusion holds in the stratified/perfect
-    model (per-`ProofRule` local soundness + induction over the trace DAG, composing all four
-    proofs). Scope to the core, not the parser.
+    determinism + minimal bindings over hand-crafted + random term pairs). **Phase 5 — rule firing:
+    DONE.** `proofs/RuleFiring.lean` lifts `unify_sound` from terms to atoms (`unifyArgs_sound` /
+    `unifyAtom_sound` — the arg-wise fold mirroring `unify_facts`) and then to a firing step:
+    `firing_sound` proves that if a rule holds in the model M, its head unifies with the ground goal
+    via σ, and σ discharges the conditions (positive in M; negated not in M, by NAF), then the goal
+    is in M — a sound universal-instantiation + modus-ponens step, with NAF-condition soundness
+    delegated to Phases 2–3; `firing_no_fabrication` is the contrapositive. Bridged by the
+    `rule_firing_conformance` engine test (fires exactly when conditions discharged — all four
+    corners — never fabricates, and records the σ-instantiated head). **Remaining:** only the
+    headline theorem — a recorded proof trace ⇒ the conclusion holds in the stratified/perfect model
+    (per-`ProofRule` local soundness + induction over the trace DAG, composing all five proofs).
+    Scope to the core, not the parser.
   - **Milestone order:** Track-A Horn-fragment differential gate ✓ DONE; Track-A random-corpus
     coverage ✓ DONE; Track-A gdpr/ddi mappable-slice coverage ✓ DONE; Track-A Phase 2 ASP/clingo
     stratified-NAF oracle ✓ DONE; Track-B combiner proof ✓ DONE; Track-B stratification-criterion
-    proof ✓ DONE; Track-B SCC-decomposition proof ✓ DONE; Track-B unifier proof ✓ DONE. Next: the
-    Track-B rule-firing proof, then the headline trace ⇒ model theorem (and, optionally, deontic-NAF
+    proof ✓ DONE; Track-B SCC-decomposition proof ✓ DONE; Track-B unifier proof ✓ DONE; Track-B
+    rule-firing proof ✓ DONE. Next: the headline trace ⇒ model theorem (and, optionally, deontic-NAF
     coverage in the ASP oracle).
 
 - [ ] 🚪 **Demonstrate the authoring problem is tractable for a non-Lojbanist.** The engine is

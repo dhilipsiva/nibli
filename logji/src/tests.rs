@@ -776,6 +776,65 @@ fn test_naf_negated_antecedent_rule_shape() {
     );
 }
 
+/// Conformance bridge to `proofs/RuleFiring.lean` (`firing_sound` / `firing_no_fabrication`):
+/// firing the rule ∀x. (gerku(x) ∧ ¬mlatu(x)) → danlu(x) concludes danlu(E) EXACTLY when its
+/// conditions are discharged for that E — positive gerku(E) present AND negated mlatu(E) absent —
+/// and the derived head is the σ-instantiated conclusion (danlu(alis), not danlu(bob)). Exercises
+/// modus ponens (both conditions genuinely required), no fabrication, and correct head
+/// instantiation (composing the unifier's `unify_sound`).
+#[test]
+fn rule_firing_conformance() {
+    // (1) Both conditions discharged for alis → the rule fires (danlu(alis) TRUE), and the head is
+    //     instantiated to alis: danlu(bob) is NOT derived (σ binds x = alis, not universally).
+    let kb = new_kb();
+    assert_buf(&kb, make_negated_antecedent_rule());
+    assert_buf(&kb, make_assertion("alis", "gerku"));
+    assert!(
+        query(&kb, make_query("alis", "danlu")),
+        "gerku(alis) present and mlatu(alis) absent → the rule fires → danlu(alis)"
+    );
+    assert!(
+        query_false(&kb, make_query("bob", "danlu")),
+        "head instantiated to the matched entity: danlu(bob) must NOT be derived"
+    );
+
+    // The traced firing records the σ-instantiated conclusion (a Derived step naming danlu(alis))
+    // and marks the ¬mlatu condition as a negation-as-failure dependency.
+    let (ok, trace) = query_with_proof(&kb, make_query("alis", "danlu"));
+    assert!(ok);
+    assert!(
+        trace.has_naf_dependency(),
+        "the ¬mlatu condition must be a negation-as-failure dependency"
+    );
+    assert!(
+        trace.steps.iter().any(|s| matches!(
+            &s.rule,
+            ProofRule::Derived { fact, .. } if fact.contains("danlu") && fact.contains("alis")
+        )),
+        "a Derived step must record the instantiated head danlu(alis)"
+    );
+
+    // (2) NO FABRICATION — the negated condition's witness is present (mlatu(alis)) → the rule must
+    //     NOT fire (¬mlatu undischarged).
+    let kb2 = new_kb();
+    assert_buf(&kb2, make_negated_antecedent_rule());
+    assert_buf(&kb2, make_assertion("alis", "gerku"));
+    assert_buf(&kb2, make_assertion("alis", "mlatu"));
+    assert!(
+        query_false(&kb2, make_query("alis", "danlu")),
+        "mlatu(alis) present → the negated condition fails → no firing (no fabrication)"
+    );
+
+    // (3) NO FABRICATION — the positive condition is missing (no gerku(alis)) → the rule must NOT
+    //     fire (the positive condition is undischarged).
+    let kb3 = new_kb();
+    assert_buf(&kb3, make_negated_antecedent_rule());
+    assert!(
+        query_false(&kb3, make_query("alis", "danlu")),
+        "gerku(alis) missing → the positive condition is undischarged → no firing (no fabrication)"
+    );
+}
+
 #[test]
 fn test_native_rule_duplicate_rule_no_panic() {
     let kb = new_kb();
