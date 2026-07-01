@@ -7,20 +7,27 @@
 //! semantics of smuni's IR does not support. Cases outside the fragment are skipped
 //! conservatively — never mis-judged.
 //!
-//! Scope (Track A, phase 1): the negation-free definite-Horn fragment, where nibli's
-//! derivation = the least Herbrand model = classical entailment in BOTH directions. The
-//! stratified-NAF + closed-domain fragment (an ASP/Datalog oracle) and mechanized proof
-//! are later, separate items.
+//! Two oracles, two fragments:
+//!   - **Vampire** (classical FOL, [`run_lines`]) — the negation-free definite-Horn fragment,
+//!     where nibli's derivation = the least Herbrand model = classical entailment in BOTH
+//!     directions.
+//!   - **clingo** (ASP, [`run_lines_asp`]) — the stratified negation-as-failure + closed-world
+//!     fragment the classical prover cannot cover, where nibli's closed-world verdict = the
+//!     unique perfect model = clingo's unique stable model (see `proofs/Stratification.lean`).
 
+pub mod asp;
 pub mod corpora;
 pub mod corpus;
+pub mod corpus_naf;
 pub mod filter;
 pub mod generator;
 pub mod oracle;
+pub mod oracle_asp;
 pub mod tptp;
 
 use nibli_engine::NibliEngine;
 use oracle::{Oracle, OracleConfig};
+use oracle_asp::{AspConfig, AspVerdict};
 
 /// The intended nibli verdict for a curated case (documentation + report cross-check).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -398,6 +405,153 @@ pub fn run_random(count: u64, base_seed: u64, cfg: &OracleConfig) -> Report {
             let case = generator::random_case(base_seed.wrapping_add(i));
             let kb: Vec<&str> = case.kb.iter().map(String::as_str).collect();
             run_lines(&engine, &case.name, &kb, &case.query, cfg)
+        })
+        .collect();
+    Report { outcomes }
+}
+
+// ── The clingo (ASP) oracle path: the stratified-NAF + closed-world fragment ──────────────
+
+/// Run a single `(name, kb, query)` against the **clingo (ASP)** oracle end-to-end. Mirrors
+/// [`run_lines`] but for the stratified-NAF + closed-world fragment, with four deliberate
+/// differences: (a) NO source-negation pre-filter — negation-as-failure is the whole point;
+/// (b) the buffer gate is [`filter::buffer_asp_mappable`] (accepts NAF, still rejects
+/// compute/tense/deontic/count/abstraction/`du`); (c) NO `naf_dependent` skip — NAF-dependent
+/// verdicts are exactly what this oracle checks; (d) it translates to ASP and asks clingo.
+///
+/// Correspondence (closed-world, both directions): nibli `is_true()` ⟺ clingo `Entailed`
+/// (`goal` in the unique stable model); nibli definitive-FALSE ⟺ clingo `NotEntailed`.
+/// Indefinite verdicts (Unknown / ResourceExceeded, incl. a cut cycle) are skipped before the
+/// oracle, so nibli's conservatism never becomes a false divergence.
+pub fn run_lines_asp(
+    engine: &NibliEngine,
+    name: &str,
+    kb: &[&str],
+    query: &str,
+    cfg: &AspConfig,
+) -> Outcome {
+    let name = name.to_string();
+    engine.reset();
+
+    // 1. Assert the KB, capturing each statement's compiled buffer for translation. (An
+    //    unstratifiable rule errors here — nibli rejects it at assert time — so only
+    //    stratified, unique-model programs ever reach clingo.)
+    let mut kb_buffers = Vec::with_capacity(kb.len());
+    for line in kb {
+        if let Err(e) = engine.assert_text(line) {
+            return Outcome::Error {
+                name,
+                error: format!("assert '{line}': {e}"),
+            };
+        }
+        match engine.compile_debug(line) {
+            Ok(b) => kb_buffers.push(b),
+            Err(e) => {
+                return Outcome::Error {
+                    name,
+                    error: format!("compile '{line}': {e}"),
+                };
+            }
+        }
+    }
+    let query_buf = match engine.compile_debug(query) {
+        Ok(b) => b,
+        Err(e) => {
+            return Outcome::Error {
+                name,
+                error: format!("compile query '{query}': {e}"),
+            };
+        }
+    };
+
+    // 2. ASP-mappable filter (accepts NAF; rejects compute/tense/deontic/count/abstraction/du).
+    for b in kb_buffers.iter().chain(std::iter::once(&query_buf)) {
+        if let Some(reason) = filter::buffer_asp_mappable(b) {
+            return Outcome::SkipNonMappable {
+                name,
+                reason: reason.to_string(),
+            };
+        }
+    }
+
+    // 3. nibli's verdict. We do NOT skip naf-dependent proofs — that is the point.
+    let (verdict, _trace) = match engine.query_text_raw_proof(query) {
+        Ok(x) => x,
+        Err(e) => {
+            return Outcome::Error {
+                name,
+                error: format!("query '{query}': {e}"),
+            };
+        }
+    };
+    if !verdict.is_definitive() {
+        return Outcome::SkipIndefinite {
+            name,
+            verdict: nibli_engine::display_query_result(&verdict),
+        };
+    }
+    let nibli_true = verdict.is_true();
+
+    // 4. Translate the same IR to ASP and ask clingo. An unsafe/domain-open program is a
+    //    genuine fragment boundary → skip; any other translation error is a filter bug → Error.
+    let program = match asp::render_program(&kb_buffers, &query_buf) {
+        Ok(p) => p,
+        Err(e) if e.contains("unsafe") || e.contains("domain-open") => {
+            return Outcome::SkipNonMappable { name, reason: e };
+        }
+        Err(e) => {
+            return Outcome::Error {
+                name,
+                error: format!("asp translation: {e}"),
+            };
+        }
+    };
+    let oracle_entailed = match oracle_asp::decide(&program, cfg) {
+        Ok(AspVerdict::Entailed) => true,
+        Ok(AspVerdict::NotEntailed) => false,
+        Ok(AspVerdict::Inconclusive(status)) => return Outcome::SkipOracle { name, status },
+        Err(e) => {
+            return Outcome::Error {
+                name,
+                error: format!("asp oracle: {e}"),
+            };
+        }
+    };
+
+    if nibli_true == oracle_entailed {
+        Outcome::Agree { name, nibli_true }
+    } else {
+        // Reuse the `tptp` field to carry the `.lp` program for the report dump.
+        Outcome::Diverge {
+            name,
+            nibli_true,
+            oracle_entailed,
+            tptp: program,
+        }
+    }
+}
+
+/// Run the curated stratified-NAF corpus against clingo on a fresh engine.
+pub fn run_naf_corpus(cases: &[Case], cfg: &AspConfig) -> Report {
+    let engine = NibliEngine::new();
+    let outcomes = cases
+        .iter()
+        .map(|c| run_lines_asp(&engine, c.name, c.kb, c.query, cfg))
+        .collect();
+    Report { outcomes }
+}
+
+/// Run `count` deterministically-generated random **stratified-NAF** cases (seeds
+/// `base_seed .. base_seed+count`) against clingo on a fresh engine. Each case is stratified
+/// and ASP-mappable by construction (see [`generator::random_naf_case`]); the filter is still
+/// the final arbiter, so this only broadens coverage — it can never mis-judge.
+pub fn run_random_naf(count: u64, base_seed: u64, cfg: &AspConfig) -> Report {
+    let engine = NibliEngine::new();
+    let outcomes = (0..count)
+        .map(|i| {
+            let case = generator::random_naf_case(base_seed.wrapping_add(i));
+            let kb: Vec<&str> = case.kb.iter().map(String::as_str).collect();
+            run_lines_asp(&engine, &case.name, &kb, &case.query, cfg)
         })
         .collect();
     Report { outcomes }

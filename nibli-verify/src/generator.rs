@@ -82,6 +82,68 @@ pub fn random_case(seed: u64) -> GeneratedCase {
     }
 }
 
+/// BASE predicates: used ONLY in facts and as the negated restrictor `R`. Because a base
+/// predicate is never a rule head, no negative edge can ever close an SCC — every generated
+/// NAF program is **stratified by construction**, for every seed.
+const NAF_BASE: &[&str] = &["gerku", "mlatu", "morsi", "sutra"];
+
+/// DERIVED predicates: used ONLY as rule heads (and positive Horn-rule bodies) — never
+/// negated. Disjoint from [`NAF_BASE`].
+const NAF_DERIVED: &[&str] = &["danlu", "jmive", "melbi", "barda"];
+
+/// The fixed domain type every entity is asserted to have (so the `ro lo prenu poi na R`
+/// rule has a non-empty, safe domain to range over).
+const NAF_DOMAIN: &str = "prenu";
+
+/// Generate a random **stratified negation-as-failure** case for `seed`: a domain, one
+/// `ro lo prenu poi na R cu Q` NAF rule (`R` base, `Q` derived), an optional positive Horn
+/// chain among derived predicates, and 1..=2 domain-member entities that may or may not
+/// carry the `R` witness. Stratified by construction (see [`NAF_BASE`]); in the ASP-mappable
+/// fragment by construction (plain gismu, `poi na`, no compute/tense/deontic/du). The filter
+/// in `run_lines_asp` is still the final arbiter, so a case outside the fragment is skipped,
+/// never mis-judged.
+pub fn random_naf_case(seed: u64) -> GeneratedCase {
+    let mut rng = Lcg::new(seed);
+    let mut kb: Vec<String> = Vec::new();
+
+    let r = rng.pick(NAF_BASE); // negated restrictor (base predicate)
+    let q = rng.pick(NAF_DERIVED); // NAF-rule head (derived predicate)
+
+    // The stratified NAF rule: a domain member with no R-witness gets Q.
+    kb.push(format!("ro lo {NAF_DOMAIN} poi na {r} cu {q}"));
+
+    // Optionally a positive Horn chain Q → S (S derived; positive edges never break
+    // stratification), extending what a domain member can derive.
+    let mut derivable = vec![q];
+    if rng.below(2) == 0 {
+        let s = rng.pick(NAF_DERIVED);
+        kb.push(format!("ro lo {q} cu {s}"));
+        derivable.push(s);
+    }
+
+    // 1..=2 entities: each is a domain member; each MAY carry the R witness (which blocks Q).
+    let n_ent = 1 + rng.below(2);
+    let mut ents: Vec<&'static str> = Vec::new();
+    for _ in 0..n_ent {
+        let e = rng.pick(ENTITIES);
+        kb.push(format!("la .{e}. cu {NAF_DOMAIN}"));
+        if rng.below(2) == 0 {
+            kb.push(format!("la .{e}. cu {r}"));
+        }
+        ents.push(e);
+    }
+
+    let qe = ents[rng.below(ents.len())];
+    let qp = derivable[rng.below(derivable.len())];
+    let query = format!("la .{qe}. cu {qp}");
+
+    GeneratedCase {
+        name: format!("naf_seed{seed}"),
+        kb,
+        query,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,6 +180,48 @@ mod tests {
                     assert!(
                         !BAD_TOKENS.contains(&tok),
                         "generated line left the fragment (token '{tok}'): {line}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn naf_case_deterministic() {
+        let a = random_naf_case(7);
+        let b = random_naf_case(7);
+        assert_eq!(a.kb, b.kb);
+        assert_eq!(a.query, b.query);
+    }
+
+    #[test]
+    fn naf_case_stratified_by_construction() {
+        // Every generated NAF case has EXACTLY one `poi na R` line, and its negated predicate
+        // R is always a BASE predicate — never a rule head. That is the stratification
+        // invariant: a base predicate has no incoming rule edge, so no negative edge can lie
+        // inside an SCC. (If this held falsely, nibli would reject the KB at assert time and
+        // the gate would surface an Error, but we pin it structurally here too.)
+        for seed in 0u64..100 {
+            let c = random_naf_case(seed);
+            let naf_lines: Vec<&String> = c.kb.iter().filter(|l| l.contains("poi na ")).collect();
+            assert_eq!(naf_lines.len(), 1, "expected one NAF rule: {:?}", c.kb);
+            let neg = naf_lines[0]
+                .split("poi na ")
+                .nth(1)
+                .and_then(|rest| rest.split_whitespace().next())
+                .expect("a negated predicate after `poi na`");
+            assert!(
+                NAF_BASE.contains(&neg),
+                "negated predicate '{neg}' must be a BASE predicate (never a head): {:?}",
+                c.kb
+            );
+            // The head Q is derived; heads never appear in NAF_BASE.
+            for line in &c.kb {
+                if line.starts_with("ro lo ") {
+                    let head = line.rsplit(" cu ").next().unwrap_or("").trim();
+                    assert!(
+                        !NAF_BASE.contains(&head),
+                        "a base predicate appeared as a rule head: {line}"
                     );
                 }
             }

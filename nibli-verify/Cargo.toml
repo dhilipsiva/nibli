@@ -1,6 +1,6 @@
 [package]
 name = "nibli-verify"
-description = "Differential soundness gate: check nibli's verdict against an external FOL prover (Vampire) over the Horn/NAF-free fragment"
+description = "Differential soundness gate: check nibli's verdict against Vampire (classical FOL, Horn/NAF-free) and clingo (ASP, stratified-NAF + closed-world)"
 version = "0.1.0"
 edition = "2024"
 

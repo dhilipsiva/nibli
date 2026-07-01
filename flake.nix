@@ -52,6 +52,13 @@
             # an external prover). Driven as a subprocess on TPTP FOF problems.
             vampire
 
+            # Differential-testing oracle #2 (Track A, phase 2): ASP/Datalog solver
+            # for nibli-verify's stratified negation-as-failure + closed-world
+            # fragment — the semantics gap the classical prover can't cover, where
+            # clingo's perfect/stable-model semantics matches nibli's. Driven as a
+            # subprocess on clingo `.lp` programs (`nibli-verify --asp`).
+            clingo
+
             # Proof assistant for the mechanized soundness proofs (Track B). The
             # `proofs/` Lean files are checked by `lean` in `just verify-proofs`.
             lean4

@@ -43,6 +43,30 @@ pub fn buffer_non_classical(buf: &LogicBuffer) -> Option<&'static str> {
     None
 }
 
+/// `Some(reason)` if the buffer is outside the **ASP-mappable** (stratified-NAF +
+/// closed-world) fragment. Unlike [`buffer_non_classical`], negation-as-failure (`NotNode`)
+/// is ACCEPTED — it is the whole point of the clingo oracle. The same non-classical node
+/// kinds (compute / tense / deontic / exact-count / abstraction) are still rejected, plus
+/// `du` equality, which is not event-decomposed and would need explicit congruence rules to
+/// model soundly in ASP (out of the first-slice scope).
+///
+/// Kept a named function (not a re-export of `buffer_non_classical`) so its contract is
+/// documented at the call site and can diverge later (e.g. admitting `CountNode` via clingo
+/// cardinality constraints).
+pub fn buffer_asp_mappable(buf: &LogicBuffer) -> Option<&'static str> {
+    if let Some(reason) = buffer_non_classical(buf) {
+        return Some(reason);
+    }
+    for node in &buf.nodes {
+        if let LogicNode::Predicate((rel, _)) = node {
+            if rel == "du" {
+                return Some("equality");
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,5 +106,38 @@ mod tests {
             roots: vec![0],
         };
         assert_eq!(buffer_non_classical(&plain), None);
+    }
+
+    #[test]
+    fn asp_mappable_accepts_naf_rejects_du_and_non_classical() {
+        // NAF (NotNode) is accepted by the ASP filter (unlike the classical one).
+        let naf = LogicBuffer {
+            nodes: vec![
+                LogicNode::Predicate(("gerku".into(), vec![LogicalTerm::Variable("x".into())])),
+                LogicNode::NotNode(0),
+            ],
+            roots: vec![1],
+        };
+        assert_eq!(buffer_asp_mappable(&naf), None);
+
+        // `du` equality is rejected (needs congruence rules — out of scope).
+        let du = LogicBuffer {
+            nodes: vec![LogicNode::Predicate((
+                "du".into(),
+                vec![
+                    LogicalTerm::Constant("adam".into()),
+                    LogicalTerm::Constant("bel".into()),
+                ],
+            ))],
+            roots: vec![0],
+        };
+        assert_eq!(buffer_asp_mappable(&du), Some("equality"));
+
+        // The non-classical reject list still applies (compute / deontic / …).
+        let compute = LogicBuffer {
+            nodes: vec![LogicNode::ComputeNode(("pilji".into(), vec![]))],
+            roots: vec![0],
+        };
+        assert_eq!(buffer_asp_mappable(&compute), Some("compute predicate"));
     }
 }

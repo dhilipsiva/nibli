@@ -3,8 +3,10 @@
 //! If the prover is unavailable the test skips cleanly (so `cargo test` is green in any
 //! environment); inside the Nix dev shell Vampire is present, so it runs for real.
 
+use nibli_verify::oracle_asp::AspConfig;
 use nibli_verify::{
-    corpora, corpus, oracle::OracleConfig, run_corpus, run_corpus_slice, run_random,
+    corpora, corpus, corpus_naf, oracle::OracleConfig, run_corpus, run_corpus_slice,
+    run_naf_corpus, run_random, run_random_naf,
 };
 
 /// The gate must actually compare a meaningful number of cases — otherwise a future
@@ -14,6 +16,13 @@ const MIN_CHECKED: usize = 10;
 /// How many random cases the CI gate runs (each drives Vampire, so keep it modest); override
 /// with `NIBLI_VERIFY_RANDOM_COUNT` for a deeper local/nightly sweep.
 const DEFAULT_RANDOM_COUNT: u64 = 200;
+
+/// Minimum curated stratified-NAF cases the ASP gate must actually check.
+const MIN_CHECKED_NAF: usize = 8;
+
+/// How many random stratified-NAF cases the ASP gate runs; override with
+/// `NIBLI_VERIFY_NAF_RANDOM_COUNT`.
+const DEFAULT_NAF_RANDOM_COUNT: u64 = 100;
 
 #[test]
 fn horn_fragment_agrees_with_vampire() {
@@ -149,5 +158,99 @@ fn gdpr_ddi_mappable_slices_agree_with_vampire() {
     assert!(
         total_checked >= 20,
         "only {total_checked} corpora-slice cases reached the oracle; gate near-vacuous"
+    );
+}
+
+/// Stratified-NAF gate: every curated closed-world negation-as-failure case must have nibli
+/// agree with **clingo** (ASP). This covers the fragment the Vampire gate deliberately skips
+/// — nibli's closed-world verdict must equal the unique stable/perfect model. Skips cleanly
+/// if clingo is unavailable.
+#[test]
+fn stratified_naf_agrees_with_clingo() {
+    let cfg = AspConfig::default();
+    if !nibli_verify::oracle_asp::available(&cfg) {
+        eprintln!(
+            "nibli-verify ASP gate SKIPPED: solver '{}' unavailable (set NIBLI_CLINGO / add to \
+             PATH).",
+            cfg.binary
+        );
+        return;
+    }
+
+    let report = run_naf_corpus(corpus_naf::NAF_CASES, &cfg);
+    for outcome in &report.outcomes {
+        eprintln!("{}", outcome.summary());
+    }
+    let (agree, diverge, skip, error) = report.tally();
+    eprintln!(
+        "nibli-verify NAF: {agree} agree / {diverge} diverge / {skip} skip / {error} error \
+         ({} of {} checked)",
+        report.checked(),
+        corpus_naf::NAF_CASES.len()
+    );
+
+    let errors: Vec<String> = report.errors().iter().map(|o| o.summary()).collect();
+    assert!(errors.is_empty(), "harness errors:\n{}", errors.join("\n"));
+
+    let divergences: Vec<String> = report.divergences().iter().map(|o| o.summary()).collect();
+    assert!(
+        divergences.is_empty(),
+        "soundness divergences (nibli disagreed with clingo on stratified NAF):\n{}",
+        divergences.join("\n")
+    );
+
+    assert!(
+        report.checked() >= MIN_CHECKED_NAF,
+        "only {} of {} NAF cases reached the oracle (need >= {MIN_CHECKED_NAF}); gate near-vacuous",
+        report.checked(),
+        corpus_naf::NAF_CASES.len()
+    );
+}
+
+/// Random-corpus NAF coverage: N deterministically-generated stratified-NAF programs must each
+/// have nibli agree with clingo. Broadens the ASP gate far beyond the curated cases.
+#[test]
+fn random_naf_cases_agree_with_clingo() {
+    let cfg = AspConfig::default();
+    if !nibli_verify::oracle_asp::available(&cfg) {
+        eprintln!(
+            "nibli-verify random NAF gate SKIPPED: solver '{}' unavailable.",
+            cfg.binary
+        );
+        return;
+    }
+
+    let count: u64 = std::env::var("NIBLI_VERIFY_NAF_RANDOM_COUNT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_NAF_RANDOM_COUNT);
+    let report = run_random_naf(count, 0, &cfg);
+
+    let (agree, diverge, skip, error) = report.tally();
+    eprintln!(
+        "nibli-verify random NAF: {agree} agree / {diverge} diverge / {skip} skip / {error} error \
+         ({} of {count} checked)",
+        report.checked()
+    );
+
+    let errors: Vec<String> = report.errors().iter().map(|o| o.summary()).collect();
+    assert!(
+        errors.is_empty(),
+        "harness errors on random NAF cases:\n{}",
+        errors.join("\n")
+    );
+
+    let divergences: Vec<String> = report.divergences().iter().map(|o| o.summary()).collect();
+    assert!(
+        divergences.is_empty(),
+        "soundness divergences on random NAF cases (nibli disagreed with clingo):\n{}",
+        divergences.join("\n")
+    );
+
+    // Stratified + mappable by construction, so most must actually reach the oracle.
+    assert!(
+        report.checked() as u64 >= count / 2,
+        "only {} of {count} random NAF cases reached the oracle; sweep near-vacuous",
+        report.checked()
     );
 }

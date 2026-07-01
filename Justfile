@@ -457,9 +457,10 @@ verify-harness:
     cargo test -p logji --test known_failures_fol {{cargo_profile_flag}} -- --test-threads=1
     cargo test -p nibli-engine --test known_failures {{cargo_profile_flag}} -- --test-threads=1
 
-# Differential SOUNDNESS gate (Track A): for the Horn/NAF-free fragment, nibli's verdict
-# must agree with the Vampire FOL prover over the curated corpus. The Nix dev shell
-# provides `vampire`; the test skips cleanly if the prover is absent.
+# Differential SOUNDNESS gate (Track A), two oracles: nibli's verdict must agree with
+# (1) the Vampire FOL prover over the Horn/NAF-free fragment, and (2) the clingo ASP solver
+# over the stratified-NAF + closed-world fragment (curated + random NAF programs). The Nix
+# dev shell provides `vampire` + `clingo`; each side skips cleanly if its solver is absent.
 verify-soundness:
     cargo test -p nibli-verify {{cargo_profile_flag}} -- --nocapture --test-threads=1
 

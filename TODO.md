@@ -72,10 +72,21 @@ into phases.
     entities + type-predicates, and checks every atomic `la .E. cu P` query vs Vampire (gdpr
     50/50, ddi 56/56 agree). This caught + fixed a real translator bug — `zo'e` was dropped to
     `$true` (existential) instead of a rigid `zoe` constant, diverging from nibli on
-    specified-vs-unspecified fillers. **Remaining:** (c) **Phase 2** — extend the oracle to an
-    ASP/Datalog solver (clingo / DLV) for the stratified-NAF + closed-domain fragment, where
-    perfect/stable-model semantics matches (the semantics gap a classical open-world prover
-    cannot cover).
+    specified-vs-unspecified fillers. **Phase 2 — the ASP/clingo stratified-NAF oracle: DONE.**
+    A second oracle (`nibli-verify/src/asp.rs` + `oracle_asp.rs`) covers the stratified
+    negation-as-failure + closed-world fragment Vampire cannot (no CWA). The translator
+    **regroups the event decomposition back to function-free surface Datalog** (ASP heads can't
+    hold existentials, and Skolemizing the event to a function would break clingo's grounding),
+    emitting `q(V0) :- p(V0), not r(V0).` for `ro lo P poi na R cu Q`; the reified `goal` atom's
+    membership in clingo's unique stable model = nibli's closed-world verdict (sound because a
+    stratified program's perfect model = its unique answer set, per `proofs/Stratification.lean`;
+    and nibli rejects unstratified KBs at assert time, so only unique-model programs reach
+    clingo). Gated in CI via `just verify-soundness`: a curated NAF corpus (`corpus_naf.rs`, 11/11
+    agree) + random stratified-NAF programs (`generator::random_naf_case`, stratified by
+    construction; `NIBLI_VERIFY_NAF_RANDOM_COUNT`, default 100; 95/100 checked, 0 diverge). Needs
+    `clingo` (Nix shell; skips if absent). **Remaining:** deontic-headed NAF (the real
+    `gdpr.lojban:101` erasure rule) and `du`-equality are conservatively skipped — a later slice
+    could model deontic heads as plain ASP atoms.
   - **Track B — mechanized proof (long-term).** **Phase 1 — the four-valued combiner: DONE**
     (Lean 4 chosen as the assistant). `proofs/Combiner.lean` proves the verdict combiner's
     soundness algebra — conjunction/disjunction/negation never fabricate a definitive verdict
@@ -96,9 +107,10 @@ into phases.
     the headline theorem — a recorded proof trace ⇒ the conclusion holds in the stratified/perfect
     model. Scope to the core, not the parser.
   - **Milestone order:** Track-A Horn-fragment differential gate ✓ DONE; Track-A random-corpus
-    coverage ✓ DONE; Track-A gdpr/ddi mappable-slice coverage ✓ DONE; Track-B combiner proof
-    ✓ DONE; Track-B stratification-criterion proof ✓ DONE. Next: Track-A Phase 2 — the ASP oracle
-    for NAF, and the Track-B `compute_sccs` / unifier / rule-firing proofs.
+    coverage ✓ DONE; Track-A gdpr/ddi mappable-slice coverage ✓ DONE; Track-A Phase 2 ASP/clingo
+    stratified-NAF oracle ✓ DONE; Track-B combiner proof ✓ DONE; Track-B stratification-criterion
+    proof ✓ DONE. Next: the Track-B `compute_sccs` / unifier / rule-firing proofs (and, optionally,
+    deontic-NAF coverage in the ASP oracle).
 
 - [ ] 🚪 **Demonstrate the authoring problem is tractable for a non-Lojbanist.** The engine is
   sound + transparent, but knowledge-in requires writing Lojban (or the BYO-key LLM Translate).

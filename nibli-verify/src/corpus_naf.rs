@@ -1,0 +1,130 @@
+//! Curated `(KB, query)` cases in the **stratified negation-as-failure + closed-world**
+//! fragment — the fragment the classical Vampire gate skips and the clingo (ASP) oracle
+//! covers. Each is hand-checked to be stratified: the negated predicate `R` is always a
+//! BASE fact predicate (never a rule head), so no negative edge lies inside an SCC.
+//!
+//! The NAF mechanism is the negated restrictor `poi na R` ("… that is not R"): with no
+//! `R`-witness the restrictor holds (closed-world) and the rule fires; with a witness it
+//! does not. These reproduce the semantics of the `gdpr_erasure_*` engine tests
+//! (`ro lo prenu poi na zanru cu <obligation>`) but with plain-gismu heads (`cu morsi`
+//! etc.), since the real GDPR rule's deontic head is outside the ASP fragment.
+//!
+//! `expect` documents the intended nibli verdict (printed by `nibli-verify --asp`); the CI
+//! gate checks nibli's verdict against clingo, not against `expect`.
+
+use crate::{Case, Expect};
+
+/// gismu used below (all in the in-tree FALLBACK dictionary, so cases resolve in CI with no
+/// data file): prenu=person (the domain), gerku=dog, mlatu=cat, morsi=dead (BASE / negated);
+/// danlu=animal, jmive=alive, melbi=beautiful (DERIVED / rule heads).
+pub const NAF_CASES: &[Case] = &[
+    // ── No witness → the NAF restrictor holds → the rule fires. ──
+    Case {
+        name: "naf_no_witness_fires",
+        kb: &["ro lo prenu poi na gerku cu morsi", "la .adam. cu prenu"],
+        query: "la .adam. cu morsi",
+        expect: Expect::True,
+    },
+    // ── Witness present → the NAF restrictor is false → closed-world FALSE. ──
+    Case {
+        name: "naf_witness_blocks",
+        kb: &[
+            "ro lo prenu poi na gerku cu morsi",
+            "la .adam. cu prenu",
+            "la .adam. cu gerku",
+        ],
+        query: "la .adam. cu morsi",
+        expect: Expect::False,
+    },
+    // ── The domain restrictor still binds: a non-person is out of the rule's reach. ──
+    Case {
+        name: "naf_other_entity_out_of_domain",
+        kb: &[
+            "ro lo prenu poi na gerku cu morsi",
+            "la .adam. cu prenu",
+            "la .bel. cu gerku",
+        ],
+        query: "la .bel. cu morsi",
+        expect: Expect::False,
+    },
+    Case {
+        name: "naf_domain_required",
+        kb: &["ro lo prenu poi na gerku cu morsi", "la .kim. cu gerku"],
+        query: "la .kim. cu morsi",
+        expect: Expect::False,
+    },
+    // ── Baseline: a plain fact still resolves through the ASP path. ──
+    Case {
+        name: "naf_plain_fact_baseline",
+        kb: &["la .adam. cu prenu"],
+        query: "la .adam. cu prenu",
+        expect: Expect::True,
+    },
+    // ── Taxonomy through NAF: NAF rule feeds a Horn rule (stratified: morsi is base). ──
+    Case {
+        name: "naf_taxonomy_through_naf",
+        kb: &[
+            "ro lo danlu cu jmive",
+            "ro lo prenu poi na morsi cu danlu",
+            "la .adam. cu prenu",
+        ],
+        query: "la .adam. cu jmive",
+        expect: Expect::True,
+    },
+    Case {
+        name: "naf_taxonomy_blocked_by_witness",
+        kb: &[
+            "ro lo danlu cu jmive",
+            "ro lo prenu poi na morsi cu danlu",
+            "la .adam. cu prenu",
+            "la .adam. cu morsi",
+        ],
+        query: "la .adam. cu jmive",
+        expect: Expect::False,
+    },
+    // ── Two independent NAF rules: one blocked, one fires. ──
+    Case {
+        name: "naf_two_rules_jmive_fires",
+        kb: &[
+            "ro lo prenu poi na gerku cu morsi",
+            "ro lo prenu poi na mlatu cu jmive",
+            "la .adam. cu prenu",
+            "la .adam. cu gerku",
+        ],
+        query: "la .adam. cu jmive",
+        expect: Expect::True,
+    },
+    Case {
+        name: "naf_two_rules_morsi_blocked",
+        kb: &[
+            "ro lo prenu poi na gerku cu morsi",
+            "ro lo prenu poi na mlatu cu jmive",
+            "la .adam. cu prenu",
+            "la .adam. cu gerku",
+        ],
+        query: "la .adam. cu morsi",
+        expect: Expect::False,
+    },
+    // ── Positive + negative restrictor together: person AND dog AND not-cat → melbi. ──
+    Case {
+        name: "naf_positive_and_negative_restrictor",
+        kb: &[
+            "ro lo prenu poi gerku poi na mlatu cu melbi",
+            "la .adam. cu prenu",
+            "la .adam. cu gerku",
+        ],
+        query: "la .adam. cu melbi",
+        expect: Expect::True,
+    },
+    Case {
+        name: "naf_positive_and_negative_restrictor_blocked",
+        kb: &[
+            "ro lo prenu poi gerku poi na mlatu cu melbi",
+            "la .adam. cu prenu",
+            "la .adam. cu gerku",
+            "la .adam. cu mlatu",
+        ],
+        query: "la .adam. cu melbi",
+        expect: Expect::False,
+    },
+];
