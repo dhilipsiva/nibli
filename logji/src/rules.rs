@@ -2072,10 +2072,9 @@ mod stratification_conformance {
         g
     }
 
-    /// The real Tarjan-based `check_stratification` must agree with the naive criterion
-    /// (proven correct in `proofs/Stratification.lean`) on every corpus graph.
-    #[test]
-    fn check_stratification_matches_proven_criterion() {
+    /// The shared corpus: hand-crafted pathological graphs (self-loops, positive/negative cycles,
+    /// negative-edge-into-cycle, DAG) + 300 deterministic random small graphs.
+    fn corpus() -> Vec<(String, HashMap<String, Vec<(String, bool)>>)> {
         let mut corpus: Vec<(String, HashMap<String, Vec<(String, bool)>>)> = vec![
             ("empty".into(), graph_of(&[])),
             ("neg_self_loop".into(), graph_of(&[("a", "a", true)])),
@@ -2110,11 +2109,29 @@ mod stratification_conformance {
                 pseudo_random_graph(seed, num_nodes),
             ));
         }
+        corpus
+    }
 
+    /// The node set of a graph: all keys plus every edge target (matching `compute_sccs`).
+    fn all_nodes(graph: &HashMap<String, Vec<(String, bool)>>) -> BTreeSet<String> {
+        let mut nodes = BTreeSet::new();
+        for (k, edges) in graph {
+            nodes.insert(k.clone());
+            for (d, _) in edges {
+                nodes.insert(d.clone());
+            }
+        }
+        nodes
+    }
+
+    /// The real Tarjan-based `check_stratification` must agree with the naive criterion
+    /// (proven correct in `proofs/Stratification.lean`) on every corpus graph.
+    #[test]
+    fn check_stratification_matches_proven_criterion() {
         let mut checked = 0usize;
-        for (name, g) in &corpus {
-            let check_ok = check_stratification(g).is_ok();
-            let naive_ok = stratifiable_naive(g);
+        for (name, g) in corpus() {
+            let check_ok = check_stratification(&g).is_ok();
+            let naive_ok = stratifiable_naive(&g);
             assert_eq!(
                 check_ok, naive_ok,
                 "check_stratification disagreed with the proven criterion on '{name}': \
@@ -2125,6 +2142,71 @@ mod stratification_conformance {
         assert!(
             checked >= 300,
             "corpus too small ({checked}); gate near-vacuous"
+        );
+    }
+
+    /// Bridge from the SCC-decomposition proof (`proofs/Scc.lean`) to the real Tarjan
+    /// `compute_sccs`. The proof shows SCCs are the mutual-reachability equivalence classes — a
+    /// well-defined, unique partition (`SameSCC` refl/symm/trans + `decomp_unique`). Verifying the
+    /// imperative traversal directly is out of scope; here we check its OUTPUT against that spec:
+    /// (a) it is a partition of the node set, and (b) two nodes share an SCC EXACTLY when they are
+    /// mutually reachable (the naive `reachable_sets` reference). Over the same corpus.
+    #[test]
+    fn compute_sccs_matches_scc_spec() {
+        let mut checked = 0usize;
+        let mut nontrivial_seen = false;
+        for (name, g) in corpus() {
+            let sccs = compute_sccs(&g);
+            let nodes = all_nodes(&g);
+
+            // (a) Partition: blocks are pairwise disjoint and cover exactly the node set.
+            let mut seen: BTreeSet<String> = BTreeSet::new();
+            for scc in &sccs {
+                if scc.len() > 1 {
+                    nontrivial_seen = true;
+                }
+                for node in scc {
+                    assert!(
+                        seen.insert(node.clone()),
+                        "compute_sccs put '{node}' in two SCCs on '{name}': {sccs:?}"
+                    );
+                    assert!(
+                        nodes.contains(node),
+                        "compute_sccs produced out-of-graph node '{node}' on '{name}'"
+                    );
+                }
+            }
+            assert_eq!(
+                seen, nodes,
+                "compute_sccs partition does not cover the node set on '{name}': {sccs:?}"
+            );
+
+            // (b) Correctness: same SCC EXACTLY when mutually reachable (SameSCC in Scc.lean).
+            let reach = reachable_sets(&g);
+            let node_vec: Vec<String> = nodes.iter().cloned().collect();
+            for i in 0..node_vec.len() {
+                for j in i..node_vec.len() {
+                    let a = &node_vec[i];
+                    let b = &node_vec[j];
+                    let tarjan_same = sccs.iter().any(|scc| scc.contains(a) && scc.contains(b));
+                    let mutually_reachable = reach.get(a).is_some_and(|ra| ra.contains(b))
+                        && reach.get(b).is_some_and(|rb| rb.contains(a));
+                    assert_eq!(
+                        tarjan_same, mutually_reachable,
+                        "compute_sccs same-SCC({a},{b})={tarjan_same} but \
+                         mutually-reachable={mutually_reachable} on '{name}': {g:?}"
+                    );
+                }
+            }
+            checked += 1;
+        }
+        assert!(
+            checked >= 300,
+            "corpus too small ({checked}); gate near-vacuous"
+        );
+        assert!(
+            nontrivial_seen,
+            "no nontrivial SCC (size > 1) anywhere in the corpus — the spec check is near-vacuous"
         );
     }
 }

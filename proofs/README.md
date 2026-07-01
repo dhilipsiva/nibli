@@ -48,6 +48,28 @@ negative edge with both endpoints in one SCC — exactly what the Rust check rej
 The finiteness reasoning is mathlib-free: reachability is the inductive reflexive-transitive
 closure, made decidable for counting via `Classical`, with two short local `List.countP` lemmas.
 
+### `Scc.lean` — the SCC decomposition
+
+Formalizes the strongly-connected-component structure `check_stratification` relies on
+(`compute_sccs`), closing the gap `Stratification.lean` left — *is the SCC-based check the engine
+runs the same as the proven reachability criterion?* Two results:
+
+- **SCCs are the mutual-reachability equivalence classes.** `SameSCC g a b := Reach g a b ∧ Reach g
+  b a` is reflexive, symmetric, and transitive, so the SCC partition is well-defined. A
+  decomposition is *correct* iff two nodes share a label exactly when they are `SameSCC`;
+  `decomp_unique` proves any two correct decompositions induce the **same** partition (so Tarjan's
+  output is unique up to relabeling), and `canonicalComp_correct` proves a correct one always
+  exists. Verifying the imperative Tarjan traversal itself is out of scope; the real `compute_sccs`
+  output is tied to this spec by the conformance test below.
+- **The SCC check equals the criterion.** `sccRejects_iff_criterion` proves `SccRejects` (a negative
+  edge with both endpoints in one SCC — exactly `check_stratification`) is equivalent to
+  `RejectsByCriterion` (the reachability criterion). Composed with `Stratification.lean`'s
+  `RejectsByCriterion ↔ ¬Stratifiable`, the SCC-based check rejects exactly the unstratifiable
+  programs.
+
+Mathlib-free: `funext`/`propext`/`cast` + the `Classical` namespace; the reachability model is
+duplicated from `Stratification.lean` (each proof file stands alone).
+
 ## Model ↔ code correspondence
 
 A Lean proof guarantees the *model* is sound; a Rust conformance test ties it to the real code.
@@ -57,16 +79,19 @@ A Lean proof guarantees the *model* is sound; a Rust conformance test ties it to
   model proof give a **complete** guarantee.
 - **Stratification** (`check_stratification_matches_proven_criterion`, `logji/src/rules.rs`):
   checks the real Tarjan-based `check_stratification` agrees with a naive reachability
-  implementation of the proven criterion, over hand-crafted + deterministically-randomized
-  graphs. Graphs are unbounded, so this is a **corpus** conformance test (not exhaustive), and it
-  conformance-tests `compute_sccs` rather than proving it.
+  implementation of the proven criterion, over hand-crafted + deterministically-randomized graphs.
+  Graphs are unbounded, so this is a **corpus** conformance test (not exhaustive).
+- **SCC decomposition** (`compute_sccs_matches_scc_spec`, `logji/src/rules.rs`): checks the real
+  Tarjan `compute_sccs` output is a partition of the node set and groups two nodes together
+  *exactly* when they are mutually reachable (the `reachable_sets` reference), over the same corpus
+  (with a non-vacuity guard that a nontrivial SCC appears). Ties the actual algorithm to
+  `Scc.lean`'s mutual-reachability spec; corpus, not exhaustive.
 
 Keep the two sides in lock-step: when a Rust component changes, update both its `.lean` model and
 its conformance test.
 
 ## Roadmap (remaining Track B)
 
-Next soundness-critical slices, in rough tractability order: **verifying Tarjan `compute_sccs`**
-itself (currently only conformance-tested), the one-directional unifier (`logji/src/kb.rs`), rule
-firing, and ultimately the headline theorem — *a recorded proof trace ⇒ the conclusion holds in
-the stratified/perfect model*.
+Next soundness-critical slices, in rough tractability order: the one-directional unifier
+(`logji/src/kb.rs`), rule firing, and ultimately the headline theorem — *a recorded proof trace ⇒
+the conclusion holds in the stratified/perfect model*.

@@ -101,16 +101,22 @@ into phases.
     (soundness) and never wrongly rejects a stratifiable program (completeness). Mathlib-free
     (`level = |reachable set|`). Bridged to the real Tarjan-based `check_stratification` by the
     `check_stratification_matches_proven_criterion` corpus conformance test (hand-crafted +
-    randomized graphs; corpus, not exhaustive — graphs are unbounded). **Remaining** (roughly
-    tractability order): verifying Tarjan `compute_sccs` itself (currently only
-    conformance-tested), the one-directional unifier (`logji/src/kb.rs:326`), rule firing, and
+    randomized graphs; corpus, not exhaustive — graphs are unbounded). **Phase 3 — the SCC
+    decomposition: DONE.** `proofs/Scc.lean` proves SCCs are the mutual-reachability equivalence
+    classes (`SameSCC` refl/symm/trans), so the partition is well-defined + unique (`decomp_unique`,
+    `canonicalComp_correct`), and that the SCC-based check the engine runs equals the criterion
+    (`sccRejects_iff_criterion`: a negative edge with both endpoints in one SCC ⟺
+    `RejectsByCriterion`, which composes with Phase 2 to `⟺ ¬Stratifiable`). Bridged to the real
+    Tarjan `compute_sccs` by the `compute_sccs_matches_scc_spec` conformance test (output is a
+    partition + same-SCC ⟺ mutually-reachable, over the shared corpus). **Remaining** (roughly
+    tractability order): the one-directional unifier (`logji/src/kb.rs:326`), rule firing, and
     the headline theorem — a recorded proof trace ⇒ the conclusion holds in the stratified/perfect
     model. Scope to the core, not the parser.
   - **Milestone order:** Track-A Horn-fragment differential gate ✓ DONE; Track-A random-corpus
     coverage ✓ DONE; Track-A gdpr/ddi mappable-slice coverage ✓ DONE; Track-A Phase 2 ASP/clingo
     stratified-NAF oracle ✓ DONE; Track-B combiner proof ✓ DONE; Track-B stratification-criterion
-    proof ✓ DONE. Next: the Track-B `compute_sccs` / unifier / rule-firing proofs (and, optionally,
-    deontic-NAF coverage in the ASP oracle).
+    proof ✓ DONE; Track-B SCC-decomposition proof ✓ DONE. Next: the Track-B unifier / rule-firing
+    proofs (and, optionally, deontic-NAF coverage in the ASP oracle).
 
 - [ ] 🚪 **Demonstrate the authoring problem is tractable for a non-Lojbanist.** The engine is
   sound + transparent, but knowledge-in requires writing Lojban (or the BYO-key LLM Translate).
