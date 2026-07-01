@@ -1,6 +1,30 @@
 use super::*;
 use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofTrace};
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FLAT vs SURFACE TEST SHAPES — read before adding a reasoning test.
+//
+// The `make_*` helpers below hand-build FLAT `LogicBuffer`s (a bare `gerku(adam)`), which is
+// NOT the shape the shipped pipeline produces: smuni event-decomposes to
+// `∃ev. gerku(ev) ∧ gerku_x1(ev, adam) ∧ …` (`smuni::event_decompose`) and
+// `transform_compute_nodes` turns compute predicates into `ComputeNode`s. A flat and a surface
+// buffer give the SAME verdict for shape-INDEPENDENT behaviors (plain lookup, modus ponens,
+// chains, NAF, `du`) — pinned test-by-behavior in `mod flat_vs_surface` below — but can DIVERGE
+// on shape-DEPENDENT behaviors: the `cwa_false` / `naf_dependent` proof flags, the
+// `ComputeCheck(numeric)` step, and witness/Skolem dependency.
+//
+// Rules for adding a test:
+//   * Verdict / rule-firing behavior → the flat `make_*` helpers are fine.
+//   * Anything that inspects proof-trace shape or the numeric/compute path → build the buffer
+//     the real way with `compile_surface("<lojban>")`, or use the `make_decomposed_*` helpers,
+//     or write a `nibli-engine` integration test. NEVER assert `cwa_false` / `ComputeCheck` /
+//     witness shape on a bare flat buffer — that tests a shape the engine never builds.
+//   * `make_numeric_query` / `make_compute_query` build the flat numeric shape ON PURPOSE — they
+//     exercise logji's flat detection arm (a real production path); the surface shape is covered
+//     by `make_decomposed_*` and `compile_surface`. `du` stays flat by design (union-find).
+// See CLAUDE.md "Test discipline".
+// ─────────────────────────────────────────────────────────────────────────────
+
 /// Helper: build a Predicate node with the given relation and args.
 fn pred(nodes: &mut Vec<LogicNode>, rel: &str, args: Vec<LogicalTerm>) -> u32 {
     let id = nodes.len() as u32;
@@ -72,6 +96,37 @@ fn query_false(kb: &KnowledgeBase, buf: LogicBuffer) -> bool {
 
 fn query_result(kb: &KnowledgeBase, buf: LogicBuffer) -> QueryResult {
     kb.query_entailment_inner(buf).unwrap()
+}
+
+/// Compile Lojban text to a `LogicBuffer` the SHIPPED way — the exact chain
+/// `nibli-engine` runs: `gerna::parse_checked` → `smuni::compile_from_gerna_ast`
+/// → `transform_compute_nodes`. Unlike the flat `make_*` helpers, this event-decomposes
+/// (`∃ev. rel(ev) ∧ rel_x1(ev, arg) ∧ …`) and converts compute predicates to `ComputeNode`,
+/// so a test built on it cannot diverge from the real pipeline. Use it for anything whose
+/// behavior depends on IR shape (compute/numeric, `cwa_false`, witness/Skolem). Corpus words
+/// must resolve in the in-tree fallback dictionary (CI has no data file).
+fn compile_surface(text: &str) -> LogicBuffer {
+    let ast = gerna::parse_checked(text).unwrap_or_else(|e| panic!("parse '{text}': {e}"));
+    let mut buf =
+        smuni::compile_from_gerna_ast(ast).unwrap_or_else(|e| panic!("compile '{text}': {e}"));
+    transform_compute_nodes(&mut buf, &default_compute_predicates());
+    buf
+}
+
+#[test]
+fn compile_surface_smoke() {
+    // A ground fact + query through the real front-end must reason correctly, and produce
+    // the event-decomposed shape (a `gerku_x1` role predicate, not a bare `gerku`).
+    let kb = new_kb();
+    assert_buf(&kb, compile_surface("la .adam. cu gerku"));
+    assert!(query(&kb, compile_surface("la .adam. cu gerku")));
+    assert!(query_false(&kb, compile_surface("la .adam. cu mlatu")));
+    let buf = compile_surface("la .adam. cu gerku");
+    assert!(
+        buf.nodes.iter().any(|n| matches!(n,
+            LogicNode::Predicate((rel, _)) if rel == "gerku_x1")),
+        "surface compile must event-decompose (expected a gerku_x1 role predicate): {buf:?}"
+    );
 }
 
 /// Build "la .X. P" -> Pred("P", [Const("X"), Zoe])
@@ -10110,4 +10165,211 @@ fn verbose_flag_defaults_off_and_survives_reset_and_clone() {
         !kb.is_verbose(),
         "set_verbose(false) must disable diagnostics"
     );
+}
+
+/// Metamorphic differential guard: the flat `make_*` helpers must agree with the SHIPPED
+/// pipeline (`compile_surface`) on every reasoning behavior class. A flat unit test builds a
+/// hand-rolled `LogicBuffer`; if its shape ever diverges from smuni's event-decomposed output
+/// in an OBSERVABLE way (verdict, or the `cwa_false`/`naf_dependent` trace flags), a test here
+/// fails — so the unit layer cannot silently "lie" about a behavior the real engine gets right.
+/// Corpus vocabulary is restricted to the in-tree fallback dictionary so this runs in CI (no
+/// data file). See the module-level note above `make_assertion` and CLAUDE.md "Test discipline".
+#[cfg(test)]
+mod flat_vs_surface {
+    use super::*;
+
+    /// True if two verdicts agree on the TRUE / FALSE / indeterminate classification.
+    fn same_verdict(a: &QueryResult, b: &QueryResult) -> bool {
+        a.is_true() == b.is_true() && a.is_false() == b.is_false()
+    }
+
+    /// Assert a flat KB+query agrees with the surface (real-pipeline) KB+query, and matches the
+    /// expected verdict. Returns the SURFACE proof trace for flag assertions.
+    fn check(
+        name: &str,
+        surface_kb: &[&str],
+        surface_query: &str,
+        flat_kb: Vec<LogicBuffer>,
+        flat_query: LogicBuffer,
+        expect_true: bool,
+    ) -> ProofTrace {
+        let sk = new_kb();
+        for line in surface_kb {
+            assert_buf(&sk, compile_surface(line));
+        }
+        let (surf_res, surf_trace) = sk
+            .query_entailment_with_proof_inner(compile_surface(surface_query))
+            .unwrap();
+
+        let fk = new_kb();
+        for buf in flat_kb {
+            assert_buf(&fk, buf);
+        }
+        let flat_res = query_result(&fk, flat_query);
+
+        assert!(
+            same_verdict(&surf_res, &flat_res),
+            "{name}: flat vs surface DISAGREE — surface={surf_res:?} flat={flat_res:?}"
+        );
+        assert_eq!(
+            surf_res.is_true(),
+            expect_true,
+            "{name}: surface verdict {surf_res:?} != expected TRUE={expect_true}"
+        );
+        surf_trace
+    }
+
+    #[test]
+    fn ground_predicate_true() {
+        check(
+            "ground_true",
+            &["la .adam. cu gerku"],
+            "la .adam. cu gerku",
+            vec![make_assertion("adam", "gerku")],
+            make_query("adam", "gerku"),
+            true,
+        );
+    }
+
+    #[test]
+    fn absence_false_is_closed_world() {
+        // A missing fact is FALSE, and the SURFACE trace flags it as a closed-world (cwa) FALSE.
+        let trace = check(
+            "absence_false",
+            &["la .adam. cu gerku"],
+            "la .adam. cu mlatu",
+            vec![make_assertion("adam", "gerku")],
+            make_query("adam", "mlatu"),
+            false,
+        );
+        assert!(
+            trace.cwa_false,
+            "an absence-driven FALSE must set cwa_false on the surface trace"
+        );
+    }
+
+    #[test]
+    fn universal_modus_ponens_true() {
+        check(
+            "modus_ponens",
+            &["ro lo gerku cu danlu", "la .adam. cu gerku"],
+            "la .adam. cu danlu",
+            vec![
+                make_universal("gerku", "danlu"),
+                make_assertion("adam", "gerku"),
+            ],
+            make_query("adam", "danlu"),
+            true,
+        );
+    }
+
+    #[test]
+    fn transitive_chain_true() {
+        check(
+            "transitive_chain",
+            &[
+                "ro lo gerku cu danlu",
+                "ro lo danlu cu jmive",
+                "la .adam. cu gerku",
+            ],
+            "la .adam. cu jmive",
+            vec![
+                make_universal("gerku", "danlu"),
+                make_universal("danlu", "jmive"),
+                make_assertion("adam", "gerku"),
+            ],
+            make_query("adam", "jmive"),
+            true,
+        );
+    }
+
+    #[test]
+    fn naf_rule_true_and_flagged() {
+        // "every person who is not a dog is an animal"; adam is a person, not a dog -> animal,
+        // via negation-as-failure. The surface trace must mark it naf_dependent.
+        let trace = check(
+            "naf_rule",
+            &["ro lo prenu poi na gerku cu danlu", "la .adam. cu prenu"],
+            "la .adam. cu danlu",
+            vec![
+                make_universal_naf("prenu", "gerku", "danlu"),
+                make_assertion("adam", "prenu"),
+            ],
+            make_query("adam", "danlu"),
+            true,
+        );
+        assert!(
+            trace.naf_dependent,
+            "a NAF-derived TRUE must set naf_dependent on the surface trace"
+        );
+    }
+
+    #[test]
+    fn du_equality_substitution_true() {
+        // adam = bob, bob is a dog -> adam is a dog (substitutivity). `du` stays flat by design.
+        let mut du_nodes = Vec::new();
+        let du_root = pred(
+            &mut du_nodes,
+            "du",
+            vec![
+                LogicalTerm::Constant("adam".into()),
+                LogicalTerm::Constant("bob".into()),
+            ],
+        );
+        let du_buf = LogicBuffer {
+            nodes: du_nodes,
+            roots: vec![du_root],
+        };
+        check(
+            "du_equality",
+            &["la .adam. du la .bob.", "la .bob. cu gerku"],
+            "la .adam. cu gerku",
+            vec![du_buf, make_assertion("bob", "gerku")],
+            make_query("adam", "gerku"),
+            true,
+        );
+    }
+
+    #[test]
+    fn numeric_arithmetic_true() {
+        // 6 is the product of 2 and 3.
+        check(
+            "numeric_pilji_true",
+            &[],
+            "li xa cu pilji li re li ci",
+            vec![],
+            make_compute_query("pilji", 6.0, 2.0, 3.0),
+            true,
+        );
+    }
+
+    #[test]
+    fn numeric_comparison_decided_true() {
+        check(
+            "numeric_dunli_true",
+            &[],
+            "li mu cu dunli li mu",
+            vec![],
+            make_numeric_query("dunli", 5.0, 5.0),
+            true,
+        );
+    }
+
+    #[test]
+    fn numeric_comparison_decided_false_is_not_closed_world() {
+        // 5 = 3 is a DECIDED false, not a closed-world absence: the surface trace must NOT set
+        // cwa_false (the exact flat-vs-surface divergence this whole item closes).
+        let trace = check(
+            "numeric_dunli_false",
+            &[],
+            "li mu cu dunli li ci",
+            vec![],
+            make_numeric_query("dunli", 5.0, 3.0),
+            false,
+        );
+        assert!(
+            !trace.cwa_false,
+            "a numeric-decided FALSE must NOT set cwa_false on the surface trace"
+        );
+    }
 }

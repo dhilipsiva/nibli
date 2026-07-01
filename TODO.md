@@ -91,22 +91,6 @@ into phases.
     expansion + the ASP oracle for NAF (Phase 2), and the Track-B `compute_sccs` / unifier /
     rule-firing proofs.
 
-- [ ] 🧪 **Close the flat-vs-surface test gap so the unit layer can't lie.** logji's flat test
-  helpers (`logji/src/tests.rs`: `make_query` / `make_numeric_query` / `make_compute_query` /
-  `query_with_proof`) hand-build `LogicBuffer`s, skipping the event/Neo-Davidsonian
-  decomposition smuni emits on the real path — so a flat unit test can pass/fail DIFFERENTLY
-  from the shipped pipeline. Proven this session: the `cwa_false` numeric case was correct
-  through nibli-engine (surface) but the flat helper mis-flagged it (no `ComputeCheck(numeric)`
-  step). Whole behavior classes (witness/skolem dependency, compute decomposition, the
-  numeric-vs-absence FALSE distinction) are only catchable at integration level. Options:
-  (a) generate flat buffers FROM smuni (`smuni::compile_from_gerna_ast(gerna::parse_checked(..))`)
-  so the unit shape matches the real one; (b) a metamorphic/differential test that builds each
-  query BOTH ways and asserts verdict + trace-shape agree; (c) route the `make_*` helpers
-  through the same event decomposition; (d) a CLAUDE.md/CI discipline requiring a paired
-  nibli-engine integration test for any reasoning behavior. **Recommend (a)+(b) for the
-  compute/numeric helpers (proven-divergent), (d) as the standing guard.** Audit every flat
-  helper for shapes smuni builds differently.
-
 - [ ] 🚪 **Demonstrate the authoring problem is tractable for a non-Lojbanist.** The engine is
   sound + transparent, but knowledge-in requires writing Lojban (or the BYO-key LLM Translate).
   No evidence yet that a non-Lojbanist can author a CORRECT KB — and "sound relative to what

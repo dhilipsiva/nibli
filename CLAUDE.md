@@ -128,6 +128,7 @@ Use these assumptions when selecting entrypoints:
 - `resolve(&compiler, &spur)` helper to get string from interner in tests
 - Connective enums (Je/Ja/Jo/Ju) are shared between selbri and sumti connectives
 - BAI tags map to underlying gismu: ri'a->rinka, ni'i->nibli, mu'i->mukti, ki'u->krinu, pi'o->pilno, ba'i->basti
+- **Test discipline — flat vs surface (logji):** logji's flat `make_*` test helpers hand-build bare `LogicBuffer`s and skip smuni's event decomposition + `transform_compute_nodes`, so they match the shipped pipeline on *verdicts* but NOT on shape-dependent behavior (`cwa_false`/`naf_dependent` flags, the `ComputeCheck` step, witness/Skolem shape). For anything shape-dependent, build the buffer the real way via `compile_surface("<lojban>")` (a logji test helper = `gerna::parse_checked` → `smuni::compile_from_gerna_ast` → `transform_compute_nodes`), or use the `make_decomposed_*` helpers, or write a `nibli-engine` integration test — never assert those on a bare flat buffer. `logji/src/tests.rs`'s `mod flat_vs_surface` is a metamorphic guard that keeps every behavior class' flat verdict == the surface verdict; keep it green. (See the header comment above the flat helpers in `logji/src/tests.rs`.)
 
 ## Codebase Exclusions
 

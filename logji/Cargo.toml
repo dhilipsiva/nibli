@@ -13,5 +13,12 @@ smuni-dictionary = { path = "../smuni-dictionary" }
 default = []
 serde = ["dep:serde"]
 
+# Test-only: the real gerna→smuni front-end, so unit tests can build a `LogicBuffer`
+# the SHIPPED way (event-decomposed) and check the flat helpers against it. No cycle —
+# gerna→smuni→logji is a DAG; dev-deps never touch the WASM/release build.
+[dev-dependencies]
+gerna = { path = "../gerna" }
+smuni = { path = "../smuni" }
+
 [lib]
 crate-type = ["lib"]
