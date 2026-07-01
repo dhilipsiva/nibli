@@ -108,15 +108,25 @@ into phases.
     (`sccRejects_iff_criterion`: a negative edge with both endpoints in one SCC ⟺
     `RejectsByCriterion`, which composes with Phase 2 to `⟺ ¬Stratifiable`). Bridged to the real
     Tarjan `compute_sccs` by the `compute_sccs_matches_scc_spec` conformance test (output is a
-    partition + same-SCC ⟺ mutually-reachable, over the shared corpus). **Remaining** (roughly
-    tractability order): the one-directional unifier (`logji/src/kb.rs:326`), rule firing, and
+    partition + same-SCC ⟺ mutually-reachable, over the shared corpus). **Phase 4 — the
+    one-directional unifier: DONE.** `proofs/Unify.lean` models `GTerm`/`Subst`/`subst`/`unify`
+    (mirroring `logji/src/kb.rs` `unify_terms`/`substitute_term`) and proves `unify_sound`
+    (`NoVar c → unify t c σ₀ = some σ → subst σ t = c` — a successful match instantiates the
+    template to exactly the ground goal), via the `unify_extends` + `subst_stable` lemmas that
+    discharge the `depPair` accumulator case, plus `unify_minimal` (no extraneous bindings). Bridged
+    to the real `unify_facts`/`substitute_fact` by the `unify_conformance` corpus test (soundness +
+    determinism + minimal bindings over hand-crafted + random term pairs). **Remaining** (roughly
+    tractability order): rule firing (one firing step is a sound universal-instantiation +
+    modus-ponens step composing `unify_sound`; NAF-condition soundness delegated to Phases 2–3), and
     the headline theorem — a recorded proof trace ⇒ the conclusion holds in the stratified/perfect
-    model. Scope to the core, not the parser.
+    model (per-`ProofRule` local soundness + induction over the trace DAG, composing all four
+    proofs). Scope to the core, not the parser.
   - **Milestone order:** Track-A Horn-fragment differential gate ✓ DONE; Track-A random-corpus
     coverage ✓ DONE; Track-A gdpr/ddi mappable-slice coverage ✓ DONE; Track-A Phase 2 ASP/clingo
     stratified-NAF oracle ✓ DONE; Track-B combiner proof ✓ DONE; Track-B stratification-criterion
-    proof ✓ DONE; Track-B SCC-decomposition proof ✓ DONE. Next: the Track-B unifier / rule-firing
-    proofs (and, optionally, deontic-NAF coverage in the ASP oracle).
+    proof ✓ DONE; Track-B SCC-decomposition proof ✓ DONE; Track-B unifier proof ✓ DONE. Next: the
+    Track-B rule-firing proof, then the headline trace ⇒ model theorem (and, optionally, deontic-NAF
+    coverage in the ASP oracle).
 
 - [ ] 🚪 **Demonstrate the authoring problem is tractable for a non-Lojbanist.** The engine is
   sound + transparent, but knowledge-in requires writing Lojban (or the BYO-key LLM Translate).

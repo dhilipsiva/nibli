@@ -7426,6 +7426,163 @@ fn test_unify_skolem_fn_name_mismatch() {
     );
 }
 
+/// Conformance bridge to `proofs/Unify.lean` (`unify_sound`): over hand-crafted + random
+/// (template, ground-concrete) pairs, a successful `unify_facts` must satisfy the proven
+/// soundness property — `substitute_fact(template, σ) == concrete` — plus determinism and
+/// minimal bindings (every bound variable occurs in the template). Corpus, not exhaustive
+/// (terms are unbounded), matching the SCC/stratification bridges.
+#[test]
+fn unify_conformance() {
+    use super::kb::*;
+    use std::collections::{BTreeSet, HashMap};
+
+    // Deterministic LCG (same constants as `nibli-verify::generator` / `pseudo_random_graph`).
+    struct Lcg(u64);
+    impl Lcg {
+        fn new(seed: u64) -> Self {
+            Lcg(seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407))
+        }
+        fn below(&mut self, n: u64) -> u64 {
+            self.0 = self
+                .0
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (self.0 >> 33) % n
+        }
+    }
+
+    const CONSTS: &[&str] = &["adam", "bel", "kim"];
+    const PVARS: &[&str] = &["x", "y", "z"];
+
+    fn gen_leaf(rng: &mut Lcg, allow_pvar: bool) -> GroundTerm {
+        let n = if allow_pvar { 5 } else { 4 };
+        match rng.below(n) {
+            0 => GroundTerm::Constant(CONSTS[rng.below(CONSTS.len() as u64) as usize].into()),
+            1 => GroundTerm::Number(rng.below(5)),
+            2 => GroundTerm::Description(format!("d{}", rng.below(3))),
+            3 => GroundTerm::Unspecified,
+            _ => GroundTerm::PatternVar(PVARS[rng.below(PVARS.len() as u64) as usize].into()),
+        }
+    }
+
+    // A random term; `allow_pvar` distinguishes a template (with pattern vars) from a ground term.
+    fn gen_term(rng: &mut Lcg, depth: u32, allow_pvar: bool) -> GroundTerm {
+        if depth == 0 || rng.below(2) == 0 {
+            gen_leaf(rng, allow_pvar)
+        } else if rng.below(2) == 0 {
+            GroundTerm::SkolemFn(
+                format!("sk{}", rng.below(2)),
+                Box::new(gen_term(rng, depth - 1, allow_pvar)),
+            )
+        } else {
+            GroundTerm::DepPair(
+                Box::new(gen_term(rng, depth - 1, allow_pvar)),
+                Box::new(gen_term(rng, depth - 1, allow_pvar)),
+            )
+        }
+    }
+
+    fn pvars_of(t: &GroundTerm, out: &mut BTreeSet<String>) {
+        match t {
+            GroundTerm::PatternVar(n) => {
+                out.insert(n.clone());
+            }
+            GroundTerm::SkolemFn(_, d) => pvars_of(d, out),
+            GroundTerm::DepPair(a, b) => {
+                pvars_of(a, out);
+                pvars_of(b, out);
+            }
+            _ => {}
+        }
+    }
+
+    // Consistently instantiate a template's pattern vars from `theta`, yielding a ground term.
+    fn instantiate(t: &GroundTerm, theta: &HashMap<String, GroundTerm>) -> GroundTerm {
+        match t {
+            GroundTerm::PatternVar(n) => theta.get(n).cloned().unwrap_or(GroundTerm::Unspecified),
+            GroundTerm::SkolemFn(nm, d) => {
+                GroundTerm::SkolemFn(nm.clone(), Box::new(instantiate(d, theta)))
+            }
+            GroundTerm::DepPair(a, b) => GroundTerm::DepPair(
+                Box::new(instantiate(a, theta)),
+                Box::new(instantiate(b, theta)),
+            ),
+            other => other.clone(),
+        }
+    }
+
+    let mut guaranteed = 0usize;
+    let mut independent_matched = 0usize;
+    for seed in 0u64..500 {
+        let mut rng = Lcg::new(seed);
+        let n_args = 1 + rng.below(3) as usize; // 1..=3 args
+        let t_args: Vec<GroundTerm> = (0..n_args).map(|_| gen_term(&mut rng, 3, true)).collect();
+        let template = StoredFact::Bare(GroundFact::new("rel", t_args.clone()));
+
+        // Build a guaranteed-matching ground instance: each pattern var → a fresh ground term.
+        let mut pv = BTreeSet::new();
+        for a in &t_args {
+            pvars_of(a, &mut pv);
+        }
+        let mut theta: HashMap<String, GroundTerm> = HashMap::new();
+        for name in &pv {
+            theta.insert(name.clone(), gen_term(&mut rng, 2, false));
+        }
+        let c_args: Vec<GroundTerm> = t_args.iter().map(|a| instantiate(a, &theta)).collect();
+        let concrete = StoredFact::Bare(GroundFact::new("rel", c_args));
+
+        // (1) SOUNDNESS on the guaranteed match (this is `unify_sound`).
+        let sigma = unify_facts(&template, &concrete).unwrap_or_else(|| {
+            panic!(
+                "seed {seed}: an instance of the template must unify: {template:?} vs {concrete:?}"
+            )
+        });
+        assert_eq!(
+            substitute_fact(&template, &sigma),
+            concrete,
+            "seed {seed}: SOUNDNESS FAILED — substitute_fact(template, σ) != concrete"
+        );
+        guaranteed += 1;
+
+        // (2) DETERMINISM.
+        assert_eq!(
+            unify_facts(&template, &concrete),
+            Some(sigma.clone()),
+            "seed {seed}: unify_facts not deterministic"
+        );
+
+        // (3) MINIMAL BINDINGS: every bound key is a pattern var of the template.
+        for key in sigma.keys() {
+            assert!(
+                pv.contains(key),
+                "seed {seed}: unify bound an extraneous variable '{key}' absent from the template"
+            );
+        }
+
+        // (4) Independent random ground concrete: if it unifies, soundness must still hold.
+        let c2: Vec<GroundTerm> = (0..n_args).map(|_| gen_term(&mut rng, 3, false)).collect();
+        let concrete2 = StoredFact::Bare(GroundFact::new("rel", c2));
+        if let Some(sigma3) = unify_facts(&template, &concrete2) {
+            assert_eq!(
+                substitute_fact(&template, &sigma3),
+                concrete2,
+                "seed {seed}: SOUNDNESS FAILED on an independent random concrete"
+            );
+            independent_matched += 1;
+        }
+    }
+    assert_eq!(
+        guaranteed, 500,
+        "the guaranteed-match arm must run on every seed"
+    );
+    assert!(
+        independent_matched > 0,
+        "no independent random pair ever unified — the breadth arm is vacuous"
+    );
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // STRATIFICATION TESTS
 // ═══════════════════════════════════════════════════════════════════

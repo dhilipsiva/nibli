@@ -70,6 +70,25 @@ runs the same as the proven reachability criterion?* Two results:
 Mathlib-free: `funext`/`propext`/`cast` + the `Classical` namespace; the reachability model is
 duplicated from `Stratification.lean` (each proof file stands alone).
 
+### `Unify.lean` — the one-directional unifier
+
+Formalizes the substitution engine under backward chaining (`logji/src/kb.rs` `unify_terms` :326 /
+`substitute_term` :389): matching a rule's conclusion TEMPLATE (which carries pattern variables)
+against a ground goal produces a substitution σ, and it must be sound — a successful match
+instantiates the template to *exactly* the goal. Models `GTerm` (mirroring `GroundTerm`), an
+association-list `Subst`, `subst`, and the accumulator-threading `unify`, and proves:
+
+- **`unify_sound`**: `NoVar c → unify t c σ₀ = some σ → subst σ t = c` — the headline soundness
+  property. The `depPair` case (two components sharing one accumulator) is discharged by two
+  lemmas: **`unify_extends`** (a successful `unify` only adds bindings — prior ones are preserved)
+  and **`subst_stable`** (a ground `subst σ t` is unchanged by extending σ), so the first
+  component's binding survives the second component's unification.
+- **`unify_minimal`**: `unify` never binds a variable absent from the template (no extraneous
+  bindings).
+
+Mathlib-free (prelude only). The `Number` payload is abstracted to `Nat` — only decidable equality
+matters for match soundness, not f64 bit-semantics.
+
 ## Model ↔ code correspondence
 
 A Lean proof guarantees the *model* is sound; a Rust conformance test ties it to the real code.
@@ -86,12 +105,19 @@ A Lean proof guarantees the *model* is sound; a Rust conformance test ties it to
   *exactly* when they are mutually reachable (the `reachable_sets` reference), over the same corpus
   (with a non-vacuity guard that a nontrivial SCC appears). Ties the actual algorithm to
   `Scc.lean`'s mutual-reachability spec; corpus, not exhaustive.
+- **Unifier** (`unify_conformance`, `logji/src/tests.rs`): checks the real `unify_facts` /
+  `substitute_fact` satisfy the proven soundness property (`substitute_fact(template, σ) ==
+  concrete`) on every successful match, plus determinism + minimal bindings, over hand-crafted +
+  random `(template, ground-concrete)` pairs. Ties the real substitution engine to `Unify.lean`;
+  corpus, not exhaustive.
 
 Keep the two sides in lock-step: when a Rust component changes, update both its `.lean` model and
 its conformance test.
 
 ## Roadmap (remaining Track B)
 
-Next soundness-critical slices, in rough tractability order: the one-directional unifier
-(`logji/src/kb.rs`), rule firing, and ultimately the headline theorem — *a recorded proof trace ⇒
-the conclusion holds in the stratified/perfect model*.
+Next soundness-critical slices, in rough tractability order: **rule firing** (one firing step is a
+sound universal-instantiation + modus-ponens step — composes `Unify.lean`'s `unify_sound`, with
+NAF-condition soundness delegated to `Stratification.lean` + `Scc.lean`), and ultimately the
+headline theorem — *a recorded proof trace ⇒ the conclusion holds in the stratified/perfect model*
+(per-`ProofRule` local soundness + induction over the trace DAG, composing all four proofs).
