@@ -524,6 +524,10 @@ struct Repl {
     /// The rebuild runs LAZILY before the next session call, so an intervening
     /// `:fuel`/`:memory` raise applies to the replay.
     needs_rebuild: bool,
+    /// Suppress per-assertion bookkeeping echoes (`[Fact #N] …`) and forward the
+    /// same signal to the guest (`[Skolem]`/`[Rule]`/`[Constraint]`). Set from
+    /// `NIBLI_QUIET=1` at startup; default false (verbose, as a live REPL was).
+    quiet: bool,
 }
 
 impl Repl {
@@ -537,12 +541,22 @@ impl Repl {
         fuel_budget: u64,
         memory_limit_mb: usize,
         backend_addr: Option<String>,
+        quiet: bool,
     ) -> Result<(Store<HostState>, pipeline_bind::LasnaPipeline, ResourceAny)> {
+        // Forward the quiet flag into the guest's WASI environment: the ctx
+        // otherwise inherits only stdio, so `lasna::Session::new` cannot see
+        // `NIBLI_QUIET` unless we push it here. This is what suppresses the
+        // guest-side `[Skolem]`/`[Rule]`/`[Constraint]` bookkeeping.
+        let ctx = {
+            let mut b = WasiCtxBuilder::new();
+            b.inherit_stdout().inherit_stderr();
+            if quiet {
+                b.env("NIBLI_QUIET", "1");
+            }
+            b.build()
+        };
         let state = HostState {
-            ctx: WasiCtxBuilder::new()
-                .inherit_stdout()
-                .inherit_stderr()
-                .build(),
+            ctx,
             table: ResourceTable::new(),
             limits: StoreLimitsBuilder::new()
                 .memory_size(memory_limit_mb * 1024 * 1024)
@@ -598,6 +612,7 @@ impl Repl {
             self.fuel_budget,
             self.memory_limit_mb,
             backend_addr,
+            self.quiet,
         ) {
             Ok((store, pipeline, session_handle)) => {
                 // The old store (with the dead session resource inside it) is
@@ -1015,12 +1030,14 @@ impl Repl {
                                 args: args.clone(),
                                 id: fact_id,
                             });
-                            println!(
-                                "[Fact #{}] {}({}) asserted.",
-                                fact_id,
-                                relation,
-                                display_args.join(", ")
-                            );
+                            if !self.quiet {
+                                println!(
+                                    "[Fact #{}] {}({}) asserted.",
+                                    fact_id,
+                                    relation,
+                                    display_args.join(", ")
+                                );
+                            }
                         }
                         Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                         Err(e) => {
@@ -1100,7 +1117,9 @@ impl Repl {
                             text: trimmed.to_string(),
                             id: fact_id,
                         });
-                        println!("[Fact #{}] {}", fact_id, trimmed);
+                        if !self.quiet {
+                            println!("[Fact #{}] {}", fact_id, trimmed);
+                        }
                         asserted += 1;
                     }
                     Ok(Err(e)) => {
@@ -1224,7 +1243,9 @@ impl Repl {
                         text: input.to_string(),
                         id: fact_id,
                     });
-                    println!("[Fact #{}] Asserted.", fact_id);
+                    if !self.quiet {
+                        println!("[Fact #{}] Asserted.", fact_id);
+                    }
                 }
                 Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
                 Err(e) => {
@@ -1344,6 +1365,11 @@ fn main() -> Result<()> {
         .unwrap_or(512);
     println!("Memory limit: {} MB", memory_limit_mb);
 
+    // Quiet mode: suppress per-assertion bookkeeping (`[Fact #N] …` on the host,
+    // `[Skolem]`/`[Rule]`/`[Constraint]` in the guest). Opt-in — a live REPL stays
+    // verbose. The book capture harness sets NIBLI_QUIET=1 for clean transcripts.
+    let quiet = std::env::var("NIBLI_QUIET").ok().as_deref() == Some("1");
+
     let wasm_path = std::env::var("NIBLI_WASM_PATH")
         .unwrap_or_else(|_| "target/wasm32-wasip2/debug/lasna.wasm".to_string());
     println!("Loading WebAssembly Component from {}...", wasm_path);
@@ -1355,6 +1381,7 @@ fn main() -> Result<()> {
         fuel_budget,
         memory_limit_mb,
         backend_addr,
+        quiet,
     )?;
 
     // ── Persistent store (optional) ──
@@ -1390,6 +1417,7 @@ fn main() -> Result<()> {
         journal: Vec::new(),
         replaying: false,
         needs_rebuild: false,
+        quiet,
     };
 
     // Replay persisted facts into WASM session

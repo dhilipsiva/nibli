@@ -299,6 +299,26 @@ smoke-gasnu-non-finite: build-wasm build-gasnu
         if echo "$out" | grep -qE '\[Query\] (TRUE|FALSE)'; then echo 'FAIL: non-finite input degraded to a confident verdict'; exit 1; fi; \
         echo 'PASS: a non-finite numeric literal yields UNKNOWN (non-finite), not a confident verdict'
 
+# Quiet-mode smoke: NIBLI_QUIET=1 suppresses the per-assertion bookkeeping the book
+# strips — `[Fact #N]` on the host, `[Skolem]`/`[Rule]` in the guest (the latter reached
+# only via the host->guest WASI env hop) — while the verdict + proof trace stay. The
+# default (unset) still prints the diagnostics, so a live REPL is unchanged. Guards the
+# host gate AND the env forwarding end-to-end. Pre-release gate (needs the WASM build).
+smoke-gasnu-quiet: build-wasm build-gasnu
+    @echo "Smoke-testing gasnu NIBLI_QUIET mode (suppress [Fact]/[Skolem]/[Rule], keep proof)..."
+    @q=$(printf 'la .adam. gerku\nro lo gerku cu danlu\n? la .adam. danlu\n' \
+        | NIBLI_QUIET=1 NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$q"; \
+        echo "$q" | grep -qF '[Query] TRUE' || { echo 'FAIL: quiet-mode query lost its verdict'; exit 1; }; \
+        echo "$q" | grep -qF 'adam is an animal' || { echo 'FAIL: quiet-mode query lost its proof trace'; exit 1; }; \
+        if echo "$q" | grep -qE '\[(Fact|Skolem|Rule)'; then echo 'FAIL: NIBLI_QUIET=1 did not suppress the per-assertion bookkeeping'; exit 1; fi; \
+        v=$(printf 'la .adam. gerku\nro lo gerku cu danlu\n? la .adam. danlu\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$v"; \
+        echo "$v" | grep -qF '[Fact #0] Asserted.' || { echo 'FAIL: default (verbose) mode dropped the [Fact] echo'; exit 1; }; \
+        echo "$v" | grep -qE '\[(Skolem|Rule)' || { echo 'FAIL: default (verbose) mode dropped the guest [Skolem]/[Rule] diagnostics'; exit 1; }; \
+        echo 'PASS: NIBLI_QUIET=1 suppresses [Fact]/[Skolem]/[Rule] but keeps the verdict + proof; default stays verbose'
+
 # Executes the full pipeline: Builds WASM modules, then boots the native REPL
 run: build-wasm
     @echo "Launching Neuro-Symbolic Engine ({{profile}})..."
@@ -395,7 +415,7 @@ ci: fmt-check clippy-runtime test test-engine test-gasnu test-backend test-store
 # `build-wasm build-gasnu`, so `just` builds the component + host once, then runs
 # all six: fuel exhaustion + post-trap recovery + journal replay (trap-recovery),
 # plus the script transcript, go'i, persist-replay, NAF-note, and :debug round-trip.
-ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-cwa-false smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable smoke-gasnu-non-finite
+ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-cwa-false smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable smoke-gasnu-non-finite smoke-gasnu-quiet
 
 # Comprehensive pre-push / pre-release gate: the fast native `ci` plus the WASM
 # behavioral smokes. `ci` alone does not exercise the WASM component.
