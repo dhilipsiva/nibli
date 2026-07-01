@@ -145,12 +145,18 @@ When analyzing or searching the codebase:
 
 ## Roadmap
 
-See `TODO.md` for the full phased roadmap (Phases 1-5), dependency graph, and technical debt tracker.
+The **soundness-by-proof frontier is complete** (P1–P4 gaps cleared; P5 done): Track A ships two
+differential gates — **Vampire** (classical FOL, Horn/NAF-free) and **clingo** (ASP, stratified-NAF
++ closed-world, incl. the GDPR deontic-NAF erasure rule) — and Track B ships **six mechanized Lean 4
+proofs** of the soundness-critical core (combiner, stratification criterion, SCC decomposition,
+unifier, rule firing, and the capstone *trace ⇒ perfect-model* theorem), each bridged to the engine
+by a conformance test (`proofs/README.md`; `just verify-soundness` + `just verify-proofs`). The
+remaining ceiling is **adoption**, not engine code — chiefly a reproducible non-Lojbanist authoring
+study (round-trip fidelity + silent-mistranslation rate), which belongs to the book/UX track.
 
 ## Pre-commit Checklist
 
 Before every commit, always:
 1. Update `CLAUDE.md` — if required
-2. Update `TODO.md` — remove completed tasks
-3. Update `README.md` — if Lojban coverage or reasoning capabilities changed
-4. Then commit all code + doc changes together
+2. Update `README.md` — if Lojban coverage or reasoning capabilities changed
+3. Then commit all code + doc changes together
