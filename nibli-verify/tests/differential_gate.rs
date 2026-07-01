@@ -3,10 +3,11 @@
 //! If the prover is unavailable the test skips cleanly (so `cargo test` is green in any
 //! environment); inside the Nix dev shell Vampire is present, so it runs for real.
 
+use nibli_types::logic::LogicNode;
 use nibli_verify::oracle_asp::AspConfig;
 use nibli_verify::{
     corpora, corpus, corpus_naf, oracle::OracleConfig, run_corpus, run_corpus_slice,
-    run_naf_corpus, run_random, run_random_naf,
+    run_naf_corpus, run_random, run_random_naf, seam,
 };
 
 /// The gate must actually compare a meaningful number of cases — otherwise a future
@@ -252,5 +253,154 @@ fn random_naf_cases_agree_with_clingo() {
         report.checked() as u64 >= count / 2,
         "only {} of {count} random NAF cases reached the oracle; sweep near-vacuous",
         report.checked()
+    );
+}
+
+/// gerna→smuni compiler-seam gate: compile source Lojban end-to-end (parse + semantic compile)
+/// and check the FOL against hand-verified structure (ground truth) + transformation invariants
+/// (oracle-free). This is the FRONT-END analog of the Vampire/clingo oracle gates: the six proofs
+/// + those gates verify logji against smuni's *already-compiled* IR, but nothing else verified that
+/// gerna→smuni compiles the *source text* to the intended IR (the isolated smuni tests hand-build
+/// ASTs, bypassing gerna). Needs no solver, so it never skips. See `nibli-verify/src/seam.rs`.
+///
+/// Honest scope: a corpus/property gate, not a proof. The structural golden cases catch a
+/// *systematic* miscompilation (where the FOL is hand-verified); the metamorphic pairs catch
+/// *transformation* bugs at scale. All words are in-tree fallback vocabulary, so it runs
+/// identically with or without the dictionary data file.
+#[test]
+fn gerna_smuni_seam_conformance() {
+    let mut structural = 0usize;
+    let mut metamorphic = 0usize;
+
+    // ── Structural golden (ground truth: the compiled FOL *shape* is hand-verified) ──
+
+    // 1. Neo-Davidsonian event decomposition + arg→role mapping:
+    //    `la .adam. cu gerku` → ∃ev. gerku(ev) ∧ gerku_x1(ev, adam) ∧ …
+    {
+        let b = seam::compile("la .adam. cu gerku").expect("compile fact");
+        assert!(
+            matches!(seam::root(&b), LogicNode::ExistsNode(_)),
+            "fact root is ∃ (event existentially closed)"
+        );
+        assert!(
+            seam::role_is_const(&b, "gerku_x1", "adam"),
+            "x1 role is filled with the subject `adam`"
+        );
+        structural += 1;
+    }
+
+    // 2. Negation: `la .adam. cu na gerku` → ¬(∃ev. gerku…)
+    {
+        let b = seam::compile("la .adam. cu na gerku").expect("compile na");
+        assert!(
+            matches!(seam::root(&b), LogicNode::NotNode(_)),
+            "`na` root is Not"
+        );
+        structural += 1;
+    }
+
+    // 3. Connectives map distinctly: `.e` → And, `.a` → Or (over two event groups).
+    {
+        let b_and = seam::compile("mi .e do gerku").expect("compile .e");
+        assert!(
+            matches!(seam::root(&b_and), LogicNode::AndNode(_)),
+            "`.e` root is And"
+        );
+        let b_or = seam::compile("mi .a do gerku").expect("compile .a");
+        assert!(
+            matches!(seam::root(&b_or), LogicNode::OrNode(_)),
+            "`.a` root is Or"
+        );
+        structural += 1;
+    }
+
+    // 4. Universal restriction is a material implication:
+    //    `ro lo gerku cu danlu` → ∀v. (¬∃gerku(v) ∨ ∃danlu(v))
+    {
+        let b = seam::compile("ro lo gerku cu danlu").expect("compile ro lo");
+        let LogicNode::ForAllNode((_, body)) = seam::root(&b) else {
+            panic!("`ro lo` root is ∀, got {:?}", seam::root(&b));
+        };
+        let LogicNode::OrNode((left, _)) = seam::node(&b, *body) else {
+            panic!(
+                "∀ body is Or (implication), got {:?}",
+                seam::node(&b, *body)
+            );
+        };
+        assert!(
+            matches!(seam::node(&b, *left), LogicNode::NotNode(_)),
+            "implication antecedent (the restrictor) is negated"
+        );
+        structural += 1;
+    }
+
+    // 5. The ∃/∀ contrast: `lo gerku cu danlu` → ∃v. (∃gerku(v) ∧ ∃danlu(v)) — a conjunction,
+    //    NOT the implication of case 4. (A bug swapping `lo`/`ro lo` would flip this.)
+    {
+        let b = seam::compile("lo gerku cu danlu").expect("compile lo");
+        let LogicNode::ExistsNode((_, body)) = seam::root(&b) else {
+            panic!("`lo` root is ∃, got {:?}", seam::root(&b));
+        };
+        assert!(
+            matches!(seam::node(&b, *body), LogicNode::AndNode(_)),
+            "∃ body is And (existential import), got {:?}",
+            seam::node(&b, *body)
+        );
+        structural += 1;
+    }
+
+    // 6. `se` conversion swaps places x1↔x2 vs the plain form.
+    {
+        let plain = seam::compile("mi prami do").expect("compile plain");
+        let conv = seam::compile("mi se prami do").expect("compile se");
+        assert!(
+            seam::role_is_const(&plain, "prami_x1", "mi")
+                && seam::role_is_const(&plain, "prami_x2", "do"),
+            "plain: x1=mi, x2=do"
+        );
+        assert!(
+            seam::role_is_const(&conv, "prami_x1", "do")
+                && seam::role_is_const(&conv, "prami_x2", "mi"),
+            "se: x1=do, x2=mi (swapped)"
+        );
+        structural += 1;
+    }
+
+    // ── Metamorphic (oracle-free: two surface forms must compile to the SAME FOL) ──
+
+    // A. `se` conversion cancels the place swap: `mi se prami do` ≡ `do prami mi`.
+    {
+        let a = seam::canonicalize(&seam::compile("mi se prami do").unwrap());
+        let b = seam::canonicalize(&seam::compile("do prami mi").unwrap());
+        assert_eq!(a, b, "metamorphic: `mi se prami do` ≡ `do prami mi`");
+        metamorphic += 1;
+    }
+
+    // B. Seeded batch of `E se P F` ≡ `F P E` pairs over the fallback 2+-place vocab.
+    const SEAM_BATCH: u64 = 60;
+    for seed in 0..SEAM_BATCH {
+        let (left, right) = seam::conversion_pair(seed);
+        let lb = seam::canonicalize(
+            &seam::compile(&left).unwrap_or_else(|e| panic!("compile '{left}': {e}")),
+        );
+        let rb = seam::canonicalize(
+            &seam::compile(&right).unwrap_or_else(|e| panic!("compile '{right}': {e}")),
+        );
+        assert_eq!(lb, rb, "conversion pair seed {seed}: `{left}` ≢ `{right}`");
+        metamorphic += 1;
+    }
+
+    eprintln!(
+        "gerna→smuni seam: {structural} structural golden + {metamorphic} metamorphic checks passed"
+    );
+
+    // Non-vacuity: both families must have actually fired.
+    assert!(
+        structural >= 6,
+        "structural family near-vacuous ({structural})"
+    );
+    assert!(
+        metamorphic >= (SEAM_BATCH as usize),
+        "metamorphic family near-vacuous ({metamorphic})"
     );
 }

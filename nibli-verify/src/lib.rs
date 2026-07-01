@@ -23,6 +23,7 @@ pub mod filter;
 pub mod generator;
 pub mod oracle;
 pub mod oracle_asp;
+pub mod seam;
 pub mod tptp;
 
 use nibli_engine::NibliEngine;
