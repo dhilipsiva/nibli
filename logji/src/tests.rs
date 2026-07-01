@@ -948,38 +948,126 @@ fn assert_proof_refs_resolve_to_holds_true(trace: &ProofTrace) {
 }
 
 /// Conformance bridge to `proofs/Trace.lean` (`cert_sound` / `qproof_sound`): every recorded proof
-/// trace, read as a proof CERTIFICATE, must be structurally valid — each step's `holds` is justified
-/// locally by its rule and children, exactly as the `Pos`/`Neg`/`QProof`/`QRefute` constructors
-/// require. Composed with the Lean theorem "a valid certificate ⇒ the conclusion holds in the
-/// perfect model," this ties the engine's recorded traces to the mechanized soundness result. (The
-/// model axioms — esp. `supported` — are assumed in the proof, not machine-checked here.)
+/// trace, read as a proof CERTIFICATE, must be a valid certificate — each step's `holds` is justified
+/// locally by its rule + children (the `Pos`/`Neg`/`QProof`/`QRefute` constructors), AND the trace's
+/// leaves/steps are tied to the real engine, bridging the `PerfectModel` axioms: `factAx` (an
+/// Asserted leaf is a KB fact), `candOk`/`ruleClosed` (a Derived step maps to a registered rule), and
+/// `supported` (a closed-world FALSE atom is genuinely not a fact and records only real blocked
+/// rules — the `notFound` certificate the engine emits). Composed with the Lean theorem "a valid
+/// certificate ⇒ the conclusion holds in the perfect model," this makes the capstone load-bearing,
+/// not proof-conditional. (`ruleClosed`'s firing step is separately proved + bridged by
+/// `rule_firing_conformance`. Corpus-tested, not exhaustive; the `supported` completeness direction —
+/// no fireable rule silently skipped — rests on the engine's emission invariant, itself cross-checked
+/// by the `nibli-verify` differential gates' verdict-vs-independent-model comparison.)
 ///
-/// `validate_cert` walks every step and asserts the local certificate condition per `ProofRule`;
-/// `trace_soundness_conformance` runs it over a curated corpus exercising each constructor.
+/// `validate_cert` walks every step; `trace_soundness_conformance` runs it over a curated corpus, and
+/// `Exercised` counters assert each KB-tied bridge fired (never vacuous).
 #[test]
 fn trace_soundness_conformance() {
-    /// Assert each step's `holds` is locally justified by its rule + children — the direct
-    /// transcription of the `Trace.lean` certificate constructors.
-    fn validate_cert(trace: &ProofTrace) -> Result<(), String> {
+    /// How many times each KB-tied bridge check actually fired — so a future corpus change can't
+    /// make a bridge silently vacuous.
+    #[derive(Default)]
+    struct Exercised {
+        factax: usize,      // Asserted leaf checked against the fact store
+        derived: usize,     // Derived step checked against a registered rule
+        notfound: usize,    // PredicateNotFound checked to be a genuine non-fact
+        ruleblocked: usize, // RuleAttemptFailed child checked to name a registered rule
+    }
+
+    /// Assert each step's `holds` is locally justified by its rule + children (the `Trace.lean`
+    /// certificate constructors) AND — the axiom bridges — that the trace's leaves/steps are tied to
+    /// the real KB + rule registry: `factAx` (an Asserted leaf is a KB fact), `candOk`/`ruleClosed`
+    /// (a Derived step maps to a registered rule), and `supported` (a closed-world FALSE atom is
+    /// genuinely not a fact, and each blocked candidate it records is a real rule — the `notFound`
+    /// certificate the engine emits at `reasoning.rs:1086`).
+    fn validate_cert(
+        kb: &KnowledgeBase,
+        trace: &ProofTrace,
+        ex: &mut Exercised,
+    ) -> Result<(), String> {
+        let inner = kb.inner.borrow();
+        // The store's fact display strings + the registered rules' base labels — the engine-side
+        // ground truth the trace's leaves must be tied to.
+        let fact_displays: std::collections::HashSet<String> = inner
+            .fact_store
+            .all_facts()
+            .iter()
+            .map(|f| f.to_display_string())
+            .collect();
+        let rule_labels: std::collections::HashSet<&str> = inner
+            .universal_rules
+            .values()
+            .flatten()
+            .map(|r| r.label.as_str())
+            .collect();
+        // A `Derived`/`RuleAttemptFailed` label may carry a `" [past]"`/`" [present]"` tense suffix.
+        fn base_label(l: &str) -> &str {
+            l.split(" [").next().unwrap_or(l)
+        }
+
         let holds = |c: u32| trace.steps[c as usize].holds;
         for (i, step) in trace.steps.iter().enumerate() {
             let all_hold = step.children.iter().all(|&c| holds(c));
             let any_hold = step.children.iter().any(|&c| holds(c));
             match &step.rule {
-                // Pos.fact — a positive leaf certificate is always a true leaf.
-                ProofRule::Asserted { .. } => {
+                // Pos.fact — a positive leaf certificate is a true leaf AND (factAx) a genuine KB fact.
+                ProofRule::Asserted { fact } => {
                     if !step.holds {
                         return Err(format!("step #{i} Asserted but holds=false"));
                     }
+                    if !fact_displays.contains(fact) {
+                        return Err(format!(
+                            "step #{i} Asserted '{fact}' is not in the fact store (factAx bridge)"
+                        ));
+                    }
+                    ex.factax += 1;
                 }
-                // Pos.fire — a firing certificate: holds ⟹ its condition children are present and
-                // ALL hold (each positive condition sub-proof, each NAF-discharge Negation leaf).
-                ProofRule::Derived { .. } => {
+                // Pos.fire — holds ⟹ condition children present + all hold; AND (candOk/ruleClosed)
+                // the fired rule is registered.
+                ProofRule::Derived { label, .. } => {
                     if step.holds && (step.children.is_empty() || !all_hold) {
                         return Err(format!(
                             "step #{i} Derived holds=true but a condition child is missing or does not hold"
                         ));
                     }
+                    if !rule_labels.contains(base_label(label)) {
+                        return Err(format!(
+                            "step #{i} Derived label '{}' is not a registered rule (candOk/ruleClosed bridge)",
+                            base_label(label)
+                        ));
+                    }
+                    ex.derived += 1;
+                }
+                // Neg / closed-world FALSE — (supported) the atom is genuinely not a fact, and every
+                // recorded blocked candidate is a real rule (the `notFound` certificate).
+                ProofRule::PredicateNotFound { predicate } => {
+                    if step.holds {
+                        return Err(format!("step #{i} PredicateNotFound but holds=true"));
+                    }
+                    if fact_displays.contains(predicate) {
+                        return Err(format!(
+                            "step #{i} PredicateNotFound '{predicate}' is actually a stored fact (supported bridge)"
+                        ));
+                    }
+                    for &c in &step.children {
+                        match &trace.steps[c as usize].rule {
+                            ProofRule::RuleAttemptFailed { rule_label, .. } => {
+                                if !rule_labels.contains(base_label(rule_label)) {
+                                    return Err(format!(
+                                        "step #{i} PredicateNotFound records blocked rule '{}' that is not registered (supported bridge)",
+                                        base_label(rule_label)
+                                    ));
+                                }
+                                ex.ruleblocked += 1;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "step #{i} PredicateNotFound child is not RuleAttemptFailed: {other:?}"
+                                ));
+                            }
+                        }
+                    }
+                    ex.notfound += 1;
                 }
                 // Combiner conjunction law: holds ⟺ all children hold.
                 ProofRule::Conjunction => {
@@ -1021,9 +1109,8 @@ fn trace_soundness_conformance() {
                         ));
                     }
                 }
-                // Neg / false leaves & failures: must not hold.
-                ProofRule::PredicateNotFound { .. }
-                | ProofRule::RuleAttemptFailed { .. }
+                // Other false leaves & failures: must not hold.
+                ProofRule::RuleAttemptFailed { .. }
                 | ProofRule::ExistsFailed
                 | ProofRule::ForallCounterexample { .. } => {
                     if step.holds {
@@ -1038,12 +1125,13 @@ fn trace_soundness_conformance() {
         Ok(())
     }
 
-    fn run_case(name: &str, kb: &KnowledgeBase, query: LogicBuffer) {
+    let ex = std::cell::RefCell::new(Exercised::default());
+    let run_case = |name: &str, kb: &KnowledgeBase, query: LogicBuffer| {
         let (result, trace) = kb.query_entailment_with_proof_inner(query).unwrap();
-        validate_cert(&trace)
+        validate_cert(kb, &trace, &mut ex.borrow_mut())
             .unwrap_or_else(|e| panic!("invalid certificate on '{name}': {e}\n{trace:?}"));
         assert_trace_consistent(&result, &trace);
-    }
+    };
 
     // Build a conjunction / negation query buffer from two/one predicate leaves.
     fn conj_query(e: &str, p1: &str, p2: &str) -> LogicBuffer {
@@ -1151,10 +1239,36 @@ fn trace_soundness_conformance() {
         run_case("two_entities_false", &kb, make_query("bel", "danlu"));
         checked += 2;
     }
+    // 10. Horn rule tried but blocked → closed-world FALSE whose PredicateNotFound records a
+    //     RuleAttemptFailed child (the missing `gerku` condition) — exercises the `supported` bridge.
+    {
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu")); // rule present, but no gerku(adam)
+        run_case("horn_blocked_false", &kb, make_query("adam", "danlu"));
+        checked += 1;
+    }
 
     assert!(
         checked >= 10,
         "trace-soundness corpus too small ({checked}); gate near-vacuous"
+    );
+    // The axiom bridges must not be vacuous: each KB-tied check fired at least once across the corpus.
+    let ex = ex.borrow();
+    assert!(
+        ex.factax > 0,
+        "factAx bridge never exercised (no Asserted leaf checked vs the store)"
+    );
+    assert!(
+        ex.derived > 0,
+        "candOk/ruleClosed bridge never exercised (no Derived step checked vs a rule)"
+    );
+    assert!(
+        ex.notfound > 0,
+        "supported bridge never exercised (no PredicateNotFound checked)"
+    );
+    assert!(
+        ex.ruleblocked > 0,
+        "supported bridge's blocked-rule check never exercised (no RuleAttemptFailed child validated)"
     );
 }
 

@@ -19,11 +19,15 @@
   * A `PerfectModel` bundles the model `M`, the facts `KB`, the (finite) candidate rules per atom,
     and four axioms characterizing the perfect model of a stratified program: `factAx` (facts hold),
     `ruleClosed` (= `firing_sound`), `candOk` (a candidate for `a` concludes `a`), and `supported`
-    (every true atom is a fact or the head of a fireable candidate — least-model minimality). Three
-    are backed by earlier proofs / are definitional; `supported` is the ONE assumption not machine-
-    checked here — it is justified by `Stratification.lean` (a stratified program has a unique,
-    well-defined perfect model that is minimal/supported) and taken as a hypothesis, exactly as
-    `RuleFiring.lean` takes `RuleHolds` as a hypothesis.
+    (every true atom is a fact or the head of a fireable candidate — least-model minimality). These
+    are HYPOTHESES here (the model is characterized, not constructed as a fixpoint) — but each is
+    BRIDGED to the real engine by the `trace_soundness_conformance` validator, so the theorem is
+    load-bearing rather than proof-conditional: `factAx` ↔ every `Asserted` leaf is a stored KB fact;
+    `candOk`/`ruleClosed` ↔ every `Derived` step maps to a registered rule (and `firing_sound` is
+    itself proved + separately bridged by `rule_firing_conformance`); `supported` ↔ every closed-world
+    FALSE (`PredicateNotFound`) records a genuine non-fact whose blocked candidates are all real rules
+    (the `notFound`/`Neg` certificate the engine emits). `supported`'s well-definedness is further
+    justified by `Stratification.lean` (a stratified program has a unique, minimal perfect model).
 
   * Certificates are DEPTH-INDEXED (`Pos`/`Neg : Nat → Atom → Prop`, mutual `def` on a fuel `Nat`) —
     a mutual `inductive` would be rejected by the positivity checker (the negative certificate's

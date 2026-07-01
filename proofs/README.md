@@ -165,12 +165,16 @@ A Lean proof guarantees the *model* is sound; a Rust conformance test ties it to
   undischarged, and records the σ-instantiated head (`danlu(alis)`, not `danlu(bob)`). Ties the real
   firing step to `RuleFiring.lean`'s `firing_sound` / `firing_no_fabrication`.
 - **Trace soundness** (`trace_soundness_conformance`, `logji/src/tests.rs`): a `validate_cert` walker
-  asserts every recorded step's local certificate condition (Asserted→true leaf, Derived→all children
-  hold, Conjunction→holds=all-children, Negation→NAF/holds-flip, ProofRef→referent match, false
-  leaves→¬hold) over a curated corpus exercising each `ProofRule`. Establishes that every recorded
-  trace IS a valid certificate; composed with `Trace.lean` (valid certificate ⇒ conclusion in the
-  perfect model), the engine's traces are sound. Corpus, not exhaustive; the model axioms (esp.
-  `supported`) are assumed in the proof, not checked here.
+  asserts every recorded step's local certificate condition (Conjunction→holds=all-children,
+  Negation→NAF/holds-flip, ProofRef→referent match, false leaves→¬hold) AND — the axiom bridges —
+  ties the trace to the real engine: **`factAx`** (each `Asserted` leaf is a stored KB fact),
+  **`candOk`/`ruleClosed`** (each `Derived` step maps to a registered rule), and **`supported`** (each
+  closed-world `PredicateNotFound` is a genuine non-fact whose blocked candidates are all registered
+  rules — the `notFound` certificate). `Exercised` counters assert each bridge fires (never vacuous),
+  and a break-one-leaf sanity confirms it catches violations. So the model axioms are no longer merely
+  assumed — composed with `Trace.lean`, the capstone is **load-bearing, not proof-conditional**.
+  Corpus, not exhaustive; `supported`'s completeness direction rests on the engine's FALSE-emission
+  invariant, itself cross-checked by the differential gates.
 
 Keep the two sides in lock-step: when a Rust component changes, update both its `.lean` model and
 its conformance test.
