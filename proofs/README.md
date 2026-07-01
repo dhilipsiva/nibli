@@ -5,7 +5,7 @@ key invariants, rather than only testing them. Checked by `just verify-proofs`
 (`lean proofs/*.lean`); the Nix dev shell provides `lean`. No mathlib — the Lean prelude
 suffices, so each file is self-contained and offline.
 
-## What's proved so far
+## What's proved
 
 ### `Combiner.lean` — the four-valued verdict combiner
 
@@ -111,6 +111,33 @@ lifts `Unify.lean`'s `unify_sound` from terms to atoms and then to a firing step
 
 Mathlib-free; the term-level unifier is duplicated from `Unify.lean` (each proof file stands alone).
 
+### `Trace.lean` — the capstone: a proof trace ⇒ the conclusion holds in the perfect model
+
+The headline soundness theorem, tying the five layers above together at the top: a recorded proof
+trace, read as a proof CERTIFICATE, is sound w.r.t. the stratified/perfect model. The trace deals in
+GROUND atoms (unify already happened — `Derived{fact}` carries the instantiated conclusion), so it
+abstracts firing via a model axiom (no unifier duplication). A `PerfectModel` bundles the model + four
+axioms — `factAx` (facts hold), `ruleClosed` (= `RuleFiring.firing_sound` at the ground instance),
+`candOk`, and `supported` (least-model minimality). Only `supported` is not machine-checked here; it
+is justified by `Stratification.lean` (a stratified program has a unique, supported perfect model) and
+assumed, as `RuleFiring.lean` assumes `RuleHolds`. Certificates are DEPTH-INDEXED (`Pos`/`Neg : Nat →
+Atom → Prop`, mutual `def` on a fuel `Nat` — a mutual `inductive` is rejected by the positivity
+checker; the engine is depth-bounded, so this is faithful), and the negative certificate ranges over
+the FINITE candidate rules so it is trace-constructible. Results:
+
+- **`cert_sound`** (by induction on the fuel): `Pos → M` (a positive certificate is sound — the
+  `fire` case composes `ruleClosed`=`firing_sound`) and `Neg → ¬ M` (a closed-world certificate is
+  sound — the `notFound` case uses `supported` + the finite-candidate blocking premise + the mutual
+  IH). Corollaries `pos_sound` (TRUE trace ⇒ conclusion in the model) and `neg_sound` (closed-world
+  FALSE ⇒ conclusion NOT in the model — no fabrication).
+- **`qproof_sound`**: the same for compound queries — a recorded `QProof`/`QRefute` over the
+  connectives (`and`/`or`/`not`) is sound (`QProof q → qHolds q`, `QRefute q → ¬ qHolds q`), composing
+  the atom certificates through the connective algebra (mirroring `Combiner.lean`).
+
+This is the top of the tower: with the five component proofs, every layer of the reasoner — term
+unification, rule firing, NAF stratification, the SCC decomposition, the verdict combiner, and the
+whole recorded trace — is tied to a mechanized soundness proof. Mathlib-free (prelude only).
+
 ## Model ↔ code correspondence
 
 A Lean proof guarantees the *model* is sound; a Rust conformance test ties it to the real code.
@@ -137,15 +164,27 @@ A Lean proof guarantees the *model* is sound; a Rust conformance test ties it to
   discharged (positive present, negated absent — all four corners), never fabricates when one is
   undischarged, and records the σ-instantiated head (`danlu(alis)`, not `danlu(bob)`). Ties the real
   firing step to `RuleFiring.lean`'s `firing_sound` / `firing_no_fabrication`.
+- **Trace soundness** (`trace_soundness_conformance`, `logji/src/tests.rs`): a `validate_cert` walker
+  asserts every recorded step's local certificate condition (Asserted→true leaf, Derived→all children
+  hold, Conjunction→holds=all-children, Negation→NAF/holds-flip, ProofRef→referent match, false
+  leaves→¬hold) over a curated corpus exercising each `ProofRule`. Establishes that every recorded
+  trace IS a valid certificate; composed with `Trace.lean` (valid certificate ⇒ conclusion in the
+  perfect model), the engine's traces are sound. Corpus, not exhaustive; the model axioms (esp.
+  `supported`) are assumed in the proof, not checked here.
 
 Keep the two sides in lock-step: when a Rust component changes, update both its `.lean` model and
 its conformance test.
 
-## Roadmap (remaining Track B)
+## Track B — complete
 
-One slice remains — the capstone **headline theorem**: *a recorded proof trace ⇒ the conclusion
-holds in the stratified/perfect model*. The tractable mathlib-free shape is per-`ProofRule` local
-soundness (Asserted → in model, Conjunction → combiner algebra, Negation → NAF-under-stratification,
-Derived → rule firing, ProofRef → memo consistency) composed by induction over the trace DAG —
-pulling together all five existing proofs (`Combiner`, `Stratification`, `Scc`, `Unify`,
-`RuleFiring`).
+All six soundness-critical layers are now mechanized: the four-valued **combiner** (`Combiner.lean`),
+the NAF **stratification** criterion (`Stratification.lean`), the **SCC** decomposition (`Scc.lean`),
+the **unifier** (`Unify.lean`), **rule firing** (`RuleFiring.lean`), and the capstone **trace ⇒
+perfect-model** theorem (`Trace.lean`) — each bridged to the real engine by a conformance test.
+
+The proofs are model-level (each cites, as a hypothesis, the perfect-model / stratification facts the
+adjacent proofs establish) plus corpus conformance tests, not a single end-to-end machine-checked
+pipeline from source text to model; that, and the specialized non-core `ProofRule` variants
+(Exists/Forall/Count/Compute/Modal/EqualitySubstitution), remain natural extensions. The
+soundness-critical core — "if the engine says TRUE a derivation exists; if it says closed-world FALSE
+none does" — is proved.

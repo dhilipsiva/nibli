@@ -947,6 +947,217 @@ fn assert_proof_refs_resolve_to_holds_true(trace: &ProofTrace) {
     }
 }
 
+/// Conformance bridge to `proofs/Trace.lean` (`cert_sound` / `qproof_sound`): every recorded proof
+/// trace, read as a proof CERTIFICATE, must be structurally valid — each step's `holds` is justified
+/// locally by its rule and children, exactly as the `Pos`/`Neg`/`QProof`/`QRefute` constructors
+/// require. Composed with the Lean theorem "a valid certificate ⇒ the conclusion holds in the
+/// perfect model," this ties the engine's recorded traces to the mechanized soundness result. (The
+/// model axioms — esp. `supported` — are assumed in the proof, not machine-checked here.)
+///
+/// `validate_cert` walks every step and asserts the local certificate condition per `ProofRule`;
+/// `trace_soundness_conformance` runs it over a curated corpus exercising each constructor.
+#[test]
+fn trace_soundness_conformance() {
+    /// Assert each step's `holds` is locally justified by its rule + children — the direct
+    /// transcription of the `Trace.lean` certificate constructors.
+    fn validate_cert(trace: &ProofTrace) -> Result<(), String> {
+        let holds = |c: u32| trace.steps[c as usize].holds;
+        for (i, step) in trace.steps.iter().enumerate() {
+            let all_hold = step.children.iter().all(|&c| holds(c));
+            let any_hold = step.children.iter().any(|&c| holds(c));
+            match &step.rule {
+                // Pos.fact — a positive leaf certificate is always a true leaf.
+                ProofRule::Asserted { .. } => {
+                    if !step.holds {
+                        return Err(format!("step #{i} Asserted but holds=false"));
+                    }
+                }
+                // Pos.fire — a firing certificate: holds ⟹ its condition children are present and
+                // ALL hold (each positive condition sub-proof, each NAF-discharge Negation leaf).
+                ProofRule::Derived { .. } => {
+                    if step.holds && (step.children.is_empty() || !all_hold) {
+                        return Err(format!(
+                            "step #{i} Derived holds=true but a condition child is missing or does not hold"
+                        ));
+                    }
+                }
+                // Combiner conjunction law: holds ⟺ all children hold.
+                ProofRule::Conjunction => {
+                    if step.holds != all_hold {
+                        return Err(format!(
+                            "step #{i} Conjunction holds={} but all-children-hold={all_hold}",
+                            step.holds
+                        ));
+                    }
+                }
+                // Disjunction: a holding disjunction has a holding child (intro records the true side).
+                ProofRule::DisjunctionIntro { .. } | ProofRule::DisjunctionCheck { .. } => {
+                    if step.holds && !step.children.is_empty() && !any_hold {
+                        return Err(format!(
+                            "step #{i} Disjunction holds=true but no child holds"
+                        ));
+                    }
+                }
+                // NAF / combiner negation: an empty-child Negation is a NAF-success leaf (holds=true);
+                // otherwise holds ⟺ the inner child does NOT hold.
+                ProofRule::Negation => {
+                    if step.children.is_empty() {
+                        if !step.holds {
+                            return Err(format!("step #{i} Negation leaf but holds=false"));
+                        }
+                    } else if step.holds == holds(step.children[0]) {
+                        return Err(format!(
+                            "step #{i} Negation holds={} but its child holds={}",
+                            step.holds,
+                            holds(step.children[0])
+                        ));
+                    }
+                }
+                // Memo dedup: the referent's verdict must match.
+                ProofRule::ProofRef { .. } => {
+                    if step.children.is_empty() || step.holds != holds(step.children[0]) {
+                        return Err(format!(
+                            "step #{i} ProofRef holds mismatch with its referent"
+                        ));
+                    }
+                }
+                // Neg / false leaves & failures: must not hold.
+                ProofRule::PredicateNotFound { .. }
+                | ProofRule::RuleAttemptFailed { .. }
+                | ProofRule::ExistsFailed
+                | ProofRule::ForallCounterexample { .. } => {
+                    if step.holds {
+                        return Err(format!("step #{i} {:?} but holds=true", step.rule));
+                    }
+                }
+                // Other variants carry no core logical structure the certificate models — checked
+                // only for verdict/root consistency by `assert_trace_consistent`.
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn run_case(name: &str, kb: &KnowledgeBase, query: LogicBuffer) {
+        let (result, trace) = kb.query_entailment_with_proof_inner(query).unwrap();
+        validate_cert(&trace)
+            .unwrap_or_else(|e| panic!("invalid certificate on '{name}': {e}\n{trace:?}"));
+        assert_trace_consistent(&result, &trace);
+    }
+
+    // Build a conjunction / negation query buffer from two/one predicate leaves.
+    fn conj_query(e: &str, p1: &str, p2: &str) -> LogicBuffer {
+        let mut nodes = Vec::new();
+        let a = pred(
+            &mut nodes,
+            p1,
+            vec![LogicalTerm::Constant(e.into()), LogicalTerm::Unspecified],
+        );
+        let b = pred(
+            &mut nodes,
+            p2,
+            vec![LogicalTerm::Constant(e.into()), LogicalTerm::Unspecified],
+        );
+        let root = and(&mut nodes, a, b);
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
+    }
+    fn neg_query(e: &str, p: &str) -> LogicBuffer {
+        let mut nodes = Vec::new();
+        let inner = pred(
+            &mut nodes,
+            p,
+            vec![LogicalTerm::Constant(e.into()), LogicalTerm::Unspecified],
+        );
+        let root = not(&mut nodes, inner);
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
+    }
+
+    let mut checked = 0usize;
+
+    // 1. Asserted leaf (Pos.fact).
+    {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        run_case("asserted", &kb, make_query("alis", "gerku"));
+        checked += 1;
+    }
+    // 2. Single-hop derived (Pos.fire).
+    {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        run_case("derived_single", &kb, make_query("alis", "danlu"));
+        checked += 1;
+    }
+    // 3. Multi-hop derived (nested Pos.fire).
+    {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_universal("danlu", "xanlu"));
+        run_case("derived_multi", &kb, make_query("alis", "xanlu"));
+        checked += 1;
+    }
+    // 4. NAF firing (Pos.fire with a NAF-discharge Negation child).
+    {
+        let kb = new_kb();
+        assert_buf(&kb, make_negated_antecedent_rule());
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        run_case("naf_firing", &kb, make_query("alis", "danlu"));
+        checked += 1;
+    }
+    // 5. NAF blocked → closed-world FALSE (Neg / notFound path).
+    {
+        let kb = new_kb();
+        assert_buf(&kb, make_negated_antecedent_rule());
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_assertion("alis", "mlatu"));
+        run_case("naf_blocked_false", &kb, make_query("alis", "danlu"));
+        checked += 1;
+    }
+    // 6. Plain closed-world FALSE (PredicateNotFound).
+    {
+        let kb = new_kb();
+        run_case("predicate_not_found", &kb, make_query("mi", "klama"));
+        checked += 1;
+    }
+    // 7. Conjunction query (QProof.and → two Pos.fact children).
+    {
+        let kb = new_kb();
+        assert_buf(&kb, make_assertion("mi", "klama"));
+        assert_buf(&kb, make_assertion("mi", "prami"));
+        run_case("conjunction", &kb, conj_query("mi", "klama", "prami"));
+        checked += 1;
+    }
+    // 8. Negation of a missing atom (QRefute.atom → Negation over a false inner).
+    {
+        let kb = new_kb();
+        run_case("negation_missing", &kb, neg_query("mi", "klama"));
+        checked += 1;
+    }
+    // 9. Per-entity instantiation: derived holds for the matched entity only.
+    {
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_assertion("alis", "gerku"));
+        assert_buf(&kb, make_assertion("bel", "mlatu"));
+        run_case("two_entities_true", &kb, make_query("alis", "danlu"));
+        run_case("two_entities_false", &kb, make_query("bel", "danlu"));
+        checked += 2;
+    }
+
+    assert!(
+        checked >= 10,
+        "trace-soundness corpus too small ({checked}); gate near-vacuous"
+    );
+}
+
 #[test]
 fn trace_does_not_contradict_unknown_cyclecut() {
     // gerku ⟸ danlu ⟸ gerku: querying gerku(alis) cuts the cycle → Unknown.

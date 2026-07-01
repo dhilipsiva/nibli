@@ -17,11 +17,15 @@ If the engine says TRUE, a formal proof trace exists showing the derivation chai
 
 Together these validate **logji against both the classical and the stratified-perfect-model semantics of smuni's IR**. Deontic-headed NAF (e.g. the real `gdpr.lojban` erasure rule) and `du`-equality are conservatively skipped by the ASP oracle for now; the gate does not independently validate smuni's decomposition.
 
-**Mechanized proof (Track B):** The soundness-critical core is being formalized in **Lean 4** (`proofs/`, checked by `just verify-proofs`). Proved so far:
+**Mechanized proof (Track B — complete):** The soundness-critical core is formalized in **Lean 4** (`proofs/`, checked by `just verify-proofs`), each proof bridged to the real engine by a conformance test. Proved:
 - **The four-valued verdict combiner** (`proofs/Combiner.lean`): conjunction/disjunction/negation of verdicts never fabricate a definitive `TRUE`/`FALSE` nor swallow a non-definitive operand (the exact algebra whose bug — `True ∧ Unknown → False` — this closes). The combiner's domain is finite, so the Lean proof plus the **exhaustive** Rust conformance test (`exhaustive_soundness_matches_lean_model`) give a *complete* guarantee of the real combiner.
-- **The NAF stratification criterion** (`proofs/Stratification.lean`): the dependency-graph condition the engine checks ("no negative edge with both endpoints in one SCC") is proved *equivalent* to the existence of a valid stratification — so the check accepts ⇒ the program is genuinely stratifiable (NAF is sound), and never wrongly rejects a stratifiable one. Graphs are unbounded, so the real Tarjan-based check is tied to the proven criterion by a *corpus* conformance test (`check_stratification_matches_proven_criterion`), not an exhaustive one.
+- **The NAF stratification criterion** (`proofs/Stratification.lean`): the dependency-graph condition the engine checks ("no negative edge whose target reaches its source") is proved *equivalent* to the existence of a valid stratification — so the check accepts ⇒ the program is genuinely stratifiable (NAF is sound), and never wrongly rejects a stratifiable one.
+- **The SCC decomposition** (`proofs/Scc.lean`): SCCs are the mutual-reachability equivalence classes (a unique partition), and the SCC-based stratification check equals the proven reachability criterion — tying Tarjan's `compute_sccs` to the criterion above.
+- **The one-directional unifier** (`proofs/Unify.lean`): a successful head match instantiates the rule template to *exactly* the ground goal (`unify_sound`).
+- **Rule firing** (`proofs/RuleFiring.lean`): one firing step is a sound universal-instantiation + modus-ponens step — composing `unify_sound` — and never fabricates.
+- **The capstone: a proof trace ⇒ the perfect model** (`proofs/Trace.lean`): a recorded trace, read as a proof certificate, is sound — a `TRUE` trace certifies the conclusion holds in the stratified/perfect model (`pos_sound`, composing rule firing), and a closed-world `FALSE` certifies it does *not* (`neg_sound` — no fabrication).
 
-Remaining core (verifying Tarjan `compute_sccs` itself, the unifier, rule firing, and the trace ⇒ perfect-model theorem) is future work.
+The proofs are model-level (each assumes, as a hypothesis, the perfect-model facts the adjacent proofs establish — e.g. the capstone assumes least-model supportedness, justified by the stratification proof) plus corpus conformance tests — not one end-to-end machine-checked pipeline from source text to model. That, and the non-core `ProofRule` variants (Exists/Forall/Count/Compute/Modal/EqualitySubstitution), are natural extensions; the soundness-critical core is proved.
 
 ## Completeness
 

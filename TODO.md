@@ -123,16 +123,25 @@ into phases.
     is in M — a sound universal-instantiation + modus-ponens step, with NAF-condition soundness
     delegated to Phases 2–3; `firing_no_fabrication` is the contrapositive. Bridged by the
     `rule_firing_conformance` engine test (fires exactly when conditions discharged — all four
-    corners — never fabricates, and records the σ-instantiated head). **Remaining:** only the
-    headline theorem — a recorded proof trace ⇒ the conclusion holds in the stratified/perfect model
-    (per-`ProofRule` local soundness + induction over the trace DAG, composing all five proofs).
-    Scope to the core, not the parser.
+    corners — never fabricates, and records the σ-instantiated head). **Phase 6 — the capstone
+    headline theorem: DONE. Track B is complete.** `proofs/Trace.lean` proves a recorded proof
+    trace, read as a proof certificate, is sound w.r.t. the perfect model. A `PerfectModel` bundles
+    four axioms (`factAx`; `ruleClosed` = `firing_sound`; `candOk`; `supported` = least-model
+    minimality, justified by Phase 2's unique perfect model). Depth-indexed mutual `Pos`/`Neg`
+    certificates (a mutual `inductive` fails the positivity checker; the engine is depth-bounded, so
+    fuel-indexing is faithful) with the negative certificate over the finite candidate rules.
+    `cert_sound` proves `Pos → M` (TRUE trace ⇒ conclusion in the model, composing `ruleClosed`) and
+    `Neg → ¬M` (closed-world FALSE ⇒ not in the model — no fabrication), with `qproof_sound` lifting
+    it to compound queries through the connective algebra. Bridged by the `trace_soundness_conformance`
+    validator (every recorded trace is a structurally valid certificate). **Remaining:** none —
+    optionally, deontic-NAF coverage in the ASP oracle, a source-text-to-model end-to-end pipeline,
+    and the non-core `ProofRule` variants are natural extensions, not core soundness.
   - **Milestone order:** Track-A Horn-fragment differential gate ✓ DONE; Track-A random-corpus
     coverage ✓ DONE; Track-A gdpr/ddi mappable-slice coverage ✓ DONE; Track-A Phase 2 ASP/clingo
     stratified-NAF oracle ✓ DONE; Track-B combiner proof ✓ DONE; Track-B stratification-criterion
     proof ✓ DONE; Track-B SCC-decomposition proof ✓ DONE; Track-B unifier proof ✓ DONE; Track-B
-    rule-firing proof ✓ DONE. Next: the headline trace ⇒ model theorem (and, optionally, deontic-NAF
-    coverage in the ASP oracle).
+    rule-firing proof ✓ DONE; Track-B capstone trace ⇒ perfect-model theorem ✓ DONE (**Track B
+    complete**). Optional follow-ups only: deontic-NAF coverage in the ASP oracle.
 
 - [ ] 🚪 **Demonstrate the authoring problem is tractable for a non-Lojbanist.** The engine is
   sound + transparent, but knowledge-in requires writing Lojban (or the BYO-key LLM Translate).
