@@ -505,6 +505,86 @@ fn retraction_is_equivalent_to_never_asserted() {
     );
 }
 
+/// Three-way determinism corpus, NATIVE leg: run `determinism-corpus.lojban` on the
+/// in-process engine and assert every verdict matches its pinned `# =>` annotation.
+/// The same file runs under gasnu/Wasmtime (`smoke-gasnu-determinism`) and under
+/// node/V8 (`nibli-wasm/tests/determinism.rs`, `just verify-wasm-node`) — three
+/// runtimes, one pinned verdict vector, so any pairwise divergence fails a gate.
+#[test]
+fn determinism_corpus_native() {
+    use nibli_engine::NibliEngine;
+
+    enum COp {
+        Assert(String),
+        Query(String, String),
+        Retract(usize),
+    }
+    // Parse the shared corpus format: asserts, `? <query>` + `# => <verdict>`
+    // annotation, `:retract <k>` (k = 0-based assert index), `#` comments.
+    let corpus = include_str!("../../determinism-corpus.lojban");
+    let mut ops: Vec<COp> = Vec::new();
+    let mut pending_q: Option<String> = None;
+    for raw in corpus.lines() {
+        let line = raw.trim();
+        if let Some(ann) = line.strip_prefix("# =>") {
+            let q = pending_q
+                .take()
+                .expect("corpus: `# =>` annotation without a preceding query");
+            ops.push(COp::Query(q, ann.trim().to_string()));
+        } else if line.is_empty() || line.starts_with('#') {
+            continue;
+        } else if let Some(q) = line.strip_prefix("? ") {
+            assert!(
+                pending_q.is_none(),
+                "corpus: unannotated query before '{q}'"
+            );
+            pending_q = Some(q.to_string());
+        } else if let Some(k) = line.strip_prefix(":retract ") {
+            ops.push(COp::Retract(
+                k.trim().parse().expect("corpus: retract index"),
+            ));
+        } else {
+            ops.push(COp::Assert(line.to_string()));
+        }
+    }
+    assert!(pending_q.is_none(), "corpus: trailing unannotated query");
+
+    let engine = NibliEngine::new();
+    let mut ids: Vec<u64> = Vec::new();
+    let mut checked = 0usize;
+    for op in &ops {
+        match op {
+            COp::Assert(l) => {
+                let id = engine
+                    .assert_text(l)
+                    .unwrap_or_else(|e| panic!("assert '{l}': {e:?}"));
+                ids.push(id);
+            }
+            COp::Retract(k) => {
+                engine
+                    .retract_fact(ids[*k])
+                    .unwrap_or_else(|e| panic!("retract #{k}: {e:?}"));
+            }
+            COp::Query(q, expected) => {
+                let (v, _) = engine
+                    .query_text_raw_proof(q)
+                    .unwrap_or_else(|e| panic!("query '{q}': {e:?}"));
+                let got = nibli_engine::display_query_result(&v);
+                assert_eq!(
+                    &got, expected,
+                    "native verdict for '{q}' diverges from the pinned annotation"
+                );
+                checked += 1;
+            }
+        }
+    }
+    assert!(
+        checked >= 15,
+        "determinism corpus too small: {checked} queries"
+    );
+    eprintln!("nibli-verify determinism (native): {checked} pinned verdicts agree");
+}
+
 /// gerna→smuni compiler-seam gate: compile source Lojban end-to-end (parse + semantic compile)
 /// and check the FOL against hand-verified structure (ground truth) + transformation invariants
 /// (oracle-free). This is the FRONT-END analog of the Vampire/clingo oracle gates: the six proofs

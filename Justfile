@@ -415,7 +415,32 @@ ci: fmt-check clippy-runtime test test-engine test-gasnu test-backend test-store
 # `build-wasm build-gasnu`, so `just` builds the component + host once, then runs
 # all six: fuel exhaustion + post-trap recovery + journal replay (trap-recovery),
 # plus the script transcript, go'i, persist-replay, NAF-note, and :debug round-trip.
-ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-cwa-false smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable smoke-gasnu-non-finite smoke-gasnu-quiet
+ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-cwa-false smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable smoke-gasnu-non-finite smoke-gasnu-quiet smoke-gasnu-determinism verify-wasm-node
+
+# Three-way determinism, WASMTIME leg: the shared determinism-corpus.lojban must produce
+# exactly its pinned annotations through the lasna component under gasnu. The native leg
+# is determinism_corpus_native (verify-soundness); the V8 leg is verify-wasm-node.
+smoke-gasnu-determinism: build-wasm build-gasnu
+    @echo "Smoke-testing gasnu three-way determinism corpus..."
+    @expected=$(grep '^# =>' determinism-corpus.lojban | sed 's/^# => //'); \
+        actual=$(NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu --script determinism-corpus.lojban 2>&1 | sed -n 's/^\[Query\] //p'); \
+        if [ "$expected" = "$actual" ]; then \
+            echo 'PASS: gasnu verdicts match every pinned determinism annotation'; \
+        else \
+            echo 'FAIL: determinism corpus verdict mismatch (wasmtime vs pinned)'; \
+            echo '--- expected ---'; echo "$expected"; \
+            echo '--- actual ---'; echo "$actual"; exit 1; \
+        fi
+
+# Three-way determinism, V8 leg: run the nibli-wasm pipeline (wasm32-unknown-unknown)
+# under node via wasm-bindgen-test — the browser-class runtime of the live playground.
+# Skips cleanly when wasm-pack is unavailable.
+verify-wasm-node:
+    @if ! command -v wasm-pack >/dev/null 2>&1; then \
+        echo 'verify-wasm-node SKIPPED: wasm-pack unavailable (cargo install wasm-pack)'; \
+    else \
+        wasm-pack test --node nibli-wasm; \
+    fi
 
 # Comprehensive pre-push / pre-release gate: the fast native `ci` plus the WASM
 # behavioral smokes. `ci` alone does not exercise the WASM component.
