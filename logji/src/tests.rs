@@ -972,6 +972,40 @@ fn trace_soundness_conformance() {
         derived: usize,     // Derived step checked against a registered rule
         notfound: usize,    // PredicateNotFound checked to be a genuine non-fact
         ruleblocked: usize, // RuleAttemptFailed child checked to name a registered rule
+        // The strengthened `supported`/Neg bridge (Trace.lean:91):
+        cand_complete: usize, // candidate rule verified to appear among the blocked children
+        blocker_definitive: usize, // candidate verified blocked by a DEFINITIVE premise
+    }
+
+    /// Parse a BARE `rel(arg1, arg2)` fact display back into a `StoredFact` — the shape a
+    /// closed-world FALSE goal takes in this corpus. Tense-wrapped, skolem-argument, or
+    /// otherwise exotic displays return `None` (those steps keep the unstrengthened checks).
+    fn parse_bare_fact_display(s: &str) -> Option<StoredFact> {
+        let (rel, rest) = s.split_once('(')?;
+        let inner = rest.strip_suffix(')')?;
+        if rel.is_empty() || rel.contains(' ') || inner.contains('(') || inner.contains('?') {
+            return None;
+        }
+        let args: Vec<GroundTerm> = if inner.is_empty() {
+            Vec::new()
+        } else {
+            inner
+                .split(", ")
+                .map(|a| {
+                    if a == "_" {
+                        GroundTerm::Unspecified
+                    } else if let Ok(v) = a.parse::<f64>() {
+                        GroundTerm::from_f64(v)
+                    } else {
+                        GroundTerm::Constant(a.to_string())
+                    }
+                })
+                .collect()
+        };
+        Some(StoredFact::Bare(GroundFact {
+            relation: rel.to_string(),
+            args,
+        }))
     }
 
     /// Assert each step's `holds` is locally justified by its rule + children (the `Trace.lean`
@@ -1038,8 +1072,14 @@ fn trace_soundness_conformance() {
                     }
                     ex.derived += 1;
                 }
-                // Neg / closed-world FALSE — (supported) the atom is genuinely not a fact, and every
-                // recorded blocked candidate is a real rule (the `notFound` certificate).
+                // Neg / closed-world FALSE — (supported) the atom is genuinely not a fact, every
+                // recorded blocked candidate is a real rule, and — the strengthened bridge,
+                // matching `Trace.lean:91`'s `Neg` constructor exactly — EVERY candidate rule
+                // whose conclusion unifies with the goal is recorded as blocked
+                // (candidate-completeness), each by a premise the engine refutes/certifies
+                // DEFINITIVELY at the authoritative depth (blocker-definitiveness:
+                // `∃ p ∈ f.pos, Neg p  ∨  ∃ n ∈ f.neg, Pos n` — never an Unknown standing in
+                // for a refutation).
                 ProofRule::PredicateNotFound { predicate } => {
                     if step.holds {
                         return Err(format!("step #{i} PredicateNotFound but holds=true"));
@@ -1049,6 +1089,7 @@ fn trace_soundness_conformance() {
                             "step #{i} PredicateNotFound '{predicate}' is actually a stored fact (supported bridge)"
                         ));
                     }
+                    let mut blocked_labels: Vec<&str> = Vec::new();
                     for &c in &step.children {
                         match &trace.steps[c as usize].rule {
                             ProofRule::RuleAttemptFailed { rule_label, .. } => {
@@ -1058,12 +1099,74 @@ fn trace_soundness_conformance() {
                                         base_label(rule_label)
                                     ));
                                 }
+                                blocked_labels.push(base_label(rule_label));
                                 ex.ruleblocked += 1;
                             }
                             other => {
                                 return Err(format!(
                                     "step #{i} PredicateNotFound child is not RuleAttemptFailed: {other:?}"
                                 ));
+                            }
+                        }
+                    }
+                    if let Some(goal) = parse_bare_fact_display(predicate) {
+                        let candidates =
+                            crate::reasoning::matching_rules_typed(&goal, &inner.universal_rules);
+                        for rule in candidates {
+                            let unifying: Vec<_> = rule
+                                .typed_conclusions
+                                .iter()
+                                .filter_map(|c| unify_facts(c, &goal))
+                                .collect();
+                            if unifying.is_empty() {
+                                continue; // not a candidate for this goal (no conclusion unifies)
+                            }
+                            // (a) Candidate-completeness: the Lean Neg constructor quantifies
+                            // over ALL candidates — an unrecorded one is an incomplete cert.
+                            if !blocked_labels.contains(&base_label(&rule.label)) {
+                                return Err(format!(
+                                    "step #{i} PredicateNotFound '{predicate}': candidate rule '{}' \
+                                     unifies with the goal but is not recorded as blocked \
+                                     (Neg candidate-completeness)",
+                                    rule.label
+                                ));
+                            }
+                            ex.cand_complete += 1;
+                            // (b) Blocker-definitiveness: re-derive the block AUTHORITATIVELY
+                            // (depth 0, the verdict's own regime): some positive premise must be
+                            // definitively False, or some negated premise definitively True.
+                            // Rules carrying negated-exists groups (`poi na <selbri>`) block
+                            // through the group check instead — out of this re-derivation's
+                            // scope; their completeness is still enforced above.
+                            if rule.negated_exists_groups.is_empty() {
+                                let mut definitive = false;
+                                for bindings in &unifying {
+                                    for (ci, ct) in rule.typed_conditions.iter().enumerate() {
+                                        let cond_fact = substitute_fact(ct, bindings);
+                                        let r = crate::reasoning::check_predicate_in_kb_typed(
+                                            &cond_fact,
+                                            &inner,
+                                            0,
+                                            &mut std::collections::HashSet::new(),
+                                        );
+                                        let negated = rule.negated_condition_indices.contains(&ci);
+                                        if (!negated && matches!(r, QueryResult::False))
+                                            || (negated && r.is_true())
+                                        {
+                                            definitive = true;
+                                        }
+                                    }
+                                }
+                                if !definitive {
+                                    return Err(format!(
+                                        "step #{i} PredicateNotFound '{predicate}': blocked \
+                                         candidate '{}' has no definitively-refuted positive \
+                                         premise and no definitively-holding negated premise \
+                                         (Neg blocker-definitiveness)",
+                                        rule.label
+                                    ));
+                                }
+                                ex.blocker_definitive += 1;
                             }
                         }
                     }
@@ -1247,9 +1350,34 @@ fn trace_soundness_conformance() {
         run_case("horn_blocked_false", &kb, make_query("adam", "danlu"));
         checked += 1;
     }
+    // 11. TWO candidate rules for the same goal, both blocked → the Neg certificate must
+    //     record BOTH as RuleAttemptFailed children (candidate-completeness bites with a
+    //     multi-candidate goal, not just the single-rule shape of case 10).
+    {
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        assert_buf(&kb, make_universal("mlatu", "danlu"));
+        run_case(
+            "two_candidates_both_blocked",
+            &kb,
+            make_query("adam", "danlu"),
+        );
+        checked += 1;
+    }
+    // 12. Candidate blocked by a premise that is itself closed-world FALSE only through a
+    //     further rule attempt (danlu(adam) has its own blocked candidate) — the
+    //     blocker-definitiveness re-derivation must recurse through the rule search, not
+    //     just the fact store.
+    {
+        let kb = new_kb();
+        assert_buf(&kb, make_universal("danlu", "xanlu"));
+        assert_buf(&kb, make_universal("gerku", "danlu"));
+        run_case("chain_blocked_false", &kb, make_query("adam", "xanlu"));
+        checked += 1;
+    }
 
     assert!(
-        checked >= 10,
+        checked >= 12,
         "trace-soundness corpus too small ({checked}); gate near-vacuous"
     );
     // The axiom bridges must not be vacuous: each KB-tied check fired at least once across the corpus.
@@ -1265,6 +1393,16 @@ fn trace_soundness_conformance() {
     assert!(
         ex.notfound > 0,
         "supported bridge never exercised (no PredicateNotFound checked)"
+    );
+    assert!(
+        ex.cand_complete >= 2,
+        "Neg candidate-completeness never exercised on a multi-candidate goal \
+         (need at least the two-candidate case)"
+    );
+    assert!(
+        ex.blocker_definitive > 0,
+        "Neg blocker-definitiveness never exercised (no blocked candidate re-derived \
+         to a definitive premise)"
     );
     assert!(
         ex.ruleblocked > 0,

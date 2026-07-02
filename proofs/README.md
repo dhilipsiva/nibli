@@ -169,12 +169,18 @@ A Lean proof guarantees the *model* is sound; a Rust conformance test ties it to
   Negation→NAF/holds-flip, ProofRef→referent match, false leaves→¬hold) AND — the axiom bridges —
   ties the trace to the real engine: **`factAx`** (each `Asserted` leaf is a stored KB fact),
   **`candOk`/`ruleClosed`** (each `Derived` step maps to a registered rule), and **`supported`** (each
-  closed-world `PredicateNotFound` is a genuine non-fact whose blocked candidates are all registered
-  rules — the `notFound` certificate). `Exercised` counters assert each bridge fires (never vacuous),
-  and a break-one-leaf sanity confirms it catches violations. So the model axioms are no longer merely
-  assumed — composed with `Trace.lean`, the capstone is **load-bearing, not proof-conditional**.
-  Corpus, not exhaustive; `supported`'s completeness direction rests on the engine's FALSE-emission
-  invariant, itself cross-checked by the differential gates.
+  closed-world `PredicateNotFound` is a genuine non-fact; **every** candidate rule whose conclusion
+  unifies with the goal appears as a blocked child — candidate-completeness — and each block is
+  re-derived at the authoritative depth to a definitive premise, a positive premise definitively
+  refuted or a negated premise definitively holding: the exact `Neg` constructor at `Trace.lean:91`.
+  The engine's certificate emission mirrors this — the blocked-premise re-check runs at the verdict's
+  own depth and treats `negated_condition_indices` correctly, so a NAF-blocked candidate records its
+  holding negated premise). `Exercised` counters assert each bridge fires (never vacuous) — including
+  a multi-candidate completeness case and definitive-block re-derivations — and a break-one-leaf
+  sanity confirms it catches violations. So the model axioms are no longer merely assumed — composed
+  with `Trace.lean`, the capstone is **load-bearing, not proof-conditional**. Corpus, not exhaustive;
+  rules carrying negated-exists groups (`poi na <selbri>`) block through the group check, whose
+  definitiveness is not re-derived by the bridge (their candidate-completeness still is).
 
 Keep the two sides in lock-step: when a Rust component changes, update both its `.lean` model and
 its conformance test.

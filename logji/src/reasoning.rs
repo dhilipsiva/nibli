@@ -1085,21 +1085,35 @@ fn check_formula_holds_core<S: TraceSink>(
                         })
                     } else {
                         // Definitively False — record which rules were tried and
-                        // which condition failed.
+                        // which condition failed. This is the `Neg` certificate of
+                        // `proofs/Trace.lean:91`: every candidate rule must be blocked by a
+                        // definitively-refuted positive premise or a definitively-holding
+                        // NEGATED premise (`∃ p ∈ f.pos, Neg p  ∨  ∃ n ∈ f.neg, Pos n`).
+                        // Two fidelity rules, both enforced by `trace_soundness_conformance`:
+                        // the re-check runs at depth 0 — the SAME regime as the verdict above,
+                        // so a blocking premise always exists when the verdict is False — and
+                        // a condition under negation blocks when it HOLDS
+                        // (`negated_condition_indices`), not when it fails.
                         let mut failed_children = Vec::new();
                         let rules = matching_rules_typed(&fact, &inner.universal_rules);
                         for rule in rules {
                             for concl in &rule.typed_conclusions {
                                 if let Some(bindings) = unify_facts(concl, &fact) {
-                                    for ct in &rule.typed_conditions {
+                                    for (ci, ct) in rule.typed_conditions.iter().enumerate() {
                                         let cond_fact = substitute_fact(ct, &bindings);
                                         let cond_result = check_predicate_in_kb_typed(
                                             &cond_fact,
                                             &*inner,
-                                            1,
+                                            0,
                                             &mut HashSet::new(),
                                         );
-                                        if !cond_result.is_true() {
+                                        let negated = rule.negated_condition_indices.contains(&ci);
+                                        let blocked = if negated {
+                                            cond_result.is_true()
+                                        } else {
+                                            !cond_result.is_true()
+                                        };
+                                        if blocked {
                                             let child_idx = sink.push(ProofStep {
                                                 rule: ProofRule::RuleAttemptFailed {
                                                     rule_label: rule.label.clone(),
@@ -1109,7 +1123,7 @@ fn check_formula_holds_core<S: TraceSink>(
                                                 children: vec![],
                                             });
                                             failed_children.push(child_idx);
-                                            break; // First failed condition is enough.
+                                            break; // First blocking premise is enough.
                                         }
                                     }
                                 }
@@ -1543,7 +1557,7 @@ pub(super) fn sort_rule_bucket(bucket: &mut [Arc<UniversalRuleRecord>]) {
 /// name, as a pre-sorted (descending priority) slice. Buckets are kept sorted at
 /// mutation time (see `sort_rule_bucket`), so this is a zero-cost borrow — no
 /// clone, no per-call sort — on the backward-chaining hot path.
-fn matching_rules_typed<'a>(
+pub(super) fn matching_rules_typed<'a>(
     fact: &StoredFact,
     universal_rules: &'a HashMap<String, Vec<Arc<UniversalRuleRecord>>>,
 ) -> &'a [Arc<UniversalRuleRecord>] {
