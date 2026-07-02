@@ -141,13 +141,50 @@ impl RedbFactStore {
                 .filter_map(|e| e.ok().map(|(k, _)| k.value().to_string()))
                 .collect();
             for key in &existing {
-                let _ = table.remove(key.as_str());
+                table.remove(key.as_str())?;
             }
 
             // Write current index.
             for (relation, ids) in &self.pred_index {
                 let bytes = postcard::to_allocvec(ids)?;
                 table.insert(relation.as_str(), bytes.as_slice())?;
+            }
+        }
+        txn.commit()?;
+        Ok(())
+    }
+
+    /// Serialize one fact and commit it to the facts table.
+    fn write_fact(&self, id: u64, fact: &StoredFact) -> Result<(), StoreError> {
+        let bytes = postcard::to_allocvec(fact)?;
+        let txn = self.db.begin_write()?;
+        {
+            let mut table = txn.open_table(TYPED_FACTS_TABLE)?;
+            table.insert(id, bytes.as_slice())?;
+        }
+        txn.commit()?;
+        Ok(())
+    }
+
+    /// Drain both on-disk tables (the disk half of `clear`).
+    fn clear_disk(&self) -> Result<(), StoreError> {
+        let txn = self.db.begin_write()?;
+        {
+            let mut facts = txn.open_table(TYPED_FACTS_TABLE)?;
+            let ids: Vec<u64> = facts
+                .iter()?
+                .filter_map(|e| e.ok().map(|(k, _)| k.value()))
+                .collect();
+            for id in ids {
+                facts.remove(id)?;
+            }
+            let mut pred_idx = txn.open_table(TYPED_PRED_INDEX_TABLE)?;
+            let keys: Vec<String> = pred_idx
+                .iter()?
+                .filter_map(|e| e.ok().map(|(k, _)| k.value().to_string()))
+                .collect();
+            for key in keys {
+                pred_idx.remove(key.as_str())?;
             }
         }
         txn.commit()?;
@@ -172,14 +209,17 @@ impl FactStore for RedbFactStore {
         let id = self.next_id;
         self.next_id += 1;
 
-        // Serialize and write to redb.
-        if let Ok(bytes) = postcard::to_allocvec(&fact)
-            && let Ok(txn) = self.db.begin_write()
-        {
-            if let Ok(mut table) = txn.open_table(TYPED_FACTS_TABLE) {
-                let _ = table.insert(id, bytes.as_slice());
-            }
-            let _ = txn.commit();
+        // Write to redb. The `FactStore` trait's insert is infallible (the
+        // reasoning core calls it on hot paths with no error channel), so a
+        // disk-write failure cannot propagate — but it must NEVER be silent:
+        // the fact stays queryable in memory while quietly not surviving a
+        // restart. Log loudly with the fact id and cause.
+        if let Err(e) = self.write_fact(id, &fact) {
+            eprintln!(
+                "[Persist Error] typed fact {id} ({}) was NOT written to disk: {e} — it remains \
+                 in memory for this session but will not survive a restart",
+                fact.relation()
+            );
         }
 
         // Update in-memory index.
@@ -194,8 +234,10 @@ impl FactStore for RedbFactStore {
         self.cache.entry(relation).or_default().insert(fact);
 
         // Periodically flush the predicate index (every 100 inserts).
-        if id.is_multiple_of(100) {
-            let _ = self.flush_pred_index();
+        if id.is_multiple_of(100)
+            && let Err(e) = self.flush_pred_index()
+        {
+            eprintln!("[Persist Error] predicate-index flush failed: {e}");
         }
     }
 
@@ -205,34 +247,13 @@ impl FactStore for RedbFactStore {
         self.all_facts_cache.clear();
         self.next_id = 0;
 
-        // Clear disk tables.
-        if let Ok(txn) = self.db.begin_write() {
-            if let Ok(mut facts) = txn.open_table(TYPED_FACTS_TABLE) {
-                // Drain all entries.
-                let ids: Vec<u64> = facts
-                    .iter()
-                    .ok()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|e| e.ok().map(|(k, _)| k.value()))
-                    .collect();
-                for id in ids {
-                    let _ = facts.remove(id);
-                }
-            }
-            if let Ok(mut pred_idx) = txn.open_table(TYPED_PRED_INDEX_TABLE) {
-                let keys: Vec<String> = pred_idx
-                    .iter()
-                    .ok()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|e| e.ok().map(|(k, _)| k.value().to_string()))
-                    .collect();
-                for key in keys {
-                    let _ = pred_idx.remove(key.as_str());
-                }
-            }
-            let _ = txn.commit();
+        // Clear disk tables. A failure here leaves the DISK holding facts the
+        // MEMORY no longer has — they would resurrect on the next open. Loud.
+        if let Err(e) = self.clear_disk() {
+            eprintln!(
+                "[Persist Error] clearing the on-disk typed store failed: {e} — stale facts may \
+                 resurrect on the next open"
+            );
         }
     }
 
@@ -267,8 +288,12 @@ impl FactStore for RedbFactStore {
 
 impl Drop for RedbFactStore {
     fn drop(&mut self) {
-        // Flush predicate index on close.
-        let _ = self.flush_pred_index();
+        // Flush predicate index on close. Drop has no error channel; the
+        // failure must still be visible (the index is rebuilt from the facts
+        // table on open, so this degrades startup, not correctness).
+        if let Err(e) = self.flush_pred_index() {
+            eprintln!("[Persist Error] predicate-index flush on close failed: {e}");
+        }
     }
 }
 

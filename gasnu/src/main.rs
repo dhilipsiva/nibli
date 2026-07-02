@@ -366,12 +366,23 @@ fn stored_term_to_wit(t: &StoredTerm) -> EngineLogicalTerm {
     }
 }
 
-/// Persist a text assertion to the store (if configured).
+/// Persist a text assertion to the store (if configured). A write failure is
+/// SURFACED to the user — the fact is live in the KB for this session but will
+/// not survive a restart, and staying silent about that misstates durability.
 fn persist_text(nibli_store: &mut Option<NibliStore>, fact_id: u64, text: &str) {
     if let Some(s) = nibli_store.as_mut() {
         let assertion = StoredAssertion::Text(text.to_string());
-        if let Ok(payload) = postcard::to_allocvec(&assertion) {
-            let _ = s.insert_fact(fact_id, text.to_string(), payload);
+        let result = postcard::to_allocvec(&assertion)
+            .map_err(|e| format!("serialize: {e}"))
+            .and_then(|payload| {
+                s.insert_fact(fact_id, text.to_string(), payload)
+                    .map_err(|e| e.to_string())
+            });
+        if let Err(e) = result {
+            println!(
+                "[Persist Error] Fact #{fact_id} was NOT written to the store ({e}); it is live \
+                 in this session but will not survive a restart."
+            );
         }
     }
 }
@@ -396,8 +407,17 @@ fn persist_direct(
                 .collect::<Vec<_>>()
                 .join(" ")
         );
-        if let Ok(payload) = postcard::to_allocvec(&assertion) {
-            let _ = s.insert_fact(fact_id, label, payload);
+        let result = postcard::to_allocvec(&assertion)
+            .map_err(|e| format!("serialize: {e}"))
+            .and_then(|payload| {
+                s.insert_fact(fact_id, label, payload)
+                    .map_err(|e| e.to_string())
+            });
+        if let Err(e) = result {
+            println!(
+                "[Persist Error] Fact #{fact_id} was NOT written to the store ({e}); it is live \
+                 in this session but will not survive a restart."
+            );
         }
     }
 }
@@ -807,8 +827,13 @@ impl Repl {
                 let session = self.pipeline.lojban_nibli_lasna().session();
                 match session.call_reset_kb(&mut self.store, self.session_handle) {
                     Ok(Ok(())) => {
-                        if let Some(s) = self.nibli_store.as_mut() {
-                            let _ = s.clear();
+                        if let Some(s) = self.nibli_store.as_mut()
+                            && let Err(e) = s.clear()
+                        {
+                            println!(
+                                "[Persist Error] Clearing the store failed ({e}); persisted \
+                                 facts may resurrect on restart."
+                            );
                         }
                         self.journal.clear();
                         println!("[Reset] Knowledge base cleared.");
@@ -1056,8 +1081,15 @@ impl Repl {
                     let session = self.pipeline.lojban_nibli_lasna().session();
                     match session.call_retract_fact(&mut self.store, self.session_handle, id) {
                         Ok(Ok(())) => {
-                            if let Some(s) = self.nibli_store.as_mut() {
-                                let _ = s.retract_fact(id);
+                            if let Some(s) = self.nibli_store.as_mut()
+                                && let Err(e) = s.retract_fact(id)
+                            {
+                                // An unpersisted retraction RESURRECTS the fact
+                                // on the next restart — say so.
+                                println!(
+                                    "[Persist Error] Retraction of fact #{id} was NOT written \
+                                     to the store ({e}); it will resurrect on restart."
+                                );
                             }
                             self.journal.push(JournalEntry::Retract(id));
                             println!("[Retract] Fact #{} retracted. KB rebuilt.", id);
