@@ -1997,11 +1997,11 @@ fn ddi_why_alert_chains_to_the_regimen() {
 fn ddi_general_rules_fire_for_second_drug() {
     let engine = engine_with_ddi_corpus();
     assert_true(
-        &engine.query_holds("la .fenituin. cu ckape").unwrap(),
+        &engine.query_holds("la .fenitoin. cu ckape").unwrap(),
         "Phenytoin reaches toxicity risk via the same general toxicity rule as warfarin",
     );
     assert_false(
-        &engine.query_holds("la .fenituin. cu kajde").unwrap(),
+        &engine.query_holds("la .fenitoin. cu kajde").unwrap(),
         "But phenytoin warrants NO alert: Adam does not take it (the alert is regimen-gated)",
     );
 }
@@ -2062,12 +2062,12 @@ fn ddi_belief_revision_discontinue_inhibitor() {
     let engine = NibliEngine::new();
     for line in [
         "la .varfarin. cu xukmi",
-        "la .fenituin. cu xukmi",
+        "la .fenitoin. cu xukmi",
         "la .flukonazol. cu xukmi",
         "la .varfarin. cu se katna la .siptucin.",
-        "la .fenituin. cu se katna la .siptucin.",
+        "la .fenitoin. cu se katna la .siptucin.",
         "la .varfarin. cu cinla",
-        "la .fenituin. cu cinla",
+        "la .fenitoin. cu cinla",
         "la .adam. cu pilno la .varfarin.",
     ] {
         engine.assert_text(line).unwrap();
@@ -2077,7 +2077,7 @@ fn ddi_belief_revision_discontinue_inhibitor() {
         .unwrap();
     for line in [
         "ganai ge la .flukonazol. cu fanta la .siptucin. gi la .varfarin. cu se katna la .siptucin. gi la .varfarin. cu zenba",
-        "ganai ge la .flukonazol. cu fanta la .siptucin. gi la .fenituin. cu se katna la .siptucin. gi la .fenituin. cu zenba",
+        "ganai ge la .flukonazol. cu fanta la .siptucin. gi la .fenitoin. cu se katna la .siptucin. gi la .fenitoin. cu zenba",
         "ro lo xukmi poi zenba poi cinla cu ckape",
         "ro da zo'u ganai ge da ckape gi la .adam. cu pilno da gi da kajde",
     ] {
@@ -2091,11 +2091,11 @@ fn ddi_belief_revision_discontinue_inhibitor() {
         "Warfarin alerts: at risk via the inhibitor AND on Adam's chart",
     );
     assert_true(
-        &engine.query_holds("la .fenituin. cu ckape").unwrap(),
+        &engine.query_holds("la .fenitoin. cu ckape").unwrap(),
         "Phenytoin is at toxicity risk via the same shared inhibitor",
     );
     assert_false(
-        &engine.query_holds("la .fenituin. cu kajde").unwrap(),
+        &engine.query_holds("la .fenitoin. cu kajde").unwrap(),
         "But phenytoin raises no alert: Adam does not take it (regimen-gated)",
     );
 
@@ -2115,7 +2115,7 @@ fn ddi_belief_revision_discontinue_inhibitor() {
         "After discontinuation, the warfarin alert is automatically withdrawn",
     );
     assert_false(
-        &engine.query_holds("la .fenituin. cu ckape").unwrap(),
+        &engine.query_holds("la .fenitoin. cu ckape").unwrap(),
         "Discontinuing the shared inhibitor also clears phenytoin's toxicity risk",
     );
 }
@@ -2195,7 +2195,7 @@ fn ddi_witness_cyp2c9_substrates() {
         "warfarin should be a CYP2C9 substrate witness, got {substrates:?}"
     );
     assert!(
-        substrates.iter().any(|s| s.contains("fenituin")),
+        substrates.iter().any(|s| s.contains("fenitoin")),
         "phenytoin should be a CYP2C9 substrate witness, got {substrates:?}"
     );
     assert!(
@@ -2225,7 +2225,7 @@ fn ddi_dose_sum_aggregation() {
     // klani(drug, amount): "drug measures <amount>". Numbers via `li`.
     let engine = engine_with_facts(&[
         "la .varfarin. cu klani li mu", // 5
-        "la .fenituin. cu klani li ze", // 7
+        "la .fenitoin. cu klani li ze", // 7
     ]);
     let total = engine
         .aggregate_text("da klani de", "de", EngineAggregateOp::Sum)

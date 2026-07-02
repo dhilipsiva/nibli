@@ -563,6 +563,21 @@ fn gerna_smuni_seam_conformance() {
         metamorphic += 1;
     }
 
+    // A2. The official `nai`-suffixed selbri connective ≡ the pre-existing relaxed
+    //     `na` form: `X jenai Y` ("and not") and `X je na Y` feed the same
+    //     `Selbri::Negated` path, so the whole readme rule compiles identically
+    //     either way (this is the pair behind the readme.lojban jenai fix).
+    {
+        let a = seam::canonicalize(
+            &seam::compile("ro lo se bilga cu se curmi jenai se fanta").unwrap(),
+        );
+        let b = seam::canonicalize(
+            &seam::compile("ro lo se bilga cu se curmi je na se fanta").unwrap(),
+        );
+        assert_eq!(a, b, "metamorphic: `jenai` ≡ `je na` (selbri connective)");
+        metamorphic += 1;
+    }
+
     // B. Seeded batch of `E se P F` ≡ `F P E` pairs over the fallback 2+-place vocab.
     const SEAM_BATCH: u64 = 60;
     for seed in 0..SEAM_BATCH {

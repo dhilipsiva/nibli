@@ -22,27 +22,16 @@ const DEFAULT_PARSER_RANDOM_COUNT: u64 = 40;
 /// The gate must actually compare a meaningful number of unique sentences.
 const MIN_CHECKED: usize = 100;
 
-/// Known gerna over-acceptances — found by this gate's FIRST run, each shipped in a
-/// corpus and pending a coordinated fix (see the TODO tracker):
-///
-/// - `.fenituin.` (4 DDI lines): gerna's cmevla morphology accepts a rising
-///   diphthong after a consonant ("tui"); official morphology allows on-glides
-///   (ia–iu, ua–uu) only syllable-initially, so camxes rejects the name (probe:
-///   `.uin.` and `.fenitoin.` parse, `.tuin.` does not). The rename
-///   `fenituin`→`fenitoin` must move in lock-step with the DDI engine tests and the
-///   book's Chapter 21 transcripts.
-/// - bare `na` as a tanru-connective negator (1 readme line, `… je na se fanta`):
-///   the official grammar wants `jenai` or `na'e` there.
+/// Known gerna over-acceptances shipped in a corpus. EMPTY since the corpus fixes:
+/// the gate's first run found five (four DDI lines with the invalid cmevla
+/// `.fenituin.` — a rising diphthong after a consonant, renamed `.fenitoin.`; one
+/// readme line using the relaxed `je na` selbri-connective negation, rewritten to
+/// the official `jenai`, which gerna now parses). Note gerna's GRAMMAR still accepts
+/// both relaxed forms — this gate guarantees no shipped or generated line USES them.
 ///
 /// INVARIANT (enforced below): every entry must STILL diverge — once a line is
 /// fixed, its entry must be deleted, so this list can never go stale.
-const KNOWN_DIVERGENCES: &[&str] = &[
-    "la .fenituin. cu xukmi",
-    "la .fenituin. cu se katna la .siptucin.",
-    "la .fenituin. cu cinla",
-    "ganai ge la .flukonazol. cu fanta la .siptucin. gi la .fenituin. cu se katna la .siptucin. gi la .fenituin. cu zenba",
-    "ro lo se bilga cu se curmi je na se fanta",
-];
+const KNOWN_DIVERGENCES: &[&str] = &[];
 
 #[test]
 fn gerna_accepted_sentences_are_camxes_parseable() {

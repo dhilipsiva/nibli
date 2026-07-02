@@ -35,7 +35,7 @@ pub static DRUG_INTERACTIONS_OVERLAY: DomainGloss = DomainGloss {
         ("varfarin", "warfarin"),
         ("flukonazol", "fluconazole"),
         ("apiksaban", "apixaban"),
-        ("fenituin", "phenytoin"),
+        ("fenitoin", "phenytoin"),
         ("siptucin", "CYP2C9"),
         ("sipcivon", "CYP3A4"),
         ("adam", "Adam"),

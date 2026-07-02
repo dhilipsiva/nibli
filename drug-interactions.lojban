@@ -38,21 +38,21 @@
 la .varfarin. cu xukmi
 la .flukonazol. cu xukmi
 la .apiksaban. cu xukmi
-la .fenituin. cu xukmi
+la .fenitoin. cu xukmi
 
 # ─── Mechanism facts: inhibition and metabolism ───────────────────
 # Fluconazole inhibits the CYP2C9 enzyme.
 la .flukonazol. cu fanta la .siptucin.
 # Warfarin and phenytoin are both metabolised by CYP2C9.
 la .varfarin. cu se katna la .siptucin.
-la .fenituin. cu se katna la .siptucin.
+la .fenitoin. cu se katna la .siptucin.
 # Apixaban is metabolised by CYP3A4 (the negative-control pathway).
 la .apiksaban. cu se katna la .sipcivon.
 
 # ─── Mechanism facts: narrow therapeutic index ────────────────────
 # Warfarin and phenytoin have narrow therapeutic indices (small safety margin).
 la .varfarin. cu cinla
-la .fenituin. cu cinla
+la .fenitoin. cu cinla
 
 # ─── Patient regimen ──────────────────────────────────────────────
 # Adam is co-prescribed warfarin and fluconazole.
@@ -69,7 +69,7 @@ la .adam. cu pilno la .flukonazol.
 # Boundaries"). The toxicity step (step 2) is a general drug-level rule; the
 # alert step (step 3) is patient-gated on the regimen (see below).
 ganai ge la .flukonazol. cu fanta la .siptucin. gi la .varfarin. cu se katna la .siptucin. gi la .varfarin. cu zenba
-ganai ge la .flukonazol. cu fanta la .siptucin. gi la .fenituin. cu se katna la .siptucin. gi la .fenituin. cu zenba
+ganai ge la .flukonazol. cu fanta la .siptucin. gi la .fenitoin. cu se katna la .siptucin. gi la .fenitoin. cu zenba
 
 # ─── Mechanism step 2: toxicity risk (general rule) ───────────────
 # A drug whose concentration is increased AND which has a narrow therapeutic

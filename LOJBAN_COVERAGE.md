@@ -96,6 +96,7 @@ Current coverage of Lojban grammar, semantics, and reasoning in Nibli.
 | Feature | Status | Notes |
 |---------|--------|-------|
 | `je` `ja` `jo` `ju` | Done | Same semantics as sumti connectives |
+| `jenai` `janai` `jonai` `junai` (nai-suffixed) | Done | Right-operand negation; `X jenai Y` ≡ `X je na Y` (the relaxed `na` form is also accepted) |
 
 ### Sentence Connectives
 | Feature | Status | Notes |

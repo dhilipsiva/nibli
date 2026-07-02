@@ -1195,6 +1195,38 @@ fn test_connective_je() {
 }
 
 #[test]
+fn test_connective_jenai_negates_right() {
+    // `jenai` (the official nai-suffixed form, one merged token) ≡ `je na`: a Je
+    // connective whose RIGHT operand is negated. Both shapes must parse identically.
+    let arena = Bump::new();
+    for tokens in [
+        vec![cmavo("mi"), gismu("barda"), cmavo("jenai"), gismu("xunre")],
+        vec![
+            cmavo("mi"),
+            gismu("barda"),
+            cmavo("je"),
+            cmavo("na"),
+            gismu("xunre"),
+        ],
+    ] {
+        let r = parse_ok(&tokens, &arena);
+        match &as_bridi(&r.sentences[0]).selbri {
+            Selbri::Connected {
+                connective: Connective::Je,
+                right,
+                ..
+            } => {
+                assert!(
+                    matches!(right, Selbri::Negated(_)),
+                    "right operand must be negated, got {right:?}"
+                );
+            }
+            other => panic!("expected Je with negated right, got {:?}", other),
+        }
+    }
+}
+
+#[test]
 fn test_connective_ja() {
     let arena = Bump::new();
     let r = parse_ok(

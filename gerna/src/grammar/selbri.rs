@@ -25,7 +25,13 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         }
     }
 
-    /// Parse a selbri connective chain: selbri_2 ((je|ja|jo|ju) selbri_2)*.
+    /// Parse a selbri connective chain: selbri_2 ((je|ja|jo|ju)[nai] selbri_2)*.
+    ///
+    /// The `nai`-suffixed forms arrive as single tokens (the lexer's compound-cmavo
+    /// merge) and negate the RIGHT operand — `jenai` ("and not") is the official
+    /// grammar's way to write what the pre-existing `je na` relaxation expresses,
+    /// and both feed the same `Selbri::Negated` path, so `X je na Y` ≡ `X jenai Y`
+    /// by construction (pinned by a seam metamorphic pair).
     pub(crate) fn try_parse_selbri_conn(&mut self) -> Result<Option<Selbri<'arena>>, ParseError> {
         let mut left = match self.try_parse_selbri_2() {
             Some(s) => s,
@@ -33,16 +39,20 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         };
 
         loop {
-            let conn = match self.peek_cmavo() {
-                Some("je") => Connective::Je,
-                Some("ja") => Connective::Ja,
-                Some("jo") => Connective::Jo,
-                Some("ju") => Connective::Ju,
+            let (conn, nai) = match self.peek_cmavo() {
+                Some("je") => (Connective::Je, false),
+                Some("ja") => (Connective::Ja, false),
+                Some("jo") => (Connective::Jo, false),
+                Some("ju") => (Connective::Ju, false),
+                Some("jenai") => (Connective::Je, true),
+                Some("janai") => (Connective::Ja, true),
+                Some("jonai") => (Connective::Jo, true),
+                Some("junai") => (Connective::Ju, true),
                 _ => break,
             };
             self.pos += 1;
 
-            let neg_right = self.eat_cmavo("na");
+            let neg_right = nai || self.eat_cmavo("na");
 
             let right_base = self
                 .try_parse_selbri_2()

@@ -108,7 +108,7 @@ pub enum LojbanToken {
 const COMPOUND_CMAVO: &[&str] = &[
     // GA selma'o + nai — the only parser-handled forethought conditional
     "ganai", // JA selma'o + nai — afterthought logical connectives
-    "janai", "jenai", "jonai", "junai", // PU selma'o + nai — tense negation
+    "janai", "jenai", "jonai", "junai", // JA selma'o + nai — right-operand negation
     "punai", "canai", "banai",
 ];
 
