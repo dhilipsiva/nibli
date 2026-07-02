@@ -383,3 +383,17 @@ fn fnv1a_hash(s: &str) -> u64 {
     }
     h
 }
+
+#[cfg(test)]
+mod fnv1a_tests {
+    // The `__abs_<hash>` opacity keys depend on FNV-1a's collision resistance —
+    // a weakened mix (e.g. `^=` → `|=`, which saturates bits) would silently
+    // conflate DIFFERENT abstractions into one opaque constant. Pin the exact
+    // algorithm with the published FNV-1a reference vectors.
+    #[test]
+    fn fnv1a_matches_reference_vectors() {
+        assert_eq!(super::fnv1a_hash(""), 0xcbf29ce484222325);
+        assert_eq!(super::fnv1a_hash("a"), 0xaf63dc4c8601ec8c);
+        assert_eq!(super::fnv1a_hash("foobar"), 0x85944171f73967e8);
+    }
+}

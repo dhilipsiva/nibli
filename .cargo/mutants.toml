@@ -24,3 +24,10 @@ test_package = ["logji", "smuni", "nibli-engine"]
 # the CI gate). logji's reasoning tests share global state via RefCell and
 # need --test-threads=1 (same constraint the Justfile encodes).
 additional_cargo_test_args = ["--tests", "--", "--test-threads=1"]
+
+# STABILITY: a generous fixed floor + multiplier so long-but-finite mutants
+# complete deterministically instead of flapping between the timeout bucket
+# (counted caught) and missed across runs — observed under -j 10 load. True
+# hangs still time out, stably.
+minimum_test_timeout = 60
+timeout_multiplier = 8.0

@@ -1131,6 +1131,303 @@ fn exact_count_query_over_ground_facts() {
     );
 }
 
+// ─── Mutation-triage kills, round 2 (2026-07: category-E survivors) ──
+
+#[test]
+fn present_rule_consequent_derives_present_fact() {
+    // `ca` analog of the Future/Past tensed-conclusion tests — pins the
+    // (Present, Present) unify_facts arm on the rule-conclusion path.
+    let engine = engine_with_facts(&[
+        "ganai la .rex. cu gerku gi ca la .rex. cu morsi",
+        "la .rex. cu gerku",
+    ]);
+    assert_true(
+        &engine.query_holds("ca la .rex. cu morsi").unwrap(),
+        "Present conclusion derives the Present fact",
+    );
+    assert_false(
+        &engine.query_holds("la .rex. cu morsi").unwrap(),
+        "Present conclusion must not derive a bare fact",
+    );
+}
+
+#[test]
+fn obligatory_rule_consequent_derives_obligatory_fact() {
+    // `ei` analog of the Permitted-consequent test — pins the
+    // (Obligatory, Obligatory) unify_facts arm on the rule-conclusion path.
+    let engine = engine_with_facts(&[
+        "ganai la .rex. cu gerku gi ei la .rex. cu citka",
+        "la .rex. cu gerku",
+    ]);
+    assert_true(
+        &engine.query_holds("ei la .rex. cu citka").unwrap(),
+        "Obligatory conclusion derives the Obligatory fact",
+    );
+    assert_false(
+        &engine.query_holds("la .rex. cu citka").unwrap(),
+        "Obligatory conclusion must not derive a bare fact",
+    );
+    assert_false(
+        &engine.query_holds("e'e la .rex. cu citka").unwrap(),
+        "Obligatory conclusion must not derive a Permitted fact",
+    );
+}
+
+#[test]
+fn flavor_polymorphic_rule_firing_is_flavor_exact() {
+    // An UNMARKED rule fires flavor-polymorphically: a `ba` goal pins the rule's
+    // conditions to `ba` (apply_tense_to_fact). Both directions matter:
+    // a ba fact supports the ba goal; a BARE fact must NOT.
+    let engine = engine_with_facts(&["ro lo gerku cu danlu", "ba la .rex. cu gerku"]);
+    assert_true(
+        &engine.query_holds("ba la .rex. cu danlu").unwrap(),
+        "unmarked rule fires for a Future goal from a Future condition fact",
+    );
+
+    let engine2 = engine_with_facts(&["ro lo gerku cu danlu", "la .rex. cu gerku"]);
+    assert_false(
+        &engine2.query_holds("ba la .rex. cu danlu").unwrap(),
+        "a Future goal must NOT fire the rule from a bare condition fact",
+    );
+}
+
+#[test]
+fn disjunctive_existential_witness() {
+    // `da gerku ja mlatu` — the existential witness search must descend BOTH
+    // disjuncts (find_witnesses OrNode arm): a cat alone satisfies it.
+    let engine = engine_with_facts(&["la .adam. cu mlatu"]);
+    assert_true(
+        &engine.query_holds("da gerku ja mlatu").unwrap(),
+        "a witness satisfying the right disjunct suffices",
+    );
+    assert_false(
+        &engine.query_holds("da gerku je mlatu").unwrap(),
+        "the conjunctive form still needs both",
+    );
+}
+
+#[test]
+fn tensed_negation_is_flavor_exact() {
+    // `na` under each tense flavor: the negation must be recorded at ITS flavor
+    // (find_negation_body threads tense) — the positive same-flavor query stays
+    // FALSE and the contradiction is detected on the flavored re-assert.
+    for tense in ["pu", "ca", "ba"] {
+        let engine = engine_with_facts(&[&format!("{tense} la .adam. cu na citka")]);
+        assert_false(
+            &engine
+                .query_holds(&format!("{tense} la .adam. cu citka"))
+                .unwrap(),
+            "the flavored positive must be FALSE after the flavored denial",
+        );
+    }
+}
+
+#[test]
+fn count_assertion_is_verdict_inert() {
+    // Current semantics (pinned, feeds the count-semantics decision in the
+    // tracker): an exact-count ASSERTION derives nothing — no witness enters
+    // the domain and even the identical count query stays FALSE. This makes
+    // the CountNode arm of collect_exists_for_skolem (witness-name minting)
+    // observably inert; if count-assert semantics ever change, this pin breaks
+    // loudly and the decision gets made deliberately.
+    let engine = engine_with_facts(&["pa lo gerku cu barda"]);
+    for q in [
+        "pa lo gerku cu barda",
+        "da gerku",
+        "da barda",
+        "lo gerku cu barda",
+    ] {
+        assert_false(
+            &engine.query_holds(q).unwrap(),
+            "a count assertion must stay verdict-inert (current pinned semantics)",
+        );
+    }
+}
+
+#[test]
+fn zero_count_assertion_mints_no_witness() {
+    // `no lo gerku cu barda` (exactly zero): no witness may be minted — a
+    // phantom member would corrupt the domain and the closed-world verdicts.
+    let engine = engine_with_facts(&["no lo gerku cu barda"]);
+    assert_false(
+        &engine.query_holds("da gerku").unwrap(),
+        "a zero-count assertion must not mint a witness",
+    );
+}
+
+#[test]
+fn over_arity_untagged_sumti_is_rejected() {
+    // gerku has 2 places; three untagged sumti overflow — the compile must
+    // REJECT (fail-closed), never silently drop the extra argument.
+    let engine = NibliEngine::new();
+    assert!(
+        engine
+            .assert_text("la .adam. cu gerku la .bob. la .kim.")
+            .is_err(),
+        "untagged over-arity sumti must fail closed, not drop silently"
+    );
+}
+
+#[test]
+fn builtin_arithmetic_verdicts() {
+    // sumji(x1, x2, x3): x1 = x2 + x3 via the built-in evaluator — pins the
+    // GroundTerm::as_f64 numeric extraction the compute dispatch relies on.
+    let engine = NibliEngine::new();
+    assert_true(
+        &engine.query_holds("li mu sumji li re li ci").unwrap(),
+        "5 = 2 + 3 is TRUE by built-in arithmetic",
+    );
+    assert_false(
+        &engine.query_holds("li vo sumji li re li ci").unwrap(),
+        "4 = 2 + 3 is FALSE by built-in arithmetic",
+    );
+}
+
+#[test]
+fn ground_conditional_with_existential_conclusion() {
+    // `ganai A gi lo mlatu cu barda`: the conclusion existential is skolemized
+    // to a GROUND witness at rule-compile time (ground_skolems); firing must
+    // derive a queryable witness.
+    let engine = engine_with_facts(&[
+        "ganai la .adam. cu gerku gi lo mlatu cu barda",
+        "la .adam. cu gerku",
+    ]);
+    assert_true(
+        &engine.query_holds("da mlatu").unwrap(),
+        "the fired conclusion's skolem witness satisfies the restrictor",
+    );
+    assert_true(
+        &engine.query_holds("lo mlatu cu barda").unwrap(),
+        "the fired conclusion itself holds",
+    );
+}
+
+#[test]
+fn be_clause_with_tagged_tail_term_compiles_both() {
+    // `klama be X be'o fi Y`: `be` binds x2, `fi` tags Y to x3 — both must
+    // land (pins the WithArgs merge's positional-tail copy).
+    let engine = NibliEngine::new();
+    let buf = engine
+        .compile_debug("la .adam. cu klama be la .paris. be'o fi la .rom.")
+        .expect("be-clause with fi-tagged tail should compile");
+    assert!(
+        role_has_const(&buf, "klama_x2", "paris"),
+        "be must bind x2; buffer: {buf:?}"
+    );
+    assert!(
+        role_has_const(&buf, "klama_x3", "rom"),
+        "fi-tagged tail must land in x3; buffer: {buf:?}"
+    );
+}
+
+#[test]
+fn du_equivalence_transfers_across_tense_flavor() {
+    // A du-merged name must answer a FLAVORED query via its equivalent: the
+    // equivalence variant lookup must respect the stored flavor.
+    let engine = engine_with_facts(&["pu la .adam. cu gerku", "la .adam. du la .bob."]);
+    assert_true(
+        &engine.query_holds("pu la .bob. cu gerku").unwrap(),
+        "du equivalence transfers the Past fact to the equivalent name",
+    );
+    assert_false(
+        &engine.query_holds("la .bob. cu gerku").unwrap(),
+        "the transfer must stay flavor-exact (no bare leak)",
+    );
+}
+
+#[test]
+fn explicitly_tensed_rule_condition_is_flavor_exact() {
+    // `ganai pu A gi B` — an EXPLICITLY tensed condition must match only the
+    // same-flavor fact (flatten_conjuncts_through_exists threads the flavor
+    // into the condition template), for every flavor.
+    for tense in ["pu", "ca", "ba"] {
+        let engine = engine_with_facts(&[
+            &format!("ganai {tense} la .rex. cu gerku gi la .rex. cu morsi"),
+            &format!("{tense} la .rex. cu gerku"),
+        ]);
+        assert_true(
+            &engine.query_holds("la .rex. cu morsi").unwrap(),
+            "same-flavor condition fact fires the rule",
+        );
+
+        let engine2 = engine_with_facts(&[
+            &format!("ganai {tense} la .rex. cu gerku gi la .rex. cu morsi"),
+            "la .rex. cu gerku",
+        ]);
+        assert_false(
+            &engine2.query_holds("la .rex. cu morsi").unwrap(),
+            "a bare fact must NOT fire an explicitly tensed condition",
+        );
+    }
+}
+
+#[test]
+fn te_conversion_swaps_x1_and_x3() {
+    // `te klama` swaps x1↔x3 — the 3-place conversion arm (sibling of the xe
+    // pin above; the swap must actually happen, not silently no-op).
+    let engine = NibliEngine::new();
+    let buf = engine
+        .compile_debug("la .rom. cu te klama zo'e la .adam.")
+        .expect("te klama should compile");
+    assert!(
+        role_has_const(&buf, "klama_x3", "rom"),
+        "te must move the head term to x3 (origin); buffer: {buf:?}"
+    );
+    assert!(
+        role_has_const(&buf, "klama_x1", "adam"),
+        "te must move the third term to x1 (goer); buffer: {buf:?}"
+    );
+}
+
+#[test]
+fn numeric_terms_are_not_universal_domain_members() {
+    // Current semantics (pinned): a `li` number asserted into a predicate does
+    // NOT become a quantifier-domain member — a universal restricted to it is
+    // VACUOUSLY true (both compute bodies below, one arithmetically true and
+    // one false, give TRUE). This is the sharp edge that keeps the stored-number
+    // compute-arg path (GroundTerm::as_f64 on bound variables) surface-
+    // unreachable; the literal path is pinned by builtin_arithmetic_verdicts.
+    let engine = engine_with_facts(&["li mu cu barda"]);
+    assert_true(
+        &engine
+            .query_holds("ro lo barda cu sumji li re li ci")
+            .unwrap(),
+        "vacuous universal (numbers are not domain members)",
+    );
+    assert_true(
+        &engine
+            .query_holds("ro lo barda cu sumji li re li re")
+            .unwrap(),
+        "vacuous even for an arithmetically false body — numbers never enumerate",
+    );
+}
+
+#[test]
+fn naf_antecedent_rule_fires_and_blocks() {
+    // `ro da zo'u ganai ge da gerku gi da na mlatu gi da xagji` — a rule with a
+    // POSITIVE and a NEGATED (NAF) condition. Pins the candidate-filter/lookahead
+    // polarity (filter_event_candidates): the NAF condition must count as
+    // satisfied when the witness is ABSENT and as blocking when PRESENT.
+    let engine = engine_with_facts(&[
+        "ro da zo'u ganai ge da gerku gi da na mlatu gi da xagji",
+        "la .rex. cu gerku",
+    ]);
+    assert_true(
+        &engine.query_holds("la .rex. cu xagji").unwrap(),
+        "NAF condition with no witness lets the rule fire",
+    );
+
+    let engine2 = engine_with_facts(&[
+        "ro da zo'u ganai ge da gerku gi da na mlatu gi da xagji",
+        "la .rex. cu gerku",
+        "la .rex. cu mlatu",
+    ]);
+    assert_false(
+        &engine2.query_holds("la .rex. cu xagji").unwrap(),
+        "an asserted witness blocks the NAF condition",
+    );
+}
+
 // ─── Description opacity (le vs lo) ────────────────────────────────
 
 #[test]

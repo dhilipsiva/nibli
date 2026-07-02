@@ -1078,6 +1078,113 @@ fn exact_count_with_unresolved_member_bounds() {
         QueryResult::False,
         "2 satisfying vs count 1: over-count bound gives FALSE"
     );
+    // count == satisfying with an unresolved member: NEITHER bound is decisive
+    // (2 > 2 is false — strictly-greater, not >=; 2+1 < 2 is false) — the
+    // unresolved member could push the tally past the exact count, so the
+    // verdict must stay non-definitive, never a confident FALSE.
+    assert_eq!(
+        kb2.query_entailment_inner(compile_surface("re lo gerku cu danlu"))
+            .unwrap(),
+        QueryResult::ResourceExceeded(ResourceKind::Depth),
+        "satisfying == count with an unresolved member: non-definitive, not FALSE"
+    );
+}
+
+/// The ForAll/Count-over-ComputeNode BATCH fast path
+/// (`batch_evaluate_compute_for_members`) — raw-FOL-only (the surface pipeline
+/// never leaves a bare ComputeNode body). Its decisive per-member branches need
+/// NUMERIC members, and numbers never enter the quantifier domain (asserting
+/// `namcu(4.0)`/`namcu(5.0)` below adds NO member — pinned at the engine level
+/// too, `numeric_terms_are_not_universal_domain_members`). With real (constant)
+/// members the arithmetic is non-evaluable and no backend is configured, so the
+/// batch must stay NON-DEFINITIVE — never a fabricated True/False — except where
+/// the count sum-bound is decisive regardless of the unresolved member.
+#[test]
+fn flat_forall_and_count_over_compute_batch_stays_non_definitive() {
+    let kb = new_kb();
+    for n in [4.0, 5.0] {
+        let mut nodes = Vec::new();
+        let root = pred(&mut nodes, "namcu", vec![LogicalTerm::Number(n)]);
+        assert_buf(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            },
+        );
+    }
+    assert_buf(&kb, make_assertion("alis", "prenu"));
+
+    let compute_body = |nodes: &mut Vec<LogicNode>| {
+        compute(
+            nodes,
+            "sumji",
+            vec![
+                LogicalTerm::Variable("_v0".to_string()),
+                LogicalTerm::Number(2.0),
+                LogicalTerm::Number(3.0),
+            ],
+        )
+    };
+
+    let mut nodes = Vec::new();
+    let body = compute_body(&mut nodes);
+    let root = forall(&mut nodes, "_v0", body);
+    assert_eq!(
+        query_result(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root],
+            }
+        ),
+        QueryResult::Unknown(UnknownReason::BackendUnavailable),
+        "forall over an un-evaluable compute member is non-definitive"
+    );
+
+    for (cnt, expected) in [
+        (
+            1u32,
+            QueryResult::Unknown(UnknownReason::BackendUnavailable),
+        ),
+        // 0 satisfying + 1 unresolved < 2: the sum bound is decisive.
+        (2u32, QueryResult::False),
+    ] {
+        let mut nodes = Vec::new();
+        let body = compute_body(&mut nodes);
+        let root = count(&mut nodes, "_v0", cnt, body);
+        assert_eq!(
+            query_result(
+                &kb,
+                LogicBuffer {
+                    nodes,
+                    roots: vec![root],
+                }
+            ),
+            expected,
+            "count {cnt} over an un-evaluable compute member"
+        );
+    }
+}
+
+/// A universal over a COMPUTE body takes the batch fast path
+/// (`batch_evaluate_compute_for_members`): the first FAILING member is the
+/// counterexample. Pin both verdict directions so the fail-detection polarity
+/// cannot silently flip (an all-false body must be FALSE, never a vacuous TRUE).
+#[test]
+fn forall_over_compute_body_batch_path() {
+    let kb = new_kb();
+    // Populate the domain with two entities.
+    assert_buf(&kb, compile_surface("la .adam. cu gerku"));
+    assert_buf(&kb, compile_surface("la .bel. cu gerku"));
+
+    // No entity equals 2 + 3: the universal is FALSE with a counterexample.
+    assert_eq!(
+        kb.query_entailment_inner(compile_surface("ro da zo'u da sumji li re li ci"))
+            .unwrap(),
+        QueryResult::False,
+        "a compute body false for every member makes the universal FALSE"
+    );
 }
 
 /// The groundness invariant is a MECHANISM at the store boundary, not call-site

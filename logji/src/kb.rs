@@ -1987,17 +1987,6 @@ fn tense_to_static(tense: Option<&str>) -> Option<&'static str> {
     }
 }
 
-/// Resolve a LogicalTerm to a GroundTerm using current substitutions.
-fn resolve_arg(arg: &LogicalTerm, subs: &HashMap<String, GroundTerm>) -> Option<GroundTerm> {
-    match arg {
-        LogicalTerm::Variable(v) => subs.get(v).cloned(),
-        LogicalTerm::Constant(c) => Some(GroundTerm::Constant(c.clone())),
-        LogicalTerm::Number(n) => Some(GroundTerm::from_f64(*n)),
-        LogicalTerm::Description(d) => Some(GroundTerm::Description(d.clone())),
-        LogicalTerm::Unspecified => Some(GroundTerm::Unspecified),
-    }
-}
-
 /// Extract candidates from the typed fact index for a predicate anchor.
 fn extract_from_index(
     anchor: &PredicateAnchor,
