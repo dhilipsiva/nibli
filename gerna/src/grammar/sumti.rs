@@ -233,6 +233,16 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         for &d in &integer_digits {
             value = value * 10.0 + d as f64;
         }
+        // A digit string that overflows f64 (≥ ~309 digits) accumulates to +inf:
+        // restore and fail so the sentence is a clean syntax error — never a
+        // non-finite `Number` flowing into the pipeline (mirrors the u32
+        // quantifier path's fail-closed overflow guard above; downstream
+        // NonFinite catches exist, but the parse boundary must not rely on
+        // them). The fractional loop below only divides, so it cannot overflow.
+        if !value.is_finite() {
+            self.restore(saved);
+            return None;
+        }
         if !fractional_digits.is_empty() {
             let mut frac: f64 = 0.0;
             for &d in fractional_digits.iter().rev() {

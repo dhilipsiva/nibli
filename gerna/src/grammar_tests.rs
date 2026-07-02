@@ -3833,6 +3833,37 @@ fn test_li_multi_digit_number() {
 }
 
 #[test]
+fn test_li_overflowing_digit_string_fails_closed() {
+    // A `li` digit string that overflows f64 (1 followed by 309 zeros = 1e309
+    // > f64::MAX) must be a clean PARSE ERROR — never a non-finite Number
+    // flowing into the pipeline (mirrors the u32 quantifier overflow guard).
+    let mut tokens = vec![cmavo("li"), cmavo("pa")];
+    tokens.extend(std::iter::repeat_with(|| cmavo("no")).take(309));
+    tokens.push(cmavo("cu"));
+    tokens.push(gismu("namcu"));
+    parse_err(&tokens);
+}
+
+#[test]
+fn test_li_large_but_finite_number_still_parses() {
+    // Boundary control: 1e300 is finite — the overflow guard must not
+    // over-reject large legitimate numbers.
+    let arena = Bump::new();
+    let mut tokens = vec![cmavo("li"), cmavo("pa")];
+    tokens.extend(std::iter::repeat_with(|| cmavo("no")).take(300));
+    tokens.push(cmavo("cu"));
+    tokens.push(gismu("namcu"));
+    let r = parse_ok(&tokens, &arena);
+    let b = as_bridi(&r.sentences[0]);
+    assert!(
+        // Iterated ×10 accumulation rounds differently from the 1e300 literal,
+        // so assert finiteness + magnitude, not bit equality.
+        matches!(b.head_terms[0], Sumti::Number(n) if n.is_finite() && n > 1e299 && n < 1e301),
+        "~1e300 must parse as a finite Number"
+    );
+}
+
+#[test]
 fn test_forethought_ganai_gi() {
     // ganai mi klama gi do sutra → Connected(GanaiGi, ...)
     let arena = Bump::new();

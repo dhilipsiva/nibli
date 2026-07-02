@@ -15,7 +15,6 @@ Audit measurements referenced below (machine: Ryzen 9 9950X3D, WSL2, release bui
 
 ## D. Code quality (8.0 → 9): fail-closed smells
 
-- **f64 overflow guard at the `li` parse boundary** (`gerna/src/grammar/sumti.rs:232-244`) — fail closed like the u32 quantifier path instead of relying on downstream NonFinite catches.
 - **Replace the latent `_ => unreachable!()`** at `gerna/src/lib.rs:451` with an explicit `Lo | Le` match (compile error on producer-set widening).
 - **Mirror the non-finite guard in `try_numeric_comparison`** (`logji/src/compute.rs:29-37`) for flat-path consistency with the event-decomposed path — and add the flat non-finite negative-control test with it (moved from the delivered negative-controls item: the test needs the guard to exist first).
 
