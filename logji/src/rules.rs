@@ -1278,6 +1278,10 @@ fn register_clause_rule(
         for v in universals {
             let xp_name = inner.fresh_skolem();
             inner.note_entity(&xp_name);
+            // Mark as a PRESUPPOSITION witness: it satisfies ∃/∀ like any
+            // entity but is excluded from counting surfaces (a phantom entity
+            // a rule presupposed must not change "how many").
+            inner.xorlo_import_witnesses.insert(xp_name.clone());
             xp_subs.insert(v.clone(), GroundTerm::Constant(xp_name));
         }
         for (k, v) in ground_skolems {
@@ -1761,9 +1765,31 @@ pub(super) fn generate_count_extra_witnesses(
                         .map(|(k, gt)| (k.clone(), gt.clone()))
                         .collect();
                     typed_extra_subs.insert(v.clone(), GroundTerm::Constant(extra_sk.clone()));
-                    if let Some(fact) =
-                        build_stored_fact_from_node(buffer, *body, &typed_extra_subs, None)
-                    {
+
+                    // FRESH event/description constants for THIS witness: the
+                    // body's existentials must not share events with witness 1
+                    // (same-event role facts for different subjects would
+                    // corrupt the decomposition).
+                    let mut body_exists = HashSet::new();
+                    collect_condition_exists(buffer, *body, &mut body_exists);
+                    for var in &body_exists {
+                        let ev_sk = inner.fresh_skolem();
+                        if var.starts_with("_ev") {
+                            inner.note_event_entity(&ev_sk);
+                        } else {
+                            inner.note_entity(&ev_sk);
+                        }
+                        typed_extra_subs.insert(var.clone(), GroundTerm::Constant(ev_sk));
+                    }
+
+                    // Materialize the full body (restrictor ∧ main), not a
+                    // single leaf — the body is a conjunction of event
+                    // decompositions (`build_stored_fact_from_node` returns
+                    // None for And, which silently dropped every extra
+                    // witness before the count-assert semantics landed).
+                    let mut facts = Vec::new();
+                    collect_ground_facts(buffer, *body, &typed_extra_subs, None, &mut facts);
+                    for fact in facts {
                         assert_typed_fact(fact, inner);
                     }
                 }
@@ -1911,6 +1937,17 @@ pub(super) fn collect_ground_facts(
         }
         LogicNode::PermittedNode(inner) => {
             collect_ground_facts(buffer, *inner, subs, Some("Permitted"), out);
+        }
+        LogicNode::CountNode((v, _, body)) => {
+            // Exact-count ASSERTION (`PA lo X cu Y`): materialize the FIRST
+            // witness's body facts — Phase 1 bound `v` to a fresh witness for
+            // count > 0 (extra witnesses are minted by
+            // `generate_count_extra_witnesses`). Count 0 binds nothing and
+            // materializes nothing: under CWA "no X are Y" already holds
+            // unless contradicted (GUARANTEES §Aggregation).
+            if subs.contains_key(v.as_str()) {
+                collect_ground_facts(buffer, *body, subs, tense, out);
+            }
         }
         _ => {
             if let Some(fact) = build_stored_fact_from_node(buffer, node_id, subs, tense) {

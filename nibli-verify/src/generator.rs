@@ -199,10 +199,13 @@ pub fn random_naf_case(seed: u64) -> GeneratedCase {
 const COUNT_DIGITS: &[&str] = &["pa", "re", "ci"];
 
 /// Generate a random **exact-count** case for `seed`: 2..=5 ground facts over a small
-/// entity/predicate pool (no rules, no `du`, no tense — the guarded fragment where the
-/// engine's per-member count equals clingo's `#count` over the stable model; see
-/// `filter::count_case_guard`), plus one `PA lo P1 cu P2` query. Both TRUE and FALSE
-/// sides arise naturally from the random fact/quantifier mix.
+/// entity/predicate pool, plus one `PA lo P1 cu P2` query. Both TRUE and FALSE sides
+/// arise naturally from the random fact/quantifier mix. Since the 2026-07-02
+/// count-semantics decision (entity-level counting), the fragment also mixes in the
+/// formerly-guarded shapes: a `du` link between two pool entities (~1 in 3 — the
+/// engine counts one representative per equivalence class, matching the translator's
+/// canonicalization) and a universal taxonomy rule (~1 in 3 — the engine excludes the
+/// xorlo presupposition witness from counting, and the ASP program never had one).
 pub fn random_count_case(seed: u64) -> GeneratedCase {
     let mut rng = Lcg::new(seed);
     let mut kb: Vec<String> = Vec::new();
@@ -216,6 +219,24 @@ pub fn random_count_case(seed: u64) -> GeneratedCase {
         let e = ents[rng.below(ents.len())];
         let p = preds[rng.below(preds.len())];
         kb.push(format!("la .{e}. cu {p}"));
+    }
+
+    // ~1 in 3: a du link (two distinct pool entities become one countable entity).
+    if rng.below(3) == 0 {
+        let a = ents[rng.below(ents.len())];
+        let b = ents[rng.below(ents.len())];
+        if a != b {
+            kb.push(format!("la .{a}. du la .{b}."));
+        }
+    }
+    // ~1 in 3: a universal taxonomy rule (derived body facts count; the rule's
+    // presupposition witness must not).
+    if rng.below(3) == 0 {
+        let pa = preds[rng.below(preds.len())];
+        let pb = preds[rng.below(preds.len())];
+        if pa != pb {
+            kb.push(format!("ro lo {pa} cu {pb}"));
+        }
     }
 
     let p1 = preds[rng.below(preds.len())];

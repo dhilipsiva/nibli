@@ -367,7 +367,10 @@ fn test_xorlo_presupposition_conjunction() {
 
 #[test]
 fn test_xorlo_presupposition_with_real_entity() {
-    // Real entity + presupposition Skolem both satisfy the query
+    // Real entity + presupposition Skolem both satisfy BOOLEAN queries, but
+    // the phantom is NOT an enumerable "thing": witness enumeration excludes
+    // xorlo presupposition witnesses (GUARANTEES §Aggregation — pre-change
+    // this test pinned the opposite: the phantom appeared in [Find] results).
     let kb = new_kb();
     assert_buf(&kb, make_universal("gerku", "danlu"));
     assert_buf(&kb, make_assertion("alis", "gerku"));
@@ -375,7 +378,7 @@ fn test_xorlo_presupposition_with_real_entity() {
     // Both alis and the presupposition Skolem are in the KB
     assert!(query(&kb, make_query("alis", "danlu")));
 
-    // Witness search should find both alis and the presupposition Skolem
+    // Witness search finds ONLY the real entity.
     let mut nodes = Vec::new();
     let body = pred(
         &mut nodes,
@@ -393,7 +396,17 @@ fn test_xorlo_presupposition_with_real_entity() {
             roots: vec![root],
         },
     );
-    assert!(results.len() >= 2); // alis + presupposition Skolem
+    assert_eq!(
+        results.len(),
+        1,
+        "only the real entity is enumerable, not the presupposition phantom: {results:?}"
+    );
+    assert!(
+        results[0]
+            .iter()
+            .any(|b| matches!(&b.term, LogicalTerm::Constant(c) if c == "alis")),
+        "the surviving witness is alis: {results:?}"
+    );
 }
 
 #[test]

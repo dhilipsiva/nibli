@@ -61,14 +61,14 @@ pu la .dan. cu gerku
 ? pu la .dan. cu jmive
 # => TRUE
 
-# ── exact count (du-merged kim counts as a third xunre via substitution —
-#    the engine's current count semantics, pinned as-is for determinism) ──
+# ── exact count (ENTITY-level, decided 2026-07-02: du-merged names collapse
+#    to one countable entity — kim is one of the two, not a third) ──
 la .adam. cu xunre
 la .bel. cu xunre
 ? re lo xunre cu xunre
-# => FALSE
-? ci lo xunre cu xunre
 # => TRUE
+? ci lo xunre cu xunre
+# => FALSE
 
 # ── arithmetic: tolerant sum, exact dunli, div-by-zero exact guard ──
 ? li no pi ci cu sumji li no pi pa li no pi re

@@ -629,6 +629,12 @@ pub(super) struct KnowledgeBaseInner {
     /// `rebuilding` (a retraction replay must faithfully restore facts that
     /// were accepted when asserted).
     pub(super) strict: bool,
+    /// Constants minted as xorlo PRESUPPOSITION witnesses at description-
+    /// universal registration (`ro lo gerku cu danlu` presupposes ≥1 dog).
+    /// They satisfy ∃/∀ like any entity, but are EXCLUDED from counting
+    /// surfaces (`PA lo` tallies, `??` witness enumeration): a phantom entity
+    /// a rule presupposed must not change "how many" (GUARANTEES §Aggregation).
+    pub(super) xorlo_import_witnesses: HashSet<String>,
     /// Violations collected by `assert_typed_fact` while strict mode rejects
     /// facts; drained by `process_assertion` into its error return. Internal
     /// insertions (forward chaining, compute auto-assert) also reject loudly
@@ -684,6 +690,7 @@ impl Clone for KnowledgeBaseInner {
             verbose: self.verbose,
             strict: self.strict,
             strict_violations: Vec::new(),
+            xorlo_import_witnesses: self.xorlo_import_witnesses.clone(),
             find_horizon_hit: false,
         }
     }
@@ -729,6 +736,7 @@ impl KnowledgeBaseInner {
             verbose: false,
             strict: false,
             strict_violations: Vec::new(),
+            xorlo_import_witnesses: HashSet::new(),
             find_horizon_hit: false,
         }
     }
@@ -758,6 +766,7 @@ impl KnowledgeBaseInner {
         self.forward_depth = 0;
         self.negative_facts.clear();
         self.disjunctive_constraints.clear();
+        self.xorlo_import_witnesses.clear();
         self.pred_cache.borrow_mut().clear();
         self.pred_cache_enabled.set(false);
         // Note: integrity_constraints, compute_eval/compute_batch_eval, cancel,

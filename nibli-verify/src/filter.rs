@@ -115,41 +115,18 @@ pub fn buffer_asp_mappable_query(buf: &LogicBuffer) -> Option<&'static str> {
     None
 }
 
-/// Case-level guard for an exact-count QUERY: the engine's count and clingo's
-/// `#count` over the stable model agree only on **ground-fact KBs**. With a
-/// universal rule in the KB, the rule's xorlo existential-import witness is a typed
-/// domain member and gets COUNTED (probed: 2 dogs + `ro lo gerku cu danlu` makes
-/// `re lo gerku cu danlu` count 3); with `du` facts, merged entities are NOT
-/// collapsed (probed: a merged pair still counts as 2, where the canonicalizing
-/// translator would count 1). Both interactions are the open count-semantics
-/// decision (engine TODO "count/witness semantics × du") — skipped, not canonized.
-pub fn count_case_guard(kb: &[LogicBuffer], query: &LogicBuffer) -> Option<&'static str> {
-    let is_count_query = matches!(
-        (query.roots.as_slice(), query.roots.first()),
-        ([r], Some(_)) if matches!(query.nodes.get(*r as usize), Some(LogicNode::CountNode(_)))
-    );
-    if !is_count_query {
-        return None;
-    }
-    for buf in kb {
-        for node in &buf.nodes {
-            match node {
-                LogicNode::ForAllNode(_) => {
-                    return Some(
-                        "exact-count query over a KB with rules (import witnesses are counted \
-                         — count semantics pending)",
-                    );
-                }
-                LogicNode::Predicate((rel, _)) if rel == "du" => {
-                    return Some(
-                        "exact-count query over a KB with du (classes are not collapsed by the \
-                         engine count — count semantics pending)",
-                    );
-                }
-                _ => {}
-            }
-        }
-    }
+/// Case-level guard for an exact-count QUERY. Both former skip conditions were
+/// CANONIZED by the 2026-07-02 count-semantics decision (GUARANTEES
+/// §Aggregation), so nothing is skipped today:
+/// - **KBs with rules**: the engine now EXCLUDES the xorlo presupposition
+///   witness from counting (it still satisfies ∃/∀), and the ASP program never
+///   had one — both sides count the real, derivable entities.
+/// - **KBs with `du`**: the engine now counts one representative per
+///   du-equivalence class, matching the translator's canonicalization.
+///
+/// The guard is retained as the documented seam for any FUTURE count shape
+/// that needs a conservative skip.
+pub fn count_case_guard(_kb: &[LogicBuffer], _query: &LogicBuffer) -> Option<&'static str> {
     None
 }
 

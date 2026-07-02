@@ -534,13 +534,48 @@ impl KnowledgeBase {
         // (an inflated count would be a hallucinated quantity). Comparison is at
         // GroundTerm level — distinct terms never collapse; intra-set binding
         // order (structural, inner-to-outer) is preserved for display.
-        let canonical_key = |bindings: &Vec<(String, GroundTerm)>| {
+        // ENTITY-LEVEL identity (GUARANTEES §Aggregation): tuples binding an
+        // ENTITY variable to a xorlo presupposition witness are dropped
+        // entirely — a phantom entity a rule presupposed satisfies ∃/∀ but is
+        // not an enumerable "thing". Entity variables = everything except the
+        // `_ev*` EVENT vars (description vars `_v{n}` carry answer entities).
+        binding_sets.retain(|bindings| {
+            !bindings.iter().any(|(var, gt)| {
+                !var.starts_with("_ev")
+                    && matches!(gt, GroundTerm::Constant(name)
+                        if inner.xorlo_import_witnesses.contains(name.as_str()))
+            })
+        });
+        // The DEDUP key is the binding set projected onto ENTITY variables —
+        // `_ev*` event vars are derivation bookkeeping and must not multiply
+        // results (pre-change, one dog answered `?? da gerku` once per
+        // derivation event) — with each term du-CANONICALIZED so two names for
+        // one entity count once. The sort key appends the full raw key so the
+        // total order — and therefore WHICH tuple survives dedup — stays
+        // byte-reproducible regardless of hasher-seed-dependent arrival order;
+        // the survivor's display terms are real asserted names, not
+        // canonicalized rewrites.
+        let entity_key = |bindings: &Vec<(String, GroundTerm)>| {
+            let mut key: Vec<(String, GroundTerm)> = bindings
+                .iter()
+                .filter(|(var, _)| !var.starts_with("_ev"))
+                .map(|(var, gt)| {
+                    (
+                        var.clone(),
+                        find_canonical_readonly(&inner.equivalence_parent, gt),
+                    )
+                })
+                .collect();
+            key.sort();
+            key
+        };
+        let full_key = |bindings: &Vec<(String, GroundTerm)>| {
             let mut key = bindings.clone();
             key.sort();
             key
         };
-        binding_sets.sort_by_cached_key(&canonical_key);
-        binding_sets.dedup_by_key(|bindings| canonical_key(bindings));
+        binding_sets.sort_by_cached_key(|b| (entity_key(b), full_key(b)));
+        binding_sets.dedup_by_key(|bindings| entity_key(bindings));
         Ok(binding_sets
             .into_iter()
             .map(|bindings| {

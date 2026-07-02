@@ -1223,13 +1223,12 @@ fn tensed_negation_is_flavor_exact() {
 }
 
 #[test]
-fn count_assertion_is_verdict_inert() {
-    // Current semantics (pinned, feeds the count-semantics decision in the
-    // tracker): an exact-count ASSERTION derives nothing — no witness enters
-    // the domain and even the identical count query stays FALSE. This makes
-    // the CountNode arm of collect_exists_for_skolem (witness-name minting)
-    // observably inert; if count-assert semantics ever change, this pin breaks
-    // loudly and the decision gets made deliberately.
+fn count_assertion_materializes_witnesses() {
+    // DECIDED 2026-07-02 (GUARANTEES §Aggregation): an exact-count ASSERTION
+    // materializes PA distinct fresh witnesses satisfying the restrictor and
+    // body — so the assertion is SELF-DERIVABLE and composes with CWA. (This
+    // pin previously asserted the opposite: count assertions were accepted
+    // but verdict-inert, deriving nothing at all.)
     let engine = engine_with_facts(&["pa lo gerku cu barda"]);
     for q in [
         "pa lo gerku cu barda",
@@ -1237,11 +1236,75 @@ fn count_assertion_is_verdict_inert() {
         "da barda",
         "lo gerku cu barda",
     ] {
-        assert_false(
+        assert_true(
             &engine.query_holds(q).unwrap(),
-            "a count assertion must stay verdict-inert (current pinned semantics)",
+            "a count assertion materializes its witness",
         );
     }
+    assert_false(
+        &engine.query_holds("re lo gerku cu barda").unwrap(),
+        "exactly-one stays exactly one",
+    );
+
+    // count > 1: DISTINCT witnesses with DISTINCT events.
+    let engine2 = engine_with_facts(&["re lo mlatu cu cmalu"]);
+    assert_true(
+        &engine2.query_holds("re lo mlatu cu cmalu").unwrap(),
+        "exactly-two materializes two distinct witnesses",
+    );
+    assert_false(
+        &engine2.query_holds("pa lo mlatu cu cmalu").unwrap(),
+        "two witnesses are not one",
+    );
+    assert_true(
+        &engine2.query_holds("da mlatu").unwrap(),
+        "the witnesses satisfy the restrictor",
+    );
+}
+
+#[test]
+fn exact_count_excludes_xorlo_import_witness() {
+    // DECIDED 2026-07-02 (GUARANTEES §Aggregation): the xorlo presupposition
+    // witness a description universal asserts satisfies ∃/∀ but is EXCLUDED
+    // from counting — a phantom entity a rule presupposed must not change
+    // "how many". (Engine-probed pre-change: 2 dogs + the taxonomy rule made
+    // `re lo gerku cu danlu` count 3 and fail.)
+    let engine = engine_with_facts(&[
+        "la .adam. cu gerku",
+        "la .karl. cu gerku",
+        "ro lo gerku cu danlu",
+    ]);
+    assert_true(
+        &engine.query_holds("re lo gerku cu danlu").unwrap(),
+        "two real dogs count as two — the presupposition phantom is not counted",
+    );
+    assert_false(
+        &engine.query_holds("ci lo gerku cu danlu").unwrap(),
+        "the phantom must not push the count to three",
+    );
+}
+
+#[test]
+fn find_witnesses_collapse_du_and_events() {
+    // The audit scenario: broda(adam), broda(karl), adam du karl used to
+    // return FOUR ?? tuples (2 derivation events × 2 du-merged names) for ONE
+    // entity. Entity-level enumeration returns exactly one.
+    let engine = engine_with_facts(&[
+        "la .adam. cu gerku",
+        "la .karl. cu gerku",
+        "la .adam. du la .karl.",
+    ]);
+    let tuples = engine.query_find_text("da gerku").unwrap();
+    assert_eq!(
+        tuples.len(),
+        1,
+        "one entity, one witness tuple (was 4 pre-decision): {tuples:?}"
+    );
+    assert_eq!(
+        engine.count_witnesses_text("da gerku").unwrap(),
+        1,
+        "count_witnesses agrees with the entity-level enumeration",
+    );
 }
 
 #[test]
@@ -1433,12 +1496,11 @@ fn lo_under_connective_is_per_occurrence_existential() {
 }
 
 #[test]
-fn exact_count_does_not_collapse_du_classes() {
-    // Current semantics (pinned; feeds the count × du decision in the tracker):
-    // du-merged names count UNCOLLAPSED — two names for one entity count as
-    // two. The collapse decision will flip both verdicts below; this pin makes
-    // that a loud, deliberate change. (It is also why the ASP count oracle
-    // conservatively skips KBs containing `du`.)
+fn exact_count_collapses_du_classes() {
+    // DECIDED 2026-07-02 (GUARANTEES §Aggregation): `du` means identity, so
+    // counting is ENTITY-level — two du-merged names for one entity count as
+    // ONE. (This pin previously asserted the opposite, uncollapsed behavior;
+    // the decision flipped it deliberately.)
     let engine = engine_with_facts(&[
         "la .adam. cu gerku",
         "la .karl. cu gerku",
@@ -1447,12 +1509,12 @@ fn exact_count_does_not_collapse_du_classes() {
         "la .adam. du la .karl.",
     ]);
     assert_true(
-        &engine.query_holds("re lo gerku cu danlu").unwrap(),
-        "uncollapsed: two du-merged names count as two",
+        &engine.query_holds("pa lo gerku cu danlu").unwrap(),
+        "collapsed: the merged entity counts as ONE",
     );
     assert_false(
-        &engine.query_holds("pa lo gerku cu danlu").unwrap(),
-        "uncollapsed: the merged entity does NOT count as one",
+        &engine.query_holds("re lo gerku cu danlu").unwrap(),
+        "collapsed: two names for one entity do NOT count as two",
     );
 }
 

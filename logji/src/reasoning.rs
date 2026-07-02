@@ -948,12 +948,34 @@ fn check_formula_holds_core<S: TraceSink>(
             Ok((QueryResult::True, idx))
         }
         LogicNode::CountNode((v, count, body)) => {
-            // Batch compute fast path (slice, no .to_vec()).
+            // ENTITY-LEVEL counting (GUARANTEES §Aggregation): enumerate one
+            // representative per du-equivalence class (two names for one
+            // entity count once — equivalence transfers the body facts, so
+            // any member of a class answers for it), and skip xorlo
+            // PRESUPPOSITION witnesses (a phantom entity a rule presupposed
+            // must not change "how many"; it still satisfies ∃/∀).
+            let members: Vec<GroundTerm> = {
+                let mut seen = HashSet::new();
+                let mut out = Vec::new();
+                for m in inner.all_typed_domain_members() {
+                    if let GroundTerm::Constant(name) = m
+                        && inner.xorlo_import_witnesses.contains(name.as_str())
+                    {
+                        continue;
+                    }
+                    let canon = find_canonical_readonly(&inner.equivalence_parent, m);
+                    if seen.insert(canon) {
+                        out.push(m.clone());
+                    }
+                }
+                out
+            };
+
+            // Batch compute fast path.
             if let Ok(body_node) = get_node(buffer, *body) {
                 if let LogicNode::ComputeNode((rel, args)) = body_node {
-                    let members = inner.all_typed_domain_members();
                     if let Some(batch) =
-                        batch_evaluate_compute_for_members(&*inner, rel, args, v, members, subs)
+                        batch_evaluate_compute_for_members(&*inner, rel, args, v, &members, subs)
                     {
                         for fact in batch.deferred_facts {
                             assert_typed_fact(fact, inner);
@@ -980,7 +1002,6 @@ fn check_formula_holds_core<S: TraceSink>(
                     }
                 }
             }
-            let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
             let mut satisfying = 0u32;
             let mut unresolved = 0u32;
             let mut best_result = None;
