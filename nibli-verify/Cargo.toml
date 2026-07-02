@@ -7,6 +7,9 @@ edition = "2024"
 [dependencies]
 nibli-engine = { path = "../nibli-engine" }
 nibli-types = { path = "../nibli-types" }
+# Direct parser access for the gerna <-> camxes parse-differential (parse-level
+# acceptance, one level below nibli-engine's parse+compile front door).
+gerna = { path = "../gerna" }
 
 [[bin]]
 name = "nibli-verify"

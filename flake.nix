@@ -8,9 +8,15 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Reference Lojban parser (camxes PEG, Node.js) for the gerna parse-differential
+    # (`just verify-parser`): every sentence gerna accepts must be camxes-parseable.
+    ilmentufa = {
+      url = "github:lojban/ilmentufa";
+      flake = false;
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, rust-overlay, ... }:
+  outputs = { self, nixpkgs, flake-utils, rust-overlay, ilmentufa, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         overlays = [ (import rust-overlay) ];
@@ -63,6 +69,11 @@
             # `proofs/` Lean files are checked by `lean` in `just verify-proofs`.
             lean4
 
+            # Node.js runs the ilmentufa camxes reference parser for the gerna
+            # parse-differential (`just verify-parser`); the parser itself is the
+            # `ilmentufa` flake input, exported as NIBLI_CAMXES_DIR below.
+            nodejs
+
             # Native build dependencies
             pkg-config
             openssl
@@ -70,6 +81,10 @@
             # Dioxus web (dx CLI for dev server)
             dioxus-cli
           ];
+          # The pinned ilmentufa checkout (camxes.js + CLI wrappers) for the
+          # parse-differential; consumed by nibli-verify's parser_diff harness.
+          NIBLI_CAMXES_DIR = "${ilmentufa}";
+
           shellHook = ''
             if [ -e "$HOME/.cargo/bin/cargo-component" ]; then
               echo "warning: ~/.cargo/bin/cargo-component shadows the Nix-provided one. Remove it." >&2

@@ -8,6 +8,11 @@ pub const GDPR: &str = include_str!("../../gdpr.lojban");
 /// Drug-drug interaction safety knowledge base (`drug-interactions.lojban`).
 pub const DDI: &str = include_str!("../../drug-interactions.lojban");
 
+/// The repository README examples corpus (`readme.lojban`) — also the source of the
+/// Transparency Triad UI presets. Used by the parse-differential (every line gerna
+/// accepts must be camxes-parseable); not oracle-mapped as a verdict corpus.
+pub const README: &str = include_str!("../../readme.lojban");
+
 /// The non-comment (`#`), non-blank, trimmed lines of a corpus.
 pub fn lines(corpus: &str) -> Vec<&str> {
     corpus

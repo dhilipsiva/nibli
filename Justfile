@@ -408,7 +408,7 @@ test-all: test test-engine test-store test-backend test-classifier
 
 # CI gate for the hardened runtime surface (fast; native only — no WASM build).
 # For the WASM behavioral smokes too, run `just ci-all`.
-ci: fmt-check clippy-runtime test test-engine test-gasnu test-backend test-store test-persistence-replay verify-harness verify-soundness verify-proofs verify-book-vocab
+ci: fmt-check clippy-runtime test test-engine test-gasnu test-backend test-store test-persistence-replay verify-harness verify-soundness verify-parser verify-proofs verify-book-vocab
 
 # WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
 # verify-book-capture). Bundles the six gasnu smokes; each depends on
@@ -462,7 +462,15 @@ verify-harness:
 # over the stratified-NAF + closed-world fragment (curated + random NAF programs). The Nix
 # dev shell provides `vampire` + `clingo`; each side skips cleanly if its solver is absent.
 verify-soundness:
-    cargo test -p nibli-verify {{cargo_profile_flag}} -- --nocapture --test-threads=1
+    cargo test -p nibli-verify --lib --test differential_gate {{cargo_profile_flag}} -- --nocapture --test-threads=1
+
+# gerna <-> camxes parse-differential (the FRONT-END gate): every sentence gerna accepts
+# must parse under the official Lojban grammar (ilmentufa camxes, driven via node over
+# the shipped corpora + seeded random batches). One-directional: gerna implements a
+# fragment, so gerna-rejects carry no signal. The Nix dev shell provides node + the
+# pinned ilmentufa checkout (NIBLI_CAMXES_DIR); skips cleanly when either is absent.
+verify-parser:
+    cargo test -p nibli-verify --test parser_differential {{cargo_profile_flag}} -- --nocapture --test-threads=1
 
 # Mechanized-proof gate (Track B): check the Lean 4 soundness proofs in `proofs/`. The Nix
 # dev shell provides `lean`; `lean` exits non-zero on any unproved/false theorem. Skips

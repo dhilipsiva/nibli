@@ -23,6 +23,7 @@ pub mod filter;
 pub mod generator;
 pub mod oracle;
 pub mod oracle_asp;
+pub mod parser_diff;
 pub mod seam;
 pub mod tense;
 pub mod tptp;
