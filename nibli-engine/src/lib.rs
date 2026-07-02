@@ -100,6 +100,16 @@ impl NibliEngine {
         self.kb.set_verbose(verbose);
     }
 
+    /// Enable/disable STRICT MODE (default off — permissive warn-and-insert):
+    /// when on, an arity mismatch or integrity-constraint violation REJECTS the
+    /// offending fact and fails the assertion. Like `set_verbose`, the library
+    /// stays permissive by default; embedders opt in programmatically (the
+    /// runtime surfaces read `NIBLI_STRICT=1` — gasnu forwards it into the
+    /// guest, where `lasna::Session::new` applies it).
+    pub fn set_strict(&self, strict: bool) {
+        self.kb.set_strict(strict);
+    }
+
     /// Register this engine's external compute dispatch (per-instance). Without
     /// it, external predicates (e.g. `tenfa`/`dugri`) return an error; built-in
     /// arithmetic (pilji/sumji/dilcu) works regardless. Replaces the old

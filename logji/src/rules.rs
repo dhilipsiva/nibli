@@ -771,6 +771,29 @@ fn term_contains_pattern_var(t: &GroundTerm) -> bool {
     }
 }
 
+/// Surgical inverse of `assert_typed_fact`'s insert (STRICT-mode rollback):
+/// remove the fact from the store and its arg-position index leaves, invalidate
+/// the verdict cache, and mark the domain caches dirty. Only sound for a fact
+/// the CURRENT call newly inserted (nothing else has observed it yet — forward
+/// chaining on it runs after the constraint check).
+fn unassert_typed_fact(fact: &StoredFact, inner: &mut KnowledgeBaseInner) {
+    if !inner.fact_store.remove(fact) {
+        return;
+    }
+    let gf = fact.inner();
+    for (pos, arg) in gf.args.iter().enumerate() {
+        if let Some(by_val) = inner
+            .arg_position_index
+            .get_mut(&(gf.relation.clone(), pos))
+            && let Some(leaf) = by_val.get_mut(arg)
+        {
+            leaf.retain(|f| f != fact);
+        }
+    }
+    clear_typed_pred_cache(inner);
+    inner.domain_members_dirty = true;
+}
+
 pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner) {
     // ── Groundness boundary: mechanism, not discipline ──
     // The soundness invariant "a stored fact never contains a PatternVar" is what makes
@@ -795,15 +818,29 @@ pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner
     if let Some(sig) = inner.predicate_registry.get(rel) {
         // Known predicate — check arity.
         if sig.arity != arity {
+            let source = match sig.source {
+                SignatureSource::Dictionary => "dictionary",
+                SignatureSource::Inferred => "inferred from first use",
+            };
+            // STRICT MODE: reject the fact instead of warn-and-insert. Inert
+            // during rebuild — a retraction replay must faithfully restore
+            // facts that were accepted when originally asserted.
+            if inner.strict && !inner.rebuilding {
+                let violation = format!(
+                    "arity mismatch: '{}' expects {} args ({}), got {} — fact '{}' rejected",
+                    rel,
+                    sig.arity,
+                    source,
+                    arity,
+                    fact.to_display_string()
+                );
+                eprintln!("[Strict] {violation}");
+                inner.strict_violations.push(violation);
+                return;
+            }
             eprintln!(
                 "[Arity Warning] '{}': expected {} args, got {} ({})",
-                rel,
-                sig.arity,
-                arity,
-                match sig.source {
-                    SignatureSource::Dictionary => "dictionary",
-                    SignatureSource::Inferred => "inferred from first use",
-                }
+                rel, sig.arity, arity, source
             );
         }
     } else {
@@ -862,7 +899,8 @@ pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner
     // in insertion order (the consumer iterates it; output determinism depends on
     // that order).
     let gf = fact.inner();
-    if !inner.fact_store.contains(&fact) {
+    let was_new = !inner.fact_store.contains(&fact);
+    if was_new {
         for (pos, arg) in gf.args.iter().enumerate() {
             inner
                 .arg_position_index
@@ -873,6 +911,15 @@ pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner
                 .push(fact.clone());
         }
     }
+
+    // STRICT MODE may need the fact back if the post-insert constraint check
+    // rejects it; clone only when that can happen (never on the permissive
+    // hot path).
+    let fact_for_rollback = if inner.strict && !inner.rebuilding {
+        Some(fact.clone())
+    } else {
+        None
+    };
 
     inner.fact_store.insert(fact);
 
@@ -887,9 +934,26 @@ pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner
     // so this is a free no-op there.
     clear_typed_pred_cache(inner);
 
-    // Check integrity constraints (permissive mode: warn, don't reject).
+    // Check integrity constraints (permissive default: warn, don't reject;
+    // STRICT MODE: roll the fact back out and record the violation).
     if !inner.integrity_constraints.is_empty() && !inner.rebuilding {
         if let Some(violation) = check_constraints_for_predicate(&rel_owned, inner) {
+            if let Some(rejected) = fact_for_rollback.as_ref() {
+                let msg = format!(
+                    "integrity constraint violated: {violation} — fact '{}' rejected",
+                    rejected.to_display_string()
+                );
+                eprintln!("[Strict] {msg}");
+                inner.strict_violations.push(msg);
+                // Only a fact this call actually ADDED is rolled back; a
+                // duplicate re-ingest of a pre-existing fact means the KB was
+                // already in violation before this call.
+                if was_new {
+                    unassert_typed_fact(rejected, inner);
+                }
+                // The fact is rejected: nothing to forward-chain on.
+                return;
+            }
             eprintln!("[Constraint] {}", violation);
         }
     }

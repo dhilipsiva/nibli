@@ -184,6 +184,7 @@ You query by **stating the proposition you want checked**, not by asking a quest
 | `:backend [host:port]` | Show or change the compute backend address |
 | `:fuel [amount]` | Show or set the WASM fuel limit |
 | `:memory [mb]` | Show or set the WASM memory limit |
+| `:strict [on\|off]` | Show or set strict mode — reject arity/constraint violations instead of warn-and-insert (also `NIBLI_STRICT=1`) |
 | `:contradictions` | Scan the KB for contradictions |
 | `:trace <predicate>` | Enable tracing for a predicate |
 | `:untrace <predicate>` | Disable tracing for a predicate |

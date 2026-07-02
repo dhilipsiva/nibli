@@ -77,13 +77,13 @@ The proofs are model-level (the perfect model is *characterized* by axioms, not 
 
 **Arity checking:** The engine tracks predicate arities via a `PredicateRegistry`. First assertion of a predicate registers its arity (from the ~10,900-entry PHF dictionary if known, otherwise inferred from first use). Subsequent assertions with mismatched arity produce a warning.
 
-**Mode:** Permissive (v1). Arity mismatches are warned, not rejected. The fact is still inserted. Strict mode (rejection on mismatch) is future work.
+**Mode:** Permissive by default — arity mismatches are warned, not rejected; the fact is still inserted. **Strict mode (opt-in)** rejects instead: the offending fact is refused and the whole assertion fails **atomically** (the failed assertion's partial mutations are rolled back via the registry rebuild). Enable with `NIBLI_STRICT=1` (read by the WASM session at startup; gasnu forwards it into the guest) or at runtime via the gasnu `:strict on|off` command, `KnowledgeBase::set_strict`, or `NibliEngine::set_strict`. Strict is inert during retraction-replay rebuilds, so previously-accepted facts always restore faithfully. Honest scope: the event-decomposed surface pipeline produces arity-consistent predicates by construction, so arity mismatches arise via the programmatic/flat-buffer APIs — where the rejection is pinned by tests.
 
 ## Integrity Constraints
 
 **Mechanism:** `register_constraint(label, conjuncts)` declares a set of facts that must NOT all hold simultaneously. Checked after every fact insertion.
 
-**Mode:** Permissive (v1). Violations are warned via stderr, not rejected. The fact is still inserted. Strict mode is future work.
+**Mode:** Permissive by default — violations are warned via stderr, not rejected; the fact is still inserted. **Strict mode (opt-in, same switches as §Predicate Validation)** rejects: the violating fact is rolled back and the assertion fails atomically. Facts inserted internally (forward chaining, compute auto-assert) are also rejected loudly on violation, but have no user call to fail — their rejections are stderr-visible only.
 
 **Scope:** Constraints are structural declarations — they survive KB reset but are not persisted to disk.
 

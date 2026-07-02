@@ -289,15 +289,19 @@ smoke-gasnu-backend-unavailable: build-wasm build-gasnu
 # Non-finite smoke: a numeric literal too large for an f64 (~309+ digits overflows to ±inf)
 # makes the comparison/arithmetic undetermined — the query must surface UNKNOWN (non-finite),
 # NEVER a confident TRUE/FALSE. Exercises the new four-valued reason across the WIT boundary.
+# (Repinned after the li parse-boundary overflow guard: the giant literal now
+# fails CLOSED at parse — strictly stronger than the old UNKNOWN(non-finite)
+# surfacing, which this smoke previously pinned. The downstream non-finite
+# catches are pinned at the logji level over flat buffers.)
 smoke-gasnu-non-finite: build-wasm build-gasnu
-    @echo "Smoke-testing gasnu non-finite numeric verdict (literal overflows f64)..."
+    @echo "Smoke-testing gasnu overflowing numeric literal (fails closed at parse)..."
     @nines=$(printf 'so %.0s' $(seq 320)); \
         out=$(printf "? li ${nines}cu dunli li ${nines}\n" \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out"; \
-        echo "$out" | grep -qF '[Query] UNKNOWN (non-finite)' || { echo 'FAIL: a non-finite numeric literal did not surface UNKNOWN (non-finite)'; exit 1; }; \
-        if echo "$out" | grep -qE '\[Query\] (TRUE|FALSE)'; then echo 'FAIL: non-finite input degraded to a confident verdict'; exit 1; fi; \
-        echo 'PASS: a non-finite numeric literal yields UNKNOWN (non-finite), not a confident verdict'
+        echo "$out" | grep -qF '[Syntax Error]' || { echo 'FAIL: an overflowing numeric literal must be a clean parse error (li overflow guard)'; exit 1; }; \
+        if echo "$out" | grep -qE '\[Query\] (TRUE|FALSE|UNKNOWN)'; then echo 'FAIL: an overflowing literal must not reach the reasoner at all'; exit 1; fi; \
+        echo 'PASS: an overflowing numeric literal fails closed at the parse boundary, never a verdict'
 
 # Quiet-mode smoke: NIBLI_QUIET=1 suppresses the per-assertion bookkeeping the book
 # strips — `[Fact #N]` on the host, `[Skolem]`/`[Rule]` in the guest (the latter reached
@@ -318,6 +322,27 @@ smoke-gasnu-quiet: build-wasm build-gasnu
         echo "$v" | grep -qF '[Fact #0] Asserted.' || { echo 'FAIL: default (verbose) mode dropped the [Fact] echo'; exit 1; }; \
         echo "$v" | grep -qE '\[(Skolem|Rule)' || { echo 'FAIL: default (verbose) mode dropped the guest [Skolem]/[Rule] diagnostics'; exit 1; }; \
         echo 'PASS: NIBLI_QUIET=1 suppresses [Fact]/[Skolem]/[Rule] but keeps the verdict + proof; default stays verbose'
+
+# Strict-mode plumbing smoke: NIBLI_STRICT=1 reaches the guest at startup, the
+# `:strict` toggle round-trips through the component's set-strict function
+# without trapping, and normal asserts still work under strict. (The REJECTION
+# behavior itself is pinned at the logji level — the event-decomposed surface
+# pipeline produces arity-consistent predicates by construction, so a mismatch
+# is only constructible programmatically.)
+smoke-gasnu-strict: build-wasm build-gasnu
+    @echo "Smoke-testing gasnu strict mode (env + :strict toggle plumbing)..."
+    @s=$(printf ':strict\nla .adam. gerku\n? la .adam. gerku\n' \
+        | NIBLI_STRICT=1 NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$s"; \
+        echo "$s" | grep -qF 'Strict mode: ON' || { echo 'FAIL: NIBLI_STRICT=1 startup banner missing'; exit 1; }; \
+        echo "$s" | grep -qF '[Strict] ON' || { echo 'FAIL: :strict status did not report ON'; exit 1; }; \
+        echo "$s" | grep -qF '[Query] TRUE' || { echo 'FAIL: a clean assert+query must still work under strict'; exit 1; }; \
+        t=$(printf ':strict on\n:strict\n:strict off\n:strict\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$t"; \
+        echo "$t" | grep -qF '[Strict] ON' || { echo 'FAIL: :strict on did not take'; exit 1; }; \
+        echo "$t" | grep -qF '[Strict] OFF' || { echo 'FAIL: :strict off did not take'; exit 1; }; \
+        echo 'PASS: NIBLI_STRICT=1 + :strict toggle plumbing works end to end'
 
 # Executes the full pipeline: Builds WASM modules, then boots the native REPL
 run: build-wasm
@@ -415,7 +440,7 @@ ci: fmt-check clippy-runtime test test-engine test-gasnu test-backend test-store
 # `build-wasm build-gasnu`, so `just` builds the component + host once, then runs
 # all six: fuel exhaustion + post-trap recovery + journal replay (trap-recovery),
 # plus the script transcript, go'i, persist-replay, NAF-note, and :debug round-trip.
-ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-cwa-false smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable smoke-gasnu-non-finite smoke-gasnu-quiet smoke-gasnu-determinism verify-wasm-node
+ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-cwa-false smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable smoke-gasnu-non-finite smoke-gasnu-quiet smoke-gasnu-strict smoke-gasnu-determinism verify-wasm-node
 
 # Three-way determinism, WASMTIME leg: the shared determinism-corpus.lojban must produce
 # exactly its pinned annotations through the lasna component under gasnu. The native leg

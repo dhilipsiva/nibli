@@ -548,6 +548,11 @@ struct Repl {
     /// same signal to the guest (`[Skolem]`/`[Rule]`/`[Constraint]`). Set from
     /// `NIBLI_QUIET=1` at startup; default false (verbose, as a live REPL was).
     quiet: bool,
+    /// STRICT MODE: arity mismatches / integrity-constraint violations reject
+    /// the offending fact instead of warn-and-insert. Set from `NIBLI_STRICT=1`
+    /// at startup, toggled by `:strict on|off`; forwarded to the guest at
+    /// (re)instantiation and re-applied to the live session on toggle.
+    strict: bool,
 }
 
 impl Repl {
@@ -562,6 +567,7 @@ impl Repl {
         memory_limit_mb: usize,
         backend_addr: Option<String>,
         quiet: bool,
+        strict: bool,
     ) -> Result<(Store<HostState>, pipeline_bind::LasnaPipeline, ResourceAny)> {
         // Forward the quiet flag into the guest's WASI environment: the ctx
         // otherwise inherits only stdio, so `lasna::Session::new` cannot see
@@ -572,6 +578,9 @@ impl Repl {
             b.inherit_stdout().inherit_stderr();
             if quiet {
                 b.env("NIBLI_QUIET", "1");
+            }
+            if strict {
+                b.env("NIBLI_STRICT", "1");
             }
             b.build()
         };
@@ -633,6 +642,7 @@ impl Repl {
             self.memory_limit_mb,
             backend_addr,
             self.quiet,
+            self.strict,
         ) {
             Ok((store, pipeline, session_handle)) => {
                 // The old store (with the dead session resource inside it) is
@@ -933,14 +943,52 @@ impl Repl {
                 println!("  :memory [mb]        Show or set WASM memory limit in MB");
                 println!("  :db                 Show persistent store info");
                 println!("  :export <redb-file> Export store to a new redb file");
+                println!(
+                    "  :strict [on|off]    Show or set strict mode (reject arity/constraint violations)"
+                );
                 println!("  :reset              Clear all facts (fresh KB)");
                 println!("  :quit               Exit");
+                return false;
+            }
+            ":strict" => {
+                println!(
+                    "[Strict] {} (arity/constraint violations {})",
+                    if self.strict { "ON" } else { "OFF" },
+                    if self.strict {
+                        "reject the offending fact"
+                    } else {
+                        "warn and insert"
+                    }
+                );
                 return false;
             }
             _ => {}
         }
 
         // ── Route by prefix ──
+        if let Some(mode) = input.strip_prefix(":strict ") {
+            let on = match mode.trim() {
+                "on" => true,
+                "off" => false,
+                other => {
+                    println!("[Strict] Unknown mode '{other}' — use :strict on|off");
+                    return false;
+                }
+            };
+            self.prepare_session();
+            let session = self.pipeline.lojban_nibli_lasna().session();
+            match session.call_set_strict(&mut self.store, self.session_handle, on) {
+                Ok(()) => {
+                    self.strict = on;
+                    println!("[Strict] {}", if on { "ON" } else { "OFF" });
+                }
+                Err(e) => {
+                    println!("{}", format_host_error(&e));
+                    self.needs_rebuild = true;
+                }
+            }
+            return false;
+        }
         if let Some(debug_text) = input.strip_prefix(":debug ") {
             let text = debug_text.trim();
             if text.is_empty() {
@@ -1402,6 +1450,13 @@ fn main() -> Result<()> {
     // verbose. The book capture harness sets NIBLI_QUIET=1 for clean transcripts.
     let quiet = std::env::var("NIBLI_QUIET").ok().as_deref() == Some("1");
 
+    // Strict mode: reject arity mismatches / integrity-constraint violations
+    // instead of warn-and-insert. Opt-in via env; toggleable with `:strict`.
+    let strict = std::env::var("NIBLI_STRICT").ok().as_deref() == Some("1");
+    if strict {
+        println!("Strict mode: ON (arity/constraint violations reject)");
+    }
+
     let wasm_path = std::env::var("NIBLI_WASM_PATH")
         .unwrap_or_else(|_| "target/wasm32-wasip2/debug/lasna.wasm".to_string());
     println!("Loading WebAssembly Component from {}...", wasm_path);
@@ -1414,6 +1469,7 @@ fn main() -> Result<()> {
         memory_limit_mb,
         backend_addr,
         quiet,
+        strict,
     )?;
 
     // ── Persistent store (optional) ──
@@ -1450,6 +1506,7 @@ fn main() -> Result<()> {
         replaying: false,
         needs_rebuild: false,
         quiet,
+        strict,
     };
 
     // Replay persisted facts into WASM session
@@ -1467,7 +1524,7 @@ fn main() -> Result<()> {
     let use_script_mode = script_path.is_some() || !std::io::stdin().is_terminal();
 
     println!(
-        "Ready. Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :db :help"
+        "Ready. Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :db :help"
     );
     println!(
         "Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.\n"

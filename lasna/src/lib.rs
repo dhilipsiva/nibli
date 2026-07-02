@@ -452,11 +452,21 @@ impl GuestSession for Session {
         // post-trap rebuild re-runs this constructor, so the setting survives replay.
         let verbose = std::env::var("NIBLI_QUIET").ok().as_deref() != Some("1");
         kb.set_verbose(verbose);
+        // Same pattern for STRICT MODE: the host forwards `NIBLI_STRICT=1` into
+        // the WASI env; the `:strict` REPL toggle re-applies via `set-strict`
+        // after any post-trap rebuild.
+        if std::env::var("NIBLI_STRICT").ok().as_deref() == Some("1") {
+            kb.set_strict(true);
+        }
         Session {
             kb,
             compute_predicates: RefCell::new(logji::default_compute_predicates()),
             last_relation: RefCell::new(None),
         }
+    }
+
+    fn set_strict(&self, strict: bool) {
+        self.kb.set_strict(strict);
     }
 
     fn assert_text(&self, input: String) -> Result<u64, export_err::NibliError> {

@@ -623,6 +623,18 @@ pub(super) struct KnowledgeBaseInner {
     /// Like `cancel`/`compute_eval`, this is CONFIGURATION, not derived state —
     /// NOT cleared by `reset()`. The `eprintln!` warning/error sites ignore it.
     pub(super) verbose: bool,
+    /// STRICT MODE (opt-in): arity mismatches and integrity-constraint
+    /// violations REJECT the offending fact instead of warn-and-insert. Like
+    /// `verbose`, configuration — NOT cleared by `reset()`, and inert during
+    /// `rebuilding` (a retraction replay must faithfully restore facts that
+    /// were accepted when asserted).
+    pub(super) strict: bool,
+    /// Violations collected by `assert_typed_fact` while strict mode rejects
+    /// facts; drained by `process_assertion` into its error return. Internal
+    /// insertions (forward chaining, compute auto-assert) also reject loudly
+    /// but have no error channel — their entries are cleared at the next
+    /// assertion boundary.
+    pub(super) strict_violations: Vec<String>,
     /// Transient (per `query_find`): set when witness enumeration drops a candidate
     /// because its leaf check hit the depth/cycle horizon (`ResourceExceeded` /
     /// `Unknown(CycleCut)` / …) rather than a genuine False. `query_find_inner`
@@ -670,6 +682,8 @@ impl Clone for KnowledgeBaseInner {
             pred_cache: RefCell::new(HashMap::new()),
             pred_cache_enabled: Cell::new(false),
             verbose: self.verbose,
+            strict: self.strict,
+            strict_violations: Vec::new(),
             find_horizon_hit: false,
         }
     }
@@ -713,6 +727,8 @@ impl KnowledgeBaseInner {
             pred_cache: RefCell::new(HashMap::new()),
             pred_cache_enabled: Cell::new(false),
             verbose: false,
+            strict: false,
+            strict_violations: Vec::new(),
             find_horizon_hit: false,
         }
     }
@@ -1504,6 +1520,10 @@ pub(super) fn process_assertion(
     inner: &mut KnowledgeBaseInner,
     logic: &LogicBuffer,
 ) -> Result<(), String> {
+    // Strict-mode violations from PREVIOUS work (e.g. a mid-query compute
+    // auto-assert, which has no error channel) must not bleed into THIS
+    // assertion's verdict.
+    inner.strict_violations.clear();
     for &root_id in &logic.roots {
         if root_id as usize >= logic.nodes.len() {
             eprintln!(
@@ -1660,6 +1680,16 @@ pub(super) fn process_assertion(
 
         // Phase 3: Generate extra witnesses for Count quantifiers (n > 1)
         generate_count_extra_witnesses(logic, root_id, &skolem_subs, inner);
+    }
+    // STRICT MODE: any fact this assertion tried to insert that was rejected
+    // (arity mismatch / integrity-constraint violation) fails the whole
+    // assertion. The caller (`assert_fact_inner`) then rolls back ATOMICALLY —
+    // its registry rebuild discards every partial mutation of the failed
+    // assertion, and the replay runs with `rebuilding = true`, where strict is
+    // inert (previously-accepted facts restore faithfully).
+    if !inner.strict_violations.is_empty() {
+        let joined = inner.strict_violations.drain(..).collect::<Vec<_>>();
+        return Err(format!("strict mode rejected: {}", joined.join("; ")));
     }
     Ok(())
 }

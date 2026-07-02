@@ -289,6 +289,10 @@ interface lasna {
         retract-fact: func(id: fact-id) -> result<_, nibli-error>;
         /// List all active (non-retracted) facts.
         list-facts: func() -> result<list<fact-summary>, nibli-error>;
+        /// Enable/disable STRICT MODE (default off — permissive
+        /// warn-and-insert): when on, arity mismatches and integrity-constraint
+        /// violations REJECT the offending fact and fail the assertion.
+        set-strict: func(strict: bool);
     }
 }
 

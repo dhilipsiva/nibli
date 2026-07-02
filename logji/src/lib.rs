@@ -733,6 +733,24 @@ impl KnowledgeBase {
         self.inner.borrow().verbose
     }
 
+    /// Enable/disable STRICT MODE (default OFF — permissive warn-and-insert,
+    /// the documented v1 behavior). When on, an arity mismatch or an
+    /// integrity-constraint violation REJECTS the offending fact and fails the
+    /// assertion (`Err`) ATOMICALLY — the failed assertion's partial mutations
+    /// are rolled back via the registry rebuild, exactly like any other
+    /// assertion error. Facts inserted internally (forward chaining, compute
+    /// auto-assert) are also rejected loudly but cannot fail a user call.
+    /// Configuration, not derived state — survives `reset()`; inert during
+    /// retraction-replay rebuilds.
+    pub fn set_strict(&self, strict: bool) {
+        self.inner.borrow_mut().strict = strict;
+    }
+
+    /// Whether strict mode is enabled.
+    pub fn is_strict(&self) -> bool {
+        self.inner.borrow().strict
+    }
+
     /// Register this KB's external compute dispatch (per-instance — replaces the
     /// old thread-local `register_compute_dispatch`, which the multithreaded
     /// server could never register because each tokio blocking-pool worker had
