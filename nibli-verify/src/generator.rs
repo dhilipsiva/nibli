@@ -34,16 +34,16 @@ const TENSES: &[&str] = &["", "pu ", "ca ", "ba "];
 
 /// Small deterministic LCG so a seed reproduces a case exactly (no rng crate; CI must be
 /// reproducible).
-struct Lcg(u64);
+pub(crate) struct Lcg(pub(crate) u64);
 
 impl Lcg {
-    fn new(seed: u64) -> Self {
+    pub(crate) fn new(seed: u64) -> Self {
         Lcg(seed
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407))
     }
 
-    fn next(&mut self) -> u64 {
+    pub(crate) fn next(&mut self) -> u64 {
         self.0 = self
             .0
             .wrapping_mul(6364136223846793005)
@@ -51,11 +51,11 @@ impl Lcg {
         self.0 >> 33
     }
 
-    fn below(&mut self, n: usize) -> usize {
+    pub(crate) fn below(&mut self, n: usize) -> usize {
         (self.next() % n as u64) as usize
     }
 
-    fn pick(&mut self, xs: &[&'static str]) -> &'static str {
+    pub(crate) fn pick(&mut self, xs: &[&'static str]) -> &'static str {
         xs[self.below(xs.len())]
     }
 }

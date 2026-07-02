@@ -311,6 +311,138 @@ fn random_count_cases_agree_with_clingo() {
     );
 }
 
+/// Non-stratified-rejection differential (`nibli_verify::strat_diff`): seeded random rule
+/// programs — which, unlike the stratified-by-construction NAF generator, genuinely contain
+/// negative cycles — are asserted rule by rule, and every accept/reject decision must match
+/// an INDEPENDENT implementation of the proven criterion (written from
+/// `proofs/Stratification.lean`'s statement, never from `rules.rs`). After any rejection, a
+/// fresh engine replaying only the surviving lines must answer an entity×predicate battery
+/// byte-identically (a rejected rule leaves no trace). Native-only — never skips.
+#[test]
+fn stratification_rejection_matches_independent_criterion() {
+    use nibli_verify::strat_diff::{self, SpecRule, StratCase, StratOutcome};
+
+    // Curated boundary shapes (each hand-checked against the criterion statement).
+    let curated = vec![
+        StratCase {
+            name: "self_negation".into(),
+            facts: vec!["la .adam. cu prenu".into()],
+            rules: vec![SpecRule {
+                line: "ro lo gerku poi na gerku cu gerku".into(),
+                edges: vec![("gerku", "gerku", false), ("gerku", "gerku", true)],
+            }],
+        },
+        StratCase {
+            name: "mutual_negative_cycle".into(),
+            facts: vec!["la .adam. cu prenu".into()],
+            rules: vec![
+                SpecRule {
+                    line: "ro lo prenu poi na danlu cu jmive".into(),
+                    edges: vec![("jmive", "prenu", false), ("jmive", "danlu", true)],
+                },
+                SpecRule {
+                    line: "ro lo prenu poi na jmive cu danlu".into(),
+                    edges: vec![("danlu", "prenu", false), ("danlu", "jmive", true)],
+                },
+            ],
+        },
+        StratCase {
+            name: "long_cycle_one_negative_edge".into(),
+            facts: vec!["la .adam. cu gerku".into()],
+            rules: vec![
+                SpecRule {
+                    line: "ro lo gerku cu danlu".into(),
+                    edges: vec![("danlu", "gerku", false)],
+                },
+                SpecRule {
+                    line: "ro lo danlu cu jmive".into(),
+                    edges: vec![("jmive", "danlu", false)],
+                },
+                SpecRule {
+                    line: "ro lo jmive poi na danlu cu gerku".into(),
+                    edges: vec![("gerku", "jmive", false), ("gerku", "danlu", true)],
+                },
+            ],
+        },
+        StratCase {
+            name: "negative_edge_between_sccs_accepted".into(),
+            facts: vec!["la .adam. cu gerku".into()],
+            rules: vec![
+                SpecRule {
+                    line: "ro lo gerku cu danlu".into(),
+                    edges: vec![("danlu", "gerku", false)],
+                },
+                SpecRule {
+                    line: "ro lo danlu poi na mlatu cu jmive".into(),
+                    edges: vec![("jmive", "danlu", false), ("jmive", "mlatu", true)],
+                },
+            ],
+        },
+        // A pure POSITIVE cycle is stratifiable — both registrations must be ACCEPTED
+        // (the random generator's DAG bias excludes this shape, so it is pinned here;
+        // no rejection occurs, so the battery never queries the cyclic KB — see the
+        // cost note on `random_strat_case`).
+        StratCase {
+            name: "positive_cycle_accepted".into(),
+            facts: vec!["la .adam. cu gerku".into()],
+            rules: vec![
+                SpecRule {
+                    line: "ro lo gerku cu danlu".into(),
+                    edges: vec![("danlu", "gerku", false)],
+                },
+                SpecRule {
+                    line: "ro lo danlu cu gerku".into(),
+                    edges: vec![("gerku", "danlu", false)],
+                },
+            ],
+        },
+    ];
+
+    let count: u64 = std::env::var("NIBLI_VERIFY_STRAT_RANDOM_COUNT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(300);
+
+    let mut agree = 0usize;
+    let mut rejected_total = 0usize;
+    let mut divergences: Vec<String> = Vec::new();
+    let mut errors: Vec<String> = Vec::new();
+    let cases = curated.iter().map(|c| strat_diff::run_strat_case(c)).chain(
+        (0..count).map(|seed| strat_diff::run_strat_case(&strat_diff::random_strat_case(seed))),
+    );
+    for outcome in cases {
+        match outcome {
+            StratOutcome::Agree { rejected, .. } => {
+                agree += 1;
+                rejected_total += rejected;
+            }
+            o if o.is_divergence() => divergences.push(o.summary()),
+            o => errors.push(o.summary()),
+        }
+    }
+    eprintln!(
+        "nibli-verify strat: {agree} agree / {} diverge / {} error \
+         ({rejected_total} rules rejected across {} programs)",
+        divergences.len(),
+        errors.len(),
+        curated.len() as u64 + count
+    );
+
+    assert!(errors.is_empty(), "harness errors:\n{}", errors.join("\n"));
+    assert!(
+        divergences.is_empty(),
+        "stratification decisions diverged from the proven criterion (or a rejection \
+         corrupted the KB):\n{}",
+        divergences.join("\n")
+    );
+    // Non-vacuity in BOTH directions: plenty of programs must actually have exercised
+    // the reject path, and plenty the accept path.
+    assert!(
+        rejected_total as u64 >= count / 10,
+        "only {rejected_total} rejections across the sweep; the reject side is near-vacuous"
+    );
+}
+
 /// gerna→smuni compiler-seam gate: compile source Lojban end-to-end (parse + semantic compile)
 /// and check the FOL against hand-verified structure (ground truth) + transformation invariants
 /// (oracle-free). This is the FRONT-END analog of the Vampire/clingo oracle gates: the six proofs
