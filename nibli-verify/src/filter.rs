@@ -7,8 +7,11 @@
 //!   1. a SOURCE token scan for genuine negation — a universal rule's implication
 //!      arrow also compiles to `Not` (`Or(Not(A),B)`), indistinguishable from a real
 //!      `na` once flattened, so genuine negation must be caught before translation;
-//!   2. a buffer scan for the non-classical node kinds (compute / tense / deontic /
-//!      exact-count / abstraction), plus the `du` shape gate below.
+//!   2. a buffer scan for the non-classical node kinds (compute / deontic /
+//!      exact-count / abstraction), plus the `du` shape gate below. Tense nodes are
+//!      NOT rejected here: they are handled downstream by `tense::flavorize`, which
+//!      rewrites the verified tense shapes to flavor-suffixed predicates and skips
+//!      the unsupported ones (tense×NAF, tense×abstraction, nested wrappers).
 
 use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm};
 
@@ -42,13 +45,11 @@ fn du_mappable(buf: &LogicBuffer, idx: usize, args: &[LogicalTerm]) -> bool {
 }
 
 /// `Some(reason)` if the buffer contains a node outside the classical FOL fragment.
+/// (Tense nodes pass — `tense::flavorize` is the tense gate.)
 pub fn buffer_non_classical(buf: &LogicBuffer) -> Option<&'static str> {
     for (idx, node) in buf.nodes.iter().enumerate() {
         let reason = match node {
             LogicNode::ComputeNode(_) => "compute predicate",
-            LogicNode::PastNode(_) | LogicNode::PresentNode(_) | LogicNode::FutureNode(_) => {
-                "tense"
-            }
             LogicNode::ObligatoryNode(_) | LogicNode::PermittedNode(_) => "deontic",
             LogicNode::CountNode(_) => "exact-count quantifier",
             LogicNode::Predicate((rel, _)) if rel.starts_with("__abs_") => "abstraction",
@@ -68,9 +69,11 @@ pub fn buffer_non_classical(buf: &LogicBuffer) -> Option<&'static str> {
 /// (`lo nu`/`lo du'u`/…) are ACCEPTED — the translator models an abstraction as an opaque constant
 /// keyed by its content hash (`asp::abs_const_of`), so a deontic-NAF rule like GDPR's
 /// `ro lo prenu poi na zanru cu se bilga lo nu se vimcu` maps. The other non-classical node kinds
-/// (compute / tense / deontic modal / exact-count) are still rejected. Ground sole-root `du`
-/// equality is ACCEPTED (see [`du_mappable`]; the translator canonicalizes the classes away);
-/// any other `du` shape is skipped.
+/// (compute / deontic modal / exact-count) are still rejected; tense nodes pass through to
+/// `tense::flavorize`, which rewrites the verified shapes and skips tense×NAF (audit U1)
+/// rather than mis-judging it. Ground sole-root `du` equality is ACCEPTED (see
+/// [`du_mappable`]; the translator canonicalizes the classes away); any other `du` shape is
+/// skipped.
 ///
 /// (`se bilga` / `se curmi` compile to the PLAIN gismu `bilga`/`curmi`, not a deontic modal node,
 /// so the deontic reading rides for free once the abstraction in the head is mapped.)
@@ -78,9 +81,6 @@ pub fn buffer_asp_mappable(buf: &LogicBuffer) -> Option<&'static str> {
     for (idx, node) in buf.nodes.iter().enumerate() {
         let reason = match node {
             LogicNode::ComputeNode(_) => "compute predicate",
-            LogicNode::PastNode(_) | LogicNode::PresentNode(_) | LogicNode::FutureNode(_) => {
-                "tense"
-            }
             LogicNode::ObligatoryNode(_) | LogicNode::PermittedNode(_) => "deontic",
             LogicNode::CountNode(_) => "exact-count quantifier",
             LogicNode::Predicate((rel, args)) if rel == "du" && !du_mappable(buf, idx, args) => {

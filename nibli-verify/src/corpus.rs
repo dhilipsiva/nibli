@@ -223,4 +223,147 @@ pub const CASES: &[Case] = &[
         query: "la .adam. cu danlu",
         expect: Expect::True,
     },
+    // ── Tense flavors (pu/ca/ba): flavor-exact facts, flavor-polymorphic unmarked
+    // rules, flavor-constant explicit tenses — the engine-probed matrix that
+    // `tense::flavorize` mirrors (every expect below is a verbatim engine probe). ──
+    Case {
+        name: "tense_diag_pu_true",
+        kb: &["pu la .adam. cu gerku"],
+        query: "pu la .adam. cu gerku",
+        expect: Expect::True,
+    },
+    Case {
+        name: "tense_diag_ca_true",
+        kb: &["ca la .adam. cu gerku"],
+        query: "ca la .adam. cu gerku",
+        expect: Expect::True,
+    },
+    Case {
+        name: "tense_diag_ba_true",
+        kb: &["ba la .adam. cu gerku"],
+        query: "ba la .adam. cu gerku",
+        expect: Expect::True,
+    },
+    Case {
+        name: "tense_offdiag_pu_fact_bare_query_false",
+        kb: &["pu la .adam. cu gerku"],
+        query: "la .adam. cu gerku",
+        expect: Expect::False,
+    },
+    Case {
+        name: "tense_offdiag_bare_fact_pu_query_false",
+        kb: &["la .adam. cu gerku"],
+        query: "pu la .adam. cu gerku",
+        expect: Expect::False,
+    },
+    Case {
+        name: "tense_offdiag_ca_fact_pu_query_false",
+        kb: &["ca la .adam. cu gerku"],
+        query: "pu la .adam. cu gerku",
+        expect: Expect::False,
+    },
+    Case {
+        name: "tense_offdiag_bare_fact_ca_query_false",
+        kb: &["la .adam. cu gerku"],
+        query: "ca la .adam. cu gerku",
+        expect: Expect::False,
+    },
+    Case {
+        name: "tense_rule_polymorphic_chain_past_true",
+        // Unmarked rules fire within the query's flavor: pu gerku → pu danlu → pu jmive.
+        kb: &[
+            "ro lo gerku cu danlu",
+            "ro lo danlu cu jmive",
+            "pu la .kim. cu gerku",
+        ],
+        query: "pu la .kim. cu jmive",
+        expect: Expect::True,
+    },
+    Case {
+        name: "tense_rule_polymorphic_bare_blocked_false",
+        // The past fact must not feed a BARE conclusion.
+        kb: &[
+            "ro lo gerku cu danlu",
+            "ro lo danlu cu jmive",
+            "pu la .kim. cu gerku",
+        ],
+        query: "la .kim. cu jmive",
+        expect: Expect::False,
+    },
+    Case {
+        name: "tense_rule_polymorphic_other_flavor_blocked_false",
+        kb: &["ro lo gerku cu danlu", "pu la .kim. cu gerku"],
+        query: "ba la .kim. cu danlu",
+        expect: Expect::False,
+    },
+    Case {
+        name: "tense_rule_polymorphic_present_true",
+        kb: &["ro lo gerku cu danlu", "ca la .kim. cu gerku"],
+        query: "ca la .kim. cu danlu",
+        expect: Expect::True,
+    },
+    Case {
+        name: "tense_antecedent_explicit_fires_true",
+        // `poi pu citka` is a flavor CONSTANT: a Past witness + a bare domain fact
+        // fire the BARE conclusion.
+        kb: &[
+            "ro lo gerku poi pu citka cu xagji",
+            "la .kim. cu gerku",
+            "pu la .kim. cu citka",
+        ],
+        query: "la .kim. cu xagji",
+        expect: Expect::True,
+    },
+    Case {
+        name: "tense_antecedent_explicit_query_flavor_blocked_false",
+        // Under a pu query the UNMARKED domain literal needs a pu witness — absent.
+        kb: &[
+            "ro lo gerku poi pu citka cu xagji",
+            "la .kim. cu gerku",
+            "pu la .kim. cu citka",
+        ],
+        query: "pu la .kim. cu xagji",
+        expect: Expect::False,
+    },
+    Case {
+        name: "tense_antecedent_bare_witness_blocked_false",
+        // A bare witness must not satisfy the explicit Past antecedent.
+        kb: &[
+            "ro lo gerku poi pu citka cu xagji",
+            "la .kim. cu gerku",
+            "la .kim. cu citka",
+        ],
+        query: "la .kim. cu xagji",
+        expect: Expect::False,
+    },
+    Case {
+        name: "tense_consequent_explicit_fires_true",
+        // `ganai … gi pu …`: the explicit Past conclusion fires from a BARE condition.
+        kb: &[
+            "ro da zo'u ganai da gerku gi pu da danlu",
+            "la .kim. cu gerku",
+        ],
+        query: "pu la .kim. cu danlu",
+        expect: Expect::True,
+    },
+    Case {
+        name: "tense_consequent_bare_query_blocked_false",
+        kb: &[
+            "ro da zo'u ganai da gerku gi pu da danlu",
+            "la .kim. cu gerku",
+        ],
+        query: "la .kim. cu danlu",
+        expect: Expect::False,
+    },
+    Case {
+        name: "tense_consequent_past_fact_blocked_false",
+        // The explicit-conclusion rule's unmarked condition evaluates BARE: a Past
+        // fact does not satisfy it (engine-probed).
+        kb: &[
+            "ro da zo'u ganai da gerku gi pu da danlu",
+            "pu la .kim. cu gerku",
+        ],
+        query: "pu la .kim. cu danlu",
+        expect: Expect::False,
+    },
 ];

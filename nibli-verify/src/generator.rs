@@ -26,6 +26,12 @@ const PREDS: &[&str] = &[
 /// cmevla (proper names), each ending in a consonant (a Lojban cmevla requirement).
 const ENTITIES: &[&str] = &["adam", "bel", "kim", "dan", "tam"];
 
+/// Tense prefixes for facts/queries: mostly bare, sometimes pu/ca/ba. Facts are
+/// flavor-exact and unmarked rules are flavor-polymorphic (see `tense::flavorize`),
+/// so mixing flavors into facts + query exercises the isolation diagonal AND the
+/// polymorphic rule firing against the oracles.
+const TENSES: &[&str] = &["", "pu ", "ca ", "ba "];
+
 /// Small deterministic LCG so a seed reproduces a case exactly (no rng crate; CI must be
 /// reproducible).
 struct Lcg(u64);
@@ -59,11 +65,18 @@ pub fn random_case(seed: u64) -> GeneratedCase {
     let mut rng = Lcg::new(seed);
     let mut kb: Vec<String> = Vec::new();
 
-    // 1..=3 ground facts `la .E. cu P`.
+    // 1..=3 ground facts `[pu/ca/ba] la .E. cu P` — each fact bare with probability
+    // 1/2, else a uniformly-picked flavor (flavor-exact isolation is the engine
+    // semantics the flavorizer mirrors).
     let n_facts = 1 + rng.below(3);
     for _ in 0..n_facts {
+        let tense = if rng.below(2) == 0 {
+            ""
+        } else {
+            rng.pick(&TENSES[1..])
+        };
         kb.push(format!(
-            "la .{}. cu {}",
+            "{tense}la .{}. cu {}",
             rng.pick(ENTITIES),
             rng.pick(PREDS)
         ));
@@ -86,8 +99,10 @@ pub fn random_case(seed: u64) -> GeneratedCase {
     for _ in 0..n_rules {
         kb.push(format!("ro lo {} cu {}", rng.pick(PREDS), rng.pick(PREDS)));
     }
-    // Mostly an atomic `la .E. cu P` query; 1-in-5 an identity query `la .E1. cu du la .E2.`
-    // (checking the equivalence classes themselves, both TRUE and closed-world-FALSE sides).
+    // Mostly an atomic `[tense] la .E. cu P` query (bare with probability 1/2, else a
+    // flavor — exercising both the diagonal and the off-diagonal FALSE sides);
+    // 1-in-5 an identity query `la .E1. cu du la .E2.` (never tensed — tensed `du`
+    // is outside both oracle fragments).
     let query = if rng.below(5) == 0 {
         format!(
             "la .{}. cu du la .{}.",
@@ -95,7 +110,12 @@ pub fn random_case(seed: u64) -> GeneratedCase {
             rng.pick(ENTITIES)
         )
     } else {
-        format!("la .{}. cu {}", rng.pick(ENTITIES), rng.pick(PREDS))
+        let tense = if rng.below(2) == 0 {
+            ""
+        } else {
+            rng.pick(&TENSES[1..])
+        };
+        format!("{tense}la .{}. cu {}", rng.pick(ENTITIES), rng.pick(PREDS))
     };
 
     GeneratedCase {
@@ -192,20 +212,31 @@ mod tests {
 
     #[test]
     fn well_formed_mappable_shape() {
-        // Every generated line is a fact or a Horn rule over the fallback vocabulary — and no
-        // whitespace-delimited TOKEN is a negation / number / tense / abstraction cmavo that
-        // would leave the mappable fragment. (Token check, not substring — `prenu` legitimately
-        // contains "nu".)
+        // Every generated line is a fact (optionally tense-prefixed — pu/ca/ba are now
+        // in-fragment via `tense::flavorize`) or a Horn rule over the fallback
+        // vocabulary — and no whitespace-delimited TOKEN is a negation / number /
+        // abstraction cmavo that would leave the mappable fragment. (Token check, not
+        // substring — `prenu` legitimately contains "nu".)
         const BAD_TOKENS: &[&str] = &[
-            "na", "naku", "na'i", "li", "nu", "du'u", "ka", "ni", "si'o", "pu", "ca", "ba", "ei",
+            "na", "naku", "na'i", "li", "nu", "du'u", "ka", "ni", "si'o", "ei",
         ];
         for seed in 0u64..50 {
             let c = random_case(seed);
             assert!(!c.kb.is_empty());
             for line in c.kb.iter().chain(std::iter::once(&c.query)) {
+                let body = line
+                    .strip_prefix("pu ")
+                    .or_else(|| line.strip_prefix("ca "))
+                    .or_else(|| line.strip_prefix("ba "))
+                    .unwrap_or(line);
                 assert!(
-                    line.starts_with("la .") || line.starts_with("ro lo "),
+                    body.starts_with("la .") || body.starts_with("ro lo "),
                     "unexpected generated line: {line}"
+                );
+                // A tense prefix only ever appears on a fact/query, never a rule.
+                assert!(
+                    body == line || body.starts_with("la ."),
+                    "tense prefix on a non-fact line: {line}"
                 );
                 for tok in line.split_whitespace() {
                     assert!(

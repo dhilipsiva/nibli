@@ -24,6 +24,7 @@ pub mod generator;
 pub mod oracle;
 pub mod oracle_asp;
 pub mod seam;
+pub mod tense;
 pub mod tptp;
 
 use nibli_engine::NibliEngine;
@@ -196,7 +197,7 @@ pub fn run_lines(
         }
     };
 
-    // 3. Buffer-level non-classical filter (compute / tense / deontic / count / abstraction).
+    // 3. Buffer-level non-classical filter (compute / deontic / count / abstraction / du shape).
     for b in kb_buffers.iter().chain(std::iter::once(&query_buf)) {
         if let Some(reason) = filter::buffer_non_classical(b) {
             return Outcome::SkipNonMappable {
@@ -205,6 +206,15 @@ pub fn run_lines(
             };
         }
     }
+
+    // 3b. Tense flavorization: rewrite tensed buffers into flavor-suffixed tense-free
+    //     buffers (identity when no tense occurs; see `tense::flavorize`). An
+    //     unsupported tense shape (tense×NAF, tense×abstraction, nested wrappers) is
+    //     a conservative skip — never mis-judged.
+    let (kb_buffers, query_buf) = match tense::flavorize(&kb_buffers, &query_buf) {
+        Ok(x) => x,
+        Err(e) => return Outcome::SkipNonMappable { name, reason: e },
+    };
 
     // 4. nibli's verdict + proof (the proof tells us if NAF was used).
     let (verdict, trace) = match engine.query_text_raw_proof(query) {
@@ -465,7 +475,7 @@ pub fn run_lines_asp(
         }
     };
 
-    // 2. ASP-mappable filter (accepts NAF; rejects compute/tense/deontic/count/abstraction/du).
+    // 2. ASP-mappable filter (accepts NAF; rejects compute/deontic/count + non-ground du).
     for b in kb_buffers.iter().chain(std::iter::once(&query_buf)) {
         if let Some(reason) = filter::buffer_asp_mappable(b) {
             return Outcome::SkipNonMappable {
@@ -474,6 +484,14 @@ pub fn run_lines_asp(
             };
         }
     }
+
+    // 2b. Tense flavorization (identity when no tense occurs). Tense×NAF is a
+    //     conservative skip: the engine's NegatedExistsGroup is tenseless (audit U1),
+    //     and the gate must not canonize that behavior as oracle expectation.
+    let (kb_buffers, query_buf) = match tense::flavorize(&kb_buffers, &query_buf) {
+        Ok(x) => x,
+        Err(e) => return Outcome::SkipNonMappable { name, reason: e },
+    };
 
     // 3. nibli's verdict. We do NOT skip naf-dependent proofs — that is the point.
     let (verdict, _trace) = match engine.query_text_raw_proof(query) {

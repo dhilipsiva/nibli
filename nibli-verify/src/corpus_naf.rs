@@ -218,4 +218,35 @@ pub const NAF_CASES: &[Case] = &[
         query: "la .adam. cu du la .bel.",
         expect: Expect::False,
     },
+    // ── Tense flavors through the ASP translator (positive programs only — a program
+    // that mixes tense with a NAF rule is conservatively SKIPPED by `tense::flavorize`:
+    // the engine's NegatedExistsGroup is tenseless (audit U1), and the gate must not
+    // canonize that behavior as oracle expectation). ──
+    Case {
+        name: "tense_asp_diag_pu_true",
+        kb: &["pu la .adam. cu prenu"],
+        query: "pu la .adam. cu prenu",
+        expect: Expect::True,
+    },
+    Case {
+        name: "tense_asp_offdiag_false",
+        kb: &["pu la .adam. cu prenu"],
+        query: "la .adam. cu prenu",
+        expect: Expect::False,
+    },
+    Case {
+        name: "tense_asp_polymorphic_rule_true",
+        kb: &["ro lo gerku cu danlu", "pu la .kim. cu gerku"],
+        query: "pu la .kim. cu danlu",
+        expect: Expect::True,
+    },
+    Case {
+        name: "tense_asp_consequent_explicit_true",
+        kb: &[
+            "ro da zo'u ganai da gerku gi pu da danlu",
+            "la .kim. cu gerku",
+        ],
+        query: "pu la .kim. cu danlu",
+        expect: Expect::True,
+    },
 ];
