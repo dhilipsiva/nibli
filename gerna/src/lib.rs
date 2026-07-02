@@ -448,10 +448,17 @@ impl Flattener {
                 inner,
             } => {
                 let inner_id = self.push_selbri(inner);
+                // Exhaustive on purpose — NO `_` arm: adding a `Gadri` variant
+                // must be a compile error here, not a latent runtime panic. The
+                // named impossible arms hold by construction: the parser builds
+                // `QuantifiedDescription` only via `parse_gadri_body(Lo, Le)`
+                // (`grammar/sumti.rs`).
                 let wit_gadri = match gadri {
                     ast::Gadri::Lo => flat::Gadri::Lo,
                     ast::Gadri::Le => flat::Gadri::Le,
-                    _ => unreachable!("QuantifiedDescription only uses Lo or Le"),
+                    ast::Gadri::La | ast::Gadri::RoLo | ast::Gadri::RoLe => {
+                        unreachable!("QuantifiedDescription only uses Lo or Le")
+                    }
                 };
                 flat::Sumti::QuantifiedDescription((*count, wit_gadri, inner_id))
             }
