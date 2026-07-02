@@ -1031,12 +1031,10 @@ fn check_formula_holds_core<S: TraceSink>(
             Ok((verdict, idx))
         }
         LogicNode::Predicate((rel, args)) => {
-            if let Some(result) = try_numeric_comparison(rel, args, subs) {
-                let verdict = if result {
-                    QueryResult::True
-                } else {
-                    QueryResult::False
-                };
+            if let Some(verdict) = try_numeric_comparison(rel, args, subs) {
+                // Non-finite operands surface Unknown(NonFinite) — mirror the
+                // event-decomposed path's proof-step method for them.
+                let non_finite = matches!(verdict, QueryResult::Unknown(_));
                 let idx = if S::RECORDING {
                     let detail = format!(
                         "{}({}) = {}",
@@ -1052,14 +1050,18 @@ fn check_formula_holds_core<S: TraceSink>(
                             })
                             .collect::<Vec<_>>()
                             .join(", "),
-                        result
+                        if non_finite {
+                            "non-finite".to_string()
+                        } else {
+                            verdict.is_true().to_string()
+                        }
                     );
                     sink.push(ProofStep {
                         rule: ProofRule::PredicateCheck {
-                            method: "numeric".to_string(),
+                            method: if non_finite { "non_finite" } else { "numeric" }.to_string(),
                             detail,
                         },
-                        holds: result,
+                        holds: verdict.is_true(),
                         children: vec![],
                     })
                 } else {

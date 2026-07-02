@@ -21,19 +21,34 @@ pub(super) fn extract_num_value(
     }
 }
 
+/// Flat-path numeric comparison. Returns `None` when this is not a numeric
+/// comparison at all (non-numeric args or an unknown relation — the caller
+/// falls through to normal predicate lookup), and a VERDICT otherwise: finite
+/// operands decide `True`/`False`; a NON-FINITE operand is
+/// `Unknown(NonFinite)` — mirroring the event-decomposed path's guard below.
+/// A comparison over ±inf/NaN is meaningless, and returning `None` for it
+/// would degrade to `PredicateNotFound` → a confident FALSE.
 pub(super) fn try_numeric_comparison(
     rel: &str,
     args: &[LogicalTerm],
     subs: &HashMap<String, GroundTerm>,
-) -> Option<bool> {
+) -> Option<QueryResult> {
     let a = extract_num_value(args.get(0)?, subs)?;
     let b = extract_num_value(args.get(1)?, subs)?;
-    match rel {
-        "zmadu" => Some(a > b),
-        "mleca" => Some(a < b),
-        "dunli" => Some(a == b),
-        _ => None,
+    let holds = match rel {
+        "zmadu" => a > b,
+        "mleca" => a < b,
+        "dunli" => a == b,
+        _ => return None,
+    };
+    if !a.is_finite() || !b.is_finite() {
+        return Some(QueryResult::Unknown(UnknownReason::NonFinite));
     }
+    Some(if holds {
+        QueryResult::True
+    } else {
+        QueryResult::False
+    })
 }
 
 pub(super) fn try_arithmetic_evaluation(
@@ -228,12 +243,18 @@ pub(super) fn try_evaluate_numeric_group(
         }
     }
 
-    // Route by relation name, arithmetic-first.
-    if let Some(holds) = try_numeric_comparison(rel, &collected, subs) {
+    // Route by relation name, arithmetic-first. (The non-finite guard above
+    // already returned for non-finite comparison operands, so the verdict here
+    // is always definitive; the match keeps the two guards mirror-consistent.)
+    if let Some(verdict) = try_numeric_comparison(rel, &collected, subs) {
         return Some(NumericGroupVerdict {
             relation: rel.to_string(),
-            method: "numeric",
-            verdict: bool_verdict(holds),
+            method: if matches!(verdict, QueryResult::Unknown(_)) {
+                "non_finite"
+            } else {
+                "numeric"
+            },
+            verdict,
         });
     }
     if let Some(holds) = try_arithmetic_evaluation(rel, &collected, subs) {

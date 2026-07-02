@@ -2611,6 +2611,61 @@ fn test_decomposed_pilji_true() {
     ));
 }
 
+/// The UNKNOWN(non-finite) contract, pinned on BOTH numeric paths. Since the
+/// `li` parse-boundary overflow guard landed, no overflowing literal can reach
+/// these from the surface — but flat/raw-FOL buffers can still carry non-finite
+/// Numbers, and a comparison over ±inf must NEVER be a confident TRUE/FALSE
+/// (pre-guard, flat `dunli(inf, inf)` returned a confident TRUE).
+#[test]
+fn non_finite_comparison_is_unknown_on_both_paths() {
+    let kb = new_kb();
+    let inf = f64::INFINITY;
+
+    // Flat path (try_numeric_comparison): bare Predicate node.
+    let flat = |rel: &str, a: f64, b: f64| {
+        let mut nodes = Vec::new();
+        let root = pred(
+            &mut nodes,
+            rel,
+            vec![LogicalTerm::Number(a), LogicalTerm::Number(b)],
+        );
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        }
+    };
+    for (rel, a, b) in [
+        ("dunli", inf, inf),
+        ("dunli", inf, 1.0),
+        ("zmadu", inf, 1.0),
+        ("mleca", 1.0, f64::NEG_INFINITY),
+    ] {
+        assert_eq!(
+            query_result(&kb, flat(rel, a, b)),
+            QueryResult::Unknown(UnknownReason::NonFinite),
+            "flat {rel}({a}, {b}) must be UNKNOWN(non-finite), never definitive"
+        );
+    }
+    // Finite controls: the guard must not widen onto meaningful comparisons.
+    assert!(query(&kb, flat("dunli", 2.0, 2.0)));
+    assert!(matches!(
+        query_result(&kb, flat("zmadu", 1.0, 2.0)),
+        QueryResult::False
+    ));
+
+    // Event-decomposed path (the numeric-group guard): same contract.
+    assert_eq!(
+        query_result(&kb, make_decomposed_comparison_query("dunli", inf, inf)),
+        QueryResult::Unknown(UnknownReason::NonFinite),
+        "decomposed dunli(inf, inf) must be UNKNOWN(non-finite)"
+    );
+    assert_eq!(
+        query_result(&kb, make_decomposed_comparison_query("zmadu", inf, 1.0)),
+        QueryResult::Unknown(UnknownReason::NonFinite),
+        "decomposed zmadu(inf, 1) must be UNKNOWN(non-finite)"
+    );
+}
+
 #[test]
 fn test_decomposed_sumji_float_tolerance() {
     let kb = new_kb();
