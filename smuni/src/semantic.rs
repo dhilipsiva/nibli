@@ -1155,8 +1155,12 @@ mod tests {
     }
 
     #[test]
-    fn test_ceu_outside_ka_is_fresh_variable() {
-        // ce'u used outside ka should degrade gracefully to a fresh variable
+    fn test_ceu_outside_ka_is_rejected() {
+        // `ce'u` outside a `ka` abstraction has no binder. The old behavior minted a
+        // fresh variable that stayed FREE through compilation (the da/de/di safety net
+        // does not close `_v` fresh vars) — a non-ground form leaking toward the store.
+        // Fail closed: a semantic error is accumulated (NibliError::Semantic downstream),
+        // and no free variable escapes.
         let selbris = vec![Selbri::Root("melbi".into())];
         let sumtis = vec![Sumti::ProSumti("ce'u".into())];
         let bridi = Bridi {
@@ -1170,26 +1174,22 @@ mod tests {
 
         let (form, compiler) = compile_one(selbris, sumtis, bridi);
 
-        // ce'u outside ka should become a Variable (not Constant)
-        // With event decomposition, form is Exists(ev, And(type_pred, role_preds...))
         assert!(
-            matches!(&form, LogicalForm::Exists(_, _)),
-            "expected Exists, got {:?}",
-            form
+            compiler
+                .errors
+                .iter()
+                .any(|e| e.contains("ce'u outside a ka abstraction")),
+            "bare ce'u must accumulate a semantic error, got: {:?}",
+            compiler.errors
         );
-        // Check the melbi_x1 role predicate has a Variable for ce'u
+        // The placeholder term is the rigid Unspecified, never a free variable.
         let x1_args =
             get_pred_args(&form, "melbi_x1", &compiler).expect("expected melbi_x1 role predicate");
-        match &x1_args[1] {
-            LogicalTerm::Variable(v) => {
-                assert!(
-                    resolve(&compiler, v).starts_with("_v"),
-                    "ce'u outside ka should be fresh variable, got: {}",
-                    resolve(&compiler, v)
-                );
-            }
-            other => panic!("expected Variable for ce'u in melbi_x1, got {:?}", other),
-        }
+        assert!(
+            matches!(&x1_args[1], LogicalTerm::Unspecified),
+            "rejected ce'u compiles to Unspecified (no free variable), got {:?}",
+            x1_args[1]
+        );
     }
 
     // ─── BAI modal tag tests ──────────────────────────────────────

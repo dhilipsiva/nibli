@@ -760,7 +760,36 @@ fn check_stratification(graph: &HashMap<String, Vec<(String, bool)>>) -> Result<
 
 /// Assert a typed fact into the fact store.
 /// Validates predicate arity against the registry (permissive mode: warns on mismatch).
+/// True if the term (recursively) contains a pattern variable — including one hiding
+/// inside a `SkolemFn` dependency or a `DepPair` component, which a flat top-level-args
+/// scan would miss.
+fn term_contains_pattern_var(t: &GroundTerm) -> bool {
+    match t {
+        GroundTerm::PatternVar(_) => true,
+        GroundTerm::SkolemFn(_, dep) => term_contains_pattern_var(dep),
+        GroundTerm::DepPair(a, b) => term_contains_pattern_var(a) || term_contains_pattern_var(b),
+        _ => false,
+    }
+}
+
 pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner) {
+    // ── Groundness boundary: mechanism, not discipline ──
+    // The soundness invariant "a stored fact never contains a PatternVar" is what makes
+    // the one-directional unifier safe without an occurs check (`proofs/Unify.lean`'s
+    // `NoVar c` hypothesis: the concrete side is ground). It was previously upheld only
+    // by upstream discipline across every call site; enforce it HERE, at the single
+    // insert boundary. A non-ground fact is dropped FAIL-CLOSED (the engine under-derives
+    // — a dropped fact can only move verdicts toward FALSE/UNKNOWN, never fabricate a
+    // TRUE) with a warning, mirroring the permissive arity/constraint paths.
+    if fact.inner().args.iter().any(term_contains_pattern_var) {
+        eprintln!(
+            "[Groundness] Dropped non-ground fact '{}' (unbound pattern variable); \
+             stored facts must be ground.",
+            fact.to_display_string()
+        );
+        return;
+    }
+
     let rel = fact.relation();
     let arity = fact.inner().args.len();
 

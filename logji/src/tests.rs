@@ -960,6 +960,74 @@ fn assert_proof_refs_resolve_to_holds_true(trace: &ProofTrace) {
 /// no fireable rule silently skipped — rests on the engine's emission invariant, itself cross-checked
 /// by the `nibli-verify` differential gates' verdict-vs-independent-model comparison.)
 ///
+/// The groundness invariant is a MECHANISM at the store boundary, not call-site
+/// discipline: `assert_typed_fact` drops (fail-closed, with a warning) any fact whose
+/// args contain a pattern variable — including one nested inside a `SkolemFn`
+/// dependency or `DepPair` component, which a flat top-level scan would miss. This is
+/// the engine-side enforcement of `proofs/Unify.lean`'s `NoVar c` hypothesis (the
+/// concrete side of unification is always ground).
+#[test]
+fn non_ground_fact_is_dropped_at_the_assert_boundary() {
+    let kb = new_kb();
+    let mut inner = kb.inner.borrow_mut();
+
+    // Top-level PatternVar.
+    crate::rules::assert_typed_fact(
+        StoredFact::Bare(GroundFact {
+            relation: "gerku".into(),
+            args: vec![GroundTerm::PatternVar("x__v0".into())],
+        }),
+        &mut inner,
+    );
+    // PatternVar hiding inside a SkolemFn dependency.
+    crate::rules::assert_typed_fact(
+        StoredFact::Bare(GroundFact {
+            relation: "mlatu".into(),
+            args: vec![GroundTerm::SkolemFn(
+                "sk_9".into(),
+                Box::new(GroundTerm::PatternVar("y__v1".into())),
+            )],
+        }),
+        &mut inner,
+    );
+    // PatternVar hiding inside a DepPair component.
+    crate::rules::assert_typed_fact(
+        StoredFact::Bare(GroundFact {
+            relation: "cipni".into(),
+            args: vec![GroundTerm::SkolemFn(
+                "sk_10".into(),
+                Box::new(GroundTerm::DepPair(
+                    Box::new(GroundTerm::Constant("adam".into())),
+                    Box::new(GroundTerm::PatternVar("z__v2".into())),
+                )),
+            )],
+        }),
+        &mut inner,
+    );
+    assert!(
+        inner.fact_store.all_facts().is_empty(),
+        "non-ground facts must be dropped at the boundary, store has: {:?}",
+        inner.fact_store.all_facts()
+    );
+
+    // A genuinely ground fact (skolem dependency and all) still inserts.
+    crate::rules::assert_typed_fact(
+        StoredFact::Bare(GroundFact {
+            relation: "gerku".into(),
+            args: vec![GroundTerm::SkolemFn(
+                "sk_0".into(),
+                Box::new(GroundTerm::Constant("adam".into())),
+            )],
+        }),
+        &mut inner,
+    );
+    assert_eq!(
+        inner.fact_store.all_facts().len(),
+        1,
+        "a ground fact must still insert normally"
+    );
+}
+
 /// `validate_cert` walks every step; `trace_soundness_conformance` runs it over a curated corpus, and
 /// `Exercised` counters assert each KB-tied bridge fired (never vacuous).
 #[test]

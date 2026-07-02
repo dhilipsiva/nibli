@@ -188,7 +188,16 @@ pub(crate) fn combine_indeterminate(left: QueryResult, right: QueryResult) -> Qu
         (QueryResult::Unknown(reason), _) => QueryResult::Unknown(reason),
         (_, QueryResult::Unknown(reason)) => QueryResult::Unknown(reason),
         // Unreachable: both-definitive cases are decided by the callers before this runs.
-        _ => QueryResult::False,
+        // Kept total to mirror the Lean model; the debug_assert turns a future caller
+        // that violates the precondition into a loud failure instead of a silent
+        // fabricated FALSE (the `True ∧ Unknown → False` class this fn replaced).
+        (l, r) => {
+            debug_assert!(
+                false,
+                "combine_indeterminate reached with two definitive operands: {l:?} / {r:?}"
+            );
+            QueryResult::False
+        }
     }
 }
 

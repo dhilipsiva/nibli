@@ -253,8 +253,19 @@ impl SemanticCompiler {
                     if let Some(var) = self.ka_open_var {
                         LogicalTerm::Variable(var)
                     } else {
-                        let var = self.fresh_var();
-                        LogicalTerm::Variable(var)
+                        // `ce'u` is the open place of a `ka` property abstraction; outside
+                        // one it has no binder. The old "degrade to a fresh variable"
+                        // behavior leaked a FREE variable through compilation — the da/de/di
+                        // free-variable safety net does not close `_v` fresh vars, so the
+                        // form reached logji non-ground (the exact shape the groundness
+                        // boundary at `assert_typed_fact` now drops). Fail closed at the
+                        // SOURCE instead: reject with a semantic error.
+                        self.errors.push(
+                            "ce'u outside a ka abstraction has no binder — property \
+                             placeholders are only meaningful inside `lo ka ... kei`"
+                                .to_string(),
+                        );
+                        LogicalTerm::Unspecified
                     }
                 } else {
                     LogicalTerm::Constant(self.interner.get_or_intern(p.as_str()))

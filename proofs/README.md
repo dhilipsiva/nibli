@@ -86,6 +86,12 @@ association-list `Subst`, `subst`, and the accumulator-threading `unify`, and pr
 - **`unify_minimal`**: `unify` never binds a variable absent from the template (no extraneous
   bindings).
 
+The `NoVar c` hypothesis (the concrete side is ground) is enforced in the ENGINE as a mechanism,
+not call-site discipline: `assert_typed_fact` drops any fact whose args contain a pattern variable
+— recursively, including inside `SkolemFn`/`DepPair` components — at the single store-insert
+boundary (`logji/src/rules.rs`, pinned by `non_ground_fact_is_dropped_at_the_assert_boundary`),
+so a stored fact can never violate the hypothesis regardless of upstream changes.
+
 Mathlib-free (prelude only). The `Number` payload is abstracted to `Nat` — only decidable equality
 matters for match soundness, not f64 bit-semantics.
 
