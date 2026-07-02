@@ -475,14 +475,30 @@ pub fn run_lines_asp(
         }
     };
 
-    // 2. ASP-mappable filter (accepts NAF; rejects compute/deontic/count + non-ground du).
-    for b in kb_buffers.iter().chain(std::iter::once(&query_buf)) {
+    // 2. ASP-mappable filter (accepts NAF; rejects compute/deontic + non-ground du; a
+    //    sole-root exact-count QUERY is accepted — count assertions are not).
+    for b in &kb_buffers {
         if let Some(reason) = filter::buffer_asp_mappable(b) {
             return Outcome::SkipNonMappable {
                 name,
                 reason: reason.to_string(),
             };
         }
+    }
+    if let Some(reason) = filter::buffer_asp_mappable_query(&query_buf) {
+        return Outcome::SkipNonMappable {
+            name,
+            reason: reason.to_string(),
+        };
+    }
+    // 2a. Count-query case guard: the engine's count and clingo's #count agree only on
+    //     ground-fact KBs (rules inject countable import witnesses; du classes are not
+    //     collapsed) — skip the disagreeing combinations rather than canonize them.
+    if let Some(reason) = filter::count_case_guard(&kb_buffers, &query_buf) {
+        return Outcome::SkipNonMappable {
+            name,
+            reason: reason.to_string(),
+        };
     }
 
     // 2b. Tense flavorization (identity when no tense occurs). Tense×NAF is a
@@ -569,6 +585,23 @@ pub fn run_random_naf(count: u64, base_seed: u64, cfg: &AspConfig) -> Report {
     let outcomes = (0..count)
         .map(|i| {
             let case = generator::random_naf_case(base_seed.wrapping_add(i));
+            let kb: Vec<&str> = case.kb.iter().map(String::as_str).collect();
+            run_lines_asp(&engine, &case.name, &kb, &case.query, cfg)
+        })
+        .collect();
+    Report { outcomes }
+}
+
+/// Run `count` deterministically-generated random **exact-count** cases (seeds
+/// `base_seed .. base_seed+count`) against clingo on a fresh engine. Each case is a
+/// ground-fact KB plus a `PA lo P1 cu P2` query — the guarded fragment where the
+/// engine's per-member count equals clingo's `#count` over the stable model (see
+/// [`filter::count_case_guard`]).
+pub fn run_random_count(count: u64, base_seed: u64, cfg: &AspConfig) -> Report {
+    let engine = NibliEngine::new();
+    let outcomes = (0..count)
+        .map(|i| {
+            let case = generator::random_count_case(base_seed.wrapping_add(i));
             let kb: Vec<&str> = case.kb.iter().map(String::as_str).collect();
             run_lines_asp(&engine, &case.name, &kb, &case.query, cfg)
         })

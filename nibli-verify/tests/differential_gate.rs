@@ -7,7 +7,7 @@ use nibli_types::logic::LogicNode;
 use nibli_verify::oracle_asp::AspConfig;
 use nibli_verify::{
     corpora, corpus, corpus_naf, oracle::OracleConfig, run_corpus, run_corpus_slice,
-    run_naf_corpus, run_random, run_random_naf, seam,
+    run_naf_corpus, run_random, run_random_count, run_random_naf, seam,
 };
 
 /// The gate must actually compare a meaningful number of cases — otherwise a future
@@ -24,6 +24,10 @@ const MIN_CHECKED_NAF: usize = 8;
 /// How many random stratified-NAF cases the ASP gate runs; override with
 /// `NIBLI_VERIFY_NAF_RANDOM_COUNT`.
 const DEFAULT_NAF_RANDOM_COUNT: u64 = 100;
+
+/// How many random exact-count cases the ASP gate runs; override with
+/// `NIBLI_VERIFY_COUNT_RANDOM_COUNT`.
+const DEFAULT_COUNT_RANDOM_COUNT: u64 = 100;
 
 #[test]
 fn horn_fragment_agrees_with_vampire() {
@@ -252,6 +256,57 @@ fn random_naf_cases_agree_with_clingo() {
     assert!(
         report.checked() as u64 >= count / 2,
         "only {} of {count} random NAF cases reached the oracle; sweep near-vacuous",
+        report.checked()
+    );
+}
+
+/// Random exact-count coverage: N deterministically-generated ground-fact count cases
+/// (`PA lo P1 cu P2` queries) must each have nibli agree with clingo's `#count` over the
+/// stable model. The generator stays inside the guarded fragment (no rules, no `du`, no
+/// tense — see `filter::count_case_guard`), so both TRUE and closed-world FALSE count
+/// verdicts are exercised at scale.
+#[test]
+fn random_count_cases_agree_with_clingo() {
+    let cfg = AspConfig::default();
+    if !nibli_verify::oracle_asp::available(&cfg) {
+        eprintln!(
+            "nibli-verify random count gate SKIPPED: solver '{}' unavailable.",
+            cfg.binary
+        );
+        return;
+    }
+
+    let count: u64 = std::env::var("NIBLI_VERIFY_COUNT_RANDOM_COUNT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_COUNT_RANDOM_COUNT);
+    let report = run_random_count(count, 0, &cfg);
+
+    let (agree, diverge, skip, error) = report.tally();
+    eprintln!(
+        "nibli-verify random count: {agree} agree / {diverge} diverge / {skip} skip / {error} \
+         error ({} of {count} checked)",
+        report.checked()
+    );
+
+    let errors: Vec<String> = report.errors().iter().map(|o| o.summary()).collect();
+    assert!(
+        errors.is_empty(),
+        "harness errors on random count cases:\n{}",
+        errors.join("\n")
+    );
+
+    let divergences: Vec<String> = report.divergences().iter().map(|o| o.summary()).collect();
+    assert!(
+        divergences.is_empty(),
+        "soundness divergences on random count cases (nibli disagreed with clingo):\n{}",
+        divergences.join("\n")
+    );
+
+    // Ground-fact + guarded-fragment by construction, so nearly all must reach the oracle.
+    assert!(
+        report.checked() as u64 >= count * 3 / 4,
+        "only {} of {count} random count cases reached the oracle; sweep near-vacuous",
         report.checked()
     );
 }

@@ -93,6 +93,66 @@ pub fn buffer_asp_mappable(buf: &LogicBuffer) -> Option<&'static str> {
     None
 }
 
+/// The ASP filter for the QUERY buffer: like [`buffer_asp_mappable`], but a sole-root
+/// exact-count query (`Count(v, n, body)` — `re lo gerku cu danlu`) is ACCEPTED: the
+/// translator maps it to a clingo `#count` aggregate. Count nodes anywhere else (a
+/// count ASSERTION, or a count nested under other structure) stay skipped.
+pub fn buffer_asp_mappable_query(buf: &LogicBuffer) -> Option<&'static str> {
+    for (idx, node) in buf.nodes.iter().enumerate() {
+        let reason = match node {
+            LogicNode::ComputeNode(_) => "compute predicate",
+            LogicNode::ObligatoryNode(_) | LogicNode::PermittedNode(_) => "deontic",
+            LogicNode::CountNode(_) if buf.roots.as_slice() != [idx as u32] => {
+                "exact-count quantifier (nested / non-root)"
+            }
+            LogicNode::Predicate((rel, args)) if rel == "du" && !du_mappable(buf, idx, args) => {
+                "equality (nested or non-ground)"
+            }
+            _ => continue,
+        };
+        return Some(reason);
+    }
+    None
+}
+
+/// Case-level guard for an exact-count QUERY: the engine's count and clingo's
+/// `#count` over the stable model agree only on **ground-fact KBs**. With a
+/// universal rule in the KB, the rule's xorlo existential-import witness is a typed
+/// domain member and gets COUNTED (probed: 2 dogs + `ro lo gerku cu danlu` makes
+/// `re lo gerku cu danlu` count 3); with `du` facts, merged entities are NOT
+/// collapsed (probed: a merged pair still counts as 2, where the canonicalizing
+/// translator would count 1). Both interactions are the open count-semantics
+/// decision (engine TODO "count/witness semantics × du") — skipped, not canonized.
+pub fn count_case_guard(kb: &[LogicBuffer], query: &LogicBuffer) -> Option<&'static str> {
+    let is_count_query = matches!(
+        (query.roots.as_slice(), query.roots.first()),
+        ([r], Some(_)) if matches!(query.nodes.get(*r as usize), Some(LogicNode::CountNode(_)))
+    );
+    if !is_count_query {
+        return None;
+    }
+    for buf in kb {
+        for node in &buf.nodes {
+            match node {
+                LogicNode::ForAllNode(_) => {
+                    return Some(
+                        "exact-count query over a KB with rules (import witnesses are counted \
+                         — count semantics pending)",
+                    );
+                }
+                LogicNode::Predicate((rel, _)) if rel == "du" => {
+                    return Some(
+                        "exact-count query over a KB with du (classes are not collapsed by the \
+                         engine count — count semantics pending)",
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

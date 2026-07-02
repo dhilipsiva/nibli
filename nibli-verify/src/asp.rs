@@ -201,6 +201,29 @@ pub fn render_program(kb: &[LogicBuffer], query: &LogicBuffer) -> Result<String,
         }
     }
 
+    // Exact-count query: a sole-root `Count(v, n, body)` reifies to a clingo `#count`
+    // aggregate — `goal :- #count { V0 : atoms(V0) } = n.` The aggregate counts the
+    // distinct entities satisfying the (regrouped) restrictor+body conjunction over the
+    // stable model, which equals the engine's per-member count on the guarded fragment
+    // (ground-fact KBs: no import witnesses, no uncollapsed du classes — see
+    // `filter::count_case_guard`).
+    if let [r] = query.roots.as_slice() {
+        if let LogicNode::CountNode((v, n, body)) = node_at(query, *r)? {
+            let mut vars = VarMap::new();
+            let cv = vars.bind(v);
+            let mut lits: Vec<String> = Vec::new();
+            for c in flatten_and(query, *body)? {
+                lits.push(regroup_event(query, c, &mut vars)?.render());
+            }
+            out.push_str(&format!(
+                "goal :- #count {{ {cv} : {} }} = {n}.\n",
+                lits.join(", ")
+            ));
+            out.push_str("#show goal/0.\n");
+            return Ok(out);
+        }
+    }
+
     // Query → goal reification. The query's event groups become the body of a rule deriving
     // the 0-ary `goal`; entailment = `goal` present in the stable model.
     let mut vars = VarMap::new();
@@ -837,6 +860,31 @@ mod tests {
         // (fails → goal absent → NotEntailed, matching nibli's closed-world FALSE).
         let out = render_program(&[], &du_fact("adam", "bel")).unwrap();
         assert!(out.contains("goal :- adam == bel."), "{out}");
+    }
+
+    #[test]
+    fn count_query_becomes_count_aggregate() {
+        // `re lo gerku cu danlu` → Count(_v0, 2, And(gerku-group, danlu-group)) →
+        // goal :- #count { V0 : gerku(V0), danlu(V0) } = 2.
+        let mut n = Vec::new();
+        let g1 = event1(&mut n, "_ev1", "gerku", var("_v0"));
+        let g2 = event1(&mut n, "_ev0", "danlu", var("_v0"));
+        let a = and(&mut n, g1, g2);
+        n.push(LogicNode::CountNode(("_v0".to_string(), 2, a)));
+        let root = (n.len() - 1) as u32;
+        let query = buf(n, vec![root]);
+
+        let mut kn = Vec::new();
+        let kroot = event1(&mut kn, "_ev0", "gerku", con("adam"));
+        let kb = buf(kn, vec![kroot]);
+
+        let out = render_program(&[kb], &query).unwrap();
+        assert!(out.contains("gerku(adam)."), "{out}");
+        assert!(
+            out.contains("goal :- #count { V0 : gerku(V0), danlu(V0) } = 2."),
+            "{out}"
+        );
+        assert!(out.contains("#show goal/0."), "{out}");
     }
 
     #[test]

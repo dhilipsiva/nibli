@@ -195,6 +195,46 @@ pub fn random_naf_case(seed: u64) -> GeneratedCase {
     }
 }
 
+/// Lojban digits for the exact-count quantifier `PA lo P cu Q` (1, 2, 3).
+const COUNT_DIGITS: &[&str] = &["pa", "re", "ci"];
+
+/// Generate a random **exact-count** case for `seed`: 2..=5 ground facts over a small
+/// entity/predicate pool (no rules, no `du`, no tense — the guarded fragment where the
+/// engine's per-member count equals clingo's `#count` over the stable model; see
+/// `filter::count_case_guard`), plus one `PA lo P1 cu P2` query. Both TRUE and FALSE
+/// sides arise naturally from the random fact/quantifier mix.
+pub fn random_count_case(seed: u64) -> GeneratedCase {
+    let mut rng = Lcg::new(seed);
+    let mut kb: Vec<String> = Vec::new();
+
+    // A small pool keeps collisions (several entities sharing a predicate) frequent,
+    // so counts of 1..3 actually occur.
+    let preds = &PREDS[..4];
+    let ents = &ENTITIES[..4];
+    let n_facts = 2 + rng.below(4);
+    for _ in 0..n_facts {
+        let e = ents[rng.below(ents.len())];
+        let p = preds[rng.below(preds.len())];
+        kb.push(format!("la .{e}. cu {p}"));
+    }
+
+    let p1 = preds[rng.below(preds.len())];
+    // Half the time count `P1 cu P1` (how many P1s), half the time a distinct body.
+    let p2 = if rng.below(2) == 0 {
+        p1
+    } else {
+        preds[rng.below(preds.len())]
+    };
+    let digit = rng.pick(COUNT_DIGITS);
+    let query = format!("{digit} lo {p1} cu {p2}");
+
+    GeneratedCase {
+        name: format!("count_seed{seed}"),
+        kb,
+        query,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

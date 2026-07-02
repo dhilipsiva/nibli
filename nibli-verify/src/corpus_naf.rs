@@ -249,4 +249,58 @@ pub const NAF_CASES: &[Case] = &[
         query: "pu la .kim. cu danlu",
         expect: Expect::True,
     },
+    // ── Exact-count queries (`PA lo X cu Y`) → clingo `#count` aggregates. Guarded to
+    // ground-fact KBs: with a rule in the KB the xorlo import witness gets counted, and
+    // `du` classes are not collapsed by the engine count (both engine-probed) — those
+    // combinations are SKIPPED pending the count-semantics decision, not canonized. ──
+    Case {
+        name: "count_exact_two_true",
+        kb: &["la .adam. cu gerku", "la .bel. cu gerku"],
+        query: "re lo gerku cu gerku",
+        expect: Expect::True,
+    },
+    Case {
+        name: "count_exact_one_false",
+        kb: &["la .adam. cu gerku", "la .bel. cu gerku"],
+        query: "pa lo gerku cu gerku",
+        expect: Expect::False,
+    },
+    Case {
+        name: "count_exact_three_false",
+        kb: &["la .adam. cu gerku", "la .bel. cu gerku"],
+        query: "ci lo gerku cu gerku",
+        expect: Expect::False,
+    },
+    Case {
+        name: "count_body_restricts_true",
+        // Two dogs, one of them an (asserted) animal: exactly ONE dog is an animal.
+        kb: &[
+            "la .adam. cu gerku",
+            "la .bel. cu gerku",
+            "la .adam. cu danlu",
+        ],
+        query: "pa lo gerku cu danlu",
+        expect: Expect::True,
+    },
+    Case {
+        name: "count_body_restricts_false",
+        kb: &[
+            "la .adam. cu gerku",
+            "la .bel. cu gerku",
+            "la .adam. cu danlu",
+        ],
+        query: "re lo gerku cu danlu",
+        expect: Expect::False,
+    },
+    Case {
+        name: "count_three_entities_true",
+        kb: &[
+            "la .adam. cu gerku",
+            "la .bel. cu gerku",
+            "la .kim. cu gerku",
+            "la .dan. cu mlatu",
+        ],
+        query: "ci lo gerku cu gerku",
+        expect: Expect::True,
+    },
 ];
