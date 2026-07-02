@@ -29,3 +29,23 @@ jobs:
 
       - name: Runtime CI gates (native + WASM)
         run: nix develop --extra-experimental-features 'nix-command flakes' --command just ci-all
+
+  # Time-boxed libFuzzer sweep (3 targets × 120 s), parallel to runtime-ci so it
+  # never extends the main gate's critical path. Corpora are seeded from the
+  # shipped .lojban files; any crash/OOM fails the job.
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Configure Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Fuzz gate (seed + 3 targets, time-boxed)
+        run: nix develop --extra-experimental-features 'nix-command flakes' --command just fuzz-ci

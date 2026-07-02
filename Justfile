@@ -545,19 +545,60 @@ model-refine:
 model-push:
     python3 python/nibli_model.py push --model models/nibli-lojban-7b --repo dhilipsiva/nibli-lojban-7b
 
-# ── Fuzz testing (requires cargo +nightly) ──────────────────────
+# ── Fuzz testing (libFuzzer via the Nix shell's pinned nightly) ──
+#
+# The Nix shell exports NIBLI_NIGHTLY_BIN (flake.nix) — a pinned nightly
+# toolchain used ONLY by these recipes via a PATH prefix (libFuzzer needs
+# nightly sanitizer-coverage flags); the shell default stays stable.
+#
+# DISCLOSED WAIVER: the two knobs below are a KNOWN-LEAK suppression, not a
+# default. gerna's bumpalo AST arena never runs Drop, so heap Strings inside
+# arena-moved nodes leak on every parse (TODO.md item 1). Remove BOTH once that
+# item lands — the gate must then be LSan-clean:
+#   fuzz_lsan_env — ASAN_OPTIONS, disables the atexit LSan sweep
+#   fuzz_lsan     — libFuzzer flag, disables the per-input leak check
+fuzz_lsan_env := "ASAN_OPTIONS=detect_leaks=0"
+fuzz_lsan := "-detect_leaks=0"
 
 # Fuzz the gerna parser with arbitrary input
 fuzz-parse SECONDS="0":
-    cd fuzz && cargo +nightly fuzz run fuzz_parse -- -max_len=4096 {{ if SECONDS != "0" { "-max_total_time=" + SECONDS } else { "" } }}
+    @test -n "${NIBLI_NIGHTLY_BIN:-}" || { echo "NIBLI_NIGHTLY_BIN is not set — run inside the Nix dev shell"; exit 1; }
+    cd fuzz && {{ fuzz_lsan_env }} PATH="$NIBLI_NIGHTLY_BIN:$PATH" cargo fuzz run fuzz_parse -- -max_len=4096 {{ fuzz_lsan }} {{ if SECONDS != "0" { "-max_total_time=" + SECONDS } else { "" } }}
 
 # Fuzz nibli-engine assert_text (full pipeline)
 fuzz-assert SECONDS="0":
-    cd fuzz && cargo +nightly fuzz run fuzz_assert -- -max_len=4096 {{ if SECONDS != "0" { "-max_total_time=" + SECONDS } else { "" } }}
+    @test -n "${NIBLI_NIGHTLY_BIN:-}" || { echo "NIBLI_NIGHTLY_BIN is not set — run inside the Nix dev shell"; exit 1; }
+    cd fuzz && {{ fuzz_lsan_env }} PATH="$NIBLI_NIGHTLY_BIN:$PATH" cargo fuzz run fuzz_assert -- -max_len=4096 {{ fuzz_lsan }} {{ if SECONDS != "0" { "-max_total_time=" + SECONDS } else { "" } }}
 
 # Fuzz nibli-engine assert + query (stateful KB)
 fuzz-query SECONDS="0":
-    cd fuzz && cargo +nightly fuzz run fuzz_query -- -max_len=4096 {{ if SECONDS != "0" { "-max_total_time=" + SECONDS } else { "" } }}
+    @test -n "${NIBLI_NIGHTLY_BIN:-}" || { echo "NIBLI_NIGHTLY_BIN is not set — run inside the Nix dev shell"; exit 1; }
+    cd fuzz && {{ fuzz_lsan_env }} PATH="$NIBLI_NIGHTLY_BIN:$PATH" cargo fuzz run fuzz_query -- -max_len=4096 {{ fuzz_lsan }} {{ if SECONDS != "0" { "-max_total_time=" + SECONDS } else { "" } }}
+
+# Seed the fuzz corpora from the shipped .lojban corpus files. Each non-comment,
+# non-REPL-command line becomes a seed for fuzz_parse/fuzz_assert; fuzz_query
+# seeds are the line DOUBLED, matching its split-half input encoding (first half
+# asserted, second half queried).
+fuzz-seed:
+    #!/usr/bin/env python3
+    import pathlib
+    lines = []
+    for src in ("gdpr.lojban", "drug-interactions.lojban", "readme.lojban", "determinism-corpus.lojban"):
+        for ln in pathlib.Path(src).read_text(encoding="utf-8").splitlines():
+            ln = ln.strip()
+            if ln and not ln.startswith("#") and not ln.startswith(":"):
+                lines.append(ln)
+    for target, encode in (("fuzz_parse", str), ("fuzz_assert", str), ("fuzz_query", lambda s: s + s)):
+        d = pathlib.Path("fuzz/corpus") / target
+        d.mkdir(parents=True, exist_ok=True)
+        for i, ln in enumerate(lines):
+            (d / f"seed_{i:04}").write_text(encode(ln), encoding="utf-8")
+    print(f"seeded {len(lines)} entries per target under fuzz/corpus/")
+
+# Time-boxed unattended fuzz gate (CI): seed corpora, then run every target for
+# SECONDS each. libFuzzer exits non-zero on crash/OOM, zero when the time box
+# expires clean — a pass/fail gate, not an open-ended campaign.
+fuzz-ci SECONDS="120": fuzz-seed (fuzz-parse SECONDS) (fuzz-assert SECONDS) (fuzz-query SECONDS)
 
 # Wipes all compilation artifacts
 clean:

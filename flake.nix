@@ -29,6 +29,12 @@
           extensions = [ "rust-src" "rust-analyzer" "clippy" "rustfmt" ];
           targets = [ "wasm32-wasip1" "wasm32-wasip2" "wasm32-unknown-unknown" ];
         };
+
+        # Pinned nightly for cargo-fuzz (libFuzzer needs nightly sanitizer-coverage
+        # flags). NOT on PATH by default — stable stays the shell toolchain; the
+        # fuzz recipes prefix PATH with NIBLI_NIGHTLY_BIN for their invocation only.
+        # Date must predate the locked rust-overlay revision.
+        nightlyFuzzToolchain = pkgs.rust-bin.nightly."2026-03-15".default;
       in
       {
         devShells.default = pkgs.mkShell {
@@ -74,6 +80,10 @@
             # `ilmentufa` flake input, exported as NIBLI_CAMXES_DIR below.
             nodejs
 
+            # libFuzzer harness driver for the three fuzz targets (`just fuzz-ci`);
+            # runs against the pinned nightly via NIBLI_NIGHTLY_BIN.
+            cargo-fuzz
+
             # Native build dependencies
             pkg-config
             openssl
@@ -84,6 +94,9 @@
           # The pinned ilmentufa checkout (camxes.js + CLI wrappers) for the
           # parse-differential; consumed by nibli-verify's parser_diff harness.
           NIBLI_CAMXES_DIR = "${ilmentufa}";
+
+          # The pinned nightly toolchain's bin dir for cargo-fuzz (see above).
+          NIBLI_NIGHTLY_BIN = "${nightlyFuzzToolchain}/bin";
 
           shellHook = ''
             if [ -e "$HOME/.cargo/bin/cargo-component" ]; then

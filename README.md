@@ -347,6 +347,7 @@ The parser (`gerna`) accepts a practical subset of Lojban sufficient for formal 
 | `just fuzz-parse [SECS]` | Fuzz the parser |
 | `just fuzz-assert [SECS]` | Fuzz assertion pipeline |
 | `just fuzz-query [SECS]` | Fuzz stateful KB queries |
+| `just fuzz-ci [SECS]` | Time-boxed fuzz gate (all 3 targets, corpus-seeded) — runs in CI |
 | `just ci` | Full CI suite |
 | `just clean` | `cargo clean` |
 
