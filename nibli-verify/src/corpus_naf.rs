@@ -5,9 +5,12 @@
 //!
 //! The NAF mechanism is the negated restrictor `poi na R` ("… that is not R"): with no
 //! `R`-witness the restrictor holds (closed-world) and the rule fires; with a witness it
-//! does not. These reproduce the semantics of the `gdpr_erasure_*` engine tests
-//! (`ro lo prenu poi na zanru cu <obligation>`) but with plain-gismu heads (`cu morsi`
-//! etc.), since the real GDPR rule's deontic head is outside the ASP fragment.
+//! does not. Most cases use plain-gismu heads (`cu morsi` etc.); the `gdpr_erasure_*`
+//! pair at the end exercises the REAL GDPR rule verbatim (`se bilga` is a plain gismu and
+//! the `lo nu` abstraction maps as an opaque constant — see `filter::buffer_asp_mappable`).
+//! The `naf_du_*` cases mix in ground `du` identity links, which the translator
+//! canonicalizes away (`asp::DuClasses`) — including the NAF-THROUGH-EQUALITY shape where
+//! a witness blocks the rule for a merged entity.
 //!
 //! `expect` documents the intended nibli verdict (printed by `nibli-verify --asp`); the CI
 //! gate checks nibli's verdict against clingo, not against `expect`.
@@ -148,6 +151,71 @@ pub const NAF_CASES: &[Case] = &[
             "la .adam. cu zanru",
         ],
         query: "la .adam. cu se bilga lo nu se vimcu",
+        expect: Expect::False,
+    },
+    // ── du identity × NAF: the equivalence index must be visible to the NAF check. ──
+    Case {
+        name: "naf_du_blocked_through_equality",
+        // adam and bel are the SAME entity; bel carries the gerku witness, so the NAF
+        // restrictor `poi na gerku` must be blocked for adam too. A NAF prover that
+        // consulted the raw fact store and missed the equivalence index would wrongly
+        // fire the rule here (TRUE) — the highest-value du probe shape.
+        kb: &[
+            "ro lo prenu poi na gerku cu morsi",
+            "la .adam. cu prenu",
+            "la .adam. cu du la .bel.",
+            "la .bel. cu gerku",
+        ],
+        query: "la .adam. cu morsi",
+        expect: Expect::False,
+    },
+    Case {
+        name: "naf_du_unlinked_witness_fires",
+        // Same KB WITHOUT the identity link (the post-retraction state): bel's witness
+        // no longer reaches adam, so the rule fires.
+        kb: &[
+            "ro lo prenu poi na gerku cu morsi",
+            "la .adam. cu prenu",
+            "la .bel. cu gerku",
+        ],
+        query: "la .adam. cu morsi",
+        expect: Expect::True,
+    },
+    Case {
+        name: "naf_du_domain_through_equality",
+        // The DOMAIN restrictor also resolves through the identity link: bel is a prenu
+        // only via `bel du adam`, and the (unblocked) rule must still reach bel.
+        kb: &[
+            "ro lo prenu poi na gerku cu morsi",
+            "la .adam. cu prenu",
+            "la .adam. cu du la .bel.",
+        ],
+        query: "la .bel. cu morsi",
+        expect: Expect::True,
+    },
+    Case {
+        name: "naf_du_derived_chain_through_equality",
+        // Full mix: identity + NAF rule + positive Horn chain. bel (merged with adam)
+        // has no witness → danlu(bel) → jmive(bel).
+        kb: &[
+            "ro lo prenu poi na gerku cu danlu",
+            "ro lo danlu cu jmive",
+            "la .adam. cu prenu",
+            "la .adam. cu du la .bel.",
+        ],
+        query: "la .bel. cu jmive",
+        expect: Expect::True,
+    },
+    Case {
+        name: "naf_du_query_identity_true",
+        kb: &["la .adam. cu prenu", "la .adam. cu du la .bel."],
+        query: "la .adam. cu du la .bel.",
+        expect: Expect::True,
+    },
+    Case {
+        name: "naf_du_query_identity_false",
+        kb: &["la .adam. cu prenu", "la .bel. cu prenu"],
+        query: "la .adam. cu du la .bel.",
         expect: Expect::False,
     },
 ];

@@ -7,7 +7,9 @@
 //! `Or(Not(A), B)` in `smuni/src/semantic/compile.rs`), so a direct boolean map yields
 //! the correct classical theory. The translator never emits the non-classical nodes
 //! (`ComputeNode`, tense/deontic, `CountNode`); reaching one is a filter bug and is
-//! surfaced as an error rather than silently mistranslated.
+//! surfaced as an error rather than silently mistranslated. The identity predicate
+//! `du` maps to TPTP NATIVE `=` (see `render_atom`) — congruence closure over a
+//! definite theory matches nibli's union-find semantics in both directions.
 
 use std::collections::HashMap;
 
@@ -88,6 +90,19 @@ fn render_node(buf: &LogicBuffer, id: u32, vars: &mut VarMap) -> Result<String, 
 }
 
 fn render_atom(rel: &str, args: &[LogicalTerm], vars: &mut VarMap) -> String {
+    // `du` is nibli's identity predicate (union-find with path compression +
+    // substitutivity). Map it to TPTP NATIVE equality: over a definite (Horn,
+    // negation-free) theory, classical congruence closure derives exactly the
+    // reflexive/symmetric/transitive/substitutive consequences nibli's equivalence
+    // index derives — in both directions, so `FALSE ⟺ not-entailed` holds for
+    // equality atoms too. Rendering `du` as an uninterpreted binary predicate here
+    // would be a soundness trap: nibli's TRUE-via-substitutivity would look like a
+    // divergence. (The filter admits only the sole-root ground `du(c1, c2)` shape.)
+    if rel == "du" && args.len() == 2 {
+        let l = render_term(&args[0], vars);
+        let r = render_term(&args[1], vars);
+        return format!("({l} = {r})");
+    }
     if args.is_empty() {
         return sanitize_functor(rel);
     }
@@ -220,5 +235,31 @@ mod tests {
         assert_eq!(sanitize_functor(".adam."), "adam");
         assert_eq!(sanitize_functor("gerku_x1"), "gerku_x1");
         assert_eq!(sanitize_functor("ka'e"), "'ka\\'e'");
+    }
+
+    #[test]
+    fn du_maps_to_native_equality() {
+        // `la .adam. cu du la .bel.` (axiom) + `la .bel. cu du la .adam.` (conjecture):
+        // both must render as TPTP `=`, never as an uninterpreted `du(...)` predicate
+        // (which would lack congruence and fake a divergence).
+        let du = |a: &str, b: &str| {
+            buf(
+                vec![LogicNode::Predicate((
+                    "du".into(),
+                    vec![
+                        LogicalTerm::Constant(a.into()),
+                        LogicalTerm::Constant(b.into()),
+                    ],
+                ))],
+                vec![0],
+            )
+        };
+        let out = render_problem(&[du("adam", "bel")], &du("bel", "adam")).unwrap();
+        assert!(out.contains("fof(ax_0, axiom, (adam = bel))."), "{out}");
+        assert!(
+            out.contains("fof(goal, conjecture, (bel = adam))."),
+            "{out}"
+        );
+        assert!(!out.contains("du("), "uninterpreted du leaked: {out}");
     }
 }

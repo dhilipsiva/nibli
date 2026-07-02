@@ -141,4 +141,86 @@ pub const CASES: &[Case] = &[
         query: "la .bel. cu cipni",
         expect: Expect::False,
     },
+    // ── du identity: ground equality maps to native TPTP `=` (congruence closure over a
+    // definite theory = nibli's union-find, in both directions). Broken-chain cases double
+    // as the post-retraction state: retracting a `du` link rebuilds the equivalence index
+    // from survivors, which is by construction the program that never asserted it (the
+    // session-level retraction path itself is engine-tested; see logji's du suites). ──
+    Case {
+        name: "du_reflexive_true",
+        kb: &["la .adam. cu gerku"],
+        query: "la .adam. cu du la .adam.",
+        expect: Expect::True,
+    },
+    Case {
+        name: "du_symmetric_true",
+        kb: &["la .adam. cu du la .bel."],
+        query: "la .bel. cu du la .adam.",
+        expect: Expect::True,
+    },
+    Case {
+        name: "du_chain_transitive_true",
+        kb: &[
+            "la .adam. cu du la .bel.",
+            "la .bel. cu du la .kim.",
+            "la .kim. cu du la .dan.",
+        ],
+        query: "la .adam. cu du la .dan.",
+        expect: Expect::True,
+    },
+    Case {
+        name: "du_chain_broken_false",
+        // The chain above MINUS its middle link — the post-retraction state of
+        // `du_chain_transitive_true` after retracting `bel du kim`.
+        kb: &["la .adam. cu du la .bel.", "la .kim. cu du la .dan."],
+        query: "la .adam. cu du la .dan.",
+        expect: Expect::False,
+    },
+    Case {
+        name: "du_no_link_false",
+        kb: &["la .adam. cu gerku", "la .bel. cu gerku"],
+        query: "la .adam. cu du la .bel.",
+        expect: Expect::False,
+    },
+    Case {
+        name: "du_substitutivity_fact_true",
+        kb: &["la .adam. cu du la .bel.", "la .adam. cu gerku"],
+        query: "la .bel. cu gerku",
+        expect: Expect::True,
+    },
+    Case {
+        name: "du_substitutivity_broken_chain_false",
+        // Substitutivity must NOT leak across the broken (post-retraction) chain.
+        kb: &[
+            "la .adam. cu du la .bel.",
+            "la .kim. cu du la .dan.",
+            "la .adam. cu gerku",
+        ],
+        query: "la .dan. cu gerku",
+        expect: Expect::False,
+    },
+    Case {
+        name: "du_rule_fires_through_identity",
+        // Substitutivity feeds RULE FIRING, not just fact lookup: bel is a dog only via
+        // the identity link, and the rule must still derive danlu(bel).
+        kb: &[
+            "ro lo gerku cu danlu",
+            "la .adam. cu du la .bel.",
+            "la .adam. cu gerku",
+        ],
+        query: "la .bel. cu danlu",
+        expect: Expect::True,
+    },
+    Case {
+        name: "du_transitive_substitutivity_through_rule_true",
+        // Three-entity class + a rule: the full mix (chain, substitutivity, firing).
+        kb: &[
+            "ro lo gerku cu danlu",
+            "la .adam. cu du la .bel.",
+            "la .bel. cu du la .kim.",
+            "la .kim. cu gerku",
+        ],
+        query: "la .adam. cu danlu",
+        expect: Expect::True,
+    },
 ];

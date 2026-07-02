@@ -16,10 +16,113 @@
 //! `proofs/Stratification.lean`). Callers MUST gate each case with
 //! [`crate::filter::buffer_asp_mappable`] first; a non-classical node reaching the
 //! translator is a filter bug and is surfaced as an `Err`, never silently mistranslated.
+//!
+//! **`du` equality** is handled by a canonicalization pre-pass ([`DuClasses`]): the ground
+//! `du(c1, c2)` facts are union-found into equivalence classes, every constant in the
+//! remaining program is rewritten to its class representative, and the `du` facts are
+//! dropped — after canonicalization the merged entities ARE one constant, which is exactly
+//! nibli's union-find semantics (substitutivity in fact lookup, rule firing, and NAF checks
+//! alike). A `du` QUERY becomes clingo's term-equality builtin `C1 == C2` over the
+//! canonicalized constants, so the oracle — not the translator — decides identity.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm};
+
+/// Union-find over the ground `du` facts of a program, with deterministic
+/// (lexicographically-smallest) class representatives — the `du` canonicalization pre-pass.
+pub struct DuClasses {
+    rep: HashMap<String, String>,
+}
+
+impl DuClasses {
+    /// Collect the `du`-equivalence classes from the KB buffers. Only the sole-root ground
+    /// `du(c1, c2)` shape participates (the only shape the filter admits); everything else
+    /// is left untouched for the filter to have already rejected.
+    pub fn collect(kb: &[LogicBuffer]) -> Self {
+        let mut parent: HashMap<String, String> = HashMap::new();
+        for buf in kb {
+            if let Some((a, b)) = du_fact_args(buf) {
+                let ra = find_root(&mut parent, &a);
+                let rb = find_root(&mut parent, &b);
+                if ra != rb {
+                    // Union by lexicographic order: the smaller name becomes the root, so
+                    // the representative is deterministic regardless of assertion order.
+                    let (small, big) = if ra < rb { (ra, rb) } else { (rb, ra) };
+                    parent.insert(big, small);
+                }
+            }
+        }
+        // Flatten to a direct constant → representative map.
+        let keys: Vec<String> = parent.keys().cloned().collect();
+        let mut rep = HashMap::new();
+        for k in keys {
+            let r = find_root(&mut parent, &k);
+            rep.insert(k, r);
+        }
+        DuClasses { rep }
+    }
+
+    /// The canonical representative for a constant (itself if never merged).
+    fn canon<'a>(&'a self, c: &'a str) -> &'a str {
+        self.rep.get(c).map(String::as_str).unwrap_or(c)
+    }
+
+    /// A structural copy of `buf` with every `Constant` rewritten to its representative.
+    fn rewrite(&self, buf: &LogicBuffer) -> LogicBuffer {
+        let nodes = buf
+            .nodes
+            .iter()
+            .map(|n| match n {
+                LogicNode::Predicate((rel, args)) => LogicNode::Predicate((
+                    rel.clone(),
+                    args.iter().map(|t| self.rewrite_term(t)).collect(),
+                )),
+                other => other.clone(),
+            })
+            .collect();
+        LogicBuffer {
+            nodes,
+            roots: buf.roots.clone(),
+        }
+    }
+
+    fn rewrite_term(&self, t: &LogicalTerm) -> LogicalTerm {
+        match t {
+            LogicalTerm::Constant(c) => LogicalTerm::Constant(self.canon(c).to_string()),
+            other => other.clone(),
+        }
+    }
+}
+
+/// `Some((c1, c2))` iff the buffer is exactly one sole-root ground `du(c1, c2)` fact —
+/// the only `du` shape the filter admits into this fragment.
+fn du_fact_args(buf: &LogicBuffer) -> Option<(String, String)> {
+    if let [r] = buf.roots.as_slice() {
+        if let Some(LogicNode::Predicate((rel, args))) = buf.nodes.get(*r as usize) {
+            if rel == "du" && args.len() == 2 {
+                if let (LogicalTerm::Constant(a), LogicalTerm::Constant(b)) = (&args[0], &args[1]) {
+                    return Some((a.clone(), b.clone()));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Path-compressing find for [`DuClasses::collect`]'s string union-find.
+fn find_root(parent: &mut HashMap<String, String>, x: &str) -> String {
+    let mut cur = x.to_string();
+    let mut path = Vec::new();
+    while let Some(p) = parent.get(&cur) {
+        path.push(cur.clone());
+        cur = p.clone();
+    }
+    for n in path {
+        parent.insert(n, cur.clone());
+    }
+    cur
+}
 
 /// A regrouped surface atom `rel(a1, …, aN)` — the event decomposition collapsed away.
 struct SurfaceAtom {
@@ -53,10 +156,12 @@ impl AspTerm {
     }
 }
 
-/// A body literal: a positive atom `a(..)` or a default-negation literal `not a(..)`.
+/// A body literal: a positive atom `a(..)`, a default-negation literal `not a(..)`, or a
+/// term-equality builtin `t1 == t2` (the canonicalized `du` query).
 enum BodyLit {
     Pos(SurfaceAtom),
     Naf(SurfaceAtom),
+    Eq(AspTerm, AspTerm),
 }
 
 impl BodyLit {
@@ -64,6 +169,7 @@ impl BodyLit {
         match self {
             BodyLit::Pos(a) => a.render(),
             BodyLit::Naf(a) => format!("not {}", a.render()),
+            BodyLit::Eq(l, r) => format!("{} == {}", l.render(), r.render()),
         }
     }
 }
@@ -72,8 +178,21 @@ impl BodyLit {
 /// reified into a 0-ary `goal` atom shown via `#show goal/0.`. clingo then reports whether
 /// `goal` is in the (unique, for a stratified program) stable model — the entailment test.
 pub fn render_program(kb: &[LogicBuffer], query: &LogicBuffer) -> Result<String, String> {
+    // `du` canonicalization pre-pass: union-find the ground `du` facts, rewrite every
+    // constant to its class representative, and drop the `du` fact buffers themselves —
+    // after canonicalization the merged entities ARE one constant (nibli's union-find
+    // semantics, made syntactic). See the module docs.
+    let du = DuClasses::collect(kb);
+    let kb_rw: Vec<LogicBuffer> = kb
+        .iter()
+        .filter(|b| du_fact_args(b).is_none())
+        .map(|b| du.rewrite(b))
+        .collect();
+    let query_rw = du.rewrite(query);
+    let query = &query_rw;
+
     let mut out = String::new();
-    for buf in kb {
+    for buf in &kb_rw {
         for &root in &buf.roots {
             for line in translate_root(buf, root)? {
                 out.push_str(&line);
@@ -224,6 +343,14 @@ fn collect_query_body(
     out: &mut Vec<BodyLit>,
 ) -> Result<(), String> {
     match node_at(buf, id)? {
+        // A `du` query after canonicalization: identity holds iff both sides rewrote to
+        // the SAME representative. Delegate to clingo's term-equality builtin so the
+        // oracle — not the translator — decides: `goal :- c1 == c2.`
+        LogicNode::Predicate((rel, args)) if rel == "du" && args.len() == 2 => {
+            let l = term(buf, &args[0], vars);
+            let r = term(buf, &args[1], vars);
+            out.push(BodyLit::Eq(l, r));
+        }
         LogicNode::NotNode(inner) => out.push(BodyLit::Naf(regroup_event(buf, *inner, vars)?)),
         LogicNode::AndNode((l, r)) => {
             collect_query_body(buf, *l, vars, out)?;
@@ -662,5 +789,67 @@ mod tests {
         assert_eq!(sanitize("gerku_x1"), "gerku_x1");
         // Uppercase-initial would parse as a clingo variable → prefixed.
         assert_eq!(sanitize("Adam"), "c_Adam");
+    }
+
+    /// A sole-root ground `du(a, b)` buffer — the shape the filter admits.
+    fn du_fact(a: &str, b: &str) -> LogicBuffer {
+        let mut n = Vec::new();
+        let root = pred(&mut n, "du", vec![con(a), con(b)]);
+        buf(n, vec![root])
+    }
+
+    #[test]
+    fn du_facts_canonicalize_constants_and_are_dropped() {
+        // du(bel, adam) + du(kim, bel) → one class, rep = lexicographic min = adam.
+        // A fact over `kim` and a query over `bel` must BOTH rewrite to `adam`, and no
+        // `du` atom may survive into the program.
+        let mut fact_nodes = Vec::new();
+        let fact_root = event1(&mut fact_nodes, "_ev0", "prenu", con("kim"));
+        let fact = buf(fact_nodes, vec![fact_root]);
+
+        let mut q_nodes = Vec::new();
+        let q_root = event1(&mut q_nodes, "_ev0", "prenu", con("bel"));
+        let query = buf(q_nodes, vec![q_root]);
+
+        let out = render_program(
+            &[du_fact("bel", "adam"), du_fact("kim", "bel"), fact],
+            &query,
+        )
+        .unwrap();
+        assert!(out.contains("prenu(adam)."), "{out}");
+        assert!(out.contains("goal :- prenu(adam)."), "{out}");
+        assert!(
+            !out.contains("du("),
+            "du atom leaked into the program: {out}"
+        );
+        assert!(!out.contains("bel"), "unrewritten constant leaked: {out}");
+        assert!(!out.contains("kim"), "unrewritten constant leaked: {out}");
+    }
+
+    #[test]
+    fn du_query_becomes_eq_builtin() {
+        // Linked: query du(adam, bel) with KB du(adam, bel) → both canonicalize to adam
+        // → `goal :- adam == adam.` (clingo derives goal → Entailed).
+        let out = render_program(&[du_fact("adam", "bel")], &du_fact("adam", "bel")).unwrap();
+        assert!(out.contains("goal :- adam == adam."), "{out}");
+
+        // Unlinked: query du(adam, bel) with an empty KB → `goal :- adam == bel.`
+        // (fails → goal absent → NotEntailed, matching nibli's closed-world FALSE).
+        let out = render_program(&[], &du_fact("adam", "bel")).unwrap();
+        assert!(out.contains("goal :- adam == bel."), "{out}");
+    }
+
+    #[test]
+    fn du_canonicalization_is_order_independent() {
+        // The representative is the lexicographically-smallest member, regardless of the
+        // order the du facts arrive in.
+        let a = DuClasses::collect(&[du_fact("kim", "adam"), du_fact("bel", "kim")]);
+        let b = DuClasses::collect(&[du_fact("bel", "kim"), du_fact("kim", "adam")]);
+        for c in ["adam", "bel", "kim"] {
+            assert_eq!(a.canon(c), "adam", "class of {c}");
+            assert_eq!(b.canon(c), "adam", "class of {c}");
+        }
+        // An unmerged constant is its own representative.
+        assert_eq!(a.canon("dan"), "dan");
     }
 }

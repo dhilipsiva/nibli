@@ -1,8 +1,9 @@
 //! Deterministic property-based generator of NAF-free definite-Horn cases for the differential
-//! gate. Each case is a random taxonomy program — `la .X. cu P` facts and `ro lo P cu Q`
-//! universal rules over a small fallback-dictionary vocabulary — plus a random atomic query.
-//! Every case is in the mappable classical fragment **by construction** (no negation, no
-//! numbers, no tense/deontic/compute), so it broadens differential soundness coverage without
+//! gate. Each case is a random taxonomy program — `la .X. cu P` facts, `la .X. cu du la .Y.`
+//! identity links, and `ro lo P cu Q` universal rules over a small fallback-dictionary
+//! vocabulary — plus a random atomic (or identity) query. Every case is in the mappable
+//! classical fragment **by construction** (no negation, no numbers, no tense/deontic/compute;
+//! ground `du` maps to native `=`), so it broadens differential soundness coverage without
 //! ever leaving the fragment the gate can judge. The filter in `run_lines` is still the final
 //! arbiter, so even a case that somehow compiled outside the fragment is skipped, never
 //! mis-judged.
@@ -67,13 +68,35 @@ pub fn random_case(seed: u64) -> GeneratedCase {
             rng.pick(PREDS)
         ));
     }
+    // 0..=2 identity links `la .E1. cu du la .E2.` — nibli resolves these through its
+    // union-find equivalence index; the Vampire side sees native `=` (congruence), so the
+    // mix exercises substitutivity through fact lookup AND rule firing. A self-link
+    // (`E du E`) or a duplicate link is harmless (reflexivity / idempotent union).
+    let n_du = rng.below(3);
+    for _ in 0..n_du {
+        kb.push(format!(
+            "la .{}. cu du la .{}.",
+            rng.pick(ENTITIES),
+            rng.pick(ENTITIES)
+        ));
+    }
     // 0..=3 universal (Horn) rules `ro lo P cu Q`. Cycles are fine — definite Horn stays sound;
     // nibli may cut a cycle to Unknown, which the gate simply skips.
     let n_rules = rng.below(4);
     for _ in 0..n_rules {
         kb.push(format!("ro lo {} cu {}", rng.pick(PREDS), rng.pick(PREDS)));
     }
-    let query = format!("la .{}. cu {}", rng.pick(ENTITIES), rng.pick(PREDS));
+    // Mostly an atomic `la .E. cu P` query; 1-in-5 an identity query `la .E1. cu du la .E2.`
+    // (checking the equivalence classes themselves, both TRUE and closed-world-FALSE sides).
+    let query = if rng.below(5) == 0 {
+        format!(
+            "la .{}. cu du la .{}.",
+            rng.pick(ENTITIES),
+            rng.pick(ENTITIES)
+        )
+    } else {
+        format!("la .{}. cu {}", rng.pick(ENTITIES), rng.pick(PREDS))
+    };
 
     GeneratedCase {
         name: format!("rand_seed{seed}"),
@@ -99,7 +122,7 @@ const NAF_DOMAIN: &str = "prenu";
 /// `ro lo prenu poi na R cu Q` NAF rule (`R` base, `Q` derived), an optional positive Horn
 /// chain among derived predicates, and 1..=2 domain-member entities that may or may not
 /// carry the `R` witness. Stratified by construction (see [`NAF_BASE`]); in the ASP-mappable
-/// fragment by construction (plain gismu, `poi na`, no compute/tense/deontic/du). The filter
+/// fragment by construction (plain gismu, `poi na`, no compute/tense/deontic; an optional ground `du` link is canonicalized by the translator). The filter
 /// in `run_lines_asp` is still the final arbiter, so a case outside the fragment is skipped,
 /// never mis-judged.
 pub fn random_naf_case(seed: u64) -> GeneratedCase {
@@ -131,6 +154,14 @@ pub fn random_naf_case(seed: u64) -> GeneratedCase {
             kb.push(format!("la .{e}. cu {r}"));
         }
         ents.push(e);
+    }
+
+    // Optionally merge two entities with an identity link — the NAF-THROUGH-EQUALITY shape:
+    // an R-witness on either side of the link blocks the rule for BOTH (nibli sees it via
+    // the union-find; clingo sees one canonicalized constant). `du` is resolved by the
+    // equivalence index, not a rule head, so stratification is untouched.
+    if ents.len() == 2 && rng.below(3) == 0 {
+        kb.push(format!("la .{}. cu du la .{}.", ents[0], ents[1]));
     }
 
     let qe = ents[rng.below(ents.len())];

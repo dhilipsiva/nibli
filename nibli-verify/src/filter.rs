@@ -8,9 +8,9 @@
 //!      arrow also compiles to `Not` (`Or(Not(A),B)`), indistinguishable from a real
 //!      `na` once flattened, so genuine negation must be caught before translation;
 //!   2. a buffer scan for the non-classical node kinds (compute / tense / deontic /
-//!      exact-count / abstraction).
+//!      exact-count / abstraction), plus the `du` shape gate below.
 
-use nibli_types::logic::{LogicBuffer, LogicNode};
+use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm};
 
 /// Lojban logical-negation cmavo. These introduce classical-breaking negation (read
 /// as negation-as-failure under the CWA); scalar contraries (`na'e`, `to'e`, `no'e`)
@@ -25,9 +25,25 @@ pub fn source_has_negation(line: &str) -> bool {
         .any(|tok| NEGATION_CMAVO.contains(&tok))
 }
 
+/// Ground `du` in the ONE verified shape both oracles can judge: the buffer's sole root,
+/// with exactly two `Constant` args — i.e. a bare `la .X. cu du la .Y.` fact or query
+/// (`du` is never event-decomposed, so this is precisely how smuni compiles it). The
+/// Vampire path maps it to TPTP native `=` (congruence closure over a definite theory
+/// derives exactly the union-find's reflexive/symmetric/transitive/substitutive
+/// consequences, in both directions); the ASP path canonicalizes the equivalence classes
+/// away before regrouping (`asp::DuClasses`). Everything else — `du` under a rule or
+/// negation, `du` with variable/number/description args — is skipped conservatively:
+/// nibli's semantics there (contradiction records for `na du`, tensed inertness, exact
+/// numeric `dunli` vs `du`) is not what either oracle would judge.
+fn du_mappable(buf: &LogicBuffer, idx: usize, args: &[LogicalTerm]) -> bool {
+    buf.roots.as_slice() == [idx as u32]
+        && args.len() == 2
+        && args.iter().all(|a| matches!(a, LogicalTerm::Constant(_)))
+}
+
 /// `Some(reason)` if the buffer contains a node outside the classical FOL fragment.
 pub fn buffer_non_classical(buf: &LogicBuffer) -> Option<&'static str> {
-    for node in &buf.nodes {
+    for (idx, node) in buf.nodes.iter().enumerate() {
         let reason = match node {
             LogicNode::ComputeNode(_) => "compute predicate",
             LogicNode::PastNode(_) | LogicNode::PresentNode(_) | LogicNode::FutureNode(_) => {
@@ -36,6 +52,9 @@ pub fn buffer_non_classical(buf: &LogicBuffer) -> Option<&'static str> {
             LogicNode::ObligatoryNode(_) | LogicNode::PermittedNode(_) => "deontic",
             LogicNode::CountNode(_) => "exact-count quantifier",
             LogicNode::Predicate((rel, _)) if rel.starts_with("__abs_") => "abstraction",
+            LogicNode::Predicate((rel, args)) if rel == "du" && !du_mappable(buf, idx, args) => {
+                "equality (nested or non-ground)"
+            }
             _ => continue,
         };
         return Some(reason);
@@ -49,13 +68,14 @@ pub fn buffer_non_classical(buf: &LogicBuffer) -> Option<&'static str> {
 /// (`lo nu`/`lo du'u`/…) are ACCEPTED — the translator models an abstraction as an opaque constant
 /// keyed by its content hash (`asp::abs_const_of`), so a deontic-NAF rule like GDPR's
 /// `ro lo prenu poi na zanru cu se bilga lo nu se vimcu` maps. The other non-classical node kinds
-/// (compute / tense / deontic modal / exact-count) are still rejected, plus `du` equality (not
-/// event-decomposed; would need explicit congruence rules).
+/// (compute / tense / deontic modal / exact-count) are still rejected. Ground sole-root `du`
+/// equality is ACCEPTED (see [`du_mappable`]; the translator canonicalizes the classes away);
+/// any other `du` shape is skipped.
 ///
 /// (`se bilga` / `se curmi` compile to the PLAIN gismu `bilga`/`curmi`, not a deontic modal node,
 /// so the deontic reading rides for free once the abstraction in the head is mapped.)
 pub fn buffer_asp_mappable(buf: &LogicBuffer) -> Option<&'static str> {
-    for node in &buf.nodes {
+    for (idx, node) in buf.nodes.iter().enumerate() {
         let reason = match node {
             LogicNode::ComputeNode(_) => "compute predicate",
             LogicNode::PastNode(_) | LogicNode::PresentNode(_) | LogicNode::FutureNode(_) => {
@@ -63,7 +83,9 @@ pub fn buffer_asp_mappable(buf: &LogicBuffer) -> Option<&'static str> {
             }
             LogicNode::ObligatoryNode(_) | LogicNode::PermittedNode(_) => "deontic",
             LogicNode::CountNode(_) => "exact-count quantifier",
-            LogicNode::Predicate((rel, _)) if rel == "du" => "equality",
+            LogicNode::Predicate((rel, args)) if rel == "du" && !du_mappable(buf, idx, args) => {
+                "equality (nested or non-ground)"
+            }
             _ => continue,
         };
         return Some(reason);
@@ -74,7 +96,6 @@ pub fn buffer_asp_mappable(buf: &LogicBuffer) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nibli_types::logic::LogicalTerm;
 
     #[test]
     fn detects_negation_tokens() {
@@ -112,8 +133,95 @@ mod tests {
         assert_eq!(buffer_non_classical(&plain), None);
     }
 
+    /// The one accepted `du` shape: sole root, two constants — a bare fact/query.
+    fn ground_du() -> LogicBuffer {
+        LogicBuffer {
+            nodes: vec![LogicNode::Predicate((
+                "du".into(),
+                vec![
+                    LogicalTerm::Constant("adam".into()),
+                    LogicalTerm::Constant("bel".into()),
+                ],
+            ))],
+            roots: vec![0],
+        }
+    }
+
     #[test]
-    fn asp_mappable_accepts_naf_rejects_du_and_non_classical() {
+    fn ground_sole_root_du_is_mappable_in_both_fragments() {
+        // `la .X. cu du la .Y.` — Vampire judges it as native `=`; the ASP translator
+        // canonicalizes the equivalence class away. Accepted by BOTH filters.
+        assert_eq!(buffer_non_classical(&ground_du()), None);
+        assert_eq!(buffer_asp_mappable(&ground_du()), None);
+    }
+
+    #[test]
+    fn nested_or_non_ground_du_is_skipped_in_both_fragments() {
+        // `du` with a variable arg (e.g. inside a rule) — not the verified shape.
+        let non_ground = LogicBuffer {
+            nodes: vec![LogicNode::Predicate((
+                "du".into(),
+                vec![
+                    LogicalTerm::Variable("x".into()),
+                    LogicalTerm::Constant("bel".into()),
+                ],
+            ))],
+            roots: vec![0],
+        };
+        assert_eq!(
+            buffer_non_classical(&non_ground),
+            Some("equality (nested or non-ground)")
+        );
+        assert_eq!(
+            buffer_asp_mappable(&non_ground),
+            Some("equality (nested or non-ground)")
+        );
+
+        // Ground `du` that is NOT the sole root (e.g. wrapped in `na du` — a negative-fact
+        // /contradiction record in nibli, NOT NAF) — skipped, never mis-judged.
+        let negated = LogicBuffer {
+            nodes: vec![
+                LogicNode::Predicate((
+                    "du".into(),
+                    vec![
+                        LogicalTerm::Constant("adam".into()),
+                        LogicalTerm::Constant("bel".into()),
+                    ],
+                )),
+                LogicNode::NotNode(0),
+            ],
+            roots: vec![1],
+        };
+        assert_eq!(
+            buffer_non_classical(&negated),
+            Some("equality (nested or non-ground)")
+        );
+        assert_eq!(
+            buffer_asp_mappable(&negated),
+            Some("equality (nested or non-ground)")
+        );
+
+        // Numeric `du` (`li pa du li re`) — exact numeric identity is `dunli`/compute
+        // territory; skipped.
+        let numeric = LogicBuffer {
+            nodes: vec![LogicNode::Predicate((
+                "du".into(),
+                vec![LogicalTerm::Number(1.0), LogicalTerm::Number(2.0)],
+            ))],
+            roots: vec![0],
+        };
+        assert_eq!(
+            buffer_non_classical(&numeric),
+            Some("equality (nested or non-ground)")
+        );
+        assert_eq!(
+            buffer_asp_mappable(&numeric),
+            Some("equality (nested or non-ground)")
+        );
+    }
+
+    #[test]
+    fn asp_mappable_accepts_naf_rejects_non_classical() {
         // NAF (NotNode) is accepted by the ASP filter (unlike the classical one).
         let naf = LogicBuffer {
             nodes: vec![
@@ -123,19 +231,6 @@ mod tests {
             roots: vec![1],
         };
         assert_eq!(buffer_asp_mappable(&naf), None);
-
-        // `du` equality is rejected (needs congruence rules — out of scope).
-        let du = LogicBuffer {
-            nodes: vec![LogicNode::Predicate((
-                "du".into(),
-                vec![
-                    LogicalTerm::Constant("adam".into()),
-                    LogicalTerm::Constant("bel".into()),
-                ],
-            ))],
-            roots: vec![0],
-        };
-        assert_eq!(buffer_asp_mappable(&du), Some("equality"));
 
         // The non-classical reject list still applies (compute / deontic / …).
         let compute = LogicBuffer {
