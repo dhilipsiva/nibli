@@ -24,6 +24,7 @@ pub mod generator;
 pub mod oracle;
 pub mod oracle_asp;
 pub mod parser_diff;
+pub mod retract_diff;
 pub mod seam;
 pub mod strat_diff;
 pub mod tense;

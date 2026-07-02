@@ -443,6 +443,68 @@ fn stratification_rejection_matches_independent_criterion() {
     );
 }
 
+/// Retraction metamorphic differential (`nibli_verify::retract_diff`): retract ≡
+/// never-asserted. Seeded random op sequences (ground / ∃-skolemizing / ∀-rule / `du` /
+/// stratified-NAF asserts + retractions of random earlier ops); after EVERY retraction,
+/// the incremental engine's verdicts over an entity×predicate battery must be
+/// byte-identical to a fresh engine that asserted only the surviving lines. Exercises
+/// both retraction paths (O(1) ground removal AND the full-rebuild fallback for
+/// rules/existentials/`du` — `GUARANTEES.md §Retraction Model`). Native-only, never skips.
+#[test]
+fn retraction_is_equivalent_to_never_asserted() {
+    use nibli_verify::retract_diff::{self, RetractOutcome};
+
+    let count: u64 = std::env::var("NIBLI_VERIFY_RETRACT_RANDOM_COUNT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(200);
+
+    let mut agree = 0usize;
+    let mut retractions = 0usize;
+    let mut complex = 0usize;
+    let mut divergences: Vec<String> = Vec::new();
+    let mut errors: Vec<String> = Vec::new();
+    for seed in 0..count {
+        match retract_diff::run_retract_case(&retract_diff::random_retract_case(seed)) {
+            RetractOutcome::Agree {
+                retractions: r,
+                complex_retractions: c,
+                ..
+            } => {
+                agree += 1;
+                retractions += r;
+                complex += c;
+            }
+            o if o.is_divergence() => divergences.push(o.summary()),
+            o => errors.push(o.summary()),
+        }
+    }
+    eprintln!(
+        "nibli-verify retract: {agree} agree / {} diverge / {} error \
+         ({retractions} retractions, {complex} complex/rebuild-path, across {count} sequences)",
+        divergences.len(),
+        errors.len()
+    );
+
+    assert!(errors.is_empty(), "harness errors:\n{}", errors.join("\n"));
+    assert!(
+        divergences.is_empty(),
+        "retraction left the KB different from never-asserted:\n{}",
+        divergences.join("\n")
+    );
+    // Non-vacuity: plenty of retractions overall, and specifically plenty through the
+    // full-rebuild path (rules / existentials / du) — the audit's untested branch.
+    assert!(
+        retractions as u64 >= count,
+        "only {retractions} retractions across the sweep; near-vacuous"
+    );
+    assert!(
+        complex as u64 >= count / 5,
+        "only {complex} rebuild-path retractions across the sweep; the complex branch is \
+         near-vacuous"
+    );
+}
+
 /// gerna→smuni compiler-seam gate: compile source Lojban end-to-end (parse + semantic compile)
 /// and check the FOL against hand-verified structure (ground truth) + transformation invariants
 /// (oracle-free). This is the FRONT-END analog of the Vampire/clingo oracle gates: the six proofs

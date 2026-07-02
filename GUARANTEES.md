@@ -95,7 +95,7 @@ The proofs are model-level (the perfect model is *characterized* by axioms, not 
 
 **Incremental TMS:** For simple ground facts (no Skolemization, no rules), retraction removes the fact directly from the fact store and all indexes — O(1) per fact.
 
-**Full rebuild fallback:** For complex assertions (ForAll rules, existential variables, Skolemized facts), retraction falls back to full rebuild from surviving base facts. This is O(total_non_retracted_facts) but guaranteed correct.
+**Full rebuild fallback:** For complex assertions (ForAll rules, existential variables, Skolemized facts), retraction falls back to full rebuild from surviving base facts. This is O(total_non_retracted_facts) but guaranteed correct. The guarantee is checked metamorphically at scale (`nibli-verify/src/retract_diff.rs`, part of `just verify-soundness`): seeded random op sequences mix ground, existential, rule, `du`, and stratified-NAF asserts with retractions of random earlier ops, and after EVERY retraction the incremental engine must answer an entity×predicate battery byte-identically to a fresh engine that asserted only the surviving lines — retract ≡ never-asserted, across both the O(1) and the full-rebuild paths.
 
 **Equivalence rebuild:** When `du` facts are retracted, the equivalence index is rebuilt from all surviving `du` facts.
 
