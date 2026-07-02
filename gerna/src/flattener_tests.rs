@@ -16,16 +16,16 @@ fn test_multi_sentence_produces_two_roots() {
         sentences: vec![
             Sentence::Simple(Bridi {
                 selbri: Selbri::Root("klama".into()),
-                head_terms: vec![],
-                tail_terms: vec![],
+                head_terms: &[],
+                tail_terms: &[],
                 negated: false,
                 tense: None,
                 attitudinal: None,
             }),
             Sentence::Simple(Bridi {
                 selbri: Selbri::Root("prami".into()),
-                head_terms: vec![],
-                tail_terms: vec![],
+                head_terms: &[],
+                tail_terms: &[],
                 negated: false,
                 tense: None,
                 attitudinal: None,
@@ -53,24 +53,24 @@ fn test_three_sentences_three_roots() {
         sentences: vec![
             Sentence::Simple(Bridi {
                 selbri: Selbri::Root("klama".into()),
-                head_terms: vec![],
-                tail_terms: vec![],
+                head_terms: &[],
+                tail_terms: &[],
                 negated: false,
                 tense: None,
                 attitudinal: None,
             }),
             Sentence::Simple(Bridi {
                 selbri: Selbri::Root("prami".into()),
-                head_terms: vec![],
-                tail_terms: vec![],
+                head_terms: &[],
+                tail_terms: &[],
                 negated: false,
                 tense: None,
                 attitudinal: None,
             }),
             Sentence::Simple(Bridi {
                 selbri: Selbri::Root("barda".into()),
-                head_terms: vec![],
-                tail_terms: vec![],
+                head_terms: &[],
+                tail_terms: &[],
                 negated: false,
                 tense: None,
                 attitudinal: None,
@@ -91,7 +91,7 @@ fn test_rel_clause_body_is_not_a_root() {
     let parsed = ParsedText {
         sentences: vec![Sentence::Simple(Bridi {
             selbri: Selbri::Root("barda".into()),
-            head_terms: vec![Sumti::Restricted {
+            head_terms: arena.alloc_slice_fill_iter(vec![Sumti::Restricted {
                 inner: arena.alloc(Sumti::Description {
                     gadri: Gadri::Lo,
                     inner: arena.alloc(Selbri::Root("gerku".into())),
@@ -100,15 +100,15 @@ fn test_rel_clause_body_is_not_a_root() {
                     kind: RelClauseKind::Poi,
                     body: arena.alloc(Sentence::Simple(Bridi {
                         selbri: Selbri::Root("sutra".into()),
-                        head_terms: vec![],
-                        tail_terms: vec![],
+                        head_terms: &[],
+                        tail_terms: &[],
                         negated: false,
                         tense: None,
                         attitudinal: None,
                     })),
                 },
-            }],
-            tail_terms: vec![],
+            }]),
+            tail_terms: &[],
             negated: false,
             tense: None,
             attitudinal: None,
@@ -128,21 +128,21 @@ fn test_nu_abstraction_body_is_not_a_root() {
     let parsed = ParsedText {
         sentences: vec![Sentence::Simple(Bridi {
             selbri: Selbri::Root("barda".into()),
-            head_terms: vec![Sumti::Description {
+            head_terms: arena.alloc_slice_fill_iter(vec![Sumti::Description {
                 gadri: Gadri::Lo,
                 inner: arena.alloc(Selbri::Abstraction(
                     AbstractionKind::Nu,
                     arena.alloc(Sentence::Simple(Bridi {
                         selbri: Selbri::Root("klama".into()),
-                        head_terms: vec![Sumti::ProSumti("mi".into())],
-                        tail_terms: vec![],
+                        head_terms: arena.alloc_slice_fill_iter(vec![Sumti::ProSumti("mi".into())]),
+                        tail_terms: &[],
                         negated: false,
                         tense: None,
                         attitudinal: None,
                     })),
                 )),
-            }],
-            tail_terms: vec![],
+            }]),
+            tail_terms: &[],
             negated: false,
             tense: None,
             attitudinal: None,
@@ -166,7 +166,7 @@ fn test_multi_sentence_with_rel_clauses() {
         sentences: vec![
             Sentence::Simple(Bridi {
                 selbri: Selbri::Root("klama".into()),
-                head_terms: vec![Sumti::Restricted {
+                head_terms: arena.alloc_slice_fill_iter(vec![Sumti::Restricted {
                     inner: arena.alloc(Sumti::Description {
                         gadri: Gadri::Lo,
                         inner: arena.alloc(Selbri::Root("gerku".into())),
@@ -175,23 +175,23 @@ fn test_multi_sentence_with_rel_clauses() {
                         kind: RelClauseKind::Poi,
                         body: arena.alloc(Sentence::Simple(Bridi {
                             selbri: Selbri::Root("barda".into()),
-                            head_terms: vec![],
-                            tail_terms: vec![],
+                            head_terms: &[],
+                            tail_terms: &[],
                             negated: false,
                             tense: None,
                             attitudinal: None,
                         })),
                     },
-                }],
-                tail_terms: vec![],
+                }]),
+                tail_terms: &[],
                 negated: false,
                 tense: None,
                 attitudinal: None,
             }),
             Sentence::Simple(Bridi {
                 selbri: Selbri::Root("prami".into()),
-                head_terms: vec![Sumti::ProSumti("mi".into())],
-                tail_terms: vec![Sumti::ProSumti("do".into())],
+                head_terms: arena.alloc_slice_fill_iter(vec![Sumti::ProSumti("mi".into())]),
+                tail_terms: arena.alloc_slice_fill_iter(vec![Sumti::ProSumti("do".into())]),
                 negated: false,
                 tense: None,
                 attitudinal: None,
@@ -220,21 +220,22 @@ fn test_abstraction_kind_flattening() {
         let parsed = ParsedText {
             sentences: vec![Sentence::Simple(Bridi {
                 selbri: Selbri::Root("barda".into()),
-                head_terms: vec![Sumti::Description {
+                head_terms: arena.alloc_slice_fill_iter(vec![Sumti::Description {
                     gadri: Gadri::Lo,
                     inner: arena.alloc(Selbri::Abstraction(
                         kind,
                         arena.alloc(Sentence::Simple(Bridi {
                             selbri: Selbri::Root("klama".into()),
-                            head_terms: vec![Sumti::ProSumti("mi".into())],
-                            tail_terms: vec![],
+                            head_terms: arena
+                                .alloc_slice_fill_iter(vec![Sumti::ProSumti("mi".into())]),
+                            tail_terms: &[],
                             negated: false,
                             tense: None,
                             attitudinal: None,
                         })),
                     )),
-                }],
-                tail_terms: vec![],
+                }]),
+                tail_terms: &[],
                 negated: false,
                 tense: None,
                 attitudinal: None,
@@ -270,13 +271,13 @@ fn test_connected_sumti_flattening() {
     let parsed = ParsedText {
         sentences: vec![Sentence::Simple(Bridi {
             selbri: Selbri::Root("klama".into()),
-            head_terms: vec![Sumti::Connected {
+            head_terms: arena.alloc_slice_fill_iter(vec![Sumti::Connected {
                 left: arena.alloc(Sumti::ProSumti("mi".into())),
                 connective: Connective::Je,
                 right_negated: false,
                 right: arena.alloc(Sumti::ProSumti("do".into())),
-            }],
-            tail_terms: vec![],
+            }]),
+            tail_terms: &[],
             negated: false,
             tense: None,
             attitudinal: None,
@@ -325,13 +326,13 @@ fn test_connected_sumti_negated_flattening() {
     let parsed = ParsedText {
         sentences: vec![Sentence::Simple(Bridi {
             selbri: Selbri::Root("klama".into()),
-            head_terms: vec![Sumti::Connected {
+            head_terms: arena.alloc_slice_fill_iter(vec![Sumti::Connected {
                 left: arena.alloc(Sumti::ProSumti("mi".into())),
                 connective: Connective::Je,
                 right_negated: true,
                 right: arena.alloc(Sumti::ProSumti("do".into())),
-            }],
-            tail_terms: vec![],
+            }]),
+            tail_terms: &[],
             negated: false,
             tense: None,
             attitudinal: None,
@@ -358,7 +359,7 @@ fn test_chained_connected_sumti_flattening() {
     let parsed = ParsedText {
         sentences: vec![Sentence::Simple(Bridi {
             selbri: Selbri::Root("klama".into()),
-            head_terms: vec![Sumti::Connected {
+            head_terms: arena.alloc_slice_fill_iter(vec![Sumti::Connected {
                 left: arena.alloc(Sumti::ProSumti("mi".into())),
                 connective: Connective::Je,
                 right_negated: false,
@@ -368,8 +369,8 @@ fn test_chained_connected_sumti_flattening() {
                     right_negated: false,
                     right: arena.alloc(Sumti::ProSumti("di".into())),
                 }),
-            }],
-            tail_terms: vec![],
+            }]),
+            tail_terms: &[],
             negated: false,
             tense: None,
             attitudinal: None,
@@ -411,11 +412,11 @@ fn test_modal_tagged_flattening() {
     let parsed = ParsedText {
         sentences: vec![Sentence::Simple(Bridi {
             selbri: Selbri::Root("klama".into()),
-            head_terms: vec![],
-            tail_terms: vec![Sumti::ModalTagged(
+            head_terms: &[],
+            tail_terms: arena.alloc_slice_fill_iter(vec![Sumti::ModalTagged(
                 ModalTag::Fixed(BaiTag::Ria),
                 arena.alloc(Sumti::ProSumti("mi".into())),
-            )],
+            )]),
             negated: false,
             tense: None,
             attitudinal: None,
@@ -446,12 +447,12 @@ fn test_quantified_description_flattening() {
     let parsed = ParsedText {
         sentences: vec![Sentence::Simple(Bridi {
             selbri: Selbri::Root("barda".into()),
-            head_terms: vec![Sumti::QuantifiedDescription {
+            head_terms: arena.alloc_slice_fill_iter(vec![Sumti::QuantifiedDescription {
                 count: 2,
                 gadri: Gadri::Lo,
                 inner: arena.alloc(Selbri::Root("gerku".into())),
-            }],
-            tail_terms: vec![],
+            }]),
+            tail_terms: &[],
             negated: false,
             tense: None,
             attitudinal: None,
@@ -516,8 +517,8 @@ fn test_abstraction_body_over_connected_sentence_targets_connected_node() {
     let parsed = ParsedText {
         sentences: vec![Sentence::Simple(Bridi {
             selbri: Selbri::Root("djica".into()),
-            head_terms: vec![Sumti::ProSumti("mi".into())],
-            tail_terms: vec![Sumti::Description {
+            head_terms: arena.alloc_slice_fill_iter(vec![Sumti::ProSumti("mi".into())]),
+            tail_terms: arena.alloc_slice_fill_iter(vec![Sumti::Description {
                 gadri: Gadri::Lo,
                 inner: arena.alloc(Selbri::Abstraction(
                     AbstractionKind::Nu,
@@ -525,23 +526,23 @@ fn test_abstraction_body_over_connected_sentence_targets_connected_node() {
                         connective: SentenceConnective::GanaiGi,
                         left: arena.alloc(Sentence::Simple(Bridi {
                             selbri: Selbri::Root("gerku".into()),
-                            head_terms: vec![],
-                            tail_terms: vec![],
+                            head_terms: &[],
+                            tail_terms: &[],
                             negated: false,
                             tense: None,
                             attitudinal: None,
                         })),
                         right: arena.alloc(Sentence::Simple(Bridi {
                             selbri: Selbri::Root("klama".into()),
-                            head_terms: vec![],
-                            tail_terms: vec![],
+                            head_terms: &[],
+                            tail_terms: &[],
                             negated: false,
                             tense: None,
                             attitudinal: None,
                         })),
                     }),
                 )),
-            }],
+            }]),
             negated: false,
             tense: None,
             attitudinal: None,
@@ -578,14 +579,14 @@ fn test_abstraction_body_with_rel_clause_targets_head_bridi() {
     let parsed = ParsedText {
         sentences: vec![Sentence::Simple(Bridi {
             selbri: Selbri::Root("djica".into()),
-            head_terms: vec![Sumti::ProSumti("mi".into())],
-            tail_terms: vec![Sumti::Description {
+            head_terms: arena.alloc_slice_fill_iter(vec![Sumti::ProSumti("mi".into())]),
+            tail_terms: arena.alloc_slice_fill_iter(vec![Sumti::Description {
                 gadri: Gadri::Lo,
                 inner: arena.alloc(Selbri::Abstraction(
                     AbstractionKind::Nu,
                     arena.alloc(Sentence::Simple(Bridi {
                         selbri: Selbri::Root("klama".into()),
-                        head_terms: vec![Sumti::Restricted {
+                        head_terms: arena.alloc_slice_fill_iter(vec![Sumti::Restricted {
                             inner: arena.alloc(Sumti::Description {
                                 gadri: Gadri::Lo,
                                 inner: arena.alloc(Selbri::Root("gerku".into())),
@@ -594,21 +595,21 @@ fn test_abstraction_body_with_rel_clause_targets_head_bridi() {
                                 kind: RelClauseKind::Poi,
                                 body: arena.alloc(Sentence::Simple(Bridi {
                                     selbri: Selbri::Root("barda".into()),
-                                    head_terms: vec![],
-                                    tail_terms: vec![],
+                                    head_terms: &[],
+                                    tail_terms: &[],
                                     negated: false,
                                     tense: None,
                                     attitudinal: None,
                                 })),
                             },
-                        }],
-                        tail_terms: vec![],
+                        }]),
+                        tail_terms: &[],
                         negated: false,
                         tense: None,
                         attitudinal: None,
                     })),
                 )),
-            }],
+            }]),
             negated: false,
             tense: None,
             attitudinal: None,
@@ -635,7 +636,7 @@ fn test_rel_clause_body_with_nested_abstraction_targets_clause_bridi() {
     let parsed = ParsedText {
         sentences: vec![Sentence::Simple(Bridi {
             selbri: Selbri::Root("klama".into()),
-            head_terms: vec![Sumti::Restricted {
+            head_terms: arena.alloc_slice_fill_iter(vec![Sumti::Restricted {
                 inner: arena.alloc(Sumti::Description {
                     gadri: Gadri::Lo,
                     inner: arena.alloc(Selbri::Root("gerku".into())),
@@ -644,28 +645,28 @@ fn test_rel_clause_body_with_nested_abstraction_targets_clause_bridi() {
                     kind: RelClauseKind::Poi,
                     body: arena.alloc(Sentence::Simple(Bridi {
                         selbri: Selbri::Root("nelci".into()),
-                        head_terms: vec![],
-                        tail_terms: vec![Sumti::Description {
+                        head_terms: &[],
+                        tail_terms: arena.alloc_slice_fill_iter(vec![Sumti::Description {
                             gadri: Gadri::Lo,
                             inner: arena.alloc(Selbri::Abstraction(
                                 AbstractionKind::Nu,
                                 arena.alloc(Sentence::Simple(Bridi {
                                     selbri: Selbri::Root("bajra".into()),
-                                    head_terms: vec![],
-                                    tail_terms: vec![],
+                                    head_terms: &[],
+                                    tail_terms: &[],
                                     negated: false,
                                     tense: None,
                                     attitudinal: None,
                                 })),
                             )),
-                        }],
+                        }]),
                         negated: false,
                         tense: None,
                         attitudinal: None,
                     })),
                 },
-            }],
-            tail_terms: vec![],
+            }]),
+            tail_terms: &[],
             negated: false,
             tense: None,
             attitudinal: None,
@@ -698,11 +699,11 @@ fn test_fio_flattening() {
     let parsed = ParsedText {
         sentences: vec![Sentence::Simple(Bridi {
             selbri: Selbri::Root("barda".into()),
-            head_terms: vec![],
-            tail_terms: vec![Sumti::ModalTagged(
+            head_terms: &[],
+            tail_terms: arena.alloc_slice_fill_iter(vec![Sumti::ModalTagged(
                 ModalTag::Fio(arena.alloc(Selbri::Root("klama".into()))),
                 arena.alloc(Sumti::ProSumti("mi".into())),
-            )],
+            )]),
             negated: false,
             tense: None,
             attitudinal: None,

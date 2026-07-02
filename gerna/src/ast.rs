@@ -4,6 +4,13 @@
 //! All tree references use `&'arena T` instead of `Box<T>`, batching allocations
 //! into contiguous arena chunks and freeing them in one shot after flattening.
 //!
+//! INVARIANT (leak-freedom): `bumpalo::Bump` never runs `Drop`, so AST nodes must
+//! NOT own heap allocations — no `String`/`Vec` fields anywhere reachable from an
+//! arena-moved node. Strings are arena-interned `&'a str` (`Bump::alloc_str`) and
+//! lists are arena slices `&'a [T]` (`Bump::alloc_slice_fill_iter`). Violating
+//! this leaks the owned buffers on every `parse_text` call (caught by the fuzz
+//! gate's LeakSanitizer pass, which runs with leak detection ON).
+//!
 //! Covers Lojban constructs:
 //!   - `.i` sentence separator, `fa`/`fe`/`fi`/`fo`/`fu` place tags
 //!   - `na`/`naku` negation, `poi`/`noi`/`voi` relative clauses
@@ -142,16 +149,16 @@ pub enum AbstractionKind {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Sumti<'a> {
     /// Pro-sumti: mi, do, ko'a..ko'u, da/de/di, ti/ta/tu, ri/ra/ru, etc.
-    ProSumti(String),
+    ProSumti(&'a str),
 
     /// Gadri-description: lo/le/la/ro lo/ro le + selbri [+ ku]
     Description { gadri: Gadri, inner: &'a Selbri<'a> },
 
     /// la + cmevla name(s)
-    Name(String),
+    Name(&'a str),
 
     /// Quoted literal (from zo/zoi)
-    QuotedLiteral(String),
+    QuotedLiteral(&'a str),
 
     /// Explicit unspecified: zo'e
     Unspecified,
@@ -203,10 +210,10 @@ pub struct RelClause<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Selbri<'a> {
     /// Single root word (gismu or lujvo)
-    Root(String),
+    Root(&'a str),
 
     /// Compound (lujvo rafsi sequence from zei-gluing)
-    Compound(Vec<String>),
+    Compound(&'a [&'a str]),
 
     /// Tanru: modifier + head (right-grouping)
     /// e.g., "sutra gerku" → Tanru(Root("sutra"), Root("gerku"))
@@ -224,7 +231,7 @@ pub enum Selbri<'a> {
     /// Selbri with bound arguments: selbri + be sumti (bei sumti)* [be'o]
     WithArgs {
         core: &'a Selbri<'a>,
-        args: Vec<Sumti<'a>>,
+        args: &'a [Sumti<'a>],
     },
 
     /// Selbri connective: selbri + (je|ja|jo|ju) + selbri
@@ -265,9 +272,9 @@ pub struct Bridi<'a> {
     /// The main predicate relation of this bridi.
     pub selbri: Selbri<'a>,
     /// Terms appearing before the selbri (separated by `cu`).
-    pub head_terms: Vec<Sumti<'a>>,
+    pub head_terms: &'a [Sumti<'a>],
     /// Terms appearing after the selbri.
-    pub tail_terms: Vec<Sumti<'a>>,
+    pub tail_terms: &'a [Sumti<'a>],
     /// Whether sentence-level `na` negation is present.
     pub negated: bool,
     /// Optional tense marker (pu/ca/ba).
@@ -292,7 +299,7 @@ pub enum Sentence<'a> {
     /// quantified logic variables (`da`/`de`/`di`) scoping a body sentence.
     /// Lowers to nested `∀` over the body in smuni.
     Prenex {
-        vars: Vec<String>,
+        vars: &'a [&'a str],
         body: &'a Sentence<'a>,
     },
 }

@@ -190,9 +190,9 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         }
 
         if let Some(NormalizedToken::Quoted(s)) = self.peek() {
-            let owned = s.to_string();
+            let interned = &*self.arena.alloc_str(s);
             self.pos += 1;
-            return Some(Sumti::QuotedLiteral(owned));
+            return Some(Sumti::QuotedLiteral(interned));
         }
         if self.peek_is_cmavo("li") {
             return self.try_parse_li_number();
@@ -361,10 +361,10 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         self.pos += 1;
         self.eat_pause();
 
-        let mut name_parts = Vec::new();
+        let mut name_parts: Vec<&str> = Vec::new();
         while self.peek_is_cmevla() {
             if let Some(NormalizedToken::Standard(_, s)) = self.advance() {
-                name_parts.push(s.to_string());
+                name_parts.push(s);
             }
             self.eat_pause();
         }
@@ -381,7 +381,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
             return None;
         }
 
-        Some(Sumti::Name(name_parts.join(" ")))
+        Some(Sumti::Name(self.arena.alloc_str(&name_parts.join(" "))))
     }
 
     /// Try to parse a lo/le description.
@@ -454,15 +454,17 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         let result = match cmavo {
             "zo'e" => Sumti::Unspecified,
             "mi" | "do" | "mi'o" | "mi'a" | "ma'a" | "do'o" | "ko" => {
-                Sumti::ProSumti(cmavo.to_string())
+                Sumti::ProSumti(self.arena.alloc_str(cmavo))
             }
-            s if s.starts_with("ko'") && s.len() == 4 => Sumti::ProSumti(cmavo.to_string()),
-            "da" | "de" | "di" => Sumti::ProSumti(cmavo.to_string()),
-            "ti" | "ta" | "tu" => Sumti::ProSumti(cmavo.to_string()),
-            "ri" | "ra" | "ru" => Sumti::ProSumti(cmavo.to_string()),
-            "ke'a" => Sumti::ProSumti(cmavo.to_string()),
-            "ce'u" => Sumti::ProSumti(cmavo.to_string()),
-            "ma" => Sumti::ProSumti(cmavo.to_string()),
+            s if s.starts_with("ko'") && s.len() == 4 => {
+                Sumti::ProSumti(self.arena.alloc_str(cmavo))
+            }
+            "da" | "de" | "di" => Sumti::ProSumti(self.arena.alloc_str(cmavo)),
+            "ti" | "ta" | "tu" => Sumti::ProSumti(self.arena.alloc_str(cmavo)),
+            "ri" | "ra" | "ru" => Sumti::ProSumti(self.arena.alloc_str(cmavo)),
+            "ke'a" => Sumti::ProSumti(self.arena.alloc_str(cmavo)),
+            "ce'u" => Sumti::ProSumti(self.arena.alloc_str(cmavo)),
+            "ma" => Sumti::ProSumti(self.arena.alloc_str(cmavo)),
             _ => return None,
         };
 

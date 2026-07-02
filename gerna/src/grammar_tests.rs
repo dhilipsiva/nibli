@@ -254,7 +254,7 @@ fn test_prenex_two_universals() {
     assert_eq!(r.sentences.len(), 1);
     match &r.sentences[0] {
         Sentence::Prenex { vars, body } => {
-            assert_eq!(vars, &vec!["da".to_string(), "de".to_string()]);
+            assert_eq!(vars, &["da", "de"]);
             let b = as_bridi(body);
             assert_eq!(b.selbri, Selbri::Root("pendo".into()));
         }
@@ -785,7 +785,7 @@ fn test_la_name_single() {
         &arena,
     );
     match &as_bridi(&r.sentences[0]).head_terms[0] {
-        Sumti::Name(n) => assert_eq!(n, "djan"),
+        Sumti::Name(n) => assert_eq!(*n, "djan"),
         other => panic!("expected Name, got {:?}", other),
     }
 }
@@ -808,7 +808,7 @@ fn test_la_name_multiple_cmevla() {
         &arena,
     );
     match &as_bridi(&r.sentences[0]).head_terms[0] {
-        Sumti::Name(n) => assert_eq!(n, "djan braun"),
+        Sumti::Name(n) => assert_eq!(*n, "djan braun"),
         other => panic!("expected Name, got {:?}", other),
     }
 }
@@ -876,7 +876,7 @@ fn test_pro_sumti_demonstratives() {
         let r = parse_ok(&[cmavo(pro), gismu("barda")], &arena);
         assert_eq!(
             as_bridi(&r.sentences[0]).head_terms[0],
-            Sumti::ProSumti(pro.to_string())
+            Sumti::ProSumti(*pro)
         );
     }
 }
@@ -889,7 +889,7 @@ fn test_pro_sumti_anaphora() {
         let r = parse_ok(&[cmavo(pro), gismu("barda")], &arena);
         assert_eq!(
             as_bridi(&r.sentences[0]).head_terms[0],
-            Sumti::ProSumti(pro.to_string())
+            Sumti::ProSumti(*pro)
         );
     }
 }
@@ -920,7 +920,7 @@ fn test_quoted_literal() {
     let arena = Bump::new();
     let r = parse_ok(&[cmavo("mi"), gismu("cusku"), quoted("coi")], &arena);
     match &as_bridi(&r.sentences[0]).tail_terms[0] {
-        Sumti::QuotedLiteral(s) => assert_eq!(s, "coi"),
+        Sumti::QuotedLiteral(s) => assert_eq!(*s, "coi"),
         other => panic!("expected QuotedLiteral, got {:?}", other),
     }
 }
@@ -1841,7 +1841,7 @@ fn test_name_with_connective_selbri() {
         &arena,
     );
     let s = as_bridi(&r.sentences[0]);
-    assert!(matches!(&s.head_terms[0], Sumti::Name(n) if n == "bob"));
+    assert!(matches!(&s.head_terms[0], Sumti::Name(n) if *n == "bob"));
     assert!(matches!(
         &s.selbri,
         Selbri::Connected {
@@ -3351,7 +3351,7 @@ fn test_lujvo_as_selbri() {
     let arena = Bump::new();
     let r = parse_ok(&[cmavo("mi"), lujvo("brivla")], &arena);
     let b = as_bridi(&r.sentences[0]);
-    assert_eq!(b.selbri, Selbri::Root("brivla".to_string()));
+    assert_eq!(b.selbri, Selbri::Root("brivla"));
 }
 
 #[test]
@@ -3362,8 +3362,8 @@ fn test_lujvo_in_tanru() {
     let b = as_bridi(&r.sentences[0]);
     match &b.selbri {
         Selbri::Tanru(left, right) => {
-            assert_eq!(**left, Selbri::Root("brivla".to_string()));
-            assert_eq!(**right, Selbri::Root("klama".to_string()));
+            assert_eq!(**left, Selbri::Root("brivla"));
+            assert_eq!(**right, Selbri::Root("klama"));
         }
         other => panic!("expected Tanru, got {:?}", other),
     }
@@ -3375,7 +3375,7 @@ fn test_lujvo_with_head_term() {
     let arena = Bump::new();
     let r = parse_ok(&[cmavo("mi"), lujvo("nunprami")], &arena);
     let b = as_bridi(&r.sentences[0]);
-    assert_eq!(b.selbri, Selbri::Root("nunprami".to_string()));
+    assert_eq!(b.selbri, Selbri::Root("nunprami"));
     assert_eq!(b.head_terms.len(), 1);
 }
 
@@ -3387,7 +3387,7 @@ fn test_explicit_go_i_as_selbri() {
     let arena = Bump::new();
     let r = parse_ok(&[cmavo("mi"), cmavo("go'i"), cmavo("do")], &arena);
     let b = as_bridi(&r.sentences[0]);
-    assert_eq!(b.selbri, Selbri::Root("go'i".to_string()));
+    assert_eq!(b.selbri, Selbri::Root("go'i"));
     assert_eq!(b.head_terms.len(), 1);
     assert_eq!(b.tail_terms.len(), 1);
 }
@@ -3431,7 +3431,7 @@ fn test_du_as_selbri_with_cu() {
         &arena,
     );
     let b = as_bridi(&r.sentences[0]);
-    assert_eq!(b.selbri, Selbri::Root("du".to_string()));
+    assert_eq!(b.selbri, Selbri::Root("du"));
     assert_eq!(b.head_terms.len(), 1);
     assert_eq!(b.tail_terms.len(), 1);
 }
@@ -3452,7 +3452,7 @@ fn test_observative_du_without_cu() {
         &arena,
     );
     let b = as_bridi(&r.sentences[0]);
-    assert_eq!(b.selbri, Selbri::Root("du".to_string()));
+    assert_eq!(b.selbri, Selbri::Root("du"));
     assert_eq!(b.head_terms.len(), 1);
     assert_eq!(b.tail_terms.len(), 1);
 }
@@ -3939,7 +3939,7 @@ fn test_quoted_literal_as_head_term() {
     let r = parse_ok(&[quoted("mi klama"), cmavo("cu"), gismu("valsi")], &arena);
     let b = as_bridi(&r.sentences[0]);
     assert_eq!(b.head_terms.len(), 1);
-    assert!(matches!(&b.head_terms[0], Sumti::QuotedLiteral(s) if s == "mi klama"));
+    assert!(matches!(&b.head_terms[0], Sumti::QuotedLiteral(s) if *s == "mi klama"));
 }
 
 #[test]
@@ -3977,7 +3977,7 @@ fn test_lujvo_with_be_bei() {
     let b = as_bridi(&r.sentences[0]);
     match &b.selbri {
         Selbri::WithArgs { core, args } => {
-            assert!(matches!(core, Selbri::Root(n) if n == "nunprami"));
+            assert!(matches!(core, Selbri::Root(n) if *n == "nunprami"));
             assert_eq!(args.len(), 2);
         }
         other => panic!("expected WithArgs, got {:?}", other),
@@ -4185,7 +4185,7 @@ fn test_pause_before_cu_name() {
     );
     let b = as_bridi(&r.sentences[0]);
     match &b.head_terms[0] {
-        Sumti::Name(n) => assert_eq!(n, "alis"),
+        Sumti::Name(n) => assert_eq!(*n, "alis"),
         other => panic!("expected Name, got {:?}", other),
     }
     assert_eq!(b.selbri, Selbri::Root("klama".into()));

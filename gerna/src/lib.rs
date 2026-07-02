@@ -168,12 +168,12 @@ impl Flattener {
                 let relation = self.push_selbri(&bridi.selbri);
 
                 let mut head_terms = Vec::new();
-                for term in &bridi.head_terms {
+                for term in bridi.head_terms {
                     head_terms.push(self.push_sumti(term));
                 }
 
                 let mut tail_terms = Vec::new();
-                for term in &bridi.tail_terms {
+                for term in bridi.tail_terms {
                     tail_terms.push(self.push_sumti(term));
                 }
 
@@ -243,9 +243,10 @@ impl Flattener {
                 // as Connected / Abstraction bodies).
                 let body_idx = self.push_sentence(body);
                 let idx = self.buffer.sentences.len() as u32;
-                self.buffer
-                    .sentences
-                    .push(WasmSentence::Prenex((vars.clone(), body_idx)));
+                self.buffer.sentences.push(WasmSentence::Prenex((
+                    vars.iter().map(|v| v.to_string()).collect(),
+                    body_idx,
+                )));
                 idx
             }
         }
@@ -262,9 +263,11 @@ impl Flattener {
     /// Flatten a selbri node and return its index in `buffer.selbris`.
     fn push_selbri(&mut self, selbri: &ast::Selbri<'_>) -> u32 {
         let wit_selbri = match selbri {
-            ast::Selbri::Root(s) => flat::Selbri::Root(s.clone()),
+            ast::Selbri::Root(s) => flat::Selbri::Root(s.to_string()),
 
-            ast::Selbri::Compound(parts) => flat::Selbri::Compound(parts.clone()),
+            ast::Selbri::Compound(parts) => {
+                flat::Selbri::Compound(parts.iter().map(|p| p.to_string()).collect())
+            }
 
             ast::Selbri::Tanru(modifier, head) => {
                 let m_id = self.push_selbri(modifier);
@@ -345,7 +348,7 @@ impl Flattener {
     /// Flatten a sumti node and return its index in `buffer.sumtis`.
     fn push_sumti(&mut self, sumti: &ast::Sumti<'_>) -> u32 {
         let wit_sumti = match sumti {
-            ast::Sumti::ProSumti(s) => flat::Sumti::ProSumti(s.clone()),
+            ast::Sumti::ProSumti(s) => flat::Sumti::ProSumti(s.to_string()),
             ast::Sumti::Description { gadri, inner } => {
                 let inner_id = self.push_selbri(inner);
                 let wit_gadri = match gadri {
@@ -357,8 +360,8 @@ impl Flattener {
                 };
                 flat::Sumti::Description((wit_gadri, inner_id))
             }
-            ast::Sumti::Name(n) => flat::Sumti::Name(n.clone()),
-            ast::Sumti::QuotedLiteral(q) => flat::Sumti::QuotedLiteral(q.clone()),
+            ast::Sumti::Name(n) => flat::Sumti::Name(n.to_string()),
+            ast::Sumti::QuotedLiteral(q) => flat::Sumti::QuotedLiteral(q.to_string()),
             ast::Sumti::Unspecified => flat::Sumti::Unspecified,
             ast::Sumti::Tagged(tag, inner) => {
                 let inner_id = self.push_sumti(inner);

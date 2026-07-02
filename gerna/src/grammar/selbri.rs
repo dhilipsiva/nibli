@@ -188,20 +188,26 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         }
 
         if self.peek_is_gismu() {
-            if let Some(NormalizedToken::Standard(_, s)) = self.advance() {
-                return Some(Selbri::Root(s.to_string()));
+            let word = match self.advance() {
+                Some(NormalizedToken::Standard(_, s)) => Some(*s),
+                _ => None,
+            };
+            if let Some(word) = word {
+                return Some(Selbri::Root(self.arena.alloc_str(word)));
             }
         }
 
         if let Some(NormalizedToken::Glued(parts)) = self.peek() {
-            let compound: Vec<String> = parts.iter().map(|s| s.to_string()).collect();
+            let arena = self.arena;
+            let compound: &'arena [&'arena str] =
+                arena.alloc_slice_fill_iter(parts.iter().map(|s| &*arena.alloc_str(s)));
             self.pos += 1;
             return Some(Selbri::Compound(compound));
         }
 
         if self.peek_is_cmavo("go'i") {
             self.pos += 1;
-            return Some(Selbri::Root("go'i".to_string()));
+            return Some(Selbri::Root("go'i"));
         }
 
         // `du` (identity / GOhA): a content-bearing cmavo selbri, like go'i.
@@ -209,7 +215,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         // decomposition) that feeds logji's union-find equivalence classes.
         if self.peek_is_cmavo("du") {
             self.pos += 1;
-            return Some(Selbri::Root("du".to_string()));
+            return Some(Selbri::Root("du"));
         }
 
         {
@@ -262,7 +268,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         } else {
             Selbri::WithArgs {
                 core: self.arena.alloc(core),
-                args,
+                args: self.arena.alloc_slice_fill_iter(args),
             }
         }
     }

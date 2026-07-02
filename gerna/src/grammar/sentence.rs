@@ -36,13 +36,13 @@ impl<'a, 'arena> Parser<'a, 'arena> {
     /// is not a prenex (e.g. `ro lo gerku ...` — a universal description — or a
     /// `ro <var>` sequence with no `zo'u` terminator). `zo'u` already lexes as a
     /// plain cmavo.
-    fn try_parse_prenex(&mut self) -> Option<Vec<String>> {
+    fn try_parse_prenex(&mut self) -> Option<Vec<&'arena str>> {
         let saved = self.save();
         let mut vars = Vec::new();
         while self.eat_cmavo("ro") {
             match self.peek_cmavo() {
                 Some(v @ ("da" | "de" | "di")) => {
-                    let name = v.to_string();
+                    let name = &*self.arena.alloc_str(v);
                     self.pos += 1;
                     vars.push(name);
                 }
@@ -72,7 +72,7 @@ impl<'a, 'arena> Parser<'a, 'arena> {
             let body = self.parse_sentence()?;
             self.leave();
             return Ok(Sentence::Prenex {
-                vars,
+                vars: self.arena.alloc_slice_fill_iter(vars),
                 body: self.arena.alloc(body),
             });
         }
@@ -166,8 +166,8 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         self.leave();
         Ok(Bridi {
             selbri,
-            head_terms,
-            tail_terms,
+            head_terms: self.arena.alloc_slice_fill_iter(head_terms),
+            tail_terms: self.arena.alloc_slice_fill_iter(tail_terms),
             negated,
             tense,
             attitudinal,

@@ -43,7 +43,7 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | `just fuzz-assert [SECS]` | Fuzz nibli-engine assert_text (full pipeline) |
 | `just fuzz-query [SECS]` | Fuzz nibli-engine assert + query (stateful KB; split-half input: first half asserted, second half queried) |
 | `just fuzz-seed` | Seed `fuzz/corpus/` for all three targets from the shipped `.lojban` corpus files |
-| `just fuzz-ci [SECS]` | Unattended fuzz gate: `fuzz-seed` + all three targets × SECS (default 120) each; non-zero on crash/OOM. Runs as a parallel `fuzz` job in the GitHub workflow. Carries a disclosed leak-detection waiver (Justfile `fuzz_lsan_env`/`fuzz_lsan`) for the known parser arena leak — see Known Issues. |
+| `just fuzz-ci [SECS]` | Unattended fuzz gate: `fuzz-seed` + all three targets × SECS (default 120) each; non-zero on crash/OOM/leak (LeakSanitizer is ON — the arena AST is leak-free by invariant, see `gerna/src/ast.rs`). Runs as a parallel `fuzz` job in the GitHub workflow. |
 
 **Important:**
 - Always use `cargo test --lib` (NOT `cargo test`) — cdylib linker chokes on WIT export symbols containing `@`
@@ -145,8 +145,6 @@ When analyzing or searching the codebase:
 
 - `cargo component build` fails on `io-extras` crate — pre-existing, unrelated to our changes. Bindings generate before the failure.
 - **rustc ICE in `check_mod_deathness`** — `wasmtime::component::bindgen!` macro triggers compiler panic in library crates (not binary crates like gasnu). Workaround: `#![allow(dead_code)]` at crate root in nibli-engine. Fixed in rustc 1.94.0 (updated via flake).
-- **Parser per-parse heap leak** (found by the fuzz gate, 2026-07-02) — gerna's `bumpalo` AST arena never runs `Drop`, so owned `String`/`Vec` fields inside arena-moved AST nodes leak their heap buffers on every `parse_text` call (input-proportional; affects long-running REPL/browser/WASM sessions). Tracked as `TODO.md` item 1; until it lands, the fuzz recipes carry a disclosed leak-detection waiver (Justfile `fuzz_lsan_env`/`fuzz_lsan`).
-
 ## Roadmap
 
 The **soundness-by-proof frontier is complete** (P1–P4 gaps cleared; P5 done): Track A ships two
