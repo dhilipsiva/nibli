@@ -69,7 +69,9 @@ gitignored here, so this skill file itself was force-added — keep that in mind
    - Write the commit message to a temp file and `git commit -F /tmp/msg.txt`. Heredocs and `-m` mangle
      backticks / `?` / quotes inside the double-quoted `bash -lc` wrapper — the file avoids that. (Use the
      Write tool to author the message at `\\wsl.localhost\Ubuntu\tmp\msg.txt`, i.e. `/tmp/msg.txt`.)
-   - End the message with: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
+   - End the message with the `Co-Authored-By: Claude … <noreply@anthropic.com>` trailer the harness
+     specifies for the model actually doing the work — do not copy a model name hardcoded here (an
+     earlier revision pinned "Opus 4.8" and it went stale).
    - Scope the commit to the files this item touched (`git add <those files>`). Never sweep in unrelated
      working-tree changes.
    - Before pushing: `git fetch` and check the branch isn't behind / nobody else pushed; rebase (not
