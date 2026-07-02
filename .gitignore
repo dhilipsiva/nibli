@@ -28,3 +28,4 @@ data/
 # Model weights (large)
 models/
 .claude
+mutants.out*

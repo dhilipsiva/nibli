@@ -154,21 +154,6 @@ fn prenex_flatten(buffer: &LogicBuffer, body_id: u32) -> (Vec<String>, Vec<u32>,
     (extra_universals, conditions, current)
 }
 
-#[allow(dead_code)]
-pub(super) fn flatten_conjuncts(buffer: &LogicBuffer, node_id: u32) -> Vec<u32> {
-    let Ok(node) = get_node(buffer, node_id) else {
-        return vec![node_id];
-    };
-    match node {
-        LogicNode::AndNode((l, r)) => {
-            let mut result = flatten_conjuncts(buffer, *l);
-            result.extend(flatten_conjuncts(buffer, *r));
-            result
-        }
-        _ => vec![node_id],
-    }
-}
-
 pub(super) fn collect_condition_exists(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -241,13 +226,17 @@ pub(super) fn flatten_conjuncts_through_exists(
         LogicNode::FutureNode(inner) => {
             flatten_conjuncts_through_exists(buffer, *inner, condition_exists, Some("Future"))
         }
-        // Deontic wrappers (ei/e'e → Obligatory/Permitted) are transparent: descend
-        // to the inner condition keeping tense unchanged, mirroring the assert path
-        // (`collect_ground_facts`). Surface-unreachable today (attitudinals only wrap
-        // whole bridi), so this is raw-FOL completeness, consistent with the documented
-        // transparent-deontic semantics.
-        LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) => {
-            flatten_conjuncts_through_exists(buffer, *inner, condition_exists, tense)
+        // Deontic wrappers set the condition flavor EXACTLY like the tense arms: a
+        // `ganai e'e A gi B` condition matches only a stored Permitted(A), never a
+        // bare A. (Pre-2026-07 these were stripped as "surface-unreachable", but an
+        // attitudinal on a connective operand wraps that operand's bridi, so the
+        // shape IS reachable — the transparent strip made a deontic condition fire
+        // on a bare fact. Found by the mutation-baseline triage.)
+        LogicNode::ObligatoryNode(inner) => {
+            flatten_conjuncts_through_exists(buffer, *inner, condition_exists, Some("Obligatory"))
+        }
+        LogicNode::PermittedNode(inner) => {
+            flatten_conjuncts_through_exists(buffer, *inner, condition_exists, Some("Permitted"))
         }
         _ => vec![(node_id, tense)],
     }
@@ -408,8 +397,18 @@ fn flatten_consequent(
         LogicNode::FutureNode(inner) => {
             flatten_consequent(buffer, *inner, skolem_subs, Some("Future"))
         }
-        LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) => {
-            flatten_consequent(buffer, *inner, skolem_subs, tense)
+        // Deontic wrappers set the stored-fact flavor EXACTLY like the tense arms:
+        // `ganai A gi e'e B` derives Permitted(B), never bare B. (Pre-2026-07 these
+        // stripped the wrapper without setting the flavor — a ground conditional
+        // with a deontic consequent derived an UNQUALIFIED fact: permission leaked
+        // into truth. Reachable from the surface: an attitudinal on a connective
+        // operand wraps that operand's bridi. Found by the mutation-baseline
+        // triage; pinned by `deontic_rule_consequent_derives_flavored_fact`.)
+        LogicNode::ObligatoryNode(inner) => {
+            flatten_consequent(buffer, *inner, skolem_subs, Some("Obligatory"))
+        }
+        LogicNode::PermittedNode(inner) => {
+            flatten_consequent(buffer, *inner, skolem_subs, Some("Permitted"))
         }
         _ => vec![(node_id, tense)],
     }

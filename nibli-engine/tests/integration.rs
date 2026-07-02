@@ -960,6 +960,177 @@ fn temporal_tense_discrimination() {
     assert_false(&holds, "Future query should not match past-tensed fact");
 }
 
+// ─── Tense/deontic flavor matrix (mutation-baseline kills) ──────────
+// The Past (`pu`) paths are pinned above; the 2026-07 mutation sweep showed the
+// Future/Present/Permitted arms (kb.rs `with_tense`/`unify_facts`/
+// `tense_to_static`/`extract_from_index`, rules.rs `build_stored_fact_from_node`,
+// reasoning.rs `find_witnesses`) were exercised only by the nibli-verify oracle
+// gates, which don't run per-mutant. These pin them in the per-mutant suite.
+
+#[test]
+fn temporal_future_and_present_matrix() {
+    let engine = engine_with_facts(&["ba la .rex. cu citka", "ca la .bel. cu citka"]);
+
+    assert_true(
+        &engine.query_holds("ba la .rex. cu citka").unwrap(),
+        "Future fact matches a Future query",
+    );
+    assert_false(
+        &engine.query_holds("pu la .rex. cu citka").unwrap(),
+        "Future fact must not match a Past query",
+    );
+    assert_false(
+        &engine.query_holds("la .rex. cu citka").unwrap(),
+        "Future fact must not leak into a bare query",
+    );
+    assert_true(
+        &engine.query_holds("ca la .bel. cu citka").unwrap(),
+        "Present fact matches a Present query",
+    );
+    assert_false(
+        &engine.query_holds("ba la .bel. cu citka").unwrap(),
+        "Present fact must not match a Future query",
+    );
+}
+
+#[test]
+fn future_rule_consequent_derives_future_fact() {
+    // Mirrors tensed_conclusion_ganai_fires for `ba`: derives Future(B) only.
+    let engine = engine_with_facts(&[
+        "ganai la .rex. cu gerku gi ba la .rex. cu morsi",
+        "la .rex. cu gerku",
+    ]);
+    assert_true(
+        &engine.query_holds("ba la .rex. cu morsi").unwrap(),
+        "Future conclusion derives the Future fact",
+    );
+    assert_false(
+        &engine.query_holds("la .rex. cu morsi").unwrap(),
+        "Future conclusion must not derive a bare fact",
+    );
+    assert_false(
+        &engine.query_holds("pu la .rex. cu morsi").unwrap(),
+        "Future conclusion must not derive a Past fact",
+    );
+}
+
+#[test]
+fn deontic_permitted_and_obligatory_matrix() {
+    // e'e = Permitted, ei = Obligatory — flavor-exact, no bare leak either way.
+    let engine = engine_with_facts(&["e'e la .rex. cu citka", "ei la .bel. cu klama"]);
+
+    assert_true(
+        &engine.query_holds("e'e la .rex. cu citka").unwrap(),
+        "Permitted fact matches a Permitted query",
+    );
+    assert_false(
+        &engine.query_holds("la .rex. cu citka").unwrap(),
+        "Permitted fact must not leak into a bare query",
+    );
+    assert_false(
+        &engine.query_holds("ei la .rex. cu citka").unwrap(),
+        "Permitted fact must not match an Obligatory query",
+    );
+    assert_true(
+        &engine.query_holds("ei la .bel. cu klama").unwrap(),
+        "Obligatory fact matches an Obligatory query",
+    );
+    assert_false(
+        &engine.query_holds("e'e la .bel. cu klama").unwrap(),
+        "Obligatory fact must not match a Permitted query",
+    );
+}
+
+#[test]
+fn deontic_rule_consequent_derives_flavored_fact() {
+    // `ganai A gi e'e B` derives Permitted(B) — flavor-exact, mirroring the
+    // tensed-conclusion behavior above. This pins the 2026-07 fix: the deontic
+    // consequent wrapper used to be stripped WITHOUT setting the flavor, so this
+    // rule derived a BARE citka fact — permission leaked into unqualified truth
+    // (found by the mutation-baseline triage).
+    let engine = engine_with_facts(&[
+        "ganai la .rex. cu gerku gi e'e la .rex. cu citka",
+        "la .rex. cu gerku",
+    ]);
+    assert_true(
+        &engine.query_holds("e'e la .rex. cu citka").unwrap(),
+        "a Permitted conclusion derives the Permitted fact",
+    );
+    assert_false(
+        &engine.query_holds("la .rex. cu citka").unwrap(),
+        "a Permitted conclusion must NOT derive a bare fact",
+    );
+    assert_false(
+        &engine.query_holds("ei la .rex. cu citka").unwrap(),
+        "a Permitted conclusion must NOT derive an Obligatory fact",
+    );
+}
+
+#[test]
+fn deontic_rule_condition_is_flavor_exact() {
+    // `ganai e'e A gi B`: the condition matches only a stored Permitted(A) —
+    // a bare A must not fire it (same 2026-07 fix, condition side).
+    let engine = engine_with_facts(&[
+        "ganai e'e la .rex. cu gerku gi la .rex. cu citka",
+        "la .rex. cu gerku",
+    ]);
+    assert_false(
+        &engine.query_holds("la .rex. cu citka").unwrap(),
+        "a bare fact must not fire a Permitted-flavored condition",
+    );
+
+    let engine2 = engine_with_facts(&[
+        "ganai e'e la .rex. cu gerku gi la .rex. cu citka",
+        "e'e la .rex. cu gerku",
+    ]);
+    assert_true(
+        &engine2.query_holds("la .rex. cu citka").unwrap(),
+        "a Permitted fact fires the Permitted-flavored condition",
+    );
+}
+
+#[test]
+fn future_existential_witness_query() {
+    // `da` under `ba`: the existential witness search must look through the
+    // FutureNode wrapper (reasoning.rs find_witnesses) — flavor-exact.
+    let engine = engine_with_facts(&["ba la .rex. cu citka"]);
+    assert_true(
+        &engine.query_holds("da ba citka").unwrap(),
+        "existential finds the Future fact under a Future query",
+    );
+    assert_false(
+        &engine.query_holds("da pu citka").unwrap(),
+        "existential must not find the Future fact under a Past query",
+    );
+}
+
+// ─── Exact-count queries as propositions (mutation-baseline kills) ──
+// The CountNode fallback loop in check_formula_holds_core (member enumeration +
+// satisfying tally) was unexercised by the per-mutant suites — the curated count
+// coverage lives in nibli-verify's ASP oracle. Pin the tally arithmetic here.
+
+#[test]
+fn exact_count_query_over_ground_facts() {
+    let engine = engine_with_facts(&[
+        "la .adam. cu gerku",
+        "la .bel. cu gerku",
+        "la .adam. cu danlu",
+        "la .bel. cu danlu",
+    ]);
+    assert_true(
+        &engine.query_holds("re lo gerku cu danlu").unwrap(),
+        "exactly-2 holds when exactly two members satisfy the body",
+    );
+    assert_false(
+        &engine.query_holds("ci lo gerku cu danlu").unwrap(),
+        "exactly-3 fails when only two members satisfy the body",
+    );
+    assert_false(
+        &engine.query_holds("pa lo gerku cu danlu").unwrap(),
+        "exactly-1 fails when two members satisfy the body",
+    );
+}
+
 // ─── Description opacity (le vs lo) ────────────────────────────────
 
 #[test]
@@ -1235,6 +1406,30 @@ fn cll_place_counter_fi_then_untagged() {
     assert!(
         !role_has_const(&buf, "klama_x1", "do"),
         "do must NOT land in x1 (pre-fix `first free slot` bug); buffer: {buf:?}"
+    );
+}
+
+#[test]
+fn xe_conversion_swaps_x1_and_x5() {
+    // `xe klama` swaps x1↔x5 (mutation-baseline kill: the 5-place conversion arm
+    // in smuni's apply_selbri was exercised by no per-mutant-suite test). All
+    // five places are filled (`zo'e` middles) so the swap is observable: the
+    // head term must land in x5 (vehicle) and the tail term in x1 (goer).
+    let engine = NibliEngine::new();
+    let buf = engine
+        .compile_debug("la .ford. cu xe klama zo'e zo'e zo'e la .adam.")
+        .expect("xe klama with five places should compile");
+    assert!(
+        role_has_const(&buf, "klama_x5", "ford"),
+        "xe must move the head term to x5 (vehicle); buffer: {buf:?}"
+    );
+    assert!(
+        role_has_const(&buf, "klama_x1", "adam"),
+        "xe must move the fifth term to x1 (goer); buffer: {buf:?}"
+    );
+    assert!(
+        !role_has_const(&buf, "klama_x1", "ford"),
+        "xe must not leave the head term in x1; buffer: {buf:?}"
     );
 }
 

@@ -84,6 +84,10 @@
             # runs against the pinned nightly via NIBLI_NIGHTLY_BIN.
             cargo-fuzz
 
+            # Mutation-testing driver for the soundness paths (`just mutants`);
+            # scope + test invocation live in mutants.toml at the repo root.
+            cargo-mutants
+
             # Native build dependencies
             pkg-config
             openssl

@@ -1016,6 +1016,70 @@ fn depth_boundary_contract() {
     assert_eq!(verdict("melbi"), QueryResult::True, "depth 4 reaches melbi");
 }
 
+/// Exact-count bound logic with a NON-DEFINITIVE member (mutation-baseline kill,
+/// 2026-07 sweep): `check_formula_holds_core`'s CountNode fallback decides
+/// `satisfying > count || satisfying + unresolved < count → FALSE`, else returns
+/// the best non-definitive sub-result. No prior test enumerated a count body over
+/// a member whose sub-check is unresolved. Built on `compile_surface` (CountNode
+/// is IR-shape-dependent); the unresolved member comes from a 2-rule chain under
+/// a depth-1 bound (RESOURCE_EXCEEDED(Depth) — never a silent True/False).
+#[test]
+fn exact_count_with_unresolved_member_bounds() {
+    // KB 1: kim is a ground gerku; danlu(kim) needs mabru→jmive→danlu (2 rule
+    // steps) — unreachable under depth 1, so that member is unresolved.
+    // satisfying=0, unresolved=1.
+    let kb = new_kb();
+    for s in [
+        "la .kim. cu gerku",
+        "la .kim. cu mabru",
+        "ro da zo'u ganai da mabru gi da jmive",
+        "ro da zo'u ganai da jmive gi da danlu",
+    ] {
+        assert_buf(&kb, compile_surface(s));
+    }
+    kb.set_max_chain_depth(1);
+
+    // count=1: neither bound is decisive (0 > 1 is false; 0+1 < 1 is false) —
+    // the verdict is the member's own non-definitive result, NEVER a guess.
+    assert_eq!(
+        kb.query_entailment_inner(compile_surface("pa lo gerku cu danlu"))
+            .unwrap(),
+        QueryResult::ResourceExceeded(ResourceKind::Depth),
+        "0 satisfying + 1 unresolved vs count 1: non-definitive, not FALSE"
+    );
+    // count=2: the sum bound IS decisive (0+1 < 2) — a confident FALSE even
+    // with the unresolved member (it cannot reach the count either way).
+    assert_eq!(
+        kb.query_entailment_inner(compile_surface("re lo gerku cu danlu"))
+            .unwrap(),
+        QueryResult::False,
+        "0 satisfying + 1 unresolved vs count 2: sum bound gives FALSE"
+    );
+
+    // KB 2: two ground satisfiers + the unresolved member: the over-count bound
+    // is decisive (2 > 1) — FALSE regardless of the unresolved member.
+    let kb2 = new_kb();
+    for s in [
+        "la .adam. cu gerku",
+        "la .bel. cu gerku",
+        "la .kim. cu gerku",
+        "la .adam. cu danlu",
+        "la .bel. cu danlu",
+        "la .kim. cu mabru",
+        "ro da zo'u ganai da mabru gi da jmive",
+        "ro da zo'u ganai da jmive gi da danlu",
+    ] {
+        assert_buf(&kb2, compile_surface(s));
+    }
+    kb2.set_max_chain_depth(1);
+    assert_eq!(
+        kb2.query_entailment_inner(compile_surface("pa lo gerku cu danlu"))
+            .unwrap(),
+        QueryResult::False,
+        "2 satisfying vs count 1: over-count bound gives FALSE"
+    );
+}
+
 /// The groundness invariant is a MECHANISM at the store boundary, not call-site
 /// discipline: `assert_typed_fact` drops (fail-closed, with a warning) any fact whose
 /// args contain a pattern variable — including one nested inside a `SkolemFn`
@@ -10569,24 +10633,56 @@ fn make_deontic_event_universal(
     }
 }
 
+/// `make_event_assertion` wrapped in a deontic node — asserts a FLAVORED event
+/// fact (stored as `StoredFact::Obligatory`/`Permitted`).
+fn make_deontic_event_assertion(entity: &str, predicate: &str, permitted: bool) -> LogicBuffer {
+    let mut buf = make_event_assertion(entity, predicate);
+    let inner_root = buf.roots[0];
+    let id = buf.nodes.len() as u32;
+    buf.nodes.push(if permitted {
+        LogicNode::PermittedNode(inner_root)
+    } else {
+        LogicNode::ObligatoryNode(inner_root)
+    });
+    buf.roots = vec![id];
+    buf
+}
+
 #[test]
-fn test_deontic_obligatory_antecedent_compiles_and_fires() {
-    // raw-FOL `Obligatory(P(x)) → R(x)` compiles as `P(x) → R(x)` (transparent deontic).
+fn test_deontic_obligatory_antecedent_is_flavor_exact() {
+    // `Obligatory(P(x)) → R(x)` fires only on a stored Obligatory(P) fact — a
+    // BARE P must not satisfy the deontic condition. (2026-07 fix: this test
+    // used to pin the opposite "transparent" reading, chosen when the shape was
+    // believed surface-unreachable; `ganai ei A gi B` reaches it from the
+    // surface, so the transparent strip let a deontic condition fire on a bare
+    // fact. Flavor-exact everywhere now, matching the fact-storage model.)
     let kb = new_kb();
     assert_buf(&kb, make_deontic_event_universal("bilga", "kajde", false));
     assert_buf(&kb, make_event_assertion("alis", "bilga"));
     assert!(
-        query(&kb, make_event_query("alis", "kajde")),
-        "transparent deontic antecedent fires when the bare inner condition holds"
+        matches!(
+            query_result(&kb, make_event_query("alis", "kajde")),
+            QueryResult::False
+        ),
+        "a bare inner fact must NOT fire a deontic antecedent"
     );
 
-    // Negative control: inner condition absent → no fire.
+    // The Obligatory-flavored fact DOES fire it.
     let kb2 = new_kb();
     assert_buf(&kb2, make_deontic_event_universal("bilga", "kajde", false));
-    assert_buf(&kb2, make_event_assertion("alis", "prenu"));
+    assert_buf(&kb2, make_deontic_event_assertion("alis", "bilga", false));
+    assert!(
+        query(&kb2, make_event_query("alis", "kajde")),
+        "the Obligatory-flavored fact fires the deontic antecedent"
+    );
+
+    // Negative control: inner condition absent entirely → no fire.
+    let kb3 = new_kb();
+    assert_buf(&kb3, make_deontic_event_universal("bilga", "kajde", false));
+    assert_buf(&kb3, make_event_assertion("alis", "prenu"));
     assert!(
         matches!(
-            query_result(&kb2, make_event_query("alis", "kajde")),
+            query_result(&kb3, make_event_query("alis", "kajde")),
             QueryResult::False
         ),
         "deontic antecedent does not fire without the inner condition"
@@ -10594,13 +10690,24 @@ fn test_deontic_obligatory_antecedent_compiles_and_fires() {
 }
 
 #[test]
-fn test_deontic_permitted_antecedent_compiles_and_fires() {
+fn test_deontic_permitted_antecedent_is_flavor_exact() {
     let kb = new_kb();
     assert_buf(&kb, make_deontic_event_universal("curmi", "kajde", true));
     assert_buf(&kb, make_event_assertion("alis", "curmi"));
     assert!(
-        query(&kb, make_event_query("alis", "kajde")),
-        "transparent Permitted antecedent fires when the bare inner condition holds"
+        matches!(
+            query_result(&kb, make_event_query("alis", "kajde")),
+            QueryResult::False
+        ),
+        "a bare inner fact must NOT fire a Permitted antecedent"
+    );
+
+    let kb2 = new_kb();
+    assert_buf(&kb2, make_deontic_event_universal("curmi", "kajde", true));
+    assert_buf(&kb2, make_deontic_event_assertion("alis", "curmi", true));
+    assert!(
+        query(&kb2, make_event_query("alis", "kajde")),
+        "the Permitted-flavored fact fires the Permitted antecedent"
     );
 }
 

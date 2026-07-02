@@ -595,6 +595,41 @@ fuzz-seed:
 # expires clean — a pass/fail gate, not an open-ended campaign.
 fuzz-ci SECONDS="120": fuzz-seed (fuzz-parse SECONDS) (fuzz-assert SECONDS) (fuzz-query SECONDS)
 
+# ── Mutation testing (soundness paths) ──────────────────────────
+
+# Mutation-testing gate over the soundness-critical paths (scope lives in
+# .cargo/mutants.toml: logji reasoning/rules/kb + smuni semantic). Runs the
+# full sweep, then diffs survivors against the checked-in baseline
+# (mutants-baseline.txt; line:col stripped so unrelated edits don't shift
+# entries): exits non-zero on any NEW survivor — a regression in test kill
+# power. Baseline entries that are now KILLED print a shrink prompt.
+mutants JOBS="8":
+    #!/usr/bin/env bash
+    set -u
+    cargo mutants -j {{ JOBS }}
+    status=$?
+    # 0 = all caught; 2 = missed mutants (diffed against the baseline below);
+    # 3 = timeouts present (a hang IS a catch — the tests noticed; 3 masks 2,
+    # so the baseline diff below still runs). Anything else is a real failure.
+    if [ $status -ne 0 ] && [ $status -ne 2 ] && [ $status -ne 3 ]; then
+        echo "cargo-mutants failed (exit $status is not a missed/timeout status)"
+        exit $status
+    fi
+    sed -E 's/^([^:]+):[0-9]+:[0-9]+: /\1: /' mutants.out/missed.txt | sort -u > mutants.out/missed-normalized.txt
+    grep -v '^#' mutants-baseline.txt | grep -v '^$' | sort -u > mutants.out/baseline-normalized.txt
+    new=$(comm -13 mutants.out/baseline-normalized.txt mutants.out/missed-normalized.txt)
+    gone=$(comm -23 mutants.out/baseline-normalized.txt mutants.out/missed-normalized.txt)
+    if [ -n "$new" ]; then
+        echo "MUTANTS GATE FAILED — survivors not in mutants-baseline.txt (kill with a test or triage + document):"
+        echo "$new"
+        exit 1
+    fi
+    if [ -n "$gone" ]; then
+        echo "note: these baseline survivors are now KILLED — remove them from mutants-baseline.txt:"
+        echo "$gone"
+    fi
+    echo "mutants gate clean: $(wc -l < mutants.out/missed-normalized.txt) documented survivor(s), 0 new"
+
 # Wipes all compilation artifacts
 clean:
     cargo clean

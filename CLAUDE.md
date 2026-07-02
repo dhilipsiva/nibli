@@ -44,6 +44,7 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | `just fuzz-query [SECS]` | Fuzz nibli-engine assert + query (stateful KB; split-half input: first half asserted, second half queried) |
 | `just fuzz-seed` | Seed `fuzz/corpus/` for all three targets from the shipped `.lojban` corpus files |
 | `just fuzz-ci [SECS]` | Unattended fuzz gate: `fuzz-seed` + all three targets × SECS (default 120) each; non-zero on crash/OOM/leak (LeakSanitizer is ON — the arena AST is leak-free by invariant, see `gerna/src/ast.rs`). Runs as a parallel `fuzz` job in the GitHub workflow. |
+| `just mutants [JOBS]` | Mutation-testing gate over the soundness paths (scope + per-mutant test set in `.cargo/mutants.toml`: logji/smuni/nibli-engine suites per mutant). Diffs survivors against `mutants-baseline.txt` (line:col-stripped): fails on any NEW survivor, prompts a shrink for killed ones. On-demand (~17 min full sweep), not in the per-push gate. Baseline + stats in GUARANTEES.md. |
 
 **Important:**
 - Always use `cargo test --lib` (NOT `cargo test`) — cdylib linker chokes on WIT export symbols containing `@`
