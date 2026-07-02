@@ -21,9 +21,155 @@ use nibli_types::error::NibliError;
 use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm as WitTerm};
 use semantic::SemanticCompiler;
 
+/// Structural validation of an [`gerna_ast::AstBuffer`] at the PUBLIC compile
+/// boundary — a MECHANISM, not call-site discipline (the same pattern as the
+/// assert-boundary groundness drop): every index reachable from `roots` must be
+/// in bounds, and reference chains must be acyclic. The recursive compiler
+/// would otherwise PANIC on an out-of-bounds index or overflow the stack on a
+/// reference cycle — both crash classes for a hand-built/corrupt buffer (the
+/// gerna flattener produces valid buffers by construction; this guards the
+/// programmatic path). Sharing (a DAG) is legal — only true cycles reject.
+/// Iterative DFS, so an adversarially deep buffer cannot overflow the
+/// validator itself.
+fn validate_ast_buffer(ast: &gerna_ast::AstBuffer) -> Result<(), NibliError> {
+    use gerna_ast::{ModalTag, Selbri, Sentence, Sumti};
+
+    #[derive(Clone, Copy, PartialEq)]
+    enum Kind {
+        Sel,
+        Sum,
+        Sen,
+    }
+    #[derive(Clone, Copy, PartialEq)]
+    enum State {
+        White,
+        Grey,
+        Black,
+    }
+    let err = |kind: &str, idx: u32, len: usize| {
+        NibliError::Semantic(format!(
+            "corrupt AST buffer: {kind} index {idx} out of bounds (len {len}) — \
+             rejecting the whole buffer (fail closed)"
+        ))
+    };
+    let cycle_err = |kind: &str, idx: u32| {
+        NibliError::Semantic(format!(
+            "corrupt AST buffer: {kind} index {idx} participates in a reference \
+             cycle — rejecting the whole buffer (fail closed)"
+        ))
+    };
+
+    // Child references of one node: (kind, index) pairs.
+    let children = |kind: Kind, idx: u32| -> Vec<(Kind, u32)> {
+        match kind {
+            Kind::Sel => match &ast.selbris[idx as usize] {
+                Selbri::Root(_) | Selbri::Compound(_) => vec![],
+                Selbri::Tanru((m, h)) => vec![(Kind::Sel, *m), (Kind::Sel, *h)],
+                Selbri::Converted((_, i)) | Selbri::Negated(i) | Selbri::Grouped(i) => {
+                    vec![(Kind::Sel, *i)]
+                }
+                Selbri::WithArgs((core, args)) => {
+                    let mut v = vec![(Kind::Sel, *core)];
+                    v.extend(args.iter().map(|a| (Kind::Sum, *a)));
+                    v
+                }
+                Selbri::Connected((l, _, r)) => vec![(Kind::Sel, *l), (Kind::Sel, *r)],
+                Selbri::Abstraction((_, s)) => vec![(Kind::Sen, *s)],
+            },
+            Kind::Sum => match &ast.sumtis[idx as usize] {
+                Sumti::ProSumti(_)
+                | Sumti::Name(_)
+                | Sumti::QuotedLiteral(_)
+                | Sumti::Unspecified
+                | Sumti::Number(_) => vec![],
+                Sumti::Description((_, s)) | Sumti::QuantifiedDescription((_, _, s)) => {
+                    vec![(Kind::Sel, *s)]
+                }
+                Sumti::Tagged((_, i)) => vec![(Kind::Sum, *i)],
+                Sumti::ModalTagged((modal, i)) => {
+                    let mut v = vec![(Kind::Sum, *i)];
+                    if let ModalTag::Fio(s) = modal {
+                        v.push((Kind::Sel, *s));
+                    }
+                    v
+                }
+                Sumti::Restricted((i, clause)) => {
+                    vec![(Kind::Sum, *i), (Kind::Sen, clause.body_sentence)]
+                }
+                Sumti::Connected((l, _, _, r)) => vec![(Kind::Sum, *l), (Kind::Sum, *r)],
+            },
+            Kind::Sen => match &ast.sentences[idx as usize] {
+                Sentence::Simple(b) => {
+                    let mut v = vec![(Kind::Sel, b.relation)];
+                    v.extend(b.head_terms.iter().map(|t| (Kind::Sum, *t)));
+                    v.extend(b.tail_terms.iter().map(|t| (Kind::Sum, *t)));
+                    v
+                }
+                Sentence::Connected((_, l, r)) => vec![(Kind::Sen, *l), (Kind::Sen, *r)],
+                Sentence::Prenex((_, body)) => vec![(Kind::Sen, *body)],
+            },
+        }
+    };
+    let meta = |kind: Kind| -> (&'static str, usize) {
+        match kind {
+            Kind::Sel => ("selbri", ast.selbris.len()),
+            Kind::Sum => ("sumti", ast.sumtis.len()),
+            Kind::Sen => ("sentence", ast.sentences.len()),
+        }
+    };
+
+    let mut states = [
+        vec![State::White; ast.selbris.len()],
+        vec![State::White; ast.sumtis.len()],
+        vec![State::White; ast.sentences.len()],
+    ];
+    let slot = |k: Kind| match k {
+        Kind::Sel => 0usize,
+        Kind::Sum => 1,
+        Kind::Sen => 2,
+    };
+
+    // Explicit-stack DFS with enter/exit markers (three-color cycle detection).
+    let mut stack: Vec<(Kind, u32, bool)> = Vec::new();
+    for &root in &ast.roots {
+        if root as usize >= ast.sentences.len() {
+            return Err(err("root sentence", root, ast.sentences.len()));
+        }
+        stack.push((Kind::Sen, root, false));
+        while let Some((k, i, exited)) = stack.pop() {
+            if exited {
+                states[slot(k)][i as usize] = State::Black;
+                continue;
+            }
+            match states[slot(k)][i as usize] {
+                State::Black => continue,
+                // Re-entered while still in progress: only a descendant of the
+                // node itself can pop its Enter marker before its Exit marker.
+                State::Grey => return Err(cycle_err(meta(k).0, i)),
+                State::White => {}
+            }
+            states[slot(k)][i as usize] = State::Grey;
+            stack.push((k, i, true));
+            for (ck, ci) in children(k, i) {
+                let (name, len) = meta(ck);
+                if ci as usize >= len {
+                    return Err(err(name, ci, len));
+                }
+                match states[slot(ck)][ci as usize] {
+                    State::Grey => return Err(cycle_err(name, ci)),
+                    State::Black => {}
+                    State::White => stack.push((ck, ci, false)),
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Core compilation: gerna AST buffer → FOL logic buffer.
 /// Used by both the native API and the WIT export path.
 fn compile_ast(ast: &gerna_ast::AstBuffer) -> Result<LogicBuffer, NibliError> {
+    validate_ast_buffer(ast)?;
     let mut compiler = SemanticCompiler::new();
     let mut logic_forms = Vec::with_capacity(ast.roots.len());
 
@@ -250,5 +396,150 @@ fn wit_term_to_ir(term: &WitTerm, interner: &mut lasso::Rodeo) -> LogicalTerm {
         WitTerm::Description(d) => LogicalTerm::Description(interner.get_or_intern(d)),
         WitTerm::Unspecified => LogicalTerm::Unspecified,
         WitTerm::Number(n) => LogicalTerm::Number(*n),
+    }
+}
+
+#[cfg(test)]
+mod ast_buffer_validation_tests {
+    //! Negative controls for the compile-boundary AST validation: a hand-built
+    //! corrupt buffer must be REJECTED with a Semantic error — never a slice
+    //! panic (out-of-bounds index) or a stack overflow (reference cycle).
+    use super::compile_from_gerna_ast;
+    use nibli_types::ast::*;
+
+    fn bare_bridi(relation: u32, head: Vec<u32>) -> Sentence {
+        Sentence::Simple(Bridi {
+            relation,
+            head_terms: head,
+            tail_terms: vec![],
+            negated: false,
+            tense: None,
+            attitudinal: None,
+        })
+    }
+
+    fn expect_corrupt(ast: AstBuffer, what: &str) {
+        match compile_from_gerna_ast(ast) {
+            Err(nibli_types::error::NibliError::Semantic(msg)) => assert!(
+                msg.contains("corrupt AST buffer"),
+                "{what}: expected the corrupt-buffer rejection, got: {msg}"
+            ),
+            other => panic!("{what}: expected Err(Semantic(corrupt ...)), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn oob_root_sentence_rejected() {
+        expect_corrupt(
+            AstBuffer {
+                selbris: vec![],
+                sumtis: vec![],
+                sentences: vec![],
+                roots: vec![0],
+            },
+            "root index into empty sentences",
+        );
+    }
+
+    #[test]
+    fn oob_bridi_relation_rejected() {
+        expect_corrupt(
+            AstBuffer {
+                selbris: vec![],
+                sumtis: vec![],
+                sentences: vec![bare_bridi(7, vec![])],
+                roots: vec![0],
+            },
+            "bridi relation selbri index",
+        );
+    }
+
+    #[test]
+    fn oob_bridi_term_rejected() {
+        expect_corrupt(
+            AstBuffer {
+                selbris: vec![Selbri::Root("gerku".to_string())],
+                sumtis: vec![],
+                sentences: vec![bare_bridi(0, vec![3])],
+                roots: vec![0],
+            },
+            "bridi head term sumti index",
+        );
+    }
+
+    #[test]
+    fn oob_nested_tanru_arm_rejected() {
+        expect_corrupt(
+            AstBuffer {
+                selbris: vec![Selbri::Tanru((1, 99)), Selbri::Root("sutra".to_string())],
+                sumtis: vec![],
+                sentences: vec![bare_bridi(0, vec![])],
+                roots: vec![0],
+            },
+            "tanru head selbri index",
+        );
+    }
+
+    #[test]
+    fn oob_rel_clause_sentence_rejected() {
+        expect_corrupt(
+            AstBuffer {
+                selbris: vec![Selbri::Root("gerku".to_string())],
+                sumtis: vec![
+                    Sumti::Name("adam".to_string()),
+                    Sumti::Restricted((
+                        0,
+                        RelClause {
+                            kind: RelClauseKind::Poi,
+                            body_sentence: 42,
+                        },
+                    )),
+                ],
+                sentences: vec![bare_bridi(0, vec![1])],
+                roots: vec![0],
+            },
+            "relative-clause body sentence index",
+        );
+    }
+
+    #[test]
+    fn sentence_self_cycle_rejected() {
+        // Prenex whose body is ITSELF: the recursive compiler would overflow
+        // the stack — same crash class as an OOB panic, same rejection.
+        expect_corrupt(
+            AstBuffer {
+                selbris: vec![],
+                sumtis: vec![],
+                sentences: vec![Sentence::Prenex((vec!["da".to_string()], 0))],
+                roots: vec![0],
+            },
+            "prenex self-cycle",
+        );
+    }
+
+    #[test]
+    fn cross_array_cycle_rejected() {
+        // selbri 0 = Abstraction -> sentence 0, whose bridi relation = selbri 0.
+        expect_corrupt(
+            AstBuffer {
+                selbris: vec![Selbri::Abstraction((AbstractionKind::Nu, 0))],
+                sumtis: vec![],
+                sentences: vec![bare_bridi(0, vec![])],
+                roots: vec![0],
+            },
+            "abstraction/bridi cross-array cycle",
+        );
+    }
+
+    #[test]
+    fn shared_subterm_dag_still_compiles() {
+        // Sharing is NOT a cycle: the same sumti referenced twice must compile.
+        let ast = AstBuffer {
+            selbris: vec![Selbri::Root("batci".to_string())],
+            sumtis: vec![Sumti::Name("adam".to_string())],
+            sentences: vec![bare_bridi(0, vec![0, 0])],
+            roots: vec![0],
+        };
+        compile_from_gerna_ast(ast).expect("a shared (DAG) subterm is legal");
     }
 }
