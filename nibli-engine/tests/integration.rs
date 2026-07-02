@@ -2981,24 +2981,25 @@ fn per_instance_compute_dispatch_is_isolated() {
 }
 
 #[test]
-fn non_finite_numeric_input_is_unknown_not_false() {
-    // A numeric literal too large for an f64 overflows to +inf (here ~320 nines). A
-    // comparison or arithmetic over a non-finite operand is genuinely undetermined —
-    // it MUST surface UNKNOWN(non-finite), never a confident TRUE/FALSE (the old
-    // behaviour returned a confident verdict on the meaningless ±inf comparison).
-    let nines = "so ".repeat(320); // 999…9 > f64::MAX → +inf
+fn overflowing_numeric_literal_fails_closed_at_parse() {
+    // A numeric literal too large for an f64 (~320 nines → +inf) is rejected AT
+    // THE PARSE BOUNDARY (fail closed, mirroring the u32 quantifier guard): it
+    // never becomes a Number(inf) inside the pipeline. This supersedes this
+    // test's previous vehicle for the NonFinite contract — a giant `li` literal
+    // reaching `dunli` and surfacing UNKNOWN(non-finite) — because the literal
+    // now cannot enter at all, which is strictly stronger for this input class.
+    // The downstream UNKNOWN(non-finite) catches remain for non-finite values
+    // arising IN-pipeline (flat buffers can still carry non-finite Numbers) but
+    // are now pinned by NO test — regaining that pin at the logji flat level is
+    // owned by the try_numeric_comparison tracker bullet.
+    let nines = "so ".repeat(320); // 999…9 > f64::MAX → +inf pre-guard
     let engine = NibliEngine::new();
-    let r = engine
+    let err = engine
         .query_holds(&format!("li {nines}cu dunli li {nines}"))
-        .unwrap();
-    assert_eq!(
-        r.detail_label(),
-        Some("non-finite"),
-        "a non-finite numeric operand must be UNKNOWN(non-finite), not a confident verdict: got {r:?}"
-    );
+        .expect_err("an overflowing numeric literal must be a parse error, not a verdict");
     assert!(
-        !r.is_definitive(),
-        "non-finite must not be a definitive TRUE/FALSE: got {r:?}"
+        matches!(err, EngineError::Syntax(_)),
+        "the overflow rejection must be the typed syntax error, got: {err}"
     );
 }
 

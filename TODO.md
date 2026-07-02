@@ -16,7 +16,7 @@ Audit measurements referenced below (machine: Ryzen 9 9950X3D, WSL2, release bui
 ## D. Code quality (8.0 → 9): fail-closed smells
 
 - **Replace the latent `_ => unreachable!()`** at `gerna/src/lib.rs:451` with an explicit `Lo | Le` match (compile error on producer-set widening).
-- **Mirror the non-finite guard in `try_numeric_comparison`** (`logji/src/compute.rs:29-37`) for flat-path consistency with the event-decomposed path — and add the flat non-finite negative-control test with it (moved from the delivered negative-controls item: the test needs the guard to exist first).
+- **Mirror the non-finite guard in `try_numeric_comparison`** (`logji/src/compute.rs:29-37`) for flat-path consistency with the event-decomposed path — and add the flat non-finite negative-control test with it (moved from the delivered negative-controls item: the test needs the guard to exist first). Note: since the `li` parse-boundary overflow guard landed, the downstream `UNKNOWN(non-finite)` catches are pinned by NO test (the old engine-level pin used a giant `li` literal as its vehicle, which now fails closed at parse) — the flat logji test here must restore that pin.
 
 ## E. Production-readiness (6.0 → 8+)
 
