@@ -8400,6 +8400,69 @@ fn unify_conformance() {
     );
 }
 
+/// Negative control for `proofs/Unify.lean`'s `NoVar c` PRECONDITION: the proof
+/// speaks only about GROUND concretes; this pins the engine-side envelope.
+/// (a) A pattern var in a STRUCTURAL position of the concrete is rejected — a
+/// template constant or ground skolem dependency never matches it. (b) A
+/// concrete pattern var meets only a template pattern var, where unification
+/// binds var→var — OUTSIDE the proven envelope, but the proven equation
+/// `substitute_fact(template, σ) == concrete` still holds there. (c) The
+/// envelope itself is guaranteed for every STORED concrete by the
+/// assert-boundary groundness mechanism
+/// (`non_ground_fact_is_dropped_at_the_assert_boundary`).
+#[test]
+fn unify_non_ground_concrete_envelope() {
+    use super::kb::*;
+
+    let concrete_pv = StoredFact::Bare(GroundFact::new(
+        "rel",
+        vec![GroundTerm::PatternVar("x".to_string())],
+    ));
+
+    // (a) Structural positions REJECT a non-ground concrete.
+    let template_const = StoredFact::Bare(GroundFact::new(
+        "rel",
+        vec![GroundTerm::Constant("adam".to_string())],
+    ));
+    assert!(
+        unify_facts(&template_const, &concrete_pv).is_none(),
+        "a concrete pattern var never structurally matches a template constant"
+    );
+
+    let template_sk = StoredFact::Bare(GroundFact::new(
+        "rel",
+        vec![GroundTerm::SkolemFn(
+            "sk_1".to_string(),
+            Box::new(GroundTerm::Constant("adam".to_string())),
+        )],
+    ));
+    let concrete_sk_pv = StoredFact::Bare(GroundFact::new(
+        "rel",
+        vec![GroundTerm::SkolemFn(
+            "sk_1".to_string(),
+            Box::new(GroundTerm::PatternVar("x".to_string())),
+        )],
+    ));
+    assert!(
+        unify_facts(&template_sk, &concrete_sk_pv).is_none(),
+        "a nested concrete pattern var never matches a ground skolem dependency"
+    );
+
+    // (b) A template pattern var DOES bind a concrete pattern var — outside the
+    // NoVar envelope, but the unify_sound equation still holds.
+    let template_pv = StoredFact::Bare(GroundFact::new(
+        "rel",
+        vec![GroundTerm::PatternVar("t".to_string())],
+    ));
+    let sigma = unify_facts(&template_pv, &concrete_pv)
+        .expect("a template pattern var binds any concrete term, ground or not");
+    assert_eq!(
+        substitute_fact(&template_pv, &sigma),
+        concrete_pv,
+        "substitute_fact(template, σ) == concrete holds even outside the NoVar envelope"
+    );
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // STRATIFICATION TESTS
 // ═══════════════════════════════════════════════════════════════════

@@ -1403,6 +1403,60 @@ fn numeric_terms_are_not_universal_domain_members() {
 }
 
 #[test]
+fn lo_under_connective_is_per_occurrence_existential() {
+    // `lo gerku cu batci la .adam. .e la .bel.` distributes over `.e` with a
+    // PER-OCCURRENCE existential (smuni distribute_connected recompiles the
+    // whole bridi per operand): each conjunct mints its own witness, so TWO
+    // DIFFERENT dogs — one biting Adam, one biting Bel — satisfy it. A
+    // shared-witness reading ("one dog bites both") would make this FALSE.
+    let engine = engine_with_facts(&[
+        "la .rex. cu gerku",
+        "la .dan. cu gerku",
+        "la .rex. cu batci la .adam.",
+        "la .dan. cu batci la .bel.",
+    ]);
+    assert_true(
+        &engine
+            .query_holds("lo gerku cu batci la .adam. .e la .bel.")
+            .unwrap(),
+        "per-occurrence reading: a different witness per conjunct suffices",
+    );
+
+    // Negative control: each conjunct still needs its own witness.
+    let engine2 = engine_with_facts(&["la .rex. cu gerku", "la .rex. cu batci la .adam."]);
+    assert_false(
+        &engine2
+            .query_holds("lo gerku cu batci la .adam. .e la .bel.")
+            .unwrap(),
+        "an unwitnessed conjunct still fails",
+    );
+}
+
+#[test]
+fn exact_count_does_not_collapse_du_classes() {
+    // Current semantics (pinned; feeds the count × du decision in the tracker):
+    // du-merged names count UNCOLLAPSED — two names for one entity count as
+    // two. The collapse decision will flip both verdicts below; this pin makes
+    // that a loud, deliberate change. (It is also why the ASP count oracle
+    // conservatively skips KBs containing `du`.)
+    let engine = engine_with_facts(&[
+        "la .adam. cu gerku",
+        "la .karl. cu gerku",
+        "la .adam. cu danlu",
+        "la .karl. cu danlu",
+        "la .adam. du la .karl.",
+    ]);
+    assert_true(
+        &engine.query_holds("re lo gerku cu danlu").unwrap(),
+        "uncollapsed: two du-merged names count as two",
+    );
+    assert_false(
+        &engine.query_holds("pa lo gerku cu danlu").unwrap(),
+        "uncollapsed: the merged entity does NOT count as one",
+    );
+}
+
+#[test]
 fn naf_antecedent_rule_fires_and_blocks() {
     // `ro da zo'u ganai ge da gerku gi da na mlatu gi da xagji` — a rule with a
     // POSITIVE and a NEGATED (NAF) condition. Pins the candidate-filter/lookahead
