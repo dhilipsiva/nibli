@@ -39,7 +39,9 @@ The proofs are model-level (the perfect model is *characterized* by axioms, not 
 
 **Iterative deepening:** Queries try depth 1, 2, 3, ..., up to `max_chain_depth`. This guarantees finding the shallowest proof first. If the proof exists at depth D <= max_chain_depth, it is found. If no proof exists at any depth, the engine returns FALSE (not ResourceExceeded).
 
-**ResourceExceeded(Depth):** Returned only when all depths up to max_chain_depth are exhausted without finding a proof — the conclusion may exist at a deeper level but the engine cannot determine this within its configured bound.
+**ResourceExceeded(Depth):** Returned only when all depths up to max_chain_depth are exhausted without finding a proof — the conclusion may exist at a deeper level but the engine cannot determine this within its configured bound. The exact boundary is pinned by `depth_boundary_contract` (logji): with bound D, a chain needing ≤ D rule steps is TRUE, a chain needing D+1 is `ResourceExceeded(Depth)` — never FALSE — and an unreachable goal is FALSE — never a resource verdict.
+
+**Practical cost note (disclosed):** iterative deepening re-explores the shallower search at every level, and per-level cost on rule chains grows steeply (measured ~15×+ per additional chain step: ~0.8 s at chain length 3, ~21.5 s at 4, debug build). The depth bound is therefore a soundness/termination contract, not a performance envelope — the default 10 is far beyond what is computationally practical for long LINEAR chains, while the shipped corpora chain 2–4 hops. This is also why the boundary is pinned at a reduced bound: the contract is depth-uniform.
 
 **For recursive rule sets:** The engine uses a visited-set to detect cycles, returning `Unknown(CycleCut)` instead of diverging. This makes it sound but incomplete for recursive programs — a derivable conclusion may be reported as Unknown if the proof path goes through a cycle.
 
@@ -85,7 +87,7 @@ The proofs are model-level (the perfect model is *characterized* by axioms, not 
 
 ## Resource Limits
 
-**Backward-chaining depth:** Configurable `max_chain_depth` (default 10). Iterative deepening tries 1..=max_chain_depth. Exceeding returns `ResourceExceeded(Depth)`.
+**Backward-chaining depth:** Configurable `max_chain_depth` (default 10; set via `KnowledgeBase::set_max_chain_depth` — the shipped runtime surfaces keep the default). Iterative deepening tries 1..=max_chain_depth. Exceeding returns `ResourceExceeded(Depth)`.
 
 **WASM fuel:** Wasmtime fuel-based execution limits prevent unbounded computation. Configurable via `NIBLI_FUEL` env var or `:fuel` REPL command. Exceeding returns `ResourceExceeded(Fuel)`.
 

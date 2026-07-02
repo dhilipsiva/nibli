@@ -407,6 +407,18 @@ impl KnowledgeBase {
         Ok(facts)
     }
 
+    /// Set the backward-chaining depth bound (`max_chain_depth`, default 10) —
+    /// the "Configurable" knob `GUARANTEES.md §Resource Limits` documents.
+    /// Iterative deepening tries 1..=depth; a query whose shallowest proof needs a
+    /// longer chain returns `ResourceExceeded(Depth)`, never FALSE. Practical note:
+    /// deepening cost grows steeply with depth (each level re-explores the shallower
+    /// search — measured ~15×+ per level on linear rule chains), so the bound is a
+    /// soundness/termination contract, not a performance envelope. Values below 1
+    /// are clamped to 1.
+    pub fn set_max_chain_depth(&self, depth: usize) {
+        self.inner.borrow_mut().max_chain_depth = depth.max(1);
+    }
+
     /// Single-pass entailment check at the current max_chain_depth.
     fn run_entailment_check(&self, logic: &LogicBuffer) -> Result<QueryResult, String> {
         // Enable WITHOUT clearing: the cache is cleared once before the

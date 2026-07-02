@@ -960,6 +960,62 @@ fn assert_proof_refs_resolve_to_holds_true(trace: &ProofTrace) {
 /// no fireable rule silently skipped — rests on the engine's emission invariant, itself cross-checked
 /// by the `nibli-verify` differential gates' verdict-vs-independent-model comparison.)
 ///
+/// The depth-boundary contract, pinned exactly (the audit's one unresolved probe leg):
+/// with `max_chain_depth = D`, a chain whose shallowest proof needs ≤ D rule steps is
+/// TRUE, a chain needing D+1 steps is `ResourceExceeded(Depth)` — NEVER FALSE — and a
+/// goal with no rule path at all is FALSE (search exhausted below the bound) — never
+/// RESOURCE_EXCEEDED. Pinned at a REDUCED depth via the public `set_max_chain_depth`
+/// knob: the default depth-10 boundary is computationally unreachable in any build
+/// profile (iterative-deepening cost grows ~15×+ per chain level — measured 0.8 s at
+/// chain 3, 21.5 s at chain 4 in a debug build), and the contract is depth-uniform,
+/// so the small-depth pin is the same guarantee.
+#[test]
+fn depth_boundary_contract() {
+    let kb = new_kb();
+    kb.set_max_chain_depth(3);
+
+    // Chain: gerku(alis) --∀--> danlu --∀--> jmive --∀--> xanlu --∀--> melbi
+    // (shallowest proofs: danlu=1 step, jmive=2, xanlu=3, melbi=4).
+    assert_buf(&kb, make_assertion("alis", "gerku"));
+    assert_buf(&kb, make_universal("gerku", "danlu"));
+    assert_buf(&kb, make_universal("danlu", "jmive"));
+    assert_buf(&kb, make_universal("jmive", "xanlu"));
+    assert_buf(&kb, make_universal("xanlu", "melbi"));
+
+    let verdict = |p: &str| {
+        kb.query_entailment_inner(make_query("alis", p))
+            .unwrap_or_else(|e| panic!("query {p}: {e}"))
+    };
+
+    // Within the bound: TRUE at every chain length up to D.
+    for p in ["gerku", "danlu", "jmive", "xanlu"] {
+        assert_eq!(
+            verdict(p),
+            QueryResult::True,
+            "chain to {p} is within depth 3"
+        );
+    }
+    // One past the bound: RESOURCE_EXCEEDED(Depth) — the proof exists deeper, and the
+    // engine must say "could not determine within bounds", never a confident FALSE.
+    assert_eq!(
+        verdict("melbi"),
+        QueryResult::ResourceExceeded(ResourceKind::Depth),
+        "chain needing depth 4 under a depth-3 bound is RESOURCE_EXCEEDED(Depth)"
+    );
+    // No rule path at all: the search exhausts BELOW the bound — closed-world FALSE,
+    // never a resource verdict (the discrimination GUARANTEES §Completeness draws).
+    assert_eq!(
+        verdict("cipni"),
+        QueryResult::False,
+        "an unreachable goal is FALSE, not RESOURCE_EXCEEDED"
+    );
+
+    // Restoring the bound makes the deeper chain provable — the RE verdict above was
+    // the bound speaking, not the KB.
+    kb.set_max_chain_depth(4);
+    assert_eq!(verdict("melbi"), QueryResult::True, "depth 4 reaches melbi");
+}
+
 /// The groundness invariant is a MECHANISM at the store boundary, not call-site
 /// discipline: `assert_typed_fact` drops (fail-closed, with a warning) any fact whose
 /// args contain a pattern variable — including one nested inside a `SkolemFn`
