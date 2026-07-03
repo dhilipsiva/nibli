@@ -2396,6 +2396,111 @@ fn gdpr_full_corpus_lawful_basis_query_completes() {
 }
 
 // ════════════════════════════════════════════════════════════════════
+// Corpus transcript pins (book Ch 20 / Ch 21 reproducibility)
+// ════════════════════════════════════════════════════════════════════
+
+/// Load a corpus string exactly the way gasnu's `:load` does: trim each line,
+/// count blanks and `#` comments as skipped, assert everything else (any
+/// assert error fails the test — the book transcripts print `0 errors`).
+/// Returns the (asserted, skipped) counters plus every asserted line's
+/// returned fact id, in file order.
+fn load_corpus_like_gasnu(engine: &NibliEngine, corpus: &str) -> (u32, u32, Vec<(String, u64)>) {
+    let mut asserted = 0u32;
+    let mut skipped = 0u32;
+    let mut ids = Vec::new();
+    for (line_num, line) in corpus.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            skipped += 1;
+            continue;
+        }
+        let id = engine.assert_text(trimmed).unwrap_or_else(|e| {
+            panic!(
+                "corpus line {} failed to assert (book pins 0 errors): {:?}\n{}",
+                line_num + 1,
+                trimmed,
+                e
+            )
+        });
+        asserted += 1;
+        ids.push((trimmed.to_string(), id));
+    }
+    (asserted, skipped, ids)
+}
+
+fn pinned_id(ids: &[(String, u64)], line: &str) -> u64 {
+    let hits: Vec<u64> = ids
+        .iter()
+        .filter(|(l, _)| l == line)
+        .map(|&(_, id)| id)
+        .collect();
+    assert!(
+        hits.len() == 1,
+        "expected exactly one corpus occurrence of {line:?}, found {}",
+        hits.len()
+    );
+    hits[0]
+}
+
+/// TRANSCRIPT PIN (book Ch 20): the chapter's captured REPL sessions print
+/// `[Load] Done: 24 asserted, 77 skipped, 0 errors`, retract the consent fact
+/// by id (#21), and — in the multi-basis walkthrough — assert `la .adam. cu
+/// nupre` right after the load and later retract it as #24. A corpus reorder,
+/// insertion, or deletion silently invalidates those printed ids and counts;
+/// this pin breaks loudly instead. If it fails: gdpr.lojban changed — recapture
+/// the Ch 20 transcripts (book repo) together with these expected values.
+#[test]
+fn gdpr_corpus_transcript_pins() {
+    let engine = NibliEngine::new();
+    let (asserted, skipped, ids) =
+        load_corpus_like_gasnu(&engine, include_str!("../../gdpr.lojban"));
+    assert_eq!(
+        (asserted, skipped),
+        (24, 77),
+        "Ch 20 pins `[Load] Done: 24 asserted, 77 skipped, 0 errors`"
+    );
+    assert_eq!(
+        pinned_id(&ids, "la .adam. cu zanru"),
+        21,
+        "Ch 20 retracts the consent fact as id #21"
+    );
+    // The multi-basis walkthrough asserts the contract fact immediately after
+    // the corpus load and later retracts it as #24.
+    let contract_id = engine.assert_text("la .adam. cu nupre").unwrap();
+    assert_eq!(
+        contract_id, 24,
+        "Ch 20 retracts the post-load contract fact as id #24"
+    );
+}
+
+/// TRANSCRIPT PIN (book Ch 21): the chapter's captured REPL sessions print
+/// `[Load] Done: 16 asserted, 78 skipped, 0 errors` and retract two facts by
+/// id — the inhibition fact (#4, fluconazole discontinued) and the regimen
+/// fact (#10, warfarin stopped). Same contract as the Ch 20 pin above: a
+/// corpus edit must break this test, not silently drift the book.
+#[test]
+fn ddi_corpus_transcript_pins() {
+    let engine = NibliEngine::new();
+    let (asserted, skipped, ids) =
+        load_corpus_like_gasnu(&engine, include_str!("../../drug-interactions.lojban"));
+    assert_eq!(
+        (asserted, skipped),
+        (16, 78),
+        "Ch 21 pins `[Load] Done: 16 asserted, 78 skipped, 0 errors`"
+    );
+    assert_eq!(
+        pinned_id(&ids, "la .flukonazol. cu fanta la .siptucin."),
+        4,
+        "Ch 21 retracts the inhibition fact as id #4"
+    );
+    assert_eq!(
+        pinned_id(&ids, "la .adam. cu pilno la .varfarin."),
+        10,
+        "Ch 21 retracts the warfarin regimen fact as id #10"
+    );
+}
+
+// ════════════════════════════════════════════════════════════════════
 // Stacked relative-clause restrictor: conjunction, not overwrite
 // ════════════════════════════════════════════════════════════════════
 
