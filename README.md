@@ -85,7 +85,7 @@ nix --extra-experimental-features 'nix-command flakes' develop
 # Build all components and launch the REPL
 just run
 
-# Run all 661 tests
+# Run all unit tests
 just test
 ```
 
@@ -336,7 +336,7 @@ The parser (`gerna`) accepts a practical subset of Lojban sufficient for formal 
 |---------|-------------|
 | `just run` | Full pipeline: build WASM component, launch REPL |
 | `just check` | Fast type-check (`cargo check --workspace`) |
-| `just test` | Run all 661 unit tests |
+| `just test` | Run all unit tests |
 | `just test-engine` | Integration tests (full parse → compile → reason pipeline) |
 | `just test-gerna` | Parser tests only |
 | `just test-backend` | Python backend tests |

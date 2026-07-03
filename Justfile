@@ -655,6 +655,22 @@ mutants JOBS="8":
     fi
     echo "mutants gate clean: $(wc -l < mutants.out/missed-normalized.txt) documented survivor(s), 0 new"
 
+# Count the test suite: unit = workspace lib targets; plus the native
+# integration/bin test binaries (nibli-engine, gasnu, nibli-verify — the ones
+# CI links and runs; lasna's cdylib test target cannot link). The derivation
+# for any doc that needs a figure — never hand-write test counts into docs
+# (stale counts were an audit finding; see the pre-commit checklist).
+count-tests:
+    @u=$(cargo test --workspace --lib -- --list 2>/dev/null | grep -c ': test$'); \
+    e=$(cargo test -p nibli-engine --tests -- --list 2>/dev/null | grep -c ': test$'); \
+    g=$(cargo test -p gasnu -- --list 2>/dev/null | grep -c ': test$'); \
+    v=$(cargo test -p nibli-verify --tests -- --list 2>/dev/null | grep -c ': test$'); \
+    echo "unit (workspace --lib):      $u"; \
+    echo "nibli-engine test targets:   $e"; \
+    echo "gasnu bin tests:             $g"; \
+    echo "nibli-verify test targets:   $v"; \
+    echo "total: $((u + e + g + v))  (a few lib tests appear in both the unit and per-crate figures)"
+
 # Wipes all compilation artifacts
 clean:
     cargo clean

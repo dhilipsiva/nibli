@@ -8,7 +8,7 @@ Formal statement of the reasoning engine's properties, boundaries, and contracts
 
 If the engine says TRUE, a formal proof trace exists showing the derivation chain from asserted axioms through named inference rules to the conclusion. Every step is mechanically verifiable.
 
-**Caveat:** The engine is software. A bug in the parser (gerna), semantic compiler (smuni), or reasoning engine (logji) could produce a valid-looking proof of a wrong statement. Such a bug would be deterministic, reproducible, and testable — fundamentally different from stochastic hallucination. The engine is tested with 639+ unit tests and 21 integration tests across the full pipeline.
+**Caveat:** The engine is software. A bug in the parser (gerna), semantic compiler (smuni), or reasoning engine (logji) could produce a valid-looking proof of a wrong statement. Such a bug would be deterministic, reproducible, and testable — fundamentally different from stochastic hallucination. The engine is tested by a four-figure suite of unit and integration tests across the full pipeline (derive the current figure with `just count-tests` — this document deliberately states no hard number, which goes stale) and, more load-bearing than any count, by the differential-oracle, mechanized-proof, mutation, and fuzz gates described below.
 
 **Differential soundness gate (Track A):** Beyond unit/integration tests, the reasoner is differentially checked against **two** external solvers, one per fragment, gated in CI (`just verify-soundness`). The `nibli-verify` harness exports the compiled FOL IR (`LogicBuffer`) and asserts nibli's `TRUE`/`FALSE` matches the oracle:
 

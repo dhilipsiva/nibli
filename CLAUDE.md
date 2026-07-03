@@ -38,6 +38,7 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | `just run-with-backend` | Build + run with `NIBLI_COMPUTE_ADDR=127.0.0.1:5555` |
 | `just ui` | Launch the standalone Transparency Triad web UI (Dioxus, port 8080) — engine runs fully in-browser |
 | `just fetch-dict` | Download the lensisku English dictionary to `dictionary-en.json` (needs `LENSISKU_TOKEN`) — see Dictionary Data below |
+| `just count-tests` | Derive the current test-suite counts (unit + native integration/bin targets). The source for any doc that needs a figure — never hand-write test counts (pre-commit checklist) |
 | `just clean` | `cargo clean` |
 | `just fuzz-parse [SECS]` | Fuzz gerna parser (libFuzzer via the Nix shell's pinned nightly, `NIBLI_NIGHTLY_BIN` — no rustup needed). Pass seconds to limit run time. |
 | `just fuzz-assert [SECS]` | Fuzz nibli-engine assert_text (full pipeline) |
@@ -163,4 +164,5 @@ study (round-trip fidelity + silent-mistranslation rate), which belongs to the b
 Before every commit, always:
 1. Update `CLAUDE.md` — if required
 2. Update `README.md` — if Lojban coverage or reasoning capabilities changed
-3. Then commit all code + doc changes together
+3. **Never hand-write test counts (or other derivable figures) into docs.** If a figure is needed, derive it at writing time with `just count-tests` — stale hard-coded counts in GUARANTEES.md were an audit finding; prefer floor phrases ("a four-figure suite") that survive growth
+4. Then commit all code + doc changes together
