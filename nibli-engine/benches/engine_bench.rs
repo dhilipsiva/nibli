@@ -76,10 +76,20 @@ fn bench_query_latency(c: &mut Criterion) {
 }
 
 // ─── Benchmark: Recursive rule chains ────────────────────────────
+//
+// Depth set is [2, 4, 5], NOT deeper: since commit 90b3f59 (predicate cache
+// gated to definitive results + cross-depth tabling — a SOUNDNESS fix; the old
+// cache reused non-definitive results across deepening passes, so a pass-d
+// depth cut could poison pass d+1), per-hop cost on synthetic chains multiplies
+// by roughly 30x. Measured 2026-07-03: depth 2 = 163 µs, depth 4 = 41 ms,
+// depth 5 = 1.5 s, depth 6 = 47 s — so the former depth-10 configuration no
+// longer completes in benchmark time (the April 2026 pre-90b3f59 engine ran it
+// in ~1.3 s). If sound tabling ever recovers deep chains, re-extend the depth
+// set and re-run; the book quotes this group (P3_C07 Table 7.2).
 
 fn bench_rule_chain(c: &mut Criterion) {
     let mut group = c.benchmark_group("rule_chain_depth");
-    for &depth in &[2, 5, 10] {
+    for &depth in &[2usize, 4, 5] {
         group.bench_with_input(BenchmarkId::from_parameter(depth), &depth, |b, &depth| {
             let engine = NibliEngine::new();
             // Build rule chain: gerku→danlu→jmive→... via Lojban.
@@ -94,6 +104,15 @@ fn bench_rule_chain(c: &mut Criterion) {
             engine.assert_text(".i la .adam. gerku").unwrap();
             let last = preds[depth.min(preds.len() - 1)];
             let query = format!("la .adam. {}", last);
+            // Guard: the chain must actually derive (same rule as query_latency —
+            // never silently time a failure/limit path).
+            assert!(
+                matches!(
+                    engine.query_holds(&query).unwrap(),
+                    EngineQueryResult::True
+                ),
+                "rule_chain bench must measure a successful derivation"
+            );
             b.iter(|| {
                 engine.query_holds(&query).unwrap();
             });
