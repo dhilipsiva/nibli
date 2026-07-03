@@ -21,7 +21,6 @@ Audit measurements referenced below (machine: Ryzen 9 9950X3D, WSL2, release bui
 
 ## F. Docs honesty (6.5 → 9)
 
-- **Resolve `nibli-import`.** Zero production dependents; README:319 advertises it as a feature. Either wire an entrypoint (a `nibli` subcommand or `just` recipe) or remove it from the workspace and soften README:319.
 - **Delete/relocate stale root files:** `difft.patch` (targets the renamed `parser/`), empty `questions.md`, `triad-trace-improvement.md`, `ideas/crdt-egraph-architecture.lojban`. Decide `jbovlaste-en.xml` (~10 MB): CLAUDE.md says replaced by the lensisku JSON, but `book/tools/verify_book.py` still reads it — either migrate the vocab check to `dictionary-en.json` or keep the file and document why.
 
 ## G. Book-enabling (do these LAST — `book/TODO.md` quotes their outputs)

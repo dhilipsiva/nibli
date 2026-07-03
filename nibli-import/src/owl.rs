@@ -61,7 +61,7 @@ pub fn import_owl_classes(engine: &NibliEngine, triples: &[Triple]) -> Result<us
 
 fn term_to_logical(term: &Term) -> nibli_engine::EngineLogicalTerm {
     match term {
-        Term::Iri(iri) => {
+        Term::Iri(_) => {
             let local = term.local_name();
             nibli_engine::EngineLogicalTerm::Constant(local.to_string())
         }

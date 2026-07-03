@@ -655,6 +655,13 @@ mutants JOBS="8":
     fi
     echo "mutants gate clean: $(wc -l < mutants.out/missed-normalized.txt) documented survivor(s), 0 new"
 
+# Import an RDF Turtle / OWL file into a fresh KB and report (see
+# `nibli-import --help` for --raw / --export / --query flags). NOTE: just's
+# variadic ARGS lose shell quoting — for a multi-word `--query "<lojban>"`,
+# run the built binary directly (`./target/debug/nibli-import …`).
+import FILE *ARGS:
+    cargo run -p nibli --bin nibli-import -- {{FILE}} {{ARGS}}
+
 # Count the test suite: unit = workspace lib targets; plus the native
 # integration/bin test binaries (nibli-engine, gasnu, nibli-verify — the ones
 # CI links and runs; lasna's cdylib test target cannot link). The derivation

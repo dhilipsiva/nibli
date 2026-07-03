@@ -2730,6 +2730,7 @@ name = "nibli"
 version = "0.1.0"
 dependencies = [
  "nibli-engine",
+ "nibli-import",
  "nibli-render",
  "reedline",
 ]

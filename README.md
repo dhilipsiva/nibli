@@ -317,7 +317,7 @@ The parser (`gerna`) accepts a practical subset of Lojban sufficient for formal 
 - **Persistent fact store:** `FactStore` trait with InMemory, Redb, and WASI backends
 - **Iterative deepening:** shallowest-proof guarantee
 - **Tabling:** cached results with invalidation on mutations
-- **KB import/export:** RDF Turtle parser, OWL class mapping via `nibli-import` crate
+- **KB import/export:** RDF Turtle parser, OWL class mapping via the `nibli-import` crate and CLI (`just import <file.ttl>`, with `--raw`/`--export`/`--query` flags)
 - **Failure traces:** `PredicateNotFound`, `RuleAttemptFailed`, `EqualitySubstitution` proof rule variants explain why derivations fail
 - **Argument-position indexing:** `(relation, position, value)` secondary index for efficient witness extraction
 - **Predicate signature validation:** arity checking from PHF dictionary with permissive warnings

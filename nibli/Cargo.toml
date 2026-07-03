@@ -6,6 +6,7 @@ edition = "2024"
 
 [dependencies]
 nibli-engine = { path = "../nibli-engine" }
+nibli-import = { path = "../nibli-import" }
 nibli-render = { path = "../nibli-render" }
 reedline = "0.45.0"
 
@@ -18,3 +19,8 @@ path = "src/main.rs"
 name = "nibli-validate"
 description = "Native debug REPL and validation tooling"
 path = "src/bin/validate.rs"
+
+[[bin]]
+name = "nibli-import"
+description = "RDF Turtle / OWL import CLI"
+path = "src/bin/import.rs"
