@@ -250,7 +250,8 @@ interface compute-backend {
 /// Provides a `session` resource with text-level assert/query methods that
 /// internally orchestrate the full gerna → smuni → logji pipeline (linked as
 /// Rust crate stages). This is the primary API for end users (e.g., the REPL
-/// gasnu and the GraphQL server).
+/// gasnu; the in-browser surfaces nibli-ui/nibli-wasm embed the same crates
+/// natively rather than through this component).
 interface lasna {
     use logic-types.{fact-id, fact-summary, logic-buffer, logical-term, proof-trace, query-result, witness-binding};
     use error-types.{nibli-error};
