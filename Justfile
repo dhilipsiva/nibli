@@ -482,7 +482,8 @@ verify-book: build-validate
 
 # Manuscript gate, vocab-only (fast; no build needed). book/ is a SEPARATE repo
 # (gitignored here), so it is absent on a fresh checkout / in CI — skip gracefully
-# then, mirroring verify_book.py's own XML-absent skip. Runs the gate when present.
+# then, mirroring verify_book.py's own dictionary-absent skip (the vocab check
+# reads dictionary-en.json, `just fetch-dict`). Runs the gate when present.
 verify-book-vocab:
     @if [ -f book/tools/verify_book.py ]; then \
         python3 book/tools/verify_book.py --vocab-only; \

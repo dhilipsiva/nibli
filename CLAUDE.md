@@ -64,15 +64,17 @@ at compile time by `smuni-dictionary/build.rs`, which parses **`dictionary-en.js
 repo root — the **lensisku** English bulk export (`lojban/lensisku`,
 `DictionaryEntry`: a JSON array, one canonical entry per word, with `word`, `word_type`,
 `definition` (place structure as `$x_{N}$` markers), and `gloss_keywords`). This replaced the
-legacy reCAPTCHA-gated `jbovlaste-en.xml`.
+legacy reCAPTCHA-gated `jbovlaste-en.xml`, which is now fully retired — nothing reads it
+(the book's `verify_book.py` VOCAB check reads this JSON too, skipping cleanly when absent).
 
 - The file is **gitignored** and bulk-download needs a login token, so it is NOT in the repo.
   Get it with **`just fetch-dict`** (`export LENSISKU_TOKEN=<bearer token from lensisku.lojban.org>`)
   or download `dictionary-en.json` manually and drop it at the repo root.
 - **Without the file** the build falls back to the in-tree `FALLBACK_GISMU_ENTRIES` +
   gloss/cmavo override tables (~140 curated entries) — this is exactly what CI uses, so CI
-  needs no network/token. With the file you get the full dictionary — 10,907 entries in
-  the current export (1,338 gismu, 8,308 lujvo, 1,261 cmavo).
+  needs no network/token. With the file you get the full dictionary — the export carries
+  ~17.5k entries across all word types; the build consumes the gismu/lujvo/cmavo types
+  (1,338 gismu, 8,308 lujvo, 1,261 cmavo in the current export).
 - Arity/gloss/template for all curated/corpus/test words come from the in-tree tables
   *before* the data file is consulted, so those are **identical with or without** the file;
   only the non-curated long tail differs.

@@ -21,8 +21,6 @@ Audit measurements referenced below (machine: Ryzen 9 9950X3D, WSL2, release bui
 
 ## F. Docs honesty (6.5 → 9)
 
-- **Delete/relocate stale root files:** `difft.patch` (targets the renamed `parser/`), empty `questions.md`, `triad-trace-improvement.md`, `ideas/crdt-egraph-architecture.lojban`. Decide `jbovlaste-en.xml` (~10 MB): CLAUDE.md says replaced by the lensisku JSON, but `book/tools/verify_book.py` still reads it — either migrate the vocab check to `dictionary-en.json` or keep the file and document why.
-
 ## G. Book-enabling (do these LAST — `book/TODO.md` quotes their outputs)
 
 - **Timing pins for the book's numbers.** A release-profile timing test (or `just bench-book` recipe) that measures and prints: GDPR corpus load, the single lawful-basis query, and the full Ch-20 sequence (load + query + retract + 2 re-queries). These become the figures Ch 13/Ch 20 quote (audit: <5 ms / ≈7–20 ms / ≈330 ms) — the book claims "single-digit ms" for the full sequence today, which is wrong.

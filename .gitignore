@@ -6,7 +6,8 @@ fuzz/artifacts
 # Gitignored like the legacy jbovlaste-en.xml was; CI builds use the in-tree fallback.
 dictionary-en.json
 dictionary-en.json:Zone.Identifier
-# Legacy jbovlaste XML export (no longer read by the build; ignore any leftover copy).
+# Legacy jbovlaste XML export (no longer read by anything — the book vocab check
+# now reads dictionary-en.json too; ignore any leftover copy).
 jbovlaste-en.xml
 jbovlaste-en.xml:Zone.Identifier
 
