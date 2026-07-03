@@ -59,6 +59,8 @@ The proofs are model-level (the perfect model is *characterized* by axioms, not 
 
 **CWA implication:** `FALSE` means "not derivable from the current KB and therefore assumed false." It does NOT mean "known to be false in the real world." If the KB is incomplete, NAF may give True for conclusions that would be Unknown with complete information.
 
+**Tense: NAF is tenseless** — see the tense entry in "Disclosed Sharp Edges" below.
+
 ## Equality Semantics
 
 **Predicate:** `du(a, b)` — identity/equivalence. Means `a` and `b` are the same entity.
@@ -118,7 +120,7 @@ Every query returns exactly one of four results:
 | `Unknown(reason)` | The engine cannot determine the answer: `CycleCut` (recursive cycle detected), `IncompleteKnowledge`, `NafDependent`, `BackendUnavailable` (compute backend unreachable), or `NonFinite` (a numeric operand or result is ±inf/NaN). |
 | `ResourceExceeded(kind)` | A resource limit was hit: `Depth`, `Fuel`, or `Memory`. The answer may exist but cannot be found within the configured bounds. |
 
-There is no confident-sounding middle ground. The engine never guesses.
+There is no confident-sounding middle ground. The engine never guesses. (One deliberately DECIDED numeric case that surprises: divide-by-zero over finite operands is a confident FALSE, not non-finite — see "Disclosed Sharp Edges".)
 
 ## Hypothetical Reasoning
 
@@ -141,6 +143,22 @@ There is no confident-sounding middle ground. The engine never guesses.
 **count_witnesses:** Returns the number of distinct ENTITY-level witness binding sets satisfying an existential formula (the same collapse rules as above; a depth/cycle-cut enumeration refuses to return a definitive undercount — see §Resource Limits).
 
 **aggregate(formula, variable, op):** Extracts numeric values from a named variable across all witness bindings and applies Sum, Min, Max, or Avg. Returns None if no numeric witnesses found.
+
+## Disclosed Sharp Edges
+
+Deliberate or accepted-but-surprising behaviors, each pinned by a test so any change is loud. These are disclosures, not bugs: the engine stays sound relative to them, but a user unaware of them can be surprised by a verdict.
+
+- **Unknown-arity words silently drop over-arity sumti.** A selbri whose arity is KNOWN (shipped dictionary) REJECTS untagged sumti that overflow its places (fail closed, pinned by an engine test). A word NOT in the dictionary defaults to arity 2, and its real arity may be higher — an "overflow" there is unprovable, so the extra untagged sumti are dropped WITHOUT an error (the `overflow_untagged` path in `smuni/src/semantic/compile.rs`). With out-of-dictionary vocabulary, use place tags (`fa`..`fu`) or verify the word's place structure.
+
+- **NAF is tenseless (tense × NAF).** The engine's `NegatedExistsGroup` carries no tense, so a NAF restrictor is evaluated at the BARE flavor: `NOT P` holds by CWA when only `Past(P)` is stored, a bare witness blocks a flavored query, and a same-flavor witness does not block a bare NAF check. This is why tense×NAF stays conservatively un-oracled (skipped, not canonized) in the differential gates above.
+
+- **Divide-by-zero over finite operands is a DECIDED FALSE.** `dilcu` guards `x3 == 0.0` exactly: with finite operands the verdict is a confident FALSE ("x1 = x2/0" is decidably unsatisfiable), NOT `UNKNOWN(non-finite)`. Non-finite OPERANDS, or a finite-operand computation whose RESULT overflows (`1e200 × 1e200 → inf`), stay `UNKNOWN(non-finite)` (`nibli-types/src/arithmetic.rs`, mirrored by the gasnu host fast path and the Python reference backend).
+
+- **`lo` under a sumti connective reads per-occurrence.** `lo gerku cu batci la .adam. .e la .bel.` distributes over `.e`, and each conjunct mints its OWN existential witness: two different dogs — one biting Adam, one biting Bel — satisfy it. It does NOT assert that one dog bites both (pinned by `lo_under_connective_is_per_occurrence_existential`).
+
+- **`na` and tense have one fixed relative scope.** On a single bridi, `na` and a tense marker are flags, not scoped operators: every surface ordering compiles to tense OUTSIDE negation (`pu na broda` ≡ `Past(¬broda)` — "in the past, it was not the case that…"). The other scoping (`¬Past(broda)`, "it is not the case that it was…") is not expressible on one bridi; under CWA the two coincide for ground facts, but they diverge inside larger formulas.
+
+- **`li` numbers never enter the quantifier domain.** A number asserted into a predicate (`li mu cu barda`) does not become a domain member: a universal restricted to that predicate is VACUOUSLY TRUE regardless of its body (pinned by `numeric_terms_are_not_universal_domain_members`). Numbers participate in arithmetic and comparison relations, not in entity quantification or counting.
 
 ## What the Engine Cannot Do
 

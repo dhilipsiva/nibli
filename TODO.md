@@ -21,7 +21,6 @@ Audit measurements referenced below (machine: Ryzen 9 9950X3D, WSL2, release bui
 
 ## F. Docs honesty (6.5 → 9)
 
-- **Document the disclosed-direction limitations** found by the audit: silent over-arity sumti drop on the unknown-arity fallback path (`compile.rs:182-202`); the tense×NAF sharp edge (`NOT P` is TRUE by CWA when only `Past(P)` is stored); the div-by-zero exact guard (finite operands → decided FALSE, not NonFinite) in the Query Result Contract; the per-occurrence-∃ reading of `lo` under `.e`/`.a`; the `na`/tense relative-scope collapse; the `li`-numbers-never-enumerate sharp edge (a universal over a number-restricted predicate is vacuously TRUE — pinned by `numeric_terms_are_not_universal_domain_members`).
 - **CLAUDE.md crate table:** add the four missing workspace members (`nibli-protocol`, `nibli-store`, `nibli-render`, `nibli-import` — or note its removal per the resolve-nibli-import item below).
 - **Resolve `nibli-import`.** Zero production dependents; README:319 advertises it as a feature. Either wire an entrypoint (a `nibli` subcommand or `just` recipe) or remove it from the workspace and soften README:319.
 - **Delete/relocate stale root files:** `difft.patch` (targets the renamed `parser/`), empty `questions.md`, `triad-trace-improvement.md`, `ideas/crdt-egraph-architecture.lojban`. Decide `jbovlaste-en.xml` (~10 MB): CLAUDE.md says replaced by the lensisku JSON, but `book/tools/verify_book.py` still reads it — either migrate the vocab check to `dictionary-en.json` or keep the file and document why.
