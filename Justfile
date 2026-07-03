@@ -491,6 +491,19 @@ verify-book-vocab:
         echo "verify-book-vocab: book/ not checked out (separate repo) — skipping"; \
     fi
 
+# Book-reference conformance gate (detection only): every WIT name, REPL
+# command, Rust struct field, and notation form the book quotes must match the
+# repo (book/tools/verify_book_refs.py — the structural fix for the audit's
+# WIT/struct/REPL-drift finding, which no other gate catches). EXPECTED to fail
+# until the book-repo reconciliation pass lands; wiring it into `ci` is a
+# book-repo decision after that. Skips gracefully when book/ is absent.
+verify-book-refs:
+    @if [ -f book/tools/verify_book_refs.py ]; then \
+        python3 book/tools/verify_book_refs.py; \
+    else \
+        echo "verify-book-refs: book/ not checked out (separate repo) — skipping"; \
+    fi
+
 # Capture-regeneration gate: every transcript block in book/ must match a fresh
 # engine capture (book's "captured verbatim" claims, re-checked). Pre-release
 # gate, NOT in `ci` — it needs the WASM + gasnu build and replays sessions.
