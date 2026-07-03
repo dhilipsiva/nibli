@@ -24,3 +24,8 @@ path = "src/bin/validate.rs"
 name = "nibli-import"
 description = "RDF Turtle / OWL import CLI"
 path = "src/bin/import.rs"
+
+[[bin]]
+name = "nibli-bench-book"
+description = "Release-profile timing pins for the book's quoted figures"
+path = "src/bin/bench_book.rs"
