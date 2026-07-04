@@ -107,10 +107,7 @@ fn bench_rule_chain(c: &mut Criterion) {
             // Guard: the chain must actually derive (same rule as query_latency —
             // never silently time a failure/limit path).
             assert!(
-                matches!(
-                    engine.query_holds(&query).unwrap(),
-                    EngineQueryResult::True
-                ),
+                matches!(engine.query_holds(&query).unwrap(), EngineQueryResult::True),
                 "rule_chain bench must measure a successful derivation"
             );
             b.iter(|| {
