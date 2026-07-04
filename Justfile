@@ -23,13 +23,12 @@ clean-wasm-all:
     rm -f target/wasm32-wasip2/release/*.wasm
 
 # Download the maintained lensisku English dictionary (the smuni-dictionary build reads
-# ../dictionary-en.json). The bulk export needs a logged-in Bearer token: get one from
-# lensisku.lojban.org and `export LENSISKU_TOKEN=...` before running. Gitignored; without
-# it the build falls back to the in-tree dictionary (same as CI).
+# ../dictionary-en.json). lensisku's cached dumps are public — no login needed. The
+# nightly-regenerated cached export lives at /api/export/cached/{lang}/{format} (GET only;
+# HEAD 401s). Gitignored; without it the build falls back to the in-tree dictionary
+# (same as CI).
 fetch-dict:
-    @test -n "${LENSISKU_TOKEN:-}" || { echo 'error: set LENSISKU_TOKEN (Bearer token from lensisku.lojban.org)'; exit 1; }
-    curl -fsSL -H "Authorization: Bearer ${LENSISKU_TOKEN}" \
-      "https://lensisku.lojban.org/api/export/cached/dictionary-en.json" \
+    curl -fsSL "https://lensisku.lojban.org/api/export/cached/en/json" \
       -o dictionary-en.json
     @echo "Wrote dictionary-en.json ($(wc -c < dictionary-en.json) bytes)"
 

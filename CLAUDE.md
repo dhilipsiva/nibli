@@ -37,7 +37,7 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | `just backend` | Start the Python reference compute backend (port 5555) |
 | `just run-with-backend` | Build + run with `NIBLI_COMPUTE_ADDR=127.0.0.1:5555` |
 | `just ui` | Launch the standalone Transparency Triad web UI (Dioxus, port 8080) — engine runs fully in-browser |
-| `just fetch-dict` | Download the lensisku English dictionary to `dictionary-en.json` (needs `LENSISKU_TOKEN`) — see Dictionary Data below |
+| `just fetch-dict` | Download the lensisku English dictionary to `dictionary-en.json` (public dump, no login) — see Dictionary Data below |
 | `just import FILE [ARGS]` | Import an RDF Turtle / OWL file into a fresh KB via the `nibli-import` CLI (`--raw` skips OWL class handling, `--export` prints the round-trip view, `--query "<lojban>"` runs entailment checks — reaches Lojban-lexable relation names only). NOTE: just's variadic args lose shell quoting — run `./target/debug/nibli-import` directly for multi-word queries |
 | `just bench-book` | Timing pins for the book's quoted figures (Ch 13 latency numbers, Ch 20 sequence): release-profile native bench over `gdpr.lojban` — corpus load / lawful-basis query / full Ch-20 sequence (load + query + consent retraction + 2 re-queries), min/median/max over `NIBLI_BENCH_RUNS` runs (default 10), every verdict asserted every run. The source for any latency figure the book quotes — never hand-write timings |
 | `just verify-book-refs` | Book-reference conformance gate (detection only): every WIT name, REPL command (`gasnu` + `nibli` debug REPL), Rust struct field, and notation form the book quotes must match the repo (`book/tools/verify_book_refs.py`, per-claim report). EXPECTED red until the book reconciliation pass; wiring into `ci` is a book-repo decision after that. Skips when `book/` is absent |
@@ -69,14 +69,15 @@ repo root — the **lensisku** English bulk export (`lojban/lensisku`,
 legacy reCAPTCHA-gated `jbovlaste-en.xml`, which is now fully retired — nothing reads it
 (the book's `verify_book.py` VOCAB check reads this JSON too, skipping cleanly when absent).
 
-- The file is **gitignored** and bulk-download needs a login token, so it is NOT in the repo.
-  Get it with **`just fetch-dict`** (`export LENSISKU_TOKEN=<bearer token from lensisku.lojban.org>`)
+- The file is **gitignored**, so it is NOT in the repo. Get it with **`just fetch-dict`** —
+  lensisku's nightly cached dumps are public (no login;
+  `GET https://lensisku.lojban.org/api/export/cached/{lang}/{format}` — GET only, HEAD 401s) —
   or download `dictionary-en.json` manually and drop it at the repo root.
 - **Without the file** the build falls back to the in-tree `FALLBACK_GISMU_ENTRIES` +
   gloss/cmavo override tables (~140 curated entries) — this is exactly what CI uses, so CI
-  needs no network/token. With the file you get the full dictionary — the export carries
+  needs no network. With the file you get the full dictionary — the export carries
   ~17.5k entries across all word types; the build consumes the gismu/lujvo/cmavo types
-  (1,338 gismu, 8,308 lujvo, 1,261 cmavo in the current export).
+  (1,338 gismu, 8,322 lujvo, 1,261 cmavo in the current export).
 - Arity/gloss/template for all curated/corpus/test words come from the in-tree tables
   *before* the data file is consulted, so those are **identical with or without** the file;
   only the non-curated long tail differs.
