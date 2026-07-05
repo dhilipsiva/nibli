@@ -5,21 +5,6 @@ name. Delete a bullet entirely when it fully lands; update it if only partially 
 (All three items came out of the 2026-07-05 Lojban Discord #proga thread with korvo —
 brismu/zaha/zatske — and feklat.)
 
-- **Fix lujvo arity extraction in `smuni-dictionary/src/arity.rs`** — `definition_arity`
-  only recognizes jbovlaste's `$x_{N}$` place markers, but lujvo definitions mark places
-  with component letters instead (`$b_1=f_1$ ... $f_2$`), so the scan finds no `$x_N$` and
-  defaults them to arity 1. Measured against the current lensisku dump: **3,252 gismu/lujvo
-  entries carry only `$<letter>_N$` markers and no `$x_N$`** — all silently monovalent.
-  Surfaced by the Predilex cross-check below (e.g. `flubisli` "$b_1=f_1$ is an iceberg
-  floating on $f_2$" — nibli said 1, Predilex says 2, Predilex is right). Fix: extend the
-  scanner to take the max subscript N over ALL `$<letter>_{N}$` markers (any letter, not
-  just `x`), keeping the delimited-marker discipline that fixed the old prose over-count
-  (don't reintroduce bare-prose scanning). Bounded-impact: curated/corpus/test words use
-  in-tree overrides and are unaffected — this only repairs the non-curated long tail (matters
-  for strict-mode arity validation of arbitrary lujvo). Add arity.rs unit cases for
-  letter-marker and `=`-merged-place defs; validate the corrected arities against
-  Predilex's Lojban.csv (next item) as the regression oracle.
-
 - **Predilex cross-validation for smuni-dictionary** — Predilex
   (https://github.com/Ntsekees/Predilex — public-domain CSV thesaurus of language-neutral
   sememes-as-predicates with per-language lemma mappings). A Lojban mapping file EXISTS:
@@ -27,11 +12,12 @@ brismu/zaha/zatske — and feklat.)
   (VT/VI/VD/…), an optional Features arity, and a Sememe cell with an optional slot-reorder
   string (e.g. `behucu 132` — Lojban→sememe place permutation, same atomic move as korvo's
   ontology rows). Spike already run (scratchpad `predilex_arity_check.py`): on the 46 rows
-  with a high-confidence arity signal that are also in the lensisku gismu/lujvo set, 36
-  agree / 10 disagree — 1 disagreement is the lujvo `$x_N$` bug above, the other 9 are
-  Predilex modeling a coarser place-deleted sememe (legitimate, not a nibli error).
+  with a high-confidence arity signal that are also in the lensisku gismu/lujvo set, 37
+  agree / 9 disagree — all 9 are Predilex modeling a coarser place-deleted sememe
+  (legitimate, not a nibli error). (Was 36/10 before the lujvo component-letter arity fix
+  landed in `arity.rs`; the sole remaining undercount then, `flubisli`, is now correct.)
   TODO: wire this into a repeatable offline validation pass (own bin or a `nibli-verify`
-  leg) that reports divergences, skips known place-deletion cases, and gates the arity fix.
+  leg) that reports divergences and skips known place-deletion cases.
   200+ Predilex entries also carry formal logic definitions — a possible second oracle later.
 
 - **Ontology-row import (brismu/zatske interchange)** — korvo proposed flat rows
