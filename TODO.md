@@ -7,13 +7,18 @@ brismu/zaha/zatske — and feklat.)
 
 - **Predilex cross-validation for smuni-dictionary** — feklat pointed at Predilex
   (https://github.com/Ntsekees/Predilex — public-domain CSV thesaurus of language-neutral
-  sememes-as-predicates with per-language lemma mappings). Read its FORMAT.md; if it
-  declares argument structures as data (arity / place roles), add an offline validation
-  pass cross-checking smuni-dictionary's extracted arities + place frames against it and
-  reporting divergences. Catches lensisku prose-extraction errors — the `$x_{N}$`-marker
-  scrape in `smuni-dictionary/src/arity.rs` is best-effort on the non-curated long tail,
-  and feklat confirmed the underlying jbovlaste conventions are inconsistently followed.
-  Actionable now; no external dependency.
+  sememes-as-predicates with per-language lemma mappings). Ntsekees confirmed in-thread
+  (2026-07-05): arity is a data field; per-language mapping files carry each lemma's
+  argument-structure traits plus a slot-reorder string (e.g. English `give V·DO·to 132`:
+  "X gives Y to Z" maps to `jubaku X Z Y`); 200+ entries also have formal logic
+  definitions. Open question (asked in-thread): whether a LOJBAN mapping file exists —
+  the jubaku entry shows Loglan/Eberban lemmas but no Lojban. If yes: add an offline
+  validation pass cross-checking smuni-dictionary's extracted arities + place frames
+  against it and reporting divergences (catches lensisku prose-extraction errors — the
+  `$x_{N}$`-marker scrape in `smuni-dictionary/src/arity.rs` is best-effort on the
+  non-curated long tail, and feklat confirmed jbovlaste conventions are inconsistently
+  followed). If no: generate a candidate Lojban→Predilex mapping from lensisku + the
+  curated arity table and contribute it upstream, then validate against it.
 
 - **Ontology-row import (brismu/zatske interchange)** — korvo proposed flat rows
   `[P, Q, mapping]` (selbri subrelation with terbri mapping: identity `["gerku","danlu",
