@@ -36,12 +36,14 @@ brismu/zaha/zatske — and feklat.)
   dugri/tenfa pins it — the [2,1] swap and [1,2] identity examples can't distinguish the
   two readings), and rows want a source field (brismu / zaha / zatske) for provenance.
 
-- **Document the LogicBuffer IR as a consumable format** — two independent parties
+- **Document the LogicBuffer IR as a consumable format** — three independent parties
   converged on wanting a shared logic representation: korvo from the ontology side, feklat
-  from the multi-loglang / LLM-verification side (feklat also asked about Toaq / Xextan /
-  Eberban front-ends — the answer given: only the parser + dictionary are Lojban-specific;
-  the IR, prover, oracle gates, and Lean proofs are language-agnostic, so the IR is the
-  seam). Write a short spec: node types, flat-buffer layout, what is stable vs internal,
-  and the existing external entry points (`nibli-wasm` assert/query as the "does this
-  Lojban entail that claim" API). Non-goal for now: actually building non-Lojban
-  front-ends.
+  from the multi-loglang / LLM-verification side, and Ntsekees, who described the same idea
+  unprompted as "Predilog" — a customized logic notation (e.g. `∀c.[Cat(c) ⇒ ∃l. Leg(l,c) ∧
+  Four(l)]`) intended as a JSON translation-pivot between languages, and asked whether nibli
+  already had one (it does: the IR). (feklat also asked about Toaq / Xextan / Eberban
+  front-ends — the answer given: only the parser + dictionary are Lojban-specific; the IR,
+  prover, oracle gates, and Lean proofs are language-agnostic, so the IR is the seam.) Write
+  a short spec: node types, flat-buffer layout, what is stable vs internal, and the existing
+  external entry points (`nibli-wasm` assert/query as the "does this Lojban entail that
+  claim" API). Non-goal for now: actually building non-Lojban front-ends.
