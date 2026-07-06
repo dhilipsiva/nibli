@@ -20,6 +20,7 @@ bullet**; remove an item when fully done, or narrow it if partial.
 - **Phase 0 foundation:** `nibli-fanva` scaffolded as a workspace member (path deps); `gates::local_gates` (gerna + smuni) + `GateError`/`feedback_for` with native unit tests.
 - **Phase 1 core — multi-turn LLM layer (`src/llm/`):** `Provider`/`LlmConfig`/`Turn` (types.rs); provider-agnostic `build_chat_request` for all 5 providers (multi-turn; per-provider `system` placement; Gemini assistant→`"model"`); `extract_text`/`clean_lojban_output` (response.rs); the iterative-correction system prompt. 7 native tests (request shapes + extraction). Pure/native-testable; no I/O yet.
 - **Chat seam + agent-loop core (Phases 1/5):** the `Chat` async trait + `ChatError` (`src/llm/mod.rs`); `gates::validate`; `agent::translate_agentic` with `Attempt`/`Outcome`, attempt cap, oscillation guard, and provider-error (`ChatFailed`) handling. 4 native tests via a mock `Chat` (fail-once→Success@2, never-valid→Exhausted@cap, oscillation→early Exhausted, provider-error→ChatFailed).
+- **Phase 1 complete — wasm `Chat` transport:** `llm::HttpChat` (`src/llm/http.rs`, wasm-only via gloo-net) ports nibli-ui's send + status classification into `ChatError`; target-gated so native tests stay mock-only. Verified: native `cargo test` (14) green AND `cargo build -p nibli-fanva --target wasm32-unknown-unknown` compiles.
 - `nibli-ui` not yet wired; the jbotci MCP transport + inner tool loop are not yet built.
 
 ## Phase 0 — remainder
@@ -27,12 +28,12 @@ bullet**; remove an item when fully done, or narrow it if partial.
 - Vendor the standard `camxes.js` (ilmentufa, MIT) into `nibli-fanva/js/vendor/camxes/` pinned to the repo's ilmentufa flake input (`NIBLI_CAMXES_DIR`) so there's one grammar source of truth; add a `camxes_shim.js` exposing `parse(text) -> {ok} | {ok:false,message,line,column}`, plus `VENDOR.md` + `NOTICE` (MIT attribution). Pick fanva's own LICENSE if distinct. Done when: the shim file + NOTICE exist and VENDOR.md records source commit + observed error shape.
 - Add `nibli-fanva = { path = "../nibli-fanva" }` to `nibli-ui/Cargo.toml`. Done when: `cargo check -p nibli-ui` still builds.
 
-## Phase 1 — LLM layer, remainder (in `src/llm/`)
+## Phase 1 — LLM layer: COMPLETE
 
-- (Seam DONE — `Chat` trait + native mock exist.) Add the concrete **wasm-only** `Chat` impl (`src/llm/http.rs`, `#[cfg(target_arch = "wasm32")]`): `build_chat_request` → gloo-net POST → status classify → `extract_text` → `clean_lojban_output`, porting `nibli-ui/src/llm.rs`'s send + `TranslateError`/`classify_http` into `ChatError`. Done when: it builds for `wasm32-unknown-unknown` and a `wasm-pack` test drives a stubbed fetch.
-- (Deferred to Phase 3) tool DECLARATION in the request builders + tool-call turns — folded into the tool-calling adapters so tools land end-to-end.
-- (Deferred to Phase 6) have `nibli-ui`'s single-shot translate delegate to `nibli_fanva::llm`.
-- Optional: extend the system prompt with a gerna-fragment cheat-sheet + a larger known-good few-shot set once convergence is measured (Phase 8).
+Remaining pieces were reassigned to later phases:
+- tool DECLARATION in the request builders + tool-call turns → **Phase 3** (folded into the tool-calling adapters so tools land end-to-end).
+- `nibli-ui`'s translate delegating to `nibli_fanva::llm` (and using `HttpChat`) → **Phase 6**.
+- larger few-shot set / gerna-fragment cheat-sheet in the system prompt → **Phase 8** (after convergence is measured).
 
 ## Phase 2 — MCP client, in `src/mcp/`
 

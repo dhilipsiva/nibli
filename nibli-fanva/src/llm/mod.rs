@@ -12,6 +12,12 @@ pub mod types;
 mod request;
 mod response;
 
+// The concrete browser transport is wasm-only; native builds use a mock `Chat`.
+#[cfg(target_arch = "wasm32")]
+mod http;
+#[cfg(target_arch = "wasm32")]
+pub use http::HttpChat;
+
 pub use request::build_chat_request;
 pub use response::{clean_lojban_output, extract_text};
 pub use system_prompt::system_prompt;
