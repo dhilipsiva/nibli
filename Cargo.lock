@@ -2752,6 +2752,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nibli-fanva"
+version = "0.1.0"
+dependencies = [
+ "gerna",
+ "nibli-types",
+ "serde_json",
+ "smuni",
+]
+
+[[package]]
 name = "nibli-import"
 version = "0.1.0"
 dependencies = [

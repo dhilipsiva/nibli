@@ -1,0 +1,17 @@
+[package]
+name = "nibli-fanva"
+version = "0.1.0"
+edition = "2024"
+description = "Agentic English→Lojban translator engine (multi-turn LLM + jbotci MCP tool-use + three-gate validator) for the Transparency Triad. fanva = Lojban 'translate'."
+
+# Pure-logic engine consumed by nibli-ui. The gerna/smuni gates and the agent/
+# provider logic build + unit-test on the NATIVE target with mocked chat()/MCP;
+# the gloo-net HTTP client and the camxes.js JS-interop gate are wasm-only and
+# get cfg-gated as they land (Phases 1–4). No Dioxus here — the UI shell is
+# nibli-ui's job.
+
+[dependencies]
+gerna = { path = "../gerna" }
+smuni = { path = "../smuni" }
+nibli-types = { path = "../nibli-types" }
+serde_json = "1"

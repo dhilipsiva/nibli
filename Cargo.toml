@@ -7,6 +7,7 @@ members = [
     "lasna",
     "nibli",
     "nibli-ui",
+    "nibli-fanva",
     "nibli-engine",
     "nibli-protocol",
     "smuni-dictionary",
