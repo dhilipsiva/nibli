@@ -50,6 +50,13 @@ pub fn local_gates(candidate: &str) -> Result<LogicBuffer, GateError> {
     smuni::compile_from_gerna_ast(ast).map_err(semantic)
 }
 
+/// The full validation gate the agent calls. Today this is exactly
+/// [`local_gates`]; the wasm-only official (`camxes.js`) gate joins here in a
+/// later phase without changing this signature, so the agent loop is stable.
+pub fn validate(candidate: &str) -> Result<LogicBuffer, GateError> {
+    local_gates(candidate)
+}
+
 fn syntax(e: NibliError) -> GateError {
     GateError::Syntax(e.to_string())
 }

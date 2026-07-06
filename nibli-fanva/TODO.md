@@ -19,7 +19,8 @@ bullet**; remove an item when fully done, or narrow it if partial.
 
 - **Phase 0 foundation:** `nibli-fanva` scaffolded as a workspace member (path deps); `gates::local_gates` (gerna + smuni) + `GateError`/`feedback_for` with native unit tests.
 - **Phase 1 core — multi-turn LLM layer (`src/llm/`):** `Provider`/`LlmConfig`/`Turn` (types.rs); provider-agnostic `build_chat_request` for all 5 providers (multi-turn; per-provider `system` placement; Gemini assistant→`"model"`); `extract_text`/`clean_lojban_output` (response.rs); the iterative-correction system prompt. 7 native tests (request shapes + extraction). Pure/native-testable; no I/O yet.
-- `nibli-ui` not yet wired.
+- **Chat seam + agent-loop core (Phases 1/5):** the `Chat` async trait + `ChatError` (`src/llm/mod.rs`); `gates::validate`; `agent::translate_agentic` with `Attempt`/`Outcome`, attempt cap, oscillation guard, and provider-error (`ChatFailed`) handling. 4 native tests via a mock `Chat` (fail-once→Success@2, never-valid→Exhausted@cap, oscillation→early Exhausted, provider-error→ChatFailed).
+- `nibli-ui` not yet wired; the jbotci MCP transport + inner tool loop are not yet built.
 
 ## Phase 0 — remainder
 
@@ -28,7 +29,7 @@ bullet**; remove an item when fully done, or narrow it if partial.
 
 ## Phase 1 — LLM layer, remainder (in `src/llm/`)
 
-- Add the async send seam: a `Chat` trait (or fn-pointer) with method `chat(cfg, system, &[Turn]) -> Result<String, LlmError>`, a concrete **wasm-only** gloo-net impl (`http.rs`: build_chat_request → POST → status classify → extract_text → clean_lojban_output, porting `nibli-ui/src/llm.rs`'s send + `TranslateError`/`classify_http`), and a native mock impl for tests. Done when: the trait + mock compile and a native test drives a scripted multi-turn exchange; the gloo-net impl is `#[cfg(target_arch = "wasm32")]`-gated and builds for `wasm32-unknown-unknown`.
+- (Seam DONE — `Chat` trait + native mock exist.) Add the concrete **wasm-only** `Chat` impl (`src/llm/http.rs`, `#[cfg(target_arch = "wasm32")]`): `build_chat_request` → gloo-net POST → status classify → `extract_text` → `clean_lojban_output`, porting `nibli-ui/src/llm.rs`'s send + `TranslateError`/`classify_http` into `ChatError`. Done when: it builds for `wasm32-unknown-unknown` and a `wasm-pack` test drives a stubbed fetch.
 - (Deferred to Phase 3) tool DECLARATION in the request builders + tool-call turns — folded into the tool-calling adapters so tools land end-to-end.
 - (Deferred to Phase 6) have `nibli-ui`'s single-shot translate delegate to `nibli_fanva::llm`.
 - Optional: extend the system prompt with a gerna-fragment cheat-sheet + a larger known-good few-shot set once convergence is measured (Phase 8).
@@ -45,9 +46,9 @@ bullet**; remove an item when fully done, or narrow it if partial.
 
 - Add `official_gate(&str) -> Result<(), GateError>` calling the vendored camxes shim via `#[wasm_bindgen]` (fall back to `asset!()`+global bind if `dx` doesn't bundle lib-crate JS); map a parse failure → `GateError::Official{message,line,column}`. Add `validate(&str) -> Result<LogicBuffer, GateError>` = `local_gates` then `official_gate` (still all local — no `mcp` arg). Done when: a wasm-bindgen browser test asserts a grammatical string is Ok and an ungrammatical one is `GateError::Official`.
 
-## Phase 5 — Agentic loop, in `src/agent.rs`
+## Phase 5 — Agentic loop, remainder (`src/agent.rs`)
 
-- `Attempt`/`Outcome`; `translate_agentic(cfg, english, mcp, max_attempts, max_tool_steps)` = outer validate/feedback loop around `run_llm_tool_loop`; oscillation guard; separate network-vs-gate errors; a missing/unreachable proxy ⇒ local gates only + degraded flag (never hard-fail); one `Attempt` trace per iteration. Done when: native mocked tests cover fail-once-then-pass ⇒ Success@2, always-fail ⇒ Exhausted@cap, oscillation early-stop, mcp-unavailable ⇒ local-only Success+degraded.
+- (Outer loop DONE — see "Already landed": `Attempt`/`Outcome`, cap, oscillation guard, network-vs-gate separation, per-iteration trace, native tests.) Remaining: thread the inner jbotci `run_llm_tool_loop` (Phase 3) into `translate_agentic` before the gate, and add the degrade path — a missing/unreachable proxy ⇒ local gates only + a `degraded` flag on the `Outcome` (never hard-fail). Done when: a mocked test with mcp-unavailable returns Success using only local gates and marks degraded.
 
 ## Phase 6 — nibli-ui integration (the "Translate" mode)
 

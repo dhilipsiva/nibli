@@ -15,3 +15,7 @@ gerna = { path = "../gerna" }
 smuni = { path = "../smuni" }
 nibli-types = { path = "../nibli-types" }
 serde_json = "1"
+
+[dev-dependencies]
+# A minimal block_on for driving the async agent loop in native unit tests.
+futures = { version = "0.3", features = ["executor"] }
