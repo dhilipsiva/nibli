@@ -12,10 +12,9 @@ pub mod types;
 mod request;
 mod response;
 
-// The concrete browser transport is wasm-only; native builds use a mock `Chat`.
-#[cfg(target_arch = "wasm32")]
+// The concrete transport. `HttpChat` exists on all targets (so downstream native
+// checks pass); it only performs real sends under wasm — see `http.rs`.
 mod http;
-#[cfg(target_arch = "wasm32")]
 pub use http::HttpChat;
 
 pub use request::build_chat_request;

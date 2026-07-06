@@ -1,16 +1,21 @@
-//! The concrete browser transport for [`Chat`] — wasm-only (gloo-net = fetch).
+//! The concrete transport for [`Chat`].
 //!
-//! Ports `nibli-ui/src/llm.rs`'s send + status-classification path. Native builds
-//! exclude this module (see the `#[cfg]` in `mod.rs`) and use a mock `Chat`, so
-//! the agent/gate/provider logic stays offline-testable. This layer only does I/O
-//! + error mapping; request shaping and response extraction are the pure,
-//! native-tested `build_chat_request` / `extract_text`.
+//! In the browser (wasm) it sends via gloo-net (fetch) straight to the provider —
+//! the BYO key never leaves for a nibli server. On native targets `HttpChat` still
+//! exists (so downstream crates like `nibli-ui` type-check for the host toolchain)
+//! but its `chat()` returns an error: real sends only happen in the browser, and
+//! native tests use a mock `Chat`.
+//!
+//! Request shaping / response extraction are the pure, native-tested
+//! `build_chat_request` / `extract_text`; this layer is only I/O + error mapping.
 
-use gloo_net::http::Request;
-use serde_json::Value;
+use super::types::{LlmConfig, Turn};
+use super::{Chat, ChatError};
 
-use super::types::{LlmConfig, Provider, Turn};
-use super::{Chat, ChatError, build_chat_request, extract_text};
+#[cfg(target_arch = "wasm32")]
+use super::types::Provider;
+#[cfg(target_arch = "wasm32")]
+use super::{build_chat_request, extract_text};
 
 /// A [`Chat`] that sends directly to the configured provider from the browser.
 /// The BYO key lives in `cfg` (a Dioxus signal upstream) and never leaves for a
@@ -18,12 +23,16 @@ use super::{Chat, ChatError, build_chat_request, extract_text};
 pub struct HttpChat;
 
 impl Chat for HttpChat {
+    #[cfg(target_arch = "wasm32")]
     async fn chat(
         &self,
         cfg: &LlmConfig,
         system: &str,
         turns: &[Turn],
     ) -> Result<String, ChatError> {
+        use gloo_net::http::Request;
+        use serde_json::Value;
+
         let provider = cfg.provider;
         let (url, headers, body) = build_chat_request(cfg, system, turns);
 
@@ -58,11 +67,28 @@ impl Chat for HttpChat {
         extract_text(provider, &json)
             .ok_or_else(|| ChatError(format!("{} returned no text", provider.display_name())))
     }
+
+    // Native stub: `HttpChat` exists for the host toolchain (so `nibli-ui` type-
+    // checks under `cargo check --workspace`) but only sends in the browser.
+    #[cfg(not(target_arch = "wasm32"))]
+    async fn chat(
+        &self,
+        _cfg: &LlmConfig,
+        _system: &str,
+        _turns: &[Turn],
+    ) -> Result<String, ChatError> {
+        Err(ChatError(
+            "HttpChat sends only run in the browser (wasm); native code should use a mock Chat"
+                .into(),
+        ))
+    }
 }
 
 /// Map a non-2xx response to a friendly [`ChatError`], pulling the provider's own
 /// error message where present (all five nest it under `error.message`).
+#[cfg(target_arch = "wasm32")]
 fn classify_http(provider: Provider, status: u16, body: &str) -> ChatError {
+    use serde_json::Value;
     let provider_msg = serde_json::from_str::<Value>(body)
         .ok()
         .and_then(|v| v["error"]["message"].as_str().map(|s| s.to_string()));

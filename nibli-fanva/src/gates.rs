@@ -57,6 +57,32 @@ pub fn validate(candidate: &str) -> Result<LogicBuffer, GateError> {
     local_gates(candidate)
 }
 
+/// Validate a multi-line KB the way `nibli-ui` uses it: each non-empty,
+/// non-comment line must pass the gates on its own. Returns the first failing
+/// line's error, tagged with its KB line number so the LLM can locate it. A
+/// single-line candidate is simply validated as one statement, so this also
+/// covers the single-sentence case.
+pub fn validate_kb(text: &str) -> Result<(), GateError> {
+    for (i, raw) in text.lines().enumerate() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        validate(line).map(|_| ()).map_err(|e| tag_line(e, i + 1))?;
+    }
+    Ok(())
+}
+
+/// Prefix a gate error with its KB line number, preserving the variant.
+fn tag_line(e: GateError, line_no: usize) -> GateError {
+    let msg = format!("(KB line {line_no}) {}", e.message());
+    match e {
+        GateError::Syntax(_) => GateError::Syntax(msg),
+        GateError::Semantic(_) => GateError::Semantic(msg),
+        GateError::Official(_) => GateError::Official(msg),
+    }
+}
+
 fn syntax(e: NibliError) -> GateError {
     GateError::Syntax(e.to_string())
 }
@@ -109,5 +135,18 @@ mod tests {
         let fb = feedback_for(&GateError::Syntax("[Syntax Error] line 1:5: nope".into()));
         assert!(fb.contains("gerna parser"));
         assert!(fb.contains("line 1:5"));
+    }
+
+    #[test]
+    fn validate_kb_passes_valid_multiline_and_skips_blanks_and_comments() {
+        validate_kb("la .adam. cu gerku\n# a note\n\nla .adam. cu citka")
+            .expect("every non-comment line is valid Lojban");
+    }
+
+    #[test]
+    fn validate_kb_reports_the_failing_line_number() {
+        let err = validate_kb("la .adam. cu gerku\nbroken \u{ff}\u{ff}")
+            .expect_err("line 2 is ungrammatical");
+        assert!(err.message().contains("KB line 2"), "got {err:?}");
     }
 }

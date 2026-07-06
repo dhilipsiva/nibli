@@ -75,8 +75,8 @@ pub async fn translate_agentic<C: Chat>(
         };
         let candidate = clean_lojban_output(&raw);
 
-        match gates::validate(&candidate) {
-            Ok(_logic) => {
+        match gates::validate_kb(&candidate) {
+            Ok(()) => {
                 attempts.push(Attempt {
                     n,
                     candidate: candidate.clone(),
