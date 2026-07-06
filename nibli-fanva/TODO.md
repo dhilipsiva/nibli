@@ -17,18 +17,21 @@ bullet**; remove an item when fully done, or narrow it if partial.
 
 ## Already landed in this crate
 
-Phase 0 foundation: `nibli-fanva` scaffolded as a workspace member (path deps),
-`gates::local_gates` (gerna + smuni) + `GateError`/`feedback_for` with native
-unit tests. `nibli-ui` not yet wired.
+- **Phase 0 foundation:** `nibli-fanva` scaffolded as a workspace member (path deps); `gates::local_gates` (gerna + smuni) + `GateError`/`feedback_for` with native unit tests.
+- **Phase 1 core — multi-turn LLM layer (`src/llm/`):** `Provider`/`LlmConfig`/`Turn` (types.rs); provider-agnostic `build_chat_request` for all 5 providers (multi-turn; per-provider `system` placement; Gemini assistant→`"model"`); `extract_text`/`clean_lojban_output` (response.rs); the iterative-correction system prompt. 7 native tests (request shapes + extraction). Pure/native-testable; no I/O yet.
+- `nibli-ui` not yet wired.
 
 ## Phase 0 — remainder
 
 - Vendor the standard `camxes.js` (ilmentufa, MIT) into `nibli-fanva/js/vendor/camxes/` pinned to the repo's ilmentufa flake input (`NIBLI_CAMXES_DIR`) so there's one grammar source of truth; add a `camxes_shim.js` exposing `parse(text) -> {ok} | {ok:false,message,line,column}`, plus `VENDOR.md` + `NOTICE` (MIT attribution). Pick fanva's own LICENSE if distinct. Done when: the shim file + NOTICE exist and VENDOR.md records source commit + observed error shape.
 - Add `nibli-fanva = { path = "../nibli-fanva" }` to `nibli-ui/Cargo.toml`. Done when: `cargo check -p nibli-ui` still builds.
 
-## Phase 1 — LLM layer (multi-turn + tool-use), in `src/llm/`
+## Phase 1 — LLM layer, remainder (in `src/llm/`)
 
-- Port the provider client from `nibli-ui/src/llm.rs` (BYO key in a signal; direct-to-provider). Add `Role`/`ChatMessage`/`Provider`/`LlmConfig`, an async `chat(cfg, system, &[ChatMessage], &[ToolDecl]) -> ChatResponse` seam (trait or fn-pointer so native tests mock it), per-provider request builders, the extended system prompt (gerna-fragment cheat-sheet + few-shot + correction clause), and native request-shape tests. Then have `nibli-ui`'s single-shot translate delegate here. Done when: `cargo test -p nibli-fanva --lib providers` passes and nibli-ui builds against `nibli_fanva::llm`.
+- Add the async send seam: a `Chat` trait (or fn-pointer) with method `chat(cfg, system, &[Turn]) -> Result<String, LlmError>`, a concrete **wasm-only** gloo-net impl (`http.rs`: build_chat_request → POST → status classify → extract_text → clean_lojban_output, porting `nibli-ui/src/llm.rs`'s send + `TranslateError`/`classify_http`), and a native mock impl for tests. Done when: the trait + mock compile and a native test drives a scripted multi-turn exchange; the gloo-net impl is `#[cfg(target_arch = "wasm32")]`-gated and builds for `wasm32-unknown-unknown`.
+- (Deferred to Phase 3) tool DECLARATION in the request builders + tool-call turns — folded into the tool-calling adapters so tools land end-to-end.
+- (Deferred to Phase 6) have `nibli-ui`'s single-shot translate delegate to `nibli_fanva::llm`.
+- Optional: extend the system prompt with a gerna-fragment cheat-sheet + a larger known-good few-shot set once convergence is measured (Phase 8).
 
 ## Phase 2 — MCP client, in `src/mcp/`
 

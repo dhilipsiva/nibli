@@ -27,8 +27,8 @@
 //! the concrete transports are wasm-only.
 
 pub mod gates;
+pub mod llm;
 
 // Landing in subsequent phases (see TODO.md):
-//   pub mod llm;    // multi-turn chat() + tool-use, per-provider request builders
 //   pub mod mcp;    // MCP Streamable-HTTP client → proxy → jbotci
 //   pub mod agent;  // translate_agentic(): inner tool loop + outer validate/feedback loop
