@@ -61,6 +61,60 @@ const DEFAULT_SOURCE: &str = "All dogs are animals.\nAll animals eat.\nAdam is a
 const DEFAULT_LOJBAN: &str = "ro lo gerku cu danlu\nro lo danlu cu citka\nla .adam. cu gerku";
 const DEFAULT_QUERY: &str = "la .adam. cu citka";
 
+// ── Agentic translate (nibli-fanva) ──
+// The Source→Lojban button runs the self-correcting loop: translate → validate
+// with gerna+smuni → feed the compiler error back → retry, bounded below. All
+// gates are local/in-browser; the only network call is the LLM itself.
+
+/// Retry cap for the agentic translate (each attempt is one LLM round-trip).
+const MAX_TRANSLATE_ATTEMPTS: u32 = 5;
+
+/// One row of the self-correction trace rendered under the Source tab.
+#[derive(Clone)]
+struct TraceRow {
+    n: u32,
+    ok: bool,
+    detail: String,
+}
+
+/// Map the UI's in-memory LLM config onto nibli-fanva's for the agent loop.
+fn to_fanva_cfg(cfg: &LlmConfig) -> nibli_fanva::llm::LlmConfig {
+    use nibli_fanva::llm::Provider as FP;
+    let provider = match cfg.provider {
+        Provider::Anthropic => FP::Anthropic,
+        Provider::OpenAi => FP::OpenAi,
+        Provider::OpenRouter => FP::OpenRouter,
+        Provider::Gemini => FP::Gemini,
+        Provider::Custom => FP::Custom,
+    };
+    nibli_fanva::llm::LlmConfig {
+        provider,
+        api_key: cfg.api_key.clone(),
+        model: cfg.model.clone(),
+        base_url: cfg.base_url.clone(),
+        max_tokens: 1024,
+    }
+}
+
+/// Collapse the agent's attempts into UI trace rows (gate + first error line).
+fn trace_rows(attempts: &[nibli_fanva::agent::Attempt]) -> Vec<TraceRow> {
+    attempts
+        .iter()
+        .map(|a| TraceRow {
+            n: a.n,
+            ok: a.error.is_none(),
+            detail: match &a.error {
+                None => "valid \u{2014} passed the gates".to_string(),
+                Some(e) => {
+                    let msg = e.message();
+                    let first = msg.lines().next().unwrap_or(msg);
+                    format!("{}: {first}", e.gate())
+                }
+            },
+        })
+        .collect()
+}
+
 // ── Types ──
 
 #[derive(Clone, Copy, PartialEq)]
@@ -817,6 +871,7 @@ fn SourceTabs(
     let mut source_text = use_signal(|| DEFAULT_SOURCE.to_string());
     let mut translating = use_signal(|| false);
     let mut translate_error = use_signal(|| Option::<String>::None);
+    let mut translate_trace = use_signal(Vec::<TraceRow>::new);
 
     // Back-translation reflects the ACTIVE KB: a loaded example's corpus, else
     // the user's editable Lojban tab.
@@ -845,13 +900,41 @@ fn SourceTabs(
         };
         translating.set(true);
         translate_error.set(None);
+        translate_trace.set(Vec::new());
         spawn(async move {
-            match llm::translate(&cfg, &text).await {
-                Ok(lojban) => {
+            use nibli_fanva::agent::Outcome;
+            // The self-correcting loop: translate → validate (gerna+smuni) →
+            // feed the error back → retry, up to MAX_TRANSLATE_ATTEMPTS.
+            let http = nibli_fanva::llm::HttpChat;
+            let fcfg = to_fanva_cfg(&cfg);
+            let outcome =
+                nibli_fanva::agent::translate_agentic(&http, &fcfg, &text, MAX_TRANSLATE_ATTEMPTS)
+                    .await;
+            match outcome {
+                Outcome::Success { lojban, attempts } => {
+                    translate_trace.set(trace_rows(&attempts));
                     lojban_text.set(lojban);
                     active_tab.set(ActiveTab::Lojban);
                 }
-                Err(e) => translate_error.set(Some(e.to_string())),
+                Outcome::Exhausted {
+                    best,
+                    last_error,
+                    attempts,
+                } => {
+                    let n = attempts.len();
+                    translate_trace.set(trace_rows(&attempts));
+                    // Show the best effort so the user can edit from there.
+                    lojban_text.set(best);
+                    active_tab.set(ActiveTab::Lojban);
+                    translate_error.set(Some(format!(
+                        "Couldn't fully validate after {n} attempts \u{2014} showing best effort. Last: {}",
+                        last_error.message()
+                    )));
+                }
+                Outcome::ChatFailed { error, attempts } => {
+                    translate_trace.set(trace_rows(&attempts));
+                    translate_error.set(Some(error));
+                }
             }
             translating.set(false);
         });
@@ -940,6 +1023,18 @@ fn SourceTabs(
                                     "\u{2699}"
                                 }
                                 span { class: "translate-row__hint", "{hint}" }
+                            }
+                            if !translate_trace.read().is_empty() {
+                                div { class: "translate-trace",
+                                    for row in translate_trace().iter() {
+                                        div {
+                                            key: "{row.n}",
+                                            class: if row.ok { "trace-row trace-ok" } else { "trace-row trace-fail" },
+                                            span { class: "trace-n", "#{row.n}" }
+                                            span { class: "trace-detail", "{row.detail}" }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

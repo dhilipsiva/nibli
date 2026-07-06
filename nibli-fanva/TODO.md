@@ -22,7 +22,8 @@ bullet**; remove an item when fully done, or narrow it if partial.
 - **Chat seam + agent-loop core (Phases 1/5):** the `Chat` async trait + `ChatError` (`src/llm/mod.rs`); `gates::validate`; `agent::translate_agentic` with `Attempt`/`Outcome`, attempt cap, oscillation guard, and provider-error (`ChatFailed`) handling. 4 native tests via a mock `Chat` (fail-once→Success@2, never-valid→Exhausted@cap, oscillation→early Exhausted, provider-error→ChatFailed).
 - **Phase 1 complete — wasm `Chat` transport:** `llm::HttpChat` (`src/llm/http.rs`, wasm-only via gloo-net) ports nibli-ui's send + status classification into `ChatError`; target-gated so native tests stay mock-only. Verified: native `cargo test` (14) green AND `cargo build -p nibli-fanva --target wasm32-unknown-unknown` compiles.
 - **nibli-ui prep:** `gates::validate_kb` (line-by-line KB validation, tagging the failing KB line) — the agent now validates multi-line KBs, not just single sentences; `HttpChat` refactored to exist on all targets (native stub, gloo-net wasm-only) so `nibli-ui` type-checks under `cargo check --workspace`. 16 native tests + wasm build green.
-- `nibli-ui` not yet wired; the jbotci MCP transport + inner tool loop are not yet built.
+- **Phase 6 core — nibli-ui Translate mode:** the Source→Lojban button runs the agentic loop (`translate_agentic` + `HttpChat` + local gates) with a per-attempt self-correction trace; Success fills the Lojban tab, Exhausted shows best-effort + last error, ChatFailed shows the transport error. `CLAUDE.md` Architecture table updated with the `nibli-fanva` row. Verified: `cargo check --workspace` (native) + `cargo check -p nibli-ui --target wasm32-unknown-unknown` (wasm) both green. Live end-to-end pending a user API-key run of `just ui`.
+- Not yet built: the camxes "official" gate (Phase 4), the jbotci MCP transport + inner tool loop (Phases 2/3), and their UI surfacing.
 
 ## Phase 0 — remainder
 
@@ -52,9 +53,14 @@ Remaining pieces were reassigned to later phases:
 
 - (Outer loop DONE — see "Already landed": `Attempt`/`Outcome`, cap, oscillation guard, network-vs-gate separation, per-iteration trace, native tests.) Remaining: thread the inner jbotci `run_llm_tool_loop` (Phase 3) into `translate_agentic` before the gate, and add the degrade path — a missing/unreachable proxy ⇒ local gates only + a `degraded` flag on the `Outcome` (never hard-fail). Done when: a mocked test with mcp-unavailable returns Success using only local gates and marks degraded.
 
-## Phase 6 — nibli-ui integration (the "Translate" mode)
+## Phase 6 — nibli-ui integration, remainder
 
-- Upgrade nibli-ui's Source→Lojban Translate button to call `nibli_fanva::translate_agentic` via `spawn`; extend `LlmConfigModal` with an optional proxy URL + `max_attempts`/`max_tool_steps`; add a live trace panel (per attempt: candidate, jbotci tool calls, per-gate ✓/✗); Success/Exhausted/degraded states; jbotci-off banner when no proxy. Done when: `just ui` shows the mode self-correcting a wrong sentence to three green gates, and with no proxy DevTools shows only the provider endpoint.
+- (Core DONE — see "Already landed": Source→Lojban Translate runs `translate_agentic` via `spawn` with `HttpChat` + local gerna+smuni gates; a self-correction trace renders per attempt.) Remaining:
+  - Extend `LlmConfigModal` with an optional proxy URL + a `max_attempts` field (currently the `MAX_TRANSLATE_ATTEMPTS` const in `main.rs`).
+  - Trace rows for jbotci tool calls (Phase 3) and a per-gate camxes badge (Phase 4).
+  - A jbotci-off / degraded banner when no proxy (Phase 5 degrade path).
+  - Optional cleanup: single-source `nibli-ui`'s query translate + modal key-test onto `nibli_fanva::llm` (drop the duplicate `llm.rs` send).
+  - Done when: `just ui` shows the Source translate self-correcting a wrong sentence to green; with no proxy, DevTools shows only the provider endpoint.
 
 ## Phase 7 — Meaning check
 

@@ -2814,6 +2814,7 @@ dependencies = [
  "gerna",
  "gloo-net",
  "logji",
+ "nibli-fanva",
  "nibli-protocol",
  "nibli-render",
  "nibli-types",

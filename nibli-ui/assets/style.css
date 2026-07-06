@@ -1228,3 +1228,38 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .modal-backdrop, .modal-card { animation: none; }
 }
+
+/* ── Agentic translate: self-correction trace ─────────────────────────────── */
+.translate-trace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1, 4px);
+  margin-top: var(--s2, 8px);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-code, 0.85rem);
+}
+.trace-row {
+  display: flex;
+  gap: var(--s2, 8px);
+  align-items: baseline;
+  padding: var(--s1, 4px) var(--s2, 8px);
+  border-radius: var(--r-sm, 4px);
+  border-left: 3px solid transparent;
+}
+.trace-row .trace-n {
+  opacity: 0.6;
+  min-width: 2.5em;
+  flex: 0 0 auto;
+}
+.trace-row .trace-detail {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.trace-ok {
+  border-left-color: var(--verdict-true);
+  background: var(--verdict-true-bg, color-mix(in oklab, var(--verdict-true) 14%, transparent));
+}
+.trace-fail {
+  border-left-color: var(--verdict-false);
+  background: var(--verdict-false-bg, color-mix(in oklab, var(--verdict-false) 14%, transparent));
+}
