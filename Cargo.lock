@@ -2755,6 +2755,7 @@ dependencies = [
 name = "nibli-fanva"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "gerna",
  "nibli-types",
  "serde_json",
