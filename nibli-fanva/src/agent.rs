@@ -128,7 +128,8 @@ pub async fn translate_agentic<C: Chat>(
     }
 }
 
-#[cfg(test)]
+// Native-only: these drive the async loop with `futures::executor::block_on`.
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use crate::llm::{ChatError, Provider};

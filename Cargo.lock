@@ -2758,9 +2758,12 @@ dependencies = [
  "futures",
  "gerna",
  "gloo-net",
+ "js-sys",
  "nibli-types",
  "serde_json",
  "smuni",
+ "wasm-bindgen",
+ "wasm-bindgen-test",
 ]
 
 [[package]]

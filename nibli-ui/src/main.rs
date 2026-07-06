@@ -314,6 +314,14 @@ fn App() -> Element {
     rsx! {
         document::Link { rel: "stylesheet", href: asset!("/assets/tokens.css") }
         document::Link { rel: "stylesheet", href: asset!("/assets/style.css") }
+        // Local "official" grammar gate: the vendored ilmentufa camxes parser +
+        // preprocessor, then a shim exposing window.camxes_validate. Served as
+        // static assets (no network at reason-time); nibli-fanva's official_gate
+        // calls the shim. The shim resolves the globals at call time, so load
+        // order is not critical.
+        document::Script { src: asset!("/assets/js/vendor/camxes/camxes_preproc.js") }
+        document::Script { src: asset!("/assets/js/vendor/camxes/camxes.js") }
+        document::Script { src: asset!("/assets/js/vendor/camxes/camxes_shim.js") }
         // Outer shell owns the viewport: the QUINE masthead sits above the
         // instrument. data-theme rides here (not on `.app`) so the header
         // themes alongside the panels.

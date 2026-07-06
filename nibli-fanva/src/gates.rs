@@ -54,7 +54,54 @@ pub fn local_gates(candidate: &str) -> Result<LogicBuffer, GateError> {
 /// [`local_gates`]; the wasm-only official (`camxes.js`) gate joins here in a
 /// later phase without changing this signature, so the agent loop is stable.
 pub fn validate(candidate: &str) -> Result<LogicBuffer, GateError> {
-    local_gates(candidate)
+    let buf = local_gates(candidate)?;
+    // The third gate is the local (browser) camxes parser — wasm-only.
+    #[cfg(target_arch = "wasm32")]
+    official_gate(candidate)?;
+    Ok(buf)
+}
+
+/// The "official" grammar gate: the vendored standard **camxes** parser
+/// (ilmentufa), run locally in the browser through the `window.camxes_validate`
+/// shim that `nibli-ui` loads. wasm-only and **synchronous** (a plain JS call).
+///
+/// Degrades to `Ok` when the shim is not present — on native, or if the script
+/// failed to load — so `nibli-fanva` stays usable without it and translation is
+/// never hard-blocked by a camxes hiccup; the local gerna+smuni gates still gate.
+/// When the shim IS loaded, a camxes rejection is a `GateError::Official`, making
+/// the success gate `gerna ∧ smuni ∧ camxes`.
+#[cfg(target_arch = "wasm32")]
+pub fn official_gate(candidate: &str) -> Result<(), GateError> {
+    use wasm_bindgen::{JsCast, JsValue};
+    let Some(f) = js_sys::Reflect::get(&js_sys::global(), &JsValue::from_str("camxes_validate"))
+        .ok()
+        .and_then(|v| v.dyn_into::<js_sys::Function>().ok())
+    else {
+        return Ok(()); // shim not loaded → degrade to the local gates
+    };
+    match f.call1(&JsValue::NULL, &JsValue::from_str(candidate)) {
+        Ok(res) => read_camxes_result(&res),
+        Err(_) => Ok(()), // validator threw unexpectedly → degrade, don't block
+    }
+}
+
+/// Read the shim's `{ ok, message?, line?, column? }` object into a gate result.
+/// Split out so it is unit-testable with a synthetic object under
+/// `wasm-pack test --node` (no DOM/`window` needed).
+#[cfg(target_arch = "wasm32")]
+fn read_camxes_result(res: &wasm_bindgen::JsValue) -> Result<(), GateError> {
+    use wasm_bindgen::JsValue;
+    let get = |k: &str| js_sys::Reflect::get(res, &JsValue::from_str(k)).ok();
+    let ok = get("ok").and_then(|v| v.as_bool()).unwrap_or(true);
+    if ok {
+        return Ok(());
+    }
+    let msg = get("message")
+        .and_then(|v| v.as_string())
+        .unwrap_or_else(|| "camxes rejected the parse".to_string());
+    let line = get("line").and_then(|v| v.as_f64()).unwrap_or(0.0) as u32;
+    let column = get("column").and_then(|v| v.as_f64()).unwrap_or(0.0) as u32;
+    Err(GateError::Official(format!("line {line}:{column}: {msg}")))
 }
 
 /// Validate a multi-line KB the way `nibli-ui` uses it: each non-empty,
@@ -109,7 +156,7 @@ pub fn feedback_for(err: &GateError) -> String {
     )
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
 
@@ -148,5 +195,57 @@ mod tests {
         let err = validate_kb("la .adam. cu gerku\nbroken \u{ff}\u{ff}")
             .expect_err("line 2 is ungrammatical");
         assert!(err.message().contains("KB line 2"), "got {err:?}");
+    }
+}
+
+/// Wasm-only tests for the camxes JS marshalling — run with
+/// `wasm-pack test --node nibli-fanva`. A synthetic result object exercises
+/// `read_camxes_result` (no DOM needed), and `official_gate` is checked on its
+/// degrade path (no global). The real camxes engine needs `window` + the loaded
+/// shim and is verified manually in the browser.
+#[cfg(all(test, target_arch = "wasm32"))]
+mod wasm_tests {
+    use super::*;
+    use wasm_bindgen::JsValue;
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    fn obj(pairs: &[(&str, JsValue)]) -> JsValue {
+        let o = js_sys::Object::new();
+        for (k, v) in pairs {
+            js_sys::Reflect::set(&o, &JsValue::from_str(k), v).unwrap();
+        }
+        o.into()
+    }
+
+    #[wasm_bindgen_test]
+    fn ok_result_passes() {
+        let res = obj(&[("ok", JsValue::from_bool(true))]);
+        assert!(read_camxes_result(&res).is_ok());
+    }
+
+    #[wasm_bindgen_test]
+    fn error_result_maps_to_official() {
+        let res = obj(&[
+            ("ok", JsValue::from_bool(false)),
+            (
+                "message",
+                JsValue::from_str("Expected selbri but end of input found."),
+            ),
+            ("line", JsValue::from_f64(1.0)),
+            ("column", JsValue::from_f64(4.0)),
+        ]);
+        match read_camxes_result(&res) {
+            Err(GateError::Official(m)) => {
+                assert!(m.contains("Expected selbri"), "{m}");
+                assert!(m.contains("1:4"), "{m}");
+            }
+            other => panic!("expected Official, got {other:?}"),
+        }
+    }
+
+    #[wasm_bindgen_test]
+    fn official_gate_degrades_without_the_shim() {
+        // No `camxes_validate` on the node global → the gate is a no-op.
+        assert!(official_gate("la .adam. cu gerku").is_ok());
     }
 }

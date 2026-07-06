@@ -466,6 +466,16 @@ verify-wasm-node:
         wasm-pack test --node nibli-wasm; \
     fi
 
+# nibli-fanva camxes-gate marshalling under node (wasm-bindgen-test): verifies
+# read_camxes_result + the official_gate degrade path. The real camxes engine
+# needs a browser DOM and is checked manually. Skips cleanly when wasm-pack absent.
+test-fanva-wasm:
+    @if ! command -v wasm-pack >/dev/null 2>&1; then \
+        echo 'test-fanva-wasm SKIPPED: wasm-pack unavailable (cargo install wasm-pack)'; \
+    else \
+        wasm-pack test --node nibli-fanva; \
+    fi
+
 # Comprehensive pre-push / pre-release gate: the fast native `ci` plus the WASM
 # behavioral smokes. `ci` alone does not exercise the WASM component.
 ci-all: ci ci-wasm

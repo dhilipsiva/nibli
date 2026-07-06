@@ -23,7 +23,8 @@ bullet**; remove an item when fully done, or narrow it if partial.
 - **Phase 1 complete — wasm `Chat` transport:** `llm::HttpChat` (`src/llm/http.rs`, wasm-only via gloo-net) ports nibli-ui's send + status classification into `ChatError`; target-gated so native tests stay mock-only. Verified: native `cargo test` (14) green AND `cargo build -p nibli-fanva --target wasm32-unknown-unknown` compiles.
 - **nibli-ui prep:** `gates::validate_kb` (line-by-line KB validation, tagging the failing KB line) — the agent now validates multi-line KBs, not just single sentences; `HttpChat` refactored to exist on all targets (native stub, gloo-net wasm-only) so `nibli-ui` type-checks under `cargo check --workspace`. 16 native tests + wasm build green.
 - **Phase 6 core — nibli-ui Translate mode:** the Source→Lojban button runs the agentic loop (`translate_agentic` + `HttpChat` + local gates) with a per-attempt self-correction trace; Success fills the Lojban tab, Exhausted shows best-effort + last error, ChatFailed shows the transport error. `CLAUDE.md` Architecture table updated with the `nibli-fanva` row. Verified: `cargo check --workspace` (native) + `cargo check -p nibli-ui --target wasm32-unknown-unknown` (wasm) both green. Live end-to-end pending a user API-key run of `just ui`.
-- Not yet built: the camxes "official" gate (Phase 4), the jbotci MCP transport + inner tool loop (Phases 2/3), and their UI surfacing.
+- **Phase 4 — camxes "official" gate:** vendored ilmentufa standard `camxes.js` + `camxes_preproc.js` + a `camxes_shim.js` (`window.camxes_validate`) served by nibli-ui (`document::Script`+`asset!()`); `gates::official_gate` (wasm-only, synchronous js-sys) folded into `validate`, so the success gate is `gerna ∧ smuni ∧ camxes` (degrades to the local two when the shim is absent). 3 wasm marshalling tests (`just test-fanva-wasm`); native 16 unaffected; both wasm checks green. Real engine verified in-browser via `just ui`.
+- Not yet built: the jbotci MCP transport + inner tool loop (Phases 2/3) and their UI surfacing.
 
 ## Phase 0 — remainder
 
@@ -45,9 +46,9 @@ Remaining pieces were reassigned to later phases:
 
 - Map each cached jbotci `inputSchema` → Anthropic/OpenAI/Gemini tool shape; parse tool calls (OpenAI `arguments` is stringified JSON — validate); submit tool results per provider; `run_llm_tool_loop(..., max_tool_steps)`. Done when: native tests map/parse a captured sample per provider into a normalized `ToolCall`, and a mocked-chat+mocked-mcp test drives one tool call then returns text.
 
-## Phase 4 — Official gate + full validator, in `src/gates.rs`
+## Phase 4 — Official gate + full validator — DONE (see "Already landed")
 
-- Add `official_gate(&str) -> Result<(), GateError>` calling the vendored camxes shim via `#[wasm_bindgen]` (fall back to `asset!()`+global bind if `dx` doesn't bundle lib-crate JS); map a parse failure → `GateError::Official{message,line,column}`. Add `validate(&str) -> Result<LogicBuffer, GateError>` = `local_gates` then `official_gate` (still all local — no `mcp` arg). Done when: a wasm-bindgen browser test asserts a grammatical string is Ok and an ungrammatical one is `GateError::Official`.
+- Implemented as **synchronous js-sys**, not `#[wasm_bindgen(module=…)]` (which `dx` can't bundle): nibli-ui serves the vendored camxes via `document::Script`+`asset!()` exposing `window.camxes_validate`; `gates::official_gate` reads it and folds into `validate`. Degrades to `Ok` when the shim is absent. The trace already shows a `camxes` badge via `GateError::gate()`.
 
 ## Phase 5 — Agentic loop, remainder (`src/agent.rs`)
 
