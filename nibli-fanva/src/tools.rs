@@ -9,6 +9,16 @@ use serde_json::Value;
 use crate::llm::{ChatError, ChatResponse, LlmConfig, ToolChat, ToolDecl, ToolResult, Turn};
 use crate::mcp::{McpClient, ToolInfo};
 
+/// A record of one jbotci tool call the model made during the loop — surfaced in
+/// the UI trace (the Phase-6 tool-call rows). Empty when jbotci is off.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ToolCallTrace {
+    pub name: String,
+    pub args: Value,
+    pub result: String,
+    pub is_error: bool,
+}
+
 /// Executes a single tool call, returning `(content, is_error)`. Abstracted so the
 /// loop is testable with a mock; the real impl is [`McpClient`].
 #[allow(async_fn_in_trait)]
@@ -40,9 +50,9 @@ pub fn to_tool_decls(tools: &[ToolInfo]) -> Vec<ToolDecl> {
 }
 
 /// Run the LLM with `tools` available; execute any tool calls via `runner`, feed
-/// the results back, and repeat up to `max_tool_steps`. Returns the final text.
-/// When the step cap is hit, one last call is made with NO tools to force a text
-/// answer.
+/// the results back, and repeat up to `max_tool_steps`. Returns the final text
+/// plus a trace of every tool call made (for the UI). When the step cap is hit,
+/// one last call is made with NO tools to force a text answer.
 pub async fn run_llm_tool_loop<C: ToolChat, R: ToolRunner>(
     chat: &C,
     runner: &R,
@@ -51,12 +61,13 @@ pub async fn run_llm_tool_loop<C: ToolChat, R: ToolRunner>(
     initial: Vec<Turn>,
     tools: &[ToolDecl],
     max_tool_steps: u32,
-) -> Result<String, ChatError> {
+) -> Result<(String, Vec<ToolCallTrace>), ChatError> {
     let mut turns = initial;
+    let mut traces: Vec<ToolCallTrace> = Vec::new();
     for _ in 0..max_tool_steps.max(1) {
         let resp: ChatResponse = chat.chat_tools(cfg, system, &turns, tools).await?;
         if resp.tool_calls.is_empty() {
-            return Ok(resp.text.unwrap_or_default());
+            return Ok((resp.text.unwrap_or_default(), traces));
         }
         turns.push(Turn::AssistantTools {
             text: resp.text.clone(),
@@ -65,6 +76,12 @@ pub async fn run_llm_tool_loop<C: ToolChat, R: ToolRunner>(
         let mut results = Vec::with_capacity(resp.tool_calls.len());
         for call in &resp.tool_calls {
             let (content, is_error) = runner.run_tool(&call.name, &call.args).await;
+            traces.push(ToolCallTrace {
+                name: call.name.clone(),
+                args: call.args.clone(),
+                result: content.clone(),
+                is_error,
+            });
             results.push(ToolResult {
                 id: call.id.clone(),
                 name: call.name.clone(),
@@ -76,7 +93,7 @@ pub async fn run_llm_tool_loop<C: ToolChat, R: ToolRunner>(
     }
     // Step cap reached — one final call with no tools to force a text answer.
     let resp = chat.chat_tools(cfg, system, &turns, &[]).await?;
-    Ok(resp.text.unwrap_or_default())
+    Ok((resp.text.unwrap_or_default(), traces))
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -145,7 +162,7 @@ mod tests {
             calls: RefCell::new(Vec::new()),
         };
         let cfg = LlmConfig::new(Provider::Anthropic);
-        let out = futures::executor::block_on(run_llm_tool_loop(
+        let (out, traces) = futures::executor::block_on(run_llm_tool_loop(
             &chat,
             &runner,
             &cfg,
@@ -162,6 +179,10 @@ mod tests {
             runner.calls.borrow()[0].1["query"],
             serde_json::json!("tavla")
         );
+        // The tool call is recorded in the trace.
+        assert_eq!(traces.len(), 1);
+        assert_eq!(traces[0].name, "vlacku");
+        assert!(!traces[0].is_error);
     }
 
     #[test]
@@ -176,7 +197,7 @@ mod tests {
             calls: RefCell::new(Vec::new()),
         };
         let cfg = LlmConfig::new(Provider::OpenAi);
-        let out = futures::executor::block_on(run_llm_tool_loop(
+        let (out, traces) = futures::executor::block_on(run_llm_tool_loop(
             &chat,
             &runner,
             &cfg,
@@ -188,5 +209,6 @@ mod tests {
         .unwrap();
         assert_eq!(out, "mi prami do");
         assert!(runner.calls.borrow().is_empty());
+        assert!(traces.is_empty());
     }
 }

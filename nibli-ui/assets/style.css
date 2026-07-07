@@ -1282,3 +1282,45 @@ body {
   opacity: 0.7;
   line-height: 1.4;
 }
+
+/* Per-attempt trace: per-gate chips + jbotci tool-call sub-rows */
+.trace-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.trace-gates {
+  display: inline-flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+.gate-chip {
+  font-size: 0.78em;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.gate-chip.pass {
+  color: var(--verdict-true);
+  border-color: color-mix(in oklab, var(--verdict-true) 45%, transparent);
+}
+.gate-chip.fail {
+  color: var(--verdict-false);
+  border-color: color-mix(in oklab, var(--verdict-false) 45%, transparent);
+}
+.gate-chip.skip {
+  opacity: 0.4;
+  border-color: color-mix(in oklab, currentColor 25%, transparent);
+}
+.trace-tool {
+  margin-left: 2.5em;
+  font-size: 0.82em;
+  opacity: 0.78;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.trace-tool.err {
+  color: var(--verdict-false);
+  opacity: 0.9;
+}

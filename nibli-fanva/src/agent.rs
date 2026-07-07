@@ -24,6 +24,9 @@ pub struct Attempt {
     pub n: u32,
     pub candidate: String,
     pub error: Option<GateError>,
+    /// The jbotci tools the model called while producing this candidate (empty
+    /// when jbotci is off / no proxy configured).
+    pub tool_calls: Vec<crate::tools::ToolCallTrace>,
 }
 
 /// The result of a translation run, always carrying the full attempt trace for the
@@ -88,7 +91,7 @@ pub async fn translate_agentic<C: ToolChat>(
     for n in 1..=max_attempts {
         // Inner jbotci tool loop: the model may call tools while producing a
         // candidate. With `tool_decls` empty (degraded) this is a single text call.
-        let raw = match tools::run_llm_tool_loop(
+        let (raw, tool_calls) = match tools::run_llm_tool_loop(
             chat,
             mcp,
             cfg,
@@ -99,7 +102,7 @@ pub async fn translate_agentic<C: ToolChat>(
         )
         .await
         {
-            Ok(t) => t,
+            Ok(pair) => pair,
             Err(e) => {
                 return Outcome::ChatFailed {
                     error: e.to_string(),
@@ -116,6 +119,7 @@ pub async fn translate_agentic<C: ToolChat>(
                     n,
                     candidate: candidate.clone(),
                     error: None,
+                    tool_calls,
                 });
                 return Outcome::Success {
                     lojban: candidate,
@@ -129,6 +133,7 @@ pub async fn translate_agentic<C: ToolChat>(
                     n,
                     candidate: candidate.clone(),
                     error: Some(err.clone()),
+                    tool_calls,
                 });
                 if oscillated {
                     return Outcome::Exhausted {

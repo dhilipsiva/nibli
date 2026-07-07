@@ -28,7 +28,8 @@ bullet**; remove an item when fully done, or narrow it if partial.
 - **Phase 3 — provider tool-calling adapters (`src/llm/` + `src/tools.rs`):** `Turn` gained `AssistantTools`/`ToolResults`; `build_chat_request_tools` declares tools + serializes tool turns per provider (Anthropic `tool_use`/`tool_result`, OpenAI `tool_calls` with stringified `arguments` + `role:"tool"`, Gemini `functionCall`/`functionResponse` by name); `parse_chat_response` normalizes tool calls (OpenAI args `JSON.parse`d, Gemini id synthesized); a `ToolChat` seam (`HttpChat` impls it); `tools::run_llm_tool_loop` (+ `ToolRunner`, `to_tool_decls`, `impl ToolRunner for McpClient`). 7 native tests (schema/turn shapes ×3, tool-call parse ×3, loop with mocked chat+runner) → 31 total; clippy-clean; wasm check green.
 - **Phase 5 — tool loop threaded into `translate_agentic`:** each attempt gets its candidate via `tools::run_llm_tool_loop` (the model may call jbotci tools) instead of a single `Chat::chat`; a missing/unreachable proxy ⇒ no tools ⇒ local gates only, with a `degraded: bool` on every `Outcome`. `nibli-ui` passes `McpClient::new("")` (empty proxy) so behavior is unchanged until Phase 6 adds the URL field. 1 new native test (mcp-unavailable → Success + degraded) → 32 total; workspace + wasm-ui checks + clippy clean.
 - **Phase 6 config surface + degraded banner:** the settings modal gained an optional **jbotci proxy URL** + a **max attempts** field (on nibli-ui's `LlmConfig`); `do_translate` builds `McpClient::new(cfg.proxy_url)` and passes `cfg.max_attempts`; a one-line **"jbotci off" banner** (reads `Outcome.degraded`) shows when no/unreachable proxy. Native workspace + wasm-ui checks green; no new clippy warnings; nibli-fanva 32 tests still pass.
-- Not yet built: per-attempt jbotci tool-call trace rows + a per-gate camxes badge (need nibli-fanva to carry tool-calls + per-gate results; moot until a proxy is deployed), and a deployed proxy (optional).
+- **Phase 6 trace polish:** per-attempt **per-gate chips** (`gerna ✓ smuni ✓ camxes ✗`, derived in nibli-ui from `Attempt.error`) + **jbotci tool-call sub-rows** (`run_llm_tool_loop` now returns the tool calls made → `Attempt.tool_calls`; rendered when a proxy is set). nibli-fanva 32 tests green (tool-loop trace asserted); workspace + wasm-ui + clippy clean.
+- Not yet built: a deployed jbotci proxy (optional — the `fanva-proxy` Worker), and the optional `llm.rs` single-sourcing cleanup.
 
 ## Phase 0 — remainder
 
@@ -58,11 +59,9 @@ Remaining pieces were reassigned to later phases:
 
 - `translate_agentic<C: ToolChat>(chat, mcp, cfg, source, max_attempts, max_tool_steps)` discovers tools once (degrade if unavailable), runs `run_llm_tool_loop` per attempt, and carries `degraded` on `Outcome`. The one call site (`nibli-ui`) + the agent tests were updated.
 
-## Phase 6 — nibli-ui integration, remainder
+## Phase 6 — nibli-ui integration — DONE (see "Already landed")
 
-- (Core + config surface + degraded banner DONE — see "Already landed".) Still remaining:
-  - Per-attempt jbotci **tool-call trace rows** + a **per-gate camxes badge** — need nibli-fanva to thread the tool-calls made + per-gate pass/fail through `Attempt`/`Outcome`; only meaningful once a proxy is deployed.
-  - Optional cleanup: single-source `nibli-ui`'s query translate + modal key-test onto `nibli_fanva::llm` (drop the duplicate `llm.rs` send).
+- Optional follow-up cleanup (not blocking): single-source `nibli-ui`'s query translate + modal key-test onto `nibli_fanva::llm` (drop the duplicate `llm.rs` send).
 
 ## Phase 7 — Meaning check
 

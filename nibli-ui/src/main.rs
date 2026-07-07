@@ -70,11 +70,30 @@ const DEFAULT_QUERY: &str = "la .adam. cu citka";
 const MAX_TOOL_STEPS: u32 = 4;
 
 /// One row of the self-correction trace rendered under the Source tab.
+#[derive(Clone, Copy)]
+enum GateState {
+    Pass,
+    Fail,
+    Skip,
+}
+
+/// One jbotci tool call, summarized for a trace sub-row.
+#[derive(Clone)]
+struct ToolRow {
+    name: String,
+    detail: String,
+    is_error: bool,
+}
+
 #[derive(Clone)]
 struct TraceRow {
     n: u32,
     ok: bool,
     detail: String,
+    /// Per-gate chips: (label like "gerna ✓", css class).
+    gates: Vec<(String, &'static str)>,
+    /// jbotci tool calls made in this attempt (empty when jbotci is off).
+    tools: Vec<ToolRow>,
 }
 
 /// Map the UI's in-memory LLM config onto nibli-fanva's for the agent loop.
@@ -96,7 +115,61 @@ fn to_fanva_cfg(cfg: &LlmConfig) -> nibli_fanva::llm::LlmConfig {
     }
 }
 
-/// Collapse the agent's attempts into UI trace rows (gate + first error line).
+/// The local gates, in the fail-fast order `validate` runs them.
+const GATE_ORDER: [&str; 3] = ["gerna", "smuni", "camxes"];
+
+/// Derive the per-gate chips from an attempt's error. `validate` is fail-fast in
+/// `GATE_ORDER`, so `error.gate()` is the failing gate; earlier gates passed,
+/// later ones were skipped. (Assumes camxes ran in-browser; if its shim failed to
+/// load it silently passes — a rare edge.)
+fn gate_chips(error: &Option<nibli_fanva::gates::GateError>) -> Vec<(String, &'static str)> {
+    let states: [GateState; 3] = match error {
+        None => [GateState::Pass; 3],
+        Some(e) => {
+            let fail_idx = GATE_ORDER.iter().position(|g| *g == e.gate()).unwrap_or(0);
+            std::array::from_fn(|i| {
+                if i < fail_idx {
+                    GateState::Pass
+                } else if i == fail_idx {
+                    GateState::Fail
+                } else {
+                    GateState::Skip
+                }
+            })
+        }
+    };
+    GATE_ORDER
+        .iter()
+        .zip(states)
+        .map(|(name, st)| {
+            let (glyph, class) = match st {
+                GateState::Pass => ("\u{2713}", "gate-chip pass"),
+                GateState::Fail => ("\u{2717}", "gate-chip fail"),
+                GateState::Skip => ("\u{00B7}", "gate-chip skip"),
+            };
+            (format!("{name} {glyph}"), class)
+        })
+        .collect()
+}
+
+/// A compact `args → result` snippet for a tool-call trace row.
+fn tool_summary(t: &nibli_fanva::tools::ToolCallTrace) -> String {
+    let args = truncate(&t.args.to_string(), 40);
+    let result = truncate(&t.result.replace('\n', " "), 80);
+    format!("{args} \u{2192} {result}")
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() > max {
+        let cut: String = s.chars().take(max).collect();
+        format!("{cut}\u{2026}")
+    } else {
+        s.to_string()
+    }
+}
+
+/// Collapse the agent's attempts into UI trace rows (per-gate chips + first error
+/// line + any jbotci tool calls made).
 fn trace_rows(attempts: &[nibli_fanva::agent::Attempt]) -> Vec<TraceRow> {
     attempts
         .iter()
@@ -111,6 +184,16 @@ fn trace_rows(attempts: &[nibli_fanva::agent::Attempt]) -> Vec<TraceRow> {
                     format!("{}: {first}", e.gate())
                 }
             },
+            gates: gate_chips(&a.error),
+            tools: a
+                .tool_calls
+                .iter()
+                .map(|t| ToolRow {
+                    name: t.name.clone(),
+                    detail: tool_summary(t),
+                    is_error: t.is_error,
+                })
+                .collect(),
         })
         .collect()
 }
@@ -1055,11 +1138,24 @@ fn SourceTabs(
                             if !translate_trace.read().is_empty() {
                                 div { class: "translate-trace",
                                     for row in translate_trace().iter() {
-                                        div {
-                                            key: "{row.n}",
-                                            class: if row.ok { "trace-row trace-ok" } else { "trace-row trace-fail" },
-                                            span { class: "trace-n", "#{row.n}" }
-                                            span { class: "trace-detail", "{row.detail}" }
+                                        div { key: "{row.n}", class: "trace-item",
+                                            div {
+                                                class: if row.ok { "trace-row trace-ok" } else { "trace-row trace-fail" },
+                                                span { class: "trace-n", "#{row.n}" }
+                                                span { class: "trace-gates",
+                                                    for (label, chip_class) in row.gates.iter() {
+                                                        span { key: "{label}", class: "{chip_class}", "{label}" }
+                                                    }
+                                                }
+                                                span { class: "trace-detail", "{row.detail}" }
+                                            }
+                                            for (ti, tool) in row.tools.iter().enumerate() {
+                                                div {
+                                                    key: "{ti}",
+                                                    class: if tool.is_error { "trace-tool err" } else { "trace-tool ok" },
+                                                    "\u{21B3} {tool.name} \u{00B7} {tool.detail}"
+                                                }
+                                            }
                                         }
                                     }
                                 }
