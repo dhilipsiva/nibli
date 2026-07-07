@@ -1,17 +1,21 @@
 //! The agentic translation loop — the self-correcting core.
 //!
-//! [`translate_agentic`] asks the LLM for a candidate, runs it through the
-//! validation gate, and on failure appends the compiler's own message to the
-//! conversation and asks again — up to `max_attempts`. A provider/transport error
-//! aborts as [`Outcome::ChatFailed`] (not a gate failure); an exact repeat of the
-//! previous candidate stops early as [`Outcome::Exhausted`] (the model is stuck).
+//! [`translate_agentic`] asks the LLM for a candidate — letting it call the jbotci
+//! tools via [`crate::tools::run_llm_tool_loop`] when a proxy is configured — runs
+//! the candidate through the validation gate, and on failure appends the compiler's
+//! own message to the conversation and asks again, up to `max_attempts`. A
+//! provider/transport error aborts as [`Outcome::ChatFailed`] (not a gate failure);
+//! an exact repeat of the previous candidate stops early as [`Outcome::Exhausted`].
 //!
-//! jbotci tool-use is not wired here yet (Phase 3); this is the outer
-//! validate→feedback loop over the local gates, and it is fully native-testable
-//! via a mock [`Chat`].
+//! When the MCP client has no proxy (or it is unreachable) the loop runs with NO
+//! tools — the local gerna+smuni+camxes gates only — and flags the `Outcome` as
+//! `degraded`; it never hard-fails on jbotci being unavailable. The whole thing is
+//! native-testable via a mock [`crate::llm::ToolChat`] + an empty [`McpClient`].
 
 use crate::gates::{self, GateError};
-use crate::llm::{Chat, LlmConfig, Turn, clean_lojban_output, system_prompt};
+use crate::llm::{LlmConfig, ToolChat, Turn, clean_lojban_output, system_prompt};
+use crate::mcp::McpClient;
+use crate::tools;
 
 /// One outer-loop iteration: the candidate the LLM produced and the gate error it
 /// hit (`None` = it passed every gate).
@@ -22,40 +26,58 @@ pub struct Attempt {
     pub error: Option<GateError>,
 }
 
-/// The result of a translation run, always carrying the full attempt trace for
-/// the UI.
+/// The result of a translation run, always carrying the full attempt trace for the
+/// UI. `degraded` is true when jbotci was unavailable (no proxy / unreachable), so
+/// the run used only the local gates with no tool-use.
 #[derive(Debug)]
 pub enum Outcome {
     /// Converged — `lojban` passed every gate.
     Success {
         lojban: String,
         attempts: Vec<Attempt>,
+        degraded: bool,
     },
-    /// Hit the attempt cap or an oscillation without converging; `best` is the
-    /// last candidate and `last_error` the gate it failed.
+    /// Hit the attempt cap or an oscillation without converging; `best` is the last
+    /// candidate and `last_error` the gate it failed.
     Exhausted {
         best: String,
         last_error: GateError,
         attempts: Vec<Attempt>,
+        degraded: bool,
     },
-    /// The provider call itself failed (network/auth/parse) — distinct from a
-    /// gate failure, so the caller can show a transport error rather than "invalid
-    /// Lojban".
+    /// The provider call itself failed (network/auth/parse) — distinct from a gate
+    /// failure, so the caller can show a transport error rather than "invalid Lojban".
     ChatFailed {
         error: String,
         attempts: Vec<Attempt>,
+        degraded: bool,
     },
 }
 
 /// Translate `source` into valid Lojban, self-correcting against the validation
-/// gate. See the module docs for the loop's termination rules.
-pub async fn translate_agentic<C: Chat>(
+/// gate, with optional jbotci tool-use. See the module docs for the termination
+/// rules and the degrade behavior.
+pub async fn translate_agentic<C: ToolChat>(
     chat: &C,
+    mcp: &McpClient,
     cfg: &LlmConfig,
     source: &str,
     max_attempts: u32,
+    max_tool_steps: u32,
 ) -> Outcome {
     let max_attempts = max_attempts.max(1);
+
+    // Discover the jbotci tools once. No proxy / unreachable ⇒ run tool-free on the
+    // local gates and flag the run as degraded (never hard-fail).
+    let (tool_decls, degraded) = if mcp.is_available() {
+        match mcp.list_tools().await {
+            Ok(t) => (tools::to_tool_decls(&t), false),
+            Err(_) => (Vec::new(), true),
+        }
+    } else {
+        (Vec::new(), true)
+    };
+
     let mut convo = vec![Turn::user(format!(
         "Translate to Lojban: {}",
         source.trim()
@@ -64,12 +86,25 @@ pub async fn translate_agentic<C: Chat>(
     let mut prev: Option<String> = None;
 
     for n in 1..=max_attempts {
-        let raw = match chat.chat(cfg, system_prompt(), &convo).await {
+        // Inner jbotci tool loop: the model may call tools while producing a
+        // candidate. With `tool_decls` empty (degraded) this is a single text call.
+        let raw = match tools::run_llm_tool_loop(
+            chat,
+            mcp,
+            cfg,
+            system_prompt(),
+            convo.clone(),
+            &tool_decls,
+            max_tool_steps,
+        )
+        .await
+        {
             Ok(t) => t,
             Err(e) => {
                 return Outcome::ChatFailed {
                     error: e.to_string(),
                     attempts,
+                    degraded,
                 };
             }
         };
@@ -85,6 +120,7 @@ pub async fn translate_agentic<C: Chat>(
                 return Outcome::Success {
                     lojban: candidate,
                     attempts,
+                    degraded,
                 };
             }
             Err(err) => {
@@ -99,6 +135,7 @@ pub async fn translate_agentic<C: Chat>(
                         best: candidate,
                         last_error: err,
                         attempts,
+                        degraded,
                     };
                 }
                 prev = Some(candidate.clone());
@@ -108,8 +145,7 @@ pub async fn translate_agentic<C: Chat>(
         }
     }
 
-    // Cap reached without success. The last attempt necessarily failed a gate
-    // (a success would have returned above).
+    // Cap reached without success. The last attempt necessarily failed a gate.
     let (best, last_error) = {
         let last = attempts
             .last()
@@ -125,36 +161,45 @@ pub async fn translate_agentic<C: Chat>(
         best,
         last_error,
         attempts,
+        degraded,
     }
 }
 
-// Native-only: these drive the async loop with `futures::executor::block_on`.
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
-    use crate::llm::{ChatError, Provider};
+    use crate::llm::{ChatError, ChatResponse, Provider, ToolDecl};
     use std::cell::RefCell;
 
-    /// A `Chat` that hands back pre-scripted replies in order.
+    /// A `ToolChat` that hands back pre-scripted responses in order (text-only —
+    /// these tests exercise the outer validate/feedback loop, not tool-use).
     struct Scripted {
-        replies: RefCell<Vec<Result<String, ChatError>>>,
+        replies: RefCell<Vec<Result<ChatResponse, ChatError>>>,
     }
     impl Scripted {
-        fn new(replies: Vec<Result<String, ChatError>>) -> Self {
+        fn new(replies: Vec<Result<ChatResponse, ChatError>>) -> Self {
             Self {
                 replies: RefCell::new(replies),
             }
         }
     }
-    impl Chat for Scripted {
-        async fn chat(
+    impl ToolChat for Scripted {
+        async fn chat_tools(
             &self,
             _cfg: &LlmConfig,
             _system: &str,
             _turns: &[Turn],
-        ) -> Result<String, ChatError> {
+            _tools: &[ToolDecl],
+        ) -> Result<ChatResponse, ChatError> {
             self.replies.borrow_mut().remove(0)
         }
+    }
+
+    fn text(s: &str) -> Result<ChatResponse, ChatError> {
+        Ok(ChatResponse {
+            text: Some(s.to_string()),
+            tool_calls: vec![],
+        })
     }
 
     /// A candidate gerna rejects (contains an invalid character), distinct per tag.
@@ -163,17 +208,27 @@ mod tests {
     }
     const GOOD: &str = "la .adam. cu gerku";
 
-    fn run(replies: Vec<Result<String, ChatError>>, max: u32) -> Outcome {
+    fn run(replies: Vec<Result<ChatResponse, ChatError>>, max: u32) -> Outcome {
         let chat = Scripted::new(replies);
+        let mcp = McpClient::new(""); // empty proxy ⇒ degrade to the local gates
         let cfg = LlmConfig::new(Provider::Anthropic);
-        futures::executor::block_on(translate_agentic(&chat, &cfg, "Adam is a dog", max))
+        futures::executor::block_on(translate_agentic(
+            &chat,
+            &mcp,
+            &cfg,
+            "Adam is a dog",
+            max,
+            4,
+        ))
     }
 
     #[test]
     fn fails_once_then_converges() {
-        let out = run(vec![Ok(bad("x")), Ok(GOOD.into())], 5);
+        let out = run(vec![text(&bad("x")), text(GOOD)], 5);
         match out {
-            Outcome::Success { lojban, attempts } => {
+            Outcome::Success {
+                lojban, attempts, ..
+            } => {
                 assert_eq!(lojban, GOOD);
                 assert_eq!(attempts.len(), 2);
                 assert!(attempts[0].error.is_some());
@@ -185,8 +240,7 @@ mod tests {
 
     #[test]
     fn exhausts_the_cap_when_never_valid() {
-        // Three DISTINCT invalid candidates so the oscillation guard doesn't fire.
-        let out = run(vec![Ok(bad("1")), Ok(bad("2")), Ok(bad("3"))], 3);
+        let out = run(vec![text(&bad("1")), text(&bad("2")), text(&bad("3"))], 3);
         match out {
             Outcome::Exhausted { attempts, .. } => assert_eq!(attempts.len(), 3),
             other => panic!("expected Exhausted, got {other:?}"),
@@ -195,8 +249,7 @@ mod tests {
 
     #[test]
     fn stops_early_on_oscillation() {
-        // Same invalid candidate twice ⇒ stop before the cap (GOOD never consumed).
-        let out = run(vec![Ok(bad("same")), Ok(bad("same")), Ok(GOOD.into())], 5);
+        let out = run(vec![text(&bad("same")), text(&bad("same")), text(GOOD)], 5);
         match out {
             Outcome::Exhausted { attempts, .. } => assert_eq!(attempts.len(), 2),
             other => panic!("expected Exhausted (oscillation), got {other:?}"),
@@ -207,5 +260,20 @@ mod tests {
     fn provider_error_aborts_as_chat_failed() {
         let out = run(vec![Err(ChatError("boom".into()))], 5);
         assert!(matches!(out, Outcome::ChatFailed { .. }));
+    }
+
+    #[test]
+    fn mcp_unavailable_marks_degraded_and_uses_local_gates() {
+        // Empty proxy ⇒ no tools ⇒ local gates only, and the run is flagged degraded.
+        let out = run(vec![text(GOOD)], 5);
+        match out {
+            Outcome::Success {
+                lojban, degraded, ..
+            } => {
+                assert_eq!(lojban, GOOD);
+                assert!(degraded, "empty-proxy run must be marked degraded");
+            }
+            other => panic!("expected Success, got {other:?}"),
+        }
     }
 }

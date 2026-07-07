@@ -68,6 +68,8 @@ const DEFAULT_QUERY: &str = "la .adam. cu citka";
 
 /// Retry cap for the agentic translate (each attempt is one LLM round-trip).
 const MAX_TRANSLATE_ATTEMPTS: u32 = 5;
+/// Cap on jbotci tool calls within a single translate attempt.
+const MAX_TOOL_STEPS: u32 = 4;
 
 /// One row of the self-correction trace rendered under the Source tab.
 #[derive(Clone)]
@@ -914,12 +916,23 @@ fn SourceTabs(
             // The self-correcting loop: translate → validate (gerna+smuni) →
             // feed the error back → retry, up to MAX_TRANSLATE_ATTEMPTS.
             let http = nibli_fanva::llm::HttpChat;
+            // No jbotci proxy configured yet (Phase 6 adds the field) ⇒ the loop
+            // degrades to the local gates only.
+            let mcp = nibli_fanva::mcp::McpClient::new("");
             let fcfg = to_fanva_cfg(&cfg);
-            let outcome =
-                nibli_fanva::agent::translate_agentic(&http, &fcfg, &text, MAX_TRANSLATE_ATTEMPTS)
-                    .await;
+            let outcome = nibli_fanva::agent::translate_agentic(
+                &http,
+                &mcp,
+                &fcfg,
+                &text,
+                MAX_TRANSLATE_ATTEMPTS,
+                MAX_TOOL_STEPS,
+            )
+            .await;
             match outcome {
-                Outcome::Success { lojban, attempts } => {
+                Outcome::Success {
+                    lojban, attempts, ..
+                } => {
                     translate_trace.set(trace_rows(&attempts));
                     lojban_text.set(lojban);
                     active_tab.set(ActiveTab::Lojban);
@@ -928,6 +941,7 @@ fn SourceTabs(
                     best,
                     last_error,
                     attempts,
+                    ..
                 } => {
                     let n = attempts.len();
                     translate_trace.set(trace_rows(&attempts));
@@ -939,7 +953,9 @@ fn SourceTabs(
                         last_error.message()
                     )));
                 }
-                Outcome::ChatFailed { error, attempts } => {
+                Outcome::ChatFailed {
+                    error, attempts, ..
+                } => {
                     translate_trace.set(trace_rows(&attempts));
                     translate_error.set(Some(error));
                 }
