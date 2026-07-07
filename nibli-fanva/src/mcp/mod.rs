@@ -111,6 +111,17 @@ impl McpClient {
         Ok(wire::parse_tool_call_result(&result))
     }
 
+    /// `tersmu` — jbotci's deepest analysis: the "deep logical meaning" of Lojban
+    /// text as a `lojban-semantics-json-1` graph (utterances, predications,
+    /// eventualities, formulas), returned in [`ToolCallResult::text`]. A convenience
+    /// wrapper over [`call_tool`](Self::call_tool) that pins the tool name and the
+    /// `text` argument key, so nibli-ui need not know either. Degrades to
+    /// `Err(McpError::Unavailable)` when no proxy is configured (or on native).
+    pub async fn tersmu(&self, text: &str) -> Result<ToolCallResult, McpError> {
+        self.call_tool("tersmu", serde_json::json!({ "text": text }))
+            .await
+    }
+
     // ── transport ────────────────────────────────────────────────────────────
 
     /// POST one JSON-RPC message. A notification (no id) expects HTTP 202; a
@@ -211,5 +222,14 @@ mod tests {
         );
         assert_eq!(r.unwrap_err(), McpError::Unavailable);
         assert!(c.tools().is_empty());
+    }
+
+    #[test]
+    fn tersmu_degrades_when_unavailable() {
+        // No proxy (and native anyway) ⇒ the deep-meaning call degrades cleanly,
+        // so the nibli-ui panel falls back to a notice instead of hard-failing.
+        let c = McpClient::new("");
+        let r = futures::executor::block_on(c.tersmu("la .adam. cu gerku"));
+        assert_eq!(r.unwrap_err(), McpError::Unavailable);
     }
 }

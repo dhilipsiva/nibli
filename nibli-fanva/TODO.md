@@ -31,7 +31,8 @@ bullet**; remove an item when fully done, or narrow it if partial.
 - **Phase 6 trace polish:** per-attempt **per-gate chips** (`gerna ✓ smuni ✓ camxes ✗`, derived in nibli-ui from `Attempt.error`) + **jbotci tool-call sub-rows** (`run_llm_tool_loop` now returns the tool calls made → `Attempt.tool_calls`; rendered when a proxy is set). nibli-fanva 32 tests green (tool-loop trace asserted); workspace + wasm-ui + clippy clean.
 - **`llm.rs` single-sourcing cleanup:** `nibli-ui/src/llm.rs` deleted; `nibli_fanva::llm` (`LlmConfig`/`Provider`/`HttpChat`/`clean_lojban_output`/`system_prompt`) is now the single source of truth for the LLM client. nibli-ui holds a thin `Settings { llm: LlmConfig, proxy_url, max_attempts }` wrapper; the query translate + modal key-test go through a small `fanva_translate` shim over `HttpChat`. Workspace + wasm-ui checks green; no new clippy warnings; nibli-fanva 32 tests still pass.
 - **jbotci proxy Worker (`fanva-proxy/`, workspace-excluded):** a Cloudflare Worker that fronts `https://jbotci.app/mcp` — strips the browser `Origin`/`Host`/`Referer` (jbotci 403s any Origin) and adds CORS + synthesizes the preflight jbotci 405s. Hardcoded upstream (no SSRF), IP-keyed rate-limit binding (shipped active, graceful when absent), 256 KiB body cap, buffered request body (correct `Content-Length`, not chunked), faithful status pass-through, response-body streaming (SSE-safe). Config-driven CORS allowlist (`ALLOWED_ORIGINS`, default `https://dhilipsiva.dev`; `.dev.vars` for localhost). Locally verified end-to-end against LIVE jbotci via `wrangler dev`: initialize-through-proxy → 200 + `serverInfo` + ACAO; preflight → 204; disallowed origin → 200 with no ACAO leak. `Cargo.toml` `exclude` updated. Ships with `DEPLOY.md` + `README.md`; the only remaining step is the operator's `wrangler deploy` (needs their Cloudflare account).
-- All backlog items landed. Remaining is out-of-scope of this crate: the operator's `wrangler deploy` of the proxy, and the future Phase 7–9 polish (meaning-view tersmu, hardening, hosting) if pursued.
+- **Phase 7 tersmu deep-meaning view:** a new `McpClient::tersmu(text)` seam (thin `call_tool("tersmu", {text})` wrapper, pinning the tool name + arg-key; +1 native degrade test → 33). nibli-ui's Back-translation tab gains a **proxy-gated** "Deep meaning (jbotci tersmu)" button that sends the active KB (non-comment lines joined by ` .i ` into one call) and renders the raw `lojban-semantics-json-1` graph verbatim (nibli adds zero interpretation) in a scrollable block; a `use_effect` + in-flight snapshot keep the graph from ever showing stale. Verified: 33 fanva tests, native + wasm-ui checks + clippy clean, and an end-to-end proof (browser-Origin request → `wrangler dev` proxy → tersmu graph for the default KB).
+- All backlog items landed. Remaining is out-of-scope of this crate: the operator's `wrangler deploy` of the proxy, and the future Phase 8–9 polish (hardening, hosting) if pursued.
 
 ## Phase 0 — remainder
 
@@ -65,9 +66,9 @@ Remaining pieces were reassigned to later phases:
 
 - Fully landed, including the single-sourcing cleanup: `nibli-ui/src/llm.rs` is gone and `nibli_fanva::llm` is the sole LLM client.
 
-## Phase 7 — Meaning check
+## Phase 7 — Meaning check — DONE (see "Already landed")
 
-- Primary: local `nibli_render::render_logic_buffer(&logic, Register::Spec)` gloss (already in nibli-ui). Optional richer view: jbotci `tersmu` graph when a proxy is set. Done when: the meaning panel renders the local gloss, plus the tersmu view when jbotci is available.
+- Both halves shipped: the local `nibli_render` gloss is the Back-translation tab, and the optional jbotci `tersmu` graph renders (verbatim, proxy-gated) beneath it via `McpClient::tersmu`.
 
 ## Phase 8 — Hardening & docs
 

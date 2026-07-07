@@ -1324,3 +1324,46 @@ body {
   color: var(--verdict-false);
   opacity: 0.9;
 }
+
+/* Deep meaning (jbotci tersmu) — the optional semantic-graph view under the
+   Back-translation tab, shown only when a jbotci proxy is configured. */
+.tersmu {
+  margin-top: var(--s4);
+  display: flex; flex-direction: column; gap: var(--s3);
+}
+.tersmu__head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
+}
+.tersmu-button {
+  display: inline-flex; align-items: center; gap: var(--s2);
+  height: var(--control-h-sm); padding: 0 var(--s3);
+  font-family: var(--font-mono); font-size: var(--fs-cap); font-weight: var(--w-medium);
+  letter-spacing: var(--track-wide); line-height: 1; white-space: nowrap; cursor: pointer;
+  color: var(--text-muted); background: transparent;
+  border: var(--bw-hair) solid var(--border-strong); border-radius: var(--r-sm);
+  transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out),
+              background var(--dur-fast) var(--ease-out);
+}
+.tersmu-button:hover:not(:disabled) { color: var(--accent-hover); border-color: var(--accent); background: var(--surface-hover); }
+.tersmu-button:active:not(:disabled) { transform: translateY(1px); }
+.tersmu-button:focus-visible { box-shadow: var(--ring); }
+.tersmu-button:disabled { opacity: 0.55; cursor: default; }
+.tersmu__hint {
+  color: var(--text-faint); font-style: italic; font-size: var(--fs-code); max-width: 60ch;
+}
+.tersmu__error {
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-sm);
+  border-left: 3px solid var(--verdict-false);
+  background: var(--verdict-false-bg, color-mix(in oklab, var(--verdict-false) 14%, transparent));
+  color: var(--verdict-false); font-size: var(--fs-code); line-height: 1.4;
+}
+.tersmu-graph {
+  margin: 0; max-height: 22rem; overflow: auto;
+  padding: var(--s3);
+  background: var(--bg-sunken);
+  border: var(--bw-hair) solid var(--border-subtle);
+  border-radius: var(--r-md);
+  font-family: var(--font-mono); font-size: var(--fs-code); line-height: var(--lh-code);
+  color: var(--text-body); white-space: pre; tab-size: 2;
+}

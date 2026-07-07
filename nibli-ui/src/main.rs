@@ -55,6 +55,19 @@ fn render_lojban_line(line: &str) -> String {
     }
 }
 
+/// Collapse the active KB into one multi-sentence Lojban text for jbotci `tersmu`:
+/// drop empty + `#`-comment lines (same filter as [`back_translate_ir`]) and join
+/// with the neutral sentence separator `.i`, so tersmu analyses the whole KB in a
+/// single call and returns one coherent semantic graph.
+fn kb_to_tersmu_text(lojban: &str) -> String {
+    lojban
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .collect::<Vec<_>>()
+        .join(" .i ")
+}
+
 const MAX_OUTPUT_ENTRIES: usize = 200;
 
 const DEFAULT_SOURCE: &str = "All dogs are animals.\nAll animals eat.\nAdam is a dog.";
@@ -986,6 +999,21 @@ fn SourceTabs(
     let mut translate_trace = use_signal(Vec::<TraceRow>::new);
     let mut translate_degraded = use_signal(|| false);
 
+    // Deep-meaning (jbotci tersmu) view state — a network result, so held in signals
+    // (not a memo). On-demand + proxy-gated; see `do_tersmu` below.
+    let mut tersmu_loading = use_signal(|| false);
+    let mut tersmu_error = use_signal(|| Option::<String>::None);
+    let mut tersmu_result = use_signal(|| Option::<String>::None);
+
+    // Invalidate a shown graph whenever the active KB changes (edited Lojban, a Clear/
+    // Load, a translate, or a different example) so tersmu output never shows stale.
+    use_effect(move || {
+        let _ = example.read();
+        let _ = lojban_text.read();
+        tersmu_result.set(None);
+        tersmu_error.set(None);
+    });
+
     // Back-translation reflects the ACTIVE KB: a loaded example's corpus, else
     // the user's editable Lojban tab.
     let back_translation = use_memo(move || {
@@ -1080,6 +1108,53 @@ fn SourceTabs(
         }
     };
 
+    // Deep meaning: send the ACTIVE KB (as one `.i`-joined text) to jbotci's tersmu
+    // tool and show the raw semantic graph. On-demand (network) + proxy-gated; any
+    // failure (incl. no proxy / native) degrades to a notice, never a hard error.
+    let mut do_tersmu = move || {
+        if *tersmu_loading.read() {
+            return;
+        }
+        let Some(cfg) = settings.read().clone() else {
+            return;
+        };
+        if cfg.proxy_url.trim().is_empty() {
+            return;
+        }
+        let active = match *example.read() {
+            Some(i) => EXAMPLES[i].lojban.to_string(),
+            None => lojban_text.read().clone(),
+        };
+        let joined = kb_to_tersmu_text(&active);
+        if joined.is_empty() {
+            return;
+        }
+        tersmu_loading.set(true);
+        tersmu_error.set(None);
+        tersmu_result.set(None);
+        spawn(async move {
+            let mcp = nibli_fanva::mcp::McpClient::new(cfg.proxy_url.clone());
+            let outcome = mcp.tersmu(&joined).await;
+            // Drop the result if the KB changed while the request was in flight.
+            let current = match *example.read() {
+                Some(i) => EXAMPLES[i].lojban.to_string(),
+                None => lojban_text.read().clone(),
+            };
+            if kb_to_tersmu_text(&current) == joined {
+                match outcome {
+                    Ok(res) if !res.is_error => tersmu_result.set(Some(res.text)),
+                    Ok(res) => tersmu_error
+                        .set(Some(format!("jbotci tersmu reported an error: {}", res.text))),
+                    Err(e) => tersmu_error.set(Some(format!("jbotci unavailable: {e}"))),
+                }
+            }
+            tersmu_loading.set(false);
+        });
+    };
+    let tersmu_click = move |_: Event<MouseData>| {
+        do_tersmu();
+    };
+
     // In example mode the KB is a read-only preview of the loaded corpus; the
     // user's Custom buffers (`source_text`/`lojban_text`) are left untouched.
     let ex = *example.read();
@@ -1092,6 +1167,12 @@ fn SourceTabs(
         Some(i) => EXAMPLES[i].lojban.to_string(),
         None => lojban_text.read().clone(),
     };
+    // The deep-meaning (tersmu) view only appears when a jbotci proxy is configured.
+    let jbotci_on = settings
+        .read()
+        .as_ref()
+        .map(|s| !s.proxy_url.trim().is_empty())
+        .unwrap_or(false);
 
     rsx! {
         div { class: "tabs-container",
@@ -1261,6 +1342,10 @@ fn SourceTabs(
                             .map(|(i, l)| (i + 1, l.to_string()))
                             .collect();
                         let empty = lines.is_empty();
+                        // Deep-meaning view state, snapshotted for this render.
+                        let tersmu_err = tersmu_error.read().clone();
+                        let tersmu_graph = tersmu_result.read().clone();
+                        let tersmu_busy = *tersmu_loading.read();
                         rsx! {
                             span { class: "nb-eyebrow", "what nibli understood" }
                             div { class: "back-translation",
@@ -1273,6 +1358,31 @@ fn SourceTabs(
                                         div { key: "{n}", class: "back-translation__line",
                                             span { class: "back-translation__num", "{n}" }
                                             span { class: "back-translation__gloss", "{line}" }
+                                        }
+                                    }
+                                }
+                            }
+                            // Optional deep-meaning view — jbotci's tersmu semantic graph,
+                            // shown verbatim (nibli adds zero interpretation). Only when a
+                            // jbotci proxy is configured.
+                            if jbotci_on {
+                                div { class: "tersmu",
+                                    div { class: "tersmu__head",
+                                        span { class: "nb-eyebrow", "deep meaning \u{00b7} jbotci tersmu" }
+                                        button {
+                                            class: "tersmu-button",
+                                            disabled: tersmu_busy,
+                                            onclick: tersmu_click,
+                                            if tersmu_busy { "Analyzing\u{2026}" } else { "Deep meaning (tersmu)" }
+                                        }
+                                    }
+                                    if let Some(err) = tersmu_err {
+                                        div { class: "tersmu__error", "{err}" }
+                                    } else if let Some(graph) = tersmu_graph {
+                                        pre { class: "tersmu-graph", "{graph}" }
+                                    } else if !tersmu_busy {
+                                        span { class: "tersmu__hint",
+                                            "jbotci's deep semantic graph for the current KB \u{2014} an independent second opinion on the meaning."
                                         }
                                     }
                                 }
