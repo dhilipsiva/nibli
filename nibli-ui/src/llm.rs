@@ -106,6 +106,11 @@ pub struct LlmConfig {
     pub model: String,
     /// Used only by `Provider::Custom`.
     pub base_url: String,
+    /// Optional jbotci MCP proxy URL. Empty ⇒ jbotci tools off (local gates only).
+    /// This is an agent/jbotci setting, not sent to the LLM provider.
+    pub proxy_url: String,
+    /// Cap on self-correction attempts for the agentic translate.
+    pub max_attempts: u32,
 }
 
 impl LlmConfig {
@@ -115,6 +120,8 @@ impl LlmConfig {
             api_key: String::new(),
             model: provider.default_model().to_string(),
             base_url: provider.default_base_url().to_string(),
+            proxy_url: String::new(),
+            max_attempts: 5,
         }
     }
 

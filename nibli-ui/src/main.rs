@@ -66,8 +66,6 @@ const DEFAULT_QUERY: &str = "la .adam. cu citka";
 // with gerna+smuni → feed the compiler error back → retry, bounded below. All
 // gates are local/in-browser; the only network call is the LLM itself.
 
-/// Retry cap for the agentic translate (each attempt is one LLM round-trip).
-const MAX_TRANSLATE_ATTEMPTS: u32 = 5;
 /// Cap on jbotci tool calls within a single translate attempt.
 const MAX_TOOL_STEPS: u32 = 4;
 
@@ -882,6 +880,7 @@ fn SourceTabs(
     let mut translating = use_signal(|| false);
     let mut translate_error = use_signal(|| Option::<String>::None);
     let mut translate_trace = use_signal(Vec::<TraceRow>::new);
+    let mut translate_degraded = use_signal(|| false);
 
     // Back-translation reflects the ACTIVE KB: a loaded example's corpus, else
     // the user's editable Lojban tab.
@@ -911,29 +910,33 @@ fn SourceTabs(
         translating.set(true);
         translate_error.set(None);
         translate_trace.set(Vec::new());
+        translate_degraded.set(false);
         spawn(async move {
             use nibli_fanva::agent::Outcome;
-            // The self-correcting loop: translate → validate (gerna+smuni) →
-            // feed the error back → retry, up to MAX_TRANSLATE_ATTEMPTS.
+            // The self-correcting loop: translate → (optionally call jbotci tools) →
+            // validate (gerna+smuni+camxes) → feed the error back → retry, up to the
+            // configured max attempts.
             let http = nibli_fanva::llm::HttpChat;
-            // No jbotci proxy configured yet (Phase 6 adds the field) ⇒ the loop
-            // degrades to the local gates only.
-            let mcp = nibli_fanva::mcp::McpClient::new("");
+            // jbotci proxy (optional). Empty ⇒ the loop degrades to the local gates.
+            let mcp = nibli_fanva::mcp::McpClient::new(cfg.proxy_url.clone());
             let fcfg = to_fanva_cfg(&cfg);
             let outcome = nibli_fanva::agent::translate_agentic(
                 &http,
                 &mcp,
                 &fcfg,
                 &text,
-                MAX_TRANSLATE_ATTEMPTS,
+                cfg.max_attempts.max(1),
                 MAX_TOOL_STEPS,
             )
             .await;
             match outcome {
                 Outcome::Success {
-                    lojban, attempts, ..
+                    lojban,
+                    attempts,
+                    degraded,
                 } => {
                     translate_trace.set(trace_rows(&attempts));
+                    translate_degraded.set(degraded);
                     lojban_text.set(lojban);
                     active_tab.set(ActiveTab::Lojban);
                 }
@@ -941,10 +944,11 @@ fn SourceTabs(
                     best,
                     last_error,
                     attempts,
-                    ..
+                    degraded,
                 } => {
                     let n = attempts.len();
                     translate_trace.set(trace_rows(&attempts));
+                    translate_degraded.set(degraded);
                     // Show the best effort so the user can edit from there.
                     lojban_text.set(best);
                     active_tab.set(ActiveTab::Lojban);
@@ -1060,6 +1064,11 @@ fn SourceTabs(
                                     }
                                 }
                             }
+                            if *translate_degraded.read() {
+                                div { class: "translate-degraded",
+                                    "jbotci tools off \u{2014} validated with the local gerna+smuni+camxes gates only. Add a proxy URL in settings for dictionary/grammar lookups."
+                                }
+                            }
                         }
                     }
                     ActiveTab::Lojban => rsx! {
@@ -1173,6 +1182,8 @@ fn LlmConfigModal(llm_config: Signal<Option<LlmConfig>>, modal_open: Signal<bool
     let mut api_key = use_signal(|| initial.api_key.clone());
     let mut model = use_signal(|| initial.model.clone());
     let mut base_url = use_signal(|| initial.base_url.clone());
+    let mut proxy_url = use_signal(|| initial.proxy_url.clone());
+    let mut max_attempts = use_signal(|| initial.max_attempts);
     let mut testing = use_signal(|| false);
     let mut test_msg = use_signal(|| Option::<(bool, String)>::None);
 
@@ -1183,6 +1194,8 @@ fn LlmConfigModal(llm_config: Signal<Option<LlmConfig>>, modal_open: Signal<bool
         api_key: api_key.read().trim().to_string(),
         model: model.read().trim().to_string(),
         base_url: base_url.read().trim().to_string(),
+        proxy_url: proxy_url.read().trim().to_string(),
+        max_attempts: (*max_attempts.read()).max(1),
     };
     // A key is required for everyone except Custom (which may be a local server).
     let needs_key =
@@ -1273,6 +1286,35 @@ fn LlmConfigModal(llm_config: Signal<Option<LlmConfig>>, modal_open: Signal<bool
                             value: "{base_url}",
                             oninput: move |e| base_url.set(e.value()),
                         }
+                    }
+                }
+
+                label { class: "llm-field",
+                    span { class: "llm-field__label", "jbotci proxy URL (optional)" }
+                    input {
+                        class: "llm-field__input",
+                        r#type: "text",
+                        placeholder: "https://your-proxy.example/mcp",
+                        value: "{proxy_url}",
+                        oninput: move |e| proxy_url.set(e.value()),
+                    }
+                    span { class: "llm-field__hint",
+                        "Lets the model call jbotci (dictionary/grammar/morphology) while translating. Leave blank for local-only (gerna+smuni+camxes). Your LLM key is never sent here."
+                    }
+                }
+                label { class: "llm-field",
+                    span { class: "llm-field__label", "Max attempts" }
+                    input {
+                        class: "llm-field__input",
+                        r#type: "number",
+                        min: "1",
+                        max: "10",
+                        value: "{max_attempts}",
+                        oninput: move |e| {
+                            if let Ok(v) = e.value().parse::<u32>() {
+                                max_attempts.set(v.clamp(1, 10));
+                            }
+                        },
                     }
                 }
 

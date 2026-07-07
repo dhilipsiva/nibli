@@ -1263,3 +1263,22 @@ body {
   border-left-color: var(--verdict-false);
   background: var(--verdict-false-bg, color-mix(in oklab, var(--verdict-false) 14%, transparent));
 }
+
+/* jbotci-off / degraded banner + modal field hints */
+.translate-degraded {
+  margin-top: var(--s2, 8px);
+  padding: var(--s2, 8px) var(--s3, 12px);
+  border-radius: var(--r-sm, 4px);
+  border-left: 3px solid var(--verdict-unknown, #8b8b8b);
+  background: color-mix(in oklab, var(--verdict-unknown, #8b8b8b) 10%, transparent);
+  color: var(--text-muted, inherit);
+  font-size: var(--fs-code, 0.85rem);
+  line-height: 1.4;
+}
+.llm-field__hint {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--fs-code, 0.8rem);
+  opacity: 0.7;
+  line-height: 1.4;
+}
