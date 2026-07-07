@@ -29,7 +29,7 @@
 pub mod agent;
 pub mod gates;
 pub mod llm;
+pub mod mcp;
 
-// Landing in subsequent phases (see TODO.md):
-//   pub mod mcp;    // MCP Streamable-HTTP client → proxy → jbotci (wasm-only transport)
-//   the inner jbotci tool loop threads into agent::translate_agentic in Phase 3
+// Landing in a subsequent phase (see TODO.md):
+//   the inner jbotci tool loop threads `mcp` into agent::translate_agentic (Phase 3)

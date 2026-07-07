@@ -24,7 +24,8 @@ bullet**; remove an item when fully done, or narrow it if partial.
 - **nibli-ui prep:** `gates::validate_kb` (line-by-line KB validation, tagging the failing KB line) — the agent now validates multi-line KBs, not just single sentences; `HttpChat` refactored to exist on all targets (native stub, gloo-net wasm-only) so `nibli-ui` type-checks under `cargo check --workspace`. 16 native tests + wasm build green.
 - **Phase 6 core — nibli-ui Translate mode:** the Source→Lojban button runs the agentic loop (`translate_agentic` + `HttpChat` + local gates) with a per-attempt self-correction trace; Success fills the Lojban tab, Exhausted shows best-effort + last error, ChatFailed shows the transport error. `CLAUDE.md` Architecture table updated with the `nibli-fanva` row. Verified: `cargo check --workspace` (native) + `cargo check -p nibli-ui --target wasm32-unknown-unknown` (wasm) both green. Live end-to-end pending a user API-key run of `just ui`.
 - **Phase 4 — camxes "official" gate:** vendored ilmentufa standard `camxes.js` + `camxes_preproc.js` + a `camxes_shim.js` (`window.camxes_validate`) served by nibli-ui (`document::Script`+`asset!()`); `gates::official_gate` (wasm-only, synchronous js-sys) folded into `validate`, so the success gate is `gerna ∧ smuni ∧ camxes` (degrades to the local two when the shim is absent). 3 wasm marshalling tests (`just test-fanva-wasm`); native 16 unaffected; both wasm checks green. Real engine verified in-browser via `just ui`.
-- Not yet built: the jbotci MCP transport + inner tool loop (Phases 2/3) and their UI surfacing.
+- **Phase 2 — jbotci MCP client (`src/mcp/`):** `McpClient` over Streamable-HTTP to a configurable proxy URL (`initialize`+`notifications/initialized`/`tools/list`/`tools/call`; JSON-or-SSE bodies; `MCP-Protocol-Version` + `Mcp-Session-Id` echo; 404→session reset); pure `wire`/`types` (native-tested) + a wasm-only gloo-net transport with a native `Unavailable` stub; `is_available()` degrades when the proxy URL is empty; discovered tools cached for Phase 3. 8 native tests (JSON + mock-SSE parse, 7-tool `tools/list`, tool-call text/isError, empty-URL degrade) → 24 total; wasm check + clippy clean.
+- Not yet built: the inner tool loop wiring `mcp` into the agent (Phase 3), the config-modal proxy field + degrade banner (Phase 6), and a deployed proxy (optional).
 
 ## Phase 0 — remainder
 
@@ -38,9 +39,9 @@ Remaining pieces were reassigned to later phases:
 - `nibli-ui`'s translate delegating to `nibli_fanva::llm` (and using `HttpChat`) → **Phase 6**.
 - larger few-shot set / gerna-fragment cheat-sheet in the system prompt → **Phase 8** (after convergence is measured).
 
-## Phase 2 — MCP client, in `src/mcp/`
+## Phase 2 — MCP client — DONE (see "Already landed")
 
-- `McpClient` over Streamable-HTTP (gloo-net, wasm-only) → proxy: `initialize` (+ `notifications/initialized`), `tools/list` (cache schemas), `tools/call`; handle both `application/json` and SSE responses; echo `MCP-Protocol-Version` + any `Mcp-Session-Id`; `is_available()` for graceful degradation. Done when: a wasm test parses both a JSON and a mock-SSE result; with an empty proxy URL `is_available()` is false and nothing panics.
+- Built as `src/mcp/{types,wire,mod}.rs`: pure JSON-RPC/SSE parsing (`wire`, native-tested) + a wasm-only `McpClient::rpc` transport (native stub returns `Unavailable`). Tools from `tools/list` are cached (`McpClient::tools()`) for Phase 3 to map into provider tool schemas.
 
 ## Phase 3 — Provider tool-calling adapters
 
