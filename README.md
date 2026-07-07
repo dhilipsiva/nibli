@@ -202,6 +202,8 @@ Nibli includes a standalone web UI (Dioxus) — the full reasoning engine (gerna
 just ui
 ```
 
+To build a release bundle (`just build-ui`) or self-host — plus the optional jbotci proxy — see [`DEPLOY.md`](DEPLOY.md).
+
 The three tabs are **Source** (plain English), **Lojban** (the formal encoding), and **Back-translation** (the structure-exposing gloss). The reasoning is fully local; the **only** optional network call is **Translate** on the Source tab — a *bring-your-own-key* LLM request sent **directly from your browser** to a provider you choose (Anthropic, OpenAI, OpenRouter, Google Gemini, or any OpenAI-compatible/local endpoint). Configure it via the gear button: the API key is held **in that tab's memory only** — never persisted to storage and never routed through any nibli server (there is none), and it is erased on tab close/reload.
 
 Translate runs the **agentic translator** (`nibli-fanva`): the LLM's draft is validated by the *real Lojban compilers* — gerna (grammar) + smuni (semantics) + the official **camxes** parser — and any compiler error is fed back for the model to self-correct, so what lands in the Lojban tab already passes those gates. It is still a *draft outside the reasoning firewall* — you review the Lojban (and its back-translation) before the deterministic engine reasons over it, and you can skip Translate entirely and type Lojban directly. Two optional extras, both off by default: pointing the settings at an app-owned **jbotci proxy** (`fanva-proxy/`) lets the translator consult jbotci's dictionary/grammar tools while translating (it *degrades to the local gates* when no proxy is set), and the Back-translation tab can then show jbotci's `tersmu` deep-meaning graph beside the local gloss.

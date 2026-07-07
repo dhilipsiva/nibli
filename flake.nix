@@ -94,6 +94,10 @@
 
             # Dioxus web (dx CLI for dev server)
             dioxus-cli
+
+            # wasm-opt for `dx build --release` (`just build-ui`): dx runs it as the
+            # release optimization pass, and fails the build if it's missing.
+            binaryen
           ];
           # The pinned ilmentufa checkout (camxes.js + CLI wrappers) for the
           # parse-differential; consumed by nibli-verify's parser_diff harness.

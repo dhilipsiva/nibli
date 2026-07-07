@@ -415,6 +415,14 @@ test-classifier:
 ui PORT="8080":
     cd nibli-ui && dx serve --port {{PORT}}
 
+# Build the nibli-ui web bundle for release — a local preview / pre-merge sanity
+# check that the exact shipping bundle compiles. Output:
+# target/dx/nibli-ui/release/web/public/ (serve with any static server). NOTE: the
+# PRODUCTION build runs in the external dhilipsiva.dev site repo (see DEPLOY.md);
+# this recipe is not the production path.
+build-ui:
+    cd nibli-ui && dx build --release
+
 # Run nibli-store unit tests
 test-store:
     cargo test -p nibli-store -- --nocapture

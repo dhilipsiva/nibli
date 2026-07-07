@@ -65,6 +65,16 @@ npx wrangler login      # first time only
 npm run deploy          # -> https://fanva-proxy.<acct>.workers.dev
 ```
 
+`wrangler.toml` pins **no `account_id`** — wrangler infers it from the logged-in
+account. If your `wrangler` is logged into **more than one** Cloudflare account,
+deploy will prompt (or fail non-interactively); set the account explicitly:
+
+```sh
+CLOUDFLARE_ACCOUNT_ID=<your-account-id> npm run deploy
+```
+
+(or add `account_id = "<...>"` to `wrangler.toml`).
+
 ## 5. Configure
 
 - **CORS allowlist (`ALLOWED_ORIGINS`):** edit `[vars]` in `wrangler.toml`
@@ -73,6 +83,10 @@ npm run deploy          # -> https://fanva-proxy.<acct>.workers.dev
   `https://dhilipsiva.dev` only; **do not** add `localhost` to the deployed var.
   For local UI dev, copy `.dev.vars.example` to `.dev.vars` (gitignored) — it
   overrides the var under `wrangler dev` only.
+  **If your playground is served from an origin other than `https://dhilipsiva.dev`**
+  (both the `wrangler.toml` var and the code default assume it), set `ALLOWED_ORIGINS`
+  to that exact origin **before** deploy — otherwise the browser's CORS check fails
+  and jbotci silently degrades to the local gates.
 
 - **Rate limiting:** already enabled (`[[unsafe.bindings]]` `ratelimit`, 60 req /
   60s per client IP). Tune `simple.limit`/`period` in `wrangler.toml`. The Worker
