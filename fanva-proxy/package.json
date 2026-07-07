@@ -1,0 +1,15 @@
+{
+  "name": "fanva-proxy",
+  "version": "1.0.0",
+  "description": "CORS-adding reverse proxy for the jbotci MCP endpoint (nibli-fanva browser client).",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "start": "wrangler dev"
+  },
+  "devDependencies": {
+    "wrangler": "^4.107.0"
+  }
+}

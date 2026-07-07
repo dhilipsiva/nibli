@@ -1,0 +1,41 @@
+#:schema node_modules/wrangler/config-schema.json
+# fanva-proxy — CORS-adding reverse proxy for the jbotci MCP endpoint.
+# No build step: `wrangler dev` runs src/index.js directly.
+
+name = "fanva-proxy"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+# ---------------------------------------------------------------------------
+# CORS allowlist. Comma-separated exact origins, or the literal "*" to echo any
+# origin. Because this proxy carries NO credentials (cookies/authorization are
+# stripped), "*" is technically safe — but keep it TIGHT in production. The
+# Worker never emits a bare "*": it echoes the concrete request Origin and sets
+# Vary: Origin. When this var is unset/blank the Worker falls back in code to
+# https://dhilipsiva.dev only.
+#
+# For LOCAL dev against `just ui` (http://localhost:8080), do NOT add localhost
+# here (it would ship to prod). Instead add it in `.dev.vars` (gitignored) which
+# overrides this var under `wrangler dev` — see .dev.vars.example.
+# ---------------------------------------------------------------------------
+[vars]
+ALLOWED_ORIGINS = "https://dhilipsiva.dev"
+
+# ---------------------------------------------------------------------------
+# Native Cloudflare Rate Limiting binding (abuse control), keyed by client IP.
+# Shipped ENABLED so a deploy is never an unthrottled open relay. The Worker
+# calls it GRACEFULLY: if a runtime lacks the binding, the limiter is skipped and
+# the proxy still works, so `wrangler dev` needs nothing extra.
+#
+# `namespace_id` is an integer you choose that is UNIQUE within this Worker; it
+# is NOT a dashboard-provisioned resource, so there is no extra setup step.
+# `simple.limit` = requests per `period` seconds (period must be 10 or 60).
+# ---------------------------------------------------------------------------
+[[unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 60, period = 60 }   # 60 req / 60s, keyed by cf-connecting-ip
+
+[observability]
+enabled = true
