@@ -7,7 +7,8 @@
 //! (gerna → smuni → logji) is compiled into the WASM bundle and runs entirely
 //! client-side (mirrors `nibli-wasm`). The ONLY network call is the optional
 //! Source→Lojban translate, sent directly from the browser to the user's chosen
-//! LLM provider — see `llm.rs`. nibli itself has no server.
+//! LLM provider — the client lives in `nibli_fanva::llm` (the single source of
+//! truth); nibli-ui only wraps it in a `Settings` bundle. nibli itself has no server.
 
 use std::collections::HashSet;
 
@@ -18,9 +19,8 @@ use nibli_types::error::NibliError;
 use nibli_types::logic::LogicBuffer;
 
 mod examples;
-mod llm;
 use examples::EXAMPLES;
-use llm::{LlmConfig, Provider};
+use nibli_fanva::llm::{LlmConfig, Provider};
 
 fn main() {
     dioxus::launch(App);
@@ -96,23 +96,44 @@ struct TraceRow {
     tools: Vec<ToolRow>,
 }
 
-/// Map the UI's in-memory LLM config onto nibli-fanva's for the agent loop.
-fn to_fanva_cfg(cfg: &LlmConfig) -> nibli_fanva::llm::LlmConfig {
-    use nibli_fanva::llm::Provider as FP;
-    let provider = match cfg.provider {
-        Provider::Anthropic => FP::Anthropic,
-        Provider::OpenAi => FP::OpenAi,
-        Provider::OpenRouter => FP::OpenRouter,
-        Provider::Gemini => FP::Gemini,
-        Provider::Custom => FP::Custom,
-    };
-    nibli_fanva::llm::LlmConfig {
-        provider,
-        api_key: cfg.api_key.clone(),
-        model: cfg.model.clone(),
-        base_url: cfg.base_url.clone(),
-        max_tokens: 1024,
+/// nibli-ui's settings bundle: the LLM provider config (`nibli_fanva::llm::LlmConfig`,
+/// the single source of truth) plus the agent/jbotci knobs that aren't LLM-provider
+/// settings. Held in one in-memory signal; never persisted.
+#[derive(Clone, PartialEq)]
+struct Settings {
+    llm: LlmConfig,
+    proxy_url: String,
+    max_attempts: u32,
+}
+
+impl Settings {
+    fn new(provider: Provider) -> Self {
+        Settings {
+            llm: LlmConfig::new(provider),
+            proxy_url: String::new(),
+            max_attempts: 5,
+        }
     }
+}
+
+/// Single-shot English→Lojban via nibli-fanva's transport — used by the query
+/// translate and the modal key-test (the agentic Source translate uses
+/// `translate_agentic`). Returns the cleaned Lojban or a user-facing error.
+async fn fanva_translate(cfg: &LlmConfig, english: &str) -> Result<String, String> {
+    use nibli_fanva::llm::{Chat, HttpChat, Turn, clean_lojban_output, system_prompt};
+    let turns = [Turn::user(format!(
+        "Translate to Lojban: {}",
+        english.trim()
+    ))];
+    let raw = HttpChat
+        .chat(cfg, system_prompt(), &turns)
+        .await
+        .map_err(|e| e.to_string())?;
+    let cleaned = clean_lojban_output(&raw);
+    if cleaned.is_empty() {
+        return Err("The provider returned an empty translation.".to_string());
+    }
+    Ok(cleaned)
 }
 
 /// The local gates, in the fail-fast order `validate` runs them.
@@ -355,7 +376,7 @@ fn App() -> Element {
     let kb_status: Signal<Option<KbStatus>> = use_signal(|| None);
     // The LLM translate config lives ONLY here, in memory — never persisted to
     // storage, cleared on tab close/reload. `None` until the user configures it.
-    let llm_config: Signal<Option<LlmConfig>> = use_signal(|| None);
+    let settings: Signal<Option<Settings>> = use_signal(|| None);
     let modal_open: Signal<bool> = use_signal(|| false);
     // Preloaded example selection: `None` = Custom (editable + translatable);
     // `Some(i)` indexes `examples::EXAMPLES` (read-only KB + a query dropdown).
@@ -452,7 +473,7 @@ fn App() -> Element {
             div { class: "app", tabindex: "0", onkeydown: on_global_keydown,
                 div { class: "main-row",
                     div { class: "col-tabs",
-                        SourceTabs { lojban_text, kb_status, active_tab, llm_config, modal_open, example }
+                        SourceTabs { lojban_text, kb_status, active_tab, settings, modal_open, example }
                     }
                     div { class: "col-proof",
                         ProofPanel { proof_text, proof_data, example }
@@ -466,7 +487,7 @@ fn App() -> Element {
                             proof_data,
                             lojban_text,
                             kb_status,
-                            llm_config,
+                            settings,
                             modal_open,
                             example,
                         }
@@ -490,7 +511,7 @@ fn App() -> Element {
                 }
             }
             if *modal_open.read() {
-                LlmConfigModal { llm_config, modal_open }
+                LlmConfigModal { settings, modal_open }
             }
         }
     }
@@ -581,7 +602,7 @@ fn QueryTabs(
     proof_data: Signal<Option<ProofTrace>>,
     lojban_text: Signal<String>,
     kb_status: Signal<Option<KbStatus>>,
-    llm_config: Signal<Option<LlmConfig>>,
+    settings: Signal<Option<Settings>>,
     modal_open: Signal<bool>,
     example: Signal<Option<usize>>,
 ) -> Element {
@@ -705,19 +726,19 @@ fn QueryTabs(
         if text.trim().is_empty() || *translating.read() {
             return;
         }
-        let Some(cfg) = llm_config.read().clone() else {
+        let Some(cfg) = settings.read().clone() else {
             modal_open.set(true);
             return;
         };
         translating.set(true);
         translate_error.set(None);
         spawn(async move {
-            match llm::translate(&cfg, &text).await {
+            match fanva_translate(&cfg.llm, &text).await {
                 Ok(lojban) => {
                     query_text.set(lojban);
                     query_tab.set(ActiveTab::Lojban);
                 }
-                Err(e) => translate_error.set(Some(e.to_string())),
+                Err(e) => translate_error.set(Some(e)),
             }
             translating.set(false);
         });
@@ -755,7 +776,7 @@ fn QueryTabs(
             div { class: "tab-content",
                 match (is_example, *query_tab.read()) {
                     (false, ActiveTab::Source) => {
-                        let hint = match llm_config.read().as_ref().map(|c| c.provider.short_name()) {
+                        let hint = match settings.read().as_ref().map(|c| c.llm.provider.short_name()) {
                             Some(p) => format!("english claim \u{2192} lojban via {p}"),
                             None => "english claim \u{2192} lojban \u{2014} configure an llm".to_string(),
                         };
@@ -955,7 +976,7 @@ fn SourceTabs(
     lojban_text: Signal<String>,
     kb_status: Signal<Option<KbStatus>>,
     active_tab: Signal<ActiveTab>,
-    llm_config: Signal<Option<LlmConfig>>,
+    settings: Signal<Option<Settings>>,
     modal_open: Signal<bool>,
     example: Signal<Option<usize>>,
 ) -> Element {
@@ -986,7 +1007,7 @@ fn SourceTabs(
         if text.trim().is_empty() || *translating.read() {
             return;
         }
-        let Some(cfg) = llm_config.read().clone() else {
+        let Some(cfg) = settings.read().clone() else {
             modal_open.set(true);
             return;
         };
@@ -1002,11 +1023,10 @@ fn SourceTabs(
             let http = nibli_fanva::llm::HttpChat;
             // jbotci proxy (optional). Empty ⇒ the loop degrades to the local gates.
             let mcp = nibli_fanva::mcp::McpClient::new(cfg.proxy_url.clone());
-            let fcfg = to_fanva_cfg(&cfg);
             let outcome = nibli_fanva::agent::translate_agentic(
                 &http,
                 &mcp,
-                &fcfg,
+                &cfg.llm,
                 &text,
                 cfg.max_attempts.max(1),
                 MAX_TOOL_STEPS,
@@ -1098,7 +1118,7 @@ fn SourceTabs(
                         let hint = if is_example {
                             "loaded example \u{2014} read-only".to_string()
                         } else {
-                            match llm_config.read().as_ref().map(|c| c.provider.short_name()) {
+                            match settings.read().as_ref().map(|c| c.llm.provider.short_name()) {
                                 Some(p) => format!("english \u{2192} lojban via {p}"),
                                 None => "english \u{2192} lojban \u{2014} configure an llm".to_string(),
                             }
@@ -1266,18 +1286,18 @@ fn SourceTabs(
 }
 
 /// Bring-your-own-key LLM integration modal. Edits a draft config held in local
-/// signals; on Save it lands in the App's in-memory `llm_config`. The key never
+/// signals; on Save it lands in the App's in-memory `settings`. The key never
 /// leaves this tab (see the security note + `llm.rs`).
 #[component]
-fn LlmConfigModal(llm_config: Signal<Option<LlmConfig>>, modal_open: Signal<bool>) -> Element {
-    let initial = llm_config
+fn LlmConfigModal(settings: Signal<Option<Settings>>, modal_open: Signal<bool>) -> Element {
+    let initial = settings
         .read()
         .clone()
-        .unwrap_or_else(|| LlmConfig::new(Provider::Anthropic));
-    let mut provider = use_signal(|| initial.provider);
-    let mut api_key = use_signal(|| initial.api_key.clone());
-    let mut model = use_signal(|| initial.model.clone());
-    let mut base_url = use_signal(|| initial.base_url.clone());
+        .unwrap_or_else(|| Settings::new(Provider::Anthropic));
+    let mut provider = use_signal(|| initial.llm.provider);
+    let mut api_key = use_signal(|| initial.llm.api_key.clone());
+    let mut model = use_signal(|| initial.llm.model.clone());
+    let mut base_url = use_signal(|| initial.llm.base_url.clone());
     let mut proxy_url = use_signal(|| initial.proxy_url.clone());
     let mut max_attempts = use_signal(|| initial.max_attempts);
     let mut testing = use_signal(|| false);
@@ -1285,42 +1305,45 @@ fn LlmConfigModal(llm_config: Signal<Option<LlmConfig>>, modal_open: Signal<bool
 
     let prov = *provider.read();
 
-    let build_cfg = move || LlmConfig {
-        provider: *provider.read(),
-        api_key: api_key.read().trim().to_string(),
-        model: model.read().trim().to_string(),
-        base_url: base_url.read().trim().to_string(),
+    let build_settings = move || Settings {
+        llm: LlmConfig {
+            provider: *provider.read(),
+            api_key: api_key.read().trim().to_string(),
+            model: model.read().trim().to_string(),
+            base_url: base_url.read().trim().to_string(),
+            max_tokens: 1024,
+        },
         proxy_url: proxy_url.read().trim().to_string(),
         max_attempts: (*max_attempts.read()).max(1),
     };
     // A key is required for everyone except Custom (which may be a local server).
     let needs_key =
-        move |cfg: &LlmConfig| cfg.api_key.is_empty() && cfg.provider != Provider::Custom;
+        move |s: &Settings| s.llm.api_key.is_empty() && s.llm.provider != Provider::Custom;
 
     let on_save = move |_: Event<MouseData>| {
-        let cfg = build_cfg();
-        if needs_key(&cfg) {
+        let s = build_settings();
+        if needs_key(&s) {
             test_msg.set(Some((false, "Enter your API key first.".to_string())));
             return;
         }
-        llm_config.set(Some(cfg));
+        settings.set(Some(s));
         modal_open.set(false);
     };
     let on_test = move |_: Event<MouseData>| {
         if *testing.read() {
             return;
         }
-        let cfg = build_cfg();
-        if needs_key(&cfg) {
+        let s = build_settings();
+        if needs_key(&s) {
             test_msg.set(Some((false, "Enter your API key first.".to_string())));
             return;
         }
         testing.set(true);
         test_msg.set(None);
         spawn(async move {
-            match llm::translate(&cfg, "Adam is a dog").await {
+            match fanva_translate(&s.llm, "Adam is a dog").await {
                 Ok(lojban) => test_msg.set(Some((true, format!("OK \u{2014} {lojban}")))),
-                Err(e) => test_msg.set(Some((false, e.to_string()))),
+                Err(e) => test_msg.set(Some((false, e))),
             }
             testing.set(false);
         });
