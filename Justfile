@@ -432,14 +432,14 @@ test-all: test test-engine test-store test-backend test-classifier
 
 # CI gate for the hardened runtime surface (fast; native only — no WASM build).
 # For the WASM behavioral smokes too, run `just ci-all`.
-ci: fmt-check clippy-runtime test test-engine test-gasnu test-backend test-store test-persistence-replay verify-harness verify-soundness verify-parser verify-proofs verify-book-vocab
+ci: fmt-check clippy-runtime test test-engine test-gasnu test-fanva test-backend test-store test-persistence-replay verify-harness verify-soundness verify-parser verify-proofs verify-book-vocab
 
 # WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
 # verify-book-capture). Bundles the six gasnu smokes; each depends on
 # `build-wasm build-gasnu`, so `just` builds the component + host once, then runs
 # all six: fuel exhaustion + post-trap recovery + journal replay (trap-recovery),
 # plus the script transcript, go'i, persist-replay, NAF-note, and :debug round-trip.
-ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-cwa-false smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable smoke-gasnu-non-finite smoke-gasnu-quiet smoke-gasnu-strict smoke-gasnu-determinism verify-wasm-node
+ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-cwa-false smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable smoke-gasnu-non-finite smoke-gasnu-quiet smoke-gasnu-strict smoke-gasnu-determinism verify-wasm-node test-fanva-wasm
 
 # Three-way determinism, WASMTIME leg: the shared determinism-corpus.lojban must produce
 # exactly its pinned annotations through the lasna component under gasnu. The native leg
@@ -465,6 +465,12 @@ verify-wasm-node:
     else \
         wasm-pack test --node nibli-wasm; \
     fi
+
+# Run nibli-fanva native tests (agentic loop + history trim, local gates, LLM
+# request/response shapes, MCP wire/types, tool loop). The wasm-only camxes-gate
+# marshalling tests are `test-fanva-wasm`.
+test-fanva:
+    cargo test -p nibli-fanva --lib -- --nocapture
 
 # nibli-fanva camxes-gate marshalling under node (wasm-bindgen-test): verifies
 # read_camxes_result + the official_gate degrade path. The real camxes engine

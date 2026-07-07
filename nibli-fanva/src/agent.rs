@@ -57,6 +57,27 @@ pub enum Outcome {
     },
 }
 
+/// Cap on how many prior failed-attempt `[assistant, user-feedback]` pairs the
+/// conversation carries into the next attempt. The original request (`convo[0]`) is
+/// always kept; older middle pairs are dropped so the context can't grow without
+/// bound under a large `max_attempts`. The most recent failures are what the model
+/// actually corrects from, so keeping the tail preserves convergence.
+const MAX_HISTORY_PAIRS: usize = 3;
+
+/// Trim `convo` in place to the original request plus the last `keep_pairs`
+/// `[assistant, user]` feedback pairs. Safe because `convo` only ever holds User/
+/// Assistant text turns (the tool loop's `AssistantTools`/`ToolResults` turns are
+/// ephemeral — see `tools.rs`), and pairs are appended atomically, so `len - 1` is
+/// always even and a pair-aligned drop can't split a pair.
+fn trim_history(convo: &mut Vec<Turn>, keep_pairs: usize) {
+    let max_len = 1 + keep_pairs * 2;
+    if convo.len() <= max_len {
+        return;
+    }
+    let first_kept = convo.len() - keep_pairs * 2;
+    convo.drain(1..first_kept);
+}
+
 /// Translate `source` into valid Lojban, self-correcting against the validation
 /// gate, with optional jbotci tool-use. See the module docs for the termination
 /// rules and the degrade behavior.
@@ -89,6 +110,8 @@ pub async fn translate_agentic<C: ToolChat>(
     let mut prev: Option<String> = None;
 
     for n in 1..=max_attempts {
+        // Bound the context: keep the request + the most recent failed attempts.
+        trim_history(&mut convo, MAX_HISTORY_PAIRS);
         // Inner jbotci tool loop: the model may call tools while producing a
         // candidate. With `tool_decls` empty (degraded) this is a single text call.
         let (raw, tool_calls) = match tools::run_llm_tool_loop(
@@ -280,5 +303,77 @@ mod tests {
             }
             other => panic!("expected Success, got {other:?}"),
         }
+    }
+
+    /// A `ToolChat` that records the turns it is handed each call and always returns
+    /// a distinct invalid candidate, so the loop runs to the cap and we can inspect
+    /// how the conversation grows.
+    struct Capturing {
+        seen: RefCell<Vec<Vec<Turn>>>,
+        n: std::cell::Cell<u32>,
+    }
+    impl Capturing {
+        fn new() -> Self {
+            Self {
+                seen: RefCell::new(Vec::new()),
+                n: std::cell::Cell::new(0),
+            }
+        }
+    }
+    impl ToolChat for Capturing {
+        async fn chat_tools(
+            &self,
+            _cfg: &LlmConfig,
+            _system: &str,
+            turns: &[Turn],
+            _tools: &[ToolDecl],
+        ) -> Result<ChatResponse, ChatError> {
+            self.seen.borrow_mut().push(turns.to_vec());
+            let i = self.n.get();
+            self.n.set(i + 1);
+            Ok(ChatResponse {
+                text: Some(bad(&i.to_string())),
+                tool_calls: vec![],
+            })
+        }
+    }
+
+    #[test]
+    fn history_is_trimmed_to_request_plus_recent_pairs() {
+        // Six never-valid attempts: the conversation would otherwise grow to 11 turns
+        // (1 + 2*5); trimming must bound it to 1 + 2*MAX_HISTORY_PAIRS, keeping the
+        // original request as convo[0].
+        let chat = Capturing::new();
+        let mcp = McpClient::new("");
+        let cfg = LlmConfig::new(Provider::Anthropic);
+        let out = futures::executor::block_on(translate_agentic(
+            &chat,
+            &mcp,
+            &cfg,
+            "Adam is a dog",
+            6,
+            4,
+        ));
+        assert!(matches!(out, Outcome::Exhausted { .. }));
+        let seen = chat.seen.borrow();
+        assert_eq!(seen.len(), 6, "one chat call per attempt");
+        let cap = 1 + MAX_HISTORY_PAIRS * 2;
+        let request = Turn::user("Translate to Lojban: Adam is a dog");
+        for turns in seen.iter() {
+            assert!(
+                turns.len() <= cap,
+                "history exceeded the cap: {}",
+                turns.len()
+            );
+            assert_eq!(
+                turns[0], request,
+                "the original request must stay as convo[0]"
+            );
+        }
+        assert_eq!(
+            seen.last().unwrap().len(),
+            cap,
+            "the last attempt should be trimmed to exactly the cap",
+        );
     }
 }

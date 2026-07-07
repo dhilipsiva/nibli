@@ -1143,9 +1143,12 @@ fn SourceTabs(
             if kb_to_tersmu_text(&current) == joined {
                 match outcome {
                     Ok(res) if !res.is_error => tersmu_result.set(Some(res.text)),
-                    Ok(res) => tersmu_error
-                        .set(Some(format!("jbotci tersmu reported an error: {}", res.text))),
-                    Err(e) => tersmu_error.set(Some(format!("jbotci unavailable: {e}"))),
+                    Ok(res) => tersmu_error.set(Some(format!(
+                        "jbotci tersmu reported an error: {}",
+                        res.text
+                    ))),
+                    // McpError::Display is self-describing (429/5xx/network/…).
+                    Err(e) => tersmu_error.set(Some(e.to_string())),
                 }
             }
             tersmu_loading.set(false);
@@ -1556,10 +1559,10 @@ fn LlmConfigModal(settings: Signal<Option<Settings>>, modal_open: Signal<bool>) 
                     }
                     div { class: "llm-security-note__links",
                         a {
-                            href: "https://github.com/dhilipsiva/nibli/blob/main/nibli-ui/src/llm.rs",
+                            href: "https://github.com/dhilipsiva/nibli/blob/main/nibli-fanva/src/llm/http.rs",
                             target: "_blank",
                             rel: "noopener noreferrer",
-                            "llm.rs \u{2014} the request code"
+                            "http.rs \u{2014} the request code"
                         }
                         a {
                             href: "https://github.com/dhilipsiva/nibli/blob/main/nibli-ui/Cargo.toml",
