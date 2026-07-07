@@ -17,10 +17,10 @@ mod response;
 mod http;
 pub use http::HttpChat;
 
-pub use request::build_chat_request;
-pub use response::{clean_lojban_output, extract_text};
+pub use request::{build_chat_request, build_chat_request_tools};
+pub use response::{clean_lojban_output, extract_text, parse_chat_response};
 pub use system_prompt::system_prompt;
-pub use types::{LlmConfig, Provider, Turn};
+pub use types::{ChatResponse, LlmConfig, Provider, ToolCall, ToolDecl, ToolResult, Turn};
 
 /// The async send seam. The real implementation (wasm-only gloo-net, porting
 /// `nibli-ui`'s send path) lands with the HTTP transport; the agent's native
@@ -48,4 +48,18 @@ impl std::fmt::Display for ChatError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
     }
+}
+
+/// The tool-use send seam — returns structured text + tool calls and accepts tool
+/// declarations. `HttpChat` implements it; the tool-loop tests mock it. `#[allow]`
+/// because it is always used through generics, never as `dyn`.
+#[allow(async_fn_in_trait)]
+pub trait ToolChat {
+    async fn chat_tools(
+        &self,
+        cfg: &LlmConfig,
+        system: &str,
+        turns: &[Turn],
+        tools: &[ToolDecl],
+    ) -> Result<ChatResponse, ChatError>;
 }

@@ -30,6 +30,7 @@ pub mod agent;
 pub mod gates;
 pub mod llm;
 pub mod mcp;
+pub mod tools;
 
 // Landing in a subsequent phase (see TODO.md):
-//   the inner jbotci tool loop threads `mcp` into agent::translate_agentic (Phase 3)
+//   `tools::run_llm_tool_loop` threads into agent::translate_agentic (Phase 5)

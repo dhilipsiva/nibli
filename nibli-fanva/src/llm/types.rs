@@ -2,6 +2,8 @@
 //! model. Ported from `nibli-ui/src/llm.rs` (BYO-key, direct-to-provider) and
 //! generalized: the single user message becomes a [`Turn`] sequence.
 
+use serde_json::Value;
+
 /// A supported LLM provider. `Custom` is any OpenAI-compatible endpoint
 /// (Groq, Together, Ollama, LM Studio, …).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -99,13 +101,53 @@ impl LlmConfig {
     }
 }
 
-/// One turn of the conversation. The validate→feedback loop only needs `User`
-/// (the source + later correction turns) and `Assistant` (each candidate). Tool-
-/// call and tool-result turns arrive with the Phase-3 jbotci tool loop.
+/// A tool the model may call, advertised in the request. Built from a discovered
+/// jbotci `ToolInfo`; `input_schema` is the raw JSON Schema.
+#[derive(Clone, PartialEq, Debug)]
+pub struct ToolDecl {
+    pub name: String,
+    pub description: String,
+    pub input_schema: Value,
+}
+
+/// A normalized tool call the model requested (provider-agnostic). `id` is the
+/// provider-assigned id (Anthropic/OpenAI); Gemini has none, so it is synthesized.
+#[derive(Clone, PartialEq, Debug)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub args: Value,
+}
+
+/// The result of running a tool, fed back to the model. `name` correlates for
+/// Gemini (`functionResponse`); `id` correlates for Anthropic/OpenAI.
+#[derive(Clone, PartialEq, Debug)]
+pub struct ToolResult {
+    pub id: String,
+    pub name: String,
+    pub content: String,
+    pub is_error: bool,
+}
+
+/// A model response: optional text and/or tool calls.
+#[derive(Clone, PartialEq, Debug, Default)]
+pub struct ChatResponse {
+    pub text: Option<String>,
+    pub tool_calls: Vec<ToolCall>,
+}
+
+/// One turn of the conversation. The validate→feedback loop uses `User`/`Assistant`
+/// (text); the jbotci tool loop adds `AssistantTools` (the model's tool-call turn)
+/// and `ToolResults` (their outcomes).
 #[derive(Clone, PartialEq, Debug)]
 pub enum Turn {
     User(String),
     Assistant(String),
+    AssistantTools {
+        text: Option<String>,
+        calls: Vec<ToolCall>,
+    },
+    ToolResults(Vec<ToolResult>),
 }
 
 impl Turn {

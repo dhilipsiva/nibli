@@ -25,7 +25,8 @@ bullet**; remove an item when fully done, or narrow it if partial.
 - **Phase 6 core — nibli-ui Translate mode:** the Source→Lojban button runs the agentic loop (`translate_agentic` + `HttpChat` + local gates) with a per-attempt self-correction trace; Success fills the Lojban tab, Exhausted shows best-effort + last error, ChatFailed shows the transport error. `CLAUDE.md` Architecture table updated with the `nibli-fanva` row. Verified: `cargo check --workspace` (native) + `cargo check -p nibli-ui --target wasm32-unknown-unknown` (wasm) both green. Live end-to-end pending a user API-key run of `just ui`.
 - **Phase 4 — camxes "official" gate:** vendored ilmentufa standard `camxes.js` + `camxes_preproc.js` + a `camxes_shim.js` (`window.camxes_validate`) served by nibli-ui (`document::Script`+`asset!()`); `gates::official_gate` (wasm-only, synchronous js-sys) folded into `validate`, so the success gate is `gerna ∧ smuni ∧ camxes` (degrades to the local two when the shim is absent). 3 wasm marshalling tests (`just test-fanva-wasm`); native 16 unaffected; both wasm checks green. Real engine verified in-browser via `just ui`.
 - **Phase 2 — jbotci MCP client (`src/mcp/`):** `McpClient` over Streamable-HTTP to a configurable proxy URL (`initialize`+`notifications/initialized`/`tools/list`/`tools/call`; JSON-or-SSE bodies; `MCP-Protocol-Version` + `Mcp-Session-Id` echo; 404→session reset); pure `wire`/`types` (native-tested) + a wasm-only gloo-net transport with a native `Unavailable` stub; `is_available()` degrades when the proxy URL is empty; discovered tools cached for Phase 3. 8 native tests (JSON + mock-SSE parse, 7-tool `tools/list`, tool-call text/isError, empty-URL degrade) → 24 total; wasm check + clippy clean.
-- Not yet built: the inner tool loop wiring `mcp` into the agent (Phase 3), the config-modal proxy field + degrade banner (Phase 6), and a deployed proxy (optional).
+- **Phase 3 — provider tool-calling adapters (`src/llm/` + `src/tools.rs`):** `Turn` gained `AssistantTools`/`ToolResults`; `build_chat_request_tools` declares tools + serializes tool turns per provider (Anthropic `tool_use`/`tool_result`, OpenAI `tool_calls` with stringified `arguments` + `role:"tool"`, Gemini `functionCall`/`functionResponse` by name); `parse_chat_response` normalizes tool calls (OpenAI args `JSON.parse`d, Gemini id synthesized); a `ToolChat` seam (`HttpChat` impls it); `tools::run_llm_tool_loop` (+ `ToolRunner`, `to_tool_decls`, `impl ToolRunner for McpClient`). 7 native tests (schema/turn shapes ×3, tool-call parse ×3, loop with mocked chat+runner) → 31 total; clippy-clean; wasm check green.
+- Not yet built: the tool loop wired into `translate_agentic` (Phase 5), the config-modal proxy field + degrade banner (Phase 6), and a deployed proxy (optional).
 
 ## Phase 0 — remainder
 
@@ -43,9 +44,9 @@ Remaining pieces were reassigned to later phases:
 
 - Built as `src/mcp/{types,wire,mod}.rs`: pure JSON-RPC/SSE parsing (`wire`, native-tested) + a wasm-only `McpClient::rpc` transport (native stub returns `Unavailable`). Tools from `tools/list` are cached (`McpClient::tools()`) for Phase 3 to map into provider tool schemas.
 
-## Phase 3 — Provider tool-calling adapters
+## Phase 3 — Provider tool-calling adapters — DONE (see "Already landed")
 
-- Map each cached jbotci `inputSchema` → Anthropic/OpenAI/Gemini tool shape; parse tool calls (OpenAI `arguments` is stringified JSON — validate); submit tool results per provider; `run_llm_tool_loop(..., max_tool_steps)`. Done when: native tests map/parse a captured sample per provider into a normalized `ToolCall`, and a mocked-chat+mocked-mcp test drives one tool call then returns text.
+- Built in `src/llm/{types,request,response}.rs` + `src/llm/mod.rs` (`ToolChat`) + `src/llm/http.rs` (`HttpChat: ToolChat`) + `src/tools.rs` (`run_llm_tool_loop`, `ToolRunner`, `impl ToolRunner for McpClient`, `to_tool_decls`). Phase 5 threads `run_llm_tool_loop` into `translate_agentic`.
 
 ## Phase 4 — Official gate + full validator — DONE (see "Already landed")
 
