@@ -1406,7 +1406,7 @@ fn LlmConfigModal(settings: Signal<Option<Settings>>, modal_open: Signal<bool>) 
     let initial = settings
         .read()
         .clone()
-        .unwrap_or_else(|| Settings::new(Provider::Anthropic));
+        .unwrap_or_else(|| Settings::new(Provider::OpenRouter));
     let mut provider = use_signal(|| initial.llm.provider);
     let mut api_key = use_signal(|| initial.llm.api_key.clone());
     let mut model = use_signal(|| initial.llm.model.clone());
@@ -1483,6 +1483,22 @@ fn LlmConfigModal(settings: Signal<Option<Settings>>, modal_open: Signal<bool>) 
                                 test_msg.set(None);
                             },
                             "{p.short_name()}"
+                            if let Some(promo) = p.promo() {
+                                span { class: "llm-provider-btn__badge", "{promo.badge}" }
+                            }
+                        }
+                    }
+                }
+
+                if let Some(promo) = prov.promo() {
+                    div { class: "llm-promo-note",
+                        span { class: "llm-promo-note__text", "{promo.note} " }
+                        a {
+                            class: "llm-promo-note__link",
+                            href: "{promo.signup_url}",
+                            target: "_blank",
+                            rel: "noopener noreferrer",
+                            "Get a free key \u{2192}"
                         }
                     }
                 }

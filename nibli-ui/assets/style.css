@@ -1153,6 +1153,50 @@ body {
   border-color: var(--accent);
 }
 
+/* "free" badge on a promoted provider tab (OpenRouter / Gemini). */
+.llm-provider-btn__badge {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 0 5px;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  border-radius: var(--r-sm);
+  color: var(--verdict-true);
+  background: color-mix(in oklab, var(--verdict-true) 18%, transparent);
+}
+/* Keep the badge legible against the ember fill of the active tab. */
+.llm-provider-btn.active .llm-provider-btn__badge {
+  color: var(--text-on-ember);
+  background: color-mix(in oklab, var(--text-on-ember) 22%, transparent);
+}
+
+/* ── Promoted-provider note (the easy/free path) ──────────────────────────── */
+.llm-promo-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  background: color-mix(in oklab, var(--verdict-true) 10%, transparent);
+  border: 1px solid color-mix(in oklab, var(--verdict-true) 30%, transparent);
+  border-radius: var(--r-md);
+}
+.llm-promo-note__text { color: var(--text-body); }
+.llm-promo-note__link {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.llm-promo-note__link:hover { color: var(--accent-hover); text-decoration: underline; }
+
 /* ── Fields ──────────────────────────────────────────────────────────────── */
 .llm-field { display: flex; flex-direction: column; gap: var(--s1); }
 .llm-field__label {

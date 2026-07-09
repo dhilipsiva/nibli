@@ -15,12 +15,24 @@ pub enum Provider {
     Custom,
 }
 
+/// UI promotion metadata for a provider we recommend as the easy, free, and
+/// browser-direct path (works without a CORS proxy). `None` otherwise.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ProviderPromo {
+    /// Short badge shown on the picker tab (e.g. "free").
+    pub badge: &'static str,
+    /// One short line shown under the picker when this provider is selected.
+    pub note: &'static str,
+    /// "Get a key" signup link for the note.
+    pub signup_url: &'static str,
+}
+
 impl Provider {
     pub const ALL: [Provider; 5] = [
-        Provider::Anthropic,
-        Provider::OpenAi,
         Provider::OpenRouter,
         Provider::Gemini,
+        Provider::Anthropic,
+        Provider::OpenAi,
         Provider::Custom,
     ];
 
@@ -49,7 +61,7 @@ impl Provider {
         match self {
             Provider::Anthropic => "claude-haiku-4-5",
             Provider::OpenAi => "gpt-4o-mini",
-            Provider::OpenRouter => "openai/gpt-4o-mini",
+            Provider::OpenRouter => "meta-llama/llama-3.3-70b-instruct:free",
             Provider::Gemini => "gemini-2.0-flash",
             Provider::Custom => "",
         }
@@ -64,6 +76,24 @@ impl Provider {
         match self {
             Provider::Custom => "http://localhost:11434/v1",
             _ => "",
+        }
+    }
+
+    /// Promotion metadata for the recommended free/easy providers that work
+    /// directly from the browser (no CORS proxy needed). `None` otherwise.
+    pub fn promo(self) -> Option<ProviderPromo> {
+        match self {
+            Provider::OpenRouter => Some(ProviderPromo {
+                badge: "free",
+                note: "Easiest to start \u{2014} free models, no credit card. One key, many models.",
+                signup_url: "https://openrouter.ai/keys",
+            }),
+            Provider::Gemini => Some(ProviderPromo {
+                badge: "free",
+                note: "Easiest to start \u{2014} generous free tier, no credit card.",
+                signup_url: "https://aistudio.google.com/apikey",
+            }),
+            _ => None,
         }
     }
 }
@@ -156,5 +186,35 @@ impl Turn {
     }
     pub fn assistant(s: impl Into<String>) -> Self {
         Turn::Assistant(s.into())
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn openrouter_first_gemini_second() {
+        // The picker renders `Provider::ALL` in order; the two promoted free,
+        // browser-direct providers lead, OpenRouter first.
+        assert_eq!(Provider::ALL[0], Provider::OpenRouter);
+        assert_eq!(Provider::ALL[1], Provider::Gemini);
+    }
+
+    #[test]
+    fn openrouter_default_model_is_free() {
+        // The "free" framing must be honest: OpenRouter's default is a :free model.
+        assert!(Provider::OpenRouter.default_model().ends_with(":free"));
+        // Gemini's default is a free-tier model (no :free suffix convention).
+        assert_eq!(Provider::Gemini.default_model(), "gemini-2.0-flash");
+    }
+
+    #[test]
+    fn promo_only_for_free_browser_providers() {
+        assert!(Provider::OpenRouter.promo().is_some());
+        assert!(Provider::Gemini.promo().is_some());
+        assert!(Provider::Anthropic.promo().is_none());
+        assert!(Provider::OpenAi.promo().is_none());
+        assert!(Provider::Custom.promo().is_none());
     }
 }
