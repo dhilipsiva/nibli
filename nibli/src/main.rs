@@ -60,7 +60,11 @@ fn run_test_book() {
             }
         } else {
             match engine.assert_text(trimmed) {
-                Ok(fact_id) => println!("[Fact #{fact_id}] Asserted."),
+                Ok(ids) => {
+                    for id in &ids {
+                        println!("[Fact #{id}] Asserted.");
+                    }
+                }
                 Err(e) => println!("Error: {}", e),
             }
         }
@@ -296,9 +300,11 @@ fn main() {
                         }
 
                         match engine.assert_text(trimmed) {
-                            Ok(fact_id) => {
-                                println!("[Fact #{}] {}", fact_id, trimmed);
-                                asserted += 1;
+                            Ok(ids) => {
+                                for id in &ids {
+                                    println!("[Fact #{}] {}", id, trimmed);
+                                }
+                                asserted += ids.len() as u32;
                             }
                             Err(e) => {
                                 println!("[Load] line {}: {}", line_num + 1, e);
@@ -356,7 +362,11 @@ fn main() {
                     }
                 } else {
                     match engine.assert_text(input) {
-                        Ok(fact_id) => println!("[Fact #{}] Asserted.", fact_id),
+                        Ok(ids) => {
+                            for id in &ids {
+                                println!("[Fact #{}] Asserted.", id);
+                            }
+                        }
                         Err(e) => println!("{}", e),
                     }
                 }

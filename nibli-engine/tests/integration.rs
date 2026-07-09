@@ -1936,9 +1936,10 @@ fn persistent_engine_honors_store_retractions_after_reopen() {
 
     let fact_id = {
         let engine = NibliEngine::open(&path).expect("Persistent engine should open");
+        // Single sentence → exactly one fact id.
         engine
             .assert_text("la .adam. cu gerku")
-            .expect("Fact should persist")
+            .expect("Fact should persist")[0]
     };
 
     {
@@ -1977,7 +1978,7 @@ fn persistent_engine_retraction_via_engine_api_survives_reopen() {
         let engine = NibliEngine::open(&path).expect("Persistent engine should open");
         let id = engine
             .assert_text("la .adam. cu gerku")
-            .expect("Fact should persist");
+            .expect("Fact should persist")[0];
         assert!(
             engine
                 .query_holds("la .adam. cu gerku")
@@ -2103,7 +2104,7 @@ fn gdpr_belief_revision_consent_withdrawal() {
     engine
         .assert_text("ro lo prenu poi zanru cu se curmi")
         .unwrap(); // Art 6(1)(a)
-    let consent_id = engine.assert_text("la .adam. cu zanru").unwrap();
+    let consent_id = engine.assert_text("la .adam. cu zanru").unwrap()[0];
 
     // ── Consent present ──
     assert_true(
@@ -2276,7 +2277,7 @@ fn gdpr_erasure_rule_via_negated_consent_restrictor() {
     );
 
     // ── Consent present → the negated restrictor is false → no obligation. ──
-    let consent_id = engine.assert_text("la .adam. cu zanru").unwrap();
+    let consent_id = engine.assert_text("la .adam. cu zanru").unwrap()[0];
     assert_false(
         &engine
             .query_holds("la .adam. cu se bilga lo nu se vimcu")
@@ -2359,7 +2360,8 @@ fn gdpr_full_corpus_lawful_basis_query_completes() {
             )
         });
         if trimmed == "la .adam. cu zanru" {
-            consent_id = Some(id);
+            // Single-sentence corpus line → one id.
+            consent_id = id.first().copied();
         }
     }
 
@@ -2423,7 +2425,8 @@ fn load_corpus_like_gasnu(engine: &NibliEngine, corpus: &str) -> (u32, u32, Vec<
             )
         });
         asserted += 1;
-        ids.push((trimmed.to_string(), id));
+        // Corpus lines are single-sentence (no medial `.i`) → exactly one id.
+        ids.push((trimmed.to_string(), id[0]));
     }
     (asserted, skipped, ids)
 }
@@ -2466,7 +2469,7 @@ fn gdpr_corpus_transcript_pins() {
     );
     // The multi-basis walkthrough asserts the contract fact immediately after
     // the corpus load and later retracts it as #24.
-    let contract_id = engine.assert_text("la .adam. cu nupre").unwrap();
+    let contract_id = engine.assert_text("la .adam. cu nupre").unwrap()[0];
     assert_eq!(
         contract_id, 24,
         "Ch 20 retracts the post-load contract fact as id #24"
@@ -2787,7 +2790,7 @@ fn ddi_belief_revision_discontinue_inhibitor() {
     }
     let inhibits_id = engine
         .assert_text("la .flukonazol. cu fanta la .siptucin.")
-        .unwrap();
+        .unwrap()[0];
     for line in [
         "ganai ge la .flukonazol. cu fanta la .siptucin. gi la .varfarin. cu se katna la .siptucin. gi la .varfarin. cu zenba",
         "ganai ge la .flukonazol. cu fanta la .siptucin. gi la .fenitoin. cu se katna la .siptucin. gi la .fenitoin. cu zenba",
@@ -2854,7 +2857,7 @@ fn ddi_belief_revision_discontinue_drug() {
     }
     let takes_id = engine
         .assert_text("la .adam. cu pilno la .varfarin.")
-        .unwrap();
+        .unwrap()[0];
     for line in [
         "ganai ge la .flukonazol. cu fanta la .siptucin. gi la .varfarin. cu se katna la .siptucin. gi la .varfarin. cu zenba",
         "ro lo xukmi poi zenba poi cinla cu ckape",

@@ -310,16 +310,44 @@ fn run_query(kb_text: &str, query_text: &str) -> OutputEntry {
             continue;
         }
         let line_number = (i + 1) as u32;
-        match compile_text(line, &preds).and_then(|buf| kb.assert_fact(buf, line.to_string())) {
-            Ok(id) => {
-                asserted += 1;
-                line_results.push(LineResult {
-                    line_number,
-                    text: line.to_string(),
-                    success: true,
-                    fact_id: Some(id),
-                    error: None,
-                });
+        match compile_text(line, &preds) {
+            Ok(buf) => {
+                // Each bare-`.i` sentence becomes its OWN fact (connectives stay
+                // whole — they compile to a single root). `asserted` counts facts,
+                // so `A .i B` reads "2 asserted". One `LineResult` per source line
+                // (the KbStatusBar keys on line_number; per-fact rows would collide).
+                let mut first_id: Option<u64> = None;
+                let mut first_err: Option<String> = None;
+                for sub in buf.split_roots() {
+                    match kb.assert_fact(sub, line.to_string()) {
+                        Ok(id) => {
+                            asserted += 1;
+                            first_id.get_or_insert(id);
+                        }
+                        Err(e) => {
+                            first_err.get_or_insert_with(|| e.to_string());
+                        }
+                    }
+                }
+                match first_err {
+                    None => line_results.push(LineResult {
+                        line_number,
+                        text: line.to_string(),
+                        success: true,
+                        fact_id: first_id,
+                        error: None,
+                    }),
+                    Some(e) => {
+                        errors += 1;
+                        line_results.push(LineResult {
+                            line_number,
+                            text: line.to_string(),
+                            success: false,
+                            fact_id: first_id,
+                            error: Some(e),
+                        });
+                    }
+                }
             }
             Err(e) => {
                 errors += 1;

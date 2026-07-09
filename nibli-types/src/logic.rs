@@ -93,6 +93,37 @@ pub struct LogicBuffer {
     pub roots: Vec<u32>,
 }
 
+impl LogicBuffer {
+    /// Split a multi-root buffer into one independent single-root buffer per root,
+    /// so an `.i`-separated multi-sentence compile becomes N independently
+    /// assertable / retractable facts.
+    ///
+    /// The split is exactly the `roots` boundary: smuni emits **one root per bare
+    /// `.i` sentence**, but a **single root** (an `AndNode`/`OrNode`) for logical
+    /// connectives (`.ije`/`.ija`/`ge…gi`). So bare `.i` splits into N buffers while
+    /// a connective stays as one compound fact — automatically, no text parsing.
+    ///
+    /// Share-nodes strategy: each sub-buffer reuses the full `nodes` arena and
+    /// exposes a single root. Unreachable nodes belonging to sibling roots are inert
+    /// because every consumer traverses only from `roots` (see
+    /// `logji::process_assertion`). No index remapping, so no risk of a
+    /// mis-remapped child edge (notably `CountNode`'s middle field is a COUNT, not a
+    /// node index). `roots.len() <= 1` returns a single clone (identity) so the
+    /// single-sentence path is unchanged.
+    pub fn split_roots(&self) -> Vec<LogicBuffer> {
+        if self.roots.len() <= 1 {
+            return vec![self.clone()];
+        }
+        self.roots
+            .iter()
+            .map(|&r| LogicBuffer {
+                nodes: self.nodes.clone(),
+                roots: vec![r],
+            })
+            .collect()
+    }
+}
+
 /// A single witness binding: variable name → logical term value.
 #[derive(Clone, Debug, PartialEq)]
 pub struct WitnessBinding {
@@ -406,5 +437,60 @@ mod tests {
             &LogicalTerm::Unspecified,
             &ProofRule::Conjunction,
         );
+    }
+
+    fn pred(name: &str) -> LogicNode {
+        LogicNode::Predicate((name.to_string(), vec![]))
+    }
+
+    #[test]
+    fn split_roots_multi_returns_one_buffer_per_root() {
+        // Two independent roots (the bare-`.i` shape smuni emits).
+        let buf = LogicBuffer {
+            nodes: vec![pred("gerku"), pred("mlatu")],
+            roots: vec![0, 1],
+        };
+        let parts = buf.split_roots();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0].roots, vec![0]);
+        assert_eq!(parts[1].roots, vec![1]);
+        // Share-nodes: each sub-buffer keeps the full arena.
+        assert_eq!(parts[0].nodes, buf.nodes);
+        assert_eq!(parts[1].nodes, buf.nodes);
+    }
+
+    #[test]
+    fn split_roots_single_is_identity() {
+        let buf = LogicBuffer {
+            nodes: vec![pred("gerku")],
+            roots: vec![0],
+        };
+        let parts = buf.split_roots();
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0], buf);
+    }
+
+    #[test]
+    fn split_roots_empty_returns_self() {
+        let buf = LogicBuffer {
+            nodes: vec![],
+            roots: vec![],
+        };
+        let parts = buf.split_roots();
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0], buf);
+    }
+
+    #[test]
+    fn split_roots_connective_root_is_not_split() {
+        // A connective (`.ije`/`ge…gi`) compiles to a SINGLE root that is an
+        // `AndNode` over its operands — one compound fact, must not split.
+        let buf = LogicBuffer {
+            nodes: vec![pred("gerku"), pred("mlatu"), LogicNode::AndNode((0, 1))],
+            roots: vec![2],
+        };
+        let parts = buf.split_roots();
+        assert_eq!(parts.len(), 1, "a connective's single And-root must stay one fact");
+        assert_eq!(parts[0], buf);
     }
 }

@@ -550,7 +550,8 @@ fn determinism_corpus_native() {
     assert!(pending_q.is_none(), "corpus: trailing unannotated query");
 
     let engine = NibliEngine::new();
-    let mut ids: Vec<u64> = Vec::new();
+    // Per-assert fact ids; a line may be N facts (one per bare `.i` sentence).
+    let mut ids: Vec<Vec<u64>> = Vec::new();
     let mut checked = 0usize;
     for op in &ops {
         match op {
@@ -561,9 +562,11 @@ fn determinism_corpus_native() {
                 ids.push(id);
             }
             COp::Retract(k) => {
-                engine
-                    .retract_fact(ids[*k])
-                    .unwrap_or_else(|e| panic!("retract #{k}: {e:?}"));
+                for fid in &ids[*k] {
+                    engine
+                        .retract_fact(*fid)
+                        .unwrap_or_else(|e| panic!("retract #{k}: {e:?}"));
+                }
             }
             COp::Query(q, expected) => {
                 let (v, _) = engine

@@ -47,7 +47,8 @@ fn run_once() -> Result<(Duration, Duration, Duration), String> {
             .map_err(|e| format!("gdpr.lojban line {}: {e:?}", line_num + 1))?;
         asserted += 1;
         if trimmed == CONSENT_LINE {
-            consent_id = Some(id);
+            // The consent line is a single sentence → exactly one fact id.
+            consent_id = id.first().copied();
         }
     }
     let consent_id = consent_id.ok_or("consent line not found in gdpr.lojban")?;

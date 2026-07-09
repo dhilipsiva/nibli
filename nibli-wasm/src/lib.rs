@@ -40,12 +40,20 @@ impl Session {
         }
     }
 
-    /// Parse one Lojban assertion, compile to FOL, assert. Returns the fact id.
-    pub fn assert_text(&self, text: &str) -> Result<u64, JsError> {
+    /// Parse one Lojban assertion, compile to FOL, assert. A bare-`.i`
+    /// multi-sentence text becomes N INDEPENDENT facts (one per root; connectives
+    /// stay whole); returns the minted fact ids in root order.
+    pub fn assert_text(&self, text: &str) -> Result<Vec<u64>, JsError> {
         let buf = self.compile_text(text).map_err(js_err)?;
-        self.kb
-            .assert_fact(buf, text.to_string())
-            .map_err(|e| js_err(e.to_string()))
+        let mut ids = Vec::new();
+        for sub in buf.split_roots() {
+            ids.push(
+                self.kb
+                    .assert_fact(sub, text.to_string())
+                    .map_err(|e| js_err(e.to_string()))?,
+            );
+        }
+        Ok(ids)
     }
 
     /// Run a Lojban query. Returns JSON:

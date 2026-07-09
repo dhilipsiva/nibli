@@ -6695,6 +6695,47 @@ fn test_reset_clears_registry() {
     assert!(query_false(&kb, make_query("alis", "gerku")));
 }
 
+#[test]
+fn split_roots_yields_independent_facts() {
+    // A bare-`.i` multi-sentence compile splits (by root) into two INDEPENDENT
+    // facts: each queryable, and retracting one leaves the other intact. Uses the
+    // real surface shape (event-decomposed), so this exercises split + skolem
+    // witness retraction end-to-end.
+    let kb = new_kb();
+    let buf = compile_surface("la .adam. cu gerku .i la .betis. cu gerku");
+    let parts = buf.split_roots();
+    assert_eq!(parts.len(), 2, "bare `.i` must split into two roots");
+
+    let id0 = assert_id(&kb, parts[0].clone(), "adam");
+    let _id1 = assert_id(&kb, parts[1].clone(), "betis");
+    assert_eq!(
+        kb.list_facts_inner().unwrap().len(),
+        2,
+        "two independent facts, not one multi-root fact"
+    );
+
+    assert!(query(&kb, compile_surface("la .adam. cu gerku")));
+    assert!(query(&kb, compile_surface("la .betis. cu gerku")));
+
+    // Retract one sentence — the other survives independently.
+    kb.retract_fact_inner(id0).unwrap();
+    assert!(query_false(&kb, compile_surface("la .adam. cu gerku")));
+    assert!(query(&kb, compile_surface("la .betis. cu gerku")));
+    assert_eq!(kb.list_facts_inner().unwrap().len(), 1);
+}
+
+#[test]
+fn split_roots_keeps_connective_as_one_fact() {
+    // `.i je` (afterthought AND) is a single compound proposition → one root → one
+    // fact. Only bare `.i` splits.
+    let buf = compile_surface("la .adam. cu gerku .i je la .betis. cu gerku");
+    assert_eq!(
+        buf.split_roots().len(),
+        1,
+        "a connective (`.i je`) must stay one compound fact"
+    );
+}
+
 // ─── C5: Description term opacity tests ──────────────────────
 
 /// Helper: make an assertion with a Description term in x1.

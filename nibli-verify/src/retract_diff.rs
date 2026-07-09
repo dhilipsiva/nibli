@@ -171,15 +171,18 @@ pub fn run_retract_case(case: &RetractCase) -> RetractOutcome {
     let name = case.name.clone();
     let engine = NibliEngine::new();
 
-    // (line, engine fact id, alive) per executed assert, in original order.
-    let mut asserts: Vec<(String, u64, bool)> = Vec::new();
+    // (line, engine fact ids, alive) per executed assert, in original order.
+    // A line is N independent facts (one per bare `.i` sentence).
+    let mut asserts: Vec<(String, Vec<u64>, bool)> = Vec::new();
     let mut retractions = 0usize;
     let mut complex_retractions = 0usize;
 
     for (op_idx, op) in case.ops.iter().enumerate() {
         match op {
             Op::Assert(line) => match engine.assert_text(line) {
-                Ok(id) => asserts.push((line.clone(), id, true)),
+                // A line is N independent facts (one per bare `.i` sentence); track
+                // all ids so a retraction removes the whole line as a unit.
+                Ok(ids) => asserts.push((line.clone(), ids, true)),
                 Err(e) => {
                     return RetractOutcome::Error {
                         name,
@@ -189,17 +192,19 @@ pub fn run_retract_case(case: &RetractCase) -> RetractOutcome {
             },
             Op::Retract(k) => {
                 // Resolve to the k-th assert; skip if already retracted.
-                let Some((line, id, alive)) = asserts.get(*k).cloned() else {
+                let Some((line, ids, alive)) = asserts.get(*k).cloned() else {
                     continue;
                 };
                 if !alive {
                     continue;
                 }
-                if let Err(e) = engine.retract_fact(id) {
-                    return RetractOutcome::Error {
-                        name,
-                        error: format!("retract '{line}' (id {id}): {e:?}"),
-                    };
+                for id in &ids {
+                    if let Err(e) = engine.retract_fact(*id) {
+                        return RetractOutcome::Error {
+                            name,
+                            error: format!("retract '{line}' (id {id}): {e:?}"),
+                        };
+                    }
                 }
                 asserts[*k].2 = false;
                 retractions += 1;

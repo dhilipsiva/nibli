@@ -256,31 +256,41 @@ impl NibliEngine {
     }
 
     /// Parse Lojban text, compile to FOL, and assert into the knowledge base.
-    pub fn assert_text(&self, text: &str) -> Result<u64, EngineError> {
+    ///
+    /// A bare-`.i` multi-sentence text becomes N INDEPENDENT facts — one per root —
+    /// each with its own id, store record, and retraction (connectives compile to a
+    /// single root and stay one fact). Returns the minted ids in root order. A
+    /// single-sentence text yields exactly one id.
+    pub fn assert_text(&self, text: &str) -> Result<Vec<u64>, EngineError> {
         let buf = self.compile_text(text)?;
         let label = text.to_string();
         let mut store = self.store.try_borrow_mut().map_err(|_| {
             EngineError::Reasoning("Store error: persistence state is already borrowed".to_string())
         })?;
 
-        if let Some(s) = store.as_mut() {
-            let payload = postcard::to_allocvec(&buf)
-                .map_err(|e| EngineError::Reasoning(format!("Serialize error: {e}")))?;
-            let fact_id = s
-                .next_fact_id()
-                .map_err(|e| EngineError::Reasoning(format!("Store error: {e}")))?;
-            s.insert_fact(fact_id, label.clone(), payload)
-                .map_err(|e| EngineError::Reasoning(format!("Store error: {e}")))?;
-            // logji's `assert_fact_with_id` returns String (it predates the typed
-            // KB API); the assert IS the reasoning stage, so classify as Reasoning
-            // (the old `Semantic` here was a mislabel).
-            self.kb
-                .assert_fact_with_id(buf, label, fact_id)
-                .map_err(EngineError::Reasoning)?;
-            Ok(fact_id)
-        } else {
-            self.kb.assert_fact(buf, label)
+        let parts = buf.split_roots();
+        let mut ids = Vec::with_capacity(parts.len());
+        for sub in parts {
+            if let Some(s) = store.as_mut() {
+                let payload = postcard::to_allocvec(&sub)
+                    .map_err(|e| EngineError::Reasoning(format!("Serialize error: {e}")))?;
+                let fact_id = s
+                    .next_fact_id()
+                    .map_err(|e| EngineError::Reasoning(format!("Store error: {e}")))?;
+                s.insert_fact(fact_id, label.clone(), payload)
+                    .map_err(|e| EngineError::Reasoning(format!("Store error: {e}")))?;
+                // logji's `assert_fact_with_id` returns String (it predates the typed
+                // KB API); the assert IS the reasoning stage, so classify as Reasoning
+                // (the old `Semantic` here was a mislabel).
+                self.kb
+                    .assert_fact_with_id(sub, label.clone(), fact_id)
+                    .map_err(EngineError::Reasoning)?;
+                ids.push(fact_id);
+            } else {
+                ids.push(self.kb.assert_fact(sub, label.clone())?);
+            }
         }
+        Ok(ids)
     }
 
     /// Assert a fact directly by relation name and arguments, bypassing Lojban parsing.

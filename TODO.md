@@ -47,3 +47,17 @@ brismu/zaha/zatske — and feklat.)
   a short spec: node types, flat-buffer layout, what is stable vs internal, and the existing
   external entry points (`nibli-wasm` assert/query as the "does this Lojban entail that
   claim" API). Non-goal for now: actually building non-Lojban front-ends.
+
+- **gasnu: split bare-`.i` sentences into independent facts (DEFERRED)** — a bare-`.i`
+  multi-sentence line now becomes N independent facts (one per root, connectives kept whole)
+  via `LogicBuffer::split_roots` in nibli-ui, nibli-engine, and nibli-wasm, but the gasnu REPL
+  still asserts such a line as ONE fact. Deferring on purpose: matching gasnu needs a permanent
+  WIT-boundary change (`assert-text -> list<fact-id>` + an `assert-text-root-with-id` replay
+  func) AND a durable-store schema addition (`StoredAssertion::TextRoot { text, root }`), all to
+  survive per-sentence retraction across a REPL restart — a niche workflow that no shipped
+  corpus even exercises (gdpr/ddi have zero medial `.i`). No clean half-measure exists (live-only
+  splitting silently loses per-sentence retraction on reopen). The principled fix, if it ever
+  becomes real, is to realign gasnu persistence to store the FACT (buffer) rather than the source
+  TEXT — then splitting falls out for free and it also removes the recompile-on-replay provenance
+  hazard. Full, source-verified steps are in the plan file
+  (`~/.claude/plans/i-need-to-make-wild-goblet.md`, "Phase 5").
