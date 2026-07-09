@@ -1498,6 +1498,10 @@ fn LlmConfigModal(settings: Signal<Option<Settings>>, modal_open: Signal<bool>) 
                     "Use your own LLM to draft Lojban from plain English. The draft is reviewed before the engine reasons over it."
                 }
 
+                // Only this middle region scrolls; the title above and the actions
+                // below stay pinned, so the modal never grows taller than the viewport.
+                div { class: "modal-body",
+
                 div { class: "llm-provider-picker",
                     for p in Provider::ALL {
                         button {
@@ -1541,16 +1545,6 @@ fn LlmConfigModal(settings: Signal<Option<Settings>>, modal_open: Signal<bool>) 
                         oninput: move |e| api_key.set(e.value()),
                     }
                 }
-                label { class: "llm-field",
-                    span { class: "llm-field__label", "Model" }
-                    input {
-                        class: "llm-field__input",
-                        r#type: "text",
-                        placeholder: "{prov.default_model()}",
-                        value: "{model}",
-                        oninput: move |e| model.set(e.value()),
-                    }
-                }
                 if prov.needs_base_url() {
                     label { class: "llm-field",
                         span { class: "llm-field__label", "Base URL" }
@@ -1560,6 +1554,33 @@ fn LlmConfigModal(settings: Signal<Option<Settings>>, modal_open: Signal<bool>) 
                             placeholder: "http://localhost:11434/v1",
                             value: "{base_url}",
                             oninput: move |e| base_url.set(e.value()),
+                        }
+                    }
+                }
+                div { class: "llm-row",
+                    label { class: "llm-field",
+                        span { class: "llm-field__label", "Model" }
+                        input {
+                            class: "llm-field__input",
+                            r#type: "text",
+                            placeholder: "{prov.default_model()}",
+                            value: "{model}",
+                            oninput: move |e| model.set(e.value()),
+                        }
+                    }
+                    label { class: "llm-field",
+                        span { class: "llm-field__label", "Max attempts" }
+                        input {
+                            class: "llm-field__input",
+                            r#type: "number",
+                            min: "1",
+                            max: "10",
+                            value: "{max_attempts}",
+                            oninput: move |e| {
+                                if let Ok(v) = e.value().parse::<u32>() {
+                                    max_attempts.set(v.clamp(1, 10));
+                                }
+                            },
                         }
                     }
                 }
@@ -1609,22 +1630,6 @@ fn LlmConfigModal(settings: Signal<Option<Settings>>, modal_open: Signal<bool>) 
                         }
                     }
                 }
-                label { class: "llm-field",
-                    span { class: "llm-field__label", "Max attempts" }
-                    input {
-                        class: "llm-field__input",
-                        r#type: "number",
-                        min: "1",
-                        max: "10",
-                        value: "{max_attempts}",
-                        oninput: move |e| {
-                            if let Ok(v) = e.value().parse::<u32>() {
-                                max_attempts.set(v.clamp(1, 10));
-                            }
-                        },
-                    }
-                }
-
                 div { class: "llm-security-note",
                     span { class: "llm-security-note__title", "\u{1F512} Your key stays in this tab" }
                     p {
@@ -1658,6 +1663,8 @@ fn LlmConfigModal(settings: Signal<Option<Settings>>, modal_open: Signal<bool>) 
                         "{msg}"
                     }
                 }
+
+                } // end .modal-body
 
                 div { class: "modal-actions",
                     button {

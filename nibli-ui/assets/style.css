@@ -1092,9 +1092,10 @@ body {
 }
 .modal-card {
   width: 100%;
-  max-width: 540px;
-  max-height: 88vh;
-  overflow-y: auto;
+  max-width: min(94vw, 600px);
+  max-height: 88vh;   /* fallback for browsers without dvh */
+  max-height: 90dvh;  /* track the visible viewport (mobile browser chrome) */
+  overflow: hidden;   /* only .modal-body scrolls; header + footer stay pinned */
   display: flex;
   flex-direction: column;
   gap: var(--s3);
@@ -1106,6 +1107,20 @@ body {
   font-family: var(--font-mono);
   animation: modal-rise var(--dur-normal) var(--ease-out);
 }
+/* Pinned header/footer + the scrollable middle. */
+.modal-title, .modal-subtitle, .modal-actions { flex: 0 0 auto; }
+.modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+/* Compact fields sit side-by-side on wider screens, stack on narrow ones. */
+.llm-row { display: grid; grid-template-columns: 1fr; gap: var(--s3); }
+@media (min-width: 480px) { .llm-row { grid-template-columns: 2fr 1fr; } }
 .modal-title {
   font-family: var(--font-display);
   font-weight: 600;
@@ -1114,7 +1129,13 @@ body {
   color: var(--text-strong);
 }
 .modal-subtitle { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
-.modal-actions { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); }
+.modal-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--border-subtle);
+}
 .modal-actions__sp { flex: 1; }
 
 @keyframes modal-fade { from { opacity: 0; } to { opacity: 1; } }
