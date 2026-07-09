@@ -147,6 +147,11 @@ pub struct ToolCall {
     pub id: String,
     pub name: String,
     pub args: Value,
+    /// Gemini "thinking" models attach an opaque `thoughtSignature` to a
+    /// `functionCall` part that MUST be echoed back on the SAME part in the next
+    /// request, or the model loses its reasoning context (and Gemini warns). `None`
+    /// for providers without thought signatures (Anthropic/OpenAI).
+    pub thought_signature: Option<String>,
 }
 
 /// The result of running a tool, fed back to the model. `name` correlates for

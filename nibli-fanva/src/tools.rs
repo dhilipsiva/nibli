@@ -139,6 +139,7 @@ mod tests {
             id: "c1".into(),
             name: "vlacku".into(),
             args: serde_json::json!({ "query": "tavla" }),
+            thought_signature: None,
         }
     }
 

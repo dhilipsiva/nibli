@@ -307,7 +307,13 @@ fn gemini_contents(t: &Turn) -> Vec<Value> {
                 parts.push(json!({ "text": t }));
             }
             for c in calls {
-                parts.push(json!({ "functionCall": { "name": c.name, "args": c.args } }));
+                let mut part = json!({ "functionCall": { "name": c.name, "args": c.args } });
+                // Echo the thinking-model `thoughtSignature` back on the SAME
+                // functionCall part, or Gemini warns and loses reasoning context.
+                if let Some(sig) = &c.thought_signature {
+                    part["thoughtSignature"] = json!(sig);
+                }
+                parts.push(part);
             }
             vec![json!({ "role": "model", "parts": parts })]
         }
@@ -423,6 +429,7 @@ mod tests {
             id: "c1".into(),
             name: "vlacku".into(),
             args: json!({ "query": "tavla" }),
+            thought_signature: None,
         }
     }
     fn result() -> ToolResult {
@@ -584,5 +591,38 @@ mod tests {
         assert_eq!(params["type"], json!("object"));
         assert_eq!(params["required"], json!(["q"]));
         assert_eq!(params["properties"]["q"]["description"], json!("query"));
+    }
+
+    #[test]
+    fn gemini_echoes_thought_signature_on_function_call() {
+        let cfg = LlmConfig::new(Provider::Gemini);
+        // A thinking-model tool call carries a `thoughtSignature` — it must ride back
+        // on the SAME functionCall part.
+        let signed = ToolCall {
+            id: "call_0".into(),
+            name: "vlacku".into(),
+            args: json!({ "query": "tavla" }),
+            thought_signature: Some("SIG_ABC".into()),
+        };
+        let turns = vec![Turn::AssistantTools {
+            text: None,
+            calls: vec![signed],
+        }];
+        let (_u, _h, body) = build_chat_request_tools(&cfg, "SYS", &turns, &[]);
+        let part = &body["contents"][0]["parts"][0];
+        assert_eq!(part["functionCall"]["name"], json!("vlacku"));
+        assert_eq!(part["thoughtSignature"], json!("SIG_ABC"));
+
+        // A call WITHOUT a signature must not emit the key.
+        let turns = vec![Turn::AssistantTools {
+            text: None,
+            calls: vec![call()],
+        }];
+        let (_u, _h, body) = build_chat_request_tools(&cfg, "SYS", &turns, &[]);
+        assert!(
+            body["contents"][0]["parts"][0]
+                .get("thoughtSignature")
+                .is_none()
+        );
     }
 }

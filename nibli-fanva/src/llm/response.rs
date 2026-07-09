@@ -43,6 +43,7 @@ fn parse_anthropic(json: &Value) -> ChatResponse {
                     id: b["id"].as_str().unwrap_or("").to_string(),
                     name: b["name"].as_str().unwrap_or("").to_string(),
                     args: b["input"].clone(),
+                    thought_signature: None,
                 }),
                 _ => {}
             }
@@ -72,6 +73,7 @@ fn parse_openai(json: &Value) -> ChatResponse {
                 id: c["id"].as_str().unwrap_or("").to_string(),
                 name: c["function"]["name"].as_str().unwrap_or("").to_string(),
                 args,
+                thought_signature: None,
             });
         }
     }
@@ -86,11 +88,16 @@ fn parse_gemini(json: &Value) -> ChatResponse {
             if let Some(t) = p["text"].as_str() {
                 text.push_str(t);
             } else if let Some(fc) = p.get("functionCall") {
-                // Gemini has no call id — synthesize one for correlation.
+                // Gemini has no call id — synthesize one for correlation. Capture the
+                // part's `thoughtSignature` (thinking models) so it can be echoed back.
                 tool_calls.push(ToolCall {
                     id: format!("call_{i}"),
                     name: fc["name"].as_str().unwrap_or("").to_string(),
                     args: fc["args"].clone(),
+                    thought_signature: p
+                        .get("thoughtSignature")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
                 });
             }
         }
@@ -173,6 +180,19 @@ mod tests {
         assert_eq!(r.tool_calls.len(), 1);
         assert_eq!(r.tool_calls[0].name, "vlacku");
         assert_eq!(r.tool_calls[0].args["query"], json!("tavla"));
+    }
+
+    #[test]
+    fn gemini_captures_thought_signature_on_function_call() {
+        // Thinking models attach an opaque `thoughtSignature` sibling to the
+        // functionCall part; it must be captured so it can be echoed back.
+        let gem = json!({ "candidates": [{ "content": { "parts": [
+            { "functionCall": { "name": "vlacku", "args": { "query": "tavla" } },
+              "thoughtSignature": "SIG_XYZ" }
+        ]}}]});
+        let r = parse_chat_response(Provider::Gemini, &gem);
+        assert_eq!(r.tool_calls.len(), 1);
+        assert_eq!(r.tool_calls[0].thought_signature.as_deref(), Some("SIG_XYZ"));
     }
 
     #[test]
