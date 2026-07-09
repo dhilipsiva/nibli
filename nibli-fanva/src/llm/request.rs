@@ -121,7 +121,115 @@ fn schema_to_openai(t: &ToolDecl) -> Value {
 }
 
 fn schema_to_gemini(t: &ToolDecl) -> Value {
-    json!({ "name": t.name, "description": t.description, "parameters": t.input_schema })
+    json!({
+        "name": t.name,
+        "description": t.description,
+        "parameters": sanitize_gemini_schema(&t.input_schema),
+    })
+}
+
+/// Gemini's function-declaration `parameters` accept only a restricted OpenAPI-3.0
+/// Schema subset — NOT full JSON Schema. jbotci's MCP tool schemas use JSON-Schema
+/// constructs Gemini's proto rejects with `Invalid JSON payload … Cannot find field`
+/// (`$schema`, `additionalProperties`, `const`, array-valued `type`, `oneOf`), so
+/// recursively rewrite each schema into the accepted subset:
+///   - drop JSON-Schema-only / meta keys (`$schema`, `additionalProperties`, `$defs`, …);
+///   - `const: X`             → `enum: [X]`;
+///   - `type: ["T", "null"]`  → `type: "T"` + `nullable: true`;
+///   - a `oneOf`/`anyOf` whose branches are all `{const: …}` (JSON Schema's common
+///     enum-with-per-value-descriptions shape) → a single `enum`; any other combinator
+///     is sanitized branch-by-branch under `anyOf` (Gemini's supported combinator).
+/// Only the Gemini path needs this — Anthropic/OpenAI accept the raw JSON Schema.
+fn sanitize_gemini_schema(v: &Value) -> Value {
+    match v {
+        Value::Object(map) => {
+            let mut out = serde_json::Map::new();
+            for (k, val) in map {
+                match k.as_str() {
+                    // JSON-Schema-only / metadata keys Gemini's Schema proto rejects.
+                    "$schema" | "$id" | "$ref" | "$anchor" | "$defs" | "definitions"
+                    | "$comment" | "additionalProperties" | "patternProperties"
+                    | "unevaluatedProperties" | "additionalItems" | "title" | "default"
+                    | "examples" | "readOnly" | "writeOnly" | "deprecated" => {}
+                    "const" => {
+                        out.insert("enum".into(), json!([val.clone()]));
+                    }
+                    "type" => match val {
+                        // `["string", "null"]` → `"string"` + `nullable: true`.
+                        Value::Array(types) => {
+                            let mut nullable = false;
+                            let mut chosen: Option<Value> = None;
+                            for t in types {
+                                if t.as_str() == Some("null") {
+                                    nullable = true;
+                                } else if chosen.is_none() {
+                                    chosen = Some(t.clone());
+                                }
+                            }
+                            if let Some(t) = chosen {
+                                out.insert("type".into(), t);
+                            }
+                            if nullable {
+                                out.insert("nullable".into(), Value::Bool(true));
+                            }
+                        }
+                        other => {
+                            out.insert("type".into(), other.clone());
+                        }
+                    },
+                    "properties" => {
+                        if let Value::Object(props) = val {
+                            out.insert(
+                                "properties".into(),
+                                Value::Object(
+                                    props
+                                        .iter()
+                                        .map(|(pk, pv)| (pk.clone(), sanitize_gemini_schema(pv)))
+                                        .collect(),
+                                ),
+                            );
+                        }
+                    }
+                    "items" => {
+                        out.insert("items".into(), sanitize_gemini_schema(val));
+                    }
+                    "oneOf" | "anyOf" | "allOf" => {
+                        if let Value::Array(branches) = val {
+                            let consts: Vec<Value> = branches
+                                .iter()
+                                .filter_map(|b| b.get("const").cloned())
+                                .collect();
+                            if !branches.is_empty() && consts.len() == branches.len() {
+                                // enum-of-consts → a single `enum`.
+                                out.insert("enum".into(), Value::Array(consts));
+                            } else {
+                                // General combinator → Gemini's `anyOf`, branches sanitized.
+                                out.insert(
+                                    "anyOf".into(),
+                                    Value::Array(
+                                        branches.iter().map(sanitize_gemini_schema).collect(),
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                    // Accepted / benign keys (description, enum, required, format,
+                    // nullable, minItems, maxItems, minimum, maximum, …); recurse so any
+                    // nested schema value is sanitized too.
+                    _ => {
+                        out.insert(k.clone(), sanitize_gemini_schema(val));
+                    }
+                }
+            }
+            // A collapsed const/enum needs a type — Gemini enums are string-typed.
+            if out.contains_key("enum") && !out.contains_key("type") {
+                out.insert("type".into(), json!("string"));
+            }
+            Value::Object(out)
+        }
+        Value::Array(arr) => Value::Array(arr.iter().map(sanitize_gemini_schema).collect()),
+        other => other.clone(),
+    }
 }
 
 // ── per-turn message serialization (a turn may map to >1 message) ─────────────
@@ -406,5 +514,75 @@ mod tests {
             body["contents"][1]["parts"][0]["functionResponse"]["name"].as_str(),
             Some("vlacku")
         );
+    }
+
+    #[test]
+    fn gemini_sanitizes_json_schema_to_openapi_subset() {
+        // Mirrors the jbotci MCP shapes Gemini's proto rejected: `$schema` /
+        // `additionalProperties` / `title` at the top, a bare `const`, an
+        // array-valued `type`, a `oneOf` of consts, and a nested array `items`
+        // with its own const-`anyOf`.
+        let schema = json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "additionalProperties": false,
+            "title": "Args",
+            "properties": {
+                "q": { "type": "string", "description": "query" },
+                "lang": { "const": "en" },
+                "fmt": {
+                    "oneOf": [
+                        { "const": "text", "description": "plain" },
+                        { "const": "json" }
+                    ]
+                },
+                "n": { "type": ["integer", "null"] },
+                "tags": {
+                    "type": "array",
+                    "items": { "anyOf": [ { "const": "a" }, { "const": "b" } ] }
+                }
+            },
+            "required": ["q"]
+        });
+        let tool = ToolDecl {
+            name: "t".into(),
+            description: "d".into(),
+            input_schema: schema,
+        };
+        let cfg = LlmConfig::new(Provider::Gemini);
+        let (_u, _h, body) = build_chat_request_tools(&cfg, "SYS", &[Turn::user("x")], &[tool]);
+        let params = &body["tools"][0]["functionDeclarations"][0]["parameters"];
+
+        // Every Gemini-rejected key is gone, at every depth.
+        let dump = params.to_string();
+        for banned in [
+            "\"$schema\"",
+            "\"additionalProperties\"",
+            "\"const\"",
+            "\"oneOf\"",
+            "\"title\"",
+        ] {
+            assert!(
+                !dump.contains(banned),
+                "sanitized schema still contains {banned}: {dump}"
+            );
+        }
+        // const → enum (+ inferred string type)
+        assert_eq!(params["properties"]["lang"]["enum"], json!(["en"]));
+        assert_eq!(params["properties"]["lang"]["type"], json!("string"));
+        // oneOf-of-const → enum
+        assert_eq!(params["properties"]["fmt"]["enum"], json!(["text", "json"]));
+        // array type → single + nullable
+        assert_eq!(params["properties"]["n"]["type"], json!("integer"));
+        assert_eq!(params["properties"]["n"]["nullable"], json!(true));
+        // nested items anyOf-of-const → enum
+        assert_eq!(
+            params["properties"]["tags"]["items"]["enum"],
+            json!(["a", "b"])
+        );
+        // accepted fields survive
+        assert_eq!(params["type"], json!("object"));
+        assert_eq!(params["required"], json!(["q"]));
+        assert_eq!(params["properties"]["q"]["description"], json!("query"));
     }
 }
