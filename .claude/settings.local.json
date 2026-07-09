@@ -79,7 +79,12 @@
       "PowerShell(wsl -d Ubuntu -e bash -lc \"cd ~/projects/dhilipsiva/nibli && ls -la jbovlaste-en.xml && head -c 200 jbovlaste-en.xml\")",
       "Bash(cat /dev/null; echo skip)",
       "Bash(ls -la \"\\\\\\\\\\\\\\\\wsl.localhost\\\\\\\\Ubuntu\\\\\\\\home\\\\\\\\dhilipsiva\\\\\\\\projects\\\\\\\\dhilipsiva\\\\\\\\nibli\\\\\\\\book\" 2>/dev/null || wsl -d Ubuntu -e bash -lc \"cd ~/projects/dhilipsiva/nibli && ls -la book/\")",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(wsl -d Ubuntu -e bash -lc \"cd ~/projects/dhilipsiva/nibli/book && ls tools/ && echo '--- manifest ---' && grep -rn -i 'C21\\\\|P5_C21\\\\|drug-interac\\\\|chapter 21\\\\|Ch 21' tools/ 2>/dev/null | head -40\")",
+      "Bash(wsl -d Ubuntu -e bash -lc \"cd ~/projects/dhilipsiva/nibli && ls -la target/wasm32-wasip2/debug/lasna.wasm target/debug/gasnu 2>&1; echo '--- recipes ---'; grep -nA3 'verify-book-capture\\\\|^build-wasm' Justfile | head -30\")",
+      "Bash(wsl -d Ubuntu -e bash -lc \"cd ~/projects/dhilipsiva/nibli && nix --extra-experimental-features 'nix-command flakes' develop --command bash -c 'NIBLI_WASM_PATH=target/wasm32-wasip2/debug/lasna.wasm python3 book/tools/capture_book.py --check --chapter P5_C21_Case_Study_Pharmaceutical_Drug_Interaction_Safety.md'\")",
+      "Bash(wsl -d Ubuntu -e bash -lc \"cd ~/projects/dhilipsiva/nibli && nix --extra-experimental-features 'nix-command flakes' develop --command bash -c 'NIBLI_WASM_PATH=target/wasm32-wasip2/debug/lasna.wasm python3 book/tools/capture_book.py --write --chapter P5_C21_Case_Study_Pharmaceutical_Drug_Interaction_Safety.md'\")",
+      "Bash(mkdir -p \"/mnt/c/Users/DHILIP~1/AppData/Local/Temp/claude/--wsl-localhost-Ubuntu-home-dhilipsiva-projects-dhilipsiva-nibli/2b4367bb-d1ec-4693-80d1-98c203072b91/scratchpad/fanva-proxy/src\" && echo ok && ls -la \"/mnt/c/Users/DHILIP~1/AppData/Local/Temp/claude/--wsl-localhost-Ubuntu-home-dhilipsiva-projects-dhilipsiva-nibli/2b4367bb-d1ec-4693-80d1-98c203072b91/scratchpad/\")"
     ]
   }
 }
