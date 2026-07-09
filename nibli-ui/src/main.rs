@@ -109,6 +109,14 @@ struct TraceRow {
     tools: Vec<ToolRow>,
 }
 
+/// The default jbotci proxy: the app-owned "blind" CORS reverse-proxy Worker
+/// (`fanva-proxy/`). Prefilled so opting in is one click, but jbotci ships OFF
+/// (`jbotci_enabled = false`) — the URL stays inert until the user enables it, so the
+/// default translate run is fully local and makes NO call to the proxy. The proxy
+/// only strips the browser Origin and forwards to jbotci verbatim; it stores nothing
+/// (source is linked from the settings modal).
+const DEFAULT_JBOTCI_PROXY_URL: &str = "https://fanva-proxy.dhilipsiva.workers.dev/mcp";
+
 /// nibli-ui's settings bundle: the LLM provider config (`nibli_fanva::llm::LlmConfig`,
 /// the single source of truth) plus the agent/jbotci knobs that aren't LLM-provider
 /// settings. Held in one in-memory signal; never persisted.
@@ -116,6 +124,9 @@ struct TraceRow {
 struct Settings {
     llm: LlmConfig,
     proxy_url: String,
+    /// jbotci tool-use opt-in. OFF by default: the prefilled `proxy_url` is inert
+    /// until the user flips this, keeping the default run local-only (no proxy call).
+    jbotci_enabled: bool,
     max_attempts: u32,
 }
 
@@ -123,8 +134,21 @@ impl Settings {
     fn new(provider: Provider) -> Self {
         Settings {
             llm: LlmConfig::new(provider),
-            proxy_url: String::new(),
+            proxy_url: DEFAULT_JBOTCI_PROXY_URL.to_string(),
+            jbotci_enabled: false,
             max_attempts: 5,
+        }
+    }
+
+    /// The proxy URL actually handed to the MCP client: the configured URL only when
+    /// jbotci is explicitly enabled, else empty. Empty ⇒ the translate loop and the
+    /// tersmu view degrade to the local gates and make NO network call — this is what
+    /// makes "disabled by default" a real privacy guarantee, not a hidden-but-live URL.
+    fn active_proxy_url(&self) -> String {
+        if self.jbotci_enabled {
+            self.proxy_url.trim().to_string()
+        } else {
+            String::new()
         }
     }
 }
@@ -1049,8 +1073,9 @@ fn SourceTabs(
             // validate (gerna+smuni+camxes) → feed the error back → retry, up to the
             // configured max attempts.
             let http = nibli_fanva::llm::HttpChat;
-            // jbotci proxy (optional). Empty ⇒ the loop degrades to the local gates.
-            let mcp = nibli_fanva::mcp::McpClient::new(cfg.proxy_url.clone());
+            // jbotci proxy — inert unless the user enabled jbotci. Disabled/empty ⇒ the
+            // loop degrades to the local gates and never calls the proxy.
+            let mcp = nibli_fanva::mcp::McpClient::new(cfg.active_proxy_url());
             let outcome = nibli_fanva::agent::translate_agentic(
                 &http,
                 &mcp,
@@ -1118,7 +1143,7 @@ fn SourceTabs(
         let Some(cfg) = settings.read().clone() else {
             return;
         };
-        if cfg.proxy_url.trim().is_empty() {
+        if cfg.active_proxy_url().is_empty() {
             return;
         }
         let active = match *example.read() {
@@ -1133,7 +1158,7 @@ fn SourceTabs(
         tersmu_error.set(None);
         tersmu_result.set(None);
         spawn(async move {
-            let mcp = nibli_fanva::mcp::McpClient::new(cfg.proxy_url.clone());
+            let mcp = nibli_fanva::mcp::McpClient::new(cfg.active_proxy_url());
             let outcome = mcp.tersmu(&joined).await;
             // Drop the result if the KB changed while the request was in flight.
             let current = match *example.read() {
@@ -1170,11 +1195,11 @@ fn SourceTabs(
         Some(i) => EXAMPLES[i].lojban.to_string(),
         None => lojban_text.read().clone(),
     };
-    // The deep-meaning (tersmu) view only appears when a jbotci proxy is configured.
+    // The deep-meaning (tersmu) view only appears when jbotci is enabled with a proxy.
     let jbotci_on = settings
         .read()
         .as_ref()
-        .map(|s| !s.proxy_url.trim().is_empty())
+        .map(|s| !s.active_proxy_url().is_empty())
         .unwrap_or(false);
 
     rsx! {
@@ -1266,7 +1291,7 @@ fn SourceTabs(
                             }
                             if *translate_degraded.read() {
                                 div { class: "translate-degraded",
-                                    "jbotci tools off \u{2014} validated with the local gerna+smuni+camxes gates only. Add a proxy URL in settings for dictionary/grammar lookups."
+                                    "jbotci tools off \u{2014} validated with the local gerna+smuni+camxes gates only. Enable jbotci in settings for dictionary/grammar lookups."
                                 }
                             }
                         }
@@ -1412,6 +1437,7 @@ fn LlmConfigModal(settings: Signal<Option<Settings>>, modal_open: Signal<bool>) 
     let mut model = use_signal(|| initial.llm.model.clone());
     let mut base_url = use_signal(|| initial.llm.base_url.clone());
     let mut proxy_url = use_signal(|| initial.proxy_url.clone());
+    let mut jbotci_enabled = use_signal(|| initial.jbotci_enabled);
     let mut max_attempts = use_signal(|| initial.max_attempts);
     let mut testing = use_signal(|| false);
     let mut test_msg = use_signal(|| Option::<(bool, String)>::None);
@@ -1427,6 +1453,7 @@ fn LlmConfigModal(settings: Signal<Option<Settings>>, modal_open: Signal<bool>) 
             max_tokens: 1024,
         },
         proxy_url: proxy_url.read().trim().to_string(),
+        jbotci_enabled: *jbotci_enabled.read(),
         max_attempts: (*max_attempts.read()).max(1),
     };
     // A key is required for everyone except Custom (which may be a local server).
@@ -1537,17 +1564,49 @@ fn LlmConfigModal(settings: Signal<Option<Settings>>, modal_open: Signal<bool>) 
                     }
                 }
 
+                label { class: "llm-field llm-field--toggle",
+                    input {
+                        class: "llm-field__checkbox",
+                        r#type: "checkbox",
+                        checked: jbotci_enabled(),
+                        onchange: move |e| jbotci_enabled.set(e.checked()),
+                    }
+                    span { class: "llm-field__label", "Enable jbotci tools (dictionary / grammar / morphology)" }
+                }
                 label { class: "llm-field",
-                    span { class: "llm-field__label", "jbotci proxy URL (optional)" }
+                    span { class: "llm-field__label", "jbotci proxy URL" }
                     input {
                         class: "llm-field__input",
                         r#type: "text",
                         placeholder: "https://your-proxy.example/mcp",
+                        disabled: !jbotci_enabled(),
                         value: "{proxy_url}",
                         oninput: move |e| proxy_url.set(e.value()),
                     }
                     span { class: "llm-field__hint",
-                        "Lets the model call jbotci (dictionary/grammar/morphology) while translating. Leave blank for local-only (gerna+smuni+camxes). Your LLM key is never sent here."
+                        "Off by default \u{2014} translation runs fully local (gerna+smuni+camxes) and makes no network call to the proxy. Enable it to let the model call jbotci for dictionary/grammar/morphology lookups while translating. Your LLM key is never sent here."
+                    }
+                }
+                div { class: "llm-security-note",
+                    span { class: "llm-security-note__title", "\u{1F441}\u{FE0F} It's a blind proxy \u{2014} nothing is stored" }
+                    p {
+                        "jbotci refuses direct browser calls (CORS), so the URL above points at "
+                        b { "fanva-proxy" }
+                        " \u{2014} an app-owned Cloudflare Worker that strips your browser \u{2018}Origin\u{2019} and forwards the request verbatim to jbotci. It's a stateless blind relay: no logs, no database, no cookies. The upstream is hardcoded (not an open proxy), and every line is public \u{2014} read it yourself:"
+                    }
+                    div { class: "llm-security-note__links",
+                        a {
+                            href: "https://github.com/dhilipsiva/nibli/blob/main/fanva-proxy/src/index.js",
+                            target: "_blank",
+                            rel: "noopener noreferrer",
+                            "index.js \u{2014} the entire proxy"
+                        }
+                        a {
+                            href: "https://github.com/dhilipsiva/nibli/blob/main/fanva-proxy/README.md",
+                            target: "_blank",
+                            rel: "noopener noreferrer",
+                            "README \u{2014} why & what it strips"
+                        }
                     }
                 }
                 label { class: "llm-field",

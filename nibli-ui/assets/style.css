@@ -1217,6 +1217,23 @@ body {
 }
 .llm-field__input:hover { border-color: var(--border-strong); }
 .llm-field__input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring-field); }
+.llm-field__input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* jbotci enable toggle: checkbox + inline label on one row */
+.llm-field--toggle { flex-direction: row; align-items: center; gap: var(--s2); }
+.llm-field--toggle .llm-field__label {
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 13px;
+  color: var(--text-body);
+}
+.llm-field__checkbox {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
 
 /* ── Security note (the transparency promise) ────────────────────────────── */
 .llm-security-note {
