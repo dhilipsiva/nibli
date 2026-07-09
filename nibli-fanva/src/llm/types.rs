@@ -62,7 +62,7 @@ impl Provider {
             Provider::Anthropic => "claude-haiku-4-5",
             Provider::OpenAi => "gpt-4o-mini",
             Provider::OpenRouter => "meta-llama/llama-3.3-70b-instruct:free",
-            Provider::Gemini => "gemini-2.0-flash",
+            Provider::Gemini => "gemini-3.1-flash-lite",
             Provider::Custom => "",
         }
     }
@@ -211,7 +211,7 @@ mod tests {
         // The "free" framing must be honest: OpenRouter's default is a :free model.
         assert!(Provider::OpenRouter.default_model().ends_with(":free"));
         // Gemini's default is a free-tier model (no :free suffix convention).
-        assert_eq!(Provider::Gemini.default_model(), "gemini-2.0-flash");
+        assert_eq!(Provider::Gemini.default_model(), "gemini-3.1-flash-lite");
     }
 
     #[test]
