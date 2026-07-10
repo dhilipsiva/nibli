@@ -75,11 +75,26 @@ pub fn random_case(seed: u64) -> GeneratedCase {
         } else {
             rng.pick(&TENSES[1..])
         };
-        kb.push(format!(
-            "{tense}la .{}. cu {}",
-            rng.pick(ENTITIES),
-            rng.pick(PREDS)
-        ));
+        // 1-in-3 BARE facts become a `gi'e` bridi-tail conjunction (constant
+        // head, two positive tails) — the GIhA And-fact shape is Horn/NAF-free
+        // and mappable, so the Vampire sweep differentially checks the
+        // conjunct derivations AND the parser gate camxes-fuzzes the surface.
+        // Tensed facts stay atomic (a tense prefix applies to the first tail
+        // only, which the flavorizer does not model — conservative).
+        if tense.is_empty() && rng.below(3) == 0 {
+            kb.push(format!(
+                "la .{}. cu {} gi'e {}",
+                rng.pick(ENTITIES),
+                rng.pick(PREDS),
+                rng.pick(PREDS)
+            ));
+        } else {
+            kb.push(format!(
+                "{tense}la .{}. cu {}",
+                rng.pick(ENTITIES),
+                rng.pick(PREDS)
+            ));
+        }
     }
     // 0..=2 identity links `la .E1. cu du la .E2.` — nibli resolves these through its
     // union-find equivalence index; the Vampire side sees native `=` (congruence), so the
@@ -122,6 +137,70 @@ pub fn random_case(seed: u64) -> GeneratedCase {
         name: format!("rand_seed{seed}"),
         kb,
         query,
+    }
+}
+
+/// GIhA connectives for the parser-gate fuzz (spaced base forms; fused `nai`
+/// variants are derived in the production).
+const GIHA: &[&str] = &["gi'e", "gi'a", "gi'o", "gi'u"];
+
+/// Generate a PARSER-GATE-ONLY case fuzzing the GIhA bridi-tail surface and
+/// the solid `.i`+JA sentence connectives against camxes. Never fed to the
+/// soundness sweeps: bare `gi'a`/`gi'u` assertions fail closed and `na`-tails
+/// are outside the Vampire fragment, but the parse-differential only checks
+/// gerna-accept ⇒ camxes-accept, so the full variety is safe here. Heads are
+/// constants only (`mi`/`do`/`la .E.`) — gerna rejects quantified/description
+/// GIhA heads, and a gerna-reject contributes nothing to the gate.
+pub fn random_giha_case(seed: u64) -> GeneratedCase {
+    let mut rng = Lcg::new(seed);
+
+    let head = match rng.below(3) {
+        0 => "mi".to_string(),
+        1 => "do".to_string(),
+        _ => format!("la .{}. cu", rng.pick(ENTITIES)),
+    };
+    let mut line = format!("{head} {}", rng.pick(PREDS));
+
+    // 1..=3 chained tails; each: connective (fused-nai / spaced-nai / plain),
+    // optional `na`, the tail selbri, and an optional trailing description.
+    let n_tails = 1 + rng.below(3);
+    for _ in 0..n_tails {
+        let conn = rng.pick(GIHA);
+        match rng.below(4) {
+            0 => line.push_str(&format!(" {conn}nai")),  // fused nai
+            1 => line.push_str(&format!(" {conn} nai")), // spaced nai
+            _ => line.push_str(&format!(" {conn}")),
+        }
+        if rng.below(4) == 0 {
+            line.push_str(" na");
+        }
+        line.push_str(&format!(" {}", rng.pick(PREDS)));
+        if rng.below(3) == 0 {
+            let gadri = if rng.below(2) == 0 { "lo" } else { "le" };
+            line.push_str(&format!(" {gadri} {}", rng.pick(PREDS)));
+        }
+    }
+
+    // 1-in-2: a second sentence joined with a SOLID `.i`+JA compound, so the
+    // lexer's fix_dot_i_ja_connective rewrite is camxes-fuzzed too.
+    let kb = if rng.below(2) == 0 {
+        let solid = rng.pick(&[
+            ".ije", ".ija", ".ijo", ".iju", ".ijenai", ".ijanai", ".ijonai", ".ijunai", ".inaja",
+            ".inaje", ".inajo", ".inaju",
+        ]);
+        vec![format!(
+            "{line} {solid} la .{}. cu {}",
+            rng.pick(ENTITIES),
+            rng.pick(PREDS)
+        )]
+    } else {
+        vec![line]
+    };
+
+    GeneratedCase {
+        name: format!("giha_seed{seed}"),
+        kb,
+        query: format!("la .{}. cu {}", rng.pick(ENTITIES), rng.pick(PREDS)),
     }
 }
 
@@ -269,6 +348,54 @@ mod tests {
         assert_eq!(a.kb, b.kb);
         assert_eq!(a.query, b.query);
         assert_ne!(random_case(1).kb, random_case(2).kb);
+    }
+
+    #[test]
+    fn giha_case_deterministic_and_shaped() {
+        let a = random_giha_case(42);
+        let b = random_giha_case(42);
+        assert_eq!(a.kb, b.kb);
+        assert_eq!(a.query, b.query);
+        // Every case carries at least one GIhA connective, and the production
+        // actually exercises the variety it promises across a seed sweep.
+        let (mut fused_nai, mut na_tail, mut solid_ija, mut multi_tail) = (0, 0, 0, 0);
+        for seed in 0u64..200 {
+            let c = random_giha_case(seed);
+            let line = &c.kb[0];
+            assert!(
+                line.contains("gi'"),
+                "every GIhA case must contain a bridi-tail connective: {line}"
+            );
+            if line.contains("nai") {
+                fused_nai += 1;
+            }
+            if line.contains(" na ") {
+                na_tail += 1;
+            }
+            if line.contains(".ij") || line.contains(".inaj") {
+                solid_ija += 1;
+            }
+            if line.matches("gi'").count() >= 2 {
+                multi_tail += 1;
+            }
+        }
+        assert!(fused_nai > 10, "nai variants under-represented");
+        assert!(na_tail > 10, "na-tails under-represented");
+        assert!(solid_ija > 30, "solid .i+JA joins under-represented");
+        assert!(multi_tail > 20, "chained tails under-represented");
+    }
+
+    #[test]
+    fn giha_production_appears_in_random_case() {
+        // The 1-in-3 bare-fact gi'e production must actually fire across seeds
+        // (it feeds the Vampire sweep, not just the parser gate).
+        let hits = (0u64..100)
+            .filter(|&s| random_case(s).kb.iter().any(|l| l.contains("gi'e")))
+            .count();
+        assert!(
+            hits > 15,
+            "gi'e facts under-represented in random_case: {hits}"
+        );
     }
 
     #[test]

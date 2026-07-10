@@ -33,13 +33,6 @@ brismu/zaha/zatske — and feklat; the int19h items from his 2026-07-10 nibli-fa
   diverges from camxes ~500/22k — SA erasure, ZOI preprocessing — so it could never replace
   the camxes-std gate regardless.)
 
-- **verify-parser: GIhA in the random generators + solid `.ije` lexing** — `gi'e`/`gi'a`/
-  `gi'o`/`gi'u` now parse (curated seam cases pin the desugar, and a curated GIhA list rides
-  the parser-differential gate) but the seeded random case generators never emit bridi-tails,
-  so the camxes differential doesn't fuzz them; add a GIhA production. Separately, the solid
-  spelling `.ije` does not lex (only `.i je` parses) — corpus text from Lojbanists will use
-  the solid form; teach the lexer/preprocessor the `.i`+JA compounds.
-
 - **GIhA quantified/description heads: share the head witness across tails** — currently
   rejected fail-closed (gerna `giha_safe_head`): the repeated-head desugar would re-quantify
   a `da`/`lo`-head per tail, splitting one surface scope into independent ∃s (wrong TRUE on

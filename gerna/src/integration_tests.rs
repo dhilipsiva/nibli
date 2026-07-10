@@ -449,6 +449,47 @@ fn giha_quantified_head_rejected_full_pipeline() {
     }
 }
 
+// ─── Solid `.i`+JA sentence connectives (lexer split pass) ───────
+
+#[test]
+fn solid_dot_i_ja_equals_spaced_form() {
+    // The solid spellings must parse to EXACTLY the AST of the spaced forms
+    // (the lexer's fix_dot_i_ja_connective pass rewrites the token stream).
+    for (solid, spaced) in [
+        ("mi klama .ije mi citka", "mi klama .i je mi citka"),
+        ("mi klama .ija mi citka", "mi klama .i ja mi citka"),
+        ("mi klama .ijenai mi citka", "mi klama .i jenai mi citka"),
+        ("mi klama .inaja mi citka", "mi klama .i na ja mi citka"),
+    ] {
+        let arena_a = Bump::new();
+        let arena_b = Bump::new();
+        let a = parse(solid, &arena_a);
+        let b = parse(spaced, &arena_b);
+        assert_eq!(
+            a.sentences, b.sentences,
+            "solid `{solid}` must equal spaced `{spaced}`"
+        );
+    }
+}
+
+#[test]
+fn solid_dot_inaja_is_left_negated_ja() {
+    let arena = Bump::new();
+    let p = parse("mi klama .inaja mi citka", &arena);
+    match &p.sentences[0] {
+        Sentence::Connected {
+            connective:
+                SentenceConnective::Afterthought {
+                    left_negated: true,
+                    connective: Connective::Ja,
+                    right_negated: false,
+                },
+            ..
+        } => {}
+        other => panic!("expected na+Ja afterthought (ganai-equivalent), got {other:?}"),
+    }
+}
+
 // ─── Relative clauses (poi/noi) ──────────────────────────────────
 
 #[test]

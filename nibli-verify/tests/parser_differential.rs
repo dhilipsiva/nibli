@@ -72,6 +72,11 @@ fn gerna_accepted_sentences_are_camxes_parseable() {
         "mi klama gi'u citka",
         "mi klama gi'enai citka",
         "mi klama gi'e nai citka",
+        // Solid `.i`+JA sentence-connective spellings (the lexer's
+        // fix_dot_i_ja_connective split pass) — one per lex shape.
+        "mi klama .ije mi citka",
+        "mi klama .ijenai mi citka",
+        "mi klama .inaja mi citka",
     ] {
         if seen.insert(line.to_string()) {
             lines.push(line.to_string());
@@ -89,6 +94,9 @@ fn gerna_accepted_sentences_are_camxes_parseable() {
             generator::random_case(seed),
             generator::random_naf_case(seed),
             generator::random_count_case(seed),
+            // Parser-gate-only: full-variety GIhA + solid `.i`+JA fuzzing
+            // (never asserted, so fail-closed shapes are fine here).
+            generator::random_giha_case(seed),
         ] {
             for line in case.kb.iter().chain(std::iter::once(&case.query)) {
                 if seen.insert(line.clone()) {

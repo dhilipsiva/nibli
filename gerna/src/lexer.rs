@@ -154,6 +154,76 @@ fn reclassify_compounds<'a>(tokens: &mut Vec<(LojbanToken, &'a str)>, input: &'a
     }
 }
 
+/// Post-lex pass: split the solid `.i`+JA sentence-connective compounds.
+///
+/// Lojbanists write the afterthought connectives solid — `.ije`, `.ijanai`,
+/// `.inaja` — but Logos's longest-match lexes them as junk spans instead of
+/// the `i` + connective cmavo the parser expects (`at_dot_i` requires
+/// `Pause, Cmavo("i")`):
+/// - `.ij{a,e,o,u}`    → `Pause, Cmevla("ij"), Cmavo(V)`   (Cmevla "ij" beats Cmavo "i")
+/// - `.ij{a,e,o,u}nai` → `Pause, Lujvo("ijVnai")`          (6 chars ending in a vowel)
+/// - `.inaj{a,e,o,u}`  → `Pause, Cmevla("inaj"), Cmavo(V)`
+///
+/// This pass rewrites each shape (pause-preceded, byte-contiguous, and the
+/// following Cmavo exactly one connective vowel) into the token stream the
+/// spaced spelling produces — `[i, jV]`, `[i, jVnai]`, `[i, na, jV]` — which
+/// the existing afterthought arms already accept. All twelve solid forms are
+/// camxes-std-verified (the parse-differential invariant gerna-accept ⇒
+/// camxes-accept holds). A genuine pause-delimited name like `la .inaj.` is
+/// untouched: the next token is a Pause, not a contiguous vowel cmavo.
+fn fix_dot_i_ja_connective<'a>(tokens: &mut Vec<(LojbanToken, &'a str)>, input: &'a str) {
+    let base = input.as_ptr() as usize;
+    let is_conn_vowel = |s: &str| matches!(s, "a" | "e" | "o" | "u");
+    let mut i = 1; // start at 1 since we need i-1
+
+    while i < tokens.len() {
+        let preceded_by_pause = tokens[i - 1].0 == LojbanToken::Pause;
+        if !preceded_by_pause {
+            i += 1;
+            continue;
+        }
+        let off = tokens[i].1.as_ptr() as usize - base;
+        let contiguous_next = |k: usize| -> bool {
+            tokens[k].1.as_ptr() as usize - base
+                == tokens[k - 1].1.as_ptr() as usize - base + tokens[k - 1].1.len()
+        };
+
+        match (&tokens[i].0, tokens[i].1) {
+            // `.ijV` — Cmevla("ij") + contiguous single connective vowel.
+            (LojbanToken::Cmevla, "ij")
+                if i + 1 < tokens.len()
+                    && tokens[i + 1].0 == LojbanToken::Cmavo
+                    && is_conn_vowel(tokens[i + 1].1)
+                    && contiguous_next(i + 1) =>
+            {
+                let v_end = off + 2 + tokens[i + 1].1.len();
+                tokens[i] = (LojbanToken::Cmavo, &input[off..off + 1]); // "i"
+                tokens[i + 1] = (LojbanToken::Cmavo, &input[off + 1..v_end]); // "jV"
+            }
+            // `.inajV` — Cmevla("inaj") + contiguous single connective vowel.
+            (LojbanToken::Cmevla, "inaj")
+                if i + 1 < tokens.len()
+                    && tokens[i + 1].0 == LojbanToken::Cmavo
+                    && is_conn_vowel(tokens[i + 1].1)
+                    && contiguous_next(i + 1) =>
+            {
+                let v_end = off + 4 + tokens[i + 1].1.len();
+                tokens[i] = (LojbanToken::Cmavo, &input[off..off + 1]); // "i"
+                tokens[i + 1] = (LojbanToken::Cmavo, &input[off + 1..off + 3]); // "na"
+                tokens.insert(i + 2, (LojbanToken::Cmavo, &input[off + 3..v_end])); // "jV"
+            }
+            // `.ijVnai` — a single phantom Lujvo.
+            (LojbanToken::Lujvo, "ijenai" | "ijanai" | "ijonai" | "ijunai") => {
+                let len = tokens[i].1.len();
+                tokens[i] = (LojbanToken::Cmavo, &input[off..off + 1]); // "i"
+                tokens.insert(i + 1, (LojbanToken::Cmavo, &input[off + 1..off + len])); // "jVnai"
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+}
+
 /// Post-lex pass: fix sumti connective `nai` compounds after a pause.
 ///
 /// Logos greedily lexes `.enai` as Pause(".") + Cmevla("en") + Cmavo("ai")
@@ -340,6 +410,7 @@ pub fn tokenize_with_errors(input: &str) -> (Vec<(LojbanToken, &str)>, Vec<LexEr
 
     reclassify_compounds(&mut tokens, input);
     reclassify_fused_giha_nai(&mut tokens);
+    fix_dot_i_ja_connective(&mut tokens, input);
     fix_sumti_connective_nai(&mut tokens, input);
     validate_gismu_clusters(&mut tokens, input, &mut errors);
     (tokens, errors)
@@ -470,6 +541,61 @@ mod tests {
         assert_eq!(tokens[1], (LojbanToken::Pause, "."));
         assert_eq!(tokens[2], (LojbanToken::Cmavo, "e"));
         assert_eq!(tokens[3], (LojbanToken::Cmavo, "nai"));
+    }
+
+    #[test]
+    fn dot_i_ja_solid_forms_tokenize_as_connectives() {
+        // Solid `.ijV` → Pause + Cmavo("i") + Cmavo("jV") — identical to `.i jV`.
+        for (input, conn) in [
+            ("mi klama .ije mi citka", "je"),
+            ("mi klama .ija mi citka", "ja"),
+            ("mi klama .ijo mi citka", "jo"),
+            ("mi klama .iju mi citka", "ju"),
+        ] {
+            let tokens = tokenize(input);
+            assert_eq!(tokens[2], (LojbanToken::Pause, "."), "{input}");
+            assert_eq!(tokens[3], (LojbanToken::Cmavo, "i"), "{input}");
+            assert_eq!(tokens[4], (LojbanToken::Cmavo, conn), "{input}");
+        }
+        // Solid `.ijVnai` (a phantom Lujvo pre-pass) → Pause + i + jVnai.
+        for (input, conn) in [
+            ("mi klama .ijenai mi citka", "jenai"),
+            ("mi klama .ijanai mi citka", "janai"),
+            ("mi klama .ijonai mi citka", "jonai"),
+            ("mi klama .ijunai mi citka", "junai"),
+        ] {
+            let tokens = tokenize(input);
+            assert_eq!(tokens[3], (LojbanToken::Cmavo, "i"), "{input}");
+            assert_eq!(tokens[4], (LojbanToken::Cmavo, conn), "{input}");
+        }
+        // Solid `.inajV` → Pause + i + na + jV.
+        for (input, conn) in [
+            ("mi klama .inaja mi citka", "ja"),
+            ("mi klama .inaje mi citka", "je"),
+            ("mi klama .inajo mi citka", "jo"),
+            ("mi klama .inaju mi citka", "ju"),
+        ] {
+            let tokens = tokenize(input);
+            assert_eq!(tokens[3], (LojbanToken::Cmavo, "i"), "{input}");
+            assert_eq!(tokens[4], (LojbanToken::Cmavo, "na"), "{input}");
+            assert_eq!(tokens[5], (LojbanToken::Cmavo, conn), "{input}");
+        }
+    }
+
+    #[test]
+    fn dot_i_ja_pass_leaves_real_names_alone() {
+        // A genuine pause-delimited cmevla name that LOOKS like a prefix of the
+        // compounds must be untouched — the pass requires a CONTIGUOUS single
+        // connective vowel after the Cmevla, and here a Pause follows instead.
+        let tokens = tokenize("la .inaj. cu gerku");
+        assert_eq!(tokens[1], (LojbanToken::Pause, "."));
+        assert_eq!(tokens[2], (LojbanToken::Cmevla, "inaj"));
+        assert_eq!(tokens[3], (LojbanToken::Pause, "."));
+        // And the spaced connective form stays exactly as before.
+        let spaced = tokenize("mi klama .i je mi citka");
+        assert_eq!(spaced[2], (LojbanToken::Pause, "."));
+        assert_eq!(spaced[3], (LojbanToken::Cmavo, "i"));
+        assert_eq!(spaced[4], (LojbanToken::Cmavo, "je"));
     }
 
     #[test]

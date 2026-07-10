@@ -116,7 +116,7 @@ Current coverage of Lojban grammar, semantics, and reasoning in Nibli.
 | `ganai`...`gi` (forethought conditional) | Done | Material conditional |
 | `go`...`gi` (forethought IFF) | Done | Biconditional |
 | `gu`/`genai`/`ginai`/`gonai`/`gunai` | Not supported | Removed from the lexer; parser handles only ge/ga/ganai/go |
-| `.i je/ja/jo/ju` (afterthought) | Done | With `na`/`nai` |
+| `.i je/ja/jo/ju` (afterthought) | Done | With `na`/`nai`; both spaced (`.i je`) and solid (`.ije`, `.ijenai`, `.inaja`, …) spellings — the lexer's `fix_dot_i_ja_connective` pass splits the solid compounds |
 
 ## Abstractions
 
