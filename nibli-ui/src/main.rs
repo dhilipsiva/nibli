@@ -1098,13 +1098,18 @@ fn SourceTabs(
         spawn(async move {
             use nibli_fanva::agent::Outcome;
             // The self-correcting loop: translate → (optionally call jbotci tools) →
-            // validate (gerna+smuni+camxes) → feed the error back → retry, up to the
-            // configured max attempts.
+            // validate (gerna+smuni+camxes) → semantic verification (a
+            // fresh-context judge reads the engine's back-translation) → feed
+            // any error back → retry, up to the configured max attempts.
             let http = nibli_fanva::llm::HttpChat;
             // jbotci proxy — inert unless the user enabled jbotci. Disabled/empty ⇒ the
             // loop degrades to the local gates and never calls the proxy.
             let mcp = nibli_fanva::mcp::McpClient::new(cfg.active_proxy_url());
+            // The same zero-sized HttpChat serves as the semantic validator: the
+            // Chat seam is stateless, so the judge call is a genuinely fresh
+            // conversation (same provider/key, no shared history).
             let outcome = nibli_fanva::agent::translate_agentic(
+                &http,
                 &http,
                 &mcp,
                 &cfg.llm,

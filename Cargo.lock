@@ -2759,6 +2759,7 @@ dependencies = [
  "gerna",
  "gloo-net",
  "js-sys",
+ "nibli-render",
  "nibli-types",
  "serde_json",
  "smuni",

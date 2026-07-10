@@ -21,18 +21,6 @@ brismu/zaha/zatske — and feklat; the int19h items from his 2026-07-10 nibli-fa
   dugri/tenfa pins it — the [2,1] swap and [1,2] identity examples can't distinguish the
   two readings), and rows want a source field (brismu / zaha / zatske) for provenance.
 
-- **nibli-fanva: semantic verification turn (int19h feedback)** — pass/fail gating is
-  insufficient: models emit syntactically valid Lojban with wrong semantics (anaphora
-  resolution, bridi place overflow, attitudinals-as-commands — `ei` used for "you must").
-  After the gates pass, feed the `nibli_render` back-translation (plus place-structure /
-  arity info smuni already knows) back to the model as a verification turn — "here is what
-  your Lojban actually claims; does it match the source? revise if not" — ideally as a
-  FRESH-context validator call (a `Chat` with no history) so the model cannot green-light
-  its own past output. Add int19h's Genesis 1:1–8 pair (Gemini's garbage-that-parses vs his
-  reference translation, in the 2026-07-10 Discord feedback / memory) as a
-  silent-mistranslation eval fixture. Directly feeds the roadmap's non-Lojbanist
-  authoring-study frontier (round-trip fidelity + silent-mistranslation rate).
-
 - **fanva-proxy: retire once jbotci CORS lands** — int19h is enabling direct browser→jbotci
   MCP calls on his end ("no reason it shouldn't be allowed from the browser"). When live:
   verify `initialize` + `tools/list` + `tersmu` from nibli-ui WITHOUT the proxy, then default

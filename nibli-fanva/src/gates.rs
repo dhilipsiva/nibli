@@ -19,6 +19,13 @@ pub enum GateError {
     Semantic(String),
     /// The official grammar (`camxes.js`) rejected it. *(wasm-only gate; later phase)*
     Official(String),
+    /// The fresh-context semantic verifier judged that the candidate — though
+    /// grammatically valid — does not MEAN what the source says (the message is
+    /// the verifier's concrete mismatch list). Unlike the three deterministic
+    /// gates, this verdict comes from an LLM judge reading the `nibli_render`
+    /// back-translation; it is best-effort advisory, but a mismatch still
+    /// drives the same retry machinery as a hard gate failure.
+    Verification(String),
 }
 
 impl GateError {
@@ -28,13 +35,17 @@ impl GateError {
             GateError::Syntax(_) => "gerna",
             GateError::Semantic(_) => "smuni",
             GateError::Official(_) => "camxes",
+            GateError::Verification(_) => "semantic verifier",
         }
     }
 
     /// The underlying compiler message.
     pub fn message(&self) -> &str {
         match self {
-            GateError::Syntax(m) | GateError::Semantic(m) | GateError::Official(m) => m,
+            GateError::Syntax(m)
+            | GateError::Semantic(m)
+            | GateError::Official(m)
+            | GateError::Verification(m) => m,
         }
     }
 }
@@ -127,6 +138,7 @@ fn tag_line(e: GateError, line_no: usize) -> GateError {
         GateError::Syntax(_) => GateError::Syntax(msg),
         GateError::Semantic(_) => GateError::Semantic(msg),
         GateError::Official(_) => GateError::Official(msg),
+        GateError::Verification(_) => GateError::Verification(msg),
     }
 }
 
@@ -142,6 +154,14 @@ fn semantic(e: NibliError) -> GateError {
 /// candidate: it names the gate, quotes the compiler's message, and asks for a
 /// Lojban-only fix. Kept in one place so the phrasing is consistent across gates.
 pub fn feedback_for(err: &GateError) -> String {
+    if let GateError::Verification(issues) = err {
+        return format!(
+            "That is grammatically valid but does not MEAN what the source says. An \
+             independent reading of what your Lojban actually claims reported these \
+             mismatches:\n{issues}\nRevise so the meaning matches the source; output ONLY \
+             the corrected Lojban — no explanation."
+        );
+    }
     let (what, tool) = match err {
         GateError::Syntax(_) => ("is not grammatically valid Lojban", "gerna parser"),
         GateError::Semantic(_) => (
@@ -149,6 +169,7 @@ pub fn feedback_for(err: &GateError) -> String {
             "smuni compiler",
         ),
         GateError::Official(_) => ("is not valid standard Lojban", "camxes parser"),
+        GateError::Verification(_) => unreachable!("handled above"),
     };
     format!(
         "That {what}. The {tool} reported:\n{}\nFix it and output ONLY the corrected Lojban — no explanation.",

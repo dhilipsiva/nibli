@@ -31,6 +31,7 @@ pub mod gates;
 pub mod llm;
 pub mod mcp;
 pub mod tools;
+pub mod verify;
 
 // Landing in a subsequent phase (see TODO.md):
 //   `tools::run_llm_tool_loop` threads into agent::translate_agentic (Phase 5)

@@ -7,6 +7,12 @@
 //! provider/transport error aborts as [`Outcome::ChatFailed`] (not a gate failure);
 //! an exact repeat of the previous candidate stops early as [`Outcome::Exhausted`].
 //!
+//! A gate-clean candidate then faces the SEMANTIC VERIFICATION TURN
+//! ([`crate::verify`]): a fresh-context judge reads the engine's own
+//! back-translation of each KB line and a MISMATCH verdict retries through the
+//! same feedback loop as a gate failure (`GateError::Verification`) — the
+//! syntax gates prove well-formedness, this turn checks MEANING (best-effort).
+//!
 //! When the MCP client has no proxy (or it is unreachable) the loop runs with NO
 //! tools — the local gerna+smuni+camxes gates only — and flags the `Outcome` as
 //! `degraded`; it never hard-fails on jbotci being unavailable. The whole thing is
@@ -16,6 +22,7 @@ use crate::gates::{self, GateError};
 use crate::llm::{LlmConfig, ToolChat, Turn, clean_lojban_output, system_prompt};
 use crate::mcp::McpClient;
 use crate::tools;
+use crate::verify;
 
 /// One outer-loop iteration: the candidate the LLM produced and the gate error it
 /// hit (`None` = it passed every gate).
@@ -81,8 +88,20 @@ fn trim_history(convo: &mut Vec<Turn>, keep_pairs: usize) {
 /// Translate `source` into valid Lojban, self-correcting against the validation
 /// gate, with optional jbotci tool-use. See the module docs for the termination
 /// rules and the degrade behavior.
-pub async fn translate_agentic<C: ToolChat>(
+///
+/// `validator` is the FRESH-CONTEXT semantic judge (int19h's suggestion): after
+/// the gates pass, the engine's own back-translation of the candidate is sent
+/// to `validator` in a brand-new single-turn conversation — the Chat seam is
+/// stateless, so the judge never sees the translation history and cannot
+/// green-light its own past output. A MISMATCH verdict retries through the
+/// same bounded feedback loop as a hard gate failure
+/// (`GateError::Verification`). The check is best-effort advisory: a validator
+/// transport error or malformed verdict never blocks a gate-clean translation
+/// (the deterministic gates remain the hard guarantee). Callers typically pass
+/// the same zero-sized `HttpChat` for `chat` and `validator`.
+pub async fn translate_agentic<C: ToolChat, V: ToolChat>(
     chat: &C,
+    validator: &V,
     mcp: &McpClient,
     cfg: &LlmConfig,
     source: &str,
@@ -136,7 +155,15 @@ pub async fn translate_agentic<C: ToolChat>(
         };
         let candidate = clean_lojban_output(&raw);
 
-        match gates::validate_kb(&candidate) {
+        // Gate check first; a gate-clean candidate then faces the fresh-context
+        // semantic verifier. Folding the verifier's MISMATCH into the same
+        // `Err` arm reuses the whole retry machinery (trace, oscillation
+        // guard, feedback turns, exhaustion).
+        let gate_result = match gates::validate_kb(&candidate) {
+            Ok(()) => verify_semantics(validator, cfg, source, &candidate).await,
+            Err(e) => Err(e),
+        };
+        match gate_result {
             Ok(()) => {
                 attempts.push(Attempt {
                     n,
@@ -193,6 +220,46 @@ pub async fn translate_agentic<C: ToolChat>(
     }
 }
 
+/// The fresh-context semantic verification turn. `Ok(())` = verified or
+/// best-effort skipped; `Err(GateError::Verification)` = the judge reported a
+/// concrete meaning mismatch. Fail-open by design at every non-verdict edge:
+/// back-translation failure (cannot normally happen — the gates just passed),
+/// validator transport error, tool-call-only reply, or a malformed verdict all
+/// let the gate-clean candidate through — the deterministic gates are the hard
+/// guarantee, this turn is the advisory meaning check.
+async fn verify_semantics<V: ToolChat>(
+    validator: &V,
+    cfg: &LlmConfig,
+    source: &str,
+    candidate: &str,
+) -> Result<(), gates::GateError> {
+    let Ok(back) = verify::back_translation(candidate) else {
+        return Ok(());
+    };
+    if back.is_empty() {
+        return Ok(());
+    }
+    let prompt = verify::judge_prompt(source, &back);
+    // A brand-new single-turn conversation: the judge sees only the source,
+    // the candidate lines, and the engine's reading of them.
+    let reply = match validator
+        .chat_tools(
+            cfg,
+            verify::VALIDATOR_SYSTEM_PROMPT,
+            &[Turn::user(prompt)],
+            &[],
+        )
+        .await
+    {
+        Ok(r) => r,
+        Err(_) => return Ok(()),
+    };
+    match reply.text.as_deref().and_then(verify::parse_verdict) {
+        Some(issues) => Err(gates::GateError::Verification(issues)),
+        None => Ok(()),
+    }
+}
+
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
@@ -200,14 +267,18 @@ mod tests {
     use std::cell::RefCell;
 
     /// A `ToolChat` that hands back pre-scripted responses in order (text-only —
-    /// these tests exercise the outer validate/feedback loop, not tool-use).
+    /// these tests exercise the outer validate/feedback loop, not tool-use) and
+    /// records every conversation it is handed, so tests can inspect both the
+    /// translation feedback turns and the validator's fresh context.
     struct Scripted {
         replies: RefCell<Vec<Result<ChatResponse, ChatError>>>,
+        seen: RefCell<Vec<(String, Vec<Turn>)>>,
     }
     impl Scripted {
         fn new(replies: Vec<Result<ChatResponse, ChatError>>) -> Self {
             Self {
                 replies: RefCell::new(replies),
+                seen: RefCell::new(Vec::new()),
             }
         }
     }
@@ -215,11 +286,32 @@ mod tests {
         async fn chat_tools(
             &self,
             _cfg: &LlmConfig,
+            system: &str,
+            turns: &[Turn],
+            _tools: &[ToolDecl],
+        ) -> Result<ChatResponse, ChatError> {
+            self.seen
+                .borrow_mut()
+                .push((system.to_string(), turns.to_vec()));
+            self.replies.borrow_mut().remove(0)
+        }
+    }
+
+    /// A semantic validator that verifies everything — the neutral default for
+    /// tests that exercise the gate loop, keeping their behavior unchanged.
+    struct AlwaysMatch;
+    impl ToolChat for AlwaysMatch {
+        async fn chat_tools(
+            &self,
+            _cfg: &LlmConfig,
             _system: &str,
             _turns: &[Turn],
             _tools: &[ToolDecl],
         ) -> Result<ChatResponse, ChatError> {
-            self.replies.borrow_mut().remove(0)
+            Ok(ChatResponse {
+                text: Some("MATCH".to_string()),
+                tool_calls: vec![],
+            })
         }
     }
 
@@ -242,12 +334,31 @@ mod tests {
         let cfg = LlmConfig::new(Provider::Anthropic);
         futures::executor::block_on(translate_agentic(
             &chat,
+            &AlwaysMatch,
             &mcp,
             &cfg,
             "Adam is a dog",
             max,
             4,
         ))
+    }
+
+    /// Like `run`, but with a scripted semantic validator; returns the outcome
+    /// plus both mocks for conversation inspection.
+    fn run_with_validator(
+        replies: Vec<Result<ChatResponse, ChatError>>,
+        validator_replies: Vec<Result<ChatResponse, ChatError>>,
+        source: &str,
+        max: u32,
+    ) -> (Outcome, Scripted, Scripted) {
+        let chat = Scripted::new(replies);
+        let validator = Scripted::new(validator_replies);
+        let mcp = McpClient::new("");
+        let cfg = LlmConfig::new(Provider::Anthropic);
+        let out = futures::executor::block_on(translate_agentic(
+            &chat, &validator, &mcp, &cfg, source, max, 4,
+        ));
+        (out, chat, validator)
     }
 
     #[test]
@@ -305,6 +416,168 @@ mod tests {
         }
     }
 
+    // ── The semantic verification turn (int19h feedback, 2026-07-10) ──
+    // Fixture: the Genesis 1:1–8 pair. Gemini's attempt PARSES — these 8 lines
+    // pass every local gate verbatim (probe-verified) — while claiming nonsense
+    // ("John is a name-word meaning a sun" for "God called the light Day").
+    // Exactly the silent-mistranslation phenomenon the fresh-context verifier
+    // exists to catch: grammar gates cannot see it, the back-translation can.
+
+    const GENESIS_SOURCE: &str = "In the beginning God created the heaven and the earth. \
+And God saw the light, that it was good: and God divided the light from the darkness. \
+And God called the light Day, and the darkness he called Night.";
+
+    /// Gemini's Genesis lines that pass ALL local gates (the garbage-that-parses).
+    const GENESIS_GEMINI_PARSING: &str = "\
+.i pu lo purci la .djan. finti lo tsani .e lo terdi
+.i lo manku cu zvati lo stodi be lo dembi
+.i lo jmive be la .djan. cu cadzu lo stodi be lo djacu
+.i lo solri cu fasnu
+.i la .djan. viska lo solri
+.i la .djan. cmevla lo solri
+.i lo manku cu cmevla lo nicte
+.i la .djan. finti lo tcadu";
+
+    /// A simplified corrected retry (must genuinely pass the gates).
+    const GENESIS_CORRECTED: &str =
+        "la cevni cu finti lo tsani .e lo terdi\nla cevni cu viska lo gusni";
+
+    const GENESIS_MISMATCH_VERDICT: &str = "MISMATCH\n\
+1. Line 6 claims John is a name-word meaning a sun; the source says God called the light Day.\n\
+2. Line 1 claims the creation was done by someone named John before some past thing; the source names God.";
+
+    /// The phenomenon pin: every fixture line must keep passing the gates —
+    /// if a grammar change eats the fixture, this fails loudly instead of the
+    /// verification tests silently testing nothing.
+    #[test]
+    fn genesis_gemini_lines_pass_gates() {
+        for line in GENESIS_GEMINI_PARSING.lines() {
+            assert!(
+                gates::validate(line.trim()).is_ok(),
+                "fixture line no longer passes the gates (fixture rot): {line}"
+            );
+        }
+        assert!(
+            gates::validate_kb(GENESIS_CORRECTED).is_ok(),
+            "the corrected retry KB must pass the gates"
+        );
+    }
+
+    #[test]
+    fn genesis_garbage_parses_but_mismatch_feeds_back() {
+        let (out, chat, validator) = run_with_validator(
+            vec![text(GENESIS_GEMINI_PARSING), text(GENESIS_CORRECTED)],
+            vec![text(GENESIS_MISMATCH_VERDICT), text("MATCH")],
+            GENESIS_SOURCE,
+            5,
+        );
+        match out {
+            Outcome::Success {
+                lojban, attempts, ..
+            } => {
+                assert_eq!(lojban, GENESIS_CORRECTED);
+                assert_eq!(attempts.len(), 2);
+                match &attempts[0].error {
+                    Some(GateError::Verification(issues)) => {
+                        assert!(issues.contains("name-word"), "issues carried: {issues}")
+                    }
+                    other => panic!("attempt 1 must fail the semantic verifier, got {other:?}"),
+                }
+                assert!(attempts[1].error.is_none());
+            }
+            other => panic!("expected Success on the corrected retry, got {other:?}"),
+        }
+        // The translator's second call must carry the verifier's issues as the
+        // feedback turn, in the house style.
+        let seen = chat.seen.borrow();
+        assert_eq!(seen.len(), 2);
+        let fed = seen[1].1.iter().any(|t| {
+            matches!(t, Turn::User(s) if s.contains("does not MEAN") && s.contains("name-word"))
+        });
+        assert!(
+            fed,
+            "semantic feedback turn missing from the retry conversation"
+        );
+        // The validator ran once per gate-clean candidate.
+        assert_eq!(validator.seen.borrow().len(), 2);
+    }
+
+    #[test]
+    fn validator_sees_fresh_context_only() {
+        let (out, _chat, validator) =
+            run_with_validator(vec![text(GOOD)], vec![text("MATCH")], "Adam is a dog", 3);
+        assert!(matches!(out, Outcome::Success { .. }));
+        let vseen = validator.seen.borrow();
+        assert_eq!(vseen.len(), 1);
+        let (system, turns) = &vseen[0];
+        assert!(
+            system.contains("independent semantic auditor"),
+            "validator must get its own system prompt"
+        );
+        assert_eq!(turns.len(), 1, "fresh context = exactly one user turn");
+        assert!(
+            matches!(&turns[0], Turn::User(s) if s.contains("SOURCE TEXT") && s.contains(GOOD)),
+            "the single turn carries source + candidate + claims"
+        );
+        assert!(
+            !format!("{turns:?}").contains("Translate to Lojban"),
+            "the validator must never see the translation conversation"
+        );
+    }
+
+    #[test]
+    fn validator_transport_error_is_best_effort() {
+        // The deterministic gates are the hard guarantee; a judge outage never
+        // blocks a gate-clean translation.
+        let (out, _chat, _validator) = run_with_validator(
+            vec![text(GOOD)],
+            vec![Err(ChatError("net down".into()))],
+            "Adam is a dog",
+            3,
+        );
+        match out {
+            Outcome::Success { attempts, .. } => assert!(attempts[0].error.is_none()),
+            other => panic!("expected best-effort Success, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unparseable_verdict_fails_open() {
+        let (out, _chat, _validator) = run_with_validator(
+            vec![text(GOOD)],
+            vec![text("Looks mostly fine to me!")],
+            "Adam is a dog",
+            3,
+        );
+        assert!(matches!(out, Outcome::Success { .. }));
+    }
+
+    #[test]
+    fn semantic_mismatch_oscillation_stops_early() {
+        // The verifier keeps rejecting and the model repeats itself — the
+        // shared oscillation guard ends the loop instead of burning attempts.
+        let (out, _chat, _validator) = run_with_validator(
+            vec![text(GOOD), text(GOOD)],
+            vec![
+                text("MISMATCH\n1. wrong participant"),
+                text("MISMATCH\n1. wrong participant"),
+            ],
+            "Adam is a dog",
+            5,
+        );
+        match out {
+            Outcome::Exhausted {
+                attempts,
+                last_error,
+                ..
+            } => {
+                assert_eq!(attempts.len(), 2);
+                assert!(matches!(last_error, GateError::Verification(_)));
+            }
+            other => panic!("expected Exhausted (oscillation), got {other:?}"),
+        }
+    }
+
     /// A `ToolChat` that records the turns it is handed each call and always returns
     /// a distinct invalid candidate, so the loop runs to the cap and we can inspect
     /// how the conversation grows.
@@ -348,6 +621,7 @@ mod tests {
         let cfg = LlmConfig::new(Provider::Anthropic);
         let out = futures::executor::block_on(translate_agentic(
             &chat,
+            &AlwaysMatch,
             &mcp,
             &cfg,
             "Adam is a dog",
