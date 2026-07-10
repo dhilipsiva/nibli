@@ -98,6 +98,48 @@ fn convert_logical_term_from_export(t: &export_logic::LogicalTerm) -> logji_logi
     }
 }
 
+/// Convert one WIT import node back to the logji `LogicNode` (pure 1:1 inverse
+/// of `convert_logic_node_to_export`; `CountNode`'s middle field is a COUNT,
+/// not a node index — copied verbatim, never remapped).
+fn convert_logic_node_from_export(n: &export_logic::LogicNode) -> logji_logic::LogicNode {
+    use export_logic::LogicNode as E;
+    use logji_logic::LogicNode as L;
+    match n {
+        E::Predicate((rel, args)) => L::Predicate((
+            rel.clone(),
+            args.iter().map(convert_logical_term_from_export).collect(),
+        )),
+        E::ComputeNode((rel, args)) => L::ComputeNode((
+            rel.clone(),
+            args.iter().map(convert_logical_term_from_export).collect(),
+        )),
+        E::AndNode((l, r)) => L::AndNode((*l, *r)),
+        E::OrNode((l, r)) => L::OrNode((*l, *r)),
+        E::NotNode(i) => L::NotNode(*i),
+        E::ExistsNode((v, b)) => L::ExistsNode((v.clone(), *b)),
+        E::ForAllNode((v, b)) => L::ForAllNode((v.clone(), *b)),
+        E::PastNode(i) => L::PastNode(*i),
+        E::PresentNode(i) => L::PresentNode(*i),
+        E::FutureNode(i) => L::FutureNode(*i),
+        E::ObligatoryNode(i) => L::ObligatoryNode(*i),
+        E::PermittedNode(i) => L::PermittedNode(*i),
+        E::CountNode((v, c, b)) => L::CountNode((v.clone(), *c, *b)),
+    }
+}
+
+/// Convert a WIT import buffer back to the logji `LogicBuffer` (inverse of
+/// `convert_logic_buffer_to_export`) — the `assert-buffer-with-id` replay path.
+fn convert_logic_buffer_from_export(buf: &export_logic::LogicBuffer) -> logji_logic::LogicBuffer {
+    logji_logic::LogicBuffer {
+        nodes: buf
+            .nodes
+            .iter()
+            .map(convert_logic_node_from_export)
+            .collect(),
+        roots: buf.roots.clone(),
+    }
+}
+
 fn convert_query_result_to_export(result: &logji_logic::QueryResult) -> export_logic::QueryResult {
     match result {
         logji_logic::QueryResult::True => export_logic::QueryResult::True,
@@ -353,38 +395,27 @@ impl Guest for LasnaPipeline {
 }
 
 impl Session {
-    /// Shared body for `assert_text` / `assert_text_with_id`. When `id` is
-    /// `Some`, the fact is asserted with that CALLER-CHOSEN id (persistent
-    /// restart-replay keeps the live KB's fact-id namespace equal to the durable
-    /// store's); when `None`, the KB mints a fresh id. The `last_relation` go'i
-    /// snapshot update applies on BOTH paths. (`compile_pipeline` fails closed on
-    /// any parse error, so no per-caller warning check is needed.)
-    fn assert_text_inner(
-        &self,
-        input: String,
-        id: Option<u64>,
-    ) -> Result<u64, export_err::NibliError> {
+    /// LEGACY REPLAY body for `assert_text_with_id`: recompiles `input` and
+    /// asserts the WHOLE buffer (multi-root stays composite) under the
+    /// CALLER-CHOSEN id — exactly the pre-split single-fact granularity, kept
+    /// so durable stores written before buffer persistence (text-payload rows)
+    /// replay unchanged, go'i snapshot update included. New code persists the
+    /// per-root buffers `assert_text` returns and replays via
+    /// `assert_buffer_with_id`. (`compile_pipeline` fails closed on any parse
+    /// error, so no per-caller warning check is needed.)
+    fn assert_text_inner(&self, input: String, id: u64) -> Result<(), export_err::NibliError> {
         let (buf, new_last) = compile_pipeline(
             &input,
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),
         )?;
-        let fact_id = match id {
-            Some(i) => {
-                self.kb
-                    .assert_fact_with_id(buf, input, i)
-                    // The assert is the reasoning stage (buffer already past smuni);
-                    // logji's `assert_fact_with_id` returns a String, so wrap as Reasoning.
-                    .map_err(export_err::NibliError::Reasoning)?;
-                i
-            }
-            None => self
-                .kb
-                .assert_fact(buf, input)
-                .map_err(convert_pipeline_error)?,
-        };
+        self.kb
+            .assert_fact_with_id(buf, input, id)
+            // The assert is the reasoning stage (buffer already past smuni);
+            // logji's `assert_fact_with_id` returns a String, so wrap as Reasoning.
+            .map_err(export_err::NibliError::Reasoning)?;
         *self.last_relation.borrow_mut() = new_last;
-        Ok(fact_id)
+        Ok(())
     }
 
     /// Shared body for `assert_fact` / `assert_fact_with_id` (see
@@ -469,12 +500,53 @@ impl GuestSession for Session {
         self.kb.set_strict(strict);
     }
 
-    fn assert_text(&self, input: String) -> Result<u64, export_err::NibliError> {
-        self.assert_text_inner(input, None)
+    /// Assert Lojban text, splitting a bare-`.i` multi-sentence input into one
+    /// independent fact per root (`split_roots` — connectives compile to a
+    /// single root and stay one compound fact, matching the native surfaces).
+    /// Returns one (id, buffer) pair per asserted root so a persisting host
+    /// can store the compiled FACT itself and replay it recompile-free via
+    /// `assert-buffer-with-id`. The go'i snapshot updates exactly once, after
+    /// the whole input (resolution already happened at compile time, before
+    /// the split — cross-sentence go'i inside the input is preserved).
+    fn assert_text(
+        &self,
+        input: String,
+    ) -> Result<Vec<(u64, export_logic::LogicBuffer)>, export_err::NibliError> {
+        let (buf, new_last) = compile_pipeline(
+            &input,
+            &mut self.last_relation.borrow_mut(),
+            &self.compute_predicates.borrow(),
+        )?;
+        let mut out = Vec::new();
+        for sub in buf.split_roots() {
+            let exported = convert_logic_buffer_to_export(&sub);
+            let id = self
+                .kb
+                .assert_fact(sub, input.clone())
+                .map_err(convert_pipeline_error)?;
+            out.push((id, exported));
+        }
+        *self.last_relation.borrow_mut() = new_last;
+        Ok(out)
     }
 
     fn assert_text_with_id(&self, input: String, id: u64) -> Result<(), export_err::NibliError> {
-        self.assert_text_inner(input, Some(id)).map(|_| ())
+        self.assert_text_inner(input, id)
+    }
+
+    /// Recompile-free replay: assert an already-compiled buffer (as returned
+    /// by `assert-text`) under a caller-chosen id. No go'i snapshot update —
+    /// a buffer carries no surface bridi to snapshot.
+    fn assert_buffer_with_id(
+        &self,
+        buffer: export_logic::LogicBuffer,
+        label: String,
+        id: u64,
+    ) -> Result<(), export_err::NibliError> {
+        let buf = convert_logic_buffer_from_export(&buffer);
+        self.kb
+            .assert_fact_with_id(buf, label, id)
+            .map_err(export_err::NibliError::Reasoning)
     }
 
     fn query_text(

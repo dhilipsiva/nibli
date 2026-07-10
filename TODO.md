@@ -21,20 +21,6 @@ brismu/zaha/zatske — and feklat; the int19h items from his 2026-07-10 nibli-fa
   dugri/tenfa pins it — the [2,1] swap and [1,2] identity examples can't distinguish the
   two readings), and rows want a source field (brismu / zaha / zatske) for provenance.
 
-- **gasnu: split bare-`.i` sentences into independent facts (DEFERRED)** — a bare-`.i`
-  multi-sentence line now becomes N independent facts (one per root, connectives kept whole)
-  via `LogicBuffer::split_roots` in nibli-ui, nibli-engine, and nibli-wasm, but the gasnu REPL
-  still asserts such a line as ONE fact. Deferring on purpose: matching gasnu needs a permanent
-  WIT-boundary change (`assert-text -> list<fact-id>` + an `assert-text-root-with-id` replay
-  func) AND a durable-store schema addition (`StoredAssertion::TextRoot { text, root }`), all to
-  survive per-sentence retraction across a REPL restart — a niche workflow that no shipped
-  corpus even exercises (gdpr/ddi have zero medial `.i`). No clean half-measure exists (live-only
-  splitting silently loses per-sentence retraction on reopen). The principled fix, if it ever
-  becomes real, is to realign gasnu persistence to store the FACT (buffer) rather than the source
-  TEXT — then splitting falls out for free and it also removes the recompile-on-replay provenance
-  hazard. Full, source-verified steps are in the plan file
-  (`~/.claude/plans/i-need-to-make-wild-goblet.md`, "Phase 5").
-
 - **nibli-fanva: semantic verification turn (int19h feedback)** — pass/fail gating is
   insufficient: models emit syntactically valid Lojban with wrong semantics (anaphora
   resolution, bridi place overflow, attitudinals-as-commands — `ei` used for "you must").

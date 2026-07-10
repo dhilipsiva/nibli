@@ -12,5 +12,5 @@ wasmtime-wasi = "41.0.3"
 nibli-protocol = { path = "../nibli-protocol", features = ["compute-client"] }
 nibli-render = { path = "../nibli-render" }
 nibli-store = { path = "../nibli-store" }
-nibli-types = { path = "../nibli-types" }
+nibli-types = { path = "../nibli-types", features = ["serde"] }
 postcard = { version = "1", features = ["alloc"] }

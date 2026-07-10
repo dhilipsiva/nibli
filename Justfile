@@ -202,6 +202,34 @@ smoke-gasnu-persist-replay: build-wasm build-gasnu
         rm -rf "$dir"; \
         echo 'PASS: persistent restart-replay keeps live==store fact-ids (gap preserved, high store id retractable)'
 
+# Multi-`.i` split smoke: a bare-`.i` two-sentence assert becomes TWO independent
+# facts (ids 0 and 1) — independently listed, retractable, and each persisted as its
+# own BUFFER record (recompile-free replay). A connective (`.i je`) stays ONE fact.
+# Reopen proves per-sentence retraction survives a restart.
+smoke-gasnu-split: build-wasm build-gasnu
+    @echo "Smoke-testing gasnu bare-.i split (N independent facts + buffer replay)..."
+    @dir=$(mktemp -d); db="$dir/nibli-smoke.redb"; \
+        out1=$(printf 'la .adam. cu gerku .i la .betis. cu mlatu\n:facts\n:retract 0\n? la .adam. cu gerku\n? la .betis. cu mlatu\n' \
+            | NIBLI_DB_PATH="$db" NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$out1"; \
+        echo "$out1" | grep -qF '[Fact #0] Asserted.' || { echo 'FAIL run1: fact #0 missing'; rm -rf "$dir"; exit 1; }; \
+        echo "$out1" | grep -qF '[Fact #1] Asserted.' || { echo 'FAIL run1: fact #1 missing (line not split)'; rm -rf "$dir"; exit 1; }; \
+        echo "$out1" | grep -qF '[Facts] 2 active fact(s):' || { echo 'FAIL run1: expected 2 active facts'; rm -rf "$dir"; exit 1; }; \
+        echo "$out1" | grep -qF '(1 root)' || { echo 'FAIL run1: split facts must be single-root'; rm -rf "$dir"; exit 1; }; \
+        verdicts=$(echo "$out1" | grep -F '[Query]' | tr '\n' ' '); \
+        [ "$verdicts" = '[Query] FALSE [Query] TRUE ' ] || { echo "FAIL run1: expected FALSE (retracted) then TRUE (surviving), got: $verdicts"; rm -rf "$dir"; exit 1; }; \
+        out2=$(printf ':facts\n? la .betis. cu mlatu\n' \
+            | NIBLI_DB_PATH="$db" NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$out2"; \
+        echo "$out2" | grep -qF '[Facts] 1 active fact(s):' || { echo 'FAIL run2: expected exactly the surviving fact after reopen'; rm -rf "$dir"; exit 1; }; \
+        echo "$out2" | grep -qF '[Query] TRUE' || { echo 'FAIL run2: surviving sentence not replayed from buffer'; rm -rf "$dir"; exit 1; }; \
+        out3=$(printf 'la .adam. cu gerku .i je la .adam. cu mlatu\n:facts\n' \
+            | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$out3"; \
+        echo "$out3" | grep -qF '[Facts] 1 active fact(s):' || { echo 'FAIL run3: connective must stay ONE compound fact'; rm -rf "$dir"; exit 1; }; \
+        rm -rf "$dir"; \
+        echo 'PASS: bare-.i splits into independent, per-sentence-retractable, buffer-replayed facts; connectives stay whole'
+
 # NAF-note smoke: the closed-world / negation-as-failure flag is now a first-class
 # WIT `proof-trace` field — computed once in the guest (ProofTrace::has_naf_dependency),
 # carried across the boundary, and READ by gasnu (no longer recomputed host-side). A
@@ -447,7 +475,7 @@ ci: fmt-check clippy-runtime test test-engine test-gasnu test-fanva test-backend
 # `build-wasm build-gasnu`, so `just` builds the component + host once, then runs
 # all six: fuel exhaustion + post-trap recovery + journal replay (trap-recovery),
 # plus the script transcript, go'i, persist-replay, NAF-note, and :debug round-trip.
-ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-naf smoke-gasnu-cwa-false smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable smoke-gasnu-non-finite smoke-gasnu-quiet smoke-gasnu-strict smoke-gasnu-determinism verify-wasm-node test-fanva-wasm
+ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-split smoke-gasnu-naf smoke-gasnu-cwa-false smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable smoke-gasnu-non-finite smoke-gasnu-quiet smoke-gasnu-strict smoke-gasnu-determinism verify-wasm-node test-fanva-wasm
 
 # Three-way determinism, WASMTIME leg: the shared determinism-corpus.lojban must produce
 # exactly its pinned annotations through the lasna component under gasnu. The native leg

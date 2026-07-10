@@ -261,11 +261,21 @@ interface lasna {
     resource session {
         /// Create a new session (internally creates a fresh KB).
         constructor();
-        /// Assert Lojban text as facts. Returns a fact ID for later retraction.
-        assert-text: func(input: string) -> result<fact-id, nibli-error>;
-        /// Assert Lojban text with a CALLER-CHOSEN fact id (for persistent
-        /// restart-replay: keeps the live session's fact-id namespace equal to
-        /// the durable store's, so `:retract`/`:facts` stay correct after reopen).
+        /// Assert Lojban text as facts. A bare-`.i` multi-sentence input splits
+        /// into one INDEPENDENT fact per root (logical connectives compile to a
+        /// single root and stay one compound fact — same granularity as the
+        /// native surfaces). Returns one (fact-id, logic-buffer) pair per
+        /// asserted root, in root order: the id for later retraction, the
+        /// root's compiled buffer so a persisting host can store the FACT
+        /// itself (recompile-free replay via `assert-buffer-with-id`). The
+        /// go'i snapshot updates once, after the whole input.
+        assert-text: func(input: string) -> result<list<tuple<fact-id, logic-buffer>>, nibli-error>;
+        /// LEGACY REPLAY ONLY — recompiles `input` and asserts it as ONE fact
+        /// (multi-root buffers stay composite) under a CALLER-CHOSEN id. Kept
+        /// so durable stores written before buffer persistence (text-payload
+        /// rows) still replay with their original single-fact granularity and
+        /// go'i snapshot semantics. New code persists buffers and replays via
+        /// `assert-buffer-with-id`.
         assert-text-with-id: func(input: string, id: fact-id) -> result<_, nibli-error>;
         /// Query whether Lojban text is entailed.
         query-text: func(input: string) -> result<query-result, nibli-error>;
@@ -286,6 +296,12 @@ interface lasna {
         /// Assert a ground fact directly with a CALLER-CHOSEN fact id (see
         /// `assert-text-with-id` — for persistent restart-replay).
         assert-fact-with-id: func(relation: string, args: list<logical-term>, id: fact-id) -> result<_, nibli-error>;
+        /// Assert an already-compiled logic buffer under a CALLER-CHOSEN fact
+        /// id — the recompile-free replay primitive for hosts that persist the
+        /// per-root buffers `assert-text` returns. `label` is the fact's
+        /// display label (the original source text). Does NOT update the go'i
+        /// snapshot (a buffer carries no surface bridi to snapshot).
+        assert-buffer-with-id: func(buffer: logic-buffer, label: string, id: fact-id) -> result<_, nibli-error>;
         /// Retract a previously asserted fact by its ID.
         retract-fact: func(id: fact-id) -> result<_, nibli-error>;
         /// List all active (non-retracted) facts.

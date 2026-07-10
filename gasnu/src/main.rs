@@ -163,6 +163,54 @@ fn wit_logic_buffer_to_types(buf: &EngineLogicBuffer) -> NibliBuffer {
     }
 }
 
+/// Convert a canonical `nibli_types` term to the WIT term (inverse of
+/// `wit_term_to_types`) — the `assert-buffer-with-id` replay direction.
+fn types_term_to_wit(t: &NibliTerm) -> EngineLogicalTerm {
+    match t {
+        NibliTerm::Variable(v) => EngineLogicalTerm::Variable(v.clone()),
+        NibliTerm::Constant(c) => EngineLogicalTerm::Constant(c.clone()),
+        NibliTerm::Description(d) => EngineLogicalTerm::Description(d.clone()),
+        NibliTerm::Unspecified => EngineLogicalTerm::Unspecified,
+        NibliTerm::Number(n) => EngineLogicalTerm::Number(*n),
+    }
+}
+
+/// Convert a canonical `nibli_types` node to the WIT node (pure 1:1 inverse of
+/// `wit_logic_node_to_types`; `CountNode`'s middle field is a COUNT — copied
+/// verbatim, never remapped).
+fn types_logic_node_to_wit(n: &NibliNode) -> EngineLogicNode {
+    use EngineLogicNode as W;
+    use NibliNode as N;
+    match n {
+        N::Predicate((rel, args)) => {
+            W::Predicate((rel.clone(), args.iter().map(types_term_to_wit).collect()))
+        }
+        N::ComputeNode((rel, args)) => {
+            W::ComputeNode((rel.clone(), args.iter().map(types_term_to_wit).collect()))
+        }
+        N::AndNode((l, r)) => W::AndNode((*l, *r)),
+        N::OrNode((l, r)) => W::OrNode((*l, *r)),
+        N::NotNode(i) => W::NotNode(*i),
+        N::ExistsNode((v, b)) => W::ExistsNode((v.clone(), *b)),
+        N::ForAllNode((v, b)) => W::ForAllNode((v.clone(), *b)),
+        N::PastNode(i) => W::PastNode(*i),
+        N::PresentNode(i) => W::PresentNode(*i),
+        N::FutureNode(i) => W::FutureNode(*i),
+        N::ObligatoryNode(i) => W::ObligatoryNode(*i),
+        N::PermittedNode(i) => W::PermittedNode(*i),
+        N::CountNode((v, c, b)) => W::CountNode((v.clone(), *c, *b)),
+    }
+}
+
+/// Convert a canonical `nibli_types` buffer to the WIT buffer (inverse of
+/// `wit_logic_buffer_to_types`).
+fn types_logic_buffer_to_wit(buf: &NibliBuffer) -> EngineLogicBuffer {
+    EngineLogicBuffer {
+        nodes: buf.nodes.iter().map(types_logic_node_to_wit).collect(),
+        roots: buf.roots.clone(),
+    }
+}
+
 /// Convert a WIT ProofRule to the protocol wire type. Embedded terms reuse
 /// `wit_term_to_types` (WIT enum → canonical `LogicalTerm` enum) — the proto term
 /// is now that same canonical enum, so no separate term converter is needed.
@@ -366,16 +414,27 @@ fn stored_term_to_wit(t: &StoredTerm) -> EngineLogicalTerm {
     }
 }
 
-/// Persist a text assertion to the store (if configured). A write failure is
-/// SURFACED to the user — the fact is live in the KB for this session but will
-/// not survive a restart, and staying silent about that misstates durability.
-fn persist_text(nibli_store: &mut Option<NibliStore>, fact_id: u64, text: &str) {
+/// Persist a compiled single-root fact buffer to the store (if configured) —
+/// the FACT itself, not the source text, so restart-replay never recompiles
+/// (`StoredAssertion::Buffer`; the label keeps the source text for `:facts` /
+/// provenance). A write failure is SURFACED to the user — the fact is live in
+/// the KB for this session but will not survive a restart, and staying silent
+/// about that misstates durability.
+fn persist_buffer(
+    nibli_store: &mut Option<NibliStore>,
+    fact_id: u64,
+    label: &str,
+    buf: &NibliBuffer,
+) {
     if let Some(s) = nibli_store.as_mut() {
-        let assertion = StoredAssertion::Text(text.to_string());
-        let result = postcard::to_allocvec(&assertion)
-            .map_err(|e| format!("serialize: {e}"))
+        let result = postcard::to_allocvec(buf)
+            .map_err(|e| format!("serialize buffer: {e}"))
+            .and_then(|inner| {
+                postcard::to_allocvec(&StoredAssertion::Buffer(inner))
+                    .map_err(|e| format!("serialize: {e}"))
+            })
             .and_then(|payload| {
-                s.insert_fact(fact_id, text.to_string(), payload)
+                s.insert_fact(fact_id, label.to_string(), payload)
                     .map_err(|e| e.to_string())
             });
         if let Err(e) = result {
@@ -506,11 +565,23 @@ fn format_nibli_error(e: &NibliError) -> String {
 /// and Skolem numbering). Queries are not journaled — their only KB side
 /// effect (flat-path compute auto-ingestion) is recomputed on demand.
 enum JournalEntry {
-    /// `id` is the fact id assigned at the original assertion (or the durable
-    /// store id at replay). Replayed via `assert-text-with-id` so a trap-rebuild
-    /// AFTER a restart keeps the live fact-id namespace equal to the store's.
+    /// LEGACY (seeded only when replaying pre-buffer `StoredAssertion::Text`
+    /// store rows): replayed via `assert-text-with-id`, recompiling the text
+    /// as ONE composite fact — the pre-split granularity those rows carry.
     AssertText {
         text: String,
+        id: u64,
+    },
+    /// A compiled single-root fact buffer (one per root of a text assertion).
+    /// Replayed recompile-free via `assert-buffer-with-id`. `id` is the fact
+    /// id assigned at the original assertion (or the durable store id at
+    /// replay) so a trap-rebuild AFTER a restart keeps the live fact-id
+    /// namespace equal to the store's. Note: buffer replay does not restore
+    /// the go'i snapshot (a buffer carries no surface bridi) — after a trap
+    /// rebuild, `go'i` has no antecedent until the next assert/query.
+    AssertBuffer {
+        buffer: NibliBuffer,
+        label: String,
         id: u64,
     },
     AssertDirect {
@@ -692,6 +763,18 @@ impl Repl {
                     .call_assert_text_with_id(&mut self.store, self.session_handle, text, *id)?
                     .map_err(|e| anyhow::anyhow!("{}", format_nibli_error(&e)))?;
             }
+            JournalEntry::AssertBuffer { buffer, label, id } => {
+                let wit_buf = types_logic_buffer_to_wit(buffer);
+                session
+                    .call_assert_buffer_with_id(
+                        &mut self.store,
+                        self.session_handle,
+                        &wit_buf,
+                        label,
+                        *id,
+                    )?
+                    .map_err(|e| anyhow::anyhow!("{}", format_nibli_error(&e)))?;
+            }
             JournalEntry::AssertDirect { relation, args, id } => {
                 session
                     .call_assert_fact_with_id(
@@ -755,6 +838,51 @@ impl Repl {
                         Ok(Ok(_)) => {
                             self.journal.push(JournalEntry::AssertText {
                                 text: text.clone(),
+                                id: fact.id,
+                            });
+                            replayed += 1;
+                        }
+                        Ok(Err(e)) => {
+                            println!(
+                                "[Store] Replay fact #{}: {}",
+                                fact.id,
+                                format_nibli_error(&e)
+                            );
+                            replay_errors += 1;
+                        }
+                        Err(e) => {
+                            println!(
+                                "[Store] Replay fact #{}: {}",
+                                fact.id,
+                                format_host_error(&e)
+                            );
+                            self.needs_rebuild = true;
+                            replay_errors += 1;
+                        }
+                    }
+                }
+                StoredAssertion::Buffer(ref inner) => {
+                    // Recompile-free replay: the stored payload IS the fact.
+                    let buffer: NibliBuffer = match postcard::from_bytes(inner) {
+                        Ok(b) => b,
+                        Err(e) => {
+                            println!("[Store] Fact #{} buffer decode error: {}", fact.id, e);
+                            replay_errors += 1;
+                            continue;
+                        }
+                    };
+                    let wit_buf = types_logic_buffer_to_wit(&buffer);
+                    match session.call_assert_buffer_with_id(
+                        &mut self.store,
+                        self.session_handle,
+                        &wit_buf,
+                        &fact.label,
+                        fact.id,
+                    ) {
+                        Ok(Ok(_)) => {
+                            self.journal.push(JournalEntry::AssertBuffer {
+                                buffer,
+                                label: fact.label.clone(),
                                 id: fact.id,
                             });
                             replayed += 1;
@@ -1191,16 +1319,22 @@ impl Repl {
                 self.prepare_session();
                 let session = self.pipeline.lojban_nibli_lasna().session();
                 match session.call_assert_text(&mut self.store, self.session_handle, trimmed) {
-                    Ok(Ok(fact_id)) => {
-                        persist_text(&mut self.nibli_store, fact_id, trimmed);
-                        self.journal.push(JournalEntry::AssertText {
-                            text: trimmed.to_string(),
-                            id: fact_id,
-                        });
-                        if !self.quiet {
-                            println!("[Fact #{}] {}", fact_id, trimmed);
+                    Ok(Ok(pairs)) => {
+                        // One (id, buffer) pair per root: a bare-`.i`
+                        // multi-sentence line is N independent facts.
+                        for (fact_id, wit_buf) in &pairs {
+                            let buffer = wit_logic_buffer_to_types(wit_buf);
+                            persist_buffer(&mut self.nibli_store, *fact_id, trimmed, &buffer);
+                            self.journal.push(JournalEntry::AssertBuffer {
+                                buffer,
+                                label: trimmed.to_string(),
+                                id: *fact_id,
+                            });
+                            if !self.quiet {
+                                println!("[Fact #{}] {}", fact_id, trimmed);
+                            }
                         }
-                        asserted += 1;
+                        asserted += pairs.len() as u32;
                     }
                     Ok(Err(e)) => {
                         println!("[Load] line {}: {}", line_num + 1, format_nibli_error(&e));
@@ -1317,14 +1451,22 @@ impl Repl {
             self.prepare_session();
             let session = self.pipeline.lojban_nibli_lasna().session();
             match session.call_assert_text(&mut self.store, self.session_handle, input) {
-                Ok(Ok(fact_id)) => {
-                    persist_text(&mut self.nibli_store, fact_id, input);
-                    self.journal.push(JournalEntry::AssertText {
-                        text: input.to_string(),
-                        id: fact_id,
-                    });
-                    if !self.quiet {
-                        println!("[Fact #{}] Asserted.", fact_id);
+                Ok(Ok(pairs)) => {
+                    // One (id, buffer) pair per root: a bare-`.i` multi-sentence
+                    // input is N independent facts (connectives stay one). The
+                    // guest returns each root's compiled buffer so persistence
+                    // stores the FACT itself — replay never recompiles.
+                    for (fact_id, wit_buf) in &pairs {
+                        let buffer = wit_logic_buffer_to_types(wit_buf);
+                        persist_buffer(&mut self.nibli_store, *fact_id, input, &buffer);
+                        self.journal.push(JournalEntry::AssertBuffer {
+                            buffer,
+                            label: input.to_string(),
+                            id: *fact_id,
+                        });
+                        if !self.quiet {
+                            println!("[Fact #{}] Asserted.", fact_id);
+                        }
                     }
                 }
                 Ok(Err(e)) => println!("{}", format_nibli_error(&e)),

@@ -204,7 +204,7 @@ without touching the IR:
 |---|---|---|
 | `nibli_engine::NibliEngine` (native Rust) | `assert_text -> Vec<u64>`, `query_text_with_proof`, `query_find_text`, `retract_fact`, `compile_debug`, optional redb persistence | Splits roots: a bare-`.i` multi-sentence text becomes N independent facts |
 | `nibli-wasm` `Session` (browser JS) | `assert_text -> Vec<u64>`, `query_with_proof -> JSON string`, `list_facts -> JSON`, `retract_fact`, `reset` | The query JSON has keys `status`, `detail`, `naf_dependent`, `cwa_false`, `proof_text`, `why`, `proof` (the full `ProofTrace`) |
-| `lasna` WASM component (WIT world `lasna-pipeline`) | `assert-text -> fact-id`, `query-text-with-proof -> (query-result, proof-trace)`, `compile-debug -> logic-buffer`, `assert-fact`, `set-strict`, … | Imports `compute-backend` from the host. ⚠ Asymmetry: this surface does **not** split roots — a multi-`.i` text is ONE fact here (a documented deferred item) |
+| `lasna` WASM component (WIT world `lasna-pipeline`) | `assert-text -> list<(fact-id, logic-buffer)>`, `assert-buffer-with-id` (recompile-free replay), `query-text-with-proof -> (query-result, proof-trace)`, `compile-debug -> logic-buffer`, `assert-fact`, `set-strict`, … | Imports `compute-backend` from the host. Splits roots like the native surfaces; each pair carries the root's compiled buffer so a persisting host (gasnu) stores the FACT itself. `assert-text-with-id` remains as a legacy replay path for pre-buffer text-payload store rows |
 
 Verdicts everywhere are `QueryResult`: `True`, `False`, `Unknown(reason)` (cycle-cut /
 incomplete-knowledge / naf-dependent / backend-unavailable / non-finite), or

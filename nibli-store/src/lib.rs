@@ -63,16 +63,25 @@ fn decode_stored_fact_record(bytes: &[u8]) -> Result<StoredFactRecord, StoreErro
 }
 
 /// Assertion type for gasnu (WASM host) persistence.
-/// gasnu never sees LogicBuffer — it stores text or direct-assert args.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum StoredAssertion {
-    /// Lojban source text — replayed via `assert_text`.
+    /// LEGACY: Lojban source text — replayed by recompiling via the WIT
+    /// `assert-text-with-id` (single composite fact, pre-split granularity).
+    /// No longer written; kept so old databases replay unchanged.
     Text(String),
     /// Direct fact injection — replayed via `assert_fact`.
     Direct {
         relation: String,
         args: Vec<StoredLogicalTerm>,
     },
+    /// A compiled single-root fact buffer (postcard-serialized
+    /// `nibli_types::logic::LogicBuffer`, nested opaquely so this crate keeps
+    /// no nibli-types dependency) — replayed recompile-free via the WIT
+    /// `assert-buffer-with-id`. One record per root of a multi-`.i` assert.
+    /// APPENDED variant: postcard discriminants are declaration-ordered, so
+    /// `Text`=0 / `Direct`=1 stay stable and old rows decode unchanged (no
+    /// SCHEMA_VERSION bump — existing row bytes are not reinterpreted).
+    Buffer(Vec<u8>),
 }
 
 /// Store error type.
@@ -779,6 +788,18 @@ mod tests {
                 assert_eq!(args.len(), 1);
             }
             _ => panic!("expected Direct variant"),
+        }
+
+        // The appended Buffer variant round-trips its opaque payload, and —
+        // discriminant stability — bytes written BEFORE the variant existed
+        // still decode: Text=0 / Direct=1 are declaration-ordered postcard
+        // tags, unchanged by the append.
+        let buffer_assertion = StoredAssertion::Buffer(vec![1, 2, 3, 4]);
+        let bytes = postcard::to_allocvec(&buffer_assertion).unwrap();
+        let decoded: StoredAssertion = postcard::from_bytes(&bytes).unwrap();
+        match decoded {
+            StoredAssertion::Buffer(payload) => assert_eq!(payload, vec![1, 2, 3, 4]),
+            _ => panic!("expected Buffer variant"),
         }
     }
 
