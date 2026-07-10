@@ -1128,9 +1128,17 @@ pub(super) fn register_ground_material_conditional(
                 compile_forall_to_rule(buffer, node_id, subs, inner)?;
                 true
             }
-            // Also check Or(Q, Not(P)) — reversed order (commutativity). smuni never emits this
-            // for ganai/go/jo (always Not-on-left), so it stays on the simpler ground path;
-            // event-decomposed operands in this orientation are not reachable from the pipeline.
+            // Also check Or(Q, Not(P)) — reversed order (commutativity). smuni's
+            // ganai/go/jo always emit Not-on-left, but a `na` on the RIGHT operand of a
+            // disjunction (`mi klama .i ja mi na citka`, `… gi'a na citka`) lands here.
+            // KNOWN LIMITATION (completeness only, see TODO.md): this simpler path bakes
+            // the assertion's own event-Skolem CONSTANTS into the condition templates, so
+            // an event-decomposed condition never unifies with a later assertion's fresh
+            // event Skolem — the registered conditional is inert (never fires modus
+            // ponens). The forward arm above was upgraded to `compile_forall_to_rule`
+            // (ev__ pattern vars) precisely to fix that orientation; mirroring it here is
+            // tracked in TODO.md. Never unsound — a missing derivation is FALSE = "not
+            // derivable", within stated semantics.
             else if let Ok(LogicNode::NotNode(neg_inner)) = get_node(buffer, *r) {
                 let mut typed_conds = Vec::new();
                 collect_ground_facts(buffer, *neg_inner, subs, None, &mut typed_conds);
@@ -1186,13 +1194,12 @@ fn contains_count_node(buffer: &LogicBuffer, node_id: u32) -> bool {
 }
 
 /// True if the root, after stripping transparent wrappers, is a negated ground fact
-/// (`na <selbri>`). These are accepted as no-ops today: under the closed-world
-/// assumption `¬P` is already entailed whenever `P` is not derivable, so a bare
-/// negative premise is harmless (it is how modus-tollens scenarios are exercised).
-/// Storing them as explicit negative facts and flagging a contrary positive as a
-/// contradiction is a separate, larger task (todo.md: zero-ingest / negated ground
-/// fact). The zero-ingest guard must NOT reject them — doing so would both break
-/// existing negative premises and foreclose that future contradiction-detection fix.
+/// (`na <selbri>`). Under the closed-world assumption `¬P` is already entailed
+/// whenever `P` is not derivable, so a negative premise stores nothing in the
+/// positive store; it IS recorded in the negative-fact registry (via
+/// `record_negative_ground_fact`) so a later contrary positive is flagged by
+/// `check_contradictions`. The zero-ingest guard must NOT reject these — see
+/// `all_conjuncts_reduce_to_negation` for the conjunction generalization.
 fn root_reduces_to_negation(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -1212,6 +1219,123 @@ fn root_reduces_to_negation(
             root_reduces_to_negation(buffer, *body, subs)
         }
         _ => false,
+    }
+}
+
+/// True if every conjunct of a top-level And-spine reduces to a negation
+/// (`na A .i je na B`, a GIhA chain of all-`na` tails). Generalizes
+/// `root_reduces_to_negation`: a single negated root trivially satisfies it.
+/// Such an assertion has representable content — each negated conjunct is
+/// recorded in the negative-fact registry exactly like a standalone `na`
+/// assertion — so the zero-ingest guard must not reject it. An abstraction
+/// group (`And(__abs_<hash>, body)`) is NOT a negative-only conjunction: its
+/// marker is a positive leaf.
+fn all_conjuncts_reduce_to_negation(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    subs: &HashMap<String, GroundTerm>,
+) -> bool {
+    let Ok(node) = get_node(buffer, node_id) else {
+        return false;
+    };
+    match node {
+        LogicNode::AndNode((l, r)) if !is_abstraction_marker(buffer, *l) => {
+            all_conjuncts_reduce_to_negation(buffer, *l, subs)
+                && all_conjuncts_reduce_to_negation(buffer, *r, subs)
+        }
+        LogicNode::ExistsNode((v, body)) if subs.contains_key(v.as_str()) => {
+            all_conjuncts_reduce_to_negation(buffer, *body, subs)
+        }
+        // Tense/deontic wrappers around a NotNode are handled by
+        // `find_negation_body`'s own descent (a wrapper around a whole
+        // And-spine does not occur: smuni wraps tense per predication).
+        // The exemption holds only for negations the registry can FULLY
+        // represent — an impure body (e.g. Not(Or(..))) must fall through to
+        // the loud fail-closed rejection, not become a silent no-op.
+        _ => match find_negation_body(buffer, node_id, subs, None) {
+            Some((body, _)) => negation_body_purely_representable(buffer, body, subs),
+            None => false,
+        },
+    }
+}
+
+/// True if a negation BODY is a pure positive conjunction — the only shape the
+/// negative-fact registry can represent faithfully. `collect_ground_facts`
+/// silently drops NotNode/OrNode/ForAll leaves, so recording a body that
+/// contains one would register a STRENGTHENED claim: `¬(P ∧ ¬Q)` — e.g. the
+/// `Not(And(..))` half of smuni's Xor lowering, or a `jenai` under a bridi
+/// `na` — would degrade to the group [P], i.e. `¬P`, fabricating contradiction
+/// reports on consistent KBs. Mirrors `collect_ground_facts`' transparent
+/// arms; an abstraction group counts as representable (the marker predicate
+/// stands for the whole opaque body by design).
+fn negation_body_purely_representable(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    subs: &HashMap<String, GroundTerm>,
+) -> bool {
+    let Ok(node) = get_node(buffer, node_id) else {
+        return false;
+    };
+    match node {
+        LogicNode::AndNode((l, r)) => {
+            if is_abstraction_marker(buffer, *l) {
+                true
+            } else {
+                negation_body_purely_representable(buffer, *l, subs)
+                    && negation_body_purely_representable(buffer, *r, subs)
+            }
+        }
+        LogicNode::ExistsNode((v, body)) => {
+            subs.contains_key(v.as_str()) && negation_body_purely_representable(buffer, *body, subs)
+        }
+        LogicNode::PastNode(n)
+        | LogicNode::PresentNode(n)
+        | LogicNode::FutureNode(n)
+        | LogicNode::ObligatoryNode(n)
+        | LogicNode::PermittedNode(n) => negation_body_purely_representable(buffer, *n, subs),
+        LogicNode::Predicate(_) => true,
+        _ => false,
+    }
+}
+
+/// Walk a top-level And-spine and record EVERY conjunct that reduces to a
+/// negation in the negative-fact registry (`P .i je na Q`, a `na`-negated
+/// GIhA tail, or a bare negated root). `collect_ground_facts` skips `NotNode`
+/// leaves — a negation is not a positive ground fact — so without this walk a
+/// negated conjunct inside a compound assertion would vanish with no trace,
+/// while the SAME negation asserted alone is recorded (an asymmetry that
+/// silently dropped the `na` half of `mi klama .i je mi na citka`). Mirrors
+/// `collect_ground_facts`' structural arms; abstraction bodies stay opaque
+/// (their inner negations are quoted content, not asserted claims). Called
+/// only after the ground path's fail-closed guards pass, so a rejected
+/// assertion records nothing.
+fn record_negative_conjuncts(
+    inner: &mut KnowledgeBaseInner,
+    buffer: &LogicBuffer,
+    node_id: u32,
+    subs: &HashMap<String, GroundTerm>,
+) {
+    let Ok(node) = get_node(buffer, node_id) else {
+        return;
+    };
+    match node {
+        LogicNode::AndNode((l, r)) => {
+            if !is_abstraction_marker(buffer, *l) {
+                record_negative_conjuncts(inner, buffer, *l, subs);
+                record_negative_conjuncts(inner, buffer, *r, subs);
+            }
+        }
+        LogicNode::ExistsNode((v, body)) if subs.contains_key(v.as_str()) => {
+            record_negative_conjuncts(inner, buffer, *body, subs)
+        }
+        // Any non-And conjunct: record from THIS node (not its inner NotNode)
+        // so `find_negation_body` accumulates a tense/deontic wrapper into the
+        // stored template, exactly as a root-level negation would.
+        _ => {
+            if root_reduces_to_negation(buffer, node_id, subs) {
+                record_negative_ground_fact(inner, buffer, node_id, subs);
+            }
+        }
     }
 }
 
@@ -1272,6 +1396,15 @@ pub(super) fn record_negative_ground_fact(
     let Some((body_id, tense)) = find_negation_body(buffer, root_id, skolem_subs, None) else {
         return;
     };
+    if !negation_body_purely_representable(buffer, body_id, skolem_subs) {
+        // The body contains sub-formulas `collect_ground_facts` would DROP
+        // (a nested Not/Or/ForAll, e.g. the Not(And(P, ¬Q)) half of an Xor
+        // lowering, or `na … jenai …`). Recording the partial body would
+        // register a STRENGTHENED negation (¬(P ∧ ¬Q) degraded to ¬P) and
+        // fabricate contradiction reports on consistent KBs — keep the
+        // closed-world no-op instead.
+        return;
+    }
     let mut leaves = Vec::new();
     collect_ground_facts(buffer, body_id, skolem_subs, tense, &mut leaves);
     if leaves.is_empty() {
@@ -1667,24 +1800,34 @@ pub(super) fn process_assertion(
             // (`.i ju`, which smuni flattens to And(Or, Not(And)) that this path cannot
             // hold). Returning Ok with a fact id would misrepresent it as asserted when
             // querying it back yields False. Exemptions: numeric quantifiers (Count) store
-            // their witnesses separately, and negated ground facts (`na <selbri>`) are
-            // accepted — they store nothing in the POSITIVE store (NAF/CWA query semantics
+            // their witnesses separately, and negated ground facts (`na <selbri>`,
+            // including a conjunction whose EVERY conjunct is negated) are accepted —
+            // they store nothing in the POSITIVE store (NAF/CWA query semantics
             // unchanged) but are recorded in the negative-fact registry so a later
             // contrary positive is flagged by `check_contradictions`. Universals never
             // reach this branch — they take the rule path above.
-            if nothing_collected && !registered {
-                if root_reduces_to_negation(logic, root_id, &skolem_subs) {
-                    record_negative_ground_fact(inner, logic, root_id, &skolem_subs);
-                } else if !contains_count_node(logic, root_id) {
-                    return Err(
-                        "assertion has no representable content: a bare disjunction or \
-                         exclusive-or ingests no facts and registers no rules. Rejecting to \
-                         preserve soundness rather than reporting it as asserted (querying it \
-                         back would return False)."
-                            .to_string(),
-                    );
-                }
+            if nothing_collected
+                && !registered
+                && !all_conjuncts_reduce_to_negation(logic, root_id, &skolem_subs)
+                && !contains_count_node(logic, root_id)
+            {
+                return Err(
+                    "assertion has no representable content: a bare disjunction, an \
+                     exclusive-or, or a negation whose body is not a plain conjunction \
+                     of positive facts ingests no facts and registers no rules. \
+                     Rejecting to preserve soundness rather than reporting it as \
+                     asserted (querying it back would return False)."
+                        .to_string(),
+                );
             }
+
+            // Record every conjunct that reduces to a negation (a bare negated
+            // root, `P .i je na Q`, a `na`-negated GIhA tail) in the
+            // negative-fact registry. Runs AFTER the fail-closed guards so a
+            // rejected assertion records nothing. Previously only a root-level
+            // negation was recorded — a negated conjunct inside a compound
+            // assertion was silently dropped.
+            record_negative_conjuncts(inner, logic, root_id, &skolem_subs);
         }
 
         // Phase 3: Generate extra witnesses for Count quantifiers (n > 1)

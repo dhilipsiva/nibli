@@ -26,8 +26,11 @@ const MIN_CHECKED: usize = 100;
 /// the gate's first run found five (four DDI lines with the invalid cmevla
 /// `.fenituin.` — a rising diphthong after a consonant, renamed `.fenitoin.`; one
 /// readme line using the relaxed `je na` selbri-connective negation, rewritten to
-/// the official `jenai`, which gerna now parses). Note gerna's GRAMMAR still accepts
-/// both relaxed forms — this gate guarantees no shipped or generated line USES them.
+/// the official `jenai`). The bare `je na` form is now rejected at the GRAMMAR
+/// level (`test_connective_bare_na_after_je_rejected` in gerna pins it — the
+/// 2026-07-10 int19h feedback probe re-found the over-acceptance in the wild);
+/// the relaxed cmevla morphology is still accepted by gerna, and this gate
+/// guarantees no shipped or generated line USES it.
 ///
 /// INVARIANT (enforced below): every entry must STILL diverge — once a line is
 /// fixed, its entry must be deleted, so this list can never go stale.
@@ -52,6 +55,26 @@ fn gerna_accepted_sentences_are_camxes_parseable() {
             if seen.insert(line.to_string()) {
                 lines.push(line.to_string());
             }
+        }
+    }
+    // 1b. …plus curated GIhA bridi-tail shapes (the random generators do not
+    //     emit bridi-tails yet — TODO.md — so without these the gate would
+    //     never cross-check the GIhA surface against the official grammar).
+    for line in [
+        "mi klama gi'e citka",
+        "mi klama le zarci gi'e citka lo plise",
+        "la .terdi. cu na se tarmi gi'e kunti",
+        "mi klama gi'e na citka",
+        "mi na klama gi'e na citka",
+        "mi klama gi'e citka gi'e sipna",
+        "mi klama gi'a citka",
+        "mi klama gi'o citka",
+        "mi klama gi'u citka",
+        "mi klama gi'enai citka",
+        "mi klama gi'e nai citka",
+    ] {
+        if seen.insert(line.to_string()) {
+            lines.push(line.to_string());
         }
     }
     // 2. …plus a seeded random batch from all three case generators (facts, rules,

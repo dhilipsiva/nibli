@@ -96,7 +96,17 @@ Current coverage of Lojban grammar, semantics, and reasoning in Nibli.
 | Feature | Status | Notes |
 |---------|--------|-------|
 | `je` `ja` `jo` `ju` | Done | Same semantics as sumti connectives |
-| `jenai` `janai` `jonai` `junai` (nai-suffixed) | Done | Right-operand negation; `X jenai Y` ≡ `X je na Y` (the relaxed `na` form is also accepted) |
+| `jenai` `janai` `jonai` `junai` (nai-suffixed) | Done | Right-operand negation. Bare `na` after a plain connective (`X je na Y`) is REJECTED with a diagnostic pointing at the compound form — camxes-std parity (the historical relaxation was an over-acceptance) |
+
+### Bridi-tail Connectives (GIhA)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `gi'e` (AND) | Done (constant heads) | Each tail is a full predication (own selbri + trailing sumti) sharing the head terms; desugars to the `.i je` Connected shape with the head repeated (one sentence, one logic root); conjuncts independently queryable after assertion. `go'i` afterwards repeats the LAST tail (Connected-sentence parity) |
+| Head restriction | Fail-closed | Only constant heads: names (`la .rex.`, `la terdi`), non-variable pro-sumti (`mi`/`do`/`ko'a`…), quoted literals, `li` numbers. A quantified or description head (`da`, `lo gerku`, `re lo …`) is REJECTED — repeating it per tail would re-quantify one surface scope (officially `da klama gi'e citka` binds ONE witness) and return a wrong TRUE on disjoint witnesses. Restate as `.i je` sentences (repetition explicit) until head witnesses are genuinely shared (TODO) |
+| `gi'a` (OR) / `gi'o` (IFF) / `gi'u` (XOR) | Done (parse + query) | Compile like their `.i ja`/`.i jo`/`.i ju` counterparts. Assert behavior pinned by tests: bare `gi'a`/`gi'u` fail closed; `gi'o` registers its two conditional rules (a bare side then queries Unknown — cycle, never TRUE). Known completeness gap: `gi'a na <tail>` registers an inert conditional (event-Skolem constants — never fires modus ponens; same as `.i ja … na`, see TODO) |
+| `nai` suffix | Done | Right-tail negation — BOTH spellings: fused `gi'enai` (single token via the lexer's `reclassify_fused_giha_nai` pass; without it the fused form lexed as a phantom lujvo tanru that INVERTED the negation) and spaced `gi'e nai` |
+| `na` before a tail | Done | Negates that tail only; a negated tail is recorded in the negative-fact registry (contradiction detection), like a standalone `na` assertion — but only when the negation body is a pure positive conjunction (an impure body, e.g. an Xor lowering's `Not(And(P, ¬Q))`, is never recorded: it would degrade to a STRENGTHENED `¬P` and fabricate contradictions) |
+| Tense/attitudinal on a tail (`gi'e pu …`) | Not supported | Rejected with a targeted diagnostic; a tense before the first selbri applies to the first tail only |
 
 ### Sentence Connectives
 | Feature | Status | Notes |
@@ -246,7 +256,7 @@ Current coverage of Lojban grammar, semantics, and reasoning in Nibli.
 | Place/modal tags | ~90% (missing `se` on BAI, stacking) |
 | Selbri constructs | ~90% (missing `me`, `co`) |
 | Relative clauses | ~90% (missing afterthought variants) |
-| Connectives | ~85% (missing `go`/`gu` forethought) |
+| Connectives | ~90% (missing `gu` forethought variants, GIhA tense-tails) |
 | Abstractions | ~70% (5 of 8 NU types) |
 | Temporal tense (pu/ca/ba) | ~100% |
 | Extended tense (spatial, interval, iteration) | ~0% |

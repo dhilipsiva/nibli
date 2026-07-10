@@ -110,8 +110,107 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         }
 
         let bridi = self.parse_simple_sentence()?;
+
+        // GIhA bridi-tail connectives: `mi klama gi'e citka` — each tail is a
+        // full predication (its own selbri + trailing sumti) sharing the head
+        // terms. Desugars to the same `Sentence::Connected`/`Afterthought`
+        // shape as `.i je` with the head terms repeated (the shared `&'arena
+        // [Sumti]` slice is referenced by every tail's Bridi), so smuni, the
+        // flattener, go'i resolution, and logji all apply unchanged. The chain
+        // stays ONE sentence → one logic root, which keeps `gi'a`/`gi'o`/`gi'u`
+        // a single compound fact (an Or/Iff/Xor must never split into
+        // independent facts) while logji's ground-path conjunction flattening
+        // stores a `gi'e`'s conjuncts as independently queryable facts.
+        //
+        // CONSTANT HEADS ONLY: repeating the head is semantically exact for
+        // names/pro-sumti constants, but a quantified or description head
+        // (`da`, `lo gerku`, `re lo …`) would be RE-QUANTIFIED per tail —
+        // officially `da klama gi'e citka` is ∃x(klama(x) ∧ citka(x)), one
+        // witness, while the repeated head compiles to two independent ∃s and
+        // returns a wrong TRUE on disjoint witnesses. Fail closed until head
+        // witnesses are genuinely shared across tails (see TODO.md).
+        //
+        // The fused spellings `gi'enai`… arrive as single Cmavo tokens (the
+        // lexer's `reclassify_fused_giha_nai` pass); the spaced `gi'e nai` is
+        // two tokens — both negate the right tail.
+        let head_terms = bridi.head_terms;
+        let mut sentence = Sentence::Simple(bridi);
+        loop {
+            let (connective, fused_nai) = match self.peek_cmavo() {
+                Some("gi'e") => (Connective::Je, false),
+                Some("gi'a") => (Connective::Ja, false),
+                Some("gi'o") => (Connective::Jo, false),
+                Some("gi'u") => (Connective::Ju, false),
+                Some("gi'enai") => (Connective::Je, true),
+                Some("gi'anai") => (Connective::Ja, true),
+                Some("gi'onai") => (Connective::Jo, true),
+                Some("gi'unai") => (Connective::Ju, true),
+                _ => break,
+            };
+            if !head_terms.iter().all(giha_safe_head) {
+                self.leave();
+                return Err(self.error(
+                    "a GIhA bridi-tail (gi'e/gi'a/gi'o/gi'u) with a quantified, \
+                     description, or otherwise non-constant head is not supported: \
+                     the shared head would be re-quantified per tail, silently \
+                     splitting its scope. Restate as separate `.i je` sentences \
+                     (making the repetition explicit) or use a name/constant head",
+                ));
+            }
+            self.pos += 1;
+            let right_negated = fused_nai || self.eat_cmavo("nai");
+
+            let tail = self.parse_bridi_tail(head_terms)?;
+            sentence = Sentence::Connected {
+                connective: SentenceConnective::Afterthought {
+                    left_negated: false,
+                    connective,
+                    right_negated,
+                },
+                left: self.arena.alloc(sentence),
+                right: self.arena.alloc(Sentence::Simple(tail)),
+            };
+        }
+
         self.leave();
-        Ok(Sentence::Simple(bridi))
+        Ok(sentence)
+    }
+
+    /// Parse one GIhA bridi-tail: `[na] selbri tail-terms [vau]`, sharing the
+    /// already-parsed head terms. A leading `na` negates this tail only (it
+    /// lands on the tail Bridi's `negated` flag, mirroring the simple-sentence
+    /// unwrap of a top-level `Selbri::Negated`).
+    fn parse_bridi_tail(
+        &mut self,
+        head_terms: &'arena [Sumti<'arena>],
+    ) -> Result<Bridi<'arena>, ParseError> {
+        if matches!(self.peek_cmavo(), Some("pu" | "ca" | "ba")) {
+            return Err(self.error(
+                "a tense marker on a GIhA bridi-tail is not supported (a tense \
+                 before the first selbri applies to the first tail only); \
+                 restate as separate `.i` sentences to tense each claim",
+            ));
+        }
+        let selbri = match self.try_parse_selbri()? {
+            Some(s) => s,
+            None => return Err(self.error("expected selbri after bridi-tail connective")),
+        };
+        let (selbri, negated) = match selbri {
+            Selbri::Negated(inner) => (inner.clone(), true),
+            other => (other, false),
+        };
+
+        let tail_terms = self.parse_terms();
+        self.eat_cmavo("vau");
+
+        Ok(Bridi {
+            selbri,
+            head_terms,
+            tail_terms: self.arena.alloc_slice_fill_iter(tail_terms),
+            negated,
+            tense: None,
+            attitudinal: None,
+        })
     }
 
     /// Parse a simple (non-connected) sentence into a Bridi.
@@ -172,5 +271,26 @@ impl<'a, 'arena> Parser<'a, 'arena> {
             tense,
             attitudinal,
         })
+    }
+}
+
+/// True if a head sumti denotes a constant that can be repeated per GIhA tail
+/// without changing meaning: names, non-variable pro-sumti, quoted literals,
+/// and numbers (plus place-tagged wrappers of those). Everything that mints a
+/// fresh witness or quantifier per compilation — descriptions, `da`/`de`/`di`,
+/// quantified descriptions, sumti connectives, modal tags, relative clauses,
+/// `zo'e` — makes the GIhA loop fail closed (re-quantifying the head per tail
+/// would silently split one surface quantifier scope into independent ones).
+fn giha_safe_head(s: &Sumti) -> bool {
+    match s {
+        Sumti::ProSumti(w) => !matches!(*w, "da" | "de" | "di"),
+        Sumti::Name(_) | Sumti::QuotedLiteral(_) | Sumti::Number(_) => true,
+        // `la <selbri>` is a rigid name — smuni compiles it to a bare Constant
+        // (no witness, no quantifier), so repeating it per tail is exact.
+        Sumti::Description {
+            gadri: Gadri::La, ..
+        } => true,
+        Sumti::Tagged(_, inner) => giha_safe_head(inner),
+        _ => false,
     }
 }

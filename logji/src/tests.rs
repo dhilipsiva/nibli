@@ -11121,7 +11121,9 @@ fn test_disjunctive_conclusion_retraction_clears_constraint() {
 /// Build a MIXED conclusion head `∀x. R(x) → (P(x) ∧ (Q(x) ∨ S(x)))`:
 ///   ForAll(_v0, Or(Not(R(_v0)), And(P(_v0), Or(Q(_v0), S(_v0)))))
 /// Soundly splits into a Horn rule (R → P) + a `DisjunctiveConstraint` (R → Q ∨ S).
-/// Not surface-reachable today (gi'e is unimplemented) — a raw-FOL / forward-compat shape.
+/// Not surface-reachable — `gi'e` desugars at the SENTENCE level (head repeated,
+/// so `ro lo … gi'e …` is a conjunction of two universals, never one rule with a
+/// compound conclusion). A raw-FOL / forward-compat shape.
 fn make_mixed_conclusion(restrictor: &str, p: &str, q: &str, s: &str) -> LogicBuffer {
     let mut nodes = Vec::new();
     let v = || {
@@ -11281,7 +11283,8 @@ fn event_group(nodes: &mut Vec<LogicNode>, name: &str, ev: &str) -> u32 {
 
 #[test]
 fn test_mixed_conclusion_event_decomposed_no_registry_pollution() {
-    // The realistic (event-decomposed) mixed head — what a future `gi'e` would lower to:
+    // The realistic (event-decomposed) mixed head — what a rule-conclusion-level GIhA
+    // would lower to (the shipped `gi'e` desugars at sentence level instead):
     // ∀x. gerku(x) → (broda(x) ∧ (danlu(x) ∨ xanlu(x))), every predicate a Neo-Davidsonian
     // group with a DISTINCT event var. Verifies the Horn part compiles AND the Or-part's
     // conclusion event existentials are filtered out of the GLOBAL skolem_fn_registry.

@@ -479,8 +479,10 @@ fn disjunctive_conclusion_jo_ju_stay_fail_closed() {
     // `jo` (biconditional) and `ju` (xor) are the only surface selbri connectives that
     // produce a MIXED conclusion head, but their expansions carry Not(..) / Not(And(..)),
     // which are not Horn-able — so they correctly stay fail-closed. (The clean mixed head
-    // `And(P, Or)` is reachable only via raw FOL; its positive case lives in the logji
-    // `test_mixed_conclusion_*` unit tests, since `gi'e` is unimplemented.)
+    // `And(P, Or)` is still reachable only via raw FOL; its positive case lives in the
+    // logji `test_mixed_conclusion_*` unit tests. `gi'e` does NOT produce it: the GIhA
+    // desugar repeats the head at the SENTENCE level, so `ro lo … gi'e …` compiles to a
+    // conjunction of two universals, not one rule with a compound conclusion.)
     let engine = NibliEngine::new();
     assert!(
         engine.assert_text("ro lo gerku cu danlu jo xanlu").is_err(),
@@ -496,6 +498,268 @@ fn disjunctive_conclusion_jo_ju_stay_fail_closed() {
     assert!(
         engine2.check_contradictions().is_empty(),
         "a failed `ju` assertion leaves no constraint (rollback)"
+    );
+}
+
+// ── GIhA bridi-tail connectives (gi'e/gi'a/gi'o/gi'u) ──
+// `mi klama gi'e citka`: each tail is a full predication sharing the head
+// terms. gerna desugars the chain to the `.i je` Connected shape with the head
+// repeated (ONE sentence → one logic root), and logji's ground-path
+// conjunction flattening stores a `gi'e`'s conjuncts as independently
+// queryable facts. Surfaced by int19h's nibli-fanva feedback (2026-07-10):
+// idiomatic reference translations use `gi'e` in nearly every sentence.
+
+#[test]
+fn giha_gi_e_asserts_both_conjuncts() {
+    let engine = engine_with_facts(&["mi klama gi'e citka"]);
+    let (klama, _, _) = engine.query_text_with_proof("mi klama").unwrap();
+    assert_true(&klama, "first gi'e tail is independently queryable");
+    let (citka, _, _) = engine.query_text_with_proof("mi citka").unwrap();
+    assert_true(&citka, "second gi'e tail is independently queryable");
+    let (sipna, _, _) = engine.query_text_with_proof("mi sipna").unwrap();
+    assert_false(&sipna, "unasserted predication stays FALSE (CWA control)");
+}
+
+#[test]
+fn giha_per_tail_trailing_sumti() {
+    // Each tail keeps its own trailing sumti; the head is shared.
+    let engine = engine_with_facts(&["mi klama le zarci gi'e citka lo plise"]);
+    let (klama, _, _) = engine.query_text_with_proof("mi klama le zarci").unwrap();
+    assert_true(&klama, "first tail with its own x2");
+    let (citka, _, _) = engine.query_text_with_proof("mi citka lo plise").unwrap();
+    assert_true(&citka, "second tail with its own x2");
+    let (cross, _, _) = engine.query_text_with_proof("mi citka le zarci").unwrap();
+    assert_false(&cross, "tail sumti must not leak across tails");
+}
+
+#[test]
+fn giha_genesis_na_tail_verse() {
+    // int19h's Genesis 1:2 shape, with a NAME head: `la .terdi. cu na se tarmi
+    // gi'e kunti` ("the earth was without form AND void") — the `na` binds its
+    // tail only. The description-head original (`lo terdi cu …`) is REJECTED:
+    // a description head would mint a fresh witness per tail, silently
+    // splitting one surface referent into two (wrong TRUE on disjoint
+    // witnesses — see giha_quantified_or_description_head_rejected).
+    let engine = engine_with_facts(&["la .terdi. cu na se tarmi gi'e kunti"]);
+    let (kunti, _, _) = engine.query_text_with_proof("la .terdi. cu kunti").unwrap();
+    assert_true(&kunti, "positive tail asserted");
+    let (tarmi, _, _) = engine
+        .query_text_with_proof("la .terdi. cu se tarmi")
+        .unwrap();
+    assert_false(&tarmi, "negated tail stores no positive fact");
+}
+
+#[test]
+fn giha_quantified_or_description_head_rejected() {
+    // `da klama gi'e citka` is officially ∃x(klama(x) ∧ citka(x)) — ONE
+    // witness. The repeated-head desugar would compile two independent ∃s and
+    // return TRUE on disjoint witnesses (rex goes, spot eats). Fail closed.
+    let engine = NibliEngine::new();
+    for text in ["da klama gi'e citka", "lo terdi cu na se tarmi gi'e kunti"] {
+        let err = engine
+            .assert_text(text)
+            .expect_err("non-constant GIhA head must be rejected");
+        assert!(
+            err.to_string().contains("re-quantified"),
+            "`{text}`: expected the scope-splitting diagnostic, got: {err}"
+        );
+    }
+}
+
+#[test]
+fn giha_fused_nai_negates_right_tail() {
+    // Solid `gi'enai` must behave exactly like `gi'e nai` (before the lexer
+    // fix it parsed as a phantom lujvo tanru that INVERTED the negation:
+    // `mi citka` came back TRUE and `mi klama` FALSE).
+    let engine = engine_with_facts(&["mi klama gi'enai citka"]);
+    let (klama, _, _) = engine.query_text_with_proof("mi klama").unwrap();
+    assert_true(&klama, "positive tail asserted");
+    let (citka, _, _) = engine.query_text_with_proof("mi citka").unwrap();
+    assert_false(&citka, "nai-negated tail stores no positive fact");
+    engine.assert_text("mi citka").unwrap();
+    assert!(
+        !engine.check_contradictions().is_empty(),
+        "contrary positive after a gi'enai tail must flag a contradiction"
+    );
+}
+
+#[test]
+fn giha_xor_negated_tail_fabricates_no_contradiction() {
+    // `mi klama gi'u na citka` is Xor(K, ¬C): smuni lowers it to
+    // And(Or(K,¬C), Not(And(K,¬C))). The Not(And(K,¬C)) conjunct's body is
+    // NOT a pure positive conjunction — recording it would degrade ¬(K ∧ ¬C)
+    // to ¬K (collect_ground_facts drops the inner Not) and fabricate a
+    // contradiction on the consistent KB {K, C} (Xor satisfied: K true, ¬C
+    // false). The purity guard must keep it out of the negative registry.
+    let engine = engine_with_facts(&["mi klama gi'u na citka", "mi klama", "mi citka"]);
+    assert!(
+        engine.check_contradictions().is_empty(),
+        "consistent KB must not report a fabricated contradiction: {:?}",
+        engine.check_contradictions()
+    );
+}
+
+#[test]
+fn iju_negated_operand_fabricates_no_contradiction() {
+    // Same purity-guard regression through the pre-existing `.i ju` surface.
+    let engine = engine_with_facts(&["mi na klama .i ju mi citka", "mi klama", "mi citka"]);
+    assert!(
+        engine.check_contradictions().is_empty(),
+        "consistent KB must not report a fabricated contradiction: {:?}",
+        engine.check_contradictions()
+    );
+}
+
+#[test]
+fn negation_inside_abstraction_fabricates_no_contradiction() {
+    // A negation INSIDE an abstraction is quoted content, not an asserted
+    // claim — the negative-conjunct walk must stop at the abstraction marker.
+    let engine = engine_with_facts(&["mi djuno lo du'u la .rex. na klama", "la .rex. cu klama"]);
+    assert!(
+        engine.check_contradictions().is_empty(),
+        "a quoted negation must not feed contradiction detection: {:?}",
+        engine.check_contradictions()
+    );
+}
+
+#[test]
+fn giha_retraction_removes_both_conjuncts_and_negative_entry() {
+    // A gi'e sentence is ONE fact-id; retracting it must remove both stored
+    // conjuncts AND the na-tail's negative-registry entry (retract ≡
+    // never-asserted).
+    let engine = NibliEngine::new();
+    let ids = engine
+        .assert_text("la .rex. cu gerku gi'e na danlu")
+        .unwrap();
+    assert_eq!(ids.len(), 1, "a GIhA chain is one fact");
+    let (gerku, _, _) = engine.query_text_with_proof("la .rex. cu gerku").unwrap();
+    assert_true(&gerku, "conjunct stored");
+    engine.retract_fact(ids[0]).unwrap();
+    let (gerku2, _, _) = engine.query_text_with_proof("la .rex. cu gerku").unwrap();
+    assert_false(&gerku2, "retracted conjunct gone");
+    engine.assert_text("la .rex. cu danlu").unwrap();
+    assert!(
+        engine.check_contradictions().is_empty(),
+        "retracted na-tail must leave no negative-registry entry"
+    );
+}
+
+#[test]
+fn ije_negated_conjunct_preserves_tense_context() {
+    // The negative template must carry the negated conjunct's tense — a
+    // contrary positive with the SAME tense flags a contradiction.
+    let engine = engine_with_facts(&[
+        "la .rex. cu gerku .i je la .rex. pu na klama",
+        "la .rex. pu klama",
+    ]);
+    assert!(
+        !engine.check_contradictions().is_empty(),
+        "tensed contrary positive must flag the tensed negative conjunct"
+    );
+}
+
+#[test]
+fn giha_gi_o_gi_u_assert_behavior_pinned() {
+    // `gi'o` (iff) asserts like its `.i jo` counterpart: the biconditional
+    // registers two material-conditional rules (accepted; they form a cycle,
+    // so a bare side queries Unknown(CycleCut), never TRUE — no ground fact
+    // is stored). `gi'u` (xor) with positive tails stays fail-closed like
+    // `.i ju`.
+    let engine = NibliEngine::new();
+    engine.assert_text("mi klama gi'o citka").unwrap();
+    let (klama, _, _) = engine.query_text_with_proof("mi klama").unwrap();
+    assert!(
+        !klama.is_true(),
+        "a bare biconditional must not derive either side TRUE: got {klama:?}"
+    );
+    let engine2 = NibliEngine::new();
+    assert!(
+        engine2.assert_text("mi klama gi'u citka").is_err(),
+        "a positive-tails xor assertion must fail closed like `.i ju`"
+    );
+}
+
+#[test]
+fn goi_after_giha_repeats_last_tail() {
+    // `go'i` after a Connected sentence repeats its LAST inner bridi — for a
+    // GIhA chain that is the final tail (documented parity with `.i je`).
+    let engine = engine_with_facts(&["la .rex. cu gerku gi'e citka", "la .spot. cu go'i"]);
+    let (citka, _, _) = engine.query_text_with_proof("la .spot. cu citka").unwrap();
+    assert_true(&citka, "go'i repeats the last tail (citka)");
+    let (gerku, _, _) = engine.query_text_with_proof("la .spot. cu gerku").unwrap();
+    assert_false(&gerku, "go'i must not repeat the first tail");
+}
+
+#[test]
+fn giha_na_tail_records_negative_fact_for_contradiction() {
+    // The `na`-negated tail must land in the negative-fact registry exactly
+    // like a standalone `na` assertion, so a later contrary positive is
+    // flagged. Before the fix, a negated conjunct inside a compound assertion
+    // was silently dropped (`collect_ground_facts` skips NotNode leaves).
+    let engine = engine_with_facts(&["la .rex. cu gerku gi'e na danlu", "la .rex. cu danlu"]);
+    assert!(
+        !engine.check_contradictions().is_empty(),
+        "contrary positive after a na-tail must flag a contradiction"
+    );
+}
+
+#[test]
+fn ije_na_conjunct_records_negative_fact() {
+    // Same registry fix through the pre-existing `.i je` surface: the `na`
+    // half of `P .i je na Q` was silently dropped before.
+    let engine = engine_with_facts(&[
+        "la .rex. cu gerku .i je la .rex. na danlu",
+        "la .rex. cu danlu",
+    ]);
+    assert!(
+        !engine.check_contradictions().is_empty(),
+        "contrary positive after a negated .i je conjunct must flag a contradiction"
+    );
+}
+
+#[test]
+fn giha_all_negative_conjunction_accepted() {
+    // `mi na klama gi'e na citka` — EVERY conjunct negated. Previously the
+    // zero-ingest guard rejected this shape outright ("no representable
+    // content"); now it is accepted like two standalone `na` assertions, each
+    // recorded in the negative-fact registry.
+    let engine = engine_with_facts(&["mi na klama gi'e na citka"]);
+    let (klama, _, _) = engine.query_text_with_proof("mi klama").unwrap();
+    assert_false(&klama, "negated conjuncts store no positive facts");
+    engine.assert_text("mi klama").unwrap();
+    assert!(
+        !engine.check_contradictions().is_empty(),
+        "contrary positive after an all-negative conjunction must flag a contradiction"
+    );
+}
+
+#[test]
+fn giha_gi_a_assert_stays_fail_closed_like_ija() {
+    // A bare disjunction ingests no facts — `gi'a` at assert time fails closed
+    // exactly like its `.i ja` spelled-out form (parity), while remaining fine
+    // as a QUERY.
+    let engine = NibliEngine::new();
+    assert!(
+        engine.assert_text("mi klama gi'a citka").is_err(),
+        "asserting a bare gi'a disjunction must fail closed"
+    );
+    let q = engine_with_facts(&["mi klama"]);
+    let (holds, _, _) = q.query_text_with_proof("mi klama gi'a citka").unwrap();
+    assert_true(&holds, "gi'a as a query is TRUE when one disjunct holds");
+}
+
+#[test]
+fn bare_na_after_selbri_connective_rejected() {
+    // `X je na Y` is not official grammar (camxes-std rejects it; the official
+    // form is the compound `jenai`) — gerna now rejects it with a targeted
+    // diagnostic instead of silently over-accepting.
+    let engine = NibliEngine::new();
+    let err = engine
+        .assert_text("mi barda je na xunre")
+        .expect_err("bare na after je must be a parse error");
+    assert!(
+        err.to_string().contains("jenai"),
+        "diagnostic must point at the compound form, got: {err}"
     );
 }
 

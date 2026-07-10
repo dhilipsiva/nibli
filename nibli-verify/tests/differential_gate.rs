@@ -708,18 +708,76 @@ fn gerna_smuni_seam_conformance() {
         metamorphic += 1;
     }
 
-    // A2. The official `nai`-suffixed selbri connective ≡ the pre-existing relaxed
-    //     `na` form: `X jenai Y` ("and not") and `X je na Y` feed the same
-    //     `Selbri::Negated` path, so the whole readme rule compiles identically
-    //     either way (this is the pair behind the readme.lojban jenai fix).
+    // A2. The historical relaxed `je na` spelling is now a PARSE ERROR (bare
+    //     `na` after a selbri connective is not official grammar — camxes-std
+    //     rejects it; the official form is the compound `jenai`, which must
+    //     still compile). This replaced the old `jenai ≡ je na` metamorphic
+    //     pair when gerna's over-acceptance was fixed.
     {
-        let a = seam::canonicalize(
-            &seam::compile("ro lo se bilga cu se curmi jenai se fanta").unwrap(),
+        seam::compile("ro lo se bilga cu se curmi jenai se fanta")
+            .expect("official `jenai` form must compile");
+        assert!(
+            seam::compile("ro lo se bilga cu se curmi je na se fanta").is_err(),
+            "relaxed `je na` form must be rejected at parse (camxes-std parity)"
         );
+        structural += 1;
+    }
+
+    // A3. GIhA bridi-tail ≡ afterthought sentence connective with the head
+    //     repeated: `mi klama gi'e citka` ≡ `mi klama .i je mi citka` (the
+    //     desugar shares the head-terms slice, so both compile to the same
+    //     And of two head-sharing event predications).
+    {
+        let a = seam::canonicalize(&seam::compile("mi klama gi'e citka").unwrap());
+        let b = seam::canonicalize(&seam::compile("mi klama .i je mi citka").unwrap());
+        assert_eq!(a, b, "metamorphic: `gi'e` ≡ `.i je` with repeated head");
+        metamorphic += 1;
+    }
+
+    // A4. GIhA structural golden: `mi na klama gi'e citka` — ONE root And
+    //     (never two roots: `gi'a`/`gi'o`/`gi'u` must stay a single compound
+    //     fact) whose left conjunct is negated (`na` binds its tail only) and
+    //     whose right is the positive predication.
+    {
+        let b = seam::compile("mi na klama gi'e citka").expect("compile gi'e na-tail");
+        let LogicNode::AndNode((l, r)) = seam::root(&b) else {
+            panic!("gi'e root is And, got {:?}", seam::root(&b));
+        };
+        assert!(
+            matches!(seam::node(&b, *l), LogicNode::NotNode(_)),
+            "the na-tail conjunct is negated, got {:?}",
+            seam::node(&b, *l)
+        );
+        assert!(
+            !matches!(seam::node(&b, *r), LogicNode::NotNode(_)),
+            "the positive tail must not be negated"
+        );
+        structural += 1;
+    }
+
+    // A5. GIhA head restriction: a quantified or description head is REJECTED
+    //     (repeating it per tail would re-quantify one surface scope —
+    //     `da klama gi'e citka` is officially ∃x(klama ∧ citka), one witness,
+    //     but the repeated head would compile to two independent ∃s and return
+    //     a wrong TRUE on disjoint witnesses). A name head compiles and equals
+    //     its spelled-out `.i je` form (int19h's Genesis 1:2 shape, with the
+    //     description swapped for a name).
+    {
+        assert!(
+            seam::compile("da klama gi'e citka").is_err(),
+            "quantified GIhA head must be rejected (scope split)"
+        );
+        assert!(
+            seam::compile("lo terdi cu na se tarmi gi'e kunti").is_err(),
+            "description GIhA head must be rejected (fresh witness per tail)"
+        );
+        structural += 1;
+
+        let a = seam::canonicalize(&seam::compile("la .terdi. cu na se tarmi gi'e kunti").unwrap());
         let b = seam::canonicalize(
-            &seam::compile("ro lo se bilga cu se curmi je na se fanta").unwrap(),
+            &seam::compile("la .terdi. cu na se tarmi .i je la .terdi. cu kunti").unwrap(),
         );
-        assert_eq!(a, b, "metamorphic: `jenai` ≡ `je na` (selbri connective)");
+        assert_eq!(a, b, "metamorphic: gi'e ≡ .i je with name head repeated");
         metamorphic += 1;
     }
 

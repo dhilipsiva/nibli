@@ -339,9 +339,31 @@ pub fn tokenize_with_errors(input: &str) -> (Vec<(LojbanToken, &str)>, Vec<LexEr
     }
 
     reclassify_compounds(&mut tokens, input);
+    reclassify_fused_giha_nai(&mut tokens);
     fix_sumti_connective_nai(&mut tokens, input);
     validate_gismu_clusters(&mut tokens, input, &mut errors);
     (tokens, errors)
+}
+
+/// Post-lex pass: reclassify the fused GIhA+nai compounds.
+///
+/// The solid spellings `gi'enai`/`gi'anai`/`gi'onai`/`gi'unai` match the loose
+/// Lujvo regex (7 letters ending in a vowel — logos longest-match beats
+/// Cmavo("gi'e")), so without this pass they would parse as a phantom lujvo
+/// tanru unit — silently INVERTING the negation (`mi klama gi'enai citka`
+/// became the tanru `klama [gi'enai citka]`, deriving the explicitly-negated
+/// conjunct as TRUE). They are not valid lujvo (no such rafsi), so the exact
+/// string match cannot shadow a real word. `reclassify_compounds` cannot
+/// handle these — it merges Cmevla+Cmavo pairs, and here the whole compound
+/// arrives as ONE Lujvo token.
+fn reclassify_fused_giha_nai(tokens: &mut [(LojbanToken, &str)]) {
+    for tok in tokens.iter_mut() {
+        if tok.0 == LojbanToken::Lujvo
+            && matches!(tok.1, "gi'enai" | "gi'anai" | "gi'onai" | "gi'unai")
+        {
+            tok.0 = LojbanToken::Cmavo;
+        }
+    }
 }
 
 /// Tokenizer returning only the token stream.

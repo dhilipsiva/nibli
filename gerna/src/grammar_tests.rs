@@ -1196,34 +1196,46 @@ fn test_connective_je() {
 
 #[test]
 fn test_connective_jenai_negates_right() {
-    // `jenai` (the official nai-suffixed form, one merged token) ≡ `je na`: a Je
-    // connective whose RIGHT operand is negated. Both shapes must parse identically.
+    // `jenai` (the official nai-suffixed form, one merged token): a Je
+    // connective whose RIGHT operand is negated.
     let arena = Bump::new();
-    for tokens in [
-        vec![cmavo("mi"), gismu("barda"), cmavo("jenai"), gismu("xunre")],
-        vec![
-            cmavo("mi"),
-            gismu("barda"),
-            cmavo("je"),
-            cmavo("na"),
-            gismu("xunre"),
-        ],
-    ] {
-        let r = parse_ok(&tokens, &arena);
-        match &as_bridi(&r.sentences[0]).selbri {
-            Selbri::Connected {
-                connective: Connective::Je,
-                right,
-                ..
-            } => {
-                assert!(
-                    matches!(right, Selbri::Negated(_)),
-                    "right operand must be negated, got {right:?}"
-                );
-            }
-            other => panic!("expected Je with negated right, got {:?}", other),
+    let r = parse_ok(
+        &[cmavo("mi"), gismu("barda"), cmavo("jenai"), gismu("xunre")],
+        &arena,
+    );
+    match &as_bridi(&r.sentences[0]).selbri {
+        Selbri::Connected {
+            connective: Connective::Je,
+            right,
+            ..
+        } => {
+            assert!(
+                matches!(right, Selbri::Negated(_)),
+                "right operand must be negated, got {right:?}"
+            );
         }
+        other => panic!("expected Je with negated right, got {:?}", other),
     }
+}
+
+#[test]
+fn test_connective_bare_na_after_je_rejected() {
+    // Bare `na` after a plain selbri connective (`X je na Y`) is NOT official
+    // grammar — camxes-std rejects it (the official negated form is the
+    // compound `jenai`). gerna once accepted it as a relaxation; the
+    // parse-differential gate (gerna ⊆ camxes on acceptance) pins the
+    // rejection, with a diagnostic pointing at the compound form.
+    let msg = parse_err(&[
+        cmavo("mi"),
+        gismu("barda"),
+        cmavo("je"),
+        cmavo("na"),
+        gismu("xunre"),
+    ]);
+    assert!(
+        msg.contains("jenai"),
+        "rejection must point at the compound negated connective, got: {msg}"
+    );
 }
 
 #[test]
@@ -3956,6 +3968,251 @@ fn test_forethought_go_gi() {
     }
 }
 
+// ─── GIhA bridi-tail connectives (gi'e/gi'a/gi'o/gi'u) ─────────────────────
+// Each tail is a full predication (own selbri + trailing sumti) sharing the
+// head terms; the chain desugars to Sentence::Connected/Afterthought with the
+// head-terms slice shared by every tail's Bridi (one sentence, one root).
+
+/// Unwrap a GIhA-desugared sentence into (connective, right_negated, left bridi, right bridi).
+fn as_giha<'a>(s: &'a Sentence<'a>) -> (Connective, bool, &'a Bridi<'a>, &'a Bridi<'a>) {
+    match s {
+        Sentence::Connected {
+            connective:
+                SentenceConnective::Afterthought {
+                    left_negated: false,
+                    connective,
+                    right_negated,
+                },
+            left,
+            right,
+        } => (*connective, *right_negated, as_bridi(left), as_bridi(right)),
+        other => panic!("expected GIhA Afterthought desugar, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_giha_gi_e_shares_head_terms() {
+    // mi klama gi'e citka → Afterthought(Je) of two bridi sharing head [mi]
+    let arena = Bump::new();
+    let r = parse_ok(
+        &[cmavo("mi"), gismu("klama"), cmavo("gi'e"), gismu("citka")],
+        &arena,
+    );
+    assert_eq!(r.sentences.len(), 1);
+    let (conn, nai, left, right) = as_giha(&r.sentences[0]);
+    assert_eq!(conn, Connective::Je);
+    assert!(!nai);
+    assert_eq!(
+        left.head_terms, right.head_terms,
+        "tails must share the head terms"
+    );
+    assert_eq!(left.head_terms.len(), 1);
+    assert!(matches!(&left.selbri, Selbri::Root(w) if *w == "klama"));
+    assert!(matches!(&right.selbri, Selbri::Root(w) if *w == "citka"));
+}
+
+#[test]
+fn test_giha_per_tail_trailing_sumti() {
+    // mi klama le zarci gi'e citka lo plise → each tail keeps its own tail terms
+    let arena = Bump::new();
+    let r = parse_ok(
+        &[
+            cmavo("mi"),
+            gismu("klama"),
+            cmavo("le"),
+            gismu("zarci"),
+            cmavo("gi'e"),
+            gismu("citka"),
+            cmavo("lo"),
+            gismu("plise"),
+        ],
+        &arena,
+    );
+    let (_, _, left, right) = as_giha(&r.sentences[0]);
+    assert_eq!(left.tail_terms.len(), 1);
+    assert_eq!(right.tail_terms.len(), 1);
+    assert_eq!(left.head_terms, right.head_terms);
+}
+
+#[test]
+fn test_giha_na_tail_negates_that_tail_only() {
+    // mi na se tarmi gi'e kunti → left negated, right not (constant head —
+    // a description head like `lo terdi` is rejected, see
+    // test_giha_quantified_or_description_head_rejected)
+    let arena = Bump::new();
+    let r = parse_ok(
+        &[
+            cmavo("mi"),
+            cmavo("na"),
+            cmavo("se"),
+            gismu("tarmi"),
+            cmavo("gi'e"),
+            gismu("kunti"),
+        ],
+        &arena,
+    );
+    let (_, nai, left, right) = as_giha(&r.sentences[0]);
+    assert!(!nai);
+    assert!(left.negated, "leading na must negate the first tail");
+    assert!(!right.negated);
+
+    // …and on the second tail: mi klama gi'e na citka
+    let r2 = parse_ok(
+        &[
+            cmavo("mi"),
+            gismu("klama"),
+            cmavo("gi'e"),
+            cmavo("na"),
+            gismu("citka"),
+        ],
+        &arena,
+    );
+    let (_, nai2, left2, right2) = as_giha(&r2.sentences[0]);
+    assert!(!nai2);
+    assert!(!left2.negated);
+    assert!(right2.negated, "na before a tail must negate that tail");
+}
+
+#[test]
+fn test_giha_variants_map_to_connectives() {
+    // gi'a → Ja, gi'o → Jo, gi'u → Ju; gi'e nai → Je with right_negated
+    let arena = Bump::new();
+    for (tok, want_conn, want_nai) in [
+        ("gi'a", Connective::Ja, false),
+        ("gi'o", Connective::Jo, false),
+        ("gi'u", Connective::Ju, false),
+    ] {
+        let r = parse_ok(
+            &[cmavo("mi"), gismu("klama"), cmavo(tok), gismu("citka")],
+            &arena,
+        );
+        let (conn, nai, _, _) = as_giha(&r.sentences[0]);
+        assert_eq!(conn, want_conn, "{tok}");
+        assert_eq!(nai, want_nai, "{tok}");
+    }
+    let r = parse_ok(
+        &[
+            cmavo("mi"),
+            gismu("klama"),
+            cmavo("gi'e"),
+            cmavo("nai"),
+            gismu("citka"),
+        ],
+        &arena,
+    );
+    let (conn, nai, _, _) = as_giha(&r.sentences[0]);
+    assert_eq!(conn, Connective::Je);
+    assert!(nai, "gi'e nai must set right_negated");
+}
+
+#[test]
+fn test_giha_chained_left_associative() {
+    // mi klama gi'e citka gi'e sipna → Connected(Connected(klama, citka), sipna)
+    let arena = Bump::new();
+    let r = parse_ok(
+        &[
+            cmavo("mi"),
+            gismu("klama"),
+            cmavo("gi'e"),
+            gismu("citka"),
+            cmavo("gi'e"),
+            gismu("sipna"),
+        ],
+        &arena,
+    );
+    match &r.sentences[0] {
+        Sentence::Connected { left, right, .. } => {
+            let outer_right = as_bridi(right);
+            assert!(matches!(&outer_right.selbri, Selbri::Root(w) if *w == "sipna"));
+            let (_, _, inner_left, inner_right) = as_giha(left);
+            assert!(matches!(&inner_left.selbri, Selbri::Root(w) if *w == "klama"));
+            assert!(matches!(&inner_right.selbri, Selbri::Root(w) if *w == "citka"));
+        }
+        other => panic!("expected nested Connected, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_giha_without_tail_selbri_rejected() {
+    // A dangling gi'e with no following selbri is a parse error.
+    let err = parse_err(&[cmavo("mi"), gismu("klama"), cmavo("gi'e")]);
+    assert!(
+        err.contains("bridi-tail"),
+        "expected the bridi-tail diagnostic, got: {err}"
+    );
+}
+
+#[test]
+fn test_giha_quantified_or_description_head_rejected() {
+    // A quantified or description head would be RE-QUANTIFIED per tail
+    // (officially `da klama gi'e citka` is ∃x(klama(x) ∧ citka(x)) — ONE
+    // witness; the repeated-head desugar would mint two independent ∃s and
+    // return a wrong TRUE on disjoint witnesses). Fail closed.
+    for tokens in [
+        vec![cmavo("da"), gismu("klama"), cmavo("gi'e"), gismu("citka")],
+        vec![
+            cmavo("lo"),
+            gismu("gerku"),
+            cmavo("cu"),
+            gismu("klama"),
+            cmavo("gi'e"),
+            gismu("citka"),
+        ],
+        vec![
+            cmavo("ro"),
+            cmavo("lo"),
+            gismu("gerku"),
+            cmavo("cu"),
+            gismu("klama"),
+            cmavo("gi'e"),
+            gismu("citka"),
+        ],
+    ] {
+        let err = parse_err(&tokens);
+        assert!(
+            err.contains("re-quantified"),
+            "expected the scope-splitting diagnostic, got: {err}"
+        );
+    }
+}
+
+#[test]
+fn test_giha_fused_nai_token_negates_right() {
+    // The fused compound (one Cmavo token, from the lexer's
+    // reclassify_fused_giha_nai pass) must negate the right tail exactly like
+    // the spaced `gi'e nai`.
+    let arena = Bump::new();
+    let r = parse_ok(
+        &[
+            cmavo("mi"),
+            gismu("klama"),
+            cmavo("gi'enai"),
+            gismu("citka"),
+        ],
+        &arena,
+    );
+    let (conn, nai, _, _) = as_giha(&r.sentences[0]);
+    assert_eq!(conn, Connective::Je);
+    assert!(nai, "fused gi'enai must set right_negated");
+}
+
+#[test]
+fn test_giha_tense_in_tail_rejected() {
+    // `mi klama gi'e pu citka` — tense on a tail is unsupported; the
+    // diagnostic must say so instead of a generic selbri error.
+    let err = parse_err(&[
+        cmavo("mi"),
+        gismu("klama"),
+        cmavo("gi'e"),
+        cmavo("pu"),
+        gismu("citka"),
+    ]);
+    assert!(
+        err.contains("tense"),
+        "expected the tense-in-tail diagnostic, got: {err}"
+    );
+}
+
 #[test]
 fn test_parse_error_has_position_info() {
     // Invalid input should produce error with meaningful message
@@ -4374,8 +4631,10 @@ fn test_readme_ro_lo_prenu_cu_menli_se_ponse() {
 }
 
 #[test]
-fn test_readme_ro_lo_se_bilga_cu_se_curmi_je_na_se_fanta() {
-    // "ro lo se bilga cu se curmi je na se fanta" — line 102 of readme.lojban
+fn test_readme_ro_lo_se_bilga_cu_se_curmi_jenai_se_fanta() {
+    // "ro lo se bilga cu se curmi jenai se fanta" — line 102 of readme.lojban
+    // (the official compound form; the historical `je na` spelling is now a
+    // parse error, pinned by test_connective_bare_na_after_je_rejected).
     let arena = Bump::new();
     let r = parse_ok(
         &[
@@ -4386,8 +4645,7 @@ fn test_readme_ro_lo_se_bilga_cu_se_curmi_je_na_se_fanta() {
             cmavo("cu"),
             cmavo("se"),
             gismu("curmi"),
-            cmavo("je"),
-            cmavo("na"),
+            cmavo("jenai"),
             cmavo("se"),
             gismu("fanta"),
         ],

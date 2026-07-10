@@ -371,6 +371,84 @@ fn ja_connective() {
     }
 }
 
+#[test]
+fn bare_na_after_je_rejected_full_pipeline() {
+    // `X je na Y` is not official grammar (use `jenai`) — rejected through the
+    // full lexer→preprocessor→parser pipeline.
+    let err = parse_err("mi barda je na xunre");
+    assert!(err.contains("jenai"), "got: {err}");
+}
+
+// ─── GIhA bridi-tail connectives (full pipeline — exercises the lexer) ───
+
+#[test]
+fn giha_gi_e_full_pipeline() {
+    let arena = Bump::new();
+    let p = parse("mi klama gi'e citka", &arena);
+    match &p.sentences[0] {
+        Sentence::Connected {
+            connective:
+                SentenceConnective::Afterthought {
+                    connective: Connective::Je,
+                    right_negated: false,
+                    ..
+                },
+            ..
+        } => {}
+        other => panic!("expected GIhA Afterthought(Je), got {other:?}"),
+    }
+}
+
+#[test]
+fn giha_fused_nai_lexes_as_connective_not_lujvo() {
+    // THE INVERSION HAZARD: solid `gi'enai` matches the loose Lujvo regex, so
+    // before the lexer's reclassify_fused_giha_nai pass it parsed as a phantom
+    // tanru (`klama [gi'enai citka]`) — deriving the explicitly-NEGATED
+    // conjunct as TRUE. It must parse exactly like the spaced `gi'e nai`.
+    let arena = Bump::new();
+    for text in ["mi klama gi'enai citka", "mi klama gi'e nai citka"] {
+        let p = parse(text, &arena);
+        match &p.sentences[0] {
+            Sentence::Connected {
+                connective:
+                    SentenceConnective::Afterthought {
+                        connective: Connective::Je,
+                        right_negated: true,
+                        ..
+                    },
+                ..
+            } => {}
+            other => panic!("`{text}`: expected Afterthought(Je, nai), got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn giha_fused_nai_without_first_bridi_rejected() {
+    // `mi gi'enai citka` has no first bridi-tail — camxes-std rejects it, and
+    // so must gerna (before the lexer fix this was ACCEPTED as a phantom
+    // `gi'enai citka` tanru: a gerna⊆camxes invariant violation).
+    let err = parse_err("mi gi'enai citka");
+    assert!(!err.is_empty());
+}
+
+#[test]
+fn giha_quantified_head_rejected_full_pipeline() {
+    // Officially `da klama gi'e citka` binds ONE `da` over both tails; the
+    // repeated-head desugar would split the scope. Fail closed.
+    for text in [
+        "da klama gi'e citka",
+        "lo gerku cu klama gi'e citka",
+        "re lo gerku cu klama gi'e citka",
+    ] {
+        let err = parse_err(text);
+        assert!(
+            err.contains("re-quantified"),
+            "`{text}`: expected the scope-splitting diagnostic, got: {err}"
+        );
+    }
+}
+
 // ─── Relative clauses (poi/noi) ──────────────────────────────────
 
 #[test]

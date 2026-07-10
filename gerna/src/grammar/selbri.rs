@@ -28,10 +28,11 @@ impl<'a, 'arena> Parser<'a, 'arena> {
     /// Parse a selbri connective chain: selbri_2 ((je|ja|jo|ju)[nai] selbri_2)*.
     ///
     /// The `nai`-suffixed forms arrive as single tokens (the lexer's compound-cmavo
-    /// merge) and negate the RIGHT operand — `jenai` ("and not") is the official
-    /// grammar's way to write what the pre-existing `je na` relaxation expresses,
-    /// and both feed the same `Selbri::Negated` path, so `X je na Y` ≡ `X jenai Y`
-    /// by construction (pinned by a seam metamorphic pair).
+    /// merge) and negate the RIGHT operand via `Selbri::Negated` — `jenai` ("and
+    /// not") is the official grammar's negated connective. A bare `na` after a
+    /// plain connective (`X je na Y`) is NOT official grammar — camxes-std rejects
+    /// it — so gerna rejects it too, with a diagnostic pointing at the compound
+    /// form (the parse-differential gate pins gerna ⊆ camxes on acceptance).
     pub(crate) fn try_parse_selbri_conn(&mut self) -> Result<Option<Selbri<'arena>>, ParseError> {
         let mut left = match self.try_parse_selbri_2() {
             Some(s) => s,
@@ -52,7 +53,13 @@ impl<'a, 'arena> Parser<'a, 'arena> {
             };
             self.pos += 1;
 
-            let neg_right = nai || self.eat_cmavo("na");
+            if !nai && self.peek_cmavo() == Some("na") {
+                return Err(self.error(
+                    "bare 'na' after a selbri connective is not official grammar: \
+                     use the compound negated connective (jenai/janai/jonai/junai)",
+                ));
+            }
+            let neg_right = nai;
 
             let right_base = self
                 .try_parse_selbri_2()
