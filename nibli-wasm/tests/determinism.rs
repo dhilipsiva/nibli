@@ -59,7 +59,9 @@ fn determinism_corpus_v8() {
     for op in parse_corpus(corpus) {
         match op {
             COp::Assert(l) => match session.assert_text(&l) {
-                Ok(id) => ids.push(id),
+                // One id per root (the corpus has no medial `.i`, so each line
+                // is a single fact — but extend, don't push, to stay correct).
+                Ok(new_ids) => ids.extend(new_ids),
                 Err(_) => panic!("assert '{l}' failed under V8"),
             },
             COp::Retract(k) => {
