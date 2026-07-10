@@ -78,11 +78,13 @@ brismu/zaha/zatske — and feklat; the int19h items from his 2026-07-10 nibli-fa
   MCP calls on his end ("no reason it shouldn't be allowed from the browser"). When live:
   verify `initialize` + `tools/list` + `tersmu` from nibli-ui WITHOUT the proxy, then default
   the proxy URL to the direct endpoint and deprecate the Cloudflare Worker (keep the
-  local-gates degradation path). Longer-term option he offered: jbotci is Rust→WASM and runs
-  fully in-browser (jbotci.app; unpublished crate, referenceable from
-  github.com/int19h/jbotci) — but swapping the camxes gate for jbotci's parser would desync
-  the browser gate from verify-parser's ilmentufa reference (~500/22k intentional
-  divergences: SA erasure, ZOI preprocessing), so embedding is dictionary/tersmu-only if ever.
+  local-gates degradation path). Direct crate embedding was assessed 2026-07-10 and is OFF
+  the table on licensing: jbotci is AGPL-3.0-or-later (nibli is MIT OR Apache-2.0 — linking
+  it into the nibli-ui wasm bundle would relicense the distributed bundle AGPL), unless
+  int19h ever dual-licenses a core crate. Calling his hosted server over HTTP is arm's-length
+  and clean — the CORS'd-MCP route IS the integration. (Also: his parser intentionally
+  diverges from camxes ~500/22k — SA erasure, ZOI preprocessing — so it could never replace
+  the camxes-std gate regardless.)
 
 - **verify-parser: GIhA in the random generators + solid `.ije` lexing** — `gi'e`/`gi'a`/
   `gi'o`/`gi'u` now parse (curated seam cases pin the desugar, and a curated GIhA list rides
