@@ -490,7 +490,11 @@ mod tests {
             roots: vec![2],
         };
         let parts = buf.split_roots();
-        assert_eq!(parts.len(), 1, "a connective's single And-root must stay one fact");
+        assert_eq!(
+            parts.len(),
+            1,
+            "a connective's single And-root must stay one fact"
+        );
         assert_eq!(parts[0], buf);
     }
 }

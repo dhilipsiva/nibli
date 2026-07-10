@@ -147,10 +147,23 @@ fn sanitize_gemini_schema(v: &Value) -> Value {
             for (k, val) in map {
                 match k.as_str() {
                     // JSON-Schema-only / metadata keys Gemini's Schema proto rejects.
-                    "$schema" | "$id" | "$ref" | "$anchor" | "$defs" | "definitions"
-                    | "$comment" | "additionalProperties" | "patternProperties"
-                    | "unevaluatedProperties" | "additionalItems" | "title" | "default"
-                    | "examples" | "readOnly" | "writeOnly" | "deprecated" => {}
+                    "$schema"
+                    | "$id"
+                    | "$ref"
+                    | "$anchor"
+                    | "$defs"
+                    | "definitions"
+                    | "$comment"
+                    | "additionalProperties"
+                    | "patternProperties"
+                    | "unevaluatedProperties"
+                    | "additionalItems"
+                    | "title"
+                    | "default"
+                    | "examples"
+                    | "readOnly"
+                    | "writeOnly"
+                    | "deprecated" => {}
                     "const" => {
                         out.insert("enum".into(), json!([val.clone()]));
                     }

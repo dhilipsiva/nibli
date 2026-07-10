@@ -192,7 +192,10 @@ mod tests {
         ]}}]});
         let r = parse_chat_response(Provider::Gemini, &gem);
         assert_eq!(r.tool_calls.len(), 1);
-        assert_eq!(r.tool_calls[0].thought_signature.as_deref(), Some("SIG_XYZ"));
+        assert_eq!(
+            r.tool_calls[0].thought_signature.as_deref(),
+            Some("SIG_XYZ")
+        );
     }
 
     #[test]
