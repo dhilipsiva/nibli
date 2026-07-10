@@ -220,7 +220,7 @@ const CORE_GISMU_ARITIES: &[(&str, usize)] = &[
     ("gerku", 2),
     ("mlatu", 2),
     ("cmene", 3),
-    ("cusku", 3),
+    ("cusku", 4),
     ("djuno", 4),
     ("jimpe", 2),
     ("gasnu", 2),
@@ -253,6 +253,13 @@ const CORE_GISMU_ARITIES: &[(&str, usize)] = &[
     ("xunre", 1),
     ("pelxu", 1),
     ("crino", 1),
+    // bilga/curmi reach the fallback build only via GISMU_GLOSS_OVERRIDES,
+    // which used to default them to arity 2 while the full lensisku build
+    // derives 3 (bilga: obliged-to-x2-by-standard-x3; curmi:
+    // permits-x2-under-conditions-x3) — a cross-mode flap the verify-dict
+    // gate would trip on. Pin the true arities so both builds agree.
+    ("bilga", 3),
+    ("curmi", 3),
 ];
 
 /// Minimal fallback when dictionary-en.json is absent locally.
@@ -268,7 +275,7 @@ const FALLBACK_GISMU_ENTRIES: &[(&str, usize, &str)] = &[
     ("gerku", 2, "dog"),
     ("mlatu", 2, "cat"),
     ("cmene", 3, "name"),
-    ("cusku", 3, "express"),
+    ("cusku", 4, "express"),
     ("djuno", 4, "know"),
     ("jimpe", 2, "understand"),
     ("gasnu", 2, "do"),
@@ -364,7 +371,7 @@ const GISMU_PLACE_TEMPLATES: &[(&str, &str)] = &[
     ("viska", "{x1} sees {x2}"),
     ("tirna", "{x1} hears {x2}"),
     ("tavla", "{x1} talks to {x2} about {x3}"),
-    ("cusku", "{x1} expresses {x2} to {x3}"),
+    ("cusku", "{x1} expresses {x2} to {x3} via {x4}"),
     ("ctuca", "{x1} teaches {x2} to {x3}"),
     ("tadni", "{x1} studies {x2}"),
     ("nitcu", "{x1} needs {x2}"),

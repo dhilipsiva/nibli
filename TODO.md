@@ -5,20 +5,13 @@ name. Delete a bullet entirely when it fully lands; update it if only partially 
 (The first three items came out of the 2026-07-05 Lojban Discord #proga thread with korvo —
 brismu/zaha/zatske — and feklat; the int19h items from his 2026-07-10 nibli-fanva feedback.)
 
-- **Predilex cross-validation for smuni-dictionary** — Predilex
-  (https://github.com/Ntsekees/Predilex — public-domain CSV thesaurus of language-neutral
-  sememes-as-predicates with per-language lemma mappings). A Lojban mapping file EXISTS:
-  `conlangs/Lojban.csv`, 459 entries (gismu + lujvo + cmavo), each row carrying a Supertype
-  (VT/VI/VD/…), an optional Features arity, and a Sememe cell with an optional slot-reorder
-  string (e.g. `behucu 132` — Lojban→sememe place permutation, same atomic move as korvo's
-  ontology rows). Spike already run (scratchpad `predilex_arity_check.py`): on the 46 rows
-  with a high-confidence arity signal that are also in the lensisku gismu/lujvo set, 37
-  agree / 9 disagree — all 9 are Predilex modeling a coarser place-deleted sememe
-  (legitimate, not a nibli error). (Was 36/10 before the lujvo component-letter arity fix
-  landed in `arity.rs`; the sole remaining undercount then, `flubisli`, is now correct.)
-  TODO: wire this into a repeatable offline validation pass (own bin or a `nibli-verify`
-  leg) that reports divergences and skips known place-deletion cases.
-  200+ Predilex entries also carry formal logic definitions — a possible second oracle later.
+- **Predilex formal-logic definitions as a second oracle** — follow-up to the shipped
+  `verify-dict` gate (the arity cross-validation landed as a `ci` leg: lower-bound
+  invariant, vendored SHA-pinned CSVs in `nibli-verify/vendor/predilex/`, dual
+  full/fallback mode; its first run caught and fixed the `cusku` 3→4 override pin and the
+  `bilga`/`curmi` fallback defaults). 200+ Predilex master entries also carry formal logic
+  definitions (the `definition` column, e.g. `∀`-style formulas) — a possible independent
+  semantic oracle for the corresponding relations later, well beyond arity.
 
 - **Ontology-row import (brismu/zatske interchange)** — korvo proposed flat rows
   `[P, Q, mapping]` (selbri subrelation with terbri mapping: identity `["gerku","danlu",

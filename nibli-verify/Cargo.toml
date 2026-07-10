@@ -11,6 +11,12 @@ nibli-types = { path = "../nibli-types" }
 # acceptance, one level below nibli-engine's parse+compile front door).
 gerna = { path = "../gerna" }
 
+[dev-dependencies]
+# The Predilex arity gate (tests/predilex_differential.rs) joins the vendored
+# Predilex expectations against the SHIPPED dictionary arities. Dev-only so the
+# library's data layer (src/predilex.rs) stays a pure parser.
+smuni-dictionary = { path = "../smuni-dictionary" }
+
 [[bin]]
 name = "nibli-verify"
 path = "src/main.rs"
