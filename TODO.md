@@ -2,16 +2,8 @@
 
 Plain bullets, never numbered — work the FIRST remaining bullet; cross-reference items by
 name. Delete a bullet entirely when it fully lands; update it if only partially done.
-(The first three items came out of the 2026-07-05 Lojban Discord #proga thread with korvo —
+(The first two items came out of the 2026-07-05 Lojban Discord #proga thread with korvo —
 brismu/zaha/zatske — and feklat; the int19h items from his 2026-07-10 nibli-fanva feedback.)
-
-- **Predilex formal-logic definitions as a second oracle** — follow-up to the shipped
-  `verify-dict` gate (the arity cross-validation landed as a `ci` leg: lower-bound
-  invariant, vendored SHA-pinned CSVs in `nibli-verify/vendor/predilex/`, dual
-  full/fallback mode; its first run caught and fixed the `cusku` 3→4 override pin and the
-  `bilga`/`curmi` fallback defaults). 200+ Predilex master entries also carry formal logic
-  definitions (the `definition` column, e.g. `∀`-style formulas) — a possible independent
-  semantic oracle for the corresponding relations later, well beyond arity.
 
 - **Ontology-row import (brismu/zatske interchange)** — korvo proposed flat rows
   `[P, Q, mapping]` (selbri subrelation with terbri mapping: identity `["gerku","danlu",

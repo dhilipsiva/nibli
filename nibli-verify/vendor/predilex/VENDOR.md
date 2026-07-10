@@ -13,9 +13,15 @@
   - `predilex-arity.csv` — a PROJECTION of upstream `predilex.csv` (repo
     root, ~10k sememes) down to the `id,arity` columns (9,995 data rows).
     NOT verbatim — regenerate with the command below.
+  - `predilex-hypernyms.csv` — a PROJECTION of upstream `predilex.csv` down
+    to the `id,hypernyms` columns, rows with non-empty hypernyms only
+    (959 data rows). NOT verbatim — regenerate with the command below.
 - **Consumed by:** `nibli-verify/src/predilex.rs` (`include_str!`), which
-  feeds the `verify-dict` gate (`nibli-verify/tests/predilex_differential.rs`,
-  `just verify-dict`, part of `ci`).
+  feeds the `verify-dict` arity gate
+  (`nibli-verify/tests/predilex_differential.rs`, `just verify-dict`) and the
+  Predilex taxonomy differential (`predilex_taxonomy_agrees_with_vampire` in
+  `nibli-verify/tests/differential_gate.rs`, rides `just verify-soundness`) —
+  both part of `ci`.
 
 ## Refresh (re-pin)
 
@@ -39,6 +45,13 @@ with open('nibli-verify/vendor/predilex/predilex-arity.csv', 'w', newline='',
     w.writerow(['id', 'arity'])
     for k in sorted(arities):
         w.writerow([k, arities[k]])
+hyp = [(r[0], r[14]) for r in data if len(r) > 14 and r[0] and r[14].strip()]
+with open('nibli-verify/vendor/predilex/predilex-hypernyms.csv', 'w', newline='',
+          encoding='utf-8') as f:
+    w = csv.writer(f, lineterminator='\n')
+    w.writerow(['id', 'hypernyms'])
+    for k, h in sorted(hyp):
+        w.writerow([k, h])
 EOF
 ```
 

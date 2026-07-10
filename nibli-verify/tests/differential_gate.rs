@@ -7,7 +7,7 @@ use nibli_types::logic::LogicNode;
 use nibli_verify::oracle_asp::AspConfig;
 use nibli_verify::{
     corpora, corpus, corpus_naf, oracle::OracleConfig, run_corpus, run_corpus_slice,
-    run_naf_corpus, run_random, run_random_count, run_random_naf, seam,
+    run_naf_corpus, run_predilex_taxonomy, run_random, run_random_count, run_random_naf, seam,
 };
 
 /// The gate must actually compare a meaningful number of cases — otherwise a future
@@ -20,6 +20,10 @@ const DEFAULT_RANDOM_COUNT: u64 = 200;
 
 /// Minimum curated stratified-NAF cases the ASP gate must actually check.
 const MIN_CHECKED_NAF: usize = 8;
+
+/// Minimum Predilex-taxonomy cases that must reach the Vampire oracle
+/// (first run checked 74; the lib tests separately floor the edge extraction).
+const MIN_CHECKED_TAXONOMY: usize = 40;
 
 /// How many random stratified-NAF cases the ASP gate runs; override with
 /// `NIBLI_VERIFY_NAF_RANDOM_COUNT`.
@@ -116,6 +120,65 @@ fn random_horn_cases_agree_with_vampire() {
     assert!(
         report.checked() as u64 >= count * 3 / 4,
         "only {} of {count} random cases reached the oracle; sweep near-vacuous",
+        report.checked()
+    );
+}
+
+/// Predilex taxonomy differential: monotone Horn rule programs over REAL
+/// Lojban vocabulary, derived from the vendored Predilex hypernym links
+/// (`cukta` ⇒ `rutni`, `bloti` ⇒ `marce` ⇒ `rutni`, `skami` ⇒ `minji` ⇒
+/// `rutni`, `cakyjukni` ⇒ `danlu`, …) — an independent, human-curated source
+/// of lexical implications, unlike the random generator's toy vocabulary.
+/// Direct edges, 2-hop chains, and closed-world negative controls all must
+/// have nibli agree with Vampire.
+///
+/// Scope note (why hypernyms, not the "formal logic definitions"): the
+/// Predilex master's 208 `definition` formulas are higher-order lambda
+/// calculus with arithmetic (second-order variables, limits, `∄ ≼ ⟛`
+/// operators — mostly mathematical sememes) and are NOT soundly translatable
+/// into nibli's FOL fragment; the hypernym links are the extractable
+/// first-order logical content. First-run tallies (vendor SHA 3dab179):
+/// 54 checked (all agree) / 0 diverge / 0 skip / 0 error.
+#[test]
+fn predilex_taxonomy_agrees_with_vampire() {
+    let cfg = OracleConfig::default();
+    if !nibli_verify::oracle::available(&cfg) {
+        eprintln!(
+            "nibli-verify taxonomy gate SKIPPED: prover '{}' unavailable.",
+            cfg.binary
+        );
+        return;
+    }
+
+    let report = run_predilex_taxonomy(&cfg);
+    let (agree, diverge, skip, error) = report.tally();
+    eprintln!(
+        "nibli-verify predilex-taxonomy: {agree} agree / {diverge} diverge / {skip} skip / \
+         {error} error ({} checked)",
+        report.checked()
+    );
+
+    let errors: Vec<String> = report.errors().iter().map(|o| o.summary()).collect();
+    assert!(
+        errors.is_empty(),
+        "harness errors on taxonomy cases:\n{}",
+        errors.join("\n")
+    );
+
+    let divergences: Vec<String> = report.divergences().iter().map(|o| o.summary()).collect();
+    assert!(
+        divergences.is_empty(),
+        "soundness divergences on Predilex taxonomy cases (nibli disagreed with Vampire):\n{}",
+        divergences.join("\n")
+    );
+
+    // Non-vacuity: the edge extraction is floor-pinned in the lib tests
+    // (>= 20 edges); the case families multiply that. A compile-prune or
+    // filter regression that guts the set must fail loudly.
+    assert!(
+        report.checked() >= MIN_CHECKED_TAXONOMY,
+        "only {} taxonomy cases reached the oracle (need >= {MIN_CHECKED_TAXONOMY}); \
+         gate near-vacuous",
         report.checked()
     );
 }

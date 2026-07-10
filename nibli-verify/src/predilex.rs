@@ -54,6 +54,8 @@ use std::collections::BTreeMap;
 pub const LOJBAN_CSV: &str = include_str!("../vendor/predilex/Lojban.csv");
 /// Vendored `id,arity` projection of the master `predilex.csv` (same pinned SHA).
 pub const ARITY_CSV: &str = include_str!("../vendor/predilex/predilex-arity.csv");
+/// Vendored `id,hypernyms` projection of the master `predilex.csv` (same pinned SHA).
+pub const HYPERNYMS_CSV: &str = include_str!("../vendor/predilex/predilex-hypernyms.csv");
 
 /// Supertype codes that denote a verbal (predicate) lemma. Anything else —
 /// including the empty string and upstream data slips like a permutation
@@ -288,6 +290,83 @@ pub fn judged_rows() -> Vec<(LexRow, RowJudgment)> {
         .collect()
 }
 
+/// Sememe id → hypernym sememe ids (the master's `hypernyms` column: sememe A
+/// entails sememe B — first-order, monotone implications). The 208 `definition`
+/// formulas in the master are, by contrast, higher-order lambda calculus with
+/// arithmetic (second-order variables, limits, `∄ ≼ ⟛` operators — mostly
+/// mathematical sememes) and are NOT translatable into nibli's FOL fragment;
+/// the hypernym links are the mechanizable logical content.
+pub fn hypernym_links() -> Vec<(String, String)> {
+    let records = parse_csv(HYPERNYMS_CSV);
+    assert!(
+        records[0]
+            .iter()
+            .map(String::as_str)
+            .eq(["id", "hypernyms"]),
+        "predilex-hypernyms.csv projection header changed: {:?}",
+        records[0]
+    );
+    let mut links = Vec::new();
+    for r in &records[1..] {
+        for h in r[1].split([';', ',', ' ']).filter(|s| !s.is_empty()) {
+            links.push((r[0].clone(), h.to_string()));
+        }
+    }
+    links
+}
+
+/// Lojban taxonomy edges derived from the Predilex hypernym links:
+/// `(lemma_a, lemma_b)` meaning `∀x. lemma_a(x) ⇒ lemma_b(x)` — real-vocabulary
+/// monotone Horn rules from an independent human-curated source (`cukta` ⇒
+/// `rutni`, `bloti` ⇒ `marce` ⇒ `rutni`, …), consumed by the Track-A taxonomy
+/// differential in `tests/differential_gate.rs`.
+///
+/// Conservative admission rule: both sememes must be mapped to VERBAL Lojban
+/// lemmas (usual `*`/`/` shape skips) AND both must have master arity 1 — a
+/// unary implication has no slot-mapping ambiguity (multi-place hypernym slot
+/// semantics are not documented upstream). Reflexive links (upstream contains
+/// e.g. `rutni ⇒ rutni`-shaped self-rows) are dropped. Every (lemma_a,
+/// lemma_b) combination of a link's mapped lemmas is emitted — the caller
+/// prunes lemmas that don't compile as brivla (e.g. the vowel-initial `ukta`).
+/// Deduped and sorted for determinism.
+pub fn taxonomy_edges() -> Vec<(String, String)> {
+    let master = master_arities();
+    let mut sem_to_lemmas: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for row in lojban_rows() {
+        if row.raw_lemma.starts_with('*')
+            || row.raw_lemma.contains('/')
+            || row.sememe_id.is_empty()
+            || !VERBAL_SUPERTYPES.contains(&row.supertype.as_str())
+        {
+            continue;
+        }
+        let lemmas = sem_to_lemmas.entry(row.sememe_id.clone()).or_default();
+        if !lemmas.contains(&row.lemma) {
+            lemmas.push(row.lemma.clone());
+        }
+    }
+    let unary = |sem: &str| matches!(master.get(sem), Some(Some(1)));
+
+    let mut edges: Vec<(String, String)> = Vec::new();
+    for (sem_a, sem_b) in hypernym_links() {
+        if sem_a == sem_b || !unary(&sem_a) || !unary(&sem_b) {
+            continue;
+        }
+        let (Some(as_), Some(bs)) = (sem_to_lemmas.get(&sem_a), sem_to_lemmas.get(&sem_b)) else {
+            continue;
+        };
+        for a in as_ {
+            for b in bs {
+                if a != b && !edges.contains(&(a.clone(), b.clone())) {
+                    edges.push((a.clone(), b.clone()));
+                }
+            }
+        }
+    }
+    edges.sort();
+    edges
+}
+
 /// Per-word arity lower bounds: rows with a concrete bound, grouped by
 /// normalized lemma, MAX-combined.
 pub fn arity_bounds_by_word() -> BTreeMap<String, WordBound> {
@@ -424,6 +503,40 @@ mod tests {
             row_arity_bound(&row("nosuch", None), &master),
             Skip(MasterArityUnavailable)
         );
+    }
+
+    /// Taxonomy extraction: pinned real edges + shape guarantees. Runs without
+    /// any solver, so a vendored re-pin that guts the hypernym join fails
+    /// loudly even outside the Nix shell.
+    #[test]
+    fn taxonomy_edges_pinned_and_sane() {
+        let edges = taxonomy_edges();
+        // Pinned real edges from the 3dab179 vendored data.
+        for want in [
+            ("cukta", "rutni"),
+            ("skami", "minji"),
+            ("bloti", "marce"),
+            ("cakyjukni", "danlu"),
+        ] {
+            assert!(
+                edges.iter().any(|(a, b)| (a.as_str(), b.as_str()) == want),
+                "expected taxonomy edge {want:?} missing (vendored data re-pinned?)"
+            );
+        }
+        // No reflexive edges (upstream contains rutni ⇒ rutni-shaped self-links).
+        assert!(edges.iter().all(|(a, b)| a != b), "reflexive edge leaked");
+        // Non-vacuity floor: a re-pin or join regression that guts the set
+        // must fail here, not silently shrink the differential.
+        assert!(
+            edges.len() >= 20,
+            "only {} taxonomy edges extracted (need >= 20)",
+            edges.len()
+        );
+        // Determinism: sorted, deduped.
+        let mut sorted = edges.clone();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(edges, sorted, "edges must be sorted + deduped");
     }
 
     /// Pinned REAL rows from the vendored bytes — these fail loudly if a

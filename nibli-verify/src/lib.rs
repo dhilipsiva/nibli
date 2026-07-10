@@ -425,6 +425,85 @@ pub fn run_random(count: u64, base_seed: u64, cfg: &OracleConfig) -> Report {
     Report { outcomes }
 }
 
+/// Run the Predilex taxonomy differential: real-vocabulary monotone Horn rule
+/// programs derived from the vendored Predilex hypernym links
+/// ([`predilex::taxonomy_edges`] — `cukta` ⇒ `rutni`, `bloti` ⇒ `marce` ⇒
+/// `rutni`, …), each checked nibli-vs-Vampire through [`run_lines`]. Unlike
+/// the random generator's 14-word toy vocabulary, these rules are
+/// independent, human-curated lexical implications. Three case families:
+/// direct edges (rule + fact ⊢ hypernym), 2-hop chains, and closed-world
+/// negative controls (an unrelated taxonomy word must be underivable — both
+/// engines say no, agreement is the check).
+pub fn run_predilex_taxonomy(cfg: &OracleConfig) -> Report {
+    let engine = NibliEngine::new();
+
+    // Prune lemmas that don't compile as brivla (e.g. the vowel-initial
+    // `ukta` mapped alongside `cukta`): a compile failure inside `run_lines`
+    // is a hard `Error` that fails the gate, not a skip — mirror
+    // `run_corpus_slice`'s pre-validation.
+    let edges: Vec<(String, String)> = predilex::taxonomy_edges()
+        .into_iter()
+        .filter(|(a, b)| {
+            [a, b]
+                .into_iter()
+                .all(|w| engine.compile_debug(&format!("la .alis. cu {w}")).is_ok())
+        })
+        .collect();
+
+    // Deterministic pool for negative-control picks.
+    let mut vocab: Vec<&str> = edges
+        .iter()
+        .flat_map(|(a, b)| [a.as_str(), b.as_str()])
+        .collect();
+    vocab.sort_unstable();
+    vocab.dedup();
+
+    let mut cases: Vec<generator::GeneratedCase> = Vec::new();
+    for (a, b) in &edges {
+        // Direct edge: rule + fact ⊢ hypernym.
+        cases.push(generator::GeneratedCase {
+            name: format!("taxonomy_{a}_{b}"),
+            kb: vec![format!("ro lo {a} cu {b}"), format!("la .alis. cu {a}")],
+            query: format!("la .alis. cu {b}"),
+        });
+        // CWA negative control: with only this rule + fact asserted, the
+        // entailed set is exactly {a, b} — any other taxonomy word must be
+        // underivable (nibli: closed-world FALSE; Vampire: not entailed).
+        if let Some(x) = vocab.iter().find(|w| *w != a && *w != b) {
+            cases.push(generator::GeneratedCase {
+                name: format!("taxonomy_neg_{a}_{x}"),
+                kb: vec![format!("ro lo {a} cu {b}"), format!("la .alis. cu {a}")],
+                query: format!("la .alis. cu {x}"),
+            });
+        }
+    }
+    // 2-hop chains (a ⇒ b ⇒ c): multi-step modus ponens over the real taxonomy.
+    for (a, b) in &edges {
+        for (b2, c) in &edges {
+            if b == b2 && a != c {
+                cases.push(generator::GeneratedCase {
+                    name: format!("taxonomy_chain_{a}_{b}_{c}"),
+                    kb: vec![
+                        format!("ro lo {a} cu {b}"),
+                        format!("ro lo {b} cu {c}"),
+                        format!("la .alis. cu {a}"),
+                    ],
+                    query: format!("la .alis. cu {c}"),
+                });
+            }
+        }
+    }
+
+    let outcomes = cases
+        .iter()
+        .map(|case| {
+            let kb: Vec<&str> = case.kb.iter().map(String::as_str).collect();
+            run_lines(&engine, &case.name, &kb, &case.query, cfg)
+        })
+        .collect();
+    Report { outcomes }
+}
+
 // ── The clingo (ASP) oracle path: the stratified-NAF + closed-world fragment ──────────────
 
 /// Run a single `(name, kb, query)` against the **clingo (ASP)** oracle end-to-end. Mirrors
