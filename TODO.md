@@ -2,7 +2,7 @@
 
 Plain bullets, never numbered — work the FIRST remaining bullet; cross-reference items by
 name. Delete a bullet entirely when it fully lands; update it if only partially done.
-(The first two items came out of the 2026-07-05 Lojban Discord #proga thread with korvo —
+(The first item came out of the 2026-07-05 Lojban Discord #proga thread with korvo —
 brismu/zaha/zatske — and feklat; the int19h items from his 2026-07-10 nibli-fanva feedback.)
 
 - **Ontology-row import (brismu/zatske interchange)** — korvo proposed flat rows
@@ -20,18 +20,6 @@ brismu/zaha/zatske — and feklat; the int19h items from his 2026-07-10 nibli-fa
   already sent in-thread: the mapping-list direction is ambiguous (a 3-cycle case like
   dugri/tenfa pins it — the [2,1] swap and [1,2] identity examples can't distinguish the
   two readings), and rows want a source field (brismu / zaha / zatske) for provenance.
-
-- **Document the LogicBuffer IR as a consumable format** — three independent parties
-  converged on wanting a shared logic representation: korvo from the ontology side, feklat
-  from the multi-loglang / LLM-verification side, and Ntsekees, who described the same idea
-  unprompted as "Predilog" — a customized logic notation (e.g. `∀c.[Cat(c) ⇒ ∃l. Leg(l,c) ∧
-  Four(l)]`) intended as a JSON translation-pivot between languages, and asked whether nibli
-  already had one (it does: the IR). (feklat also asked about Toaq / Xextan / Eberban
-  front-ends — the answer given: only the parser + dictionary are Lojban-specific; the IR,
-  prover, oracle gates, and Lean proofs are language-agnostic, so the IR is the seam.) Write
-  a short spec: node types, flat-buffer layout, what is stable vs internal, and the existing
-  external entry points (`nibli-wasm` assert/query as the "does this Lojban entail that
-  claim" API). Non-goal for now: actually building non-Lojban front-ends.
 
 - **gasnu: split bare-`.i` sentences into independent facts (DEFERRED)** — a bare-`.i`
   multi-sentence line now becomes N independent facts (one per root, connectives kept whole)

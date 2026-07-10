@@ -53,6 +53,11 @@ Supporting crates:
 | **nibli-wasm** | wasm-bindgen wrapper exposing the in-browser pipeline (powers the live demo) |
 | **nibli** | Native debug REPL and `nibli-validate` tooling |
 
+The FOL IR in the middle of the pipeline — the `LogicBuffer` — is nibli's language-agnostic
+seam and is publicly specified in **[LOGIC_IR.md](LOGIC_IR.md)** (node types, flat-buffer
+layout, emitted-shape invariants, stable-vs-internal surface, and the entry points for
+building alternative front-ends or consumers against it).
+
 ---
 
 ## Runtime Surfaces

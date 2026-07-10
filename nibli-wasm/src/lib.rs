@@ -57,7 +57,7 @@ impl Session {
     }
 
     /// Run a Lojban query. Returns JSON:
-    /// `{ status, detail, naf_dependent, proof_text, proof }`.
+    /// `{ status, detail, naf_dependent, cwa_false, proof_text, why, proof }`.
     pub fn query_with_proof(&self, text: &str) -> Result<String, JsError> {
         let buf = self.compile_text(text).map_err(js_err)?;
         let (result, trace) = self
