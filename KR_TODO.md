@@ -109,6 +109,34 @@ mapped 2026-07-12; load-bearing anchors are quoted per bullet.
   bridi→claim/statement, tanru→compound, xorlo→presupposition-witness,
   gismu→root-word/lexeme, `fanva/PROMPT.md` archive → donation repo). The WIT doc
   comments' Lojban glosses (zo'e/le/la/pu/ca/ba/du/go'i) go with it.
+- **Grammar+dictionary-grounded Formalize prompts (user decision 2026-07-12)** — the
+  Transparency Triad's Formalize system prompt must contain the ACTUAL KR grammar and
+  the dictionary, so the LLM formalizes against ground truth instead of nine
+  few-shots; the agentic parse-error-feedback loop stays as-is. Design notes:
+  (a) GRAMMAR: `include_str!` the pest file (`klaro/src/klaro.pest`, 181 lines /
+  ~9 KB ≈ 2.5–3k tokens — affordable, and in-sync BY CONSTRUCTION since the file IS
+  the parser); distill the semantics tables the grammar can't carry (determiner
+  taxonomy §4, operator/prefix rules §6, `where`/`also` §7) into a compact prose
+  block.
+  (b) DICTIONARY: the full map is ~1,341 aliases (full mode) — three options,
+  decide at implementation: (i) full compact listing (`alias/arity: label1, label2…`
+  per line, ~15–20k tokens — BYO-key users pay per request), (ii) curated core +
+  the existing fail-closed-retry guidance (today's behavior), (iii) RECOMMENDED
+  source-relevant subset: extract content words from the English source, include
+  only matching/near aliases + the curated core — best token/accuracy trade. Any
+  dictionary embedding means the prompt stops being a `&'static str`: a
+  `system_prompt_for(source)` builder assembled at request time from the shipped
+  `klaro_dictionary` map (no drift possible; dual-mode — the CI fallback build
+  embeds the curated core only, loudly).
+  (c) Optimize BOTH prompts (system + the per-request user turn) and measure:
+  attempts-to-converge on a fixed English corpus is the metric (feeds the
+  authoring-study track). Guard tests: few-shots stay gate-valid (existing twin
+  guard), the embedded grammar is the shipped file by construction, the dictionary
+  block is generated from the shipped map in the same build.
+  Applies to all three nibli-ui LLM paths (agentic Formalize, single-shot query
+  formalize, the modal key-test). Sequencing: written here after the KR rename
+  bullet so the prompt is born saying "nibli KR", but it is independent — pull it
+  earlier as plain KLARO_SYSTEM_PROMPT work if wanted.
 - **Predicate-name de-Lojbanization (proof traces contain NO Lojban — the deep one)**
   — today every `LogicBuffer` relation is a gismu (`klaro/src/emit.rs:379-387` maps
   alias→`entry.gismu`; smuni derives `gerku_x1`, `le_domain_gerku`; `=` mints `du`
