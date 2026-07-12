@@ -36,5 +36,5 @@ must goes(me).
 past ~goes(me).
 goes(me) via uses(this).
 dog+cat(me).
-word("any text here").
+name("any text here", Adam).
 product(50, 5, 10).

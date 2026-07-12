@@ -478,7 +478,7 @@ test-all: test test-engine test-store test-backend test-classifier
 
 # CI gate for the hardened runtime surface (fast; native only — no WASM build).
 # For the WASM behavioral smokes too, run `just ci-all`.
-ci: fmt-check clippy-runtime test test-engine test-gasnu test-fanva test-backend test-store test-persistence-replay verify-harness verify-soundness verify-klaro verify-parser verify-dict verify-proofs verify-book-vocab
+ci: fmt-check clippy-runtime test test-engine test-gasnu test-fanva test-backend test-store test-persistence-replay verify-harness verify-soundness verify-klaro verify-klaro-dict verify-parser verify-dict verify-proofs verify-book-vocab
 
 # WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
 # verify-book-capture). Bundles the six gasnu smokes; each depends on
@@ -597,6 +597,16 @@ verify-soundness:
 # LogicBuffer (KNOWN_UNRENDERABLE is exact-line value-pinned with a staleness check).
 verify-klaro:
     cargo test -p nibli-verify --test klaro_gate {{cargo_profile_flag}} -- --nocapture --test-threads=1
+
+# Alias-map differential gate: the SHIPPED klaro-dictionary alias map must agree with
+# the SHIPPED smuni-dictionary (per-alias arity equality, GISMU_TO_ALIAS round-trips,
+# swap validity, reserved/label integrity from the shipped map) plus a behavioral leg:
+# alias(A, B, ...) via klaro+smuni must compile canonically EQUAL to the direct-gismu
+# Lojban via gerna+smuni, for EVERY shipped alias. Dual-mode and never skips: a full
+# local build checks all ~1,341 aliases; the CI fallback build checks the curated core
+# with a loud FALLBACK MODE banner. A mixed-mode build (one crate stale) fails loud.
+verify-klaro-dict:
+    cargo test -p nibli-verify --test alias_differential {{cargo_profile_flag}} -- --nocapture --test-threads=1
 
 # gerna <-> camxes parse-differential (the FRONT-END gate): every sentence gerna accepts
 # must parse under the official Lojban grammar (ilmentufa camxes, driven via node over

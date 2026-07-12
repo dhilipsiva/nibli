@@ -260,6 +260,14 @@ const CORE_GISMU_ARITIES: &[(&str, usize)] = &[
     // gate would trip on. Pin the true arities so both builds agree.
     ("bilga", 3),
     ("curmi", 3),
+    // dilcu/jmive were the same flap in the other direction: the fallback
+    // table said 3/1 while the full lensisku build derives 4 (quotient with
+    // remainder x4) and 2 (alive by standard x2) — found 2026-07-12 by
+    // klaro-dictionary's build-time drift guard, now pinned so a future
+    // export change can't re-flap (the verify-klaro-dict gate checks both
+    // modes against the klaro alias map).
+    ("dilcu", 4),
+    ("jmive", 2),
 ];
 
 /// Minimal fallback when dictionary-en.json is absent locally.
@@ -311,9 +319,13 @@ const FALLBACK_GISMU_ENTRIES: &[(&str, usize, &str)] = &[
     ("prenu", 1, "person"),
     ("pilji", 3, "multiply"),
     ("sumji", 3, "sum"),
-    ("dilcu", 3, "divide"),
+    // dilcu/jmive arities follow the full lensisku derivation (4: quotient
+    // with remainder x4; 2: alive by standard x2), matching the
+    // CORE_GISMU_ARITIES pins above — the fallback table previously said
+    // 3/1, a cross-mode flap the verify-klaro-dict gate now trips on.
+    ("dilcu", 4, "divide"),
     ("danlu", 2, "animal"),
-    ("jmive", 1, "live"),
+    ("jmive", 2, "live"),
     // GDPR / drug-interaction corpus proxy + regulatory vocabulary. Without
     // dictionary-en.json these would vanish from the no-data build, so `get_template` and
     // the rendered place-frames silently diverge from the data build and the render /
@@ -331,6 +343,49 @@ const FALLBACK_GISMU_ENTRIES: &[(&str, usize, &str)] = &[
     ("javni", 3, "rule"),
     ("datni", 3, "data"),
     ("turni", 2, "govern"),
+    // klaro-dictionary curated vocabulary: every gismu the klaro curated alias
+    // table references must resolve here too, with the SAME arity in both build
+    // modes — otherwise a CI fallback build silently compiles these words with
+    // the arity-2 default while klaro's curated table (and every full local
+    // build) says otherwise, the exact cross-mode drift class the
+    // verify-klaro-dict gate rejects (its first fallback run flagged all 34).
+    // Arities mirror the full lensisku derivation (verified equal to klaro's
+    // curated arities by klaro-dictionary's build-time drift guard); glosses
+    // are the first lensisku gloss keyword, matching the data build's chain.
+    ("birti", 2, "certain"),
+    ("cfila", 3, "flaw"),
+    ("cidja", 2, "food"),
+    ("cipni", 2, "bird"),
+    ("ciste", 4, "system"),
+    ("dinju", 2, "building"),
+    ("drani", 4, "correct"),
+    ("dunli", 3, "equal"),
+    ("facki", 3, "discover"),
+    ("fanta", 2, "prevent"),
+    ("finpe", 2, "fish"),
+    ("flalu", 5, "law"),
+    ("kajde", 3, "warn"),
+    ("kanro", 2, "healthy"),
+    ("krinu", 2, "reason"),
+    ("kurji", 2, "take care of"),
+    ("litki", 3, "liquid"),
+    ("logji", 2, "logic"),
+    ("marce", 4, "vehicle"),
+    ("masno", 2, "slow"),
+    ("mleca", 4, "less"),
+    ("nanmu", 1, "man"),
+    ("nibli", 3, "necessitate"),
+    ("ninmu", 1, "woman"),
+    ("notci", 4, "message"),
+    ("ponse", 3, "possess"),
+    ("remna", 1, "human"),
+    ("tadni", 2, "study"),
+    ("verba", 3, "child"),
+    ("xanri", 2, "imaginary"),
+    ("xukmi", 3, "chemical"),
+    ("zbasu", 3, "build"),
+    ("zmadu", 4, "more"),
+    ("zukte", 3, "act"),
 ];
 
 /// Curated gloss overrides for gismu where the first lensisku gloss keyword

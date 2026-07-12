@@ -22,6 +22,10 @@ logji = { path = "../logji" }
 # Predilex expectations against the SHIPPED dictionary arities. Dev-only so the
 # library's data layer (src/predilex.rs) stays a pure parser.
 smuni-dictionary = { path = "../smuni-dictionary" }
+# The alias-map differential gate (tests/alias_differential.rs) joins the
+# SHIPPED klaro alias map against the SHIPPED smuni dictionary — the two
+# independently built phf maps cannot drift.
+klaro-dictionary = { path = "../klaro-dictionary" }
 
 [[bin]]
 name = "nibli-verify"

@@ -34,21 +34,6 @@ residue; every bullet lands independently CI-green.
   `flaselcu'u` — klaro fails closed where gerna tolerates arity-2; lujvo aliases would
   need a generation pass, or the corpus words get curated). Lifted spellings must keep
   the battery's canonicalized-LogicBuffer equality.
-- **alias-map differential gate** — new test binary
-  `nibli-verify/tests/alias_differential.rs` (verify-dict's dual-mode contract: full
-  local build checks all aliases, CI fallback checks the curated core with a FALLBACK
-  banner; never skips): (1) every `AliasEntry.gismu` exists in smuni-dictionary with
-  equal arity — the two independently-built phf maps cannot drift. KNOWN PRE-EXISTING
-  FLAP this gate's CI (fallback) leg will hit: smuni's own `FALLBACK_GISMU_ENTRIES`
-  says dilcu=3 and jmive=1 while its full lensisku build derives 4 and 2 (found
-  2026-07-12 by klaro-dictionary's build-time drift guard; klaro's curated arities
-  follow the FULL-mode values). Fix smuni's fallback table / CORE_GISMU_ARITIES pins
-  as part of this bullet — that is a smuni-dictionary + verify-dict-adjacent change; (2) round-trips
-  `GISMU_TO_ALIAS→ALIASES→gismu`, swap∈2..=arity, swap twice = identity; (3) no alias in
-  `RESERVED_WORDS`, label validity re-asserted from the shipped map; (4) BEHAVIORAL leg:
-  `alias(a, b)` via klaro+smuni ≡ direct-gismu Lojban via gerna+smuni at canonicalized
-  LogicBuffer level; (5) full-mode coverage floor. Justfile `verify-klaro-dict`; JOIN
-  `ci`.
 - **fuzz_klaro target** — fuzz/Cargo.toml (workspace-excluded) gains `klaro` + `smuni`
   deps and `[[bin]] fuzz_klaro` → `fuzz_targets/fuzz_klaro.rs`: parse arbitrary UTF-8;
   when parse succeeds, `smuni::compile_from_gerna_ast` must NEVER report a corrupt AST

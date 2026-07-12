@@ -2857,6 +2857,7 @@ version = "0.1.0"
 dependencies = [
  "gerna",
  "klaro",
+ "klaro-dictionary",
  "logji",
  "nibli-engine",
  "nibli-types",

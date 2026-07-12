@@ -12,7 +12,11 @@
 //!    Lojban front-end compiles must render to Klaro that compiles to the SAME
 //!    canonicalized LogicBuffer. Render failures are gate failures unless the
 //!    exact line is in KNOWN_UNRENDERABLE (value-pinned, still-failing
-//!    invariant — the KNOWN_DIVERGENCES pattern).
+//!    invariant — the KNOWN_DIVERGENCES pattern). DUAL-MODE: a fallback build
+//!    (CI) lacks the generated long-tail aliases, so corpus vocabulary beyond
+//!    the curated core cannot render there — those `dictionary-unknown` lines
+//!    are tallied as fallback-vocab skips, the same disclosed degradation as
+//!    every dual-mode gate; the full local build checks every line.
 
 use nibli_verify::klaro_battery::{CONSTRUCT_INVENTORY, battery_line, canonical, kompile};
 use nibli_verify::{corpora, generator, seam};
@@ -217,9 +221,14 @@ fn klaro_lojban_translation_battery() {
     let allowed: std::collections::HashMap<&str, &str> =
         KNOWN_UNRENDERABLE.iter().copied().collect();
 
+    // Mode read from the artifact under test (the predilex-gate convention): a
+    // fallback klaro-dictionary has ~96 gismu aliased, a full build ~1,338.
+    let full_mode = klaro_dictionary::GISMU_TO_ALIAS.len() >= 1000;
+
     let mut checked = 0usize;
     let mut skipped = 0usize;
     let mut allowlisted = 0usize;
+    let mut fallback_vocab_skipped = 0usize;
     let mut failures: Vec<String> = Vec::new();
     let mut stale_allowlist: Vec<&str> = Vec::new();
 
@@ -240,6 +249,10 @@ fn klaro_lojban_translation_battery() {
             Err(e) => {
                 if allowed.contains_key(line.as_str()) {
                     allowlisted += 1;
+                } else if !full_mode && e.contains("dictionary-unknown") {
+                    // Long-tail vocabulary outside the curated fallback core —
+                    // renderable only with the generated aliases (full build).
+                    fallback_vocab_skipped += 1;
                 } else {
                     failures.push(e);
                 }
@@ -248,8 +261,15 @@ fn klaro_lojban_translation_battery() {
     }
 
     println!(
-        "klaro battery: {checked} checked, {skipped} lojban-skipped, {allowlisted} allowlisted"
+        "klaro battery: {checked} checked, {skipped} lojban-skipped, {allowlisted} allowlisted, \
+         {fallback_vocab_skipped} fallback-vocab-skipped"
     );
+    if !full_mode {
+        eprintln!(
+            "klaro battery: FALLBACK MODE — {fallback_vocab_skipped} corpus lines use vocabulary \
+             beyond the curated core. Full validation needs `just fetch-dict` + rebuild."
+        );
+    }
     assert!(
         stale_allowlist.is_empty(),
         "allowlist entries now PASS — remove them: {stale_allowlist:?}"
