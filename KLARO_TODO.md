@@ -10,8 +10,18 @@ primary/default language everywhere, gerna demoted to the equivalence battery + 
 `.lojban` load; FULL alias-map generation (~1,338 gismu) from day one; parser tech =
 **pest** (`klaro/src/klaro.pest` is the executable grammar — the normative §15; the
 walker in `klaro/src/parser.rs` builds the tree AST and owns the §6-errata /
-arg-ordering / count-integrality rejects with targeted positioned errors); every bullet
-lands independently CI-green.
+arg-ordering / count-integrality rejects with targeted positioned errors); DESIGN
+THESIS: Klaro is a human-intuitive knowledge-representation language — maximally
+intuitive SUBJECT TO semantic distinctions staying visible in the spelling (the
+silent-mistranslation ceiling; LLM-generability is a tracked side goal, measured via
+the fanva retarget); the **logji reasoning core stays untouched throughout this
+program** — no hard freeze, though: the two contained §14 clean-core items that touch
+logji (the xorlo presupposition-witness flag — an assert-time Lojban-fidelity
+behavior, not inference — and the compute-set rename) remain LIVE v2 OPTIONS,
+exercised only at clean-core after gerna retires; until then Klaro's `every` mints
+xorlo witnesses identically to Lojban (compat requires it — the equivalence battery
+checks verdict identity) and the behavior is disclosed spec semantics, not hidden
+residue; every bullet lands independently CI-green.
 
 - **klaro parser completion + resolve** — rel clauses (`where`/`also`; bare-predicate
   sugar tries Claim branch first; mandatory-`it` static check: full-claim body with zero
