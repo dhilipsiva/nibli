@@ -34,6 +34,8 @@ fn parse_assert_args(input: &str) -> Result<(String, Vec<EngineLogicalTerm>), St
 fn run_test_book() {
     eprintln!("[test-book] Starting book example test...");
     let engine = NibliEngine::new();
+    // The book examples are Lojban (Klaro is the default since THE FLIP).
+    engine.set_language(Language::Lojban);
 
     let commands = vec![
         (".i lo prenu cu ponse lo datni", "assert1"),

@@ -14,10 +14,10 @@
 //!   --query   run a query against the imported KB (repeatable)
 //!
 //! Note: `--query` reaches only relation names the selected front-end can
-//! SPELL. Lojban mode (default): Lojban-lexable local names (e.g. `ex:nelci`).
-//! Klaro mode: dictionary/alias-resolvable names — an unknown name is a
-//! fail-closed compile error, never an arity guess (SURFACE_SYNTAX §13), so
-//! the limitation is STRICTER there. English-named RDF predicates (e.g.
+//! SPELL. Klaro mode (the engine default since THE FLIP, 2026-07-12):
+//! dictionary/alias-resolvable names — an unknown name is a fail-closed
+//! compile error, never an arity guess (SURFACE_SYNTAX §13). Lojban mode
+//! (`--lang lojban`): Lojban-lexable local names (e.g. `ex:nelci`). English-named RDF predicates (e.g.
 //! `hasPart` — local names import VERBATIM, camelCase and all) import fine as
 //! facts but cannot be spelled in either query language; making them
 //! queryable awaits the v2 schema registry (SURFACE_SYNTAX §14.1) — decided

@@ -35,6 +35,9 @@ fn run_once() -> Result<(Duration, Duration, Duration), String> {
     let t_start = Instant::now();
 
     let engine = NibliEngine::new();
+    // PINNED LOJBAN: the book quotes these timings over gdpr.lojban and stays
+    // Lojban until the book migrates (Klaro is the default since THE FLIP).
+    engine.set_language(nibli_engine::Language::Lojban);
     let mut consent_id = None;
     let mut asserted = 0u32;
     for (line_num, line) in CORPUS.lines().enumerate() {

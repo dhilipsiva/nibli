@@ -119,8 +119,10 @@ def validate_lojban_batch(sentences, validate_binary=None):
 
     input_text = "\n".join(sentences) + "\n"
     try:
+        # --lang lojban: nibli-validate follows the engine default (Klaro
+        # since THE FLIP), and this pipeline is Lojban.
         result = subprocess.run(
-            [validate_binary],
+            [validate_binary, "--lang", "lojban"],
             input=input_text,
             capture_output=True,
             text=True,

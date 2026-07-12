@@ -36,6 +36,17 @@ use nibli_engine::NibliEngine;
 use oracle::{Oracle, OracleConfig};
 use oracle_asp::{AspConfig, AspVerdict};
 
+/// A LOJBAN-mode engine. Every engine this crate builds compiles Lojban
+/// source text (the differential gates verify the Lojban front-end; the Klaro
+/// side goes through `klaro_battery::kompile`, no engine) — and Klaro is the
+/// `NibliEngine::new()` default since THE FLIP (2026-07-12), so the pin is
+/// explicit. Pub for the test binaries (differential_gate's Lojban twin leg).
+pub fn lojban_engine() -> NibliEngine {
+    let engine = NibliEngine::new();
+    engine.set_language(nibli_engine::Language::Lojban);
+    engine
+}
+
 /// The intended nibli verdict for a curated case (documentation + report cross-check).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Expect {
@@ -327,7 +338,7 @@ pub fn run_case(engine: &NibliEngine, case: &Case, cfg: &OracleConfig) -> Outcom
 
 /// Run the whole curated corpus on a fresh engine.
 pub fn run_corpus(cases: &[Case], cfg: &OracleConfig) -> Report {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let outcomes = cases.iter().map(|c| run_case(&engine, c, cfg)).collect();
     Report { outcomes }
 }
@@ -341,7 +352,7 @@ pub fn run_corpus_slice(label: &str, corpus: &str, cfg: &OracleConfig) -> Report
     use nibli_types::logic::{LogicNode, LogicalTerm};
     use std::collections::BTreeSet;
 
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
 
     // 1. Keep the mappable lines; mine entities (constants) + candidate type-predicates.
     let mut kb_lines: Vec<String> = Vec::new();
@@ -415,7 +426,7 @@ pub fn run_corpus_slice(label: &str, corpus: &str, cfg: &OracleConfig) -> Report
 /// program by construction (see [`generator`]); the filter still skips any that fall outside
 /// the mappable fragment, so this only broadens coverage — it can never mis-judge.
 pub fn run_random(count: u64, base_seed: u64, cfg: &OracleConfig) -> Report {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let outcomes = (0..count)
         .map(|i| {
             let case = generator::random_case(base_seed.wrapping_add(i));
@@ -436,7 +447,7 @@ pub fn run_random(count: u64, base_seed: u64, cfg: &OracleConfig) -> Report {
 /// negative controls (an unrelated taxonomy word must be underivable — both
 /// engines say no, agreement is the check).
 pub fn run_predilex_taxonomy(cfg: &OracleConfig) -> Report {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
 
     // Prune lemmas that don't compile as brivla (e.g. the vowel-initial
     // `ukta` mapped alongside `cukta`): a compile failure inside `run_lines`
@@ -652,7 +663,7 @@ pub fn run_lines_asp(
 
 /// Run the curated stratified-NAF corpus against clingo on a fresh engine.
 pub fn run_naf_corpus(cases: &[Case], cfg: &AspConfig) -> Report {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let outcomes = cases
         .iter()
         .map(|c| run_lines_asp(&engine, c.name, c.kb, c.query, cfg))
@@ -665,7 +676,7 @@ pub fn run_naf_corpus(cases: &[Case], cfg: &AspConfig) -> Report {
 /// and ASP-mappable by construction (see [`generator::random_naf_case`]); the filter is still
 /// the final arbiter, so this only broadens coverage — it can never mis-judge.
 pub fn run_random_naf(count: u64, base_seed: u64, cfg: &AspConfig) -> Report {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let outcomes = (0..count)
         .map(|i| {
             let case = generator::random_naf_case(base_seed.wrapping_add(i));
@@ -682,7 +693,7 @@ pub fn run_random_naf(count: u64, base_seed: u64, cfg: &AspConfig) -> Report {
 /// engine's per-member count equals clingo's `#count` over the stable model (see
 /// [`filter::count_case_guard`]).
 pub fn run_random_count(count: u64, base_seed: u64, cfg: &AspConfig) -> Report {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let outcomes = (0..count)
         .map(|i| {
             let case = generator::random_count_case(base_seed.wrapping_add(i));

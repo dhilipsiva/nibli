@@ -1,5 +1,5 @@
 //! Three-way determinism corpus, V8 leg: the SAME `determinism-corpus.lojban` that the
-//! native engine (`determinism_corpus_native`) and the Wasmtime component
+//! native engine (`determinism_corpus_lojban_twin`) and the Wasmtime component
 //! (`smoke-gasnu-determinism`) run must produce the identical pinned verdicts when the
 //! pipeline is compiled to wasm32-unknown-unknown and executed under node/V8 — the
 //! browser-class runtime the live playground uses. Run via `just verify-wasm-node`

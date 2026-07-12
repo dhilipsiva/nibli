@@ -488,8 +488,9 @@ ci: fmt-check clippy-runtime test test-engine test-gasnu test-fanva test-backend
 ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-split smoke-gasnu-naf smoke-gasnu-cwa-false smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable smoke-gasnu-non-finite smoke-gasnu-quiet smoke-gasnu-strict smoke-gasnu-determinism verify-wasm-node test-fanva-wasm
 
 # Three-way determinism, WASMTIME leg: the shared determinism-corpus.lojban must produce
-# exactly its pinned annotations through the lasna component under gasnu. The native leg
-# is determinism_corpus_native (verify-soundness); the V8 leg is verify-wasm-node.
+# exactly its pinned annotations through the lasna component under gasnu. The primary
+# native leg is the .klaro twin (determinism_corpus_klaro_native, verify-klaro-twins);
+# the Lojban twin leg rides verify-soundness; the V8 leg is verify-wasm-node.
 smoke-gasnu-determinism: build-wasm build-gasnu
     @echo "Smoke-testing gasnu three-way determinism corpus..."
     @expected=$(grep '^# =>' determinism-corpus.lojban | sed 's/^# => //'); \
@@ -538,8 +539,10 @@ build-validate:
 
 # Manuscript gate: run every Lojban example in book/ through the engine (parse + vocab).
 # Detection half of the manuscript-CI gate (see book/tools/README.md).
+# NIBLI_LANG=lojban: the book is Lojban and nibli-validate defaults to Klaro
+# since THE FLIP; the env var propagates through verify_book.py's subprocess.
 verify-book: build-validate
-    python3 book/tools/verify_book.py --validate-bin target/debug/nibli-validate
+    NIBLI_LANG=lojban python3 book/tools/verify_book.py --validate-bin target/debug/nibli-validate
 
 # Manuscript gate, vocab-only (fast; no build needed). book/ is a SEPARATE repo
 # (gitignored here), so it is absent on a fresh checkout / in CI — skip gracefully
@@ -740,17 +743,21 @@ fuzz-seed:
             ln = ln.strip()
             if ln and not ln.startswith("#") and not ln.startswith(":"):
                 lines.append(ln)
-    for target, encode in (("fuzz_parse", str), ("fuzz_assert", str), ("fuzz_query", lambda s: s + s)):
-        d = pathlib.Path("fuzz/corpus") / target
-        d.mkdir(parents=True, exist_ok=True)
-        for i, ln in enumerate(lines):
-            (d / f"seed_{i:04}").write_text(encode(ln), encoding="utf-8")
     klaro_lines = []
     for src in ("klaro/tests/acceptance.klaro", "gdpr.klaro", "drug-interactions.klaro", "readme.klaro", "determinism-corpus.klaro"):
         for ln in pathlib.Path(src).read_text(encoding="utf-8").splitlines():
             ln = ln.strip()
             if ln and not ln.startswith("#"):
                 klaro_lines.append(ln)
+    # fuzz_parse is gerna-only (.lojban seeds); fuzz_assert/fuzz_query drive the
+    # engine, whose default front-end is Klaro since THE FLIP — they get BOTH
+    # seed sets (.lojban lines remain useful mutation fodder).
+    for target, encode in (("fuzz_parse", str), ("fuzz_assert", str), ("fuzz_query", lambda s: s + s)):
+        d = pathlib.Path("fuzz/corpus") / target
+        d.mkdir(parents=True, exist_ok=True)
+        seeds = lines if target == "fuzz_parse" else lines + klaro_lines
+        for i, ln in enumerate(seeds):
+            (d / f"seed_{i:04}").write_text(encode(ln), encoding="utf-8")
     d = pathlib.Path("fuzz/corpus") / "fuzz_klaro"
     d.mkdir(parents=True, exist_ok=True)
     for i, ln in enumerate(klaro_lines):

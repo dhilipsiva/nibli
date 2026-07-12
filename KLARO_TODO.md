@@ -23,17 +23,6 @@ xorlo witnesses identically to Lojban (compat requires it — the equivalence ba
 checks verdict identity) and the behavior is disclosed spec semantics, not hidden
 residue; every bullet lands independently CI-green.
 
-- **THE FLIP (native)** — `Language::default()` → Klaro. Mechanical sweep: grep
-  `NibliEngine::new()` workspace-wide; nibli-engine tests (integration.rs ~159 Lojban
-  call sites + verdict_corpus + known_failures*) switch to a `lojban_engine()` helper
-  (`new()` + `set_language(Lojban)`) — do NOT translate their text, the twin gate makes
-  Klaro duplicates redundant; new engine tests are written in Klaro. Corpus-pinned tests
-  (gdpr/ddi integration, nibli-verify `corpora.rs` consts) re-point to `.klaro`. Native
-  determinism leg re-points to `.klaro`; keep `determinism_corpus_lojban_twin` (deleted
-  at retirement). `bench_book` pinned `set_language(Lojban)` explicitly (book-quoted
-  timings stay Lojban until the book migrates). `verify-book` recipe passes
-  `--lang lojban` to nibli-validate. `fuzz-seed` gains the `.klaro` sources for
-  fuzz_assert/fuzz_query.
 - **WIT + lasna + gasnu (ONE commit — bindings regen atomicity)** — wit/world.wit:
   `enum language { klaro, lojban }` + `set-language: func(lang: language)` on the
   session resource (the set-strict pattern; leave the `lojban:nibli@0.1.0` package id

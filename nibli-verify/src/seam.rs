@@ -25,7 +25,7 @@ use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm};
 /// Compile source Lojban to its FOL `LogicBuffer` through the full front-end (gerna parse + `go'i`
 /// resolution + smuni compile + compute-marking), via the native engine.
 pub fn compile(text: &str) -> Result<LogicBuffer, String> {
-    let engine = nibli_engine::NibliEngine::new();
+    let engine = crate::lojban_engine();
     engine
         .compile_debug(text)
         .map_err(|e| format!("compile '{text}': {e}"))

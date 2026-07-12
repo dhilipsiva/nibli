@@ -4,7 +4,15 @@
 //! Results stored in `target/criterion/`.
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nibli_engine::{EngineLogicalTerm, EngineQueryResult, NibliEngine};
+use nibli_engine::{EngineLogicalTerm, EngineQueryResult, Language, NibliEngine};
+
+/// Lojban-mode engine: the benchmarked text is Lojban (Klaro is the `new()`
+/// default since THE FLIP); benched figures stay comparable across the flip.
+fn lojban_engine() -> NibliEngine {
+    let engine = NibliEngine::new();
+    engine.set_language(Language::Lojban);
+    engine
+}
 
 /// Assert N ground facts via direct assertion (bypasses parser).
 fn populate_kb(engine: &NibliEngine, n: usize) {
@@ -41,7 +49,7 @@ fn bench_query_latency(c: &mut Criterion) {
     let mut group = c.benchmark_group("query_latency_vs_kb_size");
     for &n in &[10, 100, 1000] {
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &n| {
-            let engine = NibliEngine::new();
+            let engine = lojban_engine();
             populate_kb(&engine, n);
             // Assert one target fact for a valid cmevla so the query RESOLVES (a
             // hit) instead of scanning all N facts to fail. `adam` is nameable from
@@ -91,7 +99,7 @@ fn bench_rule_chain(c: &mut Criterion) {
     let mut group = c.benchmark_group("rule_chain_depth");
     for &depth in &[2usize, 4, 5] {
         group.bench_with_input(BenchmarkId::from_parameter(depth), &depth, |b, &depth| {
-            let engine = NibliEngine::new();
+            let engine = lojban_engine();
             // Build rule chain: gerku→danlu→jmive→... via Lojban.
             let preds = [
                 "gerku", "danlu", "jmive", "xanlu", "fenki", "lisri", "bangu", "prenu", "nixli",
@@ -124,7 +132,7 @@ fn bench_witness_extraction(c: &mut Criterion) {
     let mut group = c.benchmark_group("witness_extraction");
     for &n in &[10, 100, 500] {
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &n| {
-            let engine = NibliEngine::new();
+            let engine = lojban_engine();
             populate_kb(&engine, n);
             b.iter(|| {
                 engine.query_find_text("ma gerku").unwrap();
@@ -140,7 +148,7 @@ fn bench_equality(c: &mut Criterion) {
     let mut group = c.benchmark_group("equality_workload");
     for &n in &[5, 20, 50] {
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &n| {
-            let engine = NibliEngine::new();
+            let engine = lojban_engine();
             // Chain: du(e0,e1), du(e1,e2), ..., du(e{n-2},e{n-1})
             engine
                 .assert_fact_direct(
@@ -188,7 +196,7 @@ fn bench_retraction(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &n| {
             b.iter_with_setup(
                 || {
-                    let engine = NibliEngine::new();
+                    let engine = lojban_engine();
                     populate_kb(&engine, n);
                     engine
                 },

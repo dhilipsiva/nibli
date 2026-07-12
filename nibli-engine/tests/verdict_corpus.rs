@@ -12,10 +12,18 @@
 //! a regression on the other. The cross-path equality is the standing guard that
 //! the two never diverge. Landed GREEN against pre-2c code as the baseline.
 
-use nibli_engine::{EngineQueryResult, NibliEngine};
+use nibli_engine::{EngineQueryResult, Language, NibliEngine};
+
+/// Lojban-mode engine (Klaro is the `new()` default since THE FLIP; this
+/// corpus is Lojban — the twins gate covers the Klaro side).
+fn lojban_engine() -> NibliEngine {
+    let engine = NibliEngine::new();
+    engine.set_language(Language::Lojban);
+    engine
+}
 
 fn engine_with_facts(lines: &[&str]) -> NibliEngine {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     for line in lines {
         engine
             .assert_text(line)

@@ -568,15 +568,16 @@ fn retraction_is_equivalent_to_never_asserted() {
     );
 }
 
-/// Three-way determinism corpus, NATIVE leg: run `determinism-corpus.lojban` on the
-/// in-process engine and assert every verdict matches its pinned `# =>` annotation.
-/// The same file runs under gasnu/Wasmtime (`smoke-gasnu-determinism`) and under
-/// node/V8 (`nibli-wasm/tests/determinism.rs`, `just verify-wasm-node`) — three
-/// runtimes, one pinned verdict vector, so any pairwise divergence fails a gate.
+/// Determinism corpus, native LOJBAN TWIN leg: run `determinism-corpus.lojban`
+/// on the in-process engine — pinned to Lojban, since Klaro is the default
+/// after THE FLIP; the PRIMARY native leg is now the `.klaro` twin
+/// (`determinism_corpus_klaro_native` in klaro_twins.rs / verify-klaro-twins),
+/// and this Lojban twin is deleted at gerna retirement. Every verdict must
+/// match its pinned `# =>` annotation — the same annotation vector runs under
+/// gasnu/Wasmtime (`smoke-gasnu-determinism`) and node/V8
+/// (`nibli-wasm/tests/determinism.rs`, `just verify-wasm-node`).
 #[test]
-fn determinism_corpus_native() {
-    use nibli_engine::NibliEngine;
-
+fn determinism_corpus_lojban_twin() {
     enum COp {
         Assert(String),
         Query(String, String),
@@ -612,7 +613,7 @@ fn determinism_corpus_native() {
     }
     assert!(pending_q.is_none(), "corpus: trailing unannotated query");
 
-    let engine = NibliEngine::new();
+    let engine = nibli_verify::lojban_engine();
     // Per-assert fact ids; a line may be N facts (one per bare `.i` sentence).
     let mut ids: Vec<Vec<u64>> = Vec::new();
     let mut checked = 0usize;
@@ -648,7 +649,7 @@ fn determinism_corpus_native() {
         checked >= 15,
         "determinism corpus too small: {checked} queries"
     );
-    eprintln!("nibli-verify determinism (native): {checked} pinned verdicts agree");
+    eprintln!("nibli-verify determinism (lojban twin): {checked} pinned verdicts agree");
 }
 
 /// gerna→smuni compiler-seam gate: compile source Lojban end-to-end (parse + semantic compile)

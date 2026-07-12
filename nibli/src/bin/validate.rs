@@ -1,15 +1,16 @@
 //! nibli-validate — batch validation via stdin.
 //!
-//! Reads one sentence per line from stdin (Lojban by default; `--lang klaro`
-//! or `NIBLI_LANG=klaro` selects the Klaro front-end — the flag wins over the
-//! env var, and the default follows the engine default).
-//! For each line, runs the selected front-end and smuni (compile to FOL).
-//! Outputs one JSON object per line to stdout:
+//! Reads one sentence per line from stdin. The language follows the engine
+//! default (KLARO since THE FLIP, 2026-07-12); `--lang lojban` or
+//! `NIBLI_LANG=lojban` selects the Lojban front-end (the flag wins over the
+//! env var). For each line, runs the selected front-end and smuni (compile to
+//! FOL). Outputs one JSON object per line to stdout:
 //!   {"line":"...","valid":true}
 //!   {"line":"...","valid":false,"error":"parse error: ..."}
 //!
-//! Used by python/generate_training_data.py and book/tools/verify_book.py for
-//! batch validation (both invoke it with no flags — the default is load-bearing).
+//! Lojban callers (book/tools/verify_book.py via the `verify-book` recipe's
+//! NIBLI_LANG=lojban env, python/generate_training_data.py and
+//! python/nibli_model.py via explicit `--lang lojban`) pin their language.
 
 use nibli_engine::{Language, NibliEngine};
 use std::io::{self, BufRead};

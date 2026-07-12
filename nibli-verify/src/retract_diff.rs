@@ -169,7 +169,7 @@ fn is_complex(line: &str) -> bool {
 /// surviving asserts (original order).
 pub fn run_retract_case(case: &RetractCase) -> RetractOutcome {
     let name = case.name.clone();
-    let engine = NibliEngine::new();
+    let engine = crate::lojban_engine();
 
     // (line, engine fact ids, alive) per executed assert, in original order.
     // A line is N independent facts (one per bare `.i` sentence).
@@ -213,7 +213,7 @@ pub fn run_retract_case(case: &RetractCase) -> RetractOutcome {
                 }
 
                 // Fresh replay of the survivors, then the battery on both engines.
-                let fresh = NibliEngine::new();
+                let fresh = crate::lojban_engine();
                 for (l, _, alive) in &asserts {
                     if *alive {
                         if let Err(e) = fresh.assert_text(l) {

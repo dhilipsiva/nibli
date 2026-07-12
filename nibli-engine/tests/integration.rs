@@ -5,7 +5,7 @@
 
 use nibli_engine::{
     EngineAggregateOp, EngineComputeRequest, EngineError, EngineLogicBuffer, EngineLogicNode,
-    EngineLogicalTerm, EngineQueryResult, NibliEngine,
+    EngineLogicalTerm, EngineQueryResult, Language, NibliEngine,
 };
 use nibli_render::{
     DRUG_INTERACTIONS_OVERLAY, GDPR_OVERLAY, Register, render_collapsed_text_with,
@@ -15,9 +15,27 @@ use nibli_store::NibliStore;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// A Lojban-mode engine: this suite is written in Lojban and stays so — the
+/// corpora-twins gate (`verify-klaro-twins`) proves the Klaro equivalence, so
+/// translating the call sites would add no coverage. Klaro is the
+/// `NibliEngine::new()` default since THE FLIP (2026-07-12); new engine tests
+/// are written in Klaro against plain `NibliEngine::new()`.
+fn lojban_engine() -> NibliEngine {
+    let engine = NibliEngine::new();
+    engine.set_language(Language::Lojban);
+    engine
+}
+
+/// `NibliEngine::open` + the Lojban pin (see `lojban_engine`).
+fn lojban_open(path: &Path, expect_msg: &str) -> NibliEngine {
+    let engine = NibliEngine::open(path).expect(expect_msg);
+    engine.set_language(Language::Lojban);
+    engine
+}
+
 /// Helper: create a fresh engine, assert multiple lines, return the engine.
 fn engine_with_facts(lines: &[&str]) -> NibliEngine {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     for line in lines {
         engine
             .assert_text(line)
@@ -132,7 +150,7 @@ fn du_over_numeric_literals() {
     // surface-du fix made `du` reachable and the du-query arm's `args[0] == args[1]`
     // short-circuit handles identical `GroundTerm::Number` operands. Constant
     // reflexivity is the sanity peer.
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     assert_true(
         &engine.query_holds("li pa du li pa").unwrap(),
         "1 du 1 must be TRUE by reflexivity",
@@ -483,12 +501,12 @@ fn disjunctive_conclusion_jo_ju_stay_fail_closed() {
     // logji `test_mixed_conclusion_*` unit tests. `gi'e` does NOT produce it: the GIhA
     // desugar repeats the head at the SENTENCE level, so `ro lo … gi'e …` compiles to a
     // conjunction of two universals, not one rule with a compound conclusion.)
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     assert!(
         engine.assert_text("ro lo gerku cu danlu jo xanlu").is_err(),
         "a `jo` (biconditional) conclusion head must fail closed (Not-bearing, not Horn)"
     );
-    let engine2 = NibliEngine::new();
+    let engine2 = lojban_engine();
     assert!(
         engine2
             .assert_text("ro lo gerku cu danlu ju xanlu")
@@ -554,7 +572,7 @@ fn giha_quantified_or_description_head_rejected() {
     // `da klama gi'e citka` is officially ∃x(klama(x) ∧ citka(x)) — ONE
     // witness. The repeated-head desugar would compile two independent ∃s and
     // return TRUE on disjoint witnesses (rex goes, spot eats). Fail closed.
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     for text in ["da klama gi'e citka", "lo terdi cu na se tarmi gi'e kunti"] {
         let err = engine
             .assert_text(text)
@@ -627,7 +645,7 @@ fn giha_retraction_removes_both_conjuncts_and_negative_entry() {
     // A gi'e sentence is ONE fact-id; retracting it must remove both stored
     // conjuncts AND the na-tail's negative-registry entry (retract ≡
     // never-asserted).
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let ids = engine
         .assert_text("la .rex. cu gerku gi'e na danlu")
         .unwrap();
@@ -665,14 +683,14 @@ fn giha_gi_o_gi_u_assert_behavior_pinned() {
     // so a bare side queries Unknown(CycleCut), never TRUE — no ground fact
     // is stored). `gi'u` (xor) with positive tails stays fail-closed like
     // `.i ju`.
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     engine.assert_text("mi klama gi'o citka").unwrap();
     let (klama, _, _) = engine.query_text_with_proof("mi klama").unwrap();
     assert!(
         !klama.is_true(),
         "a bare biconditional must not derive either side TRUE: got {klama:?}"
     );
-    let engine2 = NibliEngine::new();
+    let engine2 = lojban_engine();
     assert!(
         engine2.assert_text("mi klama gi'u citka").is_err(),
         "a positive-tails xor assertion must fail closed like `.i ju`"
@@ -738,7 +756,7 @@ fn giha_gi_a_assert_stays_fail_closed_like_ija() {
     // A bare disjunction ingests no facts — `gi'a` at assert time fails closed
     // exactly like its `.i ja` spelled-out form (parity), while remaining fine
     // as a QUERY.
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     assert!(
         engine.assert_text("mi klama gi'a citka").is_err(),
         "asserting a bare gi'a disjunction must fail closed"
@@ -753,7 +771,7 @@ fn bare_na_after_selbri_connective_rejected() {
     // `X je na Y` is not official grammar (camxes-std rejects it; the official
     // form is the compound `jenai`) — gerna now rejects it with a targeted
     // diagnostic instead of silently over-accepting.
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let err = engine
         .assert_text("mi barda je na xunre")
         .expect_err("bare na after je must be a parse error");
@@ -806,7 +824,7 @@ fn assert_leading_da_over_universal_compiles_and_round_trips() {
     // the leading ∃ to a fresh constant and compiles the inner ∀ as a rule (sk₀
     // eats every dog). Before the dispatch change this errored as a "bare
     // disjunction". The asserted single witness then satisfies the ∃∀ query.
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     engine
         .assert_text("da citka ro lo gerku")
         .expect("∃∀ assertion must compile via the leading-∃ skolemization path");
@@ -826,7 +844,7 @@ fn tensed_leading_da_over_universal_rejected() {
     // `pu da citka ro lo gerku` → Past(Exists(ForAll)): a tense wrapping a whole
     // ∃∀ rule is rejected with the clear whole-rule message, not the ground
     // path's misleading "bare disjunction" error.
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let err = engine
         .assert_text("pu da citka ro lo gerku")
         .expect_err("a tense wrapping a whole ∃∀ rule must be rejected");
@@ -878,7 +896,7 @@ fn ganai_tensed_antecedent_fires_with_premise() {
 fn whole_rule_tense_universal_rejected() {
     // `pu ro lo gerku cu danlu` → Past(ForAll(...)) is rejected with the clear
     // whole-rule message (not the misleading "bare disjunction" zero-ingest one).
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let err = engine
         .assert_text("pu ro lo gerku cu danlu")
         .expect_err("a tense wrapping a whole universal must be rejected");
@@ -892,7 +910,7 @@ fn whole_rule_tense_universal_rejected() {
 fn whole_rule_deontic_universal_rejected() {
     // `ei ro lo prenu cu xamgu` → Obligatory(ForAll(...)): deriving an actuality
     // from an obligation is the same class of over-claim — rejected.
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let err = engine
         .assert_text("ei ro lo prenu cu xamgu")
         .expect_err("a deontic wrapping a whole universal must be rejected");
@@ -908,7 +926,7 @@ fn ground_obligation_does_not_imply_actuality() {
     // actuality `la .adam. cu vimcu` ("Adam IS removed") hold — deriving "is" from
     // "ought" is an over-claim. The obligation itself stays queryable with its wrapper.
     // (A GROUND deontic fact is allowed; only a deontic over a WHOLE rule is rejected.)
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     engine
         .assert_text("ei la .adam. cu vimcu")
         .expect("a ground deontic fact should assert");
@@ -927,7 +945,7 @@ fn ground_obligation_does_not_imply_actuality() {
 fn prenex_tensed_body_universal_rejected() {
     // `ro da zo'u pu da prami` → ForAll(Past(...)): a tense on the rule spine,
     // INSIDE the universal. Pre-fix it was silently stripped to a timeless rule.
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let err = engine
         .assert_text("ro da zo'u pu da prami")
         .expect_err("a prenex with a tensed body must be rejected");
@@ -944,7 +962,7 @@ fn fio_arity_one_modal_rejected() {
     // fails closed rather than silently dropping that link. (Latent end-to-end:
     // gerna parses `fi'o <selbri> fe'u`, and every BAI modal gismu is arity >= 2,
     // so only fi'o over an arity-1 selbri reaches this.)
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let err = engine
         .assert_text("mi barda fi'o prenu fe'u do")
         .expect_err("a 1-place fi'o modal must be rejected");
@@ -1094,7 +1112,7 @@ fn object_position_xorlo_no_phantom_entity() {
 fn object_position_count_object_fails_closed() {
     // An exact-count object (`ci lo mlatu` = "exactly three cats") is NOT a
     // universal, so it is not prenex-peeled; the Count consequent fails closed.
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let err = engine
         .assert_text("ro lo gerku cu pendo ci lo mlatu")
         .expect_err("an exact-count object position must be rejected");
@@ -1586,7 +1604,7 @@ fn zero_count_assertion_mints_no_witness() {
 fn over_arity_untagged_sumti_is_rejected() {
     // gerku has 2 places; three untagged sumti overflow — the compile must
     // REJECT (fail-closed), never silently drop the extra argument.
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     assert!(
         engine
             .assert_text("la .adam. cu gerku la .bob. la .kim.")
@@ -1599,7 +1617,7 @@ fn over_arity_untagged_sumti_is_rejected() {
 fn builtin_arithmetic_verdicts() {
     // sumji(x1, x2, x3): x1 = x2 + x3 via the built-in evaluator — pins the
     // GroundTerm::as_f64 numeric extraction the compute dispatch relies on.
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     assert_true(
         &engine.query_holds("li mu sumji li re li ci").unwrap(),
         "5 = 2 + 3 is TRUE by built-in arithmetic",
@@ -1633,7 +1651,7 @@ fn ground_conditional_with_existential_conclusion() {
 fn be_clause_with_tagged_tail_term_compiles_both() {
     // `klama be X be'o fi Y`: `be` binds x2, `fi` tags Y to x3 — both must
     // land (pins the WithArgs merge's positional-tail copy).
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let buf = engine
         .compile_debug("la .adam. cu klama be la .paris. be'o fi la .rom.")
         .expect("be-clause with fi-tagged tail should compile");
@@ -1692,7 +1710,7 @@ fn explicitly_tensed_rule_condition_is_flavor_exact() {
 fn te_conversion_swaps_x1_and_x3() {
     // `te klama` swaps x1↔x3 — the 3-place conversion arm (sibling of the xe
     // pin above; the swap must actually happen, not silently no-op).
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let buf = engine
         .compile_debug("la .rom. cu te klama zo'e la .adam.")
         .expect("te klama should compile");
@@ -1830,7 +1848,7 @@ fn la_name_assertion() {
 
 #[test]
 fn parse_error_returns_syntax_error() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     // The error CLASS is now first-class on the engine API (not merely recoverable
     // from the `[Syntax Error]` Display prefix): a parse failure is the typed
     // `EngineError::Syntax`.
@@ -1845,7 +1863,7 @@ fn parse_error_returns_syntax_error() {
 
 #[test]
 fn assert_stage_failure_is_reasoning_class() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     // A well-formed sentence the reasoner rejects at ASSERTION time (a tense over a
     // whole universal) is a REASONING-class error — the assert is the reasoning
     // stage (the buffer already passed smuni), so logji's `assert_fact` classes it
@@ -1861,7 +1879,7 @@ fn assert_stage_failure_is_reasoning_class() {
 
 #[test]
 fn query_parse_error() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let result = engine.query_text_with_proof("blorp bleep !!!");
     assert!(result.is_err(), "Invalid query should produce an error");
 }
@@ -1944,7 +1962,7 @@ fn multiple_independent_facts() {
 
 #[test]
 fn multi_sentence_assertion() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     // Assert multiple sentences in one text block (separated by .i)
     engine
         .assert_text("lo gerku cu barda .i lo mlatu cu cmalu")
@@ -2072,7 +2090,7 @@ fn connected_under_fa_negative_control() {
 fn cll_place_counter_fi_then_untagged() {
     // `klama fi le zarci do` — CLL: `fi` sets the place counter to x3 (le zarci),
     // and the following UNTAGGED `do` resumes at x4 (NOT x1, the pre-fix bug).
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let buf = engine
         .compile_debug("klama fi le zarci do")
         .expect("`klama fi le zarci do` should compile");
@@ -2092,7 +2110,7 @@ fn xe_conversion_swaps_x1_and_x5() {
     // in smuni's apply_selbri was exercised by no per-mutant-suite test). All
     // five places are filled (`zo'e` middles) so the swap is observable: the
     // head term must land in x5 (vehicle) and the tail term in x1 (goer).
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let buf = engine
         .compile_debug("la .ford. cu xe klama zo'e zo'e zo'e la .adam.")
         .expect("xe klama with five places should compile");
@@ -2164,7 +2182,7 @@ fn persistent_engine_replays_asserted_facts_after_reopen() {
     cleanup(&path);
 
     {
-        let engine = NibliEngine::open(&path).expect("Persistent engine should open");
+        let engine = lojban_open(&path, "Persistent engine should open");
         engine
             .assert_text("ro lo gerku cu danlu")
             .expect("Rule should persist");
@@ -2180,7 +2198,7 @@ fn persistent_engine_replays_asserted_facts_after_reopen() {
     }
 
     {
-        let reopened = NibliEngine::open(&path).expect("Persistent engine should reopen");
+        let reopened = lojban_open(&path, "Persistent engine should reopen");
         assert!(
             reopened
                 .query_holds("la .adam. cu danlu")
@@ -2199,7 +2217,7 @@ fn persistent_engine_honors_store_retractions_after_reopen() {
     cleanup(&path);
 
     let fact_id = {
-        let engine = NibliEngine::open(&path).expect("Persistent engine should open");
+        let engine = lojban_open(&path, "Persistent engine should open");
         // Single sentence → exactly one fact id.
         engine
             .assert_text("la .adam. cu gerku")
@@ -2214,7 +2232,7 @@ fn persistent_engine_honors_store_retractions_after_reopen() {
     }
 
     {
-        let reopened = NibliEngine::open(&path).expect("Persistent engine should reopen");
+        let reopened = lojban_open(&path, "Persistent engine should reopen");
         assert!(
             reopened
                 .query_holds("la .adam. cu gerku")
@@ -2239,7 +2257,7 @@ fn persistent_engine_retraction_via_engine_api_survives_reopen() {
     cleanup(&path);
 
     let fact_id = {
-        let engine = NibliEngine::open(&path).expect("Persistent engine should open");
+        let engine = lojban_open(&path, "Persistent engine should open");
         let id = engine
             .assert_text("la .adam. cu gerku")
             .expect("Fact should persist")[0];
@@ -2281,7 +2299,7 @@ fn persistent_engine_retraction_via_engine_api_survives_reopen() {
 
     // Reopening a fresh engine must NOT resurrect the retracted fact.
     {
-        let reopened = NibliEngine::open(&path).expect("Persistent engine should reopen");
+        let reopened = lojban_open(&path, "Persistent engine should reopen");
         assert!(
             reopened
                 .query_holds("la .adam. cu gerku")
@@ -2306,7 +2324,7 @@ fn persistent_engine_retraction_via_engine_api_survives_reopen() {
 #[test]
 fn gdpr_file_loads_clean() {
     let corpus = include_str!("../../gdpr.lojban");
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     for (line_num, line) in corpus.lines().enumerate() {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
@@ -2363,7 +2381,7 @@ fn gdpr_why_lawful_basis_is_domain_termed() {
 /// negation-as-failure and the proof carries the NAF dependency flag.
 #[test]
 fn gdpr_belief_revision_consent_withdrawal() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     engine.assert_text("la .adam. cu prenu").unwrap();
     engine
         .assert_text("ro lo prenu poi zanru cu se curmi")
@@ -2526,7 +2544,7 @@ fn gdpr_breach_notification() {
 /// `gdpr_belief_revision_consent_withdrawal` but at the RULE level.
 #[test]
 fn gdpr_erasure_rule_via_negated_consent_restrictor() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     engine.assert_text("la .adam. cu prenu").unwrap();
     engine
         .assert_text("ro lo prenu poi na zanru cu se bilga lo nu se vimcu")
@@ -2570,7 +2588,7 @@ fn gdpr_erasure_rule_via_negated_consent_restrictor() {
 /// universal `x` before evaluating the existential.
 #[test]
 fn gdpr_erasure_rule_is_per_subject() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     engine.assert_text("la .adam. cu prenu").unwrap();
     engine.assert_text("la .bet. cu prenu").unwrap();
     engine
@@ -2608,7 +2626,7 @@ fn gdpr_erasure_rule_is_per_subject() {
 fn gdpr_full_corpus_lawful_basis_query_completes() {
     let start = std::time::Instant::now();
     let corpus = include_str!("../../gdpr.lojban");
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let mut consent_id = None;
     for (line_num, line) in corpus.lines().enumerate() {
         let trimmed = line.trim();
@@ -2718,7 +2736,7 @@ fn pinned_id(ids: &[(String, u64)], line: &str) -> u64 {
 /// the Ch 20 transcripts (book repo) together with these expected values.
 #[test]
 fn gdpr_corpus_transcript_pins() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let (asserted, skipped, ids) =
         load_corpus_like_gasnu(&engine, include_str!("../../gdpr.lojban"));
     assert_eq!(
@@ -2747,7 +2765,7 @@ fn gdpr_corpus_transcript_pins() {
 /// corpus edit must break this test, not silently drift the book.
 #[test]
 fn ddi_corpus_transcript_pins() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let (asserted, skipped, ids) =
         load_corpus_like_gasnu(&engine, include_str!("../../drug-interactions.lojban"));
     assert_eq!(
@@ -2817,7 +2835,7 @@ fn stacked_poi_conjoins_both_clauses() {
 /// Load every non-comment line of drug-interactions.lojban into a fresh engine.
 fn engine_with_ddi_corpus() -> NibliEngine {
     let corpus = include_str!("../../drug-interactions.lojban");
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     for (line_num, line) in corpus.lines().enumerate() {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
@@ -3039,7 +3057,7 @@ fn ddi_toxicity_requires_both_conditions() {
 /// warfarin's alert with it.
 #[test]
 fn ddi_belief_revision_discontinue_inhibitor() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     for line in [
         "la .varfarin. cu xukmi",
         "la .fenitoin. cu xukmi",
@@ -3109,7 +3127,7 @@ fn ddi_belief_revision_discontinue_inhibitor() {
 /// without the historical ground-conditional hang).
 #[test]
 fn ddi_belief_revision_discontinue_drug() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     for line in [
         "la .varfarin. cu xukmi",
         "la .flukonazol. cu xukmi",
@@ -3360,7 +3378,7 @@ fn find_dependent_skolem_witness_event_decomposed_is_bound() {
 
 #[test]
 fn surface_numeric_pilji_true_and_false() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     assert_true(
         &engine.query_holds("li pa no cu pilji li re li mu").unwrap(),
         "10 = 2 × 5 must be derivable through surface Lojban",
@@ -3385,7 +3403,7 @@ fn stub_tenfa_batch(reqs: &[EngineComputeRequest]) -> Vec<Result<bool, String>> 
 #[test]
 fn per_instance_compute_dispatch_is_isolated() {
     // engine_a registers a per-instance dispatch → external `tenfa` resolves TRUE.
-    let mut engine_a = NibliEngine::new();
+    let mut engine_a = lojban_engine();
     engine_a.register_compute_predicate("tenfa".to_string());
     engine_a.set_compute_dispatch(stub_tenfa_eval, stub_tenfa_batch);
     assert_true(
@@ -3397,7 +3415,7 @@ fn per_instance_compute_dispatch_is_isolated() {
     // old THREAD-LOCAL dispatch, engine_a's registration would leak to engine_b on
     // the same thread; per-instance dispatch keeps them independent → `tenfa` is
     // unresolved (no built-in, no backend) and the query is not TRUE.
-    let mut engine_b = NibliEngine::new();
+    let mut engine_b = lojban_engine();
     engine_b.register_compute_predicate("tenfa".to_string());
     let r = engine_b.query_holds("li bi cu tenfa li re li ci").unwrap();
     // Isolation: engine_a's dispatch must NOT leak here, so `tenfa` stays unresolved.
@@ -3427,7 +3445,7 @@ fn overflowing_numeric_literal_fails_closed_at_parse() {
     // are now pinned by NO test — regaining that pin at the logji flat level is
     // owned by the try_numeric_comparison tracker bullet.
     let nines = "so ".repeat(320); // 999…9 > f64::MAX → +inf pre-guard
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let err = engine
         .query_holds(&format!("li {nines}cu dunli li {nines}"))
         .expect_err("an overflowing numeric literal must be a parse error, not a verdict");
@@ -3439,7 +3457,7 @@ fn overflowing_numeric_literal_fails_closed_at_parse() {
 
 #[test]
 fn surface_numeric_sumji_dilcu() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     assert_true(
         &engine.query_holds("li mu cu sumji li re li ci").unwrap(),
         "5 = 2 + 3 must be TRUE through surface Lojban",
@@ -3464,7 +3482,7 @@ fn surface_numeric_float_tolerance() {
     // decimal point). 0.1 + 0.2 = 0.30000000000000004 in IEEE-754, but the
     // engine uses tolerant equality, so `0.3 = 0.1 + 0.2` is TRUE end-to-end
     // through gerna → smuni → logji (not the surprising exact-`==` FALSE).
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     assert_true(
         &engine
             .query_holds("li no pi ci cu sumji li no pi pa li no pi re")
@@ -3511,7 +3529,7 @@ fn native_compute_backend_dispatches_external_predicate() {
     // `{"result": true}`, the query routes engine → logji → native client → mock.
     // (`li bi` = 8, `li re` = 2, `li ci` = 3 → "is 8 = 2^3?")
     let addr = mock_compute_server(r#"{"result": true}"#);
-    let mut engine = NibliEngine::new();
+    let mut engine = lojban_engine();
     engine.enable_compute_backend(&addr);
     engine.register_compute_predicate("tenfa".to_string());
     assert_true(
@@ -3524,7 +3542,7 @@ fn native_compute_backend_dispatches_external_predicate() {
 fn native_compute_backend_is_opt_in() {
     // Without `enable_compute_backend`, an external predicate stays unprovable —
     // the dispatch hook is unregistered (per-instance isolation).
-    let mut engine = NibliEngine::new();
+    let mut engine = lojban_engine();
     engine.register_compute_predicate("tenfa".to_string());
     let r = engine.query_holds("li bi cu tenfa li re li ci").unwrap();
     assert!(
@@ -3557,7 +3575,7 @@ fn native_compute_backend_real_python_tenfa() {
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
     let run = || {
-        let mut engine = NibliEngine::new();
+        let mut engine = lojban_engine();
         engine.enable_compute_backend(&addr);
         engine.register_compute_predicate("tenfa".to_string());
         // 8 = 2^3 (TRUE); 9 = 2^3 (FALSE) — the backend does the arithmetic.
@@ -3576,7 +3594,7 @@ fn native_compute_backend_real_python_tenfa() {
 
 #[test]
 fn surface_numeric_comparison_zmadu_mleca_dunli() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     assert_true(
         &engine.query_holds("li mu cu zmadu li ci").unwrap(),
         "5 > 3 must be TRUE through surface Lojban",
@@ -3605,7 +3623,7 @@ fn assert_numeric_comparison_rejected() {
     // truth, not an assertable fact — the engine evaluates it at query time and
     // the computed value always wins, so an asserted fact could only ever be a
     // shadowed (unreachable) fact. Fail closed at assert time rather than store it.
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     for line in [
         "li ci cu zmadu li mu",
         "li mu cu mleca li ci",
@@ -3635,7 +3653,7 @@ fn assert_numeric_comparison_rejected() {
 
 #[test]
 fn surface_numeric_negation() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     assert_true(
         &engine.query_holds("li ci na zmadu li mu").unwrap(),
         "NOT(3 > 5) must be TRUE through surface Lojban",
@@ -3650,7 +3668,7 @@ fn surface_numeric_negation() {
 fn surface_numeric_traced_verdicts_agree() {
     // The traced path must agree with the untraced verdict (both evaluators
     // carry the numeric-group hook) and record a compute-check step.
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let (verdict, trace, _json) = engine
         .query_text_with_proof("li pa no cu pilji li re li mu")
         .unwrap();
@@ -3663,7 +3681,7 @@ fn surface_numeric_traced_verdicts_agree() {
 
 #[test]
 fn closed_world_false_carries_cwa_note_but_numeric_false_does_not() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     // Absence-driven FALSE: `gerku(adam)` is simply not derivable → a closed-world FALSE,
     // which must carry the CWA caveat (the dual of the NAF note) so a reader does not
     // mistake "not derivable" for "proved false".
@@ -3695,7 +3713,7 @@ fn injected_fact_matches_surface_text_query() {
     // injection API event-decomposes to the same shape text assertion produces.
     // RED before fix: flat gerku(adam) vs the query's ∃ev. gerku(ev) ∧
     // gerku_x1(ev, adam) ∧ gerku_x2(ev, zo'e) never matched.
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     engine
         .assert_fact_direct(
             "gerku".to_string(),
@@ -3714,7 +3732,7 @@ fn injected_fact_matches_surface_text_query() {
 fn injected_fact_multiplace_arity_padding_matches_text_query() {
     // klama is 5-place. Injecting only x1,x2 must pad x3..x5 with zo'e to the
     // SAME shape `la .adam. cu klama la .paris.` compiles to, so it matches.
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     engine
         .assert_fact_direct(
             "klama".to_string(),
@@ -3733,7 +3751,7 @@ fn injected_fact_multiplace_arity_padding_matches_text_query() {
 #[test]
 fn injected_fact_is_findable_as_witness() {
     // The injected fact must also be discoverable through witness extraction.
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     engine
         .assert_fact_direct(
             "gerku".to_string(),
@@ -3763,7 +3781,7 @@ fn belief_does_not_leak_as_actuality() {
     // go") must NOT make the bare actuality `mi klama` ("I go") hold — believing P
     // does not entail P. The belief itself stays queryable, and believing a DIFFERENT
     // proposition is not satisfied (abstraction content is not conflated).
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     engine.assert_text("mi krici lo du'u mi klama").unwrap();
 
     assert_false(
@@ -3784,7 +3802,7 @@ fn belief_does_not_leak_as_actuality() {
 fn abstraction_subject_does_not_leak_inner_predicate() {
     // The review's example: `lo du'u mi klama kei cu barda` ("the fact-that-I-go is
     // big") must not assert `mi klama` ("I go") as a queryable truth.
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     engine.assert_text("lo du'u mi klama kei cu barda").unwrap();
     assert_false(
         &engine.query_holds("mi klama").unwrap(),
@@ -3855,7 +3873,7 @@ fn goi_tracks_last_queried_bridi() {
 fn goi_with_no_antecedent_errs() {
     // A `go'i` with no prior bridi must FAIL CLOSED (Semantic), never compile to a
     // bogus literal `go'i` predicate.
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let err = engine.query_holds("go'i").unwrap_err();
     assert!(
         matches!(err, EngineError::Semantic(_)),
@@ -3880,7 +3898,7 @@ fn predicate_less_clause_rejected() {
     // gerna now rejects it at PARSE with a clear, distinct Syntax error, instead of
     // fabricating a `go'i` that fail-closes downstream with the cryptic "go'i has no
     // antecedent". This is what `nibli-validate` / the book's verify tool now see.
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let err = engine.assert_text("ro lo gerku").unwrap_err();
     assert!(
         matches!(err, EngineError::Syntax(_)),

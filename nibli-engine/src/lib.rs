@@ -66,7 +66,8 @@ pub struct NibliEngine {
     /// The input language for every TEXT entry point (assert/query/validate/
     /// compile_debug — all funnel through `compile_text`). Configuration, like
     /// verbose/strict: survives `reset()`. Buffer-level replay is language-free.
-    /// Default Lojban during the dual-front-end phase (KLARO_TODO: THE FLIP).
+    /// Default KLARO since THE FLIP (2026-07-12); Lojban stays selectable
+    /// throughout the dual-front-end phase.
     language: Cell<Language>,
 }
 
@@ -126,7 +127,7 @@ impl NibliEngine {
         self.language.set(lang);
     }
 
-    /// The currently selected input language (default Lojban until THE FLIP).
+    /// The currently selected input language (default Klaro since THE FLIP).
     pub fn language(&self) -> Language {
         self.language.get()
     }
@@ -534,43 +535,49 @@ mod tests {
     }
 
     #[test]
-    fn language_defaults_to_lojban_and_survives_reset() {
+    fn language_defaults_to_klaro_and_survives_reset() {
         let engine = NibliEngine::new();
-        assert_eq!(engine.language(), Language::Lojban);
-        engine.set_language(Language::Klaro);
-        engine.reset();
         assert_eq!(
             engine.language(),
             Language::Klaro,
+            "Klaro is the default since THE FLIP (2026-07-12)"
+        );
+        engine.set_language(Language::Lojban);
+        engine.reset();
+        assert_eq!(
+            engine.language(),
+            Language::Lojban,
             "language is configuration, like verbose/strict — reset() keeps it"
         );
     }
 
     #[test]
     fn language_dispatch_selects_the_front_end() {
-        // Lojban mode (default): Lojban compiles, Klaro text fails closed.
+        // Klaro mode (the default): Klaro compiles end-to-end (assert +
+        // query), Lojban text fails closed.
         let engine = NibliEngine::new();
-        engine
-            .assert_text("la .adam. cu gerku")
-            .expect("lojban assert");
-        engine
-            .assert_text("dog(Rex).")
-            .expect_err("Klaro text must fail in Lojban mode");
-
-        // Klaro mode: Klaro compiles end-to-end (assert + query), Lojban fails.
-        let engine = NibliEngine::new();
-        engine.set_language(Language::Klaro);
         engine.assert_text("dog(Rex).").expect("klaro assert");
         let result = engine.query_holds("dog(Rex).").expect("klaro query");
         assert_eq!(result.status_label(), "TRUE", "{result:?}");
         engine
             .assert_text("la .adam. cu gerku")
             .expect_err("Lojban text must fail in Klaro mode");
+
+        // Lojban mode (explicit): Lojban compiles, Klaro text fails closed.
+        let engine = NibliEngine::new();
+        engine.set_language(Language::Lojban);
+        engine
+            .assert_text("la .adam. cu gerku")
+            .expect("lojban assert");
+        engine
+            .assert_text("dog(Rex).")
+            .expect_err("Klaro text must fail in Lojban mode");
     }
 
     #[test]
     fn klaro_compile_clears_the_goi_snapshot() {
         let engine = NibliEngine::new();
+        engine.set_language(Language::Lojban);
         engine
             .assert_text("la .adam. cu gerku")
             .expect("lojban assert");
@@ -598,6 +605,8 @@ mod tests {
         cleanup(&path);
 
         let engine = NibliEngine::open(&path).expect("Persistent engine should open");
+        // The probe text is Lojban (Klaro is the default since THE FLIP).
+        engine.set_language(Language::Lojban);
         let _borrow = engine.store.borrow();
 
         let err = engine

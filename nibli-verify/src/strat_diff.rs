@@ -206,7 +206,7 @@ impl StratOutcome {
 /// then (after any rejection) the fresh-replay equivalence battery.
 pub fn run_strat_case(case: &StratCase) -> StratOutcome {
     let name = case.name.clone();
-    let engine = NibliEngine::new();
+    let engine = crate::lojban_engine();
 
     for f in &case.facts {
         if let Err(e) = engine.assert_text(f) {
@@ -262,7 +262,7 @@ pub fn run_strat_case(case: &StratCase) -> StratOutcome {
     // lines must answer the whole battery identically — a rejected rule leaves no
     // trace (facts, rules, indexes, caches).
     if rejected > 0 {
-        let fresh = NibliEngine::new();
+        let fresh = crate::lojban_engine();
         for f in &case.facts {
             if let Err(e) = fresh.assert_text(f) {
                 return StratOutcome::Error {

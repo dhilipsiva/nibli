@@ -178,8 +178,10 @@ def validate_batch(pairs, validate_binary):
     lojban_lines = "\n".join(p["lojban"] for p in pairs) + "\n"
 
     try:
+        # --lang lojban: nibli-validate follows the engine default (Klaro
+        # since THE FLIP), and this pipeline is Lojban.
         result = subprocess.run(
-            [validate_binary],
+            [validate_binary, "--lang", "lojban"],
             input=lojban_lines,
             capture_output=True,
             text=True,

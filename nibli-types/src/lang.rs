@@ -1,18 +1,19 @@
 //! The front-end language selector shared by every runtime surface.
 //!
 //! Two input languages compile to the same `ast::AstBuffer` (and from there
-//! through the same smuni→logji pipeline): **Lojban** (gerna) and **Klaro**
-//! (the klaro crate; SURFACE_SYNTAX.md). The default is Lojban during the
-//! dual-front-end phase of the KLARO_TODO program and flips to Klaro at THE
-//! FLIP bullet. `FromStr` is the parser for `NIBLI_LANG`-style configuration
+//! through the same smuni→logji pipeline): **Klaro** (the klaro crate;
+//! SURFACE_SYNTAX.md) and **Lojban** (gerna). Klaro is the DEFAULT since THE
+//! FLIP (2026-07-12, KLARO_TODO); Lojban remains fully supported during the
+//! dual-front-end phase (`--lang lojban` / `NIBLI_LANG=lojban` / `:lojban`).
+//! `FromStr` is the parser for `NIBLI_LANG`-style configuration
 //! (`"klaro"` / `"lojban"`, lowercase).
 
 /// Which surface language a text entry point parses.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Language {
-    Klaro,
-    /// The default flips to Klaro at the KLARO_TODO "THE FLIP" bullet.
+    /// The default since THE FLIP (2026-07-12).
     #[default]
+    Klaro,
     Lojban,
 }
 
@@ -44,8 +45,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_is_lojban_until_the_flip() {
-        assert_eq!(Language::default(), Language::Lojban);
+    fn default_is_klaro_since_the_flip() {
+        assert_eq!(Language::default(), Language::Klaro);
     }
 
     #[test]

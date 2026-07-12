@@ -22,7 +22,15 @@
 //! (the `best_result` ResourceExceeded wipe) live in separate files so a crash
 //! cannot take the rest of the backlog down with it.
 
-use nibli_engine::{EngineLogicBuffer, EngineLogicNode, NibliEngine};
+use nibli_engine::{EngineLogicBuffer, EngineLogicNode, Language, NibliEngine};
+
+/// Lojban-mode engine (Klaro is the `new()` default since THE FLIP; this
+/// backlog is written in Lojban).
+fn lojban_engine() -> NibliEngine {
+    let engine = NibliEngine::new();
+    engine.set_language(Language::Lojban);
+    engine
+}
 
 /// True if the compiled `LogicBuffer` contains the `base` predicate or any of its
 /// Neo-Davidsonian role predicates (`base_xN`). `compile_debug` returns the typed
@@ -42,7 +50,7 @@ fn has_predicate_base(buf: &EngineLogicBuffer, base: &str) -> bool {
 
 #[test] // FIXED (fail-closed rule compilation): promoted from the backlog to a live guard.
 fn ganai_tensed_antecedent_must_not_fire_unconditionally() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     // "if Adam ran (past), then Adam is an animal" — on an empty KB, Adam never ran.
     // Fail-closed (reject the unrepresentable rule) and fail-open-fixed (represent the
     // tensed condition and don't fire) are both acceptable; the invariant is that
@@ -61,7 +69,7 @@ fn ganai_tensed_antecedent_must_not_fire_unconditionally() {
 
 #[test] // FIXED (fail-closed rule compilation): promoted from the backlog to a live guard.
 fn ganai_disjunctive_antecedent_must_not_fire_unconditionally() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     // "if (Adam is a dog OR Adam is a cat) then Adam is an animal" — neither disjunct holds.
     // Reject-or-represent (see the tensed-antecedent test); the invariant is that
     // danlu(adam) is NOT derivable from an empty KB.
@@ -85,7 +93,7 @@ fn ganai_disjunctive_antecedent_must_not_fire_unconditionally() {
 
 #[test] // FIXED (zero-ingest guard): bare disjunction is now rejected. Live guard.
 fn disjunction_assert_must_be_observable() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let s = "la .adam. cu gerku .i ja la .adam. cu mlatu";
     if engine.assert_text(s).is_ok() {
         let r = engine.query_holds(s).unwrap();
@@ -100,7 +108,7 @@ fn disjunction_assert_must_be_observable() {
 
 #[test] // FIXED (zero-ingest guard): xor (flattened to And(Or, Not(And))) is now rejected. Live guard.
 fn xor_assert_must_be_observable() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let s = "la .adam. cu gerku .i ju la .adam. cu mlatu";
     if engine.assert_text(s).is_ok() {
         let r = engine.query_holds(s).unwrap();
@@ -113,7 +121,7 @@ fn xor_assert_must_be_observable() {
 
 #[test] // FIXED (negative-fact registry + event-normalized contradiction detection): promoted.
 fn negated_ground_fact_then_contrary_positive_is_a_contradiction() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     // "Adam is NOT a dog."
     let neg = engine.assert_text("la .adam. na gerku");
     // Rejecting the negation outright is an acceptable fail-closed fix; otherwise
@@ -131,7 +139,7 @@ fn negated_ground_fact_then_contrary_positive_is_a_contradiction() {
 
 #[test] // FIXED (rel clause on name conjoined into matrix): promoted to a live guard.
 fn rel_clause_on_name_must_not_be_dropped() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     engine.assert_text("la .adam. cu klama").unwrap(); // only known fact: Adam goes
     // "Adam, who is a dog, goes." We do NOT know Adam is a dog, so this must not hold.
     let r = engine.query_holds("la .adam. poi gerku cu klama").unwrap();
@@ -144,7 +152,7 @@ fn rel_clause_on_name_must_not_be_dropped() {
 #[test] // Positive companion to the guard above: when BOTH conjuncts are known, the
 // restricted query holds, and asserting the restricted sentence asserts both conjuncts.
 fn rel_clause_on_name_positive_direction() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     engine.assert_text("la .adam. cu gerku").unwrap();
     engine.assert_text("la .adam. cu klama").unwrap();
     let r = engine.query_holds("la .adam. poi gerku cu klama").unwrap();
@@ -154,7 +162,7 @@ fn rel_clause_on_name_positive_direction() {
     );
 
     // Asserting the restricted sentence must assert BOTH conjuncts.
-    let engine2 = NibliEngine::new();
+    let engine2 = lojban_engine();
     engine2.assert_text("la .adam. poi gerku cu klama").unwrap();
     let g = engine2.query_holds("la .adam. cu gerku").unwrap();
     let k = engine2.query_holds("la .adam. cu klama").unwrap();
@@ -166,7 +174,7 @@ fn rel_clause_on_name_positive_direction() {
 
 #[test] // FIXED (FA-overflow fails closed with a semantic error): promoted to a live guard.
 fn fa_tag_beyond_arity_must_error_not_silently_drop() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     // `fu` tags place x5; `gerku` is 2-place, so the x5 term `do` cannot be placed.
     let r = engine.assert_text("fu do gerku");
     assert!(
@@ -177,7 +185,7 @@ fn fa_tag_beyond_arity_must_error_not_silently_drop() {
 
 #[test] // FIXED (tanru decomposition emits Unspecified roles; firewall counts per shared event): promoted.
 fn tanru_in_poi_must_not_be_falsely_rejected() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     // "a dog that runs fast goes" — valid Lojban; `sutra bajra` is a tanru inside the poi clause.
     assert!(
         engine
@@ -191,7 +199,7 @@ fn tanru_in_poi_must_not_be_falsely_rejected() {
 
 #[test] // FIXED (lexer error channel: unlexable runs surface as positioned parse errors): promoted.
 fn lexer_must_not_silently_truncate_input() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     // The bare `7` is unlexable mid-sentence; the trailing sentence must not vanish silently.
     let s = "mi klama 7 do prami .i lo gerku cu danlu";
     if engine.assert_text(s).is_ok() {
@@ -209,7 +217,7 @@ fn lexer_must_not_silently_truncate_input() {
 
 #[test] // FIXED (da/de/di existentials close INSIDE universal closure — ∀x.∃y scope): promoted.
 fn da_after_universal_description_must_not_lose_the_rule() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     engine.assert_text("ro lo gerku cu citka da").unwrap(); // every dog eats something
     engine.assert_text("la .alis. cu gerku").unwrap(); // Alice is a dog
     // Therefore Alice eats something.
@@ -230,7 +238,7 @@ fn da_after_universal_description_must_not_lose_the_rule() {
 
 #[test] // FIXED (flattener uses push_sentence's return value for body indices): promoted.
 fn abstraction_body_over_connected_must_reference_real_body() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     // The `lo nu ...` abstraction body is `ganai la .adam. gerku gi la .adam. klama`.
     // Its compiled form must contain BOTH the antecedent (gerku) and the
     // consequent (klama). Today the flattener binds the abstraction to the
@@ -247,7 +255,7 @@ fn abstraction_body_over_connected_must_reference_real_body() {
 
 #[test] // FIXED (flattener uses push_sentence's return value for body indices): promoted.
 fn abstraction_body_over_rel_clause_must_reference_real_body() {
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     // Abstraction body is `lo gerku poi ke'a barda cu klama`; the head predicate
     // is `klama`. The flattener instead binds the abstraction to the `barda`
     // rel-clause bridi, so `klama` is dropped from the compiled FOL.
@@ -288,7 +296,7 @@ fn duplicate_ground_fact_survives_retracting_one_copy() {
         roots: vec![0],
     };
 
-    let engine = NibliEngine::new();
+    let engine = lojban_engine();
     let id1 = engine
         .kb()
         .assert_fact(flat_gerku_adam(), ":assert gerku".to_string())
@@ -328,7 +336,7 @@ fn duplicate_ground_fact_survives_retracting_one_copy() {
 fn ch12_consent_case_study_traced_query_completes() {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let engine = NibliEngine::new();
+        let engine = lojban_engine();
         engine.assert_text(".i lo prenu cu ponse lo datni").unwrap();
         engine
             .assert_text(".i lo prenu cu curmi lo nu lo datni cu se pilno")
