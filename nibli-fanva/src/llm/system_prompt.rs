@@ -1,7 +1,44 @@
-//! The English→Lojban system prompt. Extends the proven `nibli-ui` prompt with an
-//! iterative-correction clause so the model expects, and acts on, the compiler
-//! errors the validate→feedback loop appends to the conversation.
+//! The English→KB system prompts, one per front-end language. Each extends the
+//! proven `nibli-ui` prompt shape with an iterative-correction clause so the
+//! model expects, and acts on, the compiler errors the validate→feedback loop
+//! appends to the conversation. [`system_prompt`] selects by [`Language`].
 
+use nibli_types::lang::Language;
+
+/// English→Klaro. Klaro is the primary KB language since THE FLIP: a
+/// predicate-call surface (`dog(Adam).`) that is far closer to the English
+/// source than Lojban, so the prompt is correspondingly simpler. The few-shots
+/// use only curated-core vocabulary (they must stay gate-valid in the CI
+/// fallback dictionary build — the guard test below runs in both modes).
+pub const KLARO_SYSTEM_PROMPT: &str = r#"You are a formalizer. Rewrite the user's English text as Klaro — a strict predicate-call knowledge-base language.
+
+Rules:
+- Output ONLY the Klaro statements, nothing else. No explanations, no notes.
+- One claim per line; every statement ends with a period: "dog(Adam)."
+- A statement is predicate(arguments): the predicate is a lowercase English word (third-person verb or noun/adjective), e.g. "eats", "dog", "beautiful".
+- Names are capitalized words: "Adam". The speaker is "me", the listener "you".
+- Determiners build terms from predicates: "some dog" (a/some), "every dog" (all), "no dog", "exactly 2 dog".
+- "~" before the predicate negates the claim: "~eats(Adam)." (Adam does not eat).
+- "past" / "future" before the predicate mark tense: "past eats(Adam)."
+- Join claims with operators: "&" (and), "|" (or), "->" (if-then): "dog(Adam) & cat(Betis)."
+- "X = Y." states that X and Y are the same individual.
+- Extra argument places can be named like Python keyword arguments, after the positional ones: "goes(Adam, destination: some market)."
+- Use common, simple English predicate words. The compiler fails closed on words it does not know — if a word is rejected, retry with a plainer synonym.
+
+This is an iterative process. You may receive a follow-up message reporting a grammar or semantic error from the Klaro compiler about your previous output. When you do, correct that output and reply with ONLY the corrected Klaro — no explanation, no apology. Prefer the simplest wording the strict compiler accepts.
+
+Examples:
+- "The dog goes to the market" → "goes(some dog, destination: some market)."
+- "I love you" → "loves(me, you)."
+- "Adam sees the cat" → "sees(Adam, some cat)."
+- "The big dog runs" → "runs(some [big dog])."
+- "I ate the food" → "past eats(me, some food)."
+- "Every dog is an animal" → "animal(every dog)."
+- "Adam does not eat" → "~eats(Adam)."
+- "Adam and the cat eat" → "eats(Adam) & eats(some cat)."
+- "The home is owned by Adam" → "owned(some home, Adam).""#;
+
+/// English→Lojban (the legacy front-end).
 pub const LOJBAN_SYSTEM_PROMPT: &str = r#"You are a Lojban translator. Translate the user's English text into grammatically correct Lojban.
 
 Rules:
@@ -33,21 +70,25 @@ Examples:
 - "Adam and the cat eat" → "la .adam. .e lo mlatu cu citka"
 - "The cat is seen by Adam" → "lo mlatu cu se viska la .adam.""#;
 
-/// The system prompt the agent loop passes to `chat()`.
-pub fn system_prompt() -> &'static str {
-    LOJBAN_SYSTEM_PROMPT
+/// The system prompt the agent loop passes to `chat()`, selected by the KB
+/// language.
+pub fn system_prompt(lang: Language) -> &'static str {
+    match lang {
+        Language::Klaro => KLARO_SYSTEM_PROMPT,
+        Language::Lojban => LOJBAN_SYSTEM_PROMPT,
+    }
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
-    use super::LOJBAN_SYSTEM_PROMPT;
+    use super::{KLARO_SYSTEM_PROMPT, LOJBAN_SYSTEM_PROMPT};
+    use nibli_types::lang::Language;
 
-    /// Every Lojban example shipped in the few-shot block must pass our own local
-    /// gates (gerna + smuni on native) — otherwise the prompt would be teaching the
-    /// model Lojban that our own firewall rejects. This also guards new examples.
-    #[test]
-    fn shipped_examples_are_gate_valid() {
-        let examples = LOJBAN_SYSTEM_PROMPT
+    /// Every few-shot example shipped in a prompt must pass our own gates for
+    /// its language — otherwise the prompt would be teaching the model KB text
+    /// that our own firewall rejects. This also guards new examples.
+    fn assert_examples_gate_valid(prompt: &str, lang: Language) {
+        let examples = prompt
             .split("Examples:")
             .nth(1)
             .expect("the prompt has an Examples section");
@@ -56,13 +97,14 @@ mod tests {
             let Some((_, rhs)) = line.split_once('→') else {
                 continue;
             };
-            let lojban = rhs.trim().trim_matches('"');
-            if lojban.is_empty() {
+            let text = rhs.trim().trim_matches('"');
+            if text.is_empty() {
                 continue;
             }
             assert!(
-                crate::gates::validate(lojban).is_ok(),
-                "shipped few-shot example is not gate-valid: {lojban:?}",
+                crate::gates::validate(lang, text).is_ok(),
+                "shipped few-shot example is not gate-valid for {lang:?}: {text:?} — {:?}",
+                crate::gates::validate(lang, text).err()
             );
             checked += 1;
         }
@@ -70,5 +112,19 @@ mod tests {
             checked >= 5,
             "expected to check the few-shot examples, got {checked}"
         );
+    }
+
+    #[test]
+    fn shipped_examples_are_gate_valid() {
+        assert_examples_gate_valid(LOJBAN_SYSTEM_PROMPT, Language::Lojban);
+    }
+
+    /// The Klaro twin of the guard: validate() in Klaro mode also runs the
+    /// render round-trip gate, so every shipped example is additionally pinned
+    /// canonical-compatible. Uses curated-core vocabulary only, so it holds in
+    /// the CI fallback dictionary build too.
+    #[test]
+    fn shipped_klaro_examples_are_gate_valid() {
+        assert_examples_gate_valid(KLARO_SYSTEM_PROMPT, Language::Klaro);
     }
 }

@@ -1,8 +1,9 @@
 //! The semantic verification turn — the fourth, non-deterministic check.
 //!
-//! The three gates (gerna → smuni → camxes) prove a candidate is *well-formed*;
-//! they cannot prove it *means* what the source says. Models routinely emit
-//! syntactically valid Lojban with wrong semantics — misresolved anaphora,
+//! The deterministic gates (klaro → smuni → round-trip in Klaro mode;
+//! gerna → smuni → camxes in legacy Lojban mode) prove a candidate is
+//! *well-formed*; they cannot prove it *means* what the source says. Models
+//! routinely emit syntactically valid KB text with wrong semantics — misresolved anaphora,
 //! overflowed bridi places, attitudinals used as commands (`ei` for "you
 //! must"). The int19h Genesis probe made the failure vivid: 8 of Gemini's 15
 //! Genesis 1:1–8 lines pass every gate while claiming things like "John is a
@@ -25,15 +26,19 @@
 
 use crate::gates::{self, GateError};
 use nibli_render::{Register, render_logic_buffer};
+use nibli_types::lang::Language;
 
 /// The validator's system prompt: an independent judge of MEANING only.
-/// The strict first-line verdict format is what `parse_verdict` reads.
+/// Language-neutral prose (the CLAIMS line is the IR-level `nibli_render`
+/// gloss, identical whichever front-end compiled the KB line). The strict
+/// first-line verdict format is what `parse_verdict` reads.
 pub const VALIDATOR_SYSTEM_PROMPT: &str = "\
-You are an independent semantic auditor for English-to-Lojban translation. You will be \
-given a SOURCE text and, for each line of a candidate Lojban translation, the CLAIMS \
-line — a mechanical English rendering of what that Lojban line actually asserts, \
-produced by a deterministic compiler (not by the translator). Grammar has already been \
-machine-checked; do NOT comment on grammar or style.
+You are an independent semantic auditor for the formalization of English into a \
+machine-checkable knowledge-base language. You will be given a SOURCE text and, for \
+each line of a candidate formalization, the CLAIMS line — a mechanical English \
+rendering of what that line actually asserts, produced by a deterministic compiler \
+(not by the formalizer). Grammar has already been machine-checked; do NOT comment on \
+grammar or style.
 
 Judge ONE thing: does the set of claims match the meaning of the source text? Watch \
 especially for: wrong or missing participants (misresolved pronouns/anaphora), arguments \
@@ -44,19 +49,20 @@ Reply in EXACTLY this format: first line, the single word MATCH or MISMATCH. If 
 MISMATCH, follow with a numbered list of concrete discrepancies, each naming the KB line \
 number and stating what the line claims versus what the source says. No other text.";
 
-/// Per-line back-translation of a gate-clean KB: `(lojban_line, english_claims)`
+/// Per-line back-translation of a gate-clean KB: `(kb_line, english_claims)`
 /// for every non-empty, non-comment line (the same line discipline as
-/// `gates::validate_kb`). Recompiles via `gates::local_gates` — cheap, and the
-/// buffer was discarded by validation. Errors are defensively propagated but
-/// should be impossible for text that just passed the gates.
-pub fn back_translation(kb_text: &str) -> Result<Vec<(String, String)>, GateError> {
+/// `gates::validate_kb`). Recompiles via `gates::local_gates` in the KB
+/// language — cheap, and the buffer was discarded by validation; the rendered
+/// gloss is IR-level and therefore language-free. Errors are defensively
+/// propagated but should be impossible for text that just passed the gates.
+pub fn back_translation(lang: Language, kb_text: &str) -> Result<Vec<(String, String)>, GateError> {
     let mut out = Vec::new();
     for raw in kb_text.lines() {
         let line = raw.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        let buf = gates::local_gates(line)?;
+        let buf = gates::local_gates(lang, line)?;
         out.push((line.to_string(), render_logic_buffer(&buf, Register::Spec)));
     }
     Ok(out)
@@ -65,9 +71,9 @@ pub fn back_translation(kb_text: &str) -> Result<Vec<(String, String)>, GateErro
 /// Build the validator's single user turn: the source, then each candidate
 /// line with the engine's reading of it.
 pub fn judge_prompt(source: &str, back: &[(String, String)]) -> String {
-    let mut p = format!("SOURCE TEXT:\n{source}\n\nCANDIDATE TRANSLATION (per KB line):\n");
-    for (i, (lojban, claims)) in back.iter().enumerate() {
-        p.push_str(&format!("{}. {lojban}\n   claims: {claims}\n", i + 1));
+    let mut p = format!("SOURCE TEXT:\n{source}\n\nCANDIDATE FORMALIZATION (per KB line):\n");
+    for (i, (kb_line, claims)) in back.iter().enumerate() {
+        p.push_str(&format!("{}. {kb_line}\n   claims: {claims}\n", i + 1));
     }
     p.push_str("\nVerdict?");
     p
@@ -101,8 +107,11 @@ mod tests {
 
     #[test]
     fn back_translation_renders_each_line() {
-        let back =
-            back_translation("la .adam. cu gerku\n# comment\n\nla .betis. cu mlatu").unwrap();
+        let back = back_translation(
+            Language::Lojban,
+            "la .adam. cu gerku\n# comment\n\nla .betis. cu mlatu",
+        )
+        .unwrap();
         assert_eq!(back.len(), 2);
         assert_eq!(back[0].0, "la .adam. cu gerku");
         assert!(
@@ -110,6 +119,16 @@ mod tests {
             "claims must mention the participant: {}",
             back[0].1
         );
+    }
+
+    #[test]
+    fn back_translation_is_language_free_at_the_ir_level() {
+        // Twin claims through the two front-ends must produce the identical
+        // engine reading — the gloss renders the LogicBuffer, not the surface.
+        let k = back_translation(Language::Klaro, "dog(Adam).").unwrap();
+        let l = back_translation(Language::Lojban, "la .adam. cu gerku").unwrap();
+        assert_eq!(k.len(), 1);
+        assert_eq!(k[0].1, l[0].1, "IR-level gloss must be front-end-agnostic");
     }
 
     #[test]

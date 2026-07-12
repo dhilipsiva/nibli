@@ -23,30 +23,13 @@ xorlo witnesses identically to Lojban (compat requires it — the equivalence ba
 checks verdict identity) and the behavior is disclosed spec semantics, not hidden
 residue; every bullet lands independently CI-green.
 
-- **nibli-ui + nibli-fanva** — SITE-WINDOW RESIDUAL from the landed nibli-wasm bullet:
-  the nibli-wasm session DEFAULT flip (Lojban→Klaro) + `back_translate_ir`'s Klaro
-  render path ride the dhilipsiva.dev site-repo JS/KB migration window (cross-repo;
-  redeploy-site.yml auto-triggers on push to main) — coordinate with this bullet's
-  deploy. fanva gates take `Language` (gates.rs:59): Klaro arm =
-  `klaro::parse_checked` (gate name "klaro") + smuni + a RENDER ROUND-TRIP gate
-  (render∘parse must reproduce the AstBuffer — the drift-catcher replacing camxes, which
-  is Lojban-only and stays for legacy mode); `feedback_for` arm; per-language
-  `GATE_ORDER` (["klaro","smuni","round-trip"] vs ["gerna","smuni","camxes"]). New
-  `KLARO_SYSTEM_PROMPT` (English→Klaro few-shots — far simpler prompt) + duplicate the
-  `shipped_examples_are_gate_valid` guard test against the Klaro gates. verify.rs
-  unchanged structurally (IR-level back-translation) — just the lang thread-through +
-  neutral prose in VALIDATOR_SYSTEM_PROMPT. jbotci McpClient constructed ONLY in Lojban
-  mode (fanva-proxy becomes legacy-only — strengthens the existing retire-fanva-proxy
-  TODO bullet). nibli-ui: examples.rs `include_str!` → `.klaro` twins, `DEFAULT_LOJBAN`
-  → Klaro syllogism, `ActiveTab::Lojban` → `ActiveTab::Kb` with language-driven label,
-  legacy-Lojban input toggle in settings (default Klaro), Translate targets the KB
-  language AND IS RENAMED **Formalize** (user decision 2026-07-12: "compile" stays
-  reserved for the deterministic KB→logic step; the LLM English→Klaro step is
-  interpretive formalization behind gates — never label it "Compile", that would
-  launder the one untrusted step with compiler connotations; book copy follows via
-  book/TODO.md), camxes `<script>` tags stay (legacy mode). Keep examples.rs `source`/
-  `queries` labels STABLE (book Ch 19 quotes them verbatim — two-repo desync has no
-  gate).
+- **site-window residual (cross-repo, /nibli demo)** — the nibli-wasm session DEFAULT
+  flip (Lojban→Klaro) + `back_translate_ir`'s Klaro render path (`compile_for_render`
+  is already language-parameterized — a one-arg flip) ride the dhilipsiva.dev
+  site-repo JS/KB migration of the **/nibli guided demo** page (distinct from the
+  /nibli-playground, which migrated to Klaro with the nibli-ui bullet 2026-07-12;
+  redeploy-site.yml auto-triggers on push to main). Execute when that page's JS/KB
+  goes Klaro; also unblocks the book's Formalize copy sweep (book/TODO.md).
 - **docs sweep** — README leads with Klaro (readme.klaro transcripts; legacy-Lojban
   section), CLAUDE.md (crate table + command table + this program's status), GUARANTEES
   front-end section, WIT doc comments ("Assert Lojban text…"), gasnu/nibli `:help`

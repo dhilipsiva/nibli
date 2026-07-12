@@ -460,6 +460,13 @@ test-engine:
 test-gasnu:
     cargo test -p gasnu
 
+# Run nibli-ui's native tests (the shipped-examples guard: every example KB line
+# + preset query compiles through the Klaro front-end; dual-mode with fallback
+# vocab-skips, queries never skip). nibli-ui is a bin-only crate, so the
+# workspace `test` recipe (`cargo test --lib`) skips it — this gates it in `ci`.
+test-ui:
+    cargo test -p nibli-ui --bins
+
 # Start the Python reference compute backend
 backend:
     python3 python/nibli_backend.py
@@ -511,7 +518,7 @@ test-all: test test-engine test-store test-backend test-classifier
 
 # CI gate for the hardened runtime surface (fast; native only — no WASM build).
 # For the WASM behavioral smokes too, run `just ci-all`.
-ci: fmt-check clippy-runtime test test-engine test-gasnu test-fanva test-backend test-store test-persistence-replay verify-harness verify-soundness verify-klaro verify-klaro-dict verify-klaro-twins verify-parser verify-dict verify-proofs verify-book-vocab
+ci: fmt-check clippy-runtime test test-engine test-gasnu test-ui test-fanva test-backend test-store test-persistence-replay verify-harness verify-soundness verify-klaro verify-klaro-dict verify-klaro-twins verify-parser verify-dict verify-proofs verify-book-vocab
 
 # WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
 # verify-book-capture). Bundles the six gasnu smokes; each depends on
