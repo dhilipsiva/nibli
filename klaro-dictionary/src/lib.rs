@@ -8,18 +8,30 @@
 //! bundle. The two crates' agreement (alias arity == smuni arity, swap validity)
 //! is enforced by the alias differential gate in nibli-verify, not by shared code.
 //!
-//! Current mode: FALLBACK ONLY — every entry comes from the curated Rust const
-//! tables in [`curated`] (no data files; see that module for the naming policy).
-//! Full lensisku generation (all ~1,338 gismu) is the next KLARO_TODO bullet and
-//! will layer generation UNDER these tables — the curated entries become pins
-//! that win in both build modes.
+//! Two build modes, mirroring smuni-dictionary's contract:
+//!
+//! - **FULL MODE** (repo-root `dictionary-en.json` present — every local build):
+//!   all ~1,338 gismu get an alias — curated table first, then `ALIAS_PINS`,
+//!   then the first lensisku gloss keyword normalized (base-form as-is; user
+//!   decision 2026-07-12 — no mechanical inflection, the export has no
+//!   part-of-speech data). Arity comes from `smuni-dictionary` as a BUILD
+//!   dependency, so klaro/smuni arity agreement holds by construction. Unpinned
+//!   collisions/keyword-hits/dictionary-shadows FAIL THE BUILD listing every
+//!   offender; coverage floor ≥ 1,300.
+//! - **FALLBACK MODE** (no data file — what CI uses; loud banner): exactly the
+//!   curated Rust const tables in [`curated`]. Curated entries are byte-identical
+//!   across modes (they are the pin tier — spellings can never flap).
+//!
+//! All source data is in-tree Rust; the only generated artifact is the phf map
+//! in `OUT_DIR`.
 
 /// Provenance of an entry's `place_labels`.
 ///
-/// `Lensisku` and `Prose` only appear once full generation lands (labels taken
-/// from the export's `place_keywords`, or heuristically from definition prose);
-/// in fallback mode every entry is `Curated` (has hand-written labels) or
-/// `Positional` (labels all empty — callers use raw `x1..x5`).
+/// `Curated` = hand-written labels from the in-tree tables; `Lensisku` = the
+/// export's ordered `place_keywords` (70/1,338 gismu); `Prose` = the
+/// [`label::prose_labels`] heuristic over the definition's `$x_N$` markers;
+/// `Positional` = no labels (callers use raw `x1..x5`). Fallback mode only
+/// produces `Curated`/`Positional`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LabelTier {
     Curated,
@@ -46,6 +58,7 @@ pub struct AliasEntry {
 include!(concat!(env!("OUT_DIR"), "/generated_aliases.rs"));
 
 pub mod curated;
+pub mod label;
 pub mod reserved;
 
 /// Look up an English predicate alias. `None` means the name is unknown to the
@@ -102,10 +115,9 @@ mod tests {
         assert_eq!(dog.gismu, "gerku");
         assert_eq!(dog.arity, 2);
 
-        assert!(
-            alias("consents").is_none(),
-            "domain overlays are not core aliases"
-        );
+        // Domain overlays are not core aliases: zanru's canonical name is the
+        // honest generic, never the GDPR corpus reading.
+        assert_eq!(canonical_alias("zanru"), Some("approves"));
         assert!(alias("zzz_unknown").is_none());
     }
 
@@ -174,12 +186,65 @@ mod tests {
             "barda", "cmalu", "xamgu", "xlali", "blanu", "xunre", "pelxu", "crino", "prenu",
             "pilji", "sumji", "dilcu", "danlu", "jmive", "zanru", "pilno", "katna", "zenba",
             "cinla", "ckape", "vimcu", "javni", "datni", "turni", "bilga", "curmi",
+            // GISMU_PLACE_TEMPLATES set + remaining corpus/spec vocabulary
+            // (curated in the full-generation milestone).
+            "zukte", "zbasu", "tadni", "kurji", "ponse", "fanta", "kajde", "flalu", "nibli",
+            "krinu", "cipni", "finpe", "nanmu", "ninmu", "verba", "remna", "xukmi", "dinju",
+            "marce", "cidja", "litki", "ciste", "logji", "masno", "kanro", "birti", "xanri",
+            "zmadu", "mleca", "dunli", "facki", "drani", "cfila", "notci",
         ] {
             assert!(
                 canonical_alias(gismu).is_some(),
                 "smuni fallback-core word {gismu:?} has no canonical alias"
             );
         }
+    }
+
+    /// True when this build ran FULL MODE (dictionary-en.json present) — the
+    /// generated long tail dwarfs the curated core.
+    fn full_mode() -> bool {
+        ALIASES.len() > 200
+    }
+
+    #[test]
+    fn full_mode_generation() {
+        if !full_mode() {
+            eprintln!("SKIP full_mode_generation: fallback build (no dictionary-en.json)");
+            return;
+        }
+        // Coverage floor (also asserted at build time).
+        assert!(
+            GISMU_TO_ALIAS.len() >= 1300,
+            "full-mode canonical map too small: {}",
+            GISMU_TO_ALIAS.len()
+        );
+        // Long-tail pins hold: collision group, SI-prefix numeric gloss,
+        // reserved-word gloss, gloss-less word, dictionary-word shadow.
+        assert_eq!(canonical_alias("janta"), Some("bill"));
+        assert_eq!(canonical_alias("kilto"), Some("kilo"));
+        assert_eq!(canonical_alias("balvi"), Some("later"));
+        assert!(
+            alias("future").is_none(),
+            "keyword glosses must be pinned away"
+        );
+        assert_eq!(canonical_alias("jukni"), Some("spider"));
+        assert_eq!(canonical_alias("kruvi"), Some("bend"));
+        // Base-form policy for the uncurated long tail: aliases come from the
+        // gloss verbatim (e.g. sisku -> "seek", not "seeks").
+        let seek = alias("seek").expect("long-tail base-form alias");
+        assert_eq!(seek.gismu, "sisku");
+        // Every generated entry still round-trips and respects arity bounds
+        // (covered structurally by canonical_round_trips/labels_within_arity_only,
+        // which iterate the FULL map in this mode).
+        let tiers: Vec<LabelTier> = ALIASES.entries().map(|(_, e)| e.label_tier).collect();
+        assert!(
+            tiers.contains(&LabelTier::Lensisku),
+            "no Lensisku-tier labels — place_keywords went unused"
+        );
+        assert!(
+            tiers.contains(&LabelTier::Prose),
+            "no Prose-tier labels — the heuristic went unused"
+        );
     }
 
     #[test]

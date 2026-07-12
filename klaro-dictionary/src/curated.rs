@@ -146,7 +146,7 @@ pub const CURATED_ALIASES: &[(&str, &str, u8, [&str; 5])] = &[
     // ── Properties / states ──
     ("born", "jbena", 4, ["child", "parent", "date", "place", ""]),
     ("dead", "morsi", 1, ["", "", "", "", ""]),
-    ("alive", "jmive", 1, ["", "", "", "", ""]),
+    ("alive", "jmive", 2, ["", "standard", "", "", ""]),
     ("fast", "sutra", 2, ["", "", "", "", ""]),
     ("beautiful", "melbi", 3, ["", "observer", "aspect", "", ""]),
     ("big", "barda", 3, ["", "dimension", "standard", "", ""]),
@@ -176,9 +176,154 @@ pub const CURATED_ALIASES: &[(&str, &str, u8, [&str; 5])] = &[
     (
         "quotient",
         "dilcu",
-        3,
-        ["result", "dividend", "divisor", "", ""],
+        4,
+        ["result", "dividend", "divisor", "remainder", ""],
     ),
+    // ── GISMU_PLACE_TEMPLATES word set (smuni's curated render frames) + the
+    // remaining shipped-corpus/spec vocabulary — curated so the whole set the
+    // renderer and corpora rely on carries pinned 3rd-person spellings and
+    // labels. Arities are checked against smuni-dictionary AT BUILD TIME in
+    // data mode (drift fails the build), so these numbers cannot silently rot.
+    ("acts", "zukte", 3, ["agent", "means", "goal", "", ""]),
+    ("makes", "zbasu", 3, ["maker", "made", "material", "", ""]),
+    ("studies", "tadni", 2, ["student", "studied", "", "", ""]),
+    ("tends", "kurji", 2, ["carer", "charge", "", "", ""]),
+    ("owns", "ponse", 3, ["owner", "owned", "basis", "", ""]),
+    (
+        "prevents",
+        "fanta",
+        2,
+        ["preventer", "prevented", "", "", ""],
+    ),
+    ("warns", "kajde", 3, ["warner", "warned", "danger", "", ""]),
+    ("law", "flalu", 5, ["", "act", "community", "", ""]),
+    (
+        "entails",
+        "nibli",
+        3,
+        ["premise", "conclusion", "logic", "", ""],
+    ),
+    ("reason", "krinu", 2, ["", "outcome", "", "", ""]),
+    ("bird", "cipni", 2, ["", "species", "", "", ""]),
+    ("fish", "finpe", 2, ["", "species", "", "", ""]),
+    ("man", "nanmu", 1, ["", "", "", "", ""]),
+    ("woman", "ninmu", 1, ["", "", "", "", ""]),
+    ("child", "verba", 3, ["", "age", "standard", "", ""]),
+    ("human", "remna", 1, ["", "", "", "", ""]),
+    ("chemical", "xukmi", 3, ["", "substance", "purity", "", ""]),
+    ("building", "dinju", 2, ["", "purpose", "", "", ""]),
+    (
+        "vehicle",
+        "marce",
+        4,
+        ["", "cargo", "surface", "propulsion", ""],
+    ),
+    ("food", "cidja", 2, ["", "eater", "", "", ""]),
+    (
+        "liquid",
+        "litki",
+        3,
+        ["", "composition", "conditions", "", ""],
+    ),
+    (
+        "system",
+        "ciste",
+        4,
+        ["", "structure", "components", "function", ""],
+    ),
+    ("logical", "logji", 2, ["", "conclusion", "", "", ""]),
+    ("slow", "masno", 2, ["", "act", "", "", ""]),
+    ("healthy", "kanro", 2, ["", "standard", "", "", ""]),
+    ("certain", "birti", 2, ["", "belief", "", "", ""]),
+    ("imaginary", "xanri", 2, ["", "imaginer", "", "", ""]),
+    (
+        "greater",
+        "zmadu",
+        4,
+        ["", "exceeded", "quality", "margin", ""],
+    ),
+    (
+        "less",
+        "mleca",
+        4,
+        ["", "compared", "quality", "margin", ""],
+    ),
+    ("num_equal", "dunli", 3, ["", "compared", "quality", "", ""]),
+    (
+        "discovers",
+        "facki",
+        3,
+        ["discoverer", "discovered", "subject", "", ""],
+    ),
+    (
+        "correct",
+        "drani",
+        4,
+        ["", "quality", "situation", "standard", ""],
+    ),
+    ("flaw", "cfila", 3, ["", "host", "effect", "", ""]),
+    (
+        "message",
+        "notci",
+        4,
+        ["", "topic", "recipient", "sender", ""],
+    ),
+];
+
+/// Long-tail alias pins: `(gismu, alias)` — generation overrides for words whose
+/// derived first-gloss alias would fail the fail-closed build checks. Unlike
+/// [`CURATED_ALIASES`] entries, pinned words take arity + place labels from the
+/// normal generation chain (smuni arity; place_keywords → prose → positional).
+/// Every pin exists for a listed reason; removing one re-breaks the build.
+pub const ALIAS_PINS: &[(&str, &str)] = &[
+    // First-gloss collisions (5 dump-wide groups; both sides pinned so intent
+    // is explicit): account, gain, hold, lead, represent.
+    ("janta", "bill"),
+    ("jaspu", "passport"),
+    ("lebna", "seize"),
+    ("prali", "profit"),
+    ("ralte", "retain"),
+    ("sorcu", "store"),
+    ("cnisa", "lead_metal"),
+    ("lidne", "precede"),
+    ("krati", "represent"),
+    ("sinxa", "sign"),
+    // SI-prefix scalar gismu — lensisku's first gloss is the numeric value
+    // (".01", "1E-15", …), which is not ident-shaped; the metric prefix name is
+    // the honest alias.
+    ("centi", "centi"),
+    ("decti", "deci"),
+    ("dekto", "deka"),
+    ("femti", "femto"),
+    ("gigdo", "giga"),
+    ("gocti", "yocto"),
+    ("gotro", "yotta"),
+    ("kilto", "kilo"),
+    ("megdo", "mega"),
+    ("mikri", "micro"),
+    ("milti", "milli"),
+    ("nanvi", "nano"),
+    ("petso", "peta"),
+    ("picti", "pico"),
+    ("terto", "tera"),
+    ("xatsi", "atto"),
+    ("xecto", "hecto"),
+    ("xexso", "exa"),
+    ("zepti", "zepto"),
+    ("zetro", "zetta"),
+    // First gloss is a Klaro keyword.
+    ("balvi", "later"),      // gloss "future"
+    ("fasnu", "occurrence"), // gloss "event"
+    ("fatci", "actual"),     // gloss "fact"
+    ("klani", "quantity"),   // gloss "amount"
+    ("purci", "earlier"),    // gloss "past"
+    // No gloss_keywords in the export at all.
+    ("jegvo", "abrahamic"),
+    ("jukni", "spider"),
+    ("tirxu", "tiger"),
+    // First gloss shadows a Lojban word ("curve" is itself a gismu) — an alias
+    // equal to a dictionary word would shadow the identity-gismu passthrough.
+    ("kruvi", "bend"),
 ];
 
 /// Converted-form aliases: `(alias, gismu, swap)` where `swap = n` means the

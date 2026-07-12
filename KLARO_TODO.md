@@ -10,25 +10,6 @@ primary/default language everywhere, gerna demoted to the equivalence battery + 
 `.lojban` load; FULL alias-map generation (~1,338 gismu) from day one; every bullet
 lands independently CI-green.
 
-- **klaro-dictionary full generation** — extend build.rs for the full dump: duplicate
-  the ~30-line `LensiskuEntry` serde shape (smuni-dictionary/build.rs:17-31) ADDING the
-  currently-skipped `place_keywords` field (confirm its JSON shape against the export;
-  70/1,338 gismu carry it). Alias = first gloss keyword normalized (lowercase;
-  space/`/`/`-`→`_`; must match `[a-z][a-z0-9_]*`). UNPINNED COLLISIONS FAIL THE BUILD
-  (panic listing every one): the 5 dump-wide first-gloss collisions, reserved-word hits
-  (checked against `reserved::RESERVED_WORDS`), normalization duplicates, ~19 messy
-  glosses. place_labels tier chain with provenance: curated `KLARO_PLACE_LABELS` (seed
-  with the corpus/core ~200 predicates, same scale as GISMU_PLACE_TEMPLATES) → lensisku
-  place_keywords (where present + arity-consistent) → prose heuristic over `$x_N$`
-  markers (`src/label.rs`, pure + unit-tested) → positional `""`. Label validation at
-  generation: valid idents, no dupes per entry, not reserved, never matching `^x[1-5]$`
-  (the fallback-mode `build.rs::validate()` already enforces all of these — extend it,
-  don't fork it). The curated tables in `klaro-dictionary/src/curated.rs` become the
-  pin tier (they win over generation in both modes — spellings can never flap).
-  DECIDE: base-form vs mechanical third-person-singular inflection for the uncurated
-  verb long tail (the curated core is pinned 3rd-person: `goes`, `eats`; lensisku
-  gloss keywords are base-form: `come`, `eat`; there is no POS data in the export).
-  Full-mode coverage floor (≥1,300 aliases).
 - **klaro crate: lexer** — new workspace member `klaro/`; logos lexer (repo precedent:
   gerna) in `src/token.rs`+`src/lexer.rs`: keyword tokens exact-match with priority over
   `[a-z][a-z0-9_]*` idents (maximal munch — `everyday` is ONE ident, `every` alone is
@@ -112,7 +93,12 @@ lands independently CI-green.
   `nibli-verify/tests/alias_differential.rs` (verify-dict's dual-mode contract: full
   local build checks all aliases, CI fallback checks the curated core with a FALLBACK
   banner; never skips): (1) every `AliasEntry.gismu` exists in smuni-dictionary with
-  equal arity — the two independently-built phf maps cannot drift; (2) round-trips
+  equal arity — the two independently-built phf maps cannot drift. KNOWN PRE-EXISTING
+  FLAP this gate's CI (fallback) leg will hit: smuni's own `FALLBACK_GISMU_ENTRIES`
+  says dilcu=3 and jmive=1 while its full lensisku build derives 4 and 2 (found
+  2026-07-12 by klaro-dictionary's build-time drift guard; klaro's curated arities
+  follow the FULL-mode values). Fix smuni's fallback table / CORE_GISMU_ARITIES pins
+  as part of this bullet — that is a smuni-dictionary + verify-dict-adjacent change; (2) round-trips
   `GISMU_TO_ALIAS→ALIASES→gismu`, swap∈2..=arity, swap twice = identity; (3) no alias in
   `RESERVED_WORDS`, label validity re-asserted from the shipped map; (4) BEHAVIORAL leg:
   `alias(a, b)` via klaro+smuni ≡ direct-gismu Lojban via gerna+smuni at canonicalized

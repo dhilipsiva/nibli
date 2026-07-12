@@ -2371,6 +2371,9 @@ version = "0.1.0"
 dependencies = [
  "phf",
  "phf_codegen",
+ "serde",
+ "serde_json",
+ "smuni-dictionary",
 ]
 
 [[package]]
