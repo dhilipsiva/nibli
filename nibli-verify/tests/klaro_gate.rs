@@ -144,6 +144,10 @@ fn klaro_seam_conformance() {
         ),
         ("goes(me, x1: you).", "filled twice"),
         ("dog(Adam, x3: you).", "unknown place label"),
+        // The Python rule, both argument paths (build_args is shared):
+        // a positional argument after a named argument is a compile error.
+        ("goes(destination: some market, me).", "must come before"),
+        ("goes(every loves(x2: it, me)).", "must come before"),
         ("goes(some dog where goes(me)).", "must mention `it`"),
         ("goes(slot).", "property"),
         ("~past goes(me).", "past ~P"),
