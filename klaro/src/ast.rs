@@ -1,5 +1,5 @@
 //! Klaro tree AST — the parser's output, later lowered to
-//! `nibli_types::ast::AstBuffer` by the emitter (a subsequent KLARO_TODO
+//! `nibli_types::ast::AstBuffer` by the emitter (a subsequent KR_TODO
 //! bullet).
 //!
 //! Owned `Box`/`Vec` nodes, deliberately NOT gerna's bumpalo arena: Klaro

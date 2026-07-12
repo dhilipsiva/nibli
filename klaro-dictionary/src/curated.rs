@@ -3,7 +3,7 @@
 //! and stay unit-testable in-crate.
 //!
 //! These entries double as the PIN TABLE once full lensisku generation lands
-//! (KLARO_TODO "klaro-dictionary full generation"): pins win in BOTH build modes,
+//! (KR_TODO "klaro-dictionary full generation"): pins win in BOTH build modes,
 //! so the spellings below can never flap between the data and no-data builds —
 //! the same cross-mode discipline smuni-dictionary's CORE_GISMU_ARITIES pins
 //! exist for.

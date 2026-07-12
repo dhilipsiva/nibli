@@ -3,7 +3,7 @@
 //! Two input languages compile to the same `ast::AstBuffer` (and from there
 //! through the same smuni→logji pipeline): **Klaro** (the klaro crate;
 //! SURFACE_SYNTAX.md) and **Lojban** (gerna). Klaro is the DEFAULT since THE
-//! FLIP (2026-07-12, KLARO_TODO); Lojban remains fully supported during the
+//! FLIP (2026-07-12, KR_TODO); Lojban remains fully supported during the
 //! dual-front-end phase (`--lang lojban` / `NIBLI_LANG=lojban` / `:lojban`).
 //! `FromStr` is the parser for `NIBLI_LANG`-style configuration
 //! (`"klaro"` / `"lojban"`, lowercase).
