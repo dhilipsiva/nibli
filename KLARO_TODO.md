@@ -112,7 +112,11 @@ residue; every bullet lands independently CI-green.
   TODO bullet). nibli-ui: examples.rs `include_str!` → `.klaro` twins, `DEFAULT_LOJBAN`
   → Klaro syllogism, `ActiveTab::Lojban` → `ActiveTab::Kb` with language-driven label,
   legacy-Lojban input toggle in settings (default Klaro), Translate targets the KB
-  language, camxes `<script>` tags stay (legacy mode). Keep examples.rs `source`/
+  language AND IS RENAMED **Formalize** (user decision 2026-07-12: "compile" stays
+  reserved for the deterministic KB→logic step; the LLM English→Klaro step is
+  interpretive formalization behind gates — never label it "Compile", that would
+  launder the one untrusted step with compiler connotations; book copy follows via
+  book/TODO.md), camxes `<script>` tags stay (legacy mode). Keep examples.rs `source`/
   `queries` labels STABLE (book Ch 19 quotes them verbatim — two-repo desync has no
   gate).
 - **docs sweep** — README leads with Klaro (readme.klaro transcripts; legacy-Lojban
