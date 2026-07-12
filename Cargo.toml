@@ -11,6 +11,7 @@ members = [
     "nibli-engine",
     "nibli-protocol",
     "smuni-dictionary",
+    "klaro-dictionary",
     "nibli-store",
     "nibli-types",
     "nibli-import",

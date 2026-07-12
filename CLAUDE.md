@@ -23,6 +23,7 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | `just test` | Run all unit tests (`cargo test --lib -- --nocapture --test-threads=1`) |
 | `just test-engine` | Run nibli-engine integration tests (full pipeline: parse → compile → reason) |
 | `just test-gerna` | Run gerna (parser) tests only |
+| `just test-klaro-dict` | Run klaro-dictionary (Klaro alias map) tests only — dev loop; `just test` already sweeps them into `ci` |
 | `just test-backend` | Run Python backend tests |
 | `just test-gasnu` | Run gasnu host unit tests (trap classification, error/verdict formatting, arithmetic) |
 | `just test-fanva` | Run nibli-fanva native tests (agentic loop + history trim, local gates, semantic verification turn incl. the Genesis silent-mistranslation fixture, LLM request/response shapes, MCP wire/types, tool loop). Part of `ci`. |

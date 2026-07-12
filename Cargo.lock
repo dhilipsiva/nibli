@@ -2366,6 +2366,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "klaro-dictionary"
+version = "0.1.0"
+dependencies = [
+ "phf",
+ "phf_codegen",
+]
+
+[[package]]
 name = "lasna"
 version = "0.1.0"
 dependencies = [

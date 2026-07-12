@@ -402,6 +402,11 @@ clippy-runtime:
 test-gerna:
     cargo test -p gerna --lib -- --nocapture
 
+# Run klaro-dictionary unit tests only (dev loop; the workspace `test` recipe
+# already sweeps them into `ci`)
+test-klaro-dict:
+    cargo test -p klaro-dictionary --lib -- --nocapture
+
 # Run all unit tests across workspace
 test:
     cargo test --lib -- --nocapture --test-threads=1

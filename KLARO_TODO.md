@@ -10,20 +10,6 @@ primary/default language everywhere, gerna demoted to the equivalence battery + 
 `.lojban` load; FULL alias-map generation (~1,338 gismu) from day one; every bullet
 lands independently CI-green.
 
-- **klaro-dictionary crate (fallback mode)** — new workspace member (`Cargo.toml`
-  members list): the alias map is NEW TRUSTED BASE and deliberately its own crate, NOT
-  an extension of `smuni-dictionary` (keeps the reverse map + labels out of the shipping
-  web bundle). `src/reserved.rs` = the SURFACE_SYNTAX §2 reserved-word list as a single
-  source (consumed by this build.rs via `#[path]` — the `smuni-dictionary/src/arity.rs`
-  pattern — and later by klaro's lexer). Fallback-mode `build.rs` (no dictionary-en.json,
-  what CI uses; loud banner): curated `FALLBACK_ALIAS_ENTRIES` covering at least the
-  `FALLBACK_GISMU_ENTRIES` word set (smuni-dictionary/build.rs:266) + `ALIAS_PINS`
-  (incl. bilga→`obligated` — its lensisku gloss "must" is a Klaro keyword) + curated
-  `CONVERTED_ALIASES` (alias, gismu, x1↔xN swap: `metabolized_by`↦katna⟨1↔2⟩,
-  `permitted`↦curmi⟨1↔2⟩, `obligated`↦bilga⟨1↔2⟩, …). API:
-  `AliasEntry { gismu, swap: Option<u8>, arity: u8, place_labels: [&'static str; 5],
-  label_tier }`, `ALIASES`/`GISMU_TO_ALIAS` phf maps, `alias()`, `canonical_alias()`,
-  `label_index()`, `LabelTier { Curated, Lensisku, Prose, Positional }`. Unit tests.
 - **klaro-dictionary full generation** — extend build.rs for the full dump: duplicate
   the ~30-line `LensiskuEntry` serde shape (smuni-dictionary/build.rs:17-31) ADDING the
   currently-skipped `place_keywords` field (confirm its JSON shape against the export;
@@ -35,7 +21,13 @@ lands independently CI-green.
   with the corpus/core ~200 predicates, same scale as GISMU_PLACE_TEMPLATES) → lensisku
   place_keywords (where present + arity-consistent) → prose heuristic over `$x_N$`
   markers (`src/label.rs`, pure + unit-tested) → positional `""`. Label validation at
-  generation: valid idents, no dupes per entry, not reserved, never matching `^x[1-5]$`.
+  generation: valid idents, no dupes per entry, not reserved, never matching `^x[1-5]$`
+  (the fallback-mode `build.rs::validate()` already enforces all of these — extend it,
+  don't fork it). The curated tables in `klaro-dictionary/src/curated.rs` become the
+  pin tier (they win over generation in both modes — spellings can never flap).
+  DECIDE: base-form vs mechanical third-person-singular inflection for the uncurated
+  verb long tail (the curated core is pinned 3rd-person: `goes`, `eats`; lensisku
+  gloss keywords are base-form: `come`, `eat`; there is no POS data in the export).
   Full-mode coverage floor (≥1,300 aliases).
 - **klaro crate: lexer** — new workspace member `klaro/`; logos lexer (repo precedent:
   gerna) in `src/token.rs`+`src/lexer.rs`: keyword tokens exact-match with priority over
@@ -78,7 +70,13 @@ lands independently CI-green.
   reject decisions with error-message tests: `~(compound)`, `~` over a prefixed claim
   (`~past P` — `Not(Past P)` is inexpressible, smuni emits `Attitudinal(Tense(Not(…)))`),
   prefixes over compound atoms (`past (A & B)`).
-- **klaro renderer + parity guard** — `src/render.rs`: `render(&AstBuffer) ->
+- **klaro renderer + parity guard** — NOTE (naming decision 2026-07-12, honest-generic
+  only): reconcile the SURFACE_SYNTAX §16 acceptance spellings to the shipped alias set
+  when `klaro/tests/acceptance.klaro` lands — domain-flavored names never enter the core
+  map (`consents`→`approves`, `inhibits`→`prevents`, `breached`→flawed-family,
+  `at_risk`→`dangerous`, `takes`→`uses`, `rises`→`increases`; also `obliged` is bilga's
+  plain alias — `obligates` would invert x1's role — and `obligated` is the ⟨1↔2⟩
+  converted form). `src/render.rs`: `render(&AstBuffer) ->
   Result<String, NibliError>` with ZERO wildcard arms over every `nibli_types::ast` enum
   (Sumti, Selbri, Sentence, SentenceConnective, Gadri, AbstractionKind, RelClauseKind,
   PlaceTag, BaiTag, ModalTag, Conversion, Connective, Tense, Attitudinal) — a new AST
