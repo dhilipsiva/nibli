@@ -23,20 +23,6 @@ xorlo witnesses identically to Lojban (compat requires it — the equivalence ba
 checks verdict identity) and the behavior is disclosed spec semantics, not hidden
 residue; every bullet lands independently CI-green.
 
-- **klaro emitter + parse_checked** — `src/emit.rs` tree→`nibli_types::ast::AstBuffer`
-  (mirror gerna's Flattener discipline, gerna/src/lib.rs:134-152: child indices from
-  push-return values). Emission map per the design review: `$x`→ProSumti da/de/di,
-  `?`→ma, `it`→ke'a, `slot`→ce'u, named args→`Tagged(Fa..Fu)`, aliases with
-  swap→`Selbri::Converted`, linked args→`Selbri::WithArgs` with Unspecified gap-fill,
-  operators at SENTENCE level (`Afterthought`/`GanaiGi`), block determiners via
-  `Prenex + GanaiGi`/`GeGi` (gerna rejects description gi'e heads — shape pinned by the
-  seam gate, spec O7). Public API mirrors gerna: `parse_text` + fail-closed
-  `parse_checked(text) -> Result<AstBuffer, NibliError>`; NO goi step. Dev-dep `smuni`
-  golden tests: every emitted buffer is accepted by `compile_from_gerna_ast` (its
-  `validate_ast_buffer` is the designed-for hand-built-buffer path). Pin the spec-errata
-  reject decisions with error-message tests: `~(compound)`, `~` over a prefixed claim
-  (`~past P` — `Not(Past P)` is inexpressible, smuni emits `Attitudinal(Tense(Not(…)))`),
-  prefixes over compound atoms (`past (A & B)`).
 - **klaro renderer + parity guard** — NOTE (naming decision 2026-07-12, honest-generic
   only): reconcile the SURFACE_SYNTAX §16 acceptance spellings to the shipped alias set
   when `klaro/tests/acceptance.klaro` lands — domain-flavored names never enter the core
@@ -55,8 +41,13 @@ residue; every bullet lands independently CI-green.
   f64s whose Display needs exponent/sign form). Render∘parse fixpoint tests over
   `klaro/tests/acceptance.klaro` (the SURFACE_SYNTAX §16 set, checked in — also the fuzz
   seed).
-- **nibli-verify klaro gates (seam + battery)** — `klaro` becomes a regular nibli-verify
-  dep; new `src/klaro_battery.rs` (round-trip helper + `CONSTRUCT_INVENTORY: one row per
+- **nibli-verify klaro gates (seam + battery)** — NOTE (emitter limitations to pin or
+  lift here, found 2026-07-12): `exactly N`/`the` BLOCK determiners and block-determiner
+  restrictors carrying relative clauses currently FAIL CLOSED at emission with targeted
+  messages (only `every`/`some` blocks lower, via `Prenex+GanaiGi`/`GeGi`; klaro's
+  in-crate twin test already pins block-every ≡ the ro-da prenex shape, settling O7's
+  direction); decide lift-vs-document when this gate lands. `klaro` becomes a regular
+  nibli-verify dep; new `src/klaro_battery.rs` (round-trip helper + `CONSTRUCT_INVENTORY: one row per
   spec §3–§9 construct { spec_section, klaro, lojban: Option }` — parity layer 2, with
   per-section non-vacuity floors) + new test binary `tests/klaro_gate.rs` (oracle-free,
   never skips) holding BOTH gates. `klaro_seam_conformance`: golden FOL structure for

@@ -2369,9 +2369,12 @@ dependencies = [
 name = "klaro"
 version = "0.1.0"
 dependencies = [
+ "gerna",
  "klaro-dictionary",
+ "nibli-types",
  "pest",
  "pest_derive",
+ "smuni",
  "smuni-dictionary",
 ]
 

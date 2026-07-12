@@ -61,13 +61,13 @@ pub fn resolve_all(input: &str, statements: &[Statement]) -> Vec<ParseError> {
 /// A resolved predicate: its arity plus the alias entry when the name came
 /// from the alias map (identity-passthrough gismu/lujvo have no entry — raw
 /// `xN` labels only).
-struct PredInfo {
-    surface: String,
-    arity: u8,
-    entry: Option<&'static klaro_dictionary::AliasEntry>,
+pub(crate) struct PredInfo {
+    pub(crate) surface: String,
+    pub(crate) arity: u8,
+    pub(crate) entry: Option<&'static klaro_dictionary::AliasEntry>,
 }
 
-fn lookup(word: &str) -> Result<PredInfo, String> {
+pub(crate) fn lookup(word: &str) -> Result<PredInfo, String> {
     if let Some(entry) = klaro_dictionary::alias(word) {
         return Ok(PredInfo {
             surface: word.to_owned(),
@@ -89,7 +89,7 @@ fn lookup(word: &str) -> Result<PredInfo, String> {
 }
 
 /// Resolve a named-argument label to a 0-based SURFACE place index.
-fn label_index(info: &PredInfo, label: &str) -> Option<usize> {
+pub(crate) fn label_index(info: &PredInfo, label: &str) -> Option<usize> {
     match info.entry {
         Some(entry) => klaro_dictionary::label_index(entry, label),
         None => {
