@@ -6,6 +6,7 @@ edition = "2024"
 
 [dependencies]
 gerna = { path = "../gerna" }
+klaro = { path = "../klaro" }
 smuni = { path = "../smuni" }
 logji = { path = "../logji" }
 nibli-types = { path = "../nibli-types", features = ["serde"] }

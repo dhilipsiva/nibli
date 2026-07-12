@@ -23,15 +23,6 @@ xorlo witnesses identically to Lojban (compat requires it — the equivalence ba
 checks verdict identity) and the behavior is disclosed spec semantics, not hidden
 residue; every bullet lands independently CI-green.
 
-- **Language enum + engine dispatch (default still Lojban)** — `nibli-types/src/lang.rs`:
-  `Language { Klaro, Lojban }` + FromStr/Display (introduced defaulting to LOJBAN; the
-  default flips in THE FLIP bullet). NibliEngine: `Cell<Language>` + `set_language`/
-  `language` (the `set_strict` precedent, nibli-engine/src/lib.rs:99-111); two-arm match
-  in `compile_text` (lib.rs:220); KLARO COMPILES SKIP GOI RESOLUTION AND CLEAR THE
-  PRIOR-BRIDI SNAPSHOT (`last_relation = None` — a later Lojban `go'i` fails closed
-  "no prior bridi", never silently repeats something older). `reset()` does NOT clear
-  the language (configuration, like verbose). Unit tests both modes + the goi-clear.
-  Zero behavior change for existing callers.
 - **native REPL surfaces** — nibli REPL (nibli/src/main.rs): `:klaro`/`:lojban` commands
   → `engine.set_language`, `:load` picks language by file extension (`.lojban`→Lojban
   for the file, restore after; `.klaro`→Klaro; else current mode), `NIBLI_LANG` env at
