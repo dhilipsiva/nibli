@@ -657,32 +657,41 @@ String      <- '"' ('\\' . / !'"' .)* '"'
 
 ## 16. Corpus acceptance set (Lojban ↔ Klaro)
 
+> **Reconciled 2026-07-12** to the SHIPPED honest-generic alias vocabulary (the
+> earlier draft used domain overlays — `consents`/`inhibits`/`breached`/
+> `at_risk`/`rises`/`takes` — which never enter the core map) and to the
+> emitter's landed forms (converted aliases carry positional labels, so
+> `obligated`'s duty place is `x2:`). The NORMATIVE, executable form of this
+> corpus is **`klaro/tests/acceptance.klaro`** (30 statements — this set plus
+> operator/selector/block/tag coverage), pinned by klaro's render∘parse
+> fixpoint tests and reused as the fuzz seed.
+
 ```klaro
 person(Adam).                                    # la .adam. cu prenu
-inhibits(Flukonazol, Siptucin).                  # la .flukonazol. cu fanta la .siptucin.
+prevents(Flukonazol, Siptucin).                  # la .flukonazol. cu fanta la .siptucin.
 metabolized_by(Varfarin, Siptucin).              # la .varfarin. cu se katna la .siptucin.
                                                  #   (alias katna⟨x1↔x2⟩; = cuts(x2: Varfarin, x1: Siptucin))
-health data(Kanrek).                             # la .kanrek. cu kanro datni  (tanru, head = data)
+healthy data(Kanrek).                            # la .kanrek. cu kanro datni  (tanru, head = data)
 animal(every dog).                               # ro lo gerku cu danlu
-obligated(every data, duty: event { correct() }).
-                                                 # ro lo datni cu se bilga lo nu drani
-permitted(every person where consents).          # ro lo prenu poi zanru cu se curmi
-obligated(every data controller where breached, duty: event { notifies() }).
+obligated(every data, x2: event { correct() }).  # ro lo datni cu se bilga lo nu drani
+permitted(every person where approves).          # ro lo prenu poi zanru cu se curmi
+obligated(every data governs where flaw, x2: event { message() }).
                                                  # ro lo datni turni poi cfila cu se bilga lo nu notci
-obligated(every person where ~consents, duty: event { removed() }).
+obligated(every person where ~approves, x2: event { removes() }).
                                                  # ro lo prenu poi na zanru cu se bilga lo nu se vimcu  (GDPR erasure)
-permitted(every person, act: event { data finds() }).
+permitted(every person, x2: event { data discovers() }).
                                                  # ro lo prenu cu se curmi lo nu datni facki
 beautiful(every person where ~cat).              # ro lo prenu poi na mlatu cu melbi  (stratified NAF)
-inhibits(Flukonazol, Siptucin) & metabolized_by(Varfarin, Siptucin) -> rises(Varfarin).
+prevents(Flukonazol, Siptucin) & metabolized_by(Varfarin, Siptucin) -> increases(Varfarin).
                                                  # ganai ge … gi … gi …  (ground conditional → zero-var rule)
-at_risk(every drug where rises & narrow).        # ro lo xukmi poi zenba poi cinla cu ckape
-all $x: at_risk($x) & takes(Adam, $x) -> alert($x).
+dangerous(every chemical where increases where thin).
+                                                 # ro lo xukmi poi zenba poi cinla cu ckape
+all $x: dangerous($x) & uses(Adam, $x) -> warns($x).
                                                  # ro da zo'u ganai ge da ckape gi la .adam. cu pilno da gi da kajde
 Kim = Adam.                                      # la .kim. cu du la .adam.
 past dog(Dan).                                   # pu la .dan. cu gerku
 red(exactly 2 red).                              # re lo xunre cu xunre
-permitted(every carer(of: some data)).           # ro lo kurji be lo datni cu se curmi
+permitted(every tends(some data)).               # ro lo kurji be lo datni cu se curmi
 ```
 
 ---

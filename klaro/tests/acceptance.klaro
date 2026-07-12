@@ -1,0 +1,40 @@
+# Klaro acceptance corpus — the SURFACE_SYNTAX §16 set, reconciled to the
+# SHIPPED alias vocabulary (honest-generic naming decision, 2026-07-12:
+# domain overlays like consents/inhibits/breached/at_risk never enter the
+# core map). One statement per line; `#` lines are comments. Consumed by:
+#   - klaro::render fixpoint tests (render∘parse compiles to the same
+#     LogicBuffer; render is text-idempotent)
+#   - the future fuzz_klaro seed and the nibli-verify battery.
+# Every word is FALLBACK-SAFE (CI builds without dictionary-en.json).
+
+person(Adam).
+prevents(Flukonazol, Siptucin).
+metabolized_by(Varfarin, Siptucin).
+healthy data(Kanrek).
+animal(every dog).
+obligated(every data, x2: event { correct() }).
+permitted(every person where approves).
+obligated(every data governs where flaw, x2: event { message() }).
+obligated(every person where ~approves, x2: event { removes() }).
+permitted(every person, x2: event { data discovers() }).
+beautiful(every person where ~cat).
+prevents(Flukonazol, Siptucin) & metabolized_by(Varfarin, Siptucin) -> increases(Varfarin).
+dangerous(every chemical where increases where thin).
+all $x: dangerous($x) & uses(Adam, $x) -> warns($x).
+Kim = Adam.
+past dog(Dan).
+red(exactly 2 red).
+permitted(every tends(some data)).
+goes(me, some market).
+goes(?, destination: some market).
+every dog $d: animal($d).
+some dog $d: big($d) & goes($d).
+permitted(every loves.loved).
+goes(Adam where dog).
+goes(no dog).
+must goes(me).
+past ~goes(me).
+goes(me) via uses(this).
+dog+cat(me).
+word("any text here").
+product(50, 5, 10).

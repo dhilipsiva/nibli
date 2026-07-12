@@ -23,25 +23,11 @@ xorlo witnesses identically to Lojban (compat requires it — the equivalence ba
 checks verdict identity) and the behavior is disclosed spec semantics, not hidden
 residue; every bullet lands independently CI-green.
 
-- **klaro renderer + parity guard** — NOTE (naming decision 2026-07-12, honest-generic
-  only): reconcile the SURFACE_SYNTAX §16 acceptance spellings to the shipped alias set
-  when `klaro/tests/acceptance.klaro` lands — domain-flavored names never enter the core
-  map (`consents`→`approves`, `inhibits`→`prevents`, `breached`→flawed-family,
-  `at_risk`→`dangerous`, `takes`→`uses`, `rises`→`increases`; also `obliged` is bilga's
-  plain alias — `obligates` would invert x1's role — and `obligated` is the ⟨1↔2⟩
-  converted form). `src/render.rs`: `render(&AstBuffer) ->
-  Result<String, NibliError>` with ZERO wildcard arms over every `nibli_types::ast` enum
-  (Sumti, Selbri, Sentence, SentenceConnective, Gadri, AbstractionKind, RelClauseKind,
-  PlaceTag, BaiTag, ModalTag, Conversion, Connective, Tense, Attitudinal) — a new AST
-  variant breaks klaro's build until covered: this is parity layer 1 of the 100%-sync
-  guarantee. Plus `__ast_parity_guard` modeled on
-  `nibli_types::logic::__exhaustiveness_guard` (nibli-types/src/logic.rs:381-425) with
-  the new-variant obligation checklist in its doc comment. Fails closed (named error) on
-  §10 out-of-scope constructs (`ri/ra/ru`, `ko`, unresolved go'i, non-Root la-selbri,
-  f64s whose Display needs exponent/sign form). Render∘parse fixpoint tests over
-  `klaro/tests/acceptance.klaro` (the SURFACE_SYNTAX §16 set, checked in — also the fuzz
-  seed).
-- **nibli-verify klaro gates (seam + battery)** — NOTE (emitter limitations to pin or
+- **nibli-verify klaro gates (seam + battery)** — NOTE (render gaps to lift here, found
+  2026-07-12): sumti/selbri CONNECTIVES render only via bridi-level expansion and
+  currently FAIL CLOSED by name in `klaro::render` (the corpora may contain `.e`/`je`
+  shapes — the battery sweep will say); stacked `Converted` chains without a curated
+  converted alias likewise. NOTE (emitter limitations to pin or
   lift here, found 2026-07-12): `exactly N`/`the` BLOCK determiners and block-determiner
   restrictors carrying relative clauses currently FAIL CLOSED at emission with targeted
   messages (only `every`/`some` blocks lower, via `Prenex+GanaiGi`/`GeGi`; klaro's
