@@ -1,4 +1,4 @@
-// Klaro grammar — THE EXECUTABLE SPEC (SURFACE_SYNTAX.md §15, core profile).
+// Klaro grammar — THE EXECUTABLE SPEC (SURFACE_SYNTAX.md §15, full v0.1 surface).
 //
 // This file is the normative grammar: pest_derive compiles it into the parser,
 // so grammar and implementation cannot drift (the property that motivated the
@@ -13,14 +13,27 @@
 //      `you`/`you_all` ordered-choice bug;
 //   2. `ident` starts with `!keyword`, so a keyword can never be an identifier.
 //
-// Structure rules (no `@`) skip WHITESPACE/COMMENT between elements; atomic
-// `@` rules (keywords, ident, name, var, number, string) do not.
+// Structure rules (no `@`/`$`) skip WHITESPACE/COMMENT between elements; atomic
+// `@` and compound-atomic `$` rules do not. Two rules are DELIBERATELY
+// compound-atomic because they denote word identity where internal whitespace
+// or comments would be a hazard:
+//   - `selected` (`loves.loved` — the place selector): adjacency on BOTH sides
+//     of the dot keeps the selector from colliding with the statement
+//     terminator (`Kim = every dog. eats(me).` must be two statements; see
+//     SURFACE_SYNTAX O8). A selected restr also takes NO linked args, so the
+//     compact collision `Kim = every dog.eats(me).` is a PARSE ERROR, never a
+//     silent statement merge. `selected` must stay FIRST in its alternation —
+//     pest commits to a succeeding alternative and never re-opens it.
+//   - `pred_name` (`a+b` — zei compounds): compound identity may not contain
+//     whitespace or comments (`computer + user(…)` is a parse error).
 //
 // The §6 errata (prefix ordering, `~past P`, `~~P`, prefixes/`~` over compound
-// claims), positional-before-named args, and `exactly N` integrality are
-// deliberately NOT encoded here: `modifiers` parses permissively and the
-// walker (parser.rs) rejects with TARGETED, positioned errors — generic
-// "expected …" messages would bury the spec guidance.
+// claims), positional-before-named args, `exactly N` integrality, the
+// mandatory-`it` rule for full-claim clause bodies, and all dictionary-driven
+// checks (resolve.rs) are deliberately NOT encoded here: `modifiers` and the
+// shapes below parse permissively and the walker/resolver reject with
+// TARGETED, positioned errors — generic "expected …" messages would bury the
+// spec guidance.
 
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 COMMENT    = _{ ("#" ~ (!"\n" ~ ANY)*) | ("/*" ~ (!"*/" ~ ANY)* ~ "*/") }
@@ -83,25 +96,38 @@ name   = @{ ASCII_ALPHA_UPPER ~ (ASCII_ALPHANUMERIC | "_")* }
 var    = @{ "$" ~ ASCII_ALPHA_LOWER ~ ident_char* }
 number = @{ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
 // `\"` and `\\` are the only escapes; anything else after `\` fails the match
-// (fail closed). Payloads may carry arbitrary UTF-8 — ASCII-only is a rule
-// about SYNTAX, and it holds automatically: no other rule matches non-ASCII.
+// (fail closed). Payloads may carry arbitrary UTF-8 — the ASCII-only rule
+// applies to syntax, not string payloads (SURFACE_SYNTAX §9). No other rule
+// matches non-ASCII, so the ASCII-only property holds automatically.
 string = @{ "\"" ~ (("\\" ~ ("\"" | "\\")) | (!("\"" | "\\" | "\n") ~ ANY))* ~ "\"" }
 
 // ── File / statements ──
 file      = { SOI ~ statement* ~ EOI }
 statement = { claim ~ "." }
 
-// ── The claim ladder (tightest first: modifiers · & · | · ^ · <-> · ->) ──
-claim     = { iff_chain ~ (op_impl ~ claim)? }        // -> right-assoc
-iff_chain = { xor_chain ~ (op_iff ~ xor_chain)* }
-xor_chain = { or_chain ~ (op_xor ~ or_chain)* }
-or_chain  = { and_chain ~ (op_or ~ and_chain)* }
-and_chain = { unary ~ (op_and ~ unary)* }
-op_impl   = { "->" }
-op_iff    = { "<->" }
-op_xor    = { "^" }
-op_or     = { "|" }
-op_and    = { "&" }
+// ── Claims (SURFACE_SYNTAX §6) ──
+// The three claim families have pairwise-incompatible commit points (`all`,
+// det-keyword…`$var:`, everything else), so pest's alternative-failure
+// backtracking keeps e.g. `every dog = Adam.` an equality, never a broken
+// det_block.
+claim      = { prenex | det_block | impl_chain }
+// `all $x, $y: C` — nested ForAll wrapping the body DIRECTLY (prenex shape).
+prenex     = { kw_all ~ var ~ ("," ~ var)* ~ ":" ~ claim }
+// `every dog $d: C` — named-binder block form (emission shape pinned by O7).
+det_block  = { block_det ~ restr ~ var ~ ":" ~ claim }
+block_det  = { (kw_every ~ kw_the?) | kw_some | (kw_exactly ~ number ~ kw_the?) | kw_no }
+
+// The operator ladder (tightest first: modifiers · & · | · ^ · <-> · ->).
+impl_chain = { iff_chain ~ (op_impl ~ impl_chain)? }      // -> right-assoc
+iff_chain  = { xor_chain ~ (op_iff ~ xor_chain)* }
+xor_chain  = { or_chain ~ (op_xor ~ or_chain)* }
+or_chain   = { and_chain ~ (op_or ~ and_chain)* }
+and_chain  = { unary ~ (op_and ~ unary)* }
+op_impl    = { "->" }
+op_iff     = { "<->" }
+op_xor     = { "^" }
+op_or      = { "|" }
+op_and     = { "&" }
 
 // Modifiers parse PERMISSIVELY in any order/count; the walker enforces the §6
 // shape (≤1 deontic, ≤1 tense, deontic-before-tense, ≤1 `~`, `~` innermost)
@@ -112,14 +138,23 @@ tilde    = { "~" }
 
 atom        = { paren | predication | equality }
 paren       = { "(" ~ claim ~ ")" }
-predication = { ident ~ args }
+predication = { pred_seq ~ args ~ tag* }
+// `via cause(X)` — BAI/fi'o modal tag (SURFACE_SYNTAX §5).
+tag         = { kw_via ~ pred_name ~ "(" ~ term ~ ")" }
 args        = { "(" ~ (arg ~ ("," ~ arg)*)? ~ ")" }
 arg         = { (label ~ ":")? ~ term }
 label       = { ident }
 equality    = { term ~ "=" ~ term }
 
-// ── Terms ──
-term       = { underscore | question | number | string | var | keyterm | det_phrase | name }
+// ── Predicate sequences (tanru; SURFACE_SYNTAX §5) ──
+pred_seq  = { pred_unit+ }                       // 2+ units = tanru, LAST = head
+pred_unit = { ("[" ~ pred_seq ~ "]") | pred_name }
+pred_name = ${ ident ~ ("+" ~ ident)* }          // a+b zei compound — word identity,
+                                                 // compound-atomic (no WS/comments)
+
+// ── Terms (SURFACE_SYNTAX §3) ──
+term       = { underscore | question | number | string | var | keyterm
+             | abstraction | det_phrase | rigid }
 underscore = { "_" }
 question   = { "?" }
 keyterm    = {
@@ -127,8 +162,20 @@ keyterm    = {
   | kw_it_a | kw_it_e | kw_it_i | kw_it_o | kw_it_u
   | kw_me | kw_you | kw_we | kw_this | kw_that | kw_yonder | kw_it | kw_slot
 }
-det_phrase = { det ~ restr }
-det        = { kw_some | (kw_every ~ kw_the?) | kw_the | (kw_exactly ~ number ~ kw_the?) | kw_no }
-// Core profile: a single predicate word. The parser-completion bullet extends
-// this rule (tanru units, `.label` selectors, linked args, where/also clauses).
-restr      = { ident }
+abstraction = { abs_kind ~ "{" ~ claim ~ "}" }
+abs_kind    = { kw_event | kw_fact | kw_property | kw_amount | kw_concept }
+rigid       = { name ~ rel_cl* }                 // Adam where dog — rel clause on a
+                                                 // rigid term
+det_phrase  = { det ~ restr }
+det         = { kw_some | (kw_every ~ kw_the?) | kw_the
+              | (kw_exactly ~ number ~ kw_the?) | kw_no }
+
+// ── Restrictors (SURFACE_SYNTAX §4) ──
+// `selected` first — see the header note (PEG commit + O8).
+restr    = { tilde? ~ (selected | pred_seq ~ args?) ~ rel_cl* }
+selected = ${ ident ~ "." ~ ident }              // place selector: every loves.loved
+rel_cl   = { (kw_where | kw_also) ~ clause_body }
+// Bare-predicate sugar: a body with no argument list applies to `it` at x1.
+// The claim branch is tried first; full-claim bodies must contain `it`
+// (mandatory-`it`, enforced by the walker per SURFACE_SYNTAX §7).
+clause_body = { claim | (tilde? ~ pred_seq) }

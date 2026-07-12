@@ -23,17 +23,6 @@ xorlo witnesses identically to Lojban (compat requires it — the equivalence ba
 checks verdict identity) and the behavior is disclosed spec semantics, not hidden
 residue; every bullet lands independently CI-green.
 
-- **klaro parser completion + resolve** — rel clauses (`where`/`also`; bare-predicate
-  sugar tries Claim branch first; mandatory-`it` static check: full-claim body with zero
-  `it` = parse error), abstractions (`event/fact/property/amount/concept { }`),
-  tanru + `[ ]` grouping + `a+b` compounds, `.label` place selectors, linked args on
-  restrictors, `via` modal tags, block determiners (`every dog $d: …`), `all $x,$y:`
-  prenex. `src/resolve.rs` static pass: ≤3 distinct `$vars` per scope (da/de/di lowering
-  cap — reject the 4th with a clear error, never merge), place refill/overflow, `it`
-  only in clause bodies / `slot` only in `property{}`, name resolution
-  (klaro-dictionary alias → gismu+swap+labels; identity passthrough when
-  `smuni_dictionary::get_arity(name).is_some()`; otherwise COMPILE ERROR — the
-  deliberate tightening over gerna's arity-2 default).
 - **klaro emitter + parse_checked** — `src/emit.rs` tree→`nibli_types::ast::AstBuffer`
   (mirror gerna's Flattener discipline, gerna/src/lib.rs:134-152: child indices from
   push-return values). Emission map per the design review: `$x`→ProSumti da/de/di,
@@ -198,11 +187,15 @@ residue; every bullet lands independently CI-green.
   front-end section, WIT doc comments ("Assert Lojban text…"), gasnu/nibli `:help`
   strings audit, LOJBAN_COVERAGE.md marked legacy-scope, SURFACE_SYNTAX.md status line →
   implemented-v0.1.
-- **lint catalog L1–L7** — non-blocking compile notes per SURFACE_SYNTAX §12; L4 (alias
+- **lint catalog L1–L9** — non-blocking compile notes per SURFACE_SYNTAX §12; L4 (alias
   echo: resolved gismu + permutation on first use per file/session) and L5 (integrity-
   constraint registration echo) first; L1 the-trap, L2 tanru-vs-`&`, L3 multi-quantified-
   args scope warning, L6 tense×NAF advisory (`past ~P` only — `~past P` is rejected),
-  L7 must/may-vs-obligated/permitted mixing.
+  L7 must/may-vs-obligated/permitted mixing; L8 (O9) echo the innermost-wins rel-clause
+  attachment when a clause-body-final equality RHS carries a rel clause; L9 warn when a
+  statement's terminating `.` is whitespace-separated from the claim AND the next
+  statement starts with a digit (`X = 2 .5 = $y.` silently splits — 2026-07-12 grammar
+  review, Finding 3).
 - **gerna retirement (execute at clean-core v2 divergence — not before)** — ALL of:
   first v2 semantic decision landed (xorlo flag off or schema declarations in; see
   SURFACE_SYNTAX §14); book repo migrated or pinned (`NIBLI_LANG=lojban` /

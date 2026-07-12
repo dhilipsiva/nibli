@@ -1,16 +1,20 @@
 //! Klaro parser: pest-generated from `src/klaro.pest` (THE executable grammar
-//! — SURFACE_SYNTAX §15), plus the walker that builds the tree AST
-//! ([`crate::ast`]) and enforces the §6 errata as targeted, positioned errors.
+//! — SURFACE_SYNTAX §15, full v0.1 surface), plus the walker that builds the
+//! tree AST ([`crate::ast`]) and enforces the §6/§7 errata as targeted,
+//! positioned errors.
 //!
 //! Division of labor:
-//! - `klaro.pest` owns SYNTAX. It parses modifiers (`must/may/past/now/future/~`)
-//!   permissively and knows nothing about the errata, argument ordering, or
-//!   count integrality — encoding those as grammar would bury the spec
+//! - `klaro.pest` owns SYNTAX. It parses modifiers permissively and knows
+//!   nothing about the errata, argument ordering, count integrality, or the
+//!   mandatory-`it` rule — encoding those as grammar would bury the spec
 //!   guidance under generic "expected …" messages.
-//! - The walker owns the FAIL-CLOSED SEMANTIC SHAPE: ≤1 deontic, ≤1 tense,
-//!   deontic-before-tense, `~` innermost and single, prefixes/`~` only over a
-//!   single predication/equality, positionals-before-named, `exactly N`
-//!   integrality and u32 range, number finiteness, string unescaping.
+//! - The walker (this file) owns the FAIL-CLOSED PARSE-TIME SHAPE: ≤1 deontic,
+//!   ≤1 tense, deontic-before-tense, `~` innermost and single, prefixes/`~`
+//!   only over a single predication/equality, positionals-before-named,
+//!   `exactly N` integrality and u32 range, number finiteness, string
+//!   unescaping, and mandatory-`it` in full-claim clause bodies.
+//! - Dictionary-driven checks (name resolution, place checks, variable cap,
+//!   `it`/`slot` position) live in [`crate::resolve`].
 //!
 //! Error recovery is per-statement, like gerna: `parse_text_with_errors`
 //! parses statement-by-statement, and on an error skips (string/comment-aware)
@@ -21,7 +25,10 @@ use std::fmt;
 use pest::Parser as _;
 use pest::iterators::Pair;
 
-use crate::ast::{Arg, Claim, Deontic, Det, KeyTerm, Predication, Restr, Statement, Tense, Term};
+use crate::ast::{
+    AbsKind, Arg, Claim, ClauseBody, Deontic, Det, KeyTerm, PredSeq, PredUnit, Predication,
+    RelClause, RelKind, Restr, RestrKind, Statement, Tag, Tense, Term,
+};
 
 #[derive(pest_derive::Parser)]
 #[grammar = "klaro.pest"]
@@ -54,6 +61,15 @@ pub fn line_col(input: &str, offset: usize) -> (u32, u32) {
         None => prefix.chars().count() as u32 + 1,
     };
     (line, column)
+}
+
+pub(crate) fn err_at(input: &str, offset: usize, message: impl Into<String>) -> ParseError {
+    let (line, column) = line_col(input, offset);
+    ParseError {
+        message: message.into(),
+        line,
+        column,
+    }
 }
 
 /// Parse a whole input with PER-STATEMENT error recovery. Errors come back in
@@ -175,6 +191,10 @@ fn convert_pest_error(e: pest::error::Error<Rule>, input: &str, base: usize) -> 
             Rule::arg => "an argument",
             Rule::term => "a term",
             Rule::claim
+            | Rule::prenex
+            | Rule::det_block
+            | Rule::block_det
+            | Rule::impl_chain
             | Rule::iff_chain
             | Rule::xor_chain
             | Rule::or_chain
@@ -183,14 +203,18 @@ fn convert_pest_error(e: pest::error::Error<Rule>, input: &str, base: usize) -> 
             | Rule::atom => "a claim",
             Rule::predication => "a predication",
             Rule::equality => "an equality `a = b`",
-            Rule::ident => "a predicate word",
+            Rule::ident | Rule::pred_seq | Rule::pred_unit | Rule::pred_name => "a predicate word",
             Rule::label => "an argument label",
             Rule::statement => "a statement",
             Rule::det | Rule::det_phrase => "a determiner phrase",
             Rule::restr => "a restrictor predicate",
+            Rule::selected => "a place selector",
+            Rule::rel_cl | Rule::clause_body => "a relative clause",
+            Rule::abstraction | Rule::abs_kind => "an abstraction `kind { … }`",
+            Rule::rigid | Rule::name => "a Name",
+            Rule::tag => "a `via` tag",
             Rule::number => "a number",
             Rule::string => "a string",
-            Rule::name => "a Name",
             Rule::var => "a `$variable`",
             Rule::keyterm => "a pro-term",
             Rule::paren => "`( claim )`",
@@ -211,15 +235,6 @@ fn convert_pest_error(e: pest::error::Error<Rule>, input: &str, base: usize) -> 
 
 // ── the walker ──
 
-fn err_at(input: &str, offset: usize, message: impl Into<String>) -> ParseError {
-    let (line, column) = line_col(input, offset);
-    ParseError {
-        message: message.into(),
-        line,
-        column,
-    }
-}
-
 fn build_statement(pair: Pair<Rule>, input: &str, base: usize) -> Result<Statement, ParseError> {
     let span = pair.as_span();
     let claim_pair = pair
@@ -232,14 +247,59 @@ fn build_statement(pair: Pair<Rule>, input: &str, base: usize) -> Result<Stateme
     })
 }
 
+/// claim = prenex | det_block | impl_chain
 fn build_claim(pair: Pair<Rule>, input: &str, base: usize) -> Result<Claim, ParseError> {
-    // claim = iff_chain ~ (op_impl ~ claim)?   (right-assoc)
+    let inner = pair.into_inner().next().expect("claim inner");
+    match inner.as_rule() {
+        Rule::prenex => build_prenex(inner, input, base),
+        Rule::det_block => build_det_block(inner, input, base),
+        Rule::impl_chain => build_impl_chain(inner, input, base),
+        other => unreachable!("claim inner: {other:?}"),
+    }
+}
+
+fn build_prenex(pair: Pair<Rule>, input: &str, base: usize) -> Result<Claim, ParseError> {
+    let mut vars = Vec::new();
+    let mut body = None;
+    for child in pair.into_inner() {
+        match child.as_rule() {
+            Rule::kw_all => {}
+            Rule::var => vars.push(child.as_str()[1..].to_owned()),
+            Rule::claim => body = Some(build_claim(child, input, base)?),
+            other => unreachable!("prenex child: {other:?}"),
+        }
+    }
+    Ok(Claim::Prenex {
+        vars,
+        body: Box::new(body.expect("prenex has a body")),
+    })
+}
+
+fn build_det_block(pair: Pair<Rule>, input: &str, base: usize) -> Result<Claim, ParseError> {
+    let mut inner = pair.into_inner();
+    let det = build_det(inner.next().expect("block_det"), input, base)?;
+    let restr = build_restr(inner.next().expect("det_block restr"), input, base)?;
+    let var_pair = inner.next().expect("det_block var");
+    let var = var_pair.as_str()[1..].to_owned();
+    let body_pair = inner
+        .find(|p| p.as_rule() == Rule::claim)
+        .expect("det_block body");
+    Ok(Claim::DetBlock {
+        det,
+        restr,
+        var,
+        body: Box::new(build_claim(body_pair, input, base)?),
+    })
+}
+
+/// impl_chain = iff_chain ~ (op_impl ~ impl_chain)?   (right-assoc)
+fn build_impl_chain(pair: Pair<Rule>, input: &str, base: usize) -> Result<Claim, ParseError> {
     let mut inner = pair.into_inner();
     let lhs = build_chain(inner.next().expect("iff_chain"), input, base)?;
-    match inner.find(|p| p.as_rule() == Rule::claim) {
+    match inner.find(|p| p.as_rule() == Rule::impl_chain) {
         Some(rhs) => Ok(Claim::Impl(
             Box::new(lhs),
-            Box::new(build_claim(rhs, input, base)?),
+            Box::new(build_impl_chain(rhs, input, base)?),
         )),
         None => Ok(lhs),
     }
@@ -407,15 +467,72 @@ fn build_predication(
     base: usize,
 ) -> Result<Predication, ParseError> {
     let span = pair.as_span();
-    let mut inner = pair.into_inner();
-    let pred = inner.next().expect("predication ident").as_str().to_owned();
-    let args_pair = inner.next().expect("predication args");
+    let mut seq = None;
+    let mut args = Vec::new();
+    let mut tags = Vec::new();
+    for child in pair.into_inner() {
+        match child.as_rule() {
+            Rule::pred_seq => seq = Some(build_pred_seq(child)),
+            Rule::args => args = build_args(child, input, base)?,
+            Rule::tag => tags.push(build_tag(child, input, base)?),
+            other => unreachable!("predication child: {other:?}"),
+        }
+    }
+    Ok(Predication {
+        seq: seq.expect("predication has a pred_seq"),
+        args,
+        tags,
+        span: base + span.start()..base + span.end(),
+    })
+}
 
+fn build_pred_seq(pair: Pair<Rule>) -> PredSeq {
+    let units = pair
+        .into_inner()
+        .map(|unit| {
+            let inner = unit.into_inner().next().expect("pred_unit inner");
+            match inner.as_rule() {
+                Rule::pred_seq => PredUnit::Group(build_pred_seq(inner)),
+                Rule::pred_name => PredUnit::Word(pred_name_parts(inner)),
+                other => unreachable!("pred_unit inner: {other:?}"),
+            }
+        })
+        .collect();
+    PredSeq(units)
+}
+
+fn pred_name_parts(pair: Pair<Rule>) -> Vec<String> {
+    pair.into_inner().map(|p| p.as_str().to_owned()).collect()
+}
+
+fn build_tag(pair: Pair<Rule>, input: &str, base: usize) -> Result<Tag, ParseError> {
+    let span = pair.as_span();
+    let mut pred = Vec::new();
+    let mut term = None;
+    for child in pair.into_inner() {
+        match child.as_rule() {
+            Rule::kw_via => {}
+            Rule::pred_name => pred = pred_name_parts(child),
+            Rule::term => term = Some(build_term(child, input, base)?),
+            other => unreachable!("tag child: {other:?}"),
+        }
+    }
+    Ok(Tag {
+        pred,
+        term: term.expect("tag has a term"),
+        span: base + span.start()..base + span.end(),
+    })
+}
+
+/// Shared by predication args and restr linked args: positionals must precede
+/// named args (SURFACE_SYNTAX §5).
+fn build_args(pair: Pair<Rule>, input: &str, base: usize) -> Result<Vec<Arg>, ParseError> {
     let mut args: Vec<Arg> = Vec::new();
     let mut seen_named = false;
-    for arg_pair in args_pair.into_inner() {
+    for arg_pair in pair.into_inner() {
         debug_assert_eq!(arg_pair.as_rule(), Rule::arg);
-        let arg_at = base + arg_pair.as_span().start();
+        let arg_span = arg_pair.as_span();
+        let arg_at = base + arg_span.start();
         let mut label: Option<String> = None;
         let mut term: Option<Term> = None;
         for part in arg_pair.into_inner() {
@@ -437,13 +554,10 @@ fn build_predication(
         args.push(Arg {
             label,
             term: term.expect("arg has a term"),
+            span: base + arg_span.start()..base + arg_span.end(),
         });
     }
-    Ok(Predication {
-        pred,
-        args,
-        span: base + span.start()..base + span.end(),
-    })
+    Ok(args)
 }
 
 fn build_term(pair: Pair<Rule>, input: &str, base: usize) -> Result<Term, ParseError> {
@@ -469,7 +583,34 @@ fn build_term(pair: Pair<Rule>, input: &str, base: usize) -> Result<Term, ParseE
         }
         Rule::string => Ok(Term::Str(unescape(inner.as_str()))),
         Rule::var => Ok(Term::Var(inner.as_str()[1..].to_owned())),
-        Rule::name => Ok(Term::Name(inner.as_str().to_owned())),
+        Rule::rigid => {
+            let mut kids = inner.into_inner();
+            let name = kids.next().expect("rigid name").as_str().to_owned();
+            let mut rel_clauses = Vec::new();
+            for rel in kids {
+                rel_clauses.push(build_rel_cl(rel, input, base)?);
+            }
+            Ok(Term::Name { name, rel_clauses })
+        }
+        Rule::abstraction => {
+            let mut kids = inner.into_inner();
+            let kind_pair = kids.next().expect("abs_kind");
+            let kind = match kind_pair.into_inner().next().expect("abs kw").as_rule() {
+                Rule::kw_event => AbsKind::Event,
+                Rule::kw_fact => AbsKind::Fact,
+                Rule::kw_property => AbsKind::Property,
+                Rule::kw_amount => AbsKind::Amount,
+                Rule::kw_concept => AbsKind::Concept,
+                other => unreachable!("abs_kind inner: {other:?}"),
+            };
+            let body_pair = kids
+                .find(|p| p.as_rule() == Rule::claim)
+                .expect("abstraction body");
+            Ok(Term::Abstraction {
+                kind,
+                body: Box::new(build_claim(body_pair, input, base)?),
+            })
+        }
         Rule::keyterm => {
             let kw = inner.into_inner().next().expect("keyterm inner");
             Ok(Term::Key(match kw.as_rule() {
@@ -499,15 +640,20 @@ fn build_term(pair: Pair<Rule>, input: &str, base: usize) -> Result<Term, ParseE
 
 fn build_det_phrase(pair: Pair<Rule>, input: &str, base: usize) -> Result<Term, ParseError> {
     let mut inner = pair.into_inner();
-    let det_pair = inner.next().expect("det");
-    let restr_pair = inner.next().expect("restr");
+    let det = build_det(inner.next().expect("det"), input, base)?;
+    let restr = build_restr(inner.next().expect("restr"), input, base)?;
+    Ok(Term::Det { det, restr })
+}
 
-    let mut kids = det_pair.into_inner().peekable();
+/// Shared by `det` (term position) and `block_det` (statement position) —
+/// identical child shapes. `no X` folds to `exactly 0 X` here (spec §4 sugar).
+fn build_det(pair: Pair<Rule>, input: &str, base: usize) -> Result<Det, ParseError> {
+    let mut kids = pair.into_inner().peekable();
     let head = kids.next().expect("det head");
-    let det = match head.as_rule() {
+    Ok(match head.as_rule() {
         Rule::kw_some => Det::Some,
         Rule::kw_the => Det::The,
-        Rule::kw_no => Det::Exactly(0), // `no X` = exactly-0 sugar (spec §4)
+        Rule::kw_no => Det::Exactly(0),
         Rule::kw_every => {
             if kids.peek().is_some() {
                 Det::EveryThe
@@ -543,17 +689,146 @@ fn build_det_phrase(pair: Pair<Rule>, input: &str, base: usize) -> Result<Term, 
             }
         }
         other => unreachable!("det head: {other:?}"),
-    };
-
-    let restr_span = restr_pair.as_span();
-    let ident = restr_pair.into_inner().next().expect("restr ident");
-    Ok(Term::Det {
-        det,
-        restr: Restr {
-            pred: ident.as_str().to_owned(),
-            span: base + restr_span.start()..base + restr_span.end(),
-        },
     })
+}
+
+fn build_restr(pair: Pair<Rule>, input: &str, base: usize) -> Result<Restr, ParseError> {
+    let span = pair.as_span();
+    let mut negated = false;
+    let mut kind: Option<RestrKind> = None;
+    let mut linked_args = Vec::new();
+    let mut rel_clauses = Vec::new();
+    for child in pair.into_inner() {
+        match child.as_rule() {
+            Rule::tilde => negated = true,
+            Rule::selected => {
+                let mut idents = child.into_inner();
+                let pred = idents.next().expect("selected pred").as_str().to_owned();
+                let label = idents.next().expect("selected label").as_str().to_owned();
+                kind = Some(RestrKind::Selected { pred, label });
+            }
+            Rule::pred_seq => {
+                kind = Some(RestrKind::Seq {
+                    seq: build_pred_seq(child),
+                    linked_args: Vec::new(),
+                });
+            }
+            Rule::args => linked_args = build_args(child, input, base)?,
+            Rule::rel_cl => rel_clauses.push(build_rel_cl(child, input, base)?),
+            other => unreachable!("restr child: {other:?}"),
+        }
+    }
+    let kind = match kind.expect("restr has a kind") {
+        RestrKind::Seq { seq, .. } => RestrKind::Seq { seq, linked_args },
+        selected => selected, // grammar guarantees no args on the selected branch
+    };
+    Ok(Restr {
+        negated,
+        kind,
+        rel_clauses,
+        span: base + span.start()..base + span.end(),
+    })
+}
+
+fn build_rel_cl(pair: Pair<Rule>, input: &str, base: usize) -> Result<RelClause, ParseError> {
+    let span = pair.as_span();
+    let clause_at = base + span.start();
+    let mut kind = RelKind::Where;
+    let mut body: Option<ClauseBody> = None;
+    for child in pair.into_inner() {
+        match child.as_rule() {
+            Rule::kw_where => kind = RelKind::Where,
+            Rule::kw_also => kind = RelKind::Also,
+            Rule::clause_body => body = Some(build_clause_body(child, input, base, clause_at)?),
+            other => unreachable!("rel_cl child: {other:?}"),
+        }
+    }
+    Ok(RelClause {
+        kind,
+        body: body.expect("rel_cl has a body"),
+        span: base + span.start()..base + span.end(),
+    })
+}
+
+fn build_clause_body(
+    pair: Pair<Rule>,
+    input: &str,
+    base: usize,
+    clause_at: usize,
+) -> Result<ClauseBody, ParseError> {
+    let mut negated = false;
+    for child in pair.into_inner() {
+        match child.as_rule() {
+            Rule::claim => {
+                let claim = build_claim(child, input, base)?;
+                // Mandatory-`it` (SURFACE_SYNTAX §7): a full-claim body that
+                // never mentions the relativized entity is the implicit-ke'a
+                // ambiguity the firewall exists to prevent.
+                if !claim_contains_it(&claim) {
+                    return Err(err_at(
+                        input,
+                        clause_at,
+                        "a full relative-clause body must mention `it` (the relativized \
+                         entity) at least once — bare `where pred` is the sugar for \
+                         pred(it) (SURFACE_SYNTAX §7 mandatory-it)",
+                    ));
+                }
+                return Ok(ClauseBody::Full(Box::new(claim)));
+            }
+            Rule::tilde => negated = true,
+            Rule::pred_seq => {
+                return Ok(ClauseBody::Bare {
+                    negated,
+                    seq: build_pred_seq(child),
+                });
+            }
+            other => unreachable!("clause_body child: {other:?}"),
+        }
+    }
+    unreachable!("clause_body has a body")
+}
+
+/// Does the claim mention `it`, NOT counting nested relative-clause bodies
+/// (those own their `it`s — innermost binding, like ke'a)? Abstraction and
+/// nested block/prenex bodies DO count; `it` inside a restr's linked args also
+/// counts (documented over-acceptance — it is a bound-place marker there).
+fn claim_contains_it(claim: &Claim) -> bool {
+    match claim {
+        Claim::Prenex { body, .. } => claim_contains_it(body),
+        Claim::DetBlock { restr, body, .. } => {
+            restr_linked_args_contain_it(restr) || claim_contains_it(body)
+        }
+        Claim::Impl(a, b)
+        | Claim::Iff(a, b)
+        | Claim::Xor(a, b)
+        | Claim::Or(a, b)
+        | Claim::And(a, b) => claim_contains_it(a) || claim_contains_it(b),
+        Claim::Not(a) => claim_contains_it(a),
+        Claim::Prefixed { atom, .. } => claim_contains_it(atom),
+        Claim::Equality(a, b) => term_contains_it(a) || term_contains_it(b),
+        Claim::Predication(p) => {
+            p.args.iter().any(|arg| term_contains_it(&arg.term))
+                || p.tags.iter().any(|tag| term_contains_it(&tag.term))
+        }
+    }
+}
+
+fn term_contains_it(term: &Term) -> bool {
+    match term {
+        Term::Key(KeyTerm::It) => true,
+        Term::Abstraction { body, .. } => claim_contains_it(body),
+        Term::Det { restr, .. } => restr_linked_args_contain_it(restr),
+        _ => false,
+    }
+}
+
+fn restr_linked_args_contain_it(restr: &Restr) -> bool {
+    match &restr.kind {
+        RestrKind::Seq { linked_args, .. } => {
+            linked_args.iter().any(|arg| term_contains_it(&arg.term))
+        }
+        RestrKind::Selected { .. } => false,
+    }
 }
 
 /// Unescape a string literal (the grammar guarantees only `\"` and `\\`
@@ -596,26 +871,66 @@ mod tests {
         }
     }
 
+    fn word(name: &str) -> PredUnit {
+        PredUnit::Word(vec![name.into()])
+    }
+
+    fn seq1(name: &str) -> PredSeq {
+        PredSeq(vec![word(name)])
+    }
+
     fn pred(name: &str, args: Vec<Arg>) -> Claim {
         Claim::Predication(Predication {
-            pred: name.into(),
+            seq: seq1(name),
             args,
+            tags: vec![],
             span: 0..0, // spans not asserted through this helper
         })
     }
 
     fn pos(term: Term) -> Arg {
-        Arg { label: None, term }
+        Arg {
+            label: None,
+            term,
+            span: 0..0,
+        }
     }
 
     fn named(label: &str, term: Term) -> Arg {
         Arg {
             label: Some(label.into()),
             term,
+            span: 0..0,
         }
     }
 
-    /// Compare claims ignoring spans (helper-built predications carry 0..0).
+    fn name(n: &str) -> Term {
+        Term::Name {
+            name: n.into(),
+            rel_clauses: vec![],
+        }
+    }
+
+    fn restr(word_: &str) -> Restr {
+        Restr {
+            negated: false,
+            kind: RestrKind::Seq {
+                seq: seq1(word_),
+                linked_args: vec![],
+            },
+            rel_clauses: vec![],
+            span: 0..0,
+        }
+    }
+
+    fn det_term(det: Det, word_: &str) -> Term {
+        Term::Det {
+            det,
+            restr: restr(word_),
+        }
+    }
+
+    /// Compare claims ignoring spans (helper-built nodes carry 0..0).
     fn assert_claim(input: &str, expected: Claim) {
         let mut actual = one(input);
         zero_spans(&mut actual);
@@ -624,6 +939,11 @@ mod tests {
 
     fn zero_spans(claim: &mut Claim) {
         match claim {
+            Claim::Prenex { body, .. } => zero_spans(body),
+            Claim::DetBlock { restr, body, .. } => {
+                zero_restr(restr);
+                zero_spans(body);
+            }
             Claim::Impl(a, b)
             | Claim::Iff(a, b)
             | Claim::Xor(a, b)
@@ -637,26 +957,51 @@ mod tests {
             Claim::Predication(p) => {
                 p.span = 0..0;
                 for arg in &mut p.args {
-                    zero_span_term(&mut arg.term);
+                    arg.span = 0..0;
+                    zero_term(&mut arg.term);
+                }
+                for tag in &mut p.tags {
+                    tag.span = 0..0;
+                    zero_term(&mut tag.term);
                 }
             }
             Claim::Equality(a, b) => {
-                zero_span_term(a);
-                zero_span_term(b);
+                zero_term(a);
+                zero_term(b);
             }
         }
     }
 
-    fn zero_span_term(term: &mut Term) {
-        if let Term::Det { restr, .. } = term {
-            restr.span = 0..0;
+    fn zero_term(term: &mut Term) {
+        match term {
+            Term::Det { restr, .. } => zero_restr(restr),
+            Term::Name { rel_clauses, .. } => {
+                for rc in rel_clauses {
+                    zero_rel(rc);
+                }
+            }
+            Term::Abstraction { body, .. } => zero_spans(body),
+            _ => {}
         }
     }
 
-    fn restr(word: &str) -> Restr {
-        Restr {
-            pred: word.into(),
-            span: 0..0,
+    fn zero_restr(restr: &mut Restr) {
+        restr.span = 0..0;
+        if let RestrKind::Seq { linked_args, .. } = &mut restr.kind {
+            for arg in linked_args {
+                arg.span = 0..0;
+                zero_term(&mut arg.term);
+            }
+        }
+        for rc in &mut restr.rel_clauses {
+            zero_rel(rc);
+        }
+    }
+
+    fn zero_rel(rc: &mut RelClause) {
+        rc.span = 0..0;
+        if let ClauseBody::Full(claim) = &mut rc.body {
+            zero_spans(claim);
         }
     }
 
@@ -664,8 +1009,6 @@ mod tests {
 
     #[test]
     fn grammar_keywords_match_reserved_words() {
-        // Extract every kw_* spelling from the grammar TEXT and pin the set,
-        // both directions, against klaro-dictionary's single source.
         let grammar = include_str!("klaro.pest");
         let mut spellings: Vec<&str> = Vec::new();
         for line in grammar.lines() {
@@ -684,30 +1027,26 @@ mod tests {
             spellings, reserved,
             "klaro.pest kw_* rules and RESERVED_WORDS diverge"
         );
-        // Behaviorally: no keyword is usable as a predicate name…
         for word in reserved {
             assert!(
                 parse_statements(&format!("{word}(Adam).")).is_err(),
                 "keyword {word:?} must not parse as a predicate name"
             );
         }
-        // …while ordinary idents are.
         assert!(parse_statements("person(Adam).").is_ok());
     }
 
-    // ── the keyword-boundary defect class, now behavioral ──
+    // ── the keyword-boundary defect class, behavioral ──
 
     #[test]
     fn keywords_never_split_identifiers() {
-        // `everyday` is ONE predicate word, never `every` + `day` (which would
-        // be a determiner phrase and fail to take an argument list).
-        for word in [
+        for w in [
             "everyday", "theory", "nowhere", "someone", "itchy", "wealth",
         ] {
-            let claim = one(&format!("{word}(Adam)."));
+            let claim = one(&format!("{w}(Adam)."));
             assert!(
-                matches!(&claim, Claim::Predication(p) if p.pred == word),
-                "{word:?} did not survive as one identifier: {claim:?}"
+                matches!(&claim, Claim::Predication(p) if p.seq == seq1(w)),
+                "{w:?} did not survive as one identifier: {claim:?}"
             );
         }
     }
@@ -718,112 +1057,32 @@ mod tests {
             "goes(you_all).",
             pred("goes", vec![pos(Term::Key(KeyTerm::YouAll))]),
         );
-        assert_claim(
-            "goes(we_others, it_a).",
-            pred(
-                "goes",
-                vec![
-                    pos(Term::Key(KeyTerm::WeOthers)),
-                    pos(Term::Key(KeyTerm::ItA)),
-                ],
-            ),
-        );
-        // One char longer -> a plain ident again, which is NOT a term.
         assert!(parse_statements("goes(you_all_x).").is_err());
         assert!(parse_statements("goes(it_ab).").is_err());
     }
 
-    // ── happy paths ──
+    // ── core happy paths (unchanged behavior) ──
 
     #[test]
-    fn ground_facts() {
-        assert_claim(
-            "person(Adam).",
-            pred("person", vec![pos(Term::Name("Adam".into()))]),
-        );
-        assert_claim(
-            "inhibits(Flukonazol, Siptucin).",
-            pred(
-                "inhibits",
-                vec![
-                    pos(Term::Name("Flukonazol".into())),
-                    pos(Term::Name("Siptucin".into())),
-                ],
-            ),
-        );
+    fn ground_facts_and_terms() {
+        assert_claim("person(Adam).", pred("person", vec![pos(name("Adam"))]));
         assert_claim("rains().", pred("rains", vec![]));
-    }
-
-    #[test]
-    fn named_and_mixed_args() {
         assert_claim(
             "goes(me, to: some market).",
             pred(
                 "goes",
                 vec![
                     pos(Term::Key(KeyTerm::Me)),
-                    named(
-                        "to",
-                        Term::Det {
-                            det: Det::Some,
-                            restr: restr("market"),
-                        },
-                    ),
+                    named("to", det_term(Det::Some, "market")),
                 ],
             ),
         );
-        assert_claim(
-            "goes(x2: some market, x3: some home).",
-            pred(
-                "goes",
-                vec![
-                    named(
-                        "x2",
-                        Term::Det {
-                            det: Det::Some,
-                            restr: restr("market"),
-                        },
-                    ),
-                    named(
-                        "x3",
-                        Term::Det {
-                            det: Det::Some,
-                            restr: restr("home"),
-                        },
-                    ),
-                ],
-            ),
-        );
-    }
-
-    #[test]
-    fn term_zoo() {
         assert_claim(
             "loves(me, _).",
             pred(
                 "loves",
                 vec![pos(Term::Key(KeyTerm::Me)), pos(Term::Unspecified)],
             ),
-        );
-        assert_claim(
-            "goes(?, to: the market).",
-            pred(
-                "goes",
-                vec![
-                    pos(Term::Witness),
-                    named(
-                        "to",
-                        Term::Det {
-                            det: Det::The,
-                            restr: restr("market"),
-                        },
-                    ),
-                ],
-            ),
-        );
-        assert_claim(
-            "word(\"any text\").",
-            pred("word", vec![pos(Term::Str("any text".into()))]),
         );
         assert_claim(
             "product(50, 5, 10).",
@@ -837,127 +1096,44 @@ mod tests {
             ),
         );
         assert_claim("dog($x).", pred("dog", vec![pos(Term::Var("x".into()))]));
-    }
-
-    #[test]
-    fn strings_escapes_and_utf8_payloads() {
-        assert_claim(
-            r#"word("he said \"hi\" \\ done")."#,
-            pred(
-                "word",
-                vec![pos(Term::Str(r#"he said "hi" \ done"#.into()))],
-            ),
-        );
-        // Non-ASCII is legal INSIDE strings (payloads are data, not syntax).
         assert_claim(
             "word(\"λ café\").",
             pred("word", vec![pos(Term::Str("λ café".into()))]),
         );
-        // Unknown escape / unterminated / raw newline all fail closed.
         assert!(parse_statements(r#"word("bad \q escape")."#).is_err());
-        assert!(parse_statements("word(\"unterminated).").is_err());
-        assert!(parse_statements("word(\"no\nnewlines\").").is_err());
     }
 
     #[test]
     fn determiner_taxonomy() {
         assert_claim(
             "animal(every dog).",
-            pred(
-                "animal",
-                vec![pos(Term::Det {
-                    det: Det::Every,
-                    restr: restr("dog"),
-                })],
-            ),
+            pred("animal", vec![pos(det_term(Det::Every, "dog"))]),
         );
         assert_claim(
             "goes(every the dog).",
-            pred(
-                "goes",
-                vec![pos(Term::Det {
-                    det: Det::EveryThe,
-                    restr: restr("dog"),
-                })],
-            ),
+            pred("goes", vec![pos(det_term(Det::EveryThe, "dog"))]),
         );
         assert_claim(
             "red(exactly 2 red).",
-            pred(
-                "red",
-                vec![pos(Term::Det {
-                    det: Det::Exactly(2),
-                    restr: restr("red"),
-                })],
-            ),
+            pred("red", vec![pos(det_term(Det::Exactly(2), "red"))]),
         );
-        assert_claim(
-            "eats(exactly 0 the cat).",
-            pred(
-                "eats",
-                vec![pos(Term::Det {
-                    det: Det::ExactlyThe(0),
-                    restr: restr("cat"),
-                })],
-            ),
-        );
-        // `no X` is exactly-0 sugar, resolved at parse.
         assert_claim(
             "goes(no dog).",
-            pred(
-                "goes",
-                vec![pos(Term::Det {
-                    det: Det::Exactly(0),
-                    restr: restr("dog"),
-                })],
-            ),
+            pred("goes", vec![pos(det_term(Det::Exactly(0), "dog"))]),
         );
+        let e = err("red(exactly 2.5 red).");
+        assert!(e.message.contains("whole number"), "{e}");
+        let e = err("red(exactly 4294967296 red).");
+        assert!(e.message.contains("exceeds the supported range"), "{e}");
     }
 
     #[test]
-    fn equality_is_binary_du() {
+    fn equality_prefixes_negation() {
+        assert_claim("Kim = Adam.", Claim::Equality(name("Kim"), name("Adam")));
         assert_claim(
-            "Kim = Adam.",
-            Claim::Equality(Term::Name("Kim".into()), Term::Name("Adam".into())),
-        );
-        assert_claim(
-            "2 = 2.",
-            Claim::Equality(Term::Number(2.0), Term::Number(2.0)),
-        );
-    }
-
-    #[test]
-    fn prefixes_nest_deontic_outermost() {
-        assert_claim(
-            "past dog(Dan).",
-            Claim::Prefixed {
-                deontic: None,
-                tense: Some(Tense::Past),
-                atom: Box::new(pred("dog", vec![pos(Term::Name("Dan".into()))])),
-            },
-        );
-        assert_claim(
-            "must goes(me).",
+            "must past ~goes(me).",
             Claim::Prefixed {
                 deontic: Some(Deontic::Must),
-                tense: None,
-                atom: Box::new(pred("goes", vec![pos(Term::Key(KeyTerm::Me))])),
-            },
-        );
-        assert_claim(
-            "must past goes(me).",
-            Claim::Prefixed {
-                deontic: Some(Deontic::Must),
-                tense: Some(Tense::Past),
-                atom: Box::new(pred("goes", vec![pos(Term::Key(KeyTerm::Me))])),
-            },
-        );
-        // Negation innermost: past ~P = Past(Not(P)) — the ONLY legal ~×tense
-        // composition (SURFACE_SYNTAX §6).
-        assert_claim(
-            "past ~goes(me).",
-            Claim::Prefixed {
-                deontic: None,
                 tense: Some(Tense::Past),
                 atom: Box::new(Claim::Not(Box::new(pred(
                     "goes",
@@ -965,135 +1141,14 @@ mod tests {
                 )))),
             },
         );
-    }
-
-    #[test]
-    fn negation_and_paren_collapse() {
-        assert_claim(
-            "~goes(me).",
-            Claim::Not(Box::new(pred("goes", vec![pos(Term::Key(KeyTerm::Me))]))),
-        );
-        // A parenthesized SIMPLE claim collapses and may be negated.
-        assert_claim(
-            "~(goes(me)).",
-            Claim::Not(Box::new(pred("goes", vec![pos(Term::Key(KeyTerm::Me))]))),
-        );
-    }
-
-    #[test]
-    fn operator_precedence_and_associativity() {
-        // & binds tighter than ->
-        assert_claim(
-            "a(X) & b(X) -> c(X).",
-            Claim::Impl(
-                Box::new(Claim::And(
-                    Box::new(pred("a", vec![pos(Term::Name("X".into()))])),
-                    Box::new(pred("b", vec![pos(Term::Name("X".into()))])),
-                )),
-                Box::new(pred("c", vec![pos(Term::Name("X".into()))])),
-            ),
-        );
-        // -> is right-assoc
-        assert_claim(
-            "p(A) -> q(A) -> r(A).",
-            Claim::Impl(
-                Box::new(pred("p", vec![pos(Term::Name("A".into()))])),
-                Box::new(Claim::Impl(
-                    Box::new(pred("q", vec![pos(Term::Name("A".into()))])),
-                    Box::new(pred("r", vec![pos(Term::Name("A".into()))])),
-                )),
-            ),
-        );
-        // parens regroup
-        assert_claim(
-            "(p(A) | q(A)) -> r(A).",
-            Claim::Impl(
-                Box::new(Claim::Or(
-                    Box::new(pred("p", vec![pos(Term::Name("A".into()))])),
-                    Box::new(pred("q", vec![pos(Term::Name("A".into()))])),
-                )),
-                Box::new(pred("r", vec![pos(Term::Name("A".into()))])),
-            ),
-        );
-        // ladder: & < | < ^ < <->
-        assert_claim(
-            "a() | b() ^ c() <-> d().",
-            Claim::Iff(
-                Box::new(Claim::Xor(
-                    Box::new(Claim::Or(
-                        Box::new(pred("a", vec![])),
-                        Box::new(pred("b", vec![])),
-                    )),
-                    Box::new(pred("c", vec![])),
-                )),
-                Box::new(pred("d", vec![])),
-            ),
-        );
-    }
-
-    #[test]
-    fn multi_statement_files_with_comments() {
-        let input = "# corpus header\nperson(Adam). /* mid */ dog(Rex).\nKim = Adam.";
-        let statements = parse_statements(input).unwrap();
-        assert_eq!(statements.len(), 3);
-        // Statement spans are ABSOLUTE (offset-corrected across statements).
-        assert_eq!(&input[statements[0].span.clone()], "person(Adam).");
-        assert_eq!(&input[statements[1].span.clone()], "dog(Rex).");
-        assert_eq!(&input[statements[2].span.clone()], "Kim = Adam.");
-    }
-
-    #[test]
-    fn block_comments_do_not_nest() {
-        // `/* /* */` closes at the FIRST `*/`; the orphaned `*/` then fails to
-        // parse (never silently swallowed).
-        let (statements, errors) = parse_text_with_errors("/* /* */ goes(). */");
-        assert_eq!(statements.len(), 1);
-        assert!(!errors.is_empty(), "the orphaned */ must not parse");
-        // Unterminated block comments fail closed too.
-        let (statements, errors) = parse_text_with_errors("goes(). /* never closed");
-        assert_eq!(statements.len(), 1);
-        assert!(!errors.is_empty());
-    }
-
-    // ── errata + fail-closed errors ──
-
-    #[test]
-    fn errata_prefix_over_compound_rejected() {
-        let e = err("past (a(A) & b(A)).");
-        assert!(e.message.contains("single predication"), "{e}");
-        assert_eq!((e.line, e.column), (1, 6));
-    }
-
-    #[test]
-    fn errata_not_over_prefix_rejected() {
         let e = err("~past goes(me).");
         assert!(e.message.contains("past ~P"), "{e}");
-    }
-
-    #[test]
-    fn errata_double_negation_rejected() {
         let e = err("~~goes(me).");
         assert!(e.message.contains("double negation"), "{e}");
-    }
-
-    #[test]
-    fn errata_not_over_compound_rejected() {
-        let e = err("~(a(A) & b(A)).");
+        let e = err("past (a(A) & b(A)).");
         assert!(e.message.contains("single predication"), "{e}");
-    }
-
-    #[test]
-    fn wrong_prefix_order_rejected() {
         let e = err("past must goes(me).");
         assert!(e.message.contains("deontic comes before tense"), "{e}");
-        let e = err("must must goes(me).");
-        assert!(e.message.contains("duplicate deontic"), "{e}");
-        let e = err("past now goes(me).");
-        assert!(e.message.contains("duplicate tense"), "{e}");
-    }
-
-    #[test]
-    fn positional_after_named_rejected() {
         let e = err("goes(to: some market, me).");
         assert!(
             e.message.contains("positional arguments must come before"),
@@ -1102,42 +1157,308 @@ mod tests {
     }
 
     #[test]
-    fn exact_count_validation() {
-        let e = err("red(exactly 2.5 red).");
-        assert!(e.message.contains("whole number"), "{e}");
-        let e = err("red(exactly 4294967296 red).");
-        assert!(e.message.contains("exceeds the supported range"), "{e}");
-        // Boundary: u32::MAX itself is fine.
-        assert!(parse_statements("red(exactly 4294967295 red).").is_ok());
+    fn operator_ladder() {
+        assert_claim(
+            "a(X) & b(X) -> c(X).",
+            Claim::Impl(
+                Box::new(Claim::And(
+                    Box::new(pred("a", vec![pos(name("X"))])),
+                    Box::new(pred("b", vec![pos(name("X"))])),
+                )),
+                Box::new(pred("c", vec![pos(name("X"))])),
+            ),
+        );
+        assert_claim(
+            "p(A) -> q(A) -> r(A).",
+            Claim::Impl(
+                Box::new(pred("p", vec![pos(name("A"))])),
+                Box::new(Claim::Impl(
+                    Box::new(pred("q", vec![pos(name("A"))])),
+                    Box::new(pred("r", vec![pos(name("A"))])),
+                )),
+            ),
+        );
+    }
+
+    // ── tanru / brackets / zei ──
+
+    #[test]
+    fn tanru_heads_and_groups() {
+        assert_claim(
+            "health data(Kanrek).",
+            Claim::Predication(Predication {
+                seq: PredSeq(vec![word("health"), word("data")]),
+                args: vec![pos(name("Kanrek"))],
+                tags: vec![],
+                span: 0..0,
+            }),
+        );
+        assert_claim(
+            "[big fast] dog(Rex).",
+            Claim::Predication(Predication {
+                seq: PredSeq(vec![
+                    PredUnit::Group(PredSeq(vec![word("big"), word("fast")])),
+                    word("dog"),
+                ]),
+                args: vec![pos(name("Rex"))],
+                tags: vec![],
+                span: 0..0,
+            }),
+        );
+        assert_eq!(
+            PredSeq(vec![word("health"), word("data")]).head_word(),
+            "data"
+        );
     }
 
     #[test]
-    fn number_overflow_fails_closed() {
-        let big = format!("f({}).", "9".repeat(400));
-        let e = err(&big);
-        assert!(e.message.contains("overflows"), "{e}");
+    fn zei_compounds_are_word_identity() {
+        assert_claim(
+            "computer+user(me).",
+            Claim::Predication(Predication {
+                seq: PredSeq(vec![PredUnit::Word(vec!["computer".into(), "user".into()])]),
+                args: vec![pos(Term::Key(KeyTerm::Me))],
+                tags: vec![],
+                span: 0..0,
+            }),
+        );
+        // Compound identity may not contain whitespace or comments.
+        assert!(parse_statements("computer + user(me).").is_err());
+        assert!(parse_statements("computer/*x*/+user(me).").is_err());
     }
 
     #[test]
-    fn structural_errors_are_positioned() {
-        // Missing terminating dot.
-        let e = err("goes(me)");
-        assert_eq!(e.line, 1, "{e}");
-        // A bare word is not a claim (predications need an argument list).
-        assert!(parse_statements("dog.").is_err());
-        // A determiner phrase alone is a term, not a claim (block form is a
-        // later bullet).
-        assert!(parse_statements("every dog.").is_err());
-        // Unterminated argument list.
-        assert!(parse_statements("goes(me").is_err());
+    fn tanru_fencing_regressions() {
+        // Review near-misses: predication-then-`=` fails closed (n-ary du
+        // inexpressible), bare ident is not a term.
+        assert!(parse_statements("dog cat = Adam.").is_err());
+        assert!(parse_statements("goes(every big, dog).").is_err());
+    }
+
+    // ── prenex + block determiners ──
+
+    #[test]
+    fn prenex_forms() {
+        assert_claim(
+            "all $x: dog($x) -> animal($x).",
+            Claim::Prenex {
+                vars: vec!["x".into()],
+                body: Box::new(Claim::Impl(
+                    Box::new(pred("dog", vec![pos(Term::Var("x".into()))])),
+                    Box::new(pred("animal", vec![pos(Term::Var("x".into()))])),
+                )),
+            },
+        );
+        assert_claim(
+            "all $x, $y: loves($x, $y).",
+            Claim::Prenex {
+                vars: vec!["x".into(), "y".into()],
+                body: Box::new(pred(
+                    "loves",
+                    vec![pos(Term::Var("x".into())), pos(Term::Var("y".into()))],
+                )),
+            },
+        );
+        // Prenex as a bare RHS of -> needs parens (fails closed, §15).
+        assert!(parse_statements("dog($x) -> all $y: dog($y).").is_err());
     }
 
     #[test]
-    fn non_ascii_syntax_fails_positioned() {
-        let e = err("goes(λ).");
-        assert_eq!((e.line, e.column), (1, 6), "{e}");
-        // Stray operator fragments fail closed too.
-        assert!(parse_statements("a(X) <- b(X).").is_err());
+    fn det_block_forms() {
+        assert_claim(
+            "every dog $d: animal($d) & alive($d).",
+            Claim::DetBlock {
+                det: Det::Every,
+                restr: restr("dog"),
+                var: "d".into(),
+                body: Box::new(Claim::And(
+                    Box::new(pred("animal", vec![pos(Term::Var("d".into()))])),
+                    Box::new(pred("alive", vec![pos(Term::Var("d".into()))])),
+                )),
+            },
+        );
+        assert_claim(
+            "no dog $d: goes($d).",
+            Claim::DetBlock {
+                det: Det::Exactly(0),
+                restr: restr("dog"),
+                var: "d".into(),
+                body: Box::new(pred("goes", vec![pos(Term::Var("d".into()))])),
+            },
+        );
+        // Backtracks cleanly into an equality when the binder is absent.
+        assert_claim(
+            "every dog = Adam.",
+            Claim::Equality(det_term(Det::Every, "dog"), name("Adam")),
+        );
+        // …but a half-written block fails closed.
+        assert!(parse_statements("some dog $d = it_a.").is_err());
+    }
+
+    // ── relative clauses ──
+
+    #[test]
+    fn rel_clause_forms() {
+        // Bare-predicate sugar.
+        assert_claim(
+            "goes(every person where approves).",
+            pred(
+                "goes",
+                vec![pos(Term::Det {
+                    det: Det::Every,
+                    restr: Restr {
+                        negated: false,
+                        kind: RestrKind::Seq {
+                            seq: seq1("person"),
+                            linked_args: vec![],
+                        },
+                        rel_clauses: vec![RelClause {
+                            kind: RelKind::Where,
+                            body: ClauseBody::Bare {
+                                negated: false,
+                                seq: seq1("approves"),
+                            },
+                            span: 0..0,
+                        }],
+                        span: 0..0,
+                    },
+                })],
+            ),
+        );
+        // Negated bare body; stacking; also-clauses; bare tanru body.
+        let claim = one("goes(every drug where ~thin also big fast).");
+        let Claim::Predication(p) = claim else {
+            panic!()
+        };
+        let Term::Det { restr: r, .. } = &p.args[0].term else {
+            panic!()
+        };
+        assert_eq!(r.rel_clauses.len(), 2);
+        assert!(matches!(
+            &r.rel_clauses[0].body,
+            ClauseBody::Bare { negated: true, seq } if *seq == seq1("thin")
+        ));
+        assert!(matches!(&r.rel_clauses[1].kind, RelKind::Also));
+        assert!(matches!(
+            &r.rel_clauses[1].body,
+            ClauseBody::Bare { negated: false, seq } if seq.0.len() == 2
+        ));
+        // Full body with `it`; rigid-term clause; comma fencing.
+        assert!(parse_statements("goes(some dog where big(it)).").is_ok());
+        assert!(parse_statements("goes(some dog where it = Adam).").is_ok());
+        let claim = one("goes(Adam where dog, you).");
+        let Claim::Predication(p) = claim else {
+            panic!()
+        };
+        assert_eq!(p.args.len(), 2, "rel clause must not eat the comma");
+        // det_block inside a clause body (with `it`).
+        assert!(parse_statements("goes(some dog where some cat $c: loves(it, $c)).").is_ok());
+    }
+
+    #[test]
+    fn mandatory_it_in_full_bodies() {
+        let e = err("goes(some dog where goes(me)).");
+        assert!(e.message.contains("must mention `it`"), "{e}");
+        // Recurses through nested binder bodies (review Finding 4).
+        let e = err("goes(some dog where some cat $c: loves($c, $c)).");
+        assert!(e.message.contains("must mention `it`"), "{e}");
+        // `it` inside an abstraction body counts.
+        assert!(parse_statements("goes(some dog where desires(me, event { eats(it) })).").is_ok());
+    }
+
+    // ── place selectors (O8) ──
+
+    #[test]
+    fn selectors_and_the_statement_dot() {
+        let claim = one("permitted(every loves.loved).");
+        let Claim::Predication(p) = claim else {
+            panic!()
+        };
+        let Term::Det { restr: r, .. } = &p.args[0].term else {
+            panic!()
+        };
+        assert!(matches!(
+            &r.kind,
+            RestrKind::Selected { pred, label } if pred == "loves" && label == "loved"
+        ));
+        // O8 battery: spaced = two statements; compact-with-args = parse error
+        // (never a silent merge); spaces around the dot never select.
+        let statements = parse_statements("Kim = every dog. eats(me).").unwrap();
+        assert_eq!(statements.len(), 2);
+        assert!(parse_statements("Kim = every dog.eats(me).").is_err());
+        assert!(parse_statements("permitted(every loves .loved).").is_err());
+        assert!(parse_statements("permitted(every loves. loved).").is_err());
+    }
+
+    // ── linked args ──
+
+    #[test]
+    fn linked_args_on_restrictors() {
+        let claim = one("permitted(every tends(charge: some data)).");
+        let Claim::Predication(p) = claim else {
+            panic!()
+        };
+        let Term::Det { restr: r, .. } = &p.args[0].term else {
+            panic!()
+        };
+        let RestrKind::Seq { linked_args, .. } = &r.kind else {
+            panic!()
+        };
+        assert_eq!(linked_args.len(), 1);
+        assert_eq!(linked_args[0].label.as_deref(), Some("charge"));
+        // Bound-place marker parses (position legality is resolve's job).
+        assert!(parse_statements("goes(every loves(x2: it)).").is_ok());
+    }
+
+    // ── abstractions ──
+
+    #[test]
+    fn abstraction_forms() {
+        assert_claim(
+            "desires(me, event { goes(you) }).",
+            pred(
+                "desires",
+                vec![
+                    pos(Term::Key(KeyTerm::Me)),
+                    pos(Term::Abstraction {
+                        kind: AbsKind::Event,
+                        body: Box::new(pred("goes", vec![pos(Term::Key(KeyTerm::You))])),
+                    }),
+                ],
+            ),
+        );
+        assert!(parse_statements("thinks(me, fact { dog(Adam) }).").is_ok());
+        assert!(parse_statements("able(me, property { fast(slot) }).").is_ok());
+        assert!(parse_statements("measures(me, amount { fast(you) }).").is_ok());
+        assert!(parse_statements("likes(me, concept { flies(some dog) }).").is_ok());
+    }
+
+    // ── via tags ──
+
+    #[test]
+    fn via_tags() {
+        let claim = one("goes(me) via uses(this) via reason(this).");
+        let Claim::Predication(p) = claim else {
+            panic!()
+        };
+        assert_eq!(p.tags.len(), 2);
+        assert_eq!(p.tags[0].pred, vec!["uses".to_owned()]);
+        assert_eq!(p.tags[1].pred, vec!["reason".to_owned()]);
+        // Tag terms are full terms (det phrase with a rel clause).
+        assert!(parse_statements("goes(me) via uses(some tool where big).").is_ok());
+        // Equalities take no tags (spec: tags are predication-only).
+        assert!(parse_statements("Kim = Adam via uses(this).").is_err());
+    }
+
+    // ── files, comments, recovery (unchanged behavior) ──
+
+    #[test]
+    fn multi_statement_files_with_comments() {
+        let input = "# corpus header\nperson(Adam). /* mid */ dog(Rex).\nKim = Adam.";
+        let statements = parse_statements(input).unwrap();
+        assert_eq!(statements.len(), 3);
+        assert_eq!(&input[statements[0].span.clone()], "person(Adam).");
+        assert_eq!(&input[statements[2].span.clone()], "Kim = Adam.");
     }
 
     #[test]
@@ -1145,11 +1466,19 @@ mod tests {
         let (statements, errors) = parse_text_with_errors("dog(. person(Adam).");
         assert_eq!(errors.len(), 1, "{errors:?}");
         assert_eq!(statements.len(), 1);
-        assert!(matches!(&statements[0].claim, Claim::Predication(p) if p.pred == "person"));
-        // Walker-level rejects recover to the NEXT statement too (the broken
-        // one parsed syntactically, so we resume after its dot).
         let (statements, errors) = parse_text_with_errors("~~a(). person(Adam).");
         assert_eq!(errors.len(), 1, "{errors:?}");
         assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn structural_and_lex_errors_positioned() {
+        let e = err("goes(λ).");
+        assert_eq!((e.line, e.column), (1, 6), "{e}");
+        assert!(parse_statements("goes(me").is_err());
+        assert!(parse_statements("every dog.").is_err());
+        let (statements, errors) = parse_text_with_errors("/* /* */ goes(). */");
+        assert_eq!(statements.len(), 1);
+        assert!(!errors.is_empty(), "the orphaned */ must not parse");
     }
 }

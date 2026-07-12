@@ -19,6 +19,11 @@
 //!   grammar-level rejects).
 //! - [`Claim::Equality`] is binary by construction (n-ary `du` is
 //!   inexpressible, not an error case).
+//! - A `Full` relative-clause body contains at least one [`KeyTerm::It`]
+//!   (mandatory-`it`, §7 — the implicit-ke'a ambiguity firewall as syntax).
+//! - A [`RestrKind::Selected`] restrictor carries no linked args and its
+//!   selector was written with no whitespace around the dot (O8 — keeps the
+//!   place selector from colliding with the statement terminator).
 
 use std::ops::Range;
 
@@ -34,6 +39,17 @@ pub struct Statement {
 /// `&`/`|`/`^`/`<->` left-fold, `->` right-recursive.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Claim {
+    /// `all $x, $y: C` — prenex universals; ForAll wraps the body DIRECTLY
+    /// (the non-rule shape, distinct from `every`).
+    Prenex { vars: Vec<String>, body: Box<Claim> },
+    /// `every dog $d: C` — named-binder block determiner (emission shape is
+    /// spec issue O7, pinned at the emitter).
+    DetBlock {
+        det: Det,
+        restr: Restr,
+        var: String,
+        body: Box<Claim>,
+    },
     /// `A -> B` — material implication (`ganai…gi` / `.inaja`).
     Impl(Box<Claim>, Box<Claim>),
     /// `A <-> B` — biconditional (`jo`).
@@ -56,7 +72,7 @@ pub enum Claim {
     },
     /// `a = b` — du identity (union-find), binary only.
     Equality(Term, Term),
-    /// `pred(args…)`.
+    /// `pred(args…) via tag(t)…`.
     Predication(Predication),
 }
 
@@ -75,12 +91,49 @@ pub enum Tense {
     Future,
 }
 
-/// A predicate application. `pred` is the surface name (alias or gismu —
-/// resolution against klaro-dictionary is the resolve pass, a later bullet).
+/// A predicate application. The head is a [`PredSeq`] (a single word, or a
+/// tanru of 2+ units whose LAST unit is the head); resolution against
+/// klaro-dictionary happens in the resolve pass.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Predication {
-    pub pred: String,
+    pub seq: PredSeq,
     pub args: Vec<Arg>,
+    /// `via` modal tags (BAI/fi'o — SURFACE_SYNTAX §5), in surface order.
+    pub tags: Vec<Tag>,
+    pub span: Range<usize>,
+}
+
+/// A tanru: one or more units, right-grouping, LAST unit is the head
+/// (arity/name source).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PredSeq(pub Vec<PredUnit>);
+
+/// One tanru unit: a (possibly zei-compound) word, or a bracket group.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PredUnit {
+    /// `a` or `a+b+c` — zei parts in order; compiles under the LAST part.
+    Word(Vec<String>),
+    /// `[ big fast ]` — explicit grouping (ke…ke'e).
+    Group(PredSeq),
+}
+
+impl PredSeq {
+    /// The head word (arity/name source): last zei part of the last unit,
+    /// descending through bracket groups.
+    pub fn head_word(&self) -> &str {
+        match self.0.last().expect("pred_seq is non-empty") {
+            PredUnit::Word(parts) => parts.last().expect("pred_name is non-empty"),
+            PredUnit::Group(inner) => inner.head_word(),
+        }
+    }
+}
+
+/// `via pred(term)` — a modal tag.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Tag {
+    /// The modal predicate (zei parts, like a [`PredUnit::Word`]).
+    pub pred: Vec<String>,
+    pub term: Term,
     pub span: Range<usize>,
 }
 
@@ -90,6 +143,7 @@ pub struct Predication {
 pub struct Arg {
     pub label: Option<String>,
     pub term: Term,
+    pub span: Range<usize>,
 }
 
 /// A term (SURFACE_SYNTAX §3).
@@ -104,16 +158,35 @@ pub enum Term {
     /// `$x` — logic variable (name without the sigil).
     Var(String),
     /// Reserved pro-term (`me`, `you`, `it`, `slot`, …). `it`/`slot` position
-    /// checks happen in the resolve pass, not here.
+    /// checks happen in the resolve pass.
     Key(KeyTerm),
-    /// Capitalized rigid name (la): stored verbatim; lowercasing/`_`→space
-    /// happens at emission.
-    Name(String),
+    /// Capitalized rigid name (la), with optional relative clauses
+    /// (`Adam where dog`). Lowercasing/`_`→space happens at emission.
+    Name {
+        name: String,
+        rel_clauses: Vec<RelClause>,
+    },
+    /// `event { … }` / `fact { … }` / `property { … }` / `amount { … }` /
+    /// `concept { … }` — opaque abstraction (implicit-`some` description).
+    Abstraction {
+        kind: AbsKind,
+        body: Box<Claim>,
+    },
     /// Determiner phrase: `some dog`, `every the market`, `exactly 2 red`.
     Det {
         det: Det,
         restr: Restr,
     },
+}
+
+/// `nu` / `du'u` / `ka` / `ni` / `si'o`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AbsKind {
+    Event,
+    Fact,
+    Property,
+    Amount,
+    Concept,
 }
 
 /// The reserved pro-terms (SURFACE_SYNTAX §3 table).
@@ -133,9 +206,10 @@ pub enum KeyTerm {
     ItI,
     ItO,
     ItU,
-    /// `it` — the relativized entity (ke'a); clause-body-only (resolve pass).
+    /// `it` — the relativized entity (ke'a): legal only inside rel-clause
+    /// bodies and as a NAMED bound-place marker in restr linked args.
     It,
-    /// `slot` — the ka open place (ce'u); `property{}`-only (resolve pass).
+    /// `slot` — the ka open place (ce'u): legal only inside `property { }`.
     Slot,
 }
 
@@ -157,11 +231,49 @@ pub enum Det {
     ExactlyThe(u32),
 }
 
-/// A restrictor. Core profile: a single predicate word; the completion bullet
-/// extends this struct with tanru units, place selectors, linked args, and
-/// relative clauses.
+/// A restrictor (SURFACE_SYNTAX §4).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Restr {
-    pub pred: String,
+    /// `~` before the restrictor — description-inner negation (`lo na broda`).
+    pub negated: bool,
+    pub kind: RestrKind,
+    /// `where` (restrictive) / `also` (incidental) clauses, in surface order.
+    pub rel_clauses: Vec<RelClause>,
     pub span: Range<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RestrKind {
+    /// A tanru restrictor, optionally with linked args (`carer(of: some data)`
+    /// — be/bei; the bound variable takes x1 unless a named `it` marks its
+    /// place).
+    Seq { seq: PredSeq, linked_args: Vec<Arg> },
+    /// `loves.loved` — place selector: the bound variable sits at the place
+    /// named by `label` (the se-family). Single word, dot-adjacent, no linked
+    /// args (O8).
+    Selected { pred: String, label: String },
+}
+
+/// `where <body>` (poi — domain side) / `also <body>` (noi — matrix side).
+#[derive(Debug, Clone, PartialEq)]
+pub struct RelClause {
+    pub kind: RelKind,
+    pub body: ClauseBody,
+    pub span: Range<usize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RelKind {
+    Where,
+    Also,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ClauseBody {
+    /// Bare-predicate sugar: `where consents` ≡ `where consents(it)`;
+    /// `where ~cat` ≡ `where ~cat(it)`. A bare tanru is ONE shared-event
+    /// predicate on `it` (`where big fast` — lint L2 territory).
+    Bare { negated: bool, seq: PredSeq },
+    /// A full claim; must contain `it` (mandatory-`it`, enforced at parse).
+    Full(Box<Claim>),
 }

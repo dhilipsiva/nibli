@@ -42,6 +42,16 @@ all $x: at_risk($x) & takes(Adam, $x) -> alert($x).
 
 ## 1. Design principles
 
+> **Design thesis (2026-07-12):** Klaro is a human-intuitive knowledge-representation
+> language — MAXIMALLY INTUITIVE *subject to* semantic distinctions staying visible in
+> the spelling (the silent-mistranslation ceiling; principles 2–4 below are that
+> constraint made concrete). The logji reasoning core stays untouched throughout the
+> v0.1 program — no hard freeze: the two §14 items that touch logji (the xorlo
+> presupposition-witness flag and the compute-set rename) remain live v2 options for
+> after gerna retires; until then `every` mints xorlo witnesses identically to Lojban
+> (disclosed in §4). LLM-generability is a tracked side goal, measured via the fanva
+> retarget's silent-mistranslation metric.
+
 1. **Total coverage.** Every construct in the implemented Lojban fragment has a surface
    form or an explicit out-of-scope entry (§10). Nothing is silently dropped.
 2. **Semantic distinctions stay visible.** Constructs that compile to *different*
@@ -125,6 +135,14 @@ their spellings are deliberately non-interchangeable:**
 | `exactly 2 dog` | `re lo gerku` | `Count{v, 2, And(restrictor, matrix)}` — entity-level counting (du-classes collapsed, xorlo witnesses excluded) |
 | `no dog` | `no lo gerku` | sugar for `exactly 0 dog` |
 
+**Disclosed engine semantic — xorlo existential import:** asserting a universal rule
+(`animal(every dog).`) ALSO establishes that a dog exists: the engine mints a
+presupposition witness (Lojban xorlo semantics, implemented in logji), and witnesses
+are excluded from `exactly N` counting. This is inherited engine behavior, kept
+byte-identical across both front-ends during the dual phase (the equivalence battery
+checks verdict identity), and re-decidable at clean-core v2 (§14's xorlo flag — a live
+option per the §1 thesis).
+
 Determiner phrases appear **in argument position** (`animal(every dog).`) or as a
 **binder block** when the matrix is compound or the variable must be named:
 
@@ -145,6 +163,12 @@ a place selector, and relative clauses:
   **innermost** (the documented `be`-arg scope boundary).
 - `every loves.loved` — **place selector**: the bound variable occupies the named place
   instead of x1 (= `ro lo se prami`). Equivalent long form: `every loves(x2: it)`.
+  **O8 (2026-07-12):** the selector binds to a SINGLE predicate word, requires
+  adjacency (no whitespace on either side of the dot), and a selected restrictor takes
+  no linked args — this keeps the selector dot from colliding with the statement
+  terminator (`Kim = every dog. eats(me).` is two statements; the compact collision
+  `… dog.eats(me).` is a parse error, never a silent merge). Use the long `it` form
+  for anything richer.
 - `some ~permitted` — `~` before the restrictor = description-inner negation (`lo na se curmi`).
 
 ## 5. Predications
@@ -272,6 +296,11 @@ visible (lint L5). Non-stratified NAF rule sets are rejected atomically at asser
   matrix conjunct, engine's `pending_matrix_conjuncts` path).
 - `it` binds to the **innermost** enclosing clause (no ke'a subscripts, matching the
   engine); outer-clause reference is inexpressible, same as today's front-end.
+- **Attachment is innermost-wins (O9, 2026-07-12):** in a clause body ending with an
+  equality, a following `where`/`also` attaches to the equality's RHS term, not the
+  outer restrictor — `… where it = Boss also rich` makes `also rich` describe Boss.
+  Write `where (it = Boss) also rich` for the outer attachment. Lint L8 will echo the
+  resolved attachment when this shape appears.
 
 ## 8. Queries
 
@@ -417,6 +446,17 @@ hyphen-vs-`->` lexing wrinkle.
   shape. Whether the two coincide after smuni (incl. `UniversalRuleRecord` registration
   at assert time) must be pinned by a seam-gate golden before the grammar freezes; if
   they differ, §6's block-form framing needs an erratum.
+- **O8 (RESOLVED at introduction, 2026-07-12)**: the place-selector dot collides with
+  the statement terminator under whitespace-insensitive parsing (`Kim = every dog.
+  eats(me).` vs `every dog.eats`). Resolved fail-closed in the grammar: `selected` is
+  compound-atomic (adjacency both sides), single-word, and takes no linked args — every
+  residual compact collision is a parse error, never a silent statement merge. Pinned
+  by the O8 test battery in klaro/src/parser.rs.
+- **O9**: relative-clause attachment to the RHS term of a clause-body-final equality is
+  innermost-wins (see §7); the outer attachment needs parens. Surfaced by the
+  2026-07-12 adversarial grammar review; lint L8 planned. The same review found the
+  pre-existing digit-split hazard (`X = 2 .5 = $y.` parses as two statements) — lint
+  L9 planned at the statement driver.
 
 ## 14. Clean-core v2 profile (de-Lojbanized)
 

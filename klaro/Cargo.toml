@@ -6,8 +6,9 @@ edition = "2024"
 [dependencies]
 pest = "2"
 pest_derive = "2"
-
-[dev-dependencies]
-# Keyword conformance: the grammar's kw_* rules are pinned against
-# klaro-dictionary's single-source RESERVED_WORDS by an exhaustive unit test.
+# resolve.rs: alias map (name -> gismu + swap + place labels) and the
+# identity-gismu passthrough arity source. The grammar's kw_* rules are also
+# pinned against klaro-dictionary's single-source RESERVED_WORDS by an
+# exhaustive unit test.
 klaro-dictionary = { path = "../klaro-dictionary" }
+smuni-dictionary = { path = "../smuni-dictionary" }

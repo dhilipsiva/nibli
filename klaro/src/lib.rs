@@ -15,17 +15,20 @@
 //! tests, and the keyword set is pinned both-directions against
 //! `klaro-dictionary`'s single-source reserved-word list.
 //!
-//! Currently implemented ([`ast`], [`parser`]): the core profile — terms,
-//! determiner phrases, predications with positional+named args, the operator
-//! chain, tense/deontic prefixes, binary `=`, `.`-terminated statements with
-//! per-statement error recovery; the §6 errata enforced by the walker with
-//! targeted positioned errors.
+//! Currently implemented ([`ast`], [`parser`], [`resolve`]): the FULL v0.1
+//! grammar surface — terms, determiner phrases, predications with
+//! positional+named args, the operator chain, tense/deontic prefixes, binary
+//! `=`, tanru/`[ ]`/`+` compounds, `.label` place selectors, linked args,
+//! `where`/`also` relative clauses (mandatory-`it`), abstractions, `via`
+//! tags, block determiners, and `all` prenex — plus the dictionary-driven
+//! resolve pass (fail-closed name resolution: alias → identity-gismu →
+//! COMPILE ERROR, never an arity-2 guess; place checks; the 3-variable
+//! lowering cap; `it`/`slot` position rules).
 //!
-//! Still to land (subsequent KLARO_TODO bullets): grammar completion (`all`
-//! prenex, block determiners, tanru, `.label` selectors, linked args, `via`
-//! tags, rel clauses, abstractions), the resolve pass, the AstBuffer emitter,
-//! and the renderer; until the emitter exists this crate has no public
-//! compile entry point.
+//! Still to land (subsequent KLARO_TODO bullets): the AstBuffer emitter and
+//! the renderer; until the emitter exists this crate has no public compile
+//! entry point.
 
 pub mod ast;
 pub mod parser;
+pub mod resolve;
