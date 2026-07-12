@@ -1,22 +1,71 @@
-//! nibli-validate — batch Lojban validation via stdin.
+//! nibli-validate — batch validation via stdin.
 //!
-//! Reads one Lojban sentence per line from stdin.
-//! For each line, runs gerna (parse) and smuni (compile to FOL).
+//! Reads one sentence per line from stdin (Lojban by default; `--lang klaro`
+//! or `NIBLI_LANG=klaro` selects the Klaro front-end — the flag wins over the
+//! env var, and the default follows the engine default).
+//! For each line, runs the selected front-end and smuni (compile to FOL).
 //! Outputs one JSON object per line to stdout:
 //!   {"line":"...","valid":true}
 //!   {"line":"...","valid":false,"error":"parse error: ..."}
 //!
-//! Used by python/generate_training_data.py for batch validation.
+//! Used by python/generate_training_data.py and book/tools/verify_book.py for
+//! batch validation (both invoke it with no flags — the default is load-bearing).
 
-use nibli_engine::NibliEngine;
+use nibli_engine::{Language, NibliEngine};
 use std::io::{self, BufRead};
+use std::process::ExitCode;
 
-fn main() {
+fn main() -> ExitCode {
+    // --lang errors are FATAL (an explicit flag must not be silently ignored);
+    // a bad NIBLI_LANG only WARNS and falls back (ambient config must not
+    // break pipelines that didn't opt in). Flag wins over env.
+    let mut lang: Option<Language> = None;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--lang" => {
+                i += 1;
+                let Some(value) = args.get(i) else {
+                    eprintln!("error: --lang needs a value (klaro|lojban)");
+                    return ExitCode::FAILURE;
+                };
+                match value.parse::<Language>() {
+                    Ok(l) => lang = Some(l),
+                    Err(e) => {
+                        eprintln!("error: --lang: {e}");
+                        return ExitCode::FAILURE;
+                    }
+                }
+            }
+            other => {
+                eprintln!(
+                    "error: unexpected argument '{other}' (usage: nibli-validate [--lang klaro|lojban])"
+                );
+                return ExitCode::FAILURE;
+            }
+        }
+        i += 1;
+    }
+    if lang.is_none()
+        && let Ok(value) = std::env::var("NIBLI_LANG")
+    {
+        match value.parse::<Language>() {
+            Ok(l) => lang = Some(l),
+            Err(e) => eprintln!("warning: NIBLI_LANG ignored: {e}"),
+        }
+    }
+
     // nibli-engine is quiet by default (verbose off — we never call
     // `set_verbose`), so the engine emits no stdout diagnostics: our JSON result
     // lines are the only thing on stdout. We use `println!` for them (simple,
     // line-atomic); consumers parse the `{…}` lines.
     let engine = NibliEngine::new();
+    if let Some(l) = lang {
+        // Set once: the language is configuration and survives the per-line
+        // `reset()` (pinned by the engine's language tests).
+        engine.set_language(l);
+    }
 
     let stdin = io::stdin();
 
@@ -48,6 +97,8 @@ fn main() {
             }
         }
     }
+
+    ExitCode::SUCCESS
 }
 
 /// Escape a string for embedding in JSON.

@@ -23,16 +23,6 @@ xorlo witnesses identically to Lojban (compat requires it — the equivalence ba
 checks verdict identity) and the behavior is disclosed spec semantics, not hidden
 residue; every bullet lands independently CI-green.
 
-- **native REPL surfaces** — nibli REPL (nibli/src/main.rs): `:klaro`/`:lojban` commands
-  → `engine.set_language`, `:load` picks language by file extension (`.lojban`→Lojban
-  for the file, restore after; `.klaro`→Klaro; else current mode), `NIBLI_LANG` env at
-  startup, `:help` text. `nibli-validate --lang lojban` flag + NIBLI_LANG (default
-  follows engine default). `nibli-import --lang` for `--query`; DECIDE the English-RDF
-  queryability escape hatch: (a) raw-identifier passthrough into the AstBuffer (smuni's
-  unknown-word fallback applies — minimal, recommended for now) vs (b)
-  `register_predicate_alias(name, arity)` (the v2 schema-registry seam pulled forward);
-  without one, Klaro's unknown-name compile error makes the import query limitation
-  STRICTER, not dissolved — rewrite the import.rs:13-15 doc note accordingly.
 - **corpora twins + honesty gate** — `klaro/src/bin/lojban2klaro.rs` + `just
   migrate-corpora`: line-by-line, comments/blank lines/`# =>` verdict annotations/
   `?`/`??`/`:`-prefixes preserved byte-for-byte at identical line numbers, payload =

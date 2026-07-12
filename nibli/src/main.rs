@@ -7,7 +7,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use nibli_engine::{EngineLogicalTerm, NibliEngine, display_query_result, display_term};
+use nibli_engine::{EngineLogicalTerm, Language, NibliEngine, display_query_result, display_term};
 use reedline::{DefaultPrompt, Reedline, Signal};
 
 fn parse_assert_args(input: &str) -> Result<(String, Vec<EngineLogicalTerm>), String> {
@@ -88,12 +88,20 @@ fn main() {
     // Interactive debug REPL: opt into the engine's [Rule]/[Skolem]/[Constraint]
     // diagnostics (off by default — nibli-engine is a silent library).
     engine.set_verbose(true);
+    // NIBLI_LANG selects the startup front-end; a bad value only warns and
+    // keeps the default (ambient config must not break the session).
+    if let Ok(value) = std::env::var("NIBLI_LANG") {
+        match value.parse::<Language>() {
+            Ok(l) => engine.set_language(l),
+            Err(e) => eprintln!("[Lang] NIBLI_LANG ignored: {e}"),
+        }
+    }
 
     let mut line_editor = Reedline::create();
     let prompt = DefaultPrompt::default();
 
     println!(
-        "Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :help"
+        "Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :lang :klaro :lojban :help"
     );
     println!(
         "Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.\n"
@@ -112,6 +120,20 @@ fn main() {
                     ":reset" | ":r" => {
                         engine.reset();
                         println!("[Reset] Knowledge base cleared.");
+                        continue;
+                    }
+                    ":klaro" => {
+                        engine.set_language(Language::Klaro);
+                        println!("[Lang] klaro");
+                        continue;
+                    }
+                    ":lojban" => {
+                        engine.set_language(Language::Lojban);
+                        println!("[Lang] lojban");
+                        continue;
+                    }
+                    ":lang" => {
+                        println!("[Lang] {}", engine.language());
                         continue;
                     }
                     ":facts" => {
@@ -163,11 +185,15 @@ fn main() {
                         continue;
                     }
                     ":help" | ":h" => {
-                        println!("  <text>              Assert Lojban as fact");
+                        println!("  <text>              Assert text as fact (current language)");
                         println!("  ? <text>            Query with proof trace");
                         println!("  ?? <text>           Find witnesses (answer variables)");
+                        println!("  :lang               Show the current input language");
+                        println!("  :klaro / :lojban    Switch the input language");
                         println!("  :debug <text>       Show compiled logic tree");
-                        println!("  :load <filepath>    Load a .lojban file (assert each line)");
+                        println!(
+                            "  :load <filepath>    Load a .lojban/.klaro file (assert each line; language by extension)"
+                        );
                         println!("  :compute <name>     Register predicate for compute dispatch");
                         println!("  :assert <rel> <args..> Assert a ground fact directly");
                         println!("  :retract <id>       Retract a fact by ID (rebuilds KB)");
@@ -278,6 +304,22 @@ fn main() {
                         }
                     };
 
+                    // Language by extension, FILE-SCOPED: .lojban/.klaro set the
+                    // front-end for this load and the previous language is
+                    // restored after; any other extension uses the current mode.
+                    let file_lang = match path.extension().and_then(|e| e.to_str()) {
+                        Some("lojban") => Some(Language::Lojban),
+                        Some("klaro") => Some(Language::Klaro),
+                        _ => None,
+                    };
+                    let prev_lang = engine.language();
+                    if let Some(l) = file_lang
+                        && l != prev_lang
+                    {
+                        engine.set_language(l);
+                        println!("[Load] {} mode for this file", l);
+                    }
+
                     let reader = BufReader::new(file);
                     let mut asserted = 0u32;
                     let mut skipped = 0u32;
@@ -317,6 +359,11 @@ fn main() {
                         "[Load] Done: {} asserted, {} skipped, {} errors",
                         asserted, skipped, errors
                     );
+                    // Restore the pre-load language (the extension pick is
+                    // file-scoped, never a sticky mode switch).
+                    if engine.language() != prev_lang {
+                        engine.set_language(prev_lang);
+                    }
                 } else if let Some(find_text) = input.strip_prefix("??") {
                     let text = find_text.trim();
                     if text.is_empty() {
