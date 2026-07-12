@@ -23,35 +23,17 @@ xorlo witnesses identically to Lojban (compat requires it — the equivalence ba
 checks verdict identity) and the behavior is disclosed spec semantics, not hidden
 residue; every bullet lands independently CI-green.
 
-- **nibli-verify klaro gates (seam + battery)** — NOTE (render gaps to lift here, found
-  2026-07-12): sumti/selbri CONNECTIVES render only via bridi-level expansion and
-  currently FAIL CLOSED by name in `klaro::render` (the corpora may contain `.e`/`je`
-  shapes — the battery sweep will say); stacked `Converted` chains without a curated
-  converted alias likewise. NOTE (emitter limitations to pin or
-  lift here, found 2026-07-12): `exactly N`/`the` BLOCK determiners and block-determiner
-  restrictors carrying relative clauses currently FAIL CLOSED at emission with targeted
-  messages (only `every`/`some` blocks lower, via `Prenex+GanaiGi`/`GeGi`; klaro's
-  in-crate twin test already pins block-every ≡ the ro-da prenex shape, settling O7's
-  direction); decide lift-vs-document when this gate lands. `klaro` becomes a regular
-  nibli-verify dep; new `src/klaro_battery.rs` (round-trip helper + `CONSTRUCT_INVENTORY: one row per
-  spec §3–§9 construct { spec_section, klaro, lojban: Option }` — parity layer 2, with
-  per-section non-vacuity floors) + new test binary `tests/klaro_gate.rs` (oracle-free,
-  never skips) holding BOTH gates. `klaro_seam_conformance`: golden FOL structure for
-  klaro-only spellings — named args land in the right role predicates, `.label`
-  selector ≡ se-shape, block determiners (pins spec O7), `no dog` ≡ exactly-0 CountNode,
-  linked-arg Unspecified gap-fill, `a+b`, independent `?` witnesses, THE O3 PIN
-  (`must past P` → `Obligatory(Past(…))` root — verified against
-  smuni/src/semantic/compile.rs:358-383), precedence goldens; metamorphic pairs
-  canonicalized (named≡positional≡alias-permuted≡direct-gismu); fail-closed negatives
-  (unknown name, 4th `$var`, refill, label beyond arity, `it`-less clause body, `slot`
-  outside property, the three reject decisions). `klaro_lojban_translation_battery`:
-  corpora lines + `generator::random_case` seeds + `seam::conversion_pair` → gerna AST →
-  `klaro::render` (failure = gate failure: render totality is parity layer 3) →
-  `klaro::parse_checked` → smuni both sides → `seam::canonicalize` LogicBuffer equality
-  (NOT AstBuffer equality — §11's deliberate collapses make that unachievable; emitter
-  must match gerna's And/Or association order, battery failures there are emit.rs bugs).
-  Vocabulary discipline: fallback-dictionary-safe so the gates never need
-  dictionary-en.json. Justfile `verify-klaro` recipe; JOIN `ci` (Justfile:471).
+- **renderer coverage: the 7 allowlisted battery lines** — `verify-klaro`'s
+  KNOWN_UNRENDERABLE (tests/klaro_gate.rs, value-pinned with a staleness invariant)
+  holds 7 corpus/generator lines in 3 classes; lift each by teaching the renderer (and
+  where needed the grammar) a spelling, then shrink the allowlist: (1) selbri/sumti
+  CONNECTIVES via bridi-level expansion; (2) conversions INSIDE tanru units
+  (`menli se ponse` — the selector is restr-top-level-only per O8 and peel+permute
+  applies only to whole relations; needs either per-unit selector grammar or curated
+  compound aliases); (3) dictionary-unknown / apostrophe-lujvo words (`insekto`,
+  `flaselcu'u` — klaro fails closed where gerna tolerates arity-2; lujvo aliases would
+  need a generation pass, or the corpus words get curated). Lifted spellings must keep
+  the battery's canonicalized-LogicBuffer equality.
 - **alias-map differential gate** — new test binary
   `nibli-verify/tests/alias_differential.rs` (verify-dict's dual-mode contract: full
   local build checks all aliases, CI fallback checks the curated core with a FALLBACK

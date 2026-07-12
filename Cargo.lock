@@ -2856,8 +2856,11 @@ name = "nibli-verify"
 version = "0.1.0"
 dependencies = [
  "gerna",
+ "klaro",
+ "logji",
  "nibli-engine",
  "nibli-types",
+ "smuni",
  "smuni-dictionary",
 ]
 

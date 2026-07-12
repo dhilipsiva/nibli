@@ -445,7 +445,11 @@ hyphen-vs-`->` lexing wrinkle.
   compile to the *prenex* LogicBuffer shape rather than the restrictor-implication rule
   shape. Whether the two coincide after smuni (incl. `UniversalRuleRecord` registration
   at assert time) must be pinned by a seam-gate golden before the grammar freezes; if
-  they differ, §6's block-form framing needs an erratum.
+  they differ, §6's block-form framing needs an erratum. *Update (2026-07-12, gate
+  landed):* the shape IS the prenex shape, CI-pinned by `verify-klaro`'s O7 golden;
+  the emitter's `exactly N`/`the` block limitation stays DOCUMENTED fail-closed
+  (targeted error + inline-form workaround) rather than lifted — the Lojban→Klaro
+  battery direction can never produce those forms.
 - **O8 (RESOLVED at introduction, 2026-07-12)**: the place-selector dot collides with
   the statement terminator under whitespace-insensitive parsing (`Kim = every dog.
   eats(me).` vs `every dog.eats`). Resolved fail-closed in the grammar: `selected` is

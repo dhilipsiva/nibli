@@ -207,14 +207,22 @@ impl<'a> Renderer<'a> {
             ));
         }
 
-        let head_gismu = self.head_gismu(bridi.relation)?;
-        let relation = self.predication_selbri(bridi.relation)?;
+        // A conversion chain with NO curated converted alias renders by
+        // PEELING the swaps and permuting the argument places onto the plain
+        // alias with named args (`ta se citka ti` → `eats(x2: that, x1: this)`)
+        // — the swap is argument routing, and named args express routing
+        // directly. Curated converted aliases still take priority (checked
+        // inside predication_selbri via the full-chain lookup below).
+        let (relation_id, perm) = self.peel_conversions(bridi.relation)?;
+        let head_gismu = self.head_gismu(relation_id)?;
+        let relation = self.predication_selbri(relation_id)?;
 
         // Argument places: heads fill x1.., then the tail runs gerna's CLL
         // counter (an untagged term takes the next place; a FA tag jumps the
-        // counter). Render positionally while places stay contiguous from x1,
-        // then switch to named args; modal tags render as `via` after the
-        // argument list.
+        // counter). SURFACE places map through the peeled permutation onto the
+        // plain relation's places. Render positionally while plain places stay
+        // contiguous from x1, then switch to named args; modal tags render as
+        // `via` after the argument list.
         let mut placed: Vec<(usize, u32)> = Vec::new();
         let mut vias: Vec<(u32, u32)> = Vec::new(); // (modal selbri-ish, term) — see below
         let mut fixed_vias: Vec<(BaiTag, u32)> = Vec::new();
@@ -249,6 +257,17 @@ impl<'a> Renderer<'a> {
             }
         }
 
+        // Map surface places through the peeled conversion permutation.
+        let placed: Vec<(usize, u32)> = placed
+            .into_iter()
+            .map(|(place, term)| {
+                if place >= 5 {
+                    return Err(nope(format!("argument place x{} out of range", place + 1)));
+                }
+                Ok((perm[place], term))
+            })
+            .collect::<R<_>>()?;
+
         let mut args: Vec<String> = Vec::new();
         let mut positional_streak = true;
         for (i, (place, term)) in placed.iter().enumerate() {
@@ -267,7 +286,7 @@ impl<'a> Renderer<'a> {
         let mut out = format!("{prefix}{relation}({})", args.join(", "));
         for (selbri, term) in vias {
             let name = match self.selbri(selbri)? {
-                Selbri::Root(gismu) => self.alias_or_identity(gismu),
+                Selbri::Root(gismu) => self.alias_or_identity(gismu)?,
                 other => {
                     return Err(nope(format!(
                         "a fi'o modal over a non-root selbri has no Klaro spelling: {other:?}"
@@ -287,11 +306,57 @@ impl<'a> Renderer<'a> {
             };
             out.push_str(&format!(
                 " via {}({})",
-                self.alias_or_identity(gismu),
+                self.alias_or_identity(gismu)?,
                 self.term(term)?
             ));
         }
         Ok(out)
+    }
+
+    /// Peel outer `Converted` layers off a relation, composing their swaps
+    /// into a surface-place → plain-place permutation (0-based). Stops early
+    /// (identity permutation) when the chain from this node down matches a
+    /// CURATED converted alias — those render by name. Only used in bridi
+    /// position; restrictors have the selector spelling instead.
+    fn peel_conversions(&self, id: u32) -> R<(u32, [usize; 5])> {
+        const IDENTITY: [usize; 5] = [0, 1, 2, 3, 4];
+        let Selbri::Converted((conv, inner)) = self.selbri(id)? else {
+            return Ok((id, IDENTITY));
+        };
+        // Single-layer chain with a curated converted alias renders by name.
+        if let Selbri::Root(gismu) = self.selbri(*inner)? {
+            let place: u8 = match conv {
+                Conversion::Se => 2,
+                Conversion::Te => 3,
+                Conversion::Ve => 4,
+                Conversion::Xe => 5,
+            };
+            if klaro_dictionary::curated::CONVERTED_ALIASES
+                .iter()
+                .any(|(_, g, swap)| g == gismu && *swap == place)
+            {
+                return Ok((id, IDENTITY));
+            }
+        }
+        let (base, inner_perm) = self.peel_conversions(*inner)?;
+        let swapped = match conv {
+            Conversion::Se => 1,
+            Conversion::Te => 2,
+            Conversion::Ve => 3,
+            Conversion::Xe => 4,
+        };
+        let mut perm = [0usize; 5];
+        for (surface, slot) in perm.iter_mut().enumerate() {
+            let after_outer = if surface == 0 {
+                swapped
+            } else if surface == swapped {
+                0
+            } else {
+                surface
+            };
+            *slot = inner_perm[after_outer];
+        }
+        Ok((base, perm))
     }
 
     /// The head gismu of a relation (for place-label lookup), descending
@@ -310,10 +375,32 @@ impl<'a> Renderer<'a> {
         })
     }
 
-    fn alias_or_identity(&self, gismu: &str) -> String {
-        klaro_dictionary::canonical_alias(gismu)
-            .map(str::to_owned)
-            .unwrap_or_else(|| gismu.to_owned())
+    /// The Klaro spelling of a dictionary word: the canonical alias, else the
+    /// identity passthrough — which is only honest when the word (a) is
+    /// actually in the dictionary (klaro's resolver fails closed on unknowns;
+    /// gerna tolerates them at arity 2) and (b) is a legal Klaro identifier
+    /// (apostrophe lujvo are not). Render must NEVER emit unparseable text, so
+    /// both cases fail closed by name here.
+    fn alias_or_identity(&self, gismu: &str) -> R<String> {
+        if let Some(alias) = klaro_dictionary::canonical_alias(gismu) {
+            return Ok(alias.to_owned());
+        }
+        if smuni_dictionary::get_arity(gismu).is_none() {
+            return Err(nope(format!(
+                "word {gismu:?} is dictionary-unknown (the Lojban front-end tolerates it at \
+                 arity 2; Klaro fails closed on unknown names — SURFACE_SYNTAX §13)"
+            )));
+        }
+        let mut chars = gismu.chars();
+        let ident_ok = matches!(chars.next(), Some('a'..='z'))
+            && chars.all(|c| matches!(c, 'a'..='z' | '0'..='9'));
+        if !ident_ok {
+            return Err(nope(format!(
+                "word {gismu:?} is not a legal Klaro identifier (apostrophes have no \
+                 spelling) and has no alias — curate one"
+            )));
+        }
+        Ok(gismu.to_owned())
     }
 
     /// Label for SURFACE place `place` (0-based) of `gismu`'s canonical alias:
@@ -341,10 +428,12 @@ impl<'a> Renderer<'a> {
 
     fn selbri_text(&self, id: u32, selector_ok: bool) -> R<String> {
         Ok(match self.selbri(id)? {
-            Selbri::Root(gismu) => self.alias_or_identity(gismu),
+            Selbri::Root(gismu) => self.alias_or_identity(gismu)?,
             Selbri::Compound(parts) => parts
                 .iter()
                 .map(|p| self.alias_or_identity(p))
+                .collect::<R<Vec<_>>>()?
+                .into_iter()
                 .collect::<Vec<_>>()
                 .join("+"),
             Selbri::Tanru((modifier, head)) => {
@@ -379,7 +468,7 @@ impl<'a> Renderer<'a> {
                 }
                 // …else the place selector, in restrictor position only (O8).
                 if selector_ok {
-                    let alias = self.alias_or_identity(gismu);
+                    let alias = self.alias_or_identity(gismu)?;
                     let label = self.place_label(gismu, (place - 1) as usize);
                     return Ok(format!("{alias}.{label}"));
                 }
@@ -865,14 +954,22 @@ mod tests {
     }
 
     #[test]
-    fn selector_only_in_restr_position() {
-        // se prami as a MAIN selbri has no curated converted alias — must
-        // fail closed in predication position…
+    fn conversions_in_predication_position() {
+        // se prami as a MAIN selbri has no curated converted alias — it
+        // renders by PEELING the swap onto named args of the plain alias
+        // (`loves(loved: Kim, lover: Adam)`), and round-trips to an equal
+        // LogicBuffer.
         let lojban = "la .kim. cu se prami la .adam.";
         let buffer = gerna::parse_checked(lojban).unwrap();
-        let e = render(&buffer).expect_err("se prami predication must fail closed");
-        assert!(format!("{e}").contains("converted alias"), "{e}");
-        // …while the curated converted alias renders fine in the same spot.
+        let text = render(&buffer).unwrap();
+        assert!(text.contains("loves("), "peeled rendering expected: {text}");
+        let gerna_lb = format!("{:?}", smuni::compile_from_gerna_ast(buffer).unwrap());
+        assert_eq!(
+            gerna_lb,
+            lb(&text),
+            "peeled conversion must round-trip: {text}"
+        );
+        // A curated converted alias still renders by name in the same spot.
         let buffer = gerna::parse_checked("la .adam. cu se curmi").unwrap();
         let text = render(&buffer).unwrap();
         assert!(text.contains("permitted"), "{text}");

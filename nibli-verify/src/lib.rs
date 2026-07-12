@@ -21,6 +21,7 @@ pub mod corpus;
 pub mod corpus_naf;
 pub mod filter;
 pub mod generator;
+pub mod klaro_battery;
 pub mod oracle;
 pub mod oracle_asp;
 pub mod parser_diff;

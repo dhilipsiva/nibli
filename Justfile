@@ -478,7 +478,7 @@ test-all: test test-engine test-store test-backend test-classifier
 
 # CI gate for the hardened runtime surface (fast; native only — no WASM build).
 # For the WASM behavioral smokes too, run `just ci-all`.
-ci: fmt-check clippy-runtime test test-engine test-gasnu test-fanva test-backend test-store test-persistence-replay verify-harness verify-soundness verify-parser verify-dict verify-proofs verify-book-vocab
+ci: fmt-check clippy-runtime test test-engine test-gasnu test-fanva test-backend test-store test-persistence-replay verify-harness verify-soundness verify-klaro verify-parser verify-dict verify-proofs verify-book-vocab
 
 # WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
 # verify-book-capture). Bundles the six gasnu smokes; each depends on
@@ -588,6 +588,15 @@ verify-harness:
 # dev shell provides `vampire` + `clingo`; each side skips cleanly if its solver is absent.
 verify-soundness:
     cargo test -p nibli-verify --lib --test differential_gate {{cargo_profile_flag}} -- --nocapture --test-threads=1
+
+# The two Klaro conformance gates (oracle-free, never skip): (1) seam conformance —
+# every SURFACE_SYNTAX construct kompiles, Lojban twins compile canonically EQUAL,
+# the O3/O7 pins, metamorphic pairs, fail-closed negatives; (2) the Klaro<->Lojban
+# translation battery — every seam-compilable line of the shipped corpora + seeded
+# generator programs must render to Klaro that compiles to the SAME canonicalized
+# LogicBuffer (KNOWN_UNRENDERABLE is exact-line value-pinned with a staleness check).
+verify-klaro:
+    cargo test -p nibli-verify --test klaro_gate {{cargo_profile_flag}} -- --nocapture --test-threads=1
 
 # gerna <-> camxes parse-differential (the FRONT-END gate): every sentence gerna accepts
 # must parse under the official Lojban grammar (ilmentufa camxes, driven via node over
