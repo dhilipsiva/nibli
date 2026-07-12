@@ -63,11 +63,19 @@ all $x: at_risk($x) & takes(Adam, $x) -> alert($x).
 
 ## 2. Lexical structure
 
-Klaro is **lexed, then parsed** (this is load-bearing — see the defect history in §13):
+> **Erratum (2026-07-12, pest switch):** the implementation is a scannerless
+> pest parser (`klaro/src/klaro.pest` is the executable grammar — user
+> decision; grammar↔parser drift impossible by construction). The load-bearing
+> property below is therefore not a separate lexer but its OBSERVABLE
+> BEHAVIOR, carried by two grammar rules — every keyword is self-guarded
+> (`"every" ~ !ident_char`) and `ident` starts with `!keyword` — and pinned by
+> behavioral tests plus a grammar↔reserved-list conformance test.
 
-- **Tokens are maximal-munch.** `everyday` is one identifier, never `every` + `day`;
+The token-level behavior (however implemented) is:
+
+- **Maximal-munch equivalence.** `everyday` is one identifier, never `every` + `day`;
   `theory` is never `the` + `ory`.
-- **Keywords are reserved by exact match** after munching. The reserved set:
+- **Keywords are reserved by exact match.** The reserved set:
   `some the every exactly no all where also via past now future must may`
   `event fact property amount concept`
   `me you we we_all we_others you_all this that yonder it it_a it_e it_i it_o it_u slot`
@@ -380,8 +388,10 @@ the stores, rendering, and every soundness gate are untouched.
 4. **Fuzzing**: a `fuzz-parse`-style libFuzzer target for the Klaro parser.
 
 **Fixed-in-synthesis defects** (from the judge panel, so they don't regress):
-maximal-munch lexer + exact-match keyword reservation (kills the `everyday`→`every day`,
-`theory`→`the ory`, `you-all`-unparseable class); the bare-predicate clause-body sugar is
+maximal-munch keyword-boundary behavior (kills the `everyday`→`every day`,
+`theory`→`the ory`, `you-all`-unparseable class — since the 2026-07-12 pest switch this
+is carried by self-guarded keyword rules in `klaro.pest` + behavioral tests, not a
+separate lexer; see the §2 erratum); the bare-predicate clause-body sugar is
 a formal production (`ClauseBody ← Claim-with-it / "~"? PredSeq`), not prose; block and
 inline determiner grammars are consistent; underscore identifiers remove the
 hyphen-vs-`->` lexing wrinkle.
@@ -539,6 +549,13 @@ Identical logic to the v0.1/Lojban form — but the argument order is the declar
 page exists because a spoken conlang needed it.
 
 ## 15. Grammar (PEG sketch)
+
+> **Erratum (2026-07-12):** the NORMATIVE, executable form of this grammar is
+> `klaro/src/klaro.pest` (pest); this sketch is kept as the readable overview.
+> Where they differ, the `.pest` file wins — its keyword rules are pinned to
+> the reserved-word list by a conformance test, and the §6 errata
+> (prefix/negation shape, arg ordering, count integrality) are enforced by the
+> walker with targeted errors rather than encoded as grammar.
 
 ```peg
 # Tokens come from the lexer (maximal munch; keywords reserved by exact match).

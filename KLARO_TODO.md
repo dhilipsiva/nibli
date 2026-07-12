@@ -7,7 +7,10 @@ fully lands; update it if only partially done. The language is specified in
 clean-core v2 is the follow-on program that triggers gerna retirement). Program
 decisions (2026-07-12): dual front-end until gerna retires — Klaro becomes the
 primary/default language everywhere, gerna demoted to the equivalence battery + legacy
-`.lojban` load; FULL alias-map generation (~1,338 gismu) from day one; every bullet
+`.lojban` load; FULL alias-map generation (~1,338 gismu) from day one; parser tech =
+**pest** (`klaro/src/klaro.pest` is the executable grammar — the normative §15; the
+walker in `klaro/src/parser.rs` builds the tree AST and owns the §6-errata /
+arg-ordering / count-integrality rejects with targeted positioned errors); every bullet
 lands independently CI-green.
 
 - **klaro parser completion + resolve** — rel clauses (`where`/`also`; bare-predicate

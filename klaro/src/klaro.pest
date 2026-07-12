@@ -1,0 +1,134 @@
+// Klaro grammar — THE EXECUTABLE SPEC (SURFACE_SYNTAX.md §15, core profile).
+//
+// This file is the normative grammar: pest_derive compiles it into the parser,
+// so grammar and implementation cannot drift (the property that motivated the
+// 2026-07-12 switch from the hand recursive-descent parser).
+//
+// Scannerless discipline: pest has no separate lexer, so the keyword-boundary
+// hazard (`everyday` must NEVER parse as `every` + `day`) is handled by two
+// mechanical rules, both pinned by behavioral tests in parser.rs:
+//   1. every keyword rule is SELF-GUARDED with `~ !ident_char`, so a keyword
+//      never matches a prefix of a longer identifier — and because each
+//      alternative guards itself, alternation order can't recreate the
+//      `you`/`you_all` ordered-choice bug;
+//   2. `ident` starts with `!keyword`, so a keyword can never be an identifier.
+//
+// Structure rules (no `@`) skip WHITESPACE/COMMENT between elements; atomic
+// `@` rules (keywords, ident, name, var, number, string) do not.
+//
+// The §6 errata (prefix ordering, `~past P`, `~~P`, prefixes/`~` over compound
+// claims), positional-before-named args, and `exactly N` integrality are
+// deliberately NOT encoded here: `modifiers` parses permissively and the
+// walker (parser.rs) rejects with TARGETED, positioned errors — generic
+// "expected …" messages would bury the spec guidance.
+
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+COMMENT    = _{ ("#" ~ (!"\n" ~ ANY)*) | ("/*" ~ (!"*/" ~ ANY)* ~ "*/") }
+
+ident_char = _{ ASCII_ALPHA_LOWER | ASCII_DIGIT | "_" }
+
+// ── Keywords (SURFACE_SYNTAX §2; single source klaro-dictionary/src/reserved.rs,
+//    pinned by the grammar↔reserved-list conformance test) ──
+kw_all       = @{ "all" ~ !ident_char }
+kw_also      = @{ "also" ~ !ident_char }
+kw_amount    = @{ "amount" ~ !ident_char }
+kw_concept   = @{ "concept" ~ !ident_char }
+kw_event     = @{ "event" ~ !ident_char }
+kw_every     = @{ "every" ~ !ident_char }
+kw_exactly   = @{ "exactly" ~ !ident_char }
+kw_fact      = @{ "fact" ~ !ident_char }
+kw_future    = @{ "future" ~ !ident_char }
+kw_it        = @{ "it" ~ !ident_char }
+kw_it_a      = @{ "it_a" ~ !ident_char }
+kw_it_e      = @{ "it_e" ~ !ident_char }
+kw_it_i      = @{ "it_i" ~ !ident_char }
+kw_it_o      = @{ "it_o" ~ !ident_char }
+kw_it_u      = @{ "it_u" ~ !ident_char }
+kw_may       = @{ "may" ~ !ident_char }
+kw_me        = @{ "me" ~ !ident_char }
+kw_must      = @{ "must" ~ !ident_char }
+kw_no        = @{ "no" ~ !ident_char }
+kw_now       = @{ "now" ~ !ident_char }
+kw_past      = @{ "past" ~ !ident_char }
+kw_property  = @{ "property" ~ !ident_char }
+kw_seeming   = @{ "seeming" ~ !ident_char }
+kw_slot      = @{ "slot" ~ !ident_char }
+kw_some      = @{ "some" ~ !ident_char }
+kw_that      = @{ "that" ~ !ident_char }
+kw_the       = @{ "the" ~ !ident_char }
+kw_this      = @{ "this" ~ !ident_char }
+kw_via       = @{ "via" ~ !ident_char }
+kw_we        = @{ "we" ~ !ident_char }
+kw_we_all    = @{ "we_all" ~ !ident_char }
+kw_we_others = @{ "we_others" ~ !ident_char }
+kw_where     = @{ "where" ~ !ident_char }
+kw_yonder    = @{ "yonder" ~ !ident_char }
+kw_you       = @{ "you" ~ !ident_char }
+kw_you_all   = @{ "you_all" ~ !ident_char }
+
+// Longest-first within shared-prefix families as belt-and-suspenders (the
+// per-alternative guards already make order semantically irrelevant).
+keyword = _{
+    kw_we_others | kw_we_all | kw_you_all
+  | kw_it_a | kw_it_e | kw_it_i | kw_it_o | kw_it_u
+  | kw_all | kw_also | kw_amount | kw_concept | kw_event | kw_every
+  | kw_exactly | kw_fact | kw_future | kw_it | kw_may | kw_me | kw_must
+  | kw_no | kw_now | kw_past | kw_property | kw_seeming | kw_slot | kw_some
+  | kw_that | kw_the | kw_this | kw_via | kw_we | kw_where | kw_yonder | kw_you
+}
+
+// ── Identifier classes / literals ──
+ident  = @{ !keyword ~ ASCII_ALPHA_LOWER ~ ident_char* }
+name   = @{ ASCII_ALPHA_UPPER ~ (ASCII_ALPHANUMERIC | "_")* }
+var    = @{ "$" ~ ASCII_ALPHA_LOWER ~ ident_char* }
+number = @{ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
+// `\"` and `\\` are the only escapes; anything else after `\` fails the match
+// (fail closed). Payloads may carry arbitrary UTF-8 — ASCII-only is a rule
+// about SYNTAX, and it holds automatically: no other rule matches non-ASCII.
+string = @{ "\"" ~ (("\\" ~ ("\"" | "\\")) | (!("\"" | "\\" | "\n") ~ ANY))* ~ "\"" }
+
+// ── File / statements ──
+file      = { SOI ~ statement* ~ EOI }
+statement = { claim ~ "." }
+
+// ── The claim ladder (tightest first: modifiers · & · | · ^ · <-> · ->) ──
+claim     = { iff_chain ~ (op_impl ~ claim)? }        // -> right-assoc
+iff_chain = { xor_chain ~ (op_iff ~ xor_chain)* }
+xor_chain = { or_chain ~ (op_xor ~ or_chain)* }
+or_chain  = { and_chain ~ (op_or ~ and_chain)* }
+and_chain = { unary ~ (op_and ~ unary)* }
+op_impl   = { "->" }
+op_iff    = { "<->" }
+op_xor    = { "^" }
+op_or     = { "|" }
+op_and    = { "&" }
+
+// Modifiers parse PERMISSIVELY in any order/count; the walker enforces the §6
+// shape (≤1 deontic, ≤1 tense, deontic-before-tense, ≤1 `~`, `~` innermost)
+// with targeted errors.
+unary    = { modifier* ~ atom }
+modifier = { kw_must | kw_may | kw_past | kw_now | kw_future | tilde }
+tilde    = { "~" }
+
+atom        = { paren | predication | equality }
+paren       = { "(" ~ claim ~ ")" }
+predication = { ident ~ args }
+args        = { "(" ~ (arg ~ ("," ~ arg)*)? ~ ")" }
+arg         = { (label ~ ":")? ~ term }
+label       = { ident }
+equality    = { term ~ "=" ~ term }
+
+// ── Terms ──
+term       = { underscore | question | number | string | var | keyterm | det_phrase | name }
+underscore = { "_" }
+question   = { "?" }
+keyterm    = {
+    kw_we_others | kw_we_all | kw_you_all
+  | kw_it_a | kw_it_e | kw_it_i | kw_it_o | kw_it_u
+  | kw_me | kw_you | kw_we | kw_this | kw_that | kw_yonder | kw_it | kw_slot
+}
+det_phrase = { det ~ restr }
+det        = { kw_some | (kw_every ~ kw_the?) | kw_the | (kw_exactly ~ number ~ kw_the?) | kw_no }
+// Core profile: a single predicate word. The parser-completion bullet extends
+// this rule (tanru units, `.label` selectors, linked args, where/also clauses).
+restr      = { ident }
