@@ -2872,6 +2872,7 @@ name = "nibli-wasm"
 version = "0.1.0"
 dependencies = [
  "gerna",
+ "klaro",
  "logji",
  "nibli-protocol",
  "nibli-render",

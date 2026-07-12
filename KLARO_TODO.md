@@ -23,14 +23,11 @@ xorlo witnesses identically to Lojban (compat requires it — the equivalence ba
 checks verdict identity) and the behavior is disclosed spec semantics, not hidden
 residue; every bullet lands independently CI-green.
 
-- **nibli-wasm + V8 leg** — `set_language(&str)` wasm-bindgen export; dispatch in
-  `Session::compile_text` + `compile_for_render` (nibli-wasm/src/lib.rs:104,140);
-  determinism.rs + gdpr/ddi bounded-time tests → `.klaro`. LIVE-DEMO COORDINATION: ship
-  the export first with default still Lojban here, flip the wasm default only in the
-  same window as the dhilipsiva.dev site-repo JS/KB migration (redeploy-site.yml
-  auto-triggers on push to main — an uncoordinated default flip breaks the deployed
-  playground).
-- **nibli-ui + nibli-fanva** — fanva gates take `Language` (gates.rs:59): Klaro arm =
+- **nibli-ui + nibli-fanva** — SITE-WINDOW RESIDUAL from the landed nibli-wasm bullet:
+  the nibli-wasm session DEFAULT flip (Lojban→Klaro) + `back_translate_ir`'s Klaro
+  render path ride the dhilipsiva.dev site-repo JS/KB migration window (cross-repo;
+  redeploy-site.yml auto-triggers on push to main) — coordinate with this bullet's
+  deploy. fanva gates take `Language` (gates.rs:59): Klaro arm =
   `klaro::parse_checked` (gate name "klaro") + smuni + a RENDER ROUND-TRIP gate
   (render∘parse must reproduce the AstBuffer — the drift-catcher replacing camxes, which
   is Lojban-only and stays for legacy mode); `feedback_for` arm; per-language

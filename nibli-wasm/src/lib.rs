@@ -4,11 +4,13 @@
 //!
 //! Powers the live Transparency Triad demo at <https://dhilipsiva.dev/nibli>.
 
+use std::cell::Cell;
 use std::collections::HashSet;
 
 use wasm_bindgen::prelude::*;
 
 use nibli_types::error::NibliError as PipelineError;
+use nibli_types::lang::Language;
 use nibli_types::logic as logji_logic;
 
 // The canonical proof types ARE the wire types now; `nibli_protocol` only
@@ -22,6 +24,13 @@ use nibli_types::logic as logji_logic;
 pub struct Session {
     kb: logji::KnowledgeBase,
     compute_predicates: HashSet<String>,
+    /// The input language. PINNED LOJBAN here — NOT `Language::default()`
+    /// (Klaro since THE FLIP): this crate powers the DEPLOYED playground,
+    /// which is rebuilt on every push to main (redeploy-site.yml), and its
+    /// JS/KB still speak Lojban. The default flips only in the same window
+    /// as the dhilipsiva.dev site-repo migration; until then Klaro is
+    /// opt-in via `set_language("klaro")`.
+    language: Cell<Language>,
 }
 
 impl Default for Session {
@@ -37,7 +46,16 @@ impl Session {
         Session {
             kb: logji::KnowledgeBase::new(),
             compute_predicates: logji::default_compute_predicates(),
+            language: Cell::new(Language::Lojban),
         }
+    }
+
+    /// Select the input language for `assert_text`/`query_with_proof`:
+    /// `"klaro"` or `"lojban"`. The session default is LOJBAN until the
+    /// deployed site's migration window (see the `language` field note).
+    pub fn set_language(&self, lang: &str) -> Result<(), JsError> {
+        self.language.set(lang.parse::<Language>().map_err(js_err)?);
+        Ok(())
     }
 
     /// Parse one Lojban assertion, compile to FOL, assert. A bare-`.i`
@@ -102,9 +120,18 @@ impl Session {
 
 impl Session {
     fn compile_text(&self, input: &str) -> Result<logji_logic::LogicBuffer, String> {
-        // Shared parse front-end (fail-closed on any parse error) + smuni compile
-        // + compute-node marking. String-error surface preserved via `to_string`.
-        let ast = gerna::parse_checked(input).map_err(|e: PipelineError| e.to_string())?;
+        // Language dispatch (fail-closed parse either way) + smuni compile
+        // + compute-node marking. String-error surface preserved via
+        // `to_string`. This session is stateless per compile — no goi
+        // machinery exists here, so the Klaro arm needs no snapshot logic.
+        let ast = match self.language.get() {
+            Language::Lojban => {
+                gerna::parse_checked(input).map_err(|e: PipelineError| e.to_string())?
+            }
+            Language::Klaro => {
+                klaro::parse_checked(input).map_err(|e: PipelineError| e.to_string())?
+            }
+        };
         let mut buf =
             smuni::compile_from_gerna_ast(ast).map_err(|e: PipelineError| e.to_string())?;
         logji::transform_compute_nodes(&mut buf, &self.compute_predicates);
@@ -129,16 +156,24 @@ pub fn back_translate(lojban: &str) -> String {
 /// reading; it falls back to the lexical gloss when the input does not compile.
 #[wasm_bindgen]
 pub fn back_translate_ir(lojban: &str) -> String {
-    match compile_for_render(lojban) {
+    // Session-less free export: stays LOJBAN for the deployed site's JS (the
+    // Klaro-aware render path arrives with the site-repo migration window).
+    match compile_for_render(Language::Lojban, lojban) {
         Ok(buf) => nibli_render::render_logic_buffer(&buf, nibli_render::Register::Spec),
         Err(_) => smuni_dictionary::back_translate(lojban),
     }
 }
 
 /// Parse + compile a line to the FOL `LogicBuffer` for rendering (no compute
-/// transform, no assertion — display only).
-fn compile_for_render(input: &str) -> Result<logji_logic::LogicBuffer, String> {
-    let ast = gerna::parse_checked(input).map_err(|e: PipelineError| e.to_string())?;
+/// transform, no assertion — display only). Language-parameterized so the
+/// site-window flip is a one-arg change.
+fn compile_for_render(lang: Language, input: &str) -> Result<logji_logic::LogicBuffer, String> {
+    let ast = match lang {
+        Language::Lojban => {
+            gerna::parse_checked(input).map_err(|e: PipelineError| e.to_string())?
+        }
+        Language::Klaro => klaro::parse_checked(input).map_err(|e: PipelineError| e.to_string())?,
+    };
     smuni::compile_from_gerna_ast(ast).map_err(|e: PipelineError| e.to_string())
 }
 
@@ -150,6 +185,14 @@ mod tests {
 
     fn load(kb_text: &str) -> Session {
         let session = Session::new();
+        // PINNED LOJBAN with the .lojban corpora (deviation from the tracker's
+        // ".klaro re-point", recorded 2026-07-12): the gdpr/ddi .klaro twins
+        // carry full-mode-only aliases, so loading them here would break the
+        // CI fallback build; the twins gate already proves per-line
+        // equivalence. Explicit — future-proofs the site-window default flip.
+        session
+            .set_language("lojban")
+            .expect("set_language(lojban) must succeed");
         for line in kb_text.lines() {
             let line = line.trim();
             if line.is_empty() || line.starts_with('#') {

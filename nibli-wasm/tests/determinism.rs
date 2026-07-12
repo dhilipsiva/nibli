@@ -1,10 +1,12 @@
-//! Three-way determinism corpus, V8 leg: the SAME `determinism-corpus.lojban` that the
-//! native engine (`determinism_corpus_lojban_twin`) and the Wasmtime component
-//! (`smoke-gasnu-determinism`) run must produce the identical pinned verdicts when the
-//! pipeline is compiled to wasm32-unknown-unknown and executed under node/V8 — the
-//! browser-class runtime the live playground uses. Run via `just verify-wasm-node`
-//! (`wasm-pack test --node nibli-wasm`); native `cargo test` skips this file entirely
-//! (`#![cfg(target_arch = "wasm32")]`).
+//! Three-way determinism corpus, V8 leg: the SAME `determinism-corpus.klaro` twin
+//! that the native engine (`determinism_corpus_klaro_native`) and the Wasmtime
+//! component (`smoke-gasnu-determinism`) run must produce the identical pinned
+//! verdicts when the pipeline is compiled to wasm32-unknown-unknown and executed
+//! under node/V8 — the browser-class runtime the live playground uses. The
+//! session is switched to Klaro explicitly (nibli-wasm's DEFAULT stays Lojban
+//! for the deployed playground until the site-repo migration window). Run via
+//! `just verify-wasm-node` (`wasm-pack test --node nibli-wasm`); native
+//! `cargo test` skips this file entirely (`#![cfg(target_arch = "wasm32")]`).
 
 #![cfg(target_arch = "wasm32")]
 
@@ -51,8 +53,11 @@ fn parse_corpus(text: &str) -> Vec<COp> {
 
 #[wasm_bindgen_test]
 fn determinism_corpus_v8() {
-    let corpus = include_str!("../../determinism-corpus.lojban");
+    let corpus = include_str!("../../determinism-corpus.klaro");
     let session = Session::new();
+    session
+        .set_language("klaro")
+        .expect("set_language(klaro) must succeed");
     let mut ids: Vec<u64> = Vec::new();
     let mut checked = 0usize;
 
