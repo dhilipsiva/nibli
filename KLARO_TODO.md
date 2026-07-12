@@ -23,21 +23,6 @@ xorlo witnesses identically to Lojban (compat requires it — the equivalence ba
 checks verdict identity) and the behavior is disclosed spec semantics, not hidden
 residue; every bullet lands independently CI-green.
 
-- **corpora twins + honesty gate** — `klaro/src/bin/lojban2klaro.rs` + `just
-  migrate-corpora`: line-by-line, comments/blank lines/`# =>` verdict annotations/
-  `?`/`??`/`:`-prefixes preserved byte-for-byte at identical line numbers, payload =
-  `gerna::parse_checked` → `klaro::render`; RE-RUNNABLE (corpora still change while
-  gerna lives). Generate the four twins: `gdpr.klaro`, `drug-interactions.klaro`
-  (the source file is `drug-interactions.lojban`), `determinism-corpus.klaro`,
-  `readme.klaro`. New gate `verify-klaro-twins` (nibli-verify test + recipe, JOIN `ci`):
-  twin existence both directions, line-structure correspondence, per-payload-line
-  canonicalized compiled-buffer equality — this IS the shipped-corpora leg of spec §13
-  obligation 3 and makes the dual phase self-policing. MUST LAND BEFORE any further
-  corpus edits (the pending TODO.md determinism-corpus GIhA bullet edits a twinned
-  file). Extend `fuzz-seed`'s fuzz_klaro sources with the four `.klaro` twins (today it
-  reads only `klaro/tests/acceptance.klaro` — relocated from the landed fuzz_klaro
-  bullet). Also add `determinism_corpus_klaro_native` beside (not replacing) the Lojban
-  native leg.
 - **THE FLIP (native)** — `Language::default()` → Klaro. Mechanical sweep: grep
   `NibliEngine::new()` workspace-wide; nibli-engine tests (integration.rs ~159 Lojban
   call sites + verdict_corpus + known_failures*) switch to a `lojban_engine()` helper

@@ -1,0 +1,112 @@
+# ni'o la .nibli.
+logical system(Nibli).
+certain system(Nibli).
+computer system(Nibli).
+
+# ni'o lo jicmu logji
+reason(outcome: every certain).
+logical(every reason.outcome).
+~imaginary(every logical).
+
+# ni'o lo danlu klesi
+animal(every dog).
+animal(every cat).
+animal(every bird).
+animal(every fish).
+animal(every snake).
+animal(every bear).
+animal(every horse).
+animal(every bovine).
+animal(every camel).
+animal(every rat).
+animal(every mammal).
+animal(every reptile).
+animal(every insect).
+
+# ni'o lo jmive klesi
+alive(every animal).
+alive(every tree).
+alive(every plant).
+alive(every snake).
+
+# ni'o lo prenu klesi
+alive(every person).
+person(every man).
+person(every woman).
+person(every child).
+man(every male).
+woman(every female).
+
+# ni'o lo prenu se ckaji
+mind owned(every person).
+language owned(every person).
+
+# ni'o lo se ckaji je skari
+attribute(x2: every big).
+attribute(x2: every small).
+attribute(x2: every fast).
+attribute(x2: every slow).
+color(every red).
+color(every blue).
+color(every yellow).
+color(every green).
+color(every gray).
+
+# ni'o lo seljibri
+person(every teaches).
+person(every doctor).
+person(every police).
+
+# ni'o lo dinju
+building(every home).
+building(every office).
+building(every school).
+building(every doctor home).
+
+# ni'o lo marce
+vehicle(every automobile).
+vehicle(every train).
+vehicle(every airplane).
+
+# ni'o lo cidja
+food(every milk).
+food(every fruit).
+food(every bread).
+food(every meat).
+
+# ni'o lo litki
+liquid(every water).
+liquid(every milk).
+
+# ni'o lo gusni
+illumine(every solar).
+illumine(every fire).
+
+# ni'o lo seljibri se zukte
+desires(desired: every teaches, desirer: event { studies() }).
+desires(desired: every doctor, desirer: event { healthy() }).
+desires(desired: every police, desirer: event { rule() }).
+
+# ni'o lo sampu logji
+fast(every big animal).
+slow(every small animal).
+
+# ni'o lo xanri fanta logji
+~certain(every imaginary).
+~imaginary(every certain).
+entails(conclusion: every logical certain).
+
+# ni'o lo flalu je bilga
+rule(every law).
+obligated(every rule).
+every obligated $x: permitted($x) & ~prevents(prevented: $x).
+
+# ni'o lo datni turni
+owned(every data).
+tends(charge: every owned data).
+permitted(every tends(some data)).
+
+# ni'o lo se cusku
+makes(made: some imaginary prevents wall, material: some logical).
+certain system(some imaginary prevents wall).
+~imaginary system(some imaginary prevents wall).

@@ -478,7 +478,7 @@ test-all: test test-engine test-store test-backend test-classifier
 
 # CI gate for the hardened runtime surface (fast; native only — no WASM build).
 # For the WASM behavioral smokes too, run `just ci-all`.
-ci: fmt-check clippy-runtime test test-engine test-gasnu test-fanva test-backend test-store test-persistence-replay verify-harness verify-soundness verify-klaro verify-klaro-dict verify-parser verify-dict verify-proofs verify-book-vocab
+ci: fmt-check clippy-runtime test test-engine test-gasnu test-fanva test-backend test-store test-persistence-replay verify-harness verify-soundness verify-klaro verify-klaro-dict verify-klaro-twins verify-parser verify-dict verify-proofs verify-book-vocab
 
 # WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
 # verify-book-capture). Bundles the six gasnu smokes; each depends on
@@ -608,6 +608,27 @@ verify-klaro:
 verify-klaro-dict:
     cargo test -p nibli-verify --test alias_differential {{cargo_profile_flag}} -- --nocapture --test-threads=1
 
+# Regenerate the four .klaro corpus twins from their .lojban sources via the
+# lojban2klaro migration bin (line-by-line, structure-preserving, fail-closed).
+# RE-RUNNABLE: run after ANY corpus edit while gerna lives — verify-klaro-twins
+# fails on a stale twin.
+migrate-corpora:
+    cargo run -p klaro --bin lojban2klaro -- gdpr.lojban gdpr.klaro
+    cargo run -p klaro --bin lojban2klaro -- drug-interactions.lojban drug-interactions.klaro
+    cargo run -p klaro --bin lojban2klaro -- readme.lojban readme.klaro
+    cargo run -p klaro --bin lojban2klaro -- determinism-corpus.lojban determinism-corpus.klaro
+
+# The corpora-twins honesty gate (the shipped-corpora leg of SURFACE_SYNTAX §13
+# obligation 3): every repo-root .lojban corpus has a committed .klaro twin and
+# vice versa; line structure corresponds at identical line numbers (comments/
+# blanks/`:`-commands byte-identical, `? ` prefixes paired); every payload-line
+# pair compiles to the SAME canonicalized LogicBuffer. Plus the determinism
+# corpus' Klaro native leg (`determinism_corpus_klaro_native`, curated-core
+# vocabulary — full-strength in both dictionary modes). Dual-mode: the CI
+# fallback build vocab-skips twin lines needing generated aliases.
+verify-klaro-twins:
+    cargo test -p nibli-verify --test klaro_twins {{cargo_profile_flag}} -- --nocapture --test-threads=1
+
 # gerna <-> camxes parse-differential (the FRONT-END gate): every sentence gerna accepts
 # must parse under the official Lojban grammar (ilmentufa camxes, driven via node over
 # the shipped corpora + seeded random batches). One-directional: gerna implements a
@@ -725,7 +746,7 @@ fuzz-seed:
         for i, ln in enumerate(lines):
             (d / f"seed_{i:04}").write_text(encode(ln), encoding="utf-8")
     klaro_lines = []
-    for src in ("klaro/tests/acceptance.klaro",):
+    for src in ("klaro/tests/acceptance.klaro", "gdpr.klaro", "drug-interactions.klaro", "readme.klaro", "determinism-corpus.klaro"):
         for ln in pathlib.Path(src).read_text(encoding="utf-8").splitlines():
             ln = ln.strip()
             if ln and not ln.startswith("#"):

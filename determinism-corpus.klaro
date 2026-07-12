@@ -1,0 +1,88 @@
+# ── Three-way determinism corpus ─────────────────────────────────────────────
+#
+# One session script, three independent runtimes, byte-identical verdicts:
+#   (a) native  — nibli-engine, `determinism_corpus_native` (differential_gate.rs)
+#   (b) wasmtime — the lasna WASI component under gasnu (`smoke-gasnu-determinism`)
+#   (c) v8      — the wasm32-unknown-unknown build under node
+#                 (`nibli-wasm/tests/determinism.rs`, `just verify-wasm-node`)
+#
+# Format: gasnu script-mode lines (asserts, `? <query>`, `:retract <k>` where k is
+# the 0-based assert index == the engine fact id). Every query is immediately
+# followed by a `# => <verdict>` annotation — the pinned ground truth, in
+# `display_query_result` form ("TRUE", "FALSE", "UNKNOWN (cycle-cut)", …). All three
+# runners assert their own verdicts against these annotations, so any pairwise
+# runtime divergence fails at least one gate.
+#
+# Scope note: queries must complete within every runtime's resource bounds — fuel
+# is a HOST-level budget (gasnu/Wasmtime) the native engine does not enforce, so a
+# query that traps on fuel is runtime-dependent by design and must not be pinned
+# here (one such shape was found while building this corpus and excluded).
+#
+# Coverage: ground facts, rule chains, closed-world FALSE, stratified NAF
+# (fires + blocked), du identity (substitutivity + NAF-through-equality), tense
+# (diagonal isolation + flavor-polymorphic rules), exact-count (incl. the
+# du-merged-entity counting behavior, pinned as-is), tolerant/exact/guarded
+# arithmetic, and post-retraction rebuild.
+
+# ── ground facts + rule chain ──
+dog(Adam).
+animal(every dog).
+alive(every animal).
+? dog(Adam).
+# => TRUE
+? alive(Adam).
+# => TRUE
+? alive(Bel).
+# => FALSE
+
+# ── stratified NAF: fires without a witness, blocked by one ──
+person(Adam).
+person(Bel).
+cat(Bel).
+beautiful(every person where ~cat).
+? beautiful(Adam).
+# => TRUE
+? beautiful(Bel).
+# => FALSE
+
+# ── du identity: substitutivity + NAF-through-equality ──
+Kim = Adam.
+? dog(Kim).
+# => TRUE
+? beautiful(Kim).
+# => TRUE
+
+# ── tense: flavor-exact facts, flavor-polymorphic rules ──
+past dog(Dan).
+? past dog(Dan).
+# => TRUE
+? dog(Dan).
+# => FALSE
+? past alive(Dan).
+# => TRUE
+
+# ── exact count (ENTITY-level, decided 2026-07-02: du-merged names collapse
+#    to one countable entity — kim is one of the two, not a third) ──
+red(Adam).
+red(Bel).
+? red(exactly 2 red).
+# => TRUE
+? red(exactly 3 red).
+# => FALSE
+
+# ── arithmetic: tolerant sum, exact dunli, div-by-zero exact guard ──
+? sum(0.3, 0.1, 0.2).
+# => TRUE
+? num_equal(3, 2).
+# => FALSE
+? quotient(3, 6, 0).
+# => FALSE
+
+# ── retraction: rebuild determinism (retract assert #0 = gerku(adam)) ──
+:retract 0
+? dog(Adam).
+# => FALSE
+? dog(Kim).
+# => FALSE
+? beautiful(Adam).
+# => TRUE
