@@ -136,6 +136,10 @@ mod tests {
 
         let permitted = alias("permitted").expect("permitted");
         assert_eq!((permitted.gismu, permitted.swap), ("curmi", Some(2)));
+
+        let owned = alias("owned").expect("owned");
+        assert_eq!((owned.gismu, owned.swap), ("ponse", Some(2)));
+        assert_eq!(owned.arity, 3);
     }
 
     #[test]

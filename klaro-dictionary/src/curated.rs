@@ -336,4 +336,10 @@ pub const CONVERTED_ALIASES: &[(&str, &str, u8)] = &[
     ("metabolized_by", "katna", 2),
     ("permitted", "curmi", 2),
     ("obligated", "bilga", 2),
+    // `se ponse` — needed as a TANRU UNIT (`menli se ponse` → `mind owned`,
+    // `se ponse datni` → `owned data`), where neither peel+permute (whole
+    // relations only) nor the `.label` selector (restrictor-top-level only,
+    // O8) can spell a conversion; the curated-alias render branch is the one
+    // spelling that works in every position.
+    ("owned", "ponse", 2),
 ];

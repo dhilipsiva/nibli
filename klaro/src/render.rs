@@ -15,10 +15,11 @@
 //! out-of-scope constructs (`ri/ra/ru`, `ko`, `go'i`, exotic gadri×NU
 //! combinations, exponent-form floats) FAIL CLOSED with a named error — in
 //! the battery, such a failure is a genuine coverage signal, never silence.
-//! Two known render gaps are deliberate this milestone and fail closed with
-//! "not yet renderable" messages: sumti/selbri CONNECTIVES (they render only
-//! via bridi-level expansion — deferred to the battery bullet) and stacked
-//! `Converted` chains with no curated converted alias.
+//! Selbri connectives on a MAIN relation render via bridi-level expansion
+//! (block-every for a universal subject, an operator claim for a constant —
+//! see [`Renderer::connected_bridi`]); the remaining deliberate gaps fail
+//! closed with named messages: SUMTI connectives, connected selbri outside
+//! main-bridi position, and `Converted` over a non-root selbri.
 //!
 //! Fixpoint contract (pinned by tests): for Klaro-originated buffers,
 //! `parse ∘ render ∘ parse` compiles — through smuni — to the SAME
@@ -207,6 +208,14 @@ impl<'a> Renderer<'a> {
             ));
         }
 
+        // A CONNECTED main selbri renders via bridi-level expansion (the
+        // operands share the subject): block-every for a universal subject,
+        // a plain operator claim for a constant subject — both probe-proven
+        // canonically equal to the Lojban connective compilation.
+        if matches!(self.selbri(bridi.relation)?, Selbri::Connected(_)) {
+            return self.connected_bridi(bridi, &prefix);
+        }
+
         // A conversion chain with NO curated converted alias renders by
         // PEELING the swaps and permuting the argument places onto the plain
         // alias with named args (`ta se citka ti` → `eats(x2: that, x1: this)`)
@@ -311,6 +320,96 @@ impl<'a> Renderer<'a> {
             ));
         }
         Ok(out)
+    }
+
+    /// Bridi-level expansion of a CONNECTED main selbri (`X A jenai B` and
+    /// family). The operands share the subject, so the sentence becomes a
+    /// block-every claim (universal-description subject) or a plain operator
+    /// claim (constant subject); both shapes are pinned canonically equal to
+    /// smuni's selbri-connective compilation by the verify-klaro gate. Fail
+    /// closed BY NAME everywhere else — the expansion must never guess scope
+    /// (duplicating a `some`-subject would double the quantifier).
+    fn connected_bridi(&self, bridi: &Bridi, prefix: &str) -> R<String> {
+        if !prefix.is_empty() {
+            return Err(nope(
+                "a tense/deontic/negation prefix over a connected selbri has no Klaro \
+                 spelling yet — expand manually",
+            ));
+        }
+        let Selbri::Connected((left_id, conn, right_id)) = self.selbri(bridi.relation)? else {
+            unreachable!("caller matched Connected");
+        };
+        if bridi.head_terms.len() != 1 || !bridi.tail_terms.is_empty() {
+            return Err(nope(
+                "a connected selbri sharing arguments beyond x1 has no Klaro spelling \
+                 yet — expand manually",
+            ));
+        }
+        let op = match conn {
+            Connective::Je => "&",
+            Connective::Ja => "|",
+            Connective::Jo => "<->",
+            Connective::Ju => {
+                return Err(nope(
+                    "`ju` (whether-or-not) has no Klaro operator — no spelling exists",
+                ));
+            }
+        };
+        // gerna spells jenai/janai/jonai as the connective + Negated(right).
+        let (right_id, right_neg) = match self.selbri(*right_id)? {
+            Selbri::Negated(inner) => (*inner, true),
+            _ => (*right_id, false),
+        };
+        if matches!(
+            self.selbri(*left_id)?,
+            Selbri::Connected(_) | Selbri::Negated(_)
+        ) || matches!(self.selbri(right_id)?, Selbri::Connected(_))
+        {
+            return Err(nope(
+                "a nested or negated-left connected selbri has no Klaro spelling yet",
+            ));
+        }
+
+        let subject = bridi.head_terms[0];
+        match self.sumti(subject)? {
+            // Universal subject → the block form, minting `$x` (gerna-origin
+            // variables render as $da/$de/$di, so the name cannot collide).
+            Sumti::Description((Gadri::RoLo, restr_id)) => {
+                let restr = self.restr_selbri(*restr_id)?;
+                let left = self.connective_operand(*left_id, "$x", false)?;
+                let right = self.connective_operand(right_id, "$x", right_neg)?;
+                Ok(format!("every {restr} $x: {left} {op} {right}"))
+            }
+            // Constant-ish subject → duplication is sound.
+            Sumti::Name(_) | Sumti::ProSumti(_) | Sumti::Number(_) | Sumti::QuotedLiteral(_) => {
+                let t = self.term(subject)?;
+                let left = self.connective_operand(*left_id, &t, false)?;
+                let right = self.connective_operand(right_id, &t, right_neg)?;
+                Ok(format!("{left} {op} {right}"))
+            }
+            _ => Err(nope(
+                "a connected selbri over a non-universal quantified subject has no Klaro \
+                 spelling — expansion would duplicate the quantifier",
+            )),
+        }
+    }
+
+    /// One connective operand as a single-subject predication: peel the
+    /// conversion chain and route the subject to its plain place (positional
+    /// when it stays x1, named otherwise) — the same routing `bridi()` uses.
+    fn connective_operand(&self, selbri_id: u32, subject: &str, negated: bool) -> R<String> {
+        let (relation_id, perm) = self.peel_conversions(selbri_id)?;
+        let head_gismu = self.head_gismu(relation_id)?;
+        let relation = self.predication_selbri(relation_id)?;
+        let neg = if negated { "~" } else { "" };
+        Ok(if perm[0] == 0 {
+            format!("{neg}{relation}({subject})")
+        } else {
+            format!(
+                "{neg}{relation}({}: {subject})",
+                self.place_label(&head_gismu, perm[0])
+            )
+        })
     }
 
     /// Peel outer `Converted` layers off a relation, composing their swaps
@@ -487,8 +586,8 @@ impl<'a> Renderer<'a> {
             }
             Selbri::Connected((_, _, _)) => {
                 return Err(nope(
-                    "selbri connectives render only via bridi-level expansion — not yet \
-                     renderable (translation-battery bullet)",
+                    "a connected selbri outside main-bridi position (restrictor / tanru \
+                     unit) has no Klaro spelling — only the bridi-level expansion exists",
                 ));
             }
             Selbri::Abstraction((kind, body)) => {
@@ -973,5 +1072,37 @@ mod tests {
         let buffer = gerna::parse_checked("la .adam. cu se curmi").unwrap();
         let text = render(&buffer).unwrap();
         assert!(text.contains("permitted"), "{text}");
+    }
+
+    #[test]
+    fn connected_selbri_expands_at_bridi_level() {
+        // Universal subject → the block form, minting $x. (Canonical
+        // LogicBuffer equality with the Lojban original is pinned by the
+        // verify-klaro gate; here we pin the SPELLING and that it reparses.)
+        let buffer = gerna::parse_checked("ro lo se bilga cu se curmi jenai se fanta").unwrap();
+        let text = render(&buffer).unwrap();
+        assert_eq!(
+            text.trim(),
+            "every obligated $x: permitted($x) & ~prevents(prevented: $x)."
+        );
+        crate::parse_checked(text.trim()).expect("expansion must reparse");
+
+        // Constant subject → the claim-level operator form.
+        let buffer = gerna::parse_checked("la .adam. cu se curmi jenai se fanta").unwrap();
+        let text = render(&buffer).unwrap();
+        assert_eq!(text.trim(), "permitted(Adam) & ~prevents(prevented: Adam).");
+        crate::parse_checked(text.trim()).expect("expansion must reparse");
+
+        // Fail closed by name: quantified non-universal subject (duplication
+        // would double the quantifier) and `ju`.
+        let buffer = gerna::parse_checked("lo gerku cu se curmi jenai se fanta").unwrap();
+        let e = render(&buffer).expect_err("some-subject must fail closed");
+        assert!(
+            format!("{e}").contains("non-universal quantified subject"),
+            "{e}"
+        );
+        let buffer = gerna::parse_checked("la .adam. cu gerku ju danlu").unwrap();
+        let e = render(&buffer).expect_err("ju must fail closed");
+        assert!(format!("{e}").contains("no Klaro operator"), "{e}");
     }
 }

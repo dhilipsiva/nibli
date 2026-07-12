@@ -198,16 +198,31 @@ impl SemanticCompiler {
                 self.event_decompose(g.as_str(), &fitted)
             }
             Selbri::Tanru((mod_id, head_id)) => {
-                let mod_name = self.get_selbri_head_name(*mod_id, selbris);
-                let head_name = self.get_selbri_head_name(*head_id, selbris);
-                let mod_arity = self.get_selbri_arity(*mod_id, selbris);
-                let head_arity = self.get_selbri_arity(*head_id, selbris);
+                // Per-unit (name, arity, conversion swaps): a converted unit's
+                // args are mapped fit-then-swap through its swap chain, exactly
+                // like the `Selbri::Converted` arm — `menli se ponse` puts the
+                // shared x1 in ponse_x2, and `se ponse datni` as a restrictor
+                // modifier likewise (the pre-2026-07-12 flatten dropped the
+                // swap silently).
+                let (mod_name, mod_arity, mod_swaps) = self.get_selbri_unit_base(*mod_id, selbris);
+                let (head_name, head_arity, head_swaps) =
+                    self.get_selbri_unit_base(*head_id, selbris);
 
                 let mut mod_args = vec![LogicalTerm::Unspecified; mod_arity];
                 if !args.is_empty() && mod_arity > 0 {
                     mod_args[0] = args[0].clone();
                 }
-                let head_args = Self::fit_args(args, head_arity);
+                for &idx in &mod_swaps {
+                    if idx < mod_args.len() {
+                        mod_args.swap(0, idx);
+                    }
+                }
+                let mut head_args = Self::fit_args(args, head_arity);
+                for &idx in &head_swaps {
+                    if idx < head_args.len() {
+                        head_args.swap(0, idx);
+                    }
+                }
 
                 let ev = self.fresh_event_var();
                 let ev_term = LogicalTerm::Variable(ev);

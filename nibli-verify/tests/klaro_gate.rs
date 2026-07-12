@@ -98,6 +98,39 @@ fn klaro_seam_conformance() {
         "`?` occurrences must be independent witnesses, like ma"
     );
 
+    // Selbri-connective expansion (2026-07-12): the bridi-level Klaro spelling
+    // of a connected selbri must equal the Lojban connective compilation —
+    // block form for a universal subject, operator claim for a constant.
+    assert_eq!(
+        canonical(&kompile("every obligated $d: permitted($d) & ~prevents(x2: $d).").unwrap()),
+        canonical(&seam::compile("ro lo se bilga cu se curmi jenai se fanta").unwrap()),
+        "jenai expansion (universal subject) must equal the connective form"
+    );
+    assert_eq!(
+        canonical(&kompile("every obligated $d: permitted($d) | prevents(x2: $d).").unwrap()),
+        canonical(&seam::compile("ro lo se bilga cu se curmi ja se fanta").unwrap()),
+        "ja expansion must equal the connective form"
+    );
+    assert_eq!(
+        canonical(&kompile("permitted(Adam) & ~prevents(x2: Adam).").unwrap()),
+        canonical(&seam::compile("la .adam. cu se curmi jenai se fanta").unwrap()),
+        "jenai expansion (constant subject) must equal the connective form"
+    );
+
+    // Conversions inside tanru units (2026-07-12, with the smuni fidelity
+    // fix): the curated converted alias is the Klaro spelling, and the swap
+    // must be semantically live through the tanru.
+    assert_eq!(
+        canonical(&kompile("tends(me, some owned data).").unwrap()),
+        canonical(&seam::compile("mi kurji lo se ponse datni").unwrap()),
+        "converted alias as a tanru MODIFIER must equal `se ponse datni`"
+    );
+    assert_eq!(
+        canonical(&kompile("dog owned(Adam).").unwrap()),
+        canonical(&seam::compile("la .adam. cu gerku se ponse").unwrap()),
+        "converted alias as a tanru HEAD must equal `gerku se ponse`"
+    );
+
     // ── metamorphic pairs (canonicalized equality) ──
     let pairs: &[(&str, &str)] = &[
         // named ≡ positional ≡ reordered labels
@@ -166,46 +199,16 @@ fn klaro_seam_conformance() {
 
 /// Corpus lines that CANNOT yet render to Klaro, each with the reason. Exact
 /// text, value-pinned: every entry must STILL fail (staleness check below),
-/// and every failing line must be listed — populated from the 2026-07-12
-/// sweep (398 checked lines, 7 unrenderable in 3 classes; follow-up bullet
-/// "renderer coverage" in KLARO_TODO tracks lifting them).
-const KNOWN_UNRENDERABLE: &[(&str, &str)] = &[
-    // Class 1: dictionary-unknown / apostrophe words — the Lojban front-end
-    // tolerates unknowns at arity 2, Klaro fails closed; apostrophe lujvo have
-    // no identifier spelling and (lujvo) no generated aliases yet.
-    (
-        "ro lo insekto cu danlu",
-        "dictionary-unknown word (gerna arity-2 tolerance vs klaro fail-closed)",
-    ),
-    (
-        "ro lo flaselcu'u cu prenu",
-        "apostrophe lujvo without an alias — not a legal Klaro identifier",
-    ),
-    (
-        "ro lo flaselcu'u cu se djica lo nu javni",
-        "apostrophe lujvo without an alias — not a legal Klaro identifier",
-    ),
-    // Class 2: a conversion INSIDE a tanru unit — the selector is
-    // restrictor-top-level only (O8) and peel+permute applies only to the
-    // whole relation; no Klaro spelling yet.
-    (
-        "ro lo prenu cu menli se ponse",
-        "conversion inside a tanru unit has no Klaro spelling yet",
-    ),
-    (
-        "ro lo prenu cu bangu se ponse",
-        "conversion inside a tanru unit has no Klaro spelling yet",
-    ),
-    (
-        "ro lo se ponse datni cu se kurji",
-        "conversion inside a tanru unit has no Klaro spelling yet",
-    ),
-    // Class 3: selbri connectives — render only via bridi-level expansion.
-    (
-        "ro lo se bilga cu se curmi jenai se fanta",
-        "selbri connective needs bridi-level expansion",
-    ),
-];
+/// and every failing line must be listed. CURRENTLY EMPTY — the first sweep
+/// (2026-07-12) froze 7 lines in 3 classes, all lifted the same day by the
+/// renderer-coverage bullet: conversions inside tanru units render via
+/// curated converted aliases (with the smuni tanru-swap fidelity fix), selbri
+/// connectives render via bridi-level expansion, and the two coined
+/// words (`insekto`, `flaselcu'u` — absent from the lensisku export, so no
+/// alias path can ever cover them) were replaced in readme.lojban with the
+/// real gismu `cinki`/`pulji`. The mechanism stays: any future render
+/// regression must be listed here with a reason or it fails the gate.
+const KNOWN_UNRENDERABLE: &[(&str, &str)] = &[];
 
 #[test]
 fn klaro_lojban_translation_battery() {

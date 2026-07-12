@@ -23,17 +23,6 @@ xorlo witnesses identically to Lojban (compat requires it — the equivalence ba
 checks verdict identity) and the behavior is disclosed spec semantics, not hidden
 residue; every bullet lands independently CI-green.
 
-- **renderer coverage: the 7 allowlisted battery lines** — `verify-klaro`'s
-  KNOWN_UNRENDERABLE (tests/klaro_gate.rs, value-pinned with a staleness invariant)
-  holds 7 corpus/generator lines in 3 classes; lift each by teaching the renderer (and
-  where needed the grammar) a spelling, then shrink the allowlist: (1) selbri/sumti
-  CONNECTIVES via bridi-level expansion; (2) conversions INSIDE tanru units
-  (`menli se ponse` — the selector is restr-top-level-only per O8 and peel+permute
-  applies only to whole relations; needs either per-unit selector grammar or curated
-  compound aliases); (3) dictionary-unknown / apostrophe-lujvo words (`insekto`,
-  `flaselcu'u` — klaro fails closed where gerna tolerates arity-2; lujvo aliases would
-  need a generation pass, or the corpus words get curated). Lifted spellings must keep
-  the battery's canonicalized-LogicBuffer equality.
 - **fuzz_klaro target** — fuzz/Cargo.toml (workspace-excluded) gains `klaro` + `smuni`
   deps and `[[bin]] fuzz_klaro` → `fuzz_targets/fuzz_klaro.rs`: parse arbitrary UTF-8;
   when parse succeeds, `smuni::compile_from_gerna_ast` must NEVER report a corrupt AST

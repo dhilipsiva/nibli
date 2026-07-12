@@ -211,6 +211,45 @@ impl SemanticCompiler {
         }
     }
 
+    /// Resolves a tanru UNIT to its base head name, arity, and the conversion
+    /// swap chain (outermost first, as x1↔x{n} target indices 1..=4) collected
+    /// from `Converted` layers on the way down. The tanru arm of `apply_selbri`
+    /// maps each unit's argument vector through these swaps (fit-then-swap,
+    /// mirroring the `Selbri::Converted` arm), so a converted unit keeps its
+    /// surface place structure: `menli se ponse` puts the shared x1 in
+    /// ponse_x2 (possessed), not ponse_x1. Before 2026-07-12 the tanru arm
+    /// flattened units through `get_selbri_head_name`/`get_selbri_arity`,
+    /// which unwrap `Converted` WITHOUT the swap — silently compiling
+    /// `menli se ponse` identically to `menli ponse`, a CLL-fidelity bug.
+    pub(crate) fn get_selbri_unit_base<'a>(
+        &self,
+        selbri_id: u32,
+        selbris: &'a [Selbri],
+    ) -> (&'a str, usize, Vec<usize>) {
+        let mut swaps: Vec<usize> = Vec::new();
+        let mut id = selbri_id;
+        loop {
+            match &selbris[id as usize] {
+                Selbri::Converted((conv, inner_id)) => {
+                    swaps.push(match conv {
+                        Conversion::Se => 1,
+                        Conversion::Te => 2,
+                        Conversion::Ve => 3,
+                        Conversion::Xe => 4,
+                    });
+                    id = *inner_id;
+                }
+                Selbri::Grouped(inner_id) => id = *inner_id,
+                _ => break,
+            }
+        }
+        (
+            self.get_selbri_head_name(id, selbris),
+            self.get_selbri_arity(id, selbris),
+            swaps,
+        )
+    }
+
     /// Builds an opaque le_domain_X restrictor predicate for le descriptions.
     pub(crate) fn build_le_domain_restrictor(
         &mut self,

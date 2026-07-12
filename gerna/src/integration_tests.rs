@@ -621,14 +621,23 @@ fn multi_sentence_with_descriptions() {
 
 #[test]
 fn se_with_tanru() {
+    // Official scope: `se` converts the FOLLOWING UNIT only (camxes
+    // `tanru-unit-2 <- SE tanru-unit-2`), so `se sutra klama` is
+    // `(se sutra) klama` — matching how the description path always parsed it.
     let arena = Bump::new();
     let p = parse("do se sutra klama", &arena);
     match &as_bridi(&p.sentences[0]).selbri {
-        Selbri::Converted(Conversion::Se, inner) => match *inner {
-            Selbri::Tanru(_, _) => {}
-            other => panic!("expected Tanru after se, got {:?}", other),
-        },
-        other => panic!("expected Converted, got {:?}", other),
+        Selbri::Tanru(modifier, head) => {
+            assert!(
+                matches!(modifier, Selbri::Converted(Conversion::Se, _)),
+                "modifier is the converted unit, got {modifier:?}"
+            );
+            assert!(matches!(head, Selbri::Root(_)));
+        }
+        other => panic!(
+            "expected Tanru(Converted(Se, sutra), klama), got {:?}",
+            other
+        ),
     }
 }
 

@@ -1720,14 +1720,25 @@ fn test_stacked_three_clauses() {
 
 #[test]
 fn test_conversion_plus_tanru() {
-    // se sutra gerku → Converted(Se, Tanru(sutra, gerku))
+    // se sutra gerku → Tanru(Converted(Se, sutra), gerku): a conversion scopes
+    // over the FOLLOWING UNIT only (camxes `tanru-unit-2 <- SE tanru-unit-2`;
+    // CLL 9.4). Until 2026-07-12 the main-selbri path wrapped the whole tanru
+    // (`Converted(Se, Tanru(..))`) — unofficial, and divergent from the
+    // description path, which already parsed per-unit.
     let arena = Bump::new();
     let r = parse_ok(&[cmavo("se"), gismu("sutra"), gismu("gerku")], &arena);
     match &as_bridi(&r.sentences[0]).selbri {
-        Selbri::Converted(Conversion::Se, inner) => {
-            assert!(matches!(inner, Selbri::Tanru(_, _)));
+        Selbri::Tanru(modifier, head) => {
+            assert!(
+                matches!(modifier, Selbri::Converted(Conversion::Se, _)),
+                "modifier is the converted unit, got {modifier:?}"
+            );
+            assert!(matches!(head, Selbri::Root(_)));
         }
-        other => panic!("expected Converted(Se, Tanru), got {:?}", other),
+        other => panic!(
+            "expected Tanru(Converted(Se, sutra), gerku), got {:?}",
+            other
+        ),
     }
 }
 

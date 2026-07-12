@@ -761,6 +761,34 @@ fn gerna_smuni_seam_conformance() {
         structural += 1;
     }
 
+    // 6b. `se` conversion INSIDE a tanru unit keeps the unit's surface place
+    //     structure: the shared subject lands in the CONVERTED place. Before
+    //     2026-07-12 the tanru arm flattened units through swap-less helpers,
+    //     silently compiling `menli se ponse` identically to `menli ponse`
+    //     (subject in ponse_x1 = owner instead of ponse_x2 = possessed) — a
+    //     CLL-fidelity bug this case pins against regression.
+    {
+        let head = seam::compile("la .adam. cu menli se ponse").expect("compile converted head");
+        assert!(
+            seam::role_is_const(&head, "ponse_x2", "adam"),
+            "converted tanru HEAD: subject lands in ponse_x2 (possessed)"
+        );
+        let modif =
+            seam::compile("la .adam. cu se ponse datni").expect("compile converted modifier");
+        assert!(
+            seam::role_is_const(&modif, "ponse_x2", "adam"),
+            "converted tanru MODIFIER: shared x1 lands in ponse_x2"
+        );
+        // The conversion must be semantically LOUD, never a silent no-op.
+        let conv = seam::canonicalize(&seam::compile("la .adam. cu menli se ponse").unwrap());
+        let plain = seam::canonicalize(&seam::compile("la .adam. cu menli ponse").unwrap());
+        assert_ne!(
+            conv, plain,
+            "tanru-unit conversion must change the compiled FOL"
+        );
+        structural += 1;
+    }
+
     // ── Metamorphic (oracle-free: two surface forms must compile to the SAME FOL) ──
 
     // A. `se` conversion cancels the place swap: `mi se prami do` ≡ `do prami mi`.

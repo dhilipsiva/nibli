@@ -81,26 +81,17 @@ impl<'a, 'arena> Parser<'a, 'arena> {
         Ok(Some(left))
     }
 
-    /// Parse an optionally converted tanru (SE + tanru).
+    /// Parse a tanru. A leading SE is NOT grabbed here: per the official
+    /// grammar (camxes `tanru-unit-2 <- SE tanru-unit-2`; CLL 9.4) a
+    /// conversion scopes over the FOLLOWING UNIT only, so `se sutra gerku`
+    /// is `(se sutra) gerku`, handled by the per-unit conversion branch in
+    /// the tanru-unit parser. Until 2026-07-12 this function wrapped the
+    /// whole tanru (`Converted(Se, Tanru(..))`) — an unofficial tree that
+    /// also diverged from the description path (sumti parsing calls
+    /// `try_parse_tanru` directly), giving the same selbri string two
+    /// different meanings by position.
     pub(crate) fn try_parse_selbri_2(&mut self) -> Option<Selbri<'arena>> {
-        let saved = self.save();
-        let conv = self.try_parse_conversion();
-
-        let tanru = match self.try_parse_tanru() {
-            Some(t) => t,
-            None => {
-                if conv.is_some() {
-                    self.restore(saved);
-                }
-                return None;
-            }
-        };
-
-        if let Some(conv) = conv {
-            Some(Selbri::Converted(conv, self.arena.alloc(tanru)))
-        } else {
-            Some(tanru)
-        }
+        self.try_parse_tanru()
     }
 
     /// Try to consume a SE-series conversion cmavo (se/te/ve/xe).
