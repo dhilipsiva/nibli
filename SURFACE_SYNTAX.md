@@ -304,7 +304,7 @@ visible (lint L5). Non-stratified NAF rule sets are rejected atomically at asser
 - **Attachment is innermost-wins (O9, 2026-07-12):** in a clause body ending with an
   equality, a following `where`/`also` attaches to the equality's RHS term, not the
   outer restrictor — `… where it = Boss also rich` makes `also rich` describe Boss.
-  Write `where (it = Boss) also rich` for the outer attachment. Lint L8 will echo the
+  Write `where (it = Boss) also rich` for the outer attachment. Lint L8 echoes the
   resolved attachment when this shape appears.
 
 ## 8. Queries
@@ -361,8 +361,15 @@ one operator set · selbri/sumti/bridi-tail connectives → written-out expansio
 
 ## 12. Tooling: the lint catalog
 
-The grammar is deterministic, but three hazards are semantic, not syntactic. The linter
-is part of the design, not an afterthought:
+The grammar is deterministic, but a handful of hazards are semantic, not syntactic. The
+linter is part of the design, not an afterthought — and it is IMPLEMENTED
+(2026-07-12): `klaro/src/lint.rs`, a data-returning pass (`klaro::lint::Linter`,
+stateful per file/session for L1/L4/L7, reset with the KB). Surfaces render each note
+as `[Note: …]`: the nibli REPL and the lasna session echo them (verbose-gated, so
+`NIBLI_QUIET=1` suppresses them alongside `[Skolem]`/`[Rule]`), and the playground
+carries them per KB line on `nibli_protocol::LineResult::notes` into the KB status
+bar. Surfaces whose stdout is data (nibli-validate, lojban2klaro, the verify harness)
+never invoke the linter.
 
 - **L1 — `the` trap:** warn when `the X` is used and `X` was never introduced by a
   `some`/`every` statement — English speakers write `the dog` intending ∃, but `the` is
@@ -384,6 +391,13 @@ is part of the design, not an afterthought:
 - **L7 — norm-encoding style:** warn when a KB mixes `must`/`may` wrappers with the
   `obligated()`/`permitted()` predicate idiom for what looks like the same norm — both
   are engine-faithful, but they don't chain with each other.
+- **L8 — O9 attachment echo (2026-07-12 review):** when a clause-body-final equality's
+  RHS term carries its own `where`/`also` clause, echo the resolved innermost-wins
+  attachment (§7) — the outer attachment needs the parenthesized spelling.
+- **L9 — digit-split warning (2026-07-12 review, Finding 3):** warn when a statement's
+  terminating `.` is whitespace-separated from the claim AND the next statement starts
+  with a digit — `X = 2 .5 = $y.` silently splits into two statements (a decimal must
+  be written without spaces). Detected at the statement driver.
 
 ## 13. Implementation notes
 
@@ -473,9 +487,10 @@ hyphen-vs-`->` lexing wrinkle.
   by the O8 test battery in klaro/src/parser.rs.
 - **O9**: relative-clause attachment to the RHS term of a clause-body-final equality is
   innermost-wins (see §7); the outer attachment needs parens. Surfaced by the
-  2026-07-12 adversarial grammar review; lint L8 planned. The same review found the
-  pre-existing digit-split hazard (`X = 2 .5 = $y.` parses as two statements) — lint
-  L9 planned at the statement driver.
+  2026-07-12 adversarial grammar review; lint L8 echoes the attachment. The same
+  review found the pre-existing digit-split hazard (`X = 2 .5 = $y.` parses as two
+  statements) — lint L9 warns at the statement driver. Both shipped with the §12
+  catalog.
 
 ## 14. Clean-core v2 profile (de-Lojbanized)
 

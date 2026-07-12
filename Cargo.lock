@@ -2754,6 +2754,7 @@ dependencies = [
 name = "nibli"
 version = "0.1.0"
 dependencies = [
+ "klaro",
  "nibli-engine",
  "nibli-import",
  "nibli-render",

@@ -30,15 +30,6 @@ residue; every bullet lands independently CI-green.
   /nibli-playground, which migrated to Klaro with the nibli-ui bullet 2026-07-12;
   redeploy-site.yml auto-triggers on push to main). Execute when that page's JS/KB
   goes Klaro; also unblocks the book's Formalize copy sweep (book/TODO.md).
-- **lint catalog L1–L9** — non-blocking compile notes per SURFACE_SYNTAX §12; L4 (alias
-  echo: resolved gismu + permutation on first use per file/session) and L5 (integrity-
-  constraint registration echo) first; L1 the-trap, L2 tanru-vs-`&`, L3 multi-quantified-
-  args scope warning, L6 tense×NAF advisory (`past ~P` only — `~past P` is rejected),
-  L7 must/may-vs-obligated/permitted mixing; L8 (O9) echo the innermost-wins rel-clause
-  attachment when a clause-body-final equality RHS carries a rel clause; L9 warn when a
-  statement's terminating `.` is whitespace-separated from the claim AND the next
-  statement starts with a digit (`X = 2 .5 = $y.` silently splits — 2026-07-12 grammar
-  review, Finding 3).
 - **gerna retirement (execute at clean-core v2 divergence — not before)** — ALL of:
   first v2 semantic decision landed (xorlo flag off or schema declarations in; see
   SURFACE_SYNTAX §14); book repo migrated or pinned (`NIBLI_LANG=lojban` /

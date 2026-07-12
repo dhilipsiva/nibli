@@ -21,6 +21,7 @@
 
 pub mod ast;
 pub mod emit;
+pub mod lint;
 pub mod parser;
 pub mod render;
 pub mod resolve;

@@ -32,6 +32,11 @@ pub struct LineResult {
     pub success: bool,
     pub fact_id: Option<u64>,
     pub error: Option<String>,
+    /// Non-blocking Klaro lint notes for this line (SURFACE_SYNTAX §12
+    /// L1–L9), rendered as `[Note: …]` rows. `default` keeps old wire JSON
+    /// (no field) deserializing.
+    #[serde(default)]
+    pub notes: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

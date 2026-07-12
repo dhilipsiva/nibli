@@ -7,8 +7,22 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
+use klaro::lint::Linter;
 use nibli_engine::{EngineLogicalTerm, Language, NibliEngine, display_query_result, display_term};
 use reedline::{DefaultPrompt, Reedline, Signal};
+
+/// Print the Klaro lint notes for `text` (SURFACE_SYNTAX §12 L1–L9) —
+/// non-blocking `[Note: …]` echoes, Klaro mode only. The `Linter` is
+/// session-stateful (L1 introductions, L4 first-use dedup, L7 latch) and is
+/// reset with the KB.
+fn print_lints(linter: &mut Linter, lang: Language, text: &str) {
+    if lang != Language::Klaro {
+        return;
+    }
+    for note in linter.lint(text) {
+        println!("[Note: {}]", note.message);
+    }
+}
 
 fn parse_assert_args(input: &str) -> Result<(String, Vec<EngineLogicalTerm>), String> {
     let parts: Vec<&str> = input.split_whitespace().collect();
@@ -101,6 +115,9 @@ fn main() {
 
     let mut line_editor = Reedline::create();
     let prompt = DefaultPrompt::default();
+    // The Klaro lint session (SURFACE_SYNTAX §12): non-blocking [Note: …]
+    // echoes on Klaro-mode inputs, reset together with the KB.
+    let mut linter = Linter::new();
 
     println!(
         "Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :lang :klaro :lojban :help"
@@ -121,6 +138,7 @@ fn main() {
                     ":quit" | ":q" => break,
                     ":reset" | ":r" => {
                         engine.reset();
+                        linter.reset();
                         println!("[Reset] Knowledge base cleared.");
                         continue;
                     }
@@ -343,6 +361,7 @@ fn main() {
                             continue;
                         }
 
+                        print_lints(&mut linter, engine.language(), trimmed);
                         match engine.assert_text(trimmed) {
                             Ok(ids) => {
                                 for id in &ids {
@@ -373,6 +392,7 @@ fn main() {
                         continue;
                     }
 
+                    print_lints(&mut linter, engine.language(), text);
                     match engine.query_find_text(text) {
                         Ok(binding_sets) => {
                             if binding_sets.is_empty() {
@@ -402,6 +422,7 @@ fn main() {
                         continue;
                     }
 
+                    print_lints(&mut linter, engine.language(), text);
                     match engine.query_text_with_proof(text) {
                         Ok((result, trace, _json)) => {
                             println!("[Query] {}", display_query_result(&result));
@@ -410,6 +431,7 @@ fn main() {
                         Err(e) => println!("{}", e),
                     }
                 } else {
+                    print_lints(&mut linter, engine.language(), input);
                     match engine.assert_text(input) {
                         Ok(ids) => {
                             for id in &ids {

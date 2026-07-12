@@ -372,6 +372,10 @@ fn run_query(lang: Language, kb_text: &str, query_text: &str) -> OutputEntry {
     let mut errors = 0u32;
     let mut skipped = 0u32;
     let mut line_results: Vec<LineResult> = Vec::new();
+    // The Klaro lint pass (SURFACE_SYNTAX §12 L1–L9): a FRESH linter per run
+    // — the stateless-KB model re-asserts the whole tab every query, so
+    // "per session" is "per run" here. Notes ride each LineResult.
+    let mut linter = (lang == Language::Klaro).then(klaro::lint::Linter::new);
     for (i, raw) in kb_text.lines().enumerate() {
         let line = raw.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -379,6 +383,10 @@ fn run_query(lang: Language, kb_text: &str, query_text: &str) -> OutputEntry {
             continue;
         }
         let line_number = (i + 1) as u32;
+        let notes: Vec<String> = match linter.as_mut() {
+            Some(l) => l.lint(line).into_iter().map(|n| n.message).collect(),
+            None => Vec::new(),
+        };
         match compile_text(lang, line, &preds) {
             Ok(buf) => {
                 // Each bare-`.i` sentence becomes its OWN fact (connectives stay
@@ -405,6 +413,7 @@ fn run_query(lang: Language, kb_text: &str, query_text: &str) -> OutputEntry {
                         success: true,
                         fact_id: first_id,
                         error: None,
+                        notes,
                     }),
                     Some(e) => {
                         errors += 1;
@@ -414,6 +423,7 @@ fn run_query(lang: Language, kb_text: &str, query_text: &str) -> OutputEntry {
                             success: false,
                             fact_id: first_id,
                             error: Some(e),
+                            notes,
                         });
                     }
                 }
@@ -426,6 +436,7 @@ fn run_query(lang: Language, kb_text: &str, query_text: &str) -> OutputEntry {
                     success: false,
                     fact_id: None,
                     error: Some(e.to_string()),
+                    notes,
                 });
             }
         }
@@ -681,8 +692,9 @@ fn KbStatusBar(kb_status: Signal<Option<KbStatus>>) -> Element {
         return rsx! {};
     };
 
+    let note_count: usize = s.line_results.iter().map(|lr| lr.notes.len()).sum();
     let summary_text = format!(
-        "{} asserted, {} error{}{}",
+        "{} asserted, {} error{}{}{}",
         s.asserted,
         s.errors,
         if s.errors != 1 { "s" } else { "" },
@@ -690,10 +702,22 @@ fn KbStatusBar(kb_status: Signal<Option<KbStatus>>) -> Element {
             format!(", {} skipped", s.skipped)
         } else {
             String::new()
+        },
+        if note_count > 0 {
+            format!(
+                ", {} note{}",
+                note_count,
+                if note_count != 1 { "s" } else { "" }
+            )
+        } else {
+            String::new()
         }
     );
 
     let has_errors = s.errors > 0;
+    // Lint notes open the same expandable detail as errors (non-blocking, so
+    // they never turn the summary amber).
+    let has_detail = has_errors || note_count > 0;
     let summary_state = if has_errors {
         "kb-status-warn"
     } else {
@@ -702,7 +726,7 @@ fn KbStatusBar(kb_status: Signal<Option<KbStatus>>) -> Element {
 
     rsx! {
         div { class: "kb-status-bar",
-            if has_errors {
+            if has_detail {
                 button {
                     class: "kb-status-summary {summary_state}",
                     "aria-expanded": "{expanded}",
@@ -725,6 +749,9 @@ fn KbStatusBar(kb_status: Signal<Option<KbStatus>>) -> Element {
                                 span { class: "kb-line-text", "{lr.text}" }
                                 if let Some(ref err) = lr.error {
                                     span { class: "kb-line-err", "{err}" }
+                                }
+                                for (ni, note) in lr.notes.iter().enumerate() {
+                                    span { key: "{ni}", class: "kb-line-note", "[Note: {note}]" }
                                 }
                             }
                         }

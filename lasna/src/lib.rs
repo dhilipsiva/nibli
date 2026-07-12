@@ -39,6 +39,14 @@ pub struct Session {
     /// (a post-trap rebuild re-runs the constructor with the same env, so the
     /// mode survives replay) and can switch it via `set-language`.
     language: Cell<Language>,
+    /// The Klaro lint session (SURFACE_SYNTAX §12 L1–L9): non-blocking
+    /// `[Note: …]` guest-stdout echoes on Klaro-mode text inputs — the
+    /// `[Skolem]`/`[Rule]` precedent, gated by the same NIBLI_QUIET verbose
+    /// flag and reset with the KB. Stateful (L1/L4/L7 are per-session).
+    linter: RefCell<klaro::lint::Linter>,
+    /// The NIBLI_QUIET-derived verbose flag, kept for the lint echoes (the
+    /// kb's copy is not readable back).
+    verbose: bool,
 }
 
 // ─── Type conversion: logji → lasna export boundary ───
@@ -445,6 +453,21 @@ impl Session {
         Ok(())
     }
 
+    /// Emit the Klaro lint notes for an interactive text input (SURFACE_SYNTAX
+    /// §12 L1–L9) to guest stdout as `[Note: …]` lines — the `[Skolem]`/`[Rule]`
+    /// echo precedent: verbose-gated (NIBLI_QUIET suppresses), Klaro mode only,
+    /// non-blocking (never affects the compile result). The legacy replay path
+    /// (`assert_text_with_id`) deliberately does NOT lint — replay is
+    /// mechanical, not authoring.
+    fn emit_lints(&self, input: &str) {
+        if !self.verbose || self.language.get() != Language::Klaro {
+            return;
+        }
+        for note in self.linter.borrow_mut().lint(input) {
+            println!("[Note: {}]", note.message);
+        }
+    }
+
     /// Shared body for `assert_fact` / `assert_fact_with_id` (see
     /// `assert_text_inner` for the `id` semantics).
     fn assert_fact_inner(
@@ -529,6 +552,8 @@ impl GuestSession for Session {
             compute_predicates: RefCell::new(logji::default_compute_predicates()),
             last_relation: RefCell::new(None),
             language: Cell::new(language),
+            linter: RefCell::new(klaro::lint::Linter::new()),
+            verbose,
         }
     }
 
@@ -555,6 +580,7 @@ impl GuestSession for Session {
         &self,
         input: String,
     ) -> Result<Vec<(u64, export_logic::LogicBuffer)>, export_err::NibliError> {
+        self.emit_lints(&input);
         let (buf, new_last) = compile_pipeline(
             self.language.get(),
             &input,
@@ -597,6 +623,7 @@ impl GuestSession for Session {
         &self,
         input: String,
     ) -> Result<export_logic::QueryResult, export_err::NibliError> {
+        self.emit_lints(&input);
         let (buf, new_last) = compile_pipeline(
             self.language.get(),
             &input,
@@ -618,6 +645,7 @@ impl GuestSession for Session {
         &self,
         input: String,
     ) -> Result<Vec<Vec<export_logic::WitnessBinding>>, export_err::NibliError> {
+        self.emit_lints(&input);
         let (buf, new_last) = compile_pipeline(
             self.language.get(),
             &input,
@@ -634,6 +662,7 @@ impl GuestSession for Session {
         &self,
         input: String,
     ) -> Result<(export_logic::QueryResult, export_logic::ProofTrace), export_err::NibliError> {
+        self.emit_lints(&input);
         let (buf, new_last) = compile_pipeline(
             self.language.get(),
             &input,
@@ -667,6 +696,7 @@ impl GuestSession for Session {
 
     fn reset_kb(&self) -> Result<(), export_err::NibliError> {
         *self.last_relation.borrow_mut() = None;
+        self.linter.borrow_mut().reset();
         self.kb.reset().map_err(convert_pipeline_error)
     }
 
