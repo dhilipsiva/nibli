@@ -32,21 +32,20 @@ warnings inline — never delete a verification oracle before its replacement la
 The full de-Lojbanization inventory (leak surfaces, rename ripple, gate fates) was
 mapped 2026-07-12; load-bearing anchors are quoted per bullet.
 
-- **gerna extraction + donation repo (do FIRST — extract before anything is deleted)**
-  — carve a standalone repo containing: the `gerna` crate (+ `goi.rs`), the
-  gerna↔camxes parse-differential gate (`nibli-verify/src/parser_diff.rs` +
-  `tests/parser_differential.rs` — it is gerna's conformance suite), the ilmentufa
-  flake input + `NIBLI_CAMXES_DIR` wiring, `LOJBAN_COVERAGE.md`, `fuzz_parse`, the
-  vendored camxes browser assets (`nibli-ui/assets/js/vendor/camxes/`), and the
-  **agentic Lojban translation tool** (from nibli-fanva: `LOJBAN_SYSTEM_PROMPT`, the
-  gerna+smuni+camxes gate chain, the jbotci MCP client + `fanva-proxy/`, the
-  translate_agentic loop — a self-contained gift, per the user: "give them an agentic
-  lojban translation tool (borrowed from transparency triad)"). Also take the
-  `.lojban` corpora + `lojban2klaro` + the python Lojban flywheel
-  (`lojban_classifier.py`, `generate_training_data.py`, `nibli_model.py`,
-  `training_stats.py`) — they are Lojban assets. Decide: fresh repo with a pointer
-  back, or `git filter-repo` history extraction. Nothing is deleted from nibli in
-  this bullet — extraction only.
+**Donation-repo extraction: DONE (2026-07-12, separate session).** The standalone
+repo lives at `~/projects/dhilipsiva/fanva` (→ github.com/dhilipsiva/fanva, push by
+hand), extracted from nibli @ `6c59357` (pinned in fanva's `NIBLI_REV`) as a fresh
+working-tree copy + provenance pointer. It carried the full manifest — gerna (+goi),
+the camxes parse-differential (as `fanva-verify`), ilmentufa flake input,
+LOJBAN_COVERAGE.md, fuzz_parse, camxes browser assets, the Lojban-only agentic
+translator (`fanva` crate + carved UI + `fanva-proxy/`), all four `.lojban` corpora,
+`lojban2klaro` (archival), the python flywheel, Predilex + verify-dict, and the three
+Lojban items from nibli's root TODO.md — and its full test matrix is green (411/411
+camxes differential, zero divergences). fanva VENDORS the crate closure
+(nibli-types/smuni/smuni-dictionary/nibli-protocol/nibli-render) under the upstream
+names, so nibli's later crate renames do NOT ripple into it. **Nothing was deleted
+from nibli** — THE DROP below does the deleting.
+
 - **KR seam-conformance gate BEFORE the Lojban oracle dies** — the Klaro↔Lojban twin
   battery (`verify-klaro`/`verify-klaro-twins`) is currently the KR front-end's ONLY
   independent correctness oracle; deleting Lojban deletes it. FIRST build the direct
@@ -56,8 +55,9 @@ mapped 2026-07-12; load-bearing anchors are quoted per bullet.
   re-anchored on hand-verified FOL instead of Lojban equality). Re-home
   `determinism_corpus_klaro_native` (lives in `tests/klaro_twins.rs`, which dies)
   into this gate or a standalone determinism gate.
-- **THE DROP (single-surface milestone)** — with the donation repo extracted and the
-  KR seam gate green, delete Lojban from nibli in one milestone: the `gerna` dep
+- **THE DROP (single-surface milestone)** — the donation-repo precondition is
+  SATISFIED (see above); with the KR seam gate green, delete Lojban from nibli in
+  one milestone: the `gerna` dep
   everywhere (9 dependents), `Language` enum + `NIBLI_LANG` + WIT
   `enum language`/`set-language` (component ABI break — version-bump the WIT
   package), `:lojban`/`:klaro`/`:lang` + `--lang` flags, the `.lojban` corpora +
@@ -70,10 +70,18 @@ mapped 2026-07-12; load-bearing anchors are quoted per bullet.
   `nibli-verify/src/corpora.rs` still `include_str!`s the `.lojban` sides for the
   Vampire/clingo legs — re-point to the KR corpora (the oracles are language-free).
   `verify-klaro-dict` keeps its behavioral battery + structural invariants, drops
-  the gerna-twin compiles. CROSS-REPO GATES: the book harness pins
-  `NIBLI_LANG=lojban` (`Justfile` verify-book + `book/tools/capture_book.py`) — the
-  book repo must migrate its transcripts or pin a pre-drop engine tag BEFORE this
-  lands; the deployed /nibli demo JS must migrate first (see the site bullet).
+  the gerna-twin compiles. Root `TODO.md` cleanup: the three Lojban items ported to
+  fanva's tracker (fanva-proxy retirement / jbotci-AGPL licensing, GIhA
+  quantified-head witness sharing, determinism-corpus GIhA lines) get DELETED here
+  when the drop removes their nibli-side surfaces (delete-on-land rule). CROSS-REPO
+  GATES: the book harness pins `NIBLI_LANG=lojban` (`Justfile` verify-book +
+  `book/tools/capture_book.py`) — the book repo must migrate its transcripts or pin
+  a pre-drop engine tag BEFORE this lands; the deployed /nibli demo JS must migrate
+  first (see the site bullet). WORKER HAND-OVER: the deployed
+  `fanva-proxy.dhilipsiva.workers.dev` worker is now referenced by BOTH repos —
+  fanva's docs hold off touching `ALLOWED_ORIGINS` until nibli's purge lands, so at
+  THE DROP hand the worker's ownership/config over to the fanva repo (nibli's
+  `fanva-proxy/` dir deletes; the live worker survives under fanva's stewardship).
 - **"Klaro" → "nibli KR" rename** — ~1,096 occurrences across 78 files. Display
   name: "nibli KR", first mention "nibli knowledge representation (KR) language".
   UI: both tab strips' label via `kb_tab_label()` → "nibli KR" + the "?" icon
