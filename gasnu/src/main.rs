@@ -67,6 +67,8 @@ mod pipeline_bind {
     wasmtime::component::bindgen!({ path: "../wit/world.wit", world: "lasna-pipeline" });
 }
 
+use nibli_types::lang::Language;
+use pipeline_bind::exports::lojban::nibli::lasna::Language as WitLanguage;
 use pipeline_bind::lojban::nibli::compute_backend;
 use pipeline_bind::lojban::nibli::error_types::NibliError;
 use pipeline_bind::lojban::nibli::logic_types::LogicalTerm as EngineLogicalTerm;
@@ -624,6 +626,19 @@ struct Repl {
     /// at startup, toggled by `:strict on|off`; forwarded to the guest at
     /// (re)instantiation and re-applied to the live session on toggle.
     strict: bool,
+    /// The session's input language (default KLARO since THE FLIP). Set from
+    /// `NIBLI_LANG` at startup, switched by `:lang klaro|lojban` /
+    /// `:klaro` / `:lojban`; forwarded to the guest via the `NIBLI_LANG` env
+    /// at (re)instantiation, so post-trap rebuilds restore the mode.
+    lang: Language,
+}
+
+/// Map the host-side `Language` to the bindgen enum for the WIT call.
+fn wit_lang(lang: Language) -> WitLanguage {
+    match lang {
+        Language::Klaro => WitLanguage::Klaro,
+        Language::Lojban => WitLanguage::Lojban,
+    }
 }
 
 impl Repl {
@@ -639,6 +654,7 @@ impl Repl {
         backend_addr: Option<String>,
         quiet: bool,
         strict: bool,
+        lang: Language,
     ) -> Result<(Store<HostState>, pipeline_bind::LasnaPipeline, ResourceAny)> {
         // Forward the quiet flag into the guest's WASI environment: the ctx
         // otherwise inherits only stdio, so `lasna::Session::new` cannot see
@@ -653,6 +669,9 @@ impl Repl {
             if strict {
                 b.env("NIBLI_STRICT", "1");
             }
+            // ALWAYS forwarded (both modes), so a post-trap rebuild restores
+            // the session's language deterministically.
+            b.env("NIBLI_LANG", lang.to_string());
             b.build()
         };
         let state = HostState {
@@ -690,6 +709,24 @@ impl Repl {
         refuel(&mut self.store, self.fuel_budget);
     }
 
+    /// Switch the session's input language (the `:strict` setter pattern):
+    /// apply to the live session, record on the Repl only on success — the
+    /// `NIBLI_LANG` env forward at (re)instantiation restores it after traps.
+    fn set_language(&mut self, lang: Language) {
+        self.prepare_session();
+        let session = self.pipeline.lojban_nibli_lasna().session();
+        match session.call_set_language(&mut self.store, self.session_handle, wit_lang(lang)) {
+            Ok(()) => {
+                self.lang = lang;
+                println!("[Lang] {lang}");
+            }
+            Err(e) => {
+                println!("{}", format_host_error(&e));
+                self.needs_rebuild = true;
+            }
+        }
+    }
+
     /// A wasm trap permanently poisons the component instance (component-model
     /// semantics forbid re-entering it). Recover by abandoning the poisoned
     /// Store/instance/session — WITHOUT resource_drop, which would itself have
@@ -714,6 +751,7 @@ impl Repl {
             backend_addr,
             self.quiet,
             self.strict,
+            self.lang,
         ) {
             Ok((store, pipeline, session_handle)) => {
                 // The old store (with the dead session resource inside it) is
@@ -1055,13 +1093,17 @@ impl Repl {
                 return false;
             }
             ":help" | ":h" => {
-                println!("  <text>              Assert Lojban as fact");
+                println!("  <text>              Assert text as fact (current language)");
                 println!("  ? <text>            Query (collapsed macro-logical proof)");
                 println!("  :proof-verbose <text> Query (full role-level proof trace)");
                 println!("  ?? <text>           Find witnesses (answer variables)");
+                println!("  :lang [klaro|lojban] Show or set the input language");
+                println!("  :klaro / :lojban    Switch the input language");
                 println!("  :debug <text>       Show compiled logic tree");
-                println!("  :load <filepath>    Load a .lojban file (assert each line)");
-                println!("  :dump <filepath>    Export KB as a .lojban file");
+                println!(
+                    "  :load <filepath>    Load a .lojban/.klaro file (assert each line; language by extension)"
+                );
+                println!("  :dump <filepath>    Export KB source lines to a file");
                 println!("  :compute <name>     Register predicate for compute dispatch");
                 println!("  :assert <rel> <args..> Assert a ground fact directly");
                 println!("  :retract <id>       Retract a fact by ID (rebuilds KB)");
@@ -1090,10 +1132,29 @@ impl Repl {
                 );
                 return false;
             }
+            ":lang" => {
+                println!("[Lang] {}", self.lang);
+                return false;
+            }
+            ":klaro" => {
+                self.set_language(Language::Klaro);
+                return false;
+            }
+            ":lojban" => {
+                self.set_language(Language::Lojban);
+                return false;
+            }
             _ => {}
         }
 
         // ── Route by prefix ──
+        if let Some(mode) = input.strip_prefix(":lang ") {
+            match mode.trim().parse::<Language>() {
+                Ok(lang) => self.set_language(lang),
+                Err(e) => println!("[Lang] {e} — use :lang klaro|lojban"),
+            }
+            return false;
+        }
         if let Some(mode) = input.strip_prefix(":strict ") {
             let on = match mode.trim() {
                 "on" => true,
@@ -1297,6 +1358,19 @@ impl Repl {
                     return false;
                 }
             };
+            // Language by extension, FILE-SCOPED: .lojban/.klaro select the
+            // front-end for this load; the previous language is restored after.
+            let file_lang = match path.extension().and_then(|e| e.to_str()) {
+                Some("lojban") => Some(Language::Lojban),
+                Some("klaro") => Some(Language::Klaro),
+                _ => None,
+            };
+            let prev_lang = self.lang;
+            if let Some(l) = file_lang
+                && l != prev_lang
+            {
+                self.set_language(l);
+            }
             let reader = BufReader::new(file);
             let mut asserted = 0u32;
             let mut skipped = 0u32;
@@ -1351,6 +1425,11 @@ impl Repl {
                 "[Load] Done: {} asserted, {} skipped, {} errors",
                 asserted, skipped, errors
             );
+            // Restore the pre-load language (the extension pick is
+            // file-scoped, never a sticky mode switch).
+            if self.lang != prev_lang {
+                self.set_language(prev_lang);
+            }
         } else if let Some(dump_arg) = input.strip_prefix(":dump ") {
             let filepath = dump_arg.trim();
             if filepath.is_empty() {
@@ -1599,6 +1678,37 @@ fn main() -> Result<()> {
         println!("Strict mode: ON (arity/constraint violations reject)");
     }
 
+    // Input language: default KLARO since THE FLIP; NIBLI_LANG=lojban selects
+    // Lojban (a bad value warns and keeps the default). A --script file's
+    // .lojban/.klaro extension overrides below; :lang/:klaro/:lojban toggle live.
+    let mut lang = match std::env::var("NIBLI_LANG") {
+        Ok(v) => match v.parse::<Language>() {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("[Lang] NIBLI_LANG ignored: {e}");
+                Language::default()
+            }
+        },
+        Err(_) => Language::default(),
+    };
+
+    // --script parsed early: a .lojban/.klaro script extension selects the
+    // language BEFORE instantiation, so the env forward seeds the session
+    // correctly from birth (the script IS the session — no restore).
+    let script_path: Option<String> = {
+        let args: Vec<String> = std::env::args().collect();
+        args.windows(2)
+            .find(|w| w[0] == "--script")
+            .map(|w| w[1].clone())
+    };
+    if let Some(p) = &script_path {
+        match Path::new(p).extension().and_then(|e| e.to_str()) {
+            Some("lojban") => lang = Language::Lojban,
+            Some("klaro") => lang = Language::Klaro,
+            _ => {}
+        }
+    }
+
     let wasm_path = std::env::var("NIBLI_WASM_PATH")
         .unwrap_or_else(|_| "target/wasm32-wasip2/debug/lasna.wasm".to_string());
     println!("Loading WebAssembly Component from {}...", wasm_path);
@@ -1612,6 +1722,7 @@ fn main() -> Result<()> {
         backend_addr,
         quiet,
         strict,
+        lang,
     )?;
 
     // ── Persistent store (optional) ──
@@ -1649,6 +1760,7 @@ fn main() -> Result<()> {
         needs_rebuild: false,
         quiet,
         strict,
+        lang,
     };
 
     // Replay persisted facts into WASM session
@@ -1657,16 +1769,12 @@ fn main() -> Result<()> {
     // Mode selection: interactive (reedline) vs. non-interactive script mode.
     // Script mode triggers when --script <file> is passed OR stdin is not a TTY,
     // letting REPL transcripts be captured byte-faithfully via a pipe.
-    let script_path: Option<String> = {
-        let args: Vec<String> = std::env::args().collect();
-        args.windows(2)
-            .find(|w| w[0] == "--script")
-            .map(|w| w[1].clone())
-    };
+    // (script_path itself is parsed earlier, before instantiation, so its
+    // extension can seed the session language.)
     let use_script_mode = script_path.is_some() || !std::io::stdin().is_terminal();
 
     println!(
-        "Ready. Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :db :help"
+        "Ready. Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :lang [klaro|lojban] :db :help"
     );
     println!(
         "Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.\n"

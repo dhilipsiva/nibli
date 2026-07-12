@@ -51,16 +51,42 @@ build-gasnu:
 # Exercises the byte-faithful REPL transcript capture path used for the book.
 smoke-gasnu-script: build-wasm build-gasnu
     @echo "Smoke-testing gasnu script mode (piped stdin)..."
-    @out=$(printf 'la .adam. cu gerku\n? la .adam. cu gerku\n:facts\n' \
+    @out=$(printf 'dog(Adam).\n? dog(Adam).\n:facts\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out"; \
-        echo "$out" | grep -qF 'nibli> la .adam. cu gerku' || { echo 'FAIL: missing echoed assert prompt'; exit 1; }; \
-        echo "$out" | grep -qF 'nibli> ? la .adam. cu gerku' || { echo 'FAIL: missing echoed query prompt'; exit 1; }; \
+        echo "$out" | grep -qF 'nibli> dog(Adam).' || { echo 'FAIL: missing echoed assert prompt'; exit 1; }; \
+        echo "$out" | grep -qF 'nibli> ? dog(Adam).' || { echo 'FAIL: missing echoed query prompt'; exit 1; }; \
         echo "$out" | grep -qF 'nibli> :facts' || { echo 'FAIL: missing echoed :facts prompt'; exit 1; }; \
         echo "$out" | grep -qF '[Fact #0] Asserted.' || { echo 'FAIL: missing [Fact #0] Asserted.'; exit 1; }; \
         echo "$out" | grep -qF '[Query] TRUE' || { echo 'FAIL: missing [Query] TRUE'; exit 1; }; \
         echo "$out" | grep -qF '[Facts] 1 active fact(s):' || { echo 'FAIL: missing :facts listing'; exit 1; }; \
         echo 'PASS: gasnu script mode emits echoed prompts + expected markers'
+
+# Lojban twin of the script smoke: the pre-flip payload verbatim under an
+# explicit `:lojban` switch — pins that the legacy language stays fully
+# usable through the WASM session (deleted at gerna retirement).
+smoke-gasnu-script-lojban: build-wasm build-gasnu
+    @echo "Smoke-testing gasnu script mode (Lojban via :lojban)..."
+    @out=$(printf ':lojban\nla .adam. cu gerku\n? la .adam. cu gerku\n:facts\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$out"; \
+        echo "$out" | grep -qF '[Lang] lojban' || { echo 'FAIL: missing [Lang] lojban'; exit 1; }; \
+        echo "$out" | grep -qF '[Fact #0] Asserted.' || { echo 'FAIL: missing [Fact #0] Asserted.'; exit 1; }; \
+        echo "$out" | grep -qF '[Query] TRUE' || { echo 'FAIL: missing [Query] TRUE'; exit 1; }; \
+        echo "$out" | grep -qF '[Facts] 1 active fact(s):' || { echo 'FAIL: missing :facts listing'; exit 1; }; \
+        echo 'PASS: Lojban mode works through the WASM session'
+
+# Mixed-mode smoke: a Klaro assert must CLEAR the Lojban pro-bridi context —
+# a later `:lojban` + `? go'i` fails closed ("no antecedent"), never silently
+# repeats something older than the Klaro statements.
+smoke-gasnu-mixed-mode: build-wasm build-gasnu
+    @echo "Smoke-testing mixed-mode goi-clear (Klaro assert -> :lojban -> ? goi)..."
+    @out=$(printf ':lojban\nla .adam. cu gerku\n:klaro\ndog(Bel).\n:lojban\n? go'\''i\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        echo "$out"; \
+        echo "$out" | grep -qF 'no antecedent' || { echo 'FAIL: goi after a Klaro compile must fail closed with no antecedent'; exit 1; }; \
+        if echo "$out" | grep -qF '[Query] TRUE'; then echo 'FAIL: goi silently repeated a pre-Klaro bridi'; exit 1; fi; \
+        echo 'PASS: Klaro compile clears the Lojban pro-bridi context'
 
 # Trap-recovery smoke: a fuel trap must not brick the session. The host
 # rebuilds the poisoned component instance lazily (before the next session
@@ -70,13 +96,13 @@ smoke-gasnu-script: build-wasm build-gasnu
 # (needs the WASM build; not part of `ci`).
 smoke-gasnu-trap-recovery: build-wasm build-gasnu
     @echo "Smoke-testing gasnu trap recovery (fuel trap mid-session)..."
-    @out=$(printf 'la .adam. cu gerku\n:fuel 1000\n? la .adam. cu gerku\n:fuel 10000000000\n? la .adam. cu gerku\n:facts\n' \
+    @out=$(printf 'dog(Adam).\n:fuel 1000\n? dog(Adam).\n:fuel 10000000000\n? dog(Adam).\n:facts\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out"; \
         echo "$out" | grep -qF '[Query] RESOURCE_EXCEEDED (fuel)' || { echo 'FAIL: query fuel trap not translated into a RESOURCE_EXCEEDED (fuel) verdict'; exit 1; }; \
         echo "$out" | grep -qF '[Session] Wasm trap poisoned the component instance; rebuilding and replaying 1 command(s)...' || { echo 'FAIL: missing rebuild message'; exit 1; }; \
         echo "$out" | grep -qF '[Query] TRUE' || { echo 'FAIL: post-recovery query did not answer TRUE'; exit 1; }; \
-        echo "$out" | grep -qF '#0: la .adam. cu gerku' || { echo 'FAIL: replayed fact #0 missing from :facts'; exit 1; }; \
+        echo "$out" | grep -qF '#0: dog(Adam).' || { echo 'FAIL: replayed fact #0 missing from :facts'; exit 1; }; \
         if echo "$out" | grep -qF 'cannot enter component instance'; then echo 'FAIL: session still bricked after trap'; exit 1; fi; \
         if echo "$out" | grep -qF 'cannot remove owned resource'; then echo 'FAIL: resource-drop error at exit'; exit 1; fi; \
         echo 'PASS: fuel trap recovered — session rebuilt and replayed'
@@ -88,7 +114,7 @@ smoke-gasnu-trap-recovery: build-wasm build-gasnu
 # the other smokes (needs the WASM build; not part of `ci`).
 smoke-gasnu-goi: build-wasm build-gasnu
     @echo "Smoke-testing go'i snapshot trap (repeated ? go'i)..."
-    @out=$(printf 'la .adam. cu gerku\n? la .adam. go'\''i\n? la .adam. go'\''i\n' \
+    @out=$(printf ':lojban\nla .adam. cu gerku\n? la .adam. go'\''i\n? la .adam. go'\''i\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out"; \
         n=$(echo "$out" | grep -cF '[Query] TRUE'); \
@@ -103,7 +129,7 @@ smoke-gasnu-goi: build-wasm build-gasnu
 # Pre-release gate (needs the WASM build; not part of `ci`).
 smoke-gasnu-goi-bare: build-wasm build-gasnu
     @echo "Smoke-testing bare go'i full-bridi inheritance (? go'i repeats the whole bridi)..."
-    @run() { printf 'la .adam. cu gerku\n? go'\''i\n' \
+    @run() { printf ':lojban\nla .adam. cu gerku\n? go'\''i\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1; }; \
         ok() { echo "$1" | grep -qF '[Query] TRUE' && ! echo "$1" | grep -qF 'cannot enter component instance'; }; \
         out=$(run); \
@@ -121,7 +147,7 @@ smoke-gasnu-goi-bare: build-wasm build-gasnu
 # partial path dropped the antecedent's places (prami(karl,zo'e) -> TRUE).
 smoke-gasnu-goi-partial: build-wasm build-gasnu
     @echo "Smoke-testing partial go'i per-place merge (supplied x1 + inherited x2)..."
-    @out=$(printf 'la .karl. cu prami la .kim.\nla .adam. cu prami la .bel.\n? la .karl. go'\''i\n' \
+    @out=$(printf ':lojban\nla .karl. cu prami la .kim.\nla .adam. cu prami la .bel.\n? la .karl. go'\''i\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out"; \
         echo "$out" | grep -qF '[Query] FALSE' || { echo 'FAIL: partial go'\''i produced no verdict'; exit 1; }; \
@@ -133,7 +159,7 @@ smoke-gasnu-goi-partial: build-wasm build-gasnu
 # `? go'i` tracked only the last ASSERT (gerku(adam)) -> TRUE.
 smoke-gasnu-goi-after-query: build-wasm build-gasnu
     @echo "Smoke-testing go'i tracks the last QUERIED bridi (not just the last assert)..."
-    @out=$(printf 'la .adam. cu gerku\n? la .bel. cu gerku\n? go'\''i\n' \
+    @out=$(printf ':lojban\nla .adam. cu gerku\n? la .bel. cu gerku\n? go'\''i\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out"; \
         echo "$out" | grep -qF '[Query] FALSE' || { echo 'FAIL: no FALSE verdict'; exit 1; }; \
@@ -145,7 +171,7 @@ smoke-gasnu-goi-after-query: build-wasm build-gasnu
 # snapshot had empty terms (prami(karl,zo'e) -> TRUE).
 smoke-gasnu-goi-assert-fact: build-wasm build-gasnu
     @echo "Smoke-testing direct-API :assert go'i snapshot carries sumti..."
-    @out=$(printf ':assert prami karl kim\n:assert prami adam bel\n? la .karl. go'\''i\n' \
+    @out=$(printf ':lojban\n:assert prami karl kim\n:assert prami adam bel\n? la .karl. go'\''i\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out"; \
         echo "$out" | grep -qF '[Query] FALSE' || { echo 'FAIL: no FALSE verdict'; exit 1; }; \
@@ -157,7 +183,7 @@ smoke-gasnu-goi-assert-fact: build-wasm build-gasnu
 # pre-fix "unsupported position" rejection.
 smoke-gasnu-goi-nested: build-wasm build-gasnu
     @echo "Smoke-testing nested go'i in a lo nu abstraction body resolves (not fail-closed)..."
-    @out=$(printf 'mi klama\n? mi nelci lo nu go'\''i\n' \
+    @out=$(printf ':lojban\nmi klama\n? mi nelci lo nu go'\''i\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out"; \
         if echo "$out" | grep -qF 'unsupported position'; then echo 'FAIL: nested go'\''i still rejected (not resolved)'; exit 1; fi; \
@@ -170,7 +196,7 @@ smoke-gasnu-goi-nested: build-wasm build-gasnu
 # rejected with "unsupported position". Pre-release gate (needs the WASM build).
 smoke-gasnu-goi-tanru: build-wasm build-gasnu
     @echo "Smoke-testing selbri-position go'i in a tanru (mi sutra go'i resolves)..."
-    @out=$(printf 'mi sutra klama\nmi klama\n? mi sutra go'\''i\n' \
+    @out=$(printf ':lojban\nmi sutra klama\nmi klama\n? mi sutra go'\''i\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out"; \
         if echo "$out" | grep -qF 'unsupported position'; then echo 'FAIL: tanru go'\''i still rejected (not resolved)'; exit 1; fi; \
@@ -187,12 +213,12 @@ smoke-gasnu-goi-tanru: build-wasm build-gasnu
 smoke-gasnu-persist-replay: build-wasm build-gasnu
     @echo "Smoke-testing gasnu persistent restart-replay (fact-id drift)..."
     @dir=$(mktemp -d); db="$dir/nibli-smoke.redb"; \
-        out1=$(printf 'la .adam. cu gerku\nla .bel. cu gerku\nla .kar. cu gerku\n:retract 1\n' \
+        out1=$(printf 'dog(Adam).\ndog(Bel).\ndog(Kar).\n:retract 1\n' \
             | NIBLI_DB_PATH="$db" NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out1"; \
         echo "$out1" | grep -qF '[Fact #2] Asserted.' || { echo 'FAIL run1: fact #2 not asserted'; rm -rf "$dir"; exit 1; }; \
         echo "$out1" | grep -qF '[Retract] Fact #1 retracted.' || { echo 'FAIL run1: retract 1'; rm -rf "$dir"; exit 1; }; \
-        out2=$(printf ':facts\n:retract 2\n? la .kar. cu gerku\n' \
+        out2=$(printf ':facts\n:retract 2\n? dog(Kar).\n' \
             | NIBLI_DB_PATH="$db" NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out2"; \
         echo "$out2" | grep -qF '#2:' || { echo 'FAIL run2: surviving store id #2 missing after reopen (DRIFT)'; rm -rf "$dir"; exit 1; }; \
@@ -202,14 +228,16 @@ smoke-gasnu-persist-replay: build-wasm build-gasnu
         rm -rf "$dir"; \
         echo 'PASS: persistent restart-replay keeps live==store fact-ids (gap preserved, high store id retractable)'
 
-# Multi-`.i` split smoke: a bare-`.i` two-sentence assert becomes TWO independent
+# Statement-split smoke: a two-STATEMENT Klaro input line becomes TWO independent
 # facts (ids 0 and 1) — independently listed, retractable, and each persisted as its
-# own BUFFER record (recompile-free replay). A connective (`.i je`) stays ONE fact.
-# Reopen proves per-sentence retraction survives a restart.
+# own BUFFER record (recompile-free replay); Klaro `.`-statement splitting has the
+# SAME granularity as Lojban's bare-`.i` split_roots. A conjunction (`&`, the
+# `.i je` analog) stays ONE compound fact. Reopen proves per-statement retraction
+# survives a restart.
 smoke-gasnu-split: build-wasm build-gasnu
-    @echo "Smoke-testing gasnu bare-.i split (N independent facts + buffer replay)..."
+    @echo "Smoke-testing gasnu statement split (N independent facts + buffer replay)..."
     @dir=$(mktemp -d); db="$dir/nibli-smoke.redb"; \
-        out1=$(printf 'la .adam. cu gerku .i la .betis. cu mlatu\n:facts\n:retract 0\n? la .adam. cu gerku\n? la .betis. cu mlatu\n' \
+        out1=$(printf 'dog(Adam). cat(Betis).\n:facts\n:retract 0\n? dog(Adam).\n? cat(Betis).\n' \
             | NIBLI_DB_PATH="$db" NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out1"; \
         echo "$out1" | grep -qF '[Fact #0] Asserted.' || { echo 'FAIL run1: fact #0 missing'; rm -rf "$dir"; exit 1; }; \
@@ -218,17 +246,17 @@ smoke-gasnu-split: build-wasm build-gasnu
         echo "$out1" | grep -qF '(1 root)' || { echo 'FAIL run1: split facts must be single-root'; rm -rf "$dir"; exit 1; }; \
         verdicts=$(echo "$out1" | grep -F '[Query]' | tr '\n' ' '); \
         [ "$verdicts" = '[Query] FALSE [Query] TRUE ' ] || { echo "FAIL run1: expected FALSE (retracted) then TRUE (surviving), got: $verdicts"; rm -rf "$dir"; exit 1; }; \
-        out2=$(printf ':facts\n? la .betis. cu mlatu\n' \
+        out2=$(printf ':facts\n? cat(Betis).\n' \
             | NIBLI_DB_PATH="$db" NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out2"; \
         echo "$out2" | grep -qF '[Facts] 1 active fact(s):' || { echo 'FAIL run2: expected exactly the surviving fact after reopen'; rm -rf "$dir"; exit 1; }; \
-        echo "$out2" | grep -qF '[Query] TRUE' || { echo 'FAIL run2: surviving sentence not replayed from buffer'; rm -rf "$dir"; exit 1; }; \
-        out3=$(printf 'la .adam. cu gerku .i je la .adam. cu mlatu\n:facts\n' \
+        echo "$out2" | grep -qF '[Query] TRUE' || { echo 'FAIL run2: surviving statement not replayed from buffer'; rm -rf "$dir"; exit 1; }; \
+        out3=$(printf 'dog(Adam) & cat(Adam).\n:facts\n' \
             | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out3"; \
-        echo "$out3" | grep -qF '[Facts] 1 active fact(s):' || { echo 'FAIL run3: connective must stay ONE compound fact'; rm -rf "$dir"; exit 1; }; \
+        echo "$out3" | grep -qF '[Facts] 1 active fact(s):' || { echo 'FAIL run3: conjunction must stay ONE compound fact'; rm -rf "$dir"; exit 1; }; \
         rm -rf "$dir"; \
-        echo 'PASS: bare-.i splits into independent, per-sentence-retractable, buffer-replayed facts; connectives stay whole'
+        echo 'PASS: Klaro statements split into independent, per-statement-retractable, buffer-replayed facts; conjunctions stay whole'
 
 # NAF-note smoke: the closed-world / negation-as-failure flag is now a first-class
 # WIT `proof-trace` field — computed once in the guest (ProofTrace::has_naf_dependency),
@@ -238,7 +266,7 @@ smoke-gasnu-split: build-wasm build-gasnu
 # note). Pre-release gate (needs the WASM build; not part of `ci`).
 smoke-gasnu-naf: build-wasm build-gasnu
     @echo "Smoke-testing gasnu NAF-dependent proof note (WIT proof-trace flag)..."
-    @out=$(printf '? la .adam. na gerku\n' \
+    @out=$(printf '? ~dog(Adam).\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out"; \
         echo "$out" | grep -qF '[Query] TRUE' || { echo 'FAIL: NAF query did not answer TRUE'; exit 1; }; \
@@ -251,12 +279,12 @@ smoke-gasnu-naf: build-wasm build-gasnu
 # is genuinely false, not closed-world. Guards both directions end-to-end across the WIT boundary.
 smoke-gasnu-cwa-false: build-wasm build-gasnu
     @echo "Smoke-testing gasnu closed-world FALSE note (WIT proof-trace cwa-false flag)..."
-    @out=$(printf '? la .adam. cu gerku\n' \
+    @out=$(printf '? dog(Adam).\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out"; \
         echo "$out" | grep -qF '[Query] FALSE' || { echo 'FAIL: missing-fact query did not answer FALSE'; exit 1; }; \
         echo "$out" | grep -qF '[Note: FALSE is closed-world' || { echo 'FAIL: missing closed-world FALSE note (cwa-false flag not carried through the WIT proof-trace)'; exit 1; }; \
-        num=$(printf '? li mu cu dunli li ci\n' \
+        num=$(printf '? num_equal(5, 3).\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$num"; \
         if echo "$num" | grep -qF '[Note: FALSE is closed-world'; then echo 'FAIL: a numeric-decided FALSE wrongly carried the closed-world note'; exit 1; fi; \
@@ -269,7 +297,7 @@ smoke-gasnu-cwa-false: build-wasm build-gasnu
 # it, but it corrupts the rendered structure here. NOT in `ci` (needs the WASM build).
 smoke-gasnu-debug: build-wasm build-gasnu
     @echo "Smoke-testing gasnu :debug WASM round-trip (typed buffer -> host render)..."
-    @out=$(printf ':debug ro lo gerku cu danlu\n' \
+    @out=$(printf ':debug animal(every dog).\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out"; \
         echo "$out" | grep -qF '[Logic]' || { echo 'FAIL: missing [Logic] block'; exit 1; }; \
@@ -285,7 +313,7 @@ smoke-gasnu-debug: build-wasm build-gasnu
 # keeps the full role-level trace. NOT in `ci` (needs the WASM build).
 smoke-gasnu-collapse: build-wasm build-gasnu
     @echo "Smoke-testing gasnu collapsed proof (? default) + :proof-verbose escape hatch..."
-    @collapsed=$(printf 'la .rex. cu gerku\nro lo gerku cu danlu\n? la .rex. cu danlu\n' \
+    @collapsed=$(printf 'dog(Rex).\nanimal(every dog).\n? animal(Rex).\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$collapsed"; \
         echo "$collapsed" | grep -qF '[Query] TRUE' || { echo 'FAIL: collapsed query did not answer TRUE'; exit 1; }; \
@@ -293,7 +321,7 @@ smoke-gasnu-collapse: build-wasm build-gasnu
         if echo "$collapsed" | grep -qF 'Conjunction'; then echo 'FAIL: verbose scaffolding leaked into the collapsed ? view'; exit 1; fi; \
         if echo "$collapsed" | grep -qF 'role-level detail'; then echo 'FAIL: role-level detail cluster shown in collapsed text'; exit 1; fi; \
         echo 'PASS: ? shows the clean collapsed macro-logical DAG'
-    @verbose=$(printf 'la .rex. cu gerku\nro lo gerku cu danlu\n:proof-verbose la .rex. cu danlu\n' \
+    @verbose=$(printf 'dog(Rex).\nanimal(every dog).\n:proof-verbose animal(Rex).\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$verbose"; \
         echo "$verbose" | grep -qF '[Query] TRUE' || { echo 'FAIL: :proof-verbose query did not answer TRUE'; exit 1; }; \
@@ -303,10 +331,13 @@ smoke-gasnu-collapse: build-wasm build-gasnu
 # Backend-unavailable smoke: an external compute predicate (tenfa) with NO backend
 # configured must yield UNKNOWN (backend-unavailable), NEVER a definitive FALSE — a
 # backend outage is not a derived falsehood. Exercises the new four-valued reason
-# end-to-end across the WIT boundary. NOT in `ci` (needs the WASM build).
+# end-to-end across the WIT boundary. PINNED LOJBAN (`:lojban`): tenfa has no
+# curated Klaro alias, so a Klaro spelling would break the CI fallback build —
+# the smoke's subject is backend dispatch, not language. NOT in `ci` (needs the
+# WASM build).
 smoke-gasnu-backend-unavailable: build-wasm build-gasnu
     @echo "Smoke-testing gasnu backend-unavailable verdict (no compute backend configured)..."
-    @out=$(printf ':compute tenfa\n? li bi tenfa li re li ci\n' \
+    @out=$(printf ':lojban\n:compute tenfa\n? li bi tenfa li re li ci\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out"; \
         echo "$out" | grep -qF '[Query] UNKNOWN (backend-unavailable)' || { echo 'FAIL: an unreachable backend did not surface UNKNOWN (backend-unavailable)'; exit 1; }; \
@@ -319,11 +350,13 @@ smoke-gasnu-backend-unavailable: build-wasm build-gasnu
 # (Repinned after the li parse-boundary overflow guard: the giant literal now
 # fails CLOSED at parse — strictly stronger than the old UNKNOWN(non-finite)
 # surfacing, which this smoke previously pinned. The downstream non-finite
-# catches are pinned at the logji level over flat buffers.)
+# catches are pinned at the logji level over flat buffers.) PINNED LOJBAN
+# (`:lojban`): this smoke pins the LOJBAN lexer's `li` overflow path; a Klaro
+# numeric-overflow pin is separate future work, not a blind re-pin.
 smoke-gasnu-non-finite: build-wasm build-gasnu
     @echo "Smoke-testing gasnu overflowing numeric literal (fails closed at parse)..."
     @nines=$(printf 'so %.0s' $(seq 320)); \
-        out=$(printf "? li ${nines}cu dunli li ${nines}\n" \
+        out=$(printf ":lojban\n? li ${nines}cu dunli li ${nines}\n" \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out"; \
         echo "$out" | grep -qF '[Syntax Error]' || { echo 'FAIL: an overflowing numeric literal must be a clean parse error (li overflow guard)'; exit 1; }; \
@@ -337,13 +370,13 @@ smoke-gasnu-non-finite: build-wasm build-gasnu
 # host gate AND the env forwarding end-to-end. Pre-release gate (needs the WASM build).
 smoke-gasnu-quiet: build-wasm build-gasnu
     @echo "Smoke-testing gasnu NIBLI_QUIET mode (suppress [Fact]/[Skolem]/[Rule], keep proof)..."
-    @q=$(printf 'la .adam. gerku\nro lo gerku cu danlu\n? la .adam. danlu\n' \
+    @q=$(printf 'dog(Adam).\nanimal(every dog).\n? animal(Adam).\n' \
         | NIBLI_QUIET=1 NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$q"; \
         echo "$q" | grep -qF '[Query] TRUE' || { echo 'FAIL: quiet-mode query lost its verdict'; exit 1; }; \
         echo "$q" | grep -qF 'adam is an animal' || { echo 'FAIL: quiet-mode query lost its proof trace'; exit 1; }; \
         if echo "$q" | grep -qE '\[(Fact|Skolem|Rule)'; then echo 'FAIL: NIBLI_QUIET=1 did not suppress the per-assertion bookkeeping'; exit 1; fi; \
-        v=$(printf 'la .adam. gerku\nro lo gerku cu danlu\n? la .adam. danlu\n' \
+        v=$(printf 'dog(Adam).\nanimal(every dog).\n? animal(Adam).\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$v"; \
         echo "$v" | grep -qF '[Fact #0] Asserted.' || { echo 'FAIL: default (verbose) mode dropped the [Fact] echo'; exit 1; }; \
@@ -358,7 +391,7 @@ smoke-gasnu-quiet: build-wasm build-gasnu
 # is only constructible programmatically.)
 smoke-gasnu-strict: build-wasm build-gasnu
     @echo "Smoke-testing gasnu strict mode (env + :strict toggle plumbing)..."
-    @s=$(printf ':strict\nla .adam. gerku\n? la .adam. gerku\n' \
+    @s=$(printf ':strict\ndog(Adam).\n? dog(Adam).\n' \
         | NIBLI_STRICT=1 NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$s"; \
         echo "$s" | grep -qF 'Strict mode: ON' || { echo 'FAIL: NIBLI_STRICT=1 startup banner missing'; exit 1; }; \
@@ -485,7 +518,7 @@ ci: fmt-check clippy-runtime test test-engine test-gasnu test-fanva test-backend
 # `build-wasm build-gasnu`, so `just` builds the component + host once, then runs
 # all six: fuel exhaustion + post-trap recovery + journal replay (trap-recovery),
 # plus the script transcript, go'i, persist-replay, NAF-note, and :debug round-trip.
-ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-split smoke-gasnu-naf smoke-gasnu-cwa-false smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable smoke-gasnu-non-finite smoke-gasnu-quiet smoke-gasnu-strict smoke-gasnu-determinism verify-wasm-node test-fanva-wasm
+ci-wasm: smoke-gasnu-script smoke-gasnu-script-lojban smoke-gasnu-mixed-mode smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-split smoke-gasnu-naf smoke-gasnu-cwa-false smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable smoke-gasnu-non-finite smoke-gasnu-quiet smoke-gasnu-strict smoke-gasnu-determinism verify-wasm-node test-fanva-wasm
 
 # Three-way determinism, WASMTIME leg: the shared determinism-corpus.lojban must produce
 # exactly its pinned annotations through the lasna component under gasnu. The primary
@@ -493,8 +526,8 @@ ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasn
 # the Lojban twin leg rides verify-soundness; the V8 leg is verify-wasm-node.
 smoke-gasnu-determinism: build-wasm build-gasnu
     @echo "Smoke-testing gasnu three-way determinism corpus..."
-    @expected=$(grep '^# =>' determinism-corpus.lojban | sed 's/^# => //'); \
-        actual=$(NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu --script determinism-corpus.lojban 2>&1 | sed -n 's/^\[Query\] //p'); \
+    @expected=$(grep '^# =>' determinism-corpus.klaro | sed 's/^# => //'); \
+        actual=$(NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu --script determinism-corpus.klaro 2>&1 | sed -n 's/^\[Query\] //p'); \
         if [ "$expected" = "$actual" ]; then \
             echo 'PASS: gasnu verdicts match every pinned determinism annotation'; \
         else \

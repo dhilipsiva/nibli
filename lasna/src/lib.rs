@@ -8,7 +8,7 @@
 mod bindings;
 
 // Lasna's own WIT export types (the boundary we serialize through)
-use bindings::exports::lojban::nibli::lasna::{Guest, GuestSession};
+use bindings::exports::lojban::nibli::lasna::{Guest, GuestSession, Language as WitLanguage};
 use bindings::lojban::nibli::compute_backend as cb;
 use bindings::lojban::nibli::error_types as export_err;
 use bindings::lojban::nibli::logic_types as export_logic;
@@ -22,7 +22,8 @@ use nibli_types::logic as logji_logic;
 // nibli-engine), so native and WASM resolve the pro-bridi identically.
 use gerna::goi::{BridiSnapshot, extract_bridi_snapshot, resolve_go_i_with_arity};
 
-use std::cell::RefCell;
+use nibli_types::lang::Language;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 
 /// WIT component implementation for the `lasna` interface.
@@ -33,6 +34,11 @@ pub struct Session {
     kb: logji::KnowledgeBase,
     compute_predicates: RefCell<HashSet<String>>,
     last_relation: RefCell<Option<BridiSnapshot>>,
+    /// The input language for every TEXT entry point. Default KLARO since THE
+    /// FLIP; the host seeds it via the `NIBLI_LANG` WASI env at construction
+    /// (a post-trap rebuild re-runs the constructor with the same env, so the
+    /// mode survives replay) and can switch it via `set-language`.
+    language: Cell<Language>,
 }
 
 // ─── Type conversion: logji → lasna export boundary ───
@@ -365,27 +371,47 @@ fn synth_snapshot_terms(args: &[export_logic::LogicalTerm]) -> (Vec<gerna_ast::S
 // ─── Shared pipeline: text → AST → LogicBuffer ───
 
 fn compile_pipeline(
+    lang: Language,
     text: &str,
     last_snapshot: &mut Option<BridiSnapshot>,
     compute_predicates: &HashSet<String>,
 ) -> Result<(logji_logic::LogicBuffer, Option<BridiSnapshot>), export_err::NibliError> {
-    // Shared parse front-end (fail-closed on any parse error — assert AND query),
-    // then the lasna-specific go'i resolution, then smuni compile + compute-node
-    // marking.
-    let mut ast = gerna::parse_checked(text).map_err(convert_pipeline_error)?;
+    // Language dispatch — the mirror of nibli-engine's `compile_text`, so
+    // native and WASM agree. Both front-ends emit the same AstBuffer and
+    // share the smuni compile + compute-node marking tail.
+    match lang {
+        Language::Lojban => {
+            // Fail-closed parse (assert AND query), then the lasna-specific
+            // go'i resolution.
+            let mut ast = gerna::parse_checked(text).map_err(convert_pipeline_error)?;
 
-    // Bound a partial go'i's FA places by the relation's arity (smuni's dictionary),
-    // so a beyond-arity tag fails closed instead of being silently dropped post-merge.
-    let last_bridi_sid = resolve_go_i_with_arity(&mut ast, last_snapshot, &|n| {
-        smuni::dictionary::JbovlasteSchema::get_arity(n)
-    })
-    .map_err(export_err::NibliError::Semantic)?;
-    let new_snapshot = last_bridi_sid.map(|sid| extract_bridi_snapshot(&ast, sid));
+            // Bound a partial go'i's FA places by the relation's arity (smuni's
+            // dictionary), so a beyond-arity tag fails closed instead of being
+            // silently dropped post-merge.
+            let last_bridi_sid = resolve_go_i_with_arity(&mut ast, last_snapshot, &|n| {
+                smuni::dictionary::JbovlasteSchema::get_arity(n)
+            })
+            .map_err(export_err::NibliError::Semantic)?;
+            let new_snapshot = last_bridi_sid.map(|sid| extract_bridi_snapshot(&ast, sid));
 
-    let mut buf = smuni::compile_from_gerna_ast(ast).map_err(convert_pipeline_error)?;
-    logji::transform_compute_nodes(&mut buf, compute_predicates);
+            let mut buf = smuni::compile_from_gerna_ast(ast).map_err(convert_pipeline_error)?;
+            logji::transform_compute_nodes(&mut buf, compute_predicates);
 
-    Ok((buf, new_snapshot))
+            Ok((buf, new_snapshot))
+        }
+        Language::Klaro => {
+            // Klaro has no pro-bridi (SURFACE_SYNTAX §10): skip go'i
+            // resolution entirely, and CLEAR the prior-bridi snapshot at arm
+            // entry (even on a parse failure — the fail-closed direction): any
+            // Klaro-mode submission invalidates the Lojban pro-bridi context,
+            // so a later Lojban `go'i` fails closed ("no antecedent").
+            *last_snapshot = None;
+            let ast = klaro::parse_checked(text).map_err(convert_pipeline_error)?;
+            let mut buf = smuni::compile_from_gerna_ast(ast).map_err(convert_pipeline_error)?;
+            logji::transform_compute_nodes(&mut buf, compute_predicates);
+            Ok((buf, None))
+        }
+    }
 }
 
 // ─── WIT exports ───
@@ -405,6 +431,7 @@ impl Session {
     /// error, so no per-caller warning check is needed.)
     fn assert_text_inner(&self, input: String, id: u64) -> Result<(), export_err::NibliError> {
         let (buf, new_last) = compile_pipeline(
+            self.language.get(),
             &input,
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),
@@ -489,15 +516,31 @@ impl GuestSession for Session {
         if std::env::var("NIBLI_STRICT").ok().as_deref() == Some("1") {
             kb.set_strict(true);
         }
+        // Same pattern for the input LANGUAGE: the host forwards `NIBLI_LANG`
+        // ("klaro"/"lojban") into the WASI env; a post-trap rebuild re-runs
+        // this constructor with the same env, so the mode survives replay.
+        // Default KLARO since THE FLIP (2026-07-12).
+        let language = std::env::var("NIBLI_LANG")
+            .ok()
+            .and_then(|v| v.parse::<Language>().ok())
+            .unwrap_or_default();
         Session {
             kb,
             compute_predicates: RefCell::new(logji::default_compute_predicates()),
             last_relation: RefCell::new(None),
+            language: Cell::new(language),
         }
     }
 
     fn set_strict(&self, strict: bool) {
         self.kb.set_strict(strict);
+    }
+
+    fn set_language(&self, lang: WitLanguage) {
+        self.language.set(match lang {
+            WitLanguage::Klaro => Language::Klaro,
+            WitLanguage::Lojban => Language::Lojban,
+        });
     }
 
     /// Assert Lojban text, splitting a bare-`.i` multi-sentence input into one
@@ -513,6 +556,7 @@ impl GuestSession for Session {
         input: String,
     ) -> Result<Vec<(u64, export_logic::LogicBuffer)>, export_err::NibliError> {
         let (buf, new_last) = compile_pipeline(
+            self.language.get(),
             &input,
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),
@@ -554,6 +598,7 @@ impl GuestSession for Session {
         input: String,
     ) -> Result<export_logic::QueryResult, export_err::NibliError> {
         let (buf, new_last) = compile_pipeline(
+            self.language.get(),
             &input,
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),
@@ -574,6 +619,7 @@ impl GuestSession for Session {
         input: String,
     ) -> Result<Vec<Vec<export_logic::WitnessBinding>>, export_err::NibliError> {
         let (buf, new_last) = compile_pipeline(
+            self.language.get(),
             &input,
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),
@@ -589,6 +635,7 @@ impl GuestSession for Session {
         input: String,
     ) -> Result<(export_logic::QueryResult, export_logic::ProofTrace), export_err::NibliError> {
         let (buf, new_last) = compile_pipeline(
+            self.language.get(),
             &input,
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),
@@ -610,6 +657,7 @@ impl GuestSession for Session {
         input: String,
     ) -> Result<export_logic::LogicBuffer, export_err::NibliError> {
         let (buf, _) = compile_pipeline(
+            self.language.get(),
             &input,
             &mut self.last_relation.borrow_mut(),
             &self.compute_predicates.borrow(),

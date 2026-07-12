@@ -23,25 +23,6 @@ xorlo witnesses identically to Lojban (compat requires it — the equivalence ba
 checks verdict identity) and the behavior is disclosed spec semantics, not hidden
 residue; every bullet lands independently CI-green.
 
-- **WIT + lasna + gasnu (ONE commit — bindings regen atomicity)** — wit/world.wit:
-  `enum language { klaro, lojban }` + `set-language: func(lang: language)` on the
-  session resource (the set-strict pattern; leave the `lojban:nibli@0.1.0` package id
-  alone). lasna: `klaro` internal crate dep, `Cell<Language>` on Session, `NIBLI_LANG`
-  read in `Session::new` beside NIBLI_QUIET/NIBLI_STRICT (lasna/src/lib.rs:484-491 — so
-  post-trap rebuild restores the mode), dispatch + goi-clear in `compile_pipeline`
-  (lib.rs:367). gasnu: `lang` field on Repl (NIBLI_LANG at startup),
-  `instantiate_session` forwards `b.env("NIBLI_LANG", …)` (rebuild-safe),
-  `:klaro`/`:lojban`/`:lang` commands, `:load`/`--script` extension rule, `:help`.
-  Journal needs NO language entry (replay is buffer-level). Smokes: migrate the runtime-
-  behavior smokes' printf payloads to Klaro (script, trap-recovery, persist-replay,
-  split, naf, cwa-false, debug, collapse, backend-unavailable, non-finite, quiet,
-  strict) — `smoke-gasnu-split` doubles as the pin that Klaro `.`-statement splitting ≡
-  bare-`.i` `split_roots` granularity; keep the seven goi smokes Lojban by prepending
-  `:lojban\n` to their payloads; add `smoke-gasnu-script-lojban` (current script smoke
-  verbatim under `:lojban`) + one mixed-mode smoke (Klaro assert → `:lojban` →
-  `? go'i` fails "no prior bridi"); `smoke-gasnu-determinism` → `.klaro`. COORDINATE
-  FIRST (cross-repo risk): book capture harness pins `NIBLI_LANG=lojban` before this
-  lands, or verify-book-capture silently rots.
 - **nibli-wasm + V8 leg** — `set_language(&str)` wasm-bindgen export; dispatch in
   `Session::compile_text` + `compile_for_render` (nibli-wasm/src/lib.rs:104,140);
   determinism.rs + gdpr/ddi bounded-time tests → `.klaro`. LIVE-DEMO COORDINATION: ship

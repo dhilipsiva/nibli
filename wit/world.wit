@@ -256,6 +256,16 @@ interface lasna {
     use logic-types.{fact-id, fact-summary, logic-buffer, logical-term, proof-trace, query-result, witness-binding};
     use error-types.{nibli-error};
 
+    /// The surface language every TEXT entry point parses. Both compile to
+    /// the same AST buffer and share the smuni→logji pipeline. KLARO is the
+    /// session default since THE FLIP (2026-07-12); the host can override at
+    /// creation via the `NIBLI_LANG` WASI env ("klaro"/"lojban") or at any
+    /// time via `set-language`. Buffer-level replay is language-free.
+    enum language {
+        klaro,
+        lojban,
+    }
+
     /// A user-facing session that wraps the full pipeline.
     /// Internally creates a gerna → smuni → logji chain with a fresh KB.
     resource session {
@@ -310,6 +320,10 @@ interface lasna {
         /// warn-and-insert): when on, arity mismatches and integrity-constraint
         /// violations REJECT the offending fact and fail the assertion.
         set-strict: func(strict: bool);
+        /// Select the input language for every TEXT entry point. A Klaro
+        /// compile skips `go'i` resolution and CLEARS the prior-bridi
+        /// snapshot (a later Lojban `go'i` fails closed with "no antecedent").
+        set-language: func(lang: language);
     }
 }
 

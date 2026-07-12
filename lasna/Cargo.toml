@@ -6,6 +6,9 @@ edition = "2024"
 
 [dependencies]
 gerna = { path = "../gerna" }
+# The Klaro front-end (language dispatch in compile_pipeline). Grows the
+# component by pest + klaro-dictionary — the cost of the dual-front-end phase.
+klaro = { path = "../klaro" }
 smuni = { path = "../smuni" }
 logji = { path = "../logji" }
 nibli-types = { path = "../nibli-types" }
