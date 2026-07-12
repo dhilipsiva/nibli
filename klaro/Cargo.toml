@@ -1,0 +1,12 @@
+[package]
+name = "klaro"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+logos = "0.16.1"
+
+[dev-dependencies]
+# Keyword-list conformance: the lexer's keyword tokens are pinned against
+# klaro-dictionary's single-source RESERVED_WORDS by an exhaustive unit test.
+klaro-dictionary = { path = "../klaro-dictionary" }

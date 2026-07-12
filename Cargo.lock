@@ -2366,6 +2366,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "klaro"
+version = "0.1.0"
+dependencies = [
+ "klaro-dictionary",
+ "logos",
+]
+
+[[package]]
 name = "klaro-dictionary"
 version = "0.1.0"
 dependencies = [

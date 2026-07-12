@@ -407,6 +407,11 @@ test-gerna:
 test-klaro-dict:
     cargo test -p klaro-dictionary --lib -- --nocapture
 
+# Run klaro (surface-syntax front-end) unit tests only (dev loop; the
+# workspace `test` recipe already sweeps them into `ci`)
+test-klaro:
+    cargo test -p klaro --lib -- --nocapture
+
 # Run all unit tests across workspace
 test:
     cargo test --lib -- --nocapture --test-threads=1

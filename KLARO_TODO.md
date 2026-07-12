@@ -10,14 +10,6 @@ primary/default language everywhere, gerna demoted to the equivalence battery + 
 `.lojban` load; FULL alias-map generation (~1,338 gismu) from day one; every bullet
 lands independently CI-green.
 
-- **klaro crate: lexer** — new workspace member `klaro/`; logos lexer (repo precedent:
-  gerna) in `src/token.rs`+`src/lexer.rs`: keyword tokens exact-match with priority over
-  `[a-z][a-z0-9_]*` idents (maximal munch — `everyday` is ONE ident, `every` alone is
-  the keyword), `Name` `[A-Z][A-Za-z0-9_]*`, `Var` `$ident`, `?`, `_`, `Number`
-  (maximal-munch handles `2.5` vs statement `.`), `String` with `\\` escapes, punctuation
-  (`( ) { } [ ] , : . = -> <-> & | ^ ~ +`), `#` line + non-nesting `/* */` comments,
-  ASCII-only fail-closed with positions. Unit tests pin the `everyday`/`theory`/`you_all`
-  keyword-boundary defect class from the design review.
 - **klaro parser core** — hand-written recursive descent (`src/parser.rs`, owned tree
   AST in `src/ast.rs` — Box/Vec, no bumpalo; document the divergence from gerna's arena):
   terms, determiner phrases (`some/the/every/every the/exactly N/no`), predications with
