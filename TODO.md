@@ -5,6 +5,13 @@ name. Delete a bullet entirely when it fully lands; update it if only partially 
 (The first item came out of the 2026-07-05 Lojban Discord #proga thread with korvo —
 brismu/zaha/zatske — and feklat; the int19h items from his 2026-07-10 nibli-fanva feedback.)
 
+- **Klaro drop-in replacement — program tracker is `KLARO_TODO.md`, work it first** —
+  Klaro (`SURFACE_SYNTAX.md`) replaces Lojban as the primary front-end across every
+  surface; the milestone-ordered program lives in `KLARO_TODO.md` and takes precedence
+  over the engine bullets below. Cross-dependency: the "Determinism corpus" bullet below
+  edits a file that gets a `.klaro` twin — land KLARO_TODO's "corpora twins + honesty
+  gate" bullet first, or regenerate the twin in the same change.
+
 - **Ontology-row import (brismu/zatske interchange)** — korvo proposed flat rows
   `[P, Q, mapping]` (selbri subrelation with terbri mapping: identity `["gerku","danlu",
   [1,2]]`; place deletion `["skari","ckaji",[1,2]]` — unmapped source places dropped;
