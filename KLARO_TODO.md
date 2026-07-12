@@ -30,11 +30,6 @@ residue; every bullet lands independently CI-green.
   /nibli-playground, which migrated to Klaro with the nibli-ui bullet 2026-07-12;
   redeploy-site.yml auto-triggers on push to main). Execute when that page's JS/KB
   goes Klaro; also unblocks the book's Formalize copy sweep (book/TODO.md).
-- **docs sweep** — README leads with Klaro (readme.klaro transcripts; legacy-Lojban
-  section), CLAUDE.md (crate table + command table + this program's status), GUARANTEES
-  front-end section, WIT doc comments ("Assert Lojban text…"), gasnu/nibli `:help`
-  strings audit, LOJBAN_COVERAGE.md marked legacy-scope, SURFACE_SYNTAX.md status line →
-  implemented-v0.1.
 - **lint catalog L1–L9** — non-blocking compile notes per SURFACE_SYNTAX §12; L4 (alias
   echo: resolved gismu + permutation on first use per file/session) and L5 (integrity-
   constraint registration echo) first; L1 the-trap, L2 tanru-vs-`&`, L3 multi-quantified-

@@ -1,9 +1,10 @@
 /// Nibli WIT (WebAssembly Interface Types) definition.
 ///
 /// The Nibli symbolic reasoning engine ships as ONE WASM component (`lasna`,
-/// world `lasna-pipeline`): gerna (parse) → smuni (compile) → logji (reason)
-/// are internal Rust crate stages, NOT separate components. This file defines
-/// only that component's host boundary:
+/// world `lasna-pipeline`): the front-end (klaro by default, gerna for legacy
+/// Lojban — see `language`) → smuni (compile) → logji (reason) are internal
+/// Rust crate stages, NOT separate components. This file defines only that
+/// component's host boundary:
 ///   - `logic-types`: First-Order Logic IR (logic buffers, proof traces, …)
 ///   - `error-types`: structured error variants shared across the pipeline
 ///   - `compute-backend`: host-provided external predicate evaluation (import)
@@ -200,7 +201,8 @@ interface logic-types {
     record fact-summary {
         /// Unique fact identifier (assigned at assertion time).
         id: fact-id,
-        /// Human-readable label (Lojban source text or ":assert rel args" form).
+        /// Human-readable label (the original source text — Klaro or Lojban —
+        /// or the ":assert rel args" form).
         label: string,
         /// Number of root formulas in this fact's logic buffer.
         root-count: u32,
@@ -248,8 +250,9 @@ interface compute-backend {
 /// High-level lasna interface: the single shipping component's API.
 ///
 /// Provides a `session` resource with text-level assert/query methods that
-/// internally orchestrate the full gerna → smuni → logji pipeline (linked as
-/// Rust crate stages). This is the primary API for end users (e.g., the REPL
+/// internally orchestrate the full front-end → smuni → logji pipeline (linked
+/// as Rust crate stages; the front-end is klaro or legacy gerna per the
+/// session `language`). This is the primary API for end users (e.g., the REPL
 /// gasnu; the in-browser surfaces nibli-ui/nibli-wasm embed the same crates
 /// natively rather than through this component).
 interface lasna {
@@ -271,8 +274,10 @@ interface lasna {
     resource session {
         /// Create a new session (internally creates a fresh KB).
         constructor();
-        /// Assert Lojban text as facts. A bare-`.i` multi-sentence input splits
-        /// into one INDEPENDENT fact per root (logical connectives compile to a
+        /// Assert text (in the session language — Klaro by default) as facts.
+        /// A multi-statement input (bare-`.i` in Lojban; one statement per
+        /// sentence in Klaro) splits into one INDEPENDENT fact per root
+        /// (logical connectives compile to a
         /// single root and stay one compound fact — same granularity as the
         /// native surfaces). Returns one (fact-id, logic-buffer) pair per
         /// asserted root, in root order: the id for later retraction, the
@@ -287,11 +292,12 @@ interface lasna {
         /// go'i snapshot semantics. New code persists buffers and replays via
         /// `assert-buffer-with-id`.
         assert-text-with-id: func(input: string, id: fact-id) -> result<_, nibli-error>;
-        /// Query whether Lojban text is entailed.
+        /// Query whether text (in the session language) is entailed.
         query-text: func(input: string) -> result<query-result, nibli-error>;
-        /// Query Lojban text with proof trace.
+        /// Query text (in the session language) with proof trace.
         query-text-with-proof: func(input: string) -> result<tuple<query-result, proof-trace>, nibli-error>;
-        /// Query Lojban text and return witness bindings for existential variables.
+        /// Query text (in the session language) and return witness bindings
+        /// for existential variables.
         query-find-text: func(input: string) -> result<list<list<witness-binding>>, nibli-error>;
         /// Debug: compile text to the typed logic buffer without asserting.
         /// The host renders it (structural tree + English gloss); no S-expression
@@ -301,7 +307,7 @@ interface lasna {
         reset-kb: func() -> result<_, nibli-error>;
         /// Register a predicate name for external computation dispatch.
         register-compute-predicate: func(name: string);
-        /// Assert a ground fact directly into the KB (bypasses Lojban parsing).
+        /// Assert a ground fact directly into the KB (bypasses text parsing).
         assert-fact: func(relation: string, args: list<logical-term>) -> result<fact-id, nibli-error>;
         /// Assert a ground fact directly with a CALLER-CHOSEN fact id (see
         /// `assert-text-with-id` — for persistent restart-replay).

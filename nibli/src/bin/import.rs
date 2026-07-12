@@ -8,9 +8,9 @@
 //!   --raw     import every triple as a 2-arg fact (skip OWL class handling:
 //!             rdfs:subClassOf → subsort, rdf:type → entity sort)
 //!   --export  print the KB export after import (round-trip view)
-//!   --lang    front-end for --query text (default Lojban; NIBLI_LANG also
-//!             honored, the flag wins). Import itself is language-free
-//!             (facts are injected directly, no parse).
+//!   --lang    front-end for --query text (default Klaro since THE FLIP;
+//!             NIBLI_LANG also honored, the flag wins). Import itself is
+//!             language-free (facts are injected directly, no parse).
 //!   --query   run a query against the imported KB (repeatable)
 //!
 //! Note: `--query` reaches only relation names the selected front-end can

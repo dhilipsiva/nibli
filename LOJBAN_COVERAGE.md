@@ -1,6 +1,15 @@
 # Lojban Language Coverage
 
-Current coverage of Lojban grammar, semantics, and reasoning in Nibli.
+> **Legacy scope.** Lojban is nibli's **legacy front-end** — Klaro (the
+> predicate-call surface, spec [SURFACE_SYNTAX.md](SURFACE_SYNTAX.md)) has been
+> the default input language on every surface since 2026-07-12 (THE FLIP).
+> Lojban stays fully supported behind `:lojban` / `--lang lojban` /
+> `NIBLI_LANG=lojban`, and this document remains normative for that mode and
+> for the Klaro↔Lojban equivalence battery (`verify-klaro`,
+> `verify-klaro-twins`), until the gerna parser retires at the clean-core v2
+> milestone (SURFACE_SYNTAX.md §14).
+
+Current coverage of Lojban grammar, semantics, and reasoning in Nibli's legacy front-end (`gerna`).
 
 ## Morphology (Lexer)
 

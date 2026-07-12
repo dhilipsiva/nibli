@@ -232,7 +232,7 @@ fn main() {
                 } else if let Some(debug_text) = input.strip_prefix(":debug ") {
                     let text = debug_text.trim();
                     if text.is_empty() {
-                        println!("[Host] Usage: :debug <lojban text>");
+                        println!("[Host] Usage: :debug <text>");
                         continue;
                     }
                     match engine.compile_debug(text) {
@@ -369,7 +369,7 @@ fn main() {
                 } else if let Some(find_text) = input.strip_prefix("??") {
                     let text = find_text.trim();
                     if text.is_empty() {
-                        println!("[Host] Usage: ?? <lojban query with ma>");
+                        println!("[Host] Usage: ?? <query with a variable>");
                         continue;
                     }
 
@@ -398,7 +398,7 @@ fn main() {
                 } else if let Some(query_text) = input.strip_prefix('?') {
                     let text = query_text.trim();
                     if text.is_empty() {
-                        println!("[Host] Usage: ? <lojban query>");
+                        println!("[Host] Usage: ? <query>");
                         continue;
                     }
 

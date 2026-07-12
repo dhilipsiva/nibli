@@ -4,12 +4,14 @@
 //! implementation (built-in arithmetic + external TCP backend), and runs an
 //! interactive REPL (reedline-based) with these prefixes:
 //!
-//! - **(bare text)** — Assert Lojban facts
+//! - **(bare text)** — Assert facts in the session language (Klaro by default;
+//!   legacy Lojban via `:lojban`/`NIBLI_LANG=lojban`)
 //! - **`?`** — Query with proof trace
 //! - **`??`** — Query with witness extraction (find satisfying bindings)
 //! - **`:debug`** — Compile to logic representation without asserting
-//! - **`:load`** — Load a `.lojban` file (assert each line, skip `#` comments)
-//! - **`:assert`** — Assert ground facts directly (bypasses Lojban parsing)
+//! - **`:load`** — Load a `.klaro`/`.lojban` file (front-end by extension;
+//!   assert each line, skip `#` comments)
+//! - **`:assert`** — Assert ground facts directly (bypasses text parsing)
 //! - **`:retract`** — Retract a fact by ID (triggers KB rebuild)
 //! - **`:facts`** — List all active facts in the KB
 //! - **`:compute`** — Register predicates for compute dispatch
@@ -1181,7 +1183,7 @@ impl Repl {
         if let Some(debug_text) = input.strip_prefix(":debug ") {
             let text = debug_text.trim();
             if text.is_empty() {
-                println!("[Host] Usage: :debug <lojban text>");
+                println!("[Host] Usage: :debug <text>");
                 return false;
             }
             self.prepare_session();
@@ -1448,7 +1450,7 @@ impl Repl {
                             Ok(mut file) => {
                                 let mut written = 0u32;
                                 for f in &facts {
-                                    // The label is the original Lojban text (or :assert form)
+                                    // The label is the original source text (or :assert form)
                                     if writeln!(file, "{}", f.label).is_ok() {
                                         written += 1;
                                     }
@@ -1485,7 +1487,7 @@ impl Repl {
         } else if let Some(verbose_query) = input.strip_prefix(":proof-verbose ") {
             let text = verbose_query.trim();
             if text.is_empty() {
-                println!("[Host] Usage: :proof-verbose <lojban query>");
+                println!("[Host] Usage: :proof-verbose <query>");
                 return false;
             }
             // The full role-level trace (the "under the hood" view); `?` shows
@@ -1494,7 +1496,7 @@ impl Repl {
         } else if let Some(find_text) = input.strip_prefix("??") {
             let text = find_text.trim();
             if text.is_empty() {
-                println!("[Host] Usage: ?? <lojban query with ma>");
+                println!("[Host] Usage: ?? <query with a variable>");
                 return false;
             }
             self.prepare_session();
@@ -1522,7 +1524,7 @@ impl Repl {
         } else if let Some(query_text) = input.strip_prefix('?') {
             let text = query_text.trim();
             if text.is_empty() {
-                println!("[Host] Usage: ? <lojban query>");
+                println!("[Host] Usage: ? <query>");
                 return false;
             }
             self.run_proof_query(text, false);
@@ -1630,7 +1632,7 @@ impl Repl {
 
 fn main() -> Result<()> {
     println!("==================================================");
-    println!(" Lojban Neuro-Symbolic Engine - V4 Typed Pipeline  ");
+    println!(" Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  ");
     println!("==================================================");
 
     let mut config = Config::new();

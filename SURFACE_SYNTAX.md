@@ -1,17 +1,22 @@
-# Klaro — a human-readable FOL surface syntax for nibli (DRAFT v0.1)
+# Klaro — a human-readable FOL surface syntax for nibli (v0.1 — implemented)
 
-> **Status: design draft, not implemented.** Working name "Klaro" (rename freely; a
-> repo-convention Lojban name candidate is `klina`, "clear/transparent"). This spec was
-> synthesized from a three-design panel judged on parseability, semantic fidelity, and
-> readability, against a 61-construct inventory of the Lojban fragment gerna+smuni
-> actually implement, and stress-tested on 18 real corpus sentences (GDPR / drug-interaction
-> KBs). Every implemented Lojban construct is either given a surface form or explicitly
-> ruled out of scope with a justification — no silent drops.
+> **Status: v0.1 compat profile IMPLEMENTED and shipping** — Klaro is the DEFAULT
+> front-end on every runtime surface since 2026-07-12 (THE FLIP; the `klaro` crate,
+> tracker `KLARO_TODO.md`). The executable grammar is `klaro/src/klaro.pest` — the
+> normative form of §15, from which the parser is generated, so this spec's grammar and
+> the shipped parser cannot drift. Working name "Klaro" (a repo-convention Lojban name
+> candidate is `klina`, "clear/transparent"). The spec was synthesized from a
+> three-design panel judged on parseability, semantic fidelity, and readability, against
+> a 61-construct inventory of the Lojban fragment gerna+smuni actually implement, and
+> stress-tested on 18 real corpus sentences (GDPR / drug-interaction KBs). Every
+> implemented Lojban construct is either given a surface form or explicitly ruled out of
+> scope with a justification — no silent drops.
 >
 > The spec defines **two profiles**: §1–§13 is the **v0.1 compat profile** (mirrors
-> implemented Lojban semantics exactly — Klaro and gerna compile to identical buffers);
-> **§14 is the clean-core v2 profile** — the de-Lojbanized semantics target for
-> replacing Lojban outright.
+> implemented Lojban semantics exactly — Klaro and gerna compile to identical buffers,
+> CI-enforced by `verify-klaro` / `verify-klaro-twins`); **§14 is the clean-core v2
+> profile** — the de-Lojbanized semantics target for replacing Lojban outright. **v2 is
+> a spec target, not implemented.**
 
 **Classification:** Klaro is a *declarative knowledge representation language* — a
 human-readable surface syntax for function-free first-order logic with equality,
@@ -402,19 +407,29 @@ the stores, rendering, and every soundness gate are untouched.
 - **Unknown names are a compile error** (no arity-2 default) — stricter than gerna, and
   the right polarity for a zero-hallucination system.
 
-**Verification obligations** (the new-front-end analogs of the existing gates):
+**Verification obligations** (the new-front-end analogs of the existing gates — ALL
+BUILT and gated in `ci` as of 2026-07-12):
 1. A **seam-conformance gate** mirroring `nibli-verify/src/seam.rs`: compile Klaro text
    end-to-end and check the FOL against hand-verified structure + metamorphic pairs
    (e.g. `pred(x2: a, x1: b)` ≡ the alias-permuted spelling, canonicalized by positional
-   var-rename).
+   var-rename). **Built: `just verify-klaro`** (the CONSTRUCT_INVENTORY sweep with
+   Lojban twins, `nibli-verify/src/klaro_battery.rs` + `tests/klaro_gate.rs`).
 2. An **alias-map differential gate** (verify-dict style): alias → gismu →
    place-permutation round-trips checked against the smuni dictionary; the alias map is
-   new trusted base and L4's echo does not replace a CI gate.
+   new trusted base and L4's echo does not replace a CI gate. **Built:
+   `just verify-klaro-dict`** (`tests/alias_differential.rs` — arity equality,
+   round-trips, swap/label integrity, plus a per-alias behavioral compile-equality
+   battery).
 3. A **Klaro↔Lojban translation battery**: mechanically translate the shipped corpora
    and seeded random sentences both ways; compiled `LogicBuffer`s must be equal (up to
    variable renaming). This is *stronger* than the camxes parse-differential (which
-   checks acceptance only) and replaces it for this front-end.
-4. **Fuzzing**: a `fuzz-parse`-style libFuzzer target for the Klaro parser.
+   checks acceptance only) and replaces it for this front-end. **Built: the render
+   battery inside `just verify-klaro`** plus the committed corpus twins gate
+   **`just verify-klaro-twins`** (`tests/klaro_twins.rs` — per-line canonicalized-buffer
+   equality + the Klaro determinism leg).
+4. **Fuzzing**: a `fuzz-parse`-style libFuzzer target for the Klaro parser. **Built:
+   `just fuzz-klaro`** (parse→resolve→emit with a corrupt-buffer oracle; seeded and run
+   in the `fuzz-ci` gate).
 
 **Fixed-in-synthesis defects** (from the judge panel, so they don't regress):
 maximal-munch keyword-boundary behavior (kills the `everyday`→`every day`,
