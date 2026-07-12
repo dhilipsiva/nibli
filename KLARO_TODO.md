@@ -10,14 +10,6 @@ primary/default language everywhere, gerna demoted to the equivalence battery + 
 `.lojban` load; FULL alias-map generation (~1,338 gismu) from day one; every bullet
 lands independently CI-green.
 
-- **klaro parser core** — hand-written recursive descent (`src/parser.rs`, owned tree
-  AST in `src/ast.rs` — Box/Vec, no bumpalo; document the divergence from gerna's arena):
-  terms, determiner phrases (`some/the/every/every the/exactly N/no`), predications with
-  positional+named args, the operator precedence chain (`~` · prefixes · `&` `|` `^`
-  `<->` · `->` right-assoc, parens), `past/now/future` + `must/may` prefixes, `=`
-  equality (binary only), `.`-terminated statements, comments. Positioned errors
-  (line/column) like gerna's. The one bounded-backtrack spot: parse `Det Restr` once,
-  then peek `Var ":"` to commit DetBlock vs DetPhrase-in-Impl.
 - **klaro parser completion + resolve** — rel clauses (`where`/`also`; bare-predicate
   sugar tries Claim branch first; mandatory-`it` static check: full-claim body with zero
   `it` = parse error), abstractions (`event/fact/property/amount/concept { }`),
