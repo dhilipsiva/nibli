@@ -697,10 +697,19 @@ fuzz-query SECONDS="0":
     @test -n "${NIBLI_NIGHTLY_BIN:-}" || { echo "NIBLI_NIGHTLY_BIN is not set — run inside the Nix dev shell"; exit 1; }
     cd fuzz && PATH="$NIBLI_NIGHTLY_BIN:$PATH" cargo fuzz run fuzz_query -- -max_len=4096 {{ if SECONDS != "0" { "-max_total_time=" + SECONDS } else { "" } }}
 
-# Seed the fuzz corpora from the shipped .lojban corpus files. Each non-comment,
-# non-REPL-command line becomes a seed for fuzz_parse/fuzz_assert; fuzz_query
+# Fuzz the Klaro front-end (parse -> resolve -> emit), asserting any accepted
+# input compiles through smuni WITHOUT a "corrupt AST buffer" rejection — a
+# structurally invalid emitted buffer is a klaro bug, surfaced as a panic.
+fuzz-klaro SECONDS="0":
+    @test -n "${NIBLI_NIGHTLY_BIN:-}" || { echo "NIBLI_NIGHTLY_BIN is not set — run inside the Nix dev shell"; exit 1; }
+    cd fuzz && PATH="$NIBLI_NIGHTLY_BIN:$PATH" cargo fuzz run fuzz_klaro -- -max_len=4096 {{ if SECONDS != "0" { "-max_total_time=" + SECONDS } else { "" } }}
+
+# Seed the fuzz corpora. Each non-comment, non-REPL-command line of the shipped
+# .lojban corpus files becomes a seed for fuzz_parse/fuzz_assert; fuzz_query
 # seeds are the line DOUBLED, matching its split-half input encoding (first half
-# asserted, second half queried).
+# asserted, second half queried); fuzz_klaro seeds come from the Klaro
+# acceptance corpus (extend with the .klaro corpus twins once they exist —
+# corpora-twins bullet).
 fuzz-seed:
     #!/usr/bin/env python3
     import pathlib
@@ -715,12 +724,22 @@ fuzz-seed:
         d.mkdir(parents=True, exist_ok=True)
         for i, ln in enumerate(lines):
             (d / f"seed_{i:04}").write_text(encode(ln), encoding="utf-8")
-    print(f"seeded {len(lines)} entries per target under fuzz/corpus/")
+    klaro_lines = []
+    for src in ("klaro/tests/acceptance.klaro",):
+        for ln in pathlib.Path(src).read_text(encoding="utf-8").splitlines():
+            ln = ln.strip()
+            if ln and not ln.startswith("#"):
+                klaro_lines.append(ln)
+    d = pathlib.Path("fuzz/corpus") / "fuzz_klaro"
+    d.mkdir(parents=True, exist_ok=True)
+    for i, ln in enumerate(klaro_lines):
+        (d / f"seed_{i:04}").write_text(ln, encoding="utf-8")
+    print(f"seeded {len(lines)} .lojban entries x 3 targets + {len(klaro_lines)} .klaro entries under fuzz/corpus/")
 
 # Time-boxed unattended fuzz gate (CI): seed corpora, then run every target for
 # SECONDS each. libFuzzer exits non-zero on crash/OOM, zero when the time box
 # expires clean — a pass/fail gate, not an open-ended campaign.
-fuzz-ci SECONDS="120": fuzz-seed (fuzz-parse SECONDS) (fuzz-assert SECONDS) (fuzz-query SECONDS)
+fuzz-ci SECONDS="120": fuzz-seed (fuzz-parse SECONDS) (fuzz-assert SECONDS) (fuzz-query SECONDS) (fuzz-klaro SECONDS)
 
 # ── Mutation testing (soundness paths) ──────────────────────────
 

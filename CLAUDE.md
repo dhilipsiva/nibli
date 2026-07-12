@@ -54,8 +54,9 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | `just fuzz-parse [SECS]` | Fuzz gerna parser (libFuzzer via the Nix shell's pinned nightly, `NIBLI_NIGHTLY_BIN` — no rustup needed). Pass seconds to limit run time. |
 | `just fuzz-assert [SECS]` | Fuzz nibli-engine assert_text (full pipeline) |
 | `just fuzz-query [SECS]` | Fuzz nibli-engine assert + query (stateful KB; split-half input: first half asserted, second half queried) |
-| `just fuzz-seed` | Seed `fuzz/corpus/` for all three targets from the shipped `.lojban` corpus files |
-| `just fuzz-ci [SECS]` | Unattended fuzz gate: `fuzz-seed` + all three targets × SECS (default 120) each; non-zero on crash/OOM/leak (LeakSanitizer is ON — the arena AST is leak-free by invariant, see `gerna/src/ast.rs`). Runs as a parallel `fuzz` job in the GitHub workflow. |
+| `just fuzz-klaro [SECS]` | Fuzz the Klaro front-end (parse → resolve → emit): any accepted input must compile through smuni WITHOUT a "corrupt AST buffer" rejection — a structurally invalid emitted buffer is a klaro bug, surfaced as an oracle panic (plus the usual crash/leak detection) |
+| `just fuzz-seed` | Seed `fuzz/corpus/` for all four targets — the shipped `.lojban` corpus files for the three Lojban-pipeline targets, `klaro/tests/acceptance.klaro` for `fuzz_klaro` |
+| `just fuzz-ci [SECS]` | Unattended fuzz gate: `fuzz-seed` + all four targets × SECS (default 120) each; non-zero on crash/OOM/leak (LeakSanitizer is ON — the arena AST is leak-free by invariant, see `gerna/src/ast.rs`). Runs as a parallel `fuzz` job in the GitHub workflow. |
 | `just mutants [JOBS]` | Mutation-testing gate over the soundness paths (scope + per-mutant test set in `.cargo/mutants.toml`: logji/smuni/nibli-engine suites per mutant). Diffs survivors against `mutants-baseline.txt` (line:col-stripped): fails on any NEW survivor, prompts a shrink for killed ones. On-demand (~17 min full sweep), not in the per-push gate. Baseline + stats in GUARANTEES.md. |
 
 **Important:**

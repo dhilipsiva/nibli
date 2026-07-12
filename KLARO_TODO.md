@@ -23,13 +23,6 @@ xorlo witnesses identically to Lojban (compat requires it — the equivalence ba
 checks verdict identity) and the behavior is disclosed spec semantics, not hidden
 residue; every bullet lands independently CI-green.
 
-- **fuzz_klaro target** — fuzz/Cargo.toml (workspace-excluded) gains `klaro` + `smuni`
-  deps and `[[bin]] fuzz_klaro` → `fuzz_targets/fuzz_klaro.rs`: parse arbitrary UTF-8;
-  when parse succeeds, `smuni::compile_from_gerna_ast` must NEVER report a corrupt AST
-  buffer (klaro handing smuni a structurally invalid buffer is a klaro bug — assert on
-  the error class). Extend `fuzz-seed` (Justfile:675) with `fuzz/corpus/fuzz_klaro/`
-  from `klaro/tests/acceptance.klaro` + the `.klaro` corpus twins once they exist.
-  Recipe `fuzz-klaro` cloned from `fuzz-parse`; join `fuzz-ci`.
 - **Language enum + engine dispatch (default still Lojban)** — `nibli-types/src/lang.rs`:
   `Language { Klaro, Lojban }` + FromStr/Display (introduced defaulting to LOJBAN; the
   default flips in THE FLIP bullet). NibliEngine: `Cell<Language>` + `set_language`/
@@ -60,7 +53,9 @@ residue; every bullet lands independently CI-green.
   canonicalized compiled-buffer equality — this IS the shipped-corpora leg of spec §13
   obligation 3 and makes the dual phase self-policing. MUST LAND BEFORE any further
   corpus edits (the pending TODO.md determinism-corpus GIhA bullet edits a twinned
-  file). Also add `determinism_corpus_klaro_native` beside (not replacing) the Lojban
+  file). Extend `fuzz-seed`'s fuzz_klaro sources with the four `.klaro` twins (today it
+  reads only `klaro/tests/acceptance.klaro` — relocated from the landed fuzz_klaro
+  bullet). Also add `determinism_corpus_klaro_native` beside (not replacing) the Lojban
   native leg.
 - **THE FLIP (native)** — `Language::default()` → Klaro. Mechanical sweep: grep
   `NibliEngine::new()` workspace-wide; nibli-engine tests (integration.rs ~159 Lojban
