@@ -71,12 +71,12 @@ impl<'a> Emitter<'a> {
         err_at(self.input, at, message)
     }
 
-    fn push_selbri(&mut self, s: Predicate) -> u32 {
+    fn push_predicate(&mut self, s: Predicate) -> u32 {
         self.buffer.predicates.push(s);
         (self.buffer.predicates.len() - 1) as u32
     }
 
-    fn push_sumti(&mut self, s: Argument) -> u32 {
+    fn push_argument(&mut self, s: Argument) -> u32 {
         self.buffer.arguments.push(s);
         (self.buffer.arguments.len() - 1) as u32
     }
@@ -166,7 +166,7 @@ impl<'a> Emitter<'a> {
         ))))
     }
 
-    /// A single-bridi sentence: Predication or Equality, with the bridi-level
+    /// A single-proposition sentence: Predication or Equality, with the proposition-level
     /// flags (parser invariant: nothing else reaches here).
     fn simple(
         &mut self,
@@ -185,10 +185,10 @@ impl<'a> Emitter<'a> {
             Deontic::Must => DeonticMood::Obligation,
             Deontic::May => DeonticMood::Permission,
         });
-        let bridi = match claim {
-            Claim::Predication(p) => self.predication_bridi(p, negated, tense, deontic)?,
+        let proposition = match claim {
+            Claim::Predication(p) => self.predication_proposition(p, negated, tense, deontic)?,
             Claim::Equality(lhs, rhs) => {
-                let relation = self.push_selbri(Predicate::Root("du".into()));
+                let relation = self.push_predicate(Predicate::Root("du".into()));
                 let head = self.term(lhs, at)?;
                 let tail = self.term(rhs, at)?;
                 Proposition {
@@ -202,10 +202,10 @@ impl<'a> Emitter<'a> {
             }
             other => unreachable!("simple() over a compound claim: {other:?}"),
         };
-        Ok(self.push_sentence(Sentence::Simple(bridi)))
+        Ok(self.push_sentence(Sentence::Simple(proposition)))
     }
 
-    fn predication_bridi(
+    fn predication_proposition(
         &mut self,
         p: &Predication,
         negated: bool,
@@ -237,7 +237,7 @@ impl<'a> Emitter<'a> {
                         )
                     })?;
                     let inner = self.term(&arg.term, arg.span.start)?;
-                    tail_terms.push(self.push_sumti(Argument::Tagged((place as u8, inner))));
+                    tail_terms.push(self.push_argument(Argument::Tagged((place as u8, inner))));
                 }
             }
         }
@@ -247,10 +247,10 @@ impl<'a> Emitter<'a> {
                 .entry
                 .map(|e| e.gismu.to_owned())
                 .unwrap_or_else(|| tag.pred.last().unwrap().clone());
-            let modal_selbri = self.push_selbri(Predicate::Root(gismu));
+            let modal_predicate = self.push_predicate(Predicate::Root(gismu));
             let inner = self.term(&tag.term, tag.span.start)?;
-            tail_terms.push(self.push_sumti(Argument::ModalTagged((
-                ModalTag::Custom(modal_selbri),
+            tail_terms.push(self.push_argument(Argument::ModalTagged((
+                ModalTag::Custom(modal_predicate),
                 inner,
             ))));
         }
@@ -285,7 +285,7 @@ impl<'a> Emitter<'a> {
         match det {
             Det::Every => {
                 let cmavo = self.var_cmavo(var, at)?.to_owned();
-                let restr_sentence = self.restr_bridi_sentence(restr, &cmavo)?;
+                let restr_sentence = self.restr_proposition_sentence(restr, &cmavo)?;
                 let body_idx = self.claim(body, at)?;
                 let impl_idx = self.push_sentence(Sentence::Connected((
                     SentenceConnective::Implies,
@@ -296,10 +296,10 @@ impl<'a> Emitter<'a> {
             }
             Det::Some => {
                 let cmavo = self.var_cmavo(var, at)?.to_owned();
-                let restr_sentence = self.restr_bridi_sentence(restr, &cmavo)?;
+                let restr_sentence = self.restr_proposition_sentence(restr, &cmavo)?;
                 let body_idx = self.claim(body, at)?;
                 // Bare da/de/di closes existentially at its first occurrence
-                // (the restrictor bridi) — the ge…gi conjunction keeps both
+                // (the restrictor proposition) — the ge…gi conjunction keeps both
                 // conjuncts in one fact, matching lo-with-restrictor.
                 Ok(self.push_sentence(Sentence::Connected((
                     SentenceConnective::And,
@@ -316,11 +316,15 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    /// `<restr>(<var>)` as a Simple sentence — the antecedent/witness bridi of
+    /// `<restr>(<var>)` as a Simple sentence — the antecedent/witness proposition of
     /// a block determiner.
-    fn restr_bridi_sentence(&mut self, restr: &Restr, cmavo: &str) -> Result<u32, ParseError> {
-        let relation = self.restr_selbri(restr)?;
-        let head = self.push_sumti(Argument::Pronoun(cmavo.to_owned()));
+    fn restr_proposition_sentence(
+        &mut self,
+        restr: &Restr,
+        cmavo: &str,
+    ) -> Result<u32, ParseError> {
+        let relation = self.restr_predicate(restr)?;
+        let head = self.push_argument(Argument::Pronoun(cmavo.to_owned()));
         Ok(self.push_sentence(Sentence::Simple(Proposition {
             relation,
             head_terms: vec![head],
@@ -342,7 +346,7 @@ impl<'a> Emitter<'a> {
         }
         let mut acc = ids.pop().expect("pred_seq non-empty");
         while let Some(modifier) = ids.pop() {
-            acc = self.push_selbri(Predicate::Pair((modifier, acc)));
+            acc = self.push_predicate(Predicate::Pair((modifier, acc)));
         }
         Ok(acc)
     }
@@ -351,7 +355,7 @@ impl<'a> Emitter<'a> {
         match unit {
             PredUnit::Group(inner) => {
                 let inner_idx = self.pred_seq(inner, at)?;
-                Ok(self.push_selbri(Predicate::Grouped(inner_idx)))
+                Ok(self.push_predicate(Predicate::Grouped(inner_idx)))
             }
             PredUnit::Word(parts) => {
                 if parts.len() > 1 {
@@ -366,7 +370,7 @@ impl<'a> Emitter<'a> {
                                 .unwrap_or_else(|| part.clone()),
                         );
                     }
-                    return Ok(self.push_selbri(Predicate::Compound(gismu_parts)));
+                    return Ok(self.push_predicate(Predicate::Compound(gismu_parts)));
                 }
                 let word = &parts[0];
                 let info = self.resolved(word, at)?;
@@ -374,10 +378,10 @@ impl<'a> Emitter<'a> {
                     Some(entry) => (entry.gismu.to_owned(), entry.swap),
                     None => (word.clone(), None),
                 };
-                let root = self.push_selbri(Predicate::Root(gismu));
+                let root = self.push_predicate(Predicate::Root(gismu));
                 Ok(match swap {
                     None => root,
-                    Some(p) => self.push_selbri(Predicate::Converted((conversion_for(p), root))),
+                    Some(p) => self.push_predicate(Predicate::Converted((conversion_for(p), root))),
                 })
             }
         }
@@ -386,7 +390,7 @@ impl<'a> Emitter<'a> {
     // ── terms ──
 
     fn term(&mut self, term: &Term, at: usize) -> Result<u32, ParseError> {
-        let sumti = match term {
+        let argument = match term {
             Term::Unspecified => Argument::Unspecified,
             Term::Witness => Argument::Pronoun("ma".into()),
             Term::Number(n) => Argument::Number(*n),
@@ -395,50 +399,54 @@ impl<'a> Emitter<'a> {
             Term::Key(k) => Argument::Pronoun(keyterm_cmavo(*k).into()),
             Term::Name { name, rel_clauses } => {
                 let mut idx =
-                    self.push_sumti(Argument::Name(name.to_lowercase().replace('_', " ")));
+                    self.push_argument(Argument::Name(name.to_lowercase().replace('_', " ")));
                 for rc in rel_clauses {
                     let clause = self.rel_clause(rc)?;
-                    idx = self.push_sumti(Argument::Restricted((idx, clause)));
+                    idx = self.push_argument(Argument::Restricted((idx, clause)));
                 }
                 return Ok(idx);
             }
             Term::Abstraction { kind, body } => {
                 let body_idx = self.claim(body, at)?;
-                let selbri =
-                    self.push_selbri(Predicate::Abstraction((abstraction_kind(*kind), body_idx)));
-                Argument::Description((Determiner::Indefinite, selbri))
+                let predicate = self
+                    .push_predicate(Predicate::Abstraction((abstraction_kind(*kind), body_idx)));
+                Argument::Description((Determiner::Indefinite, predicate))
             }
             Term::Det { det, restr } => {
-                let selbri = self.restr_selbri(restr)?;
+                let predicate = self.restr_predicate(restr)?;
                 let base = match det {
-                    Det::Some => Argument::Description((Determiner::Indefinite, selbri)),
-                    Det::The => Argument::Description((Determiner::Definite, selbri)),
-                    Det::Every => Argument::Description((Determiner::UniversalIndefinite, selbri)),
-                    Det::EveryThe => Argument::Description((Determiner::UniversalDefinite, selbri)),
+                    Det::Some => Argument::Description((Determiner::Indefinite, predicate)),
+                    Det::The => Argument::Description((Determiner::Definite, predicate)),
+                    Det::Every => {
+                        Argument::Description((Determiner::UniversalIndefinite, predicate))
+                    }
+                    Det::EveryThe => {
+                        Argument::Description((Determiner::UniversalDefinite, predicate))
+                    }
                     Det::Exactly(n) => {
-                        Argument::QuantifiedDescription((*n, Determiner::Indefinite, selbri))
+                        Argument::QuantifiedDescription((*n, Determiner::Indefinite, predicate))
                     }
                     Det::ExactlyThe(n) => {
-                        Argument::QuantifiedDescription((*n, Determiner::Definite, selbri))
+                        Argument::QuantifiedDescription((*n, Determiner::Definite, predicate))
                     }
                 };
-                let mut idx = self.push_sumti(base);
+                let mut idx = self.push_argument(base);
                 for rc in &restr.rel_clauses {
                     let clause = self.rel_clause(rc)?;
-                    idx = self.push_sumti(Argument::Restricted((idx, clause)));
+                    idx = self.push_argument(Argument::Restricted((idx, clause)));
                 }
                 return Ok(idx);
             }
         };
-        Ok(self.push_sumti(sumti))
+        Ok(self.push_argument(argument))
     }
 
     // ── restrictors ──
 
-    /// The restrictor's selbri (negation, selector conversion, linked args) —
-    /// WITHOUT its relative clauses (the caller wraps those around the sumti,
+    /// The restrictor's predicate (negation, selector conversion, linked args) —
+    /// WITHOUT its relative clauses (the caller wraps those around the argument,
     /// or rejects them for block determiners).
-    fn restr_selbri(&mut self, restr: &Restr) -> Result<u32, ParseError> {
+    fn restr_predicate(&mut self, restr: &Restr) -> Result<u32, ParseError> {
         let at = restr.span.start;
         let core = match &restr.kind {
             RestrKind::Selected { pred, label } => {
@@ -447,9 +455,9 @@ impl<'a> Emitter<'a> {
                     Some(entry) => (entry.gismu.to_owned(), entry.swap),
                     None => (pred.clone(), None),
                 };
-                let mut idx = self.push_selbri(Predicate::Root(gismu));
+                let mut idx = self.push_predicate(Predicate::Root(gismu));
                 if let Some(p) = alias_swap {
-                    idx = self.push_selbri(Predicate::Converted((conversion_for(p), idx)));
+                    idx = self.push_predicate(Predicate::Converted((conversion_for(p), idx)));
                 }
                 let place = label_index(&info, label).ok_or_else(|| {
                     self.fail(
@@ -458,8 +466,8 @@ impl<'a> Emitter<'a> {
                     )
                 })? + 1;
                 if place > 1 {
-                    idx =
-                        self.push_selbri(Predicate::Converted((conversion_for(place as u8), idx)));
+                    idx = self
+                        .push_predicate(Predicate::Converted((conversion_for(place as u8), idx)));
                 }
                 idx
             }
@@ -498,7 +506,7 @@ impl<'a> Emitter<'a> {
                         }
                     }
                     if bound_place > 1 {
-                        idx = self.push_selbri(Predicate::Converted((
+                        idx = self.push_predicate(Predicate::Converted((
                             conversion_for(bound_place as u8),
                             idx,
                         )));
@@ -521,16 +529,16 @@ impl<'a> Emitter<'a> {
                             let idx = self.term(&arg.term, arg.span.start)?;
                             be_args.push(idx);
                         } else {
-                            be_args.push(self.push_sumti(Argument::Unspecified));
+                            be_args.push(self.push_argument(Argument::Unspecified));
                         }
                     }
-                    idx = self.push_selbri(Predicate::WithArgs((idx, be_args)));
+                    idx = self.push_predicate(Predicate::WithArgs((idx, be_args)));
                 }
                 idx
             }
         };
         Ok(if restr.negated {
-            self.push_selbri(Predicate::Negated(core))
+            self.push_predicate(Predicate::Negated(core))
         } else {
             core
         })
@@ -544,7 +552,7 @@ impl<'a> Emitter<'a> {
         let body_sentence = match &rc.body {
             ClauseBody::Bare { negated, seq } => {
                 let relation = self.pred_seq(seq, rc.span.start)?;
-                let head = self.push_sumti(Argument::Pronoun("ke'a".into()));
+                let head = self.push_argument(Argument::Pronoun("ke'a".into()));
                 self.push_sentence(Sentence::Simple(Proposition {
                     relation,
                     head_terms: vec![head],
@@ -721,7 +729,7 @@ mod tests {
         twins("able(me, property { fast(slot) }).");
     }
 
-    // ── conversions, rel clauses, tanru, linked args ──
+    // ── conversions, rel clauses, pair, linked args ──
 
     #[test]
     fn converted_alias_and_selector_twins() {
@@ -730,7 +738,7 @@ mod tests {
     }
 
     #[test]
-    fn tanru_and_linked_arg_twins() {
+    fn pair_and_linked_arg_twins() {
         twins("healthy data(Kanrek).");
         twins("permitted(every tends(some data)).");
         twins("goes(Adam where dog).");

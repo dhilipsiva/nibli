@@ -338,7 +338,7 @@ impl Walk<'_> {
         let at = rc.span.start;
         match &rc.body {
             ClauseBody::Bare { seq, .. } => {
-                // L2 — a multi-unit bare tanru in a clause body is ONE
+                // L2 — a multi-unit bare pair in a clause body is ONE
                 // shared-event predicate on `it`, not two conjuncts.
                 if seq.0.len() >= 2 {
                     push(
@@ -347,7 +347,7 @@ impl Walk<'_> {
                         at,
                         "L2",
                         format!(
-                            "this bare clause body is ONE shared-event tanru applied \
+                            "this bare clause body is ONE shared-event pair applied \
                              to 'it' (head '{}') — write the predicates joined with \
                              '&' for separate restrictor conjuncts",
                             seq.head_word()
@@ -480,10 +480,10 @@ mod tests {
         assert!(linter.lint("big(the dog).").iter().any(|n| n.code == "L1"));
     }
 
-    // ── L2 — tanru vs & in clause bodies ──
+    // ── L2 — pair vs & in clause bodies ──
 
     #[test]
-    fn l2_fires_on_bare_multiword_tanru_body() {
+    fn l2_fires_on_bare_multiword_pair_body() {
         assert!(codes("beautiful(every person where big fast).").contains(&"L2"));
     }
 

@@ -54,22 +54,22 @@ fn nope(msg: impl Into<String>) -> NibliError {
 
 /// Operator precedence (loosest = smallest). `->`=1, `<->`=2, `^`=3, `|`=4,
 /// `&`=5; prenex/blocks are 0 (always parenthesized under an operator);
-/// simple bridi are atoms.
+/// simple proposition are atoms.
 const PREC_ATOM: u8 = 6;
 
 impl<'a> Renderer<'a> {
-    fn selbri(&self, id: u32) -> R<&Predicate> {
+    fn predicate(&self, id: u32) -> R<&Predicate> {
         self.buffer
             .predicates
             .get(id as usize)
-            .ok_or_else(|| nope(format!("selbri index {id} out of bounds")))
+            .ok_or_else(|| nope(format!("predicate index {id} out of bounds")))
     }
 
-    fn sumti(&self, id: u32) -> R<&Argument> {
+    fn argument(&self, id: u32) -> R<&Argument> {
         self.buffer
             .arguments
             .get(id as usize)
-            .ok_or_else(|| nope(format!("sumti index {id} out of bounds")))
+            .ok_or_else(|| nope(format!("argument index {id} out of bounds")))
     }
 
     fn sentence_node(&self, id: u32) -> R<&Sentence> {
@@ -83,7 +83,7 @@ impl<'a> Renderer<'a> {
 
     fn sentence(&self, id: u32, min_prec: u8) -> R<String> {
         let (text, prec) = match self.sentence_node(id)? {
-            Sentence::Simple(bridi) => (self.bridi(bridi)?, PREC_ATOM),
+            Sentence::Simple(proposition) => (self.proposition(proposition)?, PREC_ATOM),
             Sentence::Prenex((vars, body)) => {
                 let vars = vars
                     .iter()
@@ -128,52 +128,56 @@ impl<'a> Renderer<'a> {
         ))
     }
 
-    // ── bridi ──
+    // ── proposition ──
 
-    fn bridi(&self, bridi: &Proposition) -> R<String> {
-        self.bridi_impl(bridi, false)
+    fn proposition(&self, proposition: &Proposition) -> R<String> {
+        self.proposition_impl(proposition, false)
     }
 
-    /// Render a relative-clause body bridi whose ke'a is IMPLICIT (gerna-origin
+    /// Render a relative-clause body proposition whose ke'a is IMPLICIT (gerna-origin
     /// buffers leave the head empty and smuni injects ke'a at x1): spell the
     /// relativized entity as `it` in x1 so the KR re-parses (mandatory-it, §7).
-    fn bridi_with_it(&self, bridi: &Proposition) -> R<String> {
-        self.bridi_impl(bridi, true)
+    fn proposition_with_it(&self, proposition: &Proposition) -> R<String> {
+        self.proposition_impl(proposition, true)
     }
 
-    fn bridi_impl(&self, bridi: &Proposition, inject_it: bool) -> R<String> {
+    fn proposition_impl(&self, proposition: &Proposition, inject_it: bool) -> R<String> {
         let mut prefix = String::new();
-        if let Some(att) = &bridi.deontic {
+        if let Some(att) = &proposition.deontic {
             prefix.push_str(match att {
                 DeonticMood::Obligation => "must ",
                 DeonticMood::Permission => "may ",
             });
         }
-        if let Some(tense) = &bridi.tense {
+        if let Some(tense) = &proposition.tense {
             prefix.push_str(match tense {
                 Tense::Past => "past ",
                 Tense::Now => "now ",
                 Tense::Future => "future ",
             });
         }
-        if bridi.negated {
+        if proposition.negated {
             prefix.push('~');
         }
 
         // du with exactly one head and one tail term is the equality spelling
         // (with an injected implicit ke'a, the head IS `it`).
-        if let Predicate::Root(root) = self.selbri(bridi.relation)?
+        if let Predicate::Root(root) = self.predicate(proposition.relation)?
             && root == "du"
         {
-            if !inject_it && bridi.head_terms.len() == 1 && bridi.tail_terms.len() == 1 {
+            if !inject_it && proposition.head_terms.len() == 1 && proposition.tail_terms.len() == 1
+            {
                 return Ok(format!(
                     "{prefix}{} = {}",
-                    self.term(bridi.head_terms[0])?,
-                    self.term(bridi.tail_terms[0])?
+                    self.term(proposition.head_terms[0])?,
+                    self.term(proposition.tail_terms[0])?
                 ));
             }
-            if inject_it && bridi.head_terms.is_empty() && bridi.tail_terms.len() == 1 {
-                return Ok(format!("{prefix}it = {}", self.term(bridi.tail_terms[0])?));
+            if inject_it && proposition.head_terms.is_empty() && proposition.tail_terms.len() == 1 {
+                return Ok(format!(
+                    "{prefix}it = {}",
+                    self.term(proposition.tail_terms[0])?
+                ));
             }
         }
 
@@ -182,10 +186,10 @@ impl<'a> Renderer<'a> {
         // alias with named args (`ta se citka ti` → `eats(x2: that, x1: this)`)
         // — the swap is argument routing, and named args express routing
         // directly. Curated converted aliases still take priority (checked
-        // inside predication_selbri via the full-chain lookup below).
-        let (relation_id, perm) = self.peel_conversions(bridi.relation)?;
+        // inside predication_predicate via the full-chain lookup below).
+        let (relation_id, perm) = self.peel_conversions(proposition.relation)?;
         let head_gismu = self.head_gismu(relation_id)?;
-        let relation = self.predication_selbri(relation_id)?;
+        let relation = self.predication_predicate(relation_id)?;
 
         // Argument places: heads fill x1.., then the tail runs gerna's CLL
         // counter (an untagged term takes the next place; a FA tag jumps the
@@ -194,26 +198,26 @@ impl<'a> Renderer<'a> {
         // contiguous from x1, then switch to named args; modal tags render as
         // `via` after the argument list.
         let mut placed: Vec<(usize, Option<u32>)> = Vec::new();
-        let mut vias: Vec<(u32, u32)> = Vec::new(); // (modal selbri-ish, term) — see below
+        let mut vias: Vec<(u32, u32)> = Vec::new(); // (modal predicate-ish, term) — see below
         let mut counter = 0usize;
         if inject_it {
             placed.push((counter, None)); // the implicit ke'a — spelled `it`
             counter += 1;
         }
-        for &head in &bridi.head_terms {
+        for &head in &proposition.head_terms {
             placed.push((counter, Some(head)));
             counter += 1;
         }
-        for &tail in &bridi.tail_terms {
-            match self.sumti(tail)? {
+        for &tail in &proposition.tail_terms {
+            match self.argument(tail)? {
                 Argument::Tagged((tag, inner)) => {
                     let place = (*tag as usize);
                     placed.push((place, Some(*inner)));
                     counter = place + 1;
                 }
                 Argument::ModalTagged((modal, inner)) => {
-                    let ModalTag::Custom(selbri) = modal;
-                    vias.push((*selbri, *inner));
+                    let ModalTag::Custom(predicate) = modal;
+                    vias.push((*predicate, *inner));
                 }
                 Argument::Pronoun(_)
                 | Argument::Description(_)
@@ -268,12 +272,12 @@ impl<'a> Renderer<'a> {
         }
 
         let mut out = format!("{prefix}{relation}({})", args.join(", "));
-        for (selbri, term) in vias {
-            let name = match self.selbri(selbri)? {
+        for (predicate, term) in vias {
+            let name = match self.predicate(predicate)? {
                 Predicate::Root(gismu) => self.alias_or_identity(gismu)?,
                 other => {
                     return Err(nope(format!(
-                        "a fi'o modal over a non-root selbri has no nibli KR spelling: {other:?}"
+                        "a fi'o modal over a non-root predicate has no nibli KR spelling: {other:?}"
                     )));
                 }
             };
@@ -285,15 +289,15 @@ impl<'a> Renderer<'a> {
     /// Peel outer `Converted` layers off a relation, composing their swaps
     /// into a surface-place → plain-place permutation (0-based). Stops early
     /// (identity permutation) when the chain from this node down matches a
-    /// CURATED converted alias — those render by name. Only used in bridi
+    /// CURATED converted alias — those render by name. Only used in proposition
     /// position; restrictors have the selector spelling instead.
     fn peel_conversions(&self, id: u32) -> R<(u32, [usize; 5])> {
         const IDENTITY: [usize; 5] = [0, 1, 2, 3, 4];
-        let Predicate::Converted((conv, inner)) = self.selbri(id)? else {
+        let Predicate::Converted((conv, inner)) = self.predicate(id)? else {
             return Ok((id, IDENTITY));
         };
         // Single-layer chain with a curated converted alias renders by name.
-        if let Predicate::Root(gismu) = self.selbri(*inner)? {
+        if let Predicate::Root(gismu) = self.predicate(*inner)? {
             let place: u8 = match conv {
                 Conversion::Swap12 => 2,
                 Conversion::Swap13 => 3,
@@ -331,7 +335,7 @@ impl<'a> Renderer<'a> {
     /// The head gismu of a relation (for place-label lookup), descending
     /// through wrappers to the head Root/Compound.
     fn head_gismu(&self, id: u32) -> R<String> {
-        Ok(match self.selbri(id)? {
+        Ok(match self.predicate(id)? {
             Predicate::Root(g) => g.clone(),
             Predicate::Compound(parts) => parts.last().cloned().unwrap_or_default(),
             Predicate::Pair((_, head)) => self.head_gismu(*head)?,
@@ -384,18 +388,18 @@ impl<'a> Renderer<'a> {
         format!("x{}", place + 1)
     }
 
-    /// A selbri in PREDICATION position (no selector spelling available).
-    fn predication_selbri(&self, id: u32) -> R<String> {
-        self.selbri_text(id, false)
+    /// A predicate in PREDICATION position (no selector spelling available).
+    fn predication_predicate(&self, id: u32) -> R<String> {
+        self.predicate_text(id, false)
     }
 
-    /// A selbri in RESTRICTOR position (selector spelling available).
-    fn restr_selbri(&self, id: u32) -> R<String> {
-        self.selbri_text(id, true)
+    /// A predicate in RESTRICTOR position (selector spelling available).
+    fn restr_predicate(&self, id: u32) -> R<String> {
+        self.predicate_text(id, true)
     }
 
-    fn selbri_text(&self, id: u32, selector_ok: bool) -> R<String> {
-        Ok(match self.selbri(id)? {
+    fn predicate_text(&self, id: u32, selector_ok: bool) -> R<String> {
+        Ok(match self.predicate(id)? {
             Predicate::Root(gismu) => self.alias_or_identity(gismu)?,
             Predicate::Compound(parts) => parts
                 .iter()
@@ -405,19 +409,22 @@ impl<'a> Renderer<'a> {
                 .collect::<Vec<_>>()
                 .join("+"),
             Predicate::Pair((modifier, head)) => {
-                let modifier_text = match self.selbri(*modifier)? {
-                    // A left-nested tanru needs explicit grouping.
-                    Predicate::Pair(_) => format!("[{}]", self.selbri_text(*modifier, false)?),
-                    _ => self.selbri_text(*modifier, false)?,
+                let modifier_text = match self.predicate(*modifier)? {
+                    // A left-nested pair needs explicit grouping.
+                    Predicate::Pair(_) => format!("[{}]", self.predicate_text(*modifier, false)?),
+                    _ => self.predicate_text(*modifier, false)?,
                 };
-                format!("{modifier_text} {}", self.selbri_text(*head, selector_ok)?)
+                format!(
+                    "{modifier_text} {}",
+                    self.predicate_text(*head, selector_ok)?
+                )
             }
-            Predicate::Grouped(inner) => format!("[{}]", self.selbri_text(*inner, false)?),
-            Predicate::Negated(inner) => format!("~{}", self.selbri_text(*inner, selector_ok)?),
+            Predicate::Grouped(inner) => format!("[{}]", self.predicate_text(*inner, false)?),
+            Predicate::Negated(inner) => format!("~{}", self.predicate_text(*inner, selector_ok)?),
             Predicate::Converted((conv, inner)) => {
-                let Predicate::Root(gismu) = self.selbri(*inner)? else {
+                let Predicate::Root(gismu) = self.predicate(*inner)? else {
                     return Err(nope(
-                        "a conversion over a non-root selbri has no nibli KR spelling yet — \
+                        "a conversion over a non-root predicate has no nibli KR spelling yet — \
                          curate a converted alias (nibli-kr-dictionary CONVERTED_ALIASES)",
                     ));
                 };
@@ -446,7 +453,7 @@ impl<'a> Renderer<'a> {
                 )));
             }
             Predicate::WithArgs((core, be_args)) => {
-                let core_text = self.selbri_text(*core, false)?;
+                let core_text = self.predicate_text(*core, false)?;
                 let mut rendered = Vec::new();
                 for &arg in be_args {
                     rendered.push(self.term(arg)?);
@@ -469,7 +476,7 @@ impl<'a> Renderer<'a> {
     // ── terms ──
 
     fn term(&self, id: u32) -> R<String> {
-        Ok(match self.sumti(id)? {
+        Ok(match self.argument(id)? {
             Argument::Pronoun(word) => match word.as_str() {
                 "mi" => "me".into(),
                 "do" => "you".into(),
@@ -493,11 +500,11 @@ impl<'a> Renderer<'a> {
                 "de" => "$de".into(),
                 "di" => "$di".into(),
                 other => {
-                    // §10 out-of-scope pro-sumti (ri/ra/ru anaphora, ko, an
+                    // §10 out-of-scope pro-argument (ri/ra/ru anaphora, ko, an
                     // unresolved go'i, …) fail closed BY NAME — in the
                     // battery this is a genuine coverage signal.
                     return Err(nope(format!(
-                        "pro-sumti {other:?} is out of nibli KR's scope (NIBLI_KR §10) — \
+                        "pro-argument {other:?} is out of nibli KR's scope (NIBLI_KR §10) — \
                          no spelling exists"
                     )));
                 }
@@ -523,10 +530,10 @@ impl<'a> Renderer<'a> {
                 }
                 rendered
             }
-            Argument::Description((gadri, selbri)) => {
-                if let Predicate::Abstraction(_) = self.selbri(*selbri)? {
+            Argument::Description((gadri, predicate)) => {
+                if let Predicate::Abstraction(_) = self.predicate(*predicate)? {
                     return match gadri {
-                        Determiner::Indefinite => self.restr_selbri(*selbri),
+                        Determiner::Indefinite => self.restr_predicate(*predicate),
                         Determiner::Definite
                         | Determiner::UniversalIndefinite
                         | Determiner::UniversalDefinite => Err(nope(
@@ -537,26 +544,26 @@ impl<'a> Renderer<'a> {
                     };
                 }
                 match gadri {
-                    Determiner::Indefinite => format!("some {}", self.restr_selbri(*selbri)?),
-                    Determiner::Definite => format!("the {}", self.restr_selbri(*selbri)?),
+                    Determiner::Indefinite => format!("some {}", self.restr_predicate(*predicate)?),
+                    Determiner::Definite => format!("the {}", self.restr_predicate(*predicate)?),
                     Determiner::UniversalIndefinite => {
-                        format!("every {}", self.restr_selbri(*selbri)?)
+                        format!("every {}", self.restr_predicate(*predicate)?)
                     }
                     Determiner::UniversalDefinite => {
-                        format!("every the {}", self.restr_selbri(*selbri)?)
+                        format!("every the {}", self.restr_predicate(*predicate)?)
                     }
                 }
             }
-            Argument::QuantifiedDescription((count, gadri, selbri)) => match gadri {
+            Argument::QuantifiedDescription((count, gadri, predicate)) => match gadri {
                 Determiner::Indefinite => {
                     if *count == 0 {
-                        format!("no {}", self.restr_selbri(*selbri)?)
+                        format!("no {}", self.restr_predicate(*predicate)?)
                     } else {
-                        format!("exactly {count} {}", self.restr_selbri(*selbri)?)
+                        format!("exactly {count} {}", self.restr_predicate(*predicate)?)
                     }
                 }
                 Determiner::Definite => {
-                    format!("exactly {count} the {}", self.restr_selbri(*selbri)?)
+                    format!("exactly {count} the {}", self.restr_predicate(*predicate)?)
                 }
                 Determiner::UniversalIndefinite | Determiner::UniversalDefinite => {
                     return Err(nope(format!(
@@ -585,29 +592,29 @@ impl<'a> Renderer<'a> {
             RelClauseKind::Restrictive => "where",
             RelClauseKind::Incidental => "also",
         };
-        // Bare-predicate sugar: a body of shape `ke'a <selbri>` (no tail, no
+        // Bare-predicate sugar: a body of shape `ke'a <predicate>` (no tail, no
         // prefixes) prints as the sugar form.
         // The bound entity is either an explicit ke'a head (nibli-kr-emitted
         // buffers) or IMPLICIT (gerna leaves the head empty and smuni injects
         // ke'a at x1) — both print as the sugar.
-        let head_is_kehah = |bridi: &Proposition| -> R<bool> {
-            Ok(match bridi.head_terms.as_slice() {
+        let head_is_kehah = |proposition: &Proposition| -> R<bool> {
+            Ok(match proposition.head_terms.as_slice() {
                 [] => true,
-                [only] => matches!(self.sumti(*only)?, Argument::Pronoun(w) if w == "ke'a"),
+                [only] => matches!(self.argument(*only)?, Argument::Pronoun(w) if w == "ke'a"),
                 _ => false,
             })
         };
-        if let Sentence::Simple(bridi) = self.sentence_node(clause.body_sentence)?
-            && bridi.tail_terms.is_empty()
-            && bridi.tense.is_none()
-            && bridi.deontic.is_none()
-            && head_is_kehah(bridi)?
-            && self.bare_body_selbri(bridi.relation)
+        if let Sentence::Simple(proposition) = self.sentence_node(clause.body_sentence)?
+            && proposition.tail_terms.is_empty()
+            && proposition.tense.is_none()
+            && proposition.deontic.is_none()
+            && head_is_kehah(proposition)?
+            && self.bare_body_predicate(proposition.relation)
         {
-            let neg = if bridi.negated { "~" } else { "" };
+            let neg = if proposition.negated { "~" } else { "" };
             return Ok(format!(
                 "{keyword} {neg}{}",
-                self.selbri_text(bridi.relation, false)?
+                self.predicate_text(proposition.relation, false)?
             ));
         }
         // Full-claim body. A gerna-origin Simple body leaves the head EMPTY
@@ -616,36 +623,38 @@ impl<'a> Renderer<'a> {
         // an explicit ke'a (head, or a tail term — nibli-semantics skips its
         // implicit-x1 injection when the body already contains an explicit ke'a)
         // and render through the normal path.
-        let has_explicit_keha = |bridi: &Proposition| -> R<bool> {
-            for &tail in &bridi.tail_terms {
-                let inner = match self.sumti(tail)? {
+        let has_explicit_keha = |proposition: &Proposition| -> R<bool> {
+            for &tail in &proposition.tail_terms {
+                let inner = match self.argument(tail)? {
                     Argument::Tagged((_, inner)) => *inner,
                     _ => tail,
                 };
-                if matches!(self.sumti(inner)?, Argument::Pronoun(w) if w == "ke'a") {
+                if matches!(self.argument(inner)?, Argument::Pronoun(w) if w == "ke'a") {
                     return Ok(true);
                 }
             }
             Ok(false)
         };
         let body = match self.sentence_node(clause.body_sentence)? {
-            Sentence::Simple(bridi)
-                if bridi.head_terms.is_empty() && !has_explicit_keha(bridi)? =>
+            Sentence::Simple(proposition)
+                if proposition.head_terms.is_empty() && !has_explicit_keha(proposition)? =>
             {
-                self.bridi_with_it(bridi)?
+                self.proposition_with_it(proposition)?
             }
             _ => self.sentence(clause.body_sentence, PREC_ATOM)?,
         };
         Ok(format!("{keyword} {body}"))
     }
 
-    /// Only plain word/tanru/compound selbri qualify for the bare sugar
+    /// Only plain word/pair/compound predicate qualify for the bare sugar
     /// (anything fancier needs the full-claim body).
-    fn bare_body_selbri(&self, id: u32) -> bool {
-        match self.selbri(id) {
+    fn bare_body_predicate(&self, id: u32) -> bool {
+        match self.predicate(id) {
             Ok(Predicate::Root(_)) | Ok(Predicate::Compound(_)) => true,
-            Ok(Predicate::Pair((m, h))) => self.bare_body_selbri(*m) && self.bare_body_selbri(*h),
-            Ok(Predicate::Grouped(inner)) => self.bare_body_selbri(*inner),
+            Ok(Predicate::Pair((m, h))) => {
+                self.bare_body_predicate(*m) && self.bare_body_predicate(*h)
+            }
+            Ok(Predicate::Grouped(inner)) => self.bare_body_predicate(*inner),
             Ok(Predicate::Converted(_))
             | Ok(Predicate::Negated(_))
             | Ok(Predicate::WithArgs(_))
@@ -691,8 +700,8 @@ fn render_name(name: &str) -> R<String> {
 #[doc(hidden)]
 #[allow(clippy::too_many_arguments)] // one parameter per guarded enum, by design
 pub fn __ast_parity_guard(
-    sumti: &Argument,
-    selbri: &Predicate,
+    argument: &Argument,
+    predicate: &Predicate,
     sentence: &Sentence,
     connective: &SentenceConnective,
     gadri: &Determiner,
@@ -704,7 +713,7 @@ pub fn __ast_parity_guard(
     tense: &Tense,
     deontic: &DeonticMood,
 ) {
-    match sumti {
+    match argument {
         Argument::Pronoun(_) => {}
         Argument::Description(_) => {}
         Argument::Name(_) => {}
@@ -716,7 +725,7 @@ pub fn __ast_parity_guard(
         Argument::Number(_) => {}
         Argument::QuantifiedDescription(_) => {}
     }
-    match selbri {
+    match predicate {
         Predicate::Root(_) => {}
         Predicate::Compound(_) => {}
         Predicate::Pair(_) => {}
@@ -832,9 +841,9 @@ mod tests {
         use nibli_types::ast::*;
         // Hand-built buffers with §10 constructs: render must name the
         // offender, never guess.
-        let mk = |sumti: Argument| AstBuffer {
+        let mk = |argument: Argument| AstBuffer {
             predicates: vec![Predicate::Root("gerku".into())],
-            arguments: vec![sumti],
+            arguments: vec![argument],
             sentences: vec![Sentence::Simple(Proposition {
                 relation: 0,
                 head_terms: vec![0],

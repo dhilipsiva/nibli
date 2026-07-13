@@ -4,13 +4,13 @@
 //! compiles each sentence into a [`LogicalForm`] tree. Key transformations:
 //!
 //! - **Quantifier scoping**: gadri descriptions (`lo`/`le`/`la`/`ro lo`) introduce
-//!   quantified variables; scopes are closed outward after the bridi body is compiled.
+//!   quantified variables; scopes are closed outward after the proposition body is compiled.
 //! - **Quantifier closure**: bare logic variables (`da`/`de`/`di`) are wrapped in
 //!   `Exists`; Skolemization itself happens downstream in logji at assertion time.
-//! - **Connective expansion**: sumti/selbri/sentence connectives expand into FOL
+//! - **Connective expansion**: argument/predicate/sentence connectives expand into FOL
 //!   `And`/`Or`/`Not`/`Biconditional`/`Xor` combinations.
 //! - **Conversion**: `se`/`te`/`ve`/`xe` permute argument places.
-//! - **Abstraction**: `nu`/`du'u`/`ka`/`ni`/`si'o` reify inner bridi as 1-place predicates.
+//! - **Abstraction**: `nu`/`du'u`/`ka`/`ni`/`si'o` reify inner proposition as 1-place predicates.
 //! - **Relative clauses**: `poi`/`voi` (restrictive) conjoin a domain restrictor;
 //!   `noi` (non-restrictive) conjoins its body at the MATRIX level (consequent for
 //!   universals, body conjunct for existentials/counts) so it does not narrow the
@@ -30,18 +30,18 @@ use nibli_types::ast::{
 
 mod compile;
 mod helpers;
-mod selbri;
+mod predicate;
 
 /// The kind of quantifier introduced by a gadri description.
 #[derive(Debug, Clone)]
 pub(crate) enum QuantifierKind {
-    /// lo → ∃x (veridical existential, restrictor = selbri predicate)
+    /// lo → ∃x (veridical existential, restrictor = predicate predicate)
     Existential,
-    /// ro lo → ∀x (veridical universal, restrictor = selbri predicate)
+    /// ro lo → ∀x (veridical universal, restrictor = predicate predicate)
     Universal,
     /// ro le → ∀x (referential universal, restrictor = opaque le_domain predicate)
     UniversalLe,
-    /// PA lo → exactly N (veridical, restrictor = selbri predicate)
+    /// PA lo → exactly N (veridical, restrictor = predicate predicate)
     ExactCount(u32),
     /// PA le → exactly N (referential, restrictor = opaque le_domain predicate)
     ExactCountLe(u32),
@@ -52,7 +52,7 @@ pub(crate) enum QuantifierKind {
 pub(crate) struct QuantifierEntry {
     /// The fresh variable bound by this quantifier.
     var: lasso::Spur,
-    /// Index into the selbri array for the description predicate (restrictor source).
+    /// Index into the predicate array for the description predicate (restrictor source).
     desc_id: u32,
     /// Optional restrictive (poi/voi) relative clause body, already compiled.
     /// Folded on the domain side: antecedent for ∀, conjunct for ∃/Count.
@@ -65,7 +65,7 @@ pub(crate) struct QuantifierEntry {
     kind: QuantifierKind,
 }
 
-/// One scope introduction in a bridi, recorded in left-to-right SURFACE order so
+/// One scope introduction in a proposition, recorded in left-to-right SURFACE order so
 /// quantifier nesting can follow Lojban scope (leftmost = outermost). Folding the
 /// list in reverse interleaves bare-variable existentials among the description
 /// quantifiers, so `da citka ro lo gerku` compiles `∃da.∀x` and `ro lo gerku cu
@@ -96,7 +96,7 @@ pub struct SemanticCompiler {
     /// When inside a ka abstraction, holds the variable that ce'u resolves to.
     /// This is the x1 arg from the enclosing description quantifier.
     property_open_var: Option<lasso::Spur>,
-    /// Fresh variables generated for `ma` query pro-sumti. Each `ma` gets
+    /// Fresh variables generated for `ma` query pro-argument. Each `ma` gets
     /// an independent variable (unlike da/de/di which co-refer). These are
     /// wrapped in ∃ during quantifier closure.
     question_vars: Vec<lasso::Spur>,
@@ -105,14 +105,14 @@ pub struct SemanticCompiler {
     pub errors: Vec<String>,
     /// Monotonically increasing counter for generating fresh event variable names.
     event_counter: usize,
-    /// Relative clause bodies attached to sumti that introduce NO quantifier
-    /// (la names, le descriptions, pro-sumti). The clause term is already
+    /// Relative clause bodies attached to argument that introduce NO quantifier
+    /// (la names, le descriptions, pro-argument). The clause term is already
     /// substituted in; `compile_proposition` drains its frame's entries and conjoins
-    /// them into the bridi matrix (previously these were silently dropped —
+    /// them into the proposition matrix (previously these were silently dropped —
     /// panel finding 2026-06-10).
     pending_matrix_conjuncts: Vec<LogicalForm>,
     /// One-shot: the implicit `ke'a` subject of a relative clause, to be placed
-    /// as the x1 ARGUMENT of the clause's main bridi BEFORE selbri conversion —
+    /// as the x1 ARGUMENT of the clause's main proposition BEFORE predicate conversion —
     /// the same position an explicit subject occupies. Consumed by the first
     /// `compile_proposition` of the clause body. This makes `poi se prami la .alis.`
     /// route `ke'a` through `se` conversion to the correct underlying role
@@ -161,9 +161,9 @@ mod tests {
     fn compile_one(
         predicates: Vec<Predicate>,
         arguments: Vec<Argument>,
-        bridi: Proposition,
+        proposition: Proposition,
     ) -> (LogicalForm, SemanticCompiler) {
-        let sentences = vec![Sentence::Simple(bridi)];
+        let sentences = vec![Sentence::Simple(proposition)];
         let mut compiler = SemanticCompiler::new();
         let form = compiler.compile_proposition(
             match &sentences[0] {
@@ -430,11 +430,11 @@ mod tests {
         }
     }
 
-    // ─── du (identity) selbri lowering ───────────────────────────
+    // ─── du (identity) predicate lowering ───────────────────────────
 
     #[test]
     fn test_du_lowers_flat_not_event_decomposed() {
-        // `la .X. cu du la .Y.` (Root("du") + 2 sumti) must lower to a FLAT
+        // `la .X. cu du la .Y.` (Root("du") + 2 argument) must lower to a FLAT
         // 2-arg du(X,Y) predicate — NOT the Neo-Davidsonian event form
         // (∃e. du(e) ∧ du_x1(e,X) ∧ du_x2(e,Y)) — so logji's union-find
         // ingestion (which matches relation=="du" && args.len()==2) fires.
@@ -443,7 +443,7 @@ mod tests {
             Argument::Pronoun("mi".into()), // 0
             Argument::Pronoun("do".into()), // 1
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![1],
@@ -451,7 +451,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         let args =
             get_pred_args(&form, "du", &compiler).expect("flat du predicate must be present");
         assert_eq!(args.len(), 2, "du must be a flat 2-arg predicate");
@@ -462,9 +462,9 @@ mod tests {
     }
 
     #[test]
-    fn test_du_with_more_than_two_sumti_is_rejected() {
+    fn test_du_with_more_than_two_argument_is_rejected() {
         // Fail-closed: n-ary du is unsupported (logji handles only binary
-        // identity). A 3-sumti du must push a semantic error rather than
+        // identity). A 3-argument du must push a semantic error rather than
         // silently dropping the third argument.
         let predicates = vec![Predicate::Root("du".into())];
         let arguments = vec![
@@ -472,7 +472,7 @@ mod tests {
             Argument::Pronoun("do".into()), // 1
             Argument::Pronoun("ti".into()), // 2
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![1, 2],
@@ -480,7 +480,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (_form, compiler) = compile_one(predicates, arguments, bridi);
+        let (_form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(
             !compiler.errors.is_empty(),
             ">2-place du must be rejected fail-closed"
@@ -489,10 +489,10 @@ mod tests {
 
     // ─── Argument connective expansion tests ────────────────────────
 
-    // ─── Connected sumti under place tags / BAI modals + CLL place counter ───
-    // Soundness fix: a connected sumti nested under a place tag or BAI modal
+    // ─── Connected argument under place tags / BAI modals + CLL place counter ───
+    // Soundness fix: a connected argument nested under a place tag or BAI modal
     // (`fa mi .e do`, `ri'a do .e ti`) previously dropped the right operand;
-    // only the FIRST connected sumti in a bridi was split; and untagged sumti
+    // only the FIRST connected argument in a proposition was split; and untagged argument
     // after a tag filled the first free slot instead of the CLL place counter.
 
     #[test]
@@ -509,7 +509,7 @@ mod tests {
             Argument::Tagged((2, 0)),                         // 1: fi le zarci
             Argument::Pronoun("do".into()),                   // 2: do (untagged)
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![],
             tail_terms: vec![1, 2],
@@ -517,7 +517,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         let x4 = get_pred_args(&form, "klama_x4", &compiler).expect("klama_x4 present");
         assert_eq!(
@@ -548,7 +548,7 @@ mod tests {
             Argument::Pronoun("do".into()), // 1
             Argument::Tagged((1, 1)),       // 2: fe do
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![2],
@@ -556,7 +556,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         let x1 = get_pred_args(&form, "klama_x1", &compiler).expect("klama_x1");
         let x2 = get_pred_args(&form, "klama_x2", &compiler).expect("klama_x2");
@@ -569,44 +569,47 @@ mod tests {
     /// Helper: build a buffer with abstraction and compile.
     fn compile_abstraction(
         kind: AbstractionKind,
-        inner_selbri: &str,
-        inner_sumtis: Vec<Argument>,
+        inner_predicate: &str,
+        inner_arguments: Vec<Argument>,
     ) -> (LogicalForm, SemanticCompiler) {
-        // Build: lo <kind> <inner_sumtis> <inner_selbri> kei cu barda
+        // Build: lo <kind> <inner_arguments> <inner_predicate> kei cu barda
         // Buffer layout:
-        //   predicates: [0: inner_selbri, 1: Abstraction(kind, sentence_idx=1), 2: barda]
+        //   predicates: [0: inner_predicate, 1: Abstraction(kind, sentence_idx=1), 2: barda]
         //   arguments: [0..N: inner arguments, N: Description(Lo, 1)]
-        //   sentences: [0: top-level bridi, 1: inner bridi]
-        let inner_sumti_ids: Vec<u32> = (0..inner_sumtis.len() as u32).collect();
-        let desc_sumti_idx = inner_sumtis.len() as u32;
+        //   sentences: [0: top-level proposition, 1: inner proposition]
+        let inner_argument_ids: Vec<u32> = (0..inner_arguments.len() as u32).collect();
+        let desc_argument_idx = inner_arguments.len() as u32;
 
-        let mut all_sumtis = inner_sumtis;
-        all_sumtis.push(Argument::Description((Determiner::Indefinite, 1))); // desc_sumti_idx
+        let mut all_arguments = inner_arguments;
+        all_arguments.push(Argument::Description((Determiner::Indefinite, 1))); // desc_argument_idx
 
         let predicates = vec![
-            Predicate::Root(inner_selbri.into()), // 0
-            Predicate::Abstraction((kind, 1)),    // 1 → sentences[1]
-            Predicate::Root("barda".into()),      // 2
+            Predicate::Root(inner_predicate.into()), // 0
+            Predicate::Abstraction((kind, 1)),       // 1 → sentences[1]
+            Predicate::Root("barda".into()),         // 2
         ];
 
-        let inner_bridi = Proposition {
+        let inner_proposition = Proposition {
             relation: 0,
-            head_terms: inner_sumti_ids,
+            head_terms: inner_argument_ids,
             tail_terms: vec![],
             negated: false,
             tense: None,
             deontic: None,
         };
-        let outer_bridi = Proposition {
+        let outer_proposition = Proposition {
             relation: 2,
-            head_terms: vec![desc_sumti_idx],
+            head_terms: vec![desc_argument_idx],
             tail_terms: vec![],
             negated: false,
             tense: None,
             deontic: None,
         };
 
-        let sentences = vec![Sentence::Simple(outer_bridi), Sentence::Simple(inner_bridi)];
+        let sentences = vec![
+            Sentence::Simple(outer_proposition),
+            Sentence::Simple(inner_proposition),
+        ];
 
         let mut compiler = SemanticCompiler::new();
         let form = compiler.compile_proposition(
@@ -615,7 +618,7 @@ mod tests {
                 _ => unreachable!(),
             },
             &predicates,
-            &all_sumtis,
+            &all_arguments,
             &sentences,
         );
         (form, compiler)
@@ -766,7 +769,7 @@ mod tests {
         // and no free variable escapes.
         let predicates = vec![Predicate::Root("melbi".into())];
         let arguments = vec![Argument::Pronoun("ce'u".into())];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -775,7 +778,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         assert!(
             compiler
@@ -812,7 +815,7 @@ mod tests {
             Argument::Pronoun("do".into()),                  // 1
             Argument::ModalTagged((ModalTag::Custom(1), 1)), // 2
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![2],
@@ -821,7 +824,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         // klama is event-decomposed, zbasu is a flat modal Predicate
         assert!(
@@ -845,9 +848,9 @@ mod tests {
     }
 
     #[test]
-    fn test_fio_arity_one_selbri_errors() {
-        // `mi barda fi'o prenu fe'u do` — `prenu` (person) is a 1-place selbri, so
-        // the modal has no x2 slot to carry the main bridi's x1 (`mi`). A 1-place
+    fn test_fio_arity_one_predicate_errors() {
+        // `mi barda fi'o prenu fe'u do` — `prenu` (person) is a 1-place predicate, so
+        // the modal has no x2 slot to carry the main proposition's x1 (`mi`). A 1-place
         // modal that silently drops that link loses meaning, so it must fail closed.
         // (Only `fi'o` reaches this — every BAI modal gismu is arity >= 2.) `prenu`
         // is a curated-fallback arity-1 gismu, so this fires in both the XML and
@@ -861,7 +864,7 @@ mod tests {
             Argument::Pronoun("do".into()),                  // 1
             Argument::ModalTagged((ModalTag::Custom(1), 1)), // 2: fi'o prenu, inner=do
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![2],
@@ -869,7 +872,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (_form, compiler) = compile_one(predicates, arguments, bridi);
+        let (_form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(
             !compiler.errors.is_empty(),
             "a 1-place fi'o modal must fail closed"
@@ -889,7 +892,7 @@ mod tests {
         // Buffer:
         //   arguments: [0: QuantifiedDescription(2, Lo, 0)]
         //   predicates: [0: gerku, 1: barda]
-        //   bridi: { relation: 1, head_terms: [0], tail_terms: [] }
+        //   proposition: { relation: 1, head_terms: [0], tail_terms: [] }
         let predicates = vec![
             Predicate::Root("gerku".into()), // 0
             Predicate::Root("barda".into()), // 1
@@ -897,7 +900,7 @@ mod tests {
         let arguments = vec![
             Argument::QuantifiedDescription((2, Determiner::Indefinite, 0)), // 0
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 1,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -906,7 +909,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         // Should be Count { var: _v0, count: 2, body: And(gerku_event, barda_event) }
         // With event decomposition, restrictor and predicate are event-wrapped
@@ -938,7 +941,7 @@ mod tests {
         let arguments = vec![
             Argument::QuantifiedDescription((0, Determiner::Indefinite, 0)), // 0
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 1,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -947,7 +950,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, _) = compile_one(predicates, arguments, bridi);
+        let (form, _) = compile_one(predicates, arguments, proposition);
 
         match &form {
             LogicalForm::Count { count, .. } => assert_eq!(*count, 0),
@@ -967,7 +970,7 @@ mod tests {
             Determiner::Indefinite,
             0,
         ))];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 1,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -976,7 +979,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, _) = compile_one(predicates, arguments, bridi);
+        let (form, _) = compile_one(predicates, arguments, proposition);
 
         match &form {
             LogicalForm::Count { count, .. } => assert_eq!(*count, 1),
@@ -992,7 +995,7 @@ mod tests {
             Predicate::Root("barda".into()),
         ];
         let arguments = vec![Argument::Description((Determiner::Indefinite, 0))];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 1,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -1001,7 +1004,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, _) = compile_one(predicates, arguments, bridi);
+        let (form, _) = compile_one(predicates, arguments, proposition);
 
         assert!(
             matches!(&form, LogicalForm::Exists(_, _)),
@@ -1012,21 +1015,21 @@ mod tests {
 
     // ─── Afterthought sentence connective tests ───────────────────
 
-    /// Helper: compile a connected sentence from two simple bridi.
+    /// Helper: compile a connected sentence from two simple proposition.
     fn compile_connected(
         conn: SentenceConnective,
-        left_selbri: &str,
-        left_sumti: &str,
-        right_selbri: &str,
-        right_sumti: &str,
+        left_predicate: &str,
+        left_argument: &str,
+        right_predicate: &str,
+        right_argument: &str,
     ) -> (LogicalForm, SemanticCompiler) {
         let predicates = vec![
-            Predicate::Root(left_selbri.into()),
-            Predicate::Root(right_selbri.into()),
+            Predicate::Root(left_predicate.into()),
+            Predicate::Root(right_predicate.into()),
         ];
         let arguments = vec![
-            Argument::Pronoun(left_sumti.into()),
-            Argument::Pronoun(right_sumti.into()),
+            Argument::Pronoun(left_argument.into()),
+            Argument::Pronoun(right_argument.into()),
         ];
         let left_proposition = Proposition {
             relation: 0,
@@ -1086,7 +1089,7 @@ mod tests {
             Argument::Pronoun("da".into()), // 0
             Argument::Pronoun("mi".into()), // 1
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![1],
@@ -1095,7 +1098,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         // Outermost should be Exists(da, ...) wrapping the event form
         match &form {
@@ -1131,7 +1134,7 @@ mod tests {
             Argument::Pronoun("da".into()), // 0
             Argument::Pronoun("de".into()), // 1
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![1],
@@ -1140,7 +1143,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         // Should be Exists(da/de, Exists(da/de, Exists(ev, ...)))
         match &form {
@@ -1174,7 +1177,7 @@ mod tests {
             Argument::Pronoun("da".into()), // 0
             Argument::Pronoun("da".into()), // 1 (same variable)
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![1],
@@ -1183,7 +1186,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         // Should be Exists(da, Exists(ev, ...)) — NOT Exists(da, Exists(da, ...))
         match &form {
@@ -1214,7 +1217,7 @@ mod tests {
         // di barda → ∃di. barda(di, ...)
         let predicates = vec![Predicate::Root("barda".into())];
         let arguments = vec![Argument::Pronoun("di".into())];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -1223,7 +1226,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         match &form {
             LogicalForm::Exists(var, _) => {
@@ -1242,7 +1245,7 @@ mod tests {
             Argument::Pronoun("da".into()),
             Argument::Pronoun("mi".into()),
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![1],
@@ -1251,7 +1254,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, _) = compile_one(predicates, arguments, bridi);
+        let (form, _) = compile_one(predicates, arguments, proposition);
 
         // Should be Not(Exists(da, Predicate))
         match &form {
@@ -1278,7 +1281,7 @@ mod tests {
         );
     }
 
-    // ─── ma question pro-sumti tests ─────────────────────────────
+    // ─── ma question pro-argument tests ─────────────────────────────
 
     #[test]
     fn test_ma_produces_exists() {
@@ -1288,7 +1291,7 @@ mod tests {
         let arguments = vec![
             Argument::Pronoun("ma".into()), // 0
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -1297,7 +1300,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         // Outermost should be Exists wrapping the event form
         match &form {
@@ -1330,7 +1333,7 @@ mod tests {
             Argument::Pronoun("ma".into()), // 0
             Argument::Pronoun("ma".into()), // 1
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![1],
@@ -1339,7 +1342,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         // Should be ∃v1.(∃v0.(Exists(ev, nelci_event(v0, v1, ...))))
         match &form {
@@ -1573,7 +1576,7 @@ mod tests {
             Argument::Pronoun("mi".into()), // 0
             Argument::Pronoun("da".into()), // 1 (be-arg)
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 1,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -1581,7 +1584,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert!(
             free_vars(&form, &compiler).is_empty(),
@@ -1651,7 +1654,7 @@ mod tests {
             Argument::Pronoun("da".into()), // 0: da (x1)
             Argument::Description((Determiner::UniversalIndefinite, 1)), // 1: ro lo gerku (x2)
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![1],
@@ -1659,7 +1662,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert_eq!(
             binder_spine(&form, &compiler),
@@ -1688,7 +1691,7 @@ mod tests {
             Argument::Description((Determiner::UniversalIndefinite, 1)), // 0: ro lo gerku (x1)
             Argument::Pronoun("da".into()),                              // 1: da (x2)
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![1],
@@ -1696,7 +1699,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert_eq!(
             binder_spine(&form, &compiler).first(),
@@ -1726,7 +1729,7 @@ mod tests {
             Argument::Pronoun("da".into()),                                  // 1: da (x2)
             Argument::Description((Determiner::UniversalIndefinite, 2)),     // 2: ro lo mlatu (x3)
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![1, 2],
@@ -1734,7 +1737,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert_eq!(
             binder_spine(&form, &compiler).first(),
@@ -1765,7 +1768,7 @@ mod tests {
             Argument::Description((Determiner::UniversalIndefinite, 2)), // 0: ro lo gerku (x1)
             Argument::Pronoun("da".into()),                              // 1: da (be-arg)
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 1,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -1773,7 +1776,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert_eq!(
             binder_spine(&form, &compiler).first(),
@@ -1792,7 +1795,7 @@ mod tests {
     fn test_restrictor_internal_da_closed_innermost() {
         // `ro lo gerku poi prami fe da cu klama` ("every dog that loves something
         // goes") — the `da` inside the poi-restrictor (x2, via `fe`, leaving x1 for
-        // the implicit ke'a) has no bridi-level surface index, so it is bound
+        // the implicit ke'a) has no proposition-level surface index, so it is bound
         // INSIDE the restrictor's own frame. A DELIBERATE sound default: surface
         // order cannot change a restrictor that defines the quantifier's domain.
         // Characterization lock — `da` is bound (never free) and the root stays a
@@ -1896,7 +1899,7 @@ mod tests {
             Argument::Pronoun("da".into()), // 0: da (x1)
             Argument::Pronoun("da".into()), // 1: da (x2)
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![1],
@@ -1904,7 +1907,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert_eq!(
             count_exists_binding(&form, "da", &compiler),
@@ -1923,7 +1926,7 @@ mod tests {
             Argument::Pronoun("da".into()), // 0
             Argument::Pronoun("mi".into()), // 1
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![1],
@@ -1931,7 +1934,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert!(
             free_vars(&form, &compiler).is_empty(),
@@ -1943,7 +1946,7 @@ mod tests {
 
     // ─── inject_variable ambiguity tests ────────────────────────
 
-    /// Helper: compile a full sentence (not just bridi) to test rel clause handling.
+    /// Helper: compile a full sentence (not just proposition) to test rel clause handling.
     fn compile_sentence_full(
         predicates: Vec<Predicate>,
         arguments: Vec<Argument>,
@@ -2509,7 +2512,7 @@ mod tests {
             Argument::Pronoun("do".into()), // 0
             Argument::Tagged((4, 0)),       // 1: fu do
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![1],
             tail_terms: vec![],
@@ -2517,7 +2520,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (_form, compiler) = compile_one(predicates, arguments, bridi);
+        let (_form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(
             !compiler.errors.is_empty(),
             "over-arity FA tag must produce a semantic error"
@@ -2537,7 +2540,7 @@ mod tests {
             Argument::Pronoun("do".into()), // 0
             Argument::Tagged((1, 0)),       // 1: fe do
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![1],
             tail_terms: vec![],
@@ -2545,7 +2548,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(
             compiler.errors.is_empty(),
             "in-range FA tag must not error, got: {:?}",
@@ -2559,7 +2562,7 @@ mod tests {
     #[test]
     fn test_untagged_overflow_known_arity_errors() {
         // `gerku mi do ti` — gerku is a KNOWN 2-place gismu, so the 3rd untagged
-        // sumti (`ti`) overflows with no slot: fail closed instead of silently
+        // argument (`ti`) overflows with no slot: fail closed instead of silently
         // dropping it.
         let predicates = vec![Predicate::Root("gerku".into())];
         let arguments = vec![
@@ -2567,7 +2570,7 @@ mod tests {
             Argument::Pronoun("do".into()), // 1
             Argument::Pronoun("ti".into()), // 2
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![1, 2],
@@ -2575,10 +2578,10 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (_form, compiler) = compile_one(predicates, arguments, bridi);
+        let (_form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(
             !compiler.errors.is_empty(),
-            "untagged sumti over a known arity must error"
+            "untagged argument over a known arity must error"
         );
         assert!(
             compiler.errors.iter().any(|e| e.contains("overflow")),
@@ -2589,7 +2592,7 @@ mod tests {
 
     #[test]
     fn test_untagged_overflow_unknown_arity_no_error() {
-        // An UNKNOWN selbri defaults to arity 2, but its real arity may be higher,
+        // An UNKNOWN predicate defaults to arity 2, but its real arity may be higher,
         // so an untagged overflow is NOT an error there (matches today's behavior —
         // the no-XML build defaults many proxy words to 2).
         let predicates = vec![Predicate::Root("zzzzz".into())];
@@ -2598,7 +2601,7 @@ mod tests {
             Argument::Pronoun("do".into()), // 1
             Argument::Pronoun("ti".into()), // 2
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![1, 2],
@@ -2606,7 +2609,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (_form, compiler) = compile_one(predicates, arguments, bridi);
+        let (_form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(
             compiler.errors.is_empty(),
             "unknown-arity overflow must not error, got: {:?}",
@@ -2625,7 +2628,7 @@ mod tests {
             Argument::Tagged((1, 0)),       // 2: fe do
             Argument::Tagged((1, 1)),       // 3: fe ti
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![2, 3],
             tail_terms: vec![],
@@ -2633,7 +2636,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (_form, compiler) = compile_one(predicates, arguments, bridi);
+        let (_form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(
             !compiler.errors.is_empty(),
             "a tag re-targeting a filled place must error"
@@ -2647,7 +2650,7 @@ mod tests {
 
     #[test]
     fn test_compound_in_restrictive_not_falsely_rejected() {
-        // lo gerku poi sutra bajra cu klama — the tanru `sutra bajra` shares
+        // lo gerku poi sutra bajra cu klama — the pair `sutra bajra` shares
         // ONE event, so its two unfilled x1 roles are one candidate subject
         // slot; the firewall must not reject, and injection must fill BOTH x1
         // roles with the dog's variable.
@@ -2689,7 +2692,7 @@ mod tests {
         let (form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         assert!(
             compiler.errors.is_empty(),
-            "valid tanru-in-poi clause must not be rejected, got: {:?}",
+            "valid pair-in-poi clause must not be rejected, got: {:?}",
             compiler.errors
         );
         let bajra_x1 = get_pred_args(&form, "bajra_x1", &compiler).unwrap();
@@ -2697,15 +2700,15 @@ mod tests {
         let gerku_x1 = get_pred_args(&form, "gerku_x1", &compiler).unwrap();
         assert_eq!(
             bajra_x1[1], gerku_x1[1],
-            "tanru head x1 must bind the dog variable"
+            "pair head x1 must bind the dog variable"
         );
         assert_eq!(
             sutra_x1[1], gerku_x1[1],
-            "tanru modifier x1 must bind the dog variable"
+            "pair modifier x1 must bind the dog variable"
         );
         assert_eq!(
             bajra_x1[0], sutra_x1[0],
-            "tanru must keep the shared event variable"
+            "pair must keep the shared event variable"
         );
     }
 
@@ -2850,7 +2853,7 @@ mod tests {
             Argument::Description((Determiner::UniversalIndefinite, 0)), // 0: ro lo gerku
             Argument::Pronoun("da".into()),                              // 1: da
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 1,
             head_terms: vec![0],
             tail_terms: vec![1],
@@ -2858,7 +2861,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         match &form {
             LogicalForm::ForAll(_, body) => {
                 assert!(
@@ -2881,7 +2884,7 @@ mod tests {
         // pu mi klama → Past(klama(mi, ...))
         let predicates = vec![Predicate::Root("klama".into())];
         let arguments = vec![Argument::Pronoun("mi".into())];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -2889,7 +2892,7 @@ mod tests {
             tense: Some(Tense::Past),
             deontic: None,
         };
-        let (form, _) = compile_one(predicates, arguments, bridi);
+        let (form, _) = compile_one(predicates, arguments, proposition);
         assert!(matches!(form, LogicalForm::Past(_)));
     }
 
@@ -2897,7 +2900,7 @@ mod tests {
     fn test_tense_ca_produces_present() {
         let predicates = vec![Predicate::Root("klama".into())];
         let arguments = vec![Argument::Pronoun("mi".into())];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -2905,7 +2908,7 @@ mod tests {
             tense: Some(Tense::Now),
             deontic: None,
         };
-        let (form, _) = compile_one(predicates, arguments, bridi);
+        let (form, _) = compile_one(predicates, arguments, proposition);
         assert!(matches!(form, LogicalForm::Present(_)));
     }
 
@@ -2913,7 +2916,7 @@ mod tests {
     fn test_tense_ba_produces_future() {
         let predicates = vec![Predicate::Root("klama".into())];
         let arguments = vec![Argument::Pronoun("mi".into())];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -2921,7 +2924,7 @@ mod tests {
             tense: Some(Tense::Future),
             deontic: None,
         };
-        let (form, _) = compile_one(predicates, arguments, bridi);
+        let (form, _) = compile_one(predicates, arguments, proposition);
         assert!(matches!(form, LogicalForm::Future(_)));
     }
 
@@ -2931,7 +2934,7 @@ mod tests {
     fn test_deontic_ei_produces_obligatory() {
         let predicates = vec![Predicate::Root("klama".into())];
         let arguments = vec![Argument::Pronoun("mi".into())];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -2939,7 +2942,7 @@ mod tests {
             tense: None,
             deontic: Some(DeonticMood::Obligation),
         };
-        let (form, _) = compile_one(predicates, arguments, bridi);
+        let (form, _) = compile_one(predicates, arguments, proposition);
         assert!(matches!(form, LogicalForm::Obligatory(_)));
     }
 
@@ -2947,7 +2950,7 @@ mod tests {
     fn test_deontic_ehe_produces_permitted() {
         let predicates = vec![Predicate::Root("klama".into())];
         let arguments = vec![Argument::Pronoun("mi".into())];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -2955,7 +2958,7 @@ mod tests {
             tense: None,
             deontic: Some(DeonticMood::Permission),
         };
-        let (form, _) = compile_one(predicates, arguments, bridi);
+        let (form, _) = compile_one(predicates, arguments, proposition);
         assert!(matches!(form, LogicalForm::Permitted(_)));
     }
 
@@ -2966,7 +2969,7 @@ mod tests {
         // na mi klama → Not(klama(mi, ...))
         let predicates = vec![Predicate::Root("klama".into())];
         let arguments = vec![Argument::Pronoun("mi".into())];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -2974,7 +2977,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, _) = compile_one(predicates, arguments, bridi);
+        let (form, _) = compile_one(predicates, arguments, proposition);
         assert!(matches!(form, LogicalForm::Not(_)));
     }
 
@@ -2991,7 +2994,7 @@ mod tests {
             Argument::Pronoun("mi".into()),
             Argument::Pronoun("do".into()),
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 1,
             head_terms: vec![0],
             tail_terms: vec![1],
@@ -2999,7 +3002,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         // With event decomposition, form is Exists(ev, And(prami(ev), prami_x1(ev, ...), prami_x2(ev, ...)))
         // After se-conversion: x1 and x2 are swapped
         // head=mi goes to x1 position, tail=do goes to x2 position
@@ -3033,13 +3036,13 @@ mod tests {
         }
     }
 
-    // ─── Unspecified sumti (zo'e) test ────────────────────────
+    // ─── Unspecified argument (zo'e) test ────────────────────────
 
     #[test]
     fn test_zo_e_compiles_to_unspecified() {
         let predicates = vec![Predicate::Root("klama".into())];
         let arguments = vec![Argument::Unspecified];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -3047,7 +3050,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         // With event decomposition, form is Exists(ev, And(klama(ev), klama_x1(ev, zo'e), ...))
         assert!(
             matches!(&form, LogicalForm::Exists(_, _)),
@@ -3071,7 +3074,7 @@ mod tests {
         // mi klama → ∃e. klama(e) ∧ klama_x1(e, mi) ∧ klama_x2(e, zo'e) ∧ ...
         let predicates = vec![Predicate::Root("klama".into())];
         let arguments = vec![Argument::Pronoun("mi".into())];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -3079,7 +3082,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         // Top level should be Exists (event variable)
         assert!(matches!(&form, LogicalForm::Exists(_, _)));
@@ -3102,7 +3105,7 @@ mod tests {
         // klama has arity 5, all roles should be emitted
         let predicates = vec![Predicate::Root("klama".into())];
         let arguments = vec![Argument::Pronoun("mi".into())];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -3110,7 +3113,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         for i in 1..=5 {
             let role = format!("klama_x{}", i);
@@ -3121,7 +3124,7 @@ mod tests {
     }
 
     #[test]
-    fn test_event_tanru_shared_event() {
+    fn test_event_pair_shared_event() {
         // sutra gerku → ∃e. gerku(e) ∧ gerku_x1(e, x1) ∧ sutra_x1(e, x1)
         // modifier and head share the SAME event variable
         let predicates = vec![
@@ -3130,7 +3133,7 @@ mod tests {
             Predicate::Pair((0, 1)),         // 2
         ];
         let arguments = vec![Argument::Pronoun("mi".into())];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 2,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -3138,7 +3141,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         // Should have head type predicate
         assert!(has_pred(&form, "gerku", &compiler));
@@ -3162,7 +3165,7 @@ mod tests {
     }
 
     #[test]
-    fn test_event_tanru_no_intersective_fallacy() {
+    fn test_event_pair_no_intersective_fallacy() {
         // barda gerku → NOT And(barda(x1), gerku(x1, ...))
         // Instead: ∃e. gerku(e) ∧ gerku_x1(e, x1) ∧ barda_x1(e, x1)
         // The modifier "barda" is event-bound, not a standalone predication
@@ -3172,7 +3175,7 @@ mod tests {
             Predicate::Pair((0, 1)),         // 2
         ];
         let arguments = vec![Argument::Pronoun("mi".into())];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 2,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -3180,7 +3183,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         // There should be NO standalone "barda" type predicate
         // Only "barda_x1" role predicate (event-bound modifier)
@@ -3207,7 +3210,7 @@ mod tests {
         let arguments = vec![
             Argument::Description((Determiner::Indefinite, 0)), // 0: lo gerku
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 1,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -3215,7 +3218,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         // Outer Exists for the description variable
         assert!(matches!(&form, LogicalForm::Exists(_, _)));
@@ -3239,7 +3242,7 @@ mod tests {
             Argument::Pronoun("mi".into()), // 0
             Argument::Pronoun("do".into()), // 1
         ];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 1,
             head_terms: vec![0],
             tail_terms: vec![1],
@@ -3247,7 +3250,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         // se swaps x1 and x2: mi goes to x2, do goes to x1
         let x1 = get_pred_args(&form, "prami_x1", &compiler).unwrap();
@@ -3268,7 +3271,7 @@ mod tests {
     fn test_la_name_compiles_to_constant() {
         let predicates = vec![Predicate::Root("klama".into())];
         let arguments = vec![Argument::Name("alis".into())];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -3276,7 +3279,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         // With event decomposition, form is Exists(ev, And(klama(ev), klama_x1(ev, alis), ...))
         assert!(
             matches!(&form, LogicalForm::Exists(_, _)),
@@ -3291,13 +3294,13 @@ mod tests {
         }
     }
 
-    // ─── Number sumti (li PA) test ────────────────────────────
+    // ─── Number argument (li PA) test ────────────────────────────
 
     #[test]
-    fn test_number_sumti_compiles_to_number() {
+    fn test_number_argument_compiles_to_number() {
         let predicates = vec![Predicate::Root("namcu".into())];
         let arguments = vec![Argument::Number(42.0)];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -3305,7 +3308,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         // With event decomposition, form is Exists(ev, And(namcu(ev), namcu_x1(ev, 42.0), ...))
         assert!(
             matches!(&form, LogicalForm::Exists(_, _)),
@@ -3327,7 +3330,7 @@ mod tests {
     fn test_quoted_literal_compiles_to_constant() {
         let predicates = vec![Predicate::Root("valsi".into())];
         let arguments = vec![Argument::QuotedLiteral("coi".into())];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -3335,7 +3338,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         // With event decomposition, form is Exists(ev, And(valsi(ev), valsi_x1(ev, coi), ...))
         assert!(
             matches!(&form, LogicalForm::Exists(_, _)),
@@ -3359,7 +3362,7 @@ mod tests {
         // klama has arity 5, so there should be 5 role predicates (klama_x1..klama_x5)
         let predicates = vec![Predicate::Root("klama".into())];
         let arguments = vec![Argument::Pronoun("mi".into())];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -3367,7 +3370,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         // With event decomposition, check that all 5 role predicates exist
         assert!(
             matches!(&form, LogicalForm::Exists(_, _)),
@@ -3393,7 +3396,7 @@ mod tests {
         // An unrecognized word should default to arity 2 → 2 role predicates
         let predicates = vec![Predicate::Root("xyzzy".into())];
         let arguments = vec![Argument::Pronoun("mi".into())];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -3401,7 +3404,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         // With event decomposition, check that there are 2 role predicates
         assert!(
             matches!(&form, LogicalForm::Exists(_, _)),
@@ -3531,7 +3534,7 @@ mod tests {
         // Just "klama" alone → should produce event-decomposed form with all Unspecified role args
         let predicates = vec![Predicate::Root("klama".into())];
         let arguments: Vec<Argument> = vec![];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 0,
             head_terms: vec![],
             tail_terms: vec![],
@@ -3539,7 +3542,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         // With event decomposition, should be Exists(ev, And(klama(ev), klama_x1(ev, zo'e), ...))
         assert!(
             matches!(&form, LogicalForm::Exists(_, _)),
@@ -3574,7 +3577,7 @@ mod tests {
             Predicate::Root("barda".into()),
         ];
         let arguments = vec![Argument::Description((Determiner::Definite, 0))];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 1,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -3582,7 +3585,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         let args =
             get_pred_args(&form, "barda_x1", &compiler).expect("expected barda_x1 role predicate");
         match &args[1] {
@@ -3599,7 +3602,7 @@ mod tests {
             Predicate::Root("sutra".into()),
         ];
         let arguments = vec![Argument::Description((Determiner::UniversalDefinite, 0))];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 1,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -3607,7 +3610,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         // Must be ForAll at the top
         assert!(
             matches!(&form, LogicalForm::ForAll(_, _)),
@@ -3633,7 +3636,7 @@ mod tests {
             Predicate::Root("sutra".into()),
         ];
         let arguments = vec![Argument::Description((Determiner::UniversalIndefinite, 0))];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 1,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -3641,7 +3644,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(
             matches!(&form, LogicalForm::ForAll(_, _)),
             "expected ForAll, got {:?}",
@@ -3670,7 +3673,7 @@ mod tests {
             Determiner::Definite,
             0,
         ))];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 1,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -3678,7 +3681,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(
             matches!(&form, LogicalForm::Count { count: 2, .. }),
             "expected Count(2), got {:?}",
@@ -3706,7 +3709,7 @@ mod tests {
             Determiner::Indefinite,
             0,
         ))];
-        let bridi = Proposition {
+        let proposition = Proposition {
             relation: 1,
             head_terms: vec![0],
             tail_terms: vec![],
@@ -3714,7 +3717,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(predicates, arguments, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(
             matches!(&form, LogicalForm::Count { count: 2, .. }),
             "expected Count(2), got {:?}",

@@ -4,13 +4,13 @@
 //!
 //! Checks (all fail closed, targeted positioned errors):
 //! 1. NAME RESOLUTION — every predicate word (predication heads incl. all
-//!    tanru units and zei parts, restrictors, selected preds, bare clause
+//!    pair units and zei parts, restrictors, selected preds, bare clause
 //!    bodies, `via` tag preds) must be a nibli-kr-dictionary alias or an
 //!    identity-passthrough Lojban word (`nibli_lexicon::get_arity` hit).
 //!    Anything else is a compile error — the deliberate tightening over
 //!    gerna's arity-2 default: an unknown word NEVER silently mints a
 //!    relation.
-//! 2. PLACE CHECKS against the head's arity (tanru arity = the LAST unit's
+//! 2. PLACE CHECKS against the head's arity (pair arity = the LAST unit's
 //!    last word): positional overflow, unknown labels, refills. Labels
 //!    address SURFACE places (a converted alias's swap applies at emission).
 //! 3. LINKED ARGS on restrictors: positionals fill x2.. (the bound variable

@@ -439,7 +439,7 @@ mod ast_buffer_validation_tests {
     }
 
     #[test]
-    fn oob_bridi_relation_rejected() {
+    fn oob_proposition_relation_rejected() {
         expect_corrupt(
             AstBuffer {
                 predicates: vec![],
@@ -447,12 +447,12 @@ mod ast_buffer_validation_tests {
                 sentences: vec![bare_proposition(7, vec![])],
                 roots: vec![0],
             },
-            "bridi relation selbri index",
+            "proposition relation predicate index",
         );
     }
 
     #[test]
-    fn oob_bridi_term_rejected() {
+    fn oob_proposition_term_rejected() {
         expect_corrupt(
             AstBuffer {
                 predicates: vec![Predicate::Root("gerku".to_string())],
@@ -460,12 +460,12 @@ mod ast_buffer_validation_tests {
                 sentences: vec![bare_proposition(0, vec![3])],
                 roots: vec![0],
             },
-            "bridi head term sumti index",
+            "proposition head term argument index",
         );
     }
 
     #[test]
-    fn oob_nested_tanru_arm_rejected() {
+    fn oob_nested_pair_arm_rejected() {
         expect_corrupt(
             AstBuffer {
                 predicates: vec![
@@ -476,7 +476,7 @@ mod ast_buffer_validation_tests {
                 sentences: vec![bare_proposition(0, vec![])],
                 roots: vec![0],
             },
-            "tanru head selbri index",
+            "pair head predicate index",
         );
     }
 
@@ -519,7 +519,7 @@ mod ast_buffer_validation_tests {
 
     #[test]
     fn cross_array_cycle_rejected() {
-        // selbri 0 = Abstraction -> sentence 0, whose bridi relation = selbri 0.
+        // predicate 0 = Abstraction -> sentence 0, whose proposition relation = predicate 0.
         expect_corrupt(
             AstBuffer {
                 predicates: vec![Predicate::Abstraction((AbstractionKind::Event, 0))],
@@ -527,13 +527,13 @@ mod ast_buffer_validation_tests {
                 sentences: vec![bare_proposition(0, vec![])],
                 roots: vec![0],
             },
-            "abstraction/bridi cross-array cycle",
+            "abstraction/proposition cross-array cycle",
         );
     }
 
     #[test]
     fn shared_subterm_dag_still_compiles() {
-        // Sharing is NOT a cycle: the same sumti referenced twice must compile.
+        // Sharing is NOT a cycle: the same argument referenced twice must compile.
         let ast = AstBuffer {
             predicates: vec![Predicate::Root("batci".to_string())],
             arguments: vec![Argument::Name("adam".to_string())],

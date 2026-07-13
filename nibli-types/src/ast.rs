@@ -25,7 +25,7 @@ pub enum Conversion {
     Swap15,
 }
 
-/// Logical connective shared by selbri and sumti connectives.
+/// Logical connective shared by predicate and argument connectives.
 /// je=AND(∧), ja=OR(∨), jo=IFF(↔), ju=XOR(⊕).
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Connective {
@@ -48,7 +48,7 @@ pub enum Determiner {
     UniversalDefinite,
 }
 
-/// Abstraction kind: wraps a sub-sentence into a sumti.
+/// Abstraction kind: wraps a sub-sentence into a argument.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum AbstractionKind {
     /// Event abstraction.
@@ -72,7 +72,7 @@ pub enum RelClauseKind {
     Incidental,
 }
 
-/// A relative clause attached to a sumti.
+/// A relative clause attached to a argument.
 #[derive(Clone, Debug)]
 pub struct RelClause {
     pub kind: RelClauseKind,
@@ -80,12 +80,12 @@ pub struct RelClause {
     pub body_sentence: u32,
 }
 
-/// A sumti (argument term) in the AST.
+/// A argument (argument term) in the AST.
 #[derive(Clone, Debug)]
 pub enum Argument {
-    /// Pro-sumti: mi, do, da, de, di, ti, ta, tu, ke'a, ma, ko, etc.
+    /// Pro-argument: mi, do, da, de, di, ti, ta, tu, ke'a, ma, ko, etc.
     Pronoun(String),
-    /// Determiner description: `lo/le` + selbri. Fields: (gadri, selbri-id).
+    /// Determiner description: `lo/le` + predicate. Fields: (gadri, predicate-id).
     Description((Determiner, PredicateId)),
     /// Named entity: `la` + cmevla.
     Name(String),
@@ -93,19 +93,19 @@ pub enum Argument {
     QuotedLiteral(String),
     /// Unspecified placeholder (zo'e or implicit).
     Unspecified,
-    /// Place-tagged sumti: (zero-based place index 0..=4, inner-sumti-id).
+    /// Place-tagged argument: (zero-based place index 0..=4, inner-argument-id).
     Tagged((u8, ArgumentId)),
-    /// Modal-tagged sumti: (modal-tag, inner-sumti-id).
+    /// Modal-tagged argument: (modal-tag, inner-argument-id).
     ModalTagged((ModalTag, ArgumentId)),
-    /// Argument with a relative clause: (inner-sumti-id, relative-clause).
+    /// Argument with a relative clause: (inner-argument-id, relative-clause).
     Restricted((ArgumentId, RelClause)),
-    /// Number sumti: `li` + PA.
+    /// Number argument: `li` + PA.
     Number(f64),
-    /// Quantified description: PA lo/le selbri. Fields: (count, gadri, selbri-id).
+    /// Quantified description: PA lo/le predicate. Fields: (count, gadri, predicate-id).
     QuantifiedDescription((u32, Determiner, PredicateId)),
 }
 
-/// A selbri (predicate relation) in the AST.
+/// A predicate (predicate relation) in the AST.
 #[derive(Clone, Debug)]
 pub enum Predicate {
     /// Root brivla (gismu, lujvo, or fu'ivla).
@@ -114,13 +114,13 @@ pub enum Predicate {
     Compound(Vec<String>),
     /// Modifier+head pair (a compound predicate). Fields: (modifier-id, head-id).
     Pair((PredicateId, PredicateId)),
-    /// SE-converted selbri. Fields: (conversion, inner-id).
+    /// SE-converted predicate. Fields: (conversion, inner-id).
     Converted((Conversion, PredicateId)),
-    /// Negated selbri (`na`). Payload: inner-id.
+    /// Negated predicate (`na`). Payload: inner-id.
     Negated(PredicateId),
-    /// Grouped selbri (`ke ... ke'e`). Payload: inner-id.
+    /// Grouped predicate (`ke ... ke'e`). Payload: inner-id.
     Grouped(PredicateId),
-    /// Predicate with be/bei arguments. Fields: (core-id, argument-sumti-ids).
+    /// Predicate with be/bei arguments. Fields: (core-id, argument-argument-ids).
     WithArgs((PredicateId, Vec<ArgumentId>)),
     /// Abstraction: nu/du'u/ka/ni/si'o + sentence. Fields: (kind, sentence-id).
     Abstraction((AbstractionKind, u32)),
@@ -141,7 +141,7 @@ pub enum DeonticMood {
     Permission,
 }
 
-/// A bridi (predication): selbri + head terms + tail terms + modifiers.
+/// A proposition (predication): predicate + head terms + tail terms + modifiers.
 #[derive(Clone, Debug)]
 pub struct Proposition {
     pub relation: PredicateId,
@@ -163,7 +163,7 @@ pub enum SentenceConnective {
     Afterthought(Connective),
 }
 
-/// A sentence: a simple bridi, two connected sentences, or a prenex-quantified body.
+/// A sentence: a simple proposition, two connected sentences, or a prenex-quantified body.
 #[derive(Clone, Debug)]
 pub enum Sentence {
     /// Simple predication.

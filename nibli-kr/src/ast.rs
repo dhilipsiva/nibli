@@ -91,7 +91,7 @@ pub enum Tense {
 }
 
 /// A predicate application. The head is a [`PredSeq`] (a single word, or a
-/// tanru of 2+ units whose LAST unit is the head); resolution against
+/// pair of 2+ units whose LAST unit is the head); resolution against
 /// nibli-kr-dictionary happens in the resolve pass.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Predication {
@@ -102,12 +102,12 @@ pub struct Predication {
     pub span: Range<usize>,
 }
 
-/// A tanru: one or more units, right-grouping, LAST unit is the head
+/// A pair: one or more units, right-grouping, LAST unit is the head
 /// (arity/name source).
 #[derive(Debug, Clone, PartialEq)]
 pub struct PredSeq(pub Vec<PredUnit>);
 
-/// One tanru unit: a (possibly zei-compound) word, or a bracket group.
+/// One pair unit: a (possibly zei-compound) word, or a bracket group.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PredUnit {
     /// `a` or `a+b+c` — zei parts in order; compiles under the LAST part.
@@ -243,7 +243,7 @@ pub struct Restr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RestrKind {
-    /// A tanru restrictor, optionally with linked args (`carer(of: some data)`
+    /// A pair restrictor, optionally with linked args (`carer(of: some data)`
     /// — be/bei; the bound variable takes x1 unless a named `it` marks its
     /// place).
     Seq { seq: PredSeq, linked_args: Vec<Arg> },
@@ -270,7 +270,7 @@ pub enum RelKind {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClauseBody {
     /// Bare-predicate sugar: `where consents` ≡ `where consents(it)`;
-    /// `where ~cat` ≡ `where ~cat(it)`. A bare tanru is ONE shared-event
+    /// `where ~cat` ≡ `where ~cat(it)`. A bare pair is ONE shared-event
     /// predicate on `it` (`where big fast` — lint L2 territory).
     Bare { negated: bool, seq: PredSeq },
     /// A full claim; must contain `it` (mandatory-`it`, enforced at parse).

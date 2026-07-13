@@ -1,6 +1,6 @@
 //! Helper methods for the semantic compiler.
 //!
-//! Provides fresh variable generation, sumti resolution, relative clause
+//! Provides fresh variable generation, argument resolution, relative clause
 //! handling, argument fitting, and variable injection for implicit ke'a.
 use super::*;
 
@@ -30,7 +30,7 @@ impl SemanticCompiler {
     /// Residual: under an exact-count quantifier `noi` is folded into the counted
     /// body (== restrictive) — a documented limitation, since the principled form
     /// `Count(…) ∧ ∀x.(P→noi)` would need to return two conjuncts.
-    /// Shared by the bridi-level closure (`compile_proposition`) and the be/bei closure
+    /// Shared by the proposition-level closure (`compile_proposition`) and the be/bei closure
     /// (`apply_predicate`) so any change to quantifier lowering is made in one place.
     pub(crate) fn close_quantifier(
         &mut self,
@@ -154,7 +154,7 @@ impl SemanticCompiler {
         }
     }
 
-    /// Resolves the arity of a selbri by recursing through tanru, conversions, etc.
+    /// Resolves the arity of a predicate by recursing through pair, conversions, etc.
     pub(crate) fn get_predicate_arity(&self, predicate_id: u32, predicates: &[Predicate]) -> usize {
         match &predicates[predicate_id as usize] {
             Predicate::Root(g) => LexiconSchema::get_arity_or_default(g.as_str()),
@@ -171,7 +171,7 @@ impl SemanticCompiler {
         }
     }
 
-    /// Extracts the head gismu or lujvo name from a possibly nested selbri.
+    /// Extracts the head gismu or lujvo name from a possibly nested predicate.
     pub(crate) fn get_predicate_head_name<'a>(
         &self,
         predicate_id: u32,
@@ -197,13 +197,13 @@ impl SemanticCompiler {
         }
     }
 
-    /// Resolves a tanru UNIT to its base head name, arity, and the conversion
+    /// Resolves a pair UNIT to its base head name, arity, and the conversion
     /// swap chain (outermost first, as x1↔x{n} target indices 1..=4) collected
-    /// from `Converted` layers on the way down. The tanru arm of `apply_predicate`
+    /// from `Converted` layers on the way down. The pair arm of `apply_predicate`
     /// maps each unit's argument vector through these swaps (fit-then-swap,
     /// mirroring the `Predicate::Converted` arm), so a converted unit keeps its
     /// surface place structure: `menli se ponse` puts the shared x1 in
-    /// ponse_x2 (possessed), not ponse_x1. Before 2026-07-12 the tanru arm
+    /// ponse_x2 (possessed), not ponse_x1. Before 2026-07-12 the pair arm
     /// flattened units through `get_predicate_head_name`/`get_predicate_arity`,
     /// which unwrap `Converted` WITHOUT the swap — silently compiling
     /// `menli se ponse` identically to `menli ponse`, a CLL-fidelity bug.
@@ -251,15 +251,15 @@ impl SemanticCompiler {
         }
     }
 
-    /// Resolves a sumti AST node into a logical term and any quantifiers it introduces.
+    /// Resolves a argument AST node into a logical term and any quantifiers it introduces.
     pub(crate) fn resolve_argument(
         &mut self,
-        sumti: &Argument,
+        argument: &Argument,
         arguments: &[Argument],
         predicates: &[Predicate],
         sentences: &[Sentence],
     ) -> (LogicalTerm, Vec<QuantifierEntry>) {
-        match sumti {
+        match argument {
             Argument::Pronoun(p) => {
                 let term = if p.as_str() == "ma" {
                     let var = self.fresh_var();
@@ -383,8 +383,8 @@ impl SemanticCompiler {
                 let outer_ref_used = self.ref_used;
 
                 // The clause binds the quantifier variable introduced by the
-                // inner sumti (lo / ro lo / PA lo). Argument that introduce NO
-                // quantifier (la names, le descriptions, pro-sumti) get a fresh
+                // inner argument (lo / ro lo / PA lo). Argument that introduce NO
+                // quantifier (la names, le descriptions, pro-argument) get a fresh
                 // clause variable instead, substituted by the resolved term
                 // after the body is compiled.
                 let clause_var = match quants.last() {
@@ -394,7 +394,7 @@ impl SemanticCompiler {
                 self.rel_clause_var = Some(clause_var);
                 self.ref_used = false;
                 // Offer the clause variable as the implicit ke'a subject (x1) of
-                // the clause's main bridi, consumed there before selbri
+                // the clause's main proposition, consumed there before predicate
                 // conversion. Save/restore so a nested Restricted clause does not
                 // steal this one.
                 let outer_clause_subject = self.pending_clause_subject.take();
@@ -473,9 +473,9 @@ impl SemanticCompiler {
                     }
                 } else {
                     // No quantifier: the clause restricts a rigid term (la name,
-                    // le description, pro-sumti). Substitute the term for the
+                    // le description, pro-argument). Substitute the term for the
                     // clause variable and queue the clause for conjunction into
-                    // the bridi matrix. Previously the compiled clause was
+                    // the proposition matrix. Previously the compiled clause was
                     // silently DISCARDED here, so `la .adam. poi gerku cu klama`
                     // answered TRUE with only klama(adam) known (panel finding
                     // 2026-06-10).
@@ -497,7 +497,7 @@ impl SemanticCompiler {
     /// Counts candidate subject slots for relative clause ambiguity detection.
     ///
     /// Role predicates (`rel_x1(ev, subject)`) that share the SAME event
-    /// variable describe one predication — e.g. a tanru's modifier and head —
+    /// variable describe one predication — e.g. a pair's modifier and head —
     /// so their unfilled subject slots count as ONE candidate
     /// (`inject_variable` fills them all with the same entity). Distinct
     /// event variables (separate predications) and non-role predicates count
@@ -638,7 +638,7 @@ impl SemanticCompiler {
     /// Replaces every occurrence of `Variable(var)` with the given replacement
     /// term. Used to bind a relative clause compiled against a fresh clause
     /// variable to a rigid term (proper-name constant, `le` description,
-    /// pro-sumti). A binder that shadows `var` stops the substitution.
+    /// pro-argument). A binder that shadows `var` stops the substitution.
     pub(crate) fn substitute_variable(
         form: LogicalForm,
         var: lasso::Spur,

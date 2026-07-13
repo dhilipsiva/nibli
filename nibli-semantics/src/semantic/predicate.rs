@@ -1,7 +1,7 @@
-//! Predicate compilation: maps selbri AST nodes to FOL logic forms.
+//! Predicate compilation: maps predicate AST nodes to FOL logic forms.
 //!
-//! Handles root predicates, tanru, conversion (se/te/ve/xe), negation,
-//! ke...ke'e grouping, be...bei...be'o arguments, connected selbri,
+//! Handles root predicates, pair, conversion (se/te/ve/xe), negation,
+//! ke...ke'e grouping, be...bei...be'o arguments, connected predicate,
 //! zei compounds, and abstraction (nu/du'u/ka/ni/si'o). All predicates
 //! are event-decomposed into Neo-Davidsonian form.
 use super::*;
@@ -168,7 +168,7 @@ impl SemanticCompiler {
         out.push(')');
     }
 
-    /// Compiles a selbri node with given arguments into a FOL logic form.
+    /// Compiles a predicate node with given arguments into a FOL logic form.
     pub(crate) fn apply_predicate(
         &mut self,
         predicate_id: u32,
@@ -185,7 +185,7 @@ impl SemanticCompiler {
                 // match `relation == "du" && args.len() == 2`, so the
                 // Neo-Davidsonian event form would silently disable equality
                 // reasoning. (The >2-place fail-closed reject lives in
-                // `compile_proposition`, where the dropped-overflow sumti are visible.)
+                // `compile_proposition`, where the dropped-overflow argument are visible.)
                 if g == "du" {
                     let fitted = Self::fit_args(args, 2);
                     return LogicalForm::Predicate {
@@ -235,7 +235,7 @@ impl SemanticCompiler {
                 let mut form = type_pred;
 
                 // Emit ALL head roles, including Unspecified — exactly like root
-                // event decomposition. Skipping Unspecified roles left `poi <tanru>`
+                // event decomposition. Skipping Unspecified roles left `poi <pair>`
                 // clauses with no injectable _x1 slot, so the ambiguity firewall
                 // FALSELY rejected valid clauses (panel finding 2026-06-10).
                 for (i, arg) in head_args.iter().enumerate() {
@@ -290,9 +290,9 @@ impl SemanticCompiler {
                 });
 
                 for bound_id in bound_ids.iter() {
-                    let bound_sumti = &arguments[*bound_id as usize];
+                    let bound_argument = &arguments[*bound_id as usize];
                     let (term, quants) =
-                        self.resolve_argument(bound_sumti, arguments, predicates, sentences);
+                        self.resolve_argument(bound_argument, arguments, predicates, sentences);
                     inner_quantifiers.extend(quants);
                     merged.push(term);
                 }

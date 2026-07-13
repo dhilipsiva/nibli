@@ -146,8 +146,8 @@ arg         = { (label ~ ":")? ~ term }
 label       = { ident }
 equality    = { term ~ "=" ~ term }
 
-// ── Predicate sequences (tanru; NIBLI_KR §5) ──
-pred_seq  = { pred_unit+ }                       // 2+ units = tanru, LAST = head
+// ── Predicate sequences (pair; NIBLI_KR §5) ──
+pred_seq  = { pred_unit+ }                       // 2+ units = pair, LAST = head
 pred_unit = { ("[" ~ pred_seq ~ "]") | pred_name }
 pred_name = ${ ident ~ ("+" ~ ident)* }          // a+b zei compound — word identity,
                                                  // compound-atomic (no WS/comments)

@@ -390,7 +390,7 @@ fn build_unary(pair: Pair<Rule>, input: &str, base: usize) -> Result<Claim, Pars
                             return Err(err_at(
                                 input,
                                 at,
-                                "double negation `~~` has no encoding (bridi-level negation \
+                                "double negation `~~` has no encoding (proposition-level negation \
                                  is a single flag) — drop both, or restate the claim",
                             ));
                         }
@@ -1180,10 +1180,10 @@ mod tests {
         );
     }
 
-    // ── tanru / brackets / zei ──
+    // ── pair / brackets / zei ──
 
     #[test]
-    fn tanru_heads_and_groups() {
+    fn pair_heads_and_groups() {
         assert_claim(
             "health data(Kanrek).",
             Claim::Predication(Predication {
@@ -1228,7 +1228,7 @@ mod tests {
     }
 
     #[test]
-    fn tanru_fencing_regressions() {
+    fn pair_fencing_regressions() {
         // Review near-misses: predication-then-`=` fails closed (n-ary du
         // inexpressible), bare ident is not a term.
         assert!(parse_statements("dog cat = Adam.").is_err());
@@ -1325,7 +1325,7 @@ mod tests {
                 })],
             ),
         );
-        // Negated bare body; stacking; also-clauses; bare tanru body.
+        // Negated bare body; stacking; also-clauses; bare pair body.
         let claim = one("goes(every drug where ~thin also big fast).");
         let Claim::Predication(p) = claim else {
             panic!()
