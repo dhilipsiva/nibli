@@ -4,7 +4,7 @@
 //! This map is only sound for the Horn / NAF-free fragment — callers MUST gate each
 //! case with [`crate::filter`] first. On a negation-free program every `NotNode` is a
 //! material-implication arrow (a universal restrictive / `ganai..gi` compiles to
-//! `Or(Not(A), B)` in `smuni/src/semantic/compile.rs`), so a direct boolean map yields
+//! `Or(Not(A), B)` in `nibli-semantics/src/semantic/compile.rs`), so a direct boolean map yields
 //! the correct classical theory. The translator never emits the non-classical nodes
 //! (`ComputeNode`, tense/deontic, `CountNode`); reaching one is a filter bug and is
 //! surfaced as an error rather than silently mistranslated. The identity predicate

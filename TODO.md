@@ -20,7 +20,7 @@ first and take precedence over the engine bullets after them.
    **"nibli knowledge representation (KR) language"**.
 3. **Total Lojban purge.** No Lojban word survives in this repo except the engine
    name `nibli` itself (the project exists because of Lojban; the name honors that)
-   and the repo name. That includes crate names (smuni/logji/lasna/gasnu/fanva…),
+   and the repo name. That includes crate names (nibli-semantics/nibli-reason/nibli-pipeline/nibli-host/fanva…),
    the WIT package (`lojban:nibli`!), env/commands, internal vocabulary
    (selbri/sumti/bridi/tanru/xorlo/goi…), corpora, AND the canonical predicate
    names — **proof traces must contain no Lojban** (today they show
@@ -45,7 +45,7 @@ Lojban items from this tracker (fanva-proxy retirement / jbotci-AGPL licensing, 
 quantified-head witness sharing, determinism-corpus GIhA lines — those now live in
 fanva's TODO, not here) — and its full test matrix is green (411/411 camxes
 differential, zero divergences). fanva VENDORS the crate closure
-(nibli-types/smuni/smuni-dictionary/nibli-protocol/nibli-render) under the upstream
+(nibli-types/nibli-semantics/nibli-lexicon/nibli-protocol/nibli-render) under the upstream
 names, so nibli's later crate renames do NOT ripple into it.
 
 **THE DROP: LANDED (2026-07-13).** The Lojban front-end is gone: gerna deleted, the
@@ -66,10 +66,10 @@ least loads), and `verify-book` is red until the book migrates or pins the tag.
 - **Lojban identifier + crate purge (everything but the predicate names)** — rename
   the surviving Lojban-named crates and boundary names. PROPOSALS (decide per crate
   at implementation): `smuni` → `nibli-semantics`/`nibli-compile`, `logji` →
-  `nibli-logic`/`nibli-reason`, `lasna` → `nibli-pipeline` (artifact `lasna.wasm` →
+  `nibli-logic`/`nibli-reason`, `lasna` → `nibli-pipeline` (artifact `nibli.wasm` →
   `nibli.wasm`; WIT world `lasna-pipeline` → `nibli-pipeline`, interface `lasna` →
   `engine`), `gasnu` → `nibli-host`/`nibli-repl` (~25 smoke recipes rename),
-  `nibli-fanva` → `nibli-formalize`, `smuni-dictionary` → `nibli-lexicon`
+  `nibli-formalize` → `nibli-formalize`, `nibli-lexicon` → `nibli-lexicon`
   (consider folding `nibli-kr-dictionary` in behind a feature — the two-crate split
   exists only to keep the reverse map out of the web bundle). WIT package
   `lojban:nibli@0.1.0` → `nibli:engine@0.2.0` (bindings regen, one commit with both
@@ -116,7 +116,7 @@ least loads), and `verify-book` is red until the book migrates or pins the tag.
   predicate namespace to the English aliases at compile time** (emit
   `canonical_alias` instead of `entry.gismu`; keep the KR alias the user wrote where
   it IS canonical). Scope the obstacles honestly:
-  (a) re-key `smuni-dictionary` lookups (arity/gloss/template — logji
+  (a) re-key `nibli-lexicon` lookups (arity/gloss/template — logji
   `rules.rs:848`, `nibli-render/src/frame.rs`) by the canonical English names;
   (b) `du` + the compute predicates are load-bearing string literals
   (`logji` union-find keys `"du"`; `default_compute_predicates()` =

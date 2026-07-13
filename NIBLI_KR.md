@@ -30,7 +30,7 @@ checking.
 
 nibli KR is a one-page predicate-call language: every claim is `pred(args)`, every KB is a
 list of period-terminated claims. It compiles to the **same AstBuffer** the Lojban parser
-produces and reuses smuni/logji unchanged, so verdicts, proofs, the Vampire/clingo
+produces and reuses nibli-semantics/logji unchanged, so verdicts, proofs, the Vampire/clingo
 differential gates, and the Lean soundness proofs all apply as-is.
 
 ```nibli-kr
@@ -240,7 +240,7 @@ Precedence, tightest first: `~` · deontic/tense prefixes · `&` · `|` · `^` �
 **Prefixes** (at most one of each per bridi, enforced by the grammar):
 `past` / `now` / `future` (`pu/ca/ba` wrappers) and `must` / `may`
 (`.ei`→Obligatory / `.e'e`→Permitted). Nesting is pinned to smuni's verified emission
-order (`smuni/src/semantic/compile.rs:358-383`): deontic outermost, then tense, then
+order (`nibli-semantics/src/semantic/compile.rs:358-383`): deontic outermost, then tense, then
 negation innermost — `must past ~P` compiles to `Obligatory(Past(Not(P)))`. This
 resolves former open issue O3; the §15 `Modified <- Deontic? Tense? Atom` order stands.
 Consequences the grammar enforces fail-closed (2026-07-12 design-review errata):
@@ -403,12 +403,12 @@ never invoke the linter.
 ## 13. Implementation notes
 
 **Pipeline:** nibli KR text → lexer → recursive-descent/PEG parser → **synthesize
-`nibli_types::ast::AstBuffer`** → `smuni::compile_from_gerna_ast` → logji. smuni's
+`nibli_types::ast::AstBuffer`** → `nibli_semantics::compile_from_gerna_ast` → logji. smuni's
 `validate_ast_buffer` already treats hand-built buffers as a designed-for path
 (fail-closed structural validation). gerna is simply not in this pipeline; smuni, logji,
 the stores, rendering, and every soundness gate are untouched.
 
-**The alias map** (new, generated at build time alongside `smuni-dictionary`):
+**The alias map** (new, generated at build time alongside `nibli-lexicon`):
 `english_name → (gismu, optional place-permutation, place_labels[])`.
 - English names from the first lensisku gloss keyword (~98% clean; 5 collisions +
   ~25-word pin table, same mechanism as the existing `GISMU_GLOSS_OVERRIDES`).
@@ -461,7 +461,7 @@ hyphen-vs-`->` lexing wrinkle.
 - **O2**: whole-rule tense (`past animal(every dog)`) parses and fails at logji assert,
   same as Lojban; static rejection would duplicate an engine check.
 - **O3 (RESOLVED 2026-07-12)**: smuni's wrapper emission is
-  `Attitudinal(Tense(Not(matrix)))` (`smuni/src/semantic/compile.rs:358-383`), so
+  `Attitudinal(Tense(Not(matrix)))` (`nibli-semantics/src/semantic/compile.rs:358-383`), so
   `must past P` → `Obligatory(Past(P))` — the §15 `Modified` order stands. To be pinned
   by a nibli-kr seam-gate golden. The same review produced the §6 reject errata
   (`~past P`, `past (A & B)`, `~(A & B)`).
@@ -529,7 +529,7 @@ pred obligated(who, duty).
 - Grammar delta: `Statement <- PredDecl / Claim "."` with
   `PredDecl <- "pred" ident "(" ident ("," ident)* ")" (":" String)? "."`.
 - **Engine change:** smuni's arity/label source becomes injectable (a schema registry
-  behind the same lookup seam `JbovlasteSchema` occupies today); `smuni-dictionary` +
+  behind the same lookup seam `JbovlasteSchema` occupies today); `nibli-lexicon` +
   lensisku remain only for the Lojban front-end while it lives.
 - **Verification impact:** `verify-dict` (Predilex lower bounds) stops covering nibli KR
   KBs — it pins the *Lojban* dictionary. Replacement obligation is much weaker: schema

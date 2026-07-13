@@ -7,7 +7,7 @@
 //! The reasoning engine (nibli-kr → smuni → logji) is compiled into the
 //! WASM bundle and runs entirely client-side (mirrors `nibli-wasm`). The ONLY
 //! network call is the optional Formalize step, sent directly from the browser
-//! to the user's chosen LLM provider — the client lives in `nibli_fanva::llm`
+//! to the user's chosen LLM provider — the client lives in `nibli_formalize::llm`
 //! (the single source of truth); nibli-ui only wraps it in a `Settings`
 //! bundle. nibli itself has no server. ("Formalize", never "compile": the LLM
 //! step is interpretive formalization behind gates; "compile" is reserved for
@@ -16,14 +16,14 @@
 use std::collections::HashSet;
 
 use dioxus::prelude::*;
-use logji::KnowledgeBase;
 use nibli_protocol::{KbStatus, LineResult, ProofTrace};
+use nibli_reason::KnowledgeBase;
 use nibli_types::error::NibliError;
 use nibli_types::logic::LogicBuffer;
 
 mod examples;
 use examples::EXAMPLES;
-use nibli_fanva::llm::{LlmConfig, Provider};
+use nibli_formalize::llm::{LlmConfig, Provider};
 
 fn main() {
     dioxus::launch(App);
@@ -51,7 +51,7 @@ fn back_translate_ir(kb: &str) -> String {
 fn render_kb_line(line: &str) -> String {
     let parsed = nibli_kr::parse_text(line);
     if parsed.errors.is_empty() {
-        smuni::compile_from_gerna_ast(parsed.buffer)
+        nibli_semantics::compile_from_gerna_ast(parsed.buffer)
             .map(|buf| nibli_render::render_logic_buffer(&buf, nibli_render::Register::Spec))
             .unwrap_or_else(|_| line.to_string())
     } else {
@@ -69,7 +69,7 @@ const DEFAULT_QUERY: &str = "eats(Adam).";
 /// The KB tab's label.
 const KB_TAB_LABEL: &str = "nibli KR";
 
-// ── Agentic formalize (nibli-fanva) ──
+// ── Agentic formalize (nibli-formalize) ──
 // The Source→KB button runs the self-correcting loop: formalize → validate
 // (nibli-kr+smuni+round-trip) → feed the compiler error back → retry, bounded
 // below. All gates are local/in-browser; the only network call is the LLM.
@@ -91,7 +91,7 @@ struct TraceRow {
     gates: Vec<(String, &'static str)>,
 }
 
-/// nibli-ui's settings bundle: the LLM provider config (`nibli_fanva::llm::LlmConfig`,
+/// nibli-ui's settings bundle: the LLM provider config (`nibli_formalize::llm::LlmConfig`,
 /// the single source of truth) plus the agent knobs that aren't LLM-provider
 /// settings. Held in one in-memory signal; never persisted.
 #[derive(Clone, PartialEq)]
@@ -109,11 +109,11 @@ impl Settings {
     }
 }
 
-/// Single-shot English→KB formalize via nibli-fanva's transport — used by the
+/// Single-shot English→KB formalize via nibli-formalize's transport — used by the
 /// query formalize and the modal key-test (the agentic Source formalize uses
 /// `translate_agentic`). Returns the cleaned KB text or a user-facing error.
 async fn fanva_translate(cfg: &LlmConfig, english: &str) -> Result<String, String> {
-    use nibli_fanva::llm::{Chat, HttpChat, Turn, clean_lojban_output, system_prompt};
+    use nibli_formalize::llm::{Chat, HttpChat, Turn, clean_lojban_output, system_prompt};
     let request = format!("Formalize into nibli KR: {}", english.trim());
     let turns = [Turn::user(request)];
     let raw = HttpChat
@@ -133,7 +133,7 @@ const GATE_ORDER: [&'static str; 3] = ["nibli-kr", "smuni", "round-trip"];
 /// Derive the per-gate chips from an attempt's error. `validate` is fail-fast in
 /// [`GATE_ORDER`], so `error.gate()` is the failing gate; earlier gates
 /// passed, later ones were skipped.
-fn gate_chips(error: &Option<nibli_fanva::gates::GateError>) -> Vec<(String, &'static str)> {
+fn gate_chips(error: &Option<nibli_formalize::gates::GateError>) -> Vec<(String, &'static str)> {
     let order = GATE_ORDER;
     let states: [GateState; 3] = match error {
         None => [GateState::Pass; 3],
@@ -175,7 +175,7 @@ fn truncate(s: &str, max: usize) -> String {
 
 /// Collapse the agent's attempts into UI trace rows (per-gate chips + first
 /// error line).
-fn trace_rows(attempts: &[nibli_fanva::agent::Attempt]) -> Vec<TraceRow> {
+fn trace_rows(attempts: &[nibli_formalize::agent::Attempt]) -> Vec<TraceRow> {
     attempts
         .iter()
         .map(|a| TraceRow {
@@ -228,15 +228,15 @@ struct OutputEntry {
 /// output log classifies on).
 fn compile_text(text: &str, preds: &HashSet<String>) -> Result<LogicBuffer, NibliError> {
     let ast = nibli_kr::parse_checked(text)?;
-    let mut buf = smuni::compile_from_gerna_ast(ast)?;
-    logji::transform_compute_nodes(&mut buf, preds);
+    let mut buf = nibli_semantics::compile_from_gerna_ast(ast)?;
+    nibli_reason::transform_compute_nodes(&mut buf, preds);
     Ok(buf)
 }
 
 /// Build a fresh KB from the KB tab, assert it (recording a per-line status),
 /// then run the query and return the result + proof trace as an `OutputEntry`.
 fn run_query(kb_text: &str, query_text: &str) -> OutputEntry {
-    let preds = logji::default_compute_predicates();
+    let preds = nibli_reason::default_compute_predicates();
     let kb = KnowledgeBase::new();
 
     let mut asserted = 0u32;
@@ -655,7 +655,7 @@ fn QueryTabs(
         }
         let parsed = nibli_kr::parse_text(q);
         if parsed.errors.is_empty() {
-            match smuni::compile_from_gerna_ast(parsed.buffer) {
+            match nibli_semantics::compile_from_gerna_ast(parsed.buffer) {
                 Ok(buf) => QueryReading::Reads(nibli_render::render_logic_buffer(
                     &buf,
                     nibli_render::Register::Spec,
@@ -1045,16 +1045,16 @@ fn SourceTabs(
         translate_error.set(None);
         translate_trace.set(Vec::new());
         spawn(async move {
-            use nibli_fanva::agent::Outcome;
+            use nibli_formalize::agent::Outcome;
             // The self-correcting loop: formalize → validate
             // (nibli-kr+smuni+round-trip) → semantic verification (a
             // fresh-context judge reads the engine's back-translation) → feed
             // any error back → retry, up to the configured max attempts.
-            let http = nibli_fanva::llm::HttpChat;
+            let http = nibli_formalize::llm::HttpChat;
             // The same zero-sized HttpChat serves as the semantic validator: the
             // Chat seam is stateless, so the judge call is a genuinely fresh
             // conversation (same provider/key, no shared history).
-            let outcome = nibli_fanva::agent::translate_agentic(
+            let outcome = nibli_formalize::agent::translate_agentic(
                 &http,
                 &http,
                 &cfg.llm,
@@ -1464,7 +1464,7 @@ fn LlmConfigModal(settings: Signal<Option<Settings>>, modal_open: Signal<bool>) 
                     }
                     div { class: "llm-security-note__links",
                         a {
-                            href: "https://github.com/dhilipsiva/nibli/blob/main/nibli-fanva/src/llm/http.rs",
+                            href: "https://github.com/dhilipsiva/nibli/blob/main/nibli-formalize/src/llm/http.rs",
                             target: "_blank",
                             rel: "noopener noreferrer",
                             "http.rs \u{2014} the request code"

@@ -3,7 +3,7 @@
 //! (`fanta` -> "inhibits", `flukonazol` -> "fluconazole"), scoped to a loaded
 //! example.
 //!
-//! The engine dictionary (`smuni_dictionary`) is always the FALLBACK: an example
+//! The engine dictionary (`nibli_lexicon`) is always the FALLBACK: an example
 //! with no entry for a relation, and every Custom (user-authored) KB, render with
 //! the literal glosses. The overlay is installed only for the duration of one
 //! render call via [`with_overlay`] and read back through [`active`], so it never

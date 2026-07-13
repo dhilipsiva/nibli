@@ -1,4 +1,4 @@
-//! Native nibli engine library: calls gerna/smuni/logji directly as Rust crates.
+//! Native nibli engine library: calls gerna/nibli-semantics/logji directly as Rust crates.
 //! No WASM, no Wasmtime — full stack traces for debugging.
 #![allow(dead_code)]
 
@@ -8,7 +8,7 @@ use std::path::Path;
 
 use nibli_store::NibliStore;
 
-pub use logji::ComputeRequest as EngineComputeRequest;
+pub use nibli_reason::ComputeRequest as EngineComputeRequest;
 pub use nibli_types::logic::{
     AggregateOp as EngineAggregateOp, FactSummary as EngineFactSummary,
     LogicBuffer as EngineLogicBuffer, LogicNode as EngineLogicNode,
@@ -54,7 +54,7 @@ pub fn display_query_result(result: &EngineQueryResult) -> String {
 // ═══════════════════════════════════════════════════════════════════════
 
 pub struct NibliEngine {
-    kb: logji::KnowledgeBase,
+    kb: nibli_reason::KnowledgeBase,
     compute_predicates: HashSet<String>,
     store: RefCell<Option<NibliStore>>,
 }
@@ -67,7 +67,7 @@ impl Default for NibliEngine {
 
 impl NibliEngine {
     /// Access the underlying KnowledgeBase for sort/constraint declarations.
-    pub fn kb(&self) -> &logji::KnowledgeBase {
+    pub fn kb(&self) -> &nibli_reason::KnowledgeBase {
         &self.kb
     }
 
@@ -109,11 +109,11 @@ impl NibliEngine {
     /// it, external predicates (e.g. `tenfa`/`dugri`) return an error; built-in
     /// arithmetic (pilji/sumji/dilcu) works regardless. Replaces the old
     /// thread-local registration that the multithreaded server could not use.
-    /// See `logji::KnowledgeBase::set_compute_dispatch` for the trust boundary.
+    /// See `nibli_reason::KnowledgeBase::set_compute_dispatch` for the trust boundary.
     pub fn set_compute_dispatch(
         &self,
         eval: fn(&str, &[EngineLogicalTerm]) -> Result<bool, String>,
-        batch_eval: fn(&[logji::ComputeRequest]) -> Vec<Result<bool, String>>,
+        batch_eval: fn(&[nibli_reason::ComputeRequest]) -> Vec<Result<bool, String>>,
     ) {
         self.kb.set_compute_dispatch(eval, batch_eval);
     }
@@ -140,8 +140,8 @@ impl NibliEngine {
     /// Create an engine without persistence (existing behavior).
     pub fn new() -> Self {
         NibliEngine {
-            kb: logji::KnowledgeBase::new(),
-            compute_predicates: logji::default_compute_predicates(),
+            kb: nibli_reason::KnowledgeBase::new(),
+            compute_predicates: nibli_reason::default_compute_predicates(),
             store: RefCell::new(None),
         }
     }
@@ -166,13 +166,13 @@ impl NibliEngine {
         // list-facts is empty). Clear the mirror and let the registry replay
         // below rebuild it from the active records.
         {
-            use logji::fact_store::FactStore as _;
+            use nibli_reason::fact_store::FactStore as _;
             typed_store.clear();
         }
 
         let engine = NibliEngine {
-            kb: logji::KnowledgeBase::with_store(Box::new(typed_store)),
-            compute_predicates: logji::default_compute_predicates(),
+            kb: nibli_reason::KnowledgeBase::with_store(Box::new(typed_store)),
+            compute_predicates: nibli_reason::default_compute_predicates(),
             store: RefCell::new(Some(store)),
         };
         engine.replay_from_store()?;
@@ -214,8 +214,8 @@ impl NibliEngine {
         // The SOLE text→AST seam — every public text method funnels through
         // here; `EngineError` is the re-exported `NibliError`.
         let ast = nibli_kr::parse_checked(input)?;
-        let mut buf = smuni::compile_from_gerna_ast(ast)?;
-        logji::transform_compute_nodes(&mut buf, &self.compute_predicates);
+        let mut buf = nibli_semantics::compile_from_gerna_ast(ast)?;
+        nibli_reason::transform_compute_nodes(&mut buf, &self.compute_predicates);
         Ok(buf)
     }
 
@@ -277,7 +277,7 @@ impl NibliEngine {
         // Event-decompose to the SAME shape a surface assertion produces, so the
         // injected fact is matched by surface text queries (not just raw-FOL /
         // same-shape direct queries). `du` stays flat — see compile_injected_fact.
-        let buf = smuni::compile_injected_fact(&relation, &args);
+        let buf = nibli_semantics::compile_injected_fact(&relation, &args);
         self.kb.assert_fact(buf, label)
     }
 
@@ -322,7 +322,7 @@ impl NibliEngine {
     }
 
     /// Count the number of distinct witness binding sets satisfying a KR query.
-    /// Exposes `logji::KnowledgeBase::count_witnesses` at the embedding level.
+    /// Exposes `nibli_reason::KnowledgeBase::count_witnesses` at the embedding level.
     pub fn count_witnesses_text(&self, text: &str) -> Result<usize, EngineError> {
         let buf = self.compile_text(text)?;
         self.kb.count_witnesses(buf)
@@ -330,7 +330,7 @@ impl NibliEngine {
 
     /// Aggregate the numeric values bound to `variable` across all witness binding
     /// sets of a KR query, applying `op` (Sum/Min/Max/Avg). Returns `Ok(None)`
-    /// when no numeric witnesses are found. Exposes `logji::KnowledgeBase::aggregate`.
+    /// when no numeric witnesses are found. Exposes `nibli_reason::KnowledgeBase::aggregate`.
     pub fn aggregate_text(
         &self,
         text: &str,

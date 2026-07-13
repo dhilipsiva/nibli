@@ -1,11 +1,11 @@
 //! Per-predicate English place-frame templates and filling.
 //!
 //! A *frame* is an English clause schema for a predicate using `{x1}`..`{x5}`
-//! placeholders. The curated table in `smuni-dictionary` supplies frames for the
+//! placeholders. The curated table in `nibli-lexicon` supplies frames for the
 //! predicates the corpora use (`gerku` -> `"{x1} is a dog"`); everything else
 //! falls back to a generic gloss-based frame here.
 
-use smuni_dictionary::{get_arity, get_gloss, get_template};
+use nibli_lexicon::{get_arity, get_gloss, get_template};
 
 use crate::overlay;
 
@@ -151,7 +151,7 @@ mod tests {
 
     #[test]
     fn curated_template_used() {
-        // gerku is curated as "{x1} is a dog" (via the smuni-dictionary build).
+        // gerku is curated as "{x1} is a dog" (via the nibli-lexicon build).
         assert_eq!(frame_template("gerku"), "{x1} is a dog");
         assert_eq!(frame_template("danlu"), "{x1} is an animal");
     }

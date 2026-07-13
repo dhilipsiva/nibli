@@ -6,7 +6,7 @@
 //! 1. NAME RESOLUTION — every predicate word (predication heads incl. all
 //!    tanru units and zei parts, restrictors, selected preds, bare clause
 //!    bodies, `via` tag preds) must be a nibli-kr-dictionary alias or an
-//!    identity-passthrough Lojban word (`smuni_dictionary::get_arity` hit).
+//!    identity-passthrough Lojban word (`nibli_lexicon::get_arity` hit).
 //!    Anything else is a compile error — the deliberate tightening over
 //!    gerna's arity-2 default: an unknown word NEVER silently mints a
 //!    relation.
@@ -75,7 +75,7 @@ pub(crate) fn lookup(word: &str) -> Result<PredInfo, String> {
             entry: Some(entry),
         });
     }
-    if let Some(arity) = smuni_dictionary::get_arity(word) {
+    if let Some(arity) = nibli_lexicon::get_arity(word) {
         return Ok(PredInfo {
             surface: word.to_owned(),
             arity: arity.clamp(1, 5) as u8,
@@ -433,7 +433,7 @@ mod tests {
 
     // FALLBACK-SAFE VOCABULARY ONLY: CI builds without dictionary-en.json, so
     // every word here must come from nibli-kr-dictionary's curated tables or
-    // smuni-dictionary's fallback core (identity passthrough).
+    // nibli-lexicon's fallback core (identity passthrough).
 
     fn ok(input: &str) {
         let statements = parse_statements(input).unwrap_or_else(|e| panic!("parse {input:?}: {e}"));

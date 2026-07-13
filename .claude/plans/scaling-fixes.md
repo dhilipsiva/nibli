@@ -42,6 +42,6 @@ Implementation:
 
 ## Files touched
 
-- `logji/src/lib.rs` — remove clone-per-assertion (~10 lines changed)
-- `logji/src/reasoning.rs` — add candidate narrowing for witness search (~40 lines)
-- `logji/src/kb.rs` — add helper for extracting candidates from predicate index
+- `nibli-reason/src/lib.rs` — remove clone-per-assertion (~10 lines changed)
+- `nibli-reason/src/reasoning.rs` — add candidate narrowing for witness search (~40 lines)
+- `nibli-reason/src/kb.rs` — add helper for extracting candidates from predicate index

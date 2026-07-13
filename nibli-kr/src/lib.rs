@@ -2,7 +2,7 @@
 //!
 //! nibli KR is a predicate-call language (`goes(me, some market).`) that compiles
 //! to the same `nibli_types::ast::AstBuffer` the Lojban parser produces,
-//! reusing smuni/logji and every soundness gate unchanged. The language is
+//! reusing nibli-semantics/logji and every soundness gate unchanged. The language is
 //! specified in repo-root `NIBLI_KR.md`; the implementation program is
 //! tracked in repo-root `TODO.md`.
 //!
@@ -37,7 +37,7 @@ fn to_nibli(e: parser::ParseError) -> NibliError {
 }
 
 /// FAIL CLOSED: parse + resolve + emit, or the first (source-order) error.
-/// Feed the result to `smuni::compile_from_gerna_ast`.
+/// Feed the result to `nibli_semantics::compile_from_gerna_ast`.
 pub fn parse_checked(text: &str) -> Result<AstBuffer, NibliError> {
     let statements = parser::parse_statements(text).map_err(to_nibli)?;
     resolve::resolve(text, &statements).map_err(to_nibli)?;

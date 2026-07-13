@@ -1,5 +1,5 @@
 //! The nibli KR emitter: tree AST → `nibli_types::ast::AstBuffer` — the exact
-//! buffer gerna produces, so `smuni::compile_from_gerna_ast` (and everything
+//! buffer gerna produces, so `nibli_semantics::compile_from_gerna_ast` (and everything
 //! below it: logji, the oracles, the Lean-bridged conformance surface) applies
 //! unchanged. Mirrors gerna's Flattener discipline: child indices come from
 //! push-return values, never from length arithmetic.
@@ -619,7 +619,7 @@ mod tests {
 
     fn nibli_kr_lb(text: &str) -> String {
         let buffer = parse_checked(text).unwrap_or_else(|e| panic!("nibli-kr {text:?}: {e}"));
-        let lb = smuni::compile_from_gerna_ast(buffer)
+        let lb = nibli_semantics::compile_from_gerna_ast(buffer)
             .unwrap_or_else(|e| panic!("smuni rejected nibli-kr buffer for {text:?}: {e}"));
         format!("{lb:?}")
     }

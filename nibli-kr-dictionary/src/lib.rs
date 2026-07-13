@@ -2,19 +2,19 @@
 //! optional place permutation + place labels.
 //!
 //! This is NEW TRUSTED BASE for the nibli KR surface syntax (NIBLI_KR.md §13)
-//! and deliberately its own crate, NOT an extension of `smuni-dictionary`: nibli-kr
+//! and deliberately its own crate, NOT an extension of `nibli-lexicon`: nibli-kr
 //! needs the reverse (English-keyed) direction plus per-place labels, and none of
-//! that belongs in the phf map that ships inside the smuni→lasna/nibli-wasm web
+//! that belongs in the phf map that ships inside the smuni→nibli-pipeline/nibli-wasm web
 //! bundle. The two crates' agreement (alias arity == smuni arity, swap validity)
 //! is enforced by the alias differential gate in nibli-verify, not by shared code.
 //!
-//! Two build modes, mirroring smuni-dictionary's contract:
+//! Two build modes, mirroring nibli-lexicon's contract:
 //!
 //! - **FULL MODE** (repo-root `dictionary-en.json` present — every local build):
 //!   all ~1,338 gismu get an alias — curated table first, then `ALIAS_PINS`,
 //!   then the first lensisku gloss keyword normalized (base-form as-is; user
 //!   decision 2026-07-12 — no mechanical inflection, the export has no
-//!   part-of-speech data). Arity comes from `smuni-dictionary` as a BUILD
+//!   part-of-speech data). Arity comes from `nibli-lexicon` as a BUILD
 //!   dependency, so nibli-kr/smuni arity agreement holds by construction. Unpinned
 //!   collisions/keyword-hits/dictionary-shadows FAIL THE BUILD listing every
 //!   offender; coverage floor ≥ 1,300.
@@ -177,10 +177,10 @@ mod tests {
 
     #[test]
     fn covers_smuni_fallback_core() {
-        // The smuni-dictionary FALLBACK_GISMU_ENTRIES word set (+ bilga/curmi) must
+        // The nibli-lexicon FALLBACK_GISMU_ENTRIES word set (+ bilga/curmi) must
         // all be reachable — the vocabulary the shipped gates rely on without
         // dictionary-en.json. The alias differential gate (nibli-verify) will
-        // additionally pin arity equality against smuni-dictionary itself.
+        // additionally pin arity equality against nibli-lexicon itself.
         assert!(ALIASES.len() >= 65, "alias map shrank: {}", ALIASES.len());
         for gismu in [
             "klama", "ctuca", "ciska", "mrilu", "bevri", "vecnu", "dunda", "prami", "gerku",

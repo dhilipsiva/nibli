@@ -7,17 +7,17 @@ edition = "2024"
 [dependencies]
 nibli-engine = { path = "../nibli-engine" }
 nibli-types = { path = "../nibli-types" }
-# The KR front-end + smuni/logji so nibli_kr_battery::kompile() runs the shipped
+# The KR front-end + nibli-semantics/logji so nibli_kr_battery::kompile() runs the shipped
 # post-parse stages (compute-node marking included).
 nibli-kr = { path = "../nibli-kr" }
-smuni = { path = "../smuni" }
-logji = { path = "../logji" }
+nibli-semantics = { path = "../nibli-semantics" }
+nibli-reason = { path = "../nibli-reason" }
 
 [dev-dependencies]
 # The Predilex arity gate (tests/predilex_differential.rs) joins the vendored
 # Predilex expectations against the SHIPPED dictionary arities. Dev-only so the
 # library's data layer (src/predilex.rs) stays a pure parser.
-smuni-dictionary = { path = "../smuni-dictionary" }
+nibli-lexicon = { path = "../nibli-lexicon" }
 # The alias-map differential gate (tests/alias_differential.rs) joins the
 # SHIPPED nibli-kr alias map against the SHIPPED smuni dictionary — the two
 # independently built phf maps cannot drift.

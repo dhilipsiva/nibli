@@ -11,8 +11,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use crate::StoreError;
-use logji::fact_store::FactStore;
-use logji::kb::StoredFact;
+use nibli_reason::fact_store::FactStore;
+use nibli_reason::kb::StoredFact;
 use redb::{Database, ReadableTable, TableDefinition};
 
 const TYPED_FACTS_TABLE: TableDefinition<u64, &[u8]> = TableDefinition::new("typed_facts");
@@ -278,7 +278,7 @@ impl FactStore for RedbFactStore {
         // For hypothetical reasoning on persistent stores, clone the in-memory
         // caches into an InMemoryFactStore (detached from disk). The hypothetical
         // KB operates purely in memory — no disk writes.
-        let mut mem = logji::fact_store::InMemoryFactStore::new();
+        let mut mem = nibli_reason::fact_store::InMemoryFactStore::new();
         for fact in &self.all_facts_cache {
             mem.insert(fact.clone());
         }
@@ -300,7 +300,7 @@ impl Drop for RedbFactStore {
 #[cfg(test)]
 mod schema_guard_tests {
     use super::*;
-    use logji::kb::GroundFact;
+    use nibli_reason::kb::GroundFact;
     use std::fs;
 
     fn temp_db_path(name: &str) -> std::path::PathBuf {
@@ -316,7 +316,7 @@ mod schema_guard_tests {
     fn fact(relation: &str) -> StoredFact {
         StoredFact::Bare(GroundFact::new(
             relation,
-            vec![logji::kb::GroundTerm::Constant("adam".to_string())],
+            vec![nibli_reason::kb::GroundTerm::Constant("adam".to_string())],
         ))
     }
 

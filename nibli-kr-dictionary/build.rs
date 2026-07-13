@@ -8,7 +8,7 @@ use std::path::Path;
 // Curated alias tables, prose-label heuristic, and reserved-word list, shared
 // with the crate (compiled here as build-script modules; `#[cfg(test)]` is false
 // for a build script, so their test submodules are excluded — the
-// smuni-dictionary `src/arity.rs` pattern).
+// nibli-lexicon `src/arity.rs` pattern).
 #[path = "src/curated.rs"]
 mod curated;
 #[path = "src/label.rs"]
@@ -21,7 +21,7 @@ use reserved::is_reserved;
 
 /// A single entry from the lensisku `dictionary-en.json` bulk export. Only the
 /// fields alias generation consumes are declared; serde ignores the rest.
-/// Unlike smuni-dictionary's copy, this one ALSO consumes `place_keywords` —
+/// Unlike nibli-lexicon's copy, this one ALSO consumes `place_keywords` —
 /// the ordered per-place label list (x1 first; present on 70/1,338 gismu).
 #[derive(serde::Deserialize)]
 struct LensiskuEntry {
@@ -134,7 +134,7 @@ fn main() {
 /// (base-form as-is — user decision 2026-07-12: no mechanical inflection, since
 /// the export carries no part-of-speech data and inflecting nouns/adjectives
 /// would corrupt them; corpus/spec vocabulary is pinned 3rd-person in
-/// CURATED_ALIASES instead). Arity comes from smuni-dictionary (build-dep — the
+/// CURATED_ALIASES instead). Arity comes from nibli-lexicon (build-dep — the
 /// actual shipped map, so agreement holds by construction). UNPINNED problems
 /// fail the build with the full offender list.
 fn generate_full(
@@ -189,7 +189,7 @@ fn generate_full(
         // A self-alias (alias == its own gismu, e.g. centi→"centi") is the
         // identity passthrough spelled explicitly — harmless. Any OTHER
         // dictionary word would shadow that word's identity passthrough.
-        if alias != word && smuni_dictionary::get_arity(&alias).is_some() {
+        if alias != word && nibli_lexicon::get_arity(&alias).is_some() {
             errors.push(format!(
                 "{word}: derived alias {alias:?} is itself a dictionary word (would shadow \
                  the identity-gismu passthrough) — pin required"
@@ -205,7 +205,7 @@ fn generate_full(
 
         // Every gismu in the export is present in smuni's map (same file); the
         // fallback keeps generation total anyway.
-        let arity = smuni_dictionary::get_arity(word).unwrap_or(2).clamp(1, 5) as u8;
+        let arity = nibli_lexicon::get_arity(word).unwrap_or(2).clamp(1, 5) as u8;
 
         let (labels, tier) = derive_labels(entry, arity);
         match tier {
@@ -232,13 +232,13 @@ fn generate_full(
     // Data-mode drift guard: curated arities must equal what smuni derives from
     // the same export (the cross-mode flap CORE_GISMU_ARITIES pins exist for).
     for (alias, gismu, arity, _) in CURATED_ALIASES {
-        match smuni_dictionary::get_arity(gismu) {
+        match nibli_lexicon::get_arity(gismu) {
             Some(smuni_arity) if smuni_arity == *arity as usize => {}
             Some(smuni_arity) => errors.push(format!(
                 "curated {alias:?} ({gismu}): declared arity {arity} != smuni arity {smuni_arity}"
             )),
             None => errors.push(format!(
-                "curated {alias:?}: gismu {gismu:?} unknown to smuni-dictionary"
+                "curated {alias:?}: gismu {gismu:?} unknown to nibli-lexicon"
             )),
         }
     }

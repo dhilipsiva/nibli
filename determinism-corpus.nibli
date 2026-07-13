@@ -5,7 +5,7 @@
 #                 nibli-verify/tests/nibli_kr_seam_gate.rs, part of
 #                 `just verify-nibli-kr-seam`)
 #   (b) wasmtime — the lasna WASI component under gasnu
-#                 (`smoke-gasnu-determinism`, part of `ci-wasm`)
+#                 (`smoke-host-determinism`, part of `ci-wasm`)
 #   (c) v8      — the wasm32-unknown-unknown build under node
 #                 (`nibli-wasm/tests/determinism.rs`, `just verify-wasm-node`)
 #
@@ -17,7 +17,7 @@
 # runtime divergence fails at least one gate.
 #
 # Scope note: queries must complete within every runtime's resource bounds — fuel
-# is a HOST-level budget (gasnu/Wasmtime) the native engine does not enforce, so a
+# is a HOST-level budget (nibli-host/Wasmtime) the native engine does not enforce, so a
 # query that traps on fuel is runtime-dependent by design and must not be pinned
 # here (one such shape was found while building this corpus and excluded).
 #

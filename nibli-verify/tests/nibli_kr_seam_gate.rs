@@ -306,7 +306,7 @@ fn kr_smuni_seam_conformance() {
 /// THE DROP: the `.nibli` determinism corpus replayed
 /// through the native engine against the SAME byte-identical
 /// `# =>` verdict annotations as the other runtimes (Wasmtime via
-/// `smoke-gasnu-determinism`, node/V8 via `verify-wasm-node`). The corpus is
+/// `smoke-host-determinism`, node/V8 via `verify-wasm-node`). The corpus is
 /// curated-core vocabulary only, so this leg is full-strength in BOTH
 /// dictionary modes. The parser is deliberately re-rolled, not shared — the
 /// determinism legs must not share code paths beyond the engine.

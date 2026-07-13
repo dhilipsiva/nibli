@@ -6,19 +6,19 @@
 # decomposition, arg->role mapping). These are the files where a silent logic
 # mutation could produce a fabricated verdict.
 examine_globs = [
-    "logji/src/reasoning.rs",
-    "logji/src/rules.rs",
-    "logji/src/kb.rs",
-    "smuni/src/semantic/*.rs",
+    "nibli-reason/src/reasoning.rs",
+    "nibli-reason/src/rules.rs",
+    "nibli-reason/src/kb.rs",
+    "nibli-semantics/src/semantic/*.rs",
 ]
 
 # Run the three suites that actually pin these paths for EVERY mutant: the two
 # mutated crates' own tests plus nibli-engine's integration tests (full
-# parse -> compile -> reason pipeline — much of the kill power for logji/smuni
+# parse -> compile -> reason pipeline — much of the kill power for nibli-reason/smuni
 # lives there). Never the whole workspace: a workspace `cargo test` links the
 # cdylib component crates (WIT `@` export symbols break the linker), and the
 # nibli-verify differential sweeps are far too slow per-mutant.
-test_package = ["logji", "smuni", "nibli-engine"]
+test_package = ["nibli-reason", "nibli-semantics", "nibli-engine"]
 
 # --tests = unit + integration targets, no doctests (doctests are not part of
 # the CI gate). logji's reasoning tests share global state via RefCell and

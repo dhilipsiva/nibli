@@ -494,7 +494,7 @@ fn disjunctive_conclusion_jo_ju_stay_fail_closed() {
 // terms. gerna desugars the chain to the `.i je` Connected shape with the head
 // repeated (ONE sentence → one logic root), and logji's ground-path
 // conjunction flattening stores a `gi'e`'s conjuncts as independently
-// queryable facts. Surfaced by int19h's nibli-fanva feedback (2026-07-10):
+// queryable facts. Surfaced by int19h's nibli-formalize feedback (2026-07-10):
 // idiomatic reference translations use `gi'e` in nearly every sentence.
 
 #[test]

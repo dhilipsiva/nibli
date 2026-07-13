@@ -106,7 +106,7 @@ impl LogicBuffer {
     /// Share-nodes strategy: each sub-buffer reuses the full `nodes` arena and
     /// exposes a single root. Unreachable nodes belonging to sibling roots are inert
     /// because every consumer traverses only from `roots` (see
-    /// `logji::process_assertion`). No index remapping, so no risk of a
+    /// `nibli_reason::process_assertion`). No index remapping, so no risk of a
     /// mis-remapped child edge (notably `CountNode`'s middle field is a COUNT, not a
     /// node index). `roots.len() <= 1` returns a single clone (identity) so the
     /// single-sentence path is unchanged.
@@ -208,7 +208,7 @@ impl QueryResult {
 /// This IS the serde wire type (named fields, `#[serde(tag = "type")]`): the same
 /// type crosses every native boundary (logji → nibli-engine/nibli-wasm → JSON →
 /// nibli-ui). `nibli-protocol` re-exports it and owns only the JSON helpers; the WIT
-/// boundary (lasna/gasnu) keeps its generated tuple-shaped mirror by necessity.
+/// boundary (nibli-pipeline/gasnu) keeps its generated tuple-shaped mirror by necessity.
 /// The serde attributes are the JSON contract — do not rename a field or tag.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -349,7 +349,7 @@ pub struct FactSummary {
 /// the checklist below names every site that must then be updated.
 ///
 /// When you add or remove a variant of any of these three enums, update:
-/// - `lasna/src/lib.rs` — `convert_logical_term_to_export` /
+/// - `nibli-pipeline/src/lib.rs` — `convert_logical_term_to_export` /
 ///   `convert_logical_term_from_export` / `convert_proof_rule` (→ WIT guest types);
 ///   for a new `LogicNode`/`LogicalTerm` variant also `convert_logic_node_to_export`
 ///   / `convert_logic_buffer_to_export` (the `:debug` typed-buffer export)
@@ -359,7 +359,7 @@ pub struct FactSummary {
 ///   remains — `ProofRule` IS the serde wire type (named fields, `serde(tag = "type")`),
 ///   so it crosses every native boundary unchanged. The serde renames here are the
 ///   JSON contract.
-/// - `gasnu/src/main.rs` — `rule_to_proto` (WIT `proof-rule` → canonical `ProofRule`);
+/// - `nibli-host/src/main.rs` — `rule_to_proto` (WIT `proof-rule` → canonical `ProofRule`);
 ///   for a new `LogicNode`/`LogicalTerm` variant also `wit_term_to_types` /
 ///   `wit_logic_node_to_types` / `wit_logic_buffer_to_types` (WIT → `nibli_types`,
 ///   the `:debug` reverse converter)

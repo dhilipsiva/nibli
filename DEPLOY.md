@@ -8,7 +8,7 @@ There are two distinct deployables (don't conflate them):
 
 | URL | Crate | What it is |
 |-----|-------|-----------|
-| `dhilipsiva.dev/nibli-playground` | `nibli-ui` (Dioxus app) | The Transparency Triad playground (nibli KR-first), incl. the **Formalize** feature (`nibli-fanva`) |
+| `dhilipsiva.dev/nibli-playground` | `nibli-ui` (Dioxus app) | The Transparency Triad playground (nibli KR-first), incl. the **Formalize** feature (`nibli-formalize`) |
 | `dhilipsiva.dev/nibli` | `nibli-wasm` (wasm-bindgen lib) | The live demo embedded on the site (KR-only since THE DROP — its Lojban-era JS/KB breaks until the site-repo migration lands; `set_language` remains a no-op shim) |
 
 ## 1. Ship the frontend (the playground + Formalize)
@@ -23,7 +23,7 @@ secret exists.)
 So **shipping the formalizer = merging your branch into `main`.** Everything the
 Formalize feature needs is baked into the `nibli-ui` bundle at build time:
 
-- `nibli-fanva` is a **path dependency compiled into the bundle** (`nibli-ui/Cargo.toml`)
+- `nibli-formalize` is a **path dependency compiled into the bundle** (`nibli-ui/Cargo.toml`)
   — no separate service.
 - **The site build MUST fetch `dictionary-en.json` before `dx build`** (the same
   public lensisku dump `just fetch-dict` pulls, dropped at the checkout root).

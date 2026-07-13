@@ -3,7 +3,7 @@
 //! Predilex (<https://github.com/Ntsekees/Predilex>, CC0 1.0) is a thesaurus of
 //! language-neutral sememes-as-predicates. Its `conlangs/Lojban.csv` maps 459
 //! Lojban lemmas to sememes, giving an independent, human-curated arity signal
-//! to cross-check `smuni-dictionary`'s per-word arities against (the arities
+//! to cross-check `nibli-lexicon`'s per-word arities against (the arities
 //! that drive event decomposition and strict-mode rejection). Vendored bytes +
 //! pinned upstream commit live in `nibli-verify/vendor/predilex/` (VENDOR.md).
 //!

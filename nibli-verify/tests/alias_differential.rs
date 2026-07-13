@@ -1,6 +1,6 @@
 //! Alias-map differential — the `verify-nibli-kr-dict` gate (`just verify-nibli-kr-dict`).
 //!
-//! `nibli-kr-dictionary` and `smuni-dictionary` are two INDEPENDENTLY BUILT phf
+//! `nibli-kr-dictionary` and `nibli-lexicon` are two INDEPENDENTLY BUILT phf
 //! maps (nibli-kr-dictionary reads smuni arities as a build-dependency, but its
 //! own drift guard runs only inside `generate_full` — a FALLBACK build ships
 //! with no cross-check at all). This gate joins the two SHIPPED artifacts at
@@ -11,7 +11,7 @@
 //!
 //! Two tests, both dual-mode and never skipping (the verify-dict contract):
 //! 1. `alias_map_differential` — structural: per-alias arity equality against
-//!    `smuni_dictionary::get_arity`, `GISMU_TO_ALIAS` round-trips, swap
+//!    `nibli_lexicon::get_arity`, `GISMU_TO_ALIAS` round-trips, swap
 //!    validity (`2..=arity`, involution), reserved-word exclusion and label
 //!    integrity re-asserted from the shipped map, coverage floors.
 //! 2. `alias_behavioral_battery` — for EVERY shipped alias, `alias(A, B, …)`
@@ -40,16 +40,16 @@ const ARG_NAMES: [&str; 5] = ["Adam", "Bob", "Kim", "Tom", "Sam"];
 /// Detect the build mode from the shipped artifacts, assert the two crates
 /// agree, and print the fallback banner. Returns `true` for a full build.
 fn full_mode_checked() -> bool {
-    let smuni_len = smuni_dictionary::DICTIONARY.len();
+    let smuni_len = nibli_lexicon::DICTIONARY.len();
     let nibli_kr_len = nibli_kr_dictionary::GISMU_TO_ALIAS.len();
     let smuni_full = smuni_len >= FULL_DICT_MIN;
     let nibli_kr_full = nibli_kr_len >= FULL_DICT_MIN;
     assert_eq!(
         nibli_kr_full, smuni_full,
         "MIXED-MODE BUILD: nibli-kr-dictionary has {nibli_kr_len} gismu (full={nibli_kr_full}) but \
-         smuni-dictionary has {smuni_len} entries (full={smuni_full}) — one artifact is stale \
+         nibli-lexicon has {smuni_len} entries (full={smuni_full}) — one artifact is stale \
          (moving dictionary-en.json preserves mtimes, so a build script can skip its rerun). \
-         Fix: `cargo clean -p smuni-dictionary -p nibli-kr-dictionary` and rebuild."
+         Fix: `cargo clean -p nibli-lexicon -p nibli-kr-dictionary` and rebuild."
     );
     if !smuni_full {
         eprintln!(
@@ -92,7 +92,7 @@ fn alias_map_differential() {
 
     // ── leg 1: arity differential (the leg that catches dilcu/jmive-class flaps) ──
     for (name, entry) in &aliases {
-        match smuni_dictionary::get_arity(entry.gismu) {
+        match nibli_lexicon::get_arity(entry.gismu) {
             // The build clamps derived arities to 1..=5 (WIT place tags stop at
             // fu/x5), so compare against the same clamp.
             Some(a) if a.clamp(1, 5) == entry.arity as usize => {}
@@ -101,7 +101,7 @@ fn alias_map_differential() {
                 entry.gismu, entry.arity
             )),
             None => offenders.push(format!(
-                "{name}: gismu {:?} unknown to smuni-dictionary",
+                "{name}: gismu {:?} unknown to nibli-lexicon",
                 entry.gismu
             )),
         }

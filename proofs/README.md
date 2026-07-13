@@ -9,7 +9,7 @@ suffices, so each file is self-contained and offline.
 
 ### `Combiner.lean` — the four-valued verdict combiner
 
-Formalizes the pure combiner functions from `logji/src/reasoning.rs`
+Formalizes the pure combiner functions from `nibli-reason/src/reasoning.rs`
 (`combine_conjunction`, `combine_disjunction`, `combine_indeterminate`, `negate_result`) over
 the finite `QueryResult` domain (`True`, `False`, `Unknown(×5)`, `ResourceExceeded(×3)`), and
 proves the **soundness algebra**: the combiner never *fabricates* a definitive verdict
@@ -31,7 +31,7 @@ collapsed to `False`). Headline theorems:
 ### `Stratification.lean` — the NAF stratification criterion
 
 Formalizes the predicate dependency graph the engine builds to police negation-as-failure
-(`logji/src/rules.rs` `check_stratification` / `compute_sccs`), and proves the **criterion is
+(`nibli-reason/src/rules.rs` `check_stratification` / `compute_sccs`), and proves the **criterion is
 correct**: over the graph, "no negative edge whose target reaches back to its source" (≡ no
 negative edge with both endpoints in one SCC — exactly what the Rust check rejects on) is
 **equivalent** to "a valid stratification (level function) exists." Headline theorems:
@@ -72,7 +72,7 @@ duplicated from `Stratification.lean` (each proof file stands alone).
 
 ### `Unify.lean` — the one-directional unifier
 
-Formalizes the substitution engine under backward chaining (`logji/src/kb.rs` `unify_terms` :326 /
+Formalizes the substitution engine under backward chaining (`nibli-reason/src/kb.rs` `unify_terms` :326 /
 `substitute_term` :389): matching a rule's conclusion TEMPLATE (which carries pattern variables)
 against a ground goal produces a substitution σ, and it must be sound — a successful match
 instantiates the template to *exactly* the goal. Models `GTerm` (mirroring `GroundTerm`), an
@@ -89,7 +89,7 @@ association-list `Subst`, `subst`, and the accumulator-threading `unify`, and pr
 The `NoVar c` hypothesis (the concrete side is ground) is enforced in the ENGINE as a mechanism,
 not call-site discipline: `assert_typed_fact` drops any fact whose args contain a pattern variable
 — recursively, including inside `SkolemFn`/`DepPair` components — at the single store-insert
-boundary (`logji/src/rules.rs`, pinned by `non_ground_fact_is_dropped_at_the_assert_boundary`),
+boundary (`nibli-reason/src/rules.rs`, pinned by `non_ground_fact_is_dropped_at_the_assert_boundary`),
 so a stored fact can never violate the hypothesis regardless of upstream changes.
 
 Mathlib-free (prelude only). The `Number` payload is abstracted to `Nat` — only decidable equality
@@ -97,7 +97,7 @@ matters for match soundness, not f64 bit-semantics.
 
 ### `RuleFiring.lean` — one firing step is sound modus-ponens
 
-Formalizes how backward chaining derives a goal by FIRING a universal rule (`logji/src/reasoning.rs`
+Formalizes how backward chaining derives a goal by FIRING a universal rule (`nibli-reason/src/reasoning.rs`
 `process_phase` / `emit_derived`; `UniversalRuleRecord`): unify the rule's conclusion template
 against the goal (σ), discharge each condition under σ (positive conditions hold; the
 `negated_condition_indices` FAIL, by negation-as-failure), and conclude the σ-instantiated head. It
@@ -148,29 +148,29 @@ whole recorded trace — is tied to a mechanized soundness proof. Mathlib-free (
 
 A Lean proof guarantees the *model* is sound; a Rust conformance test ties it to the real code.
 
-- **Combiner** (`exhaustive_soundness_matches_lean_model`, `logji/src/reasoning.rs`): checks the
+- **Combiner** (`exhaustive_soundness_matches_lean_model`, `nibli-reason/src/reasoning.rs`): checks the
   real Rust functions over all 10×10 inputs. The domain is finite, so exhaustive conformance + the
   model proof give a **complete** guarantee.
-- **Stratification** (`check_stratification_matches_proven_criterion`, `logji/src/rules.rs`):
+- **Stratification** (`check_stratification_matches_proven_criterion`, `nibli-reason/src/rules.rs`):
   checks the real Tarjan-based `check_stratification` agrees with a naive reachability
   implementation of the proven criterion, over hand-crafted + deterministically-randomized graphs.
   Graphs are unbounded, so this is a **corpus** conformance test (not exhaustive).
-- **SCC decomposition** (`compute_sccs_matches_scc_spec`, `logji/src/rules.rs`): checks the real
+- **SCC decomposition** (`compute_sccs_matches_scc_spec`, `nibli-reason/src/rules.rs`): checks the real
   Tarjan `compute_sccs` output is a partition of the node set and groups two nodes together
   *exactly* when they are mutually reachable (the `reachable_sets` reference), over the same corpus
   (with a non-vacuity guard that a nontrivial SCC appears). Ties the actual algorithm to
   `Scc.lean`'s mutual-reachability spec; corpus, not exhaustive.
-- **Unifier** (`unify_conformance`, `logji/src/tests.rs`): checks the real `unify_facts` /
+- **Unifier** (`unify_conformance`, `nibli-reason/src/tests.rs`): checks the real `unify_facts` /
   `substitute_fact` satisfy the proven soundness property (`substitute_fact(template, σ) ==
   concrete`) on every successful match, plus determinism + minimal bindings, over hand-crafted +
   random `(template, ground-concrete)` pairs. Ties the real substitution engine to `Unify.lean`;
   corpus, not exhaustive.
-- **Rule firing** (`rule_firing_conformance`, `logji/src/tests.rs`): drives the real engine on the
+- **Rule firing** (`rule_firing_conformance`, `nibli-reason/src/tests.rs`): drives the real engine on the
   rule `∀x. (gerku(x) ∧ ¬mlatu(x)) → danlu(x)` and checks it fires *exactly* when the conditions are
   discharged (positive present, negated absent — all four corners), never fabricates when one is
   undischarged, and records the σ-instantiated head (`danlu(alis)`, not `danlu(bob)`). Ties the real
   firing step to `RuleFiring.lean`'s `firing_sound` / `firing_no_fabrication`.
-- **Trace soundness** (`trace_soundness_conformance`, `logji/src/tests.rs`): a `validate_cert` walker
+- **Trace soundness** (`trace_soundness_conformance`, `nibli-reason/src/tests.rs`): a `validate_cert` walker
   asserts every recorded step's local certificate condition (Conjunction→holds=all-children,
   Negation→NAF/holds-flip, ProofRef→referent match, false leaves→¬hold) AND — the axiom bridges —
   ties the trace to the real engine: **`factAx`** (each `Asserted` leaf is a stored KB fact),

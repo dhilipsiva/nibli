@@ -5,7 +5,7 @@
 //! CRATE'S BUILD until nibli KR decides how to spell it (or rejects it by name).
 //!
 //! Load-bearing consumers: the render∘parse fixpoint tests (this file) and
-//! nibli-fanva's render round-trip gate (every Formalize candidate's
+//! nibli-formalize's render round-trip gate (every Formalize candidate's
 //! canonical re-spelling must re-compile to the same `LogicBuffer`).
 //!
 //! Totality policy (NIBLI_KR §13): gerna-reachable constructs render,
@@ -513,7 +513,7 @@ impl<'a> Renderer<'a> {
         if let Some(alias) = nibli_kr_dictionary::canonical_alias(gismu) {
             return Ok(alias.to_owned());
         }
-        if smuni_dictionary::get_arity(gismu).is_none() {
+        if nibli_lexicon::get_arity(gismu).is_none() {
             return Err(nope(format!(
                 "word {gismu:?} is dictionary-unknown (the Lojban front-end tolerates it at \
                  arity 2; nibli KR fails closed on unknown names — NIBLI_KR §13)"
@@ -988,7 +988,8 @@ mod tests {
         let buffer = parse_checked(text).unwrap_or_else(|e| panic!("parse {text:?}: {e}"));
         format!(
             "{:?}",
-            smuni::compile_from_gerna_ast(buffer).unwrap_or_else(|e| panic!("smuni {text:?}: {e}"))
+            nibli_semantics::compile_from_gerna_ast(buffer)
+                .unwrap_or_else(|e| panic!("smuni {text:?}: {e}"))
         )
     }
 

@@ -5,7 +5,7 @@ This is the specification of nibli's first-order-logic intermediate representati
 public document because three independent parties asked for the same thing — a shared logic
 representation to target from ontology tooling, from other loglang front-ends (Toaq / Xextan /
 Eberban), and as a JSON translation-pivot between languages ("Predilog"). **The IR is nibli's
-language-agnostic seam**: only the parser (`gerna`) and the word dictionary (`smuni-dictionary`)
+language-agnostic seam**: only the parser (`gerna`) and the word dictionary (`nibli-lexicon`)
 are front-end-specific; the IR, the backward-chaining reasoner (`logji`), the Vampire/clingo
 differential gates, and the Lean 4 soundness proofs all operate on or below this format.
 
@@ -78,7 +78,7 @@ payload is not an index into `nodes`.
 There are deliberately no `Biconditional`/`Xor` node kinds: the compiler's internal tree IR has
 them, but the flattener expands `A ↔ B` to `(¬A ∨ B) ∧ (¬B ∨ A)` and `A ⊕ B` to
 `(A ∨ B) ∧ ¬(A ∧ B)` (sharing subtree indices) before the buffer exists
-([smuni/src/lib.rs](smuni/src/lib.rs)). Consumers never see them.
+([nibli-semantics/src/lib.rs](nibli-semantics/src/lib.rs)). Consumers never see them.
 
 ### Terms (`LogicalTerm`, 5 variants)
 
@@ -139,8 +139,8 @@ contract, not accident:
 ### Compute predicates
 
 The front-end never emits `ComputeNode` — it always emits `Predicate`. The rewrite
-`logji::transform_compute_nodes(&mut buf, &preds)` converts `Predicate` → `ComputeNode` (same
-payload) for every relation name in the set; `logji::default_compute_predicates()` is
+`nibli_reason::transform_compute_nodes(&mut buf, &preds)` converts `Predicate` → `ComputeNode` (same
+payload) for every relation name in the set; `nibli_reason::default_compute_predicates()` is
 `{pilji, sumji, dilcu}` (×, +, ÷). Every first-party embedder runs this immediately after
 compilation. **If you build buffers yourself and want compute dispatch, you must run it too** —
 `assert_fact`/`query_entailment` do not call it internally, and a compute relation left as a
@@ -185,12 +185,12 @@ fragment filter scans source tokens for exactly this reason). Scope details live
 **Produce a buffer** (text → IR): `compile_debug(text)` on the two surfaces that expose it —
 native (`nibli_engine::NibliEngine::compile_debug`) and the WIT session
 (`compile-debug: func(input: string) -> result<logic-buffer, nibli-error>`) — or directly via
-`smuni::compile_from_gerna_ast` (remember `transform_compute_nodes` afterward; the browser
+`nibli_semantics::compile_from_gerna_ast` (remember `transform_compute_nodes` afterward; the browser
 `Session` does not export a compile-only method). Programmatic
-single facts: `smuni::compile_injected_fact(relation, args)` — event-decomposes and arity-pads
+single facts: `nibli_semantics::compile_injected_fact(relation, args)` — event-decomposes and arity-pads
 exactly like surface text (with the flat-`du` exception).
 
-**Consume/reason over a buffer** (the BYO-IR surface, `logji::KnowledgeBase`):
+**Consume/reason over a buffer** (the BYO-IR surface, `nibli_reason::KnowledgeBase`):
 `assert_fact(buffer, label) -> u64`, `query_entailment(buffer)`,
 `query_entailment_with_proof(buffer)`, `query_find(buffer)` (witness bindings),
 `count_witnesses(buffer)`, `aggregate(buffer, var, op)`, `with_assumptions(&[buffer], f)`
@@ -252,7 +252,7 @@ differentially tested), so a producer gets soundness checking for free.
 - Variable naming (`_v0…`, `_ev0…`), Skolem names (`sk_N` — minted by the reasoner, never in a
   compiled buffer), the `__abs_` hash digits, `__neg_ev*` pattern variables (reasoner-internal),
   node ordering beyond the post-order guarantee, and concrete index values.
-- The compiler's internal tree IR (`smuni::ir::LogicalForm`, `Spur`-interned, with
+- The compiler's internal tree IR (`nibli_semantics::ir::LogicalForm`, `Spur`-interned, with
   `Biconditional`/`Xor`), `logji`'s stored-fact forms, and the `nibli-store` on-disk mirrors.
 - `AggregateOp` and the compute wire structs are Rust-side auxiliaries, not buffer types.
 

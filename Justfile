@@ -22,7 +22,7 @@ clean-wasm-all:
     rm -f target/wasm32-wasip2/debug/*.wasm
     rm -f target/wasm32-wasip2/release/*.wasm
 
-# Download the maintained lensisku English dictionary (the smuni-dictionary build reads
+# Download the maintained lensisku English dictionary (the nibli-lexicon build reads
 # ../dictionary-en.json). lensisku's cached dumps are public — no login needed. The
 # nightly-regenerated cached export lives at /api/export/cached/{lang}/{format} (GET only;
 # HEAD 401s). Gitignored; without it the build falls back to the in-tree dictionary
@@ -32,27 +32,27 @@ fetch-dict:
       -o dictionary-en.json
     @echo "Wrote dictionary-en.json ($(wc -c < dictionary-en.json) bytes)"
 
-# Compiles the single lasna WASM component (nibli-kr/smuni/logji linked as internal crates)
+# Compiles the single lasna WASM component (nibli-kr/nibli-semantics/logji linked as internal crates)
 build-wasm: clean-wasm
     @echo "Building WASI lasna component ({{wasi_target}}, {{profile}})..."
-    cargo component build --target {{wasi_target}} {{cargo_profile_flag}} -p lasna
-    # cargo-component regenerates lasna/src/bindings.rs in wit-bindgen's own
+    cargo component build --target {{wasi_target}} {{cargo_profile_flag}} -p nibli-pipeline
+    # cargo-component regenerates nibli-pipeline/src/bindings.rs in wit-bindgen's own
     # formatting; normalize it so a later `fmt-check` (ci) doesn't trip on the
     # auto-generated file.
-    cargo fmt -p lasna
+    cargo fmt -p nibli-pipeline
 
 # Compiles the native Wasmtime host gasnu
-build-gasnu:
+build-host:
     @echo "Building native host gasnu..."
-    cargo build -p gasnu {{cargo_profile_flag}}
+    cargo build -p nibli-host {{cargo_profile_flag}}
 
 # Smoke-test gasnu non-interactive script mode: pipe a 3-line script (assert,
 # query, :facts) into the built binary and assert the echoed prompts + markers.
 # Exercises the byte-faithful REPL transcript capture path used for the book.
-smoke-gasnu-script: build-wasm build-gasnu
+smoke-host-script: build-wasm build-host
     @echo "Smoke-testing gasnu script mode (piped stdin)..."
     @out=$(printf 'dog(Adam).\n? dog(Adam).\n:facts\n' \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        | NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$out"; \
         echo "$out" | grep -qF 'nibli> dog(Adam).' || { echo 'FAIL: missing echoed assert prompt'; exit 1; }; \
         echo "$out" | grep -qF 'nibli> ? dog(Adam).' || { echo 'FAIL: missing echoed query prompt'; exit 1; }; \
@@ -66,12 +66,12 @@ smoke-gasnu-script: build-wasm build-gasnu
 # rebuilds the poisoned component instance lazily (before the next session
 # call, so an intervening :fuel raise applies) and replays the journaled
 # mutations deterministically; the post-trap query answers from the replayed
-# KB with the original fact ids. Pre-release gate like smoke-gasnu-script
+# KB with the original fact ids. Pre-release gate like smoke-host-script
 # (needs the WASM build; not part of `ci`).
-smoke-gasnu-trap-recovery: build-wasm build-gasnu
+smoke-host-trap-recovery: build-wasm build-host
     @echo "Smoke-testing gasnu trap recovery (fuel trap mid-session)..."
     @out=$(printf 'dog(Adam).\n:fuel 1000\n? dog(Adam).\n:fuel 10000000000\n? dog(Adam).\n:facts\n' \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        | NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$out"; \
         echo "$out" | grep -qF '[Query] RESOURCE_EXCEEDED (fuel)' || { echo 'FAIL: query fuel trap not translated into a RESOURCE_EXCEEDED (fuel) verdict'; exit 1; }; \
         echo "$out" | grep -qF '[Session] Wasm trap poisoned the component instance; rebuilding and replaying 1 command(s)...' || { echo 'FAIL: missing rebuild message'; exit 1; }; \
@@ -88,16 +88,16 @@ smoke-gasnu-trap-recovery: build-wasm build-gasnu
 # store id. On the pre-fix build, run-2 replays with FRESH ids, so the high store
 # id is a zombie and the final query stays TRUE — this recipe FAILS. Pre-release
 # gate (needs the WASM build; not part of `ci`).
-smoke-gasnu-persist-replay: build-wasm build-gasnu
+smoke-host-persist-replay: build-wasm build-host
     @echo "Smoke-testing gasnu persistent restart-replay (fact-id drift)..."
     @dir=$(mktemp -d); db="$dir/nibli-smoke.redb"; \
         out1=$(printf 'dog(Adam).\ndog(Bel).\ndog(Kar).\n:retract 1\n' \
-            | NIBLI_DB_PATH="$db" NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+            | NIBLI_DB_PATH="$db" NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$out1"; \
         echo "$out1" | grep -qF '[Fact #2] Asserted.' || { echo 'FAIL run1: fact #2 not asserted'; rm -rf "$dir"; exit 1; }; \
         echo "$out1" | grep -qF '[Retract] Fact #1 retracted.' || { echo 'FAIL run1: retract 1'; rm -rf "$dir"; exit 1; }; \
         out2=$(printf ':facts\n:retract 2\n? dog(Kar).\n' \
-            | NIBLI_DB_PATH="$db" NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+            | NIBLI_DB_PATH="$db" NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$out2"; \
         echo "$out2" | grep -qF '#2:' || { echo 'FAIL run2: surviving store id #2 missing after reopen (DRIFT)'; rm -rf "$dir"; exit 1; }; \
         if echo "$out2" | grep -qF '#1:'; then echo 'FAIL run2: tombstoned/zombie id #1 present (DRIFT)'; rm -rf "$dir"; exit 1; fi; \
@@ -112,11 +112,11 @@ smoke-gasnu-persist-replay: build-wasm build-gasnu
 # SAME granularity as Lojban's bare-`.i` split_roots. A conjunction (`&`, the
 # `.i je` analog) stays ONE compound fact. Reopen proves per-statement retraction
 # survives a restart.
-smoke-gasnu-split: build-wasm build-gasnu
+smoke-host-split: build-wasm build-host
     @echo "Smoke-testing gasnu statement split (N independent facts + buffer replay)..."
     @dir=$(mktemp -d); db="$dir/nibli-smoke.redb"; \
         out1=$(printf 'dog(Adam). cat(Betis).\n:facts\n:retract 0\n? dog(Adam).\n? cat(Betis).\n' \
-            | NIBLI_DB_PATH="$db" NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+            | NIBLI_DB_PATH="$db" NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$out1"; \
         echo "$out1" | grep -qF '[Fact #0] Asserted.' || { echo 'FAIL run1: fact #0 missing'; rm -rf "$dir"; exit 1; }; \
         echo "$out1" | grep -qF '[Fact #1] Asserted.' || { echo 'FAIL run1: fact #1 missing (line not split)'; rm -rf "$dir"; exit 1; }; \
@@ -125,12 +125,12 @@ smoke-gasnu-split: build-wasm build-gasnu
         verdicts=$(echo "$out1" | grep -F '[Query]' | tr '\n' ' '); \
         [ "$verdicts" = '[Query] FALSE [Query] TRUE ' ] || { echo "FAIL run1: expected FALSE (retracted) then TRUE (surviving), got: $verdicts"; rm -rf "$dir"; exit 1; }; \
         out2=$(printf ':facts\n? cat(Betis).\n' \
-            | NIBLI_DB_PATH="$db" NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+            | NIBLI_DB_PATH="$db" NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$out2"; \
         echo "$out2" | grep -qF '[Facts] 1 active fact(s):' || { echo 'FAIL run2: expected exactly the surviving fact after reopen'; rm -rf "$dir"; exit 1; }; \
         echo "$out2" | grep -qF '[Query] TRUE' || { echo 'FAIL run2: surviving statement not replayed from buffer'; rm -rf "$dir"; exit 1; }; \
         out3=$(printf 'dog(Adam) & cat(Adam).\n:facts\n' \
-            | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+            | NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$out3"; \
         echo "$out3" | grep -qF '[Facts] 1 active fact(s):' || { echo 'FAIL run3: conjunction must stay ONE compound fact'; rm -rf "$dir"; exit 1; }; \
         rm -rf "$dir"; \
@@ -142,10 +142,10 @@ smoke-gasnu-split: build-wasm build-gasnu
 # `na`-negated query over an absent fact (closed-world TRUE) must still print the NAF
 # note; this guards the wiring end-to-end (a dropped field would silently remove the
 # note). Pre-release gate (needs the WASM build; not part of `ci`).
-smoke-gasnu-naf: build-wasm build-gasnu
+smoke-host-naf: build-wasm build-host
     @echo "Smoke-testing gasnu NAF-dependent proof note (WIT proof-trace flag)..."
     @out=$(printf '? ~dog(Adam).\n' \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        | NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$out"; \
         echo "$out" | grep -qF '[Query] TRUE' || { echo 'FAIL: NAF query did not answer TRUE'; exit 1; }; \
         echo "$out" | grep -qF '[Note: result depends on negation-as-failure (closed-world assumption)]' || { echo 'FAIL: missing NAF note (naf-dependent flag not carried through the WIT proof-trace)'; exit 1; }; \
@@ -155,15 +155,15 @@ smoke-gasnu-naf: build-wasm build-gasnu
 # assumption (a missing fact, not derivable) must print the closed-world caveat, carried as the
 # first-class `cwa-false` WIT proof-trace field. A numeric-decided FALSE (`5 = 3`) must NOT — it
 # is genuinely false, not closed-world. Guards both directions end-to-end across the WIT boundary.
-smoke-gasnu-cwa-false: build-wasm build-gasnu
+smoke-host-cwa-false: build-wasm build-host
     @echo "Smoke-testing gasnu closed-world FALSE note (WIT proof-trace cwa-false flag)..."
     @out=$(printf '? dog(Adam).\n' \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        | NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$out"; \
         echo "$out" | grep -qF '[Query] FALSE' || { echo 'FAIL: missing-fact query did not answer FALSE'; exit 1; }; \
         echo "$out" | grep -qF '[Note: FALSE is closed-world' || { echo 'FAIL: missing closed-world FALSE note (cwa-false flag not carried through the WIT proof-trace)'; exit 1; }; \
         num=$(printf '? num_equal(5, 3).\n' \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        | NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$num"; \
         if echo "$num" | grep -qF '[Note: FALSE is closed-world'; then echo 'FAIL: a numeric-decided FALSE wrongly carried the closed-world note'; exit 1; fi; \
         echo 'PASS: closed-world FALSE carries the caveat; numeric-decided FALSE does not'
@@ -173,10 +173,10 @@ smoke-gasnu-cwa-false: build-wasm build-gasnu
 # (WIT -> nibli_types) -> nibli-render tree + English gloss. An ASYMMETRIC converter
 # field-swap (e.g. one side maps And -> Or) is type-valid, so `just check`/`ci` miss
 # it, but it corrupts the rendered structure here. NOT in `ci` (needs the WASM build).
-smoke-gasnu-debug: build-wasm build-gasnu
+smoke-host-debug: build-wasm build-host
     @echo "Smoke-testing gasnu :debug WASM round-trip (typed buffer -> host render)..."
     @out=$(printf ':debug animal(every dog).\n' \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        | NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$out"; \
         echo "$out" | grep -qF '[Logic]' || { echo 'FAIL: missing [Logic] block'; exit 1; }; \
         echo "$out" | grep -qF '∀ _v0:' || { echo 'FAIL: ForAll node not rendered (converter regression?)'; exit 1; }; \
@@ -189,10 +189,10 @@ smoke-gasnu-debug: build-wasm build-gasnu
 # Pre-release smoke: the collapsed macro-logical-DAG proof view. `?` shows the
 # compressed surface-level steps (no role/event scaffolding); `:proof-verbose`
 # keeps the full role-level trace. NOT in `ci` (needs the WASM build).
-smoke-gasnu-collapse: build-wasm build-gasnu
+smoke-host-collapse: build-wasm build-host
     @echo "Smoke-testing gasnu collapsed proof (? default) + :proof-verbose escape hatch..."
     @collapsed=$(printf 'dog(Rex).\nanimal(every dog).\n? animal(Rex).\n' \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        | NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$collapsed"; \
         echo "$collapsed" | grep -qF '[Query] TRUE' || { echo 'FAIL: collapsed query did not answer TRUE'; exit 1; }; \
         echo "$collapsed" | grep -qF 'by the rule' || { echo 'FAIL: collapsed proof missing the macro rule step'; exit 1; }; \
@@ -200,7 +200,7 @@ smoke-gasnu-collapse: build-wasm build-gasnu
         if echo "$collapsed" | grep -qF 'role-level detail'; then echo 'FAIL: role-level detail cluster shown in collapsed text'; exit 1; fi; \
         echo 'PASS: ? shows the clean collapsed macro-logical DAG'
     @verbose=$(printf 'dog(Rex).\nanimal(every dog).\n:proof-verbose animal(Rex).\n' \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        | NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$verbose"; \
         echo "$verbose" | grep -qF '[Query] TRUE' || { echo 'FAIL: :proof-verbose query did not answer TRUE'; exit 1; }; \
         echo "$verbose" | grep -qF 'Conjunction' || { echo 'FAIL: :proof-verbose did not show the full role-level trace'; exit 1; }; \
@@ -212,10 +212,10 @@ smoke-gasnu-collapse: build-wasm build-gasnu
 # end-to-end across the WIT boundary. The KR spelling resolves tenfa via identity
 # passthrough (pinned in smuni's fallback tables, so the CI fallback build
 # resolves it too). NOT in `ci` (needs the WASM build).
-smoke-gasnu-backend-unavailable: build-wasm build-gasnu
+smoke-host-backend-unavailable: build-wasm build-host
     @echo "Smoke-testing gasnu backend-unavailable verdict (no compute backend configured)..."
     @out=$(printf ':compute tenfa\n? tenfa(8, 2, 3).\n' \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        | NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$out"; \
         echo "$out" | grep -qF '[Query] UNKNOWN (backend-unavailable)' || { echo 'FAIL: an unreachable backend did not surface UNKNOWN (backend-unavailable)'; exit 1; }; \
         if echo "$out" | grep -qF '[Query] FALSE'; then echo 'FAIL: backend outage degraded to a definitive FALSE'; exit 1; fi; \
@@ -226,16 +226,16 @@ smoke-gasnu-backend-unavailable: build-wasm build-gasnu
 # only via the host->guest WASI env hop) — while the verdict + proof trace stay. The
 # default (unset) still prints the diagnostics, so a live REPL is unchanged. Guards the
 # host gate AND the env forwarding end-to-end. Pre-release gate (needs the WASM build).
-smoke-gasnu-quiet: build-wasm build-gasnu
+smoke-host-quiet: build-wasm build-host
     @echo "Smoke-testing gasnu NIBLI_QUIET mode (suppress [Fact]/[Skolem]/[Rule], keep proof)..."
     @q=$(printf 'dog(Adam).\nanimal(every dog).\n? animal(Adam).\n' \
-        | NIBLI_QUIET=1 NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        | NIBLI_QUIET=1 NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$q"; \
         echo "$q" | grep -qF '[Query] TRUE' || { echo 'FAIL: quiet-mode query lost its verdict'; exit 1; }; \
         echo "$q" | grep -qF 'adam is an animal' || { echo 'FAIL: quiet-mode query lost its proof trace'; exit 1; }; \
         if echo "$q" | grep -qE '\[(Fact|Skolem|Rule)'; then echo 'FAIL: NIBLI_QUIET=1 did not suppress the per-assertion bookkeeping'; exit 1; fi; \
         v=$(printf 'dog(Adam).\nanimal(every dog).\n? animal(Adam).\n' \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        | NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$v"; \
         echo "$v" | grep -qF '[Fact #0] Asserted.' || { echo 'FAIL: default (verbose) mode dropped the [Fact] echo'; exit 1; }; \
         echo "$v" | grep -qE '\[(Skolem|Rule)' || { echo 'FAIL: default (verbose) mode dropped the guest [Skolem]/[Rule] diagnostics'; exit 1; }; \
@@ -247,16 +247,16 @@ smoke-gasnu-quiet: build-wasm build-gasnu
 # behavior itself is pinned at the logji level — the event-decomposed surface
 # pipeline produces arity-consistent predicates by construction, so a mismatch
 # is only constructible programmatically.)
-smoke-gasnu-strict: build-wasm build-gasnu
+smoke-host-strict: build-wasm build-host
     @echo "Smoke-testing gasnu strict mode (env + :strict toggle plumbing)..."
     @s=$(printf ':strict\ndog(Adam).\n? dog(Adam).\n' \
-        | NIBLI_STRICT=1 NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        | NIBLI_STRICT=1 NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$s"; \
         echo "$s" | grep -qF 'Strict mode: ON' || { echo 'FAIL: NIBLI_STRICT=1 startup banner missing'; exit 1; }; \
         echo "$s" | grep -qF '[Strict] ON' || { echo 'FAIL: :strict status did not report ON'; exit 1; }; \
         echo "$s" | grep -qF '[Query] TRUE' || { echo 'FAIL: a clean assert+query must still work under strict'; exit 1; }; \
         t=$(printf ':strict on\n:strict\n:strict off\n:strict\n' \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
+        | NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$t"; \
         echo "$t" | grep -qF '[Strict] ON' || { echo 'FAIL: :strict on did not take'; exit 1; }; \
         echo "$t" | grep -qF '[Strict] OFF' || { echo 'FAIL: :strict off did not take'; exit 1; }; \
@@ -265,7 +265,7 @@ smoke-gasnu-strict: build-wasm build-gasnu
 # Executes the full pipeline: Builds WASM modules, then boots the native REPL
 run: build-wasm
     @echo "Launching Neuro-Symbolic Engine ({{profile}})..."
-    NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm cargo run -p gasnu {{cargo_profile_flag}}
+    NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm cargo run -p nibli-host {{cargo_profile_flag}}
 
 # Build the native Linux binary (no WASM, full backtraces)
 build-native:
@@ -311,8 +311,8 @@ test-engine:
 # formatting, arithmetic). gasnu is a normal bin with no lib target, so the
 # workspace `test` recipe (`cargo test --lib`) skips it — this gates it in `ci`.
 # WASM-independent: does not need the lasna build.
-test-gasnu:
-    cargo test -p gasnu
+test-host:
+    cargo test -p nibli-host
 
 # Run nibli-ui's native tests (the shipped-examples guard: every example KB line
 # + preset query compiles through the nibli KR front-end; dual-mode with fallback
@@ -327,7 +327,7 @@ backend:
 
 # Full pipeline with compute backend auto-configured
 run-with-backend: build-wasm
-    NIBLI_COMPUTE_ADDR=127.0.0.1:5555 NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm cargo run -p gasnu {{cargo_profile_flag}}
+    NIBLI_COMPUTE_ADDR=127.0.0.1:5555 NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm cargo run -p nibli-host {{cargo_profile_flag}}
 
 # Run Python backend tests
 test-backend:
@@ -353,7 +353,7 @@ test-store:
 
 # Run REPL with persistent storage
 run-persist: build-wasm
-    NIBLI_DB_PATH=nibli.redb NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm cargo run -p gasnu {{cargo_profile_flag}}
+    NIBLI_DB_PATH=nibli.redb NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm cargo run -p nibli-host {{cargo_profile_flag}}
 
 # Persistence and replay regressions across engine and store layers
 test-persistence-replay:
@@ -364,24 +364,24 @@ test-all: test test-engine test-store test-backend
 
 # CI gate for the hardened runtime surface (fast; native only — no WASM build).
 # For the WASM behavioral smokes too, run `just ci-all`.
-ci: fmt-check clippy-runtime test test-engine test-gasnu test-ui test-fanva test-backend test-store test-persistence-replay verify-harness verify-soundness verify-nibli-kr-dict verify-nibli-kr-seam verify-dict verify-proofs verify-book-vocab
+ci: fmt-check clippy-runtime test test-engine test-host test-ui test-formalize test-backend test-store test-persistence-replay verify-harness verify-soundness verify-nibli-kr-dict verify-nibli-kr-seam verify-dict verify-proofs verify-book-vocab
 
 # WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
 # verify-book-capture). Bundles the gasnu smokes; each depends on
-# `build-wasm build-gasnu`, so `just` builds the component + host once, then runs
+# `build-wasm build-host`, so `just` builds the component + host once, then runs
 # them all: fuel exhaustion + post-trap recovery + journal replay
 # (trap-recovery), plus the script transcript, persist-replay, NAF-note,
 # :debug round-trip, and the determinism corpus.
-ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-persist-replay smoke-gasnu-split smoke-gasnu-naf smoke-gasnu-cwa-false smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable smoke-gasnu-quiet smoke-gasnu-strict smoke-gasnu-determinism verify-wasm-node
+ci-wasm: smoke-host-script smoke-host-trap-recovery smoke-host-persist-replay smoke-host-split smoke-host-naf smoke-host-cwa-false smoke-host-debug smoke-host-collapse smoke-host-backend-unavailable smoke-host-quiet smoke-host-strict smoke-host-determinism verify-wasm-node
 
 # Three-way determinism, WASMTIME leg: the shared determinism-corpus.nibli must produce
 # exactly its pinned annotations through the lasna component under gasnu. The
 # native leg is determinism_corpus_nibli_kr_native (verify-nibli-kr-seam); the V8 leg is
 # verify-wasm-node.
-smoke-gasnu-determinism: build-wasm build-gasnu
+smoke-host-determinism: build-wasm build-host
     @echo "Smoke-testing gasnu three-way determinism corpus..."
     @expected=$(grep '^# =>' determinism-corpus.nibli | sed 's/^# => //'); \
-        actual=$(NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu --script determinism-corpus.nibli 2>&1 | sed -n 's/^\[Query\] //p'); \
+        actual=$(NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host --script determinism-corpus.nibli 2>&1 | sed -n 's/^\[Query\] //p'); \
         if [ "$expected" = "$actual" ]; then \
             echo 'PASS: gasnu verdicts match every pinned determinism annotation'; \
         else \
@@ -400,11 +400,11 @@ verify-wasm-node:
         wasm-pack test --node nibli-wasm; \
     fi
 
-# Run nibli-fanva native tests (agentic loop + history trim, local gates incl.
+# Run nibli-formalize native tests (agentic loop + history trim, local gates incl.
 # the render round-trip gate, the shipped-prompt guard, the semantic
 # verification turn, LLM request/response shapes).
-test-fanva:
-    cargo test -p nibli-fanva --lib -- --nocapture
+test-formalize:
+    cargo test -p nibli-formalize --lib -- --nocapture
 
 # Comprehensive pre-push / pre-release gate: the fast native `ci` plus the WASM
 # behavioral smokes. `ci` alone does not exercise the WASM component.
@@ -451,8 +451,8 @@ verify-book-refs:
 # gate, NOT in `ci` — it needs the WASM + gasnu build and replays sessions.
 # See book/tools/README.md. Run after any output-affecting engine change.
 verify-book-capture: build-wasm
-    cargo build -p gasnu {{cargo_profile_flag}}
-    NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm python3 book/tools/capture_book.py --check
+    cargo build -p nibli-host {{cargo_profile_flag}}
+    NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm python3 book/tools/capture_book.py --check
 
 # Step-zero regression guard (run by `ci`). The logji FOL control test proves the
 # deep-chain reasoning path stays sound (it must PASS). The RED known-failure
@@ -460,7 +460,7 @@ verify-book-capture: build-wasm
 # The book vocab gate (`verify-book-vocab`) joins `ci` once the `xanlu` non-word
 # is fixed (revisions P0.2) — it is intentionally red until then.
 verify-harness:
-    cargo test -p logji --test known_failures_fol {{cargo_profile_flag}} -- --test-threads=1
+    cargo test -p nibli-reason --test known_failures_fol {{cargo_profile_flag}} -- --test-threads=1
     cargo test -p nibli-engine --test known_failures {{cargo_profile_flag}} -- --test-threads=1
 
 # Differential SOUNDNESS gate (Track A), two oracles: nibli's verdict must agree with
@@ -471,7 +471,7 @@ verify-soundness:
     cargo test -p nibli-verify --lib --test differential_gate {{cargo_profile_flag}} -- --nocapture --test-threads=1
 
 # Alias-map differential gate: the SHIPPED nibli-kr-dictionary alias map must agree with
-# the SHIPPED smuni-dictionary (per-alias arity equality, GISMU_TO_ALIAS round-trips,
+# the SHIPPED nibli-lexicon (per-alias arity equality, GISMU_TO_ALIAS round-trips,
 # swap validity, reserved/label integrity from the shipped map) plus a behavioral leg:
 # alias(A, B, ...) must compile canonically EQUAL to the raw-gismu spelling with
 # explicit permuted xN labels, for EVERY shipped alias. Dual-mode and never skips: a full
@@ -495,7 +495,7 @@ verify-nibli-kr-dict:
 verify-nibli-kr-seam:
     cargo test -p nibli-verify --test nibli_kr_seam_gate {{cargo_profile_flag}} -- --nocapture --test-threads=1
 
-# Dictionary-arity differential gate: the shipped smuni-dictionary arities must COVER the
+# Dictionary-arity differential gate: the shipped nibli-lexicon arities must COVER the
 # independent Predilex bounds (vendored CC0 thesaurus, nibli-verify/vendor/predilex/) —
 # an undercount means the dictionary truncates places the word supports. Dual-mode and
 # never skips: a full local build (`just fetch-dict`) checks ~198 words; the CI fallback
@@ -506,7 +506,7 @@ verify-dict:
 # Mechanized-proof gate (Track B): check the Lean 4 soundness proofs in `proofs/`. The Nix
 # dev shell provides `lean`; `lean` exits non-zero on any unproved/false theorem. Skips
 # cleanly if `lean` is absent (the proofs are still conformance-checked from Rust via the
-# `exhaustive_soundness_matches_lean_model` test in `cargo test -p logji`).
+# `exhaustive_soundness_matches_lean_model` test in `cargo test -p nibli-reason`).
 verify-proofs:
     @if command -v lean >/dev/null 2>&1; then \
         for f in proofs/*.lean; do echo "checking $f"; lean "$f" || exit 1; done; \
@@ -624,7 +624,7 @@ bench-book:
 count-tests:
     @u=$(cargo test --workspace --lib -- --list 2>/dev/null | grep -c ': test$'); \
     e=$(cargo test -p nibli-engine --tests -- --list 2>/dev/null | grep -c ': test$'); \
-    g=$(cargo test -p gasnu -- --list 2>/dev/null | grep -c ': test$'); \
+    g=$(cargo test -p nibli-host -- --list 2>/dev/null | grep -c ': test$'); \
     v=$(cargo test -p nibli-verify --tests -- --list 2>/dev/null | grep -c ': test$'); \
     echo "unit (workspace --lib):      $u"; \
     echo "nibli-engine test targets:   $e"; \

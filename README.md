@@ -123,7 +123,7 @@ just test
 > **Dictionary data.** The build reads `dictionary-en.json` at the repo root — the English
 > bulk export from the [lensisku](https://lensisku.lojban.org) Lojban dictionary (jbovlaste
 > data, CC-BY-SA). It is a compile-time input to BOTH dictionaries: the predicate
-> arity/place-structure tables (smuni-dictionary) and the full ~1,341-word nibli KR alias map
+> arity/place-structure tables (nibli-lexicon) and the full ~1,341-word nibli KR alias map
 > (nibli-kr-dictionary). It is gitignored; fetch it with `just fetch-dict` (lensisku's cached
 > dumps are a public download, no login needed) or drop the file in manually. Without it the
 > build falls back to the in-tree curated tables (~100 core aliases), so `just run`/`just
@@ -244,7 +244,7 @@ To build a release bundle (`just build-ui`) or self-host, see [`DEPLOY.md`](DEPL
 
 The three tabs are **Source** (plain English), **nibli KR** (the formal encoding), and **Back-translation** (the structure-exposing gloss). The reasoning is fully local; the **only** optional network call is **Formalize** on the Source tab — a *bring-your-own-key* LLM request sent **directly from your browser** to a provider you choose (Anthropic, OpenAI, OpenRouter, Google Gemini, or any OpenAI-compatible/local endpoint). Configure it via the gear button: the API key is held **in that tab's memory only** — never persisted to storage and never routed through any nibli server (there is none), and it is erased on tab close/reload.
 
-Formalize runs the **agentic formalizer** (`nibli-fanva`) — "formalize", not "compile": the LLM step is interpretive and sits *outside* the reasoning firewall, behind deterministic gates. The LLM's draft is validated by the *real compilers* — the nibli-kr front-end (grammar + fail-closed name resolution) + smuni (semantics) + a canonical render **round-trip** check — and any compiler error is fed back for the model to self-correct, so what lands in the nibli KR tab already passes those gates. It is still a *draft* — you review the nibli KR (and its back-translation) before the deterministic engine reasons over it, and you can skip Formalize entirely and type nibli KR directly.
+Formalize runs the **agentic formalizer** (`nibli-formalize`) — "formalize", not "compile": the LLM step is interpretive and sits *outside* the reasoning firewall, behind deterministic gates. The LLM's draft is validated by the *real compilers* — the nibli-kr front-end (grammar + fail-closed name resolution) + smuni (semantics) + a canonical render **round-trip** check — and any compiler error is fed back for the model to self-correct, so what lands in the nibli KR tab already passes those gates. It is still a *draft* — you review the nibli KR (and its back-translation) before the deterministic engine reasons over it, and you can skip Formalize entirely and type nibli KR directly.
 
 The header has an **example** dropdown that loads a preloaded, book-derived knowledge base into the triad — **Syllogism** (Ch 19), **GDPR compliance** (Ch 20), or **Drug interactions** (Ch 21). In an example the KB source is read-only, Formalize is disabled, and the query box becomes a dropdown of that example's preset queries (selecting one runs it immediately). The default, **Custom**, is the editable mode. The example corpora are the committed `gdpr.nibli` / `drug-interactions.nibli` files the engine's regression tests pin.
 

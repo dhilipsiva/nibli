@@ -28,7 +28,7 @@ developer will execute item-by-item.
    agentic tool-use loop, not a single shot.
 3. When the LLM emits a candidate translation, the app **validates it through three gates**:
    - `gerna::parse_checked` — engine grammar (local WASM)
-   - `smuni::compile_from_gerna_ast` — engine semantics/arity (local WASM)
+   - `nibli_semantics::compile_from_gerna_ast` — engine semantics/arity (local WASM)
    - jbotci **`gentufa`** — the *official* Lojban grammar parser (remote, via the proxy)
 4. If any gate fails, the app appends the failing compiler's error to the **conversation history**
    and asks the LLM to fix it. Loop until **all three gates pass** (or a max-attempt cap is hit).
@@ -86,12 +86,12 @@ serde_json = "1"
 gerna            = { git = "https://github.com/dhilipsiva/nibli", package = "gerna",            rev = "<PIN>" }
 smuni            = { git = "https://github.com/dhilipsiva/nibli", package = "smuni",            rev = "<PIN>" }
 nibli-render     = { git = "https://github.com/dhilipsiva/nibli", package = "nibli-render",     rev = "<PIN>" }
-smuni-dictionary = { git = "https://github.com/dhilipsiva/nibli", package = "smuni-dictionary", rev = "<PIN>" }
+nibli-lexicon = { git = "https://github.com/dhilipsiva/nibli", package = "nibli-lexicon", rev = "<PIN>" }
 ```
 - `gerna::parse_checked(&str) -> Result<AstBuffer, NibliError>` — fail-closed; `NibliError::Syntax(SyntaxDetail{message,line,column})`, `Display` = `"[Syntax Error] line L:C: msg"`.
-- `smuni::compile_from_gerna_ast(AstBuffer) -> Result<LogicBuffer, NibliError>` — by value; `NibliError::Semantic(String)`.
-- `nibli_render::render_logic_buffer(&LogicBuffer, nibli_render::Register::Spec) -> String`; `smuni_dictionary::back_translate(&str)` fallback.
-- Both compile to `wasm32-unknown-unknown` (pure Rust). **Dictionary caveat:** `smuni-dictionary`'s `build.rs` reads a gitignored `dictionary-en.json`; via a plain git dep it falls back to a curated ~140-entry table, so smuni's *arity* checking is strongest for common vocab. For full-vocab arity, use a **path dep against a local clone** and run its `just fetch-dict`. (Note jbotci `vlacku` also provides authoritative place structure at runtime — lean on it.)
+- `nibli_semantics::compile_from_gerna_ast(AstBuffer) -> Result<LogicBuffer, NibliError>` — by value; `NibliError::Semantic(String)`.
+- `nibli_render::render_logic_buffer(&LogicBuffer, nibli_render::Register::Spec) -> String`; `nibli_lexicon::back_translate(&str)` fallback.
+- Both compile to `wasm32-unknown-unknown` (pure Rust). **Dictionary caveat:** `nibli-lexicon`'s `build.rs` reads a gitignored `dictionary-en.json`; via a plain git dep it falls back to a curated ~140-entry table, so smuni's *arity* checking is strongest for common vocab. For full-vocab arity, use a **path dep against a local clone** and run its `just fetch-dict`. (Note jbotci `vlacku` also provides authoritative place structure at runtime — lean on it.)
 
 **Reference LLM client to port + generalize:** `nibli-ui/src/llm.rs` (upstream) implements a BYO-key
 client for **Anthropic / OpenAI / OpenRouter / Google Gemini / Custom** over `gloo-net`, currently

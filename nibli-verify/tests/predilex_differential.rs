@@ -1,6 +1,6 @@
 //! Dictionary-arity differential — the `verify-dict` gate (`just verify-dict`).
 //!
-//! Cross-validates the SHIPPED `smuni-dictionary` arities (the values that
+//! Cross-validates the SHIPPED `nibli-lexicon` arities (the values that
 //! drive event decomposition and strict-mode arity rejection) against
 //! Predilex, an independent human-curated CC0 thesaurus of sememes-as-
 //! predicates (vendored + pinned in `nibli-verify/vendor/predilex/`).
@@ -74,7 +74,7 @@ const KNOWN_UNDERCOUNTS: &[(&str, usize, usize)] = &[
 
 #[test]
 fn dictionary_arities_cover_predilex_bounds() {
-    let dict_size = smuni_dictionary::DICTIONARY.len();
+    let dict_size = nibli_lexicon::DICTIONARY.len();
     let full_mode = dict_size >= FULL_DICT_MIN;
     if !full_mode {
         eprintln!(
@@ -108,7 +108,7 @@ fn dictionary_arities_cover_predilex_bounds() {
     let mut new_undercounts: Vec<String> = Vec::new();
 
     for (word, wb) in &bounds {
-        let Some(nibli_arity) = smuni_dictionary::get_arity(word) else {
+        let Some(nibli_arity) = nibli_lexicon::get_arity(word) else {
             // Not in the dictionary under this build — no judgment possible;
             // never trips floors or the invariant.
             unmapped += 1;

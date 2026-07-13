@@ -1,7 +1,7 @@
 //! FIXED former process-aborting regression — now a normal, safe-to-run test.
 //!
 //! Bug (panel finding, todo.md: HIGH, FIXED 2026-06-10): "du-equivalence fallback
-//! recurses unboundedly — stack overflow (SIGABRT)" — `logji/src/reasoning.rs`.
+//! recurses unboundedly — stack overflow (SIGABRT)" — `nibli-reason/src/reasoning.rs`.
 //! `check_predicate_in_kb_typed`'s du-equivalence variant fallback recursed with
 //! NO cycle guard and NO depth increment: `try_backward_chain_typed` removes its
 //! own `visited` entry before returning, and the variant loop passed the same

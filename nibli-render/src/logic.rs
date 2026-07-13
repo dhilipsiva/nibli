@@ -8,8 +8,8 @@
 
 use std::collections::HashMap;
 
+use nibli_lexicon::get_gloss;
 use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm};
-use smuni_dictionary::get_gloss;
 
 use crate::frame::{fill_template, frame_template};
 use crate::register::Register;

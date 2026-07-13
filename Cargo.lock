@@ -1694,21 +1694,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gasnu"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "nibli-protocol",
- "nibli-render",
- "nibli-store",
- "nibli-types",
- "postcard",
- "reedline",
- "wasmtime",
- "wasmtime-wasi",
-]
-
-[[package]]
 name = "generational-box"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2357,17 +2342,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lasna"
-version = "0.1.0"
-dependencies = [
- "logji",
- "nibli-kr",
- "nibli-types",
- "smuni",
- "wit-bindgen-rt",
-]
-
-[[package]]
 name = "lasso"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2470,17 +2444,6 @@ name = "log"
 version = "0.4.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
-
-[[package]]
-name = "logji"
-version = "0.1.0"
-dependencies = [
- "nibli-kr",
- "nibli-types",
- "serde",
- "smuni",
- "smuni-dictionary",
-]
 
 [[package]]
 name = "longest-increasing-subsequence"
@@ -2700,19 +2663,19 @@ name = "nibli-engine"
 version = "0.1.0"
 dependencies = [
  "criterion",
- "logji",
  "nibli-kr",
  "nibli-protocol",
+ "nibli-reason",
  "nibli-render",
+ "nibli-semantics",
  "nibli-store",
  "nibli-types",
  "postcard",
  "serde_json",
- "smuni",
 ]
 
 [[package]]
-name = "nibli-fanva"
+name = "nibli-formalize"
 version = "0.1.0"
 dependencies = [
  "futures",
@@ -2720,11 +2683,26 @@ dependencies = [
  "js-sys",
  "nibli-kr",
  "nibli-render",
+ "nibli-semantics",
  "nibli-types",
  "serde_json",
- "smuni",
  "wasm-bindgen",
  "wasm-bindgen-test",
+]
+
+[[package]]
+name = "nibli-host"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "nibli-protocol",
+ "nibli-render",
+ "nibli-store",
+ "nibli-types",
+ "postcard",
+ "reedline",
+ "wasmtime",
+ "wasmtime-wasi",
 ]
 
 [[package]]
@@ -2740,22 +2718,43 @@ name = "nibli-kr"
 version = "0.1.0"
 dependencies = [
  "nibli-kr-dictionary",
+ "nibli-lexicon",
+ "nibli-semantics",
  "nibli-types",
  "pest",
  "pest_derive",
- "smuni",
- "smuni-dictionary",
 ]
 
 [[package]]
 name = "nibli-kr-dictionary"
 version = "0.1.0"
 dependencies = [
+ "nibli-lexicon",
  "phf",
  "phf_codegen",
  "serde",
  "serde_json",
- "smuni-dictionary",
+]
+
+[[package]]
+name = "nibli-lexicon"
+version = "0.1.0"
+dependencies = [
+ "phf",
+ "phf_codegen",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "nibli-pipeline"
+version = "0.1.0"
+dependencies = [
+ "nibli-kr",
+ "nibli-reason",
+ "nibli-semantics",
+ "nibli-types",
+ "wit-bindgen-rt",
 ]
 
 [[package]]
@@ -2768,19 +2767,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "nibli-reason"
+version = "0.1.0"
+dependencies = [
+ "nibli-kr",
+ "nibli-lexicon",
+ "nibli-semantics",
+ "nibli-types",
+ "serde",
+]
+
+[[package]]
 name = "nibli-render"
 version = "0.1.0"
 dependencies = [
+ "nibli-lexicon",
  "nibli-protocol",
  "nibli-types",
- "smuni-dictionary",
+]
+
+[[package]]
+name = "nibli-semantics"
+version = "0.1.0"
+dependencies = [
+ "lasso",
+ "nibli-lexicon",
+ "nibli-types",
 ]
 
 [[package]]
 name = "nibli-store"
 version = "0.1.0"
 dependencies = [
- "logji",
+ "nibli-reason",
  "postcard",
  "redb",
  "serde",
@@ -2799,43 +2818,43 @@ version = "0.1.0"
 dependencies = [
  "dioxus",
  "gloo-net",
- "logji",
- "nibli-fanva",
+ "nibli-formalize",
  "nibli-kr",
  "nibli-kr-dictionary",
+ "nibli-lexicon",
  "nibli-protocol",
+ "nibli-reason",
  "nibli-render",
+ "nibli-semantics",
  "nibli-types",
  "serde_json",
- "smuni",
- "smuni-dictionary",
 ]
 
 [[package]]
 name = "nibli-verify"
 version = "0.1.0"
 dependencies = [
- "logji",
  "nibli-engine",
  "nibli-kr",
  "nibli-kr-dictionary",
+ "nibli-lexicon",
+ "nibli-reason",
+ "nibli-semantics",
  "nibli-types",
- "smuni",
- "smuni-dictionary",
 ]
 
 [[package]]
 name = "nibli-wasm"
 version = "0.1.0"
 dependencies = [
- "logji",
  "nibli-kr",
+ "nibli-lexicon",
  "nibli-protocol",
+ "nibli-reason",
  "nibli-render",
+ "nibli-semantics",
  "nibli-types",
  "serde_json",
- "smuni",
- "smuni-dictionary",
  "wasm-bindgen",
  "wasm-bindgen-test",
 ]
@@ -3918,25 +3937,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "smuni"
-version = "0.1.0"
-dependencies = [
- "lasso",
- "nibli-types",
- "smuni-dictionary",
-]
-
-[[package]]
-name = "smuni-dictionary"
-version = "0.1.0"
-dependencies = [
- "phf",
- "phf_codegen",
- "serde",
- "serde_json",
 ]
 
 [[package]]

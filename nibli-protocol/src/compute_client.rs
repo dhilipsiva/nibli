@@ -16,7 +16,7 @@
 //! module depends on neither.
 //!
 //! Trust boundary: the backend is a plaintext, unauthenticated peer in the
-//! trusted computing base — see `logji::set_compute_dispatch` / book Ch 17.
+//! trusted computing base — see `nibli_reason::set_compute_dispatch` / book Ch 17.
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;

@@ -14,7 +14,7 @@ nibli-engine = { path = "../nibli-engine" }
 # never structurally corrupt (nibli-kr links neither crate at runtime, so both are
 # direct deps here).
 nibli-kr = { path = "../nibli-kr" }
-smuni = { path = "../smuni" }
+nibli-semantics = { path = "../nibli-semantics" }
 
 # Prevent debug info from slowing fuzzer
 [profile.release]

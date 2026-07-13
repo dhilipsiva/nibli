@@ -28,9 +28,9 @@ use crate::seam;
 /// the shipped engine runs after its parse step.
 pub fn kompile(text: &str) -> Result<LogicBuffer, String> {
     let ast = nibli_kr::parse_checked(text).map_err(|e| format!("nibli-kr parse '{text}': {e}"))?;
-    let mut buf =
-        smuni::compile_from_gerna_ast(ast).map_err(|e| format!("smuni(nibli-kr) '{text}': {e}"))?;
-    logji::transform_compute_nodes(&mut buf, &logji::default_compute_predicates());
+    let mut buf = nibli_semantics::compile_from_gerna_ast(ast)
+        .map_err(|e| format!("smuni(nibli-kr) '{text}': {e}"))?;
+    nibli_reason::transform_compute_nodes(&mut buf, &nibli_reason::default_compute_predicates());
     Ok(buf)
 }
 

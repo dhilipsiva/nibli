@@ -187,7 +187,7 @@ fn predilex_taxonomy_agrees_with_vampire() {
     // filter regression that guts the set must fail loudly. Dual-mode: the
     // fallback build's curated vocabulary leaves few edges the fail-closed
     // KR resolve accepts, so its floor is lower (never zero).
-    let full_mode = smuni_dictionary::DICTIONARY.len() >= FULL_DICT_MIN;
+    let full_mode = nibli_lexicon::DICTIONARY.len() >= FULL_DICT_MIN;
     let floor = if full_mode {
         MIN_CHECKED_TAXONOMY
     } else {
@@ -195,7 +195,7 @@ fn predilex_taxonomy_agrees_with_vampire() {
             "taxonomy gate: FALLBACK MODE — dictionary has {} entries (curated fallback \
              build); floor relaxed to {MIN_CHECKED_TAXONOMY_FALLBACK}. Full validation \
              needs `just fetch-dict` + rebuild.",
-            smuni_dictionary::DICTIONARY.len()
+            nibli_lexicon::DICTIONARY.len()
         );
         MIN_CHECKED_TAXONOMY_FALLBACK
     };

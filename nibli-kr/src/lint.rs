@@ -187,7 +187,7 @@ fn resolved_gismu(word: &str) -> Option<&str> {
     if let Some(entry) = nibli_kr_dictionary::alias(word) {
         return Some(entry.gismu);
     }
-    smuni_dictionary::get_arity(word).map(|_| word)
+    nibli_lexicon::get_arity(word).map(|_| word)
 }
 
 /// Is this determiner an introducing quantifier for L1 purposes?

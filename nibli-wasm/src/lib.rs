@@ -1,5 +1,5 @@
 //! Browser wasm wrapper for the nibli pipeline: gerna → smuni → logji, plus the
-//! smuni-dictionary back-translation. Mirrors nibli-engine's no-store path —
+//! nibli-lexicon back-translation. Mirrors nibli-engine's no-store path —
 //! no persistence, no compute backend, pure in-memory KnowledgeBase.
 //!
 //! Powers the live Transparency Triad demo at <https://dhilipsiva.dev/nibli>.
@@ -20,7 +20,7 @@ use nibli_types::logic as logji_logic;
 /// "Reset" just builds a fresh Session and re-asserts the KB lines.
 #[wasm_bindgen]
 pub struct Session {
-    kb: logji::KnowledgeBase,
+    kb: nibli_reason::KnowledgeBase,
     compute_predicates: HashSet<String>,
 }
 
@@ -35,8 +35,8 @@ impl Session {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Session {
         Session {
-            kb: logji::KnowledgeBase::new(),
-            compute_predicates: logji::default_compute_predicates(),
+            kb: nibli_reason::KnowledgeBase::new(),
+            compute_predicates: nibli_reason::default_compute_predicates(),
         }
     }
 
@@ -114,9 +114,9 @@ impl Session {
         // Fail-closed KR parse + smuni compile + compute-node marking.
         // String-error surface preserved via `to_string`.
         let ast = nibli_kr::parse_checked(input).map_err(|e: PipelineError| e.to_string())?;
-        let mut buf =
-            smuni::compile_from_gerna_ast(ast).map_err(|e: PipelineError| e.to_string())?;
-        logji::transform_compute_nodes(&mut buf, &self.compute_predicates);
+        let mut buf = nibli_semantics::compile_from_gerna_ast(ast)
+            .map_err(|e: PipelineError| e.to_string())?;
+        nibli_reason::transform_compute_nodes(&mut buf, &self.compute_predicates);
         Ok(buf)
     }
 }
@@ -131,7 +131,7 @@ fn js_err(msg: impl std::fmt::Display) -> JsError {
 /// loading; meaningless for KR input (it echoes unknown tokens).
 #[wasm_bindgen]
 pub fn back_translate(lojban: &str) -> String {
-    smuni_dictionary::back_translate(lojban)
+    nibli_lexicon::back_translate(lojban)
 }
 
 /// IR-driven back-translation: parse + compile to FOL, then render structure-
@@ -151,7 +151,7 @@ pub fn back_translate_ir(text: &str) -> String {
 /// transform, no assertion — display only).
 fn compile_for_render(input: &str) -> Result<logji_logic::LogicBuffer, String> {
     let ast = nibli_kr::parse_checked(input).map_err(|e: PipelineError| e.to_string())?;
-    smuni::compile_from_gerna_ast(ast).map_err(|e: PipelineError| e.to_string())
+    nibli_semantics::compile_from_gerna_ast(ast).map_err(|e: PipelineError| e.to_string())
 }
 
 // ── native tests: the book's headline queries against the real KBs ─────────

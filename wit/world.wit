@@ -1,17 +1,17 @@
 /// Nibli WIT (WebAssembly Interface Types) definition.
 ///
-/// The Nibli symbolic reasoning engine ships as ONE WASM component (`lasna`,
-/// world `lasna-pipeline`): the KR front-end (nibli-kr) → smuni (compile) →
-/// logji (reason) are internal Rust crate stages, NOT separate components. This file defines only that
+/// The Nibli symbolic reasoning engine ships as ONE WASM component (world
+/// `nibli-pipeline`): the KR front-end (nibli-kr) → nibli-semantics (compile) →
+/// nibli-reason (reason) are internal Rust crate stages, NOT separate components. This file defines only that
 /// component's host boundary:
 ///   - `logic-types`: First-Order Logic IR (logic buffers, proof traces, …)
 ///   - `error-types`: structured error variants shared across the pipeline
 ///   - `compute-backend`: host-provided external predicate evaluation (import)
-///   - `lasna`: the session API (export)
+///   - `engine`: the session API (export)
 ///
 /// Data crossing the host↔component boundary uses flat index-based arrays
 /// (`u32` indices into parallel lists) — no heap pointers cross the WASM boundary.
-package lojban:nibli@0.2.0;
+package nibli:engine@0.2.0;
 
 /// Structured error types shared across all Nibli components.
 interface error-types {
@@ -50,13 +50,13 @@ interface logic-types {
     variant logical-term {
         /// A bound or free variable (e.g., Skolem variables, universally quantified vars).
         variable(string),
-        /// A ground constant (e.g., entity names from `la`).
+        /// A ground constant (e.g., entity names).
         constant(string),
-        /// An opaque description reference (from `le` gadri).
+        /// An opaque description reference (a definite description).
         description(string),
-        /// Unspecified placeholder (from `zo'e`).
+        /// Unspecified placeholder (the nibli KR `_`).
         unspecified,
-        /// Numeric literal (from `li` + PA).
+        /// Numeric literal.
         number(f64),
     }
 
@@ -77,15 +77,15 @@ interface logic-types {
         exists-node(tuple<string, u32>),
         /// Universal quantifier: ∀var. body. Fields: (variable-name, body-node-id).
         for-all-node(tuple<string, u32>),
-        /// Past tense wrapper (pu). Payload: inner-node-id.
+        /// Past tense wrapper. Payload: inner-node-id.
         past-node(u32),
-        /// Present tense wrapper (ca). Payload: inner-node-id.
+        /// Present tense wrapper. Payload: inner-node-id.
         present-node(u32),
-        /// Future tense wrapper (ba). Payload: inner-node-id.
+        /// Future tense wrapper. Payload: inner-node-id.
         future-node(u32),
-        /// Deontic obligation wrapper (ei/bilga). Payload: inner-node-id.
+        /// Deontic obligation wrapper (must). Payload: inner-node-id.
         obligatory-node(u32),
-        /// Deontic permission wrapper (e'e/curmi). Payload: inner-node-id.
+        /// Deontic permission wrapper (may). Payload: inner-node-id.
         permitted-node(u32),
         /// Exactly N entities satisfy the body: Count(variable-name, count, body-node-id)
         count-node(tuple<string, u32, u32>),
@@ -162,7 +162,7 @@ interface logic-types {
         /// Reference to an already-proved fact. Payload: fact string that was proved.
         /// No children — the full proof was shown at its first occurrence.
         proof-ref(string),
-        /// Equality substitution via `du`. Payload: (original-fact, du-facts-used, substituted-fact).
+        /// Equality substitution. Payload: (original-fact, equality-facts-used, substituted-fact).
         equality-substitution(tuple<string, string, string>),
         /// Rule was tried but a condition failed. Payload: (rule-label, failed-condition).
         rule-attempt-failed(tuple<string, string>),
@@ -246,14 +246,14 @@ interface compute-backend {
 
 }
 
-/// High-level lasna interface: the single shipping component's API.
+/// High-level engine interface: the single shipping component's API.
 ///
 /// Provides a `session` resource with text-level assert/query methods that
-/// internally orchestrate the full nibli-kr → smuni → logji pipeline (linked
-/// as Rust crate stages). This is the primary API for end users (e.g., the REPL
-/// gasnu; the in-browser surfaces nibli-ui/nibli-wasm embed the same crates
-/// natively rather than through this component).
-interface lasna {
+/// internally orchestrate the full nibli-kr → nibli-semantics → nibli-reason
+/// pipeline (linked as Rust crate stages). This is the primary API for end users
+/// (e.g., the REPL nibli-host; the in-browser surfaces nibli-ui/nibli-wasm embed
+/// the same crates natively rather than through this component).
+interface engine {
     use logic-types.{fact-id, fact-summary, logic-buffer, logical-term, proof-trace, query-result, witness-binding};
     use error-types.{nibli-error};
 
@@ -312,9 +312,10 @@ interface lasna {
     }
 }
 
-/// The single Nibli WASM component: nibli-kr/smuni/logji are internal Rust crate
-/// deps. Imports compute-backend (host-provided), exports the lasna session API.
-world lasna-pipeline {
+/// The single Nibli WASM component: nibli-kr/nibli-semantics/nibli-reason are
+/// internal Rust crate deps. Imports compute-backend (host-provided), exports the
+/// engine session API.
+world nibli-pipeline {
     import compute-backend;
-    export lasna;
+    export engine;
 }

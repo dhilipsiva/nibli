@@ -11,7 +11,7 @@ pest_derive = "2"
 # pinned against nibli-kr-dictionary's single-source RESERVED_WORDS by an
 # exhaustive unit test.
 nibli-kr-dictionary = { path = "../nibli-kr-dictionary" }
-smuni-dictionary = { path = "../smuni-dictionary" }
+nibli-lexicon = { path = "../nibli-lexicon" }
 # emit.rs targets nibli-types' AstBuffer; parse_checked returns NibliError.
 nibli-types = { path = "../nibli-types" }
 
@@ -19,4 +19,4 @@ nibli-types = { path = "../nibli-types" }
 # Golden tests: every emitted buffer must be accepted by smuni, and nibli KR
 # statements must compile to LogicBuffers EQUAL to their Lojban twins'
 # (the in-crate preview of the nibli-verify translation battery).
-smuni = { path = "../smuni" }
+nibli-semantics = { path = "../nibli-semantics" }

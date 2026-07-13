@@ -13,7 +13,7 @@ use libfuzzer_sys::fuzz_target;
 fuzz_target!(|data: &[u8]| {
     if let Ok(input) = std::str::from_utf8(data) {
         if let Ok(buffer) = nibli_kr::parse_checked(input) {
-            if let Err(e) = smuni::compile_from_gerna_ast(buffer) {
+            if let Err(e) = nibli_semantics::compile_from_gerna_ast(buffer) {
                 let msg = format!("{e}");
                 assert!(
                     !msg.contains("corrupt AST buffer"),

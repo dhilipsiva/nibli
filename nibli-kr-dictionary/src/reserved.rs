@@ -1,6 +1,6 @@
 //! The nibli KR reserved-word list — SINGLE SOURCE (NIBLI_KR.md §2).
 //!
-//! Consumed by this crate's `build.rs` (via `#[path]`, the smuni-dictionary
+//! Consumed by this crate's `build.rs` (via `#[path]`, the nibli-lexicon
 //! `src/arity.rs` pattern) to reject curated aliases/labels that collide with a
 //! keyword, and by the future `nibli-kr` lexer for exact-match keyword reservation
 //! after maximal munch. Keep sorted (unit-tested); every entry must be a valid

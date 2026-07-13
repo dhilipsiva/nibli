@@ -1,0 +1,25 @@
+[package]
+name = "nibli-pipeline"
+description = "Pipeline orchestrator — chains nibli-kr, smuni, logji into a single WASM component"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# The nibli KR front-end (compile_pipeline's text→AST seam). Grows the
+# component by pest + nibli-kr-dictionary — the cost of the dual-front-end phase.
+nibli-kr = { path = "../nibli-kr" }
+nibli-semantics = { path = "../nibli-semantics" }
+nibli-reason = { path = "../nibli-reason" }
+nibli-types = { path = "../nibli-types" }
+wit-bindgen-rt = "0.44.0"
+
+[package.metadata.component]
+package = "nibli:engine"
+
+[package.metadata.component.target]
+path = "../wit/world.wit"
+world = "nibli-pipeline"
+
+[lib]
+name = "nibli"
+crate-type = ["cdylib", "lib"]

@@ -5,7 +5,7 @@
 //! These entries double as the PIN TABLE for the full lensisku generation
 //! (shipped — the FULL build mode): pins win in BOTH build modes,
 //! so the spellings below can never flap between the data and no-data builds —
-//! the same cross-mode discipline smuni-dictionary's CORE_GISMU_ARITIES pins
+//! the same cross-mode discipline nibli-lexicon's CORE_GISMU_ARITIES pins
 //! exist for.
 //!
 //! Naming policy (user decision, 2026-07-12): HONEST-GENERIC ONLY — each alias is
@@ -24,7 +24,7 @@
 /// Plain aliases: `(alias, gismu, arity, place_labels)`.
 ///
 /// Covers the full `FALLBACK_GISMU_ENTRIES` word set
-/// (smuni-dictionary/build.rs — arities copied verbatim) plus `bilga`/`curmi`
+/// (nibli-lexicon/build.rs — arities copied verbatim) plus `bilga`/`curmi`
 /// (which reach smuni's no-data build via its gloss-override table). Place labels
 /// are curated only where the jbovlaste place structure is unambiguous; `""`
 /// means positional (named-arg authors fall back to `x1..x5`). Labels are
@@ -221,7 +221,7 @@ pub const CURATED_ALIASES: &[(&str, &str, u8, [&str; 5])] = &[
     // ── GISMU_PLACE_TEMPLATES word set (smuni's curated render frames) + the
     // remaining shipped-corpus/spec vocabulary — curated so the whole set the
     // renderer and corpora rely on carries pinned 3rd-person spellings and
-    // labels. Arities are checked against smuni-dictionary AT BUILD TIME in
+    // labels. Arities are checked against nibli-lexicon AT BUILD TIME in
     // data mode (drift fails the build), so these numbers cannot silently rot.
     ("acts", "zukte", 3, ["agent", "means", "goal", "", ""]),
     ("makes", "zbasu", 3, ["maker", "made", "material", "", ""]),
