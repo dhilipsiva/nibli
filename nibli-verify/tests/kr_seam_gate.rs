@@ -1,6 +1,6 @@
 //! The KR→smuni seam-conformance gate (`just verify-kr-seam`, part of `ci`) —
 //! the KR front-end's independent correctness oracle, built to OUTLIVE the
-//! Lojban front-end (KR_TODO.md: THE DROP deletes the Klaro↔Lojban twin
+//! Lojban front-end (TODO.md: THE DROP deletes the Klaro↔Lojban twin
 //! battery, whose equality oracle currently carries this role). NO LOJBAN
 //! ANYWHERE in this file: coverage is re-anchored on
 //!

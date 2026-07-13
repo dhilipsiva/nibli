@@ -2,8 +2,8 @@
 //! files). Shared with `build.rs` via `#[path]` so the same tables drive codegen
 //! and stay unit-testable in-crate.
 //!
-//! These entries double as the PIN TABLE once full lensisku generation lands
-//! (KR_TODO "klaro-dictionary full generation"): pins win in BOTH build modes,
+//! These entries double as the PIN TABLE for the full lensisku generation
+//! (shipped — the FULL build mode): pins win in BOTH build modes,
 //! so the spellings below can never flap between the data and no-data builds —
 //! the same cross-mode discipline smuni-dictionary's CORE_GISMU_ARITIES pins
 //! exist for.

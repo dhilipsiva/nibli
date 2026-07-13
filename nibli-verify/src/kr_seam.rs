@@ -4,7 +4,7 @@
 //! That gate is the KR front-end's independent correctness oracle built to
 //! OUTLIVE the Lojban front-end: today the Klaro↔Lojban twin battery
 //! (`verify-klaro`/`verify-klaro-twins`) cross-checks every construct against
-//! gerna, but THE DROP (KR_TODO.md) deletes gerna and the twins with it.
+//! gerna, but THE DROP (TODO.md) deletes gerna and the twins with it.
 //! The kr-seam gate re-anchors the same coverage on hand-verified FOL
 //! structure + KR-internal metamorphic relations, touching no Lojban text.
 //!

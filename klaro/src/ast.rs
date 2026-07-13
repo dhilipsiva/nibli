@@ -1,6 +1,5 @@
-//! Klaro tree AST — the parser's output, later lowered to
-//! `nibli_types::ast::AstBuffer` by the emitter (a subsequent KR_TODO
-//! bullet).
+//! Klaro tree AST — the parser's output, lowered to
+//! `nibli_types::ast::AstBuffer` by the emitter (`emit.rs`).
 //!
 //! Owned `Box`/`Vec` nodes, deliberately NOT gerna's bumpalo arena: Klaro
 //! statements are small, and gerna's arena exists for its leak-free-by-invariant

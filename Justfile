@@ -673,7 +673,7 @@ verify-klaro-twins:
     cargo test -p nibli-verify --test klaro_twins {{cargo_profile_flag}} -- --nocapture --test-threads=1
 
 # The KR→smuni seam-conformance gate — the KR front-end's LOJBAN-FREE
-# independent oracle, built to outlive THE DROP (KR_TODO.md): hand-verified
+# independent oracle, built to outlive THE DROP (TODO.md): hand-verified
 # FOL structural goldens for the core construct classes (event decomposition,
 # rule vs ∃-conjunction shapes, converted-alias/named-arg routing, tense/
 # deontic order incl. the O3 pin, flat `du`, prenex implication, abstraction

@@ -15,7 +15,7 @@
 //!
 //! The Klaro determinism leg (`determinism_corpus_klaro_native`) was RE-HOMED
 //! to `tests/kr_seam_gate.rs` (2026-07-12): this whole twins gate dies with
-//! the Lojban front-end at THE DROP (KR_TODO.md), and the determinism leg
+//! the Lojban front-end at THE DROP (TODO.md), and the determinism leg
 //! must outlive it.
 
 use nibli_verify::klaro_battery::{canonical, kompile};

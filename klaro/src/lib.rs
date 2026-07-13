@@ -4,7 +4,7 @@
 //! to the same `nibli_types::ast::AstBuffer` the Lojban parser produces,
 //! reusing smuni/logji and every soundness gate unchanged. The language is
 //! specified in repo-root `SURFACE_SYNTAX.md`; the implementation program is
-//! tracked in repo-root `KR_TODO.md`.
+//! tracked in repo-root `TODO.md`.
 //!
 //! PARSER TECHNOLOGY (user decision, 2026-07-12): pest. `src/klaro.pest` is
 //! the EXECUTABLE grammar — the normative form of SURFACE_SYNTAX §15 — so the

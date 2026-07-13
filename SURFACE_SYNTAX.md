@@ -2,7 +2,7 @@
 
 > **Status: v0.1 compat profile IMPLEMENTED and shipping** — Klaro is the DEFAULT
 > front-end on every runtime surface since 2026-07-12 (THE FLIP; the `klaro` crate,
-> tracker `KR_TODO.md`). The executable grammar is `klaro/src/klaro.pest` — the
+> tracker `TODO.md`). The executable grammar is `klaro/src/klaro.pest` — the
 > normative form of §15, from which the parser is generated, so this spec's grammar and
 > the shipped parser cannot drift. Working name "Klaro" (a repo-convention Lojban name
 > candidate is `klina`, "clear/transparent"). The spec was synthesized from a

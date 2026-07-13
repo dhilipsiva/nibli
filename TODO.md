@@ -1,63 +1,232 @@
 # TODO
 
-Plain bullets, never numbered — work the FIRST remaining bullet; cross-reference items by
-name. Delete a bullet entirely when it fully lands; update it if only partially done.
-(The first item came out of the 2026-07-05 Lojban Discord #proga thread with korvo —
-brismu/zaha/zatske — and feklat; the int19h items from his 2026-07-10 nibli-fanva feedback.)
+The single engine tracker (KR_TODO.md was merged in here 2026-07-12; the Klaro v0.1
+program it previously tracked is COMPLETE). Plain bullets, never numbered — work the
+FIRST remaining bullet; cross-reference items by name. Delete a bullet entirely when
+it fully lands; update it if only partially done. The nibli-KR program bullets come
+first and take precedence over the engine bullets after them.
 
-- **Klaro drop-in replacement — program tracker is `KR_TODO.md`, work it first** —
-  Klaro (`SURFACE_SYNTAX.md`) replaces Lojban as the primary front-end across every
-  surface; the milestone-ordered program lives in `KR_TODO.md` and takes precedence
-  over the engine bullets below. Cross-dependency: the "Determinism corpus" bullet below
-  edits a file that gets a `.klaro` twin — land KR_TODO's "corpora twins + honesty
-  gate" bullet first, or regenerate the twin in the same change.
+**THE PIVOT (user decisions, 2026-07-12, second decision round):**
+
+1. **One surface.** The dual-front-end era ends: Lojban is DROPPED, not kept as a
+   legacy mode ("just because I am fascinated by lojban does not mean others will").
+   The gerna crate moves to a separate repo and is donated to the Lojban community —
+   together with an agentic Lojban translation tool carved from the Transparency
+   Triad's formalizer.
+2. **The language is named "nibli knowledge representation (KR) language"** — "nibli
+   KR" for short. The working name "Klaro" is retired from EVERYTHING: crate names,
+   module names, docs, UI strings, file extensions, recipes. The Transparency Triad's
+   formal tab reads **"nibli KR"** with a small **"?" icon** whose tooltip reads
+   **"nibli knowledge representation (KR) language"**.
+3. **Total Lojban purge.** No Lojban word survives in this repo except the engine
+   name `nibli` itself (the project exists because of Lojban; the name honors that)
+   and the repo name. That includes crate names (smuni/logji/lasna/gasnu/fanva…),
+   the WIT package (`lojban:nibli`!), env/commands, internal vocabulary
+   (selbri/sumti/bridi/tanru/xorlo/goi…), corpora, AND the canonical predicate
+   names — **proof traces must contain no Lojban** (today they show
+   `Asserted: gerku.x1(adam)`, `Exists: da = adam`, `zo'e` — because the IR
+   predicate names ARE gismu and `$vars` lower to the da/de/di pool).
+
+Program discipline unchanged: every bullet lands independently CI-green; the logji
+reasoning core's soundness surface stays gate-protected throughout (never delete a
+verification oracle before its replacement lands). The full de-Lojbanization
+inventory (leak surfaces, rename ripple, gate fates) was mapped 2026-07-12;
+load-bearing anchors are quoted per bullet.
+
+**Donation-repo extraction: DONE (2026-07-12, separate session).** The standalone
+repo lives at `~/projects/dhilipsiva/fanva` (→ github.com/dhilipsiva/fanva, push by
+hand), extracted from nibli @ `6c59357` (pinned in fanva's `NIBLI_REV`) as a fresh
+working-tree copy + provenance pointer. It carried the full manifest — gerna (+goi),
+the camxes parse-differential (as `fanva-verify`), ilmentufa flake input,
+LOJBAN_COVERAGE.md, fuzz_parse, camxes browser assets, the Lojban-only agentic
+translator (`fanva` crate + carved UI + `fanva-proxy/`), all four `.lojban` corpora,
+`lojban2klaro` (archival), the python flywheel, Predilex + verify-dict, and the
+Lojban items from this tracker (fanva-proxy retirement / jbotci-AGPL licensing, GIhA
+quantified-head witness sharing, determinism-corpus GIhA lines — those now live in
+fanva's TODO, not here) — and its full test matrix is green (411/411 camxes
+differential, zero divergences). fanva VENDORS the crate closure
+(nibli-types/smuni/smuni-dictionary/nibli-protocol/nibli-render) under the upstream
+names, so nibli's later crate renames do NOT ripple into it. **Nothing was deleted
+from nibli** — THE DROP below does the deleting.
+
+- **THE DROP (single-surface milestone)** — BOTH preconditions are SATISFIED: the
+  donation repo is extracted (see above) and the Lojban-free KR oracle is live
+  (`just verify-kr-seam`, in `ci` since 2026-07-12 — hand-verified FOL goldens +
+  inventory sweep + KR-internal metamorphic families + the re-homed determinism
+  leg, so the twin battery can die without the front-end going unverified).
+  Delete Lojban from nibli in one milestone: the `gerna` dep
+  everywhere (9 dependents), `Language` enum + `NIBLI_LANG` + WIT
+  `enum language`/`set-language` (component ABI break — version-bump the WIT
+  package), `:lojban`/`:klaro`/`:lang` + `--lang` flags, the `.lojban` corpora +
+  twins machinery (`migrate-corpora` runs once more, then dies with `lojban2klaro`),
+  goi snapshots in lasna/nibli-engine + the 7 goi smokes +
+  `smoke-gasnu-script-lojban` + mixed-mode smoke + `determinism_corpus_lojban_twin`,
+  `verify-parser`, the camxes gate + `test-fanva-wasm`'s marshalling tests + jbotci
+  MCP + tersmu view + `fanva-proxy` (tear down nibli's copy; worker hand-over
+  below), python flywheel recipes, `LOJBAN_COVERAGE.md`. Corpus feeds re-point:
+  `nibli-verify/src/corpora.rs` still `include_str!`s the `.lojban` sides for the
+  Vampire/clingo legs — re-point to the KR corpora (the oracles are language-free).
+  `verify-klaro-dict` keeps its behavioral battery + structural invariants, drops
+  the gerna-twin compiles. CROSS-REPO GATES: the book harness pins
+  `NIBLI_LANG=lojban` (`Justfile` verify-book + `book/tools/capture_book.py`) — the
+  book repo must migrate its transcripts or pin a pre-drop engine tag BEFORE this
+  lands; the deployed /nibli demo JS must migrate first (see the site bullet).
+  WORKER HAND-OVER: the deployed `fanva-proxy.dhilipsiva.workers.dev` worker is
+  referenced by BOTH repos — fanva's docs hold off touching `ALLOWED_ORIGINS` until
+  nibli's purge lands, so at THE DROP hand the worker's ownership/config over to
+  the fanva repo (nibli's `fanva-proxy/` dir deletes; the live worker survives
+  under fanva's stewardship).
+- **"Klaro" → "nibli KR" rename** — ~1,096 occurrences across 78 files. Display
+  name: "nibli KR", first mention "nibli knowledge representation (KR) language".
+  UI: both tab strips' label via `kb_tab_label()` → "nibli KR" + the "?" icon
+  (`span { class: "tab__help", title: "nibli knowledge representation (KR)
+  language", "?" }` as a sibling of the label inside each tab button —
+  nibli-ui/src/main.rs, the two `button { class: "tab" … }` sites), "Load .klaro" /
+  placeholder / hint strings / settings copy / examples.rs docs. Code: crate
+  `klaro` → `nibli-kr`, `klaro-dictionary` → `nibli-kr-dictionary` (7 + 3
+  dependents), `Language::Klaro` handling (moot if THE DROP lands first — then the
+  enum is already gone), `KLARO_SYSTEM_PROMPT` → `KR_SYSTEM_PROMPT`, gate name
+  "klaro" → "kr" (chips + GateError::gate + pinned tests), `klaro.pest` →
+  `nibli_kr.pest`, `fuzz_klaro` → `fuzz_kr`, Justfile recipes `test-klaro`/
+  `verify-klaro*` → `test-kr`/`verify-kr*`, `acceptance.klaro` + the corpus files'
+  extension **`.klaro` → `.nkr` (PROPOSAL — decide before renaming; alternatives
+  `.kr`, `.nibli`)**, `Language::FromStr`/`set_language` string "klaro" → "kr"
+  (keep "klaro" as a deprecated parse alias through the site window — the deployed
+  playground JS is a published consumer), SURFACE_SYNTAX.md retitled "The nibli KR
+  language" (keep the filename — dozens of §-references in code comments — or
+  sweep them all in the same commit).
+- **Lojban identifier + crate purge (everything but the predicate names)** — rename
+  the surviving Lojban-named crates and boundary names. PROPOSALS (decide per crate
+  at implementation): `smuni` → `nibli-semantics`/`nibli-compile`, `logji` →
+  `nibli-logic`/`nibli-reason`, `lasna` → `nibli-pipeline` (artifact `lasna.wasm` →
+  `nibli.wasm`; WIT world `lasna-pipeline` → `nibli-pipeline`, interface `lasna` →
+  `engine`), `gasnu` → `nibli-host`/`nibli-repl` (~25 smoke recipes rename),
+  `nibli-fanva` → `nibli-formalize`, `smuni-dictionary` → `nibli-lexicon`
+  (consider folding `nibli-kr-dictionary` in behind a feature — the two-crate split
+  exists only to keep the reverse map out of the web bundle). WIT package
+  `lojban:nibli@0.1.0` → `nibli:engine@0.2.0` (bindings regen, one commit with both
+  sides). flake.nix description + shell banner ("Lojban NeSy Engine" →
+  "nibli — Zero-Hallucination Symbolic Reasoning Engine"). Internal vocabulary
+  sweep in surviving crates (selbri→predicate/relation, sumti→term/argument,
+  bridi→claim/statement, tanru→compound, xorlo→presupposition-witness,
+  gismu→root-word/lexeme, `fanva/PROMPT.md` archive → donation repo). The WIT doc
+  comments' Lojban glosses (zo'e/le/la/pu/ca/ba/du/go'i) go with it.
+- **Grammar+dictionary-grounded Formalize prompts (user decision 2026-07-12)** — the
+  Transparency Triad's Formalize system prompt must contain the ACTUAL KR grammar and
+  the dictionary, so the LLM formalizes against ground truth instead of nine
+  few-shots; the agentic parse-error-feedback loop stays as-is. Design notes:
+  (a) GRAMMAR: `include_str!` the pest file (`klaro/src/klaro.pest`, 181 lines /
+  ~9 KB ≈ 2.5–3k tokens — affordable, and in-sync BY CONSTRUCTION since the file IS
+  the parser); distill the semantics tables the grammar can't carry (determiner
+  taxonomy §4, operator/prefix rules §6, `where`/`also` §7) into a compact prose
+  block.
+  (b) DICTIONARY: the full map is ~1,341 aliases (full mode) — three options,
+  decide at implementation: (i) full compact listing (`alias/arity: label1, label2…`
+  per line, ~15–20k tokens — BYO-key users pay per request), (ii) curated core +
+  the existing fail-closed-retry guidance (today's behavior), (iii) RECOMMENDED
+  source-relevant subset: extract content words from the English source, include
+  only matching/near aliases + the curated core — best token/accuracy trade. Any
+  dictionary embedding means the prompt stops being a `&'static str`: a
+  `system_prompt_for(source)` builder assembled at request time from the shipped
+  `klaro_dictionary` map (no drift possible; dual-mode — the CI fallback build
+  embeds the curated core only, loudly).
+  (c) Optimize BOTH prompts (system + the per-request user turn) and measure:
+  attempts-to-converge on a fixed English corpus is the metric (feeds the
+  authoring-study track). Guard tests: few-shots stay gate-valid (existing twin
+  guard), the embedded grammar is the shipped file by construction, the dictionary
+  block is generated from the shipped map in the same build.
+  Applies to all three nibli-ui LLM paths (agentic Formalize, single-shot query
+  formalize, the modal key-test). Sequencing: written after the KR rename bullet so
+  the prompt is born saying "nibli KR", but it is independent — pull it earlier if
+  wanted.
+- **Predicate-name de-Lojbanization (proof traces contain NO Lojban — the deep one)**
+  — today every `LogicBuffer` relation is a gismu (`klaro/src/emit.rs:379-387` maps
+  alias→`entry.gismu`; smuni derives `gerku_x1`, `le_domain_gerku`; `=` mints `du`
+  at emit.rs:192; `$vars` lower to the literal `da/de/di` pool at emit.rs:90-103,
+  which smuni string-matches for quantifier closure). DECISION (recommended, and the
+  only option satisfying "no Lojban anywhere"): **option A — flip the canonical
+  predicate namespace to the English aliases at compile time** (emit
+  `canonical_alias` instead of `entry.gismu`; keep the KR alias the user wrote where
+  it IS canonical). Scope the obstacles honestly:
+  (a) re-key `smuni-dictionary` lookups (arity/gloss/template — logji
+  `rules.rs:848`, `nibli-render/src/frame.rs`) by the canonical English names;
+  (b) `du` + the compute predicates are load-bearing string literals
+  (`logji` union-find keys `"du"`; `default_compute_predicates()` =
+  pilji/sumji/dilcu; `nibli-types/src/arithmetic.rs` match arms; `dunli/zmadu/mleca`
+  comparisons) AND the backend JSON wire protocol sends them verbatim
+  (`{"relation":"tenfa",…}`, `python/nibli_backend.py` HANDLERS) — rename = a
+  versioned wire-protocol break (`equals`, `product`/`sum`/`quotient`,
+  `power`/`log` …); update the reference backend in the same commit;
+  (c) variable names: preserve the user's `$var` spellings through emit instead of
+  the da/de/di pool (an AstBuffer-contract change — smuni's
+  `matches!(name, "da"|"de"|"di")` closure checks generalize; this also naturally
+  lifts the 3-variable cap, spec issue O1) so witnesses read `$x = adam`;
+  (d) the `zo'e` display literals are two one-line fixes now
+  (`nibli-types/src/logic.rs:50` trace_display, `nibli-render/src/logic.rs:128`) —
+  do them early, plus `le {d}`/`lo {s}` display forms;
+  (e) persisted redb stores/journals/`:export` hold gismu relations — migration or
+  a compat read layer; regenerate `gdpr-auto.redb`/`drug-auto.redb`;
+  (f) fallback-mode CI can only rename the curated core (no dictionary-en.json) —
+  same dual-mode discipline as today;
+  (g) verify-dict (Predilex) keys on Lojban lemmas — keep a frozen
+  gismu→canonical-name bridge table so it stays an independent arity oracle;
+  (h) DATA PROVENANCE: the lexicon is still BUILT from the lensisku Lojban dump —
+  acceptable as an invisible build-time input, or superseded by committed KR schema
+  declarations (the old clean-core §14.1 idea) — decide when this bullet starts.
+  All pinned transcripts/goldens regenerate (smokes, README capture, seam goldens).
+  Also the natural moment to fold in the **ontology-row import** bullet below (rows
+  arrive keyed on gismu; the alias bridge from (g) is the same mapping).
+- **demo site migration (cross-repo, dhilipsiva.dev — SEPARATE Claude session)** —
+  the copy-pastable prompt was handed to the user 2026-07-12. Site session scope:
+  /nibli guided demo KBs+queries+copy → nibli KR, worker calls
+  `set_language("klaro")` explicitly against current main (survives until the
+  string rename lands, then "kr"). NIBLI-SIDE residual that lands in the same
+  window: flip `nibli-wasm`'s pinned-Lojban session default + `back_translate_ir`'s
+  front-end (`compile_for_render` is language-parameterized — a one-arg flip),
+  then THE DROP removes the pin entirely. Sequencing: site migrates first (works
+  against current main), nibli flips after.
+- **book migration (separate repo — book/TODO.md carries the details)** — the book
+  is Lojban-heavy by design ("Lojban as IR" framing, Part II Ch 3–6); the pivot
+  replaces it with nibli KR. Key restructuring (user decision): MERGE Ch 3 ("Why
+  Not English?") + Ch 4 ("Lojban — A Gift from Linguists, Logicians, and
+  Mathematicians") into ONE chapter about the nibli KR language. The capture
+  harness's `NIBLI_LANG=lojban` pin breaks at THE DROP — the book must re-capture
+  its transcripts in KR (or pin a pre-drop engine tag) before then.
+
+Engine bullets (language-independent; the KR program above takes precedence):
 
 - **Ontology-row import (brismu/zatske interchange)** — korvo proposed flat rows
-  `[P, Q, mapping]` (selbri subrelation with terbri mapping: identity `["gerku","danlu",
-  [1,2]]`; place deletion `["skari","ckaji",[1,2]]` — unmapped source places dropped;
-  permutation `["lanzu","cmima",[2,1]]`) as the interchange format between brismu / zaha /
-  zatske and downstream consumers; agreed in-thread, korvo confirmed rows are "a good
-  compromise". Build an importer beside `nibli-import/src/rdf.rs`/`owl.rs`: each row
-  compiles to one monotone Horn rule at the IR level (event decomposition — mapping is a
-  role renaming, deletion = roles absent from the head), arity/place validation against
-  smuni-dictionary (strict-mode rejection semantics), per-row source/provenance field
-  surfaced in proof traces, curated Vampire differential cases for the three row shapes,
-  plus mutual-row (equivalence) cases like dugri/tenfa — positive cycles legal, fuel-bounded.
-  BLOCKED on korvo pinning the row schema + publishing a baseline export. Spec feedback
-  already sent in-thread: the mapping-list direction is ambiguous (a 3-cycle case like
-  dugri/tenfa pins it — the [2,1] swap and [1,2] identity examples can't distinguish the
-  two readings), and rows want a source field (brismu / zaha / zatske) for provenance.
-
-- **fanva-proxy: retire once jbotci CORS lands** — int19h is enabling direct browser→jbotci
-  MCP calls on his end ("no reason it shouldn't be allowed from the browser"). When live:
-  verify `initialize` + `tools/list` + `tersmu` from nibli-ui WITHOUT the proxy, then default
-  the proxy URL to the direct endpoint and deprecate the Cloudflare Worker (keep the
-  local-gates degradation path). Direct crate embedding was assessed 2026-07-10 and is OFF
-  the table on licensing: jbotci is AGPL-3.0-or-later (nibli is MIT OR Apache-2.0 — linking
-  it into the nibli-ui wasm bundle would relicense the distributed bundle AGPL), unless
-  int19h ever dual-licenses a core crate. Calling his hosted server over HTTP is arm's-length
-  and clean — the CORS'd-MCP route IS the integration. (Also: his parser intentionally
-  diverges from camxes ~500/22k — SA erasure, ZOI preprocessing — so it could never replace
-  the camxes-std gate regardless.)
-
-- **GIhA quantified/description heads: share the head witness across tails** — currently
-  rejected fail-closed (gerna `giha_safe_head`): the repeated-head desugar would re-quantify
-  a `da`/`lo`-head per tail, splitting one surface scope into independent ∃s (wrong TRUE on
-  disjoint witnesses — adversarial-review finding, 2026-07-10). The real fix is compiling the
-  head ONCE (one witness/variable) and distributing only the tails — needs a smuni-level GIhA
-  construct instead of the parse-time desugar. Would un-block int19h's Genesis 1:2
-  (`lo terdi cu na se tarmi gi'e kunti`), which today needs a name head or `.i je` restate.
-
-- **logji: upgrade the reversed material-conditional arm (`Or(Q, Not P)`)** — a `na` on the
-  RIGHT operand of an asserted disjunction (`mi klama .i ja mi na citka`, `… gi'a na citka`)
-  registers a conditional whose condition templates carry the assertion's own event-Skolem
-  CONSTANTS, so it can never unify with a later assertion's fresh event Skolem — the rule is
-  inert (modus ponens never fires; completeness-only, never unsound). The forward arm
-  (Not-on-left) was upgraded to `compile_forall_to_rule` (ev__ pattern vars) precisely for
-  this; mirror it in the reversed arm (`register_ground_material_conditional`, kb.rs) and add
-  the `Q→P + Q ⊢ P` engine test the adversarial review used to confirm the gap.
-
-- **Determinism corpus: add GIhA + negative-conjunct lines** — `determinism-corpus.lojban`
-  predates both; add a `gi'e` chain, a `gi'enai` line, and a `P .i je na Q` +
-  contradiction-check sequence so all three runtime surfaces pin the new shapes (requires
-  re-pinning the corpus verdicts on native + Wasmtime + node).
+  `[P, Q, mapping]` (predicate subrelation with place mapping: identity
+  `["gerku","danlu",[1,2]]`; place deletion `["skari","ckaji",[1,2]]` — unmapped
+  source places dropped; permutation `["lanzu","cmima",[2,1]]`) as the interchange
+  format between brismu / zaha / zatske and downstream consumers (2026-07-05 Lojban
+  Discord #proga thread; korvo confirmed rows are "a good compromise"). Build an
+  importer beside `nibli-import/src/rdf.rs`/`owl.rs`: each row compiles to one
+  monotone Horn rule at the IR level (event decomposition — mapping is a role
+  renaming, deletion = roles absent from the head), arity/place validation against
+  the lexicon (strict-mode rejection semantics), per-row source/provenance field
+  surfaced in proof traces, curated Vampire differential cases for the three row
+  shapes, plus mutual-row (equivalence) cases like dugri/tenfa — positive cycles
+  legal, fuel-bounded. BLOCKED on korvo pinning the row schema + publishing a
+  baseline export. Spec feedback already sent in-thread: the mapping-list direction
+  is ambiguous (a 3-cycle case pins it), and rows want a source field for
+  provenance. POST-PIVOT NOTE: rows arrive keyed on gismu (they come from the
+  Lojban community's tools) — once the predicate-name flip lands, the importer maps
+  them through the frozen gismu→canonical-name bridge (the same table the Predilex
+  gate keeps); the importer itself is language-independent.
+- **logji: upgrade the reversed material-conditional arm (`Or(Q, Not P)`)** — a
+  negation on the RIGHT operand of an asserted disjunction (KR:
+  `goes(me) | ~eats(me).`) registers a conditional whose condition templates carry
+  the assertion's own event-Skolem CONSTANTS, so it can never unify with a later
+  assertion's fresh event Skolem — the rule is inert (modus ponens never fires;
+  completeness-only, never unsound; adversarial-review finding 2026-07-10, found
+  via the Lojban `.i ja … na` spelling — the same IR shape is reachable from KR).
+  The forward arm (Not-on-left) was upgraded to `compile_forall_to_rule` (ev__
+  pattern vars) precisely for this; mirror it in the reversed arm
+  (`register_ground_material_conditional`, logji kb.rs) and add the
+  `Q→P + Q ⊢ P` engine test the adversarial review used to confirm the gap.
+- **Determinism corpus: add a negative-conjunct line** — the corpus predates the
+  shape: add an `A & ~B.` assert + contradiction-check sequence (KR spelling) so
+  all three runtime surfaces pin it (requires re-pinning the corpus verdicts on
+  native + Wasmtime + node, and regenerating the twin while the twins gate lives).
+  The GIhA legs of the original bullet went to fanva's tracker with gerna.
