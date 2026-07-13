@@ -5,8 +5,8 @@
 //! engine (`nibli-engine`) in a release build — the same path as the pinned
 //! `gdpr_full_corpus_lawful_basis_query_completes` test Ch 20 cites:
 //!
-//!   load    — assert every line of the shipped `gdpr.lojban` corpus
-//!   query   — the Ch-20 headline lawful-basis query `la .adam. cu se curmi`
+//!   load    — assert every line of the shipped `gdpr.klaro` corpus
+//!   query   — the Ch-20 headline lawful-basis query `permitted(Adam).`
 //!             against the fully loaded corpus
 //!   full    — the whole Ch-20 sequence: load + lawful-basis query + consent
 //!             retraction + post-withdrawal lawful-basis re-query (the worst
@@ -25,19 +25,19 @@ use nibli_engine::NibliEngine;
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
-const CORPUS: &str = include_str!("../../../gdpr.lojban");
-const CONSENT_LINE: &str = "la .adam. cu zanru";
-const LAWFUL_BASIS_QUERY: &str = "la .adam. cu se curmi";
-const ERASURE_QUERY: &str = "la .adam. na se curmi";
+const CORPUS: &str = include_str!("../../../gdpr.klaro");
+const CONSENT_LINE: &str = "approves(Adam).";
+const LAWFUL_BASIS_QUERY: &str = "permitted(Adam).";
+const ERASURE_QUERY: &str = "~permitted(Adam).";
 
 /// One full Ch-20 sequence on a fresh engine. Returns (load, query, full).
 fn run_once() -> Result<(Duration, Duration, Duration), String> {
     let t_start = Instant::now();
 
+    // KR corpus since THE DROP (the .klaro twin is line-equal to the retired
+    // gdpr.lojban corpus, so figures stay comparable; the book re-derives its
+    // quoted numbers from this bench either way).
     let engine = NibliEngine::new();
-    // PINNED LOJBAN: the book quotes these timings over gdpr.lojban and stays
-    // Lojban until the book migrates (Klaro is the default since THE FLIP).
-    engine.set_language(nibli_engine::Language::Lojban);
     let mut consent_id = None;
     let mut asserted = 0u32;
     for (line_num, line) in CORPUS.lines().enumerate() {
@@ -47,14 +47,14 @@ fn run_once() -> Result<(Duration, Duration, Duration), String> {
         }
         let id = engine
             .assert_text(trimmed)
-            .map_err(|e| format!("gdpr.lojban line {}: {e:?}", line_num + 1))?;
+            .map_err(|e| format!("gdpr.klaro line {}: {e:?}", line_num + 1))?;
         asserted += 1;
         if trimmed == CONSENT_LINE {
             // The consent line is a single sentence → exactly one fact id.
             consent_id = id.first().copied();
         }
     }
-    let consent_id = consent_id.ok_or("consent line not found in gdpr.lojban")?;
+    let consent_id = consent_id.ok_or("consent line not found in gdpr.klaro")?;
     if asserted == 0 {
         return Err("empty corpus".into());
     }
@@ -151,9 +151,9 @@ fn main() -> ExitCode {
         "nibli-bench-book — native in-process engine (nibli-engine), {profile} profile, \
          {runs} runs (fresh engine per run, 1 untimed warm-up)"
     );
-    println!("  corpus: gdpr.lojban (all verdicts asserted every run)");
+    println!("  corpus: gdpr.klaro (all verdicts asserted every run)");
     for (label, xs) in [
-        ("gdpr.lojban load", loads),
+        ("gdpr.klaro load", loads),
         ("lawful-basis query", queries),
         ("full Ch-20 sequence", fulls),
     ] {

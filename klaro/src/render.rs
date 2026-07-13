@@ -177,6 +177,17 @@ impl<'a> Renderer<'a> {
     // ── bridi ──
 
     fn bridi(&self, bridi: &Bridi) -> R<String> {
+        self.bridi_impl(bridi, false)
+    }
+
+    /// Render a relative-clause body bridi whose ke'a is IMPLICIT (gerna-origin
+    /// buffers leave the head empty and smuni injects ke'a at x1): spell the
+    /// relativized entity as `it` in x1 so the KR re-parses (mandatory-it, §7).
+    fn bridi_with_it(&self, bridi: &Bridi) -> R<String> {
+        self.bridi_impl(bridi, true)
+    }
+
+    fn bridi_impl(&self, bridi: &Bridi, inject_it: bool) -> R<String> {
         let mut prefix = String::new();
         if let Some(att) = &bridi.attitudinal {
             prefix.push_str(match att {
@@ -195,17 +206,21 @@ impl<'a> Renderer<'a> {
             prefix.push('~');
         }
 
-        // du with exactly one head and one tail term is the equality spelling.
+        // du with exactly one head and one tail term is the equality spelling
+        // (with an injected implicit ke'a, the head IS `it`).
         if let Selbri::Root(root) = self.selbri(bridi.relation)?
             && root == "du"
-            && bridi.head_terms.len() == 1
-            && bridi.tail_terms.len() == 1
         {
-            return Ok(format!(
-                "{prefix}{} = {}",
-                self.term(bridi.head_terms[0])?,
-                self.term(bridi.tail_terms[0])?
-            ));
+            if !inject_it && bridi.head_terms.len() == 1 && bridi.tail_terms.len() == 1 {
+                return Ok(format!(
+                    "{prefix}{} = {}",
+                    self.term(bridi.head_terms[0])?,
+                    self.term(bridi.tail_terms[0])?
+                ));
+            }
+            if inject_it && bridi.head_terms.is_empty() && bridi.tail_terms.len() == 1 {
+                return Ok(format!("{prefix}it = {}", self.term(bridi.tail_terms[0])?));
+            }
         }
 
         // A CONNECTED main selbri renders via bridi-level expansion (the
@@ -232,19 +247,23 @@ impl<'a> Renderer<'a> {
         // plain relation's places. Render positionally while plain places stay
         // contiguous from x1, then switch to named args; modal tags render as
         // `via` after the argument list.
-        let mut placed: Vec<(usize, u32)> = Vec::new();
+        let mut placed: Vec<(usize, Option<u32>)> = Vec::new();
         let mut vias: Vec<(u32, u32)> = Vec::new(); // (modal selbri-ish, term) — see below
         let mut fixed_vias: Vec<(BaiTag, u32)> = Vec::new();
         let mut counter = 0usize;
+        if inject_it {
+            placed.push((counter, None)); // the implicit ke'a — spelled `it`
+            counter += 1;
+        }
         for &head in &bridi.head_terms {
-            placed.push((counter, head));
+            placed.push((counter, Some(head)));
             counter += 1;
         }
         for &tail in &bridi.tail_terms {
             match self.sumti(tail)? {
                 Sumti::Tagged((tag, inner)) => {
                     let place = tag.to_index();
-                    placed.push((place, *inner));
+                    placed.push((place, Some(*inner)));
                     counter = place + 1;
                 }
                 Sumti::ModalTagged((modal, inner)) => match modal {
@@ -260,14 +279,14 @@ impl<'a> Renderer<'a> {
                 | Sumti::Number(_)
                 | Sumti::Connected(_)
                 | Sumti::QuantifiedDescription(_) => {
-                    placed.push((counter, tail));
+                    placed.push((counter, Some(tail)));
                     counter += 1;
                 }
             }
         }
 
         // Map surface places through the peeled conversion permutation.
-        let placed: Vec<(usize, u32)> = placed
+        let mut placed: Vec<(usize, Option<u32>)> = placed
             .into_iter()
             .map(|(place, term)| {
                 if place >= 5 {
@@ -276,18 +295,29 @@ impl<'a> Renderer<'a> {
                 Ok((perm[place], term))
             })
             .collect::<R<_>>()?;
+        // In inject-it mode, sort by final place so contiguous places render
+        // positionally — named args with `it` trip smuni's implicit-ke'a x1
+        // injection (a known collision), while positional `it` lands in its
+        // place. Normal rendering keeps surface order (byte-stable output).
+        if inject_it {
+            placed.sort_by_key(|(place, _)| *place);
+        }
 
         let mut args: Vec<String> = Vec::new();
         let mut positional_streak = true;
         for (i, (place, term)) in placed.iter().enumerate() {
             positional_streak = positional_streak && *place == i;
+            let rendered = match term {
+                Some(t) => self.term(*t)?,
+                None => "it".into(),
+            };
             if positional_streak {
-                args.push(self.term(*term)?);
+                args.push(rendered);
             } else {
                 args.push(format!(
                     "{}: {}",
                     self.place_label(&head_gismu, *place),
-                    self.term(*term)?
+                    rendered
                 ));
             }
         }
@@ -756,10 +786,32 @@ impl<'a> Renderer<'a> {
                 self.selbri_text(bridi.relation, false)?
             ));
         }
-        Ok(format!(
-            "{keyword} {}",
-            self.sentence(clause.body_sentence, PREC_ATOM)?
-        ))
+        // Full-claim body. A gerna-origin Simple body leaves the head EMPTY
+        // (smuni injects ke'a at x1) — spell that implicit ke'a as `it` so the
+        // rendered KR re-parses (§7 mandatory-it). Klaro-emitted bodies carry
+        // an explicit ke'a (head, or a tail term once the smuni named-`it`
+        // collision is fixed) and render through the normal path.
+        let has_explicit_keha = |bridi: &Bridi| -> R<bool> {
+            for &tail in &bridi.tail_terms {
+                let inner = match self.sumti(tail)? {
+                    Sumti::Tagged((_, inner)) => *inner,
+                    _ => tail,
+                };
+                if matches!(self.sumti(inner)?, Sumti::ProSumti(w) if w == "ke'a") {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        };
+        let body = match self.sentence_node(clause.body_sentence)? {
+            Sentence::Simple(bridi)
+                if bridi.head_terms.is_empty() && !has_explicit_keha(bridi)? =>
+            {
+                self.bridi_with_it(bridi)?
+            }
+            _ => self.sentence(clause.body_sentence, PREC_ATOM)?,
+        };
+        Ok(format!("{keyword} {body}"))
     }
 
     /// Only plain word/tanru/compound selbri qualify for the bare sugar

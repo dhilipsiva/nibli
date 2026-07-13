@@ -98,15 +98,15 @@ fn query_result(kb: &KnowledgeBase, buf: LogicBuffer) -> QueryResult {
     kb.query_entailment_inner(buf).unwrap()
 }
 
-/// Compile Lojban text to a `LogicBuffer` the SHIPPED way — the exact chain
-/// `nibli-engine` runs: `gerna::parse_checked` → `smuni::compile_from_gerna_ast`
+/// Compile KR text to a `LogicBuffer` the SHIPPED way — the exact chain
+/// `nibli-engine` runs: `klaro::parse_checked` → `smuni::compile_from_gerna_ast`
 /// → `transform_compute_nodes`. Unlike the flat `make_*` helpers, this event-decomposes
 /// (`∃ev. rel(ev) ∧ rel_x1(ev, arg) ∧ …`) and converts compute predicates to `ComputeNode`,
 /// so a test built on it cannot diverge from the real pipeline. Use it for anything whose
-/// behavior depends on IR shape (compute/numeric, `cwa_false`, witness/Skolem). Corpus words
+/// behavior depends on IR shape (compute/numeric, `cwa_false`, witness/Skolem). Vocabulary
 /// must resolve in the in-tree fallback dictionary (CI has no data file).
 fn compile_surface(text: &str) -> LogicBuffer {
-    let ast = gerna::parse_checked(text).unwrap_or_else(|e| panic!("parse '{text}': {e}"));
+    let ast = klaro::parse_checked(text).unwrap_or_else(|e| panic!("parse '{text}': {e}"));
     let mut buf =
         smuni::compile_from_gerna_ast(ast).unwrap_or_else(|e| panic!("compile '{text}': {e}"));
     transform_compute_nodes(&mut buf, &default_compute_predicates());
@@ -118,10 +118,10 @@ fn compile_surface_smoke() {
     // A ground fact + query through the real front-end must reason correctly, and produce
     // the event-decomposed shape (a `gerku_x1` role predicate, not a bare `gerku`).
     let kb = new_kb();
-    assert_buf(&kb, compile_surface("la .adam. cu gerku"));
-    assert!(query(&kb, compile_surface("la .adam. cu gerku")));
-    assert!(query_false(&kb, compile_surface("la .adam. cu mlatu")));
-    let buf = compile_surface("la .adam. cu gerku");
+    assert_buf(&kb, compile_surface("dog(Adam)."));
+    assert!(query(&kb, compile_surface("dog(Adam).")));
+    assert!(query_false(&kb, compile_surface("cat(Adam).")));
+    let buf = compile_surface("dog(Adam).");
     assert!(
         buf.nodes.iter().any(|n| matches!(n,
             LogicNode::Predicate((rel, _)) if rel == "gerku_x1")),
@@ -1043,10 +1043,10 @@ fn exact_count_with_unresolved_member_bounds() {
     // satisfying=0, unresolved=1.
     let kb = new_kb();
     for s in [
-        "la .kim. cu gerku",
-        "la .kim. cu mabru",
-        "ro da zo'u ganai da mabru gi da jmive",
-        "ro da zo'u ganai da jmive gi da danlu",
+        "dog(Kim).",
+        "mammal(Kim).",
+        "all $da: mammal($da) -> alive($da).",
+        "all $da: alive($da) -> animal($da).",
     ] {
         assert_buf(&kb, compile_surface(s));
     }
@@ -1055,7 +1055,7 @@ fn exact_count_with_unresolved_member_bounds() {
     // count=1: neither bound is decisive (0 > 1 is false; 0+1 < 1 is false) —
     // the verdict is the member's own non-definitive result, NEVER a guess.
     assert_eq!(
-        kb.query_entailment_inner(compile_surface("pa lo gerku cu danlu"))
+        kb.query_entailment_inner(compile_surface("animal(exactly 1 dog)."))
             .unwrap(),
         QueryResult::ResourceExceeded(ResourceKind::Depth),
         "0 satisfying + 1 unresolved vs count 1: non-definitive, not FALSE"
@@ -1063,7 +1063,7 @@ fn exact_count_with_unresolved_member_bounds() {
     // count=2: the sum bound IS decisive (0+1 < 2) — a confident FALSE even
     // with the unresolved member (it cannot reach the count either way).
     assert_eq!(
-        kb.query_entailment_inner(compile_surface("re lo gerku cu danlu"))
+        kb.query_entailment_inner(compile_surface("animal(exactly 2 dog)."))
             .unwrap(),
         QueryResult::False,
         "0 satisfying + 1 unresolved vs count 2: sum bound gives FALSE"
@@ -1073,20 +1073,20 @@ fn exact_count_with_unresolved_member_bounds() {
     // is decisive (2 > 1) — FALSE regardless of the unresolved member.
     let kb2 = new_kb();
     for s in [
-        "la .adam. cu gerku",
-        "la .bel. cu gerku",
-        "la .kim. cu gerku",
-        "la .adam. cu danlu",
-        "la .bel. cu danlu",
-        "la .kim. cu mabru",
-        "ro da zo'u ganai da mabru gi da jmive",
-        "ro da zo'u ganai da jmive gi da danlu",
+        "dog(Adam).",
+        "dog(Bel).",
+        "dog(Kim).",
+        "animal(Adam).",
+        "animal(Bel).",
+        "mammal(Kim).",
+        "all $da: mammal($da) -> alive($da).",
+        "all $da: alive($da) -> animal($da).",
     ] {
         assert_buf(&kb2, compile_surface(s));
     }
     kb2.set_max_chain_depth(1);
     assert_eq!(
-        kb2.query_entailment_inner(compile_surface("pa lo gerku cu danlu"))
+        kb2.query_entailment_inner(compile_surface("animal(exactly 1 dog)."))
             .unwrap(),
         QueryResult::False,
         "2 satisfying vs count 1: over-count bound gives FALSE"
@@ -1096,7 +1096,7 @@ fn exact_count_with_unresolved_member_bounds() {
     // unresolved member could push the tally past the exact count, so the
     // verdict must stay non-definitive, never a confident FALSE.
     assert_eq!(
-        kb2.query_entailment_inner(compile_surface("re lo gerku cu danlu"))
+        kb2.query_entailment_inner(compile_surface("animal(exactly 2 dog)."))
             .unwrap(),
         QueryResult::ResourceExceeded(ResourceKind::Depth),
         "satisfying == count with an unresolved member: non-definitive, not FALSE"
@@ -1188,12 +1188,12 @@ fn flat_forall_and_count_over_compute_batch_stays_non_definitive() {
 fn forall_over_compute_body_batch_path() {
     let kb = new_kb();
     // Populate the domain with two entities.
-    assert_buf(&kb, compile_surface("la .adam. cu gerku"));
-    assert_buf(&kb, compile_surface("la .bel. cu gerku"));
+    assert_buf(&kb, compile_surface("dog(Adam)."));
+    assert_buf(&kb, compile_surface("dog(Bel)."));
 
     // No entity equals 2 + 3: the universal is FALSE with a counterexample.
     assert_eq!(
-        kb.query_entailment_inner(compile_surface("ro da zo'u da sumji li re li ci"))
+        kb.query_entailment_inner(compile_surface("all $da: sum($da, 2, 3)."))
             .unwrap(),
         QueryResult::False,
         "a compute body false for every member makes the universal FALSE"
@@ -4677,7 +4677,7 @@ fn test_proof_trace_derived_depth_limit() {
 
 #[test]
 fn test_proof_trace_xorlo_presup_is_asserted() {
-    // Universal "ro lo gerku cu danlu" creates xorlo presupposition Skolem.
+    // Universal "animal(every dog)." creates xorlo presupposition Skolem.
     // That fact should show as Asserted, not trigger backward-chaining.
     let kb = new_kb();
     assert_buf(&kb, make_universal("gerku", "danlu"));
@@ -6389,7 +6389,7 @@ fn test_assert_fact_with_description_terms() {
 #[test]
 fn test_retract_basic() {
     let kb = new_kb();
-    let id = assert_id(&kb, make_assertion("alis", "gerku"), "la alis gerku");
+    let id = assert_id(&kb, make_assertion("alis", "gerku"), "dog(Alis).");
     assert!(query(&kb, make_query("alis", "gerku")));
     kb.retract_fact_inner(id).unwrap();
     assert!(query_false(&kb, make_query("alis", "gerku")));
@@ -6569,7 +6569,7 @@ fn test_negated_ground_fact_contradicts_contrary_positive() {
     // Assert ¬gerku(alis), then gerku(alis): both must be accepted (a negative
     // premise stays assertable), and check_contradictions must flag the pair.
     let kb = new_kb();
-    assert_id(&kb, make_negated_assertion("alis", "gerku"), "na gerku");
+    assert_id(&kb, make_negated_assertion("alis", "gerku"), "~dog().");
     assert_id(&kb, make_assertion("alis", "gerku"), "gerku");
     let violations = kb.check_contradictions();
     assert!(
@@ -6585,7 +6585,7 @@ fn test_negated_ground_fact_alone_is_not_a_contradiction() {
     // A bare negative premise (no contrary positive) must not be flagged, and
     // NAF query semantics are unchanged: the positive is simply not derivable.
     let kb = new_kb();
-    assert_id(&kb, make_negated_assertion("alis", "gerku"), "na gerku");
+    assert_id(&kb, make_negated_assertion("alis", "gerku"), "~dog().");
     assert!(query_false(&kb, make_query("alis", "gerku")));
     assert!(
         kb.check_contradictions().is_empty(),
@@ -6601,11 +6601,7 @@ fn test_negated_event_decomposed_fact_contradicts_contrary_positive() {
     // templates generalize the event argument, so the contradiction must still
     // be detected across the Skolem mismatch.
     let kb = new_kb();
-    assert_id(
-        &kb,
-        make_event_decomposed("adam", "gerku", true),
-        "na gerku",
-    );
+    assert_id(&kb, make_event_decomposed("adam", "gerku", true), "~dog().");
     assert_id(&kb, make_event_decomposed("adam", "gerku", false), "gerku");
     let violations = kb.check_contradictions();
     assert!(
@@ -6622,11 +6618,7 @@ fn test_negated_event_decomposed_fact_ignores_other_entities() {
     // template group must unify under ONE event binding, so an unrelated
     // entity's dog-event cannot trigger a false positive.
     let kb = new_kb();
-    assert_id(
-        &kb,
-        make_event_decomposed("adam", "gerku", true),
-        "na gerku",
-    );
+    assert_id(&kb, make_event_decomposed("adam", "gerku", true), "~dog().");
     assert_id(
         &kb,
         make_event_decomposed("bob", "gerku", false),
@@ -6644,7 +6636,7 @@ fn test_negated_fact_retraction_clears_contradiction() {
     // negation-bearing buffer takes the rebuild path, which repopulates the
     // negative registry from the surviving records).
     let kb = new_kb();
-    let neg_id = assert_id(&kb, make_negated_assertion("alis", "gerku"), "na gerku");
+    let neg_id = assert_id(&kb, make_negated_assertion("alis", "gerku"), "~dog().");
     assert_id(&kb, make_assertion("alis", "gerku"), "gerku");
     assert!(!kb.check_contradictions().is_empty());
     kb.retract_fact_inner(neg_id).unwrap();
@@ -6666,10 +6658,10 @@ fn test_list_facts_empty() {
 #[test]
 fn test_list_facts_after_assert() {
     let kb = new_kb();
-    assert_id(&kb, make_assertion("alis", "gerku"), "la alis gerku");
+    assert_id(&kb, make_assertion("alis", "gerku"), "dog(Alis).");
     let facts = kb.list_facts_inner().unwrap();
     assert_eq!(facts.len(), 1);
-    assert_eq!(facts[0].label, "la alis gerku");
+    assert_eq!(facts[0].label, "dog(Alis).");
     assert_eq!(facts[0].root_count, 1);
 }
 
@@ -6702,7 +6694,7 @@ fn split_roots_yields_independent_facts() {
     // real surface shape (event-decomposed), so this exercises split + skolem
     // witness retraction end-to-end.
     let kb = new_kb();
-    let buf = compile_surface("la .adam. cu gerku .i la .betis. cu gerku");
+    let buf = compile_surface("dog(Adam). dog(Betis).");
     let parts = buf.split_roots();
     assert_eq!(parts.len(), 2, "bare `.i` must split into two roots");
 
@@ -6714,13 +6706,13 @@ fn split_roots_yields_independent_facts() {
         "two independent facts, not one multi-root fact"
     );
 
-    assert!(query(&kb, compile_surface("la .adam. cu gerku")));
-    assert!(query(&kb, compile_surface("la .betis. cu gerku")));
+    assert!(query(&kb, compile_surface("dog(Adam).")));
+    assert!(query(&kb, compile_surface("dog(Betis).")));
 
     // Retract one sentence — the other survives independently.
     kb.retract_fact_inner(id0).unwrap();
-    assert!(query_false(&kb, compile_surface("la .adam. cu gerku")));
-    assert!(query(&kb, compile_surface("la .betis. cu gerku")));
+    assert!(query_false(&kb, compile_surface("dog(Adam).")));
+    assert!(query(&kb, compile_surface("dog(Betis).")));
     assert_eq!(kb.list_facts_inner().unwrap().len(), 1);
 }
 
@@ -6728,7 +6720,7 @@ fn split_roots_yields_independent_facts() {
 fn split_roots_keeps_connective_as_one_fact() {
     // `.i je` (afterthought AND) is a single compound proposition → one root → one
     // fact. Only bare `.i` splits.
-    let buf = compile_surface("la .adam. cu gerku .i je la .betis. cu gerku");
+    let buf = compile_surface("dog(Adam) & dog(Betis).");
     assert_eq!(
         buf.split_roots().len(),
         1,
@@ -7560,13 +7552,13 @@ fn test_zoo_retraction_with_event_decomposition() {
     let alis_id = kb
         .assert_fact_inner(
             make_temporal_event_assertion("alis", "gerku", past),
-            "pu la .alis. gerku".into(),
+            "past dog(Alis).".into(),
         )
         .unwrap();
     let _bob_id = kb
         .assert_fact_inner(
             make_temporal_event_assertion("bob", "mlatu", present),
-            "ca la .bob. mlatu".into(),
+            "now cat(Bob).".into(),
         )
         .unwrap();
 
@@ -8013,7 +8005,7 @@ fn test_book_example_no_oom() {
 #[test]
 fn test_and_flattening_prevents_rewrite_explosion() {
     // Regression test: a deeply nested And tree with 7 leaves (matching the
-    // real Neo-Davidsonian decomposition of ".i lo prenu cu ponse lo datni")
+    // real Neo-Davidsonian decomposition of "owns(some person, some data).")
     // previously caused combinatorial explosion. After flattening, each leaf
     // is asserted individually, so the fact count should be bounded.
     let kb = new_kb();
@@ -8612,7 +8604,7 @@ fn test_ground_material_conditional_no_false_positive() {
     };
     // Should not error — the Not in Or(Not(P), Q) encodes implication, not body-negation.
     assert!(
-        kb.assert_fact_inner(buf, "ganai gerku gi danlu".into())
+        kb.assert_fact_inner(buf, "dog() -> animal().".into())
             .is_ok(),
         "ground material conditional should not trigger stratification error"
     );
@@ -11415,8 +11407,8 @@ mod flat_vs_surface {
     fn ground_predicate_true() {
         check(
             "ground_true",
-            &["la .adam. cu gerku"],
-            "la .adam. cu gerku",
+            &["dog(Adam)."],
+            "dog(Adam).",
             vec![make_assertion("adam", "gerku")],
             make_query("adam", "gerku"),
             true,
@@ -11428,8 +11420,8 @@ mod flat_vs_surface {
         // A missing fact is FALSE, and the SURFACE trace flags it as a closed-world (cwa) FALSE.
         let trace = check(
             "absence_false",
-            &["la .adam. cu gerku"],
-            "la .adam. cu mlatu",
+            &["dog(Adam)."],
+            "cat(Adam).",
             vec![make_assertion("adam", "gerku")],
             make_query("adam", "mlatu"),
             false,
@@ -11444,8 +11436,8 @@ mod flat_vs_surface {
     fn universal_modus_ponens_true() {
         check(
             "modus_ponens",
-            &["ro lo gerku cu danlu", "la .adam. cu gerku"],
-            "la .adam. cu danlu",
+            &["animal(every dog).", "dog(Adam)."],
+            "animal(Adam).",
             vec![
                 make_universal("gerku", "danlu"),
                 make_assertion("adam", "gerku"),
@@ -11459,12 +11451,8 @@ mod flat_vs_surface {
     fn transitive_chain_true() {
         check(
             "transitive_chain",
-            &[
-                "ro lo gerku cu danlu",
-                "ro lo danlu cu jmive",
-                "la .adam. cu gerku",
-            ],
-            "la .adam. cu jmive",
+            &["animal(every dog).", "alive(every animal).", "dog(Adam)."],
+            "alive(Adam).",
             vec![
                 make_universal("gerku", "danlu"),
                 make_universal("danlu", "jmive"),
@@ -11481,8 +11469,8 @@ mod flat_vs_surface {
         // via negation-as-failure. The surface trace must mark it naf_dependent.
         let trace = check(
             "naf_rule",
-            &["ro lo prenu poi na gerku cu danlu", "la .adam. cu prenu"],
-            "la .adam. cu danlu",
+            &["animal(every person where ~dog).", "person(Adam)."],
+            "animal(Adam).",
             vec![
                 make_universal_naf("prenu", "gerku", "danlu"),
                 make_assertion("adam", "prenu"),
@@ -11514,8 +11502,8 @@ mod flat_vs_surface {
         };
         check(
             "du_equality",
-            &["la .adam. du la .bob.", "la .bob. cu gerku"],
-            "la .adam. cu gerku",
+            &["Adam = Bob.", "dog(Bob)."],
+            "dog(Adam).",
             vec![du_buf, make_assertion("bob", "gerku")],
             make_query("adam", "gerku"),
             true,
@@ -11528,7 +11516,7 @@ mod flat_vs_surface {
         check(
             "numeric_pilji_true",
             &[],
-            "li xa cu pilji li re li ci",
+            "product(6, 2, 3).",
             vec![],
             make_compute_query("pilji", 6.0, 2.0, 3.0),
             true,
@@ -11540,7 +11528,7 @@ mod flat_vs_surface {
         check(
             "numeric_dunli_true",
             &[],
-            "li mu cu dunli li mu",
+            "num_equal(5, 5).",
             vec![],
             make_numeric_query("dunli", 5.0, 5.0),
             true,
@@ -11554,7 +11542,7 @@ mod flat_vs_surface {
         let trace = check(
             "numeric_dunli_false",
             &[],
-            "li mu cu dunli li ci",
+            "num_equal(5, 3).",
             vec![],
             make_numeric_query("dunli", 5.0, 3.0),
             false,

@@ -30,19 +30,17 @@
 //! non-True result instead of aborting. The `#[ignore]` has been removed, so this
 //! is now a normal regression test, safe to run alongside the rest of the suite.
 
-use nibli_engine::{EngineLogicalTerm, Language, NibliEngine};
+use nibli_engine::{EngineLogicalTerm, NibliEngine};
 
-/// Lojban-mode engine (Klaro is the `new()` default since THE FLIP; the query
-/// text here is Lojban — the direct fact injection itself is language-free).
-fn lojban_engine() -> NibliEngine {
-    let engine = NibliEngine::new();
-    engine.set_language(Language::Lojban);
-    engine
+/// A fresh KR-mode engine (the direct fact injection is language-free; the
+/// query text was ported to KR at THE DROP).
+fn fresh_engine() -> NibliEngine {
+    NibliEngine::new()
 }
 
 #[test]
 fn du_equivalence_unprovable_query_must_not_abort() {
-    let engine = lojban_engine();
+    let engine = fresh_engine();
 
     // Inject `du(alis, bob)` directly (du is not surface-parseable). This unions
     // {alis, bob} into one equivalence class in logji's union-find.
@@ -62,7 +60,7 @@ fn du_equivalence_unprovable_query_must_not_abort() {
     //
     // Post-fix this returns a definitive False (mlatu holds for neither member).
     let r = engine
-        .query_holds("la .bob. cu mlatu")
+        .query_holds("cat(Bob).")
         .expect("query must return, not abort the process");
     assert!(
         !r.is_true(),

@@ -5,7 +5,7 @@
 
 use nibli_engine::{
     EngineAggregateOp, EngineComputeRequest, EngineError, EngineLogicBuffer, EngineLogicNode,
-    EngineLogicalTerm, EngineQueryResult, Language, NibliEngine,
+    EngineLogicalTerm, EngineQueryResult, NibliEngine,
 };
 use nibli_render::{
     DRUG_INTERACTIONS_OVERLAY, GDPR_OVERLAY, Register, render_collapsed_text_with,
@@ -15,27 +15,21 @@ use nibli_store::NibliStore;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// A Lojban-mode engine: this suite is written in Lojban and stays so — the
-/// corpora-twins gate (`verify-klaro-twins`) proves the Klaro equivalence, so
-/// translating the call sites would add no coverage. Klaro is the
-/// `NibliEngine::new()` default since THE FLIP (2026-07-12); new engine tests
-/// are written in Klaro against plain `NibliEngine::new()`.
-fn lojban_engine() -> NibliEngine {
-    let engine = NibliEngine::new();
-    engine.set_language(Language::Lojban);
-    engine
+/// A fresh KR-mode engine (the suite was machine-ported from Lojban at THE
+/// DROP — per-literal gerna→`klaro::render` conversion, the corpora-twins
+/// equality guarantee held at the port).
+fn fresh_engine() -> NibliEngine {
+    NibliEngine::new()
 }
 
-/// `NibliEngine::open` + the Lojban pin (see `lojban_engine`).
-fn lojban_open(path: &Path, expect_msg: &str) -> NibliEngine {
-    let engine = NibliEngine::open(path).expect(expect_msg);
-    engine.set_language(Language::Lojban);
-    engine
+/// `NibliEngine::open` (see `fresh_engine`).
+fn fresh_open(path: &Path, expect_msg: &str) -> NibliEngine {
+    NibliEngine::open(path).expect(expect_msg)
 }
 
 /// Helper: create a fresh engine, assert multiple lines, return the engine.
 fn engine_with_facts(lines: &[&str]) -> NibliEngine {
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     for line in lines {
         engine
             .assert_text(line)
@@ -85,8 +79,8 @@ fn cleanup(path: &Path) {
 
 #[test]
 fn simple_assertion_and_query() {
-    let engine = engine_with_facts(&["lo gerku cu barda"]);
-    let (holds, trace, json) = engine.query_text_with_proof("lo gerku cu barda").unwrap();
+    let engine = engine_with_facts(&["big(some dog)."]);
+    let (holds, trace, json) = engine.query_text_with_proof("big(some dog).").unwrap();
     assert_true(&holds, "Query for asserted fact should hold");
     assert!(!trace.is_empty(), "Proof trace should be non-empty");
     assert!(!json.is_empty(), "Proof JSON should be non-empty");
@@ -94,8 +88,8 @@ fn simple_assertion_and_query() {
 
 #[test]
 fn simple_negation_query_false() {
-    let engine = engine_with_facts(&["lo gerku cu barda"]);
-    let (holds, _trace, _json) = engine.query_text_with_proof("lo mlatu cu barda").unwrap();
+    let engine = engine_with_facts(&["big(some dog)."]);
+    let (holds, _trace, _json) = engine.query_text_with_proof("big(some cat).").unwrap();
     assert_false(&holds, "Query for unasserted fact should not hold");
 }
 
@@ -106,39 +100,27 @@ fn du_surface_equivalence_transfers_fact() {
     // la .coumadin. cu du la .varfarin.  (brand name == generic name)
     // la .coumadin. cu xukmi             (Coumadin is a drug)
     // ? la .varfarin. cu xukmi           → TRUE via du-equivalence transfer.
-    let engine = engine_with_facts(&[
-        "la .coumadin. cu du la .varfarin.",
-        "la .coumadin. cu xukmi",
-    ]);
-    let (holds, _t, _j) = engine
-        .query_text_with_proof("la .varfarin. cu xukmi")
-        .unwrap();
+    let engine = engine_with_facts(&["Coumadin = Varfarin.", "chemical(Coumadin)."]);
+    let (holds, _t, _j) = engine.query_text_with_proof("chemical(Varfarin).").unwrap();
     assert_true(
         &holds,
-        "xukmi should transfer from coumadin to varfarin via surface du",
+        "chemical should transfer from Coumadin to Varfarin via surface du",
     );
 }
 
 #[test]
 fn du_surface_equivalence_is_symmetric() {
     // Assert the fact about the SECOND name, query the FIRST.
-    let engine = engine_with_facts(&[
-        "la .coumadin. cu du la .varfarin.",
-        "la .varfarin. cu xukmi",
-    ]);
-    let (holds, _t, _j) = engine
-        .query_text_with_proof("la .coumadin. cu xukmi")
-        .unwrap();
+    let engine = engine_with_facts(&["Coumadin = Varfarin.", "chemical(Varfarin)."]);
+    let (holds, _t, _j) = engine.query_text_with_proof("chemical(Coumadin).").unwrap();
     assert_true(&holds, "du equivalence is symmetric");
 }
 
 #[test]
 fn du_surface_negative_control() {
     // No du link → no transfer.
-    let engine = engine_with_facts(&["la .coumadin. cu xukmi"]);
-    let (holds, _t, _j) = engine
-        .query_text_with_proof("la .varfarin. cu xukmi")
-        .unwrap();
+    let engine = engine_with_facts(&["chemical(Coumadin)."]);
+    let (holds, _t, _j) = engine.query_text_with_proof("chemical(Varfarin).").unwrap();
     assert_false(&holds, "without du, the fact must not transfer");
 }
 
@@ -150,17 +132,17 @@ fn du_over_numeric_literals() {
     // surface-du fix made `du` reachable and the du-query arm's `args[0] == args[1]`
     // short-circuit handles identical `GroundTerm::Number` operands. Constant
     // reflexivity is the sanity peer.
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     assert_true(
-        &engine.query_holds("li pa du li pa").unwrap(),
+        &engine.query_holds("1 = 1.").unwrap(),
         "1 du 1 must be TRUE by reflexivity",
     );
     assert_false(
-        &engine.query_holds("li pa du li re").unwrap(),
+        &engine.query_holds("1 = 2.").unwrap(),
         "1 du 2 must be FALSE (distinct literals, nothing asserted)",
     );
     assert_true(
-        &engine.query_holds("la .djan. cu du la .djan.").unwrap(),
+        &engine.query_holds("Djan = Djan.").unwrap(),
         "constant reflexivity sanity: djan du djan must be TRUE",
     );
 }
@@ -168,7 +150,7 @@ fn du_over_numeric_literals() {
 #[test]
 fn na_du_surface_contradiction() {
     // Asserting both an identity and an inequality for the same pair is flagged.
-    let engine = engine_with_facts(&["la .djan. cu du la .jan.", "la .djan. na du la .jan."]);
+    let engine = engine_with_facts(&["Djan = Jan.", "~Djan = Jan."]);
     let violations = engine.check_contradictions();
     assert!(
         violations
@@ -187,11 +169,11 @@ fn engine_cancel_flag_aborts_query() {
     // With the cancel flag pre-set, every query path returns Err instead of
     // running to completion. This is the hook the native server's watchdog
     // uses to free a blocking thread when the request timeout elapses.
-    let engine = engine_with_facts(&["la .adam. cu gerku", "ro lo gerku cu danlu"]);
+    let engine = engine_with_facts(&["dog(Adam).", "animal(every dog)."]);
     let flag = Arc::new(AtomicBool::new(true));
     engine.set_cancel_flag(flag.clone());
 
-    let proof = engine.query_text_with_proof("la .adam. cu danlu");
+    let proof = engine.query_text_with_proof("animal(Adam).");
     assert!(
         proof.is_err(),
         "cancelled proof query must Err, got {proof:?}"
@@ -204,7 +186,7 @@ fn engine_cancel_flag_aborts_query() {
             .contains("cancel")
     );
 
-    let holds = engine.query_holds("la .adam. cu danlu");
+    let holds = engine.query_holds("animal(Adam).");
     assert!(
         holds.is_err(),
         "cancelled holds query must Err, got {holds:?}"
@@ -213,7 +195,7 @@ fn engine_cancel_flag_aborts_query() {
     // Clearing the flag restores normal evaluation.
     engine.clear_cancel_flag();
     let (result, _, _) = engine
-        .query_text_with_proof("la .adam. cu danlu")
+        .query_text_with_proof("animal(Adam).")
         .expect("query should succeed after clearing cancel flag");
     assert_true(
         &result,
@@ -225,23 +207,19 @@ fn engine_cancel_flag_aborts_query() {
 
 #[test]
 fn universal_rule_chain_syllogism() {
-    let engine = engine_with_facts(&[
-        "ro lo gerku cu danlu",
-        "ro lo danlu cu citka",
-        "la .adam. cu gerku",
-    ]);
+    let engine = engine_with_facts(&["animal(every dog).", "eats(every animal).", "dog(Adam)."]);
 
     // Direct fact
-    let (holds, _trace, _json) = engine.query_text_with_proof("la .adam. cu gerku").unwrap();
+    let (holds, _trace, _json) = engine.query_text_with_proof("dog(Adam).").unwrap();
     assert_true(&holds, "Direct fact should hold");
 
     // One-hop derivation: gerku → danlu
-    let (holds, trace, _json) = engine.query_text_with_proof("la .adam. cu danlu").unwrap();
+    let (holds, trace, _json) = engine.query_text_with_proof("animal(Adam).").unwrap();
     assert_true(&holds, "One-hop derived fact should hold");
     assert!(trace.contains("Rule"), "Proof trace should show derivation");
 
     // Two-hop derivation: gerku → danlu → citka
-    let (holds, trace, _json) = engine.query_text_with_proof("la .adam. cu citka").unwrap();
+    let (holds, trace, _json) = engine.query_text_with_proof("eats(Adam).").unwrap();
     assert_true(&holds, "Two-hop derived fact should hold");
     assert!(
         trace.contains("Rule"),
@@ -252,7 +230,7 @@ fn universal_rule_chain_syllogism() {
     // Ch 19's "is Adam a bird?" query). Exact playground bytes for the verdict,
     // back-translation, "why", and collapsed proof are pinned in nibli-wasm's
     // `syllogism_playground_bytes_are_verbatim`.
-    let (holds, _trace, _json) = engine.query_text_with_proof("la .adam. cu cipni").unwrap();
+    let (holds, _trace, _json) = engine.query_text_with_proof("bird(Adam).").unwrap();
     assert_false(&holds, "cipni (bird) is a real FALSE — not derivable");
 }
 
@@ -271,11 +249,11 @@ fn universal_rule_chain_syllogism() {
 fn tensed_restrictor_rule_fires() {
     // "every dog that ATE (past) is hungry"; rex is a dog AND ate in the past.
     let engine = engine_with_facts(&[
-        "ro lo gerku poi pu citka cu xagji",
-        "la .rex. cu gerku",
-        "pu la .rex. cu citka",
+        "be_hungry(every dog where past eats(it)).",
+        "dog(Rex).",
+        "past eats(Rex).",
     ]);
-    let (holds, _trace, _json) = engine.query_text_with_proof("la .rex. cu xagji").unwrap();
+    let (holds, _trace, _json) = engine.query_text_with_proof("be_hungry(Rex).").unwrap();
     assert_true(
         &holds,
         "tensed-antecedent rule should fire when the matching Past premise holds",
@@ -285,8 +263,8 @@ fn tensed_restrictor_rule_fires() {
 #[test]
 fn tensed_restrictor_negative_control() {
     // rex is a dog but never ate → the tensed condition is unsatisfied.
-    let engine = engine_with_facts(&["ro lo gerku poi pu citka cu xagji", "la .rex. cu gerku"]);
-    let (holds, _trace, _json) = engine.query_text_with_proof("la .rex. cu xagji").unwrap();
+    let engine = engine_with_facts(&["be_hungry(every dog where past eats(it)).", "dog(Rex)."]);
+    let (holds, _trace, _json) = engine.query_text_with_proof("be_hungry(Rex).").unwrap();
     assert_false(
         &holds,
         "tensed-antecedent rule must not fire without the past premise",
@@ -297,11 +275,11 @@ fn tensed_restrictor_negative_control() {
 fn tensed_restrictor_wrong_tense_control() {
     // rex WILL eat (future) — must not satisfy a PAST antecedent (strict tense).
     let engine = engine_with_facts(&[
-        "ro lo gerku poi pu citka cu xagji",
-        "la .rex. cu gerku",
-        "ba la .rex. cu citka",
+        "be_hungry(every dog where past eats(it)).",
+        "dog(Rex).",
+        "future eats(Rex).",
     ]);
-    let (holds, _trace, _json) = engine.query_text_with_proof("la .rex. cu xagji").unwrap();
+    let (holds, _trace, _json) = engine.query_text_with_proof("be_hungry(Rex).").unwrap();
     assert_false(
         &holds,
         "a Future premise must not satisfy a Past antecedent",
@@ -312,11 +290,11 @@ fn tensed_restrictor_wrong_tense_control() {
 fn tensed_restrictor_bare_premise_control() {
     // rex eats (bare/timeless) — must not satisfy a PAST antecedent.
     let engine = engine_with_facts(&[
-        "ro lo gerku poi pu citka cu xagji",
-        "la .rex. cu gerku",
-        "la .rex. cu citka",
+        "be_hungry(every dog where past eats(it)).",
+        "dog(Rex).",
+        "eats(Rex).",
     ]);
-    let (holds, _trace, _json) = engine.query_text_with_proof("la .rex. cu xagji").unwrap();
+    let (holds, _trace, _json) = engine.query_text_with_proof("be_hungry(Rex).").unwrap();
     assert_false(&holds, "a bare premise must not satisfy a Past antecedent");
 }
 
@@ -330,11 +308,11 @@ fn disjunctive_restrictor_fires_via_left_branch() {
     // leaves x2 unspecified (zo'e), so the premise is the objectless `la .rex. cu
     // prami` (matching how the existing tensed-restrictor test uses objectless citka).
     let engine = engine_with_facts(&[
-        "ro lo gerku poi prami ja pendo cu danlu",
-        "la .rex. cu gerku",
-        "la .rex. cu prami",
+        "animal(every dog where loves(it) | friend(it)).",
+        "dog(Rex).",
+        "loves(Rex).",
     ]);
-    let (holds, _t, _j) = engine.query_text_with_proof("la .rex. cu danlu").unwrap();
+    let (holds, _t, _j) = engine.query_text_with_proof("animal(Rex).").unwrap();
     assert_true(
         &holds,
         "disjunctive antecedent fires via the left disjunct (prami)",
@@ -344,11 +322,11 @@ fn disjunctive_restrictor_fires_via_left_branch() {
 #[test]
 fn disjunctive_restrictor_fires_via_right_branch() {
     let engine = engine_with_facts(&[
-        "ro lo gerku poi prami ja pendo cu danlu",
-        "la .rex. cu gerku",
-        "la .rex. cu pendo",
+        "animal(every dog where loves(it) | friend(it)).",
+        "dog(Rex).",
+        "friend(Rex).",
     ]);
-    let (holds, _t, _j) = engine.query_text_with_proof("la .rex. cu danlu").unwrap();
+    let (holds, _t, _j) = engine.query_text_with_proof("animal(Rex).").unwrap();
     assert_true(
         &holds,
         "disjunctive antecedent fires via the right disjunct (pendo)",
@@ -359,10 +337,10 @@ fn disjunctive_restrictor_fires_via_right_branch() {
 fn disjunctive_restrictor_negative_control() {
     // rex is a dog but neither loves nor befriends → neither disjunct holds.
     let engine = engine_with_facts(&[
-        "ro lo gerku poi prami ja pendo cu danlu",
-        "la .rex. cu gerku",
+        "animal(every dog where loves(it) | friend(it)).",
+        "dog(Rex).",
     ]);
-    let (holds, _t, _j) = engine.query_text_with_proof("la .rex. cu danlu").unwrap();
+    let (holds, _t, _j) = engine.query_text_with_proof("animal(Rex).").unwrap();
     assert_false(
         &holds,
         "neither disjunct satisfied → disjunctive rule does not fire",
@@ -373,11 +351,11 @@ fn disjunctive_restrictor_negative_control() {
 fn conjunctive_poi_je_requires_both() {
     // Control: `poi prami je pendo` (AND) still requires both — one is not enough.
     let engine = engine_with_facts(&[
-        "ro lo gerku poi prami je pendo cu danlu",
-        "la .rex. cu gerku",
-        "la .rex. cu prami",
+        "animal(every dog where loves(it) & friend(it)).",
+        "dog(Rex).",
+        "loves(Rex).",
     ]);
-    let (holds, _t, _j) = engine.query_text_with_proof("la .rex. cu danlu").unwrap();
+    let (holds, _t, _j) = engine.query_text_with_proof("animal(Rex).").unwrap();
     assert_false(
         &holds,
         "conjunctive `je` restrictor requires both conjuncts — one is not enough",
@@ -389,10 +367,10 @@ fn disjunctive_forethought_ganai_ga_fires() {
     // `ganai ga P gi Q gi R` — (P ∨ Q) → R, a ground conditional with a disjunctive
     // antecedent. Fires when either disjunct holds.
     let engine = engine_with_facts(&[
-        "la .rex. cu prami la .alis.",
-        "ganai ga la .rex. cu prami la .alis. gi la .rex. cu pendo la .alis. gi la .rex. cu danlu",
+        "loves(Rex, Alis).",
+        "loves(Rex, Alis) | friend(Rex, Alis) -> animal(Rex).",
     ]);
-    let (holds, _t, _j) = engine.query_text_with_proof("la .rex. cu danlu").unwrap();
+    let (holds, _t, _j) = engine.query_text_with_proof("animal(Rex).").unwrap();
     assert_true(
         &holds,
         "forethought disjunctive antecedent (ganai ga…gi…gi) fires via a held disjunct",
@@ -406,18 +384,13 @@ fn disjunctive_forethought_ganai_ga_fires() {
 
 #[test]
 fn tensed_conclusion_ganai_fires() {
-    let engine = engine_with_facts(&[
-        "ganai la .rex. cu gerku gi pu la .rex. cu danlu",
-        "la .rex. cu gerku",
-    ]);
-    let (past_holds, _t, _j) = engine
-        .query_text_with_proof("pu la .rex. cu danlu")
-        .unwrap();
+    let engine = engine_with_facts(&["dog(Rex) -> past animal(Rex).", "dog(Rex)."]);
+    let (past_holds, _t, _j) = engine.query_text_with_proof("past animal(Rex).").unwrap();
     assert_true(
         &past_holds,
         "tensed conclusion derives the Past fact when the antecedent holds",
     );
-    let (bare_holds, _t, _j) = engine.query_text_with_proof("la .rex. cu danlu").unwrap();
+    let (bare_holds, _t, _j) = engine.query_text_with_proof("animal(Rex).").unwrap();
     assert_false(
         &bare_holds,
         "tensed conclusion must NOT derive a bare fact (tense-exact)",
@@ -427,18 +400,13 @@ fn tensed_conclusion_ganai_fires() {
 #[test]
 fn tensed_conclusion_prenex_fires() {
     // `ro da zo'u ganai da gerku gi pu da danlu` → ∀da. gerku(da) → Past(danlu(da)).
-    let engine = engine_with_facts(&[
-        "ro da zo'u ganai da gerku gi pu da danlu",
-        "la .rex. cu gerku",
-    ]);
-    let (past_holds, _t, _j) = engine
-        .query_text_with_proof("pu la .rex. cu danlu")
-        .unwrap();
+    let engine = engine_with_facts(&["all $da: dog($da) -> past animal($da).", "dog(Rex)."]);
+    let (past_holds, _t, _j) = engine.query_text_with_proof("past animal(Rex).").unwrap();
     assert_true(
         &past_holds,
         "prenex tensed conclusion derives the Past fact",
     );
-    let (bare_holds, _t, _j) = engine.query_text_with_proof("la .rex. cu danlu").unwrap();
+    let (bare_holds, _t, _j) = engine.query_text_with_proof("animal(Rex).").unwrap();
     assert_false(
         &bare_holds,
         "prenex tensed conclusion must NOT derive a bare fact",
@@ -453,10 +421,10 @@ fn tensed_conclusion_prenex_fires() {
 #[test]
 fn disjunctive_conclusion_contradiction_flagged() {
     let engine = engine_with_facts(&[
-        "ro lo gerku cu danlu ja xanlu",
-        "la .rex. cu gerku",
-        "la .rex. na danlu",
-        "la .rex. na xanlu",
+        "every dog $d: animal($d) | fish($d).",
+        "dog(Rex).",
+        "~animal(Rex).",
+        "~fish(Rex).",
     ]);
     let v = engine.check_contradictions();
     assert!(
@@ -469,9 +437,9 @@ fn disjunctive_conclusion_contradiction_flagged() {
 #[test]
 fn disjunctive_conclusion_one_denied_no_contradiction() {
     let engine = engine_with_facts(&[
-        "ro lo gerku cu danlu ja xanlu",
-        "la .rex. cu gerku",
-        "la .rex. na danlu",
+        "every dog $d: animal($d) | fish($d).",
+        "dog(Rex).",
+        "~animal(Rex).",
     ]);
     assert!(
         engine.check_contradictions().is_empty(),
@@ -482,9 +450,9 @@ fn disjunctive_conclusion_one_denied_no_contradiction() {
 #[test]
 fn disjunctive_query_still_works() {
     // The positive use of a disjunction is a QUERY, not a rule: `is rex Q or R?`.
-    let engine = engine_with_facts(&["la .rex. cu danlu"]);
+    let engine = engine_with_facts(&["animal(Rex)."]);
     let (holds, _t, _j) = engine
-        .query_text_with_proof("la .rex. cu danlu ja xanlu")
+        .query_text_with_proof("animal(Rex) | fish(Rex).")
         .unwrap();
     assert_true(
         &holds,
@@ -501,15 +469,17 @@ fn disjunctive_conclusion_jo_ju_stay_fail_closed() {
     // logji `test_mixed_conclusion_*` unit tests. `gi'e` does NOT produce it: the GIhA
     // desugar repeats the head at the SENTENCE level, so `ro lo … gi'e …` compiles to a
     // conjunction of two universals, not one rule with a compound conclusion.)
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     assert!(
-        engine.assert_text("ro lo gerku cu danlu jo xanlu").is_err(),
+        engine
+            .assert_text("every dog $d: animal($d) <-> fish($d).")
+            .is_err(),
         "a `jo` (biconditional) conclusion head must fail closed (Not-bearing, not Horn)"
     );
-    let engine2 = lojban_engine();
+    let engine2 = fresh_engine();
     assert!(
         engine2
-            .assert_text("ro lo gerku cu danlu ju xanlu")
+            .assert_text("every dog $d: animal($d) ^ fish($d).")
             .is_err(),
         "a `ju` (xor) conclusion head must fail closed (Not(And(..)), not Horn)"
     );
@@ -529,24 +499,30 @@ fn disjunctive_conclusion_jo_ju_stay_fail_closed() {
 
 #[test]
 fn giha_gi_e_asserts_both_conjuncts() {
-    let engine = engine_with_facts(&["mi klama gi'e citka"]);
-    let (klama, _, _) = engine.query_text_with_proof("mi klama").unwrap();
+    let engine = engine_with_facts(&["goes(me) & eats(me)."]);
+    let (klama, _, _) = engine.query_text_with_proof("goes(me).").unwrap();
     assert_true(&klama, "first gi'e tail is independently queryable");
-    let (citka, _, _) = engine.query_text_with_proof("mi citka").unwrap();
+    let (citka, _, _) = engine.query_text_with_proof("eats(me).").unwrap();
     assert_true(&citka, "second gi'e tail is independently queryable");
-    let (sipna, _, _) = engine.query_text_with_proof("mi sipna").unwrap();
+    let (sipna, _, _) = engine.query_text_with_proof("sleep(me).").unwrap();
     assert_false(&sipna, "unasserted predication stays FALSE (CWA control)");
 }
 
 #[test]
 fn giha_per_tail_trailing_sumti() {
     // Each tail keeps its own trailing sumti; the head is shared.
-    let engine = engine_with_facts(&["mi klama le zarci gi'e citka lo plise"]);
-    let (klama, _, _) = engine.query_text_with_proof("mi klama le zarci").unwrap();
+    let engine = engine_with_facts(&["goes(me, the market) & eats(me, some apple)."]);
+    let (klama, _, _) = engine
+        .query_text_with_proof("goes(me, the market).")
+        .unwrap();
     assert_true(&klama, "first tail with its own x2");
-    let (citka, _, _) = engine.query_text_with_proof("mi citka lo plise").unwrap();
+    let (citka, _, _) = engine
+        .query_text_with_proof("eats(me, some apple).")
+        .unwrap();
     assert_true(&citka, "second tail with its own x2");
-    let (cross, _, _) = engine.query_text_with_proof("mi citka le zarci").unwrap();
+    let (cross, _, _) = engine
+        .query_text_with_proof("eats(me, the market).")
+        .unwrap();
     assert_false(&cross, "tail sumti must not leak across tails");
 }
 
@@ -558,30 +534,13 @@ fn giha_genesis_na_tail_verse() {
     // a description head would mint a fresh witness per tail, silently
     // splitting one surface referent into two (wrong TRUE on disjoint
     // witnesses — see giha_quantified_or_description_head_rejected).
-    let engine = engine_with_facts(&["la .terdi. cu na se tarmi gi'e kunti"]);
-    let (kunti, _, _) = engine.query_text_with_proof("la .terdi. cu kunti").unwrap();
+    let engine = engine_with_facts(&["~shape(object: Terdi) & empty(Terdi)."]);
+    let (kunti, _, _) = engine.query_text_with_proof("empty(Terdi).").unwrap();
     assert_true(&kunti, "positive tail asserted");
     let (tarmi, _, _) = engine
-        .query_text_with_proof("la .terdi. cu se tarmi")
+        .query_text_with_proof("shape(object: Terdi).")
         .unwrap();
     assert_false(&tarmi, "negated tail stores no positive fact");
-}
-
-#[test]
-fn giha_quantified_or_description_head_rejected() {
-    // `da klama gi'e citka` is officially ∃x(klama(x) ∧ citka(x)) — ONE
-    // witness. The repeated-head desugar would compile two independent ∃s and
-    // return TRUE on disjoint witnesses (rex goes, spot eats). Fail closed.
-    let engine = lojban_engine();
-    for text in ["da klama gi'e citka", "lo terdi cu na se tarmi gi'e kunti"] {
-        let err = engine
-            .assert_text(text)
-            .expect_err("non-constant GIhA head must be rejected");
-        assert!(
-            err.to_string().contains("re-quantified"),
-            "`{text}`: expected the scope-splitting diagnostic, got: {err}"
-        );
-    }
 }
 
 #[test]
@@ -589,12 +548,12 @@ fn giha_fused_nai_negates_right_tail() {
     // Solid `gi'enai` must behave exactly like `gi'e nai` (before the lexer
     // fix it parsed as a phantom lujvo tanru that INVERTED the negation:
     // `mi citka` came back TRUE and `mi klama` FALSE).
-    let engine = engine_with_facts(&["mi klama gi'enai citka"]);
-    let (klama, _, _) = engine.query_text_with_proof("mi klama").unwrap();
+    let engine = engine_with_facts(&["goes(me) & ~eats(me)."]);
+    let (klama, _, _) = engine.query_text_with_proof("goes(me).").unwrap();
     assert_true(&klama, "positive tail asserted");
-    let (citka, _, _) = engine.query_text_with_proof("mi citka").unwrap();
+    let (citka, _, _) = engine.query_text_with_proof("eats(me).").unwrap();
     assert_false(&citka, "nai-negated tail stores no positive fact");
-    engine.assert_text("mi citka").unwrap();
+    engine.assert_text("eats(me).").unwrap();
     assert!(
         !engine.check_contradictions().is_empty(),
         "contrary positive after a gi'enai tail must flag a contradiction"
@@ -609,7 +568,7 @@ fn giha_xor_negated_tail_fabricates_no_contradiction() {
     // to ¬K (collect_ground_facts drops the inner Not) and fabricate a
     // contradiction on the consistent KB {K, C} (Xor satisfied: K true, ¬C
     // false). The purity guard must keep it out of the negative registry.
-    let engine = engine_with_facts(&["mi klama gi'u na citka", "mi klama", "mi citka"]);
+    let engine = engine_with_facts(&["goes(me) ^ ~eats(me).", "goes(me).", "eats(me)."]);
     assert!(
         engine.check_contradictions().is_empty(),
         "consistent KB must not report a fabricated contradiction: {:?}",
@@ -620,7 +579,7 @@ fn giha_xor_negated_tail_fabricates_no_contradiction() {
 #[test]
 fn iju_negated_operand_fabricates_no_contradiction() {
     // Same purity-guard regression through the pre-existing `.i ju` surface.
-    let engine = engine_with_facts(&["mi na klama .i ju mi citka", "mi klama", "mi citka"]);
+    let engine = engine_with_facts(&["~goes(me) ^ eats(me).", "goes(me).", "eats(me)."]);
     assert!(
         engine.check_contradictions().is_empty(),
         "consistent KB must not report a fabricated contradiction: {:?}",
@@ -632,7 +591,7 @@ fn iju_negated_operand_fabricates_no_contradiction() {
 fn negation_inside_abstraction_fabricates_no_contradiction() {
     // A negation INSIDE an abstraction is quoted content, not an asserted
     // claim — the negative-conjunct walk must stop at the abstraction marker.
-    let engine = engine_with_facts(&["mi djuno lo du'u la .rex. na klama", "la .rex. cu klama"]);
+    let engine = engine_with_facts(&["knows(me, fact { ~goes(Rex) }).", "goes(Rex)."]);
     assert!(
         engine.check_contradictions().is_empty(),
         "a quoted negation must not feed contradiction detection: {:?}",
@@ -645,17 +604,15 @@ fn giha_retraction_removes_both_conjuncts_and_negative_entry() {
     // A gi'e sentence is ONE fact-id; retracting it must remove both stored
     // conjuncts AND the na-tail's negative-registry entry (retract ≡
     // never-asserted).
-    let engine = lojban_engine();
-    let ids = engine
-        .assert_text("la .rex. cu gerku gi'e na danlu")
-        .unwrap();
+    let engine = fresh_engine();
+    let ids = engine.assert_text("dog(Rex) & ~animal(Rex).").unwrap();
     assert_eq!(ids.len(), 1, "a GIhA chain is one fact");
-    let (gerku, _, _) = engine.query_text_with_proof("la .rex. cu gerku").unwrap();
+    let (gerku, _, _) = engine.query_text_with_proof("dog(Rex).").unwrap();
     assert_true(&gerku, "conjunct stored");
     engine.retract_fact(ids[0]).unwrap();
-    let (gerku2, _, _) = engine.query_text_with_proof("la .rex. cu gerku").unwrap();
+    let (gerku2, _, _) = engine.query_text_with_proof("dog(Rex).").unwrap();
     assert_false(&gerku2, "retracted conjunct gone");
-    engine.assert_text("la .rex. cu danlu").unwrap();
+    engine.assert_text("animal(Rex).").unwrap();
     assert!(
         engine.check_contradictions().is_empty(),
         "retracted na-tail must leave no negative-registry entry"
@@ -666,10 +623,7 @@ fn giha_retraction_removes_both_conjuncts_and_negative_entry() {
 fn ije_negated_conjunct_preserves_tense_context() {
     // The negative template must carry the negated conjunct's tense — a
     // contrary positive with the SAME tense flags a contradiction.
-    let engine = engine_with_facts(&[
-        "la .rex. cu gerku .i je la .rex. pu na klama",
-        "la .rex. pu klama",
-    ]);
+    let engine = engine_with_facts(&["dog(Rex) & past ~goes(Rex).", "past goes(Rex)."]);
     assert!(
         !engine.check_contradictions().is_empty(),
         "tensed contrary positive must flag the tensed negative conjunct"
@@ -683,29 +637,18 @@ fn giha_gi_o_gi_u_assert_behavior_pinned() {
     // so a bare side queries Unknown(CycleCut), never TRUE — no ground fact
     // is stored). `gi'u` (xor) with positive tails stays fail-closed like
     // `.i ju`.
-    let engine = lojban_engine();
-    engine.assert_text("mi klama gi'o citka").unwrap();
-    let (klama, _, _) = engine.query_text_with_proof("mi klama").unwrap();
+    let engine = fresh_engine();
+    engine.assert_text("goes(me) <-> eats(me).").unwrap();
+    let (klama, _, _) = engine.query_text_with_proof("goes(me).").unwrap();
     assert!(
         !klama.is_true(),
         "a bare biconditional must not derive either side TRUE: got {klama:?}"
     );
-    let engine2 = lojban_engine();
+    let engine2 = fresh_engine();
     assert!(
-        engine2.assert_text("mi klama gi'u citka").is_err(),
+        engine2.assert_text("goes(me) ^ eats(me).").is_err(),
         "a positive-tails xor assertion must fail closed like `.i ju`"
     );
-}
-
-#[test]
-fn goi_after_giha_repeats_last_tail() {
-    // `go'i` after a Connected sentence repeats its LAST inner bridi — for a
-    // GIhA chain that is the final tail (documented parity with `.i je`).
-    let engine = engine_with_facts(&["la .rex. cu gerku gi'e citka", "la .spot. cu go'i"]);
-    let (citka, _, _) = engine.query_text_with_proof("la .spot. cu citka").unwrap();
-    assert_true(&citka, "go'i repeats the last tail (citka)");
-    let (gerku, _, _) = engine.query_text_with_proof("la .spot. cu gerku").unwrap();
-    assert_false(&gerku, "go'i must not repeat the first tail");
 }
 
 #[test]
@@ -714,7 +657,7 @@ fn giha_na_tail_records_negative_fact_for_contradiction() {
     // like a standalone `na` assertion, so a later contrary positive is
     // flagged. Before the fix, a negated conjunct inside a compound assertion
     // was silently dropped (`collect_ground_facts` skips NotNode leaves).
-    let engine = engine_with_facts(&["la .rex. cu gerku gi'e na danlu", "la .rex. cu danlu"]);
+    let engine = engine_with_facts(&["dog(Rex) & ~animal(Rex).", "animal(Rex)."]);
     assert!(
         !engine.check_contradictions().is_empty(),
         "contrary positive after a na-tail must flag a contradiction"
@@ -725,10 +668,7 @@ fn giha_na_tail_records_negative_fact_for_contradiction() {
 fn ije_na_conjunct_records_negative_fact() {
     // Same registry fix through the pre-existing `.i je` surface: the `na`
     // half of `P .i je na Q` was silently dropped before.
-    let engine = engine_with_facts(&[
-        "la .rex. cu gerku .i je la .rex. na danlu",
-        "la .rex. cu danlu",
-    ]);
+    let engine = engine_with_facts(&["dog(Rex) & ~animal(Rex).", "animal(Rex)."]);
     assert!(
         !engine.check_contradictions().is_empty(),
         "contrary positive after a negated .i je conjunct must flag a contradiction"
@@ -741,10 +681,10 @@ fn giha_all_negative_conjunction_accepted() {
     // zero-ingest guard rejected this shape outright ("no representable
     // content"); now it is accepted like two standalone `na` assertions, each
     // recorded in the negative-fact registry.
-    let engine = engine_with_facts(&["mi na klama gi'e na citka"]);
-    let (klama, _, _) = engine.query_text_with_proof("mi klama").unwrap();
+    let engine = engine_with_facts(&["~goes(me) & ~eats(me)."]);
+    let (klama, _, _) = engine.query_text_with_proof("goes(me).").unwrap();
     assert_false(&klama, "negated conjuncts store no positive facts");
-    engine.assert_text("mi klama").unwrap();
+    engine.assert_text("goes(me).").unwrap();
     assert!(
         !engine.check_contradictions().is_empty(),
         "contrary positive after an all-negative conjunction must flag a contradiction"
@@ -756,29 +696,14 @@ fn giha_gi_a_assert_stays_fail_closed_like_ija() {
     // A bare disjunction ingests no facts — `gi'a` at assert time fails closed
     // exactly like its `.i ja` spelled-out form (parity), while remaining fine
     // as a QUERY.
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     assert!(
-        engine.assert_text("mi klama gi'a citka").is_err(),
+        engine.assert_text("goes(me) | eats(me).").is_err(),
         "asserting a bare gi'a disjunction must fail closed"
     );
-    let q = engine_with_facts(&["mi klama"]);
-    let (holds, _, _) = q.query_text_with_proof("mi klama gi'a citka").unwrap();
+    let q = engine_with_facts(&["goes(me)."]);
+    let (holds, _, _) = q.query_text_with_proof("goes(me) | eats(me).").unwrap();
     assert_true(&holds, "gi'a as a query is TRUE when one disjunct holds");
-}
-
-#[test]
-fn bare_na_after_selbri_connective_rejected() {
-    // `X je na Y` is not official grammar (camxes-std rejects it; the official
-    // form is the compound `jenai`) — gerna now rejects it with a targeted
-    // diagnostic instead of silently over-accepting.
-    let engine = lojban_engine();
-    let err = engine
-        .assert_text("mi barda je na xunre")
-        .expect_err("bare na after je must be a parse error");
-    assert!(
-        err.to_string().contains("jenai"),
-        "diagnostic must point at the compound form, got: {err}"
-    );
 }
 
 // ── Position-aware da/de/di quantifier scope ──
@@ -793,24 +718,24 @@ fn query_leading_da_is_existential_over_universal() {
     // ∃da.∀x is TRUE only when ONE entity eats every dog. Pre-fix the query
     // compiled to ∀x.∃da, wrongly returning TRUE for the split-eater KB.
     let one_eater = engine_with_facts(&[
-        "la .adam. cu citka la .rex.",
-        "la .adam. cu citka la .spot.",
-        "la .rex. cu gerku",
-        "la .spot. cu gerku",
+        "eats(Adam, Rex).",
+        "eats(Adam, Spot).",
+        "dog(Rex).",
+        "dog(Spot).",
     ]);
     let (holds, _t, _j) = one_eater
-        .query_text_with_proof("da citka ro lo gerku")
+        .query_text_with_proof("eats($da, every dog).")
         .unwrap();
     assert_true(&holds, "adam eats every dog → ∃ one eater of all dogs");
 
     let split_eaters = engine_with_facts(&[
-        "la .adam. cu citka la .rex.",
-        "la .ben. cu citka la .spot.",
-        "la .rex. cu gerku",
-        "la .spot. cu gerku",
+        "eats(Adam, Rex).",
+        "eats(Ben, Spot).",
+        "dog(Rex).",
+        "dog(Spot).",
     ]);
     let (holds, _t, _j) = split_eaters
-        .query_text_with_proof("da citka ro lo gerku")
+        .query_text_with_proof("eats($da, every dog).")
         .unwrap();
     assert_false(
         &holds,
@@ -824,14 +749,14 @@ fn assert_leading_da_over_universal_compiles_and_round_trips() {
     // the leading ∃ to a fresh constant and compiles the inner ∀ as a rule (sk₀
     // eats every dog). Before the dispatch change this errored as a "bare
     // disjunction". The asserted single witness then satisfies the ∃∀ query.
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     engine
-        .assert_text("da citka ro lo gerku")
+        .assert_text("eats($da, every dog).")
         .expect("∃∀ assertion must compile via the leading-∃ skolemization path");
-    engine.assert_text("la .rex. cu gerku").unwrap();
-    engine.assert_text("la .spot. cu gerku").unwrap();
+    engine.assert_text("dog(Rex).").unwrap();
+    engine.assert_text("dog(Spot).").unwrap();
     let (holds, _t, _j) = engine
-        .query_text_with_proof("da citka ro lo gerku")
+        .query_text_with_proof("eats($da, every dog).")
         .unwrap();
     assert_true(
         &holds,
@@ -844,9 +769,9 @@ fn tensed_leading_da_over_universal_rejected() {
     // `pu da citka ro lo gerku` → Past(Exists(ForAll)): a tense wrapping a whole
     // ∃∀ rule is rejected with the clear whole-rule message, not the ground
     // path's misleading "bare disjunction" error.
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     let err = engine
-        .assert_text("pu da citka ro lo gerku")
+        .assert_text("past eats($da, every dog).")
         .expect_err("a tense wrapping a whole ∃∀ rule must be rejected");
     assert!(
         err.to_string().contains("whole universal/conditional"),
@@ -860,12 +785,12 @@ fn trailing_da_after_universal_is_per_witness() {
     // ∀x.∃da — a possibly-different eater per dog — so the ∃∀ query "is there one
     // eater of all dogs?" is FALSE. Confirms the after-case stays ∀∃ (unchanged).
     let engine = engine_with_facts(&[
-        "ro lo gerku cu se citka da",
-        "la .rex. cu gerku",
-        "la .spot. cu gerku",
+        "eats(food: every dog, eater: $da).",
+        "dog(Rex).",
+        "dog(Spot).",
     ]);
     let (holds, _t, _j) = engine
-        .query_text_with_proof("da citka ro lo gerku")
+        .query_text_with_proof("eats($da, every dog).")
         .unwrap();
     assert_false(
         &holds,
@@ -878,11 +803,8 @@ fn ganai_tensed_antecedent_fires_with_premise() {
     // Positive companion to the `ganai_tensed_antecedent_must_not_fire_unconditionally`
     // known-failure guard: a ground conditional with a tensed antecedent fires when
     // (and only when) the matching Past premise is present.
-    let engine = engine_with_facts(&[
-        "ganai la .adam. pu bajra gi la .adam. danlu",
-        "pu la .adam. cu bajra",
-    ]);
-    let (holds, _trace, _json) = engine.query_text_with_proof("la .adam. cu danlu").unwrap();
+    let engine = engine_with_facts(&["past runs(Adam) -> animal(Adam).", "past runs(Adam)."]);
+    let (holds, _trace, _json) = engine.query_text_with_proof("animal(Adam).").unwrap();
     assert_true(
         &holds,
         "tensed-antecedent ground conditional should fire on its Past premise",
@@ -896,9 +818,9 @@ fn ganai_tensed_antecedent_fires_with_premise() {
 fn whole_rule_tense_universal_rejected() {
     // `pu ro lo gerku cu danlu` → Past(ForAll(...)) is rejected with the clear
     // whole-rule message (not the misleading "bare disjunction" zero-ingest one).
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     let err = engine
-        .assert_text("pu ro lo gerku cu danlu")
+        .assert_text("past animal(every dog).")
         .expect_err("a tense wrapping a whole universal must be rejected");
     assert!(
         err.to_string().contains("whole universal/conditional"),
@@ -910,9 +832,9 @@ fn whole_rule_tense_universal_rejected() {
 fn whole_rule_deontic_universal_rejected() {
     // `ei ro lo prenu cu xamgu` → Obligatory(ForAll(...)): deriving an actuality
     // from an obligation is the same class of over-claim — rejected.
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     let err = engine
-        .assert_text("ei ro lo prenu cu xamgu")
+        .assert_text("must good(every person).")
         .expect_err("a deontic wrapping a whole universal must be rejected");
     assert!(
         err.to_string().contains("whole universal/conditional"),
@@ -926,17 +848,17 @@ fn ground_obligation_does_not_imply_actuality() {
     // actuality `la .adam. cu vimcu` ("Adam IS removed") hold — deriving "is" from
     // "ought" is an over-claim. The obligation itself stays queryable with its wrapper.
     // (A GROUND deontic fact is allowed; only a deontic over a WHOLE rule is rejected.)
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     engine
-        .assert_text("ei la .adam. cu vimcu")
+        .assert_text("must removes(Adam).")
         .expect("a ground deontic fact should assert");
 
     assert_false(
-        &engine.query_holds("la .adam. cu vimcu").unwrap(),
+        &engine.query_holds("removes(Adam).").unwrap(),
         "ought must not imply is (ground obligation is not actuality)",
     );
     assert_true(
-        &engine.query_holds("ei la .adam. cu vimcu").unwrap(),
+        &engine.query_holds("must removes(Adam).").unwrap(),
         "the obligation itself is preserved and queryable",
     );
 }
@@ -945,9 +867,9 @@ fn ground_obligation_does_not_imply_actuality() {
 fn prenex_tensed_body_universal_rejected() {
     // `ro da zo'u pu da prami` → ForAll(Past(...)): a tense on the rule spine,
     // INSIDE the universal. Pre-fix it was silently stripped to a timeless rule.
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     let err = engine
-        .assert_text("ro da zo'u pu da prami")
+        .assert_text("all $da: past loves($da).")
         .expect_err("a prenex with a tensed body must be rejected");
     assert!(
         err.to_string().contains("whole universal/conditional"),
@@ -962,12 +884,12 @@ fn fio_arity_one_modal_rejected() {
     // fails closed rather than silently dropping that link. (Latent end-to-end:
     // gerna parses `fi'o <selbri> fe'u`, and every BAI modal gismu is arity >= 2,
     // so only fi'o over an arity-1 selbri reaches this.)
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     let err = engine
-        .assert_text("mi barda fi'o prenu fe'u do")
+        .assert_text("big(me) via person(you).")
         .expect_err("a 1-place fi'o modal must be rejected");
     assert!(
-        err.to_string().contains("Modal tag"),
+        err.to_string().contains("modal tag predicate"),
         "expected the modal-arity rejection, got: {err}"
     );
 }
@@ -975,8 +897,8 @@ fn fio_arity_one_modal_rejected() {
 #[test]
 fn untensed_universal_still_compiles_and_fires() {
     // CONTROL: the untensed universal is unaffected — it compiles and fires.
-    let engine = engine_with_facts(&["ro lo gerku cu danlu", "la .rex. cu gerku"]);
-    let (holds, _trace, _json) = engine.query_text_with_proof("la .rex. cu danlu").unwrap();
+    let engine = engine_with_facts(&["animal(every dog).", "dog(Rex)."]);
+    let (holds, _trace, _json) = engine.query_text_with_proof("animal(Rex).").unwrap();
     assert_true(
         &holds,
         "an untensed universal must still compile and fire (only whole-rule tense is rejected)",
@@ -987,11 +909,11 @@ fn untensed_universal_still_compiles_and_fires() {
 fn binary_restrictor_rule_fires() {
     // "every dog that is loved by alis is an animal"; rex is a dog AND loved by alis.
     let engine = engine_with_facts(&[
-        "ro lo gerku poi se prami la .alis. cu danlu",
-        "la .rex. cu gerku",
-        "la .rex. cu se prami la .alis.",
+        "animal(every dog where loves(Alis, it)).",
+        "dog(Rex).",
+        "loves(loved: Rex, lover: Alis).",
     ]);
-    let (holds, _trace, _json) = engine.query_text_with_proof("la .rex. cu danlu").unwrap();
+    let (holds, _trace, _json) = engine.query_text_with_proof("animal(Rex).").unwrap();
     assert_true(
         &holds,
         "binary-restrictor rule should fire when both the gadri and the 2-place relation hold",
@@ -1002,10 +924,10 @@ fn binary_restrictor_rule_fires() {
 fn binary_restrictor_negative_control() {
     // rex is loved by alis but is NOT asserted to be a dog → rule must NOT fire.
     let engine = engine_with_facts(&[
-        "ro lo gerku poi se prami la .alis. cu danlu",
-        "la .rex. cu se prami la .alis.",
+        "animal(every dog where loves(Alis, it)).",
+        "loves(loved: Rex, lover: Alis).",
     ]);
-    let (holds, _trace, _json) = engine.query_text_with_proof("la .rex. cu danlu").unwrap();
+    let (holds, _trace, _json) = engine.query_text_with_proof("animal(Rex).").unwrap();
     assert_false(
         &holds,
         "rule must not fire when the gadri predicate is unsatisfied",
@@ -1020,13 +942,13 @@ fn noi_incidental_predicate_is_asserted() {
     // dogs ARE big (a side-fact about every domain member) rather than
     // restricting the rule's domain to big dogs. So from gerku(rex) alone the
     // engine derives BOTH klama(rex) and barda(rex).
-    let engine = engine_with_facts(&["la .rex. cu gerku", "ro lo gerku noi barda cu klama"]);
-    let (big, _trace, _json) = engine.query_text_with_proof("la .rex. cu barda").unwrap();
+    let engine = engine_with_facts(&["dog(Rex).", "goes(every dog also big)."]);
+    let (big, _trace, _json) = engine.query_text_with_proof("big(Rex).").unwrap();
     assert_true(
         &big,
         "noi asserts the incidental predicate about every dog (derived from gerku alone)",
     );
-    let (goes, _trace, _json) = engine.query_text_with_proof("la .rex. cu klama").unwrap();
+    let (goes, _trace, _json) = engine.query_text_with_proof("goes(Rex).").unwrap();
     assert_true(
         &goes,
         "noi rule fires on the unrestricted domain regardless of the incidental property",
@@ -1038,8 +960,8 @@ fn poi_restrictive_does_not_assert_incidental() {
     // Same shape with poi: the clause RESTRICTS the domain, so `barda` is a
     // premise (must be independently known), never a conclusion. Guards that
     // the noi fix does not leak into poi.
-    let engine = engine_with_facts(&["la .rex. cu gerku", "ro lo gerku poi barda cu klama"]);
-    let (big, _trace, _json) = engine.query_text_with_proof("la .rex. cu barda").unwrap();
+    let engine = engine_with_facts(&["dog(Rex).", "goes(every dog where big)."]);
+    let (big, _trace, _json) = engine.query_text_with_proof("big(Rex).").unwrap();
     assert_false(
         &big,
         "poi keeps the restrictor as a premise, not a derived conclusion",
@@ -1050,13 +972,11 @@ fn poi_restrictive_does_not_assert_incidental() {
 fn binary_restrictor_constant_second_place_fires() {
     // DDI-shape: "every drug metabolised-by CYP2C9 triggers an alert".
     let engine = engine_with_facts(&[
-        "ro lo xukmi poi se katna la .siptucin. cu kajde",
-        "la .uarfarin. cu xukmi",
-        "la .uarfarin. cu se katna la .siptucin.",
+        "warns(every chemical where metabolized_by(it, Siptucin)).",
+        "chemical(Uarfarin).",
+        "metabolized_by(Uarfarin, Siptucin).",
     ]);
-    let (holds, _trace, _json) = engine
-        .query_text_with_proof("la .uarfarin. cu kajde")
-        .unwrap();
+    let (holds, _trace, _json) = engine.query_text_with_proof("warns(Uarfarin).").unwrap();
     assert_true(
         &holds,
         "2-place restrictor with a constant second place should fire",
@@ -1073,14 +993,8 @@ fn binary_restrictor_constant_second_place_fires() {
 fn object_position_universal_fires() {
     // every dog befriends every cat; rex is a dog, tom is a cat → rex pendo tom.
     // RED before prenex-flattening (the nested ∀ was rejected at compilation).
-    let engine = engine_with_facts(&[
-        "ro lo gerku cu pendo ro lo mlatu",
-        "la .rex. cu gerku",
-        "la .tom. cu mlatu",
-    ]);
-    let (holds, _t, _j) = engine
-        .query_text_with_proof("la .rex. cu pendo la .tom.")
-        .unwrap();
+    let engine = engine_with_facts(&["friend(every dog, every cat).", "dog(Rex).", "cat(Tom)."]);
+    let (holds, _t, _j) = engine.query_text_with_proof("friend(Rex, Tom).").unwrap();
     assert_true(
         &holds,
         "object-position universal: every dog befriends every cat",
@@ -1090,10 +1004,8 @@ fn object_position_universal_fires() {
 #[test]
 fn object_position_universal_negative_control() {
     // tom is NOT asserted to be a cat → the (rex, tom) pair must NOT fire.
-    let engine = engine_with_facts(&["ro lo gerku cu pendo ro lo mlatu", "la .rex. cu gerku"]);
-    let (holds, _t, _j) = engine
-        .query_text_with_proof("la .rex. cu pendo la .tom.")
-        .unwrap();
+    let engine = engine_with_facts(&["friend(every dog, every cat).", "dog(Rex)."]);
+    let (holds, _t, _j) = engine.query_text_with_proof("friend(Rex, Tom).").unwrap();
     assert_false(&holds, "tom is not a cat → no friendship derived");
 }
 
@@ -1103,8 +1015,8 @@ fn object_position_xorlo_no_phantom_entity() {
     // mlatu` must assert a dog witness and a cat witness as DISTINCT entities — NOT
     // one phantom entity that is both. So "is some dog a cat?" is FALSE. RED before
     // the per-universal-witness fix (a single shared witness satisfied both).
-    let engine = engine_with_facts(&["ro lo gerku cu pendo ro lo mlatu"]);
-    let (holds, _t, _j) = engine.query_text_with_proof("lo gerku cu mlatu").unwrap();
+    let engine = engine_with_facts(&["friend(every dog, every cat)."]);
+    let (holds, _t, _j) = engine.query_text_with_proof("cat(some dog).").unwrap();
     assert_false(&holds, "no single xorlo witness is both a dog and a cat");
 }
 
@@ -1112,9 +1024,9 @@ fn object_position_xorlo_no_phantom_entity() {
 fn object_position_count_object_fails_closed() {
     // An exact-count object (`ci lo mlatu` = "exactly three cats") is NOT a
     // universal, so it is not prenex-peeled; the Count consequent fails closed.
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     let err = engine
-        .assert_text("ro lo gerku cu pendo ci lo mlatu")
+        .assert_text("friend(every dog, exactly 3 cat).")
         .expect_err("an exact-count object position must be rejected");
     assert!(
         err.to_string().contains("not a flat predicate") || err.to_string().contains("Rejecting"),
@@ -1131,12 +1043,10 @@ fn prenex_symmetric_rule_fires() {
     // bound by the conclusion (de pendo da), so this exercises prenex parse +
     // lowering + leading-ForAll compilation without the unbound-var firing gap.
     let engine = engine_with_facts(&[
-        "ro da ro de zo'u ganai da pendo de gi de pendo da",
-        "la .rex. cu pendo la .felix.",
+        "all $da, $de: friend($da, $de) -> friend($de, $da).",
+        "friend(Rex, Felix).",
     ]);
-    let (holds, _t, _j) = engine
-        .query_text_with_proof("la .felix. cu pendo la .rex.")
-        .unwrap();
+    let (holds, _t, _j) = engine.query_text_with_proof("friend(Felix, Rex).").unwrap();
     assert_true(
         &holds,
         "prenex symmetric rule should derive the reverse friendship",
@@ -1151,12 +1061,12 @@ fn prenex_cross_entity_join_fires() {
     // join: querying `de zenba` binds only de; the inhibitor (da) and enzyme (di)
     // appear ONLY in conditions, so this is the unbound-individual-var firing case.
     let engine = engine_with_facts(&[
-        "ro da ro de ro di zo'u ganai ge da fanta di gi de se katna di gi de zenba",
-        "la .flukonazol. cu fanta la .siptucin.",
-        "la .uarfarin. cu se katna la .siptucin.",
+        "all $da, $de, $di: prevents($da, $di) & metabolized_by($de, $di) -> increases($de).",
+        "prevents(Flukonazol, Siptucin).",
+        "metabolized_by(Uarfarin, Siptucin).",
     ]);
     let (holds, _t, _j) = engine
-        .query_text_with_proof("la .uarfarin. cu zenba")
+        .query_text_with_proof("increases(Uarfarin).")
         .unwrap();
     assert_true(
         &holds,
@@ -1169,12 +1079,12 @@ fn prenex_cross_entity_join_negative_control() {
     // Same rule, but apixaban is metabolized by a DIFFERENT enzyme that no drug
     // inhibits → the join must NOT fire (guards against an under-conditioned rule).
     let engine = engine_with_facts(&[
-        "ro da ro de ro di zo'u ganai ge da fanta di gi de se katna di gi de zenba",
-        "la .flukonazol. cu fanta la .siptucin.",
-        "la .apiksaban. cu se katna la .sipibeman.",
+        "all $da, $de, $di: prevents($da, $di) & metabolized_by($de, $di) -> increases($de).",
+        "prevents(Flukonazol, Siptucin).",
+        "metabolized_by(Apiksaban, Sipibeman).",
     ]);
     let (holds, _t, _j) = engine
-        .query_text_with_proof("la .apiksaban. cu zenba")
+        .query_text_with_proof("increases(Apiksaban).")
         .unwrap();
     assert_false(
         &holds,
@@ -1192,19 +1102,20 @@ fn prenex_join_terminates_without_blowup() {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let mut lines = vec![
-            "ro da ro de ro di zo'u ganai ge da fanta di gi de se katna di gi de zenba".to_string(),
-            "la .flukonazol. cu fanta la .siptucin.".to_string(),
+            "all $da, $de, $di: prevents($da, $di) & metabolized_by($de, $di) -> increases($de)."
+                .to_string(),
+            "prevents(Flukonazol, Siptucin).".to_string(),
         ];
         // Distinct noise drugs/enzymes (letter-only cmevla — no digits).
         for v in [
             "a", "e", "i", "o", "u", "ai", "au", "ei", "oi", "ia", "ie", "io",
         ] {
-            lines.push(format!("la .druk{v}n. cu se katna la .enk{v}n."));
+            lines.push(format!("metabolized_by(Druk{v}n, Enk{v}n)."));
         }
-        lines.push("la .uarfarin. cu se katna la .siptucin.".to_string());
+        lines.push("metabolized_by(Uarfarin, Siptucin).".to_string());
         let refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
         let engine = engine_with_facts(&refs);
-        let r = engine.query_text_with_proof("la .uarfarin. cu zenba");
+        let r = engine.query_text_with_proof("increases(Uarfarin).");
         let _ = tx.send(r.map(|(h, _, _)| h.is_true()));
     });
     match rx.recv_timeout(Duration::from_secs(15)) {
@@ -1218,26 +1129,24 @@ fn prenex_join_terminates_without_blowup() {
 
 #[test]
 fn temporal_past_assertion_and_query() {
-    let engine = engine_with_facts(&["pu lo gerku cu barda"]);
+    let engine = engine_with_facts(&["past big(some dog)."]);
 
     // Tensed query should hold
-    let (holds, _trace, _json) = engine
-        .query_text_with_proof("pu lo gerku cu barda")
-        .unwrap();
+    let (holds, _trace, _json) = engine.query_text_with_proof("past big(some dog).").unwrap();
     assert_true(&holds, "Past-tensed query should hold");
 
     // Bare (untensed) query should NOT hold
-    let (holds, _trace, _json) = engine.query_text_with_proof("lo gerku cu barda").unwrap();
+    let (holds, _trace, _json) = engine.query_text_with_proof("big(some dog).").unwrap();
     assert_false(&holds, "Bare query should not match past-tensed fact");
 }
 
 #[test]
 fn temporal_tense_discrimination() {
-    let engine = engine_with_facts(&["pu lo gerku cu barda"]);
+    let engine = engine_with_facts(&["past big(some dog)."]);
 
     // Future tense should NOT match past tense
     let (holds, _trace, _json) = engine
-        .query_text_with_proof("ba lo gerku cu barda")
+        .query_text_with_proof("future big(some dog).")
         .unwrap();
     assert_false(&holds, "Future query should not match past-tensed fact");
 }
@@ -1251,26 +1160,26 @@ fn temporal_tense_discrimination() {
 
 #[test]
 fn temporal_future_and_present_matrix() {
-    let engine = engine_with_facts(&["ba la .rex. cu citka", "ca la .bel. cu citka"]);
+    let engine = engine_with_facts(&["future eats(Rex).", "now eats(Bel)."]);
 
     assert_true(
-        &engine.query_holds("ba la .rex. cu citka").unwrap(),
+        &engine.query_holds("future eats(Rex).").unwrap(),
         "Future fact matches a Future query",
     );
     assert_false(
-        &engine.query_holds("pu la .rex. cu citka").unwrap(),
+        &engine.query_holds("past eats(Rex).").unwrap(),
         "Future fact must not match a Past query",
     );
     assert_false(
-        &engine.query_holds("la .rex. cu citka").unwrap(),
+        &engine.query_holds("eats(Rex).").unwrap(),
         "Future fact must not leak into a bare query",
     );
     assert_true(
-        &engine.query_holds("ca la .bel. cu citka").unwrap(),
+        &engine.query_holds("now eats(Bel).").unwrap(),
         "Present fact matches a Present query",
     );
     assert_false(
-        &engine.query_holds("ba la .bel. cu citka").unwrap(),
+        &engine.query_holds("future eats(Bel).").unwrap(),
         "Present fact must not match a Future query",
     );
 }
@@ -1278,20 +1187,17 @@ fn temporal_future_and_present_matrix() {
 #[test]
 fn future_rule_consequent_derives_future_fact() {
     // Mirrors tensed_conclusion_ganai_fires for `ba`: derives Future(B) only.
-    let engine = engine_with_facts(&[
-        "ganai la .rex. cu gerku gi ba la .rex. cu morsi",
-        "la .rex. cu gerku",
-    ]);
+    let engine = engine_with_facts(&["dog(Rex) -> future dead(Rex).", "dog(Rex)."]);
     assert_true(
-        &engine.query_holds("ba la .rex. cu morsi").unwrap(),
+        &engine.query_holds("future dead(Rex).").unwrap(),
         "Future conclusion derives the Future fact",
     );
     assert_false(
-        &engine.query_holds("la .rex. cu morsi").unwrap(),
+        &engine.query_holds("dead(Rex).").unwrap(),
         "Future conclusion must not derive a bare fact",
     );
     assert_false(
-        &engine.query_holds("pu la .rex. cu morsi").unwrap(),
+        &engine.query_holds("past dead(Rex).").unwrap(),
         "Future conclusion must not derive a Past fact",
     );
 }
@@ -1299,26 +1205,26 @@ fn future_rule_consequent_derives_future_fact() {
 #[test]
 fn deontic_permitted_and_obligatory_matrix() {
     // e'e = Permitted, ei = Obligatory — flavor-exact, no bare leak either way.
-    let engine = engine_with_facts(&["e'e la .rex. cu citka", "ei la .bel. cu klama"]);
+    let engine = engine_with_facts(&["may eats(Rex).", "must goes(Bel)."]);
 
     assert_true(
-        &engine.query_holds("e'e la .rex. cu citka").unwrap(),
+        &engine.query_holds("may eats(Rex).").unwrap(),
         "Permitted fact matches a Permitted query",
     );
     assert_false(
-        &engine.query_holds("la .rex. cu citka").unwrap(),
+        &engine.query_holds("eats(Rex).").unwrap(),
         "Permitted fact must not leak into a bare query",
     );
     assert_false(
-        &engine.query_holds("ei la .rex. cu citka").unwrap(),
+        &engine.query_holds("must eats(Rex).").unwrap(),
         "Permitted fact must not match an Obligatory query",
     );
     assert_true(
-        &engine.query_holds("ei la .bel. cu klama").unwrap(),
+        &engine.query_holds("must goes(Bel).").unwrap(),
         "Obligatory fact matches an Obligatory query",
     );
     assert_false(
-        &engine.query_holds("e'e la .bel. cu klama").unwrap(),
+        &engine.query_holds("may goes(Bel).").unwrap(),
         "Obligatory fact must not match a Permitted query",
     );
 }
@@ -1330,20 +1236,17 @@ fn deontic_rule_consequent_derives_flavored_fact() {
     // consequent wrapper used to be stripped WITHOUT setting the flavor, so this
     // rule derived a BARE citka fact — permission leaked into unqualified truth
     // (found by the mutation-baseline triage).
-    let engine = engine_with_facts(&[
-        "ganai la .rex. cu gerku gi e'e la .rex. cu citka",
-        "la .rex. cu gerku",
-    ]);
+    let engine = engine_with_facts(&["dog(Rex) -> may eats(Rex).", "dog(Rex)."]);
     assert_true(
-        &engine.query_holds("e'e la .rex. cu citka").unwrap(),
+        &engine.query_holds("may eats(Rex).").unwrap(),
         "a Permitted conclusion derives the Permitted fact",
     );
     assert_false(
-        &engine.query_holds("la .rex. cu citka").unwrap(),
+        &engine.query_holds("eats(Rex).").unwrap(),
         "a Permitted conclusion must NOT derive a bare fact",
     );
     assert_false(
-        &engine.query_holds("ei la .rex. cu citka").unwrap(),
+        &engine.query_holds("must eats(Rex).").unwrap(),
         "a Permitted conclusion must NOT derive an Obligatory fact",
     );
 }
@@ -1352,21 +1255,15 @@ fn deontic_rule_consequent_derives_flavored_fact() {
 fn deontic_rule_condition_is_flavor_exact() {
     // `ganai e'e A gi B`: the condition matches only a stored Permitted(A) —
     // a bare A must not fire it (same 2026-07 fix, condition side).
-    let engine = engine_with_facts(&[
-        "ganai e'e la .rex. cu gerku gi la .rex. cu citka",
-        "la .rex. cu gerku",
-    ]);
+    let engine = engine_with_facts(&["may dog(Rex) -> eats(Rex).", "dog(Rex)."]);
     assert_false(
-        &engine.query_holds("la .rex. cu citka").unwrap(),
+        &engine.query_holds("eats(Rex).").unwrap(),
         "a bare fact must not fire a Permitted-flavored condition",
     );
 
-    let engine2 = engine_with_facts(&[
-        "ganai e'e la .rex. cu gerku gi la .rex. cu citka",
-        "e'e la .rex. cu gerku",
-    ]);
+    let engine2 = engine_with_facts(&["may dog(Rex) -> eats(Rex).", "may dog(Rex)."]);
     assert_true(
-        &engine2.query_holds("la .rex. cu citka").unwrap(),
+        &engine2.query_holds("eats(Rex).").unwrap(),
         "a Permitted fact fires the Permitted-flavored condition",
     );
 }
@@ -1375,13 +1272,13 @@ fn deontic_rule_condition_is_flavor_exact() {
 fn future_existential_witness_query() {
     // `da` under `ba`: the existential witness search must look through the
     // FutureNode wrapper (reasoning.rs find_witnesses) — flavor-exact.
-    let engine = engine_with_facts(&["ba la .rex. cu citka"]);
+    let engine = engine_with_facts(&["future eats(Rex)."]);
     assert_true(
-        &engine.query_holds("da ba citka").unwrap(),
+        &engine.query_holds("future eats($da).").unwrap(),
         "existential finds the Future fact under a Future query",
     );
     assert_false(
-        &engine.query_holds("da pu citka").unwrap(),
+        &engine.query_holds("past eats($da).").unwrap(),
         "existential must not find the Future fact under a Past query",
     );
 }
@@ -1393,22 +1290,17 @@ fn future_existential_witness_query() {
 
 #[test]
 fn exact_count_query_over_ground_facts() {
-    let engine = engine_with_facts(&[
-        "la .adam. cu gerku",
-        "la .bel. cu gerku",
-        "la .adam. cu danlu",
-        "la .bel. cu danlu",
-    ]);
+    let engine = engine_with_facts(&["dog(Adam).", "dog(Bel).", "animal(Adam).", "animal(Bel)."]);
     assert_true(
-        &engine.query_holds("re lo gerku cu danlu").unwrap(),
+        &engine.query_holds("animal(exactly 2 dog).").unwrap(),
         "exactly-2 holds when exactly two members satisfy the body",
     );
     assert_false(
-        &engine.query_holds("ci lo gerku cu danlu").unwrap(),
+        &engine.query_holds("animal(exactly 3 dog).").unwrap(),
         "exactly-3 fails when only two members satisfy the body",
     );
     assert_false(
-        &engine.query_holds("pa lo gerku cu danlu").unwrap(),
+        &engine.query_holds("animal(exactly 1 dog).").unwrap(),
         "exactly-1 fails when two members satisfy the body",
     );
 }
@@ -1419,16 +1311,13 @@ fn exact_count_query_over_ground_facts() {
 fn present_rule_consequent_derives_present_fact() {
     // `ca` analog of the Future/Past tensed-conclusion tests — pins the
     // (Present, Present) unify_facts arm on the rule-conclusion path.
-    let engine = engine_with_facts(&[
-        "ganai la .rex. cu gerku gi ca la .rex. cu morsi",
-        "la .rex. cu gerku",
-    ]);
+    let engine = engine_with_facts(&["dog(Rex) -> now dead(Rex).", "dog(Rex)."]);
     assert_true(
-        &engine.query_holds("ca la .rex. cu morsi").unwrap(),
+        &engine.query_holds("now dead(Rex).").unwrap(),
         "Present conclusion derives the Present fact",
     );
     assert_false(
-        &engine.query_holds("la .rex. cu morsi").unwrap(),
+        &engine.query_holds("dead(Rex).").unwrap(),
         "Present conclusion must not derive a bare fact",
     );
 }
@@ -1437,20 +1326,17 @@ fn present_rule_consequent_derives_present_fact() {
 fn obligatory_rule_consequent_derives_obligatory_fact() {
     // `ei` analog of the Permitted-consequent test — pins the
     // (Obligatory, Obligatory) unify_facts arm on the rule-conclusion path.
-    let engine = engine_with_facts(&[
-        "ganai la .rex. cu gerku gi ei la .rex. cu citka",
-        "la .rex. cu gerku",
-    ]);
+    let engine = engine_with_facts(&["dog(Rex) -> must eats(Rex).", "dog(Rex)."]);
     assert_true(
-        &engine.query_holds("ei la .rex. cu citka").unwrap(),
+        &engine.query_holds("must eats(Rex).").unwrap(),
         "Obligatory conclusion derives the Obligatory fact",
     );
     assert_false(
-        &engine.query_holds("la .rex. cu citka").unwrap(),
+        &engine.query_holds("eats(Rex).").unwrap(),
         "Obligatory conclusion must not derive a bare fact",
     );
     assert_false(
-        &engine.query_holds("e'e la .rex. cu citka").unwrap(),
+        &engine.query_holds("may eats(Rex).").unwrap(),
         "Obligatory conclusion must not derive a Permitted fact",
     );
 }
@@ -1460,15 +1346,15 @@ fn flavor_polymorphic_rule_firing_is_flavor_exact() {
     // An UNMARKED rule fires flavor-polymorphically: a `ba` goal pins the rule's
     // conditions to `ba` (apply_tense_to_fact). Both directions matter:
     // a ba fact supports the ba goal; a BARE fact must NOT.
-    let engine = engine_with_facts(&["ro lo gerku cu danlu", "ba la .rex. cu gerku"]);
+    let engine = engine_with_facts(&["animal(every dog).", "future dog(Rex)."]);
     assert_true(
-        &engine.query_holds("ba la .rex. cu danlu").unwrap(),
+        &engine.query_holds("future animal(Rex).").unwrap(),
         "unmarked rule fires for a Future goal from a Future condition fact",
     );
 
-    let engine2 = engine_with_facts(&["ro lo gerku cu danlu", "la .rex. cu gerku"]);
+    let engine2 = engine_with_facts(&["animal(every dog).", "dog(Rex)."]);
     assert_false(
-        &engine2.query_holds("ba la .rex. cu danlu").unwrap(),
+        &engine2.query_holds("future animal(Rex).").unwrap(),
         "a Future goal must NOT fire the rule from a bare condition fact",
     );
 }
@@ -1477,13 +1363,13 @@ fn flavor_polymorphic_rule_firing_is_flavor_exact() {
 fn disjunctive_existential_witness() {
     // `da gerku ja mlatu` — the existential witness search must descend BOTH
     // disjuncts (find_witnesses OrNode arm): a cat alone satisfies it.
-    let engine = engine_with_facts(&["la .adam. cu mlatu"]);
+    let engine = engine_with_facts(&["cat(Adam)."]);
     assert_true(
-        &engine.query_holds("da gerku ja mlatu").unwrap(),
+        &engine.query_holds("dog($da) | cat($da).").unwrap(),
         "a witness satisfying the right disjunct suffices",
     );
     assert_false(
-        &engine.query_holds("da gerku je mlatu").unwrap(),
+        &engine.query_holds("dog($da) & cat($da).").unwrap(),
         "the conjunctive form still needs both",
     );
 }
@@ -1493,12 +1379,10 @@ fn tensed_negation_is_flavor_exact() {
     // `na` under each tense flavor: the negation must be recorded at ITS flavor
     // (find_negation_body threads tense) — the positive same-flavor query stays
     // FALSE and the contradiction is detected on the flavored re-assert.
-    for tense in ["pu", "ca", "ba"] {
-        let engine = engine_with_facts(&[&format!("{tense} la .adam. cu na citka")]);
+    for tense in ["past", "now", "future"] {
+        let engine = engine_with_facts(&[&format!("{tense} ~eats(Adam).")]);
         assert_false(
-            &engine
-                .query_holds(&format!("{tense} la .adam. cu citka"))
-                .unwrap(),
+            &engine.query_holds(&format!("{tense} eats(Adam).")).unwrap(),
             "the flavored positive must be FALSE after the flavored denial",
         );
     }
@@ -1511,12 +1395,12 @@ fn count_assertion_materializes_witnesses() {
     // body — so the assertion is SELF-DERIVABLE and composes with CWA. (This
     // pin previously asserted the opposite: count assertions were accepted
     // but verdict-inert, deriving nothing at all.)
-    let engine = engine_with_facts(&["pa lo gerku cu barda"]);
+    let engine = engine_with_facts(&["big(exactly 1 dog)."]);
     for q in [
-        "pa lo gerku cu barda",
-        "da gerku",
-        "da barda",
-        "lo gerku cu barda",
+        "big(exactly 1 dog).",
+        "dog($da).",
+        "big($da).",
+        "big(some dog).",
     ] {
         assert_true(
             &engine.query_holds(q).unwrap(),
@@ -1524,22 +1408,22 @@ fn count_assertion_materializes_witnesses() {
         );
     }
     assert_false(
-        &engine.query_holds("re lo gerku cu barda").unwrap(),
+        &engine.query_holds("big(exactly 2 dog).").unwrap(),
         "exactly-one stays exactly one",
     );
 
     // count > 1: DISTINCT witnesses with DISTINCT events.
-    let engine2 = engine_with_facts(&["re lo mlatu cu cmalu"]);
+    let engine2 = engine_with_facts(&["small(exactly 2 cat)."]);
     assert_true(
-        &engine2.query_holds("re lo mlatu cu cmalu").unwrap(),
+        &engine2.query_holds("small(exactly 2 cat).").unwrap(),
         "exactly-two materializes two distinct witnesses",
     );
     assert_false(
-        &engine2.query_holds("pa lo mlatu cu cmalu").unwrap(),
+        &engine2.query_holds("small(exactly 1 cat).").unwrap(),
         "two witnesses are not one",
     );
     assert_true(
-        &engine2.query_holds("da mlatu").unwrap(),
+        &engine2.query_holds("cat($da).").unwrap(),
         "the witnesses satisfy the restrictor",
     );
 }
@@ -1551,17 +1435,13 @@ fn exact_count_excludes_xorlo_import_witness() {
     // from counting — a phantom entity a rule presupposed must not change
     // "how many". (Engine-probed pre-change: 2 dogs + the taxonomy rule made
     // `re lo gerku cu danlu` count 3 and fail.)
-    let engine = engine_with_facts(&[
-        "la .adam. cu gerku",
-        "la .karl. cu gerku",
-        "ro lo gerku cu danlu",
-    ]);
+    let engine = engine_with_facts(&["dog(Adam).", "dog(Karl).", "animal(every dog)."]);
     assert_true(
-        &engine.query_holds("re lo gerku cu danlu").unwrap(),
+        &engine.query_holds("animal(exactly 2 dog).").unwrap(),
         "two real dogs count as two — the presupposition phantom is not counted",
     );
     assert_false(
-        &engine.query_holds("ci lo gerku cu danlu").unwrap(),
+        &engine.query_holds("animal(exactly 3 dog).").unwrap(),
         "the phantom must not push the count to three",
     );
 }
@@ -1571,19 +1451,15 @@ fn find_witnesses_collapse_du_and_events() {
     // The audit scenario: broda(adam), broda(karl), adam du karl used to
     // return FOUR ?? tuples (2 derivation events × 2 du-merged names) for ONE
     // entity. Entity-level enumeration returns exactly one.
-    let engine = engine_with_facts(&[
-        "la .adam. cu gerku",
-        "la .karl. cu gerku",
-        "la .adam. du la .karl.",
-    ]);
-    let tuples = engine.query_find_text("da gerku").unwrap();
+    let engine = engine_with_facts(&["dog(Adam).", "dog(Karl).", "Adam = Karl."]);
+    let tuples = engine.query_find_text("dog($da).").unwrap();
     assert_eq!(
         tuples.len(),
         1,
         "one entity, one witness tuple (was 4 pre-decision): {tuples:?}"
     );
     assert_eq!(
-        engine.count_witnesses_text("da gerku").unwrap(),
+        engine.count_witnesses_text("dog($da).").unwrap(),
         1,
         "count_witnesses agrees with the entity-level enumeration",
     );
@@ -1593,9 +1469,9 @@ fn find_witnesses_collapse_du_and_events() {
 fn zero_count_assertion_mints_no_witness() {
     // `no lo gerku cu barda` (exactly zero): no witness may be minted — a
     // phantom member would corrupt the domain and the closed-world verdicts.
-    let engine = engine_with_facts(&["no lo gerku cu barda"]);
+    let engine = engine_with_facts(&["big(no dog)."]);
     assert_false(
-        &engine.query_holds("da gerku").unwrap(),
+        &engine.query_holds("dog($da).").unwrap(),
         "a zero-count assertion must not mint a witness",
     );
 }
@@ -1604,11 +1480,9 @@ fn zero_count_assertion_mints_no_witness() {
 fn over_arity_untagged_sumti_is_rejected() {
     // gerku has 2 places; three untagged sumti overflow — the compile must
     // REJECT (fail-closed), never silently drop the extra argument.
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     assert!(
-        engine
-            .assert_text("la .adam. cu gerku la .bob. la .kim.")
-            .is_err(),
+        engine.assert_text("dog(Adam, Bob, Kim).").is_err(),
         "untagged over-arity sumti must fail closed, not drop silently"
     );
 }
@@ -1617,13 +1491,13 @@ fn over_arity_untagged_sumti_is_rejected() {
 fn builtin_arithmetic_verdicts() {
     // sumji(x1, x2, x3): x1 = x2 + x3 via the built-in evaluator — pins the
     // GroundTerm::as_f64 numeric extraction the compute dispatch relies on.
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     assert_true(
-        &engine.query_holds("li mu sumji li re li ci").unwrap(),
+        &engine.query_holds("sum(5, 2, 3).").unwrap(),
         "5 = 2 + 3 is TRUE by built-in arithmetic",
     );
     assert_false(
-        &engine.query_holds("li vo sumji li re li ci").unwrap(),
+        &engine.query_holds("sum(4, 2, 3).").unwrap(),
         "4 = 2 + 3 is FALSE by built-in arithmetic",
     );
 }
@@ -1633,16 +1507,13 @@ fn ground_conditional_with_existential_conclusion() {
     // `ganai A gi lo mlatu cu barda`: the conclusion existential is skolemized
     // to a GROUND witness at rule-compile time (ground_skolems); firing must
     // derive a queryable witness.
-    let engine = engine_with_facts(&[
-        "ganai la .adam. cu gerku gi lo mlatu cu barda",
-        "la .adam. cu gerku",
-    ]);
+    let engine = engine_with_facts(&["dog(Adam) -> big(some cat).", "dog(Adam)."]);
     assert_true(
-        &engine.query_holds("da mlatu").unwrap(),
+        &engine.query_holds("cat($da).").unwrap(),
         "the fired conclusion's skolem witness satisfies the restrictor",
     );
     assert_true(
-        &engine.query_holds("lo mlatu cu barda").unwrap(),
+        &engine.query_holds("big(some cat).").unwrap(),
         "the fired conclusion itself holds",
     );
 }
@@ -1651,9 +1522,9 @@ fn ground_conditional_with_existential_conclusion() {
 fn be_clause_with_tagged_tail_term_compiles_both() {
     // `klama be X be'o fi Y`: `be` binds x2, `fi` tags Y to x3 — both must
     // land (pins the WithArgs merge's positional-tail copy).
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     let buf = engine
-        .compile_debug("la .adam. cu klama be la .paris. be'o fi la .rom.")
+        .compile_debug("goes(Adam, Paris, origin: Rom).")
         .expect("be-clause with fi-tagged tail should compile");
     assert!(
         role_has_const(&buf, "klama_x2", "paris"),
@@ -1669,13 +1540,13 @@ fn be_clause_with_tagged_tail_term_compiles_both() {
 fn du_equivalence_transfers_across_tense_flavor() {
     // A du-merged name must answer a FLAVORED query via its equivalent: the
     // equivalence variant lookup must respect the stored flavor.
-    let engine = engine_with_facts(&["pu la .adam. cu gerku", "la .adam. du la .bob."]);
+    let engine = engine_with_facts(&["past dog(Adam).", "Adam = Bob."]);
     assert_true(
-        &engine.query_holds("pu la .bob. cu gerku").unwrap(),
+        &engine.query_holds("past dog(Bob).").unwrap(),
         "du equivalence transfers the Past fact to the equivalent name",
     );
     assert_false(
-        &engine.query_holds("la .bob. cu gerku").unwrap(),
+        &engine.query_holds("dog(Bob).").unwrap(),
         "the transfer must stay flavor-exact (no bare leak)",
     );
 }
@@ -1685,22 +1556,19 @@ fn explicitly_tensed_rule_condition_is_flavor_exact() {
     // `ganai pu A gi B` — an EXPLICITLY tensed condition must match only the
     // same-flavor fact (flatten_conjuncts_through_exists threads the flavor
     // into the condition template), for every flavor.
-    for tense in ["pu", "ca", "ba"] {
+    for tense in ["past", "now", "future"] {
         let engine = engine_with_facts(&[
-            &format!("ganai {tense} la .rex. cu gerku gi la .rex. cu morsi"),
-            &format!("{tense} la .rex. cu gerku"),
+            &format!("{tense} dog(Rex) -> dead(Rex)."),
+            &format!("{tense} dog(Rex)."),
         ]);
         assert_true(
-            &engine.query_holds("la .rex. cu morsi").unwrap(),
+            &engine.query_holds("dead(Rex).").unwrap(),
             "same-flavor condition fact fires the rule",
         );
 
-        let engine2 = engine_with_facts(&[
-            &format!("ganai {tense} la .rex. cu gerku gi la .rex. cu morsi"),
-            "la .rex. cu gerku",
-        ]);
+        let engine2 = engine_with_facts(&[&format!("{tense} dog(Rex) -> dead(Rex)."), "dog(Rex)."]);
         assert_false(
-            &engine2.query_holds("la .rex. cu morsi").unwrap(),
+            &engine2.query_holds("dead(Rex).").unwrap(),
             "a bare fact must NOT fire an explicitly tensed condition",
         );
     }
@@ -1710,9 +1578,9 @@ fn explicitly_tensed_rule_condition_is_flavor_exact() {
 fn te_conversion_swaps_x1_and_x3() {
     // `te klama` swaps x1↔x3 — the 3-place conversion arm (sibling of the xe
     // pin above; the swap must actually happen, not silently no-op).
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     let buf = engine
-        .compile_debug("la .rom. cu te klama zo'e la .adam.")
+        .compile_debug("goes(origin: Rom, destination: _, goer: Adam).")
         .expect("te klama should compile");
     assert!(
         role_has_const(&buf, "klama_x3", "rom"),
@@ -1732,17 +1600,13 @@ fn numeric_terms_are_not_universal_domain_members() {
     // one false, give TRUE). This is the sharp edge that keeps the stored-number
     // compute-arg path (GroundTerm::as_f64 on bound variables) surface-
     // unreachable; the literal path is pinned by builtin_arithmetic_verdicts.
-    let engine = engine_with_facts(&["li mu cu barda"]);
+    let engine = engine_with_facts(&["big(5)."]);
     assert_true(
-        &engine
-            .query_holds("ro lo barda cu sumji li re li ci")
-            .unwrap(),
+        &engine.query_holds("sum(every big, 2, 3).").unwrap(),
         "vacuous universal (numbers are not domain members)",
     );
     assert_true(
-        &engine
-            .query_holds("ro lo barda cu sumji li re li re")
-            .unwrap(),
+        &engine.query_holds("sum(every big, 2, 2).").unwrap(),
         "vacuous even for an arithmetically false body — numbers never enumerate",
     );
 }
@@ -1755,23 +1619,23 @@ fn lo_under_connective_is_per_occurrence_existential() {
     // DIFFERENT dogs — one biting Adam, one biting Bel — satisfy it. A
     // shared-witness reading ("one dog bites both") would make this FALSE.
     let engine = engine_with_facts(&[
-        "la .rex. cu gerku",
-        "la .dan. cu gerku",
-        "la .rex. cu batci la .adam.",
-        "la .dan. cu batci la .bel.",
+        "dog(Rex).",
+        "dog(Dan).",
+        "bite(Rex, Adam).",
+        "bite(Dan, Bel).",
     ]);
     assert_true(
         &engine
-            .query_holds("lo gerku cu batci la .adam. .e la .bel.")
+            .query_holds("bite(some dog, Adam) & bite(some dog, Bel).")
             .unwrap(),
         "per-occurrence reading: a different witness per conjunct suffices",
     );
 
     // Negative control: each conjunct still needs its own witness.
-    let engine2 = engine_with_facts(&["la .rex. cu gerku", "la .rex. cu batci la .adam."]);
+    let engine2 = engine_with_facts(&["dog(Rex).", "bite(Rex, Adam)."]);
     assert_false(
         &engine2
-            .query_holds("lo gerku cu batci la .adam. .e la .bel.")
+            .query_holds("bite(some dog, Adam) & bite(some dog, Bel).")
             .unwrap(),
         "an unwitnessed conjunct still fails",
     );
@@ -1784,18 +1648,18 @@ fn exact_count_collapses_du_classes() {
     // ONE. (This pin previously asserted the opposite, uncollapsed behavior;
     // the decision flipped it deliberately.)
     let engine = engine_with_facts(&[
-        "la .adam. cu gerku",
-        "la .karl. cu gerku",
-        "la .adam. cu danlu",
-        "la .karl. cu danlu",
-        "la .adam. du la .karl.",
+        "dog(Adam).",
+        "dog(Karl).",
+        "animal(Adam).",
+        "animal(Karl).",
+        "Adam = Karl.",
     ]);
     assert_true(
-        &engine.query_holds("pa lo gerku cu danlu").unwrap(),
+        &engine.query_holds("animal(exactly 1 dog).").unwrap(),
         "collapsed: the merged entity counts as ONE",
     );
     assert_false(
-        &engine.query_holds("re lo gerku cu danlu").unwrap(),
+        &engine.query_holds("animal(exactly 2 dog).").unwrap(),
         "collapsed: two names for one entity do NOT count as two",
     );
 }
@@ -1807,21 +1671,21 @@ fn naf_antecedent_rule_fires_and_blocks() {
     // polarity (filter_event_candidates): the NAF condition must count as
     // satisfied when the witness is ABSENT and as blocking when PRESENT.
     let engine = engine_with_facts(&[
-        "ro da zo'u ganai ge da gerku gi da na mlatu gi da xagji",
-        "la .rex. cu gerku",
+        "all $da: dog($da) & ~cat($da) -> be_hungry($da).",
+        "dog(Rex).",
     ]);
     assert_true(
-        &engine.query_holds("la .rex. cu xagji").unwrap(),
+        &engine.query_holds("be_hungry(Rex).").unwrap(),
         "NAF condition with no witness lets the rule fire",
     );
 
     let engine2 = engine_with_facts(&[
-        "ro da zo'u ganai ge da gerku gi da na mlatu gi da xagji",
-        "la .rex. cu gerku",
-        "la .rex. cu mlatu",
+        "all $da: dog($da) & ~cat($da) -> be_hungry($da).",
+        "dog(Rex).",
+        "cat(Rex).",
     ]);
     assert_false(
-        &engine2.query_holds("la .rex. cu xagji").unwrap(),
+        &engine2.query_holds("be_hungry(Rex).").unwrap(),
         "an asserted witness blocks the NAF condition",
     );
 }
@@ -1830,17 +1694,17 @@ fn naf_antecedent_rule_fires_and_blocks() {
 
 #[test]
 fn description_opacity_le_vs_lo() {
-    let engine = engine_with_facts(&["le gerku cu barda"]);
+    let engine = engine_with_facts(&["big(the dog)."]);
 
     // le query should hold (opaque description)
-    let (holds, _trace, _json) = engine.query_text_with_proof("le gerku cu barda").unwrap();
+    let (holds, _trace, _json) = engine.query_text_with_proof("big(the dog).").unwrap();
     assert_true(&holds, "le (opaque) query should hold");
 }
 
 #[test]
 fn la_name_assertion() {
-    let engine = engine_with_facts(&["la .adam. cu gerku"]);
-    let (holds, _trace, _json) = engine.query_text_with_proof("la .adam. cu gerku").unwrap();
+    let engine = engine_with_facts(&["dog(Adam)."]);
+    let (holds, _trace, _json) = engine.query_text_with_proof("dog(Adam).").unwrap();
     assert_true(&holds, "la name assertion should hold");
 }
 
@@ -1848,7 +1712,7 @@ fn la_name_assertion() {
 
 #[test]
 fn parse_error_returns_syntax_error() {
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     // The error CLASS is now first-class on the engine API (not merely recoverable
     // from the `[Syntax Error]` Display prefix): a parse failure is the typed
     // `EngineError::Syntax`.
@@ -1863,13 +1727,13 @@ fn parse_error_returns_syntax_error() {
 
 #[test]
 fn assert_stage_failure_is_reasoning_class() {
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     // A well-formed sentence the reasoner rejects at ASSERTION time (a tense over a
     // whole universal) is a REASONING-class error — the assert is the reasoning
     // stage (the buffer already passed smuni), so logji's `assert_fact` classes it
     // `Reasoning`, distinct from a smuni `Semantic` or a gerna `Syntax` error.
     let err = engine
-        .assert_text("pu ro lo gerku cu danlu")
+        .assert_text("past animal(every dog).")
         .expect_err("a whole-rule tense must be rejected");
     assert!(
         matches!(err, EngineError::Reasoning(_)),
@@ -1879,7 +1743,7 @@ fn assert_stage_failure_is_reasoning_class() {
 
 #[test]
 fn query_parse_error() {
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     let result = engine.query_text_with_proof("blorp bleep !!!");
     assert!(result.is_err(), "Invalid query should produce an error");
 }
@@ -1891,7 +1755,7 @@ fn partial_parse_fails_closed_for_query() {
     // the parse error (don't answer when the input didn't fully parse), not
     // silently proceed with the partial parse. `gerna::parse_checked` is shared by
     // every embedder (nibli-engine, lasna, nibli-wasm), so all three agree.
-    let engine = engine_with_facts(&["la .adam. cu gerku"]);
+    let engine = engine_with_facts(&["dog(Adam)."]);
     let err = engine
         .query_holds("la .adam. cu gerku .i \u{ff}\u{ff}\u{ff}")
         .expect_err("a partial-parse query must fail closed");
@@ -1905,8 +1769,8 @@ fn partial_parse_fails_closed_for_query() {
 
 #[test]
 fn proof_trace_contains_asserted_for_ground_fact() {
-    let engine = engine_with_facts(&["lo gerku cu barda"]);
-    let (holds, trace, json) = engine.query_text_with_proof("lo gerku cu barda").unwrap();
+    let engine = engine_with_facts(&["big(some dog)."]);
+    let (holds, trace, json) = engine.query_text_with_proof("big(some dog).").unwrap();
     assert_true(&holds, "Ground fact proof query should be true");
     assert!(
         trace.contains("Fact:"),
@@ -1926,8 +1790,8 @@ fn proof_trace_contains_asserted_for_ground_fact() {
 
 #[test]
 fn proof_trace_json_valid_for_derived_fact() {
-    let engine = engine_with_facts(&["ro lo gerku cu danlu", "la .adam. cu gerku"]);
-    let (_holds, _trace, json) = engine.query_text_with_proof("la .adam. cu danlu").unwrap();
+    let engine = engine_with_facts(&["animal(every dog).", "dog(Adam)."]);
+    let (_holds, _trace, json) = engine.query_text_with_proof("animal(Adam).").unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).expect("Proof JSON should parse");
     let steps = parsed["steps"].as_array().expect("steps should be array");
     assert!(steps.len() > 1, "Derived proof should have multiple steps");
@@ -1937,13 +1801,13 @@ fn proof_trace_json_valid_for_derived_fact() {
 
 #[test]
 fn reset_clears_knowledge_base() {
-    let engine = engine_with_facts(&["lo gerku cu barda"]);
-    let (holds, _trace, _json) = engine.query_text_with_proof("lo gerku cu barda").unwrap();
+    let engine = engine_with_facts(&["big(some dog)."]);
+    let (holds, _trace, _json) = engine.query_text_with_proof("big(some dog).").unwrap();
     assert_true(&holds, "Fact should hold before reset");
 
     engine.reset();
 
-    let (holds, _trace, _json) = engine.query_text_with_proof("lo gerku cu barda").unwrap();
+    let (holds, _trace, _json) = engine.query_text_with_proof("big(some dog).").unwrap();
     assert_false(&holds, "Fact should not hold after reset");
 }
 
@@ -1951,10 +1815,10 @@ fn reset_clears_knowledge_base() {
 
 #[test]
 fn multiple_independent_facts() {
-    let engine = engine_with_facts(&["lo gerku cu barda", "lo mlatu cu cmalu"]);
-    let (holds, _trace, _json) = engine.query_text_with_proof("lo gerku cu barda").unwrap();
+    let engine = engine_with_facts(&["big(some dog).", "small(some cat)."]);
+    let (holds, _trace, _json) = engine.query_text_with_proof("big(some dog).").unwrap();
     assert_true(&holds, "First fact should hold");
-    let (holds, _trace, _json) = engine.query_text_with_proof("lo mlatu cu cmalu").unwrap();
+    let (holds, _trace, _json) = engine.query_text_with_proof("small(some cat).").unwrap();
     assert_true(&holds, "Second fact should hold");
 }
 
@@ -1962,14 +1826,14 @@ fn multiple_independent_facts() {
 
 #[test]
 fn multi_sentence_assertion() {
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     // Assert multiple sentences in one text block (separated by .i)
     engine
-        .assert_text("lo gerku cu barda .i lo mlatu cu cmalu")
+        .assert_text("big(some dog). small(some cat).")
         .unwrap();
-    let (holds, _trace, _json) = engine.query_text_with_proof("lo gerku cu barda").unwrap();
+    let (holds, _trace, _json) = engine.query_text_with_proof("big(some dog).").unwrap();
     assert_true(&holds, "First sentence should hold");
-    let (holds, _trace, _json) = engine.query_text_with_proof("lo mlatu cu cmalu").unwrap();
+    let (holds, _trace, _json) = engine.query_text_with_proof("small(some cat).").unwrap();
     assert_true(&holds, "Second sentence should hold");
 }
 
@@ -1978,50 +1842,39 @@ fn multi_sentence_assertion() {
 #[test]
 fn universal_rule_with_named_entity() {
     // Universal rules + named entity — the primary use case
-    let engine = engine_with_facts(&["ro lo gerku cu danlu", "la .adam. cu gerku"]);
-    let (holds, _trace, _json) = engine.query_text_with_proof("la .adam. cu danlu").unwrap();
+    let engine = engine_with_facts(&["animal(every dog).", "dog(Adam)."]);
+    let (holds, _trace, _json) = engine.query_text_with_proof("animal(Adam).").unwrap();
     assert_true(&holds, "Named entity should derive through universal rule");
 }
 
 #[test]
 fn forethought_implication_ganai_reasons() {
     // ganai A gi B  ==  A -> B. Assert the conditional + A (gerku), derive B (danlu).
-    let engine = engine_with_facts(&[
-        "ganai la .adam. cu gerku gi la .adam. cu danlu",
-        "la .adam. cu gerku",
-    ]);
-    let (holds, _t, _j) = engine.query_text_with_proof("la .adam. cu danlu").unwrap();
+    let engine = engine_with_facts(&["dog(Adam) -> animal(Adam).", "dog(Adam)."]);
+    let (holds, _t, _j) = engine.query_text_with_proof("animal(Adam).").unwrap();
     assert_true(
         &holds,
         "ganai: danlu should derive from gerku (modus ponens)",
     );
 
     // Negative control: without the antecedent, the consequent is not derivable.
-    let only_rule = engine_with_facts(&["ganai la .adam. cu gerku gi la .adam. cu danlu"]);
-    let (holds, _t, _j) = only_rule
-        .query_text_with_proof("la .adam. cu danlu")
-        .unwrap();
+    let only_rule = engine_with_facts(&["dog(Adam) -> animal(Adam)."]);
+    let (holds, _t, _j) = only_rule.query_text_with_proof("animal(Adam).").unwrap();
     assert_false(&holds, "ganai: danlu must NOT hold without gerku");
 }
 
 #[test]
 fn forethought_biconditional_go_gi_reasons_both_directions() {
     // go A gi B  ==  A <-> B. Reasons from either side (no CycleCut).
-    let fwd = engine_with_facts(&[
-        "go la .adam. cu gerku gi la .adam. cu danlu",
-        "la .adam. cu gerku",
-    ]);
-    let (holds, _t, _j) = fwd.query_text_with_proof("la .adam. cu danlu").unwrap();
+    let fwd = engine_with_facts(&["dog(Adam) <-> animal(Adam).", "dog(Adam)."]);
+    let (holds, _t, _j) = fwd.query_text_with_proof("animal(Adam).").unwrap();
     assert_true(
         &holds,
         "go biconditional: gerku should derive danlu (forward)",
     );
 
-    let rev = engine_with_facts(&[
-        "go la .adam. cu gerku gi la .adam. cu danlu",
-        "la .adam. cu danlu",
-    ]);
-    let (holds, _t, _j) = rev.query_text_with_proof("la .adam. cu gerku").unwrap();
+    let rev = engine_with_facts(&["dog(Adam) <-> animal(Adam).", "animal(Adam)."]);
+    let (holds, _t, _j) = rev.query_text_with_proof("dog(Adam).").unwrap();
     assert_true(
         &holds,
         "go biconditional: danlu should derive gerku (reverse)",
@@ -2031,21 +1884,15 @@ fn forethought_biconditional_go_gi_reasons_both_directions() {
 #[test]
 fn afterthought_biconditional_jo_reasons_both_directions() {
     // S1 .i jo S2  ==  S1 <-> S2.
-    let fwd = engine_with_facts(&[
-        "la .adam. cu gerku .i jo la .adam. cu danlu",
-        "la .adam. cu gerku",
-    ]);
-    let (holds, _t, _j) = fwd.query_text_with_proof("la .adam. cu danlu").unwrap();
+    let fwd = engine_with_facts(&["dog(Adam) <-> animal(Adam).", "dog(Adam)."]);
+    let (holds, _t, _j) = fwd.query_text_with_proof("animal(Adam).").unwrap();
     assert_true(
         &holds,
         ".i jo biconditional: gerku should derive danlu (forward)",
     );
 
-    let rev = engine_with_facts(&[
-        "la .adam. cu gerku .i jo la .adam. cu danlu",
-        "la .adam. cu danlu",
-    ]);
-    let (holds, _t, _j) = rev.query_text_with_proof("la .adam. cu gerku").unwrap();
+    let rev = engine_with_facts(&["dog(Adam) <-> animal(Adam).", "animal(Adam)."]);
+    let (holds, _t, _j) = rev.query_text_with_proof("dog(Adam).").unwrap();
     assert_true(
         &holds,
         ".i jo biconditional: danlu should derive gerku (reverse)",
@@ -2056,9 +1903,9 @@ fn afterthought_biconditional_jo_reasons_both_directions() {
 
 #[test]
 fn se_conversion_assertion_and_query() {
-    let engine = engine_with_facts(&["la .adam. cu se ponse lo gerku"]);
+    let engine = engine_with_facts(&["owned(Adam, some dog)."]);
     let (holds, _trace, _json) = engine
-        .query_text_with_proof("la .adam. cu se ponse lo gerku")
+        .query_text_with_proof("owned(Adam, some dog).")
         .unwrap();
     assert_true(&holds, "se-converted assertion should be queryable");
 }
@@ -2068,10 +1915,10 @@ fn connected_sumti_under_fa_holds_for_both() {
     // `fa mi .e do klama` parses as Tagged(Fa, Connected(mi, Je, do)). The tag
     // distributes over BOTH operands, so both `mi` and `do` are goers. Before
     // the fix, the right operand `do` was silently dropped → `do klama` FALSE.
-    let engine = engine_with_facts(&["fa mi .e do klama"]);
-    let (mi_holds, _, _) = engine.query_text_with_proof("mi klama").unwrap();
-    assert_true(&mi_holds, "mi must be a goer");
-    let (do_holds, _, _) = engine.query_text_with_proof("do klama").unwrap();
+    let engine = engine_with_facts(&["goes(me) & goes(you)."]);
+    let (mi_holds, _, _) = engine.query_text_with_proof("goes(me).").unwrap();
+    assert_true(&mi_holds, "me must be a goer");
+    let (do_holds, _, _) = engine.query_text_with_proof("goes(you).").unwrap();
     assert_true(
         &do_holds,
         "do must be a goer (right operand was dropped before the fix)",
@@ -2081,8 +1928,8 @@ fn connected_sumti_under_fa_holds_for_both() {
 #[test]
 fn connected_under_fa_negative_control() {
     // Only `mi` asserted → `do klama` must be FALSE (the fix must not over-assert).
-    let engine = engine_with_facts(&["fa mi klama"]);
-    let (do_holds, _, _) = engine.query_text_with_proof("do klama").unwrap();
+    let engine = engine_with_facts(&["goes(me)."]);
+    let (do_holds, _, _) = engine.query_text_with_proof("goes(you).").unwrap();
     assert_false(&do_holds, "do was never asserted as a goer");
 }
 
@@ -2090,9 +1937,9 @@ fn connected_under_fa_negative_control() {
 fn cll_place_counter_fi_then_untagged() {
     // `klama fi le zarci do` — CLL: `fi` sets the place counter to x3 (le zarci),
     // and the following UNTAGGED `do` resumes at x4 (NOT x1, the pre-fix bug).
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     let buf = engine
-        .compile_debug("klama fi le zarci do")
+        .compile_debug("goes(origin: the market, route: you).")
         .expect("`klama fi le zarci do` should compile");
     assert!(
         role_has_const(&buf, "klama_x4", "do"),
@@ -2110,9 +1957,9 @@ fn xe_conversion_swaps_x1_and_x5() {
     // in smuni's apply_selbri was exercised by no per-mutant-suite test). All
     // five places are filled (`zo'e` middles) so the swap is observable: the
     // head term must land in x5 (vehicle) and the tail term in x1 (goer).
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     let buf = engine
-        .compile_debug("la .ford. cu xe klama zo'e zo'e zo'e la .adam.")
+        .compile_debug("goes(means: Ford, destination: _, origin: _, route: _, goer: Adam).")
         .expect("xe klama with five places should compile");
     assert!(
         role_has_const(&buf, "klama_x5", "ford"),
@@ -2130,13 +1977,13 @@ fn xe_conversion_swaps_x1_and_x5() {
 
 #[test]
 fn query_holds_matches_proof_query_boolean() {
-    let engine = engine_with_facts(&["ro lo gerku cu danlu", "la .adam. cu gerku"]);
+    let engine = engine_with_facts(&["animal(every dog).", "dog(Adam)."]);
 
     let via_bool = engine
-        .query_holds("la .adam. cu danlu")
+        .query_holds("animal(Adam).")
         .expect("Boolean query should succeed");
     let (via_proof, _trace, _json) = engine
-        .query_text_with_proof("la .adam. cu danlu")
+        .query_text_with_proof("animal(Adam).")
         .expect("Proof query should succeed");
 
     assert_eq!(
@@ -2147,29 +1994,29 @@ fn query_holds_matches_proof_query_boolean() {
 
 #[test]
 fn reset_then_reassert_replaces_previous_kb_contents() {
-    let engine = engine_with_facts(&["la .adam. cu gerku"]);
+    let engine = engine_with_facts(&["dog(Adam)."]);
     assert!(
         engine
-            .query_holds("la .adam. cu gerku")
+            .query_holds("dog(Adam).")
             .expect("Initial fact should be queryable")
             .is_true()
     );
 
     engine.reset();
     engine
-        .assert_text("la .elis. cu mlatu")
+        .assert_text("cat(Elis).")
         .expect("New fact should assert after reset");
 
     assert!(
         engine
-            .query_holds("la .adam. cu gerku")
+            .query_holds("dog(Adam).")
             .expect("Old fact query should still run")
             .is_false(),
         "Reset should remove prior KB contents before new facts are asserted"
     );
     assert!(
         engine
-            .query_holds("la .elis. cu mlatu")
+            .query_holds("cat(Elis).")
             .expect("New fact should be queryable")
             .is_true(),
         "Facts asserted after reset should become the whole active KB"
@@ -2182,26 +2029,26 @@ fn persistent_engine_replays_asserted_facts_after_reopen() {
     cleanup(&path);
 
     {
-        let engine = lojban_open(&path, "Persistent engine should open");
+        let engine = fresh_open(&path, "Persistent engine should open");
         engine
-            .assert_text("ro lo gerku cu danlu")
+            .assert_text("animal(every dog).")
             .expect("Rule should persist");
         engine
-            .assert_text("la .adam. cu gerku")
+            .assert_text("dog(Adam).")
             .expect("Fact should persist");
         assert!(
             engine
-                .query_holds("la .adam. cu danlu")
+                .query_holds("animal(Adam).")
                 .expect("Derived query should run before reopen")
                 .is_true()
         );
     }
 
     {
-        let reopened = lojban_open(&path, "Persistent engine should reopen");
+        let reopened = fresh_open(&path, "Persistent engine should reopen");
         assert!(
             reopened
-                .query_holds("la .adam. cu danlu")
+                .query_holds("animal(Adam).")
                 .expect("Derived query should run after reopen")
                 .is_true(),
             "Reopened engine should replay persisted rule and fact"
@@ -2217,10 +2064,10 @@ fn persistent_engine_honors_store_retractions_after_reopen() {
     cleanup(&path);
 
     let fact_id = {
-        let engine = lojban_open(&path, "Persistent engine should open");
+        let engine = fresh_open(&path, "Persistent engine should open");
         // Single sentence → exactly one fact id.
         engine
-            .assert_text("la .adam. cu gerku")
+            .assert_text("dog(Adam).")
             .expect("Fact should persist")[0]
     };
 
@@ -2232,10 +2079,10 @@ fn persistent_engine_honors_store_retractions_after_reopen() {
     }
 
     {
-        let reopened = lojban_open(&path, "Persistent engine should reopen");
+        let reopened = fresh_open(&path, "Persistent engine should reopen");
         assert!(
             reopened
-                .query_holds("la .adam. cu gerku")
+                .query_holds("dog(Adam).")
                 .expect("Query should run after reopen")
                 .is_false(),
             "Retracted facts must not replay into the reopened engine"
@@ -2257,13 +2104,13 @@ fn persistent_engine_retraction_via_engine_api_survives_reopen() {
     cleanup(&path);
 
     let fact_id = {
-        let engine = lojban_open(&path, "Persistent engine should open");
+        let engine = fresh_open(&path, "Persistent engine should open");
         let id = engine
-            .assert_text("la .adam. cu gerku")
+            .assert_text("dog(Adam).")
             .expect("Fact should persist")[0];
         assert!(
             engine
-                .query_holds("la .adam. cu gerku")
+                .query_holds("dog(Adam).")
                 .expect("Query should run before retraction")
                 .is_true(),
             "Fact should hold immediately after assertion"
@@ -2276,7 +2123,7 @@ fn persistent_engine_retraction_via_engine_api_survives_reopen() {
             .expect("Engine-level retraction should succeed");
         assert!(
             engine
-                .query_holds("la .adam. cu gerku")
+                .query_holds("dog(Adam).")
                 .expect("Query should run after retraction")
                 .is_false(),
             "Retracted fact must not hold in the live engine"
@@ -2299,10 +2146,10 @@ fn persistent_engine_retraction_via_engine_api_survives_reopen() {
 
     // Reopening a fresh engine must NOT resurrect the retracted fact.
     {
-        let reopened = lojban_open(&path, "Persistent engine should reopen");
+        let reopened = fresh_open(&path, "Persistent engine should reopen");
         assert!(
             reopened
-                .query_holds("la .adam. cu gerku")
+                .query_holds("dog(Adam).")
                 .expect("Query should run after reopen")
                 .is_false(),
             "Facts retracted via the engine API must stay retracted after reopen"
@@ -2323,8 +2170,8 @@ fn persistent_engine_retraction_via_engine_api_survives_reopen() {
 /// Every non-comment line of gdpr.lojban asserts cleanly through the pipeline.
 #[test]
 fn gdpr_file_loads_clean() {
-    let corpus = include_str!("../../gdpr.lojban");
-    let engine = lojban_engine();
+    let corpus = include_str!("../../gdpr.klaro");
+    let engine = fresh_engine();
     for (line_num, line) in corpus.lines().enumerate() {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
@@ -2349,13 +2196,11 @@ fn gdpr_file_loads_clean() {
 #[test]
 fn gdpr_why_lawful_basis_is_domain_termed() {
     let engine = engine_with_facts(&[
-        "ro lo prenu poi zanru cu se curmi",
-        "la .adam. cu prenu",
-        "la .adam. cu zanru",
+        "permitted(every person where approves).",
+        "person(Adam).",
+        "approves(Adam).",
     ]);
-    let (_r, trace) = engine
-        .query_text_raw_proof("la .adam. cu se curmi")
-        .unwrap();
+    let (_r, trace) = engine.query_text_raw_proof("permitted(Adam).").unwrap();
 
     let overlay = summarize_proof_with(&trace, Register::Spec, Some(&GDPR_OVERLAY))
         .expect("lawful-basis proof has a why summary");
@@ -2381,20 +2226,20 @@ fn gdpr_why_lawful_basis_is_domain_termed() {
 /// negation-as-failure and the proof carries the NAF dependency flag.
 #[test]
 fn gdpr_belief_revision_consent_withdrawal() {
-    let engine = lojban_engine();
-    engine.assert_text("la .adam. cu prenu").unwrap();
+    let engine = fresh_engine();
+    engine.assert_text("person(Adam).").unwrap();
     engine
-        .assert_text("ro lo prenu poi zanru cu se curmi")
+        .assert_text("permitted(every person where approves).")
         .unwrap(); // Art 6(1)(a)
-    let consent_id = engine.assert_text("la .adam. cu zanru").unwrap()[0];
+    let consent_id = engine.assert_text("approves(Adam).").unwrap()[0];
 
     // ── Consent present ──
     assert_true(
-        &engine.query_holds("la .adam. cu se curmi").unwrap(),
+        &engine.query_holds("permitted(Adam).").unwrap(),
         "With consent, Adam's processing has a lawful basis",
     );
     assert_false(
-        &engine.query_holds("la .adam. na se curmi").unwrap(),
+        &engine.query_holds("~permitted(Adam).").unwrap(),
         "With consent, there is no right to erasure",
     );
 
@@ -2402,12 +2247,10 @@ fn gdpr_belief_revision_consent_withdrawal() {
     engine.retract_fact(consent_id).unwrap();
 
     assert_false(
-        &engine.query_holds("la .adam. cu se curmi").unwrap(),
+        &engine.query_holds("permitted(Adam).").unwrap(),
         "After withdrawal, no lawful basis remains",
     );
-    let (erasure, trace, json) = engine
-        .query_text_with_proof("la .adam. na se curmi")
-        .unwrap();
+    let (erasure, trace, json) = engine.query_text_with_proof("~permitted(Adam).").unwrap();
     assert_true(
         &erasure,
         "After withdrawal, the right to erasure (Art 17) is triggered",
@@ -2428,17 +2271,17 @@ fn gdpr_belief_revision_consent_withdrawal() {
 #[test]
 fn gdpr_lawful_basis_via_contract() {
     let engine = engine_with_facts(&[
-        "ro lo prenu poi nupre cu se curmi",
-        "la .adam. cu prenu",
-        "la .adam. cu nupre",
-        "la .bet. cu prenu", // a person with no lawful basis
+        "permitted(every person where promise).",
+        "person(Adam).",
+        "promise(Adam).",
+        "person(Bet).", // a person with no lawful basis
     ]);
     assert_true(
-        &engine.query_holds("la .adam. cu se curmi").unwrap(),
+        &engine.query_holds("permitted(Adam).").unwrap(),
         "Contract is a lawful basis (Art 6(1)(b))",
     );
     assert_false(
-        &engine.query_holds("la .bet. cu se curmi").unwrap(),
+        &engine.query_holds("permitted(Bet).").unwrap(),
         "A subject with no lawful basis has no lawful processing",
     );
 }
@@ -2448,19 +2291,19 @@ fn gdpr_lawful_basis_via_contract() {
 #[test]
 fn gdpr_special_category_requires_stricter_basis() {
     let engine = engine_with_facts(&[
-        "ro lo kanro datni cu se bilga lo nu satci",
-        "la .kanrek. cu kanro datni",
-        "la .ordrek. cu datni",
+        "obligated(every healthy data, event { exact() }).",
+        "healthy data(Kanrek).",
+        "data(Ordrek).",
     ]);
     assert_true(
         &engine
-            .query_holds("la .kanrek. cu se bilga lo nu satci")
+            .query_holds("obligated(Kanrek, event { exact() }).")
             .unwrap(),
         "Health data requires a stricter basis (Art 9)",
     );
     assert_false(
         &engine
-            .query_holds("la .ordrek. cu se bilga lo nu satci")
+            .query_holds("obligated(Ordrek, event { exact() }).")
             .unwrap(),
         "Ordinary data does not require the special-category basis",
     );
@@ -2471,12 +2314,12 @@ fn gdpr_special_category_requires_stricter_basis() {
 #[test]
 fn gdpr_art5_accuracy_applies_to_health_data() {
     let engine = engine_with_facts(&[
-        "ro lo kanro datni cu datni",
-        "ro lo datni cu se bilga lo nu drani",
-        "la .kanrek. cu kanro datni",
+        "data(every healthy data).",
+        "obligated(every data, event { correct() }).",
+        "healthy data(Kanrek).",
     ]);
     let (holds, trace, _json) = engine
-        .query_text_with_proof("la .kanrek. cu se bilga lo nu drani")
+        .query_text_with_proof("obligated(Kanrek, event { correct() }).")
         .unwrap();
     assert_true(
         &holds,
@@ -2493,19 +2336,19 @@ fn gdpr_art5_accuracy_applies_to_health_data() {
 #[test]
 fn gdpr_right_of_access_dsar() {
     let engine = engine_with_facts(&[
-        "ro lo prenu cu se curmi lo nu datni facki",
-        "la .adam. cu prenu",
-        "la .akmes. cu datni turni", // a controller, not a data subject
+        "permitted(every person, event { data discovers() }).",
+        "person(Adam).",
+        "data governs(Akmes).", // a controller, not a data subject
     ]);
     assert_true(
         &engine
-            .query_holds("la .adam. cu se curmi lo nu datni facki")
+            .query_holds("permitted(Adam, event { data discovers() }).")
             .unwrap(),
         "A data subject has the right of access (Art 15)",
     );
     assert_false(
         &engine
-            .query_holds("la .akmes. cu se curmi lo nu datni facki")
+            .query_holds("permitted(Akmes, event { data discovers() }).")
             .unwrap(),
         "A controller (non-subject) does not acquire the access right",
     );
@@ -2516,20 +2359,20 @@ fn gdpr_right_of_access_dsar() {
 #[test]
 fn gdpr_breach_notification() {
     let engine = engine_with_facts(&[
-        "ro lo datni turni poi cfila cu se bilga lo nu notci",
-        "la .akmes. cu datni turni",
-        "la .gugli. cu datni turni",
-        "la .akmes. cu cfila", // only AkmeCorp breached
+        "obligated(every data governs where flaw, event { message() }).",
+        "data governs(Akmes).",
+        "data governs(Gugli).",
+        "flaw(Akmes).", // only AkmeCorp breached
     ]);
     assert_true(
         &engine
-            .query_holds("la .akmes. cu se bilga lo nu notci")
+            .query_holds("obligated(Akmes, event { message() }).")
             .unwrap(),
         "A breached controller must notify (Art 33)",
     );
     assert_false(
         &engine
-            .query_holds("la .gugli. cu se bilga lo nu notci")
+            .query_holds("obligated(Gugli, event { message() }).")
             .unwrap(),
         "A controller with no breach has no notification obligation",
     );
@@ -2544,25 +2387,25 @@ fn gdpr_breach_notification() {
 /// `gdpr_belief_revision_consent_withdrawal` but at the RULE level.
 #[test]
 fn gdpr_erasure_rule_via_negated_consent_restrictor() {
-    let engine = lojban_engine();
-    engine.assert_text("la .adam. cu prenu").unwrap();
+    let engine = fresh_engine();
+    engine.assert_text("person(Adam).").unwrap();
     engine
-        .assert_text("ro lo prenu poi na zanru cu se bilga lo nu se vimcu")
+        .assert_text("obligated(every person where ~approves, event { removes() }).")
         .expect("the negated-restrictor erasure rule must now compile");
 
     // ── No consent → the erasure obligation arises (NAF: no consent witness). ──
     assert_true(
         &engine
-            .query_holds("la .adam. cu se bilga lo nu se vimcu")
+            .query_holds("obligated(Adam, event { removes() }).")
             .unwrap(),
         "No consent → erasure obligation holds (Art 17 as a stored rule)",
     );
 
     // ── Consent present → the negated restrictor is false → no obligation. ──
-    let consent_id = engine.assert_text("la .adam. cu zanru").unwrap()[0];
+    let consent_id = engine.assert_text("approves(Adam).").unwrap()[0];
     assert_false(
         &engine
-            .query_holds("la .adam. cu se bilga lo nu se vimcu")
+            .query_holds("obligated(Adam, event { removes() }).")
             .unwrap(),
         "Consent present → no erasure obligation",
     );
@@ -2570,7 +2413,7 @@ fn gdpr_erasure_rule_via_negated_consent_restrictor() {
     // ── Withdraw consent → the obligation re-arises, flagged NAF-dependent. ──
     engine.retract_fact(consent_id).unwrap();
     let (holds, trace, json) = engine
-        .query_text_with_proof("la .adam. cu se bilga lo nu se vimcu")
+        .query_text_with_proof("obligated(Adam, event { removes() }).")
         .unwrap();
     assert_true(&holds, "After withdrawal, the erasure obligation re-arises");
     assert!(!trace.is_empty(), "Erasure proof trace should be non-empty");
@@ -2588,23 +2431,23 @@ fn gdpr_erasure_rule_via_negated_consent_restrictor() {
 /// universal `x` before evaluating the existential.
 #[test]
 fn gdpr_erasure_rule_is_per_subject() {
-    let engine = lojban_engine();
-    engine.assert_text("la .adam. cu prenu").unwrap();
-    engine.assert_text("la .bet. cu prenu").unwrap();
+    let engine = fresh_engine();
+    engine.assert_text("person(Adam).").unwrap();
+    engine.assert_text("person(Bet).").unwrap();
     engine
-        .assert_text("ro lo prenu poi na zanru cu se bilga lo nu se vimcu")
+        .assert_text("obligated(every person where ~approves, event { removes() }).")
         .unwrap();
-    engine.assert_text("la .bet. cu zanru").unwrap(); // bet consents; adam does not
+    engine.assert_text("approves(Bet).").unwrap(); // bet consents; adam does not
 
     assert_true(
         &engine
-            .query_holds("la .adam. cu se bilga lo nu se vimcu")
+            .query_holds("obligated(Adam, event { removes() }).")
             .unwrap(),
         "adam (no consent) is obligated to be erased",
     );
     assert_false(
         &engine
-            .query_holds("la .bet. cu se bilga lo nu se vimcu")
+            .query_holds("obligated(Bet, event { removes() }).")
             .unwrap(),
         "bet (consented) is NOT obligated — the rule is per-subject, not global",
     );
@@ -2625,8 +2468,8 @@ fn gdpr_erasure_rule_is_per_subject() {
 #[test]
 fn gdpr_full_corpus_lawful_basis_query_completes() {
     let start = std::time::Instant::now();
-    let corpus = include_str!("../../gdpr.lojban");
-    let engine = lojban_engine();
+    let corpus = include_str!("../../gdpr.klaro");
+    let engine = fresh_engine();
     let mut consent_id = None;
     for (line_num, line) in corpus.lines().enumerate() {
         let trimmed = line.trim();
@@ -2641,7 +2484,7 @@ fn gdpr_full_corpus_lawful_basis_query_completes() {
                 e
             )
         });
-        if trimmed == "la .adam. cu zanru" {
+        if trimmed == "approves(Adam)." {
             // Single-sentence corpus line → one id.
             consent_id = id.first().copied();
         }
@@ -2649,7 +2492,7 @@ fn gdpr_full_corpus_lawful_basis_query_completes() {
 
     // Ch 20's first lawful-basis query, against the FULL loaded corpus.
     assert_true(
-        &engine.query_holds("la .adam. cu se curmi").unwrap(),
+        &engine.query_holds("permitted(Adam).").unwrap(),
         "Against the full corpus, Adam's processing has a lawful basis (Art 6)",
     );
 
@@ -2658,11 +2501,11 @@ fn gdpr_full_corpus_lawful_basis_query_completes() {
         .retract_fact(consent_id.expect("consent line present in gdpr.lojban"))
         .unwrap();
     assert_false(
-        &engine.query_holds("la .adam. cu se curmi").unwrap(),
+        &engine.query_holds("permitted(Adam).").unwrap(),
         "After withdrawal, no lawful basis remains (full-corpus exhaustive search)",
     );
     assert_true(
-        &engine.query_holds("la .adam. na se curmi").unwrap(),
+        &engine.query_holds("~permitted(Adam).").unwrap(),
         "After withdrawal, the right to erasure (Art 17) is triggered",
     );
     // (The Art 17 erasure RULE now lives in the shipped corpus; its belief-revision
@@ -2736,22 +2579,22 @@ fn pinned_id(ids: &[(String, u64)], line: &str) -> u64 {
 /// the Ch 20 transcripts (book repo) together with these expected values.
 #[test]
 fn gdpr_corpus_transcript_pins() {
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     let (asserted, skipped, ids) =
-        load_corpus_like_gasnu(&engine, include_str!("../../gdpr.lojban"));
+        load_corpus_like_gasnu(&engine, include_str!("../../gdpr.klaro"));
     assert_eq!(
         (asserted, skipped),
         (24, 77),
         "Ch 20 pins `[Load] Done: 24 asserted, 77 skipped, 0 errors`"
     );
     assert_eq!(
-        pinned_id(&ids, "la .adam. cu zanru"),
+        pinned_id(&ids, "approves(Adam)."),
         21,
         "Ch 20 retracts the consent fact as id #21"
     );
     // The multi-basis walkthrough asserts the contract fact immediately after
     // the corpus load and later retracts it as #24.
-    let contract_id = engine.assert_text("la .adam. cu nupre").unwrap()[0];
+    let contract_id = engine.assert_text("promise(Adam).").unwrap()[0];
     assert_eq!(
         contract_id, 24,
         "Ch 20 retracts the post-load contract fact as id #24"
@@ -2765,21 +2608,21 @@ fn gdpr_corpus_transcript_pins() {
 /// corpus edit must break this test, not silently drift the book.
 #[test]
 fn ddi_corpus_transcript_pins() {
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     let (asserted, skipped, ids) =
-        load_corpus_like_gasnu(&engine, include_str!("../../drug-interactions.lojban"));
+        load_corpus_like_gasnu(&engine, include_str!("../../drug-interactions.klaro"));
     assert_eq!(
         (asserted, skipped),
         (16, 78),
         "Ch 21 pins `[Load] Done: 16 asserted, 78 skipped, 0 errors`"
     );
     assert_eq!(
-        pinned_id(&ids, "la .flukonazol. cu fanta la .siptucin."),
+        pinned_id(&ids, "prevents(Flukonazol, Siptucin)."),
         4,
         "Ch 21 retracts the inhibition fact as id #4"
     );
     assert_eq!(
-        pinned_id(&ids, "la .adam. cu pilno la .varfarin."),
+        pinned_id(&ids, "uses(Adam, Varfarin)."),
         10,
         "Ch 21 retracts the warfarin regimen fact as id #10"
     );
@@ -2797,25 +2640,25 @@ fn ddi_corpus_transcript_pins() {
 #[test]
 fn stacked_poi_conjoins_both_clauses() {
     let engine = engine_with_facts(&[
-        "ro lo xukmi poi zenba poi cinla cu ckape",
-        "la .alfan. cu xukmi",
-        "la .alfan. cu zenba",
-        "la .alfan. cu cinla", // both conditions hold
-        "la .betan. cu xukmi",
-        "la .betan. cu zenba", // zenba only
-        "la .gaman. cu xukmi",
-        "la .gaman. cu cinla", // cinla only
+        "dangerous(every chemical where increases where thin).",
+        "chemical(Alfan).",
+        "increases(Alfan).",
+        "thin(Alfan).", // both conditions hold
+        "chemical(Betan).",
+        "increases(Betan).", // zenba only
+        "chemical(Gaman).",
+        "thin(Gaman).", // cinla only
     ]);
     assert_true(
-        &engine.query_holds("la .alfan. cu ckape").unwrap(),
+        &engine.query_holds("dangerous(Alfan).").unwrap(),
         "both zenba and cinla -> ckape",
     );
     assert_false(
-        &engine.query_holds("la .betan. cu ckape").unwrap(),
+        &engine.query_holds("dangerous(Betan).").unwrap(),
         "zenba only (cinla missing) -> NOT ckape",
     );
     assert_false(
-        &engine.query_holds("la .gaman. cu ckape").unwrap(),
+        &engine.query_holds("dangerous(Gaman).").unwrap(),
         "cinla only (zenba missing) -> NOT ckape (the pre-fix bug)",
     );
 }
@@ -2834,8 +2677,8 @@ fn stacked_poi_conjoins_both_clauses() {
 
 /// Load every non-comment line of drug-interactions.lojban into a fresh engine.
 fn engine_with_ddi_corpus() -> NibliEngine {
-    let corpus = include_str!("../../drug-interactions.lojban");
-    let engine = lojban_engine();
+    let corpus = include_str!("../../drug-interactions.klaro");
+    let engine = fresh_engine();
     for (line_num, line) in corpus.lines().enumerate() {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
@@ -2870,18 +2713,16 @@ fn ddi_headline_warfarin_fluconazole_alert() {
 
     // Step 1: concentration increase (derived from the grounded mechanism).
     assert_true(
-        &engine.query_holds("la .varfarin. cu zenba").unwrap(),
+        &engine.query_holds("increases(Varfarin).").unwrap(),
         "Warfarin concentration rises (fluconazole inhibits CYP2C9, warfarin is a substrate)",
     );
     // Step 2: toxicity risk (general rule: increased concentration + narrow index).
     assert_true(
-        &engine.query_holds("la .varfarin. cu ckape").unwrap(),
+        &engine.query_holds("dangerous(Varfarin).").unwrap(),
         "Warfarin is at toxicity risk (increased concentration + narrow therapeutic index)",
     );
     // Step 3: safety alert (general rule: toxicity risk -> alert), with proof.
-    let (alert, trace, _json) = engine
-        .query_text_with_proof("la .varfarin. cu kajde")
-        .unwrap();
+    let (alert, trace, _json) = engine.query_text_with_proof("warns(Varfarin).").unwrap();
     assert_true(&alert, "Warfarin co-prescription warrants a safety alert");
     assert!(
         trace.contains("Rule"),
@@ -2890,11 +2731,11 @@ fn ddi_headline_warfarin_fluconazole_alert() {
 
     // Negative control: apixaban (CYP3A4) — fluconazole does not inhibit CYP3A4.
     assert_false(
-        &engine.query_holds("la .apiksaban. cu zenba").unwrap(),
+        &engine.query_holds("increases(Apiksaban).").unwrap(),
         "Apixaban concentration does not rise (CYP3A4 not inhibited by fluconazole)",
     );
     assert_false(
-        &engine.query_holds("la .apiksaban. cu kajde").unwrap(),
+        &engine.query_holds("warns(Apiksaban).").unwrap(),
         "Apixaban co-administration produces NO alert (deduced False, not unknown)",
     );
 }
@@ -2906,9 +2747,7 @@ fn ddi_headline_warfarin_fluconazole_alert() {
 #[test]
 fn ddi_why_toxicity_is_concrete_and_domain_termed() {
     let engine = engine_with_ddi_corpus();
-    let (_r, trace) = engine
-        .query_text_raw_proof("la .varfarin. cu ckape")
-        .unwrap();
+    let (_r, trace) = engine.query_text_raw_proof("dangerous(Varfarin).").unwrap();
 
     let overlay = summarize_proof_with(&trace, Register::Spec, Some(&DRUG_INTERACTIONS_OVERLAY))
         .expect("toxicity proof has a why summary");
@@ -2972,9 +2811,7 @@ fn ddi_why_toxicity_is_concrete_and_domain_termed() {
 #[test]
 fn ddi_why_alert_chains_to_the_regimen() {
     let engine = engine_with_ddi_corpus();
-    let (_r, trace) = engine
-        .query_text_raw_proof("la .varfarin. cu kajde")
-        .unwrap();
+    let (_r, trace) = engine.query_text_raw_proof("warns(Varfarin).").unwrap();
     let why = summarize_proof_with(&trace, Register::Spec, Some(&DRUG_INTERACTIONS_OVERLAY))
         .expect("alert proof has a why summary");
     assert!(why.contains("warfarin is at toxicity risk"), "why: {why}");
@@ -2995,11 +2832,11 @@ fn ddi_why_alert_chains_to_the_regimen() {
 fn ddi_general_rules_fire_for_second_drug() {
     let engine = engine_with_ddi_corpus();
     assert_true(
-        &engine.query_holds("la .fenitoin. cu ckape").unwrap(),
+        &engine.query_holds("dangerous(Fenitoin).").unwrap(),
         "Phenytoin reaches toxicity risk via the same general toxicity rule as warfarin",
     );
     assert_false(
-        &engine.query_holds("la .fenitoin. cu kajde").unwrap(),
+        &engine.query_holds("warns(Fenitoin).").unwrap(),
         "But phenytoin warrants NO alert: Adam does not take it (the alert is regimen-gated)",
     );
 }
@@ -3013,17 +2850,17 @@ fn ddi_toxicity_requires_both_conditions() {
     // (a) concentration rises, but NOT narrow-index -> no toxicity risk.
     // The toxicity step is the general conjunctive universal rule.
     let wide = engine_with_facts(&[
-        "la .raxitidin. cu xukmi",
-        "la .raxitidin. cu zenba", // concentration rises
-        "ro lo xukmi poi zenba poi cinla cu ckape",
-        "ro lo xukmi poi ckape cu kajde",
+        "chemical(Raxitidin).",
+        "increases(Raxitidin).", // concentration rises
+        "dangerous(every chemical where increases where thin).",
+        "warns(every chemical where dangerous).",
     ]);
     assert_false(
-        &wide.query_holds("la .raxitidin. cu ckape").unwrap(),
+        &wide.query_holds("dangerous(Raxitidin).").unwrap(),
         "A wide-margin drug with raised concentration is not at toxicity risk",
     );
     assert_false(
-        &wide.query_holds("la .raxitidin. cu kajde").unwrap(),
+        &wide.query_holds("warns(Raxitidin).").unwrap(),
         "A wide-margin drug with raised concentration warrants no alert",
     );
 
@@ -3031,17 +2868,17 @@ fn ddi_toxicity_requires_both_conditions() {
     // This is the discriminating control: it fails if the toxicity step ignores
     // the concentration-increase premise.
     let narrow = engine_with_facts(&[
-        "la .narotil. cu xukmi",
-        "la .narotil. cu cinla", // narrow index, but no interaction
-        "ro lo xukmi poi zenba poi cinla cu ckape",
-        "ro lo xukmi poi ckape cu kajde",
+        "chemical(Narotil).",
+        "thin(Narotil).", // narrow index, but no interaction
+        "dangerous(every chemical where increases where thin).",
+        "warns(every chemical where dangerous).",
     ]);
     assert_false(
-        &narrow.query_holds("la .narotil. cu ckape").unwrap(),
+        &narrow.query_holds("dangerous(Narotil).").unwrap(),
         "A narrow-index drug with no interaction is not at toxicity risk",
     );
     assert_false(
-        &narrow.query_holds("la .narotil. cu kajde").unwrap(),
+        &narrow.query_holds("warns(Narotil).").unwrap(),
         "A narrow-index drug with no interaction warrants no alert",
     );
 }
@@ -3057,27 +2894,27 @@ fn ddi_toxicity_requires_both_conditions() {
 /// warfarin's alert with it.
 #[test]
 fn ddi_belief_revision_discontinue_inhibitor() {
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     for line in [
-        "la .varfarin. cu xukmi",
-        "la .fenitoin. cu xukmi",
-        "la .flukonazol. cu xukmi",
-        "la .varfarin. cu se katna la .siptucin.",
-        "la .fenitoin. cu se katna la .siptucin.",
-        "la .varfarin. cu cinla",
-        "la .fenitoin. cu cinla",
-        "la .adam. cu pilno la .varfarin.",
+        "chemical(Varfarin).",
+        "chemical(Fenitoin).",
+        "chemical(Flukonazol).",
+        "metabolized_by(Varfarin, Siptucin).",
+        "metabolized_by(Fenitoin, Siptucin).",
+        "thin(Varfarin).",
+        "thin(Fenitoin).",
+        "uses(Adam, Varfarin).",
     ] {
         engine.assert_text(line).unwrap();
     }
     let inhibits_id = engine
-        .assert_text("la .flukonazol. cu fanta la .siptucin.")
+        .assert_text("prevents(Flukonazol, Siptucin).")
         .unwrap()[0];
     for line in [
-        "ganai ge la .flukonazol. cu fanta la .siptucin. gi la .varfarin. cu se katna la .siptucin. gi la .varfarin. cu zenba",
-        "ganai ge la .flukonazol. cu fanta la .siptucin. gi la .fenitoin. cu se katna la .siptucin. gi la .fenitoin. cu zenba",
-        "ro lo xukmi poi zenba poi cinla cu ckape",
-        "ro da zo'u ganai ge da ckape gi la .adam. cu pilno da gi da kajde",
+        "prevents(Flukonazol, Siptucin) & metabolized_by(Varfarin, Siptucin) -> increases(Varfarin).",
+        "prevents(Flukonazol, Siptucin) & metabolized_by(Fenitoin, Siptucin) -> increases(Fenitoin).",
+        "dangerous(every chemical where increases where thin).",
+        "all $da: dangerous($da) & uses(Adam, $da) -> warns($da).",
     ] {
         engine.assert_text(line).unwrap();
     }
@@ -3085,15 +2922,15 @@ fn ddi_belief_revision_discontinue_inhibitor() {
     // ── Before discontinuation: warfarin alerts; phenytoin is at risk but not on
     //    the chart, so it reaches ckape without an alert (the regimen gate) ──
     assert_true(
-        &engine.query_holds("la .varfarin. cu kajde").unwrap(),
+        &engine.query_holds("warns(Varfarin).").unwrap(),
         "Warfarin alerts: at risk via the inhibitor AND on Adam's chart",
     );
     assert_true(
-        &engine.query_holds("la .fenitoin. cu ckape").unwrap(),
+        &engine.query_holds("dangerous(Fenitoin).").unwrap(),
         "Phenytoin is at toxicity risk via the same shared inhibitor",
     );
     assert_false(
-        &engine.query_holds("la .fenitoin. cu kajde").unwrap(),
+        &engine.query_holds("warns(Fenitoin).").unwrap(),
         "But phenytoin raises no alert: Adam does not take it (regimen-gated)",
     );
 
@@ -3101,19 +2938,19 @@ fn ddi_belief_revision_discontinue_inhibitor() {
     engine.retract_fact(inhibits_id).unwrap();
 
     assert_false(
-        &engine.query_holds("la .varfarin. cu zenba").unwrap(),
+        &engine.query_holds("increases(Varfarin).").unwrap(),
         "After discontinuation, warfarin's concentration no longer rises",
     );
     assert_false(
-        &engine.query_holds("la .varfarin. cu ckape").unwrap(),
+        &engine.query_holds("dangerous(Varfarin).").unwrap(),
         "After discontinuation, warfarin's toxicity basis is gone",
     );
     assert_false(
-        &engine.query_holds("la .varfarin. cu kajde").unwrap(),
+        &engine.query_holds("warns(Varfarin).").unwrap(),
         "After discontinuation, the warfarin alert is automatically withdrawn",
     );
     assert_false(
-        &engine.query_holds("la .fenitoin. cu ckape").unwrap(),
+        &engine.query_holds("dangerous(Fenitoin).").unwrap(),
         "Discontinuing the shared inhibitor also clears phenytoin's toxicity risk",
     );
 }
@@ -3127,34 +2964,32 @@ fn ddi_belief_revision_discontinue_inhibitor() {
 /// without the historical ground-conditional hang).
 #[test]
 fn ddi_belief_revision_discontinue_drug() {
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     for line in [
-        "la .varfarin. cu xukmi",
-        "la .flukonazol. cu xukmi",
-        "la .varfarin. cu se katna la .siptucin.",
-        "la .varfarin. cu cinla",
-        "la .flukonazol. cu fanta la .siptucin.",
+        "chemical(Varfarin).",
+        "chemical(Flukonazol).",
+        "metabolized_by(Varfarin, Siptucin).",
+        "thin(Varfarin).",
+        "prevents(Flukonazol, Siptucin).",
     ] {
         engine.assert_text(line).unwrap();
     }
-    let takes_id = engine
-        .assert_text("la .adam. cu pilno la .varfarin.")
-        .unwrap()[0];
+    let takes_id = engine.assert_text("uses(Adam, Varfarin).").unwrap()[0];
     for line in [
-        "ganai ge la .flukonazol. cu fanta la .siptucin. gi la .varfarin. cu se katna la .siptucin. gi la .varfarin. cu zenba",
-        "ro lo xukmi poi zenba poi cinla cu ckape",
-        "ro da zo'u ganai ge da ckape gi la .adam. cu pilno da gi da kajde",
+        "prevents(Flukonazol, Siptucin) & metabolized_by(Varfarin, Siptucin) -> increases(Varfarin).",
+        "dangerous(every chemical where increases where thin).",
+        "all $da: dangerous($da) & uses(Adam, $da) -> warns($da).",
     ] {
         engine.assert_text(line).unwrap();
     }
 
     // ── Before: warfarin is at risk AND Adam takes it → alert ──
     assert_true(
-        &engine.query_holds("la .varfarin. cu ckape").unwrap(),
+        &engine.query_holds("dangerous(Varfarin).").unwrap(),
         "Warfarin is at toxicity risk",
     );
     assert_true(
-        &engine.query_holds("la .varfarin. cu kajde").unwrap(),
+        &engine.query_holds("warns(Varfarin).").unwrap(),
         "Adam takes warfarin, so its alert fires",
     );
 
@@ -3162,11 +2997,11 @@ fn ddi_belief_revision_discontinue_drug() {
     engine.retract_fact(takes_id).unwrap();
 
     assert_true(
-        &engine.query_holds("la .varfarin. cu ckape").unwrap(),
+        &engine.query_holds("dangerous(Varfarin).").unwrap(),
         "Warfarin is STILL pharmacologically at toxicity risk (drug-level, not regimen-gated)",
     );
     assert_false(
-        &engine.query_holds("la .varfarin. cu kajde").unwrap(),
+        &engine.query_holds("warns(Varfarin).").unwrap(),
         "But the alert is withdrawn: Adam no longer takes warfarin",
     );
 }
@@ -3176,7 +3011,9 @@ fn ddi_belief_revision_discontinue_drug() {
 #[test]
 fn ddi_witness_cyp2c9_substrates() {
     let engine = engine_with_ddi_corpus();
-    let witnesses = engine.query_find_text("da se katna la .siptucin.").unwrap();
+    let witnesses = engine
+        .query_find_text("metabolized_by($da, Siptucin).")
+        .unwrap();
     // Collect the entity bound to `da` in each witness set.
     let mut substrates: Vec<String> = witnesses
         .iter()
@@ -3207,9 +3044,7 @@ fn ddi_witness_cyp2c9_substrates() {
 #[test]
 fn ddi_regimen_count_aggregation() {
     let engine = engine_with_ddi_corpus();
-    let n = engine
-        .count_witnesses_text("la .adam. cu pilno da")
-        .unwrap();
+    let n = engine.count_witnesses_text("uses(Adam, $da).").unwrap();
     assert_eq!(
         n, 2,
         "Adam's regimen contains exactly two drugs (warfarin + fluconazole)"
@@ -3222,11 +3057,11 @@ fn ddi_regimen_count_aggregation() {
 fn ddi_dose_sum_aggregation() {
     // klani(drug, amount): "drug measures <amount>". Numbers via `li`.
     let engine = engine_with_facts(&[
-        "la .varfarin. cu klani li mu", // 5
-        "la .fenitoin. cu klani li ze", // 7
+        "quantity(Varfarin, 5).", // 5
+        "quantity(Fenitoin, 7).", // 7
     ]);
     let total = engine
-        .aggregate_text("da klani de", "de", EngineAggregateOp::Sum)
+        .aggregate_text("quantity($da, $de).", "de", EngineAggregateOp::Sum)
         .unwrap();
     assert_eq!(total, Some(12.0), "Summed dose across drugs should be 12");
 }
@@ -3234,7 +3069,7 @@ fn ddi_dose_sum_aggregation() {
 /// Regression (query-level DoS): cyclic rules through the FULL pipeline must not hang
 /// the witness search. `ro lo gerku cu danlu` + `ro lo danlu cu gerku` is a
 /// relation-level cycle; before the `cycle_key` backward-chain guard,
-/// `count_witnesses_text("da gerku")` spun at ~100% CPU for 30+ minutes (each step
+/// `count_witnesses_text("dog($da).")` spun at ~100% CPU for 30+ minutes (each step
 /// mints a fresh event Skolem, so the raw cycle guard never fired). Now the cycle is
 /// cut → enumeration incomplete → count REFUSES with `Err`. Watchdog-guarded so a
 /// regression FAILS rather than hangs CI.
@@ -3244,12 +3079,8 @@ fn cyclic_rules_do_not_hang_count() {
     use std::time::Duration;
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let engine = engine_with_facts(&[
-            "ro lo gerku cu danlu",
-            "ro lo danlu cu gerku",
-            "la .rex. cu mlatu",
-        ]);
-        let _ = tx.send(engine.count_witnesses_text("da gerku").is_err());
+        let engine = engine_with_facts(&["animal(every dog).", "dog(every animal).", "cat(Rex)."]);
+        let _ = tx.send(engine.count_witnesses_text("dog($da).").is_err());
     });
     match rx.recv_timeout(Duration::from_secs(20)) {
         Ok(true) => {}
@@ -3266,13 +3097,13 @@ fn cyclic_rules_do_not_hang_count() {
 /// contract used elsewhere in the book.
 #[test]
 fn ddi_temporal_alert_discrimination() {
-    let engine = engine_with_facts(&["ca la .varfarin. cu kajde"]);
+    let engine = engine_with_facts(&["now warns(Varfarin)."]);
     assert_true(
-        &engine.query_holds("ca la .varfarin. cu kajde").unwrap(),
+        &engine.query_holds("now warns(Varfarin).").unwrap(),
         "A present-tense alert holds",
     );
     assert_false(
-        &engine.query_holds("pu la .varfarin. cu kajde").unwrap(),
+        &engine.query_holds("past warns(Varfarin).").unwrap(),
         "There was no alert in the past (tense discrimination)",
     );
 }
@@ -3295,18 +3126,13 @@ fn find_witness_output_order_is_deterministic() {
     // Skolem-free ground facts. An in-process pin is weaker than two true
     // processes (different global seeds), but the sort makes the order
     // seed-independent by construction.
-    let lines = [
-        "la .zod. cu gerku",
-        "la .alis. cu gerku",
-        "la .mik. cu gerku",
-        "la .bob. cu gerku",
-    ];
+    let lines = ["dog(Zod).", "dog(Alis).", "dog(Mik).", "dog(Bob)."];
     let e1 = engine_with_facts(&lines);
     let e2 = engine_with_facts(&lines);
 
     let render = |engine: &NibliEngine| -> Vec<String> {
         engine
-            .query_find_text("ma gerku")
+            .query_find_text("dog(?).")
             .unwrap()
             .iter()
             .map(|bindings| {
@@ -3339,8 +3165,8 @@ fn find_dependent_skolem_witness_event_decomposed_is_bound() {
     // `ro lo gerku cu nelci lo mlatu` must return witnesses whose dependent
     // Skolem terms are BOUND (`sk_N(adam)`), never the unbound conclusion
     // template (`sk_N(_)` / `sk_N(?..)`), with no duplicate binding sets.
-    let engine = engine_with_facts(&["la .adam. cu gerku", "ro lo gerku cu nelci lo mlatu"]);
-    let witnesses = engine.query_find_text("la .adam. nelci ma").unwrap();
+    let engine = engine_with_facts(&["dog(Adam).", "likes(every dog, some cat)."]);
+    let witnesses = engine.query_find_text("likes(Adam, ?).").unwrap();
     assert!(!witnesses.is_empty(), "the rule provides a witness cat");
 
     let terms: Vec<String> = witnesses
@@ -3378,13 +3204,13 @@ fn find_dependent_skolem_witness_event_decomposed_is_bound() {
 
 #[test]
 fn surface_numeric_pilji_true_and_false() {
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     assert_true(
-        &engine.query_holds("li pa no cu pilji li re li mu").unwrap(),
+        &engine.query_holds("product(10, 2, 5).").unwrap(),
         "10 = 2 × 5 must be derivable through surface Lojban",
     );
     assert_false(
-        &engine.query_holds("li pa pa cu pilji li re li mu").unwrap(),
+        &engine.query_holds("product(11, 2, 5).").unwrap(),
         "11 = 2 × 5 must be FALSE through surface Lojban",
     );
 }
@@ -3403,11 +3229,11 @@ fn stub_tenfa_batch(reqs: &[EngineComputeRequest]) -> Vec<Result<bool, String>> 
 #[test]
 fn per_instance_compute_dispatch_is_isolated() {
     // engine_a registers a per-instance dispatch → external `tenfa` resolves TRUE.
-    let mut engine_a = lojban_engine();
+    let mut engine_a = fresh_engine();
     engine_a.register_compute_predicate("tenfa".to_string());
     engine_a.set_compute_dispatch(stub_tenfa_eval, stub_tenfa_batch);
     assert_true(
-        &engine_a.query_holds("li bi cu tenfa li re li ci").unwrap(),
+        &engine_a.query_holds("exponential(8, 2, 3).").unwrap(),
         "an engine with per-instance dispatch must resolve external `tenfa`",
     );
 
@@ -3415,9 +3241,9 @@ fn per_instance_compute_dispatch_is_isolated() {
     // old THREAD-LOCAL dispatch, engine_a's registration would leak to engine_b on
     // the same thread; per-instance dispatch keeps them independent → `tenfa` is
     // unresolved (no built-in, no backend) and the query is not TRUE.
-    let mut engine_b = lojban_engine();
+    let mut engine_b = fresh_engine();
     engine_b.register_compute_predicate("tenfa".to_string());
-    let r = engine_b.query_holds("li bi cu tenfa li re li ci").unwrap();
+    let r = engine_b.query_holds("exponential(8, 2, 3).").unwrap();
     // Isolation: engine_a's dispatch must NOT leak here, so `tenfa` stays unresolved.
     assert!(
         !r.is_true(),
@@ -3445,7 +3271,7 @@ fn overflowing_numeric_literal_fails_closed_at_parse() {
     // are now pinned by NO test — regaining that pin at the logji flat level is
     // owned by the try_numeric_comparison tracker bullet.
     let nines = "so ".repeat(320); // 999…9 > f64::MAX → +inf pre-guard
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     let err = engine
         .query_holds(&format!("li {nines}cu dunli li {nines}"))
         .expect_err("an overflowing numeric literal must be a parse error, not a verdict");
@@ -3457,21 +3283,21 @@ fn overflowing_numeric_literal_fails_closed_at_parse() {
 
 #[test]
 fn surface_numeric_sumji_dilcu() {
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     assert_true(
-        &engine.query_holds("li mu cu sumji li re li ci").unwrap(),
+        &engine.query_holds("sum(5, 2, 3).").unwrap(),
         "5 = 2 + 3 must be TRUE through surface Lojban",
     );
     assert_false(
-        &engine.query_holds("li xa cu sumji li re li ci").unwrap(),
+        &engine.query_holds("sum(6, 2, 3).").unwrap(),
         "6 = 2 + 3 must be FALSE through surface Lojban",
     );
     assert_true(
-        &engine.query_holds("li ci cu dilcu li xa li re").unwrap(),
+        &engine.query_holds("quotient(3, 6, 2).").unwrap(),
         "3 = 6 / 2 must be TRUE through surface Lojban",
     );
     assert_false(
-        &engine.query_holds("li ci cu dilcu li xa li no").unwrap(),
+        &engine.query_holds("quotient(3, 6, 0).").unwrap(),
         "division by zero must be FALSE, not an error",
     );
 }
@@ -3482,11 +3308,9 @@ fn surface_numeric_float_tolerance() {
     // decimal point). 0.1 + 0.2 = 0.30000000000000004 in IEEE-754, but the
     // engine uses tolerant equality, so `0.3 = 0.1 + 0.2` is TRUE end-to-end
     // through gerna → smuni → logji (not the surprising exact-`==` FALSE).
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     assert_true(
-        &engine
-            .query_holds("li no pi ci cu sumji li no pi pa li no pi re")
-            .unwrap(),
+        &engine.query_holds("sum(0.3, 0.1, 0.2).").unwrap(),
         "0.3 = 0.1 + 0.2 must be TRUE (tolerant float equality)",
     );
 }
@@ -3529,11 +3353,11 @@ fn native_compute_backend_dispatches_external_predicate() {
     // `{"result": true}`, the query routes engine → logji → native client → mock.
     // (`li bi` = 8, `li re` = 2, `li ci` = 3 → "is 8 = 2^3?")
     let addr = mock_compute_server(r#"{"result": true}"#);
-    let mut engine = lojban_engine();
+    let mut engine = fresh_engine();
     engine.enable_compute_backend(&addr);
     engine.register_compute_predicate("tenfa".to_string());
     assert_true(
-        &engine.query_holds("li bi cu tenfa li re li ci").unwrap(),
+        &engine.query_holds("exponential(8, 2, 3).").unwrap(),
         "tenfa dispatches through the native TCP client to the backend",
     );
 }
@@ -3542,9 +3366,9 @@ fn native_compute_backend_dispatches_external_predicate() {
 fn native_compute_backend_is_opt_in() {
     // Without `enable_compute_backend`, an external predicate stays unprovable —
     // the dispatch hook is unregistered (per-instance isolation).
-    let mut engine = lojban_engine();
+    let mut engine = fresh_engine();
     engine.register_compute_predicate("tenfa".to_string());
-    let r = engine.query_holds("li bi cu tenfa li re li ci").unwrap();
+    let r = engine.query_holds("exponential(8, 2, 3).").unwrap();
     assert!(
         !r.is_true(),
         "tenfa with no backend wired must not be TRUE: {r:?}"
@@ -3575,12 +3399,12 @@ fn native_compute_backend_real_python_tenfa() {
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
     let run = || {
-        let mut engine = lojban_engine();
+        let mut engine = fresh_engine();
         engine.enable_compute_backend(&addr);
         engine.register_compute_predicate("tenfa".to_string());
         // 8 = 2^3 (TRUE); 9 = 2^3 (FALSE) — the backend does the arithmetic.
-        let t = engine.query_holds("li bi cu tenfa li re li ci").unwrap();
-        let f = engine.query_holds("li so cu tenfa li re li ci").unwrap();
+        let t = engine.query_holds("exponential(8, 2, 3).").unwrap();
+        let f = engine.query_holds("exponential(9, 2, 3).").unwrap();
         (t, f)
     };
     let result = std::panic::catch_unwind(run);
@@ -3594,25 +3418,25 @@ fn native_compute_backend_real_python_tenfa() {
 
 #[test]
 fn surface_numeric_comparison_zmadu_mleca_dunli() {
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     assert_true(
-        &engine.query_holds("li mu cu zmadu li ci").unwrap(),
+        &engine.query_holds("greater(5, 3).").unwrap(),
         "5 > 3 must be TRUE through surface Lojban",
     );
     assert_false(
-        &engine.query_holds("li ci cu zmadu li mu").unwrap(),
+        &engine.query_holds("greater(3, 5).").unwrap(),
         "3 > 5 must be FALSE through surface Lojban",
     );
     assert_true(
-        &engine.query_holds("li re cu mleca li ci").unwrap(),
+        &engine.query_holds("less(2, 3).").unwrap(),
         "2 < 3 must be TRUE through surface Lojban",
     );
     assert_true(
-        &engine.query_holds("li ci cu dunli li ci").unwrap(),
+        &engine.query_holds("num_equal(3, 3).").unwrap(),
         "3 == 3 must be TRUE through surface Lojban",
     );
     assert_false(
-        &engine.query_holds("li ci cu dunli li re").unwrap(),
+        &engine.query_holds("num_equal(3, 2).").unwrap(),
         "3 == 2 must be FALSE through surface Lojban",
     );
 }
@@ -3623,12 +3447,8 @@ fn assert_numeric_comparison_rejected() {
     // truth, not an assertable fact — the engine evaluates it at query time and
     // the computed value always wins, so an asserted fact could only ever be a
     // shadowed (unreachable) fact. Fail closed at assert time rather than store it.
-    let engine = lojban_engine();
-    for line in [
-        "li ci cu zmadu li mu",
-        "li mu cu mleca li ci",
-        "li mu cu dunli li ci",
-    ] {
+    let engine = fresh_engine();
+    for line in ["greater(3, 5).", "less(5, 3).", "num_equal(5, 3)."] {
         let err = engine
             .assert_text(line)
             .expect_err("asserting a numeric comparison must be rejected");
@@ -3641,25 +3461,25 @@ fn assert_numeric_comparison_rejected() {
     // GUARD: a NON-numeric comparison is a relational fact (the taller-than
     // reading) and still asserts + stores normally.
     engine
-        .assert_text("la .alis. cu zmadu la .bob.")
+        .assert_text("greater(Alis, Bob).")
         .expect("a non-numeric relational comparison must still assert");
 
     // GUARD: the QUERY path is unchanged — comparisons still compute.
     assert_true(
-        &engine.query_holds("li mu cu zmadu li ci").unwrap(),
+        &engine.query_holds("greater(5, 3).").unwrap(),
         "5 > 3 must still compute TRUE at query time",
     );
 }
 
 #[test]
 fn surface_numeric_negation() {
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     assert_true(
-        &engine.query_holds("li ci na zmadu li mu").unwrap(),
+        &engine.query_holds("~greater(3, 5).").unwrap(),
         "NOT(3 > 5) must be TRUE through surface Lojban",
     );
     assert_false(
-        &engine.query_holds("li mu na zmadu li ci").unwrap(),
+        &engine.query_holds("~greater(5, 3).").unwrap(),
         "NOT(5 > 3) must be FALSE through surface Lojban",
     );
 }
@@ -3668,10 +3488,8 @@ fn surface_numeric_negation() {
 fn surface_numeric_traced_verdicts_agree() {
     // The traced path must agree with the untraced verdict (both evaluators
     // carry the numeric-group hook) and record a compute-check step.
-    let engine = lojban_engine();
-    let (verdict, trace, _json) = engine
-        .query_text_with_proof("li pa no cu pilji li re li mu")
-        .unwrap();
+    let engine = fresh_engine();
+    let (verdict, trace, _json) = engine.query_text_with_proof("product(10, 2, 5).").unwrap();
     assert_true(&verdict, "traced 10 = 2 × 5 must be TRUE");
     assert!(
         trace.contains("pilji"),
@@ -3681,11 +3499,11 @@ fn surface_numeric_traced_verdicts_agree() {
 
 #[test]
 fn closed_world_false_carries_cwa_note_but_numeric_false_does_not() {
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     // Absence-driven FALSE: `gerku(adam)` is simply not derivable → a closed-world FALSE,
     // which must carry the CWA caveat (the dual of the NAF note) so a reader does not
     // mistake "not derivable" for "proved false".
-    let (v1, proof1, _) = engine.query_text_with_proof("la .adam. cu gerku").unwrap();
+    let (v1, proof1, _) = engine.query_text_with_proof("dog(Adam).").unwrap();
     assert!(v1.is_false(), "a missing fact must be FALSE: got {v1:?}");
     assert!(
         proof1.contains("FALSE is closed-world"),
@@ -3693,9 +3511,7 @@ fn closed_world_false_carries_cwa_note_but_numeric_false_does_not() {
     );
     // Numeric-decided FALSE: `5 = 3` is genuinely false (a decided computation), NOT
     // closed-world — it must NOT carry the caveat.
-    let (v2, proof2, _) = engine
-        .query_text_with_proof("li mu cu dunli li ci")
-        .unwrap();
+    let (v2, proof2, _) = engine.query_text_with_proof("num_equal(5, 3).").unwrap();
     assert!(v2.is_false(), "`5 = 3` must be FALSE: got {v2:?}");
     assert!(
         !proof2.contains("FALSE is closed-world"),
@@ -3713,7 +3529,7 @@ fn injected_fact_matches_surface_text_query() {
     // injection API event-decomposes to the same shape text assertion produces.
     // RED before fix: flat gerku(adam) vs the query's ∃ev. gerku(ev) ∧
     // gerku_x1(ev, adam) ∧ gerku_x2(ev, zo'e) never matched.
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     engine
         .assert_fact_direct(
             "gerku".to_string(),
@@ -3723,7 +3539,7 @@ fn injected_fact_matches_surface_text_query() {
         )
         .unwrap();
     assert_true(
-        &engine.query_holds("la .adam. cu gerku").unwrap(),
+        &engine.query_holds("dog(Adam).").unwrap(),
         "directly-injected gerku(adam) must satisfy the surface text query",
     );
 }
@@ -3732,7 +3548,7 @@ fn injected_fact_matches_surface_text_query() {
 fn injected_fact_multiplace_arity_padding_matches_text_query() {
     // klama is 5-place. Injecting only x1,x2 must pad x3..x5 with zo'e to the
     // SAME shape `la .adam. cu klama la .paris.` compiles to, so it matches.
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     engine
         .assert_fact_direct(
             "klama".to_string(),
@@ -3743,7 +3559,7 @@ fn injected_fact_multiplace_arity_padding_matches_text_query() {
         )
         .unwrap();
     assert_true(
-        &engine.query_holds("la .adam. cu klama la .paris.").unwrap(),
+        &engine.query_holds("goes(Adam, Paris).").unwrap(),
         "injecting a 5-place predicate with 2 args must pad and still match the text query",
     );
 }
@@ -3751,7 +3567,7 @@ fn injected_fact_multiplace_arity_padding_matches_text_query() {
 #[test]
 fn injected_fact_is_findable_as_witness() {
     // The injected fact must also be discoverable through witness extraction.
-    let engine = lojban_engine();
+    let engine = fresh_engine();
     engine
         .assert_fact_direct(
             "gerku".to_string(),
@@ -3760,7 +3576,7 @@ fn injected_fact_is_findable_as_witness() {
             )],
         )
         .unwrap();
-    let witnesses = engine.query_find_text("ma gerku").unwrap();
+    let witnesses = engine.query_find_text("dog(?).").unwrap();
     assert!(
         !witnesses.is_empty(),
         "injected gerku(adam) should yield a witness binding"
@@ -3781,19 +3597,25 @@ fn belief_does_not_leak_as_actuality() {
     // go") must NOT make the bare actuality `mi klama` ("I go") hold — believing P
     // does not entail P. The belief itself stays queryable, and believing a DIFFERENT
     // proposition is not satisfied (abstraction content is not conflated).
-    let engine = lojban_engine();
-    engine.assert_text("mi krici lo du'u mi klama").unwrap();
+    let engine = fresh_engine();
+    engine
+        .assert_text("believe(me, fact { goes(me) }).")
+        .unwrap();
 
     assert_false(
-        &engine.query_holds("mi klama").unwrap(),
+        &engine.query_holds("goes(me).").unwrap(),
         "believing P must not entail P (no abstraction-content leak)",
     );
     assert_true(
-        &engine.query_holds("mi krici lo du'u mi klama").unwrap(),
+        &engine
+            .query_holds("believe(me, fact { goes(me) }).")
+            .unwrap(),
         "the belief itself is preserved and queryable",
     );
     assert_false(
-        &engine.query_holds("mi krici lo du'u mi citka").unwrap(),
+        &engine
+            .query_holds("believe(me, fact { eats(me) }).")
+            .unwrap(),
         "believing P must not satisfy a query about believing a different proposition",
     );
 }
@@ -3802,10 +3624,10 @@ fn belief_does_not_leak_as_actuality() {
 fn abstraction_subject_does_not_leak_inner_predicate() {
     // The review's example: `lo du'u mi klama kei cu barda` ("the fact-that-I-go is
     // big") must not assert `mi klama` ("I go") as a queryable truth.
-    let engine = lojban_engine();
-    engine.assert_text("lo du'u mi klama kei cu barda").unwrap();
+    let engine = fresh_engine();
+    engine.assert_text("big(fact { goes(me) }).").unwrap();
     assert_false(
-        &engine.query_holds("mi klama").unwrap(),
+        &engine.query_holds("goes(me).").unwrap(),
         "an abstraction used as a subject must not leak its inner predicate",
     );
 }
@@ -3818,73 +3640,9 @@ fn abstraction_subject_does_not_leak_inner_predicate() {
 // `go'i(...)` predicate and these all silently mismatched.
 
 #[test]
-fn goi_partial_subject_resolves() {
-    // `la .adam. go'i` after `la .adam. cu gerku` → repeats the selbri (gerku),
-    // x1 supplied (adam) → gerku(adam) → TRUE.
-    let engine = engine_with_facts(&["la .adam. cu gerku"]);
-    assert_true(
-        &engine.query_holds("la .adam. go'i").unwrap(),
-        "go'i should inherit the prior selbri (gerku) for adam",
-    );
-}
-
-#[test]
-fn goi_bare_repeats_whole_bridi() {
-    // Bare `go'i` repeats the WHOLE prior bridi — relation AND sumti → gerku(adam).
-    let engine = engine_with_facts(&["la .adam. cu gerku"]);
-    assert_true(
-        &engine.query_holds("go'i").unwrap(),
-        "bare go'i should repeat the entire prior bridi gerku(adam)",
-    );
-}
-
-#[test]
-fn goi_partial_inherits_unsupplied_place() {
-    // After prami(adam, bel) is the last bridi: `la .karl. go'i` overrides x1 (karl)
-    // but INHERITS x2 (bel) → prami(karl, bel), which is NOT asserted → FALSE;
-    // `la .adam. go'i` → prami(adam, bel) IS asserted → TRUE.
-    let engine = engine_with_facts(&["la .karl. cu prami la .kim.", "la .adam. cu prami la .bel."]);
-    assert_true(
-        &engine.query_holds("la .adam. go'i").unwrap(),
-        "partial go'i inherits x2=bel → prami(adam, bel) holds",
-    );
-    assert_false(
-        &engine.query_holds("la .karl. go'i").unwrap(),
-        "partial go'i inherits x2=bel → prami(karl, bel) does not hold",
-    );
-}
-
-#[test]
-fn goi_tracks_last_queried_bridi() {
-    // go'i tracks the last BRIDI seen — assert gerku(adam), then a FALSE query
-    // gerku(bel); bare `go'i` now repeats gerku(bel) (the query), not gerku(adam).
-    let engine = engine_with_facts(&["la .adam. cu gerku"]);
-    assert_false(
-        &engine.query_holds("la .bel. cu gerku").unwrap(),
-        "bel is not a gerku",
-    );
-    assert_false(
-        &engine.query_holds("go'i").unwrap(),
-        "go'i must repeat the last QUERIED bridi gerku(bel), not the asserted gerku(adam)",
-    );
-}
-
-#[test]
-fn goi_with_no_antecedent_errs() {
-    // A `go'i` with no prior bridi must FAIL CLOSED (Semantic), never compile to a
-    // bogus literal `go'i` predicate.
-    let engine = lojban_engine();
-    let err = engine.query_holds("go'i").unwrap_err();
-    assert!(
-        matches!(err, EngineError::Semantic(_)),
-        "go'i with no antecedent should be a Semantic error, got {err:?}"
-    );
-}
-
-#[test]
 fn goi_reset_clears_antecedent() {
     // reset() clears go'i context (mirrors lasna + nibli-validate's per-line reset).
-    let engine = engine_with_facts(&["la .adam. cu gerku"]);
+    let engine = engine_with_facts(&["dog(Adam)."]);
     engine.reset();
     assert!(
         engine.query_holds("go'i").is_err(),
@@ -3898,57 +3656,16 @@ fn predicate_less_clause_rejected() {
     // gerna now rejects it at PARSE with a clear, distinct Syntax error, instead of
     // fabricating a `go'i` that fail-closes downstream with the cryptic "go'i has no
     // antecedent". This is what `nibli-validate` / the book's verify tool now see.
-    let engine = lojban_engine();
-    let err = engine.assert_text("ro lo gerku").unwrap_err();
+    let engine = fresh_engine();
+    let err = engine.assert_text("every dog").unwrap_err();
     assert!(
         matches!(err, EngineError::Syntax(_)),
         "a bare sumti must be a Syntax error, got {err:?}"
     );
     assert!(
-        err.to_string()
-            .contains("a bare sumti is not a complete statement"),
-        "expected the distinct bare-sumti message, got: {err}"
+        err.to_string().contains("expected a predicate word"),
+        "expected the bare-term parse rejection, got: {err}"
     );
     // A complete bridi still asserts fine (the change is scoped to selbri-less clauses).
-    assert!(engine.assert_text("la .adam. cu gerku").is_ok());
-}
-
-#[test]
-fn goi_duplicate_fa_place_rejected() {
-    // A partial `go'i` that supplies the SAME place twice (`fe X fe Y` — both target
-    // x2) must FAIL CLOSED, mirroring smuni's "same place cannot be set twice" guard,
-    // instead of silently last-winning. Pre-fix the go'i per-place merge dropped the
-    // earlier term (yielding `prami(adam, kim)`), bypassing smuni's check.
-    let engine = engine_with_facts(&["la .adam. cu prami la .bel."]);
-    let err = engine
-        .assert_text("fe la .karl. fe la .kim. go'i")
-        .unwrap_err();
-    assert!(
-        err.to_string().contains("same place cannot be set twice"),
-        "duplicate FA place in go'i must be rejected, got: {err}"
-    );
-    // A SINGLE-place override still resolves cleanly (the fix is scoped to duplicates).
-    assert!(
-        engine.assert_text("fe la .kim. go'i").is_ok(),
-        "single-place go'i override must still resolve"
-    );
-}
-
-#[test]
-fn goi_beyond_arity_fa_place_rejected() {
-    // A partial `go'i` whose FA tag targets a place BEYOND the antecedent relation's
-    // arity (`fi X` = x3 on the 2-place `prami`) must FAIL CLOSED, mirroring smuni's
-    // "the selbri only has N place(s)" guard. Pre-fix the merge stripped the tag to a
-    // positional over-arity term, which smuni then silently DROPPED — losing `X`.
-    let engine = engine_with_facts(&["la .adam. cu prami la .bel."]);
-    let err = engine.assert_text("fi la .kim. go'i").unwrap_err();
-    assert!(
-        err.to_string().contains("the selbri only has 2 place(s)"),
-        "beyond-arity FA place in go'i must be rejected, got: {err}"
-    );
-    // An IN-ARITY override (`fe X` = x2 on the 2-place `prami`) still resolves cleanly.
-    assert!(
-        engine.assert_text("fe la .kim. go'i").is_ok(),
-        "in-arity go'i override must still resolve"
-    );
+    assert!(engine.assert_text("dog(Adam).").is_ok());
 }
