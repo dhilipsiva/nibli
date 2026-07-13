@@ -239,7 +239,7 @@ mod tests {
     // against smaller inline KBs (nibli-engine/tests/integration.rs).
     #[test]
     fn gdpr_lawful_basis_and_withdrawal() {
-        let session = load(include_str!("../../gdpr.klaro"));
+        let session = load(include_str!("../../gdpr.nibli"));
         // Book Ch 20: consent gives Adam a lawful basis.
         assert_eq!(status(&session, "permitted(Adam)."), "TRUE");
         assert_eq!(status(&session, "~permitted(Adam)."), "FALSE");
@@ -266,7 +266,7 @@ mod tests {
 
     #[test]
     fn drug_interaction_chain_and_discontinuation() {
-        let session = load(include_str!("../../drug-interactions.klaro"));
+        let session = load(include_str!("../../drug-interactions.nibli"));
         // Book Ch 21: warfarin chain fires end to end.
         assert_eq!(status(&session, "increases(Varfarin)."), "TRUE");
         assert_eq!(status(&session, "dangerous(Varfarin)."), "TRUE");

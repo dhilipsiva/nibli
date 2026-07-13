@@ -8,7 +8,7 @@
 //! - **`?`** — Query with proof trace
 //! - **`??`** — Query with witness extraction (find satisfying bindings)
 //! - **`:debug`** — Compile to logic representation without asserting
-//! - **`:load`** — Load a `.klaro` file (
+//! - **`:load`** — Load a `.nibli` file (
 //!   assert each line, skip `#` comments)
 //! - **`:assert`** — Assert ground facts directly (bypasses text parsing)
 //! - **`:retract`** — Retract a fact by ID (triggers KB rebuild)
@@ -1061,7 +1061,7 @@ impl Repl {
                 println!("  :proof-verbose <text> Query (full role-level proof trace)");
                 println!("  ?? <text>           Find witnesses (answer variables)");
                 println!("  :debug <text>       Show compiled logic tree");
-                println!("  :load <filepath>    Load a .klaro file (assert each line)");
+                println!("  :load <filepath>    Load a .nibli file (assert each line)");
                 println!("  :dump <filepath>    Export KB source lines to a file");
                 println!("  :compute <name>     Register predicate for compute dispatch");
                 println!("  :assert <rel> <args..> Assert a ground fact directly");

@@ -68,15 +68,15 @@ least loads), and `verify-book` is red until the book migrates or pins the tag.
   UI: both tab strips' label via `kb_tab_label()` → "nibli KR" + the "?" icon
   (`span { class: "tab__help", title: "nibli knowledge representation (KR)
   language", "?" }` as a sibling of the label inside each tab button —
-  nibli-ui/src/main.rs, the two `button { class: "tab" … }` sites), "Load .klaro" /
+  nibli-ui/src/main.rs, the two `button { class: "tab" … }` sites), "Load .nibli" /
   placeholder / hint strings / settings copy / examples.rs docs. Code: crate
   `klaro` → `nibli-kr`, `klaro-dictionary` → `nibli-kr-dictionary` (7 + 3
   dependents), `KLARO_SYSTEM_PROMPT` → `KR_SYSTEM_PROMPT`, gate name
   "klaro" → "kr" (chips + GateError::gate + pinned tests), `klaro.pest` →
   `nibli_kr.pest`, `fuzz_klaro` → `fuzz_kr`, Justfile recipes `test-klaro`/
-  `verify-klaro-dict` → `test-kr`/`verify-kr-dict`, `acceptance.klaro` + the corpus
-  files' extension **`.klaro` → `.nkr` (PROPOSAL — decide before renaming;
-  alternatives `.kr`, `.nibli`)**, the deprecated `nibli-wasm` shims
+  `verify-klaro-dict` → `test-kr`/`verify-kr-dict` (the corpus files' extension
+  already renamed `.klaro` → `.nibli`, user decision 2026-07-13 — only
+  `acceptance.nibli`'s DIRECTORY rides the crate rename), the deprecated `nibli-wasm` shims
   (`set_language`/`back_translate`) DELETE here once the site migration has
   landed, SURFACE_SYNTAX.md retitled "The nibli KR
   language" (keep the filename — dozens of §-references in code comments — or

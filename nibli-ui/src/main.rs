@@ -1207,7 +1207,7 @@ fn SourceTabs(
                                         let _ = res.await;
                                     });
                                 },
-                                "Load .klaro"
+                                "Load .nibli"
                                 kbd { class: "kbd-hint", "Ctrl+O" }
                             }
                             button {
@@ -1220,7 +1220,7 @@ fn SourceTabs(
                             }
                             input {
                                 r#type: "file",
-                                accept: ".klaro,.txt",
+                                accept: ".nibli,.txt",
                                 style: "display: none",
                                 id: "lojban-file-input",
                                 onchange: move |_| {

@@ -4,15 +4,15 @@
 //! former `.lojban` sources retired with the Lojban front-end; per-line equality of the
 //! twins was CI-pinned by the corpora-twins gate up to the switchover).
 
-/// EU GDPR compliance knowledge base (`gdpr.klaro`).
-pub const GDPR: &str = include_str!("../../gdpr.klaro");
+/// EU GDPR compliance knowledge base (`gdpr.nibli`).
+pub const GDPR: &str = include_str!("../../gdpr.nibli");
 
-/// Drug-drug interaction safety knowledge base (`drug-interactions.klaro`).
-pub const DDI: &str = include_str!("../../drug-interactions.klaro");
+/// Drug-drug interaction safety knowledge base (`drug-interactions.nibli`).
+pub const DDI: &str = include_str!("../../drug-interactions.nibli");
 
-/// The repository README examples corpus (`readme.klaro`) — also the source of the
+/// The repository README examples corpus (`readme.nibli`) — also the source of the
 /// Transparency Triad UI presets. Not oracle-mapped as a verdict corpus.
-pub const README: &str = include_str!("../../readme.klaro");
+pub const README: &str = include_str!("../../readme.nibli");
 
 /// The non-comment (`#`), non-blank, trimmed lines of a corpus.
 pub fn lines(corpus: &str) -> Vec<&str> {

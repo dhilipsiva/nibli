@@ -374,14 +374,14 @@ ci: fmt-check clippy-runtime test test-engine test-gasnu test-ui test-fanva test
 # :debug round-trip, and the determinism corpus.
 ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-persist-replay smoke-gasnu-split smoke-gasnu-naf smoke-gasnu-cwa-false smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable smoke-gasnu-quiet smoke-gasnu-strict smoke-gasnu-determinism verify-wasm-node
 
-# Three-way determinism, WASMTIME leg: the shared determinism-corpus.klaro must produce
+# Three-way determinism, WASMTIME leg: the shared determinism-corpus.nibli must produce
 # exactly its pinned annotations through the lasna component under gasnu. The
 # native leg is determinism_corpus_klaro_native (verify-kr-seam); the V8 leg is
 # verify-wasm-node.
 smoke-gasnu-determinism: build-wasm build-gasnu
     @echo "Smoke-testing gasnu three-way determinism corpus..."
-    @expected=$(grep '^# =>' determinism-corpus.klaro | sed 's/^# => //'); \
-        actual=$(NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu --script determinism-corpus.klaro 2>&1 | sed -n 's/^\[Query\] //p'); \
+    @expected=$(grep '^# =>' determinism-corpus.nibli | sed 's/^# => //'); \
+        actual=$(NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu --script determinism-corpus.nibli 2>&1 | sed -n 's/^\[Query\] //p'); \
         if [ "$expected" = "$actual" ]; then \
             echo 'PASS: gasnu verdicts match every pinned determinism annotation'; \
         else \
@@ -542,7 +542,7 @@ fuzz-klaro SECONDS="0":
     @test -n "${NIBLI_NIGHTLY_BIN:-}" || { echo "NIBLI_NIGHTLY_BIN is not set — run inside the Nix dev shell"; exit 1; }
     cd fuzz && PATH="$NIBLI_NIGHTLY_BIN:$PATH" cargo fuzz run fuzz_klaro -- -max_len=4096 {{ if SECONDS != "0" { "-max_total_time=" + SECONDS } else { "" } }}
 
-# Seed the fuzz corpora. Each non-comment line of the shipped .klaro corpus
+# Seed the fuzz corpora. Each non-comment line of the shipped .nibli corpus
 # files (+ the Klaro acceptance corpus) becomes a seed for fuzz_assert and
 # fuzz_klaro; fuzz_query seeds are the line DOUBLED, matching its split-half
 # input encoding (first half asserted, second half queried).
@@ -550,7 +550,7 @@ fuzz-seed:
     #!/usr/bin/env python3
     import pathlib
     klaro_lines = []
-    for src in ("klaro/tests/acceptance.klaro", "gdpr.klaro", "drug-interactions.klaro", "readme.klaro", "determinism-corpus.klaro"):
+    for src in ("klaro/tests/acceptance.nibli", "gdpr.nibli", "drug-interactions.nibli", "readme.nibli", "determinism-corpus.nibli"):
         for ln in pathlib.Path(src).read_text(encoding="utf-8").splitlines():
             ln = ln.strip()
             if ln and not ln.startswith("#") and not ln.startswith(":"):
@@ -560,7 +560,7 @@ fuzz-seed:
         d.mkdir(parents=True, exist_ok=True)
         for i, ln in enumerate(klaro_lines):
             (d / f"seed_{i:04}").write_text(encode(ln), encoding="utf-8")
-    print(f"seeded {len(klaro_lines)} .klaro entries x 3 targets under fuzz/corpus/")
+    print(f"seeded {len(klaro_lines)} .nibli entries x 3 targets under fuzz/corpus/")
 
 # Time-boxed unattended fuzz gate (CI): seed corpora, then run every target for
 # SECONDS each. libFuzzer exits non-zero on crash/OOM, zero when the time box
@@ -610,7 +610,7 @@ import FILE *ARGS:
     cargo run -p nibli --bin nibli-import -- {{FILE}} {{ARGS}}
 
 # Timing pins for the book's quoted figures (Ch 13 latency numbers, Ch 20 full
-# Ch-20 sequence): release-profile, native in-process engine, gdpr.klaro corpus,
+# Ch-20 sequence): release-profile, native in-process engine, gdpr.nibli corpus,
 # min/median/max over NIBLI_BENCH_RUNS runs (default 10) with verdicts asserted.
 # The source for any latency figure the book quotes — never hand-write timings.
 bench-book:

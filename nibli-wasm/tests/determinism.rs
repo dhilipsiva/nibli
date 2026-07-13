@@ -1,4 +1,4 @@
-//! Three-way determinism corpus, V8 leg: the SAME `determinism-corpus.klaro` twin
+//! Three-way determinism corpus, V8 leg: the SAME `determinism-corpus.nibli` twin
 //! that the native engine (`determinism_corpus_klaro_native`) and the Wasmtime
 //! component (`smoke-gasnu-determinism`) run must produce the identical pinned
 //! verdicts when the pipeline is compiled to wasm32-unknown-unknown and executed
@@ -53,7 +53,7 @@ fn parse_corpus(text: &str) -> Vec<COp> {
 
 #[wasm_bindgen_test]
 fn determinism_corpus_v8() {
-    let corpus = include_str!("../../determinism-corpus.klaro");
+    let corpus = include_str!("../../determinism-corpus.nibli");
     let session = Session::new();
     session
         .set_language("klaro")

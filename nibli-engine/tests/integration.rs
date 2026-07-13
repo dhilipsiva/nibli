@@ -2170,7 +2170,7 @@ fn persistent_engine_retraction_via_engine_api_survives_reopen() {
 /// Every non-comment line of gdpr.lojban asserts cleanly through the pipeline.
 #[test]
 fn gdpr_file_loads_clean() {
-    let corpus = include_str!("../../gdpr.klaro");
+    let corpus = include_str!("../../gdpr.nibli");
     let engine = fresh_engine();
     for (line_num, line) in corpus.lines().enumerate() {
         let trimmed = line.trim();
@@ -2468,7 +2468,7 @@ fn gdpr_erasure_rule_is_per_subject() {
 #[test]
 fn gdpr_full_corpus_lawful_basis_query_completes() {
     let start = std::time::Instant::now();
-    let corpus = include_str!("../../gdpr.klaro");
+    let corpus = include_str!("../../gdpr.nibli");
     let engine = fresh_engine();
     let mut consent_id = None;
     for (line_num, line) in corpus.lines().enumerate() {
@@ -2581,7 +2581,7 @@ fn pinned_id(ids: &[(String, u64)], line: &str) -> u64 {
 fn gdpr_corpus_transcript_pins() {
     let engine = fresh_engine();
     let (asserted, skipped, ids) =
-        load_corpus_like_gasnu(&engine, include_str!("../../gdpr.klaro"));
+        load_corpus_like_gasnu(&engine, include_str!("../../gdpr.nibli"));
     assert_eq!(
         (asserted, skipped),
         (24, 77),
@@ -2610,7 +2610,7 @@ fn gdpr_corpus_transcript_pins() {
 fn ddi_corpus_transcript_pins() {
     let engine = fresh_engine();
     let (asserted, skipped, ids) =
-        load_corpus_like_gasnu(&engine, include_str!("../../drug-interactions.klaro"));
+        load_corpus_like_gasnu(&engine, include_str!("../../drug-interactions.nibli"));
     assert_eq!(
         (asserted, skipped),
         (16, 78),
@@ -2677,7 +2677,7 @@ fn stacked_poi_conjoins_both_clauses() {
 
 /// Load every non-comment line of drug-interactions.lojban into a fresh engine.
 fn engine_with_ddi_corpus() -> NibliEngine {
-    let corpus = include_str!("../../drug-interactions.klaro");
+    let corpus = include_str!("../../drug-interactions.nibli");
     let engine = fresh_engine();
     for (line_num, line) in corpus.lines().enumerate() {
         let trimmed = line.trim();

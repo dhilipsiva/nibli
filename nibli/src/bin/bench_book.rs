@@ -5,7 +5,7 @@
 //! engine (`nibli-engine`) in a release build — the same path as the pinned
 //! `gdpr_full_corpus_lawful_basis_query_completes` test Ch 20 cites:
 //!
-//!   load    — assert every line of the shipped `gdpr.klaro` corpus
+//!   load    — assert every line of the shipped `gdpr.nibli` corpus
 //!   query   — the Ch-20 headline lawful-basis query `permitted(Adam).`
 //!             against the fully loaded corpus
 //!   full    — the whole Ch-20 sequence: load + lawful-basis query + consent
@@ -25,7 +25,7 @@ use nibli_engine::NibliEngine;
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
-const CORPUS: &str = include_str!("../../../gdpr.klaro");
+const CORPUS: &str = include_str!("../../../gdpr.nibli");
 const CONSENT_LINE: &str = "approves(Adam).";
 const LAWFUL_BASIS_QUERY: &str = "permitted(Adam).";
 const ERASURE_QUERY: &str = "~permitted(Adam).";
@@ -34,7 +34,7 @@ const ERASURE_QUERY: &str = "~permitted(Adam).";
 fn run_once() -> Result<(Duration, Duration, Duration), String> {
     let t_start = Instant::now();
 
-    // KR corpus since THE DROP (the .klaro twin is line-equal to the retired
+    // KR corpus since THE DROP (the .nibli twin is line-equal to the retired
     // gdpr.lojban corpus, so figures stay comparable; the book re-derives its
     // quoted numbers from this bench either way).
     let engine = NibliEngine::new();
@@ -47,14 +47,14 @@ fn run_once() -> Result<(Duration, Duration, Duration), String> {
         }
         let id = engine
             .assert_text(trimmed)
-            .map_err(|e| format!("gdpr.klaro line {}: {e:?}", line_num + 1))?;
+            .map_err(|e| format!("gdpr.nibli line {}: {e:?}", line_num + 1))?;
         asserted += 1;
         if trimmed == CONSENT_LINE {
             // The consent line is a single sentence → exactly one fact id.
             consent_id = id.first().copied();
         }
     }
-    let consent_id = consent_id.ok_or("consent line not found in gdpr.klaro")?;
+    let consent_id = consent_id.ok_or("consent line not found in gdpr.nibli")?;
     if asserted == 0 {
         return Err("empty corpus".into());
     }
@@ -151,9 +151,9 @@ fn main() -> ExitCode {
         "nibli-bench-book — native in-process engine (nibli-engine), {profile} profile, \
          {runs} runs (fresh engine per run, 1 untimed warm-up)"
     );
-    println!("  corpus: gdpr.klaro (all verdicts asserted every run)");
+    println!("  corpus: gdpr.nibli (all verdicts asserted every run)");
     for (label, xs) in [
-        ("gdpr.klaro load", loads),
+        ("gdpr.nibli load", loads),
         ("lawful-basis query", queries),
         ("full Ch-20 sequence", fulls),
     ] {

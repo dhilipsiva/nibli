@@ -4,10 +4,9 @@
 //! enums (see [`__ast_parity_guard`]), so ADDING AN AST VARIANT BREAKS THIS
 //! CRATE'S BUILD until Klaro decides how to spell it (or rejects it by name).
 //!
-//! Load-bearing consumers: the render∘parse fixpoint tests (this file), the
-//! future nibli-verify translation battery (Lojban → gerna AST → render →
-//! klaro parse → equal LogicBuffers), and the mechanical `.lojban → .klaro`
-//! corpus migration.
+//! Load-bearing consumers: the render∘parse fixpoint tests (this file) and
+//! nibli-fanva's render round-trip gate (every Formalize candidate's
+//! canonical re-spelling must re-compile to the same `LogicBuffer`).
 //!
 //! Totality policy (SURFACE_SYNTAX §13): gerna-reachable constructs render,
 //! sometimes via the §11 collapses (forethought `ge/ga/go…gi` → the one
@@ -1013,7 +1012,7 @@ mod tests {
     fn acceptance_corpus_fixpoint() {
         // The §16 acceptance set (checked in, honest-generic spellings —
         // also the fuzz seed). Every payload line must round-trip.
-        let corpus = include_str!("../tests/acceptance.klaro");
+        let corpus = include_str!("../tests/acceptance.nibli");
         let mut checked = 0;
         for line in corpus.lines() {
             let line = line.trim();

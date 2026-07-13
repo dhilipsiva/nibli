@@ -626,7 +626,7 @@ mod tests {
 
     #[test]
     fn acceptance_corpus_lints_without_panicking() {
-        let corpus = include_str!("../tests/acceptance.klaro");
+        let corpus = include_str!("../tests/acceptance.nibli");
         let notes = lint_once(corpus);
         // The corpus exercises aliases, so at minimum L4 echoes fire.
         assert!(

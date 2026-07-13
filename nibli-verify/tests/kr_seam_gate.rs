@@ -15,7 +15,7 @@
 //!    block-every ≡ prenex pin, re-anchored KR≡KR) + a seeded batch from
 //!    `kr_seam::metamorphic_pair`, compared by canonicalized-buffer equality.
 //! 4. **The re-homed Klaro determinism leg** (`determinism_corpus_klaro_native`,
-//!    moved from klaro_twins.rs, which dies at THE DROP): the `.klaro`
+//!    moved from klaro_twins.rs, which dies at THE DROP): the `.nibli`
 //!    determinism corpus replayed natively against the pinned `# =>` verdicts.
 //!
 //! Vocabulary is curated-core only, so the gate is FULL-STRENGTH in both
@@ -303,7 +303,7 @@ fn kr_smuni_seam_conformance() {
 }
 
 /// The Klaro determinism leg — RE-HOMED from klaro_twins.rs (which dies with
-/// the Lojban twins at THE DROP): the `.klaro` determinism corpus replayed
+/// the Lojban twins at THE DROP): the `.nibli` determinism corpus replayed
 /// through the native engine in Klaro mode against the SAME byte-identical
 /// `# =>` verdict annotations as the other runtimes (Wasmtime via
 /// `smoke-gasnu-determinism`, node/V8 via `verify-wasm-node`). The corpus is
@@ -320,7 +320,7 @@ fn determinism_corpus_klaro_native() {
         Retract(usize),
     }
 
-    let corpus = include_str!("../../determinism-corpus.klaro");
+    let corpus = include_str!("../../determinism-corpus.nibli");
     let mut ops: Vec<COp> = Vec::new();
     let mut pending_q: Option<String> = None;
     for raw in corpus.lines() {

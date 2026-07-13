@@ -190,7 +190,7 @@ Count _v0 = 2:
 ~/nibli> :retract 1
 [Retract] Fact #1 retracted. KB rebuilt.
 
-~/nibli> :load readme.klaro
+~/nibli> :load readme.nibli
 [Fact #4] logical system(Nibli).
 [Fact #5] certain system(Nibli).
 ...
@@ -217,7 +217,7 @@ You query by **stating the proposition you want checked**, not by asking a quest
 | `:assert <rel> <args...>` | Assert a fact directly (bypasses text parsing) |
 | `:retract <id>` | Retract a fact by ID and rebuild the KB |
 | `:facts` | List all active facts |
-| `:load <filepath>` | Batch-load a `.klaro` file |
+| `:load <filepath>` | Batch-load a `.nibli` file |
 | `:reset` | Clear the entire knowledge base |
 | `:compute <predicate>` | Register a predicate for external compute dispatch |
 | `:backend [host:port]` | Show or change the compute backend address |
@@ -246,7 +246,7 @@ The three tabs are **Source** (plain English), **Klaro** (the formal encoding; t
 
 Formalize runs the **agentic formalizer** (`nibli-fanva`) — "formalize", not "compile": the LLM step is interpretive and sits *outside* the reasoning firewall, behind deterministic gates. The LLM's draft is validated by the *real compilers* — the klaro front-end (grammar + fail-closed name resolution) + smuni (semantics) + a canonical render **round-trip** check — and any compiler error is fed back for the model to self-correct, so what lands in the Klaro tab already passes those gates. It is still a *draft* — you review the Klaro (and its back-translation) before the deterministic engine reasons over it, and you can skip Formalize entirely and type Klaro directly.
 
-The header has an **example** dropdown that loads a preloaded, book-derived knowledge base into the triad — **Syllogism** (Ch 19), **GDPR compliance** (Ch 20), or **Drug interactions** (Ch 21). In an example the KB source is read-only, Formalize is disabled, and the query box becomes a dropdown of that example's preset queries (selecting one runs it immediately). The default, **Custom**, is the editable mode. The example corpora are the committed `gdpr.klaro` / `drug-interactions.klaro` files the engine's regression tests pin.
+The header has an **example** dropdown that loads a preloaded, book-derived knowledge base into the triad — **Syllogism** (Ch 19), **GDPR compliance** (Ch 20), or **Drug interactions** (Ch 21). In an example the KB source is read-only, Formalize is disabled, and the query box becomes a dropdown of that example's preset queries (selecting one runs it immediately). The default, **Custom**, is the editable mode. The example corpora are the committed `gdpr.nibli` / `drug-interactions.nibli` files the engine's regression tests pin.
 
 The UI uses a stateless KB model: every query builds a fresh engine, re-asserts the full KB tab as the knowledge base, then runs the query. The query bar is queries only (no assertions). The KB tab is the single source of truth.
 
@@ -347,7 +347,7 @@ If an external predicate's backend is unreachable (or unconfigured), the query r
 - **WASM fuel limits:** configurable via `NIBLI_FUEL` or `:fuel` REPL command
 - **WASM memory limits:** configurable via `NIBLI_MEMORY_MB` or `:memory` REPL command
 - **Error types:** `nibli-error` variant (`syntax`/`semantic`/`reasoning`/`backend`) with line:column for parse errors
-- **Batch loading:** `:load <filepath>` loads `.klaro` files; `#` lines are comments
+- **Batch loading:** `:load <filepath>` loads `.nibli` files; `#` lines are comments
 
 ---
 

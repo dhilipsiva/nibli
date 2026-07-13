@@ -7,7 +7,7 @@
 //! `None`) keeps the editable behavior. Examples compile with the Klaro
 //! front-end.
 //!
-//! The KB corpora are the SAME committed `.klaro` files the engine's
+//! The KB corpora are the SAME committed `.nibli` files the engine's
 //! regression tests pin (`gdpr_*` / `ddi_*` in
 //! `nibli-engine/tests/integration.rs`), pulled in via `include_str!` so
 //! the UI examples cannot drift from the tested corpora. The `shipped_examples_compile` guard test below
@@ -55,7 +55,7 @@ eats(every animal).
 dog(Adam).
 ";
 
-// ── GDPR (Chapter 20) — English rendering of `gdpr.klaro` ──
+// ── GDPR (Chapter 20) — English rendering of `gdpr.nibli` ──
 const GDPR_SOURCE: &str = "\
 Names, addresses, and special-category data (health, religion, ethnicity) are personal data.
 Personal data must be accurate, kept secure, and limited to what is necessary (Art 5).
@@ -68,7 +68,7 @@ Adam is a data subject. AkmeCorp and Google are controllers.
 AkmeCorp holds Adam's health record and an ordinary record.
 Adam has given consent. AkmeCorp suffered a breach; Google did not.";
 
-// ── Drug interactions (Chapter 21) — English rendering of `drug-interactions.klaro` ──
+// ── Drug interactions (Chapter 21) — English rendering of `drug-interactions.nibli` ──
 const DRUG_SOURCE: &str = "\
 Warfarin, fluconazole, apixaban, and phenytoin are drugs.
 Fluconazole inhibits the CYP2C9 enzyme.
@@ -104,7 +104,7 @@ pub const EXAMPLES: &[Example] = &[
     Example {
         name: "GDPR compliance (Ch 20)",
         source: GDPR_SOURCE,
-        kb: include_str!("../../gdpr.klaro"),
+        kb: include_str!("../../gdpr.nibli"),
         queries: &[
             ExampleQuery {
                 label: "lawful basis? (Art 6)",
@@ -128,7 +128,7 @@ pub const EXAMPLES: &[Example] = &[
     Example {
         name: "Drug interactions (Ch 21)",
         source: DRUG_SOURCE,
-        kb: include_str!("../../drug-interactions.klaro"),
+        kb: include_str!("../../drug-interactions.nibli"),
         queries: &[
             ExampleQuery {
                 label: "concentration rising?",

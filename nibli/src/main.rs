@@ -133,7 +133,7 @@ fn main() {
                         println!("  ? <text>            Query with proof trace");
                         println!("  ?? <text>           Find witnesses (answer variables)");
                         println!("  :debug <text>       Show compiled logic tree");
-                        println!("  :load <filepath>    Load a .klaro file (assert each line)");
+                        println!("  :load <filepath>    Load a .nibli file (assert each line)");
                         println!("  :compute <name>     Register predicate for compute dispatch");
                         println!("  :assert <rel> <args..> Assert a ground fact directly");
                         println!("  :retract <id>       Retract a fact by ID (rebuilds KB)");

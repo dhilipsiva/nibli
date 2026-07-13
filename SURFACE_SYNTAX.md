@@ -697,7 +697,7 @@ String      <- '"' ('\\' . / !'"' .)* '"'
 > `at_risk`/`rises`/`takes` — which never enter the core map) and to the
 > emitter's landed forms (converted aliases carry positional labels, so
 > `obligated`'s duty place is `x2:`). The NORMATIVE, executable form of this
-> corpus is **`klaro/tests/acceptance.klaro`** (30 statements — this set plus
+> corpus is **`klaro/tests/acceptance.nibli`** (30 statements — this set plus
 > operator/selector/block/tag coverage), pinned by klaro's render∘parse
 > fixpoint tests and reused as the fuzz seed.
 
