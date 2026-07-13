@@ -14,7 +14,7 @@
 //! out-of-scope constructs (`ri/ra/ru`, `ko`, `go'i`, exotic gadri×NU
 //! combinations, exponent-form floats) FAIL CLOSED with a named error — in
 //! the battery, such a failure is a genuine coverage signal, never silence.
-//! Selbri connectives on a MAIN relation render via bridi-level expansion
+//! Predicate connectives on a MAIN relation render via bridi-level expansion
 //! (block-every for a universal subject, an operator claim for a constant —
 //! see [`Renderer::connected_bridi`]); the remaining deliberate gaps fail
 //! closed with named messages: SUMTI connectives, connected selbri outside
@@ -28,9 +28,9 @@
 //! (e.g. a `some`-block's `GeGi` re-parses as an Afterthought `&`).
 
 use nibli_types::ast::{
-    AbstractionKind, AstBuffer, Attitudinal, BaiTag, Bridi, Connective, Conversion, Gadri,
-    ModalTag, PlaceTag, RelClause, RelClauseKind, Selbri, Sentence, SentenceConnective, Sumti,
-    Tense,
+    AbstractionKind, Argument, AstBuffer, Connective, Conversion, DeonticMood, Determiner,
+    ModalRelation, ModalTag, PlaceTag, Predicate, Proposition, RelClause, RelClauseKind, Sentence,
+    SentenceConnective, Tense,
 };
 use nibli_types::error::NibliError;
 
@@ -60,14 +60,14 @@ fn nope(msg: impl Into<String>) -> NibliError {
 const PREC_ATOM: u8 = 6;
 
 impl<'a> Renderer<'a> {
-    fn selbri(&self, id: u32) -> R<&Selbri> {
+    fn selbri(&self, id: u32) -> R<&Predicate> {
         self.buffer
             .selbris
             .get(id as usize)
             .ok_or_else(|| nope(format!("selbri index {id} out of bounds")))
     }
 
-    fn sumti(&self, id: u32) -> R<&Sumti> {
+    fn sumti(&self, id: u32) -> R<&Argument> {
         self.buffer
             .sumtis
             .get(id as usize)
@@ -175,23 +175,23 @@ impl<'a> Renderer<'a> {
 
     // ── bridi ──
 
-    fn bridi(&self, bridi: &Bridi) -> R<String> {
+    fn bridi(&self, bridi: &Proposition) -> R<String> {
         self.bridi_impl(bridi, false)
     }
 
     /// Render a relative-clause body bridi whose ke'a is IMPLICIT (gerna-origin
     /// buffers leave the head empty and smuni injects ke'a at x1): spell the
     /// relativized entity as `it` in x1 so the KR re-parses (mandatory-it, §7).
-    fn bridi_with_it(&self, bridi: &Bridi) -> R<String> {
+    fn bridi_with_it(&self, bridi: &Proposition) -> R<String> {
         self.bridi_impl(bridi, true)
     }
 
-    fn bridi_impl(&self, bridi: &Bridi, inject_it: bool) -> R<String> {
+    fn bridi_impl(&self, bridi: &Proposition, inject_it: bool) -> R<String> {
         let mut prefix = String::new();
-        if let Some(att) = &bridi.attitudinal {
+        if let Some(att) = &bridi.deontic {
             prefix.push_str(match att {
-                Attitudinal::Ei => "must ",
-                Attitudinal::Ehe => "may ",
+                DeonticMood::Ei => "must ",
+                DeonticMood::Ehe => "may ",
             });
         }
         if let Some(tense) = &bridi.tense {
@@ -207,7 +207,7 @@ impl<'a> Renderer<'a> {
 
         // du with exactly one head and one tail term is the equality spelling
         // (with an injected implicit ke'a, the head IS `it`).
-        if let Selbri::Root(root) = self.selbri(bridi.relation)?
+        if let Predicate::Root(root) = self.selbri(bridi.relation)?
             && root == "du"
         {
             if !inject_it && bridi.head_terms.len() == 1 && bridi.tail_terms.len() == 1 {
@@ -226,7 +226,7 @@ impl<'a> Renderer<'a> {
         // operands share the subject): block-every for a universal subject,
         // a plain operator claim for a constant subject — both probe-proven
         // canonically equal to the Lojban connective compilation.
-        if matches!(self.selbri(bridi.relation)?, Selbri::Connected(_)) {
+        if matches!(self.selbri(bridi.relation)?, Predicate::Connected(_)) {
             return self.connected_bridi(bridi, &prefix);
         }
 
@@ -248,7 +248,7 @@ impl<'a> Renderer<'a> {
         // `via` after the argument list.
         let mut placed: Vec<(usize, Option<u32>)> = Vec::new();
         let mut vias: Vec<(u32, u32)> = Vec::new(); // (modal selbri-ish, term) — see below
-        let mut fixed_vias: Vec<(BaiTag, u32)> = Vec::new();
+        let mut fixed_vias: Vec<(ModalRelation, u32)> = Vec::new();
         let mut counter = 0usize;
         if inject_it {
             placed.push((counter, None)); // the implicit ke'a — spelled `it`
@@ -260,24 +260,24 @@ impl<'a> Renderer<'a> {
         }
         for &tail in &bridi.tail_terms {
             match self.sumti(tail)? {
-                Sumti::Tagged((tag, inner)) => {
+                Argument::Tagged((tag, inner)) => {
                     let place = tag.to_index();
                     placed.push((place, Some(*inner)));
                     counter = place + 1;
                 }
-                Sumti::ModalTagged((modal, inner)) => match modal {
+                Argument::ModalTagged((modal, inner)) => match modal {
                     ModalTag::Fio(selbri) => vias.push((*selbri, *inner)),
                     ModalTag::Fixed(bai) => fixed_vias.push((*bai, *inner)),
                 },
-                Sumti::ProSumti(_)
-                | Sumti::Description(_)
-                | Sumti::Name(_)
-                | Sumti::QuotedLiteral(_)
-                | Sumti::Unspecified
-                | Sumti::Restricted(_)
-                | Sumti::Number(_)
-                | Sumti::Connected(_)
-                | Sumti::QuantifiedDescription(_) => {
+                Argument::Pronoun(_)
+                | Argument::Description(_)
+                | Argument::Name(_)
+                | Argument::QuotedLiteral(_)
+                | Argument::Unspecified
+                | Argument::Restricted(_)
+                | Argument::Number(_)
+                | Argument::Connected(_)
+                | Argument::QuantifiedDescription(_) => {
                     placed.push((counter, Some(tail)));
                     counter += 1;
                 }
@@ -324,7 +324,7 @@ impl<'a> Renderer<'a> {
         let mut out = format!("{prefix}{relation}({})", args.join(", "));
         for (selbri, term) in vias {
             let name = match self.selbri(selbri)? {
-                Selbri::Root(gismu) => self.alias_or_identity(gismu)?,
+                Predicate::Root(gismu) => self.alias_or_identity(gismu)?,
                 other => {
                     return Err(nope(format!(
                         "a fi'o modal over a non-root selbri has no nibli KR spelling: {other:?}"
@@ -335,12 +335,12 @@ impl<'a> Renderer<'a> {
         }
         for (bai, term) in fixed_vias {
             let gismu = match bai {
-                BaiTag::Ria => "rinka",
-                BaiTag::Nii => "nibli",
-                BaiTag::Mui => "mukti",
-                BaiTag::Kiu => "krinu",
-                BaiTag::Pio => "pilno",
-                BaiTag::Bai => "basti",
+                ModalRelation::Ria => "rinka",
+                ModalRelation::Nii => "nibli",
+                ModalRelation::Mui => "mukti",
+                ModalRelation::Kiu => "krinu",
+                ModalRelation::Pio => "pilno",
+                ModalRelation::Bai => "basti",
             };
             out.push_str(&format!(
                 " via {}({})",
@@ -351,21 +351,21 @@ impl<'a> Renderer<'a> {
         Ok(out)
     }
 
-    /// Bridi-level expansion of a CONNECTED main selbri (`X A jenai B` and
+    /// Proposition-level expansion of a CONNECTED main selbri (`X A jenai B` and
     /// family). The operands share the subject, so the sentence becomes a
     /// block-every claim (universal-description subject) or a plain operator
     /// claim (constant subject); both shapes are pinned canonically equal to
     /// smuni's selbri-connective compilation by the seam gate (verify-nibli-kr-seam). Fail
     /// closed BY NAME everywhere else — the expansion must never guess scope
     /// (duplicating a `some`-subject would double the quantifier).
-    fn connected_bridi(&self, bridi: &Bridi, prefix: &str) -> R<String> {
+    fn connected_bridi(&self, bridi: &Proposition, prefix: &str) -> R<String> {
         if !prefix.is_empty() {
             return Err(nope(
                 "a tense/deontic/negation prefix over a connected selbri has no nibli KR \
                  spelling yet — expand manually",
             ));
         }
-        let Selbri::Connected((left_id, conn, right_id)) = self.selbri(bridi.relation)? else {
+        let Predicate::Connected((left_id, conn, right_id)) = self.selbri(bridi.relation)? else {
             unreachable!("caller matched Connected");
         };
         if bridi.head_terms.len() != 1 || !bridi.tail_terms.is_empty() {
@@ -386,13 +386,13 @@ impl<'a> Renderer<'a> {
         };
         // gerna spells jenai/janai/jonai as the connective + Negated(right).
         let (right_id, right_neg) = match self.selbri(*right_id)? {
-            Selbri::Negated(inner) => (*inner, true),
+            Predicate::Negated(inner) => (*inner, true),
             _ => (*right_id, false),
         };
         if matches!(
             self.selbri(*left_id)?,
-            Selbri::Connected(_) | Selbri::Negated(_)
-        ) || matches!(self.selbri(right_id)?, Selbri::Connected(_))
+            Predicate::Connected(_) | Predicate::Negated(_)
+        ) || matches!(self.selbri(right_id)?, Predicate::Connected(_))
         {
             return Err(nope(
                 "a nested or negated-left connected selbri has no nibli KR spelling yet",
@@ -403,14 +403,17 @@ impl<'a> Renderer<'a> {
         match self.sumti(subject)? {
             // Universal subject → the block form, minting `$x` (gerna-origin
             // variables render as $da/$de/$di, so the name cannot collide).
-            Sumti::Description((Gadri::RoLo, restr_id)) => {
+            Argument::Description((Determiner::RoLo, restr_id)) => {
                 let restr = self.restr_selbri(*restr_id)?;
                 let left = self.connective_operand(*left_id, "$x", false)?;
                 let right = self.connective_operand(right_id, "$x", right_neg)?;
                 Ok(format!("every {restr} $x: {left} {op} {right}"))
             }
             // Constant-ish subject → duplication is sound.
-            Sumti::Name(_) | Sumti::ProSumti(_) | Sumti::Number(_) | Sumti::QuotedLiteral(_) => {
+            Argument::Name(_)
+            | Argument::Pronoun(_)
+            | Argument::Number(_)
+            | Argument::QuotedLiteral(_) => {
                 let t = self.term(subject)?;
                 let left = self.connective_operand(*left_id, &t, false)?;
                 let right = self.connective_operand(right_id, &t, right_neg)?;
@@ -448,11 +451,11 @@ impl<'a> Renderer<'a> {
     /// position; restrictors have the selector spelling instead.
     fn peel_conversions(&self, id: u32) -> R<(u32, [usize; 5])> {
         const IDENTITY: [usize; 5] = [0, 1, 2, 3, 4];
-        let Selbri::Converted((conv, inner)) = self.selbri(id)? else {
+        let Predicate::Converted((conv, inner)) = self.selbri(id)? else {
             return Ok((id, IDENTITY));
         };
         // Single-layer chain with a curated converted alias renders by name.
-        if let Selbri::Root(gismu) = self.selbri(*inner)? {
+        if let Predicate::Root(gismu) = self.selbri(*inner)? {
             let place: u8 = match conv {
                 Conversion::Se => 2,
                 Conversion::Te => 3,
@@ -491,15 +494,15 @@ impl<'a> Renderer<'a> {
     /// through wrappers to the head Root/Compound.
     fn head_gismu(&self, id: u32) -> R<String> {
         Ok(match self.selbri(id)? {
-            Selbri::Root(g) => g.clone(),
-            Selbri::Compound(parts) => parts.last().cloned().unwrap_or_default(),
-            Selbri::Tanru((_, head)) => self.head_gismu(*head)?,
-            Selbri::Converted((_, inner)) => self.head_gismu(*inner)?,
-            Selbri::Negated(inner) => self.head_gismu(*inner)?,
-            Selbri::Grouped(inner) => self.head_gismu(*inner)?,
-            Selbri::WithArgs((core, _)) => self.head_gismu(*core)?,
-            Selbri::Connected((_, _, _)) => String::new(),
-            Selbri::Abstraction(_) => String::new(),
+            Predicate::Root(g) => g.clone(),
+            Predicate::Compound(parts) => parts.last().cloned().unwrap_or_default(),
+            Predicate::Tanru((_, head)) => self.head_gismu(*head)?,
+            Predicate::Converted((_, inner)) => self.head_gismu(*inner)?,
+            Predicate::Negated(inner) => self.head_gismu(*inner)?,
+            Predicate::Grouped(inner) => self.head_gismu(*inner)?,
+            Predicate::WithArgs((core, _)) => self.head_gismu(*core)?,
+            Predicate::Connected((_, _, _)) => String::new(),
+            Predicate::Abstraction(_) => String::new(),
         })
     }
 
@@ -556,26 +559,26 @@ impl<'a> Renderer<'a> {
 
     fn selbri_text(&self, id: u32, selector_ok: bool) -> R<String> {
         Ok(match self.selbri(id)? {
-            Selbri::Root(gismu) => self.alias_or_identity(gismu)?,
-            Selbri::Compound(parts) => parts
+            Predicate::Root(gismu) => self.alias_or_identity(gismu)?,
+            Predicate::Compound(parts) => parts
                 .iter()
                 .map(|p| self.alias_or_identity(p))
                 .collect::<R<Vec<_>>>()?
                 .into_iter()
                 .collect::<Vec<_>>()
                 .join("+"),
-            Selbri::Tanru((modifier, head)) => {
+            Predicate::Tanru((modifier, head)) => {
                 let modifier_text = match self.selbri(*modifier)? {
                     // A left-nested tanru needs explicit grouping.
-                    Selbri::Tanru(_) => format!("[{}]", self.selbri_text(*modifier, false)?),
+                    Predicate::Tanru(_) => format!("[{}]", self.selbri_text(*modifier, false)?),
                     _ => self.selbri_text(*modifier, false)?,
                 };
                 format!("{modifier_text} {}", self.selbri_text(*head, selector_ok)?)
             }
-            Selbri::Grouped(inner) => format!("[{}]", self.selbri_text(*inner, false)?),
-            Selbri::Negated(inner) => format!("~{}", self.selbri_text(*inner, selector_ok)?),
-            Selbri::Converted((conv, inner)) => {
-                let Selbri::Root(gismu) = self.selbri(*inner)? else {
+            Predicate::Grouped(inner) => format!("[{}]", self.selbri_text(*inner, false)?),
+            Predicate::Negated(inner) => format!("~{}", self.selbri_text(*inner, selector_ok)?),
+            Predicate::Converted((conv, inner)) => {
+                let Predicate::Root(gismu) = self.selbri(*inner)? else {
                     return Err(nope(
                         "a conversion over a non-root selbri has no nibli KR spelling yet — \
                          curate a converted alias (nibli-kr-dictionary CONVERTED_ALIASES)",
@@ -605,7 +608,7 @@ impl<'a> Renderer<'a> {
                      predication position — curate a converted alias"
                 )));
             }
-            Selbri::WithArgs((core, be_args)) => {
+            Predicate::WithArgs((core, be_args)) => {
                 let core_text = self.selbri_text(*core, false)?;
                 let mut rendered = Vec::new();
                 for &arg in be_args {
@@ -613,13 +616,13 @@ impl<'a> Renderer<'a> {
                 }
                 format!("{core_text}({})", rendered.join(", "))
             }
-            Selbri::Connected((_, _, _)) => {
+            Predicate::Connected((_, _, _)) => {
                 return Err(nope(
                     "a connected selbri outside main-bridi position (restrictor / tanru \
                      unit) has no nibli KR spelling — only the bridi-level expansion exists",
                 ));
             }
-            Selbri::Abstraction((kind, body)) => {
+            Predicate::Abstraction((kind, body)) => {
                 let keyword = match kind {
                     AbstractionKind::Nu => "event",
                     AbstractionKind::Duhu => "fact",
@@ -636,7 +639,7 @@ impl<'a> Renderer<'a> {
 
     fn term(&self, id: u32) -> R<String> {
         Ok(match self.sumti(id)? {
-            Sumti::ProSumti(word) => match word.as_str() {
+            Argument::Pronoun(word) => match word.as_str() {
                 "mi" => "me".into(),
                 "do" => "you".into(),
                 "mi'o" => "we".into(),
@@ -668,8 +671,8 @@ impl<'a> Renderer<'a> {
                     )));
                 }
             },
-            Sumti::Name(name) => render_name(name)?,
-            Sumti::QuotedLiteral(text) => {
+            Argument::Name(name) => render_name(name)?,
+            Argument::QuotedLiteral(text) => {
                 if text.contains('\n') {
                     return Err(nope(
                         "a quoted literal containing a raw newline has no nibli KR spelling \
@@ -678,8 +681,8 @@ impl<'a> Renderer<'a> {
                 }
                 format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
             }
-            Sumti::Unspecified => "_".into(),
-            Sumti::Number(value) => {
+            Argument::Unspecified => "_".into(),
+            Argument::Number(value) => {
                 let rendered = format!("{value}");
                 if !value.is_finite() || rendered.contains('e') || rendered.starts_with('-') {
                     return Err(nope(format!(
@@ -689,25 +692,27 @@ impl<'a> Renderer<'a> {
                 }
                 rendered
             }
-            Sumti::Description((gadri, selbri)) => {
-                if let Selbri::Abstraction(_) = self.selbri(*selbri)? {
+            Argument::Description((gadri, selbri)) => {
+                if let Predicate::Abstraction(_) = self.selbri(*selbri)? {
                     return match gadri {
-                        Gadri::Lo => self.restr_selbri(*selbri),
-                        Gadri::Le | Gadri::La | Gadri::RoLo | Gadri::RoLe => Err(nope(
-                            "abstractions are hard-wired to the implicit-some description; \
+                        Determiner::Lo => self.restr_selbri(*selbri),
+                        Determiner::Le | Determiner::La | Determiner::RoLo | Determiner::RoLe => {
+                            Err(nope(
+                                "abstractions are hard-wired to the implicit-some description; \
                              other gadri × NU combinations are out of scope \
                              (NIBLI_KR §10)",
-                        )),
+                            ))
+                        }
                     };
                 }
                 match gadri {
-                    Gadri::Lo => format!("some {}", self.restr_selbri(*selbri)?),
-                    Gadri::Le => format!("the {}", self.restr_selbri(*selbri)?),
-                    Gadri::RoLo => format!("every {}", self.restr_selbri(*selbri)?),
-                    Gadri::RoLe => format!("every the {}", self.restr_selbri(*selbri)?),
-                    Gadri::La => match self.selbri(*selbri)? {
+                    Determiner::Lo => format!("some {}", self.restr_selbri(*selbri)?),
+                    Determiner::Le => format!("the {}", self.restr_selbri(*selbri)?),
+                    Determiner::RoLo => format!("every {}", self.restr_selbri(*selbri)?),
+                    Determiner::RoLe => format!("every the {}", self.restr_selbri(*selbri)?),
+                    Determiner::La => match self.selbri(*selbri)? {
                         // §11 collapse: la + selbri ≡ a rigid Name.
-                        Selbri::Root(word) => render_name(word)?,
+                        Predicate::Root(word) => render_name(word)?,
                         other => {
                             return Err(nope(format!(
                                 "la + a complex selbri has no nibli KR spelling: {other:?}"
@@ -716,35 +721,35 @@ impl<'a> Renderer<'a> {
                     },
                 }
             }
-            Sumti::QuantifiedDescription((count, gadri, selbri)) => match gadri {
-                Gadri::Lo => {
+            Argument::QuantifiedDescription((count, gadri, selbri)) => match gadri {
+                Determiner::Lo => {
                     if *count == 0 {
                         format!("no {}", self.restr_selbri(*selbri)?)
                     } else {
                         format!("exactly {count} {}", self.restr_selbri(*selbri)?)
                     }
                 }
-                Gadri::Le => format!("exactly {count} the {}", self.restr_selbri(*selbri)?),
-                Gadri::La | Gadri::RoLo | Gadri::RoLe => {
+                Determiner::Le => format!("exactly {count} the {}", self.restr_selbri(*selbri)?),
+                Determiner::La | Determiner::RoLo | Determiner::RoLe => {
                     return Err(nope(format!(
                         "a quantified {gadri:?} description has no nibli KR spelling"
                     )));
                 }
             },
-            Sumti::Restricted((inner, clause)) => {
+            Argument::Restricted((inner, clause)) => {
                 format!("{} {}", self.term(*inner)?, self.rel_clause(clause)?)
             }
-            Sumti::Tagged((_, _)) => {
+            Argument::Tagged((_, _)) => {
                 return Err(nope(
                     "a place-tagged term outside an argument list has no nibli KR spelling",
                 ));
             }
-            Sumti::ModalTagged((_, _)) => {
+            Argument::ModalTagged((_, _)) => {
                 return Err(nope(
                     "a modal-tagged term outside a predication has no nibli KR spelling",
                 ));
             }
-            Sumti::Connected((_, _, _, _)) => {
+            Argument::Connected((_, _, _, _)) => {
                 return Err(nope(
                     "sumti connectives render only via bridi-level expansion — not yet \
                      renderable (translation-battery bullet)",
@@ -765,17 +770,17 @@ impl<'a> Renderer<'a> {
         // The bound entity is either an explicit ke'a head (nibli-kr-emitted
         // buffers) or IMPLICIT (gerna leaves the head empty and smuni injects
         // ke'a at x1) — both print as the sugar.
-        let head_is_kehah = |bridi: &Bridi| -> R<bool> {
+        let head_is_kehah = |bridi: &Proposition| -> R<bool> {
             Ok(match bridi.head_terms.as_slice() {
                 [] => true,
-                [only] => matches!(self.sumti(*only)?, Sumti::ProSumti(w) if w == "ke'a"),
+                [only] => matches!(self.sumti(*only)?, Argument::Pronoun(w) if w == "ke'a"),
                 _ => false,
             })
         };
         if let Sentence::Simple(bridi) = self.sentence_node(clause.body_sentence)?
             && bridi.tail_terms.is_empty()
             && bridi.tense.is_none()
-            && bridi.attitudinal.is_none()
+            && bridi.deontic.is_none()
             && head_is_kehah(bridi)?
             && self.bare_body_selbri(bridi.relation)
         {
@@ -790,13 +795,13 @@ impl<'a> Renderer<'a> {
         // rendered KR re-parses (§7 mandatory-it). nibli KR-emitted bodies carry
         // an explicit ke'a (head, or a tail term once the smuni named-`it`
         // collision is fixed) and render through the normal path.
-        let has_explicit_keha = |bridi: &Bridi| -> R<bool> {
+        let has_explicit_keha = |bridi: &Proposition| -> R<bool> {
             for &tail in &bridi.tail_terms {
                 let inner = match self.sumti(tail)? {
-                    Sumti::Tagged((_, inner)) => *inner,
+                    Argument::Tagged((_, inner)) => *inner,
                     _ => tail,
                 };
-                if matches!(self.sumti(inner)?, Sumti::ProSumti(w) if w == "ke'a") {
+                if matches!(self.sumti(inner)?, Argument::Pronoun(w) if w == "ke'a") {
                     return Ok(true);
                 }
             }
@@ -817,14 +822,14 @@ impl<'a> Renderer<'a> {
     /// (anything fancier needs the full-claim body).
     fn bare_body_selbri(&self, id: u32) -> bool {
         match self.selbri(id) {
-            Ok(Selbri::Root(_)) | Ok(Selbri::Compound(_)) => true,
-            Ok(Selbri::Tanru((m, h))) => self.bare_body_selbri(*m) && self.bare_body_selbri(*h),
-            Ok(Selbri::Grouped(inner)) => self.bare_body_selbri(*inner),
-            Ok(Selbri::Converted(_))
-            | Ok(Selbri::Negated(_))
-            | Ok(Selbri::WithArgs(_))
-            | Ok(Selbri::Connected(_))
-            | Ok(Selbri::Abstraction(_)) => false,
+            Ok(Predicate::Root(_)) | Ok(Predicate::Compound(_)) => true,
+            Ok(Predicate::Tanru((m, h))) => self.bare_body_selbri(*m) && self.bare_body_selbri(*h),
+            Ok(Predicate::Grouped(inner)) => self.bare_body_selbri(*inner),
+            Ok(Predicate::Converted(_))
+            | Ok(Predicate::Negated(_))
+            | Ok(Predicate::WithArgs(_))
+            | Ok(Predicate::Connected(_))
+            | Ok(Predicate::Abstraction(_)) => false,
             Err(_) => false,
         }
     }
@@ -866,44 +871,44 @@ fn render_name(name: &str) -> R<String> {
 #[doc(hidden)]
 #[allow(clippy::too_many_arguments)] // one parameter per guarded enum, by design
 pub fn __ast_parity_guard(
-    sumti: &Sumti,
-    selbri: &Selbri,
+    sumti: &Argument,
+    selbri: &Predicate,
     sentence: &Sentence,
     connective: &SentenceConnective,
-    gadri: &Gadri,
+    gadri: &Determiner,
     abstraction: &AbstractionKind,
     rel_kind: &RelClauseKind,
     place: &PlaceTag,
-    bai: &BaiTag,
+    bai: &ModalRelation,
     modal: &ModalTag,
     conversion: &Conversion,
     logical: &Connective,
     tense: &Tense,
-    attitudinal: &Attitudinal,
+    deontic: &DeonticMood,
 ) {
     match sumti {
-        Sumti::ProSumti(_) => {}
-        Sumti::Description(_) => {}
-        Sumti::Name(_) => {}
-        Sumti::QuotedLiteral(_) => {}
-        Sumti::Unspecified => {}
-        Sumti::Tagged(_) => {}
-        Sumti::ModalTagged(_) => {}
-        Sumti::Restricted(_) => {}
-        Sumti::Number(_) => {}
-        Sumti::Connected(_) => {}
-        Sumti::QuantifiedDescription(_) => {}
+        Argument::Pronoun(_) => {}
+        Argument::Description(_) => {}
+        Argument::Name(_) => {}
+        Argument::QuotedLiteral(_) => {}
+        Argument::Unspecified => {}
+        Argument::Tagged(_) => {}
+        Argument::ModalTagged(_) => {}
+        Argument::Restricted(_) => {}
+        Argument::Number(_) => {}
+        Argument::Connected(_) => {}
+        Argument::QuantifiedDescription(_) => {}
     }
     match selbri {
-        Selbri::Root(_) => {}
-        Selbri::Compound(_) => {}
-        Selbri::Tanru(_) => {}
-        Selbri::Converted(_) => {}
-        Selbri::Negated(_) => {}
-        Selbri::Grouped(_) => {}
-        Selbri::WithArgs(_) => {}
-        Selbri::Connected(_) => {}
-        Selbri::Abstraction(_) => {}
+        Predicate::Root(_) => {}
+        Predicate::Compound(_) => {}
+        Predicate::Tanru(_) => {}
+        Predicate::Converted(_) => {}
+        Predicate::Negated(_) => {}
+        Predicate::Grouped(_) => {}
+        Predicate::WithArgs(_) => {}
+        Predicate::Connected(_) => {}
+        Predicate::Abstraction(_) => {}
     }
     match sentence {
         Sentence::Simple(_) => {}
@@ -918,11 +923,11 @@ pub fn __ast_parity_guard(
         SentenceConnective::Afterthought(_) => {}
     }
     match gadri {
-        Gadri::Lo => {}
-        Gadri::Le => {}
-        Gadri::La => {}
-        Gadri::RoLo => {}
-        Gadri::RoLe => {}
+        Determiner::Lo => {}
+        Determiner::Le => {}
+        Determiner::La => {}
+        Determiner::RoLo => {}
+        Determiner::RoLe => {}
     }
     match abstraction {
         AbstractionKind::Nu => {}
@@ -944,12 +949,12 @@ pub fn __ast_parity_guard(
         PlaceTag::Fu => {}
     }
     match bai {
-        BaiTag::Ria => {}
-        BaiTag::Nii => {}
-        BaiTag::Mui => {}
-        BaiTag::Kiu => {}
-        BaiTag::Pio => {}
-        BaiTag::Bai => {}
+        ModalRelation::Ria => {}
+        ModalRelation::Nii => {}
+        ModalRelation::Mui => {}
+        ModalRelation::Kiu => {}
+        ModalRelation::Pio => {}
+        ModalRelation::Bai => {}
     }
     match modal {
         ModalTag::Fixed(_) => {}
@@ -972,9 +977,9 @@ pub fn __ast_parity_guard(
         Tense::Ca => {}
         Tense::Ba => {}
     }
-    match attitudinal {
-        Attitudinal::Ei => {}
-        Attitudinal::Ehe => {}
+    match deontic {
+        DeonticMood::Ei => {}
+        DeonticMood::Ehe => {}
     }
 }
 
@@ -988,7 +993,7 @@ mod tests {
         let buffer = parse_checked(text).unwrap_or_else(|e| panic!("parse {text:?}: {e}"));
         format!(
             "{:?}",
-            nibli_semantics::compile_from_gerna_ast(buffer)
+            nibli_semantics::compile_from_ast(buffer)
                 .unwrap_or_else(|e| panic!("smuni {text:?}: {e}"))
         )
     }
@@ -1031,28 +1036,34 @@ mod tests {
         use nibli_types::ast::*;
         // Hand-built buffers with §10 constructs: render must name the
         // offender, never guess.
-        let mk = |sumti: Sumti| AstBuffer {
-            selbris: vec![Selbri::Root("gerku".into())],
+        let mk = |sumti: Argument| AstBuffer {
+            selbris: vec![Predicate::Root("gerku".into())],
             sumtis: vec![sumti],
-            sentences: vec![Sentence::Simple(Bridi {
+            sentences: vec![Sentence::Simple(Proposition {
                 relation: 0,
                 head_terms: vec![0],
                 tail_terms: vec![],
                 negated: false,
                 tense: None,
-                attitudinal: None,
+                deontic: None,
             })],
             roots: vec![0],
         };
         for (buffer, needle) in [
-            (mk(Sumti::ProSumti("ko".into())), "out of nibli KR's scope"),
-            (mk(Sumti::ProSumti("ri".into())), "out of nibli KR's scope"),
             (
-                mk(Sumti::ProSumti("go'i".into())),
+                mk(Argument::Pronoun("ko".into())),
                 "out of nibli KR's scope",
             ),
-            (mk(Sumti::Number(f64::INFINITY)), "no nibli KR literal"),
-            (mk(Sumti::Number(-2.0)), "no nibli KR literal"),
+            (
+                mk(Argument::Pronoun("ri".into())),
+                "out of nibli KR's scope",
+            ),
+            (
+                mk(Argument::Pronoun("go'i".into())),
+                "out of nibli KR's scope",
+            ),
+            (mk(Argument::Number(f64::INFINITY)), "no nibli KR literal"),
+            (mk(Argument::Number(-2.0)), "no nibli KR literal"),
         ] {
             let e = render(&buffer).expect_err("must fail closed");
             assert!(format!("{e}").contains(needle), "{e}");

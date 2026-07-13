@@ -61,10 +61,10 @@ impl GateError {
 /// nibli-kr grammar (parse + fail-closed resolve) → smuni semantics → the render
 /// round-trip gate. Which call fails determines the [`GateError`] variant: a
 /// `parse_checked` failure is always a grammar error; a
-/// `compile_from_gerna_ast` failure is a semantic one.
+/// `compile_from_ast` failure is a semantic one.
 pub fn local_gates(candidate: &str) -> Result<LogicBuffer, GateError> {
     let ast = nibli_kr::parse_checked(candidate).map_err(syntax)?;
-    let buf = nibli_semantics::compile_from_gerna_ast(ast.clone()).map_err(semantic)?;
+    let buf = nibli_semantics::compile_from_ast(ast.clone()).map_err(semantic)?;
     nibli_kr_round_trip(&ast, &buf)?;
     Ok(buf)
 }
@@ -89,7 +89,7 @@ fn nibli_kr_round_trip(
             "the canonical re-spelling {rendered:?} failed to re-parse: {e}"
         ))
     })?;
-    let buf2 = nibli_semantics::compile_from_gerna_ast(ast2).map_err(|e| {
+    let buf2 = nibli_semantics::compile_from_ast(ast2).map_err(|e| {
         GateError::RoundTrip(format!(
             "the canonical re-spelling {rendered:?} failed to re-compile: {e}"
         ))

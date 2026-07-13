@@ -1954,7 +1954,7 @@ fn cll_place_counter_fi_then_untagged() {
 #[test]
 fn xe_conversion_swaps_x1_and_x5() {
     // `xe klama` swaps x1↔x5 (mutation-baseline kill: the 5-place conversion arm
-    // in smuni's apply_selbri was exercised by no per-mutant-suite test). All
+    // in smuni's apply_predicate was exercised by no per-mutant-suite test). All
     // five places are filled (`zo'e` middles) so the swap is observable: the
     // head term must land in x5 (vehicle) and the tail term in x1 (goer).
     let engine = fresh_engine();

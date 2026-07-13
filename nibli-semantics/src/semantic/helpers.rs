@@ -23,24 +23,24 @@ impl SemanticCompiler {
     /// wrapped form. The restrictive poi/voi clause (`entry.restrictor`) is folded
     /// on the DOMAIN side (antecedent for ∀, conjunct for ∃/Count) — it narrows
     /// what the quantifier ranges over. The non-restrictive noi clause
-    /// (`entry.noi_restrictor`) is folded on the MATRIX side (consequent for ∀,
+    /// (`entry.incidental_restrictor`) is folded on the MATRIX side (consequent for ∀,
     /// body conjunct for ∃/Count) — it asserts an incidental property of the
     /// domain members without narrowing the domain. `∀x. P(x) → (Q(x) ∧ noi(x))`
     /// is exactly `(∀x. P→Q) ∧ (∀x. P→noi)`, the standard non-restrictive reading.
     /// Residual: under an exact-count quantifier `noi` is folded into the counted
     /// body (== restrictive) — a documented limitation, since the principled form
     /// `Count(…) ∧ ∀x.(P→noi)` would need to return two conjuncts.
-    /// Shared by the bridi-level closure (`compile_bridi`) and the be/bei closure
-    /// (`apply_selbri`) so any change to quantifier lowering is made in one place.
+    /// Shared by the bridi-level closure (`compile_proposition`) and the be/bei closure
+    /// (`apply_predicate`) so any change to quantifier lowering is made in one place.
     pub(crate) fn close_quantifier(
         &mut self,
         entry: QuantifierEntry,
         form_to_wrap: LogicalForm,
-        selbris: &[Selbri],
-        sumtis: &[Sumti],
+        selbris: &[Predicate],
+        sumtis: &[Argument],
         sentences: &[Sentence],
     ) -> LogicalForm {
-        let desc_arity = self.get_selbri_arity(entry.desc_id, selbris);
+        let desc_arity = self.get_predicate_arity(entry.desc_id, selbris);
 
         let mut restrictor_args = Vec::with_capacity(desc_arity);
         restrictor_args.push(LogicalTerm::Variable(entry.var));
@@ -49,12 +49,12 @@ impl SemanticCompiler {
         }
 
         let desc_restrictor =
-            self.apply_selbri(entry.desc_id, &restrictor_args, selbris, sumtis, sentences);
+            self.apply_predicate(entry.desc_id, &restrictor_args, selbris, sumtis, sentences);
 
         match entry.kind {
             QuantifierKind::Universal => {
                 // noi (non-restrictive): conjoin into the consequent (matrix side).
-                let matrix = match entry.noi_restrictor {
+                let matrix = match entry.incidental_restrictor {
                     Some(noi) => LogicalForm::And(Box::new(form_to_wrap), Box::new(noi)),
                     None => form_to_wrap,
                 };
@@ -81,7 +81,7 @@ impl SemanticCompiler {
 
                 // noi: under ∃ a matrix conjunct is logically identical to a
                 // restrictor conjunct (∧ is flat), so folding into the body is exact.
-                if let Some(noi) = entry.noi_restrictor {
+                if let Some(noi) = entry.incidental_restrictor {
                     body = LogicalForm::And(Box::new(noi), Box::new(body));
                 }
 
@@ -95,7 +95,7 @@ impl SemanticCompiler {
                 }
 
                 // noi under exact-count stays restrictive (documented residual).
-                if let Some(noi) = entry.noi_restrictor {
+                if let Some(noi) = entry.incidental_restrictor {
                     body = LogicalForm::And(Box::new(noi), Box::new(body));
                 }
 
@@ -108,7 +108,7 @@ impl SemanticCompiler {
             QuantifierKind::UniversalLe => {
                 let le_restrictor =
                     self.build_le_domain_restrictor(entry.desc_id, entry.var, selbris);
-                let matrix = match entry.noi_restrictor {
+                let matrix = match entry.incidental_restrictor {
                     Some(noi) => LogicalForm::And(Box::new(form_to_wrap), Box::new(noi)),
                     None => form_to_wrap,
                 };
@@ -136,7 +136,7 @@ impl SemanticCompiler {
                 }
 
                 // noi under exact-count stays restrictive (documented residual).
-                if let Some(noi) = entry.noi_restrictor {
+                if let Some(noi) = entry.incidental_restrictor {
                     body = LogicalForm::And(Box::new(noi), Box::new(body));
                 }
 
@@ -150,58 +150,60 @@ impl SemanticCompiler {
     }
 
     /// Maps a BAI modal tag to its underlying gismu relation name.
-    pub(crate) fn bai_to_gismu(tag: &BaiTag) -> &'static str {
+    pub(crate) fn modal_relation_name(tag: &ModalRelation) -> &'static str {
         match tag {
-            BaiTag::Ria => "rinka",
-            BaiTag::Nii => "nibli",
-            BaiTag::Mui => "mukti",
-            BaiTag::Kiu => "krinu",
-            BaiTag::Pio => "pilno",
-            BaiTag::Bai => "basti",
+            ModalRelation::Ria => "rinka",
+            ModalRelation::Nii => "nibli",
+            ModalRelation::Mui => "mukti",
+            ModalRelation::Kiu => "krinu",
+            ModalRelation::Pio => "pilno",
+            ModalRelation::Bai => "basti",
         }
     }
 
     /// Resolves the arity of a selbri by recursing through tanru, conversions, etc.
-    pub(crate) fn get_selbri_arity(&self, selbri_id: u32, selbris: &[Selbri]) -> usize {
+    pub(crate) fn get_predicate_arity(&self, selbri_id: u32, selbris: &[Predicate]) -> usize {
         match &selbris[selbri_id as usize] {
-            Selbri::Root(g) => JbovlasteSchema::get_arity_or_default(g.as_str()),
-            Selbri::Tanru((_, head_id)) => self.get_selbri_arity(*head_id, selbris),
-            Selbri::Converted((_, inner_id)) => self.get_selbri_arity(*inner_id, selbris),
-            Selbri::Negated(inner_id) => self.get_selbri_arity(*inner_id, selbris),
-            Selbri::Grouped(inner_id) => self.get_selbri_arity(*inner_id, selbris),
-            Selbri::WithArgs((core_id, _)) => self.get_selbri_arity(*core_id, selbris),
+            Predicate::Root(g) => LexiconSchema::get_arity_or_default(g.as_str()),
+            Predicate::Tanru((_, head_id)) => self.get_predicate_arity(*head_id, selbris),
+            Predicate::Converted((_, inner_id)) => self.get_predicate_arity(*inner_id, selbris),
+            Predicate::Negated(inner_id) => self.get_predicate_arity(*inner_id, selbris),
+            Predicate::Grouped(inner_id) => self.get_predicate_arity(*inner_id, selbris),
+            Predicate::WithArgs((core_id, _)) => self.get_predicate_arity(*core_id, selbris),
             // A connected selbri (`broda je brode`) shares its sumti across both
             // operands; each takes only its own arity's worth (via `fit_args` in
-            // `apply_selbri`). The EFFECTIVE arity is max(left, right) so the place
+            // `apply_predicate`). The EFFECTIVE arity is max(left, right) so the place
             // counter sizes for — and captures — every sumti the larger operand
             // needs; a left-only arity dropped the higher operand's slots.
-            Selbri::Connected((left_id, _, right_id)) => self
-                .get_selbri_arity(*left_id, selbris)
-                .max(self.get_selbri_arity(*right_id, selbris)),
-            Selbri::Compound(parts) => parts
+            Predicate::Connected((left_id, _, right_id)) => self
+                .get_predicate_arity(*left_id, selbris)
+                .max(self.get_predicate_arity(*right_id, selbris)),
+            Predicate::Compound(parts) => parts
                 .last()
-                .map(|s| JbovlasteSchema::get_arity_or_default(s.as_str()))
+                .map(|s| LexiconSchema::get_arity_or_default(s.as_str()))
                 .unwrap_or(2),
-            Selbri::Abstraction((_, _)) => 1,
+            Predicate::Abstraction((_, _)) => 1,
         }
     }
 
     /// Extracts the head gismu or lujvo name from a possibly nested selbri.
-    pub(crate) fn get_selbri_head_name<'a>(
+    pub(crate) fn get_predicate_head_name<'a>(
         &self,
         selbri_id: u32,
-        selbris: &'a [Selbri],
+        selbris: &'a [Predicate],
     ) -> &'a str {
         match &selbris[selbri_id as usize] {
-            Selbri::Root(r) => r.as_str(),
-            Selbri::Tanru((_, head_id)) => self.get_selbri_head_name(*head_id, selbris),
-            Selbri::Converted((_, inner_id)) => self.get_selbri_head_name(*inner_id, selbris),
-            Selbri::Negated(inner_id) => self.get_selbri_head_name(*inner_id, selbris),
-            Selbri::Grouped(inner_id) => self.get_selbri_head_name(*inner_id, selbris),
-            Selbri::WithArgs((core_id, _)) => self.get_selbri_head_name(*core_id, selbris),
-            Selbri::Connected((left_id, _, _)) => self.get_selbri_head_name(*left_id, selbris),
-            Selbri::Compound(parts) => parts.last().map(|s| s.as_str()).unwrap_or("entity"),
-            Selbri::Abstraction((kind, _)) => match kind {
+            Predicate::Root(r) => r.as_str(),
+            Predicate::Tanru((_, head_id)) => self.get_predicate_head_name(*head_id, selbris),
+            Predicate::Converted((_, inner_id)) => self.get_predicate_head_name(*inner_id, selbris),
+            Predicate::Negated(inner_id) => self.get_predicate_head_name(*inner_id, selbris),
+            Predicate::Grouped(inner_id) => self.get_predicate_head_name(*inner_id, selbris),
+            Predicate::WithArgs((core_id, _)) => self.get_predicate_head_name(*core_id, selbris),
+            Predicate::Connected((left_id, _, _)) => {
+                self.get_predicate_head_name(*left_id, selbris)
+            }
+            Predicate::Compound(parts) => parts.last().map(|s| s.as_str()).unwrap_or("entity"),
+            Predicate::Abstraction((kind, _)) => match kind {
                 AbstractionKind::Nu => "nu",
                 AbstractionKind::Duhu => "duhu",
                 AbstractionKind::Ka => "ka",
@@ -213,24 +215,24 @@ impl SemanticCompiler {
 
     /// Resolves a tanru UNIT to its base head name, arity, and the conversion
     /// swap chain (outermost first, as x1↔x{n} target indices 1..=4) collected
-    /// from `Converted` layers on the way down. The tanru arm of `apply_selbri`
+    /// from `Converted` layers on the way down. The tanru arm of `apply_predicate`
     /// maps each unit's argument vector through these swaps (fit-then-swap,
-    /// mirroring the `Selbri::Converted` arm), so a converted unit keeps its
+    /// mirroring the `Predicate::Converted` arm), so a converted unit keeps its
     /// surface place structure: `menli se ponse` puts the shared x1 in
     /// ponse_x2 (possessed), not ponse_x1. Before 2026-07-12 the tanru arm
-    /// flattened units through `get_selbri_head_name`/`get_selbri_arity`,
+    /// flattened units through `get_predicate_head_name`/`get_predicate_arity`,
     /// which unwrap `Converted` WITHOUT the swap — silently compiling
     /// `menli se ponse` identically to `menli ponse`, a CLL-fidelity bug.
-    pub(crate) fn get_selbri_unit_base<'a>(
+    pub(crate) fn get_predicate_unit_base<'a>(
         &self,
         selbri_id: u32,
-        selbris: &'a [Selbri],
+        selbris: &'a [Predicate],
     ) -> (&'a str, usize, Vec<usize>) {
         let mut swaps: Vec<usize> = Vec::new();
         let mut id = selbri_id;
         loop {
             match &selbris[id as usize] {
-                Selbri::Converted((conv, inner_id)) => {
+                Predicate::Converted((conv, inner_id)) => {
                     swaps.push(match conv {
                         Conversion::Se => 1,
                         Conversion::Te => 2,
@@ -239,13 +241,13 @@ impl SemanticCompiler {
                     });
                     id = *inner_id;
                 }
-                Selbri::Grouped(inner_id) => id = *inner_id,
+                Predicate::Grouped(inner_id) => id = *inner_id,
                 _ => break,
             }
         }
         (
-            self.get_selbri_head_name(id, selbris),
-            self.get_selbri_arity(id, selbris),
+            self.get_predicate_head_name(id, selbris),
+            self.get_predicate_arity(id, selbris),
             swaps,
         )
     }
@@ -255,9 +257,9 @@ impl SemanticCompiler {
         &mut self,
         desc_id: u32,
         var: lasso::Spur,
-        selbris: &[Selbri],
+        selbris: &[Predicate],
     ) -> LogicalForm {
-        let head_name = self.get_selbri_head_name(desc_id, selbris);
+        let head_name = self.get_predicate_head_name(desc_id, selbris);
         let domain_name = format!("le_domain_{}", head_name);
         LogicalForm::Predicate {
             relation: self.interner.get_or_intern(&domain_name),
@@ -266,30 +268,30 @@ impl SemanticCompiler {
     }
 
     /// Resolves a sumti AST node into a logical term and any quantifiers it introduces.
-    pub(crate) fn resolve_sumti(
+    pub(crate) fn resolve_argument(
         &mut self,
-        sumti: &Sumti,
-        sumtis: &[Sumti],
-        selbris: &[Selbri],
+        sumti: &Argument,
+        sumtis: &[Argument],
+        selbris: &[Predicate],
         sentences: &[Sentence],
     ) -> (LogicalTerm, Vec<QuantifierEntry>) {
         match sumti {
-            Sumti::ProSumti(p) => {
+            Argument::Pronoun(p) => {
                 let term = if p.as_str() == "ma" {
                     let var = self.fresh_var();
-                    self.ma_vars.push(var);
+                    self.question_vars.push(var);
                     LogicalTerm::Variable(var)
                 } else if matches!(p.as_str(), "da" | "de" | "di") {
                     LogicalTerm::Variable(self.interner.get_or_intern(p.as_str()))
                 } else if p.as_str() == "ke'a" {
                     if let Some(var) = self.rel_clause_var {
-                        self.kea_used = true;
+                        self.ref_used = true;
                         LogicalTerm::Variable(var)
                     } else {
                         LogicalTerm::Unspecified
                     }
                 } else if p.as_str() == "ce'u" {
-                    if let Some(var) = self.ka_open_var {
+                    if let Some(var) = self.property_open_var {
                         LogicalTerm::Variable(var)
                     } else {
                         // `ce'u` is the open place of a `ka` property abstraction; outside
@@ -311,12 +313,12 @@ impl SemanticCompiler {
                 };
                 (term, vec![])
             }
-            Sumti::Name(n) => (
+            Argument::Name(n) => (
                 LogicalTerm::Constant(self.interner.get_or_intern(n.as_str())),
                 vec![],
             ),
-            Sumti::Description((gadri, desc_id)) => match gadri {
-                Gadri::Lo => {
+            Argument::Description((gadri, desc_id)) => match gadri {
+                Determiner::Lo => {
                     let var = self.fresh_var();
                     (
                         LogicalTerm::Variable(var),
@@ -324,12 +326,12 @@ impl SemanticCompiler {
                             var,
                             desc_id: *desc_id,
                             restrictor: None,
-                            noi_restrictor: None,
+                            incidental_restrictor: None,
                             kind: QuantifierKind::Existential,
                         }],
                     )
                 }
-                Gadri::RoLo => {
+                Determiner::RoLo => {
                     let var = self.fresh_var();
                     (
                         LogicalTerm::Variable(var),
@@ -337,12 +339,12 @@ impl SemanticCompiler {
                             var,
                             desc_id: *desc_id,
                             restrictor: None,
-                            noi_restrictor: None,
+                            incidental_restrictor: None,
                             kind: QuantifierKind::Universal,
                         }],
                     )
                 }
-                Gadri::RoLe => {
+                Determiner::RoLe => {
                     let var = self.fresh_var();
                     (
                         LogicalTerm::Variable(var),
@@ -350,30 +352,30 @@ impl SemanticCompiler {
                             var,
                             desc_id: *desc_id,
                             restrictor: None,
-                            noi_restrictor: None,
+                            incidental_restrictor: None,
                             kind: QuantifierKind::UniversalLe,
                         }],
                     )
                 }
-                Gadri::La => {
-                    let name = self.get_selbri_head_name(*desc_id, selbris);
+                Determiner::La => {
+                    let name = self.get_predicate_head_name(*desc_id, selbris);
                     (
                         LogicalTerm::Constant(self.interner.get_or_intern(name)),
                         vec![],
                     )
                 }
-                Gadri::Le => {
-                    let desc_str = self.get_selbri_head_name(*desc_id, selbris);
+                Determiner::Le => {
+                    let desc_str = self.get_predicate_head_name(*desc_id, selbris);
                     (
                         LogicalTerm::Description(self.interner.get_or_intern(desc_str)),
                         vec![],
                     )
                 }
             },
-            Sumti::QuantifiedDescription((count, gadri, desc_id)) => {
+            Argument::QuantifiedDescription((count, gadri, desc_id)) => {
                 let var = self.fresh_var();
                 let kind = match gadri {
-                    Gadri::Le => QuantifierKind::ExactCountLe(*count),
+                    Determiner::Le => QuantifierKind::ExactCountLe(*count),
                     _ => QuantifierKind::ExactCount(*count),
                 };
                 (
@@ -382,28 +384,28 @@ impl SemanticCompiler {
                         var,
                         desc_id: *desc_id,
                         restrictor: None,
-                        noi_restrictor: None,
+                        incidental_restrictor: None,
                         kind,
                     }],
                 )
             }
-            Sumti::Tagged((_tag, inner_id)) => {
+            Argument::Tagged((_tag, inner_id)) => {
                 let inner = &sumtis[*inner_id as usize];
-                self.resolve_sumti(inner, sumtis, selbris, sentences)
+                self.resolve_argument(inner, sumtis, selbris, sentences)
             }
-            Sumti::ModalTagged((_modal_tag, inner_id)) => {
+            Argument::ModalTagged((_modal_tag, inner_id)) => {
                 let inner = &sumtis[*inner_id as usize];
-                self.resolve_sumti(inner, sumtis, selbris, sentences)
+                self.resolve_argument(inner, sumtis, selbris, sentences)
             }
-            Sumti::Restricted((inner_id, rel_clause)) => {
+            Argument::Restricted((inner_id, rel_clause)) => {
                 let inner = &sumtis[*inner_id as usize];
-                let (term, mut quants) = self.resolve_sumti(inner, sumtis, selbris, sentences);
+                let (term, mut quants) = self.resolve_argument(inner, sumtis, selbris, sentences);
 
                 let outer_rel_var = self.rel_clause_var;
-                let outer_kea_used = self.kea_used;
+                let outer_ref_used = self.ref_used;
 
                 // The clause binds the quantifier variable introduced by the
-                // inner sumti (lo / ro lo / PA lo). Sumti that introduce NO
+                // inner sumti (lo / ro lo / PA lo). Argument that introduce NO
                 // quantifier (la names, le descriptions, pro-sumti) get a fresh
                 // clause variable instead, substituted by the resolved term
                 // after the body is compiled.
@@ -412,7 +414,7 @@ impl SemanticCompiler {
                     None => self.fresh_var(),
                 };
                 self.rel_clause_var = Some(clause_var);
-                self.kea_used = false;
+                self.ref_used = false;
                 // Offer the clause variable as the implicit ke'a subject (x1) of
                 // the clause's main bridi, consumed there before selbri
                 // conversion. Save/restore so a nested Restricted clause does not
@@ -423,9 +425,9 @@ impl SemanticCompiler {
                 let rel_body =
                     self.compile_sentence(rel_clause.body_sentence, selbris, sumtis, sentences);
 
-                let kea_was_used = self.kea_used;
+                let kea_was_used = self.ref_used;
                 self.rel_clause_var = outer_rel_var;
-                self.kea_used = outer_kea_used;
+                self.ref_used = outer_ref_used;
                 self.pending_clause_subject = outer_clause_subject;
 
                 let new_restrictor = if kea_was_used {
@@ -465,16 +467,18 @@ impl SemanticCompiler {
                     // matching field for this quantifier. CONJOIN rather than overwrite,
                     // to keep every clause's predicate. Route by clause kind: poi/voi
                     // narrow the domain (`restrictor`); noi is non-restrictive and folds
-                    // at the matrix level (`noi_restrictor`, see `close_quantifier`).
+                    // at the matrix level (`incidental_restrictor`, see `close_quantifier`).
                     // Mixed stacks (`poi P noi Q`) populate both fields independently.
                     match rel_clause.kind {
                         RelClauseKind::Noi => {
-                            last.noi_restrictor = Some(match last.noi_restrictor.take() {
-                                Some(existing) => {
-                                    LogicalForm::And(Box::new(existing), Box::new(new_restrictor))
-                                }
-                                None => new_restrictor,
-                            });
+                            last.incidental_restrictor =
+                                Some(match last.incidental_restrictor.take() {
+                                    Some(existing) => LogicalForm::And(
+                                        Box::new(existing),
+                                        Box::new(new_restrictor),
+                                    ),
+                                    None => new_restrictor,
+                                });
                         }
                         RelClauseKind::Poi | RelClauseKind::Voi => {
                             last.restrictor = Some(match last.restrictor.take() {
@@ -499,15 +503,15 @@ impl SemanticCompiler {
 
                 (term, quants)
             }
-            Sumti::QuotedLiteral(q) => (
+            Argument::QuotedLiteral(q) => (
                 LogicalTerm::Constant(self.interner.get_or_intern(q.as_str())),
                 vec![],
             ),
-            Sumti::Number(n) => (LogicalTerm::Number(*n), vec![]),
-            Sumti::Unspecified => (LogicalTerm::Unspecified, vec![]),
-            Sumti::Connected((left_id, _conn, _negated, _right_id)) => {
+            Argument::Number(n) => (LogicalTerm::Number(*n), vec![]),
+            Argument::Unspecified => (LogicalTerm::Unspecified, vec![]),
+            Argument::Connected((left_id, _conn, _negated, _right_id)) => {
                 // A connected sumti filling a place — bare, or under a place tag /
-                // BAI modal — is distributed in `compile_bridi` (see
+                // BAI modal — is distributed in `compile_proposition` (see
                 // `find_connected_term`/`distribute_connected`) and never reaches
                 // here. This arm is only hit for a connected sumti in a position the
                 // distributor doesn't descend into (a be/bei argument or a
@@ -522,7 +526,7 @@ impl SemanticCompiler {
                 // Still resolve the left operand best-effort so a term is returned;
                 // the pushed error fail-closes the assertion.
                 let left = &sumtis[*left_id as usize];
-                self.resolve_sumti(left, sumtis, selbris, sentences)
+                self.resolve_argument(left, sumtis, selbris, sentences)
             }
         }
     }

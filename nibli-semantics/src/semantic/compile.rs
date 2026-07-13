@@ -1,9 +1,9 @@
-//! Bridi and sentence compilation: the main compilation entry points.
+//! Proposition and sentence compilation: the main compilation entry points.
 //!
 //! Compiles bridi (predication) nodes and sentence connectives into FOL.
 //! Handles place tags (fa/fe/fi/fo/fu), modal tags (BAI, fi'o), sumti
 //! connective expansion, quantifier closure, da/de/di existential wrapping,
-//! tense wrappers (pu/ca/ba), and deontic attitudinals (ei/e'e).
+//! tense wrappers (pu/ca/ba), and deontic deontics (ei/e'e).
 use super::*;
 
 /// A connected sumti (`.e`/`.a`/`.o`/`.u`) found in a bridi's term list, ready to
@@ -22,21 +22,21 @@ struct ConnectedSplit {
 
 /// What a connected sumti sits under in a bridi term slot.
 enum ConnWrapper {
-    /// A bare `Sumti::Connected` term.
+    /// A bare `Argument::Connected` term.
     Bare,
-    /// `Sumti::Tagged((tag, Connected(..)))` — a place tag over a connected sumti.
+    /// `Argument::Tagged((tag, Connected(..)))` — a place tag over a connected sumti.
     Place(PlaceTag),
-    /// `Sumti::ModalTagged((modal, Connected(..)))` — a BAI modal over a connected sumti.
+    /// `Argument::ModalTagged((modal, Connected(..)))` — a BAI modal over a connected sumti.
     Modal(ModalTag),
 }
 
 impl SemanticCompiler {
     /// Compiles a bridi (predication) into FOL with quantifier scoping and tense wrapping.
-    pub fn compile_bridi(
+    pub fn compile_proposition(
         &mut self,
-        bridi: &Bridi,
-        selbris: &[Selbri],
-        sumtis: &[Sumti],
+        bridi: &Proposition,
+        selbris: &[Predicate],
+        sumtis: &[Argument],
         sentences: &[Sentence],
     ) -> LogicalForm {
         // Frame-local checkpoint for rel clauses attached to non-quantifier
@@ -44,12 +44,12 @@ impl SemanticCompiler {
         // THIS bridi's sumti are drained into THIS bridi's matrix; nested
         // bridi (rel clause bodies, abstractions) drain their own.
         let matrix_conjunct_checkpoint = self.pending_matrix_conjuncts.len();
-        // Frame-scoped `ma` closure: each `compile_bridi` frame drains only the
+        // Frame-scoped `ma` closure: each `compile_proposition` frame drains only the
         // `ma` vars pushed during ITS frame (see the drain near the end). A
         // nested bridi (rel-clause body, abstraction body) takes its own
         // checkpoint AFTER any ancestor pushes, so it can no longer steal an
         // enclosing bridi's pending `ma` var (mirrors `matrix_conjunct_checkpoint`).
-        let ma_checkpoint = self.ma_vars.len();
+        let ma_checkpoint = self.question_vars.len();
 
         let all_terms: Vec<u32> = bridi
             .head_terms
@@ -62,29 +62,29 @@ impl SemanticCompiler {
         // connected sumti nested under a place tag (`fa mi .e do`) or BAI modal
         // (`ri'a do .e ti`), where the wrapper is preserved over each operand.
         // Only the first connected term is split here; the recursive
-        // `compile_bridi` re-scans for the rest, so every connected sumti in the
+        // `compile_proposition` re-scans for the rest, so every connected sumti in the
         // bridi distributes.
         if let Some(split) = Self::find_connected_term(&all_terms, sumtis) {
             return self.distribute_connected(bridi, split, selbris, sumtis, sentences);
         }
 
-        let target_arity = self.get_selbri_arity(bridi.relation, selbris);
+        let target_arity = self.get_predicate_arity(bridi.relation, selbris);
 
         let mut positioned: Vec<Option<LogicalTerm>> = vec![None; target_arity];
 
         // A relative clause's implicit `ke'a` subject occupies x1 (the CLL
         // default), pushing the clause's explicit sumti to x2+. Place it as the
-        // x1 ARGUMENT here — BEFORE `apply_selbri` runs any `se`/`te`/`ve`/`xe`
+        // x1 ARGUMENT here — BEFORE `apply_predicate` runs any `se`/`te`/`ve`/`xe`
         // conversion — so `poi se prami la .alis.` routes `ke'a` through the
         // conversion to the correct underlying role (prami_x2), exactly as an
         // explicit subject would. One-shot: only the clause's main (first) bridi
         // consumes it; nested bridi (abstraction bodies) see `None`. Marking
-        // `kea_used` makes the caller skip the post-hoc `inject_variable`, which
+        // `ref_used` makes the caller skip the post-hoc `inject_variable`, which
         // cannot see conversion and would refill the vacated x1 slot.
         if bridi.head_terms.is_empty() && target_arity >= 1 {
             if let Some(subject) = self.pending_clause_subject.take() {
                 positioned[0] = Some(LogicalTerm::Variable(subject));
-                self.kea_used = true;
+                self.ref_used = true;
             }
         }
 
@@ -108,9 +108,9 @@ impl SemanticCompiler {
 
         for &term_id in bridi.head_terms.iter().chain(bridi.tail_terms.iter()) {
             match &sumtis[term_id as usize] {
-                Sumti::Tagged((tag, inner_id)) => {
+                Argument::Tagged((tag, inner_id)) => {
                     let inner = &sumtis[*inner_id as usize];
-                    let (term, quants) = self.resolve_sumti(inner, sumtis, selbris, sentences);
+                    let (term, quants) = self.resolve_argument(inner, sumtis, selbris, sentences);
                     self.record_bare_marker(&term, &mut introduced, &mut markers);
                     markers.extend(quants.into_iter().map(ScopeMarker::Desc));
                     let idx = tag.to_index();
@@ -140,9 +140,9 @@ impl SemanticCompiler {
                         next_place = idx + 1; // CLL: resume AFTER the tagged place
                     }
                 }
-                Sumti::ModalTagged((modal_tag, inner_id)) => {
+                Argument::ModalTagged((modal_tag, inner_id)) => {
                     let inner = &sumtis[*inner_id as usize];
-                    let (term, quants) = self.resolve_sumti(inner, sumtis, selbris, sentences);
+                    let (term, quants) = self.resolve_argument(inner, sumtis, selbris, sentences);
                     // A bare `da`/`de`/`di` carried by a BAI modal (`ri'a da`) is
                     // introduced at this surface position. Its description quants
                     // (rare: `ri'a lo broda`) stay innermost (appended after the
@@ -153,7 +153,7 @@ impl SemanticCompiler {
                     modal_entries.push((*modal_tag, term, quants));
                 }
                 other => {
-                    let (term, quants) = self.resolve_sumti(other, sumtis, selbris, sentences);
+                    let (term, quants) = self.resolve_argument(other, sumtis, selbris, sentences);
                     self.record_bare_marker(&term, &mut introduced, &mut markers);
                     markers.extend(quants.into_iter().map(ScopeMarker::Desc));
                     // Skip slots already filled (ke'a x1, or an out-of-order tag),
@@ -184,7 +184,7 @@ impl SemanticCompiler {
         // real arity may be higher, so an "overflow" there is unprovable; this also
         // keeps the no-XML build, where many proxy words default to 2, from
         // false-firing).
-        let head_name = self.get_selbri_head_name(bridi.relation, selbris);
+        let head_name = self.get_predicate_head_name(bridi.relation, selbris);
         if overflow_untagged > 0 {
             if head_name == "du" {
                 self.errors.push(format!(
@@ -192,7 +192,7 @@ impl SemanticCompiler {
                      n-ary identity is unsupported.",
                     overflow_untagged
                 ));
-            } else if JbovlasteSchema::get_arity(head_name).is_some() {
+            } else if LexiconSchema::get_arity(head_name).is_some() {
                 self.errors.push(format!(
                     "{} untagged sumti overflow the selbri `{}`'s {} place(s); the extra \
                      sumti cannot be placed.",
@@ -201,20 +201,21 @@ impl SemanticCompiler {
             }
         }
 
-        let mut final_form = self.apply_selbri(bridi.relation, &args, selbris, sumtis, sentences);
+        let mut final_form =
+            self.apply_predicate(bridi.relation, &args, selbris, sumtis, sentences);
 
         for (modal_tag, tagged_term, modal_quants) in modal_entries {
             markers.extend(modal_quants.into_iter().map(ScopeMarker::Desc));
 
             let (modal_gismu, modal_arity) = match &modal_tag {
                 ModalTag::Fixed(bai) => {
-                    let gismu = Self::bai_to_gismu(bai);
-                    let arity = JbovlasteSchema::get_arity_or_default(gismu);
+                    let gismu = Self::modal_relation_name(bai);
+                    let arity = LexiconSchema::get_arity_or_default(gismu);
                     (self.interner.get_or_intern(gismu), arity)
                 }
                 ModalTag::Fio(selbri_id) => {
-                    let name = self.get_selbri_head_name(*selbri_id, selbris);
-                    let arity = self.get_selbri_arity(*selbri_id, selbris);
+                    let name = self.get_predicate_head_name(*selbri_id, selbris);
+                    let arity = self.get_predicate_arity(*selbri_id, selbris);
                     (self.interner.get_or_intern(name), arity)
                 }
             };
@@ -351,7 +352,7 @@ impl SemanticCompiler {
             }
         }
 
-        for var in self.ma_vars.drain(ma_checkpoint..) {
+        for var in self.question_vars.drain(ma_checkpoint..) {
             final_form = LogicalForm::Exists(var, Box::new(final_form));
         }
 
@@ -372,11 +373,11 @@ impl SemanticCompiler {
             None => {}
         }
 
-        match &bridi.attitudinal {
-            Some(Attitudinal::Ei) => {
+        match &bridi.deontic {
+            Some(DeonticMood::Ei) => {
                 final_form = LogicalForm::Obligatory(Box::new(final_form));
             }
-            Some(Attitudinal::Ehe) => {
+            Some(DeonticMood::Ehe) => {
                 final_form = LogicalForm::Permitted(Box::new(final_form));
             }
             None => {}
@@ -464,20 +465,20 @@ impl SemanticCompiler {
     /// Find the first term (in `head_terms ++ tail_terms` order) that is — or
     /// wraps, one level under a place tag / BAI modal — a connected sumti.
     /// Returns everything `distribute_connected` needs to split it.
-    fn find_connected_term(all_terms: &[u32], sumtis: &[Sumti]) -> Option<ConnectedSplit> {
+    fn find_connected_term(all_terms: &[u32], sumtis: &[Argument]) -> Option<ConnectedSplit> {
         for (term_pos, &term_id) in all_terms.iter().enumerate() {
             let term = &sumtis[term_id as usize];
             let (wrapper, inner) = match term {
-                Sumti::Connected(_) => (ConnWrapper::Bare, term),
-                Sumti::Tagged((tag, inner_id)) => {
+                Argument::Connected(_) => (ConnWrapper::Bare, term),
+                Argument::Tagged((tag, inner_id)) => {
                     (ConnWrapper::Place(*tag), &sumtis[*inner_id as usize])
                 }
-                Sumti::ModalTagged((modal, inner_id)) => {
+                Argument::ModalTagged((modal, inner_id)) => {
                     (ConnWrapper::Modal(*modal), &sumtis[*inner_id as usize])
                 }
                 _ => continue,
             };
-            if let Sumti::Connected((left_id, connective, right_negated, right_id)) = inner {
+            if let Argument::Connected((left_id, connective, right_negated, right_id)) = inner {
                 return Some(ConnectedSplit {
                     term_pos,
                     wrapper,
@@ -493,39 +494,39 @@ impl SemanticCompiler {
 
     /// Distribute a connected sumti into a logical combination of two bridi (one
     /// per operand), preserving any place tag / BAI modal wrapper over each
-    /// operand. Recurses through `compile_bridi`, which re-scans for further
+    /// operand. Recurses through `compile_proposition`, which re-scans for further
     /// connected sumti, so every connected term in the bridi is distributed.
     fn distribute_connected(
         &mut self,
-        bridi: &Bridi,
+        bridi: &Proposition,
         split: ConnectedSplit,
-        selbris: &[Selbri],
-        sumtis: &[Sumti],
+        selbris: &[Predicate],
+        sumtis: &[Argument],
         sentences: &[Sentence],
     ) -> LogicalForm {
         // A wrapped connected sumti needs a tag/modal node synthesised over each
         // operand (these don't exist in the immutable `sumtis` buffer); a bare
         // connected sumti reuses its existing operand ids unchanged.
-        let mut ext: Vec<Sumti> = sumtis.to_vec();
+        let mut ext: Vec<Argument> = sumtis.to_vec();
         let (left_slot, right_slot) = match split.wrapper {
             ConnWrapper::Bare => (split.left_id, split.right_id),
             ConnWrapper::Place(tag) => {
                 let base = ext.len() as u32;
-                ext.push(Sumti::Tagged((tag, split.left_id)));
-                ext.push(Sumti::Tagged((tag, split.right_id)));
+                ext.push(Argument::Tagged((tag, split.left_id)));
+                ext.push(Argument::Tagged((tag, split.right_id)));
                 (base, base + 1)
             }
             ConnWrapper::Modal(modal) => {
                 let base = ext.len() as u32;
-                ext.push(Sumti::ModalTagged((modal, split.left_id)));
-                ext.push(Sumti::ModalTagged((modal, split.right_id)));
+                ext.push(Argument::ModalTagged((modal, split.left_id)));
+                ext.push(Argument::ModalTagged((modal, split.right_id)));
                 (base, base + 1)
             }
         };
 
         let head_len = bridi.head_terms.len();
         let term_pos = split.term_pos;
-        let substitute = |replacement_id: u32| -> Bridi {
+        let substitute = |replacement_id: u32| -> Proposition {
             let mut head = bridi.head_terms.clone();
             let mut tail = bridi.tail_terms.clone();
             if term_pos < head_len {
@@ -533,21 +534,21 @@ impl SemanticCompiler {
             } else {
                 tail[term_pos - head_len] = replacement_id;
             }
-            Bridi {
+            Proposition {
                 relation: bridi.relation,
                 head_terms: head,
                 tail_terms: tail,
                 negated: bridi.negated,
                 tense: bridi.tense,
-                attitudinal: bridi.attitudinal,
+                deontic: bridi.deontic,
             }
         };
 
-        let left_bridi = substitute(left_slot);
-        let right_bridi = substitute(right_slot);
+        let left_proposition = substitute(left_slot);
+        let right_proposition = substitute(right_slot);
 
-        let left_form = self.compile_bridi(&left_bridi, selbris, &ext, sentences);
-        let mut right_form = self.compile_bridi(&right_bridi, selbris, &ext, sentences);
+        let left_form = self.compile_proposition(&left_proposition, selbris, &ext, sentences);
+        let mut right_form = self.compile_proposition(&right_proposition, selbris, &ext, sentences);
 
         if split.right_negated {
             right_form = LogicalForm::Not(Box::new(right_form));
@@ -565,16 +566,16 @@ impl SemanticCompiler {
     pub fn compile_sentence(
         &mut self,
         sentence_id: u32,
-        selbris: &[Selbri],
-        sumtis: &[Sumti],
+        selbris: &[Predicate],
+        sumtis: &[Argument],
         sentences: &[Sentence],
     ) -> LogicalForm {
         match &sentences[sentence_id as usize] {
-            Sentence::Simple(bridi) => self.compile_bridi(bridi, selbris, sumtis, sentences),
+            Sentence::Simple(bridi) => self.compile_proposition(bridi, selbris, sumtis, sentences),
             Sentence::Prenex((vars, body_id)) => {
                 // `ro da [ro de ...] zo'u BODY` → ∀da. ∀de. … BODY.
                 // Intern each prenex variable and mark it bound so the body's
-                // compile_bridi does NOT existentially close it; then wrap the
+                // compile_proposition does NOT existentially close it; then wrap the
                 // compiled body in nested ForAll (outermost = first variable).
                 let spurs: Vec<lasso::Spur> = vars
                     .iter()

@@ -18,7 +18,7 @@ mod http;
 pub use http::HttpChat;
 
 pub use request::{build_chat_request, build_chat_request_tools};
-pub use response::{clean_lojban_output, extract_text, parse_chat_response};
+pub use response::{clean_output, extract_text, parse_chat_response};
 pub use system_prompt::system_prompt;
 pub use types::{ChatResponse, LlmConfig, Provider, ToolCall, ToolDecl, ToolResult, Turn};
 
@@ -29,7 +29,7 @@ pub use types::{ChatResponse, LlmConfig, Provider, ToolCall, ToolDecl, ToolResul
 #[allow(async_fn_in_trait)]
 pub trait Chat {
     /// Send the system prompt + conversation, returning the assistant's raw text
-    /// (before `clean_lojban_output`).
+    /// (before `clean_output`).
     async fn chat(
         &self,
         cfg: &LlmConfig,

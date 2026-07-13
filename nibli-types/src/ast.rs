@@ -1,12 +1,12 @@
 //! AST types produced by the gerna parser.
 //!
 //! Flat index-based representation: `AstBuffer` contains parallel arrays of
-//! `Selbri`, `Sumti`, and `Sentence` nodes, referenced by `u32` indices.
+//! `Predicate`, `Argument`, and `Sentence` nodes, referenced by `u32` indices.
 
 /// Index into the `selbris` array of an `AstBuffer`.
-pub type SelbriId = u32;
+pub type PredicateId = u32;
 /// Index into the `sumtis` array of an `AstBuffer`.
-pub type SumtiId = u32;
+pub type ArgumentId = u32;
 
 /// Explicit argument-place tag (FA selma'o): fa=x1, fe=x2, fi=x3, fo=x4, fu=x5.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -46,7 +46,7 @@ impl PlaceTag {
 /// ri'a=rinka (cause), ni'i=nibli (entailment), mu'i=mukti (motivation),
 /// ki'u=krinu (reason), pi'o=pilno (tool), ba'i=basti (replace).
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum BaiTag {
+pub enum ModalRelation {
     Ria,
     Nii,
     Mui,
@@ -59,9 +59,9 @@ pub enum BaiTag {
 #[derive(Clone, Copy, Debug)]
 pub enum ModalTag {
     /// One of the six built-in BAI cmavo.
-    Fixed(BaiTag),
+    Fixed(ModalRelation),
     /// fi'o + selbri [+ fe'u]: user-defined modal via a selbri reference.
-    Fio(SelbriId),
+    Fio(PredicateId),
 }
 
 /// SE-series conversion: permutes the x1 place with another.
@@ -84,9 +84,9 @@ pub enum Connective {
     Ju,
 }
 
-/// Gadri (article/descriptor): determines how a description term binds.
+/// Determiner (article/descriptor): determines how a description term binds.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum Gadri {
+pub enum Determiner {
     /// `lo` — veridical description (at least one entity satisfying the selbri).
     Lo,
     /// `le` — non-veridical description (opaque rigid designator).
@@ -135,11 +135,11 @@ pub struct RelClause {
 
 /// A sumti (argument term) in the AST.
 #[derive(Clone, Debug)]
-pub enum Sumti {
+pub enum Argument {
     /// Pro-sumti: mi, do, da, de, di, ti, ta, tu, ke'a, ma, ko, etc.
-    ProSumti(String),
-    /// Gadri description: `lo/le` + selbri. Fields: (gadri, selbri-id).
-    Description((Gadri, SelbriId)),
+    Pronoun(String),
+    /// Determiner description: `lo/le` + selbri. Fields: (gadri, selbri-id).
+    Description((Determiner, PredicateId)),
     /// Named entity: `la` + cmevla.
     Name(String),
     /// Quoted literal: `lu ... li'u`.
@@ -147,39 +147,39 @@ pub enum Sumti {
     /// Unspecified placeholder (zo'e or implicit).
     Unspecified,
     /// Place-tagged sumti: (tag, inner-sumti-id).
-    Tagged((PlaceTag, SumtiId)),
+    Tagged((PlaceTag, ArgumentId)),
     /// Modal-tagged sumti: (modal-tag, inner-sumti-id).
-    ModalTagged((ModalTag, SumtiId)),
-    /// Sumti with a relative clause: (inner-sumti-id, relative-clause).
-    Restricted((SumtiId, RelClause)),
+    ModalTagged((ModalTag, ArgumentId)),
+    /// Argument with a relative clause: (inner-sumti-id, relative-clause).
+    Restricted((ArgumentId, RelClause)),
     /// Number sumti: `li` + PA.
     Number(f64),
     /// Connected sumti: left .e/.a/.o/.u [nai] right.
     /// Fields: (left-id, connective, nai-flag, right-id).
-    Connected((SumtiId, Connective, bool, SumtiId)),
+    Connected((ArgumentId, Connective, bool, ArgumentId)),
     /// Quantified description: PA lo/le selbri. Fields: (count, gadri, selbri-id).
-    QuantifiedDescription((u32, Gadri, SelbriId)),
+    QuantifiedDescription((u32, Determiner, PredicateId)),
 }
 
 /// A selbri (predicate relation) in the AST.
 #[derive(Clone, Debug)]
-pub enum Selbri {
+pub enum Predicate {
     /// Root brivla (gismu, lujvo, or fu'ivla).
     Root(String),
     /// Compound word from zei-gluing. Payload: list of component strings.
     Compound(Vec<String>),
     /// Tanru: modifier + head. Fields: (modifier-id, head-id).
-    Tanru((SelbriId, SelbriId)),
+    Tanru((PredicateId, PredicateId)),
     /// SE-converted selbri. Fields: (conversion, inner-id).
-    Converted((Conversion, SelbriId)),
+    Converted((Conversion, PredicateId)),
     /// Negated selbri (`na`). Payload: inner-id.
-    Negated(SelbriId),
+    Negated(PredicateId),
     /// Grouped selbri (`ke ... ke'e`). Payload: inner-id.
-    Grouped(SelbriId),
-    /// Selbri with be/bei arguments. Fields: (core-id, argument-sumti-ids).
-    WithArgs((SelbriId, Vec<SumtiId>)),
+    Grouped(PredicateId),
+    /// Predicate with be/bei arguments. Fields: (core-id, argument-sumti-ids).
+    WithArgs((PredicateId, Vec<ArgumentId>)),
     /// Connected selbri: left je/ja/jo/ju right. Fields: (left-id, connective, right-id).
-    Connected((SelbriId, Connective, SelbriId)),
+    Connected((PredicateId, Connective, PredicateId)),
     /// Abstraction: nu/du'u/ka/ni/si'o + sentence. Fields: (kind, sentence-id).
     Abstraction((AbstractionKind, u32)),
 }
@@ -192,22 +192,22 @@ pub enum Tense {
     Ba,
 }
 
-/// Deontic attitudinal: ei (obligation/should), e'e (competence/permission/may).
+/// Deontic deontic: ei (obligation/should), e'e (competence/permission/may).
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum Attitudinal {
+pub enum DeonticMood {
     Ei,
     Ehe,
 }
 
 /// A bridi (predication): selbri + head terms + tail terms + modifiers.
 #[derive(Clone, Debug)]
-pub struct Bridi {
-    pub relation: SelbriId,
-    pub head_terms: Vec<SumtiId>,
-    pub tail_terms: Vec<SumtiId>,
+pub struct Proposition {
+    pub relation: PredicateId,
+    pub head_terms: Vec<ArgumentId>,
+    pub tail_terms: Vec<ArgumentId>,
     pub negated: bool,
     pub tense: Option<Tense>,
-    pub attitudinal: Option<Attitudinal>,
+    pub deontic: Option<DeonticMood>,
 }
 
 /// Sentence connective for forethought/afterthought sentence-level connection.
@@ -229,7 +229,7 @@ pub enum SentenceConnective {
 #[derive(Clone, Debug)]
 pub enum Sentence {
     /// Simple predication.
-    Simple(Bridi),
+    Simple(Proposition),
     /// Connected sentences. Fields: (connective, left-sentence-id, right-sentence-id).
     Connected((SentenceConnective, u32, u32)),
     /// Prenex `ro da [ro de ...] zo'u <body>`: a sequence of universally
@@ -242,8 +242,8 @@ pub enum Sentence {
 /// Flat AST buffer: parallel arrays indexed by u32 IDs.
 #[derive(Clone, Debug)]
 pub struct AstBuffer {
-    pub selbris: Vec<Selbri>,
-    pub sumtis: Vec<Sumti>,
+    pub selbris: Vec<Predicate>,
+    pub sumtis: Vec<Argument>,
     pub sentences: Vec<Sentence>,
     /// Root sentence indices (top-level sentences to compile).
     pub roots: Vec<u32>,

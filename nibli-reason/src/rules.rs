@@ -229,7 +229,7 @@ pub(super) fn flatten_conjuncts_through_exists(
         // Deontic wrappers set the condition flavor EXACTLY like the tense arms: a
         // `ganai e'e A gi B` condition matches only a stored Permitted(A), never a
         // bare A. (Pre-2026-07 these were stripped as "surface-unreachable", but an
-        // attitudinal on a connective operand wraps that operand's bridi, so the
+        // deontic on a connective operand wraps that operand's bridi, so the
         // shape IS reachable — the transparent strip made a deontic condition fire
         // on a bare fact. Found by the mutation-baseline triage.)
         LogicNode::ObligatoryNode(inner) => {
@@ -401,7 +401,7 @@ fn flatten_consequent(
         // `ganai A gi e'e B` derives Permitted(B), never bare B. (Pre-2026-07 these
         // stripped the wrapper without setting the flavor — a ground conditional
         // with a deontic consequent derived an UNQUALIFIED fact: permission leaked
-        // into truth. Reachable from the surface: an attitudinal on a connective
+        // into truth. Reachable from the surface: an deontic on a connective
         // operand wraps that operand's bridi. Found by the mutation-baseline
         // triage; pinned by `deontic_rule_consequent_derives_flavored_fact`.)
         LogicNode::ObligatoryNode(inner) => {
@@ -1281,7 +1281,7 @@ fn register_clause_rule(
             // Mark as a PRESUPPOSITION witness: it satisfies ∃/∀ like any
             // entity but is excluded from counting surfaces (a phantom entity
             // a rule presupposed must not change "how many").
-            inner.xorlo_import_witnesses.insert(xp_name.clone());
+            inner.presupposition_witnesses.insert(xp_name.clone());
             xp_subs.insert(v.clone(), GroundTerm::Constant(xp_name));
         }
         for (k, v) in ground_skolems {
@@ -1325,7 +1325,7 @@ pub(super) fn compile_forall_to_rule(
                 universals.push(v.clone());
                 current = *body;
             }
-            // FAIL CLOSED: a tense (pu/ca/ba) or deontic attitudinal (ei/e'e)
+            // FAIL CLOSED: a tense (pu/ca/ba) or deontic deontic (ei/e'e)
             // wrapping a WHOLE universal/conditional rule (`pu ro lo gerku cu
             // danlu` → Past(ForAll(...))) cannot be soundly represented as a
             // timeless backward-chaining rule. Stripping it (the old behavior)

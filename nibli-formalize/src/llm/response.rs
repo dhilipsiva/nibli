@@ -111,7 +111,7 @@ fn parse_gemini(json: &Value) -> ChatResponse {
 /// Models sometimes wrap output in a ``` / ```lojban code fence or add a trailing
 /// newline despite the "output ONLY Lojban" instruction. Strip a single fence
 /// pair and trim.
-pub fn clean_lojban_output(raw: &str) -> String {
+pub fn clean_output(raw: &str) -> String {
     let mut s = raw.trim();
     if let Some(rest) = s.strip_prefix("```") {
         // Drop the rest of the opening fence line (e.g. "```lojban\n…").
@@ -208,12 +208,9 @@ mod tests {
 
     #[test]
     fn fence_stripping() {
-        assert_eq!(
-            clean_lojban_output("```lojban\nmi prami do\n```"),
-            "mi prami do"
-        );
-        assert_eq!(clean_lojban_output("```\nmi prami do\n```"), "mi prami do");
-        assert_eq!(clean_lojban_output("  mi prami do  "), "mi prami do");
-        assert_eq!(clean_lojban_output("mi prami do"), "mi prami do");
+        assert_eq!(clean_output("```lojban\nmi prami do\n```"), "mi prami do");
+        assert_eq!(clean_output("```\nmi prami do\n```"), "mi prami do");
+        assert_eq!(clean_output("  mi prami do  "), "mi prami do");
+        assert_eq!(clean_output("mi prami do"), "mi prami do");
     }
 }

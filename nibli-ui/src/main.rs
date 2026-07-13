@@ -51,7 +51,7 @@ fn back_translate_ir(kb: &str) -> String {
 fn render_kb_line(line: &str) -> String {
     let parsed = nibli_kr::parse_text(line);
     if parsed.errors.is_empty() {
-        nibli_semantics::compile_from_gerna_ast(parsed.buffer)
+        nibli_semantics::compile_from_ast(parsed.buffer)
             .map(|buf| nibli_render::render_logic_buffer(&buf, nibli_render::Register::Spec))
             .unwrap_or_else(|_| line.to_string())
     } else {
@@ -113,14 +113,14 @@ impl Settings {
 /// query formalize and the modal key-test (the agentic Source formalize uses
 /// `translate_agentic`). Returns the cleaned KB text or a user-facing error.
 async fn fanva_translate(cfg: &LlmConfig, english: &str) -> Result<String, String> {
-    use nibli_formalize::llm::{Chat, HttpChat, Turn, clean_lojban_output, system_prompt};
+    use nibli_formalize::llm::{Chat, HttpChat, Turn, clean_output, system_prompt};
     let request = format!("Formalize into nibli KR: {}", english.trim());
     let turns = [Turn::user(request)];
     let raw = HttpChat
         .chat(cfg, system_prompt(), &turns)
         .await
         .map_err(|e| e.to_string())?;
-    let cleaned = clean_lojban_output(&raw);
+    let cleaned = clean_output(&raw);
     if cleaned.is_empty() {
         return Err("The provider returned an empty result.".to_string());
     }
@@ -228,7 +228,7 @@ struct OutputEntry {
 /// output log classifies on).
 fn compile_text(text: &str, preds: &HashSet<String>) -> Result<LogicBuffer, NibliError> {
     let ast = nibli_kr::parse_checked(text)?;
-    let mut buf = nibli_semantics::compile_from_gerna_ast(ast)?;
+    let mut buf = nibli_semantics::compile_from_ast(ast)?;
     nibli_reason::transform_compute_nodes(&mut buf, preds);
     Ok(buf)
 }
@@ -412,9 +412,8 @@ fn App() -> Element {
                 Key::Character(ref c) if c == "o" => {
                     e.prevent_default();
                     spawn(async move {
-                        let _ =
-                            document::eval("document.getElementById('lojban-file-input').click()")
-                                .await;
+                        let _ = document::eval("document.getElementById('kb-file-input').click()")
+                            .await;
                     });
                 }
                 _ => {}
@@ -655,7 +654,7 @@ fn QueryTabs(
         }
         let parsed = nibli_kr::parse_text(q);
         if parsed.errors.is_empty() {
-            match nibli_semantics::compile_from_gerna_ast(parsed.buffer) {
+            match nibli_semantics::compile_from_ast(parsed.buffer) {
                 Ok(buf) => QueryReading::Reads(nibli_render::render_logic_buffer(
                     &buf,
                     nibli_render::Register::Spec,
@@ -1063,9 +1062,9 @@ fn SourceTabs(
             )
             .await;
             match outcome {
-                Outcome::Success { lojban, attempts } => {
+                Outcome::Success { kr, attempts } => {
                     translate_trace.set(trace_rows(&attempts));
-                    kb_text.set(lojban);
+                    kb_text.set(kr);
                     active_tab.set(ActiveTab::Kb);
                 }
                 Outcome::Exhausted {
@@ -1203,13 +1202,13 @@ fn SourceTabs(
                     }
                     ActiveTab::Kb => rsx! {
                         if !is_example {
-                        div { class: "lojban-toolbar",
+                        div { class: "kb-toolbar",
                             button {
                                 class: "toolbar-btn",
                                 onclick: move |_| {
                                     spawn(async move {
                                         let res = document::eval(r#"
-                                            document.getElementById('lojban-file-input').click();
+                                            document.getElementById('kb-file-input').click();
                                             return '';
                                         "#);
                                         let _ = res.await;
@@ -1230,11 +1229,11 @@ fn SourceTabs(
                                 r#type: "file",
                                 accept: ".nibli,.txt",
                                 style: "display: none",
-                                id: "lojban-file-input",
+                                id: "kb-file-input",
                                 onchange: move |_| {
                                     spawn(async move {
                                         let res = document::eval(r#"
-                                            const input = document.getElementById('lojban-file-input');
+                                            const input = document.getElementById('kb-file-input');
                                             const file = input.files[0];
                                             if (!file) return '';
                                             const text = await file.text();
@@ -1254,7 +1253,7 @@ fn SourceTabs(
                         }
                         }
                         textarea {
-                            class: "lojban-input",
+                            class: "kb-input",
                             placeholder: "Enter nibli KR facts and rules (one per line)...",
                             value: "{active_kb}",
                             readonly: is_example,

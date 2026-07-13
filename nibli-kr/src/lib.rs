@@ -37,7 +37,7 @@ fn to_nibli(e: parser::ParseError) -> NibliError {
 }
 
 /// FAIL CLOSED: parse + resolve + emit, or the first (source-order) error.
-/// Feed the result to `nibli_semantics::compile_from_gerna_ast`.
+/// Feed the result to `nibli_semantics::compile_from_ast`.
 pub fn parse_checked(text: &str) -> Result<AstBuffer, NibliError> {
     let statements = parser::parse_statements(text).map_err(to_nibli)?;
     resolve::resolve(text, &statements).map_err(to_nibli)?;

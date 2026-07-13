@@ -43,7 +43,7 @@ pub enum LabelTier {
 /// One alias-map entry.
 ///
 /// `swap: Some(n)` means the SURFACE argument order is the gismu's with x1 ↔ xn
-/// exchanged (the se/te/ve/xe family — exactly what `Selbri::Converted` can
+/// exchanged (the se/te/ve/xe family — exactly what `Predicate::Converted` can
 /// express); `None` is identity. `place_labels` are in SURFACE order; `""` means
 /// no label for that place (positional / raw `x1..x5` only).
 #[derive(Clone, Copy, Debug)]

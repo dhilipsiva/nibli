@@ -3,7 +3,7 @@
 //! The deterministic gates (nibli-kr → smuni → round-trip) prove a candidate is
 //! *well-formed*; they cannot prove it *means* what the source says. Models
 //! routinely emit syntactically valid KB text with wrong semantics — misresolved anaphora,
-//! overflowed bridi places, attitudinals used as commands (`ei` for "you
+//! overflowed bridi places, deontics used as commands (`ei` for "you
 //! must"). The int19h Genesis probe made the failure vivid: 8 of Gemini's 15
 //! Genesis 1:1–8 lines pass every gate while claiming things like "John is a
 //! name-word meaning a sun".

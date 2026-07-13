@@ -107,7 +107,7 @@ pub(super) fn get_node(buffer: &LogicBuffer, node_id: u32) -> Result<&LogicNode,
 /// content) does not leak its inner predicates as free-standing truths. The marker
 /// itself IS reasoned over: same content → same marker (abstractions unify),
 /// different content → different marker (no spurious match). The body survives only
-/// for rendering. See smuni `apply_selbri` (Abstraction arm).
+/// for rendering. See smuni `apply_predicate` (Abstraction arm).
 pub(super) const ABSTRACTION_MARKER_PREFIX: &str = "__abs_";
 
 /// True if `node_id` is the opaque abstraction marker predicate.
@@ -634,7 +634,7 @@ pub(super) struct KnowledgeBaseInner {
     /// They satisfy ∃/∀ like any entity, but are EXCLUDED from counting
     /// surfaces (`PA lo` tallies, `??` witness enumeration): a phantom entity
     /// a rule presupposed must not change "how many" (GUARANTEES §Aggregation).
-    pub(super) xorlo_import_witnesses: HashSet<String>,
+    pub(super) presupposition_witnesses: HashSet<String>,
     /// Violations collected by `assert_typed_fact` while strict mode rejects
     /// facts; drained by `process_assertion` into its error return. Internal
     /// insertions (forward chaining, compute auto-assert) also reject loudly
@@ -690,7 +690,7 @@ impl Clone for KnowledgeBaseInner {
             verbose: self.verbose,
             strict: self.strict,
             strict_violations: Vec::new(),
-            xorlo_import_witnesses: self.xorlo_import_witnesses.clone(),
+            presupposition_witnesses: self.presupposition_witnesses.clone(),
             find_horizon_hit: false,
         }
     }
@@ -736,7 +736,7 @@ impl KnowledgeBaseInner {
             verbose: false,
             strict: false,
             strict_violations: Vec::new(),
-            xorlo_import_witnesses: HashSet::new(),
+            presupposition_witnesses: HashSet::new(),
             find_horizon_hit: false,
         }
     }
@@ -766,7 +766,7 @@ impl KnowledgeBaseInner {
         self.forward_depth = 0;
         self.negative_facts.clear();
         self.disjunctive_constraints.clear();
-        self.xorlo_import_witnesses.clear();
+        self.presupposition_witnesses.clear();
         self.pred_cache.borrow_mut().clear();
         self.pred_cache_enabled.set(false);
         // Note: integrity_constraints, compute_eval/compute_batch_eval, cancel,
@@ -1099,7 +1099,7 @@ pub(super) fn register_ground_material_conditional(
             register_ground_material_conditional(buffer, *body, subs, inner)?
         }
         // Transparent tense/deontic strip. SURFACE-UNREACHABLE: tense (pu/ca/ba) and
-        // attitudinals (ei/e'e) are bridi-level, never wrapping a sentence connective —
+        // deontics (ei/e'e) are bridi-level, never wrapping a sentence connective —
         // `pu ganai P gi Q` does not parse — so smuni never produces a tensed/deontic
         // ground material conditional `Past(Or(Not(P), Q))`. Kept as dead-defensive
         // raw-FOL completeness (mirrors the assert-path strip in `collect_ground_facts`).

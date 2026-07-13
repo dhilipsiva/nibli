@@ -367,7 +367,7 @@ pub const ALIAS_PINS: &[(&str, &str)] = &[
 
 /// Converted-form aliases: `(alias, gismu, swap)` where `swap = n` means the
 /// surface argument order is the gismu's with x1 ↔ xn exchanged (the se/te/ve/xe
-/// family — the only permutations the AstBuffer's `Selbri::Converted` expresses).
+/// family — the only permutations the AstBuffer's `Predicate::Converted` expresses).
 /// NEVER generated — curated only (NIBLI_KR §13). Labels are positional:
 /// auto-swapping the plain entry's curated labels risks silent place rerouting,
 /// the exact failure class the alias differential gate exists to catch.

@@ -1,20 +1,20 @@
 //! The nibli KR emitter: tree AST → `nibli_types::ast::AstBuffer` — the exact
-//! buffer gerna produces, so `nibli_semantics::compile_from_gerna_ast` (and everything
+//! buffer gerna produces, so `nibli_semantics::compile_from_ast` (and everything
 //! below it: logji, the oracles, the Lean-bridged conformance surface) applies
 //! unchanged. Mirrors gerna's Flattener discipline: child indices come from
 //! push-return values, never from length arithmetic.
 //!
 //! Emission map (NIBLI_KR §13; design-review decisions):
 //! - predicate names resolve HERE to gismu (alias → gismu, identity words pass
-//!   through); an alias with a place swap emits `Selbri::Converted`
+//!   through); an alias with a place swap emits `Predicate::Converted`
 //! - `$x`/`$y`/`$z` lower to `da`/`de`/`di` by first emission encounter per
 //!   statement (resolve guarantees ≤3); `?`→`ma`, `it`→`ke'a`, `slot`→`ce'u`
-//! - named args → `Sumti::Tagged(Fa..Fu)` (labels address SURFACE places,
+//! - named args → `Argument::Tagged(Fa..Fu)` (labels address SURFACE places,
 //!   which are the places of the possibly-Converted selbri — no extra math)
 //! - operators emit at SENTENCE level (`Afterthought`/`GanaiGi`); operand
-//!   negation/prefixes live in the operand `Bridi`'s fields
+//!   negation/prefixes live in the operand `Proposition`'s fields
 //! - abstractions → `Description((Lo, Abstraction(kind, body)))`
-//! - linked args → `Selbri::WithArgs` with `Unspecified` gap-fill from x2; a
+//! - linked args → `Predicate::WithArgs` with `Unspecified` gap-fill from x2; a
 //!   named `it` marker at surface place p emits `Converted(x1↔p)` first
 //! - `every`/`some` BLOCK determiners lower via `Prenex + GanaiGi` / `GeGi`
 //!   (gerna rejects description gi'e heads — spec O7; the seam gate pins the
@@ -26,10 +26,10 @@
 //!   against the Lojban BAI spelling.
 
 use nibli_types::ast::{
-    AbstractionKind, AstBuffer, Bridi, Conversion, Gadri, ModalTag, PlaceTag, RelClause,
-    RelClauseKind, Selbri, Sentence, SentenceConnective, Sumti,
+    AbstractionKind, Argument, AstBuffer, Conversion, Determiner, ModalTag, PlaceTag, Predicate,
+    Proposition, RelClause, RelClauseKind, Sentence, SentenceConnective,
 };
-use nibli_types::ast::{Attitudinal, Connective, Tense as AstTense};
+use nibli_types::ast::{Connective, DeonticMood, Tense as AstTense};
 
 use crate::ast::{
     AbsKind, Arg, Claim, ClauseBody, Deontic, Det, KeyTerm, PredSeq, PredUnit, Predication,
@@ -65,19 +65,19 @@ struct Emitter<'a> {
     vars: Vec<String>,
 }
 
-const VAR_CMAVO: [&str; 3] = ["da", "de", "di"];
+const VAR_NAMES: [&str; 3] = ["da", "de", "di"];
 
 impl<'a> Emitter<'a> {
     fn fail(&self, at: usize, message: impl Into<String>) -> ParseError {
         err_at(self.input, at, message)
     }
 
-    fn push_selbri(&mut self, s: Selbri) -> u32 {
+    fn push_selbri(&mut self, s: Predicate) -> u32 {
         self.buffer.selbris.push(s);
         (self.buffer.selbris.len() - 1) as u32
     }
 
-    fn push_sumti(&mut self, s: Sumti) -> u32 {
+    fn push_sumti(&mut self, s: Argument) -> u32 {
         self.buffer.sumtis.push(s);
         (self.buffer.sumtis.len() - 1) as u32
     }
@@ -89,7 +89,7 @@ impl<'a> Emitter<'a> {
 
     fn var_cmavo(&mut self, name: &str, at: usize) -> Result<&'static str, ParseError> {
         if let Some(i) = self.vars.iter().position(|v| v == name) {
-            return Ok(VAR_CMAVO[i]);
+            return Ok(VAR_NAMES[i]);
         }
         if self.vars.len() >= 3 {
             // resolve.rs enforces the cap; defensive.
@@ -99,7 +99,7 @@ impl<'a> Emitter<'a> {
             ));
         }
         self.vars.push(name.to_owned());
-        Ok(VAR_CMAVO[self.vars.len() - 1])
+        Ok(VAR_NAMES[self.vars.len() - 1])
     }
 
     fn resolved(&self, word: &str, at: usize) -> Result<PredInfo, ParseError> {
@@ -182,23 +182,23 @@ impl<'a> Emitter<'a> {
             Tense::Now => AstTense::Ca,
             Tense::Future => AstTense::Ba,
         });
-        let attitudinal = deontic.map(|d| match d {
-            Deontic::Must => Attitudinal::Ei,
-            Deontic::May => Attitudinal::Ehe,
+        let deontic = deontic.map(|d| match d {
+            Deontic::Must => DeonticMood::Ei,
+            Deontic::May => DeonticMood::Ehe,
         });
         let bridi = match claim {
-            Claim::Predication(p) => self.predication_bridi(p, negated, tense, attitudinal)?,
+            Claim::Predication(p) => self.predication_bridi(p, negated, tense, deontic)?,
             Claim::Equality(lhs, rhs) => {
-                let relation = self.push_selbri(Selbri::Root("du".into()));
+                let relation = self.push_selbri(Predicate::Root("du".into()));
                 let head = self.term(lhs, at)?;
                 let tail = self.term(rhs, at)?;
-                Bridi {
+                Proposition {
                     relation,
                     head_terms: vec![head],
                     tail_terms: vec![tail],
                     negated,
                     tense,
-                    attitudinal,
+                    deontic,
                 }
             }
             other => unreachable!("simple() over a compound claim: {other:?}"),
@@ -211,8 +211,8 @@ impl<'a> Emitter<'a> {
         p: &Predication,
         negated: bool,
         tense: Option<AstTense>,
-        attitudinal: Option<Attitudinal>,
-    ) -> Result<Bridi, ParseError> {
+        deontic: Option<DeonticMood>,
+    ) -> Result<Proposition, ParseError> {
         let info = self.resolved(p.seq.head_word(), p.span.start)?;
         let relation = self.pred_seq(&p.seq, p.span.start)?;
 
@@ -245,7 +245,7 @@ impl<'a> Emitter<'a> {
                         PlaceTag::Fu,
                     ][place];
                     let inner = self.term(&arg.term, arg.span.start)?;
-                    tail_terms.push(self.push_sumti(Sumti::Tagged((tag, inner))));
+                    tail_terms.push(self.push_sumti(Argument::Tagged((tag, inner))));
                 }
             }
         }
@@ -255,18 +255,18 @@ impl<'a> Emitter<'a> {
                 .entry
                 .map(|e| e.gismu.to_owned())
                 .unwrap_or_else(|| tag.pred.last().unwrap().clone());
-            let modal_selbri = self.push_selbri(Selbri::Root(gismu));
+            let modal_selbri = self.push_selbri(Predicate::Root(gismu));
             let inner = self.term(&tag.term, tag.span.start)?;
             tail_terms
-                .push(self.push_sumti(Sumti::ModalTagged((ModalTag::Fio(modal_selbri), inner))));
+                .push(self.push_sumti(Argument::ModalTagged((ModalTag::Fio(modal_selbri), inner))));
         }
-        Ok(Bridi {
+        Ok(Proposition {
             relation,
             head_terms,
             tail_terms,
             negated,
             tense,
-            attitudinal,
+            deontic,
         })
     }
 
@@ -326,14 +326,14 @@ impl<'a> Emitter<'a> {
     /// a block determiner.
     fn restr_bridi_sentence(&mut self, restr: &Restr, cmavo: &str) -> Result<u32, ParseError> {
         let relation = self.restr_selbri(restr)?;
-        let head = self.push_sumti(Sumti::ProSumti(cmavo.to_owned()));
-        Ok(self.push_sentence(Sentence::Simple(Bridi {
+        let head = self.push_sumti(Argument::Pronoun(cmavo.to_owned()));
+        Ok(self.push_sentence(Sentence::Simple(Proposition {
             relation,
             head_terms: vec![head],
             tail_terms: vec![],
             negated: false,
             tense: None,
-            attitudinal: None,
+            deontic: None,
         })))
     }
 
@@ -348,7 +348,7 @@ impl<'a> Emitter<'a> {
         }
         let mut acc = ids.pop().expect("pred_seq non-empty");
         while let Some(modifier) = ids.pop() {
-            acc = self.push_selbri(Selbri::Tanru((modifier, acc)));
+            acc = self.push_selbri(Predicate::Tanru((modifier, acc)));
         }
         Ok(acc)
     }
@@ -357,7 +357,7 @@ impl<'a> Emitter<'a> {
         match unit {
             PredUnit::Group(inner) => {
                 let inner_idx = self.pred_seq(inner, at)?;
-                Ok(self.push_selbri(Selbri::Grouped(inner_idx)))
+                Ok(self.push_selbri(Predicate::Grouped(inner_idx)))
             }
             PredUnit::Word(parts) => {
                 if parts.len() > 1 {
@@ -372,7 +372,7 @@ impl<'a> Emitter<'a> {
                                 .unwrap_or_else(|| part.clone()),
                         );
                     }
-                    return Ok(self.push_selbri(Selbri::Compound(gismu_parts)));
+                    return Ok(self.push_selbri(Predicate::Compound(gismu_parts)));
                 }
                 let word = &parts[0];
                 let info = self.resolved(word, at)?;
@@ -380,10 +380,10 @@ impl<'a> Emitter<'a> {
                     Some(entry) => (entry.gismu.to_owned(), entry.swap),
                     None => (word.clone(), None),
                 };
-                let root = self.push_selbri(Selbri::Root(gismu));
+                let root = self.push_selbri(Predicate::Root(gismu));
                 Ok(match swap {
                     None => root,
-                    Some(p) => self.push_selbri(Selbri::Converted((conversion_for(p), root))),
+                    Some(p) => self.push_selbri(Predicate::Converted((conversion_for(p), root))),
                 })
             }
         }
@@ -393,40 +393,45 @@ impl<'a> Emitter<'a> {
 
     fn term(&mut self, term: &Term, at: usize) -> Result<u32, ParseError> {
         let sumti = match term {
-            Term::Unspecified => Sumti::Unspecified,
-            Term::Witness => Sumti::ProSumti("ma".into()),
-            Term::Number(n) => Sumti::Number(*n),
-            Term::Str(s) => Sumti::QuotedLiteral(s.clone()),
-            Term::Var(v) => Sumti::ProSumti(self.var_cmavo(v, at)?.to_owned()),
-            Term::Key(k) => Sumti::ProSumti(keyterm_cmavo(*k).into()),
+            Term::Unspecified => Argument::Unspecified,
+            Term::Witness => Argument::Pronoun("ma".into()),
+            Term::Number(n) => Argument::Number(*n),
+            Term::Str(s) => Argument::QuotedLiteral(s.clone()),
+            Term::Var(v) => Argument::Pronoun(self.var_cmavo(v, at)?.to_owned()),
+            Term::Key(k) => Argument::Pronoun(keyterm_cmavo(*k).into()),
             Term::Name { name, rel_clauses } => {
-                let mut idx = self.push_sumti(Sumti::Name(name.to_lowercase().replace('_', " ")));
+                let mut idx =
+                    self.push_sumti(Argument::Name(name.to_lowercase().replace('_', " ")));
                 for rc in rel_clauses {
                     let clause = self.rel_clause(rc)?;
-                    idx = self.push_sumti(Sumti::Restricted((idx, clause)));
+                    idx = self.push_sumti(Argument::Restricted((idx, clause)));
                 }
                 return Ok(idx);
             }
             Term::Abstraction { kind, body } => {
                 let body_idx = self.claim(body, at)?;
                 let selbri =
-                    self.push_selbri(Selbri::Abstraction((abstraction_kind(*kind), body_idx)));
-                Sumti::Description((Gadri::Lo, selbri))
+                    self.push_selbri(Predicate::Abstraction((abstraction_kind(*kind), body_idx)));
+                Argument::Description((Determiner::Lo, selbri))
             }
             Term::Det { det, restr } => {
                 let selbri = self.restr_selbri(restr)?;
                 let base = match det {
-                    Det::Some => Sumti::Description((Gadri::Lo, selbri)),
-                    Det::The => Sumti::Description((Gadri::Le, selbri)),
-                    Det::Every => Sumti::Description((Gadri::RoLo, selbri)),
-                    Det::EveryThe => Sumti::Description((Gadri::RoLe, selbri)),
-                    Det::Exactly(n) => Sumti::QuantifiedDescription((*n, Gadri::Lo, selbri)),
-                    Det::ExactlyThe(n) => Sumti::QuantifiedDescription((*n, Gadri::Le, selbri)),
+                    Det::Some => Argument::Description((Determiner::Lo, selbri)),
+                    Det::The => Argument::Description((Determiner::Le, selbri)),
+                    Det::Every => Argument::Description((Determiner::RoLo, selbri)),
+                    Det::EveryThe => Argument::Description((Determiner::RoLe, selbri)),
+                    Det::Exactly(n) => {
+                        Argument::QuantifiedDescription((*n, Determiner::Lo, selbri))
+                    }
+                    Det::ExactlyThe(n) => {
+                        Argument::QuantifiedDescription((*n, Determiner::Le, selbri))
+                    }
                 };
                 let mut idx = self.push_sumti(base);
                 for rc in &restr.rel_clauses {
                     let clause = self.rel_clause(rc)?;
-                    idx = self.push_sumti(Sumti::Restricted((idx, clause)));
+                    idx = self.push_sumti(Argument::Restricted((idx, clause)));
                 }
                 return Ok(idx);
             }
@@ -448,9 +453,9 @@ impl<'a> Emitter<'a> {
                     Some(entry) => (entry.gismu.to_owned(), entry.swap),
                     None => (pred.clone(), None),
                 };
-                let mut idx = self.push_selbri(Selbri::Root(gismu));
+                let mut idx = self.push_selbri(Predicate::Root(gismu));
                 if let Some(p) = alias_swap {
-                    idx = self.push_selbri(Selbri::Converted((conversion_for(p), idx)));
+                    idx = self.push_selbri(Predicate::Converted((conversion_for(p), idx)));
                 }
                 let place = label_index(&info, label).ok_or_else(|| {
                     self.fail(
@@ -459,7 +464,8 @@ impl<'a> Emitter<'a> {
                     )
                 })? + 1;
                 if place > 1 {
-                    idx = self.push_selbri(Selbri::Converted((conversion_for(place as u8), idx)));
+                    idx =
+                        self.push_selbri(Predicate::Converted((conversion_for(place as u8), idx)));
                 }
                 idx
             }
@@ -498,7 +504,7 @@ impl<'a> Emitter<'a> {
                         }
                     }
                     if bound_place > 1 {
-                        idx = self.push_selbri(Selbri::Converted((
+                        idx = self.push_selbri(Predicate::Converted((
                             conversion_for(bound_place as u8),
                             idx,
                         )));
@@ -521,16 +527,16 @@ impl<'a> Emitter<'a> {
                             let idx = self.term(&arg.term, arg.span.start)?;
                             be_args.push(idx);
                         } else {
-                            be_args.push(self.push_sumti(Sumti::Unspecified));
+                            be_args.push(self.push_sumti(Argument::Unspecified));
                         }
                     }
-                    idx = self.push_selbri(Selbri::WithArgs((idx, be_args)));
+                    idx = self.push_selbri(Predicate::WithArgs((idx, be_args)));
                 }
                 idx
             }
         };
         Ok(if restr.negated {
-            self.push_selbri(Selbri::Negated(core))
+            self.push_selbri(Predicate::Negated(core))
         } else {
             core
         })
@@ -544,14 +550,14 @@ impl<'a> Emitter<'a> {
         let body_sentence = match &rc.body {
             ClauseBody::Bare { negated, seq } => {
                 let relation = self.pred_seq(seq, rc.span.start)?;
-                let head = self.push_sumti(Sumti::ProSumti("ke'a".into()));
-                self.push_sentence(Sentence::Simple(Bridi {
+                let head = self.push_sumti(Argument::Pronoun("ke'a".into()));
+                self.push_sentence(Sentence::Simple(Proposition {
                     relation,
                     head_terms: vec![head],
                     tail_terms: vec![],
                     negated: *negated,
                     tense: None,
-                    attitudinal: None,
+                    deontic: None,
                 }))
             }
             ClauseBody::Full(claim) => self.claim(claim, rc.span.start)?,
@@ -619,7 +625,7 @@ mod tests {
 
     fn nibli_kr_lb(text: &str) -> String {
         let buffer = parse_checked(text).unwrap_or_else(|e| panic!("nibli-kr {text:?}: {e}"));
-        let lb = nibli_semantics::compile_from_gerna_ast(buffer)
+        let lb = nibli_semantics::compile_from_ast(buffer)
             .unwrap_or_else(|e| panic!("smuni rejected nibli-kr buffer for {text:?}: {e}"));
         format!("{lb:?}")
     }

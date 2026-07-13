@@ -959,7 +959,7 @@ fn check_formula_holds_core<S: TraceSink>(
                 let mut out = Vec::new();
                 for m in inner.all_typed_domain_members() {
                     if let GroundTerm::Constant(name) = m
-                        && inner.xorlo_import_witnesses.contains(name.as_str())
+                        && inner.presupposition_witnesses.contains(name.as_str())
                     {
                         continue;
                     }

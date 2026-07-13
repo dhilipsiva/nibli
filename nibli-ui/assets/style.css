@@ -327,10 +327,10 @@ body {
 .translate-error::before { content: "⊥"; color: var(--danger); font-size: var(--fs-ui); line-height: 1.2; }
 
 /* ── 4 · LOJBAN TAB + KB STATUS ───────────────────────────────────────── */
-.lojban-toolbar { display: flex; align-items: center; gap: var(--s2); flex: none; }
-.lojban-toolbar__sp { flex: 1; }
+.kb-toolbar { display: flex; align-items: center; gap: var(--s2); flex: none; }
+.kb-toolbar__sp { flex: 1; }
 
-.lojban-input {
+.kb-input {
   flex: 1; min-height: 180px; width: 100%; resize: none;
   padding: var(--s3) var(--s4);
   background: var(--surface-inset);
@@ -341,8 +341,8 @@ body {
   border-radius: var(--r-md);
   transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
-.lojban-input:hover { border-color: var(--border-strong); }
-.lojban-input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring-field); }
+.kb-input:hover { border-color: var(--border-strong); }
+.kb-input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring-field); }
 
 /* Secondary / toolbar buttons — outlined, quiet. */
 .toolbar-btn {
@@ -428,7 +428,7 @@ body {
 }
 .back-translation__line:last-child { border-bottom: none; padding-bottom: 0; }
 .back-translation__num    { color: var(--text-faint); font-size: var(--fs-cap); }
-.back-translation__lojban { color: var(--quanta-300); }
+.back-translation__gloss { color: var(--quanta-300); }
 .back-translation__gloss  { grid-column: 2; color: var(--text-body); }
 .back-translation__gloss b { color: var(--text-strong); font-weight: var(--w-medium); }
 .back-translation:empty::before,
@@ -821,7 +821,7 @@ body {
 /* Query preset dropdown fills the query bar; pad-left clears the `xu` affix. */
 .query-select { flex: 1; min-width: 0; padding-left: calc(var(--s3) + 3ch); }
 /* Read-only KB fields in example mode: a muted, non-editable affordance. */
-.source-input[readonly], .lojban-input[readonly] { cursor: default; background: var(--bg-sunken); }
+.source-input[readonly], .kb-input[readonly] { cursor: default; background: var(--bg-sunken); }
 .gossip-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
   height: var(--control-h); padding: 0 var(--s4);
@@ -953,7 +953,7 @@ body {
 .envelope-id::before { content: "⟨"; } .envelope-id::after { content: "⟩"; }
 .envelope-author { font-family: var(--font-mono); font-size: var(--fs-cap); color: var(--text-muted); margin-left: auto; }
 .envelope-author::before { content: "by "; color: var(--text-faint); }
-.envelope-lojban { font-family: var(--font-mono); font-size: var(--fs-code); color: var(--quanta-300); line-height: var(--lh-code); overflow-wrap: anywhere; }
+.envelope-gloss { font-family: var(--font-mono); font-size: var(--fs-code); color: var(--quanta-300); line-height: var(--lh-code); overflow-wrap: anywhere; }
 .envelope-topics { display: flex; flex-wrap: wrap; gap: var(--s1); }
 
 /* Stance badge — shared chip, colored per evidential. */
@@ -987,7 +987,7 @@ body {
 
 .envelope-card.envelope-card-quarantined { border-color: color-mix(in oklab, var(--flag-quarantine) 34%, var(--border-subtle)); background: color-mix(in oklab, var(--flag-quarantine) 5%, var(--surface-card)); }
 .envelope-card.envelope-card-retraction { opacity: .55; }
-.envelope-card.envelope-card-retraction .envelope-lojban { text-decoration: line-through; text-decoration-color: var(--flag-retracted); color: var(--text-muted); }
+.envelope-card.envelope-card-retraction .envelope-gloss { text-decoration: line-through; text-decoration-color: var(--flag-retracted); color: var(--text-muted); }
 
 /* ── 13 · NETWORK — contradictions ────────────────────────────────────── */
 .contradictions-panel {

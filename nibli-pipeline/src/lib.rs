@@ -348,7 +348,7 @@ fn compile_pipeline(
 ) -> Result<logji_logic::LogicBuffer, export_err::NibliError> {
     // The mirror of nibli-engine's `compile_text`, so native and WASM agree.
     let ast = nibli_kr::parse_checked(text).map_err(convert_pipeline_error)?;
-    let mut buf = nibli_semantics::compile_from_gerna_ast(ast).map_err(convert_pipeline_error)?;
+    let mut buf = nibli_semantics::compile_from_ast(ast).map_err(convert_pipeline_error)?;
     nibli_reason::transform_compute_nodes(&mut buf, compute_predicates);
     Ok(buf)
 }

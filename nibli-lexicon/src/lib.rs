@@ -42,9 +42,8 @@ pub fn get_template(word: &str) -> Option<&'static str> {
 }
 
 /// Word-by-word robotic back-translation of Lojban text to English glosses.
-pub fn back_translate(lojban: &str) -> String {
-    lojban
-        .split_whitespace()
+pub fn back_translate(word: &str) -> String {
+    word.split_whitespace()
         .map(|token| {
             // cmevla (a dot-delimited proper name like `.adam.`): the
             // back-translation of a name is the name itself — return the inner

@@ -31,7 +31,7 @@ impl Chat for HttpChat {
         let provider = cfg.provider;
         let (url, headers, body) = build_chat_request(cfg, system, turns);
         let json = post_and_read(provider, &url, &headers, &body).await?;
-        // Return the RAW assistant text; the agent applies `clean_lojban_output`.
+        // Return the RAW assistant text; the agent applies `clean_output`.
         extract_text(provider, &json)
             .ok_or_else(|| ChatError(format!("{} returned no text", provider.display_name())))
     }

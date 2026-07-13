@@ -114,8 +114,8 @@ impl Session {
         // Fail-closed KR parse + smuni compile + compute-node marking.
         // String-error surface preserved via `to_string`.
         let ast = nibli_kr::parse_checked(input).map_err(|e: PipelineError| e.to_string())?;
-        let mut buf = nibli_semantics::compile_from_gerna_ast(ast)
-            .map_err(|e: PipelineError| e.to_string())?;
+        let mut buf =
+            nibli_semantics::compile_from_ast(ast).map_err(|e: PipelineError| e.to_string())?;
         nibli_reason::transform_compute_nodes(&mut buf, &self.compute_predicates);
         Ok(buf)
     }
@@ -130,8 +130,8 @@ fn js_err(msg: impl std::fmt::Display) -> JsError {
 /// Kept so deployed-site JS written against the dual-front-end API keeps
 /// loading; meaningless for KR input (it echoes unknown tokens).
 #[wasm_bindgen]
-pub fn back_translate(lojban: &str) -> String {
-    nibli_lexicon::back_translate(lojban)
+pub fn back_translate(word: &str) -> String {
+    nibli_lexicon::back_translate(word)
 }
 
 /// IR-driven back-translation: parse + compile to FOL, then render structure-
@@ -151,7 +151,7 @@ pub fn back_translate_ir(text: &str) -> String {
 /// transform, no assertion — display only).
 fn compile_for_render(input: &str) -> Result<logji_logic::LogicBuffer, String> {
     let ast = nibli_kr::parse_checked(input).map_err(|e: PipelineError| e.to_string())?;
-    nibli_semantics::compile_from_gerna_ast(ast).map_err(|e: PipelineError| e.to_string())
+    nibli_semantics::compile_from_ast(ast).map_err(|e: PipelineError| e.to_string())
 }
 
 // ── native tests: the book's headline queries against the real KBs ─────────

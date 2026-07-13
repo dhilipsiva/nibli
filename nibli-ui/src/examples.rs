@@ -171,7 +171,7 @@ mod tests {
 
     fn compile_nibli_kr(line: &str) -> Result<(), String> {
         let ast = nibli_kr::parse_checked(line).map_err(|e| e.to_string())?;
-        nibli_semantics::compile_from_gerna_ast(ast).map_err(|e| e.to_string())?;
+        nibli_semantics::compile_from_ast(ast).map_err(|e| e.to_string())?;
         Ok(())
     }
 

@@ -543,7 +543,7 @@ impl KnowledgeBase {
             !bindings.iter().any(|(var, gt)| {
                 !var.starts_with("_ev")
                     && matches!(gt, GroundTerm::Constant(name)
-                        if inner.xorlo_import_witnesses.contains(name.as_str()))
+                        if inner.presupposition_witnesses.contains(name.as_str()))
             })
         });
         // The DEDUP key is the binding set projected onto ENTITY variables —

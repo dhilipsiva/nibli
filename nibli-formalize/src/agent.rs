@@ -15,7 +15,7 @@
 //! (The jbotci MCP tool loop retired with the Lojban front-end at THE DROP.)
 
 use crate::gates::{self, GateError};
-use crate::llm::{LlmConfig, ToolChat, Turn, clean_lojban_output, system_prompt};
+use crate::llm::{LlmConfig, ToolChat, Turn, clean_output, system_prompt};
 use crate::verify;
 
 /// One outer-loop iteration: the candidate the LLM produced and the gate error it
@@ -31,12 +31,8 @@ pub struct Attempt {
 /// for the UI.
 #[derive(Debug)]
 pub enum Outcome {
-    /// Converged — `lojban` passed every gate. (Field name predates THE DROP;
-    /// the rename rides the identifier-purge milestone.)
-    Success {
-        lojban: String,
-        attempts: Vec<Attempt>,
-    },
+    /// Converged — the formalized `kr` text passed every gate.
+    Success { kr: String, attempts: Vec<Attempt> },
     /// Hit the attempt cap or an oscillation without converging; `best` is the last
     /// candidate and `last_error` the gate it failed.
     Exhausted {
@@ -115,7 +111,7 @@ pub async fn translate_agentic<C: ToolChat, V: ToolChat>(
                 };
             }
         };
-        let candidate = clean_lojban_output(&raw);
+        let candidate = clean_output(&raw);
 
         // Gate check first; a gate-clean candidate then faces the fresh-context
         // semantic verifier. Folding the verifier's MISMATCH into the same
@@ -133,7 +129,7 @@ pub async fn translate_agentic<C: ToolChat, V: ToolChat>(
                     error: None,
                 });
                 return Outcome::Success {
-                    lojban: candidate,
+                    kr: candidate,
                     attempts,
                 };
             }
@@ -323,10 +319,8 @@ mod tests {
     fn fails_once_then_converges() {
         let out = run(vec![text(&bad("x")), text(GOOD)], 5);
         match out {
-            Outcome::Success {
-                lojban, attempts, ..
-            } => {
-                assert_eq!(lojban, GOOD);
+            Outcome::Success { kr, attempts, .. } => {
+                assert_eq!(kr, GOOD);
                 assert_eq!(attempts.len(), 2);
                 assert!(attempts[0].error.is_some());
                 assert!(attempts[1].error.is_none());
@@ -363,7 +357,7 @@ mod tests {
     fn nibli_kr_mode_converges_and_uses_the_nibli_kr_prompt() {
         let (out, chat) = run_seen(vec![text("dog(Adam).")], 5);
         match out {
-            Outcome::Success { lojban, .. } => assert_eq!(lojban, "dog(Adam)."),
+            Outcome::Success { kr, .. } => assert_eq!(kr, "dog(Adam)."),
             other => panic!("expected Success, got {other:?}"),
         }
         let seen = chat.seen.borrow();
@@ -384,10 +378,8 @@ mod tests {
         // the feedback turn must carry the nibli KR correction prose.
         let (out, chat) = run_seen(vec![text("zzyzxq(Adam)."), text("dog(Adam).")], 5);
         match out {
-            Outcome::Success {
-                lojban, attempts, ..
-            } => {
-                assert_eq!(lojban, "dog(Adam).");
+            Outcome::Success { kr, attempts, .. } => {
+                assert_eq!(kr, "dog(Adam).");
                 assert_eq!(attempts.len(), 2);
                 assert!(matches!(attempts[0].error, Some(GateError::Syntax(_))));
             }
@@ -457,10 +449,8 @@ eats(some person, some food).";
             5,
         );
         match out {
-            Outcome::Success {
-                lojban, attempts, ..
-            } => {
-                assert_eq!(lojban, GENESIS_CORRECTED);
+            Outcome::Success { kr, attempts, .. } => {
+                assert_eq!(kr, GENESIS_CORRECTED);
                 assert_eq!(attempts.len(), 2);
                 match &attempts[0].error {
                     Some(GateError::Verification(issues)) => {

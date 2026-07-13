@@ -1,4 +1,4 @@
-//! Selbri compilation: maps selbri AST nodes to FOL logic forms.
+//! Predicate compilation: maps selbri AST nodes to FOL logic forms.
 //!
 //! Handles root predicates, tanru, conversion (se/te/ve/xe), negation,
 //! ke...ke'e grouping, be...bei...be'o arguments, connected selbri,
@@ -169,23 +169,23 @@ impl SemanticCompiler {
     }
 
     /// Compiles a selbri node with given arguments into a FOL logic form.
-    pub(crate) fn apply_selbri(
+    pub(crate) fn apply_predicate(
         &mut self,
         selbri_id: u32,
         args: &[LogicalTerm],
-        selbris: &[Selbri],
-        sumtis: &[Sumti],
+        selbris: &[Predicate],
+        sumtis: &[Argument],
         sentences: &[Sentence],
     ) -> LogicalForm {
         match &selbris[selbri_id as usize] {
-            Selbri::Root(g) => {
+            Predicate::Root(g) => {
                 // `du` (identity) is a pure binary equivalence relation with no
                 // event structure. It MUST stay a flat 2-arg `du(x1, x2)`
                 // predicate — logji's union-find ingestion and du-query arm only
                 // match `relation == "du" && args.len() == 2`, so the
                 // Neo-Davidsonian event form would silently disable equality
                 // reasoning. (The >2-place fail-closed reject lives in
-                // `compile_bridi`, where the dropped-overflow sumti are visible.)
+                // `compile_proposition`, where the dropped-overflow sumti are visible.)
                 if g == "du" {
                     let fitted = Self::fit_args(args, 2);
                     return LogicalForm::Predicate {
@@ -193,20 +193,21 @@ impl SemanticCompiler {
                         args: fitted,
                     };
                 }
-                let arity = JbovlasteSchema::get_arity_or_default(g.as_str());
+                let arity = LexiconSchema::get_arity_or_default(g.as_str());
                 let fitted = Self::fit_args(args, arity);
                 self.event_decompose(g.as_str(), &fitted)
             }
-            Selbri::Tanru((mod_id, head_id)) => {
+            Predicate::Tanru((mod_id, head_id)) => {
                 // Per-unit (name, arity, conversion swaps): a converted unit's
                 // args are mapped fit-then-swap through its swap chain, exactly
-                // like the `Selbri::Converted` arm — `menli se ponse` puts the
+                // like the `Predicate::Converted` arm — `menli se ponse` puts the
                 // shared x1 in ponse_x2, and `se ponse datni` as a restrictor
                 // modifier likewise (the pre-2026-07-12 flatten dropped the
                 // swap silently).
-                let (mod_name, mod_arity, mod_swaps) = self.get_selbri_unit_base(*mod_id, selbris);
+                let (mod_name, mod_arity, mod_swaps) =
+                    self.get_predicate_unit_base(*mod_id, selbris);
                 let (head_name, head_arity, head_swaps) =
-                    self.get_selbri_unit_base(*head_id, selbris);
+                    self.get_predicate_unit_base(*head_id, selbris);
 
                 let mut mod_args = vec![LogicalTerm::Unspecified; mod_arity];
                 if !args.is_empty() && mod_arity > 0 {
@@ -259,7 +260,7 @@ impl SemanticCompiler {
 
                 LogicalForm::Exists(ev, Box::new(form))
             }
-            Selbri::Converted((conv, inner_id)) => {
+            Predicate::Converted((conv, inner_id)) => {
                 let mut permuted = args.to_vec();
                 match conv {
                     Conversion::Se if permuted.len() >= 2 => permuted.swap(0, 1),
@@ -268,17 +269,17 @@ impl SemanticCompiler {
                     Conversion::Xe if permuted.len() >= 5 => permuted.swap(0, 4),
                     _ => {}
                 }
-                self.apply_selbri(*inner_id, &permuted, selbris, sumtis, sentences)
+                self.apply_predicate(*inner_id, &permuted, selbris, sumtis, sentences)
             }
-            Selbri::Negated(inner_id) => {
-                let inner = self.apply_selbri(*inner_id, args, selbris, sumtis, sentences);
+            Predicate::Negated(inner_id) => {
+                let inner = self.apply_predicate(*inner_id, args, selbris, sumtis, sentences);
                 LogicalForm::Not(Box::new(inner))
             }
-            Selbri::Grouped(inner_id) => {
-                self.apply_selbri(*inner_id, args, selbris, sumtis, sentences)
+            Predicate::Grouped(inner_id) => {
+                self.apply_predicate(*inner_id, args, selbris, sumtis, sentences)
             }
-            Selbri::WithArgs((core_id, bound_ids)) => {
-                let core_arity = self.get_selbri_arity(*core_id, selbris);
+            Predicate::WithArgs((core_id, bound_ids)) => {
+                let core_arity = self.get_predicate_arity(*core_id, selbris);
                 let mut merged = Vec::with_capacity(core_arity);
                 let mut inner_quantifiers: Vec<QuantifierEntry> = Vec::new();
 
@@ -291,7 +292,7 @@ impl SemanticCompiler {
                 for bound_id in bound_ids.iter() {
                     let bound_sumti = &sumtis[*bound_id as usize];
                     let (term, quants) =
-                        self.resolve_sumti(bound_sumti, sumtis, selbris, sentences);
+                        self.resolve_argument(bound_sumti, sumtis, selbris, sentences);
                     inner_quantifiers.extend(quants);
                     merged.push(term);
                 }
@@ -305,7 +306,7 @@ impl SemanticCompiler {
                     }
                 }
 
-                let mut form = self.apply_selbri(*core_id, &merged, selbris, sumtis, sentences);
+                let mut form = self.apply_predicate(*core_id, &merged, selbris, sumtis, sentences);
 
                 for entry in inner_quantifiers.into_iter().rev() {
                     form = self.close_quantifier(entry, form, selbris, sumtis, sentences);
@@ -313,18 +314,19 @@ impl SemanticCompiler {
 
                 form
             }
-            Selbri::Connected((left_id, conn, right_id)) => {
+            Predicate::Connected((left_id, conn, right_id)) => {
                 // The shared sumti fill each operand to its OWN arity (`fit_args`
                 // truncates/pads per operand), so a mixed-arity connective like
                 // `barda je xunre` (3+2 place) is valid Lojban — not an error. The
                 // place counter already sized for max(left, right) (see
-                // `get_selbri_arity`), so every supplied sumti reached `args`.
-                let left_arity = self.get_selbri_arity(*left_id, selbris);
-                let right_arity = self.get_selbri_arity(*right_id, selbris);
+                // `get_predicate_arity`), so every supplied sumti reached `args`.
+                let left_arity = self.get_predicate_arity(*left_id, selbris);
+                let right_arity = self.get_predicate_arity(*right_id, selbris);
                 let left_args = Self::fit_args(args, left_arity);
                 let right_args = Self::fit_args(args, right_arity);
-                let left = self.apply_selbri(*left_id, &left_args, selbris, sumtis, sentences);
-                let right = self.apply_selbri(*right_id, &right_args, selbris, sumtis, sentences);
+                let left = self.apply_predicate(*left_id, &left_args, selbris, sumtis, sentences);
+                let right =
+                    self.apply_predicate(*right_id, &right_args, selbris, sumtis, sentences);
 
                 match conn {
                     Connective::Je => LogicalForm::And(Box::new(left), Box::new(right)),
@@ -333,13 +335,13 @@ impl SemanticCompiler {
                     Connective::Ju => LogicalForm::Xor(Box::new(left), Box::new(right)),
                 }
             }
-            Selbri::Compound(parts) => {
+            Predicate::Compound(parts) => {
                 let head = parts.last().map(|s| s.as_str()).unwrap_or("unknown");
-                let arity = JbovlasteSchema::get_arity_or_default(head);
+                let arity = LexiconSchema::get_arity_or_default(head);
                 let fitted = Self::fit_args(args, arity);
                 self.event_decompose(head, &fitted)
             }
-            Selbri::Abstraction((kind, body_sentence_idx)) => {
+            Predicate::Abstraction((kind, body_sentence_idx)) => {
                 let type_name = match kind {
                     AbstractionKind::Nu => "nu",
                     AbstractionKind::Duhu => "duhu",
@@ -348,16 +350,16 @@ impl SemanticCompiler {
                     AbstractionKind::Siho => "siho",
                 };
 
-                let outer_ka_var = self.ka_open_var;
+                let outer_ka_var = self.property_open_var;
                 if *kind == AbstractionKind::Ka {
                     if let Some(LogicalTerm::Variable(v)) = args.first() {
-                        self.ka_open_var = Some(*v);
+                        self.property_open_var = Some(*v);
                     }
                 }
 
                 let inner_form =
                     self.compile_sentence(*body_sentence_idx, selbris, sumtis, sentences);
-                self.ka_open_var = outer_ka_var;
+                self.property_open_var = outer_ka_var;
 
                 let type_pred = LogicalForm::Predicate {
                     relation: self.interner.get_or_intern(type_name),

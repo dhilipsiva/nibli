@@ -544,7 +544,7 @@ const GISMU_PLACE_TEMPLATES: &[(&str, &str)] = &[
 /// Hardcoded gloss overrides for common cmavo where jbovlaste glosses
 /// are too technical for readable back-translation.
 const CMAVO_GLOSS_OVERRIDES: &[(&str, &str)] = &[
-    // Gadri (articles)
+    // Determiner (articles)
     ("lo", "the"),
     ("le", "the"),
     ("la", ""),
@@ -623,7 +623,7 @@ const CMAVO_GLOSS_OVERRIDES: &[(&str, &str)] = &[
     ("ja", "or"),
     ("jo", "iff"),
     ("ju", "whether-or-not"),
-    // Attitudinals
+    // DeonticMoods
     ("ei", "[should]"),
     ("e'e", "[may]"),
     // Modal tags

@@ -214,7 +214,7 @@ impl NibliEngine {
         // The SOLE text→AST seam — every public text method funnels through
         // here; `EngineError` is the re-exported `NibliError`.
         let ast = nibli_kr::parse_checked(input)?;
-        let mut buf = nibli_semantics::compile_from_gerna_ast(ast)?;
+        let mut buf = nibli_semantics::compile_from_ast(ast)?;
         nibli_reason::transform_compute_nodes(&mut buf, &self.compute_predicates);
         Ok(buf)
     }

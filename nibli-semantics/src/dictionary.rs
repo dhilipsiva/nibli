@@ -8,9 +8,9 @@
 //! construction and cannot diverge. O(1) lookup.
 
 /// Interface to the jbovlaste arity dictionary (delegates to `nibli_lexicon`).
-pub struct JbovlasteSchema;
+pub struct LexiconSchema;
 
-impl JbovlasteSchema {
+impl LexiconSchema {
     /// Retrieves the arity of a predicate in O(1) time. Returns None for unknown
     /// words (cmavo, and words not in jbovlaste).
     pub fn get_arity(word: &str) -> Option<usize> {
@@ -33,7 +33,7 @@ mod tests {
     #[test]
     fn test_get_arity_known_gismu_klama() {
         // klama is a well-known 5-place gismu
-        let arity = JbovlasteSchema::get_arity("klama");
+        let arity = LexiconSchema::get_arity("klama");
         assert!(arity.is_some());
         assert_eq!(arity.unwrap(), 5);
     }
@@ -41,7 +41,7 @@ mod tests {
     #[test]
     fn test_get_arity_known_gismu_gerku() {
         // gerku (dog) is a standard 2-place gismu
-        let arity = JbovlasteSchema::get_arity("gerku");
+        let arity = LexiconSchema::get_arity("gerku");
         assert!(arity.is_some());
         assert_eq!(arity.unwrap(), 2);
     }
@@ -49,7 +49,7 @@ mod tests {
     #[test]
     fn test_get_arity_known_gismu_prami() {
         // prami (love) is a standard 2-place gismu
-        let arity = JbovlasteSchema::get_arity("prami");
+        let arity = LexiconSchema::get_arity("prami");
         assert!(arity.is_some());
         assert_eq!(arity.unwrap(), 2);
     }
@@ -57,43 +57,43 @@ mod tests {
     #[test]
     fn test_get_arity_known_gismu_tavla() {
         // tavla (talk) has 4 places
-        let arity = JbovlasteSchema::get_arity("tavla");
+        let arity = LexiconSchema::get_arity("tavla");
         assert!(arity.is_some());
         assert_eq!(arity.unwrap(), 4);
     }
 
     #[test]
     fn test_get_arity_unknown_word_returns_none() {
-        assert_eq!(JbovlasteSchema::get_arity("zzzzz"), None);
+        assert_eq!(LexiconSchema::get_arity("zzzzz"), None);
     }
 
     #[test]
     fn test_get_arity_empty_string_returns_none() {
-        assert_eq!(JbovlasteSchema::get_arity(""), None);
+        assert_eq!(LexiconSchema::get_arity(""), None);
     }
 
     #[test]
     fn test_get_arity_cmavo_not_in_dict() {
         // cmavo are not predicates — should not be in the dictionary
-        assert_eq!(JbovlasteSchema::get_arity("lo"), None);
-        assert_eq!(JbovlasteSchema::get_arity("cu"), None);
+        assert_eq!(LexiconSchema::get_arity("lo"), None);
+        assert_eq!(LexiconSchema::get_arity("cu"), None);
     }
 
     // ─── get_arity_or_default tests ──────────────────────────────
 
     #[test]
     fn test_get_arity_or_default_known_gismu() {
-        assert_eq!(JbovlasteSchema::get_arity_or_default("klama"), 5);
+        assert_eq!(LexiconSchema::get_arity_or_default("klama"), 5);
     }
 
     #[test]
     fn test_get_arity_or_default_unknown_returns_two() {
-        assert_eq!(JbovlasteSchema::get_arity_or_default("xyzzy"), 2);
+        assert_eq!(LexiconSchema::get_arity_or_default("xyzzy"), 2);
     }
 
     #[test]
     fn test_get_arity_or_default_empty_returns_two() {
-        assert_eq!(JbovlasteSchema::get_arity_or_default(""), 2);
+        assert_eq!(LexiconSchema::get_arity_or_default(""), 2);
     }
 
     // ─── Dictionary coverage spot-checks ─────────────────────────
@@ -112,7 +112,7 @@ mod tests {
             ("sumji", 3), // sum: x1 is sum of x2 and x3
         ];
         for (word, expected) in checks {
-            let actual = JbovlasteSchema::get_arity(word);
+            let actual = LexiconSchema::get_arity(word);
             assert!(actual.is_some(), "expected {} to be in dictionary", word);
             assert_eq!(
                 actual.unwrap(),
@@ -128,7 +128,7 @@ mod tests {
     #[test]
     fn test_lujvo_in_dictionary() {
         // Some lujvo should be in jbovlaste
-        let arity = JbovlasteSchema::get_arity("brivla");
+        let arity = LexiconSchema::get_arity("brivla");
         // brivla may or may not be in the PHF dict — just verify it doesn't panic
         let _ = arity;
     }
@@ -137,8 +137,8 @@ mod tests {
     fn test_get_arity_consistent_with_default() {
         // For known words, both methods should agree
         let word = "klama";
-        let arity = JbovlasteSchema::get_arity(word).unwrap();
-        let default_arity = JbovlasteSchema::get_arity_or_default(word);
+        let arity = LexiconSchema::get_arity(word).unwrap();
+        let default_arity = LexiconSchema::get_arity_or_default(word);
         assert_eq!(arity, default_arity);
     }
 }
