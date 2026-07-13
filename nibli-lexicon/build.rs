@@ -376,10 +376,12 @@ const CORE_GISMU_ARITIES: &[(&str, usize)] = &[
     // modes against the nibli-kr alias map).
     ("dilcu", 4),
     ("jmive", 2),
-    // tenfa: the external-compute smoke's KR payload (`? tenfa(8, 2, 3).`)
-    // resolves via identity passthrough, so the fallback build needs the
-    // arity (full lensisku derives 3: result, base, exponent).
+    // tenfa / dugri: the external-compute vocabulary. The backend-unavailable
+    // smoke's KR payload (`? exponential(8, 2, 3).`) resolves via the curated
+    // `exponential`->tenfa alias, and `logarithm`->dugri is its twin, so the
+    // fallback build needs both arities (full lensisku derives 3 each).
     ("tenfa", 3),
+    ("dugri", 3),
     // klani: the dose-aggregation engine test's KR payload (identity
     // spelling; full lensisku derives 3: quantity, number, scale).
     ("klani", 3),
@@ -459,6 +461,7 @@ const FALLBACK_GISMU_ENTRIES: &[(&str, usize, &str)] = &[
     // 3/1, a cross-mode flap the verify-nibli-kr-dict gate now trips on.
     ("dilcu", 4, "divide"),
     ("tenfa", 3, "exponential"),
+    ("dugri", 3, "logarithm"),
     ("klani", 3, "quantity"),
     ("pendo", 2, "friend"),
     ("xagji", 2, "hungry"),

@@ -73,7 +73,8 @@ fns/fields de-Lojbanized (Sumti→Argument, Selbri→Predicate, Bridi→Proposit
 Gadri→Determiner, BaiTag→ModalRelation, Attitudinal→DeonticMood;
 `compile_from_gerna_ast`→`compile_from_ast`, JbovlasteSchema→LexiconSchema, …).
 The predicate-name VALUES (gismu in the wire protocol, dictionaries, IR strings,
-proof-trace output, redb keys) stay — that is the predicate-name de-Lojbanization
+proof-trace output, redb keys) were the predicate-name de-Lojbanization (since LANDED, below);
+the
 bullet. `nibli` survives.
 
 **VESTIGE AUDIT + CMAVO VARIANTS: LANDED (2026-07-13).** The dead Lojban-only AST
@@ -93,7 +94,7 @@ Custom), and `AstBuffer.selbris`/`.sumtis`→`predicates`/`arguments`. The audit
 logic, and `Sentence::Prenex` as load-bearing (kept); xorlo existential import KEPT by
 user choice. Zero reasoning-behavior change — determinism corpus + Vampire/clingo
 oracles + verify-nibli-kr-seam unchanged. The da/de/di 3-variable `$var` lowering cap
-(`VAR_NAMES`) remains — a Lojban-shaped limit the predicate-name bullet lifts.
+(`VAR_NAMES`) was a Lojban-shaped limit the predicate-name bullet has since LIFTED (milestone below).
 
 **GRAMMAR-STRUCTURE IDENTIFIERS: LANDED (2026-07-13, next bullet after the vestige
 audit, 2 commits).** The lowercase identifiers built on the flat-AST vocabulary were
@@ -112,14 +113,14 @@ compiler-guided rename; zero wire/serialization/public-API/behavior change (veri
 methods private, protocol/store/engine carry none of this vocab, no dictionary VALUES
 in the two crates).
 
-STILL DE-LOJBANIZING (predicate-name / dictionary bullet + a holistic pass): the
+STILL DE-LOJBANIZING (a holistic identifier/comment pass — cosmetic, post-flip): the
 word-class vocabulary as identifiers (`gismu`/`cmavo`/`lujvo`/`cmevla` build locals, the
 `GISMU_GLOSS_OVERRIDES`/`GISMU_PLACE_TEMPLATES`/`CMAVO_GLOSS_OVERRIDES` consts, the
 cross-crate-public `GISMU_TO_ALIAS` + `AliasEntry.gismu`), the `?`/`it`/`slot`→`ma`/
 `ke'a`/`ce'u` output strings + da/de/di variable pool, `xorlo`/`goi` named-feature test
 names, and the broader-cmavo (poi/fa/fio/giha/du) comments + test-fn names in the OTHER
-crates (nibli-reason/render/host/formalize/engine/verify). PredName VALUES stay for the
-predicate-name bullet.
+crates (nibli-reason/render/host/formalize/engine/verify). The predicate-name VALUES (IR
+strings, proof-trace output, the wire protocol, da/de/di, du, zo'e) are DONE (milestone below).
 **DICTIONARY FOLD: LANDED (2026-07-13, 2 commits).** `nibli-kr-dictionary` folded
 into `nibli-lexicon` and deleted. The merged `nibli-lexicon/build.rs` parses
 `dictionary-en.json` ONCE, building `DICTIONARY` + an in-loop `arity_map`
@@ -151,43 +152,35 @@ stay gate-valid + the assembled prompt embeds the grammar and ≥65 alias lines.
 empirical attempts-to-converge measurement (part (c) of the old note) is an EVALUATION
 that belongs to the adoption / non-expert authoring study (Roadmap ceiling), not engine
 code — done here is the grounding itself.
-- **Predicate-name de-Lojbanization (proof traces contain NO Lojban — the deep one)**
-  — today every `LogicBuffer` relation is a gismu (`nibli-kr/src/emit.rs:379-387` maps
-  alias→`entry.gismu`; smuni derives `gerku_x1`, `le_domain_gerku`; `=` mints `du`
-  at emit.rs:192; `$vars` lower to the literal `da/de/di` pool at emit.rs:90-103,
-  which smuni string-matches for quantifier closure). DECISION (recommended, and the
-  only option satisfying "no Lojban anywhere"): **option A — flip the canonical
-  predicate namespace to the English aliases at compile time** (emit
-  `canonical_alias` instead of `entry.gismu`; keep the KR alias the user wrote where
-  it IS canonical). Scope the obstacles honestly:
-  (a) re-key `nibli-lexicon` lookups (arity/gloss/template — logji
-  `rules.rs:848`, `nibli-render/src/frame.rs`) by the canonical English names;
-  (b) `du` + the compute predicates are load-bearing string literals
-  (`logji` union-find keys `"du"`; `default_compute_predicates()` =
-  pilji/sumji/dilcu; `nibli-types/src/arithmetic.rs` match arms; `dunli/zmadu/mleca`
-  comparisons) AND the backend JSON wire protocol sends them verbatim
-  (`{"relation":"tenfa",…}`, `python/nibli_backend.py` HANDLERS) — rename = a
-  versioned wire-protocol break (`equals`, `product`/`sum`/`quotient`,
-  `power`/`log` …); update the reference backend in the same commit;
-  (c) variable names: preserve the user's `$var` spellings through emit instead of
-  the da/de/di pool (an AstBuffer-contract change — smuni's
-  `matches!(name, "da"|"de"|"di")` closure checks generalize; this also naturally
-  lifts the 3-variable cap, spec issue O1) so witnesses read `$x = adam`;
-  (d) the `zo'e` display literals are two one-line fixes now
-  (`nibli-types/src/logic.rs:50` trace_display, `nibli-render/src/logic.rs:128`) —
-  do them early, plus `le {d}`/`lo {s}` display forms;
-  (e) persisted redb stores/journals/`:export` hold gismu relations — migration or
-  a compat read layer; regenerate `gdpr-auto.redb`/`drug-auto.redb`;
-  (f) fallback-mode CI can only rename the curated core (no dictionary-en.json) —
-  same dual-mode discipline as today;
-  (g) verify-dict (Predilex) keys on Lojban lemmas — keep a frozen
-  gismu→canonical-name bridge table so it stays an independent arity oracle;
-  (h) DATA PROVENANCE: the lexicon is still BUILT from the lensisku Lojban dump —
-  acceptable as an invisible build-time input, or superseded by committed KR schema
-  declarations (the old clean-core §14.1 idea) — decide when this bullet starts.
-  All pinned transcripts/goldens regenerate (smokes, README capture, seam goldens).
-  Also the natural moment to fold in the **ontology-row import** bullet below (rows
-  arrive keyed on gismu; the alias bridge from (g) is the same mapping).
+**PREDICATE-NAME DE-LOJBANIZATION: LANDED (2026-07-14, A→D commit series).** The canonical
+predicate + variable namespace flipped from gismu to English, so **proof traces contain no
+Lojban**. The seam: `nibli-kr/src/emit.rs` resolves each alias to its ENGLISH `canonical_alias`
+(not `entry.gismu`) at compile time — content + arithmetic/comparison predicates flip together
+(`gerku`→`dog`, `pilji/sumji/dilcu`→`product/sum/quotient`, `zmadu/mleca/dunli`→`greater/
+less/num_equal`, `tenfa/dugri`→`exponential/logarithm`); nibli-semantics gains an English-keyed
+arity fallback so event-decomposition survives; the reasoner + the two soundness oracles + the
+compute wire (`python/nibli_backend.py`, a versioned break) re-key in lockstep. The hardcoded
+markers went English too: `du`→`equals`, `zo'e`→`something`, the abstraction type names
+`nu/duhu/ka/ni/siho`→`event/fact/property/amount/concept`, and the `$var` names pass through
+verbatim (no da/de/di pool → the spec-O1 3-variable cap is GONE). Role predicates gained
+ARGUMENT-name display (`goes_x2`→`goes.destination`) at the render layer (the IR keeps
+`<rel>_x<N>`). Zero verdict change — only strings moved; the Vampire/clingo differential, the
+determinism corpus, the seam gate, and the Lean proofs (all pin verdicts) stayed green in BOTH
+dictionary modes (fallback needed one fix — `dugri` added to the curated fallback dictionary so
+the `logarithm` alias resolves there too). Sub-item fates: (e) redb stores are gitignored (fresh
+persists are already English — nothing in-repo to migrate); (g) verify-dict needed no bridge (the
+lexicon FORWARD dict stays gismu-keyed; only emit OUTPUT flipped); (h) the lexicon is still BUILT
+from the lensisku dump — accepted as an invisible build-time input.
+
+- **Residual user-facing Lojban (cosmetic; proof-trace VALUES are already English)** — two
+  narrow surfaces still show Lojban to the user, for a follow-up: (a) the **argument-pronoun
+  cmavo** the emitter produces — `me`/`you`/`it`/`?`/`slot`/we-all/anaphora lower to
+  `mi`/`do`/`ke'a`/`ma`/`ce'u`/`ma'a`/`ko'a` (`nibli-kr/src/emit.rs` KeyTerm + `Term::Witness`
+  arms), surfacing in witnesses and `?`-finds; (b) the §12 **L4 alias-echo lint**
+  (`nibli-kr/src/lint.rs`) still prints `dog ↦ gerku` — now stylistically stale (the IR relation
+  is the English `dog`); its genuine value (a converted alias silently reroutes args) survives
+  only for SWAPPED aliases, so rework to a Lojban-free converted-swap-only note (ripples into the
+  acceptance-corpus L4 test + the §12 book catalog).
 - **demo site migration (cross-repo, dhilipsiva.dev — SEPARATE Claude session)** —
   the copy-pastable prompt was handed to the user 2026-07-12. URGENCY UP since THE
   DROP landed (2026-07-13, user-accepted): the deployed /nibli demo is BROKEN —

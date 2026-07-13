@@ -206,15 +206,15 @@ smoke-host-collapse: build-wasm build-host
         echo "$verbose" | grep -qF 'Conjunction' || { echo 'FAIL: :proof-verbose did not show the full role-level trace'; exit 1; }; \
         echo 'PASS: :proof-verbose shows the full role-level trace'
 
-# Backend-unavailable smoke: an external compute predicate (tenfa) with NO backend
-# configured must yield UNKNOWN (backend-unavailable), NEVER a definitive FALSE — a
-# backend outage is not a derived falsehood. Exercises the four-valued reason
-# end-to-end across the WIT boundary. The KR spelling resolves tenfa via identity
-# passthrough (pinned in smuni's fallback tables, so the CI fallback build
-# resolves it too). NOT in `ci` (needs the WASM build).
+# Backend-unavailable smoke: an external compute predicate (exponential) with NO
+# backend configured must yield UNKNOWN (backend-unavailable), NEVER a definitive
+# FALSE — a backend outage is not a derived falsehood. Exercises the four-valued
+# reason end-to-end across the WIT boundary. The `exponential` alias is curated
+# (pinned in nibli-lexicon's fallback tables, so the CI fallback build resolves it
+# too), mapping to the external `tenfa` gismu. NOT in `ci` (needs the WASM build).
 smoke-host-backend-unavailable: build-wasm build-host
     @echo "Smoke-testing gasnu backend-unavailable verdict (no compute backend configured)..."
-    @out=$(printf ':compute tenfa\n? tenfa(8, 2, 3).\n' \
+    @out=$(printf ':compute exponential\n? exponential(8, 2, 3).\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$out"; \
         echo "$out" | grep -qF '[Query] UNKNOWN (backend-unavailable)' || { echo 'FAIL: an unreachable backend did not surface UNKNOWN (backend-unavailable)'; exit 1; }; \

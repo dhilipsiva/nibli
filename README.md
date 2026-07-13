@@ -15,7 +15,7 @@ Nibli derives every conclusion **from the facts and rules you assert**, under tw
 - **Closed world** — a fact you did not assert is taken to be *false*, not unknown.
 - **Closed domain** — quantifiers range only over the entities the knowledge base knows.
 
-Results from the **external compute backend** (`tenfa`, `dugri`, or any predicate you register) are a **trusted oracle**, not a derivation: a `true` reply is auto-asserted into the knowledge base as a ground fact mid-query, and downstream rules chain on it as if you had asserted it yourself. The backend is part of the *trusted computing base* — an axiom source — so any conclusion that passes through it is only as sound as that oracle. (Built-in arithmetic, `pilji`/`sumji`/`dilcu`, is computed locally — see [Compute Backend](#compute-backend).) So a verdict reads as:
+Results from the **external compute backend** (`exponential`, `logarithm`, or any predicate you register) are a **trusted oracle**, not a derivation: a `true` reply is auto-asserted into the knowledge base as a ground fact mid-query, and downstream rules chain on it as if you had asserted it yourself. The backend is part of the *trusted computing base* — an axiom source — so any conclusion that passes through it is only as sound as that oracle. (Built-in arithmetic, `product`/`sum`/`quotient`, is computed locally — see [Compute Backend](#compute-backend).) So a verdict reads as:
 
 - **`TRUE`** — a proof exists from those premises (your facts + rules + trusted backend results).
 - **`FALSE`** — *not derivable* from those premises. This is **not** a proof of ¬P.
@@ -152,8 +152,8 @@ just test
     ▣ adam is a dog  [given] -> TRUE
 
 ~/nibli> ?? dog($x).
-[Find] _ev0 = sk_7, da = adam
-[Find] _ev0 = sk_1, da = sk_0
+[Find] _ev0 = sk_7, $x = adam
+[Find] _ev0 = sk_1, $x = sk_0
 
 ~/nibli> :debug big(exactly 2 dog).
 [Logic]
@@ -162,30 +162,30 @@ Count _v0 = 2:
     ∃ _ev1:
       And:
         And:
-          gerku(_ev1)
-          gerku_x1(_ev1, _v0)
-        gerku_x2(_ev1, zo'e)
+          dog(_ev1)
+          dog_x1(_ev1, _v0)
+        dog_x2(_ev1, something)
     ∃ _ev0:
       And:
         And:
           And:
-            barda(_ev0)
-            barda_x1(_ev0, _v0)
-          barda_x2(_ev0, zo'e)
-        barda_x3(_ev0, zo'e)
+            big(_ev0)
+            big_x1(_ev0, _v0)
+          big_x2(_ev0, something)
+        big_x3(_ev0, something)
 
 [English] Exactly 2 things are such that X is a dog and X is big.
 
-~/nibli> :assert tenfa 8 2 3
+~/nibli> :assert exponential 8 2 3
 [Skolem] 1 variable(s) → _ev0 ↦ sk_8
-[Fact #3] tenfa(8, 2, 3) asserted.
+[Fact #3] exponential(8, 2, 3) asserted.
 
 ~/nibli> :facts
 [Facts] 4 active fact(s):
   #0: big(some dog). (1 root)
   #1: animal(every dog). (1 root)
   #2: dog(Adam). (1 root)
-  #3: :assert tenfa (1 root)
+  #3: :assert exponential (1 root)
 
 ~/nibli> :retract 1
 [Retract] Fact #1 retracted. KB rebuilt.
@@ -200,7 +200,7 @@ Count _v0 = 2:
 [Reset] Knowledge base cleared.
 ```
 
-(The alias resolution is visible in `:debug`: nibli KR's `dog`/`big` compile to the formal predicates `gerku`/`barda`, event-decomposed. The 4 `:load` errors are deliberate fail-closed rejections — bare negations and one non-flat rule conclusion ingest no facts rather than being silently misreported as asserted.)
+(The `:debug` view exposes the formal event-decomposed IR: nibli KR's `dog`/`big` compile to the English predicates `dog`/`big` plus their role predicates `dog_x1`/`big_x2`/… — no Lojban. The 4 `:load` errors are deliberate fail-closed rejections — bare negations and one non-flat rule conclusion ingest no facts rather than being silently misreported as asserted.)
 
 Query results use a four-valued contract: `TRUE`, `FALSE`, `UNKNOWN` (with reason: cycle cut, incomplete knowledge, NAF dependence, backend unavailable, or non-finite numeric), or `RESOURCE_EXCEEDED` (depth, fuel, or memory limit hit). The engine never guesses.
 
@@ -276,18 +276,18 @@ just backend
 just run-with-backend
 
 # In the REPL:
-:compute tenfa                      # Register tenfa for external dispatch
-tenfa(8, 2, 3).                     # Assert: 8 = 2^3
-? tenfa(8, 2, 3).                   # Query: TRUE (computed by Python)
+:compute exponential                # Register exponential for external dispatch
+exponential(8, 2, 3).               # Assert: 8 = 2^3
+? exponential(8, 2, 3).             # Query: TRUE (computed by Python)
 ```
 
-**Built-in arithmetic** (always local, no backend needed): `pilji` (multiply), `sumji` (add), `dilcu` (divide) — nibli KR spellings `product`/`sum`/`quotient`.
+**Built-in arithmetic** (always local, no backend needed): `product` (multiply), `sum` (add), `quotient` (divide).
 
-> **One deliberate approximation.** `pilji`/`sumji`/`dilcu` check `x1 = x2 ∘ x3` with **tolerant** float equality — `isclose` with relative tolerance `1e-9` (matching Python's `math.isclose`), i.e. `|a − b| ≤ 1e-9 · max(|a|, |b|)`. So `0.3 = 0.1 + 0.2` answers `TRUE` despite IEEE-754 rounding making the sum `0.30000000000000004`. That is a real, bounded approximation on the numeric result — the one place Nibli is not bit-exact. The equality predicate **`dunli` (`=`) is exact** (`==`, tolerates no rounding); `dilcu`'s divide-by-zero check is likewise an exact guard. The single evaluator (`nibli-types/src/arithmetic.rs`) is shared by the in-WASM engine, the `nibli-host` host, and the Python reference backend, so all three agree.
+> **One deliberate approximation.** `product`/`sum`/`quotient` check `x1 = x2 ∘ x3` with **tolerant** float equality — `isclose` with relative tolerance `1e-9` (matching Python's `math.isclose`), i.e. `|a − b| ≤ 1e-9 · max(|a|, |b|)`. So `0.3 = 0.1 + 0.2` answers `TRUE` despite IEEE-754 rounding making the sum `0.30000000000000004`. That is a real, bounded approximation on the numeric result — the one place Nibli is not bit-exact. The exact-equality predicate **`num_equal` (`=`) is exact** (`==`, tolerates no rounding); `quotient`'s divide-by-zero check is likewise an exact guard. The single evaluator (`nibli-types/src/arithmetic.rs`) is shared by the in-WASM engine, the `nibli-host` host, and the Python reference backend, so all three agree.
 
-**External predicates** (via backend): `tenfa` (exponentiation), `dugri` (logarithm), and any custom predicates you add to the backend server.
+**External predicates** (via backend): `exponential`, `logarithm`, and any custom predicates you add to the backend server.
 
-> **Trust boundary.** An external predicate is a **trusted oracle**, not something Nibli proves. When the backend replies `true`, that result is auto-asserted into the knowledge base as a ground fact mid-query, and the reasoner's rules chain on it exactly like a premise you asserted. Nibli never re-derives or checks it — the backend (and whoever operates it) is part of the trusted computing base. A proof that passes through `tenfa`/`dugri` is sound only relative to that oracle.
+> **Trust boundary.** An external predicate is a **trusted oracle**, not something Nibli proves. When the backend replies `true`, that result is auto-asserted into the knowledge base as a ground fact mid-query, and the reasoner's rules chain on it exactly like a premise you asserted. Nibli never re-derives or checks it — the backend (and whoever operates it) is part of the trusted computing base. A proof that passes through `exponential`/`logarithm` is sound only relative to that oracle.
 
 Configure with `NIBLI_COMPUTE_ADDR=host:port` or `:backend host:port` in the REPL. Connection is lazy (connects on first dispatch) with auto-reconnect. The browser UI has no TCP, so external predicates resolve only in the `nibli-host` REPL; built-in arithmetic still works everywhere.
 
@@ -324,7 +324,7 @@ If an external predicate's backend is unreachable (or unconfigured), the query r
 - **Temporal reasoning:** `Past`/`Present`/`Future` wrappers preserved end-to-end; timeless rules automatically derive tensed conclusions
 - **Neo-Davidsonian event semantics:** every predication decomposes into event type + role predicates; compound predicates share event variables
 - **Conjunction introduction:** `And(A, B)` verified recursively with mutual `InDomain` entities (bounded, no exponential blowup)
-- **Numerical comparisons:** `zmadu` (>), `mleca` (<), `dunli` (==) evaluated at query time on `Num` terms
+- **Numerical comparisons:** `greater` (>), `less` (<), `num_equal` (==) evaluated at query time on `Num` terms
 - **Compute dispatch:** `compute-backend` WIT protocol with `ComputeNode` IR variant; results auto-asserted into KB
 - **Ground conjunction flattening:** top-level `And` trees flattened before assertion; ground material conditionals auto-registered as zero-variable rules for modus ponens
 - **Equality reasoning:** `du` (identity) with union-find congruence closure
