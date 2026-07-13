@@ -1,35 +1,14 @@
-//! Differential/property conformance for the **gerna→smuni compiler seam** — the front-end of the
-//! pipeline (`source Lojban text → parse → semantic compile → FOL LogicBuffer`).
-//!
-//! The six Lean proofs + the Vampire/clingo oracle gates all verify the REASONER (logji) against
-//! smuni's already-compiled IR. Nothing else verifies that gerna→smuni compiles the *source text* to
-//! the intended IR — and the isolated smuni unit tests hand-build ASTs (`compile_one`), bypassing
-//! gerna. A bug in the front-end would yield a `LogicBuffer` that doesn't match the source's meaning,
-//! and the reasoner would soundly derive a confident, formally-valid proof of the wrong statement.
-//!
-//! This module compiles from a `&str` end-to-end (via `nibli_engine::compile_debug`) and supports two
-//! check families (driven by the `gerna_smuni_seam_conformance` gate):
-//!   - **structural golden** — the compiled FOL *shape* matches hand-verified expectations for each
-//!     core construct (event decomposition, conversion, negation, connectives, quantifiers); this is
-//!     the ground-truth check that catches a systematic miscompilation;
-//!   - **metamorphic** — two different surface forms that must compile to the SAME FOL (e.g. `E se P F`
-//!     ≡ `F P E`); oracle-free, resilient, catches transformation bugs.
-//!
-//! Honest scope: a corpus/property gate, not a proof. Systematic bugs are caught only where a golden
-//! FOL is hand-verified; a full external-grammar (camxes) differential remains a future extension.
+//! Shared `LogicBuffer` structural-probe helpers for the front-end
+//! conformance gates: `canonicalize` (positional variable renaming for
+//! shape-equality comparison) plus the small node/argument probes the
+//! structural-golden checks are written in. The gerna-era compile seam that
+//! used to live here retired at THE DROP; the surviving KR front-end oracle
+//! is `tests/kr_seam_gate.rs` (via `klaro_battery::kompile`), which consumes
+//! these helpers.
 
 use std::collections::HashMap;
 
 use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm};
-
-/// Compile source Lojban to its FOL `LogicBuffer` through the full front-end (gerna parse + `go'i`
-/// resolution + smuni compile + compute-marking), via the native engine.
-pub fn compile(text: &str) -> Result<LogicBuffer, String> {
-    let engine = crate::lojban_engine();
-    engine
-        .compile_debug(text)
-        .map_err(|e| format!("compile '{text}': {e}"))
-}
 
 /// Canonicalize a buffer for structural comparison: rewrite every distinct variable name to a
 /// positional `V<n>` in first-occurrence (node-array) order — deterministic, since the flattener
@@ -106,38 +85,6 @@ pub fn role_is_const(buf: &LogicBuffer, rel: &str, c: &str) -> bool {
     )
 }
 
-// ── Metamorphic conversion-pair generator ─────────────────────────────────────────────────
-
-/// Two-or-more-place gismu, all in the in-tree FALLBACK dictionary (so pairs compile identically
-/// with or without the data file — CI has no data file). `se` swaps x1↔x2; any higher places stay
-/// `zo'e` in both surface forms, so `E se P F` ≡ `F P E` for every one of these.
-const CONV_PREDS: &[&str] = &[
-    "prami", "citka", "nelci", "cusku", "viska", "djuno", "tavla", "pilno",
-];
-
-/// Pro-sumti fillers (parser-level cmavo — no dictionary entry needed).
-const CONV_ENTS: &[&str] = &["mi", "do", "ti", "ta"];
-
-/// Small deterministic LCG (mirrors [`crate::generator`]) — CI must be reproducible, no rng crate.
-fn lcg(seed: u64) -> u64 {
-    seed.wrapping_mul(6364136223846793005)
-        .wrapping_add(1442695040888963407)
-}
-
-/// The `seed`-th `se`-conversion metamorphic pair: `(E se P F, F P E)` — two different surface
-/// forms that must compile to the SAME FOL. Deterministic in `seed`.
-pub fn conversion_pair(seed: u64) -> (String, String) {
-    let mut s = lcg(seed);
-    let mut pick = |xs: &[&str]| -> String {
-        s = lcg(s);
-        xs[((s >> 33) as usize) % xs.len()].to_string()
-    };
-    let p = pick(CONV_PREDS);
-    let e = pick(CONV_ENTS);
-    let f = pick(CONV_ENTS);
-    (format!("{e} se {p} {f}"), format!("{f} {p} {e}"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,16 +143,5 @@ mod tests {
             roots: vec![0],
         };
         assert_ne!(canonicalize(&a), canonicalize(&b));
-    }
-
-    #[test]
-    fn conversion_pair_deterministic_and_well_formed() {
-        let (a1, b1) = conversion_pair(3);
-        let (a2, b2) = conversion_pair(3);
-        assert_eq!((a1.clone(), b1.clone()), (a2, b2));
-        // `E se P F` / `F P E` over the conversion vocab.
-        assert!(a1.contains(" se "), "left form uses `se`: {a1}");
-        assert!(!b1.contains(" se "), "right form is plain: {b1}");
-        assert_ne!(conversion_pair(1), conversion_pair(2));
     }
 }

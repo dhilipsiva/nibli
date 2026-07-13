@@ -15,9 +15,12 @@
 //!    validity (`2..=arity`, involution), reserved-word exclusion and label
 //!    integrity re-asserted from the shipped map, coverage floors.
 //! 2. `alias_behavioral_battery` — for EVERY shipped alias, `alias(A, B, …)`
-//!    compiled through klaro+smuni must equal the direct-gismu Lojban sentence
-//!    through gerna+smuni at the canonicalized-LogicBuffer level (the seam
-//!    gate's equality contract, applied to the whole alias map).
+//!    compiled through klaro+smuni must equal the RAW-GISMU spelling with
+//!    explicit permuted `xN` labels (the identity-passthrough twin — the KR
+//!    seam gate's converted≡label-permuted family applied to the whole map)
+//!    at the canonicalized-LogicBuffer level. This replaced the gerna-compiled
+//!    Lojban twin at THE DROP: raw `xN` labels route places directly, so the
+//!    oracle side never touches the alias under test.
 //!
 //! Mode is read from the artifacts under test (`DICTIONARY.len()` /
 //! `GISMU_TO_ALIAS.len()` — compile-time phf properties; checking the json
@@ -26,21 +29,13 @@
 //! mtimes, so a moved data file can leave one crate un-rebuilt) and fails loud.
 
 use nibli_verify::klaro_battery::{canonical, kompile};
-use nibli_verify::seam;
 
 /// Full-build detector, shared convention with the predilex gate: the fallback
 /// artifacts have ~99/~140 entries, full builds ~1,341/~10.9k.
 const FULL_DICT_MIN: usize = 1000;
 
-/// Argument constants for the behavioral battery: (Klaro name, Lojban cmevla).
-/// Consonant-final so every truncation is a valid cmevla.
-const ARG_NAMES: [(&str, &str); 5] = [
-    ("Adam", ".adam."),
-    ("Bob", ".bob."),
-    ("Kim", ".kim."),
-    ("Tom", ".tom."),
-    ("Sam", ".sam."),
-];
+/// Argument constants for the behavioral battery.
+const ARG_NAMES: [&str; 5] = ["Adam", "Bob", "Kim", "Tom", "Sam"];
 
 /// Detect the build mode from the shipped artifacts, assert the two crates
 /// agree, and print the fallback banner. Returns `true` for a full build.
@@ -241,42 +236,51 @@ fn alias_behavioral_battery() {
 
     for (name, entry) in sorted_aliases() {
         let arity = entry.arity as usize;
-        let klaro_args: Vec<&str> = ARG_NAMES[..arity].iter().map(|(k, _)| *k).collect();
-        let klaro_text = format!("{name}({}).", klaro_args.join(", "));
+        let klaro_text = format!("{name}({}).", ARG_NAMES[..arity].join(", "));
 
-        // The Lojban twin in the SAME surface order: a swapped alias's surface
-        // order is exactly what the se/te/ve/xe conversion spells.
-        let conv = match entry.swap {
-            None => "",
-            Some(2) => "se ",
-            Some(3) => "te ",
-            Some(4) => "ve ",
-            Some(5) => "xe ",
-            Some(n) => panic!("{name}: swap {n} outside the conversion family"),
+        // The identity-passthrough twin in the SAME surface order: raw `xN`
+        // labels route each argument to the exact underlying place a swapped
+        // alias's surface order implies (se/te/ve/xe = x1↔xk, others fixed),
+        // so the twin exercises the routing WITHOUT the alias under test.
+        let place_of = |pos: usize| -> usize {
+            match entry.swap {
+                None => pos,
+                Some(k) => {
+                    let k = k as usize;
+                    if pos == 1 {
+                        k
+                    } else if pos == k {
+                        1
+                    } else {
+                        pos
+                    }
+                }
+            }
         };
-        let mut lojban = format!("la {} cu {conv}{}", ARG_NAMES[0].1, entry.gismu);
-        for (_, cmevla) in &ARG_NAMES[1..arity] {
-            lojban.push_str(" la ");
-            lojban.push_str(cmevla);
-        }
+        let twin_args: Vec<String> = ARG_NAMES[..arity]
+            .iter()
+            .enumerate()
+            .map(|(i, a)| format!("x{}: {a}", place_of(i + 1)))
+            .collect();
+        let twin_text = format!("{}({}).", entry.gismu, twin_args.join(", "));
 
         let klaro_buf = match kompile(&klaro_text) {
             Ok(buf) => buf,
             Err(e) => {
-                failures.push(format!("{name}: klaro side failed: {klaro_text}\n  {e}"));
+                failures.push(format!("{name}: alias side failed: {klaro_text}\n  {e}"));
                 continue;
             }
         };
-        let lojban_buf = match seam::compile(&lojban) {
+        let twin_buf = match kompile(&twin_text) {
             Ok(buf) => buf,
             Err(e) => {
-                failures.push(format!("{name}: lojban twin failed: {lojban}\n  {e}"));
+                failures.push(format!("{name}: identity twin failed: {twin_text}\n  {e}"));
                 continue;
             }
         };
-        if canonical(&klaro_buf) != canonical(&lojban_buf) {
+        if canonical(&klaro_buf) != canonical(&twin_buf) {
             failures.push(format!(
-                "{name}: buffer mismatch\n  klaro:  {klaro_text}\n  lojban: {lojban}"
+                "{name}: buffer mismatch\n  alias: {klaro_text}\n  twin:  {twin_text}"
             ));
             continue;
         }

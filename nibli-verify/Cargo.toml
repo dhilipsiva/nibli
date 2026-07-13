@@ -7,11 +7,7 @@ edition = "2024"
 [dependencies]
 nibli-engine = { path = "../nibli-engine" }
 nibli-types = { path = "../nibli-types" }
-# Direct parser access for the gerna <-> camxes parse-differential (parse-level
-# acceptance, one level below nibli-engine's parse+compile front door).
-gerna = { path = "../gerna" }
-# Klaro conformance gates (src/klaro_battery.rs + tests/klaro_gate.rs): the
-# Klaro front-end, plus smuni/logji so kompile() matches seam::compile's
+# The KR front-end + smuni/logji so klaro_battery::kompile() runs the shipped
 # post-parse stages (compute-node marking included).
 klaro = { path = "../klaro" }
 smuni = { path = "../smuni" }

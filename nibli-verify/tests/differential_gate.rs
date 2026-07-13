@@ -3,11 +3,10 @@
 //! If the prover is unavailable the test skips cleanly (so `cargo test` is green in any
 //! environment); inside the Nix dev shell Vampire is present, so it runs for real.
 
-use nibli_types::logic::LogicNode;
 use nibli_verify::oracle_asp::AspConfig;
 use nibli_verify::{
     corpora, corpus, corpus_naf, oracle::OracleConfig, run_corpus, run_corpus_slice,
-    run_naf_corpus, run_predilex_taxonomy, run_random, run_random_count, run_random_naf, seam,
+    run_naf_corpus, run_predilex_taxonomy, run_random, run_random_count, run_random_naf,
 };
 
 /// The gate must actually compare a meaningful number of cases — otherwise a future
@@ -389,54 +388,54 @@ fn stratification_rejection_matches_independent_criterion() {
     let curated = vec![
         StratCase {
             name: "self_negation".into(),
-            facts: vec!["la .adam. cu prenu".into()],
+            facts: vec!["person(Adam).".into()],
             rules: vec![SpecRule {
-                line: "ro lo gerku poi na gerku cu gerku".into(),
+                line: "dog(every dog where ~dog).".into(),
                 edges: vec![("gerku", "gerku", false), ("gerku", "gerku", true)],
             }],
         },
         StratCase {
             name: "mutual_negative_cycle".into(),
-            facts: vec!["la .adam. cu prenu".into()],
+            facts: vec!["person(Adam).".into()],
             rules: vec![
                 SpecRule {
-                    line: "ro lo prenu poi na danlu cu jmive".into(),
+                    line: "alive(every person where ~animal).".into(),
                     edges: vec![("jmive", "prenu", false), ("jmive", "danlu", true)],
                 },
                 SpecRule {
-                    line: "ro lo prenu poi na jmive cu danlu".into(),
+                    line: "animal(every person where ~alive).".into(),
                     edges: vec![("danlu", "prenu", false), ("danlu", "jmive", true)],
                 },
             ],
         },
         StratCase {
             name: "long_cycle_one_negative_edge".into(),
-            facts: vec!["la .adam. cu gerku".into()],
+            facts: vec!["dog(Adam).".into()],
             rules: vec![
                 SpecRule {
-                    line: "ro lo gerku cu danlu".into(),
+                    line: "animal(every dog).".into(),
                     edges: vec![("danlu", "gerku", false)],
                 },
                 SpecRule {
-                    line: "ro lo danlu cu jmive".into(),
+                    line: "alive(every animal).".into(),
                     edges: vec![("jmive", "danlu", false)],
                 },
                 SpecRule {
-                    line: "ro lo jmive poi na danlu cu gerku".into(),
+                    line: "dog(every alive where ~animal).".into(),
                     edges: vec![("gerku", "jmive", false), ("gerku", "danlu", true)],
                 },
             ],
         },
         StratCase {
             name: "negative_edge_between_sccs_accepted".into(),
-            facts: vec!["la .adam. cu gerku".into()],
+            facts: vec!["dog(Adam).".into()],
             rules: vec![
                 SpecRule {
-                    line: "ro lo gerku cu danlu".into(),
+                    line: "animal(every dog).".into(),
                     edges: vec![("danlu", "gerku", false)],
                 },
                 SpecRule {
-                    line: "ro lo danlu poi na mlatu cu jmive".into(),
+                    line: "alive(every animal where ~cat).".into(),
                     edges: vec![("jmive", "danlu", false), ("jmive", "mlatu", true)],
                 },
             ],
@@ -447,14 +446,14 @@ fn stratification_rejection_matches_independent_criterion() {
         // cost note on `random_strat_case`).
         StratCase {
             name: "positive_cycle_accepted".into(),
-            facts: vec!["la .adam. cu gerku".into()],
+            facts: vec!["dog(Adam).".into()],
             rules: vec![
                 SpecRule {
-                    line: "ro lo gerku cu danlu".into(),
+                    line: "animal(every dog).".into(),
                     edges: vec![("danlu", "gerku", false)],
                 },
                 SpecRule {
-                    line: "ro lo danlu cu gerku".into(),
+                    line: "dog(every animal).".into(),
                     edges: vec![("gerku", "danlu", false)],
                 },
             ],
@@ -565,339 +564,5 @@ fn retraction_is_equivalent_to_never_asserted() {
         complex as u64 >= count / 5,
         "only {complex} rebuild-path retractions across the sweep; the complex branch is \
          near-vacuous"
-    );
-}
-
-/// Determinism corpus, native LOJBAN TWIN leg: run `determinism-corpus.lojban`
-/// on the in-process engine — pinned to Lojban, since Klaro is the default
-/// after THE FLIP; the PRIMARY native leg is now the `.klaro` twin
-/// (`determinism_corpus_klaro_native` in klaro_twins.rs / verify-klaro-twins),
-/// and this Lojban twin is deleted at gerna retirement. Every verdict must
-/// match its pinned `# =>` annotation — the same annotation vector runs under
-/// gasnu/Wasmtime (`smoke-gasnu-determinism`) and node/V8
-/// (`nibli-wasm/tests/determinism.rs`, `just verify-wasm-node`).
-#[test]
-fn determinism_corpus_lojban_twin() {
-    enum COp {
-        Assert(String),
-        Query(String, String),
-        Retract(usize),
-    }
-    // Parse the shared corpus format: asserts, `? <query>` + `# => <verdict>`
-    // annotation, `:retract <k>` (k = 0-based assert index), `#` comments.
-    let corpus = include_str!("../../determinism-corpus.lojban");
-    let mut ops: Vec<COp> = Vec::new();
-    let mut pending_q: Option<String> = None;
-    for raw in corpus.lines() {
-        let line = raw.trim();
-        if let Some(ann) = line.strip_prefix("# =>") {
-            let q = pending_q
-                .take()
-                .expect("corpus: `# =>` annotation without a preceding query");
-            ops.push(COp::Query(q, ann.trim().to_string()));
-        } else if line.is_empty() || line.starts_with('#') {
-            continue;
-        } else if let Some(q) = line.strip_prefix("? ") {
-            assert!(
-                pending_q.is_none(),
-                "corpus: unannotated query before '{q}'"
-            );
-            pending_q = Some(q.to_string());
-        } else if let Some(k) = line.strip_prefix(":retract ") {
-            ops.push(COp::Retract(
-                k.trim().parse().expect("corpus: retract index"),
-            ));
-        } else {
-            ops.push(COp::Assert(line.to_string()));
-        }
-    }
-    assert!(pending_q.is_none(), "corpus: trailing unannotated query");
-
-    let engine = nibli_verify::lojban_engine();
-    // Per-assert fact ids; a line may be N facts (one per bare `.i` sentence).
-    let mut ids: Vec<Vec<u64>> = Vec::new();
-    let mut checked = 0usize;
-    for op in &ops {
-        match op {
-            COp::Assert(l) => {
-                let id = engine
-                    .assert_text(l)
-                    .unwrap_or_else(|e| panic!("assert '{l}': {e:?}"));
-                ids.push(id);
-            }
-            COp::Retract(k) => {
-                for fid in &ids[*k] {
-                    engine
-                        .retract_fact(*fid)
-                        .unwrap_or_else(|e| panic!("retract #{k}: {e:?}"));
-                }
-            }
-            COp::Query(q, expected) => {
-                let (v, _) = engine
-                    .query_text_raw_proof(q)
-                    .unwrap_or_else(|e| panic!("query '{q}': {e:?}"));
-                let got = nibli_engine::display_query_result(&v);
-                assert_eq!(
-                    &got, expected,
-                    "native verdict for '{q}' diverges from the pinned annotation"
-                );
-                checked += 1;
-            }
-        }
-    }
-    assert!(
-        checked >= 15,
-        "determinism corpus too small: {checked} queries"
-    );
-    eprintln!("nibli-verify determinism (lojban twin): {checked} pinned verdicts agree");
-}
-
-/// gerna→smuni compiler-seam gate: compile source Lojban end-to-end (parse + semantic compile)
-/// and check the FOL against hand-verified structure (ground truth) + transformation invariants
-/// (oracle-free). This is the FRONT-END analog of the Vampire/clingo oracle gates: the six proofs
-/// + those gates verify logji against smuni's *already-compiled* IR, but nothing else verified that
-/// gerna→smuni compiles the *source text* to the intended IR (the isolated smuni tests hand-build
-/// ASTs, bypassing gerna). Needs no solver, so it never skips. See `nibli-verify/src/seam.rs`.
-///
-/// Honest scope: a corpus/property gate, not a proof. The structural golden cases catch a
-/// *systematic* miscompilation (where the FOL is hand-verified); the metamorphic pairs catch
-/// *transformation* bugs at scale. All words are in-tree fallback vocabulary, so it runs
-/// identically with or without the dictionary data file.
-#[test]
-fn gerna_smuni_seam_conformance() {
-    let mut structural = 0usize;
-    let mut metamorphic = 0usize;
-
-    // ── Structural golden (ground truth: the compiled FOL *shape* is hand-verified) ──
-
-    // 1. Neo-Davidsonian event decomposition + arg→role mapping:
-    //    `la .adam. cu gerku` → ∃ev. gerku(ev) ∧ gerku_x1(ev, adam) ∧ …
-    {
-        let b = seam::compile("la .adam. cu gerku").expect("compile fact");
-        assert!(
-            matches!(seam::root(&b), LogicNode::ExistsNode(_)),
-            "fact root is ∃ (event existentially closed)"
-        );
-        assert!(
-            seam::role_is_const(&b, "gerku_x1", "adam"),
-            "x1 role is filled with the subject `adam`"
-        );
-        structural += 1;
-    }
-
-    // 2. Negation: `la .adam. cu na gerku` → ¬(∃ev. gerku…)
-    {
-        let b = seam::compile("la .adam. cu na gerku").expect("compile na");
-        assert!(
-            matches!(seam::root(&b), LogicNode::NotNode(_)),
-            "`na` root is Not"
-        );
-        structural += 1;
-    }
-
-    // 3. Connectives map distinctly: `.e` → And, `.a` → Or (over two event groups).
-    {
-        let b_and = seam::compile("mi .e do gerku").expect("compile .e");
-        assert!(
-            matches!(seam::root(&b_and), LogicNode::AndNode(_)),
-            "`.e` root is And"
-        );
-        let b_or = seam::compile("mi .a do gerku").expect("compile .a");
-        assert!(
-            matches!(seam::root(&b_or), LogicNode::OrNode(_)),
-            "`.a` root is Or"
-        );
-        structural += 1;
-    }
-
-    // 4. Universal restriction is a material implication:
-    //    `ro lo gerku cu danlu` → ∀v. (¬∃gerku(v) ∨ ∃danlu(v))
-    {
-        let b = seam::compile("ro lo gerku cu danlu").expect("compile ro lo");
-        let LogicNode::ForAllNode((_, body)) = seam::root(&b) else {
-            panic!("`ro lo` root is ∀, got {:?}", seam::root(&b));
-        };
-        let LogicNode::OrNode((left, _)) = seam::node(&b, *body) else {
-            panic!(
-                "∀ body is Or (implication), got {:?}",
-                seam::node(&b, *body)
-            );
-        };
-        assert!(
-            matches!(seam::node(&b, *left), LogicNode::NotNode(_)),
-            "implication antecedent (the restrictor) is negated"
-        );
-        structural += 1;
-    }
-
-    // 5. The ∃/∀ contrast: `lo gerku cu danlu` → ∃v. (∃gerku(v) ∧ ∃danlu(v)) — a conjunction,
-    //    NOT the implication of case 4. (A bug swapping `lo`/`ro lo` would flip this.)
-    {
-        let b = seam::compile("lo gerku cu danlu").expect("compile lo");
-        let LogicNode::ExistsNode((_, body)) = seam::root(&b) else {
-            panic!("`lo` root is ∃, got {:?}", seam::root(&b));
-        };
-        assert!(
-            matches!(seam::node(&b, *body), LogicNode::AndNode(_)),
-            "∃ body is And (existential import), got {:?}",
-            seam::node(&b, *body)
-        );
-        structural += 1;
-    }
-
-    // 6. `se` conversion swaps places x1↔x2 vs the plain form.
-    {
-        let plain = seam::compile("mi prami do").expect("compile plain");
-        let conv = seam::compile("mi se prami do").expect("compile se");
-        assert!(
-            seam::role_is_const(&plain, "prami_x1", "mi")
-                && seam::role_is_const(&plain, "prami_x2", "do"),
-            "plain: x1=mi, x2=do"
-        );
-        assert!(
-            seam::role_is_const(&conv, "prami_x1", "do")
-                && seam::role_is_const(&conv, "prami_x2", "mi"),
-            "se: x1=do, x2=mi (swapped)"
-        );
-        structural += 1;
-    }
-
-    // 6b. `se` conversion INSIDE a tanru unit keeps the unit's surface place
-    //     structure: the shared subject lands in the CONVERTED place. Before
-    //     2026-07-12 the tanru arm flattened units through swap-less helpers,
-    //     silently compiling `menli se ponse` identically to `menli ponse`
-    //     (subject in ponse_x1 = owner instead of ponse_x2 = possessed) — a
-    //     CLL-fidelity bug this case pins against regression.
-    {
-        let head = seam::compile("la .adam. cu menli se ponse").expect("compile converted head");
-        assert!(
-            seam::role_is_const(&head, "ponse_x2", "adam"),
-            "converted tanru HEAD: subject lands in ponse_x2 (possessed)"
-        );
-        let modif =
-            seam::compile("la .adam. cu se ponse datni").expect("compile converted modifier");
-        assert!(
-            seam::role_is_const(&modif, "ponse_x2", "adam"),
-            "converted tanru MODIFIER: shared x1 lands in ponse_x2"
-        );
-        // The conversion must be semantically LOUD, never a silent no-op.
-        let conv = seam::canonicalize(&seam::compile("la .adam. cu menli se ponse").unwrap());
-        let plain = seam::canonicalize(&seam::compile("la .adam. cu menli ponse").unwrap());
-        assert_ne!(
-            conv, plain,
-            "tanru-unit conversion must change the compiled FOL"
-        );
-        structural += 1;
-    }
-
-    // ── Metamorphic (oracle-free: two surface forms must compile to the SAME FOL) ──
-
-    // A. `se` conversion cancels the place swap: `mi se prami do` ≡ `do prami mi`.
-    {
-        let a = seam::canonicalize(&seam::compile("mi se prami do").unwrap());
-        let b = seam::canonicalize(&seam::compile("do prami mi").unwrap());
-        assert_eq!(a, b, "metamorphic: `mi se prami do` ≡ `do prami mi`");
-        metamorphic += 1;
-    }
-
-    // A2. The historical relaxed `je na` spelling is now a PARSE ERROR (bare
-    //     `na` after a selbri connective is not official grammar — camxes-std
-    //     rejects it; the official form is the compound `jenai`, which must
-    //     still compile). This replaced the old `jenai ≡ je na` metamorphic
-    //     pair when gerna's over-acceptance was fixed.
-    {
-        seam::compile("ro lo se bilga cu se curmi jenai se fanta")
-            .expect("official `jenai` form must compile");
-        assert!(
-            seam::compile("ro lo se bilga cu se curmi je na se fanta").is_err(),
-            "relaxed `je na` form must be rejected at parse (camxes-std parity)"
-        );
-        structural += 1;
-    }
-
-    // A3. GIhA bridi-tail ≡ afterthought sentence connective with the head
-    //     repeated: `mi klama gi'e citka` ≡ `mi klama .i je mi citka` (the
-    //     desugar shares the head-terms slice, so both compile to the same
-    //     And of two head-sharing event predications).
-    {
-        let a = seam::canonicalize(&seam::compile("mi klama gi'e citka").unwrap());
-        let b = seam::canonicalize(&seam::compile("mi klama .i je mi citka").unwrap());
-        assert_eq!(a, b, "metamorphic: `gi'e` ≡ `.i je` with repeated head");
-        metamorphic += 1;
-    }
-
-    // A4. GIhA structural golden: `mi na klama gi'e citka` — ONE root And
-    //     (never two roots: `gi'a`/`gi'o`/`gi'u` must stay a single compound
-    //     fact) whose left conjunct is negated (`na` binds its tail only) and
-    //     whose right is the positive predication.
-    {
-        let b = seam::compile("mi na klama gi'e citka").expect("compile gi'e na-tail");
-        let LogicNode::AndNode((l, r)) = seam::root(&b) else {
-            panic!("gi'e root is And, got {:?}", seam::root(&b));
-        };
-        assert!(
-            matches!(seam::node(&b, *l), LogicNode::NotNode(_)),
-            "the na-tail conjunct is negated, got {:?}",
-            seam::node(&b, *l)
-        );
-        assert!(
-            !matches!(seam::node(&b, *r), LogicNode::NotNode(_)),
-            "the positive tail must not be negated"
-        );
-        structural += 1;
-    }
-
-    // A5. GIhA head restriction: a quantified or description head is REJECTED
-    //     (repeating it per tail would re-quantify one surface scope —
-    //     `da klama gi'e citka` is officially ∃x(klama ∧ citka), one witness,
-    //     but the repeated head would compile to two independent ∃s and return
-    //     a wrong TRUE on disjoint witnesses). A name head compiles and equals
-    //     its spelled-out `.i je` form (int19h's Genesis 1:2 shape, with the
-    //     description swapped for a name).
-    {
-        assert!(
-            seam::compile("da klama gi'e citka").is_err(),
-            "quantified GIhA head must be rejected (scope split)"
-        );
-        assert!(
-            seam::compile("lo terdi cu na se tarmi gi'e kunti").is_err(),
-            "description GIhA head must be rejected (fresh witness per tail)"
-        );
-        structural += 1;
-
-        let a = seam::canonicalize(&seam::compile("la .terdi. cu na se tarmi gi'e kunti").unwrap());
-        let b = seam::canonicalize(
-            &seam::compile("la .terdi. cu na se tarmi .i je la .terdi. cu kunti").unwrap(),
-        );
-        assert_eq!(a, b, "metamorphic: gi'e ≡ .i je with name head repeated");
-        metamorphic += 1;
-    }
-
-    // B. Seeded batch of `E se P F` ≡ `F P E` pairs over the fallback 2+-place vocab.
-    const SEAM_BATCH: u64 = 60;
-    for seed in 0..SEAM_BATCH {
-        let (left, right) = seam::conversion_pair(seed);
-        let lb = seam::canonicalize(
-            &seam::compile(&left).unwrap_or_else(|e| panic!("compile '{left}': {e}")),
-        );
-        let rb = seam::canonicalize(
-            &seam::compile(&right).unwrap_or_else(|e| panic!("compile '{right}': {e}")),
-        );
-        assert_eq!(lb, rb, "conversion pair seed {seed}: `{left}` ≢ `{right}`");
-        metamorphic += 1;
-    }
-
-    eprintln!(
-        "gerna→smuni seam: {structural} structural golden + {metamorphic} metamorphic checks passed"
-    );
-
-    // Non-vacuity: both families must have actually fired.
-    assert!(
-        structural >= 6,
-        "structural family near-vacuous ({structural})"
-    );
-    assert!(
-        metamorphic >= (SEAM_BATCH as usize),
-        "metamorphic family near-vacuous ({metamorphic})"
     );
 }

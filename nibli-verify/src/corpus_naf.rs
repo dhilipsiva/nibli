@@ -24,133 +24,133 @@ pub const NAF_CASES: &[Case] = &[
     // ── No witness → the NAF restrictor holds → the rule fires. ──
     Case {
         name: "naf_no_witness_fires",
-        kb: &["ro lo prenu poi na gerku cu morsi", "la .adam. cu prenu"],
-        query: "la .adam. cu morsi",
+        kb: &["dead(every person where ~dog).", "person(Adam)."],
+        query: "dead(Adam).",
         expect: Expect::True,
     },
     // ── Witness present → the NAF restrictor is false → closed-world FALSE. ──
     Case {
         name: "naf_witness_blocks",
         kb: &[
-            "ro lo prenu poi na gerku cu morsi",
-            "la .adam. cu prenu",
-            "la .adam. cu gerku",
+            "dead(every person where ~dog).",
+            "person(Adam).",
+            "dog(Adam).",
         ],
-        query: "la .adam. cu morsi",
+        query: "dead(Adam).",
         expect: Expect::False,
     },
     // ── The domain restrictor still binds: a non-person is out of the rule's reach. ──
     Case {
         name: "naf_other_entity_out_of_domain",
         kb: &[
-            "ro lo prenu poi na gerku cu morsi",
-            "la .adam. cu prenu",
-            "la .bel. cu gerku",
+            "dead(every person where ~dog).",
+            "person(Adam).",
+            "dog(Bel).",
         ],
-        query: "la .bel. cu morsi",
+        query: "dead(Bel).",
         expect: Expect::False,
     },
     Case {
         name: "naf_domain_required",
-        kb: &["ro lo prenu poi na gerku cu morsi", "la .kim. cu gerku"],
-        query: "la .kim. cu morsi",
+        kb: &["dead(every person where ~dog).", "dog(Kim)."],
+        query: "dead(Kim).",
         expect: Expect::False,
     },
     // ── Baseline: a plain fact still resolves through the ASP path. ──
     Case {
         name: "naf_plain_fact_baseline",
-        kb: &["la .adam. cu prenu"],
-        query: "la .adam. cu prenu",
+        kb: &["person(Adam)."],
+        query: "person(Adam).",
         expect: Expect::True,
     },
     // ── Taxonomy through NAF: NAF rule feeds a Horn rule (stratified: morsi is base). ──
     Case {
         name: "naf_taxonomy_through_naf",
         kb: &[
-            "ro lo danlu cu jmive",
-            "ro lo prenu poi na morsi cu danlu",
-            "la .adam. cu prenu",
+            "alive(every animal).",
+            "animal(every person where ~dead).",
+            "person(Adam).",
         ],
-        query: "la .adam. cu jmive",
+        query: "alive(Adam).",
         expect: Expect::True,
     },
     Case {
         name: "naf_taxonomy_blocked_by_witness",
         kb: &[
-            "ro lo danlu cu jmive",
-            "ro lo prenu poi na morsi cu danlu",
-            "la .adam. cu prenu",
-            "la .adam. cu morsi",
+            "alive(every animal).",
+            "animal(every person where ~dead).",
+            "person(Adam).",
+            "dead(Adam).",
         ],
-        query: "la .adam. cu jmive",
+        query: "alive(Adam).",
         expect: Expect::False,
     },
     // ── Two independent NAF rules: one blocked, one fires. ──
     Case {
         name: "naf_two_rules_jmive_fires",
         kb: &[
-            "ro lo prenu poi na gerku cu morsi",
-            "ro lo prenu poi na mlatu cu jmive",
-            "la .adam. cu prenu",
-            "la .adam. cu gerku",
+            "dead(every person where ~dog).",
+            "alive(every person where ~cat).",
+            "person(Adam).",
+            "dog(Adam).",
         ],
-        query: "la .adam. cu jmive",
+        query: "alive(Adam).",
         expect: Expect::True,
     },
     Case {
         name: "naf_two_rules_morsi_blocked",
         kb: &[
-            "ro lo prenu poi na gerku cu morsi",
-            "ro lo prenu poi na mlatu cu jmive",
-            "la .adam. cu prenu",
-            "la .adam. cu gerku",
+            "dead(every person where ~dog).",
+            "alive(every person where ~cat).",
+            "person(Adam).",
+            "dog(Adam).",
         ],
-        query: "la .adam. cu morsi",
+        query: "dead(Adam).",
         expect: Expect::False,
     },
     // ── Positive + negative restrictor together: person AND dog AND not-cat → melbi. ──
     Case {
         name: "naf_positive_and_negative_restrictor",
         kb: &[
-            "ro lo prenu poi gerku poi na mlatu cu melbi",
-            "la .adam. cu prenu",
-            "la .adam. cu gerku",
+            "beautiful(every person where dog where ~cat).",
+            "person(Adam).",
+            "dog(Adam).",
         ],
-        query: "la .adam. cu melbi",
+        query: "beautiful(Adam).",
         expect: Expect::True,
     },
     Case {
         name: "naf_positive_and_negative_restrictor_blocked",
         kb: &[
-            "ro lo prenu poi gerku poi na mlatu cu melbi",
-            "la .adam. cu prenu",
-            "la .adam. cu gerku",
-            "la .adam. cu mlatu",
+            "beautiful(every person where dog where ~cat).",
+            "person(Adam).",
+            "dog(Adam).",
+            "cat(Adam).",
         ],
-        query: "la .adam. cu melbi",
+        query: "beautiful(Adam).",
         expect: Expect::False,
     },
     // ── The REAL GDPR erasure rule (deontic head + `lo nu` abstraction): a person who has not
     // consented is obligated to be erased. `se bilga` is a plain gismu; the `lo nu se vimcu`
     // abstraction is modeled as an opaque constant keyed by its content hash, so the head +
-    // query resolve to the same obligation atom. This is `gdpr.lojban:101`. ──
+    // query resolve to the same obligation atom. This is `gdpr.klaro:101`. ──
     Case {
         name: "gdpr_erasure_no_consent",
         kb: &[
-            "ro lo prenu poi na zanru cu se bilga lo nu se vimcu",
-            "la .adam. cu prenu",
+            "obligated(every person where ~approves, event { removes() }).",
+            "person(Adam).",
         ],
-        query: "la .adam. cu se bilga lo nu se vimcu",
+        query: "obligated(Adam, event { removes() }).",
         expect: Expect::True,
     },
     Case {
         name: "gdpr_erasure_with_consent",
         kb: &[
-            "ro lo prenu poi na zanru cu se bilga lo nu se vimcu",
-            "la .adam. cu prenu",
-            "la .adam. cu zanru",
+            "obligated(every person where ~approves, event { removes() }).",
+            "person(Adam).",
+            "approves(Adam).",
         ],
-        query: "la .adam. cu se bilga lo nu se vimcu",
+        query: "obligated(Adam, event { removes() }).",
         expect: Expect::False,
     },
     // ── du identity × NAF: the equivalence index must be visible to the NAF check. ──
@@ -161,12 +161,12 @@ pub const NAF_CASES: &[Case] = &[
         // consulted the raw fact store and missed the equivalence index would wrongly
         // fire the rule here (TRUE) — the highest-value du probe shape.
         kb: &[
-            "ro lo prenu poi na gerku cu morsi",
-            "la .adam. cu prenu",
-            "la .adam. cu du la .bel.",
-            "la .bel. cu gerku",
+            "dead(every person where ~dog).",
+            "person(Adam).",
+            "Adam = Bel.",
+            "dog(Bel).",
         ],
-        query: "la .adam. cu morsi",
+        query: "dead(Adam).",
         expect: Expect::False,
     },
     Case {
@@ -174,11 +174,11 @@ pub const NAF_CASES: &[Case] = &[
         // Same KB WITHOUT the identity link (the post-retraction state): bel's witness
         // no longer reaches adam, so the rule fires.
         kb: &[
-            "ro lo prenu poi na gerku cu morsi",
-            "la .adam. cu prenu",
-            "la .bel. cu gerku",
+            "dead(every person where ~dog).",
+            "person(Adam).",
+            "dog(Bel).",
         ],
-        query: "la .adam. cu morsi",
+        query: "dead(Adam).",
         expect: Expect::True,
     },
     Case {
@@ -186,11 +186,11 @@ pub const NAF_CASES: &[Case] = &[
         // The DOMAIN restrictor also resolves through the identity link: bel is a prenu
         // only via `bel du adam`, and the (unblocked) rule must still reach bel.
         kb: &[
-            "ro lo prenu poi na gerku cu morsi",
-            "la .adam. cu prenu",
-            "la .adam. cu du la .bel.",
+            "dead(every person where ~dog).",
+            "person(Adam).",
+            "Adam = Bel.",
         ],
-        query: "la .bel. cu morsi",
+        query: "dead(Bel).",
         expect: Expect::True,
     },
     Case {
@@ -198,24 +198,24 @@ pub const NAF_CASES: &[Case] = &[
         // Full mix: identity + NAF rule + positive Horn chain. bel (merged with adam)
         // has no witness → danlu(bel) → jmive(bel).
         kb: &[
-            "ro lo prenu poi na gerku cu danlu",
-            "ro lo danlu cu jmive",
-            "la .adam. cu prenu",
-            "la .adam. cu du la .bel.",
+            "animal(every person where ~dog).",
+            "alive(every animal).",
+            "person(Adam).",
+            "Adam = Bel.",
         ],
-        query: "la .bel. cu jmive",
+        query: "alive(Bel).",
         expect: Expect::True,
     },
     Case {
         name: "naf_du_query_identity_true",
-        kb: &["la .adam. cu prenu", "la .adam. cu du la .bel."],
-        query: "la .adam. cu du la .bel.",
+        kb: &["person(Adam).", "Adam = Bel."],
+        query: "Adam = Bel.",
         expect: Expect::True,
     },
     Case {
         name: "naf_du_query_identity_false",
-        kb: &["la .adam. cu prenu", "la .bel. cu prenu"],
-        query: "la .adam. cu du la .bel.",
+        kb: &["person(Adam).", "person(Bel)."],
+        query: "Adam = Bel.",
         expect: Expect::False,
     },
     // ── Tense flavors through the ASP translator (positive programs only — a program
@@ -224,29 +224,26 @@ pub const NAF_CASES: &[Case] = &[
     // canonize that behavior as oracle expectation). ──
     Case {
         name: "tense_asp_diag_pu_true",
-        kb: &["pu la .adam. cu prenu"],
-        query: "pu la .adam. cu prenu",
+        kb: &["past person(Adam)."],
+        query: "past person(Adam).",
         expect: Expect::True,
     },
     Case {
         name: "tense_asp_offdiag_false",
-        kb: &["pu la .adam. cu prenu"],
-        query: "la .adam. cu prenu",
+        kb: &["past person(Adam)."],
+        query: "person(Adam).",
         expect: Expect::False,
     },
     Case {
         name: "tense_asp_polymorphic_rule_true",
-        kb: &["ro lo gerku cu danlu", "pu la .kim. cu gerku"],
-        query: "pu la .kim. cu danlu",
+        kb: &["animal(every dog).", "past dog(Kim)."],
+        query: "past animal(Kim).",
         expect: Expect::True,
     },
     Case {
         name: "tense_asp_consequent_explicit_true",
-        kb: &[
-            "ro da zo'u ganai da gerku gi pu da danlu",
-            "la .kim. cu gerku",
-        ],
-        query: "pu la .kim. cu danlu",
+        kb: &["all $da: dog($da) -> past animal($da).", "dog(Kim)."],
+        query: "past animal(Kim).",
         expect: Expect::True,
     },
     // ── Exact-count queries (`PA lo X cu Y`) → clingo `#count` aggregates. Guarded to
@@ -255,52 +252,39 @@ pub const NAF_CASES: &[Case] = &[
     // combinations are SKIPPED pending the count-semantics decision, not canonized. ──
     Case {
         name: "count_exact_two_true",
-        kb: &["la .adam. cu gerku", "la .bel. cu gerku"],
-        query: "re lo gerku cu gerku",
+        kb: &["dog(Adam).", "dog(Bel)."],
+        query: "dog(exactly 2 dog).",
         expect: Expect::True,
     },
     Case {
         name: "count_exact_one_false",
-        kb: &["la .adam. cu gerku", "la .bel. cu gerku"],
-        query: "pa lo gerku cu gerku",
+        kb: &["dog(Adam).", "dog(Bel)."],
+        query: "dog(exactly 1 dog).",
         expect: Expect::False,
     },
     Case {
         name: "count_exact_three_false",
-        kb: &["la .adam. cu gerku", "la .bel. cu gerku"],
-        query: "ci lo gerku cu gerku",
+        kb: &["dog(Adam).", "dog(Bel)."],
+        query: "dog(exactly 3 dog).",
         expect: Expect::False,
     },
     Case {
         name: "count_body_restricts_true",
         // Two dogs, one of them an (asserted) animal: exactly ONE dog is an animal.
-        kb: &[
-            "la .adam. cu gerku",
-            "la .bel. cu gerku",
-            "la .adam. cu danlu",
-        ],
-        query: "pa lo gerku cu danlu",
+        kb: &["dog(Adam).", "dog(Bel).", "animal(Adam)."],
+        query: "animal(exactly 1 dog).",
         expect: Expect::True,
     },
     Case {
         name: "count_body_restricts_false",
-        kb: &[
-            "la .adam. cu gerku",
-            "la .bel. cu gerku",
-            "la .adam. cu danlu",
-        ],
-        query: "re lo gerku cu danlu",
+        kb: &["dog(Adam).", "dog(Bel).", "animal(Adam)."],
+        query: "animal(exactly 2 dog).",
         expect: Expect::False,
     },
     Case {
         name: "count_three_entities_true",
-        kb: &[
-            "la .adam. cu gerku",
-            "la .bel. cu gerku",
-            "la .kim. cu gerku",
-            "la .dan. cu mlatu",
-        ],
-        query: "ci lo gerku cu gerku",
+        kb: &["dog(Adam).", "dog(Bel).", "dog(Kim).", "cat(Dan)."],
+        query: "dog(exactly 3 dog).",
         expect: Expect::True,
     },
 ];

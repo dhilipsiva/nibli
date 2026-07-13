@@ -518,7 +518,7 @@ test-all: test test-engine test-store test-backend test-classifier
 
 # CI gate for the hardened runtime surface (fast; native only — no WASM build).
 # For the WASM behavioral smokes too, run `just ci-all`.
-ci: fmt-check clippy-runtime test test-engine test-gasnu test-ui test-fanva test-backend test-store test-persistence-replay verify-harness verify-soundness verify-klaro verify-klaro-dict verify-klaro-twins verify-kr-seam verify-parser verify-dict verify-proofs verify-book-vocab
+ci: fmt-check clippy-runtime test test-engine test-gasnu test-ui test-fanva test-backend test-store test-persistence-replay verify-harness verify-soundness verify-klaro-dict verify-kr-seam verify-dict verify-proofs verify-book-vocab
 
 # WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
 # verify-book-capture). Bundles the six gasnu smokes; each depends on
@@ -529,7 +529,7 @@ ci-wasm: smoke-gasnu-script smoke-gasnu-script-lojban smoke-gasnu-mixed-mode smo
 
 # Three-way determinism, WASMTIME leg: the shared determinism-corpus.lojban must produce
 # exactly its pinned annotations through the lasna component under gasnu. The primary
-# native leg is the .klaro twin (determinism_corpus_klaro_native, verify-klaro-twins);
+# native leg is the .klaro twin (determinism_corpus_klaro_native, verify-kr-seam);
 # the Lojban twin leg rides verify-soundness; the V8 leg is verify-wasm-node.
 smoke-gasnu-determinism: build-wasm build-gasnu
     @echo "Smoke-testing gasnu three-way determinism corpus..."
@@ -632,45 +632,15 @@ verify-harness:
 verify-soundness:
     cargo test -p nibli-verify --lib --test differential_gate {{cargo_profile_flag}} -- --nocapture --test-threads=1
 
-# The two Klaro conformance gates (oracle-free, never skip): (1) seam conformance —
-# every SURFACE_SYNTAX construct kompiles, Lojban twins compile canonically EQUAL,
-# the O3/O7 pins, metamorphic pairs, fail-closed negatives; (2) the Klaro<->Lojban
-# translation battery — every seam-compilable line of the shipped corpora + seeded
-# generator programs must render to Klaro that compiles to the SAME canonicalized
-# LogicBuffer (KNOWN_UNRENDERABLE is exact-line value-pinned with a staleness check).
-verify-klaro:
-    cargo test -p nibli-verify --test klaro_gate {{cargo_profile_flag}} -- --nocapture --test-threads=1
-
 # Alias-map differential gate: the SHIPPED klaro-dictionary alias map must agree with
 # the SHIPPED smuni-dictionary (per-alias arity equality, GISMU_TO_ALIAS round-trips,
 # swap validity, reserved/label integrity from the shipped map) plus a behavioral leg:
-# alias(A, B, ...) via klaro+smuni must compile canonically EQUAL to the direct-gismu
-# Lojban via gerna+smuni, for EVERY shipped alias. Dual-mode and never skips: a full
+# alias(A, B, ...) must compile canonically EQUAL to the raw-gismu spelling with
+# explicit permuted xN labels, for EVERY shipped alias. Dual-mode and never skips: a full
 # local build checks all ~1,341 aliases; the CI fallback build checks the curated core
 # with a loud FALLBACK MODE banner. A mixed-mode build (one crate stale) fails loud.
 verify-klaro-dict:
     cargo test -p nibli-verify --test alias_differential {{cargo_profile_flag}} -- --nocapture --test-threads=1
-
-# Regenerate the four .klaro corpus twins from their .lojban sources via the
-# lojban2klaro migration bin (line-by-line, structure-preserving, fail-closed).
-# RE-RUNNABLE: run after ANY corpus edit while gerna lives — verify-klaro-twins
-# fails on a stale twin.
-migrate-corpora:
-    cargo run -p klaro --bin lojban2klaro -- gdpr.lojban gdpr.klaro
-    cargo run -p klaro --bin lojban2klaro -- drug-interactions.lojban drug-interactions.klaro
-    cargo run -p klaro --bin lojban2klaro -- readme.lojban readme.klaro
-    cargo run -p klaro --bin lojban2klaro -- determinism-corpus.lojban determinism-corpus.klaro
-
-# The corpora-twins honesty gate (the shipped-corpora leg of SURFACE_SYNTAX §13
-# obligation 3): every repo-root .lojban corpus has a committed .klaro twin and
-# vice versa; line structure corresponds at identical line numbers (comments/
-# blanks/`:`-commands byte-identical, `? ` prefixes paired); every payload-line
-# pair compiles to the SAME canonicalized LogicBuffer. Dual-mode: the CI
-# fallback build vocab-skips twin lines needing generated aliases. (The Klaro
-# determinism leg was re-homed to verify-kr-seam 2026-07-12 — this whole gate
-# dies with the Lojban front-end at THE DROP.)
-verify-klaro-twins:
-    cargo test -p nibli-verify --test klaro_twins {{cargo_profile_flag}} -- --nocapture --test-threads=1
 
 # The KR→smuni seam-conformance gate — the KR front-end's LOJBAN-FREE
 # independent oracle, built to outlive THE DROP (TODO.md): hand-verified
@@ -686,14 +656,6 @@ verify-klaro-twins:
 # never skips. Part of `ci`.
 verify-kr-seam:
     cargo test -p nibli-verify --test kr_seam_gate {{cargo_profile_flag}} -- --nocapture --test-threads=1
-
-# gerna <-> camxes parse-differential (the FRONT-END gate): every sentence gerna accepts
-# must parse under the official Lojban grammar (ilmentufa camxes, driven via node over
-# the shipped corpora + seeded random batches). One-directional: gerna implements a
-# fragment, so gerna-rejects carry no signal. The Nix dev shell provides node + the
-# pinned ilmentufa checkout (NIBLI_CAMXES_DIR); skips cleanly when either is absent.
-verify-parser:
-    cargo test -p nibli-verify --test parser_differential {{cargo_profile_flag}} -- --nocapture --test-threads=1
 
 # Dictionary-arity differential gate: the shipped smuni-dictionary arities must COVER the
 # independent Predilex bounds (vendored CC0 thesaurus, nibli-verify/vendor/predilex/) —
@@ -761,11 +723,6 @@ model-push:
 # invariant (see gerna/src/ast.rs — no owned String/Vec in arena-moved nodes),
 # and LSan is the gate that keeps it that way.
 
-# Fuzz the gerna parser with arbitrary input
-fuzz-parse SECONDS="0":
-    @test -n "${NIBLI_NIGHTLY_BIN:-}" || { echo "NIBLI_NIGHTLY_BIN is not set — run inside the Nix dev shell"; exit 1; }
-    cd fuzz && PATH="$NIBLI_NIGHTLY_BIN:$PATH" cargo fuzz run fuzz_parse -- -max_len=4096 {{ if SECONDS != "0" { "-max_total_time=" + SECONDS } else { "" } }}
-
 # Fuzz nibli-engine assert_text (full pipeline)
 fuzz-assert SECONDS="0":
     @test -n "${NIBLI_NIGHTLY_BIN:-}" || { echo "NIBLI_NIGHTLY_BIN is not set — run inside the Nix dev shell"; exit 1; }
@@ -783,46 +740,30 @@ fuzz-klaro SECONDS="0":
     @test -n "${NIBLI_NIGHTLY_BIN:-}" || { echo "NIBLI_NIGHTLY_BIN is not set — run inside the Nix dev shell"; exit 1; }
     cd fuzz && PATH="$NIBLI_NIGHTLY_BIN:$PATH" cargo fuzz run fuzz_klaro -- -max_len=4096 {{ if SECONDS != "0" { "-max_total_time=" + SECONDS } else { "" } }}
 
-# Seed the fuzz corpora. Each non-comment, non-REPL-command line of the shipped
-# .lojban corpus files becomes a seed for fuzz_parse/fuzz_assert; fuzz_query
-# seeds are the line DOUBLED, matching its split-half input encoding (first half
-# asserted, second half queried); fuzz_klaro seeds come from the Klaro
-# acceptance corpus (extend with the .klaro corpus twins once they exist —
-# corpora-twins bullet).
+# Seed the fuzz corpora. Each non-comment line of the shipped .klaro corpus
+# files (+ the Klaro acceptance corpus) becomes a seed for fuzz_assert and
+# fuzz_klaro; fuzz_query seeds are the line DOUBLED, matching its split-half
+# input encoding (first half asserted, second half queried).
 fuzz-seed:
     #!/usr/bin/env python3
     import pathlib
-    lines = []
-    for src in ("gdpr.lojban", "drug-interactions.lojban", "readme.lojban", "determinism-corpus.lojban"):
-        for ln in pathlib.Path(src).read_text(encoding="utf-8").splitlines():
-            ln = ln.strip()
-            if ln and not ln.startswith("#") and not ln.startswith(":"):
-                lines.append(ln)
     klaro_lines = []
     for src in ("klaro/tests/acceptance.klaro", "gdpr.klaro", "drug-interactions.klaro", "readme.klaro", "determinism-corpus.klaro"):
         for ln in pathlib.Path(src).read_text(encoding="utf-8").splitlines():
             ln = ln.strip()
-            if ln and not ln.startswith("#"):
+            if ln and not ln.startswith("#") and not ln.startswith(":"):
                 klaro_lines.append(ln)
-    # fuzz_parse is gerna-only (.lojban seeds); fuzz_assert/fuzz_query drive the
-    # engine, whose default front-end is Klaro since THE FLIP — they get BOTH
-    # seed sets (.lojban lines remain useful mutation fodder).
-    for target, encode in (("fuzz_parse", str), ("fuzz_assert", str), ("fuzz_query", lambda s: s + s)):
+    for target, encode in (("fuzz_assert", str), ("fuzz_query", lambda s: s + s), ("fuzz_klaro", str)):
         d = pathlib.Path("fuzz/corpus") / target
         d.mkdir(parents=True, exist_ok=True)
-        seeds = lines if target == "fuzz_parse" else lines + klaro_lines
-        for i, ln in enumerate(seeds):
+        for i, ln in enumerate(klaro_lines):
             (d / f"seed_{i:04}").write_text(encode(ln), encoding="utf-8")
-    d = pathlib.Path("fuzz/corpus") / "fuzz_klaro"
-    d.mkdir(parents=True, exist_ok=True)
-    for i, ln in enumerate(klaro_lines):
-        (d / f"seed_{i:04}").write_text(ln, encoding="utf-8")
-    print(f"seeded {len(lines)} .lojban entries x 3 targets + {len(klaro_lines)} .klaro entries under fuzz/corpus/")
+    print(f"seeded {len(klaro_lines)} .klaro entries x 3 targets under fuzz/corpus/")
 
 # Time-boxed unattended fuzz gate (CI): seed corpora, then run every target for
 # SECONDS each. libFuzzer exits non-zero on crash/OOM, zero when the time box
 # expires clean — a pass/fail gate, not an open-ended campaign.
-fuzz-ci SECONDS="120": fuzz-seed (fuzz-parse SECONDS) (fuzz-assert SECONDS) (fuzz-query SECONDS) (fuzz-klaro SECONDS)
+fuzz-ci SECONDS="120": fuzz-seed (fuzz-assert SECONDS) (fuzz-query SECONDS) (fuzz-klaro SECONDS)
 
 # ── Mutation testing (soundness paths) ──────────────────────────
 

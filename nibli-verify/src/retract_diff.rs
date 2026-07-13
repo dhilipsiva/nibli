@@ -19,8 +19,6 @@
 //! even in debug), and NAF restrictors come from base predicates that are never
 //! rule heads (no assert-time rejections muddying the retraction semantics).
 
-use nibli_engine::NibliEngine;
-
 use crate::generator::Lcg;
 
 /// Ordered predicate pool. Indexes 0..=1 are BASE (facts + NAF restrictors only,
@@ -29,7 +27,7 @@ use crate::generator::Lcg;
 const PREDS: &[&str] = &["gerku", "mlatu", "danlu", "jmive", "melbi"];
 const N_BASE: usize = 2;
 
-const ENTS: &[&str] = &["adam", "bel"];
+const ENTS: &[&str] = &["Adam", "Bel"];
 
 /// One operation of a generated sequence.
 #[derive(Debug, Clone)]
@@ -57,35 +55,31 @@ pub fn random_retract_case(seed: u64) -> RetractCase {
         let roll = rng.below(100);
         let op = if roll < 35 {
             // Ground fact.
-            Op::Assert(format!("la .{}. cu {}", rng.pick(ENTS), rng.pick(PREDS)))
+            Op::Assert(format!("{}({}).", rng.pick(PREDS), rng.pick(ENTS)))
         } else if roll < 45 {
-            // ∃-skolemizing fact: `lo BASE cu DERIVED` (a witness dog that is an animal).
+            // ∃-skolemizing fact: `DERIVED(some BASE).` (a witness dog that is an animal).
             let b = PREDS[rng.below(N_BASE)];
             let d = PREDS[N_BASE + rng.below(PREDS.len() - N_BASE)];
-            Op::Assert(format!("lo {b} cu {d}"))
+            Op::Assert(format!("{d}(some {b})."))
         } else if roll < 55 {
             // du identity link.
-            Op::Assert(format!(
-                "la .{}. cu du la .{}.",
-                rng.pick(ENTS),
-                rng.pick(ENTS)
-            ))
+            Op::Assert(format!("{} = {}.", rng.pick(ENTS), rng.pick(ENTS)))
         } else if roll < 63 {
             // DAG-oriented positive rule: head index >= 2, body strictly below it.
             let hi = N_BASE + rng.below(PREDS.len() - N_BASE);
             let bi = rng.below(hi);
-            Op::Assert(format!("ro lo {} cu {}", PREDS[bi], PREDS[hi]))
+            Op::Assert(format!("{}(every {}).", PREDS[hi], PREDS[bi]))
         } else if roll < 70 {
             // Stratified NAF rule: base restrictor (never a head), DAG positives.
             let hi = N_BASE + rng.below(PREDS.len() - N_BASE);
             let bi = rng.below(hi);
             let r = PREDS[rng.below(N_BASE)];
-            Op::Assert(format!("ro lo {} poi na {r} cu {}", PREDS[bi], PREDS[hi]))
+            Op::Assert(format!("{}(every {} where ~{r}).", PREDS[hi], PREDS[bi]))
         } else {
             // Retract a random assert made so far (aliveness resolved at run time;
             // retracting an already-retracted id is skipped by the runner).
             if n_asserts == 0 {
-                Op::Assert(format!("la .{}. cu {}", rng.pick(ENTS), rng.pick(PREDS)))
+                Op::Assert(format!("{}({}).", rng.pick(PREDS), rng.pick(ENTS)))
             } else {
                 let k = rng.below(n_asserts);
                 ops.push(Op::Retract(k));
@@ -161,7 +155,7 @@ impl RetractOutcome {
 /// A complex assertion (rule / existential / `du`) whose retraction takes the
 /// full-rebuild path rather than the O(1) ground removal.
 fn is_complex(line: &str) -> bool {
-    line.starts_with("ro lo") || line.starts_with("lo ") || line.contains(" du ")
+    line.contains("(every ") || line.contains("(some ") || line.contains(" = ")
 }
 
 /// Run one sequence: apply ops in order on the incremental engine; after every
@@ -169,7 +163,7 @@ fn is_complex(line: &str) -> bool {
 /// surviving asserts (original order).
 pub fn run_retract_case(case: &RetractCase) -> RetractOutcome {
     let name = case.name.clone();
-    let engine = crate::lojban_engine();
+    let engine = crate::kr_engine();
 
     // (line, engine fact ids, alive) per executed assert, in original order.
     // A line is N independent facts (one per bare `.i` sentence).
@@ -213,7 +207,7 @@ pub fn run_retract_case(case: &RetractCase) -> RetractOutcome {
                 }
 
                 // Fresh replay of the survivors, then the battery on both engines.
-                let fresh = crate::lojban_engine();
+                let fresh = crate::kr_engine();
                 for (l, _, alive) in &asserts {
                     if *alive {
                         if let Err(e) = fresh.assert_text(l) {
@@ -227,10 +221,10 @@ pub fn run_retract_case(case: &RetractCase) -> RetractOutcome {
                 let mut battery: Vec<String> = Vec::new();
                 for e in ENTS {
                     for p in PREDS {
-                        battery.push(format!("la .{e}. cu {p}"));
+                        battery.push(format!("{p}({e})."));
                     }
                 }
-                battery.push("la .adam. cu du la .bel.".to_string());
+                battery.push("Adam = Bel.".to_string());
                 for q in &battery {
                     let a = engine
                         .query_text_raw_proof(q)
@@ -283,10 +277,10 @@ mod tests {
         for seed in 0..100u64 {
             for op in random_retract_case(seed).ops {
                 match op {
-                    Op::Assert(l) if l.starts_with("ro lo") && l.contains(" poi na ") => naf += 1,
-                    Op::Assert(l) if l.starts_with("ro lo") => rule += 1,
-                    Op::Assert(l) if l.starts_with("lo ") => exists += 1,
-                    Op::Assert(l) if l.contains(" du ") => du += 1,
+                    Op::Assert(l) if l.contains("where ~") => naf += 1,
+                    Op::Assert(l) if l.contains("(every ") => rule += 1,
+                    Op::Assert(l) if l.contains("(some ") => exists += 1,
+                    Op::Assert(l) if l.contains(" = ") => du += 1,
                     Op::Assert(_) => ground += 1,
                     Op::Retract(_) => retracts += 1,
                 }

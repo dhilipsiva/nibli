@@ -25,7 +25,6 @@ pub mod klaro_battery;
 pub mod kr_seam;
 pub mod oracle;
 pub mod oracle_asp;
-pub mod parser_diff;
 pub mod predilex;
 pub mod retract_diff;
 pub mod seam;
@@ -37,15 +36,13 @@ use nibli_engine::NibliEngine;
 use oracle::{Oracle, OracleConfig};
 use oracle_asp::{AspConfig, AspVerdict};
 
-/// A LOJBAN-mode engine. Every engine this crate builds compiles Lojban
-/// source text (the differential gates verify the Lojban front-end; the Klaro
-/// side goes through `klaro_battery::kompile`, no engine) — and Klaro is the
-/// `NibliEngine::new()` default since THE FLIP (2026-07-12), so the pin is
-/// explicit. Pub for the test binaries (differential_gate's Lojban twin leg).
-pub fn lojban_engine() -> NibliEngine {
-    let engine = NibliEngine::new();
-    engine.set_language(nibli_engine::Language::Lojban);
-    engine
+/// A fresh KR-mode engine (the `NibliEngine::new()` default). Every engine
+/// this crate builds compiles KR source text — the generators, curated case
+/// tables, and corpus feeds were re-pointed from Lojban at THE DROP; the
+/// Vampire/clingo oracles judge the compiled buffers, so they verified the
+/// re-point itself. Pub for the test binaries.
+pub fn kr_engine() -> NibliEngine {
+    NibliEngine::new()
 }
 
 /// The intended nibli verdict for a curated case (documentation + report cross-check).
@@ -64,7 +61,7 @@ impl Expect {
     }
 }
 
-/// A differential test case: a knowledge base (one Lojban statement per line) and a
+/// A differential test case: a knowledge base (one KR statement per line) and a
 /// query, with the intended nibli verdict.
 pub struct Case {
     pub name: &'static str,
@@ -339,7 +336,7 @@ pub fn run_case(engine: &NibliEngine, case: &Case, cfg: &OracleConfig) -> Outcom
 
 /// Run the whole curated corpus on a fresh engine.
 pub fn run_corpus(cases: &[Case], cfg: &OracleConfig) -> Report {
-    let engine = lojban_engine();
+    let engine = kr_engine();
     let outcomes = cases.iter().map(|c| run_case(&engine, c, cfg)).collect();
     Report { outcomes }
 }
@@ -353,7 +350,7 @@ pub fn run_corpus_slice(label: &str, corpus: &str, cfg: &OracleConfig) -> Report
     use nibli_types::logic::{LogicNode, LogicalTerm};
     use std::collections::BTreeSet;
 
-    let engine = lojban_engine();
+    let engine = kr_engine();
 
     // 1. Keep the mappable lines; mine entities (constants) + candidate type-predicates.
     let mut kb_lines: Vec<String> = Vec::new();
@@ -392,11 +389,13 @@ pub fn run_corpus_slice(label: &str, corpus: &str, cfg: &OracleConfig) -> Report
     }
 
     // 2. Keep only predicates that form a parseable, mappable atomic query (drops any
-    //    tanru-derived compound name cleanly — it won't compile as a bare selbri).
+    //    tanru-derived compound name cleanly — it won't resolve as a bare predicate;
+    //    in the fallback dictionary build this also drops long-tail vocabulary, since
+    //    KR fails closed on unknown names).
     let queryable: Vec<String> = preds
         .into_iter()
         .filter(|p| {
-            let q = format!("la .adam. cu {p}");
+            let q = format!("{p}(Adam).");
             engine
                 .compile_debug(&q)
                 .map(|b| filter::buffer_non_classical(&b).is_none())
@@ -404,12 +403,19 @@ pub fn run_corpus_slice(label: &str, corpus: &str, cfg: &OracleConfig) -> Report
         })
         .collect();
 
-    // 3. Enumerate atomic queries entity × predicate through the gate.
+    // 3. Enumerate atomic queries entity × predicate through the gate. Mined
+    //    entities are IR constants; only those the KR surface can NAME (an
+    //    ASCII-alphabetic head — spelled Capitalized, spaces as `_`) are
+    //    queryable, mirroring the predicate filter.
     let kb_refs: Vec<&str> = kb_lines.iter().map(String::as_str).collect();
     let mut outcomes = Vec::new();
     for e in &entities {
+        let Some(name) = kr_name(e) else { continue };
         for p in &queryable {
-            let query = format!("la .{e}. cu {p}");
+            let query = format!("{p}({name}).");
+            if engine.compile_debug(&query).is_err() {
+                continue;
+            }
             outcomes.push(run_lines(
                 &engine,
                 &format!("{label}:{e}:{p}"),
@@ -422,12 +428,34 @@ pub fn run_corpus_slice(label: &str, corpus: &str, cfg: &OracleConfig) -> Report
     Report { outcomes }
 }
 
+/// Spell an IR constant as a KR Name (Capitalized head, spaces as `_`), or
+/// `None` when the constant is not KR-nameable (non-alphabetic head, exotic
+/// characters — e.g. Skolem-witness constants).
+fn kr_name(constant: &str) -> Option<String> {
+    let mut chars = constant.chars();
+    let first = chars.next()?;
+    if !first.is_ascii_alphabetic() {
+        return None;
+    }
+    let candidate: String = std::iter::once(first.to_ascii_uppercase())
+        .chain(chars.map(|c| if c == ' ' { '_' } else { c }))
+        .collect();
+    if candidate
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
 /// Run `count` deterministically-generated random cases (seeds `base_seed .. base_seed+count`)
 /// through the differential gate on a fresh engine. Each case is a NAF-free definite-Horn
 /// program by construction (see [`generator`]); the filter still skips any that fall outside
 /// the mappable fragment, so this only broadens coverage — it can never mis-judge.
 pub fn run_random(count: u64, base_seed: u64, cfg: &OracleConfig) -> Report {
-    let engine = lojban_engine();
+    let engine = kr_engine();
     let outcomes = (0..count)
         .map(|i| {
             let case = generator::random_case(base_seed.wrapping_add(i));
@@ -448,18 +476,22 @@ pub fn run_random(count: u64, base_seed: u64, cfg: &OracleConfig) -> Report {
 /// negative controls (an unrelated taxonomy word must be underivable — both
 /// engines say no, agreement is the check).
 pub fn run_predilex_taxonomy(cfg: &OracleConfig) -> Report {
-    let engine = lojban_engine();
+    let engine = kr_engine();
 
-    // Prune lemmas that don't compile as brivla (e.g. the vowel-initial
-    // `ukta` mapped alongside `cukta`): a compile failure inside `run_lines`
-    // is a hard `Error` that fails the gate, not a skip — mirror
-    // `run_corpus_slice`'s pre-validation.
+    // Prune lemmas the KR front-end cannot compile: malformed word shapes
+    // (e.g. the vowel-initial `ukta` mapped alongside `cukta`) AND — in the
+    // fallback dictionary build — words outside the curated core (KR fails
+    // closed on unknown names where the retired Lojban front-end tolerated
+    // them at arity 2). A compile failure inside `run_lines` is a hard
+    // `Error` that fails the gate, not a skip — mirror `run_corpus_slice`'s
+    // pre-validation. The differential-gate test asserts a non-vacuity floor
+    // so this filter can never silently empty the leg.
     let edges: Vec<(String, String)> = predilex::taxonomy_edges()
         .into_iter()
         .filter(|(a, b)| {
             [a, b]
                 .into_iter()
-                .all(|w| engine.compile_debug(&format!("la .alis. cu {w}")).is_ok())
+                .all(|w| engine.compile_debug(&format!("{w}(Alis).")).is_ok())
         })
         .collect();
 
@@ -476,8 +508,8 @@ pub fn run_predilex_taxonomy(cfg: &OracleConfig) -> Report {
         // Direct edge: rule + fact ⊢ hypernym.
         cases.push(generator::GeneratedCase {
             name: format!("taxonomy_{a}_{b}"),
-            kb: vec![format!("ro lo {a} cu {b}"), format!("la .alis. cu {a}")],
-            query: format!("la .alis. cu {b}"),
+            kb: vec![format!("{b}(every {a})."), format!("{a}(Alis).")],
+            query: format!("{b}(Alis)."),
         });
         // CWA negative control: with only this rule + fact asserted, the
         // entailed set is exactly {a, b} — any other taxonomy word must be
@@ -485,8 +517,8 @@ pub fn run_predilex_taxonomy(cfg: &OracleConfig) -> Report {
         if let Some(x) = vocab.iter().find(|w| *w != a && *w != b) {
             cases.push(generator::GeneratedCase {
                 name: format!("taxonomy_neg_{a}_{x}"),
-                kb: vec![format!("ro lo {a} cu {b}"), format!("la .alis. cu {a}")],
-                query: format!("la .alis. cu {x}"),
+                kb: vec![format!("{b}(every {a})."), format!("{a}(Alis).")],
+                query: format!("{x}(Alis)."),
             });
         }
     }
@@ -497,11 +529,11 @@ pub fn run_predilex_taxonomy(cfg: &OracleConfig) -> Report {
                 cases.push(generator::GeneratedCase {
                     name: format!("taxonomy_chain_{a}_{b}_{c}"),
                     kb: vec![
-                        format!("ro lo {a} cu {b}"),
-                        format!("ro lo {b} cu {c}"),
-                        format!("la .alis. cu {a}"),
+                        format!("{b}(every {a})."),
+                        format!("{c}(every {b})."),
+                        format!("{a}(Alis)."),
                     ],
-                    query: format!("la .alis. cu {c}"),
+                    query: format!("{c}(Alis)."),
                 });
             }
         }
@@ -664,7 +696,7 @@ pub fn run_lines_asp(
 
 /// Run the curated stratified-NAF corpus against clingo on a fresh engine.
 pub fn run_naf_corpus(cases: &[Case], cfg: &AspConfig) -> Report {
-    let engine = lojban_engine();
+    let engine = kr_engine();
     let outcomes = cases
         .iter()
         .map(|c| run_lines_asp(&engine, c.name, c.kb, c.query, cfg))
@@ -677,7 +709,7 @@ pub fn run_naf_corpus(cases: &[Case], cfg: &AspConfig) -> Report {
 /// and ASP-mappable by construction (see [`generator::random_naf_case`]); the filter is still
 /// the final arbiter, so this only broadens coverage — it can never mis-judge.
 pub fn run_random_naf(count: u64, base_seed: u64, cfg: &AspConfig) -> Report {
-    let engine = lojban_engine();
+    let engine = kr_engine();
     let outcomes = (0..count)
         .map(|i| {
             let case = generator::random_naf_case(base_seed.wrapping_add(i));
@@ -694,7 +726,7 @@ pub fn run_random_naf(count: u64, base_seed: u64, cfg: &AspConfig) -> Report {
 /// engine's per-member count equals clingo's `#count` over the stable model (see
 /// [`filter::count_case_guard`]).
 pub fn run_random_count(count: u64, base_seed: u64, cfg: &AspConfig) -> Report {
-    let engine = lojban_engine();
+    let engine = kr_engine();
     let outcomes = (0..count)
         .map(|i| {
             let case = generator::random_count_case(base_seed.wrapping_add(i));

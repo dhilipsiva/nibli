@@ -15,17 +15,13 @@
 
 use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm};
 
-/// Lojban logical-negation cmavo. These introduce classical-breaking negation (read
-/// as negation-as-failure under the CWA); scalar contraries (`na'e`, `to'e`, `no'e`)
-/// change the predicate, not the logic, and are left to the buffer scan.
-const NEGATION_CMAVO: &[&str] = &["na", "naku", "na'i"];
-
-/// True if a source line contains a genuine-negation cmavo as a whitespace token.
-/// Lojban cmavo are space-delimited, so token equality is exact (a gismu like `nanmu`
-/// is one token and never matches `na`).
+/// True if a KR source line contains genuine negation. KR spells it with the
+/// `~` operator (claim negation and `where ~pred` bodies alike), and `~`
+/// appears nowhere else in the grammar, so a substring check is exact. The
+/// `no` determiner (exact-count-0) compiles to a CountNode and is caught by
+/// the buffer scan instead.
 pub fn source_has_negation(line: &str) -> bool {
-    line.split_whitespace()
-        .any(|tok| NEGATION_CMAVO.contains(&tok))
+    line.contains('~')
 }
 
 /// Ground `du` in the ONE verified shape both oracles can judge: the buffer's sole root,
@@ -136,11 +132,13 @@ mod tests {
 
     #[test]
     fn detects_negation_tokens() {
-        assert!(source_has_negation("ro lo prenu poi na zanru cu se bilga"));
-        assert!(source_has_negation("naku la .adam. cu gerku"));
-        assert!(!source_has_negation("ro lo gerku cu danlu"));
-        // `nanmu` must not trip the `na` check.
-        assert!(!source_has_negation("la .adam. cu nanmu"));
+        assert!(source_has_negation(
+            "obligated(every person where ~approves, event { removes() })."
+        ));
+        assert!(source_has_negation("~dog(Adam)."));
+        assert!(!source_has_negation("animal(every dog)."));
+        // The `no` determiner is count territory (buffer scan), not `~`.
+        assert!(!source_has_negation("goes(no dog)."));
     }
 
     #[test]

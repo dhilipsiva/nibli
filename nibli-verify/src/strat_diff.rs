@@ -25,8 +25,6 @@
 //!    asserting only the accepted lines must give byte-identical verdicts on an
 //!    entity×predicate query battery: a rejected rule must leave no trace.
 
-use nibli_engine::NibliEngine;
-
 use crate::generator::Lcg;
 
 /// A dependency edge `head → body-predicate` (negative iff the body literal is
@@ -81,10 +79,10 @@ pub fn stratifiable(edges: &[Edge]) -> bool {
 const STRAT_PREDS: &[&str] = &["gerku", "mlatu", "danlu", "jmive", "melbi"];
 
 /// Entities for the fact base + query battery.
-const STRAT_ENTITIES: &[&str] = &["adam", "bel"];
+const STRAT_ENTITIES: &[&str] = &["Adam", "Bel"];
 
 /// Generate the program for `seed`: 1..=3 entity facts, then 2..=6 rules of shape
-/// `ro lo A cu B` (edge B→A positive) or `ro lo A poi na R cu B` (edges B→A positive,
+/// `B(every A).` (edge B→A positive) or `B(every A where ~R).` (edges B→A positive,
 /// B→R negative). Deterministic.
 ///
 /// COST BOUND (why positive edges are DAG-oriented): the replay battery queries the
@@ -106,9 +104,9 @@ pub fn random_strat_case(seed: u64) -> StratCase {
     let n_facts = 1 + rng.below(3);
     for _ in 0..n_facts {
         facts.push(format!(
-            "la .{}. cu {}",
-            rng.pick(STRAT_ENTITIES),
-            rng.pick(STRAT_PREDS)
+            "{}({}).",
+            rng.pick(STRAT_PREDS),
+            rng.pick(STRAT_ENTITIES)
         ));
     }
 
@@ -123,12 +121,12 @@ pub fn random_strat_case(seed: u64) -> StratCase {
         if rng.below(5) < 2 {
             let r = rng.pick(STRAT_PREDS); // unrestricted — may close a (negative) cycle
             rules.push(SpecRule {
-                line: format!("ro lo {body} poi na {r} cu {head}"),
+                line: format!("{head}(every {body} where ~{r})."),
                 edges: vec![(head, body, false), (head, r, true)],
             });
         } else {
             rules.push(SpecRule {
-                line: format!("ro lo {body} cu {head}"),
+                line: format!("{head}(every {body})."),
                 edges: vec![(head, body, false)],
             });
         }
@@ -206,7 +204,7 @@ impl StratOutcome {
 /// then (after any rejection) the fresh-replay equivalence battery.
 pub fn run_strat_case(case: &StratCase) -> StratOutcome {
     let name = case.name.clone();
-    let engine = crate::lojban_engine();
+    let engine = crate::kr_engine();
 
     for f in &case.facts {
         if let Err(e) = engine.assert_text(f) {
@@ -262,7 +260,7 @@ pub fn run_strat_case(case: &StratCase) -> StratOutcome {
     // lines must answer the whole battery identically — a rejected rule leaves no
     // trace (facts, rules, indexes, caches).
     if rejected > 0 {
-        let fresh = crate::lojban_engine();
+        let fresh = crate::kr_engine();
         for f in &case.facts {
             if let Err(e) = fresh.assert_text(f) {
                 return StratOutcome::Error {
@@ -281,7 +279,7 @@ pub fn run_strat_case(case: &StratCase) -> StratOutcome {
         }
         for e in STRAT_ENTITIES {
             for p in STRAT_PREDS {
-                let q = format!("la .{e}. cu {p}");
+                let q = format!("{p}({e}).");
                 let a = engine
                     .query_text_raw_proof(&q)
                     .map(|(v, _)| format!("{v:?}"));

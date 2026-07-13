@@ -1,7 +1,7 @@
 //! Deterministic property-based generator of NAF-free definite-Horn cases for the differential
-//! gate. Each case is a random taxonomy program — `la .X. cu P` facts, `la .X. cu du la .Y.`
-//! identity links, and `ro lo P cu Q` universal rules over a small fallback-dictionary
-//! vocabulary — plus a random atomic (or identity) query. Every case is in the mappable
+//! gate. Each case is a random taxonomy program — `P(X).` facts, `X = Y.` identity links, and
+//! `Q(every P).` universal rules over a small fallback-dictionary vocabulary — plus a random
+//! atomic (or identity) query. Every case is in the mappable
 //! classical fragment **by construction** (no negation, no numbers, no tense/deontic/compute;
 //! ground `du` maps to native `=`), so it broadens differential soundness coverage without
 //! ever leaving the fragment the gate can judge. The filter in `run_lines` is still the final
@@ -15,22 +15,22 @@ pub struct GeneratedCase {
     pub query: String,
 }
 
-/// Class/property gismu, all present in the in-tree FALLBACK dictionary — so generated cases
-/// resolve in CI with no data file. Used one-place as `la .X. cu <pred>` (arity padding fills
-/// the rest with `zo'e`).
+/// Class/property predicates (identity-gismu spellings), all present in the in-tree FALLBACK
+/// dictionary — so generated cases resolve in CI with no data file. Used one-place as
+/// `<pred>(X).` (arity padding fills the rest with unspecified).
 const PREDS: &[&str] = &[
     "gerku", "mlatu", "danlu", "jmive", "prenu", "morsi", "sutra", "barda", "cmalu", "melbi",
     "blanu", "xunre", "pelxu", "crino",
 ];
 
-/// cmevla (proper names), each ending in a consonant (a Lojban cmevla requirement).
-const ENTITIES: &[&str] = &["adam", "bel", "kim", "dan", "tam"];
+/// KR rigid Names (Capitalized).
+const ENTITIES: &[&str] = &["Adam", "Bel", "Kim", "Dan", "Tam"];
 
 /// Tense prefixes for facts/queries: mostly bare, sometimes pu/ca/ba. Facts are
 /// flavor-exact and unmarked rules are flavor-polymorphic (see `tense::flavorize`),
 /// so mixing flavors into facts + query exercises the isolation diagonal AND the
 /// polymorphic rule firing against the oracles.
-const TENSES: &[&str] = &["", "pu ", "ca ", "ba "];
+const TENSES: &[&str] = &["", "past ", "now ", "future "];
 
 /// Small deterministic LCG so a seed reproduces a case exactly (no rng crate; CI must be
 /// reproducible).
@@ -75,132 +75,60 @@ pub fn random_case(seed: u64) -> GeneratedCase {
         } else {
             rng.pick(&TENSES[1..])
         };
-        // 1-in-3 BARE facts become a `gi'e` bridi-tail conjunction (constant
-        // head, two positive tails) — the GIhA And-fact shape is Horn/NAF-free
-        // and mappable, so the Vampire sweep differentially checks the
-        // conjunct derivations AND the parser gate camxes-fuzzes the surface.
-        // Tensed facts stay atomic (a tense prefix applies to the first tail
-        // only, which the flavorizer does not model — conservative).
+        // 1-in-3 BARE facts become an And-fact operator claim (one constant
+        // subject, two positive conjuncts — the KR twin of the retired GIhA
+        // bridi-tail shape): Horn/NAF-free and mappable, so the Vampire sweep
+        // differentially checks the conjunct derivations. Tensed facts stay
+        // atomic (a tense prefix applies per claim, which the flavorizer
+        // models only for atomic facts — conservative).
         if tense.is_empty() && rng.below(3) == 0 {
+            let e = rng.pick(ENTITIES);
             kb.push(format!(
-                "la .{}. cu {} gi'e {}",
-                rng.pick(ENTITIES),
+                "{}({e}) & {}({e}).",
                 rng.pick(PREDS),
                 rng.pick(PREDS)
             ));
         } else {
             kb.push(format!(
-                "{tense}la .{}. cu {}",
-                rng.pick(ENTITIES),
-                rng.pick(PREDS)
+                "{tense}{}({}).",
+                rng.pick(PREDS),
+                rng.pick(ENTITIES)
             ));
         }
     }
-    // 0..=2 identity links `la .E1. cu du la .E2.` — nibli resolves these through its
-    // union-find equivalence index; the Vampire side sees native `=` (congruence), so the
-    // mix exercises substitutivity through fact lookup AND rule firing. A self-link
-    // (`E du E`) or a duplicate link is harmless (reflexivity / idempotent union).
+    // 0..=2 identity links `E1 = E2.` — nibli resolves these through its union-find
+    // equivalence index; the Vampire side sees native `=` (congruence), so the mix
+    // exercises substitutivity through fact lookup AND rule firing. A self-link
+    // (`E = E`) or a duplicate link is harmless (reflexivity / idempotent union).
     let n_du = rng.below(3);
     for _ in 0..n_du {
-        kb.push(format!(
-            "la .{}. cu du la .{}.",
-            rng.pick(ENTITIES),
-            rng.pick(ENTITIES)
-        ));
+        kb.push(format!("{} = {}.", rng.pick(ENTITIES), rng.pick(ENTITIES)));
     }
-    // 0..=3 universal (Horn) rules `ro lo P cu Q`. Cycles are fine — definite Horn stays sound;
+    // 0..=3 universal (Horn) rules `Q(every P).`. Cycles are fine — definite Horn stays sound;
     // nibli may cut a cycle to Unknown, which the gate simply skips.
     let n_rules = rng.below(4);
     for _ in 0..n_rules {
-        kb.push(format!("ro lo {} cu {}", rng.pick(PREDS), rng.pick(PREDS)));
+        kb.push(format!("{}(every {}).", rng.pick(PREDS), rng.pick(PREDS)));
     }
-    // Mostly an atomic `[tense] la .E. cu P` query (bare with probability 1/2, else a
+    // Mostly an atomic `[tense] P(E).` query (bare with probability 1/2, else a
     // flavor — exercising both the diagonal and the off-diagonal FALSE sides);
-    // 1-in-5 an identity query `la .E1. cu du la .E2.` (never tensed — tensed `du`
-    // is outside both oracle fragments).
+    // 1-in-5 an identity query `E1 = E2.` (never tensed — tensed `du` is outside
+    // both oracle fragments).
     let query = if rng.below(5) == 0 {
-        format!(
-            "la .{}. cu du la .{}.",
-            rng.pick(ENTITIES),
-            rng.pick(ENTITIES)
-        )
+        format!("{} = {}.", rng.pick(ENTITIES), rng.pick(ENTITIES))
     } else {
         let tense = if rng.below(2) == 0 {
             ""
         } else {
             rng.pick(&TENSES[1..])
         };
-        format!("{tense}la .{}. cu {}", rng.pick(ENTITIES), rng.pick(PREDS))
+        format!("{tense}{}({}).", rng.pick(PREDS), rng.pick(ENTITIES))
     };
 
     GeneratedCase {
         name: format!("rand_seed{seed}"),
         kb,
         query,
-    }
-}
-
-/// GIhA connectives for the parser-gate fuzz (spaced base forms; fused `nai`
-/// variants are derived in the production).
-const GIHA: &[&str] = &["gi'e", "gi'a", "gi'o", "gi'u"];
-
-/// Generate a PARSER-GATE-ONLY case fuzzing the GIhA bridi-tail surface and
-/// the solid `.i`+JA sentence connectives against camxes. Never fed to the
-/// soundness sweeps: bare `gi'a`/`gi'u` assertions fail closed and `na`-tails
-/// are outside the Vampire fragment, but the parse-differential only checks
-/// gerna-accept ⇒ camxes-accept, so the full variety is safe here. Heads are
-/// constants only (`mi`/`do`/`la .E.`) — gerna rejects quantified/description
-/// GIhA heads, and a gerna-reject contributes nothing to the gate.
-pub fn random_giha_case(seed: u64) -> GeneratedCase {
-    let mut rng = Lcg::new(seed);
-
-    let head = match rng.below(3) {
-        0 => "mi".to_string(),
-        1 => "do".to_string(),
-        _ => format!("la .{}. cu", rng.pick(ENTITIES)),
-    };
-    let mut line = format!("{head} {}", rng.pick(PREDS));
-
-    // 1..=3 chained tails; each: connective (fused-nai / spaced-nai / plain),
-    // optional `na`, the tail selbri, and an optional trailing description.
-    let n_tails = 1 + rng.below(3);
-    for _ in 0..n_tails {
-        let conn = rng.pick(GIHA);
-        match rng.below(4) {
-            0 => line.push_str(&format!(" {conn}nai")),  // fused nai
-            1 => line.push_str(&format!(" {conn} nai")), // spaced nai
-            _ => line.push_str(&format!(" {conn}")),
-        }
-        if rng.below(4) == 0 {
-            line.push_str(" na");
-        }
-        line.push_str(&format!(" {}", rng.pick(PREDS)));
-        if rng.below(3) == 0 {
-            let gadri = if rng.below(2) == 0 { "lo" } else { "le" };
-            line.push_str(&format!(" {gadri} {}", rng.pick(PREDS)));
-        }
-    }
-
-    // 1-in-2: a second sentence joined with a SOLID `.i`+JA compound, so the
-    // lexer's fix_dot_i_ja_connective rewrite is camxes-fuzzed too.
-    let kb = if rng.below(2) == 0 {
-        let solid = rng.pick(&[
-            ".ije", ".ija", ".ijo", ".iju", ".ijenai", ".ijanai", ".ijonai", ".ijunai", ".inaja",
-            ".inaje", ".inajo", ".inaju",
-        ]);
-        vec![format!(
-            "{line} {solid} la .{}. cu {}",
-            rng.pick(ENTITIES),
-            rng.pick(PREDS)
-        )]
-    } else {
-        vec![line]
-    };
-
-    GeneratedCase {
-        name: format!("giha_seed{seed}"),
-        kb,
-        query: format!("la .{}. cu {}", rng.pick(ENTITIES), rng.pick(PREDS)),
     }
 }
 
@@ -232,14 +160,14 @@ pub fn random_naf_case(seed: u64) -> GeneratedCase {
     let q = rng.pick(NAF_DERIVED); // NAF-rule head (derived predicate)
 
     // The stratified NAF rule: a domain member with no R-witness gets Q.
-    kb.push(format!("ro lo {NAF_DOMAIN} poi na {r} cu {q}"));
+    kb.push(format!("{q}(every {NAF_DOMAIN} where ~{r})."));
 
     // Optionally a positive Horn chain Q → S (S derived; positive edges never break
     // stratification), extending what a domain member can derive.
     let mut derivable = vec![q];
     if rng.below(2) == 0 {
         let s = rng.pick(NAF_DERIVED);
-        kb.push(format!("ro lo {q} cu {s}"));
+        kb.push(format!("{s}(every {q})."));
         derivable.push(s);
     }
 
@@ -248,9 +176,9 @@ pub fn random_naf_case(seed: u64) -> GeneratedCase {
     let mut ents: Vec<&'static str> = Vec::new();
     for _ in 0..n_ent {
         let e = rng.pick(ENTITIES);
-        kb.push(format!("la .{e}. cu {NAF_DOMAIN}"));
+        kb.push(format!("{NAF_DOMAIN}({e})."));
         if rng.below(2) == 0 {
-            kb.push(format!("la .{e}. cu {r}"));
+            kb.push(format!("{r}({e})."));
         }
         ents.push(e);
     }
@@ -260,12 +188,12 @@ pub fn random_naf_case(seed: u64) -> GeneratedCase {
     // the union-find; clingo sees one canonicalized constant). `du` is resolved by the
     // equivalence index, not a rule head, so stratification is untouched.
     if ents.len() == 2 && rng.below(3) == 0 {
-        kb.push(format!("la .{}. cu du la .{}.", ents[0], ents[1]));
+        kb.push(format!("{} = {}.", ents[0], ents[1]));
     }
 
     let qe = ents[rng.below(ents.len())];
     let qp = derivable[rng.below(derivable.len())];
-    let query = format!("la .{qe}. cu {qp}");
+    let query = format!("{qp}({qe}).");
 
     GeneratedCase {
         name: format!("naf_seed{seed}"),
@@ -274,8 +202,8 @@ pub fn random_naf_case(seed: u64) -> GeneratedCase {
     }
 }
 
-/// Lojban digits for the exact-count quantifier `PA lo P cu Q` (1, 2, 3).
-const COUNT_DIGITS: &[&str] = &["pa", "re", "ci"];
+/// Digits for the exact-count quantifier `Q(exactly N P).` (1, 2, 3).
+const COUNT_DIGITS: &[&str] = &["1", "2", "3"];
 
 /// Generate a random **exact-count** case for `seed`: 2..=5 ground facts over a small
 /// entity/predicate pool, plus one `PA lo P1 cu P2` query. Both TRUE and FALSE sides
@@ -297,7 +225,7 @@ pub fn random_count_case(seed: u64) -> GeneratedCase {
     for _ in 0..n_facts {
         let e = ents[rng.below(ents.len())];
         let p = preds[rng.below(preds.len())];
-        kb.push(format!("la .{e}. cu {p}"));
+        kb.push(format!("{p}({e})."));
     }
 
     // ~1 in 3: a du link (two distinct pool entities become one countable entity).
@@ -305,7 +233,7 @@ pub fn random_count_case(seed: u64) -> GeneratedCase {
         let a = ents[rng.below(ents.len())];
         let b = ents[rng.below(ents.len())];
         if a != b {
-            kb.push(format!("la .{a}. du la .{b}."));
+            kb.push(format!("{a} = {b}."));
         }
     }
     // ~1 in 3: a universal taxonomy rule (derived body facts count; the rule's
@@ -314,7 +242,7 @@ pub fn random_count_case(seed: u64) -> GeneratedCase {
         let pa = preds[rng.below(preds.len())];
         let pb = preds[rng.below(preds.len())];
         if pa != pb {
-            kb.push(format!("ro lo {pa} cu {pb}"));
+            kb.push(format!("{pb}(every {pa})."));
         }
     }
 
@@ -326,7 +254,7 @@ pub fn random_count_case(seed: u64) -> GeneratedCase {
         preds[rng.below(preds.len())]
     };
     let digit = rng.pick(COUNT_DIGITS);
-    let query = format!("{digit} lo {p1} cu {p2}");
+    let query = format!("{p2}(exactly {digit} {p1}).");
 
     GeneratedCase {
         name: format!("count_seed{seed}"),
@@ -351,87 +279,56 @@ mod tests {
     }
 
     #[test]
-    fn giha_case_deterministic_and_shaped() {
-        let a = random_giha_case(42);
-        let b = random_giha_case(42);
-        assert_eq!(a.kb, b.kb);
-        assert_eq!(a.query, b.query);
-        // Every case carries at least one GIhA connective, and the production
-        // actually exercises the variety it promises across a seed sweep.
-        let (mut fused_nai, mut na_tail, mut solid_ija, mut multi_tail) = (0, 0, 0, 0);
-        for seed in 0u64..200 {
-            let c = random_giha_case(seed);
-            let line = &c.kb[0];
-            assert!(
-                line.contains("gi'"),
-                "every GIhA case must contain a bridi-tail connective: {line}"
-            );
-            if line.contains("nai") {
-                fused_nai += 1;
-            }
-            if line.contains(" na ") {
-                na_tail += 1;
-            }
-            if line.contains(".ij") || line.contains(".inaj") {
-                solid_ija += 1;
-            }
-            if line.matches("gi'").count() >= 2 {
-                multi_tail += 1;
-            }
-        }
-        assert!(fused_nai > 10, "nai variants under-represented");
-        assert!(na_tail > 10, "na-tails under-represented");
-        assert!(solid_ija > 30, "solid .i+JA joins under-represented");
-        assert!(multi_tail > 20, "chained tails under-represented");
-    }
-
-    #[test]
-    fn giha_production_appears_in_random_case() {
-        // The 1-in-3 bare-fact gi'e production must actually fire across seeds
-        // (it feeds the Vampire sweep, not just the parser gate).
+    fn and_production_appears_in_random_case() {
+        // The 1-in-3 bare-fact And-claim production (the KR twin of the retired
+        // GIhA shape) must actually fire across seeds — it feeds the Vampire sweep.
         let hits = (0u64..100)
-            .filter(|&s| random_case(s).kb.iter().any(|l| l.contains("gi'e")))
+            .filter(|&s| random_case(s).kb.iter().any(|l| l.contains(" & ")))
             .count();
         assert!(
             hits > 15,
-            "gi'e facts under-represented in random_case: {hits}"
+            "And-facts under-represented in random_case: {hits}"
         );
     }
 
     #[test]
     fn well_formed_mappable_shape() {
-        // Every generated line is a fact (optionally tense-prefixed — pu/ca/ba are now
-        // in-fragment via `tense::flavorize`) or a Horn rule over the fallback
-        // vocabulary — and no whitespace-delimited TOKEN is a negation / number /
-        // abstraction cmavo that would leave the mappable fragment. (Token check, not
-        // substring — `prenu` legitimately contains "nu".)
-        const BAD_TOKENS: &[&str] = &[
-            "na", "naku", "na'i", "li", "nu", "du'u", "ka", "ni", "si'o", "ei",
-        ];
+        // Every generated line is a fact / And-fact / identity link (optionally
+        // tense-prefixed facts — past/now/future are in-fragment via
+        // `tense::flavorize`) or a Horn rule over the fallback vocabulary —
+        // and nothing carries `~` (genuine negation) or any other shape that
+        // would leave the mappable fragment.
         for seed in 0u64..50 {
             let c = random_case(seed);
             assert!(!c.kb.is_empty());
             for line in c.kb.iter().chain(std::iter::once(&c.query)) {
                 let body = line
-                    .strip_prefix("pu ")
-                    .or_else(|| line.strip_prefix("ca "))
-                    .or_else(|| line.strip_prefix("ba "))
+                    .strip_prefix("past ")
+                    .or_else(|| line.strip_prefix("now "))
+                    .or_else(|| line.strip_prefix("future "))
                     .unwrap_or(line);
+                let is_rule = body.contains("(every ");
+                let is_du = body.contains(" = ");
+                let is_and = body.contains(" & ");
+                let is_fact = body.ends_with(").")
+                    && body
+                        .chars()
+                        .next()
+                        .is_some_and(|ch| ch.is_ascii_lowercase());
                 assert!(
-                    body.starts_with("la .") || body.starts_with("ro lo "),
+                    is_rule || is_du || is_and || is_fact,
                     "unexpected generated line: {line}"
                 );
-                // A tense prefix only ever appears on a fact/query, never a rule.
+                // A tense prefix only ever appears on an atomic fact/query —
+                // never a rule, And-fact, or identity link.
                 assert!(
-                    body == line || body.starts_with("la ."),
-                    "tense prefix on a non-fact line: {line}"
+                    body == line || (is_fact && !is_rule && !is_du && !is_and),
+                    "tense prefix on a non-atomic line: {line}"
                 );
-                for tok in line.split_whitespace() {
-                    assert!(
-                        !BAD_TOKENS.contains(&tok),
-                        "generated line left the fragment (token '{tok}'): {line}"
-                    );
-                }
+                assert!(
+                    !line.contains('~'),
+                    "generated line left the fragment (negation): {line}"
+                );
             }
         }
     }
@@ -446,20 +343,21 @@ mod tests {
 
     #[test]
     fn naf_case_stratified_by_construction() {
-        // Every generated NAF case has EXACTLY one `poi na R` line, and its negated predicate
-        // R is always a BASE predicate — never a rule head. That is the stratification
-        // invariant: a base predicate has no incoming rule edge, so no negative edge can lie
-        // inside an SCC. (If this held falsely, nibli would reject the KB at assert time and
-        // the gate would surface an Error, but we pin it structurally here too.)
+        // Every generated NAF case has EXACTLY one `where ~R` line, and its negated
+        // predicate R is always a BASE predicate — never a rule head. That is the
+        // stratification invariant: a base predicate has no incoming rule edge, so no
+        // negative edge can lie inside an SCC. (If this held falsely, nibli would reject
+        // the KB at assert time and the gate would surface an Error, but we pin it
+        // structurally here too.)
         for seed in 0u64..100 {
             let c = random_naf_case(seed);
-            let naf_lines: Vec<&String> = c.kb.iter().filter(|l| l.contains("poi na ")).collect();
+            let naf_lines: Vec<&String> = c.kb.iter().filter(|l| l.contains("where ~")).collect();
             assert_eq!(naf_lines.len(), 1, "expected one NAF rule: {:?}", c.kb);
             let neg = naf_lines[0]
-                .split("poi na ")
+                .split("where ~")
                 .nth(1)
-                .and_then(|rest| rest.split_whitespace().next())
-                .expect("a negated predicate after `poi na`");
+                .map(|rest| rest.trim_end_matches(")."))
+                .expect("a negated predicate after `where ~`");
             assert!(
                 NAF_BASE.contains(&neg),
                 "negated predicate '{neg}' must be a BASE predicate (never a head): {:?}",
@@ -467,8 +365,8 @@ mod tests {
             );
             // The head Q is derived; heads never appear in NAF_BASE.
             for line in &c.kb {
-                if line.starts_with("ro lo ") {
-                    let head = line.rsplit(" cu ").next().unwrap_or("").trim();
+                if line.contains("(every ") {
+                    let head = line.split('(').next().unwrap_or("").trim();
                     assert!(
                         !NAF_BASE.contains(&head),
                         "a base predicate appeared as a rule head: {line}"

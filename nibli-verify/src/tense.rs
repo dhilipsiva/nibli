@@ -38,7 +38,7 @@
 
 use std::collections::BTreeSet;
 
-use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm};
+use nibli_types::logic::{LogicBuffer, LogicNode};
 
 /// A tense flavor. `Bare` is the unmarked flavor (empty suffix).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -321,6 +321,7 @@ fn copy_suffixed(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nibli_types::logic::LogicalTerm;
 
     fn pred(nodes: &mut Vec<LogicNode>, rel: &str, args: Vec<LogicalTerm>) -> u32 {
         nodes.push(LogicNode::Predicate((rel.to_string(), args)));

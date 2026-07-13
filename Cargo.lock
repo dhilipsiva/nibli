@@ -2861,7 +2861,6 @@ dependencies = [
 name = "nibli-verify"
 version = "0.1.0"
 dependencies = [
- "gerna",
  "klaro",
  "klaro-dictionary",
  "logji",
