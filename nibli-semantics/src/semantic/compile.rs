@@ -77,11 +77,31 @@ impl SemanticCompiler {
         // x1 ARGUMENT here — BEFORE `apply_predicate` runs any `se`/`te`/`ve`/`xe`
         // conversion — so `poi se prami la .alis.` routes `ke'a` through the
         // conversion to the correct underlying role (prami_x2), exactly as an
-        // explicit subject would. One-shot: only the clause's main (first) bridi
-        // consumes it; nested bridi (abstraction bodies) see `None`. Marking
-        // `ref_used` makes the caller skip the post-hoc `inject_variable`, which
-        // cannot see conversion and would refill the vacated x1 slot.
-        if bridi.head_terms.is_empty() && target_arity >= 1 {
+        // explicit subject would. One-shot: the first empty-head bridi WITHOUT
+        // its own explicit `ke'a` consumes it; nested bridi (abstraction bodies)
+        // see `None`. Marking `ref_used` makes the caller skip the post-hoc
+        // `inject_variable`, which cannot see conversion and would refill the
+        // vacated x1 slot.
+        //
+        // SKIP RULE: when the proposition's own direct terms already carry an
+        // explicit `ke'a` — bare, or under a `fa`..`fu` place tag (the shape the
+        // KR front-end emits for all-named args: empty head + FA-tagged tail,
+        // e.g. `where loves(lover: Alis, loved: it)`) — the user has placed the
+        // clause variable, and injecting would double-fill x1: a hard "place
+        // already filled" reject for `fa ke'a` / a tag colliding with the
+        // pre-fill, or a silently self-referring x1 for a lone `fe`..`fu` ke'a.
+        // The explicit `ke'a` resolves in the term loop below and sets `ref_used`
+        // itself, exactly like the positional spelling (whose non-empty head
+        // never reaches this branch) — so named ≡ positional, including leaving
+        // `pending_clause_subject` untouched. The scan is SHALLOW: a `ke'a`
+        // nested in a Description/Restricted/Abstraction belongs to the inner
+        // clause; a BAI-modal-carried `ke'a` (`ModalTagged`) is not place-filling
+        // and keeps the implicit-x1 default.
+        if bridi.head_terms.is_empty()
+            && target_arity >= 1
+            && self.pending_clause_subject.is_some()
+            && !Self::terms_contain_explicit_kea(&all_terms, sumtis)
+        {
             if let Some(subject) = self.pending_clause_subject.take() {
                 positioned[0] = Some(LogicalTerm::Variable(subject));
                 self.ref_used = true;
@@ -490,6 +510,26 @@ impl SemanticCompiler {
             }
         }
         None
+    }
+
+    /// Shallow scan of a proposition's direct terms for an explicit `ke'a` —
+    /// bare, or under `fa`..`fu` place-tag wrappers (unwrapped transitively).
+    /// Does NOT descend into Description/Restricted/Abstraction/Connected
+    /// arguments (a nested clause's `ke'a` belongs to that clause), and does NOT
+    /// count a BAI-modal-carried `ke'a` (`ModalTagged` is not place-filling, so
+    /// it cannot collide with the implicit-x1 injection — see the skip rule at
+    /// the call site). Mirrors the nibli-kr render-side `has_explicit_keha` scan.
+    fn terms_contain_explicit_kea(term_ids: &[u32], sumtis: &[Argument]) -> bool {
+        term_ids.iter().any(|&id| {
+            let mut s = &sumtis[id as usize];
+            loop {
+                match s {
+                    Argument::Tagged((_, inner_id)) => s = &sumtis[*inner_id as usize],
+                    Argument::Pronoun(p) => return p.as_str() == "ke'a",
+                    _ => return false,
+                }
+            }
+        })
     }
 
     /// Distribute a connected sumti into a logical combination of two bridi (one

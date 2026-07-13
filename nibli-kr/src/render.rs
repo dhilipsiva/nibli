@@ -295,9 +295,10 @@ impl<'a> Renderer<'a> {
             })
             .collect::<R<_>>()?;
         // In inject-it mode, sort by final place so contiguous places render
-        // positionally — named args with `it` trip smuni's implicit-ke'a x1
-        // injection (a known collision), while positional `it` lands in its
-        // place. Normal rendering keeps surface order (byte-stable output).
+        // positionally — the leading positional streak is the byte-stable `it`
+        // spelling (nibli-semantics compiles named-`it` and positional-`it`
+        // where-bodies identically now, but positional stays the canonical
+        // rendering). Normal rendering keeps surface order (byte-stable output).
         if inject_it {
             placed.sort_by_key(|(place, _)| *place);
         }
@@ -793,8 +794,9 @@ impl<'a> Renderer<'a> {
         // Full-claim body. A gerna-origin Simple body leaves the head EMPTY
         // (smuni injects ke'a at x1) — spell that implicit ke'a as `it` so the
         // rendered KR re-parses (§7 mandatory-it). nibli KR-emitted bodies carry
-        // an explicit ke'a (head, or a tail term once the smuni named-`it`
-        // collision is fixed) and render through the normal path.
+        // an explicit ke'a (head, or a tail term — nibli-semantics skips its
+        // implicit-x1 injection when the body already contains an explicit ke'a)
+        // and render through the normal path.
         let has_explicit_keha = |bridi: &Proposition| -> R<bool> {
             for &tail in &bridi.tail_terms {
                 let inner = match self.sumti(tail)? {

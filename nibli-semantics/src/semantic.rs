@@ -117,7 +117,9 @@ pub struct SemanticCompiler {
     /// `compile_proposition` of the clause body. This makes `poi se prami la .alis.`
     /// route `ke'a` through `se` conversion to the correct underlying role
     /// (prami_x2), instead of post-hoc `inject_variable` wrongly filling the
-    /// conversion-vacated `prami_x1` slot.
+    /// conversion-vacated `prami_x1` slot. Skipped (left in place) when the
+    /// proposition's own terms carry an explicit `ke'a` — see the skip rule in
+    /// `compile_proposition`.
     pending_clause_subject: Option<lasso::Spur>,
     /// Logic variables (`da`/`de`/`di`) bound by an enclosing prenex
     /// (`ro da ... zo'u`). These are universally quantified by the prenex
@@ -2873,6 +2875,196 @@ mod tests {
         assert_eq!(
             barda_args[1], gerku_args[1],
             "barda_x1 must bind the same variable as gerku_x1 (the described dog)"
+        );
+    }
+
+    #[test]
+    fn test_fa_name_fe_kea_skips_x1_injection() {
+        // `ro lo gerku poi prami fa la .alis. fe ke'a cu danlu` — the exact KR
+        // spelling `animal(every dog where loves(lover: Alis, loved: it)).`
+        // The all-named lowering leaves the body HEAD EMPTY with FA-tagged tail
+        // terms (`fa alis`, `fe ke'a`). The implicit-ke'a x1 injection must SKIP
+        // (an explicit ke'a rides at x2), or `fa alis` collides with the
+        // pre-filled x1 → "place already filled" reject (the shipped-language
+        // defect this fixes). alis lands at x1 (lover), ke'a/dog at x2 (loved).
+        let selbris = vec![
+            Predicate::Root("gerku".into()), // 0
+            Predicate::Root("prami".into()), // 1
+            Predicate::Root("danlu".into()), // 2
+        ];
+        let sumtis = vec![
+            Argument::Description((Determiner::RoLo, 0)), // 0: ro lo gerku
+            Argument::Restricted((
+                0,
+                RelClause {
+                    kind: RelClauseKind::Poi,
+                    body_sentence: 1,
+                },
+            )), // 1: ro lo gerku poi <body>
+            Argument::Pronoun("ke'a".into()),             // 2: ke'a
+            Argument::Name("alis".into()),                // 3: alis
+            Argument::Tagged((PlaceTag::Fa, 3)),          // 4: fa alis  (x1, lover)
+            Argument::Tagged((PlaceTag::Fe, 2)),          // 5: fe ke'a  (x2, loved)
+        ];
+        let sentences = vec![
+            Sentence::Simple(Proposition {
+                relation: 2, // danlu (main: `animal(every dog)`)
+                head_terms: vec![1],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                deontic: None,
+            }),
+            Sentence::Simple(Proposition {
+                relation: 1, // prami (body: head EMPTY, all FA-tagged)
+                head_terms: vec![],
+                tail_terms: vec![4, 5],
+                negated: false,
+                tense: None,
+                deontic: None,
+            }),
+        ];
+        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        assert!(
+            compiler.errors.is_empty(),
+            "explicit fe-tagged ke'a must not collide with the implicit injection: {:?}",
+            compiler.errors
+        );
+        let prami_x1 = get_pred_args(&form, "prami_x1", &compiler).expect("prami_x1 present");
+        let prami_x2 = get_pred_args(&form, "prami_x2", &compiler).expect("prami_x2 present");
+        let gerku_x1 = get_pred_args(&form, "gerku_x1", &compiler).expect("gerku_x1 present");
+        assert_eq!(
+            const_str(&compiler, &prami_x1[1]),
+            "alis",
+            "x1 must be the lover, alis"
+        );
+        assert_eq!(
+            prami_x2[1], gerku_x1[1],
+            "the fe-tagged ke'a must bind the described dog at x2 (the loved)"
+        );
+    }
+
+    #[test]
+    fn test_fa_tagged_kea_skips_x1_injection() {
+        // `ro lo gerku poi prami fa ke'a fe la .alis. cu danlu` —
+        // `animal(every dog where loves(lover: it, loved: Alis)).`
+        // Mirror image of the above: the explicit ke'a rides UNDER the `fa` (x1)
+        // tag. The scan must unwrap the place tag to see it and SKIP the
+        // injection (otherwise `fa ke'a` collides with the pre-filled x1). ke'a/
+        // dog lands at x1 (lover), alis at x2 (loved).
+        let selbris = vec![
+            Predicate::Root("gerku".into()), // 0
+            Predicate::Root("prami".into()), // 1
+            Predicate::Root("danlu".into()), // 2
+        ];
+        let sumtis = vec![
+            Argument::Description((Determiner::RoLo, 0)), // 0: ro lo gerku
+            Argument::Restricted((
+                0,
+                RelClause {
+                    kind: RelClauseKind::Poi,
+                    body_sentence: 1,
+                },
+            )), // 1
+            Argument::Pronoun("ke'a".into()),             // 2: ke'a
+            Argument::Name("alis".into()),                // 3: alis
+            Argument::Tagged((PlaceTag::Fa, 2)),          // 4: fa ke'a (x1, lover)
+            Argument::Tagged((PlaceTag::Fe, 3)),          // 5: fe alis (x2, loved)
+        ];
+        let sentences = vec![
+            Sentence::Simple(Proposition {
+                relation: 2, // danlu (main)
+                head_terms: vec![1],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                deontic: None,
+            }),
+            Sentence::Simple(Proposition {
+                relation: 1, // prami (body: head EMPTY, fa ke'a + fe alis)
+                head_terms: vec![],
+                tail_terms: vec![4, 5],
+                negated: false,
+                tense: None,
+                deontic: None,
+            }),
+        ];
+        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        assert!(
+            compiler.errors.is_empty(),
+            "fa-tagged ke'a must not collide with the implicit injection: {:?}",
+            compiler.errors
+        );
+        let prami_x1 = get_pred_args(&form, "prami_x1", &compiler).expect("prami_x1 present");
+        let prami_x2 = get_pred_args(&form, "prami_x2", &compiler).expect("prami_x2 present");
+        let gerku_x1 = get_pred_args(&form, "gerku_x1", &compiler).expect("gerku_x1 present");
+        assert_eq!(
+            prami_x1[1], gerku_x1[1],
+            "the fa-tagged ke'a must bind the described dog at x1 (the lover)"
+        );
+        assert_eq!(
+            const_str(&compiler, &prami_x2[1]),
+            "alis",
+            "x2 must be the loved, alis"
+        );
+    }
+
+    #[test]
+    fn test_fe_tagged_lone_kea_leaves_x1_unspecified() {
+        // `ro lo gerku poi prami fe ke'a cu danlu` —
+        // `animal(every dog where loves(loved: it)).` (x1 omitted).
+        // Regression for the SILENT variant: the injection used to pre-fill x1
+        // with the clause var while the fe-tagged ke'a resolved to the SAME var
+        // at x2 → prami(dog, dog) ("dog that loves itself"). x1 must stay
+        // Unspecified → prami(zo'e, dog) ("dog that is loved").
+        let selbris = vec![
+            Predicate::Root("gerku".into()), // 0
+            Predicate::Root("prami".into()), // 1
+            Predicate::Root("danlu".into()), // 2
+        ];
+        let sumtis = vec![
+            Argument::Description((Determiner::RoLo, 0)), // 0: ro lo gerku
+            Argument::Restricted((
+                0,
+                RelClause {
+                    kind: RelClauseKind::Poi,
+                    body_sentence: 1,
+                },
+            )), // 1
+            Argument::Pronoun("ke'a".into()),             // 2: ke'a
+            Argument::Tagged((PlaceTag::Fe, 2)),          // 3: fe ke'a (x2, loved)
+        ];
+        let sentences = vec![
+            Sentence::Simple(Proposition {
+                relation: 2, // danlu (main)
+                head_terms: vec![1],
+                tail_terms: vec![],
+                negated: false,
+                tense: None,
+                deontic: None,
+            }),
+            Sentence::Simple(Proposition {
+                relation: 1, // prami (body: head EMPTY, only fe ke'a)
+                head_terms: vec![],
+                tail_terms: vec![3],
+                negated: false,
+                tense: None,
+                deontic: None,
+            }),
+        ];
+        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
+        let prami_x1 = get_pred_args(&form, "prami_x1", &compiler).expect("prami_x1 present");
+        let prami_x2 = get_pred_args(&form, "prami_x2", &compiler).expect("prami_x2 present");
+        let gerku_x1 = get_pred_args(&form, "gerku_x1", &compiler).expect("gerku_x1 present");
+        assert!(
+            matches!(prami_x1[1], LogicalTerm::Unspecified),
+            "x1 must stay Unspecified (not double-filled with the clause var), got {:?}",
+            prami_x1[1]
+        );
+        assert_eq!(
+            prami_x2[1], gerku_x1[1],
+            "the fe-tagged ke'a must bind the described dog at x2"
         );
     }
 

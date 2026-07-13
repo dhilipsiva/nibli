@@ -268,6 +268,18 @@ fn kr_smuni_seam_conformance() {
     );
     metamorphic += 1;
 
+    // Named ≡ positional INSIDE a where-body: the all-named lowering is
+    // empty-head + FA-tagged tail, so nibli-semantics's implicit-ke'a x1
+    // injection must skip when the clause body carries an explicit `it`
+    // (regression — the named spelling used to reject with "place x1 already
+    // filled").
+    assert_eq!(
+        canonical(&kompile("animal(every dog where loves(Alis, it)).").unwrap()),
+        canonical(&kompile("animal(every dog where loves(lover: Alis, loved: it)).").unwrap()),
+        "named argument must equal its positional spelling inside a where-body"
+    );
+    metamorphic += 1;
+
     // Converted alias ≡ raw gismu with explicit xN labels.
     assert_eq!(
         canonical(&kompile("owned(Rex, Adam).").unwrap()),
@@ -297,7 +309,7 @@ fn kr_smuni_seam_conformance() {
         "structural family near-vacuous ({structural})"
     );
     assert!(
-        metamorphic >= (SEAM_BATCH as usize) + 3,
+        metamorphic >= (SEAM_BATCH as usize) + 4,
         "metamorphic family near-vacuous ({metamorphic})"
     );
 }

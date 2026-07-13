@@ -658,6 +658,26 @@ mod tests {
         );
     }
 
+    #[test]
+    fn named_args_equal_positional_in_where_body() {
+        // All-named args in a where-body lower as empty head + FA-tagged tail;
+        // nibli-semantics's implicit-ke'a x1 injection must SKIP when the body
+        // carries an explicit `it` (regression: the named spelling used to
+        // reject with "Place tag `fa` targets place x1, which is already
+        // filled").
+        assert_eq!(
+            nibli_kr_lb("animal(every dog where loves(lover: Alis, loved: it))."),
+            nibli_kr_lb("animal(every dog where loves(Alis, it))."),
+        );
+        // x1 omitted: the lone fe-tagged `it` must leave x1 Unspecified, equal to
+        // the explicit-placeholder twin (regression: it used to silently compile
+        // prami(dog, dog) — "a dog that loves itself" — instead of prami(zo'e, dog)).
+        assert_eq!(
+            nibli_kr_lb("animal(every dog where loves(loved: it))."),
+            nibli_kr_lb("animal(every dog where loves(_, it))."),
+        );
+    }
+
     // ── determiners ──
 
     #[test]
@@ -729,6 +749,7 @@ mod tests {
         for text in [
             "some dog $d: big($d) & goes($d).",
             "goes(every loves(x2: it)).",
+            "animal(every dog where loves(lover: Alis, loved: it)).",
             "computer+user(me).",
             "goes(me) via uses(this).",
             "goes(every drug where increases where thin).",
