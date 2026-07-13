@@ -12,13 +12,11 @@
 //!    side hits the fail-closed "unknown predicate" are tallied as
 //!    fallback-vocab skips (the translation battery's disclosed degradation);
 //!    the full local build checks every line.
-//! 4. `determinism_corpus_klaro_native`: the `.klaro` determinism corpus
-//!    replayed through the native engine in Klaro mode against the SAME
-//!    byte-identical `# =>` verdict annotations as the Lojban leg
-//!    (`determinism_corpus_native` in differential_gate.rs). The corpus is
-//!    curated-core vocabulary only, so this leg is full-strength in BOTH
-//!    dictionary modes. The parser is deliberately re-rolled, not shared —
-//!    the determinism legs must not share code paths beyond the engine.
+//!
+//! The Klaro determinism leg (`determinism_corpus_klaro_native`) was RE-HOMED
+//! to `tests/kr_seam_gate.rs` (2026-07-12): this whole twins gate dies with
+//! the Lojban front-end at THE DROP (KR_TODO.md), and the determinism leg
+//! must outlive it.
 
 use nibli_verify::klaro_battery::{canonical, kompile};
 use nibli_verify::seam;
@@ -169,77 +167,5 @@ fn corpus_twins_line_structure_and_buffer_equality() {
     assert!(
         checked >= floor,
         "twins gate hollowed out: {checked} pairs checked (floor {floor})"
-    );
-}
-
-/// The Klaro determinism leg, beside (not replacing) the Lojban native leg.
-#[test]
-fn determinism_corpus_klaro_native() {
-    use nibli_engine::{Language, NibliEngine};
-
-    enum COp {
-        Assert(String),
-        Query(String, String),
-        Retract(usize),
-    }
-
-    let corpus = include_str!("../../determinism-corpus.klaro");
-    let mut ops: Vec<COp> = Vec::new();
-    let mut pending_q: Option<String> = None;
-    for raw in corpus.lines() {
-        let line = raw.trim();
-        if let Some(ann) = line.strip_prefix("# =>") {
-            let q = pending_q
-                .take()
-                .expect("`# =>` annotation without a preceding query");
-            ops.push(COp::Query(q, ann.trim().to_string()));
-        } else if line.is_empty() || line.starts_with('#') {
-            continue;
-        } else if let Some(q) = line.strip_prefix("? ") {
-            assert!(pending_q.is_none(), "unannotated query before: {q}");
-            pending_q = Some(q.to_string());
-        } else if let Some(k) = line.strip_prefix(":retract ") {
-            ops.push(COp::Retract(k.trim().parse().expect("retract index")));
-        } else {
-            ops.push(COp::Assert(line.to_string()));
-        }
-    }
-    assert!(pending_q.is_none(), "trailing unannotated query");
-
-    let engine = NibliEngine::new();
-    engine.set_language(Language::Klaro);
-    let mut ids: Vec<Vec<u64>> = Vec::new();
-    let mut checked = 0usize;
-    for op in &ops {
-        match op {
-            COp::Assert(l) => {
-                let fact_ids = engine
-                    .assert_text(l)
-                    .unwrap_or_else(|e| panic!("assert '{l}': {e}"));
-                ids.push(fact_ids);
-            }
-            COp::Retract(k) => {
-                for fid in &ids[*k] {
-                    engine
-                        .retract_fact(*fid)
-                        .unwrap_or_else(|e| panic!("retract #{k}: {e}"));
-                }
-            }
-            COp::Query(q, expected) => {
-                let (verdict, _) = engine
-                    .query_text_raw_proof(q)
-                    .unwrap_or_else(|e| panic!("query '{q}': {e}"));
-                let got = nibli_engine::display_query_result(&verdict);
-                assert_eq!(
-                    &got, expected,
-                    "KLARO native verdict for '{q}' diverges from the pinned annotation"
-                );
-                checked += 1;
-            }
-        }
-    }
-    assert!(
-        checked >= 15,
-        "determinism klaro leg hollowed out: {checked}"
     );
 }

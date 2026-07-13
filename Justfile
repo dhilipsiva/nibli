@@ -518,7 +518,7 @@ test-all: test test-engine test-store test-backend test-classifier
 
 # CI gate for the hardened runtime surface (fast; native only — no WASM build).
 # For the WASM behavioral smokes too, run `just ci-all`.
-ci: fmt-check clippy-runtime test test-engine test-gasnu test-ui test-fanva test-backend test-store test-persistence-replay verify-harness verify-soundness verify-klaro verify-klaro-dict verify-klaro-twins verify-parser verify-dict verify-proofs verify-book-vocab
+ci: fmt-check clippy-runtime test test-engine test-gasnu test-ui test-fanva test-backend test-store test-persistence-replay verify-harness verify-soundness verify-klaro verify-klaro-dict verify-klaro-twins verify-kr-seam verify-parser verify-dict verify-proofs verify-book-vocab
 
 # WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
 # verify-book-capture). Bundles the six gasnu smokes; each depends on
@@ -665,12 +665,27 @@ migrate-corpora:
 # obligation 3): every repo-root .lojban corpus has a committed .klaro twin and
 # vice versa; line structure corresponds at identical line numbers (comments/
 # blanks/`:`-commands byte-identical, `? ` prefixes paired); every payload-line
-# pair compiles to the SAME canonicalized LogicBuffer. Plus the determinism
-# corpus' Klaro native leg (`determinism_corpus_klaro_native`, curated-core
-# vocabulary — full-strength in both dictionary modes). Dual-mode: the CI
-# fallback build vocab-skips twin lines needing generated aliases.
+# pair compiles to the SAME canonicalized LogicBuffer. Dual-mode: the CI
+# fallback build vocab-skips twin lines needing generated aliases. (The Klaro
+# determinism leg was re-homed to verify-kr-seam 2026-07-12 — this whole gate
+# dies with the Lojban front-end at THE DROP.)
 verify-klaro-twins:
     cargo test -p nibli-verify --test klaro_twins {{cargo_profile_flag}} -- --nocapture --test-threads=1
+
+# The KR→smuni seam-conformance gate — the KR front-end's LOJBAN-FREE
+# independent oracle, built to outlive THE DROP (KR_TODO.md): hand-verified
+# FOL structural goldens for the core construct classes (event decomposition,
+# rule vs ∃-conjunction shapes, converted-alias/named-arg routing, tense/
+# deontic order incl. the O3 pin, flat `du`, prenex implication, abstraction
+# opacity, exact-count-0, `?`-independence), the CONSTRUCT_INVENTORY
+# acceptance sweep (every §3–§9 KR spelling compiles), KR-internal
+# metamorphic relations (the O7 block-every ≡ prenex pin re-anchored KR≡KR,
+# named≡positional, converted≡label-permuted, + a 60-seed batch over three
+# families), and the re-homed `determinism_corpus_klaro_native` leg.
+# Curated-core vocabulary only: full-strength in BOTH dictionary modes,
+# never skips. Part of `ci`.
+verify-kr-seam:
+    cargo test -p nibli-verify --test kr_seam_gate {{cargo_profile_flag}} -- --nocapture --test-threads=1
 
 # gerna <-> camxes parse-differential (the FRONT-END gate): every sentence gerna accepts
 # must parse under the official Lojban grammar (ilmentufa camxes, driven via node over

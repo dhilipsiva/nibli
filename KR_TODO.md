@@ -46,18 +46,12 @@ camxes differential, zero divergences). fanva VENDORS the crate closure
 names, so nibli's later crate renames do NOT ripple into it. **Nothing was deleted
 from nibli** — THE DROP below does the deleting.
 
-- **KR seam-conformance gate BEFORE the Lojban oracle dies** — the Klaro↔Lojban twin
-  battery (`verify-klaro`/`verify-klaro-twins`) is currently the KR front-end's ONLY
-  independent correctness oracle; deleting Lojban deletes it. FIRST build the direct
-  KR→smuni seam gate on the `nibli-verify/src/seam.rs` pattern: compile KR source
-  text end-to-end and check the FOL against hand-verified structural goldens +
-  metamorphic pairs (the same construct inventory the twin battery sweeps today,
-  re-anchored on hand-verified FOL instead of Lojban equality). Re-home
-  `determinism_corpus_klaro_native` (lives in `tests/klaro_twins.rs`, which dies)
-  into this gate or a standalone determinism gate.
-- **THE DROP (single-surface milestone)** — the donation-repo precondition is
-  SATISFIED (see above); with the KR seam gate green, delete Lojban from nibli in
-  one milestone: the `gerna` dep
+- **THE DROP (single-surface milestone)** — BOTH preconditions are SATISFIED: the
+  donation repo is extracted (see above) and the Lojban-free KR oracle is live
+  (`just verify-kr-seam`, in `ci` since 2026-07-12 — hand-verified FOL goldens +
+  inventory sweep + KR-internal metamorphic families + the re-homed determinism
+  leg, so the twin battery can die without the front-end going unverified).
+  Delete Lojban from nibli in one milestone: the `gerna` dep
   everywhere (9 dependents), `Language` enum + `NIBLI_LANG` + WIT
   `enum language`/`set-language` (component ABI break — version-bump the WIT
   package), `:lojban`/`:klaro`/`:lang` + `--lang` flags, the `.lojban` corpora +
