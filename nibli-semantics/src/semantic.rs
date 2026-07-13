@@ -159,8 +159,8 @@ mod tests {
     /// Helper: build a minimal buffer and compile the first sentence.
     /// Returns the compiled LogicalForm.
     fn compile_one(
-        selbris: Vec<Predicate>,
-        sumtis: Vec<Argument>,
+        predicates: Vec<Predicate>,
+        arguments: Vec<Argument>,
         bridi: Proposition,
     ) -> (LogicalForm, SemanticCompiler) {
         let sentences = vec![Sentence::Simple(bridi)];
@@ -170,8 +170,8 @@ mod tests {
                 Sentence::Simple(b) => b,
                 _ => unreachable!(),
             },
-            &selbris,
-            &sumtis,
+            &predicates,
+            &arguments,
             &sentences,
         );
         (form, compiler)
@@ -438,8 +438,8 @@ mod tests {
         // 2-arg du(X,Y) predicate — NOT the Neo-Davidsonian event form
         // (∃e. du(e) ∧ du_x1(e,X) ∧ du_x2(e,Y)) — so logji's union-find
         // ingestion (which matches relation=="du" && args.len()==2) fires.
-        let selbris = vec![Predicate::Root("du".into())];
-        let sumtis = vec![
+        let predicates = vec![Predicate::Root("du".into())];
+        let arguments = vec![
             Argument::Pronoun("mi".into()), // 0
             Argument::Pronoun("do".into()), // 1
         ];
@@ -451,7 +451,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         let args =
             get_pred_args(&form, "du", &compiler).expect("flat du predicate must be present");
         assert_eq!(args.len(), 2, "du must be a flat 2-arg predicate");
@@ -466,8 +466,8 @@ mod tests {
         // Fail-closed: n-ary du is unsupported (logji handles only binary
         // identity). A 3-sumti du must push a semantic error rather than
         // silently dropping the third argument.
-        let selbris = vec![Predicate::Root("du".into())];
-        let sumtis = vec![
+        let predicates = vec![Predicate::Root("du".into())];
+        let arguments = vec![
             Argument::Pronoun("mi".into()), // 0
             Argument::Pronoun("do".into()), // 1
             Argument::Pronoun("ti".into()), // 2
@@ -480,7 +480,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (_form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (_form, compiler) = compile_one(predicates, arguments, bridi);
         assert!(
             !compiler.errors.is_empty(),
             ">2-place du must be rejected fail-closed"
@@ -500,14 +500,14 @@ mod tests {
         // `klama fi le zarci do` — CLL: `fi` sets the place counter to x3, so
         // `le zarci` is x3 and the following UNTAGGED `do` resumes at x4
         // (NOT x1, which is the pre-fix "first free slot" bug).
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("klama".into()), // 0
             Predicate::Root("zarci".into()), // 1
         ];
-        let sumtis = vec![
-            Argument::Description((Determiner::Le, 1)), // 0: le zarci
-            Argument::Tagged((2, 0)),                   // 1: fi le zarci
-            Argument::Pronoun("do".into()),             // 2: do (untagged)
+        let arguments = vec![
+            Argument::Description((Determiner::Definite, 1)), // 0: le zarci
+            Argument::Tagged((2, 0)),                         // 1: fi le zarci
+            Argument::Pronoun("do".into()),                   // 2: do (untagged)
         ];
         let bridi = Proposition {
             relation: 0,
@@ -517,7 +517,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         let x4 = get_pred_args(&form, "klama_x4", &compiler).expect("klama_x4 present");
         assert_eq!(
@@ -542,8 +542,8 @@ mod tests {
     #[test]
     fn test_untagged_before_tag_still_fills_x1() {
         // Regression: `mi klama fe do` — untagged `mi` fills x1, `fe do` fills x2.
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![
+        let predicates = vec![Predicate::Root("klama".into())];
+        let arguments = vec![
             Argument::Pronoun("mi".into()), // 0
             Argument::Pronoun("do".into()), // 1
             Argument::Tagged((1, 1)),       // 2: fe do
@@ -556,7 +556,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         let x1 = get_pred_args(&form, "klama_x1", &compiler).expect("klama_x1");
         let x2 = get_pred_args(&form, "klama_x2", &compiler).expect("klama_x2");
@@ -574,16 +574,16 @@ mod tests {
     ) -> (LogicalForm, SemanticCompiler) {
         // Build: lo <kind> <inner_sumtis> <inner_selbri> kei cu barda
         // Buffer layout:
-        //   selbris: [0: inner_selbri, 1: Abstraction(kind, sentence_idx=1), 2: barda]
-        //   sumtis: [0..N: inner sumtis, N: Description(Lo, 1)]
+        //   predicates: [0: inner_selbri, 1: Abstraction(kind, sentence_idx=1), 2: barda]
+        //   arguments: [0..N: inner arguments, N: Description(Lo, 1)]
         //   sentences: [0: top-level bridi, 1: inner bridi]
         let inner_sumti_ids: Vec<u32> = (0..inner_sumtis.len() as u32).collect();
         let desc_sumti_idx = inner_sumtis.len() as u32;
 
         let mut all_sumtis = inner_sumtis;
-        all_sumtis.push(Argument::Description((Determiner::Lo, 1))); // desc_sumti_idx
+        all_sumtis.push(Argument::Description((Determiner::Indefinite, 1))); // desc_sumti_idx
 
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root(inner_selbri.into()), // 0
             Predicate::Abstraction((kind, 1)),    // 1 → sentences[1]
             Predicate::Root("barda".into()),      // 2
@@ -614,7 +614,7 @@ mod tests {
                 Sentence::Simple(b) => b,
                 _ => unreachable!(),
             },
-            &selbris,
+            &predicates,
             &all_sumtis,
             &sentences,
         );
@@ -626,7 +626,7 @@ mod tests {
         // lo du'u mi klama kei cu barda
         // → Exists(_v0, And(duhu(_v0), And(klama(mi, ...), barda(_v0, ...))))
         let (form, compiler) = compile_abstraction(
-            AbstractionKind::Duhu,
+            AbstractionKind::Fact,
             "klama",
             vec![Argument::Pronoun("mi".into())],
         );
@@ -655,7 +655,7 @@ mod tests {
         // lo ka ce'u melbi kei cu barda
         // ce'u should resolve to the same variable as the quantified entity
         let (form, compiler) = compile_abstraction(
-            AbstractionKind::Ka,
+            AbstractionKind::Property,
             "melbi",
             vec![Argument::Pronoun("ce'u".into())],
         );
@@ -694,7 +694,7 @@ mod tests {
     #[test]
     fn test_ni_abstraction_produces_ni_predicate() {
         let (form, compiler) = compile_abstraction(
-            AbstractionKind::Ni,
+            AbstractionKind::Amount,
             "gleki",
             vec![Argument::Pronoun("mi".into())],
         );
@@ -715,7 +715,7 @@ mod tests {
     #[test]
     fn test_siho_abstraction_produces_siho_predicate() {
         let (form, compiler) = compile_abstraction(
-            AbstractionKind::Siho,
+            AbstractionKind::Concept,
             "klama",
             vec![Argument::Pronoun("mi".into())],
         );
@@ -739,7 +739,7 @@ mod tests {
     #[test]
     fn test_nu_abstraction_still_works() {
         let (form, compiler) = compile_abstraction(
-            AbstractionKind::Nu,
+            AbstractionKind::Event,
             "klama",
             vec![Argument::Pronoun("mi".into())],
         );
@@ -764,8 +764,8 @@ mod tests {
         // does not close `_v` fresh vars) — a non-ground form leaking toward the store.
         // Fail closed: a semantic error is accumulated (NibliError::Semantic downstream),
         // and no free variable escapes.
-        let selbris = vec![Predicate::Root("melbi".into())];
-        let sumtis = vec![Argument::Pronoun("ce'u".into())];
+        let predicates = vec![Predicate::Root("melbi".into())];
+        let arguments = vec![Argument::Pronoun("ce'u".into())];
         let bridi = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -775,7 +775,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
 
         assert!(
             compiler
@@ -801,13 +801,13 @@ mod tests {
     fn test_fio_produces_custom_modal() {
         // mi klama fi'o zbasu do → And(klama(mi,...), zbasu(do, mi,...))
         // Buffer:
-        //   sumtis: [0: mi, 1: do, 2: ModalTagged(Fio(1), 1)]
-        //   selbris: [0: klama, 1: zbasu]
-        let selbris = vec![
+        //   arguments: [0: mi, 1: do, 2: ModalTagged(Fio(1), 1)]
+        //   predicates: [0: klama, 1: zbasu]
+        let predicates = vec![
             Predicate::Root("klama".into()), // 0
             Predicate::Root("zbasu".into()), // 1
         ];
-        let sumtis = vec![
+        let arguments = vec![
             Argument::Pronoun("mi".into()),                  // 0
             Argument::Pronoun("do".into()),                  // 1
             Argument::ModalTagged((ModalTag::Custom(1), 1)), // 2
@@ -821,7 +821,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
 
         // klama is event-decomposed, zbasu is a flat modal Predicate
         assert!(
@@ -852,11 +852,11 @@ mod tests {
         // (Only `fi'o` reaches this — every BAI modal gismu is arity >= 2.) `prenu`
         // is a curated-fallback arity-1 gismu, so this fires in both the XML and
         // no-XML builds.
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("barda".into()), // 0
             Predicate::Root("prenu".into()), // 1 (arity 1)
         ];
-        let sumtis = vec![
+        let arguments = vec![
             Argument::Pronoun("mi".into()),                  // 0
             Argument::Pronoun("do".into()),                  // 1
             Argument::ModalTagged((ModalTag::Custom(1), 1)), // 2: fi'o prenu, inner=do
@@ -869,7 +869,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (_form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (_form, compiler) = compile_one(predicates, arguments, bridi);
         assert!(
             !compiler.errors.is_empty(),
             "a 1-place fi'o modal must fail closed"
@@ -887,15 +887,15 @@ mod tests {
     fn test_re_lo_produces_count_2() {
         // re lo gerku cu barda → Count(_v0, 2, And(gerku(_v0,...), barda(_v0,...)))
         // Buffer:
-        //   sumtis: [0: QuantifiedDescription(2, Lo, 0)]
-        //   selbris: [0: gerku, 1: barda]
+        //   arguments: [0: QuantifiedDescription(2, Lo, 0)]
+        //   predicates: [0: gerku, 1: barda]
         //   bridi: { relation: 1, head_terms: [0], tail_terms: [] }
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()), // 0
             Predicate::Root("barda".into()), // 1
         ];
-        let sumtis = vec![
-            Argument::QuantifiedDescription((2, Determiner::Lo, 0)), // 0
+        let arguments = vec![
+            Argument::QuantifiedDescription((2, Determiner::Indefinite, 0)), // 0
         ];
         let bridi = Proposition {
             relation: 1,
@@ -906,7 +906,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
 
         // Should be Count { var: _v0, count: 2, body: And(gerku_event, barda_event) }
         // With event decomposition, restrictor and predicate are event-wrapped
@@ -931,12 +931,12 @@ mod tests {
     #[test]
     fn test_no_lo_produces_count_0() {
         // no lo gerku cu barda → Count(_v0, 0, And(gerku(_v0,...), barda(_v0,...)))
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()), // 0
             Predicate::Root("barda".into()), // 1
         ];
-        let sumtis = vec![
-            Argument::QuantifiedDescription((0, Determiner::Lo, 0)), // 0
+        let arguments = vec![
+            Argument::QuantifiedDescription((0, Determiner::Indefinite, 0)), // 0
         ];
         let bridi = Proposition {
             relation: 1,
@@ -947,7 +947,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, _) = compile_one(selbris, sumtis, bridi);
+        let (form, _) = compile_one(predicates, arguments, bridi);
 
         match &form {
             LogicalForm::Count { count, .. } => assert_eq!(*count, 0),
@@ -958,11 +958,15 @@ mod tests {
     #[test]
     fn test_pa_lo_produces_count_1() {
         // pa lo gerku cu barda → Count(_v0, 1, ...)
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()),
             Predicate::Root("barda".into()),
         ];
-        let sumtis = vec![Argument::QuantifiedDescription((1, Determiner::Lo, 0))];
+        let arguments = vec![Argument::QuantifiedDescription((
+            1,
+            Determiner::Indefinite,
+            0,
+        ))];
         let bridi = Proposition {
             relation: 1,
             head_terms: vec![0],
@@ -972,7 +976,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, _) = compile_one(selbris, sumtis, bridi);
+        let (form, _) = compile_one(predicates, arguments, bridi);
 
         match &form {
             LogicalForm::Count { count, .. } => assert_eq!(*count, 1),
@@ -983,11 +987,11 @@ mod tests {
     #[test]
     fn test_lo_still_produces_exists() {
         // Regression: lo gerku cu barda → Exists (not Count)
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()),
             Predicate::Root("barda".into()),
         ];
-        let sumtis = vec![Argument::Description((Determiner::Lo, 0))];
+        let arguments = vec![Argument::Description((Determiner::Indefinite, 0))];
         let bridi = Proposition {
             relation: 1,
             head_terms: vec![0],
@@ -997,7 +1001,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, _) = compile_one(selbris, sumtis, bridi);
+        let (form, _) = compile_one(predicates, arguments, bridi);
 
         assert!(
             matches!(&form, LogicalForm::Exists(_, _)),
@@ -1016,11 +1020,11 @@ mod tests {
         right_selbri: &str,
         right_sumti: &str,
     ) -> (LogicalForm, SemanticCompiler) {
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root(left_selbri.into()),
             Predicate::Root(right_selbri.into()),
         ];
-        let sumtis = vec![
+        let arguments = vec![
             Argument::Pronoun(left_sumti.into()),
             Argument::Pronoun(right_sumti.into()),
         ];
@@ -1046,13 +1050,13 @@ mod tests {
             Sentence::Connected((conn, 0, 1)),
         ];
         let mut compiler = SemanticCompiler::new();
-        let form = compiler.compile_sentence(2, &selbris, &sumtis, &sentences);
+        let form = compiler.compile_sentence(2, &predicates, &arguments, &sentences);
         (form, compiler)
     }
 
     #[test]
     fn test_afterthought_je_compiles_to_and() {
-        let conn = SentenceConnective::Afterthought(Connective::Je);
+        let conn = SentenceConnective::Afterthought(Connective::And);
         let (form, _) = compile_connected(conn, "klama", "mi", "prami", "do");
         assert!(
             matches!(&form, LogicalForm::And(_, _)),
@@ -1063,7 +1067,7 @@ mod tests {
 
     #[test]
     fn test_afterthought_ja_compiles_to_or() {
-        let conn = SentenceConnective::Afterthought(Connective::Ja);
+        let conn = SentenceConnective::Afterthought(Connective::Or);
         let (form, _) = compile_connected(conn, "klama", "mi", "prami", "do");
         assert!(
             matches!(&form, LogicalForm::Or(_, _)),
@@ -1077,8 +1081,8 @@ mod tests {
     #[test]
     fn test_da_produces_exists() {
         // da prami mi → ∃da. event_decomposed_prami(da, mi, ...)
-        let selbris = vec![Predicate::Root("prami".into())];
-        let sumtis = vec![
+        let predicates = vec![Predicate::Root("prami".into())];
+        let arguments = vec![
             Argument::Pronoun("da".into()), // 0
             Argument::Pronoun("mi".into()), // 1
         ];
@@ -1091,7 +1095,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
 
         // Outermost should be Exists(da, ...) wrapping the event form
         match &form {
@@ -1122,8 +1126,8 @@ mod tests {
     #[test]
     fn test_da_de_both_produce_nested_exists() {
         // da prami de → ∃da. ∃de. event_decomposed_prami(da, de, ...)
-        let selbris = vec![Predicate::Root("prami".into())];
-        let sumtis = vec![
+        let predicates = vec![Predicate::Root("prami".into())];
+        let arguments = vec![
             Argument::Pronoun("da".into()), // 0
             Argument::Pronoun("de".into()), // 1
         ];
@@ -1136,7 +1140,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
 
         // Should be Exists(da/de, Exists(da/de, Exists(ev, ...)))
         match &form {
@@ -1165,8 +1169,8 @@ mod tests {
     #[test]
     fn test_da_repeated_wraps_once() {
         // da prami da → ∃da. event_decomposed_prami(da, da, ...) (only one entity Exists)
-        let selbris = vec![Predicate::Root("prami".into())];
-        let sumtis = vec![
+        let predicates = vec![Predicate::Root("prami".into())];
+        let arguments = vec![
             Argument::Pronoun("da".into()), // 0
             Argument::Pronoun("da".into()), // 1 (same variable)
         ];
@@ -1179,7 +1183,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
 
         // Should be Exists(da, Exists(ev, ...)) — NOT Exists(da, Exists(da, ...))
         match &form {
@@ -1208,8 +1212,8 @@ mod tests {
     #[test]
     fn test_di_produces_exists() {
         // di barda → ∃di. barda(di, ...)
-        let selbris = vec![Predicate::Root("barda".into())];
-        let sumtis = vec![Argument::Pronoun("di".into())];
+        let predicates = vec![Predicate::Root("barda".into())];
+        let arguments = vec![Argument::Pronoun("di".into())];
         let bridi = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -1219,7 +1223,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
 
         match &form {
             LogicalForm::Exists(var, _) => {
@@ -1233,8 +1237,8 @@ mod tests {
     fn test_da_with_negation() {
         // da na prami mi → ¬(∃da. prami(da, mi, ...))
         // negation wraps OUTSIDE the existential
-        let selbris = vec![Predicate::Root("prami".into())];
-        let sumtis = vec![
+        let predicates = vec![Predicate::Root("prami".into())];
+        let arguments = vec![
             Argument::Pronoun("da".into()),
             Argument::Pronoun("mi".into()),
         ];
@@ -1247,7 +1251,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, _) = compile_one(selbris, sumtis, bridi);
+        let (form, _) = compile_one(predicates, arguments, bridi);
 
         // Should be Not(Exists(da, Predicate))
         match &form {
@@ -1265,7 +1269,7 @@ mod tests {
     #[test]
     fn test_afterthought_jo_compiles_to_biconditional() {
         // .i jo → Biconditional IR node (expanded at flattening)
-        let conn = SentenceConnective::Afterthought(Connective::Jo);
+        let conn = SentenceConnective::Afterthought(Connective::Iff);
         let (form, _) = compile_connected(conn, "klama", "mi", "prami", "do");
         assert!(
             matches!(&form, LogicalForm::Biconditional(_, _)),
@@ -1280,8 +1284,8 @@ mod tests {
     fn test_ma_produces_exists() {
         // ma klama → ∃_v0. event_decomposed_klama(_v0, ...)
         // Each `ma` gets a fresh variable (independent query unknowns).
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![
+        let predicates = vec![Predicate::Root("klama".into())];
+        let arguments = vec![
             Argument::Pronoun("ma".into()), // 0
         ];
         let bridi = Proposition {
@@ -1293,7 +1297,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
 
         // Outermost should be Exists wrapping the event form
         match &form {
@@ -1321,8 +1325,8 @@ mod tests {
         // ma nelci ma → ∃_v1. ∃_v0. event_decomposed_nelci(_v0, _v1, ...)
         // Two `ma` tokens must produce two *different* variables,
         // each wrapped in its own ∃.
-        let selbris = vec![Predicate::Root("nelci".into())];
-        let sumtis = vec![
+        let predicates = vec![Predicate::Root("nelci".into())];
+        let arguments = vec![
             Argument::Pronoun("ma".into()), // 0
             Argument::Pronoun("ma".into()), // 1
         ];
@@ -1335,7 +1339,7 @@ mod tests {
             deontic: None,
         };
 
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
 
         // Should be ∃v1.(∃v0.(Exists(ev, nelci_event(v0, v1, ...))))
         match &form {
@@ -1374,18 +1378,18 @@ mod tests {
         // existentially closed at the OUTER matrix, not stolen by the nested
         // rel-clause compile_proposition's drain. Pre-fix the nested drain emptied the
         // shared `question_vars`, leaving the outer ma var FREE.
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("prami".into()), // 0
             Predicate::Root("gerku".into()), // 1
             Predicate::Root("barda".into()), // 2
         ];
-        let sumtis = vec![
-            Argument::Pronoun("ma".into()),             // 0: ma
-            Argument::Description((Determiner::Lo, 1)), // 1: lo gerku
+        let arguments = vec![
+            Argument::Pronoun("ma".into()),                     // 0: ma
+            Argument::Description((Determiner::Indefinite, 1)), // 1: lo gerku
             Argument::Restricted((
                 1,
                 RelClause {
-                    kind: RelClauseKind::Poi,
+                    kind: RelClauseKind::Restrictive,
                     body_sentence: 1,
                 },
             )), // 2: lo gerku poi ke'a barda
@@ -1408,7 +1412,7 @@ mod tests {
                 deontic: None,
             }),
         ];
-        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        let (form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert!(
             free_vars(&form, &compiler).is_empty(),
@@ -1422,13 +1426,13 @@ mod tests {
     /// Compile `ro lo gerku [kind] barda cu klama` (universal). The rel-clause
     /// body (sentence 1) is `barda` with implicit ke'a filling its x1.
     fn compile_ro_lo_gerku_rel_barda_klama(kind: RelClauseKind) -> (LogicalForm, SemanticCompiler) {
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()), // 0
             Predicate::Root("barda".into()), // 1
             Predicate::Root("klama".into()), // 2
         ];
-        let sumtis = vec![
-            Argument::Description((Determiner::RoLo, 0)), // 0: ro lo gerku
+        let arguments = vec![
+            Argument::Description((Determiner::UniversalIndefinite, 0)), // 0: ro lo gerku
             Argument::Restricted((
                 0,
                 RelClause {
@@ -1455,7 +1459,7 @@ mod tests {
                 deontic: None,
             }),
         ];
-        compile_sentence_full(selbris, sumtis, sentences)
+        compile_sentence_full(predicates, arguments, sentences)
     }
 
     /// Split a `ForAll(_, Or(antecedent, consequent))` into (antecedent, consequent).
@@ -1474,7 +1478,7 @@ mod tests {
         // `ro lo gerku noi barda cu klama`: noi is NON-restrictive, so `barda`
         // must land in the rule's CONSEQUENT (matrix), not its antecedent
         // (domain guard). RED pre-fix (noi was folded into the antecedent).
-        let (form, compiler) = compile_ro_lo_gerku_rel_barda_klama(RelClauseKind::Noi);
+        let (form, compiler) = compile_ro_lo_gerku_rel_barda_klama(RelClauseKind::Incidental);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         let (ante, cons) = forall_or_split(&form);
         assert!(
@@ -1491,7 +1495,7 @@ mod tests {
     fn poi_restrictor_stays_in_universal_antecedent() {
         // Guard: poi is RESTRICTIVE, so `barda` stays in the antecedent. Green
         // before AND after — pins that the noi fix does not leak into poi.
-        let (form, compiler) = compile_ro_lo_gerku_rel_barda_klama(RelClauseKind::Poi);
+        let (form, compiler) = compile_ro_lo_gerku_rel_barda_klama(RelClauseKind::Restrictive);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         let (ante, cons) = forall_or_split(&form);
         assert!(
@@ -1511,17 +1515,17 @@ mod tests {
         // form `Count(…) ∧ ∀x.(desc→noi)` would need close_quantifier to emit two
         // conjuncts. Pin the current behavior so the limitation stays discoverable.
         // `ci lo gerku noi barda cu klama` → Count{3, body} with barda IN the body.
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()), // 0
             Predicate::Root("barda".into()), // 1
             Predicate::Root("klama".into()), // 2
         ];
-        let sumtis = vec![
-            Argument::QuantifiedDescription((3, Determiner::Lo, 0)), // 0: ci lo gerku
+        let arguments = vec![
+            Argument::QuantifiedDescription((3, Determiner::Indefinite, 0)), // 0: ci lo gerku
             Argument::Restricted((
                 0,
                 RelClause {
-                    kind: RelClauseKind::Noi,
+                    kind: RelClauseKind::Incidental,
                     body_sentence: 1,
                 },
             )), // 1: ci lo gerku noi barda
@@ -1544,7 +1548,7 @@ mod tests {
                 deontic: None,
             }),
         ];
-        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        let (form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         match &form {
             LogicalForm::Count { count, body, .. } => {
@@ -1561,11 +1565,11 @@ mod tests {
     #[test]
     fn test_da_in_be_arg_closed() {
         // `mi klama be da` — the `da` in the be-arg must be existentially closed.
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("klama".into()),   // 0
             Predicate::WithArgs((0, vec![1])), // 1: klama be da
         ];
-        let sumtis = vec![
+        let arguments = vec![
             Argument::Pronoun("mi".into()), // 0
             Argument::Pronoun("da".into()), // 1 (be-arg)
         ];
@@ -1577,7 +1581,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert!(
             free_vars(&form, &compiler).is_empty(),
@@ -1590,15 +1594,15 @@ mod tests {
     fn test_abstraction_da_not_double_wrapped() {
         // `mi djuno lo nu da broda` — the abstraction body closes its own `da`;
         // the outer existential walk must NOT re-wrap it (binder tracking).
-        let selbris = vec![
-            Predicate::Root("djuno".into()),                  // 0
-            Predicate::Abstraction((AbstractionKind::Nu, 1)), // 1 → sentences[1]
-            Predicate::Root("broda".into()),                  // 2
+        let predicates = vec![
+            Predicate::Root("djuno".into()),                     // 0
+            Predicate::Abstraction((AbstractionKind::Event, 1)), // 1 → sentences[1]
+            Predicate::Root("broda".into()),                     // 2
         ];
-        let sumtis = vec![
-            Argument::Pronoun("mi".into()),             // 0
-            Argument::Description((Determiner::Lo, 1)), // 1: lo nu ...
-            Argument::Pronoun("da".into()),             // 2 (broda body x1)
+        let arguments = vec![
+            Argument::Pronoun("mi".into()),                     // 0
+            Argument::Description((Determiner::Indefinite, 1)), // 1: lo nu ...
+            Argument::Pronoun("da".into()),                     // 2 (broda body x1)
         ];
         let sentences = vec![
             Sentence::Simple(Proposition {
@@ -1618,7 +1622,7 @@ mod tests {
                 deontic: None,
             }),
         ];
-        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        let (form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert_eq!(
             count_exists_binding(&form, "da", &compiler),
@@ -1639,13 +1643,13 @@ mod tests {
         // `da citka ro lo gerku` ("something eats every dog") — the leading bare
         // var is textually BEFORE the universal, so it OUTSCOPES it: ∃da.∀x.
         // RED before the fix (da was forced inside the universal → ∀x.∃da).
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("citka".into()), // 0
             Predicate::Root("gerku".into()), // 1
         ];
-        let sumtis = vec![
-            Argument::Pronoun("da".into()),               // 0: da (x1)
-            Argument::Description((Determiner::RoLo, 1)), // 1: ro lo gerku (x2)
+        let arguments = vec![
+            Argument::Pronoun("da".into()), // 0: da (x1)
+            Argument::Description((Determiner::UniversalIndefinite, 1)), // 1: ro lo gerku (x2)
         ];
         let bridi = Proposition {
             relation: 0,
@@ -1655,7 +1659,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert_eq!(
             binder_spine(&form, &compiler),
@@ -1676,13 +1680,13 @@ mod tests {
         // textually AFTER the universal, so it stays INSIDE: ∀x.∃da. Contrasts
         // with the before-case; the pair proves surface order now matters (the two
         // were identical before the fix).
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("citka".into()), // 0
             Predicate::Root("gerku".into()), // 1
         ];
-        let sumtis = vec![
-            Argument::Description((Determiner::RoLo, 1)), // 0: ro lo gerku (x1)
-            Argument::Pronoun("da".into()),               // 1: da (x2)
+        let arguments = vec![
+            Argument::Description((Determiner::UniversalIndefinite, 1)), // 0: ro lo gerku (x1)
+            Argument::Pronoun("da".into()),                              // 1: da (x2)
         ];
         let bridi = Proposition {
             relation: 0,
@@ -1692,7 +1696,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert_eq!(
             binder_spine(&form, &compiler).first(),
@@ -1712,15 +1716,15 @@ mod tests {
         // `re lo gerku cu klama da ro lo mlatu` — a bare var between an
         // exact-count description (x1) and a universal (x3). The uniform fold
         // nests them Count > ∃da > ∀ by surface order.
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("klama".into()), // 0
             Predicate::Root("gerku".into()), // 1
             Predicate::Root("mlatu".into()), // 2
         ];
-        let sumtis = vec![
-            Argument::QuantifiedDescription((2, Determiner::Lo, 1)), // 0: re lo gerku (x1)
-            Argument::Pronoun("da".into()),                          // 1: da (x2)
-            Argument::Description((Determiner::RoLo, 2)),            // 2: ro lo mlatu (x3)
+        let arguments = vec![
+            Argument::QuantifiedDescription((2, Determiner::Indefinite, 1)), // 0: re lo gerku (x1)
+            Argument::Pronoun("da".into()),                                  // 1: da (x2)
+            Argument::Description((Determiner::UniversalIndefinite, 2)),     // 2: ro lo mlatu (x3)
         ];
         let bridi = Proposition {
             relation: 0,
@@ -1730,7 +1734,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert_eq!(
             binder_spine(&form, &compiler).first(),
@@ -1752,14 +1756,14 @@ mod tests {
         // (merged inside apply_predicate), so the safety net closes it INNERMOST,
         // under the universal. The deferred-position default: bound, not free,
         // not double-wrapped.
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("klama".into()),   // 0
             Predicate::WithArgs((0, vec![1])), // 1: klama be da
             Predicate::Root("gerku".into()),   // 2
         ];
-        let sumtis = vec![
-            Argument::Description((Determiner::RoLo, 2)), // 0: ro lo gerku (x1)
-            Argument::Pronoun("da".into()),               // 1: da (be-arg)
+        let arguments = vec![
+            Argument::Description((Determiner::UniversalIndefinite, 2)), // 0: ro lo gerku (x1)
+            Argument::Pronoun("da".into()),                              // 1: da (be-arg)
         ];
         let bridi = Proposition {
             relation: 1,
@@ -1769,7 +1773,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert_eq!(
             binder_spine(&form, &compiler).first(),
@@ -1793,22 +1797,22 @@ mod tests {
         // order cannot change a restrictor that defines the quantifier's domain.
         // Characterization lock — `da` is bound (never free) and the root stays a
         // universal.
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()), // 0
             Predicate::Root("prami".into()), // 1
             Predicate::Root("klama".into()), // 2
         ];
-        let sumtis = vec![
-            Argument::Description((Determiner::RoLo, 0)), // 0: ro lo gerku
+        let arguments = vec![
+            Argument::Description((Determiner::UniversalIndefinite, 0)), // 0: ro lo gerku
             Argument::Restricted((
                 0,
                 RelClause {
-                    kind: RelClauseKind::Poi,
+                    kind: RelClauseKind::Restrictive,
                     body_sentence: 1,
                 },
             )), // 1: ro lo gerku poi <body>
-            Argument::Pronoun("da".into()),               // 2: da
-            Argument::Tagged((1, 2)),                     // 3: fe da (x2 of the poi body)
+            Argument::Pronoun("da".into()),                              // 2: da
+            Argument::Tagged((1, 2)), // 3: fe da (x2 of the poi body)
         ];
         let sentences = vec![
             Sentence::Simple(Proposition {
@@ -1828,7 +1832,7 @@ mod tests {
                 deontic: None,
             }),
         ];
-        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        let (form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert!(
             free_vars(&form, &compiler).is_empty(),
@@ -1848,13 +1852,13 @@ mod tests {
         // `ro da zo'u da citka lo gerku` — `da` is universally bound by the
         // prenex; the new surface-marker hook must respect `prenex_vars` and NOT
         // record a Bare marker for the top-level `da` arg (no existential re-wrap).
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("citka".into()), // 0
             Predicate::Root("gerku".into()), // 1
         ];
-        let sumtis = vec![
-            Argument::Pronoun("da".into()),             // 0: da (x1)
-            Argument::Description((Determiner::Lo, 1)), // 1: lo gerku (x2)
+        let arguments = vec![
+            Argument::Pronoun("da".into()),                     // 0: da (x1)
+            Argument::Description((Determiner::Indefinite, 1)), // 1: lo gerku (x2)
         ];
         let sentences = vec![
             Sentence::Prenex((vec!["da".into()], 1)),
@@ -1867,7 +1871,7 @@ mod tests {
                 deontic: None,
             }),
         ];
-        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        let (form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert_eq!(
             count_exists_binding(&form, "da", &compiler),
@@ -1887,8 +1891,8 @@ mod tests {
         // `da citka da` — the same bare var in two places co-refers and is
         // wrapped by exactly one Exists (the surface hook's `introduced` dedup +
         // the safety-net subtraction).
-        let selbris = vec![Predicate::Root("citka".into())];
-        let sumtis = vec![
+        let predicates = vec![Predicate::Root("citka".into())];
+        let arguments = vec![
             Argument::Pronoun("da".into()), // 0: da (x1)
             Argument::Pronoun("da".into()), // 1: da (x2)
         ];
@@ -1900,7 +1904,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert_eq!(
             count_exists_binding(&form, "da", &compiler),
@@ -1914,8 +1918,8 @@ mod tests {
     fn test_du_with_da_closed() {
         // `da du mi` — flat du(da, mi); the `da` must be existentially closed
         // (the flat-du shape must not hide the logic var from the walk).
-        let selbris = vec![Predicate::Root("du".into())];
-        let sumtis = vec![
+        let predicates = vec![Predicate::Root("du".into())];
+        let arguments = vec![
             Argument::Pronoun("da".into()), // 0
             Argument::Pronoun("mi".into()), // 1
         ];
@@ -1927,7 +1931,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert!(
             free_vars(&form, &compiler).is_empty(),
@@ -1941,12 +1945,12 @@ mod tests {
 
     /// Helper: compile a full sentence (not just bridi) to test rel clause handling.
     fn compile_sentence_full(
-        selbris: Vec<Predicate>,
-        sumtis: Vec<Argument>,
+        predicates: Vec<Predicate>,
+        arguments: Vec<Argument>,
         sentences: Vec<Sentence>,
     ) -> (LogicalForm, SemanticCompiler) {
         let mut compiler = SemanticCompiler::new();
-        let form = compiler.compile_sentence(0, &selbris, &sumtis, &sentences);
+        let form = compiler.compile_sentence(0, &predicates, &arguments, &sentences);
         (form, compiler)
     }
 
@@ -1956,20 +1960,20 @@ mod tests {
         // Rel clause body "barda" has only 1 predicate with unspecified slot — no ambiguity.
         //
         // Buffer layout:
-        //   selbris: [0: gerku, 1: barda, 2: klama]
-        //   sumtis:  [0: Description(Lo, 0), 1: Restricted(0, poi body=1)]
+        //   predicates: [0: gerku, 1: barda, 2: klama]
+        //   arguments:  [0: Description(Lo, 0), 1: Restricted(0, poi body=1)]
         //   sentences: [0: Simple(klama, head=[1]), 1: Simple(barda, head=[])]
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()), // 0
             Predicate::Root("barda".into()), // 1
             Predicate::Root("klama".into()), // 2
         ];
-        let sumtis = vec![
-            Argument::Description((Determiner::Lo, 0)), // 0: lo gerku
+        let arguments = vec![
+            Argument::Description((Determiner::Indefinite, 0)), // 0: lo gerku
             Argument::Restricted((
                 0,
                 RelClause {
-                    kind: RelClauseKind::Poi,
+                    kind: RelClauseKind::Restrictive,
                     body_sentence: 1,
                 },
             )), // 1: lo gerku poi barda
@@ -1993,7 +1997,7 @@ mod tests {
             }),
         ];
 
-        let (_form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        let (_form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         // No errors — single predicate is unambiguous
         assert!(
             compiler.errors.is_empty(),
@@ -2010,21 +2014,21 @@ mod tests {
         // Ch6), the engine REJECTS and demands explicit ke'a rather than guessing.
         //
         // Buffer layout:
-        //   selbris: [0: gerku, 1: mlatu, 2: barda]
-        //   sumtis:  [0: Description(Lo, 0), 1: Description(Lo, 1), 2: Restricted(0, poi body=1)]
+        //   predicates: [0: gerku, 1: mlatu, 2: barda]
+        //   arguments:  [0: Description(Lo, 0), 1: Description(Lo, 1), 2: Restricted(0, poi body=1)]
         //   sentences: [0: Simple(barda, head=[2]), 1: Simple(barda, head=[1])]
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()), // 0
             Predicate::Root("mlatu".into()), // 1
             Predicate::Root("barda".into()), // 2
         ];
-        let sumtis = vec![
-            Argument::Description((Determiner::Lo, 0)), // 0: lo gerku
-            Argument::Description((Determiner::Lo, 1)), // 1: lo mlatu
+        let arguments = vec![
+            Argument::Description((Determiner::Indefinite, 0)), // 0: lo gerku
+            Argument::Description((Determiner::Indefinite, 1)), // 1: lo mlatu
             Argument::Restricted((
                 0,
                 RelClause {
-                    kind: RelClauseKind::Poi,
+                    kind: RelClauseKind::Restrictive,
                     body_sentence: 1,
                 },
             )), // 2: lo gerku poi ...
@@ -2048,7 +2052,7 @@ mod tests {
             }),
         ];
 
-        let (_form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        let (_form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         // Firewall: no unambiguous subject slot for the implicit ke'a → rejected.
         assert!(
             !compiler.errors.is_empty(),
@@ -2067,21 +2071,21 @@ mod tests {
         // ke'a used explicitly — no injection needed, no error.
         //
         // Buffer layout:
-        //   selbris: [0: gerku, 1: barda, 2: klama]
-        //   sumtis:  [0: Description(Lo, 0), 1: Pronoun("ke'a"), 2: Restricted(0, poi body=1)]
+        //   predicates: [0: gerku, 1: barda, 2: klama]
+        //   arguments:  [0: Description(Lo, 0), 1: Pronoun("ke'a"), 2: Restricted(0, poi body=1)]
         //   sentences: [0: Simple(klama, head=[2]), 1: Simple(barda, head=[1])]
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()), // 0
             Predicate::Root("barda".into()), // 1
             Predicate::Root("klama".into()), // 2
         ];
-        let sumtis = vec![
-            Argument::Description((Determiner::Lo, 0)), // 0: lo gerku
-            Argument::Pronoun("ke'a".into()),           // 1: ke'a
+        let arguments = vec![
+            Argument::Description((Determiner::Indefinite, 0)), // 0: lo gerku
+            Argument::Pronoun("ke'a".into()),                   // 1: ke'a
             Argument::Restricted((
                 0,
                 RelClause {
-                    kind: RelClauseKind::Poi,
+                    kind: RelClauseKind::Restrictive,
                     body_sentence: 1,
                 },
             )), // 2: lo gerku poi ke'a barda
@@ -2105,7 +2109,7 @@ mod tests {
             }),
         ];
 
-        let (_form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        let (_form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         // No errors — ke'a was used explicitly
         assert!(
             compiler.errors.is_empty(),
@@ -2122,20 +2126,20 @@ mod tests {
         // variable actually appears in barda_x1 (the same variable bound by gerku).
         //
         // Buffer layout:
-        //   selbris: [0: gerku, 1: barda, 2: klama]
-        //   sumtis:  [0: Description(Lo, 0), 1: Restricted(0, poi body=1)]
+        //   predicates: [0: gerku, 1: barda, 2: klama]
+        //   arguments:  [0: Description(Lo, 0), 1: Restricted(0, poi body=1)]
         //   sentences: [0: Simple(klama, head=[1]), 1: Simple(barda, head=[])]
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()), // 0
             Predicate::Root("barda".into()), // 1
             Predicate::Root("klama".into()), // 2
         ];
-        let sumtis = vec![
-            Argument::Description((Determiner::Lo, 0)), // 0: lo gerku
+        let arguments = vec![
+            Argument::Description((Determiner::Indefinite, 0)), // 0: lo gerku
             Argument::Restricted((
                 0,
                 RelClause {
-                    kind: RelClauseKind::Poi,
+                    kind: RelClauseKind::Restrictive,
                     body_sentence: 1,
                 },
             )), // 1: lo gerku poi barda
@@ -2159,7 +2163,7 @@ mod tests {
             }),
         ];
 
-        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        let (form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         assert!(
             compiler.errors.is_empty(),
             "Expected no errors for a single-predicate clause, got: {:?}",
@@ -2191,24 +2195,24 @@ mod tests {
         // (an explicit ke'a rides at x2), or `fa alis` collides with the
         // pre-filled x1 → "place already filled" reject (the shipped-language
         // defect this fixes). alis lands at x1 (lover), ke'a/dog at x2 (loved).
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()), // 0
             Predicate::Root("prami".into()), // 1
             Predicate::Root("danlu".into()), // 2
         ];
-        let sumtis = vec![
-            Argument::Description((Determiner::RoLo, 0)), // 0: ro lo gerku
+        let arguments = vec![
+            Argument::Description((Determiner::UniversalIndefinite, 0)), // 0: ro lo gerku
             Argument::Restricted((
                 0,
                 RelClause {
-                    kind: RelClauseKind::Poi,
+                    kind: RelClauseKind::Restrictive,
                     body_sentence: 1,
                 },
             )), // 1: ro lo gerku poi <body>
-            Argument::Pronoun("ke'a".into()),             // 2: ke'a
-            Argument::Name("alis".into()),                // 3: alis
-            Argument::Tagged((0, 3)),                     // 4: fa alis  (x1, lover)
-            Argument::Tagged((1, 2)),                     // 5: fe ke'a  (x2, loved)
+            Argument::Pronoun("ke'a".into()),                            // 2: ke'a
+            Argument::Name("alis".into()),                               // 3: alis
+            Argument::Tagged((0, 3)),                                    // 4: fa alis  (x1, lover)
+            Argument::Tagged((1, 2)),                                    // 5: fe ke'a  (x2, loved)
         ];
         let sentences = vec![
             Sentence::Simple(Proposition {
@@ -2228,7 +2232,7 @@ mod tests {
                 deontic: None,
             }),
         ];
-        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        let (form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         assert!(
             compiler.errors.is_empty(),
             "explicit fe-tagged ke'a must not collide with the implicit injection: {:?}",
@@ -2256,24 +2260,24 @@ mod tests {
         // tag. The scan must unwrap the place tag to see it and SKIP the
         // injection (otherwise `fa ke'a` collides with the pre-filled x1). ke'a/
         // dog lands at x1 (lover), alis at x2 (loved).
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()), // 0
             Predicate::Root("prami".into()), // 1
             Predicate::Root("danlu".into()), // 2
         ];
-        let sumtis = vec![
-            Argument::Description((Determiner::RoLo, 0)), // 0: ro lo gerku
+        let arguments = vec![
+            Argument::Description((Determiner::UniversalIndefinite, 0)), // 0: ro lo gerku
             Argument::Restricted((
                 0,
                 RelClause {
-                    kind: RelClauseKind::Poi,
+                    kind: RelClauseKind::Restrictive,
                     body_sentence: 1,
                 },
             )), // 1
-            Argument::Pronoun("ke'a".into()),             // 2: ke'a
-            Argument::Name("alis".into()),                // 3: alis
-            Argument::Tagged((0, 2)),                     // 4: fa ke'a (x1, lover)
-            Argument::Tagged((1, 3)),                     // 5: fe alis (x2, loved)
+            Argument::Pronoun("ke'a".into()),                            // 2: ke'a
+            Argument::Name("alis".into()),                               // 3: alis
+            Argument::Tagged((0, 2)),                                    // 4: fa ke'a (x1, lover)
+            Argument::Tagged((1, 3)),                                    // 5: fe alis (x2, loved)
         ];
         let sentences = vec![
             Sentence::Simple(Proposition {
@@ -2293,7 +2297,7 @@ mod tests {
                 deontic: None,
             }),
         ];
-        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        let (form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         assert!(
             compiler.errors.is_empty(),
             "fa-tagged ke'a must not collide with the implicit injection: {:?}",
@@ -2321,22 +2325,22 @@ mod tests {
         // with the clause var while the fe-tagged ke'a resolved to the SAME var
         // at x2 → prami(dog, dog) ("dog that loves itself"). x1 must stay
         // Unspecified → prami(zo'e, dog) ("dog that is loved").
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()), // 0
             Predicate::Root("prami".into()), // 1
             Predicate::Root("danlu".into()), // 2
         ];
-        let sumtis = vec![
-            Argument::Description((Determiner::RoLo, 0)), // 0: ro lo gerku
+        let arguments = vec![
+            Argument::Description((Determiner::UniversalIndefinite, 0)), // 0: ro lo gerku
             Argument::Restricted((
                 0,
                 RelClause {
-                    kind: RelClauseKind::Poi,
+                    kind: RelClauseKind::Restrictive,
                     body_sentence: 1,
                 },
             )), // 1
-            Argument::Pronoun("ke'a".into()),             // 2: ke'a
-            Argument::Tagged((1, 2)),                     // 3: fe ke'a (x2, loved)
+            Argument::Pronoun("ke'a".into()),                            // 2: ke'a
+            Argument::Tagged((1, 2)),                                    // 3: fe ke'a (x2, loved)
         ];
         let sentences = vec![
             Sentence::Simple(Proposition {
@@ -2356,7 +2360,7 @@ mod tests {
                 deontic: None,
             }),
         ];
-        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        let (form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         let prami_x1 = get_pred_args(&form, "prami_x1", &compiler).expect("prami_x1 present");
         let prami_x2 = get_pred_args(&form, "prami_x2", &compiler).expect("prami_x2 present");
@@ -2380,21 +2384,21 @@ mod tests {
         // non-subject slot -> reject and demand explicit ke'a.
         //
         // Buffer layout:
-        //   selbris: [0: gerku, 1: mlatu, 2: batci]
-        //   sumtis:  [0: Description(Lo, 0), 1: Description(Lo, 1), 2: Restricted(0, poi body=1)]
+        //   predicates: [0: gerku, 1: mlatu, 2: batci]
+        //   arguments:  [0: Description(Lo, 0), 1: Description(Lo, 1), 2: Restricted(0, poi body=1)]
         //   sentences: [0: Simple(batci, head=[2]), 1: Simple(batci, head=[1])]
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()), // 0
             Predicate::Root("mlatu".into()), // 1
             Predicate::Root("batci".into()), // 2
         ];
-        let sumtis = vec![
-            Argument::Description((Determiner::Lo, 0)), // 0: lo gerku
-            Argument::Description((Determiner::Lo, 1)), // 1: lo mlatu
+        let arguments = vec![
+            Argument::Description((Determiner::Indefinite, 0)), // 0: lo gerku
+            Argument::Description((Determiner::Indefinite, 1)), // 1: lo mlatu
             Argument::Restricted((
                 0,
                 RelClause {
-                    kind: RelClauseKind::Poi,
+                    kind: RelClauseKind::Restrictive,
                     body_sentence: 1,
                 },
             )), // 2: lo gerku poi lo mlatu cu batci
@@ -2418,7 +2422,7 @@ mod tests {
             }),
         ];
 
-        let (_form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        let (_form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         assert!(
             !compiler.errors.is_empty(),
             "Expected a ke'a error: the dog's batci_x2 place cannot be filled implicitly"
@@ -2500,8 +2504,8 @@ mod tests {
     fn test_fa_tag_beyond_arity_errors() {
         // fu do gerku → `fu` targets x5 but gerku is 2-place: semantic error,
         // never a silent drop of `do`.
-        let selbris = vec![Predicate::Root("gerku".into())];
-        let sumtis = vec![
+        let predicates = vec![Predicate::Root("gerku".into())];
+        let arguments = vec![
             Argument::Pronoun("do".into()), // 0
             Argument::Tagged((4, 0)),       // 1: fu do
         ];
@@ -2513,7 +2517,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (_form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (_form, compiler) = compile_one(predicates, arguments, bridi);
         assert!(
             !compiler.errors.is_empty(),
             "over-arity FA tag must produce a semantic error"
@@ -2528,8 +2532,8 @@ mod tests {
     #[test]
     fn test_fa_tag_within_arity_no_error() {
         // fe do gerku → `fe` targets x2; gerku is 2-place: fine.
-        let selbris = vec![Predicate::Root("gerku".into())];
-        let sumtis = vec![
+        let predicates = vec![Predicate::Root("gerku".into())];
+        let arguments = vec![
             Argument::Pronoun("do".into()), // 0
             Argument::Tagged((1, 0)),       // 1: fe do
         ];
@@ -2541,7 +2545,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         assert!(
             compiler.errors.is_empty(),
             "in-range FA tag must not error, got: {:?}",
@@ -2557,8 +2561,8 @@ mod tests {
         // `gerku mi do ti` — gerku is a KNOWN 2-place gismu, so the 3rd untagged
         // sumti (`ti`) overflows with no slot: fail closed instead of silently
         // dropping it.
-        let selbris = vec![Predicate::Root("gerku".into())];
-        let sumtis = vec![
+        let predicates = vec![Predicate::Root("gerku".into())];
+        let arguments = vec![
             Argument::Pronoun("mi".into()), // 0
             Argument::Pronoun("do".into()), // 1
             Argument::Pronoun("ti".into()), // 2
@@ -2571,7 +2575,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (_form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (_form, compiler) = compile_one(predicates, arguments, bridi);
         assert!(
             !compiler.errors.is_empty(),
             "untagged sumti over a known arity must error"
@@ -2588,8 +2592,8 @@ mod tests {
         // An UNKNOWN selbri defaults to arity 2, but its real arity may be higher,
         // so an untagged overflow is NOT an error there (matches today's behavior —
         // the no-XML build defaults many proxy words to 2).
-        let selbris = vec![Predicate::Root("zzzzz".into())];
-        let sumtis = vec![
+        let predicates = vec![Predicate::Root("zzzzz".into())];
+        let arguments = vec![
             Argument::Pronoun("mi".into()), // 0
             Argument::Pronoun("do".into()), // 1
             Argument::Pronoun("ti".into()), // 2
@@ -2602,7 +2606,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (_form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (_form, compiler) = compile_one(predicates, arguments, bridi);
         assert!(
             compiler.errors.is_empty(),
             "unknown-arity overflow must not error, got: {:?}",
@@ -2614,8 +2618,8 @@ mod tests {
     fn test_tag_collision_errors() {
         // `fe do fe ti gerku` — both `fe` tags target x2: a place set twice must
         // error, not silently last-wins (dropping `do`).
-        let selbris = vec![Predicate::Root("gerku".into())];
-        let sumtis = vec![
+        let predicates = vec![Predicate::Root("gerku".into())];
+        let arguments = vec![
             Argument::Pronoun("do".into()), // 0
             Argument::Pronoun("ti".into()), // 1
             Argument::Tagged((1, 0)),       // 2: fe do
@@ -2629,7 +2633,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (_form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (_form, compiler) = compile_one(predicates, arguments, bridi);
         assert!(
             !compiler.errors.is_empty(),
             "a tag re-targeting a filled place must error"
@@ -2647,19 +2651,19 @@ mod tests {
         // ONE event, so its two unfilled x1 roles are one candidate subject
         // slot; the firewall must not reject, and injection must fill BOTH x1
         // roles with the dog's variable.
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()), // 0
             Predicate::Root("sutra".into()), // 1
             Predicate::Root("bajra".into()), // 2
-            Predicate::Tanru((1, 2)),        // 3: sutra bajra
+            Predicate::Pair((1, 2)),         // 3: sutra bajra
             Predicate::Root("klama".into()), // 4
         ];
-        let sumtis = vec![
-            Argument::Description((Determiner::Lo, 0)), // 0: lo gerku
+        let arguments = vec![
+            Argument::Description((Determiner::Indefinite, 0)), // 0: lo gerku
             Argument::Restricted((
                 0,
                 RelClause {
-                    kind: RelClauseKind::Poi,
+                    kind: RelClauseKind::Restrictive,
                     body_sentence: 1,
                 },
             )), // 1: lo gerku poi sutra bajra
@@ -2682,7 +2686,7 @@ mod tests {
                 deontic: None,
             }),
         ];
-        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        let (form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         assert!(
             compiler.errors.is_empty(),
             "valid tanru-in-poi clause must not be rejected, got: {:?}",
@@ -2711,16 +2715,16 @@ mod tests {
         // the clause on a name (no quantifier) must be conjoined into the
         // matrix, not compiled-then-dropped. An assertion asserts both
         // conjuncts; a query requires both.
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()), // 0
             Predicate::Root("klama".into()), // 1
         ];
-        let sumtis = vec![
+        let arguments = vec![
             Argument::Name("adam".into()), // 0
             Argument::Restricted((
                 0,
                 RelClause {
-                    kind: RelClauseKind::Poi,
+                    kind: RelClauseKind::Restrictive,
                     body_sentence: 1,
                 },
             )), // 1: la .adam. poi gerku
@@ -2743,7 +2747,7 @@ mod tests {
                 deontic: None,
             }),
         ];
-        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        let (form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         assert!(
             compiler.errors.is_empty(),
             "single-subject-slot clause on a name must compile cleanly, got: {:?}",
@@ -2766,17 +2770,17 @@ mod tests {
         // la .adam. poi lo mlatu cu batci → the clause has NO unfilled subject
         // slot for Adam (the cat fills batci_x1): ambiguous implicit ke'a must
         // be rejected on names too, exactly like on lo descriptions.
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("mlatu".into()), // 0
             Predicate::Root("batci".into()), // 1
         ];
-        let sumtis = vec![
-            Argument::Name("adam".into()),              // 0
-            Argument::Description((Determiner::Lo, 0)), // 1: lo mlatu
+        let arguments = vec![
+            Argument::Name("adam".into()),                      // 0
+            Argument::Description((Determiner::Indefinite, 0)), // 1: lo mlatu
             Argument::Restricted((
                 0,
                 RelClause {
-                    kind: RelClauseKind::Poi,
+                    kind: RelClauseKind::Restrictive,
                     body_sentence: 1,
                 },
             )), // 2: la .adam. poi lo mlatu cu batci
@@ -2799,7 +2803,7 @@ mod tests {
                 deontic: None,
             }),
         ];
-        let (_form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
+        let (_form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         assert!(
             !compiler.errors.is_empty(),
             "ambiguous implicit-ke'a clause on a name must be rejected"
@@ -2838,13 +2842,13 @@ mod tests {
             }
         }
 
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()), // 0
             Predicate::Root("citka".into()), // 1
         ];
-        let sumtis = vec![
-            Argument::Description((Determiner::RoLo, 0)), // 0: ro lo gerku
-            Argument::Pronoun("da".into()),               // 1: da
+        let arguments = vec![
+            Argument::Description((Determiner::UniversalIndefinite, 0)), // 0: ro lo gerku
+            Argument::Pronoun("da".into()),                              // 1: da
         ];
         let bridi = Proposition {
             relation: 1,
@@ -2854,7 +2858,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         match &form {
             LogicalForm::ForAll(_, body) => {
                 assert!(
@@ -2875,49 +2879,49 @@ mod tests {
     #[test]
     fn test_tense_pu_produces_past() {
         // pu mi klama → Past(klama(mi, ...))
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![Argument::Pronoun("mi".into())];
+        let predicates = vec![Predicate::Root("klama".into())];
+        let arguments = vec![Argument::Pronoun("mi".into())];
         let bridi = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
             negated: false,
-            tense: Some(Tense::Pu),
+            tense: Some(Tense::Past),
             deontic: None,
         };
-        let (form, _) = compile_one(selbris, sumtis, bridi);
+        let (form, _) = compile_one(predicates, arguments, bridi);
         assert!(matches!(form, LogicalForm::Past(_)));
     }
 
     #[test]
     fn test_tense_ca_produces_present() {
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![Argument::Pronoun("mi".into())];
+        let predicates = vec![Predicate::Root("klama".into())];
+        let arguments = vec![Argument::Pronoun("mi".into())];
         let bridi = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
             negated: false,
-            tense: Some(Tense::Ca),
+            tense: Some(Tense::Now),
             deontic: None,
         };
-        let (form, _) = compile_one(selbris, sumtis, bridi);
+        let (form, _) = compile_one(predicates, arguments, bridi);
         assert!(matches!(form, LogicalForm::Present(_)));
     }
 
     #[test]
     fn test_tense_ba_produces_future() {
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![Argument::Pronoun("mi".into())];
+        let predicates = vec![Predicate::Root("klama".into())];
+        let arguments = vec![Argument::Pronoun("mi".into())];
         let bridi = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
             negated: false,
-            tense: Some(Tense::Ba),
+            tense: Some(Tense::Future),
             deontic: None,
         };
-        let (form, _) = compile_one(selbris, sumtis, bridi);
+        let (form, _) = compile_one(predicates, arguments, bridi);
         assert!(matches!(form, LogicalForm::Future(_)));
     }
 
@@ -2925,33 +2929,33 @@ mod tests {
 
     #[test]
     fn test_deontic_ei_produces_obligatory() {
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![Argument::Pronoun("mi".into())];
+        let predicates = vec![Predicate::Root("klama".into())];
+        let arguments = vec![Argument::Pronoun("mi".into())];
         let bridi = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
             negated: false,
             tense: None,
-            deontic: Some(DeonticMood::Ei),
+            deontic: Some(DeonticMood::Obligation),
         };
-        let (form, _) = compile_one(selbris, sumtis, bridi);
+        let (form, _) = compile_one(predicates, arguments, bridi);
         assert!(matches!(form, LogicalForm::Obligatory(_)));
     }
 
     #[test]
     fn test_deontic_ehe_produces_permitted() {
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![Argument::Pronoun("mi".into())];
+        let predicates = vec![Predicate::Root("klama".into())];
+        let arguments = vec![Argument::Pronoun("mi".into())];
         let bridi = Proposition {
             relation: 0,
             head_terms: vec![0],
             tail_terms: vec![],
             negated: false,
             tense: None,
-            deontic: Some(DeonticMood::Ehe),
+            deontic: Some(DeonticMood::Permission),
         };
-        let (form, _) = compile_one(selbris, sumtis, bridi);
+        let (form, _) = compile_one(predicates, arguments, bridi);
         assert!(matches!(form, LogicalForm::Permitted(_)));
     }
 
@@ -2960,8 +2964,8 @@ mod tests {
     #[test]
     fn test_bridi_negation_produces_not() {
         // na mi klama → Not(klama(mi, ...))
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![Argument::Pronoun("mi".into())];
+        let predicates = vec![Predicate::Root("klama".into())];
+        let arguments = vec![Argument::Pronoun("mi".into())];
         let bridi = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -2970,7 +2974,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, _) = compile_one(selbris, sumtis, bridi);
+        let (form, _) = compile_one(predicates, arguments, bridi);
         assert!(matches!(form, LogicalForm::Not(_)));
     }
 
@@ -2979,11 +2983,11 @@ mod tests {
     #[test]
     fn test_se_conversion_swaps_args() {
         // se prami mi do → prami(do, mi, ...) (x1↔x2 swapped)
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("prami".into()),
-            Predicate::Converted((Conversion::Se, 0)),
+            Predicate::Converted((Conversion::Swap12, 0)),
         ];
-        let sumtis = vec![
+        let arguments = vec![
             Argument::Pronoun("mi".into()),
             Argument::Pronoun("do".into()),
         ];
@@ -2995,7 +2999,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         // With event decomposition, form is Exists(ev, And(prami(ev), prami_x1(ev, ...), prami_x2(ev, ...)))
         // After se-conversion: x1 and x2 are swapped
         // head=mi goes to x1 position, tail=do goes to x2 position
@@ -3033,8 +3037,8 @@ mod tests {
 
     #[test]
     fn test_zo_e_compiles_to_unspecified() {
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![Argument::Unspecified];
+        let predicates = vec![Predicate::Root("klama".into())];
+        let arguments = vec![Argument::Unspecified];
         let bridi = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -3043,7 +3047,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         // With event decomposition, form is Exists(ev, And(klama(ev), klama_x1(ev, zo'e), ...))
         assert!(
             matches!(&form, LogicalForm::Exists(_, _)),
@@ -3065,8 +3069,8 @@ mod tests {
     #[test]
     fn test_event_decompose_basic() {
         // mi klama → ∃e. klama(e) ∧ klama_x1(e, mi) ∧ klama_x2(e, zo'e) ∧ ...
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![Argument::Pronoun("mi".into())];
+        let predicates = vec![Predicate::Root("klama".into())];
+        let arguments = vec![Argument::Pronoun("mi".into())];
         let bridi = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -3075,7 +3079,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
 
         // Top level should be Exists (event variable)
         assert!(matches!(&form, LogicalForm::Exists(_, _)));
@@ -3096,8 +3100,8 @@ mod tests {
     #[test]
     fn test_event_decompose_all_roles_emitted() {
         // klama has arity 5, all roles should be emitted
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![Argument::Pronoun("mi".into())];
+        let predicates = vec![Predicate::Root("klama".into())];
+        let arguments = vec![Argument::Pronoun("mi".into())];
         let bridi = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -3106,7 +3110,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
 
         for i in 1..=5 {
             let role = format!("klama_x{}", i);
@@ -3120,12 +3124,12 @@ mod tests {
     fn test_event_tanru_shared_event() {
         // sutra gerku → ∃e. gerku(e) ∧ gerku_x1(e, x1) ∧ sutra_x1(e, x1)
         // modifier and head share the SAME event variable
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("sutra".into()), // 0
             Predicate::Root("gerku".into()), // 1
-            Predicate::Tanru((0, 1)),        // 2
+            Predicate::Pair((0, 1)),         // 2
         ];
-        let sumtis = vec![Argument::Pronoun("mi".into())];
+        let arguments = vec![Argument::Pronoun("mi".into())];
         let bridi = Proposition {
             relation: 2,
             head_terms: vec![0],
@@ -3134,7 +3138,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
 
         // Should have head type predicate
         assert!(has_pred(&form, "gerku", &compiler));
@@ -3162,12 +3166,12 @@ mod tests {
         // barda gerku → NOT And(barda(x1), gerku(x1, ...))
         // Instead: ∃e. gerku(e) ∧ gerku_x1(e, x1) ∧ barda_x1(e, x1)
         // The modifier "barda" is event-bound, not a standalone predication
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("barda".into()), // 0
             Predicate::Root("gerku".into()), // 1
-            Predicate::Tanru((0, 1)),        // 2
+            Predicate::Pair((0, 1)),         // 2
         ];
-        let sumtis = vec![Argument::Pronoun("mi".into())];
+        let arguments = vec![Argument::Pronoun("mi".into())];
         let bridi = Proposition {
             relation: 2,
             head_terms: vec![0],
@@ -3176,7 +3180,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
 
         // There should be NO standalone "barda" type predicate
         // Only "barda_x1" role predicate (event-bound modifier)
@@ -3196,12 +3200,12 @@ mod tests {
     #[test]
     fn test_event_decompose_with_quantifier() {
         // lo gerku cu klama → ∃x. (∃e1. gerku(e1) ∧ gerku_x1(e1, x)) ∧ (∃e2. klama(e2) ∧ klama_x1(e2, x) ∧ ...)
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()), // 0
             Predicate::Root("klama".into()), // 1
         ];
-        let sumtis = vec![
-            Argument::Description((Determiner::Lo, 0)), // 0: lo gerku
+        let arguments = vec![
+            Argument::Description((Determiner::Indefinite, 0)), // 0: lo gerku
         ];
         let bridi = Proposition {
             relation: 1,
@@ -3211,7 +3215,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
 
         // Outer Exists for the description variable
         assert!(matches!(&form, LogicalForm::Exists(_, _)));
@@ -3227,11 +3231,11 @@ mod tests {
     fn test_event_conversion_se() {
         // mi se prami do → prami(do, mi, ...) with se-swapped args
         // Event form: ∃e. prami(e) ∧ prami_x1(e, do) ∧ prami_x2(e, mi)
-        let selbris = vec![
-            Predicate::Root("prami".into()),           // 0
-            Predicate::Converted((Conversion::Se, 0)), // 1
+        let predicates = vec![
+            Predicate::Root("prami".into()),               // 0
+            Predicate::Converted((Conversion::Swap12, 0)), // 1
         ];
-        let sumtis = vec![
+        let arguments = vec![
             Argument::Pronoun("mi".into()), // 0
             Argument::Pronoun("do".into()), // 1
         ];
@@ -3243,7 +3247,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
 
         // se swaps x1 and x2: mi goes to x2, do goes to x1
         let x1 = get_pred_args(&form, "prami_x1", &compiler).unwrap();
@@ -3262,8 +3266,8 @@ mod tests {
 
     #[test]
     fn test_la_name_compiles_to_constant() {
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![Argument::Name("alis".into())];
+        let predicates = vec![Predicate::Root("klama".into())];
+        let arguments = vec![Argument::Name("alis".into())];
         let bridi = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -3272,7 +3276,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         // With event decomposition, form is Exists(ev, And(klama(ev), klama_x1(ev, alis), ...))
         assert!(
             matches!(&form, LogicalForm::Exists(_, _)),
@@ -3291,8 +3295,8 @@ mod tests {
 
     #[test]
     fn test_number_sumti_compiles_to_number() {
-        let selbris = vec![Predicate::Root("namcu".into())];
-        let sumtis = vec![Argument::Number(42.0)];
+        let predicates = vec![Predicate::Root("namcu".into())];
+        let arguments = vec![Argument::Number(42.0)];
         let bridi = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -3301,7 +3305,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         // With event decomposition, form is Exists(ev, And(namcu(ev), namcu_x1(ev, 42.0), ...))
         assert!(
             matches!(&form, LogicalForm::Exists(_, _)),
@@ -3321,8 +3325,8 @@ mod tests {
 
     #[test]
     fn test_quoted_literal_compiles_to_constant() {
-        let selbris = vec![Predicate::Root("valsi".into())];
-        let sumtis = vec![Argument::QuotedLiteral("coi".into())];
+        let predicates = vec![Predicate::Root("valsi".into())];
+        let arguments = vec![Argument::QuotedLiteral("coi".into())];
         let bridi = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -3331,7 +3335,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         // With event decomposition, form is Exists(ev, And(valsi(ev), valsi_x1(ev, coi), ...))
         assert!(
             matches!(&form, LogicalForm::Exists(_, _)),
@@ -3353,8 +3357,8 @@ mod tests {
     #[test]
     fn test_known_gismu_gets_correct_arity() {
         // klama has arity 5, so there should be 5 role predicates (klama_x1..klama_x5)
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![Argument::Pronoun("mi".into())];
+        let predicates = vec![Predicate::Root("klama".into())];
+        let arguments = vec![Argument::Pronoun("mi".into())];
         let bridi = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -3363,7 +3367,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         // With event decomposition, check that all 5 role predicates exist
         assert!(
             matches!(&form, LogicalForm::Exists(_, _)),
@@ -3387,8 +3391,8 @@ mod tests {
     #[test]
     fn test_unknown_gismu_defaults_to_arity_2() {
         // An unrecognized word should default to arity 2 → 2 role predicates
-        let selbris = vec![Predicate::Root("xyzzy".into())];
-        let sumtis = vec![Argument::Pronoun("mi".into())];
+        let predicates = vec![Predicate::Root("xyzzy".into())];
+        let arguments = vec![Argument::Pronoun("mi".into())];
         let bridi = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -3397,7 +3401,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         // With event decomposition, check that there are 2 role predicates
         assert!(
             matches!(&form, LogicalForm::Exists(_, _)),
@@ -3428,17 +3432,17 @@ mod tests {
     #[test]
     fn test_sentence_connective_ge_gi_produces_and() {
         // ge mi klama gi do sutra → And(klama(mi,...), sutra(do,...))
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("klama".into()),
             Predicate::Root("sutra".into()),
         ];
-        let sumtis = vec![
+        let arguments = vec![
             Argument::Pronoun("mi".into()),
             Argument::Pronoun("do".into()),
         ];
         let sentences = vec![
             Sentence::Connected((
-                SentenceConnective::GeGi,
+                SentenceConnective::And,
                 1, // left sentence idx
                 2, // right sentence idx
             )),
@@ -3459,7 +3463,7 @@ mod tests {
                 deontic: None,
             }),
         ];
-        let (form, _) = compile_sentence_full(selbris, sumtis, sentences);
+        let (form, _) = compile_sentence_full(predicates, arguments, sentences);
         assert!(matches!(form, LogicalForm::And(_, _)));
     }
 
@@ -3525,8 +3529,8 @@ mod tests {
     #[test]
     fn test_predicate_with_no_explicit_args() {
         // Just "klama" alone → should produce event-decomposed form with all Unspecified role args
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis: Vec<Argument> = vec![];
+        let predicates = vec![Predicate::Root("klama".into())];
+        let arguments: Vec<Argument> = vec![];
         let bridi = Proposition {
             relation: 0,
             head_terms: vec![],
@@ -3535,7 +3539,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         // With event decomposition, should be Exists(ev, And(klama(ev), klama_x1(ev, zo'e), ...))
         assert!(
             matches!(&form, LogicalForm::Exists(_, _)),
@@ -3565,11 +3569,11 @@ mod tests {
     #[test]
     fn test_le_description_stays_description() {
         // le gerku cu barda → Description("gerku") in x1 role predicate
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()),
             Predicate::Root("barda".into()),
         ];
-        let sumtis = vec![Argument::Description((Determiner::Le, 0))];
+        let arguments = vec![Argument::Description((Determiner::Definite, 0))];
         let bridi = Proposition {
             relation: 1,
             head_terms: vec![0],
@@ -3578,7 +3582,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         let args =
             get_pred_args(&form, "barda_x1", &compiler).expect("expected barda_x1 role predicate");
         match &args[1] {
@@ -3590,11 +3594,11 @@ mod tests {
     #[test]
     fn test_ro_le_uses_opaque_domain_restrictor() {
         // ro le gerku cu sutra → ForAll(_v0, Or(Not(le_domain_gerku(_v0)), ...))
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()),
             Predicate::Root("sutra".into()),
         ];
-        let sumtis = vec![Argument::Description((Determiner::RoLe, 0))];
+        let arguments = vec![Argument::Description((Determiner::UniversalDefinite, 0))];
         let bridi = Proposition {
             relation: 1,
             head_terms: vec![0],
@@ -3603,7 +3607,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         // Must be ForAll at the top
         assert!(
             matches!(&form, LogicalForm::ForAll(_, _)),
@@ -3624,11 +3628,11 @@ mod tests {
     #[test]
     fn test_ro_lo_still_veridical() {
         // ro lo gerku cu sutra → ForAll with veridical gerku restrictor
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()),
             Predicate::Root("sutra".into()),
         ];
-        let sumtis = vec![Argument::Description((Determiner::RoLo, 0))];
+        let arguments = vec![Argument::Description((Determiner::UniversalIndefinite, 0))];
         let bridi = Proposition {
             relation: 1,
             head_terms: vec![0],
@@ -3637,7 +3641,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         assert!(
             matches!(&form, LogicalForm::ForAll(_, _)),
             "expected ForAll, got {:?}",
@@ -3657,11 +3661,15 @@ mod tests {
     #[test]
     fn test_pa_le_uses_opaque_domain_restrictor() {
         // re le gerku cu sutra → Count with le_domain_gerku restrictor
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()),
             Predicate::Root("sutra".into()),
         ];
-        let sumtis = vec![Argument::QuantifiedDescription((2, Determiner::Le, 0))];
+        let arguments = vec![Argument::QuantifiedDescription((
+            2,
+            Determiner::Definite,
+            0,
+        ))];
         let bridi = Proposition {
             relation: 1,
             head_terms: vec![0],
@@ -3670,7 +3678,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         assert!(
             matches!(&form, LogicalForm::Count { count: 2, .. }),
             "expected Count(2), got {:?}",
@@ -3689,11 +3697,15 @@ mod tests {
     #[test]
     fn test_pa_lo_still_veridical() {
         // re lo gerku cu sutra → Count with veridical gerku restrictor
-        let selbris = vec![
+        let predicates = vec![
             Predicate::Root("gerku".into()),
             Predicate::Root("sutra".into()),
         ];
-        let sumtis = vec![Argument::QuantifiedDescription((2, Determiner::Lo, 0))];
+        let arguments = vec![Argument::QuantifiedDescription((
+            2,
+            Determiner::Indefinite,
+            0,
+        ))];
         let bridi = Proposition {
             relation: 1,
             head_terms: vec![0],
@@ -3702,7 +3714,7 @@ mod tests {
             tense: None,
             deontic: None,
         };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
+        let (form, compiler) = compile_one(predicates, arguments, bridi);
         assert!(
             matches!(&form, LogicalForm::Count { count: 2, .. }),
             "expected Count(2), got {:?}",

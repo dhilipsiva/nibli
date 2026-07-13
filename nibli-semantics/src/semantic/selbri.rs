@@ -171,13 +171,13 @@ impl SemanticCompiler {
     /// Compiles a selbri node with given arguments into a FOL logic form.
     pub(crate) fn apply_predicate(
         &mut self,
-        selbri_id: u32,
+        predicate_id: u32,
         args: &[LogicalTerm],
-        selbris: &[Predicate],
-        sumtis: &[Argument],
+        predicates: &[Predicate],
+        arguments: &[Argument],
         sentences: &[Sentence],
     ) -> LogicalForm {
-        match &selbris[selbri_id as usize] {
+        match &predicates[predicate_id as usize] {
             Predicate::Root(g) => {
                 // `du` (identity) is a pure binary equivalence relation with no
                 // event structure. It MUST stay a flat 2-arg `du(x1, x2)`
@@ -197,7 +197,7 @@ impl SemanticCompiler {
                 let fitted = Self::fit_args(args, arity);
                 self.event_decompose(g.as_str(), &fitted)
             }
-            Predicate::Tanru((mod_id, head_id)) => {
+            Predicate::Pair((mod_id, head_id)) => {
                 // Per-unit (name, arity, conversion swaps): a converted unit's
                 // args are mapped fit-then-swap through its swap chain, exactly
                 // like the `Predicate::Converted` arm — `menli se ponse` puts the
@@ -205,9 +205,9 @@ impl SemanticCompiler {
                 // modifier likewise (the pre-2026-07-12 flatten dropped the
                 // swap silently).
                 let (mod_name, mod_arity, mod_swaps) =
-                    self.get_predicate_unit_base(*mod_id, selbris);
+                    self.get_predicate_unit_base(*mod_id, predicates);
                 let (head_name, head_arity, head_swaps) =
-                    self.get_predicate_unit_base(*head_id, selbris);
+                    self.get_predicate_unit_base(*head_id, predicates);
 
                 let mut mod_args = vec![LogicalTerm::Unspecified; mod_arity];
                 if !args.is_empty() && mod_arity > 0 {
@@ -263,23 +263,23 @@ impl SemanticCompiler {
             Predicate::Converted((conv, inner_id)) => {
                 let mut permuted = args.to_vec();
                 match conv {
-                    Conversion::Se if permuted.len() >= 2 => permuted.swap(0, 1),
-                    Conversion::Te if permuted.len() >= 3 => permuted.swap(0, 2),
-                    Conversion::Ve if permuted.len() >= 4 => permuted.swap(0, 3),
-                    Conversion::Xe if permuted.len() >= 5 => permuted.swap(0, 4),
+                    Conversion::Swap12 if permuted.len() >= 2 => permuted.swap(0, 1),
+                    Conversion::Swap13 if permuted.len() >= 3 => permuted.swap(0, 2),
+                    Conversion::Swap14 if permuted.len() >= 4 => permuted.swap(0, 3),
+                    Conversion::Swap15 if permuted.len() >= 5 => permuted.swap(0, 4),
                     _ => {}
                 }
-                self.apply_predicate(*inner_id, &permuted, selbris, sumtis, sentences)
+                self.apply_predicate(*inner_id, &permuted, predicates, arguments, sentences)
             }
             Predicate::Negated(inner_id) => {
-                let inner = self.apply_predicate(*inner_id, args, selbris, sumtis, sentences);
+                let inner = self.apply_predicate(*inner_id, args, predicates, arguments, sentences);
                 LogicalForm::Not(Box::new(inner))
             }
             Predicate::Grouped(inner_id) => {
-                self.apply_predicate(*inner_id, args, selbris, sumtis, sentences)
+                self.apply_predicate(*inner_id, args, predicates, arguments, sentences)
             }
             Predicate::WithArgs((core_id, bound_ids)) => {
-                let core_arity = self.get_predicate_arity(*core_id, selbris);
+                let core_arity = self.get_predicate_arity(*core_id, predicates);
                 let mut merged = Vec::with_capacity(core_arity);
                 let mut inner_quantifiers: Vec<QuantifierEntry> = Vec::new();
 
@@ -290,9 +290,9 @@ impl SemanticCompiler {
                 });
 
                 for bound_id in bound_ids.iter() {
-                    let bound_sumti = &sumtis[*bound_id as usize];
+                    let bound_sumti = &arguments[*bound_id as usize];
                     let (term, quants) =
-                        self.resolve_argument(bound_sumti, sumtis, selbris, sentences);
+                        self.resolve_argument(bound_sumti, arguments, predicates, sentences);
                     inner_quantifiers.extend(quants);
                     merged.push(term);
                 }
@@ -306,10 +306,11 @@ impl SemanticCompiler {
                     }
                 }
 
-                let mut form = self.apply_predicate(*core_id, &merged, selbris, sumtis, sentences);
+                let mut form =
+                    self.apply_predicate(*core_id, &merged, predicates, arguments, sentences);
 
                 for entry in inner_quantifiers.into_iter().rev() {
-                    form = self.close_quantifier(entry, form, selbris, sumtis, sentences);
+                    form = self.close_quantifier(entry, form, predicates, arguments, sentences);
                 }
 
                 form
@@ -322,22 +323,22 @@ impl SemanticCompiler {
             }
             Predicate::Abstraction((kind, body_sentence_idx)) => {
                 let type_name = match kind {
-                    AbstractionKind::Nu => "nu",
-                    AbstractionKind::Duhu => "duhu",
-                    AbstractionKind::Ka => "ka",
-                    AbstractionKind::Ni => "ni",
-                    AbstractionKind::Siho => "siho",
+                    AbstractionKind::Event => "nu",
+                    AbstractionKind::Fact => "duhu",
+                    AbstractionKind::Property => "ka",
+                    AbstractionKind::Amount => "ni",
+                    AbstractionKind::Concept => "siho",
                 };
 
                 let outer_ka_var = self.property_open_var;
-                if *kind == AbstractionKind::Ka {
+                if *kind == AbstractionKind::Property {
                     if let Some(LogicalTerm::Variable(v)) = args.first() {
                         self.property_open_var = Some(*v);
                     }
                 }
 
                 let inner_form =
-                    self.compile_sentence(*body_sentence_idx, selbris, sumtis, sentences);
+                    self.compile_sentence(*body_sentence_idx, predicates, arguments, sentences);
                 self.property_open_var = outer_ka_var;
 
                 let type_pred = LogicalForm::Predicate {

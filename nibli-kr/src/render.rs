@@ -59,14 +59,14 @@ const PREC_ATOM: u8 = 6;
 impl<'a> Renderer<'a> {
     fn selbri(&self, id: u32) -> R<&Predicate> {
         self.buffer
-            .selbris
+            .predicates
             .get(id as usize)
             .ok_or_else(|| nope(format!("selbri index {id} out of bounds")))
     }
 
     fn sumti(&self, id: u32) -> R<&Argument> {
         self.buffer
-            .sumtis
+            .arguments
             .get(id as usize)
             .ok_or_else(|| nope(format!("sumti index {id} out of bounds")))
     }
@@ -92,7 +92,7 @@ impl<'a> Renderer<'a> {
                 (format!("all {vars}: {}", self.sentence(*body, 0)?), 0)
             }
             Sentence::Connected((conn, left, right)) => match conn {
-                SentenceConnective::GanaiGi => (
+                SentenceConnective::Implies => (
                     format!(
                         "{} -> {}",
                         self.sentence(*left, 2)?,
@@ -100,13 +100,13 @@ impl<'a> Renderer<'a> {
                     ),
                     1,
                 ),
-                SentenceConnective::GeGi => (self.binary("&", 5, *left, *right)?, 5),
+                SentenceConnective::And => (self.binary("&", 5, *left, *right)?, 5),
                 SentenceConnective::Afterthought(conn) => {
                     let (op, prec) = match conn {
-                        Connective::Je => ("&", 5),
-                        Connective::Ja => ("|", 4),
-                        Connective::Jo => ("<->", 2),
-                        Connective::Ju => ("^", 3),
+                        Connective::And => ("&", 5),
+                        Connective::Or => ("|", 4),
+                        Connective::Iff => ("<->", 2),
+                        Connective::Whether => ("^", 3),
                     };
                     (self.binary(op, prec, *left, *right)?, prec)
                 }
@@ -144,15 +144,15 @@ impl<'a> Renderer<'a> {
         let mut prefix = String::new();
         if let Some(att) = &bridi.deontic {
             prefix.push_str(match att {
-                DeonticMood::Ei => "must ",
-                DeonticMood::Ehe => "may ",
+                DeonticMood::Obligation => "must ",
+                DeonticMood::Permission => "may ",
             });
         }
         if let Some(tense) = &bridi.tense {
             prefix.push_str(match tense {
-                Tense::Pu => "past ",
-                Tense::Ca => "now ",
-                Tense::Ba => "future ",
+                Tense::Past => "past ",
+                Tense::Now => "now ",
+                Tense::Future => "future ",
             });
         }
         if bridi.negated {
@@ -294,10 +294,10 @@ impl<'a> Renderer<'a> {
         // Single-layer chain with a curated converted alias renders by name.
         if let Predicate::Root(gismu) = self.selbri(*inner)? {
             let place: u8 = match conv {
-                Conversion::Se => 2,
-                Conversion::Te => 3,
-                Conversion::Ve => 4,
-                Conversion::Xe => 5,
+                Conversion::Swap12 => 2,
+                Conversion::Swap13 => 3,
+                Conversion::Swap14 => 4,
+                Conversion::Swap15 => 5,
             };
             if nibli_kr_dictionary::curated::CONVERTED_ALIASES
                 .iter()
@@ -308,10 +308,10 @@ impl<'a> Renderer<'a> {
         }
         let (base, inner_perm) = self.peel_conversions(*inner)?;
         let swapped = match conv {
-            Conversion::Se => 1,
-            Conversion::Te => 2,
-            Conversion::Ve => 3,
-            Conversion::Xe => 4,
+            Conversion::Swap12 => 1,
+            Conversion::Swap13 => 2,
+            Conversion::Swap14 => 3,
+            Conversion::Swap15 => 4,
         };
         let mut perm = [0usize; 5];
         for (surface, slot) in perm.iter_mut().enumerate() {
@@ -333,7 +333,7 @@ impl<'a> Renderer<'a> {
         Ok(match self.selbri(id)? {
             Predicate::Root(g) => g.clone(),
             Predicate::Compound(parts) => parts.last().cloned().unwrap_or_default(),
-            Predicate::Tanru((_, head)) => self.head_gismu(*head)?,
+            Predicate::Pair((_, head)) => self.head_gismu(*head)?,
             Predicate::Converted((_, inner)) => self.head_gismu(*inner)?,
             Predicate::Negated(inner) => self.head_gismu(*inner)?,
             Predicate::Grouped(inner) => self.head_gismu(*inner)?,
@@ -403,10 +403,10 @@ impl<'a> Renderer<'a> {
                 .into_iter()
                 .collect::<Vec<_>>()
                 .join("+"),
-            Predicate::Tanru((modifier, head)) => {
+            Predicate::Pair((modifier, head)) => {
                 let modifier_text = match self.selbri(*modifier)? {
                     // A left-nested tanru needs explicit grouping.
-                    Predicate::Tanru(_) => format!("[{}]", self.selbri_text(*modifier, false)?),
+                    Predicate::Pair(_) => format!("[{}]", self.selbri_text(*modifier, false)?),
                     _ => self.selbri_text(*modifier, false)?,
                 };
                 format!("{modifier_text} {}", self.selbri_text(*head, selector_ok)?)
@@ -421,10 +421,10 @@ impl<'a> Renderer<'a> {
                     ));
                 };
                 let place: u8 = match conv {
-                    Conversion::Se => 2,
-                    Conversion::Te => 3,
-                    Conversion::Ve => 4,
-                    Conversion::Xe => 5,
+                    Conversion::Swap12 => 2,
+                    Conversion::Swap13 => 3,
+                    Conversion::Swap14 => 4,
+                    Conversion::Swap15 => 5,
                 };
                 // Curated converted alias first (works everywhere)…
                 if let Some((alias, _, _)) = nibli_kr_dictionary::curated::CONVERTED_ALIASES
@@ -454,11 +454,11 @@ impl<'a> Renderer<'a> {
             }
             Predicate::Abstraction((kind, body)) => {
                 let keyword = match kind {
-                    AbstractionKind::Nu => "event",
-                    AbstractionKind::Duhu => "fact",
-                    AbstractionKind::Ka => "property",
-                    AbstractionKind::Ni => "amount",
-                    AbstractionKind::Siho => "concept",
+                    AbstractionKind::Event => "event",
+                    AbstractionKind::Fact => "fact",
+                    AbstractionKind::Property => "property",
+                    AbstractionKind::Amount => "amount",
+                    AbstractionKind::Concept => "concept",
                 };
                 format!("{keyword} {{ {} }}", self.sentence(*body, 0)?)
             }
@@ -525,8 +525,10 @@ impl<'a> Renderer<'a> {
             Argument::Description((gadri, selbri)) => {
                 if let Predicate::Abstraction(_) = self.selbri(*selbri)? {
                     return match gadri {
-                        Determiner::Lo => self.restr_selbri(*selbri),
-                        Determiner::Le | Determiner::RoLo | Determiner::RoLe => Err(nope(
+                        Determiner::Indefinite => self.restr_selbri(*selbri),
+                        Determiner::Definite
+                        | Determiner::UniversalIndefinite
+                        | Determiner::UniversalDefinite => Err(nope(
                             "abstractions are hard-wired to the implicit-some description; \
                              other gadri × NU combinations are out of scope \
                              (NIBLI_KR §10)",
@@ -534,22 +536,28 @@ impl<'a> Renderer<'a> {
                     };
                 }
                 match gadri {
-                    Determiner::Lo => format!("some {}", self.restr_selbri(*selbri)?),
-                    Determiner::Le => format!("the {}", self.restr_selbri(*selbri)?),
-                    Determiner::RoLo => format!("every {}", self.restr_selbri(*selbri)?),
-                    Determiner::RoLe => format!("every the {}", self.restr_selbri(*selbri)?),
+                    Determiner::Indefinite => format!("some {}", self.restr_selbri(*selbri)?),
+                    Determiner::Definite => format!("the {}", self.restr_selbri(*selbri)?),
+                    Determiner::UniversalIndefinite => {
+                        format!("every {}", self.restr_selbri(*selbri)?)
+                    }
+                    Determiner::UniversalDefinite => {
+                        format!("every the {}", self.restr_selbri(*selbri)?)
+                    }
                 }
             }
             Argument::QuantifiedDescription((count, gadri, selbri)) => match gadri {
-                Determiner::Lo => {
+                Determiner::Indefinite => {
                     if *count == 0 {
                         format!("no {}", self.restr_selbri(*selbri)?)
                     } else {
                         format!("exactly {count} {}", self.restr_selbri(*selbri)?)
                     }
                 }
-                Determiner::Le => format!("exactly {count} the {}", self.restr_selbri(*selbri)?),
-                Determiner::RoLo | Determiner::RoLe => {
+                Determiner::Definite => {
+                    format!("exactly {count} the {}", self.restr_selbri(*selbri)?)
+                }
+                Determiner::UniversalIndefinite | Determiner::UniversalDefinite => {
                     return Err(nope(format!(
                         "a quantified {gadri:?} description has no nibli KR spelling"
                     )));
@@ -573,8 +581,8 @@ impl<'a> Renderer<'a> {
 
     fn rel_clause(&self, clause: &RelClause) -> R<String> {
         let keyword = match clause.kind {
-            RelClauseKind::Poi => "where",
-            RelClauseKind::Noi => "also",
+            RelClauseKind::Restrictive => "where",
+            RelClauseKind::Incidental => "also",
         };
         // Bare-predicate sugar: a body of shape `ke'a <selbri>` (no tail, no
         // prefixes) prints as the sugar form.
@@ -635,7 +643,7 @@ impl<'a> Renderer<'a> {
     fn bare_body_selbri(&self, id: u32) -> bool {
         match self.selbri(id) {
             Ok(Predicate::Root(_)) | Ok(Predicate::Compound(_)) => true,
-            Ok(Predicate::Tanru((m, h))) => self.bare_body_selbri(*m) && self.bare_body_selbri(*h),
+            Ok(Predicate::Pair((m, h))) => self.bare_body_selbri(*m) && self.bare_body_selbri(*h),
             Ok(Predicate::Grouped(inner)) => self.bare_body_selbri(*inner),
             Ok(Predicate::Converted(_))
             | Ok(Predicate::Negated(_))
@@ -710,7 +718,7 @@ pub fn __ast_parity_guard(
     match selbri {
         Predicate::Root(_) => {}
         Predicate::Compound(_) => {}
-        Predicate::Tanru(_) => {}
+        Predicate::Pair(_) => {}
         Predicate::Converted(_) => {}
         Predicate::Negated(_) => {}
         Predicate::Grouped(_) => {}
@@ -723,50 +731,50 @@ pub fn __ast_parity_guard(
         Sentence::Prenex(_) => {}
     }
     match connective {
-        SentenceConnective::GanaiGi => {}
-        SentenceConnective::GeGi => {}
+        SentenceConnective::Implies => {}
+        SentenceConnective::And => {}
         SentenceConnective::Afterthought(_) => {}
     }
     match gadri {
-        Determiner::Lo => {}
-        Determiner::Le => {}
-        Determiner::RoLo => {}
-        Determiner::RoLe => {}
+        Determiner::Indefinite => {}
+        Determiner::Definite => {}
+        Determiner::UniversalIndefinite => {}
+        Determiner::UniversalDefinite => {}
     }
     match abstraction {
-        AbstractionKind::Nu => {}
-        AbstractionKind::Duhu => {}
-        AbstractionKind::Ka => {}
-        AbstractionKind::Ni => {}
-        AbstractionKind::Siho => {}
+        AbstractionKind::Event => {}
+        AbstractionKind::Fact => {}
+        AbstractionKind::Property => {}
+        AbstractionKind::Amount => {}
+        AbstractionKind::Concept => {}
     }
     match rel_kind {
-        RelClauseKind::Poi => {}
-        RelClauseKind::Noi => {}
+        RelClauseKind::Restrictive => {}
+        RelClauseKind::Incidental => {}
     }
     match modal {
         ModalTag::Custom(_) => {}
     }
     match conversion {
-        Conversion::Se => {}
-        Conversion::Te => {}
-        Conversion::Ve => {}
-        Conversion::Xe => {}
+        Conversion::Swap12 => {}
+        Conversion::Swap13 => {}
+        Conversion::Swap14 => {}
+        Conversion::Swap15 => {}
     }
     match logical {
-        Connective::Je => {}
-        Connective::Ja => {}
-        Connective::Jo => {}
-        Connective::Ju => {}
+        Connective::And => {}
+        Connective::Or => {}
+        Connective::Iff => {}
+        Connective::Whether => {}
     }
     match tense {
-        Tense::Pu => {}
-        Tense::Ca => {}
-        Tense::Ba => {}
+        Tense::Past => {}
+        Tense::Now => {}
+        Tense::Future => {}
     }
     match deontic {
-        DeonticMood::Ei => {}
-        DeonticMood::Ehe => {}
+        DeonticMood::Obligation => {}
+        DeonticMood::Permission => {}
     }
 }
 
@@ -824,8 +832,8 @@ mod tests {
         // Hand-built buffers with §10 constructs: render must name the
         // offender, never guess.
         let mk = |sumti: Argument| AstBuffer {
-            selbris: vec![Predicate::Root("gerku".into())],
-            sumtis: vec![sumti],
+            predicates: vec![Predicate::Root("gerku".into())],
+            arguments: vec![sumti],
             sentences: vec![Sentence::Simple(Proposition {
                 relation: 0,
                 head_terms: vec![0],

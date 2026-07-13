@@ -43,8 +43,8 @@ pub fn emit(input: &str, statements: &[Statement]) -> Result<AstBuffer, ParseErr
     let mut emitter = Emitter {
         input,
         buffer: AstBuffer {
-            selbris: Vec::new(),
-            sumtis: Vec::new(),
+            predicates: Vec::new(),
+            arguments: Vec::new(),
             sentences: Vec::new(),
             roots: Vec::new(),
         },
@@ -73,13 +73,13 @@ impl<'a> Emitter<'a> {
     }
 
     fn push_selbri(&mut self, s: Predicate) -> u32 {
-        self.buffer.selbris.push(s);
-        (self.buffer.selbris.len() - 1) as u32
+        self.buffer.predicates.push(s);
+        (self.buffer.predicates.len() - 1) as u32
     }
 
     fn push_sumti(&mut self, s: Argument) -> u32 {
-        self.buffer.sumtis.push(s);
-        (self.buffer.sumtis.len() - 1) as u32
+        self.buffer.arguments.push(s);
+        (self.buffer.arguments.len() - 1) as u32
     }
 
     fn push_sentence(&mut self, s: Sentence) -> u32 {
@@ -127,12 +127,12 @@ impl<'a> Emitter<'a> {
             Claim::Impl(a, b) => {
                 let l = self.claim(a, at)?;
                 let r = self.claim(b, at)?;
-                Ok(self.push_sentence(Sentence::Connected((SentenceConnective::GanaiGi, l, r))))
+                Ok(self.push_sentence(Sentence::Connected((SentenceConnective::Implies, l, r))))
             }
-            Claim::Iff(a, b) => self.afterthought(Connective::Jo, a, b, at),
-            Claim::Xor(a, b) => self.afterthought(Connective::Ju, a, b, at),
-            Claim::Or(a, b) => self.afterthought(Connective::Ja, a, b, at),
-            Claim::And(a, b) => self.afterthought(Connective::Je, a, b, at),
+            Claim::Iff(a, b) => self.afterthought(Connective::Iff, a, b, at),
+            Claim::Xor(a, b) => self.afterthought(Connective::Whether, a, b, at),
+            Claim::Or(a, b) => self.afterthought(Connective::Or, a, b, at),
+            Claim::And(a, b) => self.afterthought(Connective::And, a, b, at),
             Claim::Not(inner) => self.simple(inner, true, None, None, at),
             Claim::Prefixed {
                 deontic,
@@ -178,13 +178,13 @@ impl<'a> Emitter<'a> {
         at: usize,
     ) -> Result<u32, ParseError> {
         let tense = tense.map(|t| match t {
-            Tense::Past => AstTense::Pu,
-            Tense::Now => AstTense::Ca,
-            Tense::Future => AstTense::Ba,
+            Tense::Past => AstTense::Past,
+            Tense::Now => AstTense::Now,
+            Tense::Future => AstTense::Future,
         });
         let deontic = deontic.map(|d| match d {
-            Deontic::Must => DeonticMood::Ei,
-            Deontic::May => DeonticMood::Ehe,
+            Deontic::Must => DeonticMood::Obligation,
+            Deontic::May => DeonticMood::Permission,
         });
         let bridi = match claim {
             Claim::Predication(p) => self.predication_bridi(p, negated, tense, deontic)?,
@@ -289,7 +289,7 @@ impl<'a> Emitter<'a> {
                 let restr_sentence = self.restr_bridi_sentence(restr, &cmavo)?;
                 let body_idx = self.claim(body, at)?;
                 let impl_idx = self.push_sentence(Sentence::Connected((
-                    SentenceConnective::GanaiGi,
+                    SentenceConnective::Implies,
                     restr_sentence,
                     body_idx,
                 )));
@@ -303,7 +303,7 @@ impl<'a> Emitter<'a> {
                 // (the restrictor bridi) — the ge…gi conjunction keeps both
                 // conjuncts in one fact, matching lo-with-restrictor.
                 Ok(self.push_sentence(Sentence::Connected((
-                    SentenceConnective::GeGi,
+                    SentenceConnective::And,
                     restr_sentence,
                     body_idx,
                 ))))
@@ -343,7 +343,7 @@ impl<'a> Emitter<'a> {
         }
         let mut acc = ids.pop().expect("pred_seq non-empty");
         while let Some(modifier) = ids.pop() {
-            acc = self.push_selbri(Predicate::Tanru((modifier, acc)));
+            acc = self.push_selbri(Predicate::Pair((modifier, acc)));
         }
         Ok(acc)
     }
@@ -407,20 +407,20 @@ impl<'a> Emitter<'a> {
                 let body_idx = self.claim(body, at)?;
                 let selbri =
                     self.push_selbri(Predicate::Abstraction((abstraction_kind(*kind), body_idx)));
-                Argument::Description((Determiner::Lo, selbri))
+                Argument::Description((Determiner::Indefinite, selbri))
             }
             Term::Det { det, restr } => {
                 let selbri = self.restr_selbri(restr)?;
                 let base = match det {
-                    Det::Some => Argument::Description((Determiner::Lo, selbri)),
-                    Det::The => Argument::Description((Determiner::Le, selbri)),
-                    Det::Every => Argument::Description((Determiner::RoLo, selbri)),
-                    Det::EveryThe => Argument::Description((Determiner::RoLe, selbri)),
+                    Det::Some => Argument::Description((Determiner::Indefinite, selbri)),
+                    Det::The => Argument::Description((Determiner::Definite, selbri)),
+                    Det::Every => Argument::Description((Determiner::UniversalIndefinite, selbri)),
+                    Det::EveryThe => Argument::Description((Determiner::UniversalDefinite, selbri)),
                     Det::Exactly(n) => {
-                        Argument::QuantifiedDescription((*n, Determiner::Lo, selbri))
+                        Argument::QuantifiedDescription((*n, Determiner::Indefinite, selbri))
                     }
                     Det::ExactlyThe(n) => {
-                        Argument::QuantifiedDescription((*n, Determiner::Le, selbri))
+                        Argument::QuantifiedDescription((*n, Determiner::Definite, selbri))
                     }
                 };
                 let mut idx = self.push_sumti(base);
@@ -539,8 +539,8 @@ impl<'a> Emitter<'a> {
 
     fn rel_clause(&mut self, rc: &crate::ast::RelClause) -> Result<RelClause, ParseError> {
         let kind = match rc.kind {
-            RelKind::Where => RelClauseKind::Poi,
-            RelKind::Also => RelClauseKind::Noi,
+            RelKind::Where => RelClauseKind::Restrictive,
+            RelKind::Also => RelClauseKind::Incidental,
         };
         let body_sentence = match &rc.body {
             ClauseBody::Bare { negated, seq } => {
@@ -566,10 +566,10 @@ impl<'a> Emitter<'a> {
 
 fn conversion_for(place: u8) -> Conversion {
     match place {
-        2 => Conversion::Se,
-        3 => Conversion::Te,
-        4 => Conversion::Ve,
-        5 => Conversion::Xe,
+        2 => Conversion::Swap12,
+        3 => Conversion::Swap13,
+        4 => Conversion::Swap14,
+        5 => Conversion::Swap15,
         other => unreachable!("conversion place {other} (resolve bounds places to 2..=5)"),
     }
 }
@@ -597,11 +597,11 @@ fn keyterm_cmavo(k: KeyTerm) -> &'static str {
 
 fn abstraction_kind(kind: AbsKind) -> AbstractionKind {
     match kind {
-        AbsKind::Event => AbstractionKind::Nu,
-        AbsKind::Fact => AbstractionKind::Duhu,
-        AbsKind::Property => AbstractionKind::Ka,
-        AbsKind::Amount => AbstractionKind::Ni,
-        AbsKind::Concept => AbstractionKind::Siho,
+        AbsKind::Event => AbstractionKind::Event,
+        AbsKind::Fact => AbstractionKind::Fact,
+        AbsKind::Property => AbstractionKind::Property,
+        AbsKind::Amount => AbstractionKind::Amount,
+        AbsKind::Concept => AbstractionKind::Concept,
     }
 }
 

@@ -82,8 +82,8 @@ pub fn parse_text(text: &str) -> ParseResult {
             });
             ParseResult {
                 buffer: AstBuffer {
-                    selbris: Vec::new(),
-                    sumtis: Vec::new(),
+                    predicates: Vec::new(),
+                    arguments: Vec::new(),
                     sentences: Vec::new(),
                     roots: Vec::new(),
                 },

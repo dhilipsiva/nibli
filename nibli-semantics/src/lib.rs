@@ -62,9 +62,9 @@ fn validate_ast_buffer(ast: &flat_ast::AstBuffer) -> Result<(), NibliError> {
     // Child references of one node: (kind, index) pairs.
     let children = |kind: Kind, idx: u32| -> Vec<(Kind, u32)> {
         match kind {
-            Kind::Sel => match &ast.selbris[idx as usize] {
+            Kind::Sel => match &ast.predicates[idx as usize] {
                 Predicate::Root(_) | Predicate::Compound(_) => vec![],
-                Predicate::Tanru((m, h)) => vec![(Kind::Sel, *m), (Kind::Sel, *h)],
+                Predicate::Pair((m, h)) => vec![(Kind::Sel, *m), (Kind::Sel, *h)],
                 Predicate::Converted((_, i)) | Predicate::Negated(i) | Predicate::Grouped(i) => {
                     vec![(Kind::Sel, *i)]
                 }
@@ -75,7 +75,7 @@ fn validate_ast_buffer(ast: &flat_ast::AstBuffer) -> Result<(), NibliError> {
                 }
                 Predicate::Abstraction((_, s)) => vec![(Kind::Sen, *s)],
             },
-            Kind::Sum => match &ast.sumtis[idx as usize] {
+            Kind::Sum => match &ast.arguments[idx as usize] {
                 Argument::Pronoun(_)
                 | Argument::Name(_)
                 | Argument::QuotedLiteral(_)
@@ -109,15 +109,15 @@ fn validate_ast_buffer(ast: &flat_ast::AstBuffer) -> Result<(), NibliError> {
     };
     let meta = |kind: Kind| -> (&'static str, usize) {
         match kind {
-            Kind::Sel => ("selbri", ast.selbris.len()),
-            Kind::Sum => ("sumti", ast.sumtis.len()),
+            Kind::Sel => ("predicate", ast.predicates.len()),
+            Kind::Sum => ("argument", ast.arguments.len()),
             Kind::Sen => ("sentence", ast.sentences.len()),
         }
     };
 
     let mut states = [
-        vec![State::White; ast.selbris.len()],
-        vec![State::White; ast.sumtis.len()],
+        vec![State::White; ast.predicates.len()],
+        vec![State::White; ast.arguments.len()],
         vec![State::White; ast.sentences.len()],
     ];
     let slot = |k: Kind| match k {
@@ -176,8 +176,8 @@ fn compile_ast(ast: &flat_ast::AstBuffer) -> Result<LogicBuffer, NibliError> {
     for &root_idx in ast.roots.iter() {
         logic_forms.push(compiler.compile_sentence(
             root_idx,
-            &ast.selbris,
-            &ast.sumtis,
+            &ast.predicates,
+            &ast.arguments,
             &ast.sentences,
         ));
     }
@@ -429,8 +429,8 @@ mod ast_buffer_validation_tests {
     fn oob_root_sentence_rejected() {
         expect_corrupt(
             AstBuffer {
-                selbris: vec![],
-                sumtis: vec![],
+                predicates: vec![],
+                arguments: vec![],
                 sentences: vec![],
                 roots: vec![0],
             },
@@ -442,8 +442,8 @@ mod ast_buffer_validation_tests {
     fn oob_bridi_relation_rejected() {
         expect_corrupt(
             AstBuffer {
-                selbris: vec![],
-                sumtis: vec![],
+                predicates: vec![],
+                arguments: vec![],
                 sentences: vec![bare_proposition(7, vec![])],
                 roots: vec![0],
             },
@@ -455,8 +455,8 @@ mod ast_buffer_validation_tests {
     fn oob_bridi_term_rejected() {
         expect_corrupt(
             AstBuffer {
-                selbris: vec![Predicate::Root("gerku".to_string())],
-                sumtis: vec![],
+                predicates: vec![Predicate::Root("gerku".to_string())],
+                arguments: vec![],
                 sentences: vec![bare_proposition(0, vec![3])],
                 roots: vec![0],
             },
@@ -468,11 +468,11 @@ mod ast_buffer_validation_tests {
     fn oob_nested_tanru_arm_rejected() {
         expect_corrupt(
             AstBuffer {
-                selbris: vec![
-                    Predicate::Tanru((1, 99)),
+                predicates: vec![
+                    Predicate::Pair((1, 99)),
                     Predicate::Root("sutra".to_string()),
                 ],
-                sumtis: vec![],
+                arguments: vec![],
                 sentences: vec![bare_proposition(0, vec![])],
                 roots: vec![0],
             },
@@ -484,13 +484,13 @@ mod ast_buffer_validation_tests {
     fn oob_rel_clause_sentence_rejected() {
         expect_corrupt(
             AstBuffer {
-                selbris: vec![Predicate::Root("gerku".to_string())],
-                sumtis: vec![
+                predicates: vec![Predicate::Root("gerku".to_string())],
+                arguments: vec![
                     Argument::Name("adam".to_string()),
                     Argument::Restricted((
                         0,
                         RelClause {
-                            kind: RelClauseKind::Poi,
+                            kind: RelClauseKind::Restrictive,
                             body_sentence: 42,
                         },
                     )),
@@ -508,8 +508,8 @@ mod ast_buffer_validation_tests {
         // the stack — same crash class as an OOB panic, same rejection.
         expect_corrupt(
             AstBuffer {
-                selbris: vec![],
-                sumtis: vec![],
+                predicates: vec![],
+                arguments: vec![],
                 sentences: vec![Sentence::Prenex((vec!["da".to_string()], 0))],
                 roots: vec![0],
             },
@@ -522,8 +522,8 @@ mod ast_buffer_validation_tests {
         // selbri 0 = Abstraction -> sentence 0, whose bridi relation = selbri 0.
         expect_corrupt(
             AstBuffer {
-                selbris: vec![Predicate::Abstraction((AbstractionKind::Nu, 0))],
-                sumtis: vec![],
+                predicates: vec![Predicate::Abstraction((AbstractionKind::Event, 0))],
+                arguments: vec![],
                 sentences: vec![bare_proposition(0, vec![])],
                 roots: vec![0],
             },
@@ -535,8 +535,8 @@ mod ast_buffer_validation_tests {
     fn shared_subterm_dag_still_compiles() {
         // Sharing is NOT a cycle: the same sumti referenced twice must compile.
         let ast = AstBuffer {
-            selbris: vec![Predicate::Root("batci".to_string())],
-            sumtis: vec![Argument::Name("adam".to_string())],
+            predicates: vec![Predicate::Root("batci".to_string())],
+            arguments: vec![Argument::Name("adam".to_string())],
             sentences: vec![bare_proposition(0, vec![0, 0])],
             roots: vec![0],
         };

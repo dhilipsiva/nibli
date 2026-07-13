@@ -3,9 +3,9 @@
 //! Flat index-based representation: `AstBuffer` contains parallel arrays of
 //! `Predicate`, `Argument`, and `Sentence` nodes, referenced by `u32` indices.
 
-/// Index into the `selbris` array of an `AstBuffer`.
+/// Index into the `predicates` array of an `AstBuffer`.
 pub type PredicateId = u32;
-/// Index into the `sumtis` array of an `AstBuffer`.
+/// Index into the `arguments` array of an `AstBuffer`.
 pub type ArgumentId = u32;
 
 /// Modal tag: a custom modal built from a predicate reference (the `via:` tag).
@@ -19,57 +19,57 @@ pub enum ModalTag {
 /// se=x1↔x2, te=x1↔x3, ve=x1↔x4, xe=x1↔x5.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Conversion {
-    Se,
-    Te,
-    Ve,
-    Xe,
+    Swap12,
+    Swap13,
+    Swap14,
+    Swap15,
 }
 
 /// Logical connective shared by selbri and sumti connectives.
 /// je=AND(∧), ja=OR(∨), jo=IFF(↔), ju=XOR(⊕).
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Connective {
-    Je,
-    Ja,
-    Jo,
-    Ju,
+    And,
+    Or,
+    Iff,
+    Whether,
 }
 
 /// Determiner (article/descriptor): determines how a description term binds.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Determiner {
-    /// `lo` — veridical description (at least one entity satisfying the selbri).
-    Lo,
-    /// `le` — non-veridical description (opaque rigid designator).
-    Le,
-    /// `ro lo` — universal over veridical description.
-    RoLo,
-    /// `ro le` — universal over non-veridical description.
-    RoLe,
+    /// Indefinite description (at least one entity satisfying the predicate).
+    Indefinite,
+    /// Definite description (an opaque rigid designator).
+    Definite,
+    /// Universal over an indefinite description.
+    UniversalIndefinite,
+    /// Universal over a definite description.
+    UniversalDefinite,
 }
 
 /// Abstraction kind: wraps a sub-sentence into a sumti.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum AbstractionKind {
-    /// `nu` — event abstraction.
-    Nu,
-    /// `du'u` — propositional abstraction.
-    Duhu,
-    /// `ka` — property abstraction (with ce'u).
-    Ka,
-    /// `ni` — quantity/amount abstraction.
-    Ni,
-    /// `si'o` — concept abstraction.
-    Siho,
+    /// Event abstraction.
+    Event,
+    /// Propositional (fact) abstraction.
+    Fact,
+    /// Property abstraction.
+    Property,
+    /// Quantity/amount abstraction.
+    Amount,
+    /// Concept abstraction.
+    Concept,
 }
 
 /// Relative clause kind: restrictive or non-restrictive (incidental).
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum RelClauseKind {
-    /// `poi` — restrictive relative clause.
-    Poi,
-    /// `noi` — non-restrictive (incidental) relative clause.
-    Noi,
+    /// Restrictive relative clause.
+    Restrictive,
+    /// Non-restrictive (incidental) relative clause.
+    Incidental,
 }
 
 /// A relative clause attached to a sumti.
@@ -112,8 +112,8 @@ pub enum Predicate {
     Root(String),
     /// Compound word from zei-gluing. Payload: list of component strings.
     Compound(Vec<String>),
-    /// Tanru: modifier + head. Fields: (modifier-id, head-id).
-    Tanru((PredicateId, PredicateId)),
+    /// Modifier+head pair (a compound predicate). Fields: (modifier-id, head-id).
+    Pair((PredicateId, PredicateId)),
     /// SE-converted selbri. Fields: (conversion, inner-id).
     Converted((Conversion, PredicateId)),
     /// Negated selbri (`na`). Payload: inner-id.
@@ -129,16 +129,16 @@ pub enum Predicate {
 /// Tense marker: past (pu), present (ca), future (ba).
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Tense {
-    Pu,
-    Ca,
-    Ba,
+    Past,
+    Now,
+    Future,
 }
 
 /// Deontic deontic: ei (obligation/should), e'e (competence/permission/may).
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum DeonticMood {
-    Ei,
-    Ehe,
+    Obligation,
+    Permission,
 }
 
 /// A bridi (predication): selbri + head terms + tail terms + modifiers.
@@ -155,10 +155,10 @@ pub struct Proposition {
 /// Sentence connective for sentence-level connection.
 #[derive(Clone, Debug)]
 pub enum SentenceConnective {
-    /// `ganai ... gi` — conditional (implication).
-    GanaiGi,
-    /// `ge ... gi` — conjunctive (and).
-    GeGi,
+    /// Conditional (implication) sentence connective.
+    Implies,
+    /// Conjunctive (and) sentence connective.
+    And,
     /// Afterthought connective between two sentences.
     Afterthought(Connective),
 }
@@ -180,8 +180,8 @@ pub enum Sentence {
 /// Flat AST buffer: parallel arrays indexed by u32 IDs.
 #[derive(Clone, Debug)]
 pub struct AstBuffer {
-    pub selbris: Vec<Predicate>,
-    pub sumtis: Vec<Argument>,
+    pub predicates: Vec<Predicate>,
+    pub arguments: Vec<Argument>,
     pub sentences: Vec<Sentence>,
     /// Root sentence indices (top-level sentences to compile).
     pub roots: Vec<u32>,

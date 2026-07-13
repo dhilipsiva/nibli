@@ -10,8 +10,8 @@ impl SemanticCompiler {
     pub fn compile_proposition(
         &mut self,
         bridi: &Proposition,
-        selbris: &[Predicate],
-        sumtis: &[Argument],
+        predicates: &[Predicate],
+        arguments: &[Argument],
         sentences: &[Sentence],
     ) -> LogicalForm {
         // Frame-local checkpoint for rel clauses attached to non-quantifier
@@ -33,7 +33,7 @@ impl SemanticCompiler {
             .copied()
             .collect();
 
-        let target_arity = self.get_predicate_arity(bridi.relation, selbris);
+        let target_arity = self.get_predicate_arity(bridi.relation, predicates);
 
         let mut positioned: Vec<Option<LogicalTerm>> = vec![None; target_arity];
 
@@ -65,7 +65,7 @@ impl SemanticCompiler {
         if bridi.head_terms.is_empty()
             && target_arity >= 1
             && self.pending_clause_subject.is_some()
-            && !Self::terms_contain_explicit_kea(&all_terms, sumtis)
+            && !Self::terms_contain_explicit_kea(&all_terms, arguments)
         {
             if let Some(subject) = self.pending_clause_subject.take() {
                 positioned[0] = Some(LogicalTerm::Variable(subject));
@@ -92,10 +92,11 @@ impl SemanticCompiler {
         let mut next_place: usize = 0;
 
         for &term_id in bridi.head_terms.iter().chain(bridi.tail_terms.iter()) {
-            match &sumtis[term_id as usize] {
+            match &arguments[term_id as usize] {
                 Argument::Tagged((tag, inner_id)) => {
-                    let inner = &sumtis[*inner_id as usize];
-                    let (term, quants) = self.resolve_argument(inner, sumtis, selbris, sentences);
+                    let inner = &arguments[*inner_id as usize];
+                    let (term, quants) =
+                        self.resolve_argument(inner, arguments, predicates, sentences);
                     self.record_bare_marker(&term, &mut introduced, &mut markers);
                     markers.extend(quants.into_iter().map(ScopeMarker::Desc));
                     let idx = *tag as usize;
@@ -123,8 +124,9 @@ impl SemanticCompiler {
                     }
                 }
                 Argument::ModalTagged((modal_tag, inner_id)) => {
-                    let inner = &sumtis[*inner_id as usize];
-                    let (term, quants) = self.resolve_argument(inner, sumtis, selbris, sentences);
+                    let inner = &arguments[*inner_id as usize];
+                    let (term, quants) =
+                        self.resolve_argument(inner, arguments, predicates, sentences);
                     // A bare `da`/`de`/`di` carried by a BAI modal (`ri'a da`) is
                     // introduced at this surface position. Its description quants
                     // (rare: `ri'a lo broda`) stay innermost (appended after the
@@ -135,7 +137,8 @@ impl SemanticCompiler {
                     modal_entries.push((*modal_tag, term, quants));
                 }
                 other => {
-                    let (term, quants) = self.resolve_argument(other, sumtis, selbris, sentences);
+                    let (term, quants) =
+                        self.resolve_argument(other, arguments, predicates, sentences);
                     self.record_bare_marker(&term, &mut introduced, &mut markers);
                     markers.extend(quants.into_iter().map(ScopeMarker::Desc));
                     // Skip slots already filled (ke'a x1, or an out-of-order tag),
@@ -166,7 +169,7 @@ impl SemanticCompiler {
         // real arity may be higher, so an "overflow" there is unprovable; this also
         // keeps the no-XML build, where many proxy words default to 2, from
         // false-firing).
-        let head_name = self.get_predicate_head_name(bridi.relation, selbris);
+        let head_name = self.get_predicate_head_name(bridi.relation, predicates);
         if overflow_untagged > 0 {
             if head_name == "du" {
                 self.errors.push(format!(
@@ -184,15 +187,15 @@ impl SemanticCompiler {
         }
 
         let mut final_form =
-            self.apply_predicate(bridi.relation, &args, selbris, sumtis, sentences);
+            self.apply_predicate(bridi.relation, &args, predicates, arguments, sentences);
 
         for (modal_tag, tagged_term, modal_quants) in modal_entries {
             markers.extend(modal_quants.into_iter().map(ScopeMarker::Desc));
 
             let (modal_gismu, modal_arity) = match &modal_tag {
-                ModalTag::Custom(selbri_id) => {
-                    let name = self.get_predicate_head_name(*selbri_id, selbris);
-                    let arity = self.get_predicate_arity(*selbri_id, selbris);
+                ModalTag::Custom(predicate_id) => {
+                    let name = self.get_predicate_head_name(*predicate_id, predicates);
+                    let arity = self.get_predicate_arity(*predicate_id, predicates);
                     (self.interner.get_or_intern(name), arity)
                 }
             };
@@ -298,7 +301,7 @@ impl SemanticCompiler {
         for marker in markers.into_iter().rev() {
             final_form = match marker {
                 ScopeMarker::Desc(entry) => {
-                    self.close_quantifier(entry, final_form, selbris, sumtis, sentences)
+                    self.close_quantifier(entry, final_form, predicates, arguments, sentences)
                 }
                 ScopeMarker::Bare(var) => LogicalForm::Exists(var, Box::new(final_form)),
             };
@@ -338,23 +341,23 @@ impl SemanticCompiler {
         }
 
         match &bridi.tense {
-            Some(Tense::Pu) => {
+            Some(Tense::Past) => {
                 final_form = LogicalForm::Past(Box::new(final_form));
             }
-            Some(Tense::Ca) => {
+            Some(Tense::Now) => {
                 final_form = LogicalForm::Present(Box::new(final_form));
             }
-            Some(Tense::Ba) => {
+            Some(Tense::Future) => {
                 final_form = LogicalForm::Future(Box::new(final_form));
             }
             None => {}
         }
 
         match &bridi.deontic {
-            Some(DeonticMood::Ei) => {
+            Some(DeonticMood::Obligation) => {
                 final_form = LogicalForm::Obligatory(Box::new(final_form));
             }
-            Some(DeonticMood::Ehe) => {
+            Some(DeonticMood::Permission) => {
                 final_form = LogicalForm::Permitted(Box::new(final_form));
             }
             None => {}
@@ -446,12 +449,12 @@ impl SemanticCompiler {
     /// count a BAI-modal-carried `ke'a` (`ModalTagged` is not place-filling, so
     /// it cannot collide with the implicit-x1 injection — see the skip rule at
     /// the call site). Mirrors the nibli-kr render-side `has_explicit_keha` scan.
-    fn terms_contain_explicit_kea(term_ids: &[u32], sumtis: &[Argument]) -> bool {
+    fn terms_contain_explicit_kea(term_ids: &[u32], arguments: &[Argument]) -> bool {
         term_ids.iter().any(|&id| {
-            let mut s = &sumtis[id as usize];
+            let mut s = &arguments[id as usize];
             loop {
                 match s {
-                    Argument::Tagged((_, inner_id)) => s = &sumtis[*inner_id as usize],
+                    Argument::Tagged((_, inner_id)) => s = &arguments[*inner_id as usize],
                     Argument::Pronoun(p) => return p.as_str() == "ke'a",
                     _ => return false,
                 }
@@ -463,12 +466,14 @@ impl SemanticCompiler {
     pub fn compile_sentence(
         &mut self,
         sentence_id: u32,
-        selbris: &[Predicate],
-        sumtis: &[Argument],
+        predicates: &[Predicate],
+        arguments: &[Argument],
         sentences: &[Sentence],
     ) -> LogicalForm {
         match &sentences[sentence_id as usize] {
-            Sentence::Simple(bridi) => self.compile_proposition(bridi, selbris, sumtis, sentences),
+            Sentence::Simple(bridi) => {
+                self.compile_proposition(bridi, predicates, arguments, sentences)
+            }
             Sentence::Prenex((vars, body_id)) => {
                 // `ro da [ro de ...] zo'u BODY` → ∀da. ∀de. … BODY.
                 // Intern each prenex variable and mark it bound so the body's
@@ -484,7 +489,7 @@ impl SemanticCompiler {
                     .copied()
                     .collect();
 
-                let mut form = self.compile_sentence(*body_id, selbris, sumtis, sentences);
+                let mut form = self.compile_sentence(*body_id, predicates, arguments, sentences);
 
                 // Wrap inner-to-outer so the first variable is the outermost ∀.
                 for spur in spurs.iter().rev() {
@@ -499,28 +504,28 @@ impl SemanticCompiler {
                 form
             }
             Sentence::Connected((connective, left_id, right_id)) => {
-                let left_form = self.compile_sentence(*left_id, selbris, sumtis, sentences);
-                let right_form = self.compile_sentence(*right_id, selbris, sumtis, sentences);
+                let left_form = self.compile_sentence(*left_id, predicates, arguments, sentences);
+                let right_form = self.compile_sentence(*right_id, predicates, arguments, sentences);
 
                 match connective {
-                    SentenceConnective::GanaiGi => LogicalForm::Or(
+                    SentenceConnective::Implies => LogicalForm::Or(
                         Box::new(LogicalForm::Not(Box::new(left_form))),
                         Box::new(right_form),
                     ),
-                    SentenceConnective::GeGi => {
+                    SentenceConnective::And => {
                         LogicalForm::And(Box::new(left_form), Box::new(right_form))
                     }
                     SentenceConnective::Afterthought(conn) => match conn {
-                        Connective::Je => {
+                        Connective::And => {
                             LogicalForm::And(Box::new(left_form), Box::new(right_form))
                         }
-                        Connective::Ja => {
+                        Connective::Or => {
                             LogicalForm::Or(Box::new(left_form), Box::new(right_form))
                         }
-                        Connective::Jo => {
+                        Connective::Iff => {
                             LogicalForm::Biconditional(Box::new(left_form), Box::new(right_form))
                         }
-                        Connective::Ju => {
+                        Connective::Whether => {
                             LogicalForm::Xor(Box::new(left_form), Box::new(right_form))
                         }
                     },
