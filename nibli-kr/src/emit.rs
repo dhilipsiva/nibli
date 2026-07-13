@@ -26,8 +26,8 @@
 //!   against the Lojban BAI spelling.
 
 use nibli_types::ast::{
-    AbstractionKind, Argument, AstBuffer, Conversion, Determiner, ModalTag, PlaceTag, Predicate,
-    Proposition, RelClause, RelClauseKind, Sentence, SentenceConnective,
+    AbstractionKind, Argument, AstBuffer, Conversion, Determiner, ModalTag, Predicate, Proposition,
+    RelClause, RelClauseKind, Sentence, SentenceConnective,
 };
 use nibli_types::ast::{Connective, DeonticMood, Tense as AstTense};
 
@@ -237,15 +237,8 @@ impl<'a> Emitter<'a> {
                             format!("internal (post-resolve): label {label:?} did not resolve"),
                         )
                     })?;
-                    let tag = [
-                        PlaceTag::Fa,
-                        PlaceTag::Fe,
-                        PlaceTag::Fi,
-                        PlaceTag::Fo,
-                        PlaceTag::Fu,
-                    ][place];
                     let inner = self.term(&arg.term, arg.span.start)?;
-                    tail_terms.push(self.push_sumti(Argument::Tagged((tag, inner))));
+                    tail_terms.push(self.push_sumti(Argument::Tagged((place as u8, inner))));
                 }
             }
         }

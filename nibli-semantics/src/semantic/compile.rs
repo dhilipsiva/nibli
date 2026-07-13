@@ -98,26 +98,23 @@ impl SemanticCompiler {
                     let (term, quants) = self.resolve_argument(inner, sumtis, selbris, sentences);
                     self.record_bare_marker(&term, &mut introduced, &mut markers);
                     markers.extend(quants.into_iter().map(ScopeMarker::Desc));
-                    let idx = tag.to_index();
+                    let idx = *tag as usize;
                     if idx >= target_arity {
-                        // FAIL CLOSED: a place tag beyond the selbri's arity has no
-                        // slot to bind into. Silently dropping the tagged term loses
-                        // meaning (panel finding 2026-06-10) — reject instead.
+                        // FAIL CLOSED: a named argument beyond the predicate's arity
+                        // has no slot to bind into. Silently dropping the tagged term
+                        // loses meaning (panel finding 2026-06-10) — reject instead.
                         self.errors.push(format!(
-                            "Place tag `{}` targets place x{}, but the selbri only has \
-                             {} place(s); the tagged term cannot be placed.",
-                            tag.name(),
+                            "A named argument targets place x{}, but the predicate only has \
+                             {} place(s); it cannot be placed.",
                             idx + 1,
                             target_arity
                         ));
                     } else if positioned[idx].is_some() {
-                        // FAIL CLOSED: a tag re-targeting an already-filled place
-                        // (`fe X fe Y`, or a tag colliding with an untagged term /
-                        // ke'a) would last-win and drop the earlier term.
+                        // FAIL CLOSED: a named argument re-targeting an already-filled
+                        // place would last-win and drop the earlier term.
                         self.errors.push(format!(
-                            "Place tag `{}` targets place x{}, which is already filled; \
+                            "A named argument targets place x{}, which is already filled; \
                              the same place cannot be set twice.",
-                            tag.name(),
                             idx + 1
                         ));
                     } else {

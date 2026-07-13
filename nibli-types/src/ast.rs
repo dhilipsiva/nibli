@@ -8,40 +8,6 @@ pub type PredicateId = u32;
 /// Index into the `sumtis` array of an `AstBuffer`.
 pub type ArgumentId = u32;
 
-/// Explicit argument-place tag (FA selma'o): fa=x1, fe=x2, fi=x3, fo=x4, fu=x5.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum PlaceTag {
-    Fa,
-    Fe,
-    Fi,
-    Fo,
-    Fu,
-}
-
-impl PlaceTag {
-    /// Zero-based argument index: fa=0 (x1), fe=1 (x2), fi=2 (x3), fo=3 (x4), fu=4 (x5).
-    pub fn to_index(self) -> usize {
-        match self {
-            PlaceTag::Fa => 0,
-            PlaceTag::Fe => 1,
-            PlaceTag::Fi => 2,
-            PlaceTag::Fo => 3,
-            PlaceTag::Fu => 4,
-        }
-    }
-
-    /// The cmavo spelling of this place tag (for diagnostics).
-    pub fn name(self) -> &'static str {
-        match self {
-            PlaceTag::Fa => "fa",
-            PlaceTag::Fe => "fe",
-            PlaceTag::Fi => "fi",
-            PlaceTag::Fo => "fo",
-            PlaceTag::Fu => "fu",
-        }
-    }
-}
-
 /// Modal tag: a custom modal built from a predicate reference (the `via:` tag).
 #[derive(Clone, Copy, Debug)]
 pub enum ModalTag {
@@ -127,8 +93,8 @@ pub enum Argument {
     QuotedLiteral(String),
     /// Unspecified placeholder (zo'e or implicit).
     Unspecified,
-    /// Place-tagged sumti: (tag, inner-sumti-id).
-    Tagged((PlaceTag, ArgumentId)),
+    /// Place-tagged sumti: (zero-based place index 0..=4, inner-sumti-id).
+    Tagged((u8, ArgumentId)),
     /// Modal-tagged sumti: (modal-tag, inner-sumti-id).
     ModalTagged((ModalTag, ArgumentId)),
     /// Argument with a relative clause: (inner-sumti-id, relative-clause).

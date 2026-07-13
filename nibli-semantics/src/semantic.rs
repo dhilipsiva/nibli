@@ -152,8 +152,8 @@ mod tests {
     use super::*;
     use crate::ir::{LogicalForm, LogicalTerm};
     use nibli_types::ast::{
-        Argument, Connective, Determiner, PlaceTag, Predicate, Proposition, RelClause,
-        RelClauseKind, Sentence, SentenceConnective,
+        Argument, Connective, Determiner, Predicate, Proposition, RelClause, RelClauseKind,
+        Sentence, SentenceConnective,
     };
 
     /// Helper: build a minimal buffer and compile the first sentence.
@@ -506,7 +506,7 @@ mod tests {
         ];
         let sumtis = vec![
             Argument::Description((Determiner::Le, 1)), // 0: le zarci
-            Argument::Tagged((PlaceTag::Fi, 0)),        // 1: fi le zarci
+            Argument::Tagged((2, 0)),                   // 1: fi le zarci
             Argument::Pronoun("do".into()),             // 2: do (untagged)
         ];
         let bridi = Proposition {
@@ -544,9 +544,9 @@ mod tests {
         // Regression: `mi klama fe do` — untagged `mi` fills x1, `fe do` fills x2.
         let selbris = vec![Predicate::Root("klama".into())];
         let sumtis = vec![
-            Argument::Pronoun("mi".into()),      // 0
-            Argument::Pronoun("do".into()),      // 1
-            Argument::Tagged((PlaceTag::Fe, 1)), // 2: fe do
+            Argument::Pronoun("mi".into()), // 0
+            Argument::Pronoun("do".into()), // 1
+            Argument::Tagged((1, 1)),       // 2: fe do
         ];
         let bridi = Proposition {
             relation: 0,
@@ -1808,7 +1808,7 @@ mod tests {
                 },
             )), // 1: ro lo gerku poi <body>
             Argument::Pronoun("da".into()),               // 2: da
-            Argument::Tagged((PlaceTag::Fe, 2)),          // 3: fe da (x2 of the poi body)
+            Argument::Tagged((1, 2)),                     // 3: fe da (x2 of the poi body)
         ];
         let sentences = vec![
             Sentence::Simple(Proposition {
@@ -2207,8 +2207,8 @@ mod tests {
             )), // 1: ro lo gerku poi <body>
             Argument::Pronoun("ke'a".into()),             // 2: ke'a
             Argument::Name("alis".into()),                // 3: alis
-            Argument::Tagged((PlaceTag::Fa, 3)),          // 4: fa alis  (x1, lover)
-            Argument::Tagged((PlaceTag::Fe, 2)),          // 5: fe ke'a  (x2, loved)
+            Argument::Tagged((0, 3)),                     // 4: fa alis  (x1, lover)
+            Argument::Tagged((1, 2)),                     // 5: fe ke'a  (x2, loved)
         ];
         let sentences = vec![
             Sentence::Simple(Proposition {
@@ -2272,8 +2272,8 @@ mod tests {
             )), // 1
             Argument::Pronoun("ke'a".into()),             // 2: ke'a
             Argument::Name("alis".into()),                // 3: alis
-            Argument::Tagged((PlaceTag::Fa, 2)),          // 4: fa ke'a (x1, lover)
-            Argument::Tagged((PlaceTag::Fe, 3)),          // 5: fe alis (x2, loved)
+            Argument::Tagged((0, 2)),                     // 4: fa ke'a (x1, lover)
+            Argument::Tagged((1, 3)),                     // 5: fe alis (x2, loved)
         ];
         let sentences = vec![
             Sentence::Simple(Proposition {
@@ -2336,7 +2336,7 @@ mod tests {
                 },
             )), // 1
             Argument::Pronoun("ke'a".into()),             // 2: ke'a
-            Argument::Tagged((PlaceTag::Fe, 2)),          // 3: fe ke'a (x2, loved)
+            Argument::Tagged((1, 2)),                     // 3: fe ke'a (x2, loved)
         ];
         let sentences = vec![
             Sentence::Simple(Proposition {
@@ -2502,8 +2502,8 @@ mod tests {
         // never a silent drop of `do`.
         let selbris = vec![Predicate::Root("gerku".into())];
         let sumtis = vec![
-            Argument::Pronoun("do".into()),      // 0
-            Argument::Tagged((PlaceTag::Fu, 0)), // 1: fu do
+            Argument::Pronoun("do".into()), // 0
+            Argument::Tagged((4, 0)),       // 1: fu do
         ];
         let bridi = Proposition {
             relation: 0,
@@ -2519,8 +2519,8 @@ mod tests {
             "over-arity FA tag must produce a semantic error"
         );
         assert!(
-            compiler.errors.iter().any(|e| e.contains("fu")),
-            "error should name the offending tag, got: {:?}",
+            compiler.errors.iter().any(|e| e.contains("x5")),
+            "error should name the offending place, got: {:?}",
             compiler.errors
         );
     }
@@ -2530,8 +2530,8 @@ mod tests {
         // fe do gerku → `fe` targets x2; gerku is 2-place: fine.
         let selbris = vec![Predicate::Root("gerku".into())];
         let sumtis = vec![
-            Argument::Pronoun("do".into()),      // 0
-            Argument::Tagged((PlaceTag::Fe, 0)), // 1: fe do
+            Argument::Pronoun("do".into()), // 0
+            Argument::Tagged((1, 0)),       // 1: fe do
         ];
         let bridi = Proposition {
             relation: 0,
@@ -2616,10 +2616,10 @@ mod tests {
         // error, not silently last-wins (dropping `do`).
         let selbris = vec![Predicate::Root("gerku".into())];
         let sumtis = vec![
-            Argument::Pronoun("do".into()),      // 0
-            Argument::Pronoun("ti".into()),      // 1
-            Argument::Tagged((PlaceTag::Fe, 0)), // 2: fe do
-            Argument::Tagged((PlaceTag::Fe, 1)), // 3: fe ti
+            Argument::Pronoun("do".into()), // 0
+            Argument::Pronoun("ti".into()), // 1
+            Argument::Tagged((1, 0)),       // 2: fe do
+            Argument::Tagged((1, 1)),       // 3: fe ti
         ];
         let bridi = Proposition {
             relation: 0,

@@ -26,8 +26,8 @@
 
 use nibli_types::ast::{
     AbstractionKind, Argument, AstBuffer, Connective, Conversion, DeonticMood, Determiner,
-    ModalTag, PlaceTag, Predicate, Proposition, RelClause, RelClauseKind, Sentence,
-    SentenceConnective, Tense,
+    ModalTag, Predicate, Proposition, RelClause, RelClauseKind, Sentence, SentenceConnective,
+    Tense,
 };
 use nibli_types::error::NibliError;
 
@@ -206,7 +206,7 @@ impl<'a> Renderer<'a> {
         for &tail in &bridi.tail_terms {
             match self.sumti(tail)? {
                 Argument::Tagged((tag, inner)) => {
-                    let place = tag.to_index();
+                    let place = (*tag as usize);
                     placed.push((place, Some(*inner)));
                     counter = place + 1;
                 }
@@ -689,7 +689,6 @@ pub fn __ast_parity_guard(
     gadri: &Determiner,
     abstraction: &AbstractionKind,
     rel_kind: &RelClauseKind,
-    place: &PlaceTag,
     modal: &ModalTag,
     conversion: &Conversion,
     logical: &Connective,
@@ -744,13 +743,6 @@ pub fn __ast_parity_guard(
     match rel_kind {
         RelClauseKind::Poi => {}
         RelClauseKind::Noi => {}
-    }
-    match place {
-        PlaceTag::Fa => {}
-        PlaceTag::Fe => {}
-        PlaceTag::Fi => {}
-        PlaceTag::Fo => {}
-        PlaceTag::Fu => {}
     }
     match modal {
         ModalTag::Custom(_) => {}
