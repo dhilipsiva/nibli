@@ -71,7 +71,7 @@ Supporting crates:
 
 | Crate | Role |
 |-------|------|
-| **nibli-kr-dictionary** | Compile-time English-alias map for nibli KR (alias → formal predicate + place labels) |
+| **nibli-lexicon** | Compile-time PHF dictionary — the forward dict (arity + gloss + place-frame per word) and the folded-in English-alias map for nibli KR (alias → formal predicate + place labels) |
 | **nibli-engine** | Native in-process embedding of the pipeline (used by tests and the store layer) |
 | **nibli-ui** | Standalone Dioxus web UI — the engine is compiled in and runs fully in-browser |
 | **nibli-wasm** | wasm-bindgen wrapper exposing the in-browser pipeline (powers the live demo) |
@@ -122,9 +122,9 @@ just test
 
 > **Dictionary data.** The build reads `dictionary-en.json` at the repo root — the English
 > bulk export from the [lensisku](https://lensisku.lojban.org) Lojban dictionary (jbovlaste
-> data, CC-BY-SA). It is a compile-time input to BOTH dictionaries: the predicate
-> arity/place-structure tables (nibli-lexicon) and the full ~1,341-word nibli KR alias map
-> (nibli-kr-dictionary). It is gitignored; fetch it with `just fetch-dict` (lensisku's cached
+> data, CC-BY-SA). It is a compile-time input to BOTH layers of the dictionary: the
+> predicate arity/place-structure tables and the full ~1,341-word nibli KR alias map
+> (both in nibli-lexicon, one parse). It is gitignored; fetch it with `just fetch-dict` (lensisku's cached
 > dumps are a public download, no login needed) or drop the file in manually. Without it the
 > build falls back to the in-tree curated tables (~100 core aliases), so `just run`/`just
 > test` and CI work fully offline — only the long-tail vocabulary differs.
