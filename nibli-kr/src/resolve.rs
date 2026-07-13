@@ -59,7 +59,7 @@ pub fn resolve_all(input: &str, statements: &[Statement]) -> Vec<ParseError> {
 }
 
 /// A resolved predicate: its arity plus the alias entry when the name came
-/// from the alias map (identity-passthrough gismu/lujvo have no entry — raw
+/// from the alias map (identity-passthrough word/lujvo have no entry — raw
 /// `xN` labels only).
 pub(crate) struct PredInfo {
     pub(crate) surface: String,

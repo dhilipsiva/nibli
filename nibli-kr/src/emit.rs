@@ -5,7 +5,7 @@
 //! push-return values, never from length arithmetic.
 //!
 //! Emission map (NIBLI_KR §13; design-review decisions):
-//! - predicate names resolve HERE to gismu (alias → gismu, identity words pass
+//! - predicate names resolve HERE to word (alias → word, identity words pass
 //!   through); an alias with a place swap emits `Predicate::Converted`
 //! - `$x`/`$y`/`$z` lower to `da`/`de`/`di` by first emission encounter per
 //!   statement (resolve guarantees ≤3); `?`→`ma`, `it`→`ke'a`, `slot`→`ce'u`
@@ -21,7 +21,7 @@
 //!   resulting LogicBuffer shape); `exactly`/`the` blocks and block restrs
 //!   with relative clauses are NOT yet lowerable and fail closed with a
 //!   targeted message (recorded emitter limitation)
-//! - `via` tags emit uniformly as `ModalTag::Custom(gismu)` — the modal is a
+//! - `via` tags emit uniformly as `ModalTag::Custom(word)` — the modal is a
 //!   fi'o-style tag over the mapped predicate (spec §5 collapse)
 
 use nibli_types::ast::{
@@ -86,7 +86,7 @@ impl<'a> Emitter<'a> {
         (self.buffer.sentences.len() - 1) as u32
     }
 
-    fn var_cmavo(&mut self, name: &str, at: usize) -> Result<&'static str, ParseError> {
+    fn var_particle(&mut self, name: &str, at: usize) -> Result<&'static str, ParseError> {
         if let Some(i) = self.vars.iter().position(|v| v == name) {
             return Ok(VAR_NAMES[i]);
         }
@@ -112,7 +112,7 @@ impl<'a> Emitter<'a> {
             Claim::Prenex { vars, body } => {
                 let mut lowered = Vec::new();
                 for v in vars {
-                    lowered.push(self.var_cmavo(v, at)?.to_owned());
+                    lowered.push(self.var_particle(v, at)?.to_owned());
                 }
                 let body_idx = self.claim(body, at)?;
                 Ok(self.push_sentence(Sentence::Prenex((lowered, body_idx))))
@@ -242,12 +242,12 @@ impl<'a> Emitter<'a> {
             }
         }
         for tag in &p.tags {
-            let gismu = self
+            let word = self
                 .resolved(tag.pred.last().expect("tag pred non-empty"), tag.span.start)?
                 .entry
                 .map(|e| e.gismu.to_owned())
                 .unwrap_or_else(|| tag.pred.last().unwrap().clone());
-            let modal_predicate = self.push_predicate(Predicate::Root(gismu));
+            let modal_predicate = self.push_predicate(Predicate::Root(word));
             let inner = self.term(&tag.term, tag.span.start)?;
             tail_terms.push(self.push_argument(Argument::ModalTagged((
                 ModalTag::Custom(modal_predicate),
@@ -284,19 +284,19 @@ impl<'a> Emitter<'a> {
         }
         match det {
             Det::Every => {
-                let cmavo = self.var_cmavo(var, at)?.to_owned();
-                let restr_sentence = self.restr_proposition_sentence(restr, &cmavo)?;
+                let particle = self.var_particle(var, at)?.to_owned();
+                let restr_sentence = self.restr_proposition_sentence(restr, &particle)?;
                 let body_idx = self.claim(body, at)?;
                 let impl_idx = self.push_sentence(Sentence::Connected((
                     SentenceConnective::Implies,
                     restr_sentence,
                     body_idx,
                 )));
-                Ok(self.push_sentence(Sentence::Prenex((vec![cmavo], impl_idx))))
+                Ok(self.push_sentence(Sentence::Prenex((vec![particle], impl_idx))))
             }
             Det::Some => {
-                let cmavo = self.var_cmavo(var, at)?.to_owned();
-                let restr_sentence = self.restr_proposition_sentence(restr, &cmavo)?;
+                let particle = self.var_particle(var, at)?.to_owned();
+                let restr_sentence = self.restr_proposition_sentence(restr, &particle)?;
                 let body_idx = self.claim(body, at)?;
                 // Bare da/de/di closes existentially at its first occurrence
                 // (the restrictor proposition) — the ge…gi conjunction keeps both
@@ -321,10 +321,10 @@ impl<'a> Emitter<'a> {
     fn restr_proposition_sentence(
         &mut self,
         restr: &Restr,
-        cmavo: &str,
+        particle: &str,
     ) -> Result<u32, ParseError> {
         let relation = self.restr_predicate(restr)?;
-        let head = self.push_argument(Argument::Pronoun(cmavo.to_owned()));
+        let head = self.push_argument(Argument::Pronoun(particle.to_owned()));
         Ok(self.push_sentence(Sentence::Simple(Proposition {
             relation,
             head_terms: vec![head],
@@ -359,26 +359,26 @@ impl<'a> Emitter<'a> {
             }
             PredUnit::Word(parts) => {
                 if parts.len() > 1 {
-                    // zei compound: each part resolves to its gismu; compiles
+                    // zei compound: each part resolves to its word; compiles
                     // under the last component (engine behavior).
-                    let mut gismu_parts = Vec::new();
+                    let mut word_parts = Vec::new();
                     for part in parts {
                         let info = self.resolved(part, at)?;
-                        gismu_parts.push(
+                        word_parts.push(
                             info.entry
                                 .map(|e| e.gismu.to_owned())
                                 .unwrap_or_else(|| part.clone()),
                         );
                     }
-                    return Ok(self.push_predicate(Predicate::Compound(gismu_parts)));
+                    return Ok(self.push_predicate(Predicate::Compound(word_parts)));
                 }
                 let word = &parts[0];
                 let info = self.resolved(word, at)?;
-                let (gismu, swap) = match info.entry {
+                let (word, swap) = match info.entry {
                     Some(entry) => (entry.gismu.to_owned(), entry.swap),
                     None => (word.clone(), None),
                 };
-                let root = self.push_predicate(Predicate::Root(gismu));
+                let root = self.push_predicate(Predicate::Root(word));
                 Ok(match swap {
                     None => root,
                     Some(p) => self.push_predicate(Predicate::Converted((conversion_for(p), root))),
@@ -395,8 +395,8 @@ impl<'a> Emitter<'a> {
             Term::Witness => Argument::Pronoun("ma".into()),
             Term::Number(n) => Argument::Number(*n),
             Term::Str(s) => Argument::QuotedLiteral(s.clone()),
-            Term::Var(v) => Argument::Pronoun(self.var_cmavo(v, at)?.to_owned()),
-            Term::Key(k) => Argument::Pronoun(keyterm_cmavo(*k).into()),
+            Term::Var(v) => Argument::Pronoun(self.var_particle(v, at)?.to_owned()),
+            Term::Key(k) => Argument::Pronoun(keyterm_particle(*k).into()),
             Term::Name { name, rel_clauses } => {
                 let mut idx =
                     self.push_argument(Argument::Name(name.to_lowercase().replace('_', " ")));
@@ -451,11 +451,11 @@ impl<'a> Emitter<'a> {
         let core = match &restr.kind {
             RestrKind::Selected { pred, label } => {
                 let info = self.resolved(pred, at)?;
-                let (gismu, alias_swap) = match info.entry {
+                let (word, alias_swap) = match info.entry {
                     Some(entry) => (entry.gismu.to_owned(), entry.swap),
                     None => (pred.clone(), None),
                 };
-                let mut idx = self.push_predicate(Predicate::Root(gismu));
+                let mut idx = self.push_predicate(Predicate::Root(word));
                 if let Some(p) = alias_swap {
                     idx = self.push_predicate(Predicate::Converted((conversion_for(p), idx)));
                 }
@@ -581,7 +581,7 @@ fn conversion_for(place: u8) -> Conversion {
     }
 }
 
-fn keyterm_cmavo(k: KeyTerm) -> &'static str {
+fn keyterm_particle(k: KeyTerm) -> &'static str {
     match k {
         KeyTerm::Me => "mi",
         KeyTerm::You => "do",

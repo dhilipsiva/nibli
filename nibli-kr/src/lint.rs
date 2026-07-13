@@ -48,7 +48,7 @@ pub struct Linter {
     /// determiner (in walk order, so `owns(some dog, the dog)` is quiet).
     introduced: BTreeSet<String>,
     /// L7 state: a `must`/`may` prefix has appeared / an
-    /// `obligated`/`permitted`-class predicate (gismu bilga/curmi) has
+    /// `obligated`/`permitted`-class predicate (word bilga/curmi) has
     /// appeared / the note already fired (once per session).
     deontic_prefix_seen: bool,
     norm_pred_seen: bool,
@@ -180,10 +180,10 @@ fn push(notes: &mut Vec<LintNote>, input: &str, at: usize, code: &'static str, m
     });
 }
 
-/// The gismu underlying a predicate word, if it resolves: through the alias
+/// The word underlying a predicate word, if it resolves: through the alias
 /// map, or as an identity dictionary word. `None` = unknown (the compiler
 /// rejects it; the linter stays quiet).
-fn resolved_gismu(word: &str) -> Option<&str> {
+fn resolved_word(word: &str) -> Option<&str> {
     if let Some(entry) = nibli_kr_dictionary::alias(word) {
         return Some(entry.gismu);
     }
@@ -401,12 +401,12 @@ impl Walk<'_> {
     /// Per predicate word: L4 (first-use alias echo) + the L7 predicate side.
     fn words(&mut self, parts: &[String], at: usize) {
         for word in parts {
-            if let Some(gismu) = resolved_gismu(word) {
-                if matches!(gismu, "bilga" | "curmi") {
+            if let Some(word) = resolved_word(word) {
+                if matches!(word, "bilga" | "curmi") {
                     self.linter.norm_pred_seen = true;
                 }
             }
-            // L4 — echo the resolved gismu + permutation on first use: the
+            // L4 — echo the resolved word + permutation on first use: the
             // alias map is trusted base, and a wrong permutation silently
             // reroutes arguments; make it visible.
             if let Some(entry) = nibli_kr_dictionary::alias(word) {
@@ -531,7 +531,7 @@ mod tests {
 
     #[test]
     fn l4_quiet_on_identity_gismu() {
-        // A raw gismu passes through the identity path — no alias entry, no echo.
+        // A raw word passes through the identity path — no alias entry, no echo.
         assert!(!codes("gerku(Adam).").contains(&"L4"));
     }
 

@@ -12,9 +12,9 @@
 //!
 //! Pipeline: [`parser`] (pest walker → tree [`ast`], §6/§7 errata as targeted
 //! errors) → [`resolve`] (dictionary-driven fail-closed checks: name
-//! resolution alias→identity-gismu→COMPILE ERROR, place checks, the
+//! resolution alias→identity-word→COMPILE ERROR, place checks, the
 //! 3-variable lowering cap, `it`/`slot` position rules) → [`emit`]
-//! (tree → `AstBuffer`, `$vars` lowered to da/de/di, aliases to gismu with
+//! (tree → `AstBuffer`, `$vars` lowered to da/de/di, aliases to word with
 //! `Converted` swaps). [`parse_checked`] is the engine's fail-closed
 //! text→AST seam.
 

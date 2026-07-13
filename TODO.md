@@ -95,20 +95,31 @@ user choice. Zero reasoning-behavior change — determinism corpus + Vampire/cli
 oracles + verify-nibli-kr-seam unchanged. The da/de/di 3-variable `$var` lowering cap
 (`VAR_NAMES`) remains — a Lojban-shaped limit the predicate-name bullet lifts.
 
-- **De-Lojbanize the surviving grammar-vocabulary IDENTIFIERS** — the crate purge
-  de-Lojbanized the flat-AST TYPE names (Bridi→Proposition, Selbri→Predicate,
-  Sumti→Argument) but the lowercase identifiers built on that vocabulary still spell
-  Lojban: render/emit methods (`bridi`/`bridi_impl`/`bridi_with_it`, the `selbri`/
-  `sumti` accessors, `predication_selbri`/`restr_selbri`/`selbri_text`/
-  `bare_body_selbri`), the `mod selbri` submodule + file, ~60 `let bridi = Proposition
-  {…}` test-fixture bindings + their `compile_one(.., bridi)` call sites, `bridi:`/
-  `selbri`/`sumti` params, locals (`inner_sumtis`/`all_sumtis`/`desc_sumti_idx`), the
-  `tanru_*` test names, and prose comments (~370 refs across nibli-semantics/nibli-kr/
-  nibli-types). NO string-VALUE collisions in these crates (checked), so a
-  method-aware rename to the Proposition/Predicate/Argument vocabulary is
-  compiler-guided and behavior-preserving. Scope AWAY from the dictionary gismu VALUES
-  + the `?`/`it`/`slot`→`ma`/`ke'a`/`ce'u` output strings (predicate-name bullet). Its
-  own isolated commit — orthogonal to everything else.
+**GRAMMAR-STRUCTURE IDENTIFIERS: LANDED (2026-07-13, next bullet after the vestige
+audit, 2 commits).** The lowercase identifiers built on the flat-AST vocabulary were
+renamed to the English of the types they name — `bridi`→`proposition`,
+`selbri`→`predicate`, `sumti`→`argument`, `tanru`→`pair` — across nibli-kr/src +
+nibli-semantics/src + nibli-types comments (private methods, params, ~40 `let bridi =
+Proposition{…}` fixtures, test names, descriptive panic/error messages), plus the
+`mod selbri`→`mod predicate` submodule + file rename (`selbri.rs`→`predicate.rs`) and
+the README/pest comments. Then (user "Option B") nibli-kr's grammar-emission HELPERS,
+so the crate has ZERO Lojban production identifiers: `var_cmavo`/`keyterm_cmavo`→
+`var_particle`/`keyterm_particle`, and the `gismu` local/param/fn identifiers
+(`head_gismu`/`resolved_gismu`/`gismu_parts` + the `let gismu`/`Predicate::Root(gismu)`
+bindings)→`word`-based English — while KEEPING the `AliasEntry.gismu` FIELD access
+(cross-crate public API) and every gismu/predicate-name string VALUE. Pure,
+compiler-guided rename; zero wire/serialization/public-API/behavior change (verified —
+methods private, protocol/store/engine carry none of this vocab, no dictionary VALUES
+in the two crates).
+
+STILL DE-LOJBANIZING (predicate-name / dictionary bullet + a holistic pass): the
+word-class vocabulary as identifiers (`gismu`/`cmavo`/`lujvo`/`cmevla` build locals, the
+`GISMU_GLOSS_OVERRIDES`/`GISMU_PLACE_TEMPLATES`/`CMAVO_GLOSS_OVERRIDES` consts, the
+cross-crate-public `GISMU_TO_ALIAS` + `AliasEntry.gismu`), the `?`/`it`/`slot`→`ma`/
+`ke'a`/`ce'u` output strings + da/de/di variable pool, `xorlo`/`goi` named-feature test
+names, and the broader-cmavo (poi/fa/fio/giha/du) comments + test-fn names in the OTHER
+crates (nibli-reason/render/host/formalize/engine/verify). PredName VALUES stay for the
+predicate-name bullet.
 - **Fold nibli-kr-dictionary into nibli-lexicon (feature-gated)** — user chose to fold;
   deferred from the crate purge as its own isolated, revertable change (a ~500-line
   build.rs merge with dual-mode + alias<->arity-agreement risk, orthogonal to

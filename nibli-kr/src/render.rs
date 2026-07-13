@@ -188,7 +188,7 @@ impl<'a> Renderer<'a> {
         // directly. Curated converted aliases still take priority (checked
         // inside predication_predicate via the full-chain lookup below).
         let (relation_id, perm) = self.peel_conversions(proposition.relation)?;
-        let head_gismu = self.head_gismu(relation_id)?;
+        let head_word = self.head_word(relation_id)?;
         let relation = self.predication_predicate(relation_id)?;
 
         // Argument places: heads fill x1.., then the tail runs gerna's CLL
@@ -211,7 +211,7 @@ impl<'a> Renderer<'a> {
         for &tail in &proposition.tail_terms {
             match self.argument(tail)? {
                 Argument::Tagged((tag, inner)) => {
-                    let place = (*tag as usize);
+                    let place = *tag as usize;
                     placed.push((place, Some(*inner)));
                     counter = place + 1;
                 }
@@ -265,7 +265,7 @@ impl<'a> Renderer<'a> {
             } else {
                 args.push(format!(
                     "{}: {}",
-                    self.place_label(&head_gismu, *place),
+                    self.place_label(&head_word, *place),
                     rendered
                 ));
             }
@@ -274,7 +274,7 @@ impl<'a> Renderer<'a> {
         let mut out = format!("{prefix}{relation}({})", args.join(", "));
         for (predicate, term) in vias {
             let name = match self.predicate(predicate)? {
-                Predicate::Root(gismu) => self.alias_or_identity(gismu)?,
+                Predicate::Root(word) => self.alias_or_identity(word)?,
                 other => {
                     return Err(nope(format!(
                         "a fi'o modal over a non-root predicate has no nibli KR spelling: {other:?}"
@@ -297,7 +297,7 @@ impl<'a> Renderer<'a> {
             return Ok((id, IDENTITY));
         };
         // Single-layer chain with a curated converted alias renders by name.
-        if let Predicate::Root(gismu) = self.predicate(*inner)? {
+        if let Predicate::Root(word) = self.predicate(*inner)? {
             let place: u8 = match conv {
                 Conversion::Swap12 => 2,
                 Conversion::Swap13 => 3,
@@ -306,7 +306,7 @@ impl<'a> Renderer<'a> {
             };
             if nibli_kr_dictionary::curated::CONVERTED_ALIASES
                 .iter()
-                .any(|(_, g, swap)| g == gismu && *swap == place)
+                .any(|(_, g, swap)| g == word && *swap == place)
             {
                 return Ok((id, IDENTITY));
             }
@@ -332,17 +332,17 @@ impl<'a> Renderer<'a> {
         Ok((base, perm))
     }
 
-    /// The head gismu of a relation (for place-label lookup), descending
+    /// The head word of a relation (for place-label lookup), descending
     /// through wrappers to the head Root/Compound.
-    fn head_gismu(&self, id: u32) -> R<String> {
+    fn head_word(&self, id: u32) -> R<String> {
         Ok(match self.predicate(id)? {
             Predicate::Root(g) => g.clone(),
             Predicate::Compound(parts) => parts.last().cloned().unwrap_or_default(),
-            Predicate::Pair((_, head)) => self.head_gismu(*head)?,
-            Predicate::Converted((_, inner)) => self.head_gismu(*inner)?,
-            Predicate::Negated(inner) => self.head_gismu(*inner)?,
-            Predicate::Grouped(inner) => self.head_gismu(*inner)?,
-            Predicate::WithArgs((core, _)) => self.head_gismu(*core)?,
+            Predicate::Pair((_, head)) => self.head_word(*head)?,
+            Predicate::Converted((_, inner)) => self.head_word(*inner)?,
+            Predicate::Negated(inner) => self.head_word(*inner)?,
+            Predicate::Grouped(inner) => self.head_word(*inner)?,
+            Predicate::WithArgs((core, _)) => self.head_word(*core)?,
             Predicate::Abstraction(_) => String::new(),
         })
     }
@@ -353,32 +353,32 @@ impl<'a> Renderer<'a> {
     /// gerna tolerates them at arity 2) and (b) is a legal nibli KR identifier
     /// (apostrophe lujvo are not). Render must NEVER emit unparseable text, so
     /// both cases fail closed by name here.
-    fn alias_or_identity(&self, gismu: &str) -> R<String> {
-        if let Some(alias) = nibli_kr_dictionary::canonical_alias(gismu) {
+    fn alias_or_identity(&self, word: &str) -> R<String> {
+        if let Some(alias) = nibli_kr_dictionary::canonical_alias(word) {
             return Ok(alias.to_owned());
         }
-        if nibli_lexicon::get_arity(gismu).is_none() {
+        if nibli_lexicon::get_arity(word).is_none() {
             return Err(nope(format!(
-                "word {gismu:?} is dictionary-unknown (the Lojban front-end tolerates it at \
+                "word {word:?} is dictionary-unknown (the Lojban front-end tolerates it at \
                  arity 2; nibli KR fails closed on unknown names — NIBLI_KR §13)"
             )));
         }
-        let mut chars = gismu.chars();
+        let mut chars = word.chars();
         let ident_ok = matches!(chars.next(), Some('a'..='z'))
             && chars.all(|c| matches!(c, 'a'..='z' | '0'..='9'));
         if !ident_ok {
             return Err(nope(format!(
-                "word {gismu:?} is not a legal nibli KR identifier (apostrophes have no \
+                "word {word:?} is not a legal nibli KR identifier (apostrophes have no \
                  spelling) and has no alias — curate one"
             )));
         }
-        Ok(gismu.to_owned())
+        Ok(word.to_owned())
     }
 
-    /// Label for SURFACE place `place` (0-based) of `gismu`'s canonical alias:
+    /// Label for SURFACE place `place` (0-based) of `word`'s canonical alias:
     /// the dictionary label when curated, else raw `xN`.
-    fn place_label(&self, gismu: &str, place: usize) -> String {
-        if let Some(alias) = nibli_kr_dictionary::canonical_alias(gismu)
+    fn place_label(&self, word: &str, place: usize) -> String {
+        if let Some(alias) = nibli_kr_dictionary::canonical_alias(word)
             && let Some(entry) = nibli_kr_dictionary::alias(alias)
             && let Some(label) = entry.place_labels.get(place)
             && !label.is_empty()
@@ -400,7 +400,7 @@ impl<'a> Renderer<'a> {
 
     fn predicate_text(&self, id: u32, selector_ok: bool) -> R<String> {
         Ok(match self.predicate(id)? {
-            Predicate::Root(gismu) => self.alias_or_identity(gismu)?,
+            Predicate::Root(word) => self.alias_or_identity(word)?,
             Predicate::Compound(parts) => parts
                 .iter()
                 .map(|p| self.alias_or_identity(p))
@@ -422,7 +422,7 @@ impl<'a> Renderer<'a> {
             Predicate::Grouped(inner) => format!("[{}]", self.predicate_text(*inner, false)?),
             Predicate::Negated(inner) => format!("~{}", self.predicate_text(*inner, selector_ok)?),
             Predicate::Converted((conv, inner)) => {
-                let Predicate::Root(gismu) = self.predicate(*inner)? else {
+                let Predicate::Root(word) = self.predicate(*inner)? else {
                     return Err(nope(
                         "a conversion over a non-root predicate has no nibli KR spelling yet — \
                          curate a converted alias (nibli-kr-dictionary CONVERTED_ALIASES)",
@@ -437,18 +437,18 @@ impl<'a> Renderer<'a> {
                 // Curated converted alias first (works everywhere)…
                 if let Some((alias, _, _)) = nibli_kr_dictionary::curated::CONVERTED_ALIASES
                     .iter()
-                    .find(|(_, g, swap)| g == gismu && *swap == place)
+                    .find(|(_, g, swap)| g == word && *swap == place)
                 {
                     return Ok((*alias).to_owned());
                 }
                 // …else the place selector, in restrictor position only (O8).
                 if selector_ok {
-                    let alias = self.alias_or_identity(gismu)?;
-                    let label = self.place_label(gismu, (place - 1) as usize);
+                    let alias = self.alias_or_identity(word)?;
+                    let label = self.place_label(word, (place - 1) as usize);
                     return Ok(format!("{alias}.{label}"));
                 }
                 return Err(nope(format!(
-                    "no nibli KR spelling for the {conv:?}-conversion of {gismu:?} in \
+                    "no nibli KR spelling for the {conv:?}-conversion of {word:?} in \
                      predication position — curate a converted alias"
                 )));
             }

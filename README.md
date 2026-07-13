@@ -322,7 +322,7 @@ If an external predicate's backend is unreachable (or unconfigured), the query r
 - **Belief revision:** retract-and-rebuild with monotonic fact IDs; `:retract <id>` and `:facts` REPL commands
 - **Four-valued query result:** `TRUE`, `FALSE`, `UNKNOWN` (cycle cut / incomplete knowledge / NAF dependent / backend unavailable / non-finite), `RESOURCE_EXCEEDED` (depth / fuel / memory)
 - **Temporal reasoning:** `Past`/`Present`/`Future` wrappers preserved end-to-end; timeless rules automatically derive tensed conclusions
-- **Neo-Davidsonian event semantics:** every predication decomposes into event type + role predicates; tanru share event variables
+- **Neo-Davidsonian event semantics:** every predication decomposes into event type + role predicates; compound predicates share event variables
 - **Conjunction introduction:** `And(A, B)` verified recursively with mutual `InDomain` entities (bounded, no exponential blowup)
 - **Numerical comparisons:** `zmadu` (>), `mleca` (<), `dunli` (==) evaluated at query time on `Num` terms
 - **Compute dispatch:** `compute-backend` WIT protocol with `ComputeNode` IR variant; results auto-asserted into KB
