@@ -32,7 +32,7 @@ pub struct LineResult {
     pub success: bool,
     pub fact_id: Option<u64>,
     pub error: Option<String>,
-    /// Non-blocking Klaro lint notes for this line (NIBLI_KR §12
+    /// Non-blocking nibli KR lint notes for this line (NIBLI_KR §12
     /// L1–L9), rendered as `[Note: …]` rows. `default` keeps old wire JSON
     /// (no field) deserializing.
     #[serde(default)]

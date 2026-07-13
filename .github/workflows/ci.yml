@@ -32,7 +32,7 @@ jobs:
 
   # Time-boxed libFuzzer sweep (3 targets × 120 s), parallel to runtime-ci so it
   # never extends the main gate's critical path. Corpora are seeded from the
-  # shipped .nibli files (+ the Klaro acceptance corpus); any crash/OOM fails
+  # shipped .nibli files (+ the nibli KR acceptance corpus); any crash/OOM fails
   # the job.
   fuzz:
     runs-on: ubuntu-latest

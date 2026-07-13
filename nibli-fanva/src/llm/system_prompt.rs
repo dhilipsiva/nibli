@@ -5,14 +5,14 @@
 //! end. The grammar+dictionary-grounded prompt builder is a tracked TODO.md
 //! bullet.)
 
-/// English→Klaro. Klaro (nibli KR) is the KB language: a predicate-call
+/// English→nibli KR. nibli KR (nibli KR) is the KB language: a predicate-call
 /// surface (`dog(Adam).`). The few-shots use only curated-core vocabulary
 /// (they must stay gate-valid in the CI fallback dictionary build — the guard
 /// test below runs in both modes).
-pub const NIBLI_KR_SYSTEM_PROMPT: &str = r#"You are a formalizer. Rewrite the user's English text as Klaro — a strict predicate-call knowledge-base language.
+pub const NIBLI_KR_SYSTEM_PROMPT: &str = r#"You are a formalizer. Rewrite the user's English text as nibli KR — a strict predicate-call knowledge-base language.
 
 Rules:
-- Output ONLY the Klaro statements, nothing else. No explanations, no notes.
+- Output ONLY the nibli KR statements, nothing else. No explanations, no notes.
 - One claim per line; every statement ends with a period: "dog(Adam)."
 - A statement is predicate(arguments): the predicate is a lowercase English word (third-person verb or noun/adjective), e.g. "eats", "dog", "beautiful".
 - Names are capitalized words: "Adam". The speaker is "me", the listener "you".
@@ -24,7 +24,7 @@ Rules:
 - Extra argument places can be named like Python keyword arguments, after the positional ones: "goes(Adam, destination: some market)."
 - Use common, simple English predicate words. The compiler fails closed on words it does not know — if a word is rejected, retry with a plainer synonym.
 
-This is an iterative process. You may receive a follow-up message reporting a grammar or semantic error from the Klaro compiler about your previous output. When you do, correct that output and reply with ONLY the corrected Klaro — no explanation, no apology. Prefer the simplest wording the strict compiler accepts.
+This is an iterative process. You may receive a follow-up message reporting a grammar or semantic error from the nibli KR compiler about your previous output. When you do, correct that output and reply with ONLY the corrected nibli KR — no explanation, no apology. Prefer the simplest wording the strict compiler accepts.
 
 Examples:
 - "The dog goes to the market" → "goes(some dog, destination: some market)."

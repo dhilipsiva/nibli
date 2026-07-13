@@ -1,4 +1,4 @@
-//! The Klaro emitter: tree AST → `nibli_types::ast::AstBuffer` — the exact
+//! The nibli KR emitter: tree AST → `nibli_types::ast::AstBuffer` — the exact
 //! buffer gerna produces, so `smuni::compile_from_gerna_ast` (and everything
 //! below it: logji, the oracles, the Lean-bridged conformance surface) applies
 //! unchanged. Mirrors gerna's Flattener discipline: child indices come from
@@ -606,7 +606,7 @@ fn abstraction_kind(kind: AbsKind) -> AbstractionKind {
 
 #[cfg(test)]
 mod tests {
-    //! Golden tests. The load-bearing property: a Klaro statement and its
+    //! Golden tests. The load-bearing property: a nibli KR statement and its
     //! smuni acceptance (compared via Debug formatting; smuni's variable
     //! naming is deterministic, so structurally-equal ASTs give byte-equal
     //! buffers). The Lojban-twin equality leg these pins carried retired with

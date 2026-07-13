@@ -1,4 +1,4 @@
-//! The Klaro lint catalog (NIBLI_KR §12 + the 2026-07-12 review's
+//! The nibli KR lint catalog (NIBLI_KR §12 + the 2026-07-12 review's
 //! L8/L9) — NON-BLOCKING compile notes. "The linter is part of the design,
 //! not an afterthought": the grammar is deterministic, but a handful of
 //! hazards are semantic, and each lint makes one of them visible instead of

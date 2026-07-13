@@ -17,7 +17,7 @@ crate (no per-crate mirrors).
 ## Where the IR sits
 
 ```
-KR text ──klaro──▶ AST ──smuni──▶ LogicBuffer ──logji──▶ TRUE / FALSE / UNKNOWN + ProofTrace
+KR text ──nibli-kr──▶ AST ──smuni──▶ LogicBuffer ──logji──▶ TRUE / FALSE / UNKNOWN + ProofTrace
                                           │
                                           ├──▶ TPTP (Vampire oracle, nibli-verify/src/tptp.rs)
                                           ├──▶ ASP  (clingo oracle,  nibli-verify/src/asp.rs)

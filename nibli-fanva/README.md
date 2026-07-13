@@ -2,7 +2,7 @@
 
 The **agentic English→KB formalizer engine** for the Transparency Triad
 (`fanva` = Lojban "translate" — the crate name predates THE FLIP). An LLM
-formalizes English into the KB language (**Klaro** by default; legacy Lojban
+formalizes English into the KB language (**nibli KR** by default; legacy Lojban
 behind the same `Language` seam); the real nibli compilers verify; errors are
 fed back until the KB text is valid. Surfaced inside `nibli-ui` as the
 **Formalize** mode (this crate holds no UI). "Formalize", never "compile": the
@@ -15,10 +15,10 @@ An LLM drafts KB text — in legacy Lojban mode it may call jbotci's
 dictionary/grammar tools *while drafting* — and every candidate must then clear
 a three-gate, fail-fast, **local** firewall before it is accepted:
 
-- **Klaro** (default): `nibli_kr::parse_checked` (grammar + fail-closed name
+- **nibli KR** (default): `nibli_kr::parse_checked` (grammar + fail-closed name
   resolution) → `smuni` (semantics/arity) → the **render round-trip gate**
   (the candidate's canonical `nibli_kr::render` re-spelling must re-compile to
-  the SAME `LogicBuffer` — klaro's fixpoint contract as a per-candidate
+  the SAME `LogicBuffer` — nibli-kr's fixpoint contract as a per-candidate
   drift-catcher; pure Rust, runs native + wasm).
 - **Lojban** (legacy): `gerna::parse_checked` → `smuni` → the official
   **camxes** parser (wasm-only JS-interop; skipped on native / without the
@@ -37,7 +37,7 @@ runs later, at query time.
 ```mermaid
 flowchart TD
     src(["English source"]) --> disc{"legacy Lojban mode with<br/>jbotci enabled + proxy reachable?"}
-    disc -->|"no / unreachable / Klaro mode"| deg["no tools · run degraded<br/>(local gates only)"]
+    disc -->|"no / unreachable / nibli KR mode"| deg["no tools · run degraded<br/>(local gates only)"]
     disc -->|yes| have["discover jbotci tools once<br/>dictionary · grammar · morphology"]
     deg --> loop
     have --> loop
@@ -54,9 +54,9 @@ flowchart TD
 
     tcq -->|no| clean["clean_lojban_output → candidate"]
 
-    clean -->|"per non-comment KB line"| g1{"gate 1 · front-end<br/>klaro (default) / gerna (legacy)<br/>parse_checked — grammar"}
+    clean -->|"per non-comment KB line"| g1{"gate 1 · front-end<br/>nibli-kr (default) / gerna (legacy)<br/>parse_checked — grammar"}
     g1 -->|ok| g2{"gate 2 · smuni<br/>compile_from_gerna_ast — semantics / arity"}
-    g2 -->|ok| g3{"gate 3 · per language<br/>Klaro: render round-trip (native+wasm)<br/>Lojban: camxes official_gate (wasm-only)"}
+    g2 -->|ok| g3{"gate 3 · per language<br/>nibli KR: render round-trip (native+wasm)<br/>Lojban: camxes official_gate (wasm-only)"}
     g3 -->|ok| ver{"semantic verification turn<br/>fresh-context judge reads the<br/>IR back-translation (advisory)"}
     ver -->|MATCH / fail-open| ok["Success<br/>validated KB text → KB tab<br/>(nibli-ui compiles the FOL later)"]
 
@@ -82,7 +82,7 @@ Gates 1–3 are `gates::local_gates` + `gates::validate`, all keyed on
 `nibli_types::lang::Language`. jbotci (`vlacku`/`cukta`/`tersmu`/`gentufa`) is
 **Lojban-only tooling**, optional even there — reached only through an
 app-owned proxy — and used as LLM tools + the tersmu meaning view, never as a
-required gate. No proxy (or Klaro mode) ⇒ local gates only, fully serverless.
+required gate. No proxy (or nibli KR mode) ⇒ local gates only, fully serverless.
 
 ## Test discipline
 

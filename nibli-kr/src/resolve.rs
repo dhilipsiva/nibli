@@ -1,4 +1,4 @@
-//! The Klaro resolve pass — dictionary-driven static checks over the parsed
+//! The nibli KR resolve pass — dictionary-driven static checks over the parsed
 //! tree (NIBLI_KR §13): everything that needs vocabulary knowledge and
 //! therefore cannot live in the grammar or the walker.
 //!
@@ -83,7 +83,7 @@ pub(crate) fn lookup(word: &str) -> Result<PredInfo, String> {
         });
     }
     Err(format!(
-        "unknown predicate {word:?}: not a Klaro alias and not a dictionary word — \
+        "unknown predicate {word:?}: not a nibli KR alias and not a dictionary word — \
          unknown names are a compile error, never an arity-2 guess (NIBLI_KR §13)"
     ))
 }

@@ -63,24 +63,6 @@ session lands (its Lojban-era JS/KB no longer compiles; `nibli-wasm` keeps
 `set_language`/`back_translate` as deprecated no-op/gloss shims so the JS at
 least loads), and `verify-book` is red until the book migrates or pins the tag.
 
-- **"Klaro" → "nibli KR" rename** — ~1,096 occurrences across 78 files. Display
-  name: "nibli KR", first mention "nibli knowledge representation (KR) language".
-  UI: both tab strips' label via `kb_tab_label()` → "nibli KR" + the "?" icon
-  (`span { class: "tab__help", title: "nibli knowledge representation (KR)
-  language", "?" }` as a sibling of the label inside each tab button —
-  nibli-ui/src/main.rs, the two `button { class: "tab" … }` sites), "Load .nibli" /
-  placeholder / hint strings / settings copy / examples.rs docs. Code: crate
-  `klaro` → `nibli-kr`, `nibli-kr-dictionary` → `nibli-kr-dictionary` (7 + 3
-  dependents), `NIBLI_KR_SYSTEM_PROMPT` → `KR_SYSTEM_PROMPT`, gate name
-  "klaro" → "kr" (chips + GateError::gate + pinned tests), `nibli_kr.pest` →
-  `nibli_kr.pest`, `fuzz_nibli_kr` → `fuzz_kr`, Justfile recipes `test-nibli-kr`/
-  `verify-nibli-kr-dict` → `test-kr`/`verify-kr-dict` (the corpus files' extension
-  already renamed `.klaro` → `.nibli`, user decision 2026-07-13 — only
-  `acceptance.nibli`'s DIRECTORY rides the crate rename), the deprecated `nibli-wasm` shims
-  (`set_language`/`back_translate`) DELETE here once the site migration has
-  landed, NIBLI_KR.md retitled "The nibli KR
-  language" (keep the filename — dozens of §-references in code comments — or
-  sweep them all in the same commit).
 - **Lojban identifier + crate purge (everything but the predicate names)** — rename
   the surviving Lojban-named crates and boundary names. PROPOSALS (decide per crate
   at implementation): `smuni` → `nibli-semantics`/`nibli-compile`, `logji` →
@@ -169,8 +151,9 @@ least loads), and `verify-book` is red until the book migrates or pins the tag.
   guided demo KBs+queries+copy → nibli KR. The engine side is DONE: nibli-wasm is
   KR-only; `set_language` is a deprecated NO-OP shim (any string accepted, so
   the prompt's `set_language("klaro")` instruction still works) and
-  `back_translate` survives as a deprecated gloss shim — both DELETE at the
-  rename milestone once the site stops calling them. If the site needs the old
+  `back_translate` survives as a deprecated gloss shim. The "Klaro"→"nibli KR"
+  rename milestone LANDED without deleting them (the deployed site still calls
+  them); both DELETE here, in this session, once the site stops calling them. If the site needs the old
   engine meanwhile, pin the `v0.1-lojban-final` tag in `build_nibli.sh`.
 - **book migration (separate repo — book/TODO.md carries the details)** — the book
   is Lojban-heavy by design ("Lojban as IR" framing, Part II Ch 3–6); the pivot

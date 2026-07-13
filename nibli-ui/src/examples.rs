@@ -1,22 +1,22 @@
 //! Preloaded examples for the header "example" dropdown.
 //!
-//! Each [`Example`] bundles a knowledge base (English `source` + Klaro `kb`)
-//! and a set of preset queries (English label + Klaro query). Selecting one in
+//! Each [`Example`] bundles a knowledge base (English `source` + nibli KR `kb`)
+//! and a set of preset queries (English label + nibli KR query). Selecting one in
 //! the header loads it read-only into the Transparency Triad; the query box
 //! becomes a dropdown of that example's queries. "Custom" (the default,
-//! `None`) keeps the editable behavior. Examples compile with the Klaro
+//! `None`) keeps the editable behavior. Examples compile with the nibli KR
 //! front-end.
 //!
 //! The KB corpora are the SAME committed `.nibli` files the engine's
 //! regression tests pin (`gdpr_*` / `ddi_*` in
 //! `nibli-engine/tests/integration.rs`), pulled in via `include_str!` so
 //! the UI examples cannot drift from the tested corpora. The `shipped_examples_compile` guard test below
-//! pins every KB line + query through the Klaro front-end.
+//! pins every KB line + query through the nibli KR front-end.
 //!
 //! NOTE: the `name` and `label` strings are quoted VERBATIM by the book
 //! (Ch 19) — keep them byte-stable (a book↔UI desync has no gate).
 
-/// One preset query: an English note shown beside its Klaro in the dropdown.
+/// One preset query: an English note shown beside its nibli KR in the dropdown.
 pub struct ExampleQuery {
     pub label: &'static str,
     pub query: &'static str,
@@ -28,7 +28,7 @@ pub struct Example {
     pub name: &'static str,
     /// KB rendered as plain English (read-only Source tab).
     pub source: &'static str,
-    /// KB as Klaro. The full commented corpus is fine: `run_query` skips
+    /// KB as nibli KR. The full commented corpus is fine: `run_query` skips
     /// `#`-comment and blank lines at assert time.
     pub kb: &'static str,
     /// The preset queries offered for this KB.

@@ -1,6 +1,6 @@
-//! Klaro (nibli KR) — the surface-syntax front-end for nibli.
+//! nibli KR (nibli KR) — the surface-syntax front-end for nibli.
 //!
-//! Klaro is a predicate-call language (`goes(me, some market).`) that compiles
+//! nibli KR is a predicate-call language (`goes(me, some market).`) that compiles
 //! to the same `nibli_types::ast::AstBuffer` the Lojban parser produces,
 //! reusing smuni/logji and every soundness gate unchanged. The language is
 //! specified in repo-root `NIBLI_KR.md`; the implementation program is

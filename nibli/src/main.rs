@@ -11,8 +11,8 @@ use nibli_engine::{EngineLogicalTerm, NibliEngine, display_query_result, display
 use nibli_kr::lint::Linter;
 use reedline::{DefaultPrompt, Reedline, Signal};
 
-/// Print the Klaro lint notes for `text` (NIBLI_KR §12 L1–L9) —
-/// non-blocking `[Note: …]` echoes, Klaro mode only. The `Linter` is
+/// Print the nibli KR lint notes for `text` (NIBLI_KR §12 L1–L9) —
+/// non-blocking `[Note: …]` echoes, nibli KR mode only. The `Linter` is
 /// session-stateful (L1 introductions, L4 first-use dedup, L7 latch) and is
 /// reset with the KB.
 fn print_lints(linter: &mut Linter, text: &str) {

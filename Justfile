@@ -32,7 +32,7 @@ fetch-dict:
       -o dictionary-en.json
     @echo "Wrote dictionary-en.json ($(wc -c < dictionary-en.json) bytes)"
 
-# Compiles the single lasna WASM component (klaro/smuni/logji linked as internal crates)
+# Compiles the single lasna WASM component (nibli-kr/smuni/logji linked as internal crates)
 build-wasm: clean-wasm
     @echo "Building WASI lasna component ({{wasi_target}}, {{profile}})..."
     cargo component build --target {{wasi_target}} {{cargo_profile_flag}} -p lasna
@@ -106,9 +106,9 @@ smoke-gasnu-persist-replay: build-wasm build-gasnu
         rm -rf "$dir"; \
         echo 'PASS: persistent restart-replay keeps live==store fact-ids (gap preserved, high store id retractable)'
 
-# Statement-split smoke: a two-STATEMENT Klaro input line becomes TWO independent
+# Statement-split smoke: a two-STATEMENT nibli KR input line becomes TWO independent
 # facts (ids 0 and 1) — independently listed, retractable, and each persisted as its
-# own BUFFER record (recompile-free replay); Klaro `.`-statement splitting has the
+# own BUFFER record (recompile-free replay); nibli KR `.`-statement splitting has the
 # SAME granularity as Lojban's bare-`.i` split_roots. A conjunction (`&`, the
 # `.i je` analog) stays ONE compound fact. Reopen proves per-statement retraction
 # survives a restart.
@@ -134,7 +134,7 @@ smoke-gasnu-split: build-wasm build-gasnu
         echo "$out3"; \
         echo "$out3" | grep -qF '[Facts] 1 active fact(s):' || { echo 'FAIL run3: conjunction must stay ONE compound fact'; rm -rf "$dir"; exit 1; }; \
         rm -rf "$dir"; \
-        echo 'PASS: Klaro statements split into independent, per-statement-retractable, buffer-replayed facts; conjunctions stay whole'
+        echo 'PASS: nibli KR statements split into independent, per-statement-retractable, buffer-replayed facts; conjunctions stay whole'
 
 # NAF-note smoke: the closed-world / negation-as-failure flag is now a first-class
 # WIT `proof-trace` field — computed once in the guest (ProofTrace::has_naf_dependency),
@@ -294,7 +294,7 @@ clippy-runtime:
 test-nibli-kr-dict:
     cargo test -p nibli-kr-dictionary --lib -- --nocapture
 
-# Run klaro (surface-syntax front-end) unit tests only (dev loop; the
+# Run nibli-kr (surface-syntax front-end) unit tests only (dev loop; the
 # workspace `test` recipe already sweeps them into `ci`)
 test-nibli-kr:
     cargo test -p nibli-kr --lib -- --nocapture
@@ -315,7 +315,7 @@ test-gasnu:
     cargo test -p gasnu
 
 # Run nibli-ui's native tests (the shipped-examples guard: every example KB line
-# + preset query compiles through the Klaro front-end; dual-mode with fallback
+# + preset query compiles through the nibli KR front-end; dual-mode with fallback
 # vocab-skips, queries never skip). nibli-ui is a bin-only crate, so the
 # workspace `test` recipe (`cargo test --lib`) skips it — this gates it in `ci`.
 test-ui:
@@ -535,15 +535,15 @@ fuzz-query SECONDS="0":
     @test -n "${NIBLI_NIGHTLY_BIN:-}" || { echo "NIBLI_NIGHTLY_BIN is not set — run inside the Nix dev shell"; exit 1; }
     cd fuzz && PATH="$NIBLI_NIGHTLY_BIN:$PATH" cargo fuzz run fuzz_query -- -max_len=4096 {{ if SECONDS != "0" { "-max_total_time=" + SECONDS } else { "" } }}
 
-# Fuzz the Klaro front-end (parse -> resolve -> emit), asserting any accepted
+# Fuzz the nibli KR front-end (parse -> resolve -> emit), asserting any accepted
 # input compiles through smuni WITHOUT a "corrupt AST buffer" rejection — a
-# structurally invalid emitted buffer is a klaro bug, surfaced as a panic.
+# structurally invalid emitted buffer is a nibli-kr bug, surfaced as a panic.
 fuzz-nibli-kr SECONDS="0":
     @test -n "${NIBLI_NIGHTLY_BIN:-}" || { echo "NIBLI_NIGHTLY_BIN is not set — run inside the Nix dev shell"; exit 1; }
     cd fuzz && PATH="$NIBLI_NIGHTLY_BIN:$PATH" cargo fuzz run fuzz_nibli_kr -- -max_len=4096 {{ if SECONDS != "0" { "-max_total_time=" + SECONDS } else { "" } }}
 
 # Seed the fuzz corpora. Each non-comment line of the shipped .nibli corpus
-# files (+ the Klaro acceptance corpus) becomes a seed for fuzz_assert and
+# files (+ the nibli KR acceptance corpus) becomes a seed for fuzz_assert and
 # fuzz_nibli_kr; fuzz_query seeds are the line DOUBLED, matching its split-half
 # input encoding (first half asserted, second half queried).
 fuzz-seed:

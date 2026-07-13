@@ -2,7 +2,7 @@
 //!
 //! KR-only since THE DROP: every candidate runs `nibli_kr::parse_checked` →
 //! smuni → the RENDER ROUND-TRIP gate (the drift-catcher: the candidate's
-//! canonical re-spelling must compile to the SAME `LogicBuffer` — klaro's
+//! canonical re-spelling must compile to the SAME `LogicBuffer` — nibli-kr's
 //! pinned fixpoint contract, `nibli-kr/src/render.rs`; AstBuffer equality is
 //! deliberately NOT the contract there). The round-trip gate is pure Rust,
 //! so it runs on native AND wasm. (The legacy Lojban chain — gerna + the
@@ -15,7 +15,7 @@ use nibli_types::logic::LogicBuffer;
 /// message is fed back verbatim into the LLM conversation as correction context.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GateError {
-    /// The front-end rejected the grammar (klaro's parse/resolve errors —
+    /// The front-end rejected the grammar (nibli-kr's parse/resolve errors —
     /// including fail-closed dictionary-unknown aliases).
     Syntax(String),
     /// smuni rejected the semantics/arity (`NibliError::Semantic`).
@@ -37,7 +37,7 @@ impl GateError {
     /// Short human name of the gate that failed — for UI badges and logs.
     pub fn gate(&self) -> &'static str {
         match self {
-            GateError::Syntax(_) => "klaro",
+            GateError::Syntax(_) => "nibli-kr",
             GateError::Semantic(_) => "smuni",
             GateError::RoundTrip(_) => "round-trip",
             GateError::Verification(_) => "semantic verifier",
@@ -58,7 +58,7 @@ impl GateError {
 /// Run the local gates in fail-fast order and return the compiled FOL on
 /// success. Mirrors `nibli-ui`'s `compile_text` front-end (minus
 /// `logji::transform_compute_nodes`, which the translator does not need):
-/// klaro grammar (parse + fail-closed resolve) → smuni semantics → the render
+/// nibli-kr grammar (parse + fail-closed resolve) → smuni semantics → the render
 /// round-trip gate. Which call fails determines the [`GateError`] variant: a
 /// `parse_checked` failure is always a grammar error; a
 /// `compile_from_gerna_ast` failure is a semantic one.
@@ -71,8 +71,8 @@ pub fn local_gates(candidate: &str) -> Result<LogicBuffer, GateError> {
 
 /// The render round-trip gate: render the accepted AST back to canonical
 /// KR, re-parse and re-compile it, and demand the SAME `LogicBuffer` —
-/// klaro's own fixpoint contract (`parse ∘ render ∘ parse` compiles equal for
-/// klaro-originated buffers), enforced per candidate as a drift-catcher. Any
+/// nibli-kr's own fixpoint contract (`parse ∘ render ∘ parse` compiles equal for
+/// nibli-kr-originated buffers), enforced per candidate as a drift-catcher. Any
 /// leg failing is a [`GateError::RoundTrip`] carrying the canonical
 /// re-spelling, so the correction turn can steer the model toward it.
 fn nibli_kr_round_trip(
@@ -152,25 +152,25 @@ pub fn feedback_for(err: &GateError) -> String {
     if let GateError::Verification(issues) = err {
         return format!(
             "That is grammatically valid but does not MEAN what the source says. An \
-             independent reading of what your Klaro actually claims reported these \
+             independent reading of what your nibli KR actually claims reported these \
              mismatches:\n{issues}\nRevise so the meaning matches the source; output ONLY \
-             the corrected Klaro — no explanation."
+             the corrected nibli KR — no explanation."
         );
     }
     let (what, tool) = match err {
-        GateError::Syntax(_) => ("is not valid Klaro", "klaro compiler"),
+        GateError::Syntax(_) => ("is not valid nibli KR", "nibli-kr compiler"),
         GateError::Semantic(_) => (
             "parses but failed semantic compilation (e.g. a predicate got the wrong number of arguments)",
             "smuni compiler",
         ),
         GateError::RoundTrip(_) => (
-            "compiles but is not canonical Klaro (its canonical re-spelling does not compile to the same logic)",
+            "compiles but is not canonical nibli KR (its canonical re-spelling does not compile to the same logic)",
             "round-trip gate",
         ),
         GateError::Verification(_) => unreachable!("handled above"),
     };
     format!(
-        "That {what}. The {tool} reported:\n{}\nFix it and output ONLY the corrected Klaro — no explanation.",
+        "That {what}. The {tool} reported:\n{}\nFix it and output ONLY the corrected nibli KR — no explanation.",
         err.message()
     )
 }
@@ -182,19 +182,19 @@ mod tests {
     #[test]
     fn valid_nibli_kr_passes_local_gates() {
         // Same shape nibli-ui asserts as its default KB; runs all three
-        // gates (klaro, smuni, round-trip).
-        local_gates("dog(Adam).").expect("valid Klaro should pass the three local gates");
+        // gates (nibli-kr, smuni, round-trip).
+        local_gates("dog(Adam).").expect("valid nibli KR should pass the three local gates");
     }
 
     #[test]
     fn nibli_kr_garbage_fails_at_the_grammar_gate() {
         let err = local_gates("dog(Adam") // no close paren / period
-            .expect_err("malformed Klaro must be rejected");
+            .expect_err("malformed nibli KR must be rejected");
         assert!(
             matches!(err, GateError::Syntax(_)),
             "expected Syntax, got {err:?}"
         );
-        assert_eq!(err.gate(), "klaro");
+        assert_eq!(err.gate(), "nibli-kr");
     }
 
     #[test]
@@ -229,28 +229,28 @@ mod tests {
     #[test]
     fn feedback_names_the_nibli_kr_gates() {
         let fb = feedback_for(&GateError::Syntax("[Syntax Error] line 1:5: nope".into()));
-        assert!(fb.contains("klaro compiler"));
+        assert!(fb.contains("nibli-kr compiler"));
         assert!(fb.contains("line 1:5"));
-        assert!(fb.contains("corrected Klaro"));
+        assert!(fb.contains("corrected nibli KR"));
         let fb = feedback_for(&GateError::RoundTrip(
             "canonical re-spelling differs".into(),
         ));
         assert!(fb.contains("round-trip gate"));
-        assert!(fb.contains("corrected Klaro"));
+        assert!(fb.contains("corrected nibli KR"));
         let fb = feedback_for(&GateError::Verification("1. off".into()));
-        assert!(fb.contains("your Klaro"));
-        assert!(fb.contains("corrected Klaro"));
+        assert!(fb.contains("your nibli KR"));
+        assert!(fb.contains("corrected nibli KR"));
     }
 
     #[test]
     fn validate_kb_passes_valid_multiline_and_skips_blanks_and_comments() {
         validate_kb("dog(Adam).\n# a note\n\neats(Adam).")
-            .expect("every non-comment line is valid Klaro");
+            .expect("every non-comment line is valid nibli KR");
     }
 
     #[test]
     fn validate_kb_reports_the_failing_line_number() {
-        let err = validate_kb("dog(Adam).\ndog(Adam").expect_err("line 2 is malformed Klaro");
+        let err = validate_kb("dog(Adam).\ndog(Adam").expect_err("line 2 is malformed nibli KR");
         assert!(err.message().contains("KB line 2"), "got {err:?}");
     }
 }

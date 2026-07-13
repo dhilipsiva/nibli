@@ -1,6 +1,6 @@
-//! Lasna (fasten/orchestrator) WASM component: chains klaro → smuni → logji.
+//! Lasna (fasten/orchestrator) WASM component: chains nibli-kr → smuni → logji.
 //!
-//! Single WASM component that calls klaro/smuni/logji as internal Rust crate
+//! Single WASM component that calls nibli-kr/smuni/logji as internal Rust crate
 //! dependencies. Provides a high-level [`Session`] resource via the `lasna` WIT
 //! export interface.
 
@@ -13,7 +13,7 @@ use bindings::lojban::nibli::compute_backend as cb;
 use bindings::lojban::nibli::error_types as export_err;
 use bindings::lojban::nibli::logic_types as export_logic;
 
-// Canonical pipeline types (shared across klaro/smuni/logji)
+// Canonical pipeline types (shared across nibli-kr/smuni/logji)
 use nibli_types::error as pipeline_err;
 use nibli_types::logic as logji_logic;
 
@@ -23,7 +23,7 @@ use std::collections::HashSet;
 /// WIT component implementation for the `lasna` interface.
 struct LasnaPipeline;
 
-/// A user-facing session wrapping the full klaro → smuni → logji pipeline.
+/// A user-facing session wrapping the full nibli-kr → smuni → logji pipeline.
 pub struct Session {
     kb: logji::KnowledgeBase,
     compute_predicates: RefCell<HashSet<String>>,

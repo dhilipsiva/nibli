@@ -1,7 +1,7 @@
-//! Klaro tree AST — the parser's output, lowered to
+//! nibli KR tree AST — the parser's output, lowered to
 //! `nibli_types::ast::AstBuffer` by the emitter (`emit.rs`).
 //!
-//! Owned `Box`/`Vec` nodes, deliberately NOT gerna's bumpalo arena: Klaro
+//! Owned `Box`/`Vec` nodes, deliberately NOT gerna's bumpalo arena: nibli KR
 //! statements are small, and gerna's arena exists for its leak-free-by-invariant
 //! fuzz discipline and whole-corpus REPL throughput — constraints that don't
 //! bind here. If fuzzing ever shows allocation pressure, swapping the backing

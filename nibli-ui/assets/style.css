@@ -243,6 +243,11 @@ body {
 .tab.active::after { transform: scaleX(1); }
 .tab__glyph { font-size: var(--fs-code); color: var(--symbol); opacity: .85; }
 .tab.active .tab__glyph { opacity: 1; }
+.tab__help {                                    /* the "nibli KR" tooltip cue */
+  font-size: var(--fs-micro); color: var(--text-faint);
+  margin-left: 4px; cursor: help; opacity: .7;
+}
+.tab.active .tab__help { opacity: .9; }
 .tab__count {
   font-size: var(--fs-micro); color: var(--text-faint);
   padding: 1px 5px; border-radius: var(--r-full);
@@ -395,7 +400,7 @@ body {
 .kb-line-icon { font-size: var(--fs-code); line-height: 1.3; }
 .kb-line-text { color: var(--quanta-300); min-width: 0; overflow-wrap: anywhere; }
 .kb-line-err  { grid-column: 3; color: var(--danger); font-size: var(--fs-cap); }
-/* Non-blocking Klaro lint notes (NIBLI_KR §12) — informational, never amber. */
+/* Non-blocking nibli KR lint notes (NIBLI_KR §12) — informational, never amber. */
 .kb-line-note { grid-column: 3; color: var(--text-faint); font-size: var(--fs-cap); }
 .kb-line-ok    .kb-line-icon { color: var(--success); }
 .kb-line-ok    .kb-line-icon::before { content: "✓"; }

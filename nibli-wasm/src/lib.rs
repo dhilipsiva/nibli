@@ -174,7 +174,7 @@ mod tests {
             }
             let line = line.strip_prefix("? ").unwrap_or(line);
             // Skip-check via the native-safe parse path (a JsError cannot be
-            // formatted on non-wasm targets, so probe klaro directly).
+            // formatted on non-wasm targets, so probe nibli-kr directly).
             if let Err(e) = nibli_kr::parse_checked(line) {
                 if e.to_string().contains("unknown predicate") {
                     skipped += 1;

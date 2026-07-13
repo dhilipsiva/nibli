@@ -98,7 +98,7 @@ pub async fn translate_agentic<C: ToolChat, V: ToolChat>(
     // "Formalize", not "translate": the LLM step is interpretive
     // formalization behind gates — "compile" stays reserved for the
     // deterministic KB→logic step (user decision 2026-07-12).
-    let request = format!("Formalize into Klaro: {}", source.trim());
+    let request = format!("Formalize into nibli KR: {}", source.trim());
     let mut convo = vec![Turn::user(request)];
     let mut attempts: Vec<Attempt> = Vec::new();
     let mut prev: Option<String> = None;
@@ -279,7 +279,7 @@ mod tests {
         })
     }
 
-    /// A candidate the klaro resolve rejects (unknown alias), distinct per tag.
+    /// A candidate the nibli-kr resolve rejects (unknown alias), distinct per tag.
     fn bad(tag: &str) -> String {
         format!("zzyzxq{tag}(Adam).")
     }
@@ -369,19 +369,19 @@ mod tests {
         let seen = chat.seen.borrow();
         let (system, turns) = &seen[0];
         assert!(
-            system.contains("Klaro"),
-            "Klaro mode must select the Klaro system prompt"
+            system.contains("nibli KR"),
+            "nibli KR mode must select the nibli KR system prompt"
         );
         assert!(
-            matches!(&turns[0], Turn::User(s) if s.starts_with("Formalize into Klaro:")),
-            "the Klaro request turn says formalize, not translate: {turns:?}"
+            matches!(&turns[0], Turn::User(s) if s.starts_with("Formalize into nibli KR:")),
+            "the nibli KR request turn says formalize, not translate: {turns:?}"
         );
     }
 
     #[test]
     fn nibli_kr_mode_feeds_the_gate_error_back_then_converges() {
-        // Attempt 1 fails closed at the klaro grammar gate (unknown alias);
-        // the feedback turn must carry the Klaro correction prose.
+        // Attempt 1 fails closed at the nibli-kr grammar gate (unknown alias);
+        // the feedback turn must carry the nibli KR correction prose.
         let (out, chat) = run_seen(vec![text("zzyzxq(Adam)."), text("dog(Adam).")], 5);
         match out {
             Outcome::Success {
@@ -395,11 +395,11 @@ mod tests {
         }
         let seen = chat.seen.borrow();
         let fed = seen[1].1.iter().any(
-            |t| matches!(t, Turn::User(s) if s.contains("klaro compiler") && s.contains("corrected Klaro")),
+            |t| matches!(t, Turn::User(s) if s.contains("nibli-kr compiler") && s.contains("corrected nibli KR")),
         );
         assert!(
             fed,
-            "Klaro feedback turn missing from the retry conversation"
+            "nibli KR feedback turn missing from the retry conversation"
         );
     }
 
@@ -505,7 +505,7 @@ eats(some person, some food).";
             "the single turn carries source + candidate + claims"
         );
         assert!(
-            !format!("{turns:?}").contains("Formalize into Klaro:"),
+            !format!("{turns:?}").contains("Formalize into nibli KR:"),
             "the validator must never see the formalization conversation"
         );
     }
@@ -614,7 +614,7 @@ eats(some person, some food).";
         let seen = chat.seen.borrow();
         assert_eq!(seen.len(), 6, "one chat call per attempt");
         let cap = 1 + MAX_HISTORY_PAIRS * 2;
-        let request = Turn::user("Formalize into Klaro: Adam is a dog");
+        let request = Turn::user("Formalize into nibli KR: Adam is a dog");
         for turns in seen.iter() {
             assert!(
                 turns.len() <= cap,

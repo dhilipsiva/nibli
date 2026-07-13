@@ -2,7 +2,7 @@
 
 **A zero-hallucination symbolic reasoning engine.**
 
-Nibli is a deterministic theorem prover compiled to WebAssembly (WASI P2). It compiles **Klaro** — a human-readable predicate-call knowledge-representation language (`dog(Adam).`, `animal(every dog).`) — into First-Order Logic and performs inference via demand-driven backward chaining over an indexed fact store. Every conclusion is a formal derivation — never a guess, never a generated step. (Lojban, nibli's original surface syntax, retired at THE DROP — the last dual-front-end engine is tagged `v0.1-lojban-final`, and the Lojban tooling was donated to a separate repo.)
+Nibli is a deterministic theorem prover compiled to WebAssembly (WASI P2). It compiles **nibli KR** — a human-readable predicate-call knowledge-representation language (`dog(Adam).`, `animal(every dog).`) — into First-Order Logic and performs inference via demand-driven backward chaining over an indexed fact store. Every conclusion is a formal derivation — never a guess, never a generated step. (Lojban, nibli's original surface syntax, retired at THE DROP — the last dual-front-end engine is tagged `v0.1-lojban-final`, and the Lojban tooling was donated to a separate repo.)
 
 > *nibli* (Lojban): x1 logically entails x2 under rules x3
 
@@ -25,11 +25,11 @@ The guarantee is **soundness relative to what you asserted**, not omniscience �
 
 ---
 
-## The Klaro Language
+## The nibli KR Language
 
-Klaro is a strict predicate-call surface for first-order claims: intuitive to read, but every semantic distinction stays visible in the spelling (the anti-silent-mistranslation design rule). One statement per line, ending with a period. Unknown predicate words are a **compile error**, never a guess — names resolve through a curated+generated English alias map (~1,341 aliases in a full build) down to the underlying formal vocabulary, fail-closed.
+nibli KR is a strict predicate-call surface for first-order claims: intuitive to read, but every semantic distinction stays visible in the spelling (the anti-silent-mistranslation design rule). One statement per line, ending with a period. Unknown predicate words are a **compile error**, never a guess — names resolve through a curated+generated English alias map (~1,341 aliases in a full build) down to the underlying formal vocabulary, fail-closed.
 
-| Klaro | Reads as |
+| nibli KR | Reads as |
 |-------|----------|
 | `dog(Adam).` | Adam is a dog |
 | `animal(every dog).` | every dog is an animal (a rule) |
@@ -51,7 +51,7 @@ The normative spec is **[NIBLI_KR.md](NIBLI_KR.md)** (v0.1 compat profile, imple
 ## Pipeline
 
 ```
-Klaro text ──> Front-end (klaro) ──> Semantic Compiler (FOL IR) ──> Reasoning Engine
+nibli KR text ──> Front-end (nibli-kr) ──> Semantic Compiler (FOL IR) ──> Reasoning Engine
                         │                                   │                            │
               pest grammar → AST buffer               Skolemization              Backward chaining
              (fail-closed name resolution)          + event semantics         over indexed fact store
@@ -61,7 +61,7 @@ Both front-ends emit the same flat AST buffer, so everything downstream is share
 
 | Crate | Name origin | Role |
 |-------|---------------|------|
-| **klaro** | clear (working name) | Klaro text → AST → flat WIT buffer (pest grammar + fail-closed alias resolution + the canonical renderer) |
+| **nibli-kr** | — | nibli KR text → AST → flat WIT buffer (pest grammar + fail-closed alias resolution + the canonical renderer) |
 | **smuni** | meaning | AST buffer → FOL logic IR → flat WIT logic buffer |
 | **logji** | logic | FOL logic buffer → backward-chaining assertion, query, and proof |
 | **lasna** | fasten | Orchestrator: chains the front-end → smuni → logji into a single WASM component |
@@ -71,7 +71,7 @@ Supporting crates:
 
 | Crate | Role |
 |-------|------|
-| **nibli-kr-dictionary** | Compile-time English-alias map for Klaro (alias → formal predicate + place labels) |
+| **nibli-kr-dictionary** | Compile-time English-alias map for nibli KR (alias → formal predicate + place labels) |
 | **nibli-engine** | Native in-process embedding of the pipeline (used by tests and the store layer) |
 | **nibli-ui** | Standalone Dioxus web UI — the engine is compiled in and runs fully in-browser |
 | **nibli-wasm** | wasm-bindgen wrapper exposing the in-browser pipeline (powers the live demo) |
@@ -97,7 +97,7 @@ building alternative front-ends or consumers against it).
 - **`nibli-wasm`** — wasm-bindgen wrapper exposing the in-browser pipeline (powers the live demo at dhilipsiva.dev/nibli).
 - **`nibli`** — Native direct-crate REPL and `nibli-validate`. Developer tooling, not the canonical production path.
 
-Every surface speaks Klaro — the single front-end since THE DROP.
+Every surface speaks nibli KR — the single front-end since THE DROP.
 
 ---
 
@@ -123,7 +123,7 @@ just test
 > **Dictionary data.** The build reads `dictionary-en.json` at the repo root — the English
 > bulk export from the [lensisku](https://lensisku.lojban.org) Lojban dictionary (jbovlaste
 > data, CC-BY-SA). It is a compile-time input to BOTH dictionaries: the predicate
-> arity/place-structure tables (smuni-dictionary) and the full ~1,341-word Klaro alias map
+> arity/place-structure tables (smuni-dictionary) and the full ~1,341-word nibli KR alias map
 > (nibli-kr-dictionary). It is gitignored; fetch it with `just fetch-dict` (lensisku's cached
 > dumps are a public download, no login needed) or drop the file in manually. Without it the
 > build falls back to the in-tree curated tables (~100 core aliases), so `just run`/`just
@@ -200,7 +200,7 @@ Count _v0 = 2:
 [Reset] Knowledge base cleared.
 ```
 
-(The alias resolution is visible in `:debug`: Klaro's `dog`/`big` compile to the formal predicates `gerku`/`barda`, event-decomposed. The 4 `:load` errors are deliberate fail-closed rejections — bare negations and one non-flat rule conclusion ingest no facts rather than being silently misreported as asserted.)
+(The alias resolution is visible in `:debug`: nibli KR's `dog`/`big` compile to the formal predicates `gerku`/`barda`, event-decomposed. The 4 `:load` errors are deliberate fail-closed rejections — bare negations and one non-flat rule conclusion ingest no facts rather than being silently misreported as asserted.)
 
 Query results use a four-valued contract: `TRUE`, `FALSE`, `UNKNOWN` (with reason: cycle cut, incomplete knowledge, NAF dependence, backend unavailable, or non-finite numeric), or `RESOURCE_EXCEEDED` (depth, fuel, or memory limit hit). The engine never guesses.
 
@@ -210,7 +210,7 @@ You query by **stating the proposition you want checked**, not by asking a quest
 
 | Command | Description |
 |---------|-------------|
-| `<statement>` | Assert a statement in the session language (Klaro by default) as a fact or rule |
+| `<statement>` | Assert a statement (nibli KR) as a fact or rule |
 | `? <statement>` | Query with proof trace |
 | `?? <statement>` | Witness extraction (find all satisfying bindings, `$x` variables) |
 | `:debug <statement>` | Show compiled FOL logic |
@@ -233,7 +233,7 @@ You query by **stating the proposition you want checked**, not by asking a quest
 
 ## Transparency Triad UI
 
-Nibli includes a standalone web UI (Dioxus) — the full reasoning engine (klaro → smuni → logji) is compiled into the WASM bundle and runs **entirely in the browser**. nibli has no server.
+Nibli includes a standalone web UI (Dioxus) — the full reasoning engine (nibli-kr → smuni → logji) is compiled into the WASM bundle and runs **entirely in the browser**. nibli has no server.
 
 ```bash
 # Start the web UI (port 8080)
@@ -242,9 +242,9 @@ just ui
 
 To build a release bundle (`just build-ui`) or self-host, see [`DEPLOY.md`](DEPLOY.md).
 
-The three tabs are **Source** (plain English), **Klaro** (the formal encoding; the tab follows the language mode), and **Back-translation** (the structure-exposing gloss). The reasoning is fully local; the **only** optional network call is **Formalize** on the Source tab — a *bring-your-own-key* LLM request sent **directly from your browser** to a provider you choose (Anthropic, OpenAI, OpenRouter, Google Gemini, or any OpenAI-compatible/local endpoint). Configure it via the gear button: the API key is held **in that tab's memory only** — never persisted to storage and never routed through any nibli server (there is none), and it is erased on tab close/reload.
+The three tabs are **Source** (plain English), **nibli KR** (the formal encoding), and **Back-translation** (the structure-exposing gloss). The reasoning is fully local; the **only** optional network call is **Formalize** on the Source tab — a *bring-your-own-key* LLM request sent **directly from your browser** to a provider you choose (Anthropic, OpenAI, OpenRouter, Google Gemini, or any OpenAI-compatible/local endpoint). Configure it via the gear button: the API key is held **in that tab's memory only** — never persisted to storage and never routed through any nibli server (there is none), and it is erased on tab close/reload.
 
-Formalize runs the **agentic formalizer** (`nibli-fanva`) — "formalize", not "compile": the LLM step is interpretive and sits *outside* the reasoning firewall, behind deterministic gates. The LLM's draft is validated by the *real compilers* — the klaro front-end (grammar + fail-closed name resolution) + smuni (semantics) + a canonical render **round-trip** check — and any compiler error is fed back for the model to self-correct, so what lands in the Klaro tab already passes those gates. It is still a *draft* — you review the Klaro (and its back-translation) before the deterministic engine reasons over it, and you can skip Formalize entirely and type Klaro directly.
+Formalize runs the **agentic formalizer** (`nibli-fanva`) — "formalize", not "compile": the LLM step is interpretive and sits *outside* the reasoning firewall, behind deterministic gates. The LLM's draft is validated by the *real compilers* — the nibli-kr front-end (grammar + fail-closed name resolution) + smuni (semantics) + a canonical render **round-trip** check — and any compiler error is fed back for the model to self-correct, so what lands in the nibli KR tab already passes those gates. It is still a *draft* — you review the nibli KR (and its back-translation) before the deterministic engine reasons over it, and you can skip Formalize entirely and type nibli KR directly.
 
 The header has an **example** dropdown that loads a preloaded, book-derived knowledge base into the triad — **Syllogism** (Ch 19), **GDPR compliance** (Ch 20), or **Drug interactions** (Ch 21). In an example the KB source is read-only, Formalize is disabled, and the query box becomes a dropdown of that example's preset queries (selecting one runs it immediately). The default, **Custom**, is the editable mode. The example corpora are the committed `gdpr.nibli` / `drug-interactions.nibli` files the engine's regression tests pin.
 
@@ -281,7 +281,7 @@ tenfa(8, 2, 3).                     # Assert: 8 = 2^3
 ? tenfa(8, 2, 3).                   # Query: TRUE (computed by Python)
 ```
 
-**Built-in arithmetic** (always local, no backend needed): `pilji` (multiply), `sumji` (add), `dilcu` (divide) — Klaro spellings `product`/`sum`/`quotient`.
+**Built-in arithmetic** (always local, no backend needed): `pilji` (multiply), `sumji` (add), `dilcu` (divide) — nibli KR spellings `product`/`sum`/`quotient`.
 
 > **One deliberate approximation.** `pilji`/`sumji`/`dilcu` check `x1 = x2 ∘ x3` with **tolerant** float equality — `isclose` with relative tolerance `1e-9` (matching Python's `math.isclose`), i.e. `|a − b| ≤ 1e-9 · max(|a|, |b|)`. So `0.3 = 0.1 + 0.2` answers `TRUE` despite IEEE-754 rounding making the sum `0.30000000000000004`. That is a real, bounded approximation on the numeric result — the one place Nibli is not bit-exact. The equality predicate **`dunli` (`=`) is exact** (`==`, tolerates no rounding); `dilcu`'s divide-by-zero check is likewise an exact guard. The single evaluator (`nibli-types/src/arithmetic.rs`) is shared by the in-WASM engine, the `gasnu` host, and the Python reference backend, so all three agree.
 
@@ -303,7 +303,7 @@ If an external predicate's backend is unreachable (or unconfigured), the query r
 | WASM target | WASI Preview 2 Component Model (cargo-component) |
 | WASM runtime | Wasmtime |
 | Reasoning | Demand-driven backward chaining over indexed fact store |
-| Front-end parser | pest (Klaro — the grammar file is the parser) |
+| Front-end parser | pest (nibli KR — the grammar file is the parser) |
 | Dictionary | Compile-time perfect hash function (PHF) |
 | Dev environment | Nix flake |
 | Compute protocol | TCP + JSON Lines |
@@ -359,7 +359,7 @@ If an external predicate's backend is unreachable (or unconfigured), the query r
 | `just check` | Fast type-check (`cargo check --workspace`) |
 | `just test` | Run all unit tests |
 | `just test-engine` | Integration tests (full parse → compile → reason pipeline) |
-| `just test-nibli-kr` | Klaro front-end tests only |
+| `just test-nibli-kr` | nibli KR front-end tests only |
 | `just test-backend` | Python backend tests |
 | `just test-all` | Every test suite |
 | `just verify-nibli-kr-seam` | The KR seam gate (FOL structural goldens + construct sweep + metamorphics) |
@@ -367,7 +367,7 @@ If an external predicate's backend is unreachable (or unconfigured), the query r
 | `just backend` | Python reference compute backend (port 5555) |
 | `just run-with-backend` | Build + run with compute backend |
 | `just run-persist` | Run with persistent Redb fact store |
-| `just fuzz-nibli-kr [SECS]` | Fuzz the Klaro front-end |
+| `just fuzz-nibli-kr [SECS]` | Fuzz the nibli KR front-end |
 | `just fuzz-assert [SECS]` | Fuzz assertion pipeline |
 | `just fuzz-query [SECS]` | Fuzz stateful KB queries |
 | `just fuzz-ci [SECS]` | Time-boxed fuzz gate (all 3 targets, corpus-seeded) — runs in CI |

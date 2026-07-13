@@ -1,8 +1,8 @@
-//! The Klaro renderer: `nibli_types::ast::AstBuffer` → Klaro text — the
+//! The nibli KR renderer: `nibli_types::ast::AstBuffer` → nibli KR text — the
 //! inverse of [`crate::emit`], and PARITY LAYER 1 of the 100%-sync guarantee:
 //! every `match` in this module is wildcard-free over the `nibli_types::ast`
 //! enums (see [`__ast_parity_guard`]), so ADDING AN AST VARIANT BREAKS THIS
-//! CRATE'S BUILD until Klaro decides how to spell it (or rejects it by name).
+//! CRATE'S BUILD until nibli KR decides how to spell it (or rejects it by name).
 //!
 //! Load-bearing consumers: the render∘parse fixpoint tests (this file) and
 //! nibli-fanva's render round-trip gate (every Formalize candidate's
@@ -20,7 +20,7 @@
 //! closed with named messages: SUMTI connectives, connected selbri outside
 //! main-bridi position, and `Converted` over a non-root selbri.
 //!
-//! Fixpoint contract (pinned by tests): for Klaro-originated buffers,
+//! Fixpoint contract (pinned by tests): for nibli KR-originated buffers,
 //! `parse ∘ render ∘ parse` compiles — through smuni — to the SAME
 //! LogicBuffer as `parse`, and `render` is text-idempotent
 //! (`render(parse(render(x))) == render(parse(x))`). AstBuffer equality is
@@ -34,7 +34,7 @@ use nibli_types::ast::{
 };
 use nibli_types::error::NibliError;
 
-/// Render an `AstBuffer` (all roots, one statement per line) to Klaro text.
+/// Render an `AstBuffer` (all roots, one statement per line) to nibli KR text.
 pub fn render(buffer: &AstBuffer) -> Result<String, NibliError> {
     let renderer = Renderer { buffer };
     let mut out = Vec::new();
@@ -110,7 +110,7 @@ impl<'a> Renderer<'a> {
                     // `.inaja` (na + ja) is the material conditional — render
                     // it as the one arrow. Other na/nai flags fold into the
                     // operand bridi when it is simple (fail closed otherwise:
-                    // Klaro rejects `~` over compounds).
+                    // nibli KR rejects `~` over compounds).
                     if *na && matches!(conn, Connective::Ja) && !*nai {
                         (
                             format!(
@@ -168,7 +168,7 @@ impl<'a> Renderer<'a> {
             }
             _ => Err(nope(
                 "a na/nai connective polarity over a compound (or already-negated) operand \
-                 has no Klaro spelling — Klaro rejects `~` over compounds; expand manually",
+                 has no nibli KR spelling — nibli KR rejects `~` over compounds; expand manually",
             )),
         }
     }
@@ -327,7 +327,7 @@ impl<'a> Renderer<'a> {
                 Selbri::Root(gismu) => self.alias_or_identity(gismu)?,
                 other => {
                     return Err(nope(format!(
-                        "a fi'o modal over a non-root selbri has no Klaro spelling: {other:?}"
+                        "a fi'o modal over a non-root selbri has no nibli KR spelling: {other:?}"
                     )));
                 }
             };
@@ -361,7 +361,7 @@ impl<'a> Renderer<'a> {
     fn connected_bridi(&self, bridi: &Bridi, prefix: &str) -> R<String> {
         if !prefix.is_empty() {
             return Err(nope(
-                "a tense/deontic/negation prefix over a connected selbri has no Klaro \
+                "a tense/deontic/negation prefix over a connected selbri has no nibli KR \
                  spelling yet — expand manually",
             ));
         }
@@ -370,7 +370,7 @@ impl<'a> Renderer<'a> {
         };
         if bridi.head_terms.len() != 1 || !bridi.tail_terms.is_empty() {
             return Err(nope(
-                "a connected selbri sharing arguments beyond x1 has no Klaro spelling \
+                "a connected selbri sharing arguments beyond x1 has no nibli KR spelling \
                  yet — expand manually",
             ));
         }
@@ -380,7 +380,7 @@ impl<'a> Renderer<'a> {
             Connective::Jo => "<->",
             Connective::Ju => {
                 return Err(nope(
-                    "`ju` (whether-or-not) has no Klaro operator — no spelling exists",
+                    "`ju` (whether-or-not) has no nibli KR operator — no spelling exists",
                 ));
             }
         };
@@ -395,7 +395,7 @@ impl<'a> Renderer<'a> {
         ) || matches!(self.selbri(right_id)?, Selbri::Connected(_))
         {
             return Err(nope(
-                "a nested or negated-left connected selbri has no Klaro spelling yet",
+                "a nested or negated-left connected selbri has no nibli KR spelling yet",
             ));
         }
 
@@ -417,7 +417,7 @@ impl<'a> Renderer<'a> {
                 Ok(format!("{left} {op} {right}"))
             }
             _ => Err(nope(
-                "a connected selbri over a non-universal quantified subject has no Klaro \
+                "a connected selbri over a non-universal quantified subject has no nibli KR \
                  spelling — expansion would duplicate the quantifier",
             )),
         }
@@ -503,10 +503,10 @@ impl<'a> Renderer<'a> {
         })
     }
 
-    /// The Klaro spelling of a dictionary word: the canonical alias, else the
+    /// The nibli KR spelling of a dictionary word: the canonical alias, else the
     /// identity passthrough — which is only honest when the word (a) is
     /// actually in the dictionary (nibli-kr's resolver fails closed on unknowns;
-    /// gerna tolerates them at arity 2) and (b) is a legal Klaro identifier
+    /// gerna tolerates them at arity 2) and (b) is a legal nibli KR identifier
     /// (apostrophe lujvo are not). Render must NEVER emit unparseable text, so
     /// both cases fail closed by name here.
     fn alias_or_identity(&self, gismu: &str) -> R<String> {
@@ -516,7 +516,7 @@ impl<'a> Renderer<'a> {
         if smuni_dictionary::get_arity(gismu).is_none() {
             return Err(nope(format!(
                 "word {gismu:?} is dictionary-unknown (the Lojban front-end tolerates it at \
-                 arity 2; Klaro fails closed on unknown names — NIBLI_KR §13)"
+                 arity 2; nibli KR fails closed on unknown names — NIBLI_KR §13)"
             )));
         }
         let mut chars = gismu.chars();
@@ -524,7 +524,7 @@ impl<'a> Renderer<'a> {
             && chars.all(|c| matches!(c, 'a'..='z' | '0'..='9'));
         if !ident_ok {
             return Err(nope(format!(
-                "word {gismu:?} is not a legal Klaro identifier (apostrophes have no \
+                "word {gismu:?} is not a legal nibli KR identifier (apostrophes have no \
                  spelling) and has no alias — curate one"
             )));
         }
@@ -577,7 +577,7 @@ impl<'a> Renderer<'a> {
             Selbri::Converted((conv, inner)) => {
                 let Selbri::Root(gismu) = self.selbri(*inner)? else {
                     return Err(nope(
-                        "a conversion over a non-root selbri has no Klaro spelling yet — \
+                        "a conversion over a non-root selbri has no nibli KR spelling yet — \
                          curate a converted alias (nibli-kr-dictionary CONVERTED_ALIASES)",
                     ));
                 };
@@ -601,7 +601,7 @@ impl<'a> Renderer<'a> {
                     return Ok(format!("{alias}.{label}"));
                 }
                 return Err(nope(format!(
-                    "no Klaro spelling for the {conv:?}-conversion of {gismu:?} in \
+                    "no nibli KR spelling for the {conv:?}-conversion of {gismu:?} in \
                      predication position — curate a converted alias"
                 )));
             }
@@ -616,7 +616,7 @@ impl<'a> Renderer<'a> {
             Selbri::Connected((_, _, _)) => {
                 return Err(nope(
                     "a connected selbri outside main-bridi position (restrictor / tanru \
-                     unit) has no Klaro spelling — only the bridi-level expansion exists",
+                     unit) has no nibli KR spelling — only the bridi-level expansion exists",
                 ));
             }
             Selbri::Abstraction((kind, body)) => {
@@ -663,7 +663,7 @@ impl<'a> Renderer<'a> {
                     // unresolved go'i, …) fail closed BY NAME — in the
                     // battery this is a genuine coverage signal.
                     return Err(nope(format!(
-                        "pro-sumti {other:?} is out of Klaro's scope (NIBLI_KR §10) — \
+                        "pro-sumti {other:?} is out of nibli KR's scope (NIBLI_KR §10) — \
                          no spelling exists"
                     )));
                 }
@@ -672,7 +672,7 @@ impl<'a> Renderer<'a> {
             Sumti::QuotedLiteral(text) => {
                 if text.contains('\n') {
                     return Err(nope(
-                        "a quoted literal containing a raw newline has no Klaro spelling \
+                        "a quoted literal containing a raw newline has no nibli KR spelling \
                          (strings are single-line; NIBLI_KR §3)",
                     ));
                 }
@@ -683,7 +683,7 @@ impl<'a> Renderer<'a> {
                 let rendered = format!("{value}");
                 if !value.is_finite() || rendered.contains('e') || rendered.starts_with('-') {
                     return Err(nope(format!(
-                        "number {value} has no Klaro literal (unsigned decimal only; \
+                        "number {value} has no nibli KR literal (unsigned decimal only; \
                          NIBLI_KR §3) — fail closed"
                     )));
                 }
@@ -710,7 +710,7 @@ impl<'a> Renderer<'a> {
                         Selbri::Root(word) => render_name(word)?,
                         other => {
                             return Err(nope(format!(
-                                "la + a complex selbri has no Klaro spelling: {other:?}"
+                                "la + a complex selbri has no nibli KR spelling: {other:?}"
                             )));
                         }
                     },
@@ -727,7 +727,7 @@ impl<'a> Renderer<'a> {
                 Gadri::Le => format!("exactly {count} the {}", self.restr_selbri(*selbri)?),
                 Gadri::La | Gadri::RoLo | Gadri::RoLe => {
                     return Err(nope(format!(
-                        "a quantified {gadri:?} description has no Klaro spelling"
+                        "a quantified {gadri:?} description has no nibli KR spelling"
                     )));
                 }
             },
@@ -736,12 +736,12 @@ impl<'a> Renderer<'a> {
             }
             Sumti::Tagged((_, _)) => {
                 return Err(nope(
-                    "a place-tagged term outside an argument list has no Klaro spelling",
+                    "a place-tagged term outside an argument list has no nibli KR spelling",
                 ));
             }
             Sumti::ModalTagged((_, _)) => {
                 return Err(nope(
-                    "a modal-tagged term outside a predication has no Klaro spelling",
+                    "a modal-tagged term outside a predication has no nibli KR spelling",
                 ));
             }
             Sumti::Connected((_, _, _, _)) => {
@@ -787,7 +787,7 @@ impl<'a> Renderer<'a> {
         }
         // Full-claim body. A gerna-origin Simple body leaves the head EMPTY
         // (smuni injects ke'a at x1) — spell that implicit ke'a as `it` so the
-        // rendered KR re-parses (§7 mandatory-it). Klaro-emitted bodies carry
+        // rendered KR re-parses (§7 mandatory-it). nibli KR-emitted bodies carry
         // an explicit ke'a (head, or a tail term once the smuni named-`it`
         // collision is fixed) and render through the normal path.
         let has_explicit_keha = |bridi: &Bridi| -> R<bool> {
@@ -833,11 +833,11 @@ impl<'a> Renderer<'a> {
 fn render_name(name: &str) -> R<String> {
     let mut chars = name.chars();
     let Some(first) = chars.next() else {
-        return Err(nope("an empty Name has no Klaro spelling"));
+        return Err(nope("an empty Name has no nibli KR spelling"));
     };
     if !first.is_ascii_alphabetic() {
         return Err(nope(format!(
-            "Name {name:?} does not start with an ASCII letter — no Klaro spelling"
+            "Name {name:?} does not start with an ASCII letter — no nibli KR spelling"
         )));
     }
     let rest: String = chars.collect();
@@ -847,16 +847,16 @@ fn render_name(name: &str) -> R<String> {
         .all(|c| c.is_ascii_alphanumeric() || c == '_')
     {
         return Err(nope(format!(
-            "Name {name:?} contains characters outside [A-Za-z0-9_] — no Klaro spelling"
+            "Name {name:?} contains characters outside [A-Za-z0-9_] — no nibli KR spelling"
         )));
     }
     Ok(candidate)
 }
 
 /// PARITY GUARD — never called at runtime; `#[doc(hidden)]` keeps it off the
-/// public API. Every `nibli_types::ast` enum Klaro owns the spelling of is
+/// public API. Every `nibli_types::ast` enum nibli KR owns the spelling of is
 /// matched here WITHOUT wildcards, so adding a variant fails this crate's
-/// build until Klaro covers it. A new variant obligates, in order:
+/// build until nibli KR covers it. A new variant obligates, in order:
 /// 1. a NIBLI_KR section (spelling, or an explicit §10 out-of-scope
 ///    entry with justification),
 /// 2. a grammar rule in `nibli_kr.pest` + walker arm (or a targeted reject),
@@ -983,7 +983,7 @@ mod tests {
     use super::*;
     use crate::parse_checked;
 
-    /// smuni-compiled LogicBuffer (Debug form) for Klaro text.
+    /// smuni-compiled LogicBuffer (Debug form) for nibli KR text.
     fn lb(text: &str) -> String {
         let buffer = parse_checked(text).unwrap_or_else(|e| panic!("parse {text:?}: {e}"));
         format!(
@@ -1044,11 +1044,14 @@ mod tests {
             roots: vec![0],
         };
         for (buffer, needle) in [
-            (mk(Sumti::ProSumti("ko".into())), "out of Klaro's scope"),
-            (mk(Sumti::ProSumti("ri".into())), "out of Klaro's scope"),
-            (mk(Sumti::ProSumti("go'i".into())), "out of Klaro's scope"),
-            (mk(Sumti::Number(f64::INFINITY)), "no Klaro literal"),
-            (mk(Sumti::Number(-2.0)), "no Klaro literal"),
+            (mk(Sumti::ProSumti("ko".into())), "out of nibli KR's scope"),
+            (mk(Sumti::ProSumti("ri".into())), "out of nibli KR's scope"),
+            (
+                mk(Sumti::ProSumti("go'i".into())),
+                "out of nibli KR's scope",
+            ),
+            (mk(Sumti::Number(f64::INFINITY)), "no nibli KR literal"),
+            (mk(Sumti::Number(-2.0)), "no nibli KR literal"),
         ] {
             let e = render(&buffer).expect_err("must fail closed");
             assert!(format!("{e}").contains(needle), "{e}");

@@ -1,11 +1,11 @@
-# Klaro — a human-readable FOL surface syntax for nibli (v0.1 — implemented)
+# nibli KR — a human-readable FOL surface syntax for nibli (v0.1 — implemented)
 
-> **Status: v0.1 compat profile IMPLEMENTED and shipping** — Klaro is the ONLY
-> front-end since THE DROP (the Lojban front-end retired 2026-07-13; the `klaro`
+> **Status: v0.1 compat profile IMPLEMENTED and shipping** — nibli KR is the ONLY
+> front-end since THE DROP (the Lojban front-end retired 2026-07-13; the `nibli-kr`
 > crate, tracker `TODO.md`). The executable grammar is `nibli-kr/src/nibli_kr.pest` — the
 > normative form of §15, from which the parser is generated, so this spec's grammar and
-> the shipped parser cannot drift. Working name "Klaro" (retiring for **"nibli KR"**
-> at the rename milestone). The spec was synthesized from a three-design panel judged
+> the shipped parser cannot drift. Formerly working-named "Klaro"; renamed to **nibli KR** ("nibli knowledge
+> representation (KR) language") at the rename milestone. The spec was synthesized from a three-design panel judged
 > on parseability, semantic fidelity, and readability, against a 61-construct
 > inventory of the Lojban fragment the pre-DROP engine implemented, and stress-tested
 > on 18 real corpus sentences (GDPR / drug-interaction KBs). Every construct of that
@@ -19,7 +19,7 @@
 > the pre-DROP engine semantics exactly); **§14 is the clean-core v2 profile** — the
 > fully de-Lojbanized semantics target. **v2 is a spec target, not implemented.**
 
-**Classification:** Klaro is a *declarative knowledge representation language* — a
+**Classification:** nibli KR is a *declarative knowledge representation language* — a
 human-readable surface syntax for function-free first-order logic with equality,
 stratified negation-as-failure under closed-world/closed-domain assumptions, exact-count
 quantifiers, and tense/deontic operators. Semantically it is a Datalog/ASP-class
@@ -28,12 +28,12 @@ It is not a "loglang" (that term means spoken Lojban-family conlangs) and not a
 programming language in the computational sense — the only "execution" is entailment
 checking.
 
-Klaro is a one-page predicate-call language: every claim is `pred(args)`, every KB is a
+nibli KR is a one-page predicate-call language: every claim is `pred(args)`, every KB is a
 list of period-terminated claims. It compiles to the **same AstBuffer** the Lojban parser
 produces and reuses smuni/logji unchanged, so verdicts, proofs, the Vampire/clingo
 differential gates, and the Lean soundness proofs all apply as-is.
 
-```klaro
+```nibli-kr
 # Lojban: mi klama le zarci
 goes(me, to: the market).
 
@@ -48,7 +48,7 @@ all $x: at_risk($x) & takes(Adam, $x) -> alert($x).
 
 ## 1. Design principles
 
-> **Design thesis (2026-07-12):** Klaro is a human-intuitive knowledge-representation
+> **Design thesis (2026-07-12):** nibli KR is a human-intuitive knowledge-representation
 > language — MAXIMALLY INTUITIVE *subject to* semantic distinctions staying visible in
 > the spelling (the silent-mistranslation ceiling; principles 2–4 below are that
 > constraint made concrete). The logji reasoning core stays untouched throughout the
@@ -70,12 +70,12 @@ all $x: at_risk($x) & takes(Adam, $x) -> alert($x).
    linked arguments and clause bodies close innermost — exactly nibli's rule, now stated
    as a syntax law.
 4. **Fail closed, preferably at the grammar.** Wherever Lojban's compiler rejects
-   something semantically, Klaro tries to make it *unwritable* instead (n-ary `=`,
+   something semantically, nibli KR tries to make it *unwritable* instead (n-ary `=`,
    connected sumti inside linked args, ambiguous `ke'a`). Unknown predicate names are a
    compile error (stricter than gerna's arity-2 default — a deliberate tightening).
 5. **One operator set.** Lojban's four connective levels (selbri `je`, sumti `.e`,
    bridi-tail `gi'e`, sentence `.ije`/`ganai gi`) all compile to the same And/Or/Not
-   shapes, so Klaro has exactly one claim-level operator set and you write the expansion.
+   shapes, so nibli KR has exactly one claim-level operator set and you write the expansion.
 
 ## 2. Lexical structure
 
@@ -106,7 +106,7 @@ The token-level behavior (however implemented) is:
 
 ## 3. Terms
 
-| Klaro | Lojban | Compiles to |
+| nibli KR | Lojban | Compiles to |
 |---|---|---|
 | `Adam`, `Djan_Smit` | `la .adam.`, `la .djan. .smit.` | `Constant("adam")`, `Constant("djan smit")` (rigid; `_` → space, name lowercased) |
 | `me`, `you`, `we`, `we_all`, `we_others`, `you_all` | `mi do mi'o ma'a mi'a do'o` | opaque `Constant(cmavo)` |
@@ -132,7 +132,7 @@ silent-mistranslation trap), `ko` (no imperative semantics in the engine; write 
 The five determiners mirror the five gadri shapes one-to-one. **These change the logic;
 their spellings are deliberately non-interchangeable:**
 
-| Klaro | Lojban | Compiled shape |
+| nibli KR | Lojban | Compiled shape |
 |---|---|---|
 | `some dog` | `lo gerku` (= `su'o lo`) | `Exists(v, And(restrictor, matrix))` — veridical ∃, xorlo witness handling applies |
 | `the dog` | `le gerku` | `Description("gerku")` — a *constant-like term*, no quantifier. **Trap for English speakers** — see lint L1, §12 |
@@ -152,7 +152,7 @@ option per the §1 thesis).
 Determiner phrases appear **in argument position** (`animal(every dog).`) or as a
 **binder block** when the matrix is compound or the variable must be named:
 
-```klaro
+```nibli-kr
 every dog $d: animal($d) & barks($d).      # ro lo gerku cu … (one rule, shared binder)
 some dog $d: big($d) & goes($d).           # shared existential witness across conjuncts
 ```
@@ -179,7 +179,7 @@ a place selector, and relative clauses:
 
 ## 5. Predications
 
-```klaro
+```nibli-kr
 pred(term, term, …)                    # positional: fills x1..xN in order
 pred(label: term, …)                   # named: label from the place_labels map, or raw x1..x5
 goes(me, to: some market).             # mixed: positionals first, then named
@@ -215,7 +215,7 @@ rains().                               # observative — all places Unspecified
 **Abstractions** are brace-delimited opaque terms (implicit-`some` descriptions over the
 content-hash-marked body, exactly the engine's encoding):
 
-| Klaro | Lojban |
+| nibli KR | Lojban |
 |---|---|
 | `event { goes(you) }` | `lo nu do klama` |
 | `fact { dog(Adam) }` | `lo du'u` — asserting `believes(me, fact{P})` does **not** make `P` derivable |
@@ -259,7 +259,7 @@ remains an assert-time reject, as today.
 
 **The two universal forms compile to different shapes and look different:**
 
-```klaro
+```nibli-kr
 animal(every dog).                    # ro lo gerku cu danlu
                                       #   ForAll(v, Or(Not(dog v), animal v)) — rule shape
 all $x: dog($x) -> animal($x).        # ro da zo'u ganai da gerku gi da danlu
@@ -282,7 +282,7 @@ visible (lint L5). Non-stratified NAF rule sets are rejected atomically at asser
 
 ## 7. Relative clauses
 
-| Klaro | Lojban | Side |
+| nibli KR | Lojban | Side |
 |---|---|---|
 | `where <body>` | `poi` (and `voi`, §11) | restrictive — domain side (extra implication antecedent under `every`; And-conjunct under `some`/`exactly`) |
 | `also <body>` | `noi` | incidental — matrix side |
@@ -313,10 +313,10 @@ visible (lint L5). Non-stratified NAF rule sets are rejected atomically at asser
 Queries **are** claims — nibli's model is unchanged: you *state a proposition* and get
 `TRUE`/`FALSE`/`UNKNOWN`. The identical statement grammar is used for assert and query;
 the host (REPL/API/UI) decides which pipeline a statement enters. There is no
-interrogative form (`xu` remains a parse error in the Lojban front-end and has no Klaro
+interrogative form (`xu` remains a parse error in the Lojban front-end and has no nibli KR
 equivalent). A claim containing `?` run as a query returns `[Find]` bindings:
 
-```klaro
+```nibli-kr
 eats(Adam).                   # asserted: a fact — queried: an entailment check
 goes(?, to: some market).     # ma-style find
 ```
@@ -332,27 +332,27 @@ Lojban today (future work if the engine grows correlated find).
 - `.` terminates a statement. Each top-level statement is **one independent fact**
   (the bare-`.i` split); operator-joined claims inside one statement stay **one fact**
   — the fact/retraction boundary is exactly the visible period. (A mechanical
-  Lojban→Klaro converter must keep `gi'e` chains inside a single statement to preserve
+  Lojban→nibli KR converter must keep `gi'e` chains inside a single statement to preserve
   granularity.)
 - `#` line comments; `/* */` non-nesting block comments (KB headers, provenance blocks).
 - Encoding: UTF-8 file, ASCII syntax; string literals may carry arbitrary text.
 
 ## 10. Out of scope (with justifications)
 
-| Lojban construct | Why it has no Klaro form |
+| Lojban construct | Why it has no nibli KR form |
 |---|---|
 | `ri/ra/ru` anaphora | compile to *fixed* opaque constants with no antecedent resolution — an anaphoric-looking surface would be a silent-mistranslation trap; use names, `$vars`, or `it_a..it_u` |
 | `ko` imperative | engine gives it no imperative semantics (just `Constant("ko")`); write `you` |
 | `go'i` pro-bridi | REPL/session state (prior-bridi snapshot rewrite), never present in compiled output; a file format has no ambient "previous line" — write the claim again |
 | `si/sa/su` erasure | speech-stream self-repair; a written file is edited with an editor, and a self-destruct token invites injection abuse |
-| elidable terminators (`cu/vau/ku/kei/ku'o/ke'e/be'o/fe'u/lo'o`) | exist to disambiguate a terminator-elidable stream; Klaro's explicit delimiters (`()`, `{}`, `[]`, `where`, `.`) leave nothing to terminate |
+| elidable terminators (`cu/vau/ku/kei/ku'o/ke'e/be'o/fe'u/lo'o`) | exist to disambiguate a terminator-elidable stream; nibli KR's explicit delimiters (`()`, `{}`, `[]`, `where`, `.`) leave nothing to terminate |
 | Lojban morphology/phonotactics | replaced by case/sigil token classes; predicate identity keys on gismu via the alias map |
 | gadri × NU product beyond `lo` (`le nu`, `ro lo nu`, counted abstractions) | deliberate narrowing; zero corpus occurrences; abstractions are hard-wired to the implicit-`some` shape the engine uses |
 
 ## 11. Deliberate collapses (identical compiled shapes)
 
-Each pair below compiles to the **identical** `LogicBuffer` shape today, so Klaro spells
-them one way. If the engine ever distinguishes a pair, Klaro needs a new surface form
+Each pair below compiles to the **identical** `LogicBuffer` shape today, so nibli KR spells
+them one way. If the engine ever distinguishes a pair, nibli KR needs a new surface form
 there (the reserved `seeming` keyword pre-books the `voi` case):
 
 `su'o lo` = `lo` → `some` · `voi` = `poi` → `where` (non-veridicality unmodeled) ·
@@ -402,7 +402,7 @@ never invoke the linter.
 
 ## 13. Implementation notes
 
-**Pipeline:** Klaro text → lexer → recursive-descent/PEG parser → **synthesize
+**Pipeline:** nibli KR text → lexer → recursive-descent/PEG parser → **synthesize
 `nibli_types::ast::AstBuffer`** → `smuni::compile_from_gerna_ast` → logji. smuni's
 `validate_ast_buffer` already treats hand-built buffers as a designed-for path
 (fail-closed structural validation). gerna is simply not in this pipeline; smuni, logji,
@@ -413,36 +413,36 @@ the stores, rendering, and every soundness gate are untouched.
 - English names from the first lensisku gloss keyword (~98% clean; 5 collisions +
   ~25-word pin table, same mechanism as the existing `GISMU_GLOSS_OVERRIDES`).
 - **Reserved-word collisions must be resolved at generation time** — e.g. `bilga`'s
-  pinned gloss is `must`, which is a Klaro keyword → alias `obligates`/`obligated`.
+  pinned gloss is `must`, which is a nibli KR keyword → alias `obligates`/`obligated`.
 - `place_labels` populated by a tiered chain: curated table for the ~80–200 core/corpus
   predicates (same scale as the existing `GISMU_PLACE_TEMPLATES`) → lensisku
   `place_keywords` where present (70/1,338 gismu; more for lujvo) → flagged prose
   heuristic → positional `x1..x5` fallback.
-- Lojban words pass through as identity aliases (a Klaro file may use gismu directly).
+- Lojban words pass through as identity aliases (a nibli KR file may use gismu directly).
 - **Unknown names are a compile error** (no arity-2 default) — stricter than gerna, and
   the right polarity for a zero-hallucination system.
 
 **Verification obligations** (the new-front-end analogs of the existing gates — ALL
 BUILT and gated in `ci` as of 2026-07-12):
-1. A **seam-conformance gate** mirroring `nibli-verify/src/seam.rs`: compile Klaro text
+1. A **seam-conformance gate** mirroring `nibli-verify/src/seam.rs`: compile nibli KR text
    end-to-end and check the FOL against hand-verified structure + metamorphic pairs
    (e.g. `pred(x2: a, x1: b)` ≡ the alias-permuted spelling, canonicalized by positional
-   var-rename). **Built: `just verify-klaro`** (the CONSTRUCT_INVENTORY sweep with
-   Lojban twins, `nibli-verify/src/nibli_kr_battery.rs` + `tests/nibli_kr_gate.rs`).
+   var-rename). **Built: `just verify-nibli-kr-seam`** (the CONSTRUCT_INVENTORY sweep,
+   `nibli-verify/src/nibli_kr_battery.rs` + `tests/nibli_kr_seam_gate.rs`).
 2. An **alias-map differential gate** (verify-dict style): alias → gismu →
    place-permutation round-trips checked against the smuni dictionary; the alias map is
    new trusted base and L4's echo does not replace a CI gate. **Built:
    `just verify-nibli-kr-dict`** (`tests/alias_differential.rs` — arity equality,
    round-trips, swap/label integrity, plus a per-alias behavioral compile-equality
    battery).
-3. A **Klaro↔Lojban translation battery**: mechanically translate the shipped corpora
+3. A **nibli KR↔Lojban translation battery**: mechanically translate the shipped corpora
    and seeded random sentences both ways; compiled `LogicBuffer`s must be equal (up to
    variable renaming). This is *stronger* than the camxes parse-differential (which
    checks acceptance only) and replaces it for this front-end. **Built: the render
-   battery inside `just verify-klaro`** plus the committed corpus twins gate
-   **`just verify-klaro-twins`** (`tests/nibli_kr_twins.rs` — per-line canonicalized-buffer
-   equality + the Klaro determinism leg).
-4. **Fuzzing**: a `fuzz-parse`-style libFuzzer target for the Klaro parser. **Built:
+   battery inside `just verify-nibli-kr-seam`** plus the corpus determinism leg
+   (`tests/nibli_kr_seam_gate.rs` — per-line canonicalized-buffer equality + the
+   nibli KR determinism leg; the Lojban twins battery retired at THE DROP).
+4. **Fuzzing**: a `fuzz-parse`-style libFuzzer target for the nibli KR parser. **Built:
    `just fuzz-nibli-kr`** (parse→resolve→emit with a corrupt-buffer oracle; seeded and run
    in the `fuzz-ci` gate).
 
@@ -463,7 +463,7 @@ hyphen-vs-`->` lexing wrinkle.
 - **O3 (RESOLVED 2026-07-12)**: smuni's wrapper emission is
   `Attitudinal(Tense(Not(matrix)))` (`smuni/src/semantic/compile.rs:358-383`), so
   `must past P` → `Obligatory(Past(P))` — the §15 `Modified` order stands. To be pinned
-  by a klaro seam-gate golden. The same review produced the §6 reject errata
+  by a nibli-kr seam-gate golden. The same review produced the §6 reject errata
   (`~past P`, `past (A & B)`, `~(A & B)`).
 - **O4**: `every the dog` (ro le) is grammatical but awkward; zero corpus occurrences,
   ugliness accepted.
@@ -476,9 +476,9 @@ hyphen-vs-`->` lexing wrinkle.
   shape. Whether the two coincide after smuni (incl. `UniversalRuleRecord` registration
   at assert time) must be pinned by a seam-gate golden before the grammar freezes; if
   they differ, §6's block-form framing needs an erratum. *Update (2026-07-12, gate
-  landed):* the shape IS the prenex shape, CI-pinned by `verify-klaro`'s O7 golden;
+  landed):* the shape IS the prenex shape, CI-pinned by `verify-nibli-kr`'s O7 golden;
   the emitter's `exactly N`/`the` block limitation stays DOCUMENTED fail-closed
-  (targeted error + inline-form workaround) rather than lifted — the Lojban→Klaro
+  (targeted error + inline-form workaround) rather than lifted — the Lojban→nibli KR
   battery direction can never produce those forms.
 - **O8 (RESOLVED at introduction, 2026-07-12)**: the place-selector dot collides with
   the statement terminator under whitespace-insensitive parsing (`Kim = every dog.
@@ -496,8 +496,8 @@ hyphen-vs-`->` lexing wrinkle.
 ## 14. Clean-core v2 profile (de-Lojbanized)
 
 Everything above this section is the **v0.1 compat profile**: it mirrors the implemented
-Lojban semantics one-to-one, so Klaro and gerna compile to *identical* buffers and the
-Klaro↔Lojban translation battery (§13) can hold while both front-ends live. This section
+Lojban semantics one-to-one, so nibli KR and gerna compile to *identical* buffers and the
+nibli KR↔Lojban translation battery (§13) can hold while both front-ends live. This section
 specifies the **clean-core v2 profile** — the target for replacing Lojban outright. Same
 language skeleton; the Lojban-*inherited* semantic decisions are re-decided on their own
 merits. v2 is a spec target, not implemented; each item names its engine change and
@@ -510,7 +510,7 @@ camxes gate when the shared fragment stops being useful.
 In v2, predicate identity no longer routes through gismu at all. A KB (or an imported
 prelude) **declares its vocabulary**:
 
-```klaro
+```nibli-kr
 pred goes(goer, destination, origin, route, means).
 pred inhibits(inhibitor, inhibited): "blocks the metabolism of".
 pred obligated(who, duty).
@@ -531,7 +531,7 @@ pred obligated(who, duty).
 - **Engine change:** smuni's arity/label source becomes injectable (a schema registry
   behind the same lookup seam `JbovlasteSchema` occupies today); `smuni-dictionary` +
   lensisku remain only for the Lojban front-end while it lives.
-- **Verification impact:** `verify-dict` (Predilex lower bounds) stops covering Klaro
+- **Verification impact:** `verify-dict` (Predilex lower bounds) stops covering nibli KR
   KBs — it pins the *Lojban* dictionary. Replacement obligation is much weaker: schema
   self-consistency (duplicate place names, reserved-word collisions, arity stability
   across redeclaration = error).
@@ -583,11 +583,11 @@ Engine (each contained, land one at a time):
 4. logji: configurable compute-set relation names (`product/sum/quotient`).
 5. `LOGIC_IR.md`: note that clean-core producers never emit `Description` terms or
    `le_domain_`/`ni`/`si'o` predicates, and drop the da/de/di variable-name pin for
-   Klaro-originated buffers (variable naming becomes fully internal).
+   nibli KR-originated buffers (variable naming becomes fully internal).
 
 Verification:
 
-- The Klaro **seam-conformance gate** (§13, obligation 1) re-pins to v2 shapes as each
+- The nibli KR **seam-conformance gate** (§13, obligation 1) re-pins to v2 shapes as each
   decision lands — it is the shape authority for this front-end, as `seam.rs` is for gerna.
 - The **translation battery** (§13, obligation 3) only covers the shared-semantics fragment; every
   v2 decision shrinks it. Expected. Retire gerna + the camxes differential when the
@@ -610,7 +610,7 @@ Verification:
 
 ### 14.6 The GDPR erasure rule, clean-core
 
-```klaro
+```nibli-kr
 pred person(who).
 pred consents(who).
 pred obligated(who, duty).
@@ -690,7 +690,7 @@ Nat         <- [0-9]+
 String      <- '"' ('\\' . / !'"' .)* '"'
 ```
 
-## 16. Corpus acceptance set (Lojban ↔ Klaro)
+## 16. Corpus acceptance set (Lojban ↔ nibli KR)
 
 > **Reconciled 2026-07-12** to the SHIPPED honest-generic alias vocabulary (the
 > earlier draft used domain overlays — `consents`/`inhibits`/`breached`/
@@ -698,10 +698,10 @@ String      <- '"' ('\\' . / !'"' .)* '"'
 > emitter's landed forms (converted aliases carry positional labels, so
 > `obligated`'s duty place is `x2:`). The NORMATIVE, executable form of this
 > corpus is **`nibli-kr/tests/acceptance.nibli`** (30 statements — this set plus
-> operator/selector/block/tag coverage), pinned by klaro's render∘parse
+> operator/selector/block/tag coverage), pinned by nibli-kr's render∘parse
 > fixpoint tests and reused as the fuzz seed.
 
-```klaro
+```nibli-kr
 person(Adam).                                    # la .adam. cu prenu
 prevents(Flukonazol, Siptucin).                  # la .flukonazol. cu fanta la .siptucin.
 metabolized_by(Varfarin, Siptucin).              # la .varfarin. cu se katna la .siptucin.
@@ -731,7 +731,7 @@ permitted(every tends(some data)).               # ro lo kurji be lo datni cu se
 
 ---
 
-*Provenance: synthesized 2026-07-11 from a three-design panel (minimal-core "Klaro" —
+*Provenance: synthesized 2026-07-11 from a three-design panel (minimal-core "nibli KR" —
 winner on fidelity 9/10 and parseability 7/10; readable-English "Claimscript" — winner
 on readability, source of the token model and lint catalog; modern-PL "Nib" — source of
 the place selector and binder-block ideas), each judged by three adversarial lenses

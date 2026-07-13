@@ -2,9 +2,9 @@
 //!
 //! A standalone, in-browser interface with three tabs: Source (plain English,
 //! optionally FORMALIZED into the KB language by a bring-your-own-key LLM),
-//! the KB tab (the formal Klaro/KR encoding, with per-line validation), and
+//! the KB tab (the formal nibli KR encoding, with per-line validation), and
 //! Back-translation (structure-exposing English gloss). A bottom query bar runs proof-queries.
-//! The reasoning engine (klaro → smuni → logji) is compiled into the
+//! The reasoning engine (nibli-kr → smuni → logji) is compiled into the
 //! WASM bundle and runs entirely client-side (mirrors `nibli-wasm`). The ONLY
 //! network call is the optional Formalize step, sent directly from the browser
 //! to the user's chosen LLM provider — the client lives in `nibli_fanva::llm`
@@ -62,18 +62,16 @@ fn render_kb_line(line: &str) -> String {
 const MAX_OUTPUT_ENTRIES: usize = 200;
 
 const DEFAULT_SOURCE: &str = "All dogs are animals.\nAll animals eat.\nAdam is a dog.";
-// The default syllogism KB + query, one spelling per front-end. The Klaro pair
-// is the live default; the Lojban pair backs the legacy toggle (switching
-// modes swaps the buffers only while they still hold the other default).
+// The default syllogism KB + query — the nibli KR spelling (single surface).
 const DEFAULT_KB: &str = "animal(every dog).\neats(every animal).\ndog(Adam).";
 const DEFAULT_QUERY: &str = "eats(Adam).";
 
 /// The KB tab's label.
-const KB_TAB_LABEL: &str = "Klaro";
+const KB_TAB_LABEL: &str = "nibli KR";
 
 // ── Agentic formalize (nibli-fanva) ──
 // The Source→KB button runs the self-correcting loop: formalize → validate
-// (klaro+smuni+round-trip) → feed the compiler error back → retry, bounded
+// (nibli-kr+smuni+round-trip) → feed the compiler error back → retry, bounded
 // below. All gates are local/in-browser; the only network call is the LLM.
 
 /// One row of the self-correction trace rendered under the Source tab.
@@ -89,7 +87,7 @@ struct TraceRow {
     n: u32,
     ok: bool,
     detail: String,
-    /// Per-gate chips: (label like "klaro ✓", css class).
+    /// Per-gate chips: (label like "nibli-kr ✓", css class).
     gates: Vec<(String, &'static str)>,
 }
 
@@ -116,7 +114,7 @@ impl Settings {
 /// `translate_agentic`). Returns the cleaned KB text or a user-facing error.
 async fn fanva_translate(cfg: &LlmConfig, english: &str) -> Result<String, String> {
     use nibli_fanva::llm::{Chat, HttpChat, Turn, clean_lojban_output, system_prompt};
-    let request = format!("Formalize into Klaro: {}", english.trim());
+    let request = format!("Formalize into nibli KR: {}", english.trim());
     let turns = [Turn::user(request)];
     let raw = HttpChat
         .chat(cfg, system_prompt(), &turns)
@@ -130,7 +128,7 @@ async fn fanva_translate(cfg: &LlmConfig, english: &str) -> Result<String, Strin
 }
 
 /// The local gates, in the fail-fast order `validate` runs them.
-const GATE_ORDER: [&'static str; 3] = ["klaro", "smuni", "round-trip"];
+const GATE_ORDER: [&'static str; 3] = ["nibli-kr", "smuni", "round-trip"];
 
 /// Derive the per-gate chips from an attempt's error. `validate` is fail-fast in
 /// [`GATE_ORDER`], so `error.gate()` is the failing gate; earlier gates
@@ -201,7 +199,7 @@ fn trace_rows(attempts: &[nibli_fanva::agent::Attempt]) -> Vec<TraceRow> {
 #[derive(Clone, Copy, PartialEq)]
 enum ActiveTab {
     Source,
-    /// The formal KB tab — labeled by the active front-end ("Klaro"/"Lojban").
+    /// The formal KB tab — the nibli KR encoding.
     Kb,
     BackTranslation,
 }
@@ -217,7 +215,7 @@ struct OutputEntry {
 }
 
 // ── Local reasoning (in-browser) ──
-// The full klaro → smuni → logji pipeline runs in the WASM bundle
+// The full nibli-kr → smuni → logji pipeline runs in the WASM bundle
 // (mirrors `nibli-wasm`). Every query builds a fresh KnowledgeBase, re-asserts
 // the KB tab, then queries — matching the "queries reset the engine each
 // time" semantics. Built-in arithmetic (pilji/sumji/dilcu/zmadu/mleca/dunli)
@@ -245,7 +243,7 @@ fn run_query(kb_text: &str, query_text: &str) -> OutputEntry {
     let mut errors = 0u32;
     let mut skipped = 0u32;
     let mut line_results: Vec<LineResult> = Vec::new();
-    // The Klaro lint pass (NIBLI_KR §12 L1–L9): a FRESH linter per run
+    // The nibli KR lint pass (NIBLI_KR §12 L1–L9): a FRESH linter per run
     // — the stateless-KB model re-asserts the whole tab every query, so
     // "per session" is "per run" here. Notes ride each LineResult.
     let mut linter = nibli_kr::lint::Linter::new();
@@ -724,7 +722,7 @@ fn QueryTabs(
 
     // Loading an example auto-runs its first query so a verdict shows at once.
     // Reads only `example` (resolving query 0 directly), so changing the dropdown
-    // does not re-fire this. Examples are Klaro-sourced.
+    // does not re-fire this. Examples are nibli KR-sourced.
     use_effect(move || {
         if let Some(i) = *example.read() {
             selected_query.set(0);
@@ -799,14 +797,19 @@ fn QueryTabs(
                     class: if is_example || *query_tab.read() == ActiveTab::Kb { "tab active" } else { "tab" },
                     onclick: move |_| query_tab.set(ActiveTab::Kb),
                     {KB_TAB_LABEL}
+                    span {
+                        class: "tab__help",
+                        title: "nibli knowledge representation (KR) language",
+                        "?"
+                    }
                 }
             }
             div { class: "tab-content",
                 match (is_example, *query_tab.read()) {
                     (false, ActiveTab::Source) => {
                         let hint = match settings.read().as_ref().map(|c| c.llm.provider.short_name()) {
-                            Some(p) => format!("english claim \u{2192} klaro via {p}"),
-                            None => format!("english claim \u{2192} klaro \u{2014} configure an llm"),
+                            Some(p) => format!("english claim \u{2192} nibli KR via {p}"),
+                            None => format!("english claim \u{2192} nibli KR \u{2014} configure an llm"),
                         };
                         rsx! {
                             span { class: "nb-eyebrow", "query \u{2014} state a claim in english" }
@@ -1044,7 +1047,7 @@ fn SourceTabs(
         spawn(async move {
             use nibli_fanva::agent::Outcome;
             // The self-correcting loop: formalize → validate
-            // (klaro+smuni+round-trip) → semantic verification (a
+            // (nibli-kr+smuni+round-trip) → semantic verification (a
             // fresh-context judge reads the engine's back-translation) → feed
             // any error back → retry, up to the configured max attempts.
             let http = nibli_fanva::llm::HttpChat;
@@ -1123,6 +1126,11 @@ fn SourceTabs(
                     class: if *active_tab.read() == ActiveTab::Kb { "tab active" } else { "tab" },
                     onclick: move |_| active_tab.set(ActiveTab::Kb),
                     {KB_TAB_LABEL}
+                    span {
+                        class: "tab__help",
+                        title: "nibli knowledge representation (KR) language",
+                        "?"
+                    }
                 }
                 button {
                     class: if *active_tab.read() == ActiveTab::BackTranslation { "tab active" } else { "tab" },
@@ -1137,8 +1145,8 @@ fn SourceTabs(
                             "loaded example \u{2014} read-only".to_string()
                         } else {
                             match settings.read().as_ref().map(|c| c.llm.provider.short_name()) {
-                                Some(p) => format!("english \u{2192} klaro via {p}"),
-                                None => format!("english \u{2192} klaro \u{2014} configure an llm"),
+                                Some(p) => format!("english \u{2192} nibli KR via {p}"),
+                                None => format!("english \u{2192} nibli KR \u{2014} configure an llm"),
                             }
                         };
                         rsx! {
@@ -1247,7 +1255,7 @@ fn SourceTabs(
                         }
                         textarea {
                             class: "lojban-input",
-                            placeholder: "Enter Klaro facts and rules (one per line)...",
+                            placeholder: "Enter nibli KR facts and rules (one per line)...",
                             value: "{active_kb}",
                             readonly: is_example,
                             oninput: move |e| {
@@ -1271,7 +1279,7 @@ fn SourceTabs(
                             div { class: "back-translation",
                                 if empty {
                                     span { class: "back-translation__placeholder",
-                                        "Type Klaro in the Klaro tab to see the structure-exposing gloss."
+                                        "Type nibli KR in the nibli KR tab to see the structure-exposing gloss."
                                     }
                                 } else {
                                     for (n, line) in lines.iter() {
