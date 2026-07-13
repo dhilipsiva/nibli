@@ -75,7 +75,7 @@ pub fn canonical_alias(gismu: &str) -> Option<&'static str> {
 }
 
 /// Resolve a named-argument label to its 0-based place index for `entry`
-/// (matching `nibli_types::ast::PlaceTag::to_index()`).
+/// (the `u8` place index emit.rs pushes into `Argument::Tagged`).
 ///
 /// Accepts the entry's dictionary labels and the raw `x1`..`x5` escape hatch;
 /// both are bounded by the entry's arity (a tag beyond arity is `None` — the

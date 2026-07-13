@@ -2646,7 +2646,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tanru_in_poi_not_falsely_rejected() {
+    fn test_compound_in_restrictive_not_falsely_rejected() {
         // lo gerku poi sutra bajra cu klama — the tanru `sutra bajra` shares
         // ONE event, so its two unfilled x1 roles are one candidate subject
         // slot; the firewall must not reject, and injection must fill BOTH x1
@@ -2962,7 +2962,7 @@ mod tests {
     // ─── Negation test ────────────────────────────────────────
 
     #[test]
-    fn test_bridi_negation_produces_not() {
+    fn test_predication_negation_produces_not() {
         // na mi klama → Not(klama(mi, ...))
         let predicates = vec![Predicate::Root("klama".into())];
         let arguments = vec![Argument::Pronoun("mi".into())];

@@ -1,7 +1,7 @@
-//! The nibli KR emitter: tree AST → `nibli_types::ast::AstBuffer` — the exact
-//! buffer gerna produces, so `nibli_semantics::compile_from_ast` (and everything
-//! below it: logji, the oracles, the Lean-bridged conformance surface) applies
-//! unchanged. Mirrors gerna's Flattener discipline: child indices come from
+//! The nibli KR emitter: tree AST → `nibli_types::ast::AstBuffer` — the sole
+//! producer of the flat buffer `nibli_semantics::compile_from_ast` (and
+//! everything below it: logji, the oracles, the Lean-bridged conformance
+//! surface) consumes. Flattener discipline: child indices come from
 //! push-return values, never from length arithmetic.
 //!
 //! Emission map (NIBLI_KR §13; design-review decisions):
@@ -9,21 +9,20 @@
 //!   through); an alias with a place swap emits `Predicate::Converted`
 //! - `$x`/`$y`/`$z` lower to `da`/`de`/`di` by first emission encounter per
 //!   statement (resolve guarantees ≤3); `?`→`ma`, `it`→`ke'a`, `slot`→`ce'u`
-//! - named args → `Argument::Tagged(Fa..Fu)` (labels address SURFACE places,
-//!   which are the places of the possibly-Converted selbri — no extra math)
-//! - operators emit at SENTENCE level (`Afterthought`/`GanaiGi`); operand
+//! - named args → `Argument::Tagged((place_index, arg))` (the u8 index
+//!   addresses SURFACE places — those of the possibly-Converted predicate)
+//! - operators emit at SENTENCE level (`Afterthought`/`Implies`); operand
 //!   negation/prefixes live in the operand `Proposition`'s fields
-//! - abstractions → `Description((Lo, Abstraction(kind, body)))`
+//! - abstractions → `Description((Indefinite, Abstraction(kind, body)))`
 //! - linked args → `Predicate::WithArgs` with `Unspecified` gap-fill from x2; a
 //!   named `it` marker at surface place p emits `Converted(x1↔p)` first
-//! - `every`/`some` BLOCK determiners lower via `Prenex + GanaiGi` / `GeGi`
-//!   (gerna rejects description gi'e heads — spec O7; the seam gate pins the
+//! - `every`/`some` BLOCK determiners lower via `Prenex + Implies` / `And`
+//!   (spec O7 forbids description-headed conjunction; the seam gate pins the
 //!   resulting LogicBuffer shape); `exactly`/`the` blocks and block restrs
 //!   with relative clauses are NOT yet lowerable and fail closed with a
 //!   targeted message (recorded emitter limitation)
-//! - `via` tags emit uniformly as `ModalTag::Fio(gismu)` — BAI is fi'o over
-//!   the mapped gismu (spec §5 collapse), pinned by an equivalence test
-//!   against the Lojban BAI spelling.
+//! - `via` tags emit uniformly as `ModalTag::Custom(gismu)` — the modal is a
+//!   fi'o-style tag over the mapped predicate (spec §5 collapse)
 
 use nibli_types::ast::{
     AbstractionKind, Argument, AstBuffer, Conversion, Determiner, ModalTag, Predicate, Proposition,
@@ -334,8 +333,8 @@ impl<'a> Emitter<'a> {
 
     // ── predicate sequences ──
 
-    /// Tanru right-grouping: `[a, b, c]` → Tanru(a, Tanru(b, c)); the LAST
-    /// unit is the head.
+    /// Predicate-pair right-grouping: `[a, b, c]` → Pair(a, Pair(b, c)); the
+    /// LAST unit is the head.
     fn pred_seq(&mut self, seq: &PredSeq, at: usize) -> Result<u32, ParseError> {
         let mut ids: Vec<u32> = Vec::new();
         for unit in &seq.0 {

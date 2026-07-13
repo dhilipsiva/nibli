@@ -72,44 +72,43 @@ least loads), and `verify-book` is red until the book migrates or pins the tag.
 fns/fields de-Lojbanized (Sumti→Argument, Selbri→Predicate, Bridi→Proposition,
 Gadri→Determiner, BaiTag→ModalRelation, Attitudinal→DeonticMood;
 `compile_from_gerna_ast`→`compile_from_ast`, JbovlasteSchema→LexiconSchema, …).
-DEFERRED to the two follow-up bullets below (user chose both; each an isolated,
-higher-risk change): the ~40 cmavo enum-VARIANT romanizations (paired with the vestige
-audit, which deletes half the variant enums) and the dictionary fold. The predicate-name
-VALUES (gismu in the wire protocol, dictionaries, IR strings, proof-trace output, redb
-keys) stay — that is the predicate-name de-Lojbanization bullet. `nibli` survives.
+The predicate-name VALUES (gismu in the wire protocol, dictionaries, IR strings,
+proof-trace output, redb keys) stay — that is the predicate-name de-Lojbanization
+bullet. `nibli` survives.
 
-- **Lojban-shaped vestige audit + surviving cmavo-variant rename** — two coupled
-  remainders of the crate purge (the audit DELETES several variant-bearing enums, so
-  rename only survivors). The AST retains Lojban capacity the ONLY front-end
-  (nibli-kr emit.rs) can never produce — it survives solely as render fail-closed arms
-  (forced by `__ast_parity_guard`), nibli-semantics match arms, and hand-built test
-  fixtures. Verify-then-remove each (parity-guard-protected: drop variant -> drop
-  render arm -> drop handling + tests, stay CI-green; check NIBLI_KR §14 v2 profile
-  before deleting):
-  - `PlaceTag`/`Place` -> collapse to a numeric place index. Redundant round-trip:
-    named arities resolve to an index (nibli-kr/src/resolve.rs:92 `label_index`
-    -> emit.rs:240), which nibli-semantics re-derives via `to_index()`
-    (semantic/compile.rs:116). Replace `Argument::Tagged((Place, ArgumentId))` with `u8`.
-  - `ModalRelation` (ex-BaiTag) + `ModalTag::Fixed` + `modal_relation_name()` — nibli-kr's
-    `via:` emits the general `Fio` modal, never the fixed BAI causal set. DEAD.
-  - `SentenceConnective::GaGi`/`GoGi` (forethought or/iff) — emit only produces
-    `GanaiGi`/`GeGi`. DEAD. `RelClauseKind::Voi` — emit produces only `Poi`/`Noi`. DEAD.
-  - `Determiner::La` (the la name-description) — names emit as `Argument::Name`. DEAD.
-  - The da/de/di 3-variable lowering cap (`VAR_NAMES`) — a Lojban-shaped limit; named
-    $vars make it arbitrary (cross-refs the predicate-name bullet, which lifts it).
-  - Also audit `question_vars` (the `?` form), the presupposition-witness machinery, the
-    `du`-equality path, elidable-terminator logic, `Sentence::Prenex`.
-  Then rename SURVIVING cmavo variants to English (compiler-guided — short tokens like
-  `Se`/`Je`/`Lo` appear inside other words, so rename `Type::Variant`-qualified + fix
-  bare match arms per rustc): `Tense` Pu/Ca/Ba->Past/Now/Future, `Conversion`
-  Se/Te/Ve/Xe->Swap12..15, `Connective` Je/Ja/Jo/Ju->And/Or/Iff/Whether, `Determiner`
-  Lo/Le/RoLo/RoLe->Indefinite/Definite/UniversalIndefinite/UniversalDefinite,
-  `AbstractionKind` Nu/Duhu/Ka/Ni/Siho->Event/Fact/Property/Amount/Concept,
-  `RelClauseKind` Poi/Noi->Restrictive/Incidental, `DeonticMood` Ei/Ehe->
-  Obligation/Permission, `SentenceConnective` GanaiGi/GeGi->Implies/And-Forethought,
-  `Predicate::Tanru`->`Predicate::Pair`/`Modified` (Compound is taken). Plus lowercase
-  local vocab (loop vars `sumtis`/`selbris`/`bridi`; `test_sumti_*`/`test_bridi_*` fn
-  names) — scope AWAY from the dictionary gismu VALUES. PredName VALUES stay (next bullet).
+**VESTIGE AUDIT + CMAVO VARIANTS: LANDED (2026-07-13).** The dead Lojban-only AST
+capacity nibli-kr's emitter can never produce was verify-then-removed
+(parity-guard-protected; ~27 dead test fixtures went with it): `ModalRelation`
+(ex-BaiTag) + `ModalTag::Fixed` + `modal_relation_name()`, `Determiner::La`,
+`RelClauseKind::Voi`, `SentenceConnective::GaGi`/`GoGi`, `Argument::Connected`
+(argument connective), `Predicate::Connected` (predicate connective) + the
+`connected_bridi` render machinery, and the `Afterthought` na/nai tuple slack.
+`PlaceTag` collapsed to a `u8` place index. The surviving cmavo enum VARIANTS were
+renamed to English (Pu/Ca/Ba→Past/Now/Future, Se/Te/Ve/Xe→Swap12..15,
+Je/Ja/Jo/Ju→And/Or/Iff/Whether, Lo/Le/RoLo/RoLe→Indefinite/Definite/Universal…,
+Nu/Duhu/Ka/Ni/Siho→Event/Fact/Property/Amount/Concept, Poi/Noi→Restrictive/Incidental,
+Ei/Ehe→Obligation/Permission, GanaiGi/GeGi→Implies/And, Tanru→Pair, ModalTag::Fio→
+Custom), and `AstBuffer.selbris`/`.sumtis`→`predicates`/`arguments`. The audit CLEARED
+`question_vars`, the presupposition-witness machinery, du-equality, elidable-terminator
+logic, and `Sentence::Prenex` as load-bearing (kept); xorlo existential import KEPT by
+user choice. Zero reasoning-behavior change — determinism corpus + Vampire/clingo
+oracles + verify-nibli-kr-seam unchanged. The da/de/di 3-variable `$var` lowering cap
+(`VAR_NAMES`) remains — a Lojban-shaped limit the predicate-name bullet lifts.
+
+- **De-Lojbanize the surviving grammar-vocabulary IDENTIFIERS** — the crate purge
+  de-Lojbanized the flat-AST TYPE names (Bridi→Proposition, Selbri→Predicate,
+  Sumti→Argument) but the lowercase identifiers built on that vocabulary still spell
+  Lojban: render/emit methods (`bridi`/`bridi_impl`/`bridi_with_it`, the `selbri`/
+  `sumti` accessors, `predication_selbri`/`restr_selbri`/`selbri_text`/
+  `bare_body_selbri`), the `mod selbri` submodule + file, ~60 `let bridi = Proposition
+  {…}` test-fixture bindings + their `compile_one(.., bridi)` call sites, `bridi:`/
+  `selbri`/`sumti` params, locals (`inner_sumtis`/`all_sumtis`/`desc_sumti_idx`), the
+  `tanru_*` test names, and prose comments (~370 refs across nibli-semantics/nibli-kr/
+  nibli-types). NO string-VALUE collisions in these crates (checked), so a
+  method-aware rename to the Proposition/Predicate/Argument vocabulary is
+  compiler-guided and behavior-preserving. Scope AWAY from the dictionary gismu VALUES
+  + the `?`/`it`/`slot`→`ma`/`ke'a`/`ce'u` output strings (predicate-name bullet). Its
+  own isolated commit — orthogonal to everything else.
 - **Fold nibli-kr-dictionary into nibli-lexicon (feature-gated)** — user chose to fold;
   deferred from the crate purge as its own isolated, revertable change (a ~500-line
   build.rs merge with dual-mode + alias<->arity-agreement risk, orthogonal to

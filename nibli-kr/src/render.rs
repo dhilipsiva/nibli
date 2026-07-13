@@ -9,13 +9,14 @@
 //! canonical re-spelling must re-compile to the same `LogicBuffer`).
 //!
 //! Totality policy (NIBLI_KR §13): every AST construct nibli-kr's emitter can
-//! produce renders (the `ge…gi`/`ganai…gi` sentence connectives + afterthought
-//! operators; `via` modals; tense/deontic prefixes; conversions, tanru, and
-//! abstractions); §10 out-of-scope constructs (`ri/ra/ru`, `ko`, `go'i`, exotic
-//! gadri×NU combinations, exponent-form floats) FAIL CLOSED with a named error.
-//! The dead Lojban-only capacity the deleted gerna parser once produced (sumti/
-//! selbri connectives, fixed BAI tags, `la`-descriptions, `voi` clauses,
-//! forethought or/iff) has been removed from the AST.
+//! produce renders (the `if…then`/`&` sentence connectives + afterthought
+//! operators; `via` modals; tense/deontic prefixes; conversions, predicate
+//! pairs, and abstractions); §10 out-of-scope constructs (`ri/ra/ru`, `ko`,
+//! `go'i`, exotic gadri×NU combinations, exponent-form floats) FAIL CLOSED with
+//! a named error. The dead Lojban-only capacity the retired dual-front-end
+//! parser once produced (argument/predicate connectives, fixed BAI tags,
+//! `la`-descriptions, `voi` clauses, forethought or/iff) has been removed from
+//! the AST.
 //!
 //! Fixpoint contract (pinned by tests): for nibli KR-originated buffers,
 //! `parse ∘ render ∘ parse` compiles — through smuni — to the SAME

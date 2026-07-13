@@ -1613,11 +1613,11 @@ fn numeric_terms_are_not_universal_domain_members() {
 
 #[test]
 fn lo_under_connective_is_per_occurrence_existential() {
-    // `lo gerku cu batci la .adam. .e la .bel.` distributes over `.e` with a
-    // PER-OCCURRENCE existential (smuni distribute_connected recompiles the
-    // whole bridi per operand): each conjunct mints its own witness, so TWO
-    // DIFFERENT dogs — one biting Adam, one biting Bel — satisfy it. A
-    // shared-witness reading ("one dog bites both") would make this FALSE.
+    // `bite(some dog, Adam) & bite(some dog, Bel).` splits over the sentence-
+    // level `&` into two propositions, each with a PER-OCCURRENCE existential:
+    // each conjunct mints its own witness, so TWO DIFFERENT dogs — one biting
+    // Adam, one biting Bel — satisfy it. A shared-witness reading ("one dog
+    // bites both") would make this FALSE.
     let engine = engine_with_facts(&[
         "dog(Rex).",
         "dog(Dan).",

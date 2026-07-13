@@ -162,7 +162,7 @@ Deliberate or accepted-but-surprising behaviors, each pinned by a test so any ch
 
 - **Divide-by-zero over finite operands is a DECIDED FALSE.** `dilcu` guards `x3 == 0.0` exactly: with finite operands the verdict is a confident FALSE ("x1 = x2/0" is decidably unsatisfiable), NOT `UNKNOWN(non-finite)`. Non-finite OPERANDS, or a finite-operand computation whose RESULT overflows (`1e200 × 1e200 → inf`), stay `UNKNOWN(non-finite)` (`nibli-types/src/arithmetic.rs`, mirrored by the nibli-host host fast path and the Python reference backend).
 
-- **`lo` under a sumti connective reads per-occurrence.** `lo gerku cu batci la .adam. .e la .bel.` distributes over `.e`, and each conjunct mints its OWN existential witness: two different dogs — one biting Adam, one biting Bel — satisfy it. It does NOT assert that one dog bites both (pinned by `lo_under_connective_is_per_occurrence_existential`).
+- **`some` under a sentence connective reads per-occurrence.** `bite(some dog, Adam) & bite(some dog, Bel).` splits over the sentence-level `&` into two propositions, and each conjunct mints its OWN existential witness: two different dogs — one biting Adam, one biting Bel — satisfy it. It does NOT assert that one dog bites both (pinned by `lo_under_connective_is_per_occurrence_existential`).
 
 - **`na` and tense have one fixed relative scope.** On a single bridi, `na` and a tense marker are flags, not scoped operators: every surface ordering compiles to tense OUTSIDE negation (`pu na broda` ≡ `Past(¬broda)` — "in the past, it was not the case that…"). The other scoping (`¬Past(broda)`, "it is not the case that it was…") is not expressible on one bridi; under CWA the two coincide for ground facts, but they diverge inside larger formulas.
 

@@ -1,4 +1,4 @@
-//! AST types produced by the gerna parser.
+//! AST types produced by the nibli-kr emitter.
 //!
 //! Flat index-based representation: `AstBuffer` contains parallel arrays of
 //! `Predicate`, `Argument`, and `Sentence` nodes, referenced by `u32` indices.
