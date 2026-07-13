@@ -18,10 +18,10 @@ nibli-reason = { path = "../nibli-reason" }
 # Predilex expectations against the SHIPPED dictionary arities. Dev-only so the
 # library's data layer (src/predilex.rs) stays a pure parser.
 nibli-lexicon = { path = "../nibli-lexicon" }
-# The alias-map differential gate (tests/alias_differential.rs) joins the
-# SHIPPED nibli-kr alias map against the SHIPPED smuni dictionary — the two
-# independently built phf maps cannot drift.
-nibli-kr-dictionary = { path = "../nibli-kr-dictionary" }
+# The alias-map differential gate (tests/alias_differential.rs) checks the shipped
+# alias map's intra-crate invariants (round-trips, swap/label integrity, the
+# identity-passthrough behavioral battery); since the fold both maps live in
+# nibli-lexicon, so arity agreement holds by construction.
 
 [[bin]]
 name = "nibli-verify"

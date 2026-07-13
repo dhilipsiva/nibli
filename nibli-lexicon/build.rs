@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::fs::File;
@@ -9,6 +10,19 @@ use std::path::Path;
 // submodule is excluded).
 #[path = "src/arity.rs"]
 mod arity;
+
+// Curated alias tables, prose-label heuristic, and reserved-word list (folded
+// from nibli-lexicon; compiled here as build-script modules — `#[cfg(test)]`
+// is false for a build script, so their test submodules are excluded).
+#[path = "src/curated.rs"]
+mod curated;
+#[path = "src/label.rs"]
+mod label;
+#[path = "src/reserved.rs"]
+mod reserved;
+
+use curated::{ALIAS_PINS, CONVERTED_ALIASES, CURATED_ALIASES};
+use reserved::is_reserved;
 
 /// A single entry from the lensisku `dictionary-en.json` bulk export (the file is a JSON
 /// array of these, one per word). Only the fields the dictionary build consumes are
@@ -23,6 +37,10 @@ struct LensiskuEntry {
     /// JSON when empty, so default to an empty list.
     #[serde(default)]
     gloss_keywords: Vec<GlossKeyword>,
+    /// Ordered per-place label list (x1 first; present on ~70/1,338 gismu) — the
+    /// alias map's label tier 1. Omitted when empty.
+    #[serde(default)]
+    place_keywords: Vec<GlossKeyword>,
 }
 
 /// One gloss keyword; only `word` (the single-word English gloss) is consumed.
@@ -33,12 +51,18 @@ struct GlossKeyword {
 
 fn main() {
     println!("cargo:rerun-if-changed=../dictionary-en.json");
+    println!("cargo:rerun-if-changed=src/curated.rs");
+    println!("cargo:rerun-if-changed=src/label.rs");
+    println!("cargo:rerun-if-changed=src/reserved.rs");
 
     let json_path = "../dictionary-en.json";
     let content = fs::read_to_string(json_path).ok();
 
     // Collect entries first (phf_codegen borrows value strings for the map's lifetime)
     let mut entries: Vec<(String, String)> = Vec::new();
+    // word -> arity for the folded alias generation (Some(n) gismu/lujvo, None
+    // cmavo); replaces the old cross-crate `nibli_lexicon::get_arity` build-dep.
+    let mut arity_map: HashMap<String, Option<usize>> = HashMap::new();
     let mut gismu_count: usize = 0;
     let mut lujvo_count: usize = 0;
     let mut cmavo_count: usize = 0;
@@ -47,8 +71,8 @@ fn main() {
         serde_json::from_str(c).expect("dictionary-en.json is not a valid lensisku export array")
     });
 
-    if let Some(dict) = lensisku {
-        for entry in &dict {
+    if let Some(dict) = &lensisku {
+        for entry in dict {
             let word = entry.word.as_str();
             let typ = entry.word_type.as_str();
 
@@ -90,6 +114,7 @@ fn main() {
                         escape_str(template)
                     );
                     entries.push((word.to_string(), value));
+                    arity_map.insert(word.to_string(), Some(arity));
 
                     match typ {
                         "gismu" => gismu_count += 1,
@@ -115,6 +140,7 @@ fn main() {
                         escaped_gloss
                     );
                     entries.push((word.to_string(), value));
+                    arity_map.insert(word.to_string(), None);
                     cmavo_count += 1;
                 }
                 _ => continue,
@@ -130,6 +156,7 @@ fn main() {
                 escape_str(lookup_template(word))
             );
             entries.push(((*word).to_string(), value));
+            arity_map.insert((*word).to_string(), Some(*arity));
             gismu_count += 1;
         }
         // Tier-1 curated gloss overrides (e.g. bilga->must, curmi->permit) win over
@@ -153,6 +180,7 @@ fn main() {
                 escape_str(lookup_template(word))
             );
             entries.push(((*word).to_string(), value));
+            arity_map.insert((*word).to_string(), Some(arity));
             gismu_count += 1;
         }
         for (word, gloss) in CMAVO_GLOSS_OVERRIDES {
@@ -161,6 +189,7 @@ fn main() {
                 escape_str(gloss)
             );
             entries.push(((*word).to_string(), value));
+            arity_map.insert((*word).to_string(), None);
             cmavo_count += 1;
         }
     }
@@ -184,6 +213,85 @@ fn main() {
         &mut file,
         "pub static DICTIONARY: phf::Map<&'static str, DictEntry> = \n{};",
         map.build()
+    )
+    .unwrap();
+
+    // ── alias map (folded from nibli-lexicon) ──
+    // Reuses the single parse above; alias arity comes from `arity_map`, not a
+    // cross-crate `nibli_lexicon::get_arity` call.
+    validate();
+    let mut alias_entries: Vec<(String, String)> = Vec::new();
+    let mut gismu_entries: Vec<(String, String)> = Vec::new();
+
+    for (alias, gismu, arity, labels) in CURATED_ALIASES {
+        let tier = if labels.iter().any(|l| !l.is_empty()) {
+            "Curated"
+        } else {
+            "Positional"
+        };
+        let labels_src = labels
+            .iter()
+            .map(|l| format!("\"{l}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        alias_entries.push((
+            (*alias).to_string(),
+            format!(
+                "AliasEntry {{ gismu: \"{gismu}\", swap: None, arity: {arity}, \
+                 place_labels: [{labels_src}], label_tier: LabelTier::{tier} }}"
+            ),
+        ));
+        gismu_entries.push(((*gismu).to_string(), format!("\"{alias}\"")));
+    }
+
+    for (alias, gismu, swap) in CONVERTED_ALIASES {
+        // validate() guarantees the referenced gismu exists in CURATED_ALIASES.
+        let arity = CURATED_ALIASES
+            .iter()
+            .find(|(_, g, _, _)| g == gismu)
+            .map(|(_, _, a, _)| *a)
+            .unwrap();
+        alias_entries.push((
+            (*alias).to_string(),
+            format!(
+                "AliasEntry {{ gismu: \"{gismu}\", swap: Some({swap}), arity: {arity}, \
+                 place_labels: [\"\", \"\", \"\", \"\", \"\"], \
+                 label_tier: LabelTier::Positional }}"
+            ),
+        ));
+    }
+
+    match &lensisku {
+        Some(dict) => generate_full(dict, &arity_map, &mut alias_entries, &mut gismu_entries),
+        None => {
+            println!(
+                "cargo:warning=nibli-lexicon alias map: FALLBACK MODE (curated core, {} plain + {} converted aliases)",
+                CURATED_ALIASES.len(),
+                CONVERTED_ALIASES.len()
+            );
+        }
+    }
+
+    let mut aliases = phf_codegen::Map::new();
+    for (key, value) in &alias_entries {
+        aliases.entry(key.clone(), value.as_str());
+    }
+    let mut gismu_to_alias = phf_codegen::Map::new();
+    for (key, value) in &gismu_entries {
+        gismu_to_alias.entry(key.clone(), value.as_str());
+    }
+    let alias_dest = Path::new(&out_dir).join("generated_aliases.rs");
+    let mut alias_file = BufWriter::new(File::create(&alias_dest).unwrap());
+    writeln!(
+        &mut alias_file,
+        "pub static ALIASES: phf::Map<&'static str, AliasEntry> = \n{};",
+        aliases.build()
+    )
+    .unwrap();
+    writeln!(
+        &mut alias_file,
+        "pub static GISMU_TO_ALIAS: phf::Map<&'static str, &'static str> = \n{};",
+        gismu_to_alias.build()
     )
     .unwrap();
 }
@@ -263,7 +371,7 @@ const CORE_GISMU_ARITIES: &[(&str, usize)] = &[
     // dilcu/jmive were the same flap in the other direction: the fallback
     // table said 3/1 while the full lensisku build derives 4 (quotient with
     // remainder x4) and 2 (alive by standard x2) — found 2026-07-12 by
-    // nibli-kr-dictionary's build-time drift guard, now pinned so a future
+    // nibli-lexicon's build-time drift guard, now pinned so a future
     // export change can't re-flap (the verify-nibli-kr-dict gate checks both
     // modes against the nibli-kr alias map).
     ("dilcu", 4),
@@ -386,14 +494,14 @@ const FALLBACK_GISMU_ENTRIES: &[(&str, usize, &str)] = &[
     ("javni", 3, "rule"),
     ("datni", 3, "data"),
     ("turni", 2, "govern"),
-    // nibli-kr-dictionary curated vocabulary: every gismu the nibli-kr curated alias
+    // nibli-lexicon curated vocabulary: every gismu the nibli-kr curated alias
     // table references must resolve here too, with the SAME arity in both build
     // modes — otherwise a CI fallback build silently compiles these words with
     // the arity-2 default while nibli-kr's curated table (and every full local
     // build) says otherwise, the exact cross-mode drift class the
     // verify-nibli-kr-dict gate rejects (its first fallback run flagged all 34).
     // Arities mirror the full lensisku derivation (verified equal to nibli-kr's
-    // curated arities by nibli-kr-dictionary's build-time drift guard); glosses
+    // curated arities by nibli-lexicon's build-time drift guard); glosses
     // are the first lensisku gloss keyword, matching the data build's chain.
     ("birti", 2, "certain"),
     ("cfila", 3, "flaw"),
@@ -642,3 +750,339 @@ const CMAVO_GLOSS_OVERRIDES: &[(&str, &str)] = &[
     ("ce'u", "(lambda)"),
     ("go'i", "(previous)"),
 ];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Alias-map generation (folded from nibli-lexicon). Consumes the SAME
+// parsed export + the in-loop `arity_map`, so the alias arity and the shipped
+// dictionary arity agree by construction.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// FULL MODE: generate an alias for every non-curated gismu in the export.
+///
+/// Alias = pinned spelling (ALIAS_PINS) else the first gloss keyword normalized
+/// (base-form as-is — no mechanical inflection; corpus/spec vocabulary is pinned
+/// 3rd-person in CURATED_ALIASES instead). Arity comes from `arity_map` (the
+/// forward-dict data that produces DICTIONARY), so agreement holds by
+/// construction. UNPINNED problems fail the build with the full offender list.
+fn generate_full(
+    dict: &[LensiskuEntry],
+    arity_map: &HashMap<String, Option<usize>>,
+    alias_entries: &mut Vec<(String, String)>,
+    gismu_entries: &mut Vec<(String, String)>,
+) {
+    let curated_gismu: HashSet<&str> = CURATED_ALIASES.iter().map(|(_, g, _, _)| *g).collect();
+    let pins: HashMap<&str, &str> = ALIAS_PINS.iter().copied().collect();
+    let mut taken: HashSet<String> = alias_entries.iter().map(|(a, _)| a.clone()).collect();
+
+    let mut errors: Vec<String> = Vec::new();
+    let (mut n_lensisku, mut n_prose, mut n_positional) = (0usize, 0usize, 0usize);
+    let mut generated = 0usize;
+
+    for entry in dict {
+        if entry.word_type != "gismu" || entry.word.is_empty() {
+            continue;
+        }
+        let word = entry.word.as_str();
+        if curated_gismu.contains(word) {
+            continue;
+        }
+
+        let alias: String = match pins.get(word) {
+            Some(pin) => (*pin).to_string(),
+            None => match entry.gloss_keywords.first() {
+                Some(k) => normalize(&k.word),
+                None => {
+                    errors.push(format!(
+                        "{word}: no gloss_keywords in export — pin required"
+                    ));
+                    continue;
+                }
+            },
+        };
+        if !ident_ok(&alias) {
+            errors.push(format!(
+                "{word}: derived alias {alias:?} is not ident-shaped — pin required"
+            ));
+            continue;
+        }
+        if is_reserved(&alias) {
+            errors.push(format!(
+                "{word}: derived alias {alias:?} is a nibli KR keyword — pin required"
+            ));
+            continue;
+        }
+        // A self-alias (alias == its own gismu) is the identity passthrough spelled
+        // explicitly — harmless. Any OTHER dictionary word would shadow that word's
+        // identity passthrough.
+        if alias != word && arity_map.get(alias.as_str()).copied().flatten().is_some() {
+            errors.push(format!(
+                "{word}: derived alias {alias:?} is itself a dictionary word (would shadow \
+                 the identity-gismu passthrough) — pin required"
+            ));
+            continue;
+        }
+        if !taken.insert(alias.clone()) {
+            errors.push(format!(
+                "{word}: derived alias {alias:?} collides with an existing alias — pin required"
+            ));
+            continue;
+        }
+
+        let arity = arity_map
+            .get(word)
+            .copied()
+            .flatten()
+            .unwrap_or(2)
+            .clamp(1, 5) as u8;
+
+        let (labels, tier) = derive_labels(entry, arity);
+        match tier {
+            "Lensisku" => n_lensisku += 1,
+            "Prose" => n_prose += 1,
+            _ => n_positional += 1,
+        }
+        let labels_src = labels
+            .iter()
+            .map(|l| format!("\"{l}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        alias_entries.push((
+            alias.clone(),
+            format!(
+                "AliasEntry {{ gismu: \"{word}\", swap: None, arity: {arity}, \
+                 place_labels: [{labels_src}], label_tier: LabelTier::{tier} }}"
+            ),
+        ));
+        gismu_entries.push((word.to_string(), format!("\"{alias}\"")));
+        generated += 1;
+    }
+
+    // Data-mode drift guard: curated arities must equal what the forward dict derives.
+    for (alias, gismu, arity, _) in CURATED_ALIASES {
+        match arity_map.get(*gismu).copied().flatten() {
+            Some(dict_arity) if dict_arity == *arity as usize => {}
+            Some(dict_arity) => errors.push(format!(
+                "curated {alias:?} ({gismu}): declared arity {arity} != dictionary arity {dict_arity}"
+            )),
+            None => errors.push(format!(
+                "curated {alias:?}: gismu {gismu:?} unknown to the dictionary"
+            )),
+        }
+    }
+    // Dead-pin guard: a pin for a curated (or unknown) word is a mistake.
+    let export_gismu: HashSet<&str> = dict
+        .iter()
+        .filter(|e| e.word_type == "gismu")
+        .map(|e| e.word.as_str())
+        .collect();
+    for (gismu, alias) in ALIAS_PINS {
+        if curated_gismu.contains(gismu) {
+            errors.push(format!(
+                "pin ({gismu:?}, {alias:?}) is dead — the word is already in CURATED_ALIASES"
+            ));
+        }
+        if !export_gismu.contains(gismu) {
+            errors.push(format!(
+                "pin ({gismu:?}, {alias:?}) is dead — no such gismu in the export"
+            ));
+        }
+    }
+
+    if !errors.is_empty() {
+        panic!(
+            "nibli-lexicon alias generation failed ({} error(s)):\n  {}",
+            errors.len(),
+            errors.join("\n  ")
+        );
+    }
+
+    let total_plain = CURATED_ALIASES.len() + generated;
+    assert!(
+        total_plain >= 1300,
+        "nibli-lexicon alias coverage floor: {total_plain} plain aliases < 1300"
+    );
+    println!(
+        "cargo:warning=nibli-lexicon alias map: FULL MODE ({} plain aliases = {} curated + {} generated; \
+         {} converted; labels: {} lensisku, {} prose, {} positional)",
+        total_plain,
+        CURATED_ALIASES.len(),
+        generated,
+        CONVERTED_ALIASES.len(),
+        n_lensisku,
+        n_prose,
+        n_positional
+    );
+}
+
+/// Label chain for a generated entry: lensisku `place_keywords` (ordered from
+/// x1; skipped entirely when longer than the arity) → prose heuristic →
+/// positional. Generated labels are SANITIZED to `""` rather than failing the
+/// build (curated labels, by contrast, fail the build in `validate()`).
+fn derive_labels(entry: &LensiskuEntry, arity: u8) -> ([String; 5], &'static str) {
+    if !entry.place_keywords.is_empty() && entry.place_keywords.len() <= arity as usize {
+        let mut labels: [String; 5] = Default::default();
+        for (i, kw) in entry.place_keywords.iter().enumerate().take(5) {
+            labels[i] = normalize(&kw.word);
+        }
+        sanitize_labels(&mut labels, arity);
+        if labels.iter().any(|l| !l.is_empty()) {
+            return (labels, "Lensisku");
+        }
+    }
+    let mut labels = label::prose_labels(&entry.definition, arity);
+    sanitize_labels(&mut labels, arity);
+    if labels.iter().any(|l| !l.is_empty()) {
+        return (labels, "Prose");
+    }
+    (Default::default(), "Positional")
+}
+
+/// Clear any generated label that is non-ident, reserved, an x-tag lookalike,
+/// beyond the arity, or a duplicate of an earlier (surviving) label.
+fn sanitize_labels(labels: &mut [String; 5], arity: u8) {
+    for i in 0..5 {
+        let keep = {
+            let l = &labels[i];
+            !l.is_empty()
+                && ident_ok(l)
+                && !is_reserved(l)
+                && !looks_like_place_tag(l)
+                && i < arity as usize
+                && !labels[..i].contains(l)
+        };
+        if !keep {
+            labels[i].clear();
+        }
+    }
+}
+
+/// Gloss/label normalization: lowercase; space, `/`, `-` → `_`.
+fn normalize(raw: &str) -> String {
+    raw.to_ascii_lowercase().replace([' ', '/', '-'], "_")
+}
+
+fn ident_ok(s: &str) -> bool {
+    let mut chars = s.chars();
+    matches!(chars.next(), Some('a'..='z'))
+        && chars.all(|c| matches!(c, 'a'..='z' | '0'..='9' | '_'))
+}
+
+fn looks_like_place_tag(s: &str) -> bool {
+    s.len() == 2 && s.starts_with('x') && matches!(s.as_bytes()[1], b'1'..=b'5')
+}
+
+/// Fail-closed CURATED-table validation, both build modes: any violation fails
+/// the BUILD with the full offender list (the alias map is trusted base — a bad
+/// entry must never ship). Generation-side checks live in `generate_full`.
+fn validate() {
+    let mut errors: Vec<String> = Vec::new();
+
+    let mut seen_aliases = HashSet::new();
+    let mut seen_gismu = HashSet::new();
+
+    for (alias, gismu, arity, labels) in CURATED_ALIASES {
+        if !ident_ok(alias) {
+            errors.push(format!(
+                "alias {alias:?} is not ident-shaped ([a-z][a-z0-9_]*)"
+            ));
+        }
+        if is_reserved(alias) {
+            errors.push(format!("alias {alias:?} collides with a nibli KR keyword"));
+        }
+        if !seen_aliases.insert(*alias) {
+            errors.push(format!("duplicate alias {alias:?}"));
+        }
+        if !seen_gismu.insert(*gismu) {
+            errors.push(format!(
+                "gismu {gismu:?} has two plain aliases — GISMU_TO_ALIAS would be ambiguous"
+            ));
+        }
+        if !(1..=5).contains(arity) {
+            errors.push(format!("{alias:?}: arity {arity} outside 1..=5"));
+        }
+        for (i, label) in labels.iter().enumerate() {
+            if label.is_empty() {
+                continue;
+            }
+            if !ident_ok(label) {
+                errors.push(format!("{alias:?}: label {label:?} is not ident-shaped"));
+            }
+            if is_reserved(label) {
+                errors.push(format!(
+                    "{alias:?}: label {label:?} collides with a nibli KR keyword"
+                ));
+            }
+            if looks_like_place_tag(label) {
+                errors.push(format!(
+                    "{alias:?}: label {label:?} looks like a raw place tag — a label spelled \
+                     x2 that means x3 would silently reroute arguments"
+                ));
+            }
+            if i >= *arity as usize {
+                errors.push(format!(
+                    "{alias:?}: label {label:?} at place x{} exceeds arity {arity}",
+                    i + 1
+                ));
+            }
+            if labels[..i].contains(label) {
+                errors.push(format!(
+                    "{alias:?}: label {label:?} duplicated within the entry"
+                ));
+            }
+        }
+    }
+
+    for (alias, gismu, swap) in CONVERTED_ALIASES {
+        if !ident_ok(alias) {
+            errors.push(format!("converted alias {alias:?} is not ident-shaped"));
+        }
+        if is_reserved(alias) {
+            errors.push(format!(
+                "converted alias {alias:?} collides with a nibli KR keyword"
+            ));
+        }
+        if !seen_aliases.insert(*alias) {
+            errors.push(format!("duplicate alias {alias:?} (converted vs plain)"));
+        }
+        match CURATED_ALIASES.iter().find(|(_, g, _, _)| g == gismu) {
+            None => errors.push(format!(
+                "converted alias {alias:?} references gismu {gismu:?} absent from CURATED_ALIASES"
+            )),
+            Some((_, _, arity, _)) => {
+                if !(2..=*arity).contains(swap) {
+                    errors.push(format!(
+                        "converted alias {alias:?}: swap x1↔x{swap} outside 2..=arity({arity})"
+                    ));
+                }
+            }
+        }
+    }
+
+    let mut seen_pinned_gismu = HashSet::new();
+    for (gismu, alias) in ALIAS_PINS {
+        if !ident_ok(alias) {
+            errors.push(format!("pin alias {alias:?} ({gismu}) is not ident-shaped"));
+        }
+        if is_reserved(alias) {
+            errors.push(format!(
+                "pin alias {alias:?} ({gismu}) collides with a nibli KR keyword"
+            ));
+        }
+        if !seen_aliases.insert(*alias) {
+            errors.push(format!(
+                "pin alias {alias:?} ({gismu}) duplicates another alias"
+            ));
+        }
+        if !seen_pinned_gismu.insert(*gismu) {
+            errors.push(format!("gismu {gismu:?} pinned twice"));
+        }
+    }
+
+    if !errors.is_empty() {
+        panic!(
+            "nibli-lexicon alias-table validation failed ({} error(s)):\n  {}",
+            errors.len(),
+            errors.join("\n  ")
+        );
+    }
+}

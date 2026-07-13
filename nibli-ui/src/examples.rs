@@ -164,9 +164,9 @@ mod tests {
     use super::EXAMPLES;
 
     fn full_mode() -> bool {
-        // Same probe as nibli-verify's alias-map differential: the generated
-        // map only exists in a full (dictionary-en.json) build.
-        nibli_kr_dictionary::GISMU_TO_ALIAS.len() >= 1000
+        // Same probe as nibli-verify's alias-map differential: the full
+        // dictionary long tail only exists in a full (dictionary-en.json) build.
+        nibli_lexicon::DICTIONARY.len() >= 1000
     }
 
     fn compile_nibli_kr(line: &str) -> Result<(), String> {

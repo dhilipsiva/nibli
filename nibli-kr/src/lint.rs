@@ -184,7 +184,7 @@ fn push(notes: &mut Vec<LintNote>, input: &str, at: usize, code: &'static str, m
 /// map, or as an identity dictionary word. `None` = unknown (the compiler
 /// rejects it; the linter stays quiet).
 fn resolved_word(word: &str) -> Option<&str> {
-    if let Some(entry) = nibli_kr_dictionary::alias(word) {
+    if let Some(entry) = nibli_lexicon::alias(word) {
         return Some(entry.gismu);
     }
     nibli_lexicon::get_arity(word).map(|_| word)
@@ -409,7 +409,7 @@ impl Walk<'_> {
             // L4 — echo the resolved word + permutation on first use: the
             // alias map is trusted base, and a wrong permutation silently
             // reroutes arguments; make it visible.
-            if let Some(entry) = nibli_kr_dictionary::alias(word) {
+            if let Some(entry) = nibli_lexicon::alias(word) {
                 if self.linter.seen_aliases.insert(word.clone()) {
                     let msg = match entry.swap {
                         Some(n) => format!(

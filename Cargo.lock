@@ -2717,23 +2717,11 @@ dependencies = [
 name = "nibli-kr"
 version = "0.1.0"
 dependencies = [
- "nibli-kr-dictionary",
  "nibli-lexicon",
  "nibli-semantics",
  "nibli-types",
  "pest",
  "pest_derive",
-]
-
-[[package]]
-name = "nibli-kr-dictionary"
-version = "0.1.0"
-dependencies = [
- "nibli-lexicon",
- "phf",
- "phf_codegen",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -2820,7 +2808,6 @@ dependencies = [
  "gloo-net",
  "nibli-formalize",
  "nibli-kr",
- "nibli-kr-dictionary",
  "nibli-lexicon",
  "nibli-protocol",
  "nibli-reason",
@@ -2836,7 +2823,6 @@ version = "0.1.0"
 dependencies = [
  "nibli-engine",
  "nibli-kr",
- "nibli-kr-dictionary",
  "nibli-lexicon",
  "nibli-reason",
  "nibli-semantics",

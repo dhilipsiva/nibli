@@ -304,7 +304,7 @@ impl<'a> Renderer<'a> {
                 Conversion::Swap14 => 4,
                 Conversion::Swap15 => 5,
             };
-            if nibli_kr_dictionary::curated::CONVERTED_ALIASES
+            if nibli_lexicon::curated::CONVERTED_ALIASES
                 .iter()
                 .any(|(_, g, swap)| g == word && *swap == place)
             {
@@ -354,7 +354,7 @@ impl<'a> Renderer<'a> {
     /// (apostrophe lujvo are not). Render must NEVER emit unparseable text, so
     /// both cases fail closed by name here.
     fn alias_or_identity(&self, word: &str) -> R<String> {
-        if let Some(alias) = nibli_kr_dictionary::canonical_alias(word) {
+        if let Some(alias) = nibli_lexicon::canonical_alias(word) {
             return Ok(alias.to_owned());
         }
         if nibli_lexicon::get_arity(word).is_none() {
@@ -378,8 +378,8 @@ impl<'a> Renderer<'a> {
     /// Label for SURFACE place `place` (0-based) of `word`'s canonical alias:
     /// the dictionary label when curated, else raw `xN`.
     fn place_label(&self, word: &str, place: usize) -> String {
-        if let Some(alias) = nibli_kr_dictionary::canonical_alias(word)
-            && let Some(entry) = nibli_kr_dictionary::alias(alias)
+        if let Some(alias) = nibli_lexicon::canonical_alias(word)
+            && let Some(entry) = nibli_lexicon::alias(alias)
             && let Some(label) = entry.place_labels.get(place)
             && !label.is_empty()
         {
@@ -425,7 +425,7 @@ impl<'a> Renderer<'a> {
                 let Predicate::Root(word) = self.predicate(*inner)? else {
                     return Err(nope(
                         "a conversion over a non-root predicate has no nibli KR spelling yet — \
-                         curate a converted alias (nibli-kr-dictionary CONVERTED_ALIASES)",
+                         curate a converted alias (nibli-lexicon CONVERTED_ALIASES)",
                     ));
                 };
                 let place: u8 = match conv {
@@ -435,7 +435,7 @@ impl<'a> Renderer<'a> {
                     Conversion::Swap15 => 5,
                 };
                 // Curated converted alias first (works everywhere)…
-                if let Some((alias, _, _)) = nibli_kr_dictionary::curated::CONVERTED_ALIASES
+                if let Some((alias, _, _)) = nibli_lexicon::curated::CONVERTED_ALIASES
                     .iter()
                     .find(|(_, g, swap)| g == word && *swap == place)
                 {

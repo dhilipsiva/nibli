@@ -1,32 +1,27 @@
-//! Alias-map differential — the `verify-nibli-kr-dict` gate (`just verify-nibli-kr-dict`).
+//! Alias-map differential — the `verify-alias-map` gate (`just verify-alias-map`).
 //!
-//! `nibli-kr-dictionary` and `nibli-lexicon` are two INDEPENDENTLY BUILT phf
-//! maps (nibli-kr-dictionary reads smuni arities as a build-dependency, but its
-//! own drift guard runs only inside `generate_full` — a FALLBACK build ships
-//! with no cross-check at all). This gate joins the two SHIPPED artifacts at
-//! runtime so they cannot drift: the exact gap that hid the dilcu=3/jmive=1
-//! fallback flap (smuni's fallback table vs its own full lensisku derivation,
-//! found 2026-07-12 by nibli-kr-dictionary's build-time guard, fixed alongside
-//! this gate).
+//! Since the dictionary fold, the forward dictionary and the alias map are ONE
+//! crate (`nibli-lexicon`) built from a SINGLE parse, so the alias arity and the
+//! shipped dictionary arity agree BY CONSTRUCTION — the old cross-crate drift
+//! (the dilcu=3/jmive=1 fallback flap this gate was born to catch) is now
+//! structurally impossible. What survives has independent value as INTRA-crate
+//! invariants over the SHIPPED artifacts:
 //!
-//! Two tests, both dual-mode and never skipping (the verify-dict contract):
+//! Two tests, both dual-mode and never skipping (the verify contract):
 //! 1. `alias_map_differential` — structural: per-alias arity equality against
-//!    `nibli_lexicon::get_arity`, `GISMU_TO_ALIAS` round-trips, swap
-//!    validity (`2..=arity`, involution), reserved-word exclusion and label
-//!    integrity re-asserted from the shipped map, coverage floors.
+//!    `nibli_lexicon::get_arity` (now a self-consistency check), `GISMU_TO_ALIAS`
+//!    round-trips, swap validity (`2..=arity`, involution), reserved-word
+//!    exclusion and label integrity re-asserted from the shipped map, coverage
+//!    floors.
 //! 2. `alias_behavioral_battery` — for EVERY shipped alias, `alias(A, B, …)`
-//!    compiled through nibli-kr+smuni must equal the RAW-GISMU spelling with
-//!    explicit permuted `xN` labels (the identity-passthrough twin — the KR
-//!    seam gate's converted≡label-permuted family applied to the whole map)
-//!    at the canonicalized-LogicBuffer level. This replaced the gerna-compiled
-//!    Lojban twin at THE DROP: raw `xN` labels route places directly, so the
+//!    compiled through nibli-kr+nibli-semantics must equal the RAW-GISMU spelling
+//!    with explicit permuted `xN` labels (the identity-passthrough twin) at the
+//!    canonicalized-LogicBuffer level — an end-to-end property of the compile
+//!    path, unaffected by the fold: raw `xN` labels route places directly, so the
 //!    oracle side never touches the alias under test.
 //!
-//! Mode is read from the artifacts under test (`DICTIONARY.len()` /
-//! `GISMU_TO_ALIAS.len()` — compile-time phf properties; checking the json
-//! file's presence could lie about a stale build), and the two crates must be
-//! in the SAME mode: a mixed-mode build is a stale artifact (mv preserves
-//! mtimes, so a moved data file can leave one crate un-rebuilt) and fails loud.
+//! Mode is read from the shipped artifact (`DICTIONARY.len()` — a compile-time
+//! phf property; checking the json file's presence could lie about a stale build).
 
 use nibli_verify::nibli_kr_battery::{canonical, kompile};
 
@@ -37,33 +32,27 @@ const FULL_DICT_MIN: usize = 1000;
 /// Argument constants for the behavioral battery.
 const ARG_NAMES: [&str; 5] = ["Adam", "Bob", "Kim", "Tom", "Sam"];
 
-/// Detect the build mode from the shipped artifacts, assert the two crates
-/// agree, and print the fallback banner. Returns `true` for a full build.
+/// Detect the build mode from the shipped dictionary and print the fallback
+/// banner. Returns `true` for a full build (dictionary-en.json present). Since
+/// the fold, the forward dictionary and the alias map are ONE crate built from a
+/// single parse, so a mixed-mode build is impossible by construction (the old
+/// cross-crate mixed-mode assertion is gone).
 fn full_mode_checked() -> bool {
-    let smuni_len = nibli_lexicon::DICTIONARY.len();
-    let nibli_kr_len = nibli_kr_dictionary::GISMU_TO_ALIAS.len();
-    let smuni_full = smuni_len >= FULL_DICT_MIN;
-    let nibli_kr_full = nibli_kr_len >= FULL_DICT_MIN;
-    assert_eq!(
-        nibli_kr_full, smuni_full,
-        "MIXED-MODE BUILD: nibli-kr-dictionary has {nibli_kr_len} gismu (full={nibli_kr_full}) but \
-         nibli-lexicon has {smuni_len} entries (full={smuni_full}) — one artifact is stale \
-         (moving dictionary-en.json preserves mtimes, so a build script can skip its rerun). \
-         Fix: `cargo clean -p nibli-lexicon -p nibli-kr-dictionary` and rebuild."
-    );
-    if !smuni_full {
+    let dict_len = nibli_lexicon::DICTIONARY.len();
+    let full = dict_len >= FULL_DICT_MIN;
+    if !full {
         eprintln!(
-            "alias gate: FALLBACK MODE — {nibli_kr_len} curated aliases against the {smuni_len}-entry \
+            "alias gate: FALLBACK MODE — curated aliases against the {dict_len}-entry \
              fallback dictionary. Full validation needs `just fetch-dict` + rebuild."
         );
     }
-    smuni_full
+    full
 }
 
 /// Deterministically ordered view of the shipped alias map (phf iteration
 /// order is arbitrary; sorted output keeps failure lists stable).
-fn sorted_aliases() -> Vec<(&'static str, &'static nibli_kr_dictionary::AliasEntry)> {
-    let mut all: Vec<_> = nibli_kr_dictionary::ALIASES
+fn sorted_aliases() -> Vec<(&'static str, &'static nibli_lexicon::AliasEntry)> {
+    let mut all: Vec<_> = nibli_lexicon::ALIASES
         .entries()
         .map(|(name, entry)| (*name, entry))
         .collect();
@@ -71,8 +60,8 @@ fn sorted_aliases() -> Vec<(&'static str, &'static nibli_kr_dictionary::AliasEnt
     all
 }
 
-// Mirrors of nibli-kr-dictionary/build.rs `ident_ok` / `looks_like_place_tag` —
-// the gate re-asserts the label rules from the SHIPPED map, independent of the
+// Mirrors of nibli-lexicon/build.rs `ident_ok` / `looks_like_place_tag` — the
+// gate re-asserts the label rules from the SHIPPED map, independent of the
 // build-time validation that produced it.
 fn ident_ok(s: &str) -> bool {
     let mut chars = s.chars();
@@ -90,14 +79,16 @@ fn alias_map_differential() {
     let aliases = sorted_aliases();
     let mut offenders: Vec<String> = Vec::new();
 
-    // ── leg 1: arity differential (the leg that catches dilcu/jmive-class flaps) ──
+    // ── leg 1: arity self-consistency (agreement-by-construction since the fold;
+    //    a cheap regression check that the alias entry's arity still equals what
+    //    the same crate's `get_arity` exposes for the gismu) ──
     for (name, entry) in &aliases {
         match nibli_lexicon::get_arity(entry.gismu) {
             // The build clamps derived arities to 1..=5 (WIT place tags stop at
             // fu/x5), so compare against the same clamp.
             Some(a) if a.clamp(1, 5) == entry.arity as usize => {}
             Some(a) => offenders.push(format!(
-                "{name} ({}): nibli-kr arity {} != smuni arity {a}",
+                "{name} ({}): alias arity {} != dictionary arity {a}",
                 entry.gismu, entry.arity
             )),
             None => offenders.push(format!(
@@ -108,8 +99,8 @@ fn alias_map_differential() {
     }
 
     // ── leg 2: GISMU_TO_ALIAS round-trips + swap validity ──
-    for (gismu, alias_name) in nibli_kr_dictionary::GISMU_TO_ALIAS.entries() {
-        match nibli_kr_dictionary::alias(alias_name) {
+    for (gismu, alias_name) in nibli_lexicon::GISMU_TO_ALIAS.entries() {
+        match nibli_lexicon::alias(alias_name) {
             None => offenders.push(format!(
                 "GISMU_TO_ALIAS[{gismu}] = {alias_name:?} which is absent from ALIASES"
             )),
@@ -148,7 +139,7 @@ fn alias_map_differential() {
                 }
             }
             // Every swapped alias must peel to a canonical plain alias.
-            if nibli_kr_dictionary::canonical_alias(entry.gismu).is_none() {
+            if nibli_lexicon::canonical_alias(entry.gismu).is_none() {
                 offenders.push(format!(
                     "{name}: converted alias's gismu {} has no canonical plain alias",
                     entry.gismu
@@ -159,7 +150,7 @@ fn alias_map_differential() {
 
     // ── leg 3: reserved-word exclusion + label integrity from the shipped map ──
     for (name, entry) in &aliases {
-        if nibli_kr_dictionary::reserved::is_reserved(name) {
+        if nibli_lexicon::reserved::is_reserved(name) {
             offenders.push(format!("alias {name:?} collides with a nibli KR keyword"));
         }
         for (i, label) in entry.place_labels.iter().enumerate() {
@@ -176,7 +167,7 @@ fn alias_map_differential() {
             if !ident_ok(label) {
                 offenders.push(format!("{name}: label {label:?} is not ident-shaped"));
             }
-            if nibli_kr_dictionary::reserved::is_reserved(label) {
+            if nibli_lexicon::reserved::is_reserved(label) {
                 offenders.push(format!(
                     "{name}: label {label:?} collides with a nibli KR keyword"
                 ));
@@ -188,7 +179,7 @@ fn alias_map_differential() {
             }
             // Self-consistency: the shipped resolver must map the label back to
             // exactly this place (subsumes in-entry duplicates and xN shadowing).
-            if nibli_kr_dictionary::label_index(entry, label) != Some(i) {
+            if nibli_lexicon::label_index(entry, label) != Some(i) {
                 offenders.push(format!(
                     "{name}: label_index({label:?}) != Some({i}) — the label does not \
                      resolve to its own place"
@@ -206,24 +197,24 @@ fn alias_map_differential() {
 
     // ── leg 4: coverage floors ──
     assert!(
-        nibli_kr_dictionary::ALIASES.len() >= 95,
+        nibli_lexicon::ALIASES.len() >= 95,
         "alias map hollowed out: {} entries",
-        nibli_kr_dictionary::ALIASES.len()
+        nibli_lexicon::ALIASES.len()
     );
     assert!(
-        nibli_kr_dictionary::GISMU_TO_ALIAS.len() >= 90,
+        nibli_lexicon::GISMU_TO_ALIAS.len() >= 90,
         "reverse map hollowed out: {} entries",
-        nibli_kr_dictionary::GISMU_TO_ALIAS.len()
+        nibli_lexicon::GISMU_TO_ALIAS.len()
     );
     assert!(
-        nibli_kr_dictionary::curated::CONVERTED_ALIASES.len() >= 3,
+        nibli_lexicon::curated::CONVERTED_ALIASES.len() >= 3,
         "converted-alias table hollowed out"
     );
     if full_mode {
         assert!(
-            nibli_kr_dictionary::GISMU_TO_ALIAS.len() >= 1300,
+            nibli_lexicon::GISMU_TO_ALIAS.len() >= 1300,
             "full-mode coverage floor: only {} gismu aliased",
-            nibli_kr_dictionary::GISMU_TO_ALIAS.len()
+            nibli_lexicon::GISMU_TO_ALIAS.len()
         );
     }
 }

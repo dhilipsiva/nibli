@@ -289,10 +289,11 @@ fmt-check:
 clippy-runtime:
     cargo clippy --no-deps -p nibli-protocol -p nibli-render -p nibli-store -p nibli-engine -p nibli --all-targets -- -D warnings
 
-# Run nibli-kr-dictionary unit tests only (dev loop; the workspace `test` recipe
-# already sweeps them into `ci`)
-test-nibli-kr-dict:
-    cargo test -p nibli-kr-dictionary --lib -- --nocapture
+# Run nibli-lexicon unit tests only — the folded alias-map tests (alias/label/
+# reserved) plus the forward-dict tests, one crate now (dev loop; the workspace
+# `test` recipe already sweeps them into `ci`)
+test-alias-map:
+    cargo test -p nibli-lexicon --lib -- --nocapture
 
 # Run nibli-kr (surface-syntax front-end) unit tests only (dev loop; the
 # workspace `test` recipe already sweeps them into `ci`)
@@ -364,7 +365,7 @@ test-all: test test-engine test-store test-backend
 
 # CI gate for the hardened runtime surface (fast; native only — no WASM build).
 # For the WASM behavioral smokes too, run `just ci-all`.
-ci: fmt-check clippy-runtime test test-engine test-host test-ui test-formalize test-backend test-store test-persistence-replay verify-harness verify-soundness verify-nibli-kr-dict verify-nibli-kr-seam verify-dict verify-proofs verify-book-vocab
+ci: fmt-check clippy-runtime test test-engine test-host test-ui test-formalize test-backend test-store test-persistence-replay verify-harness verify-soundness verify-alias-map verify-nibli-kr-seam verify-dict verify-proofs verify-book-vocab
 
 # WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
 # verify-book-capture). Bundles the gasnu smokes; each depends on
@@ -470,14 +471,15 @@ verify-harness:
 verify-soundness:
     cargo test -p nibli-verify --lib --test differential_gate {{cargo_profile_flag}} -- --nocapture --test-threads=1
 
-# Alias-map differential gate: the SHIPPED nibli-kr-dictionary alias map must agree with
-# the SHIPPED nibli-lexicon (per-alias arity equality, GISMU_TO_ALIAS round-trips,
-# swap validity, reserved/label integrity from the shipped map) plus a behavioral leg:
+# Alias-map differential gate: the SHIPPED nibli-lexicon alias map's intra-crate
+# invariants (per-alias arity self-consistency, GISMU_TO_ALIAS round-trips, swap
+# validity, reserved/label integrity from the shipped map) plus a behavioral leg:
 # alias(A, B, ...) must compile canonically EQUAL to the raw-gismu spelling with
 # explicit permuted xN labels, for EVERY shipped alias. Dual-mode and never skips: a full
 # local build checks all ~1,341 aliases; the CI fallback build checks the curated core
-# with a loud FALLBACK MODE banner. A mixed-mode build (one crate stale) fails loud.
-verify-nibli-kr-dict:
+# with a loud FALLBACK MODE banner. Since the fold, alias↔dictionary arity agreement
+# holds by construction (one crate, one parse).
+verify-alias-map:
     cargo test -p nibli-verify --test alias_differential {{cargo_profile_flag}} -- --nocapture --test-threads=1
 
 # The KR→smuni seam-conformance gate — the KR front-end's LOJBAN-FREE

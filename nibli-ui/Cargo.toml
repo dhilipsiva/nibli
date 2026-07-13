@@ -16,7 +16,5 @@ nibli-reason = { path = "../nibli-reason" }
 nibli-lexicon = { path = "../nibli-lexicon" }
 nibli-formalize = { path = "../nibli-formalize" }
 serde_json = "1"
-
-[dev-dependencies]
-# Full-vs-fallback dictionary-mode detection for the shipped-examples guard test.
-nibli-kr-dictionary = { path = "../nibli-kr-dictionary" }
+# The shipped-examples guard test detects full-vs-fallback build mode via
+# nibli-lexicon's DICTIONARY (a regular dep above), so no extra dev-dep is needed.

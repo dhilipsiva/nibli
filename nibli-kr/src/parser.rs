@@ -1022,7 +1022,7 @@ mod tests {
             spellings.push(quoted);
         }
         spellings.sort_unstable();
-        let reserved = nibli_kr_dictionary::reserved::RESERVED_WORDS;
+        let reserved = nibli_lexicon::reserved::RESERVED_WORDS;
         assert_eq!(
             spellings, reserved,
             "nibli_kr.pest kw_* rules and RESERVED_WORDS diverge"

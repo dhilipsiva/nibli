@@ -5,7 +5,7 @@
 //! Checks (all fail closed, targeted positioned errors):
 //! 1. NAME RESOLUTION — every predicate word (predication heads incl. all
 //!    pair units and zei parts, restrictors, selected preds, bare clause
-//!    bodies, `via` tag preds) must be a nibli-kr-dictionary alias or an
+//!    bodies, `via` tag preds) must be a nibli-lexicon alias or an
 //!    identity-passthrough Lojban word (`nibli_lexicon::get_arity` hit).
 //!    Anything else is a compile error — the deliberate tightening over
 //!    gerna's arity-2 default: an unknown word NEVER silently mints a
@@ -64,11 +64,11 @@ pub fn resolve_all(input: &str, statements: &[Statement]) -> Vec<ParseError> {
 pub(crate) struct PredInfo {
     pub(crate) surface: String,
     pub(crate) arity: u8,
-    pub(crate) entry: Option<&'static nibli_kr_dictionary::AliasEntry>,
+    pub(crate) entry: Option<&'static nibli_lexicon::AliasEntry>,
 }
 
 pub(crate) fn lookup(word: &str) -> Result<PredInfo, String> {
-    if let Some(entry) = nibli_kr_dictionary::alias(word) {
+    if let Some(entry) = nibli_lexicon::alias(word) {
         return Ok(PredInfo {
             surface: word.to_owned(),
             arity: entry.arity,
@@ -91,7 +91,7 @@ pub(crate) fn lookup(word: &str) -> Result<PredInfo, String> {
 /// Resolve a named-argument label to a 0-based SURFACE place index.
 pub(crate) fn label_index(info: &PredInfo, label: &str) -> Option<usize> {
     match info.entry {
-        Some(entry) => nibli_kr_dictionary::label_index(entry, label),
+        Some(entry) => nibli_lexicon::label_index(entry, label),
         None => {
             // Identity passthrough: raw x1..x5 only.
             let rest = label.strip_prefix('x')?;
@@ -432,7 +432,7 @@ mod tests {
     use crate::parser::parse_statements;
 
     // FALLBACK-SAFE VOCABULARY ONLY: CI builds without dictionary-en.json, so
-    // every word here must come from nibli-kr-dictionary's curated tables or
+    // every word here must come from nibli-lexicon's curated tables or
     // nibli-lexicon's fallback core (identity passthrough).
 
     fn ok(input: &str) {

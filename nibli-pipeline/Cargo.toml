@@ -6,7 +6,7 @@ edition = "2024"
 
 [dependencies]
 # The nibli KR front-end (compile_pipeline's text→AST seam). Grows the
-# component by pest + nibli-kr-dictionary — the cost of the dual-front-end phase.
+# component by pest + the nibli-lexicon alias map.
 nibli-kr = { path = "../nibli-kr" }
 nibli-semantics = { path = "../nibli-semantics" }
 nibli-reason = { path = "../nibli-reason" }

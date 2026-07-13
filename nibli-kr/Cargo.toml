@@ -6,11 +6,10 @@ edition = "2024"
 [dependencies]
 pest = "2"
 pest_derive = "2"
-# resolve.rs: alias map (name -> gismu + swap + place labels) and the
-# identity-gismu passthrough arity source. The grammar's kw_* rules are also
-# pinned against nibli-kr-dictionary's single-source RESERVED_WORDS by an
-# exhaustive unit test.
-nibli-kr-dictionary = { path = "../nibli-kr-dictionary" }
+# resolve.rs: the alias map (name -> gismu + swap + place labels) and the
+# identity-gismu passthrough arity source, both from nibli-lexicon. The grammar's
+# kw_* rules are pinned against its single-source RESERVED_WORDS by an exhaustive
+# unit test.
 nibli-lexicon = { path = "../nibli-lexicon" }
 # emit.rs targets nibli-types' AstBuffer; parse_checked returns NibliError.
 nibli-types = { path = "../nibli-types" }

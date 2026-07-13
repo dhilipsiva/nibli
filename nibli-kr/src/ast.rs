@@ -92,7 +92,7 @@ pub enum Tense {
 
 /// A predicate application. The head is a [`PredSeq`] (a single word, or a
 /// pair of 2+ units whose LAST unit is the head); resolution against
-/// nibli-kr-dictionary happens in the resolve pass.
+/// nibli-lexicon happens in the resolve pass.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Predication {
     pub seq: PredSeq,
