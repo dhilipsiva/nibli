@@ -12,11 +12,11 @@
 //!
 //! Note: `--query` reaches only relation names the KR front-end can SPELL:
 //! dictionary/alias-resolvable names — an unknown name is a fail-closed
-//! compile error, never an arity guess (SURFACE_SYNTAX §13). English-named
+//! compile error, never an arity guess (NIBLI_KR §13). English-named
 //! RDF predicates (e.g. `hasPart` — local names import VERBATIM, camelCase
 //! and all) import fine as facts but cannot be spelled in the query
 //! language; making them queryable awaits the v2 schema registry
-//! (SURFACE_SYNTAX §14.1) — decided 2026-07-12 over an unknown-word
+//! (NIBLI_KR §14.1) — decided 2026-07-12 over an unknown-word
 //! passthrough, which would have weakened the fail-closed guarantee while
 //! still not reaching camelCase names.
 //!

@@ -8,7 +8,7 @@
 //! nibli-fanva's render round-trip gate (every Formalize candidate's
 //! canonical re-spelling must re-compile to the same `LogicBuffer`).
 //!
-//! Totality policy (SURFACE_SYNTAX §13): gerna-reachable constructs render,
+//! Totality policy (NIBLI_KR §13): gerna-reachable constructs render,
 //! sometimes via the §11 collapses (forethought `ge/ga/go…gi` → the one
 //! operator set; `.inaja` → `->`; `la`+selbri → a Name; BAI → `via`); §10
 //! out-of-scope constructs (`ri/ra/ru`, `ko`, `go'i`, exotic gadri×NU
@@ -355,7 +355,7 @@ impl<'a> Renderer<'a> {
     /// family). The operands share the subject, so the sentence becomes a
     /// block-every claim (universal-description subject) or a plain operator
     /// claim (constant subject); both shapes are pinned canonically equal to
-    /// smuni's selbri-connective compilation by the verify-klaro gate. Fail
+    /// smuni's selbri-connective compilation by the seam gate (verify-nibli-kr-seam). Fail
     /// closed BY NAME everywhere else — the expansion must never guess scope
     /// (duplicating a `some`-subject would double the quantifier).
     fn connected_bridi(&self, bridi: &Bridi, prefix: &str) -> R<String> {
@@ -459,7 +459,7 @@ impl<'a> Renderer<'a> {
                 Conversion::Ve => 4,
                 Conversion::Xe => 5,
             };
-            if klaro_dictionary::curated::CONVERTED_ALIASES
+            if nibli_kr_dictionary::curated::CONVERTED_ALIASES
                 .iter()
                 .any(|(_, g, swap)| g == gismu && *swap == place)
             {
@@ -505,18 +505,18 @@ impl<'a> Renderer<'a> {
 
     /// The Klaro spelling of a dictionary word: the canonical alias, else the
     /// identity passthrough — which is only honest when the word (a) is
-    /// actually in the dictionary (klaro's resolver fails closed on unknowns;
+    /// actually in the dictionary (nibli-kr's resolver fails closed on unknowns;
     /// gerna tolerates them at arity 2) and (b) is a legal Klaro identifier
     /// (apostrophe lujvo are not). Render must NEVER emit unparseable text, so
     /// both cases fail closed by name here.
     fn alias_or_identity(&self, gismu: &str) -> R<String> {
-        if let Some(alias) = klaro_dictionary::canonical_alias(gismu) {
+        if let Some(alias) = nibli_kr_dictionary::canonical_alias(gismu) {
             return Ok(alias.to_owned());
         }
         if smuni_dictionary::get_arity(gismu).is_none() {
             return Err(nope(format!(
                 "word {gismu:?} is dictionary-unknown (the Lojban front-end tolerates it at \
-                 arity 2; Klaro fails closed on unknown names — SURFACE_SYNTAX §13)"
+                 arity 2; Klaro fails closed on unknown names — NIBLI_KR §13)"
             )));
         }
         let mut chars = gismu.chars();
@@ -534,8 +534,8 @@ impl<'a> Renderer<'a> {
     /// Label for SURFACE place `place` (0-based) of `gismu`'s canonical alias:
     /// the dictionary label when curated, else raw `xN`.
     fn place_label(&self, gismu: &str, place: usize) -> String {
-        if let Some(alias) = klaro_dictionary::canonical_alias(gismu)
-            && let Some(entry) = klaro_dictionary::alias(alias)
+        if let Some(alias) = nibli_kr_dictionary::canonical_alias(gismu)
+            && let Some(entry) = nibli_kr_dictionary::alias(alias)
             && let Some(label) = entry.place_labels.get(place)
             && !label.is_empty()
         {
@@ -578,7 +578,7 @@ impl<'a> Renderer<'a> {
                 let Selbri::Root(gismu) = self.selbri(*inner)? else {
                     return Err(nope(
                         "a conversion over a non-root selbri has no Klaro spelling yet — \
-                         curate a converted alias (klaro-dictionary CONVERTED_ALIASES)",
+                         curate a converted alias (nibli-kr-dictionary CONVERTED_ALIASES)",
                     ));
                 };
                 let place: u8 = match conv {
@@ -588,7 +588,7 @@ impl<'a> Renderer<'a> {
                     Conversion::Xe => 5,
                 };
                 // Curated converted alias first (works everywhere)…
-                if let Some((alias, _, _)) = klaro_dictionary::curated::CONVERTED_ALIASES
+                if let Some((alias, _, _)) = nibli_kr_dictionary::curated::CONVERTED_ALIASES
                     .iter()
                     .find(|(_, g, swap)| g == gismu && *swap == place)
                 {
@@ -663,7 +663,7 @@ impl<'a> Renderer<'a> {
                     // unresolved go'i, …) fail closed BY NAME — in the
                     // battery this is a genuine coverage signal.
                     return Err(nope(format!(
-                        "pro-sumti {other:?} is out of Klaro's scope (SURFACE_SYNTAX §10) — \
+                        "pro-sumti {other:?} is out of Klaro's scope (NIBLI_KR §10) — \
                          no spelling exists"
                     )));
                 }
@@ -673,7 +673,7 @@ impl<'a> Renderer<'a> {
                 if text.contains('\n') {
                     return Err(nope(
                         "a quoted literal containing a raw newline has no Klaro spelling \
-                         (strings are single-line; SURFACE_SYNTAX §3)",
+                         (strings are single-line; NIBLI_KR §3)",
                     ));
                 }
                 format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
@@ -684,7 +684,7 @@ impl<'a> Renderer<'a> {
                 if !value.is_finite() || rendered.contains('e') || rendered.starts_with('-') {
                     return Err(nope(format!(
                         "number {value} has no Klaro literal (unsigned decimal only; \
-                         SURFACE_SYNTAX §3) — fail closed"
+                         NIBLI_KR §3) — fail closed"
                     )));
                 }
                 rendered
@@ -696,7 +696,7 @@ impl<'a> Renderer<'a> {
                         Gadri::Le | Gadri::La | Gadri::RoLo | Gadri::RoLe => Err(nope(
                             "abstractions are hard-wired to the implicit-some description; \
                              other gadri × NU combinations are out of scope \
-                             (SURFACE_SYNTAX §10)",
+                             (NIBLI_KR §10)",
                         )),
                     };
                 }
@@ -762,7 +762,7 @@ impl<'a> Renderer<'a> {
         };
         // Bare-predicate sugar: a body of shape `ke'a <selbri>` (no tail, no
         // prefixes) prints as the sugar form.
-        // The bound entity is either an explicit ke'a head (klaro-emitted
+        // The bound entity is either an explicit ke'a head (nibli-kr-emitted
         // buffers) or IMPLICIT (gerna leaves the head empty and smuni injects
         // ke'a at x1) — both print as the sugar.
         let head_is_kehah = |bridi: &Bridi| -> R<bool> {
@@ -857,9 +857,9 @@ fn render_name(name: &str) -> R<String> {
 /// public API. Every `nibli_types::ast` enum Klaro owns the spelling of is
 /// matched here WITHOUT wildcards, so adding a variant fails this crate's
 /// build until Klaro covers it. A new variant obligates, in order:
-/// 1. a SURFACE_SYNTAX section (spelling, or an explicit §10 out-of-scope
+/// 1. a NIBLI_KR section (spelling, or an explicit §10 out-of-scope
 ///    entry with justification),
-/// 2. a grammar rule in `klaro.pest` + walker arm (or a targeted reject),
+/// 2. a grammar rule in `nibli_kr.pest` + walker arm (or a targeted reject),
 /// 3. a render arm in this module (spelling or fail-closed-by-name),
 /// 4. a row in the nibli-verify CONSTRUCT_INVENTORY (battery bullet),
 /// 5. a golden/twin test.

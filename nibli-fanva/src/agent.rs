@@ -360,7 +360,7 @@ mod tests {
     }
 
     #[test]
-    fn klaro_mode_converges_and_uses_the_klaro_prompt() {
+    fn nibli_kr_mode_converges_and_uses_the_nibli_kr_prompt() {
         let (out, chat) = run_seen(vec![text("dog(Adam).")], 5);
         match out {
             Outcome::Success { lojban, .. } => assert_eq!(lojban, "dog(Adam)."),
@@ -379,7 +379,7 @@ mod tests {
     }
 
     #[test]
-    fn klaro_mode_feeds_the_gate_error_back_then_converges() {
+    fn nibli_kr_mode_feeds_the_gate_error_back_then_converges() {
         // Attempt 1 fails closed at the klaro grammar gate (unknown alias);
         // the feedback turn must carry the Klaro correction prose.
         let (out, chat) = run_seen(vec![text("zzyzxq(Adam)."), text("dog(Adam).")], 5);

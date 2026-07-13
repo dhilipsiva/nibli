@@ -1,4 +1,4 @@
-// Klaro grammar — THE EXECUTABLE SPEC (SURFACE_SYNTAX.md §15, full v0.1 surface).
+// nibli KR grammar — THE EXECUTABLE SPEC (NIBLI_KR.md §15, full v0.1 surface).
 //
 // This file is the normative grammar: pest_derive compiles it into the parser,
 // so grammar and implementation cannot drift (the property that motivated the
@@ -20,7 +20,7 @@
 //   - `selected` (`loves.loved` — the place selector): adjacency on BOTH sides
 //     of the dot keeps the selector from colliding with the statement
 //     terminator (`Kim = every dog. eats(me).` must be two statements; see
-//     SURFACE_SYNTAX O8). A selected restr also takes NO linked args, so the
+//     NIBLI_KR O8). A selected restr also takes NO linked args, so the
 //     compact collision `Kim = every dog.eats(me).` is a PARSE ERROR, never a
 //     silent statement merge. `selected` must stay FIRST in its alternation —
 //     pest commits to a succeeding alternative and never re-opens it.
@@ -40,7 +40,7 @@ COMMENT    = _{ ("#" ~ (!"\n" ~ ANY)*) | ("/*" ~ (!"*/" ~ ANY)* ~ "*/") }
 
 ident_char = _{ ASCII_ALPHA_LOWER | ASCII_DIGIT | "_" }
 
-// ── Keywords (SURFACE_SYNTAX §2; single source klaro-dictionary/src/reserved.rs,
+// ── Keywords (NIBLI_KR §2; single source nibli-kr-dictionary/src/reserved.rs,
 //    pinned by the grammar↔reserved-list conformance test) ──
 kw_all       = @{ "all" ~ !ident_char }
 kw_also      = @{ "also" ~ !ident_char }
@@ -97,7 +97,7 @@ var    = @{ "$" ~ ASCII_ALPHA_LOWER ~ ident_char* }
 number = @{ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
 // `\"` and `\\` are the only escapes; anything else after `\` fails the match
 // (fail closed). Payloads may carry arbitrary UTF-8 — the ASCII-only rule
-// applies to syntax, not string payloads (SURFACE_SYNTAX §9). No other rule
+// applies to syntax, not string payloads (NIBLI_KR §9). No other rule
 // matches non-ASCII, so the ASCII-only property holds automatically.
 string = @{ "\"" ~ (("\\" ~ ("\"" | "\\")) | (!("\"" | "\\" | "\n") ~ ANY))* ~ "\"" }
 
@@ -105,7 +105,7 @@ string = @{ "\"" ~ (("\\" ~ ("\"" | "\\")) | (!("\"" | "\\" | "\n") ~ ANY))* ~ "
 file      = { SOI ~ statement* ~ EOI }
 statement = { claim ~ "." }
 
-// ── Claims (SURFACE_SYNTAX §6) ──
+// ── Claims (NIBLI_KR §6) ──
 // The three claim families have pairwise-incompatible commit points (`all`,
 // det-keyword…`$var:`, everything else), so pest's alternative-failure
 // backtracking keeps e.g. `every dog = Adam.` an equality, never a broken
@@ -139,20 +139,20 @@ tilde    = { "~" }
 atom        = { paren | predication | equality }
 paren       = { "(" ~ claim ~ ")" }
 predication = { pred_seq ~ args ~ tag* }
-// `via cause(X)` — BAI/fi'o modal tag (SURFACE_SYNTAX §5).
+// `via cause(X)` — BAI/fi'o modal tag (NIBLI_KR §5).
 tag         = { kw_via ~ pred_name ~ "(" ~ term ~ ")" }
 args        = { "(" ~ (arg ~ ("," ~ arg)*)? ~ ")" }
 arg         = { (label ~ ":")? ~ term }
 label       = { ident }
 equality    = { term ~ "=" ~ term }
 
-// ── Predicate sequences (tanru; SURFACE_SYNTAX §5) ──
+// ── Predicate sequences (tanru; NIBLI_KR §5) ──
 pred_seq  = { pred_unit+ }                       // 2+ units = tanru, LAST = head
 pred_unit = { ("[" ~ pred_seq ~ "]") | pred_name }
 pred_name = ${ ident ~ ("+" ~ ident)* }          // a+b zei compound — word identity,
                                                  // compound-atomic (no WS/comments)
 
-// ── Terms (SURFACE_SYNTAX §3) ──
+// ── Terms (NIBLI_KR §3) ──
 term       = { underscore | question | number | string | var | keyterm
              | abstraction | det_phrase | rigid }
 underscore = { "_" }
@@ -170,12 +170,12 @@ det_phrase  = { det ~ restr }
 det         = { kw_some | (kw_every ~ kw_the?) | kw_the
               | (kw_exactly ~ number ~ kw_the?) | kw_no }
 
-// ── Restrictors (SURFACE_SYNTAX §4) ──
+// ── Restrictors (NIBLI_KR §4) ──
 // `selected` first — see the header note (PEG commit + O8).
 restr    = { tilde? ~ (selected | pred_seq ~ args?) ~ rel_cl* }
 selected = ${ ident ~ "." ~ ident }              // place selector: every loves.loved
 rel_cl   = { (kw_where | kw_also) ~ clause_body }
 // Bare-predicate sugar: a body with no argument list applies to `it` at x1.
 // The claim branch is tried first; full-claim bodies must contain `it`
-// (mandatory-`it`, enforced by the walker per SURFACE_SYNTAX §7).
+// (mandatory-`it`, enforced by the walker per NIBLI_KR §7).
 clause_body = { claim | (tilde? ~ pred_seq) }

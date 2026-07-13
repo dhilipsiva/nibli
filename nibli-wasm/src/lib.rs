@@ -113,7 +113,7 @@ impl Session {
     fn compile_text(&self, input: &str) -> Result<logji_logic::LogicBuffer, String> {
         // Fail-closed KR parse + smuni compile + compute-node marking.
         // String-error surface preserved via `to_string`.
-        let ast = klaro::parse_checked(input).map_err(|e: PipelineError| e.to_string())?;
+        let ast = nibli_kr::parse_checked(input).map_err(|e: PipelineError| e.to_string())?;
         let mut buf =
             smuni::compile_from_gerna_ast(ast).map_err(|e: PipelineError| e.to_string())?;
         logji::transform_compute_nodes(&mut buf, &self.compute_predicates);
@@ -150,7 +150,7 @@ pub fn back_translate_ir(text: &str) -> String {
 /// Parse + compile a line to the FOL `LogicBuffer` for rendering (no compute
 /// transform, no assertion — display only).
 fn compile_for_render(input: &str) -> Result<logji_logic::LogicBuffer, String> {
-    let ast = klaro::parse_checked(input).map_err(|e: PipelineError| e.to_string())?;
+    let ast = nibli_kr::parse_checked(input).map_err(|e: PipelineError| e.to_string())?;
     smuni::compile_from_gerna_ast(ast).map_err(|e: PipelineError| e.to_string())
 }
 
@@ -175,7 +175,7 @@ mod tests {
             let line = line.strip_prefix("? ").unwrap_or(line);
             // Skip-check via the native-safe parse path (a JsError cannot be
             // formatted on non-wasm targets, so probe klaro directly).
-            if let Err(e) = klaro::parse_checked(line) {
+            if let Err(e) = nibli_kr::parse_checked(line) {
                 if e.to_string().contains("unknown predicate") {
                     skipped += 1;
                     continue;

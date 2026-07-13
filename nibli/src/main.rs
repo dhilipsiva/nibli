@@ -7,11 +7,11 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use klaro::lint::Linter;
 use nibli_engine::{EngineLogicalTerm, NibliEngine, display_query_result, display_term};
+use nibli_kr::lint::Linter;
 use reedline::{DefaultPrompt, Reedline, Signal};
 
-/// Print the Klaro lint notes for `text` (SURFACE_SYNTAX §12 L1–L9) —
+/// Print the Klaro lint notes for `text` (NIBLI_KR §12 L1–L9) —
 /// non-blocking `[Note: …]` echoes, Klaro mode only. The `Linter` is
 /// session-stateful (L1 introductions, L4 first-use dedup, L7 latch) and is
 /// reset with the KB.
@@ -53,7 +53,7 @@ fn main() {
     engine.set_verbose(true);
     let mut line_editor = Reedline::create();
     let prompt = DefaultPrompt::default();
-    // The KR lint session (SURFACE_SYNTAX §12): non-blocking [Note: …]
+    // The KR lint session (NIBLI_KR §12): non-blocking [Note: …]
     // echoes on interactive inputs, reset together with the KB.
     let mut linter = Linter::new();
 

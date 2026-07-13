@@ -1,15 +1,14 @@
-//! KR(Klaro)→smuni seam helpers — the metamorphic-pair generator behind the
-//! Lojban-FREE front-end gate in `tests/kr_seam_gate.rs`.
+//! KR→smuni seam helpers — the metamorphic-pair generator behind the
+//! front-end gate in `tests/nibli_kr_seam_gate.rs`.
 //!
-//! That gate is the KR front-end's independent correctness oracle built to
-//! OUTLIVE the Lojban front-end: today the Klaro↔Lojban twin battery
-//! (`verify-klaro`/`verify-klaro-twins`) cross-checks every construct against
-//! gerna, but THE DROP (TODO.md) deletes gerna and the twins with it.
-//! The kr-seam gate re-anchors the same coverage on hand-verified FOL
-//! structure + KR-internal metamorphic relations, touching no Lojban text.
+//! That gate is the KR front-end's independent correctness oracle, built to
+//! OUTLIVE the Lojban front-end — and it did: THE DROP (2026-07-13) deleted
+//! gerna and the twin battery, and this gate has carried the coverage since,
+//! re-anchored on hand-verified FOL structure + KR-internal metamorphic
+//! relations, touching no Lojban text.
 //!
 //! This module owns only the seeded pair generator; the compile/canonicalize
-//! plumbing is shared: [`crate::klaro_battery::kompile`] +
+//! plumbing is shared: [`crate::nibli_kr_battery::kompile`] +
 //! [`crate::seam::canonicalize`] (both buffer-level, front-end-agnostic).
 //!
 //! Vocabulary is FALLBACK-SAFE (curated-core aliases only), like the
@@ -38,7 +37,7 @@ const BODY_PREDS: &[&str] = &["big", "fast", "small", "red"];
 /// Three families, rotated by seed:
 ///
 /// 1. **Label permutation** — `P(A, B).` ≡ `P(x2: B, x1: A).` (raw `xN`
-///    labels resolve for every predicate; SURFACE_SYNTAX §5 named args are
+///    labels resolve for every predicate; NIBLI_KR §5 named args are
 ///    order-free once labeled).
 /// 2. **The `no` sugar** — `Q(no R).` ≡ `Q(exactly 0 R).` (§4: `no X` parses
 ///    as `Exactly(0)`).
@@ -101,8 +100,10 @@ mod tests {
         for seed in 0..12 {
             families[(seed % 3) as usize] = true;
             let (a, b) = metamorphic_pair(seed);
-            crate::klaro_battery::kompile(&a).unwrap_or_else(|e| panic!("pair side a {a:?}: {e}"));
-            crate::klaro_battery::kompile(&b).unwrap_or_else(|e| panic!("pair side b {b:?}: {e}"));
+            crate::nibli_kr_battery::kompile(&a)
+                .unwrap_or_else(|e| panic!("pair side a {a:?}: {e}"));
+            crate::nibli_kr_battery::kompile(&b)
+                .unwrap_or_else(|e| panic!("pair side b {b:?}: {e}"));
         }
         assert!(families.iter().all(|f| *f), "a family never generated");
     }

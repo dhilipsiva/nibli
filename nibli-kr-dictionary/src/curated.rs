@@ -204,7 +204,7 @@ pub const CURATED_ALIASES: &[(&str, &str, u8, [&str; 5])] = &[
     ("red", "xunre", 1, ["", "", "", "", ""]),
     ("yellow", "pelxu", 1, ["", "", "", "", ""]),
     ("green", "crino", 1, ["", "", "", "", ""]),
-    // ── Numeric / compute (x1 = result; SURFACE_SYNTAX §5 names) ──
+    // ── Numeric / compute (x1 = result; NIBLI_KR §5 names) ──
     (
         "product",
         "pilji",
@@ -350,7 +350,7 @@ pub const ALIAS_PINS: &[(&str, &str)] = &[
     ("xexso", "exa"),
     ("zepti", "zepto"),
     ("zetro", "zetta"),
-    // First gloss is a Klaro keyword.
+    // First gloss is a nibli KR keyword.
     ("balvi", "later"),      // gloss "future"
     ("fasnu", "occurrence"), // gloss "event"
     ("fatci", "actual"),     // gloss "fact"
@@ -368,7 +368,7 @@ pub const ALIAS_PINS: &[(&str, &str)] = &[
 /// Converted-form aliases: `(alias, gismu, swap)` where `swap = n` means the
 /// surface argument order is the gismu's with x1 ↔ xn exchanged (the se/te/ve/xe
 /// family — the only permutations the AstBuffer's `Selbri::Converted` expresses).
-/// NEVER generated — curated only (SURFACE_SYNTAX §13). Labels are positional:
+/// NEVER generated — curated only (NIBLI_KR §13). Labels are positional:
 /// auto-swapping the plain entry's curated labels risks silent place rerouting,
 /// the exact failure class the alias differential gate exists to catch.
 pub const CONVERTED_ALIASES: &[(&str, &str, u8)] = &[

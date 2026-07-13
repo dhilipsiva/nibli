@@ -1,10 +1,10 @@
-//! Klaro parser: pest-generated from `src/klaro.pest` (THE executable grammar
-//! — SURFACE_SYNTAX §15, full v0.1 surface), plus the walker that builds the
+//! nibli KR parser: pest-generated from `src/nibli_kr.pest` (THE executable grammar
+//! — NIBLI_KR §15, full v0.1 surface), plus the walker that builds the
 //! tree AST ([`crate::ast`]) and enforces the §6/§7 errata as targeted,
 //! positioned errors.
 //!
 //! Division of labor:
-//! - `klaro.pest` owns SYNTAX. It parses modifiers permissively and knows
+//! - `nibli_kr.pest` owns SYNTAX. It parses modifiers permissively and knows
 //!   nothing about the errata, argument ordering, count integrality, or the
 //!   mandatory-`it` rule — encoding those as grammar would bury the spec
 //!   guidance under generic "expected …" messages.
@@ -31,8 +31,8 @@ use crate::ast::{
 };
 
 #[derive(pest_derive::Parser)]
-#[grammar = "klaro.pest"]
-struct KlaroPest;
+#[grammar = "nibli_kr.pest"]
+struct NibliKrPest;
 
 /// A positioned parse error. 1-based line/column; columns count CHARACTERS.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,7 +84,7 @@ pub fn parse_text_with_errors(input: &str) -> (Vec<Statement>, Vec<ParseError>) 
         if pos >= input.len() {
             break;
         }
-        match KlaroPest::parse(Rule::statement, &input[pos..]) {
+        match NibliKrPest::parse(Rule::statement, &input[pos..]) {
             Ok(mut pairs) => {
                 let pair = pairs.next().expect("statement rule yields one pair");
                 let end = pos + pair.as_span().end();
@@ -337,7 +337,7 @@ fn build_chain(pair: Pair<Rule>, input: &str, base: usize) -> Result<Claim, Pars
 fn build_unary(pair: Pair<Rule>, input: &str, base: usize) -> Result<Claim, ParseError> {
     const NOT_OVER_PREFIX: &str = "`~` over a tense/deontic prefix is rejected — Not(Past(P)) has no encoding in the \
          compat profile; `past ~P` (= Past(Not(P))) is the supported spelling \
-         (SURFACE_SYNTAX §6 errata)";
+         (NIBLI_KR §6 errata)";
 
     let mut deontic: Option<Deontic> = None;
     let mut tense: Option<Tense> = None;
@@ -360,7 +360,7 @@ fn build_unary(pair: Pair<Rule>, input: &str, base: usize) -> Result<Claim, Pars
                                 at,
                                 "deontic comes before tense: write `must past P`, never \
                                  `past must P` (nesting is Obligatory(Past(…)), \
-                                 SURFACE_SYNTAX §6)",
+                                 NIBLI_KR §6)",
                             ));
                         }
                         if deontic.is_some() {
@@ -445,7 +445,7 @@ fn build_atom(
                     paren_at,
                     "tense/deontic prefixes and `~` attach to a single predication or \
                      equality — not to a compound claim; distribute explicitly \
-                     (SURFACE_SYNTAX §6 errata)",
+                     (NIBLI_KR §6 errata)",
                 ));
             }
             Ok(built)
@@ -525,7 +525,7 @@ fn build_tag(pair: Pair<Rule>, input: &str, base: usize) -> Result<Tag, ParseErr
 }
 
 /// Shared by predication args and restr linked args: positionals must precede
-/// named args (SURFACE_SYNTAX §5).
+/// named args (NIBLI_KR §5).
 fn build_args(pair: Pair<Rule>, input: &str, base: usize) -> Result<Vec<Arg>, ParseError> {
     let mut args: Vec<Arg> = Vec::new();
     let mut seen_named = false;
@@ -548,7 +548,7 @@ fn build_args(pair: Pair<Rule>, input: &str, base: usize) -> Result<Vec<Arg>, Pa
             return Err(err_at(
                 input,
                 arg_at,
-                "positional arguments must come before named arguments (SURFACE_SYNTAX §5)",
+                "positional arguments must come before named arguments (NIBLI_KR §5)",
             ));
         }
         args.push(Arg {
@@ -576,7 +576,7 @@ fn build_term(pair: Pair<Rule>, input: &str, base: usize) -> Result<Term, ParseE
                     input,
                     at,
                     "number literal overflows the representable range (non-finite) — \
-                     fail closed per SURFACE_SYNTAX §3",
+                     fail closed per NIBLI_KR §3",
                 ));
             }
             Ok(Term::Number(value))
@@ -761,7 +761,7 @@ fn build_clause_body(
         match child.as_rule() {
             Rule::claim => {
                 let claim = build_claim(child, input, base)?;
-                // Mandatory-`it` (SURFACE_SYNTAX §7): a full-claim body that
+                // Mandatory-`it` (NIBLI_KR §7): a full-claim body that
                 // never mentions the relativized entity is the implicit-ke'a
                 // ambiguity the firewall exists to prevent.
                 if !claim_contains_it(&claim) {
@@ -770,7 +770,7 @@ fn build_clause_body(
                         clause_at,
                         "a full relative-clause body must mention `it` (the relativized \
                          entity) at least once — bare `where pred` is the sugar for \
-                         pred(it) (SURFACE_SYNTAX §7 mandatory-it)",
+                         pred(it) (NIBLI_KR §7 mandatory-it)",
                     ));
                 }
                 return Ok(ClauseBody::Full(Box::new(claim)));
@@ -1009,7 +1009,7 @@ mod tests {
 
     #[test]
     fn grammar_keywords_match_reserved_words() {
-        let grammar = include_str!("klaro.pest");
+        let grammar = include_str!("nibli_kr.pest");
         let mut spellings: Vec<&str> = Vec::new();
         for line in grammar.lines() {
             let Some((lhs, rhs)) = line.split_once('=') else {
@@ -1022,10 +1022,10 @@ mod tests {
             spellings.push(quoted);
         }
         spellings.sort_unstable();
-        let reserved = klaro_dictionary::reserved::RESERVED_WORDS;
+        let reserved = nibli_kr_dictionary::reserved::RESERVED_WORDS;
         assert_eq!(
             spellings, reserved,
-            "klaro.pest kw_* rules and RESERVED_WORDS diverge"
+            "nibli_kr.pest kw_* rules and RESERVED_WORDS diverge"
         );
         for word in reserved {
             assert!(

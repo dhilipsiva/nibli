@@ -2357,34 +2357,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "klaro"
-version = "0.1.0"
-dependencies = [
- "klaro-dictionary",
- "nibli-types",
- "pest",
- "pest_derive",
- "smuni",
- "smuni-dictionary",
-]
-
-[[package]]
-name = "klaro-dictionary"
-version = "0.1.0"
-dependencies = [
- "phf",
- "phf_codegen",
- "serde",
- "serde_json",
- "smuni-dictionary",
-]
-
-[[package]]
 name = "lasna"
 version = "0.1.0"
 dependencies = [
- "klaro",
  "logji",
+ "nibli-kr",
  "nibli-types",
  "smuni",
  "wit-bindgen-rt",
@@ -2498,7 +2475,7 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 name = "logji"
 version = "0.1.0"
 dependencies = [
- "klaro",
+ "nibli-kr",
  "nibli-types",
  "serde",
  "smuni",
@@ -2711,9 +2688,9 @@ dependencies = [
 name = "nibli"
 version = "0.1.0"
 dependencies = [
- "klaro",
  "nibli-engine",
  "nibli-import",
+ "nibli-kr",
  "nibli-render",
  "reedline",
 ]
@@ -2723,8 +2700,8 @@ name = "nibli-engine"
 version = "0.1.0"
 dependencies = [
  "criterion",
- "klaro",
  "logji",
+ "nibli-kr",
  "nibli-protocol",
  "nibli-render",
  "nibli-store",
@@ -2741,7 +2718,7 @@ dependencies = [
  "futures",
  "gloo-net",
  "js-sys",
- "klaro",
+ "nibli-kr",
  "nibli-render",
  "nibli-types",
  "serde_json",
@@ -2756,6 +2733,29 @@ version = "0.1.0"
 dependencies = [
  "nibli-engine",
  "nibli-types",
+]
+
+[[package]]
+name = "nibli-kr"
+version = "0.1.0"
+dependencies = [
+ "nibli-kr-dictionary",
+ "nibli-types",
+ "pest",
+ "pest_derive",
+ "smuni",
+ "smuni-dictionary",
+]
+
+[[package]]
+name = "nibli-kr-dictionary"
+version = "0.1.0"
+dependencies = [
+ "phf",
+ "phf_codegen",
+ "serde",
+ "serde_json",
+ "smuni-dictionary",
 ]
 
 [[package]]
@@ -2799,10 +2799,10 @@ version = "0.1.0"
 dependencies = [
  "dioxus",
  "gloo-net",
- "klaro",
- "klaro-dictionary",
  "logji",
  "nibli-fanva",
+ "nibli-kr",
+ "nibli-kr-dictionary",
  "nibli-protocol",
  "nibli-render",
  "nibli-types",
@@ -2815,10 +2815,10 @@ dependencies = [
 name = "nibli-verify"
 version = "0.1.0"
 dependencies = [
- "klaro",
- "klaro-dictionary",
  "logji",
  "nibli-engine",
+ "nibli-kr",
+ "nibli-kr-dictionary",
  "nibli-types",
  "smuni",
  "smuni-dictionary",
@@ -2828,8 +2828,8 @@ dependencies = [
 name = "nibli-wasm"
 version = "0.1.0"
 dependencies = [
- "klaro",
  "logji",
+ "nibli-kr",
  "nibli-protocol",
  "nibli-render",
  "nibli-types",

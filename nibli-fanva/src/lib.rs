@@ -11,10 +11,10 @@
 //! ## Validation gate (the "verify" firewall)
 //!
 //! A candidate must pass three deterministic gates before the loop accepts
-//! it: 1. **klaro** — `klaro::parse_checked` (grammar + fail-closed alias
+//! it: 1. **klaro** — `nibli_kr::parse_checked` (grammar + fail-closed alias
 //! resolution) — local. 2. **smuni** — `smuni::compile_from_gerna_ast`
 //! (semantics/arity) — local. 3. **round-trip** — the candidate's canonical
-//! re-spelling (`klaro::render`) must re-compile to the SAME `LogicBuffer`
+//! re-spelling (`nibli_kr::render`) must re-compile to the SAME `LogicBuffer`
 //! (klaro's fixpoint contract as a per-candidate drift-catcher) — local,
 //! native + wasm.
 //!

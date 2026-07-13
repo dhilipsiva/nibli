@@ -1,12 +1,12 @@
-//! The Klaro reserved-word list — SINGLE SOURCE (SURFACE_SYNTAX.md §2).
+//! The nibli KR reserved-word list — SINGLE SOURCE (NIBLI_KR.md §2).
 //!
 //! Consumed by this crate's `build.rs` (via `#[path]`, the smuni-dictionary
 //! `src/arity.rs` pattern) to reject curated aliases/labels that collide with a
-//! keyword, and by the future `klaro` lexer for exact-match keyword reservation
+//! keyword, and by the future `nibli-kr` lexer for exact-match keyword reservation
 //! after maximal munch. Keep sorted (unit-tested); every entry must be a valid
-//! Klaro identifier shape (`[a-z][a-z0-9_]*`).
+//! nibli KR identifier shape (`[a-z][a-z0-9_]*`).
 
-/// Every Klaro keyword, sorted ascending. A predicate alias or place label may
+/// Every nibli KR keyword, sorted ascending. A predicate alias or place label may
 /// never equal one of these.
 pub const RESERVED_WORDS: &[&str] = &[
     "all",
@@ -47,7 +47,7 @@ pub const RESERVED_WORDS: &[&str] = &[
     "you_all",
 ];
 
-/// True when `word` is a Klaro keyword.
+/// True when `word` is a nibli KR keyword.
 pub fn is_reserved(word: &str) -> bool {
     RESERVED_WORDS.binary_search(&word).is_ok()
 }
@@ -70,7 +70,7 @@ mod tests {
 
     #[test]
     fn expected_membership() {
-        // The SURFACE_SYNTAX §2 list — 36 keywords.
+        // The NIBLI_KR §2 list — 36 keywords.
         assert_eq!(RESERVED_WORDS.len(), 36);
         for kw in ["must", "it_a", "seeming", "some", "the", "every", "slot"] {
             assert!(is_reserved(kw), "{kw} must be reserved");

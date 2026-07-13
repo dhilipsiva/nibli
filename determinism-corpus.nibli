@@ -1,16 +1,13 @@
 # ── Three-way determinism corpus ─────────────────────────────────────────────
 #
 # One session script, three independent runtimes, byte-identical verdicts:
-#   (a) native  — nibli-engine: the PRIMARY leg runs the .klaro twin
-#                 (`determinism_corpus_klaro_native`, klaro_twins.rs); this
-#                 Lojban file's leg is `determinism_corpus_lojban_twin`
-#                 (differential_gate.rs, deleted at gerna retirement)
-#   (b) wasmtime — the lasna WASI component under gasnu (`smoke-gasnu-determinism`,
-#                 runs the .klaro twin)
+#   (a) native  — nibli-engine (`determinism_corpus_nibli_kr_native`,
+#                 nibli-verify/tests/nibli_kr_seam_gate.rs, part of
+#                 `just verify-nibli-kr-seam`)
+#   (b) wasmtime — the lasna WASI component under gasnu
+#                 (`smoke-gasnu-determinism`, part of `ci-wasm`)
 #   (c) v8      — the wasm32-unknown-unknown build under node
-#                 (`nibli-wasm/tests/determinism.rs`, `just verify-wasm-node` —
-#                 runs the .klaro twin; this Lojban file's V8 coverage retires
-#                 with gerna)
+#                 (`nibli-wasm/tests/determinism.rs`, `just verify-wasm-node`)
 #
 # Format: gasnu script-mode lines (asserts, `? <query>`, `:retract <k>` where k is
 # the 0-based assert index == the engine fact id). Every query is immediately

@@ -4,7 +4,7 @@
 //! unchanged. Mirrors gerna's Flattener discipline: child indices come from
 //! push-return values, never from length arithmetic.
 //!
-//! Emission map (SURFACE_SYNTAX §13; design-review decisions):
+//! Emission map (NIBLI_KR §13; design-review decisions):
 //! - predicate names resolve HERE to gismu (alias → gismu, identity words pass
 //!   through); an alias with a place swap emits `Selbri::Converted`
 //! - `$x`/`$y`/`$z` lower to `da`/`de`/`di` by first emission encounter per
@@ -285,7 +285,7 @@ impl<'a> Emitter<'a> {
                 restr.span.start,
                 "relative clauses on a BLOCK determiner's restrictor are not yet lowerable — \
                  use the inline argument form, or fold the condition into the body \
-                 (emitter limitation, SURFACE_SYNTAX O7)",
+                 (emitter limitation, NIBLI_KR O7)",
             ));
         }
         match det {
@@ -317,7 +317,7 @@ impl<'a> Emitter<'a> {
                 at,
                 "only `every` and `some` block determiners are lowerable today — write the \
                  inline argument form (`pred(exactly 2 dog)`) instead (emitter limitation, \
-                 SURFACE_SYNTAX O7)",
+                 NIBLI_KR O7)",
             )),
         }
     }
@@ -617,15 +617,15 @@ mod tests {
 
     use crate::parse_checked;
 
-    fn klaro_lb(text: &str) -> String {
-        let buffer = parse_checked(text).unwrap_or_else(|e| panic!("klaro {text:?}: {e}"));
+    fn nibli_kr_lb(text: &str) -> String {
+        let buffer = parse_checked(text).unwrap_or_else(|e| panic!("nibli-kr {text:?}: {e}"));
         let lb = smuni::compile_from_gerna_ast(buffer)
-            .unwrap_or_else(|e| panic!("smuni rejected klaro buffer for {text:?}: {e}"));
+            .unwrap_or_else(|e| panic!("smuni rejected nibli-kr buffer for {text:?}: {e}"));
         format!("{lb:?}")
     }
 
-    fn twins(klaro: &str) {
-        let _ = klaro_lb(klaro);
+    fn twins(kr: &str) {
+        let _ = nibli_kr_lb(kr);
     }
 
     // ── ground facts / terms ──
@@ -643,12 +643,12 @@ mod tests {
     fn named_args_equal_positional() {
         // Tagged(Fe) routes to the same place as the positional spelling.
         assert_eq!(
-            klaro_lb("goes(me, destination: some market)."),
-            klaro_lb("goes(me, some market)."),
+            nibli_kr_lb("goes(me, destination: some market)."),
+            nibli_kr_lb("goes(me, some market)."),
         );
         assert_eq!(
-            klaro_lb("goes(destination: some market, goer: me)."),
-            klaro_lb("goes(me, some market)."),
+            nibli_kr_lb("goes(destination: some market, goer: me)."),
+            nibli_kr_lb("goes(me, some market)."),
         );
     }
 
@@ -742,7 +742,7 @@ mod tests {
                 );
                 continue;
             }
-            klaro_lb(text); // panics if smuni rejects
+            nibli_kr_lb(text); // panics if smuni rejects
         }
     }
 

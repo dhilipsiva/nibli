@@ -7,9 +7,9 @@ edition = "2024"
 [dependencies]
 nibli-engine = { path = "../nibli-engine" }
 nibli-types = { path = "../nibli-types" }
-# The KR front-end + smuni/logji so klaro_battery::kompile() runs the shipped
+# The KR front-end + smuni/logji so nibli_kr_battery::kompile() runs the shipped
 # post-parse stages (compute-node marking included).
-klaro = { path = "../klaro" }
+nibli-kr = { path = "../nibli-kr" }
 smuni = { path = "../smuni" }
 logji = { path = "../logji" }
 
@@ -19,9 +19,9 @@ logji = { path = "../logji" }
 # library's data layer (src/predilex.rs) stays a pure parser.
 smuni-dictionary = { path = "../smuni-dictionary" }
 # The alias-map differential gate (tests/alias_differential.rs) joins the
-# SHIPPED klaro alias map against the SHIPPED smuni dictionary — the two
+# SHIPPED nibli-kr alias map against the SHIPPED smuni dictionary — the two
 # independently built phf maps cannot drift.
-klaro-dictionary = { path = "../klaro-dictionary" }
+nibli-kr-dictionary = { path = "../nibli-kr-dictionary" }
 
 [[bin]]
 name = "nibli-verify"

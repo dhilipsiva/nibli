@@ -12,8 +12,8 @@ crate-type = ["cdylib", "rlib"]
 wasm-opt = false
 
 [dependencies]
-# The Klaro front-end for the opt-in `set_language("klaro")` dispatch.
-klaro = { path = "../klaro" }
+# The nibli KR front-end — the sole compile path (`set_language` survives as a no-op shim).
+nibli-kr = { path = "../nibli-kr" }
 smuni = { path = "../smuni" }
 logji = { path = "../logji" }
 nibli-types = { path = "../nibli-types" }

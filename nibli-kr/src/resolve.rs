@@ -1,11 +1,11 @@
 //! The Klaro resolve pass — dictionary-driven static checks over the parsed
-//! tree (SURFACE_SYNTAX §13): everything that needs vocabulary knowledge and
+//! tree (NIBLI_KR §13): everything that needs vocabulary knowledge and
 //! therefore cannot live in the grammar or the walker.
 //!
 //! Checks (all fail closed, targeted positioned errors):
 //! 1. NAME RESOLUTION — every predicate word (predication heads incl. all
 //!    tanru units and zei parts, restrictors, selected preds, bare clause
-//!    bodies, `via` tag preds) must be a klaro-dictionary alias or an
+//!    bodies, `via` tag preds) must be a nibli-kr-dictionary alias or an
 //!    identity-passthrough Lojban word (`smuni_dictionary::get_arity` hit).
 //!    Anything else is a compile error — the deliberate tightening over
 //!    gerna's arity-2 default: an unknown word NEVER silently mints a
@@ -64,11 +64,11 @@ pub fn resolve_all(input: &str, statements: &[Statement]) -> Vec<ParseError> {
 pub(crate) struct PredInfo {
     pub(crate) surface: String,
     pub(crate) arity: u8,
-    pub(crate) entry: Option<&'static klaro_dictionary::AliasEntry>,
+    pub(crate) entry: Option<&'static nibli_kr_dictionary::AliasEntry>,
 }
 
 pub(crate) fn lookup(word: &str) -> Result<PredInfo, String> {
-    if let Some(entry) = klaro_dictionary::alias(word) {
+    if let Some(entry) = nibli_kr_dictionary::alias(word) {
         return Ok(PredInfo {
             surface: word.to_owned(),
             arity: entry.arity,
@@ -84,14 +84,14 @@ pub(crate) fn lookup(word: &str) -> Result<PredInfo, String> {
     }
     Err(format!(
         "unknown predicate {word:?}: not a Klaro alias and not a dictionary word — \
-         unknown names are a compile error, never an arity-2 guess (SURFACE_SYNTAX §13)"
+         unknown names are a compile error, never an arity-2 guess (NIBLI_KR §13)"
     ))
 }
 
 /// Resolve a named-argument label to a 0-based SURFACE place index.
 pub(crate) fn label_index(info: &PredInfo, label: &str) -> Option<usize> {
     match info.entry {
-        Some(entry) => klaro_dictionary::label_index(entry, label),
+        Some(entry) => nibli_kr_dictionary::label_index(entry, label),
         None => {
             // Identity passthrough: raw x1..x5 only.
             let rest = label.strip_prefix('x')?;
@@ -197,7 +197,7 @@ impl<'a> Ctx<'a> {
                 return Err(self.fail(
                     arg.span.start,
                     format!(
-                        "place x{} of {:?} is filled twice (SURFACE_SYNTAX §5 fail-closed)",
+                        "place x{} of {:?} is filled twice (NIBLI_KR §5 fail-closed)",
                         index + 1,
                         info.surface
                     ),
@@ -321,7 +321,7 @@ impl<'a> Ctx<'a> {
                             tag.span.start,
                             format!(
                                 "modal tag predicate {:?} has arity {} — `via` predicates \
-                                 need arity >= 2 to link the tagged term (SURFACE_SYNTAX §5)",
+                                 need arity >= 2 to link the tagged term (NIBLI_KR §5)",
                                 tag_info.surface, tag_info.arity
                             ),
                         ));
@@ -343,7 +343,7 @@ impl<'a> Ctx<'a> {
                         self.statement_start,
                         "`it` (the relativized entity) is only meaningful inside a \
                          where/also clause body, or as a named bound-place marker in \
-                         restrictor linked args (SURFACE_SYNTAX §7)",
+                         restrictor linked args (NIBLI_KR §7)",
                     ))
                 }
             }
@@ -354,7 +354,7 @@ impl<'a> Ctx<'a> {
                     Err(self.fail(
                         self.statement_start,
                         "`slot` (the open place) is only meaningful inside a \
-                         `property { … }` body (SURFACE_SYNTAX §3 — like ce'u outside ka)",
+                         `property { … }` body (NIBLI_KR §3 — like ce'u outside ka)",
                     ))
                 }
             }
@@ -432,7 +432,7 @@ mod tests {
     use crate::parser::parse_statements;
 
     // FALLBACK-SAFE VOCABULARY ONLY: CI builds without dictionary-en.json, so
-    // every word here must come from klaro-dictionary's curated tables or
+    // every word here must come from nibli-kr-dictionary's curated tables or
     // smuni-dictionary's fallback core (identity passthrough).
 
     fn ok(input: &str) {

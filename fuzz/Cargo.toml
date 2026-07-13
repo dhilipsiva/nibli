@@ -10,10 +10,10 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 nibli-engine = { path = "../nibli-engine" }
-# fuzz_klaro: klaro parse -> smuni compile, asserting the emitted AstBuffer is
-# never structurally corrupt (klaro links neither crate at runtime, so both are
+# fuzz_nibli_kr: nibli-kr parse -> smuni compile, asserting the emitted AstBuffer is
+# never structurally corrupt (nibli-kr links neither crate at runtime, so both are
 # direct deps here).
-klaro = { path = "../klaro" }
+nibli-kr = { path = "../nibli-kr" }
 smuni = { path = "../smuni" }
 
 # Prevent debug info from slowing fuzzer
@@ -31,6 +31,6 @@ path = "fuzz_targets/fuzz_query.rs"
 doc = false
 
 [[bin]]
-name = "fuzz_klaro"
-path = "fuzz_targets/fuzz_klaro.rs"
+name = "fuzz_nibli_kr"
+path = "fuzz_targets/fuzz_nibli_kr.rs"
 doc = false

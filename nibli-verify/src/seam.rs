@@ -3,7 +3,7 @@
 //! shape-equality comparison) plus the small node/argument probes the
 //! structural-golden checks are written in. The gerna-era compile seam that
 //! used to live here retired at THE DROP; the surviving KR front-end oracle
-//! is `tests/kr_seam_gate.rs` (via `klaro_battery::kompile`), which consumes
+//! is `tests/nibli_kr_seam_gate.rs` (via `nibli_kr_battery::kompile`), which consumes
 //! these helpers.
 
 use std::collections::HashMap;

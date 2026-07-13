@@ -160,28 +160,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "klaro"
-version = "0.1.0"
-dependencies = [
- "klaro-dictionary",
- "nibli-types",
- "pest",
- "pest_derive",
- "smuni-dictionary",
-]
-
-[[package]]
-name = "klaro-dictionary"
-version = "0.1.0"
-dependencies = [
- "phf",
- "phf_codegen",
- "serde",
- "serde_json",
- "smuni-dictionary",
-]
-
-[[package]]
 name = "lasso"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -234,8 +212,8 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 name = "nibli-engine"
 version = "0.1.0"
 dependencies = [
- "klaro",
  "logji",
+ "nibli-kr",
  "nibli-protocol",
  "nibli-render",
  "nibli-store",
@@ -249,10 +227,32 @@ dependencies = [
 name = "nibli-fuzz"
 version = "0.0.0"
 dependencies = [
- "klaro",
  "libfuzzer-sys",
  "nibli-engine",
+ "nibli-kr",
  "smuni",
+]
+
+[[package]]
+name = "nibli-kr"
+version = "0.1.0"
+dependencies = [
+ "nibli-kr-dictionary",
+ "nibli-types",
+ "pest",
+ "pest_derive",
+ "smuni-dictionary",
+]
+
+[[package]]
+name = "nibli-kr-dictionary"
+version = "0.1.0"
+dependencies = [
+ "phf",
+ "phf_codegen",
+ "serde",
+ "serde_json",
+ "smuni-dictionary",
 ]
 
 [[package]]

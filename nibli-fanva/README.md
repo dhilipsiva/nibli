@@ -15,9 +15,9 @@ An LLM drafts KB text — in legacy Lojban mode it may call jbotci's
 dictionary/grammar tools *while drafting* — and every candidate must then clear
 a three-gate, fail-fast, **local** firewall before it is accepted:
 
-- **Klaro** (default): `klaro::parse_checked` (grammar + fail-closed name
+- **Klaro** (default): `nibli_kr::parse_checked` (grammar + fail-closed name
   resolution) → `smuni` (semantics/arity) → the **render round-trip gate**
-  (the candidate's canonical `klaro::render` re-spelling must re-compile to
+  (the candidate's canonical `nibli_kr::render` re-spelling must re-compile to
   the SAME `LogicBuffer` — klaro's fixpoint contract as a per-candidate
   drift-catcher; pure Rust, runs native + wasm).
 - **Lojban** (legacy): `gerna::parse_checked` → `smuni` → the official

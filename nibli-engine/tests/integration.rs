@@ -16,7 +16,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// A fresh KR-mode engine (the suite was machine-ported from Lojban at THE
-/// DROP — per-literal gerna→`klaro::render` conversion, the corpora-twins
+/// DROP — per-literal gerna→`nibli_kr::render` conversion, the corpora-twins
 /// equality guarantee held at the port).
 fn fresh_engine() -> NibliEngine {
     NibliEngine::new()

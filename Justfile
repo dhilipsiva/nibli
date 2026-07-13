@@ -289,15 +289,15 @@ fmt-check:
 clippy-runtime:
     cargo clippy --no-deps -p nibli-protocol -p nibli-render -p nibli-store -p nibli-engine -p nibli --all-targets -- -D warnings
 
-# Run klaro-dictionary unit tests only (dev loop; the workspace `test` recipe
+# Run nibli-kr-dictionary unit tests only (dev loop; the workspace `test` recipe
 # already sweeps them into `ci`)
-test-klaro-dict:
-    cargo test -p klaro-dictionary --lib -- --nocapture
+test-nibli-kr-dict:
+    cargo test -p nibli-kr-dictionary --lib -- --nocapture
 
 # Run klaro (surface-syntax front-end) unit tests only (dev loop; the
 # workspace `test` recipe already sweeps them into `ci`)
-test-klaro:
-    cargo test -p klaro --lib -- --nocapture
+test-nibli-kr:
+    cargo test -p nibli-kr --lib -- --nocapture
 
 # Run all unit tests across workspace
 test:
@@ -364,7 +364,7 @@ test-all: test test-engine test-store test-backend
 
 # CI gate for the hardened runtime surface (fast; native only — no WASM build).
 # For the WASM behavioral smokes too, run `just ci-all`.
-ci: fmt-check clippy-runtime test test-engine test-gasnu test-ui test-fanva test-backend test-store test-persistence-replay verify-harness verify-soundness verify-klaro-dict verify-kr-seam verify-dict verify-proofs verify-book-vocab
+ci: fmt-check clippy-runtime test test-engine test-gasnu test-ui test-fanva test-backend test-store test-persistence-replay verify-harness verify-soundness verify-nibli-kr-dict verify-nibli-kr-seam verify-dict verify-proofs verify-book-vocab
 
 # WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
 # verify-book-capture). Bundles the gasnu smokes; each depends on
@@ -376,7 +376,7 @@ ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-persist-replay
 
 # Three-way determinism, WASMTIME leg: the shared determinism-corpus.nibli must produce
 # exactly its pinned annotations through the lasna component under gasnu. The
-# native leg is determinism_corpus_klaro_native (verify-kr-seam); the V8 leg is
+# native leg is determinism_corpus_nibli_kr_native (verify-nibli-kr-seam); the V8 leg is
 # verify-wasm-node.
 smoke-gasnu-determinism: build-wasm build-gasnu
     @echo "Smoke-testing gasnu three-way determinism corpus..."
@@ -470,14 +470,14 @@ verify-harness:
 verify-soundness:
     cargo test -p nibli-verify --lib --test differential_gate {{cargo_profile_flag}} -- --nocapture --test-threads=1
 
-# Alias-map differential gate: the SHIPPED klaro-dictionary alias map must agree with
+# Alias-map differential gate: the SHIPPED nibli-kr-dictionary alias map must agree with
 # the SHIPPED smuni-dictionary (per-alias arity equality, GISMU_TO_ALIAS round-trips,
 # swap validity, reserved/label integrity from the shipped map) plus a behavioral leg:
 # alias(A, B, ...) must compile canonically EQUAL to the raw-gismu spelling with
 # explicit permuted xN labels, for EVERY shipped alias. Dual-mode and never skips: a full
 # local build checks all ~1,341 aliases; the CI fallback build checks the curated core
 # with a loud FALLBACK MODE banner. A mixed-mode build (one crate stale) fails loud.
-verify-klaro-dict:
+verify-nibli-kr-dict:
     cargo test -p nibli-verify --test alias_differential {{cargo_profile_flag}} -- --nocapture --test-threads=1
 
 # The KR→smuni seam-conformance gate — the KR front-end's LOJBAN-FREE
@@ -489,11 +489,11 @@ verify-klaro-dict:
 # acceptance sweep (every §3–§9 KR spelling compiles), KR-internal
 # metamorphic relations (the O7 block-every ≡ prenex pin re-anchored KR≡KR,
 # named≡positional, converted≡label-permuted, + a 60-seed batch over three
-# families), and the re-homed `determinism_corpus_klaro_native` leg.
+# families), and the re-homed `determinism_corpus_nibli_kr_native` leg.
 # Curated-core vocabulary only: full-strength in BOTH dictionary modes,
 # never skips. Part of `ci`.
-verify-kr-seam:
-    cargo test -p nibli-verify --test kr_seam_gate {{cargo_profile_flag}} -- --nocapture --test-threads=1
+verify-nibli-kr-seam:
+    cargo test -p nibli-verify --test nibli_kr_seam_gate {{cargo_profile_flag}} -- --nocapture --test-threads=1
 
 # Dictionary-arity differential gate: the shipped smuni-dictionary arities must COVER the
 # independent Predilex bounds (vendored CC0 thesaurus, nibli-verify/vendor/predilex/) —
@@ -538,34 +538,34 @@ fuzz-query SECONDS="0":
 # Fuzz the Klaro front-end (parse -> resolve -> emit), asserting any accepted
 # input compiles through smuni WITHOUT a "corrupt AST buffer" rejection — a
 # structurally invalid emitted buffer is a klaro bug, surfaced as a panic.
-fuzz-klaro SECONDS="0":
+fuzz-nibli-kr SECONDS="0":
     @test -n "${NIBLI_NIGHTLY_BIN:-}" || { echo "NIBLI_NIGHTLY_BIN is not set — run inside the Nix dev shell"; exit 1; }
-    cd fuzz && PATH="$NIBLI_NIGHTLY_BIN:$PATH" cargo fuzz run fuzz_klaro -- -max_len=4096 {{ if SECONDS != "0" { "-max_total_time=" + SECONDS } else { "" } }}
+    cd fuzz && PATH="$NIBLI_NIGHTLY_BIN:$PATH" cargo fuzz run fuzz_nibli_kr -- -max_len=4096 {{ if SECONDS != "0" { "-max_total_time=" + SECONDS } else { "" } }}
 
 # Seed the fuzz corpora. Each non-comment line of the shipped .nibli corpus
 # files (+ the Klaro acceptance corpus) becomes a seed for fuzz_assert and
-# fuzz_klaro; fuzz_query seeds are the line DOUBLED, matching its split-half
+# fuzz_nibli_kr; fuzz_query seeds are the line DOUBLED, matching its split-half
 # input encoding (first half asserted, second half queried).
 fuzz-seed:
     #!/usr/bin/env python3
     import pathlib
-    klaro_lines = []
-    for src in ("klaro/tests/acceptance.nibli", "gdpr.nibli", "drug-interactions.nibli", "readme.nibli", "determinism-corpus.nibli"):
+    nibli_kr_lines = []
+    for src in ("nibli-kr/tests/acceptance.nibli", "gdpr.nibli", "drug-interactions.nibli", "readme.nibli", "determinism-corpus.nibli"):
         for ln in pathlib.Path(src).read_text(encoding="utf-8").splitlines():
             ln = ln.strip()
             if ln and not ln.startswith("#") and not ln.startswith(":"):
-                klaro_lines.append(ln)
-    for target, encode in (("fuzz_assert", str), ("fuzz_query", lambda s: s + s), ("fuzz_klaro", str)):
+                nibli_kr_lines.append(ln)
+    for target, encode in (("fuzz_assert", str), ("fuzz_query", lambda s: s + s), ("fuzz_nibli_kr", str)):
         d = pathlib.Path("fuzz/corpus") / target
         d.mkdir(parents=True, exist_ok=True)
-        for i, ln in enumerate(klaro_lines):
+        for i, ln in enumerate(nibli_kr_lines):
             (d / f"seed_{i:04}").write_text(encode(ln), encoding="utf-8")
-    print(f"seeded {len(klaro_lines)} .nibli entries x 3 targets under fuzz/corpus/")
+    print(f"seeded {len(nibli_kr_lines)} .nibli entries x 3 targets under fuzz/corpus/")
 
 # Time-boxed unattended fuzz gate (CI): seed corpora, then run every target for
 # SECONDS each. libFuzzer exits non-zero on crash/OOM, zero when the time box
 # expires clean — a pass/fail gate, not an open-ended campaign.
-fuzz-ci SECONDS="120": fuzz-seed (fuzz-assert SECONDS) (fuzz-query SECONDS) (fuzz-klaro SECONDS)
+fuzz-ci SECONDS="120": fuzz-seed (fuzz-assert SECONDS) (fuzz-query SECONDS) (fuzz-nibli-kr SECONDS)
 
 # ── Mutation testing (soundness paths) ──────────────────────────
 

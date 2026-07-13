@@ -1,13 +1,13 @@
 [package]
 name = "lasna"
-description = "Pipeline orchestrator — chains klaro, smuni, logji into a single WASM component"
+description = "Pipeline orchestrator — chains nibli-kr, smuni, logji into a single WASM component"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-# The Klaro front-end (language dispatch in compile_pipeline). Grows the
-# component by pest + klaro-dictionary — the cost of the dual-front-end phase.
-klaro = { path = "../klaro" }
+# The nibli KR front-end (compile_pipeline's text→AST seam). Grows the
+# component by pest + nibli-kr-dictionary — the cost of the dual-front-end phase.
+nibli-kr = { path = "../nibli-kr" }
 smuni = { path = "../smuni" }
 logji = { path = "../logji" }
 nibli-types = { path = "../nibli-types" }

@@ -99,14 +99,14 @@ fn query_result(kb: &KnowledgeBase, buf: LogicBuffer) -> QueryResult {
 }
 
 /// Compile KR text to a `LogicBuffer` the SHIPPED way — the exact chain
-/// `nibli-engine` runs: `klaro::parse_checked` → `smuni::compile_from_gerna_ast`
+/// `nibli-engine` runs: `nibli_kr::parse_checked` → `smuni::compile_from_gerna_ast`
 /// → `transform_compute_nodes`. Unlike the flat `make_*` helpers, this event-decomposes
 /// (`∃ev. rel(ev) ∧ rel_x1(ev, arg) ∧ …`) and converts compute predicates to `ComputeNode`,
 /// so a test built on it cannot diverge from the real pipeline. Use it for anything whose
 /// behavior depends on IR shape (compute/numeric, `cwa_false`, witness/Skolem). Vocabulary
 /// must resolve in the in-tree fallback dictionary (CI has no data file).
 fn compile_surface(text: &str) -> LogicBuffer {
-    let ast = klaro::parse_checked(text).unwrap_or_else(|e| panic!("parse '{text}': {e}"));
+    let ast = nibli_kr::parse_checked(text).unwrap_or_else(|e| panic!("parse '{text}': {e}"));
     let mut buf =
         smuni::compile_from_gerna_ast(ast).unwrap_or_else(|e| panic!("compile '{text}': {e}"));
     transform_compute_nodes(&mut buf, &default_compute_predicates());

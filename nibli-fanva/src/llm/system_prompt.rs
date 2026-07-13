@@ -9,7 +9,7 @@
 /// surface (`dog(Adam).`). The few-shots use only curated-core vocabulary
 /// (they must stay gate-valid in the CI fallback dictionary build — the guard
 /// test below runs in both modes).
-pub const KLARO_SYSTEM_PROMPT: &str = r#"You are a formalizer. Rewrite the user's English text as Klaro — a strict predicate-call knowledge-base language.
+pub const NIBLI_KR_SYSTEM_PROMPT: &str = r#"You are a formalizer. Rewrite the user's English text as Klaro — a strict predicate-call knowledge-base language.
 
 Rules:
 - Output ONLY the Klaro statements, nothing else. No explanations, no notes.
@@ -39,12 +39,12 @@ Examples:
 
 /// The system prompt the agent loop passes to `chat()`.
 pub fn system_prompt() -> &'static str {
-    KLARO_SYSTEM_PROMPT
+    NIBLI_KR_SYSTEM_PROMPT
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
-    use super::KLARO_SYSTEM_PROMPT;
+    use super::NIBLI_KR_SYSTEM_PROMPT;
 
     /// Every few-shot example shipped in the prompt must pass our own gates —
     /// otherwise the prompt would be teaching the model KB text that our own
@@ -53,8 +53,8 @@ mod tests {
     /// pinned canonical-compatible. Uses curated-core vocabulary only, so it
     /// holds in the CI fallback dictionary build too.
     #[test]
-    fn shipped_klaro_examples_are_gate_valid() {
-        let examples = KLARO_SYSTEM_PROMPT
+    fn shipped_nibli_kr_examples_are_gate_valid() {
+        let examples = NIBLI_KR_SYSTEM_PROMPT
             .split("Examples:")
             .nth(1)
             .expect("the prompt has an Examples section");

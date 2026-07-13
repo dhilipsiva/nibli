@@ -395,7 +395,7 @@ body {
 .kb-line-icon { font-size: var(--fs-code); line-height: 1.3; }
 .kb-line-text { color: var(--quanta-300); min-width: 0; overflow-wrap: anywhere; }
 .kb-line-err  { grid-column: 3; color: var(--danger); font-size: var(--fs-cap); }
-/* Non-blocking Klaro lint notes (SURFACE_SYNTAX §12) — informational, never amber. */
+/* Non-blocking Klaro lint notes (NIBLI_KR §12) — informational, never amber. */
 .kb-line-note { grid-column: 3; color: var(--text-faint); font-size: var(--fs-cap); }
 .kb-line-ok    .kb-line-icon { color: var(--success); }
 .kb-line-ok    .kb-line-icon::before { content: "✓"; }

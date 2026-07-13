@@ -54,7 +54,7 @@ names, so nibli's later crate renames do NOT ripple into it.
 smokes deleted, camxes/jbotci/fanva-proxy/tersmu torn out (the deployed worker is
 the fanva repo's now), `.lojban` corpora + twins machinery + `verify-klaro`/
 `verify-klaro-twins`/`verify-parser` retired (coverage re-anchored in
-`verify-kr-seam`), python flywheel + LOJBAN_COVERAGE.md deleted, every test
+`verify-nibli-kr-seam`), python flywheel + LOJBAN_COVERAGE.md deleted, every test
 surface machine-ported to KR with per-literal round-trip-equality verification.
 The last dual-front-end engine is tagged **`v0.1-lojban-final`** (the pin point
 for the book harness and the pre-migration demo site). Two known consequences,
@@ -70,15 +70,15 @@ least loads), and `verify-book` is red until the book migrates or pins the tag.
   language", "?" }` as a sibling of the label inside each tab button —
   nibli-ui/src/main.rs, the two `button { class: "tab" … }` sites), "Load .nibli" /
   placeholder / hint strings / settings copy / examples.rs docs. Code: crate
-  `klaro` → `nibli-kr`, `klaro-dictionary` → `nibli-kr-dictionary` (7 + 3
-  dependents), `KLARO_SYSTEM_PROMPT` → `KR_SYSTEM_PROMPT`, gate name
-  "klaro" → "kr" (chips + GateError::gate + pinned tests), `klaro.pest` →
-  `nibli_kr.pest`, `fuzz_klaro` → `fuzz_kr`, Justfile recipes `test-klaro`/
-  `verify-klaro-dict` → `test-kr`/`verify-kr-dict` (the corpus files' extension
+  `klaro` → `nibli-kr`, `nibli-kr-dictionary` → `nibli-kr-dictionary` (7 + 3
+  dependents), `NIBLI_KR_SYSTEM_PROMPT` → `KR_SYSTEM_PROMPT`, gate name
+  "klaro" → "kr" (chips + GateError::gate + pinned tests), `nibli_kr.pest` →
+  `nibli_kr.pest`, `fuzz_nibli_kr` → `fuzz_kr`, Justfile recipes `test-nibli-kr`/
+  `verify-nibli-kr-dict` → `test-kr`/`verify-kr-dict` (the corpus files' extension
   already renamed `.klaro` → `.nibli`, user decision 2026-07-13 — only
   `acceptance.nibli`'s DIRECTORY rides the crate rename), the deprecated `nibli-wasm` shims
   (`set_language`/`back_translate`) DELETE here once the site migration has
-  landed, SURFACE_SYNTAX.md retitled "The nibli KR
+  landed, NIBLI_KR.md retitled "The nibli KR
   language" (keep the filename — dozens of §-references in code comments — or
   sweep them all in the same commit).
 - **Lojban identifier + crate purge (everything but the predicate names)** — rename
@@ -101,7 +101,7 @@ least loads), and `verify-book` is red until the book migrates or pins the tag.
   Transparency Triad's Formalize system prompt must contain the ACTUAL KR grammar and
   the dictionary, so the LLM formalizes against ground truth instead of nine
   few-shots; the agentic parse-error-feedback loop stays as-is. Design notes:
-  (a) GRAMMAR: `include_str!` the pest file (`klaro/src/klaro.pest`, 181 lines /
+  (a) GRAMMAR: `include_str!` the pest file (`nibli-kr/src/nibli_kr.pest`, 181 lines /
   ~9 KB ≈ 2.5–3k tokens — affordable, and in-sync BY CONSTRUCTION since the file IS
   the parser); distill the semantics tables the grammar can't carry (determiner
   taxonomy §4, operator/prefix rules §6, `where`/`also` §7) into a compact prose
@@ -114,7 +114,7 @@ least loads), and `verify-book` is red until the book migrates or pins the tag.
   only matching/near aliases + the curated core — best token/accuracy trade. Any
   dictionary embedding means the prompt stops being a `&'static str`: a
   `system_prompt_for(source)` builder assembled at request time from the shipped
-  `klaro_dictionary` map (no drift possible; dual-mode — the CI fallback build
+  `nibli_kr_dictionary` map (no drift possible; dual-mode — the CI fallback build
   embeds the curated core only, loudly).
   (c) Optimize BOTH prompts (system + the per-request user turn) and measure:
   attempts-to-converge on a fixed English corpus is the metric (feeds the
@@ -126,7 +126,7 @@ least loads), and `verify-book` is red until the book migrates or pins the tag.
   the prompt is born saying "nibli KR", but it is independent — pull it earlier if
   wanted.
 - **Predicate-name de-Lojbanization (proof traces contain NO Lojban — the deep one)**
-  — today every `LogicBuffer` relation is a gismu (`klaro/src/emit.rs:379-387` maps
+  — today every `LogicBuffer` relation is a gismu (`nibli-kr/src/emit.rs:379-387` maps
   alias→`entry.gismu`; smuni derives `gerku_x1`, `le_domain_gerku`; `=` mints `du`
   at emit.rs:192; `$vars` lower to the literal `da/de/di` pool at emit.rs:90-103,
   which smuni string-matches for quantifier closure). DECISION (recommended, and the

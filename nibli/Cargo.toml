@@ -5,7 +5,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-klaro = { path = "../klaro" }
+nibli-kr = { path = "../nibli-kr" }
 nibli-engine = { path = "../nibli-engine" }
 nibli-import = { path = "../nibli-import" }
 nibli-render = { path = "../nibli-render" }

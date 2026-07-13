@@ -1,7 +1,7 @@
-//! The KR→smuni seam-conformance gate (`just verify-kr-seam`, part of `ci`) —
+//! The KR→smuni seam-conformance gate (`just verify-nibli-kr-seam`, part of `ci`) —
 //! the KR front-end's independent correctness oracle, built to OUTLIVE the
-//! Lojban front-end (TODO.md: THE DROP deletes the Klaro↔Lojban twin
-//! battery, whose equality oracle currently carries this role). NO LOJBAN
+//! Lojban front-end — and it did (THE DROP, 2026-07-13, deleted the twin
+//! battery whose equality oracle previously carried this role). NO LOJBAN
 //! ANYWHERE in this file: coverage is re-anchored on
 //!
 //! 1. **Structural FOL goldens** — hand-verified `LogicBuffer` shapes for the
@@ -9,21 +9,21 @@
 //!    differential_gate.rs, re-anchored on KR spellings), probing nodes
 //!    directly via `seam::{root, node, pred_args, role_is_const}`.
 //! 2. **The construct-inventory acceptance sweep** — every
-//!    `CONSTRUCT_INVENTORY` KR spelling must compile (the Lojban twin column
-//!    is ignored here; its equality leg lives in klaro_gate until THE DROP).
+//!    `CONSTRUCT_INVENTORY` KR spelling must compile (the twin-equality leg
+//!    retired at THE DROP).
 //! 3. **KR-internal metamorphic relations** — curated pairs (incl. the O7
 //!    block-every ≡ prenex pin, re-anchored KR≡KR) + a seeded batch from
-//!    `kr_seam::metamorphic_pair`, compared by canonicalized-buffer equality.
-//! 4. **The re-homed Klaro determinism leg** (`determinism_corpus_klaro_native`,
-//!    moved from klaro_twins.rs, which dies at THE DROP): the `.nibli`
+//!    `nibli_kr_seam::metamorphic_pair`, compared by canonicalized-buffer equality.
+//! 4. **The re-homed nibli KR determinism leg** (`determinism_corpus_nibli_kr_native`,
+//!    re-homed from the twins gate retired at THE DROP): the `.nibli`
 //!    determinism corpus replayed natively against the pinned `# =>` verdicts.
 //!
 //! Vocabulary is curated-core only, so the gate is FULL-STRENGTH in both
 //! dictionary modes and NEVER skips.
 
 use nibli_types::logic::{LogicNode, LogicalTerm};
-use nibli_verify::klaro_battery::{CONSTRUCT_INVENTORY, canonical, kompile};
-use nibli_verify::{kr_seam, seam};
+use nibli_verify::nibli_kr_battery::{CONSTRUCT_INVENTORY, canonical, kompile};
+use nibli_verify::{nibli_kr_seam, seam};
 
 /// Seeded metamorphic batch size (mirrors the Lojban seam gate's SEAM_BATCH).
 const SEAM_BATCH: u64 = 60;
@@ -190,7 +190,7 @@ fn kr_smuni_seam_conformance() {
         structural += 1;
     }
 
-    // THE O3 PIN (re-hosted from klaro_gate so it survives THE DROP):
+    // THE O3 PIN (re-hosted from nibli_kr_gate so it survives THE DROP):
     // deontic outermost, tense inside — Obligatory(Past(…)).
     {
         let b = kompile("must past goes(me).").unwrap();
@@ -232,10 +232,10 @@ fn kr_smuni_seam_conformance() {
     // ── 2. construct-inventory acceptance sweep (KR side only) ──
     let mut per_section = std::collections::BTreeMap::<&str, usize>::new();
     for case in CONSTRUCT_INVENTORY {
-        kompile(case.klaro).unwrap_or_else(|e| {
+        kompile(case.nibli_kr).unwrap_or_else(|e| {
             panic!(
                 "inventory {} {:?} does not compile: {e}",
-                case.spec_section, case.klaro
+                case.spec_section, case.nibli_kr
             )
         });
         *per_section.entry(case.spec_section).or_default() += 1;
@@ -278,7 +278,7 @@ fn kr_smuni_seam_conformance() {
 
     // Seeded batch: three metamorphic families over curated vocabulary.
     for seed in 0..SEAM_BATCH {
-        let (a, b) = kr_seam::metamorphic_pair(seed);
+        let (a, b) = nibli_kr_seam::metamorphic_pair(seed);
         assert_eq!(
             canonical(&kompile(&a).unwrap_or_else(|e| panic!("{a:?}: {e}"))),
             canonical(&kompile(&b).unwrap_or_else(|e| panic!("{b:?}: {e}"))),
@@ -302,16 +302,16 @@ fn kr_smuni_seam_conformance() {
     );
 }
 
-/// The Klaro determinism leg — RE-HOMED from klaro_twins.rs (which dies with
-/// the Lojban twins at THE DROP): the `.nibli` determinism corpus replayed
-/// through the native engine in Klaro mode against the SAME byte-identical
+/// The nibli KR determinism leg — RE-HOMED from the twins gate retired at
+/// THE DROP: the `.nibli` determinism corpus replayed
+/// through the native engine against the SAME byte-identical
 /// `# =>` verdict annotations as the other runtimes (Wasmtime via
 /// `smoke-gasnu-determinism`, node/V8 via `verify-wasm-node`). The corpus is
 /// curated-core vocabulary only, so this leg is full-strength in BOTH
 /// dictionary modes. The parser is deliberately re-rolled, not shared — the
 /// determinism legs must not share code paths beyond the engine.
 #[test]
-fn determinism_corpus_klaro_native() {
+fn determinism_corpus_nibli_kr_native() {
     use nibli_engine::NibliEngine;
 
     enum COp {
@@ -368,7 +368,7 @@ fn determinism_corpus_klaro_native() {
                 let got = nibli_engine::display_query_result(&verdict);
                 assert_eq!(
                     &got, expected,
-                    "KLARO native verdict for '{q}' diverges from the pinned annotation"
+                    "KR native verdict for '{q}' diverges from the pinned annotation"
                 );
                 checked += 1;
             }
@@ -376,6 +376,6 @@ fn determinism_corpus_klaro_native() {
     }
     assert!(
         checked >= 15,
-        "determinism klaro leg hollowed out: {checked}"
+        "determinism nibli-kr leg hollowed out: {checked}"
     );
 }

@@ -1,10 +1,10 @@
-# Klaro acceptance corpus — the SURFACE_SYNTAX §16 set, reconciled to the
+# nibli KR acceptance corpus — the NIBLI_KR §16 set, reconciled to the
 # SHIPPED alias vocabulary (honest-generic naming decision, 2026-07-12:
 # domain overlays like consents/inhibits/breached/at_risk never enter the
 # core map). One statement per line; `#` lines are comments. Consumed by:
-#   - klaro::render fixpoint tests (render∘parse compiles to the same
+#   - nibli_kr::render fixpoint tests (render∘parse compiles to the same
 #     LogicBuffer; render is text-idempotent)
-#   - the future fuzz_klaro seed and the nibli-verify battery.
+#   - the future fuzz_nibli_kr seed and the nibli-verify battery.
 # Every word is FALLBACK-SAFE (CI builds without dictionary-en.json).
 
 person(Adam).

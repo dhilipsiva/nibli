@@ -13,11 +13,11 @@ smuni-dictionary = { path = "../smuni-dictionary" }
 default = []
 serde = ["dep:serde"]
 
-# Test-only: the real klaro→smuni front-end, so unit tests can build a `LogicBuffer`
+# Test-only: the real nibli-kr→smuni front-end, so unit tests can build a `LogicBuffer`
 # the SHIPPED way (event-decomposed) and check the flat helpers against it. No cycle —
-# klaro→smuni→logji is a DAG; dev-deps never touch the WASM/release build.
+# nibli-kr→smuni→logji is a DAG; dev-deps never touch the WASM/release build.
 [dev-dependencies]
-klaro = { path = "../klaro" }
+nibli-kr = { path = "../nibli-kr" }
 smuni = { path = "../smuni" }
 
 [lib]

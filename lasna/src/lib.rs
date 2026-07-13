@@ -27,11 +27,11 @@ struct LasnaPipeline;
 pub struct Session {
     kb: logji::KnowledgeBase,
     compute_predicates: RefCell<HashSet<String>>,
-    /// The KR lint session (SURFACE_SYNTAX §12 L1–L9): non-blocking
+    /// The KR lint session (NIBLI_KR §12 L1–L9): non-blocking
     /// `[Note: …]` guest-stdout echoes on interactive text inputs — the
     /// `[Skolem]`/`[Rule]` precedent, gated by the same NIBLI_QUIET verbose
     /// flag and reset with the KB. Stateful (L1/L4/L7 are per-session).
-    linter: RefCell<klaro::lint::Linter>,
+    linter: RefCell<nibli_kr::lint::Linter>,
     /// The NIBLI_QUIET-derived verbose flag, kept for the lint echoes (the
     /// kb's copy is not readable back).
     verbose: bool,
@@ -347,7 +347,7 @@ fn compile_pipeline(
     compute_predicates: &HashSet<String>,
 ) -> Result<logji_logic::LogicBuffer, export_err::NibliError> {
     // The mirror of nibli-engine's `compile_text`, so native and WASM agree.
-    let ast = klaro::parse_checked(text).map_err(convert_pipeline_error)?;
+    let ast = nibli_kr::parse_checked(text).map_err(convert_pipeline_error)?;
     let mut buf = smuni::compile_from_gerna_ast(ast).map_err(convert_pipeline_error)?;
     logji::transform_compute_nodes(&mut buf, compute_predicates);
     Ok(buf)
@@ -378,7 +378,7 @@ impl Session {
         Ok(())
     }
 
-    /// Emit the KR lint notes for an interactive text input (SURFACE_SYNTAX
+    /// Emit the KR lint notes for an interactive text input (NIBLI_KR
     /// §12 L1–L9) to guest stdout as `[Note: …]` lines — the `[Skolem]`/`[Rule]`
     /// echo precedent: verbose-gated (NIBLI_QUIET suppresses), non-blocking
     /// (never affects the compile result). The legacy replay path
@@ -448,7 +448,7 @@ impl GuestSession for Session {
         Session {
             kb,
             compute_predicates: RefCell::new(logji::default_compute_predicates()),
-            linter: RefCell::new(klaro::lint::Linter::new()),
+            linter: RefCell::new(nibli_kr::lint::Linter::new()),
             verbose,
         }
     }

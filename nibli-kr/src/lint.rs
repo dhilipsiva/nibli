@@ -1,4 +1,4 @@
-//! The Klaro lint catalog (SURFACE_SYNTAX §12 + the 2026-07-12 review's
+//! The Klaro lint catalog (NIBLI_KR §12 + the 2026-07-12 review's
 //! L8/L9) — NON-BLOCKING compile notes. "The linter is part of the design,
 //! not an afterthought": the grammar is deterministic, but a handful of
 //! hazards are semantic, and each lint makes one of them visible instead of
@@ -9,7 +9,7 @@
 //! REPL and the lasna session print each note as `[Note: …]` (the
 //! `[Skolem]`/`[Rule]` guest-echo precedent, verbose-gated); nibli-ui carries
 //! them per KB line on `nibli_protocol::LineResult::notes`. Surfaces whose
-//! stdout is data (nibli-validate, lojban2klaro, the verify harness) simply
+//! stdout is data (nibli-validate, the verify harness) simply
 //! never call the linter.
 //!
 //! [`Linter`] is stateful ON PURPOSE: L1 (what `some`/`every` introduced),
@@ -103,7 +103,7 @@ impl Linter {
     }
 
     /// L5 — a universal with a disjunctive consequent registers as an
-    /// integrity constraint, not a rule (message pinned by SURFACE_SYNTAX §6).
+    /// integrity constraint, not a rule (message pinned by NIBLI_KR §6).
     fn lint_statement_shape(&self, input: &str, st: &Statement, notes: &mut Vec<LintNote>) {
         // The consequent of a block is its body (the restrictor is the
         // antecedent); an explicit `->` inside pushes the consequent right.
@@ -184,7 +184,7 @@ fn push(notes: &mut Vec<LintNote>, input: &str, at: usize, code: &'static str, m
 /// map, or as an identity dictionary word. `None` = unknown (the compiler
 /// rejects it; the linter stays quiet).
 fn resolved_gismu(word: &str) -> Option<&str> {
-    if let Some(entry) = klaro_dictionary::alias(word) {
+    if let Some(entry) = nibli_kr_dictionary::alias(word) {
         return Some(entry.gismu);
     }
     smuni_dictionary::get_arity(word).map(|_| word)
@@ -409,7 +409,7 @@ impl Walk<'_> {
             // L4 — echo the resolved gismu + permutation on first use: the
             // alias map is trusted base, and a wrong permutation silently
             // reroutes arguments; make it visible.
-            if let Some(entry) = klaro_dictionary::alias(word) {
+            if let Some(entry) = nibli_kr_dictionary::alias(word) {
                 if self.linter.seen_aliases.insert(word.clone()) {
                     let msg = match entry.swap {
                         Some(n) => format!(

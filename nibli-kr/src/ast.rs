@@ -7,7 +7,7 @@
 //! bind here. If fuzzing ever shows allocation pressure, swapping the backing
 //! store is internal to this crate.
 //!
-//! Shape invariants the parser guarantees (SURFACE_SYNTAX §6 + the 2026-07-12
+//! Shape invariants the parser guarantees (NIBLI_KR §6 + the 2026-07-12
 //! errata):
 //! - [`Claim::Prefixed`] exists only when at least one prefix is present, and
 //!   its `atom` is a `Predication`, an `Equality`, or `Not` of one of those
@@ -92,12 +92,12 @@ pub enum Tense {
 
 /// A predicate application. The head is a [`PredSeq`] (a single word, or a
 /// tanru of 2+ units whose LAST unit is the head); resolution against
-/// klaro-dictionary happens in the resolve pass.
+/// nibli-kr-dictionary happens in the resolve pass.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Predication {
     pub seq: PredSeq,
     pub args: Vec<Arg>,
-    /// `via` modal tags (BAI/fi'o — SURFACE_SYNTAX §5), in surface order.
+    /// `via` modal tags (BAI/fi'o — NIBLI_KR §5), in surface order.
     pub tags: Vec<Tag>,
     pub span: Range<usize>,
 }
@@ -145,7 +145,7 @@ pub struct Arg {
     pub span: Range<usize>,
 }
 
-/// A term (SURFACE_SYNTAX §3).
+/// A term (NIBLI_KR §3).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Term {
     /// `_` — explicit unspecified place (zo'e).
@@ -188,7 +188,7 @@ pub enum AbsKind {
     Concept,
 }
 
-/// The reserved pro-terms (SURFACE_SYNTAX §3 table).
+/// The reserved pro-terms (NIBLI_KR §3 table).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyTerm {
     Me,
@@ -212,7 +212,7 @@ pub enum KeyTerm {
     Slot,
 }
 
-/// The determiner taxonomy (SURFACE_SYNTAX §4) — five gadri shapes plus the
+/// The determiner taxonomy (NIBLI_KR §4) — five gadri shapes plus the
 /// `no` = exactly-0 sugar, resolved at parse time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Det {
@@ -230,7 +230,7 @@ pub enum Det {
     ExactlyThe(u32),
 }
 
-/// A restrictor (SURFACE_SYNTAX §4).
+/// A restrictor (NIBLI_KR §4).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Restr {
     /// `~` before the restrictor — description-inner negation (`lo na broda`).

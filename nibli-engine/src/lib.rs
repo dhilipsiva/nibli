@@ -213,7 +213,7 @@ impl NibliEngine {
     fn compile_text(&self, input: &str) -> Result<logji_logic::LogicBuffer, EngineError> {
         // The SOLE text→AST seam — every public text method funnels through
         // here; `EngineError` is the re-exported `NibliError`.
-        let ast = klaro::parse_checked(input)?;
+        let ast = nibli_kr::parse_checked(input)?;
         let mut buf = smuni::compile_from_gerna_ast(ast)?;
         logji::transform_compute_nodes(&mut buf, &self.compute_predicates);
         Ok(buf)

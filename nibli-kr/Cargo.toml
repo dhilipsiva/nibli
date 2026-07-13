@@ -1,5 +1,5 @@
 [package]
-name = "klaro"
+name = "nibli-kr"
 version = "0.1.0"
 edition = "2024"
 
@@ -8,15 +8,15 @@ pest = "2"
 pest_derive = "2"
 # resolve.rs: alias map (name -> gismu + swap + place labels) and the
 # identity-gismu passthrough arity source. The grammar's kw_* rules are also
-# pinned against klaro-dictionary's single-source RESERVED_WORDS by an
+# pinned against nibli-kr-dictionary's single-source RESERVED_WORDS by an
 # exhaustive unit test.
-klaro-dictionary = { path = "../klaro-dictionary" }
+nibli-kr-dictionary = { path = "../nibli-kr-dictionary" }
 smuni-dictionary = { path = "../smuni-dictionary" }
 # emit.rs targets nibli-types' AstBuffer; parse_checked returns NibliError.
 nibli-types = { path = "../nibli-types" }
 
 [dev-dependencies]
-# Golden tests: every emitted buffer must be accepted by smuni, and Klaro
+# Golden tests: every emitted buffer must be accepted by smuni, and nibli KR
 # statements must compile to LogicBuffers EQUAL to their Lojban twins'
 # (the in-crate preview of the nibli-verify translation battery).
 smuni = { path = "../smuni" }

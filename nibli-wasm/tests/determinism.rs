@@ -1,10 +1,10 @@
 //! Three-way determinism corpus, V8 leg: the SAME `determinism-corpus.nibli` twin
-//! that the native engine (`determinism_corpus_klaro_native`) and the Wasmtime
+//! that the native engine (`determinism_corpus_nibli_kr_native`) and the Wasmtime
 //! component (`smoke-gasnu-determinism`) run must produce the identical pinned
 //! verdicts when the pipeline is compiled to wasm32-unknown-unknown and executed
 //! under node/V8 — the browser-class runtime the live playground uses. The
-//! session is switched to Klaro explicitly (nibli-wasm's DEFAULT stays Lojban
-//! for the deployed playground until the site-repo migration window). Run via
+//! `set_language` call survives as a no-op shim exercise (the deployed
+//! playground's JS still calls it until the site migration lands). Run via
 //! `just verify-wasm-node` (`wasm-pack test --node nibli-wasm`); native
 //! `cargo test` skips this file entirely (`#![cfg(target_arch = "wasm32")]`).
 

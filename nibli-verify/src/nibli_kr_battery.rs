@@ -1,12 +1,12 @@
 //! KR conformance helpers — the data + plumbing behind the KR seam gate
-//! (`tests/kr_seam_gate.rs`; parity layer 1 is `klaro::render`'s compile-time
+//! (`tests/nibli_kr_seam_gate.rs`; parity layer 1 is `nibli_kr::render`'s compile-time
 //! exhaustiveness guard).
 //!
 //! - [`kompile`] compiles KR text to its FOL `LogicBuffer` through the shipped
 //!   post-parse stages (smuni + `transform_compute_nodes` with the default
 //!   compute set).
 //! - [`CONSTRUCT_INVENTORY`] is the acceptance inventory: one row per
-//!   SURFACE_SYNTAX §3–§9 construct; every row must `kompile` (per-section
+//!   NIBLI_KR §3–§9 construct; every row must `kompile` (per-section
 //!   floors in the gate). Vocabulary is FALLBACK-SAFE (the gate never needs
 //!   `dictionary-en.json`). The Lojban-twin equality column and the
 //!   translation-battery step retired with the Lojban front-end at THE DROP
@@ -17,19 +17,19 @@
 //! emitter limitations — `exactly N`/`the` BLOCK determiners and block
 //! restrictors carrying relative clauses — stay DOCUMENTED fail-closed forms:
 //! KR authors get targeted errors with the inline-form workaround
-//! (SURFACE_SYNTAX O7).
+//! (NIBLI_KR O7).
 
 use nibli_types::logic::LogicBuffer;
 
 use crate::seam;
 
-/// Compile KLARO text end-to-end: `klaro::parse_checked` (parse + resolve +
+/// Compile nibli KR text end-to-end: `nibli_kr::parse_checked` (parse + resolve +
 /// emit) → smuni → compute-node marking with logji's default compute set —
 /// the shipped engine runs after its parse step.
 pub fn kompile(text: &str) -> Result<LogicBuffer, String> {
-    let ast = klaro::parse_checked(text).map_err(|e| format!("klaro parse '{text}': {e}"))?;
+    let ast = nibli_kr::parse_checked(text).map_err(|e| format!("nibli-kr parse '{text}': {e}"))?;
     let mut buf =
-        smuni::compile_from_gerna_ast(ast).map_err(|e| format!("smuni(klaro) '{text}': {e}"))?;
+        smuni::compile_from_gerna_ast(ast).map_err(|e| format!("smuni(nibli-kr) '{text}': {e}"))?;
     logji::transform_compute_nodes(&mut buf, &logji::default_compute_predicates());
     Ok(buf)
 }
@@ -44,17 +44,17 @@ pub fn canonical(buf: &LogicBuffer) -> String {
 /// by the KR seam gate's structural goldens + metamorphic relations instead.)
 pub struct ConstructCase {
     pub spec_section: &'static str,
-    pub klaro: &'static str,
+    pub nibli_kr: &'static str,
 }
 
-const fn case(spec_section: &'static str, klaro: &'static str) -> ConstructCase {
+const fn case(spec_section: &'static str, nibli_kr: &'static str) -> ConstructCase {
     ConstructCase {
         spec_section,
-        klaro,
+        nibli_kr,
     }
 }
 
-/// Parity layer 2: one row per SURFACE_SYNTAX §3–§9 construct. The gate
+/// Parity layer 2: one row per NIBLI_KR §3–§9 construct. The gate
 /// asserts every row kompiles, every twin matches, and per-section floors.
 pub const CONSTRUCT_INVENTORY: &[ConstructCase] = &[
     // ── §3 terms ──

@@ -4,13 +4,13 @@ version = "0.1.0"
 edition = "2024"
 description = "Agentic English-to-KR formalizer: LLM + validation gates + self-correction loop"
 
-# Pure-logic engine consumed by nibli-ui. The klaro/gerna/smuni gates and the
+# Pure-logic engine consumed by nibli-ui. The nibli-kr/smuni gates and the
 # agent/provider logic build + unit-test on the NATIVE target with mocked
 # chat()/MCP; the gloo-net HTTP client and the camxes.js JS-interop gate
 # (Lojban-only) are wasm-only. No Dioxus here — the UI shell is nibli-ui's job.
 
 [dependencies]
-klaro = { path = "../klaro" }
+nibli-kr = { path = "../nibli-kr" }
 smuni = { path = "../smuni" }
 nibli-render = { path = "../nibli-render" }
 nibli-types = { path = "../nibli-types" }

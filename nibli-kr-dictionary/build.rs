@@ -94,7 +94,7 @@ fn main() {
         Some(content) => generate_full(&content, &mut alias_entries, &mut gismu_entries),
         None => {
             println!(
-                "cargo:warning=klaro-dictionary: FALLBACK MODE (curated core, {} plain + {} converted aliases)",
+                "cargo:warning=nibli-kr-dictionary: FALLBACK MODE (curated core, {} plain + {} converted aliases)",
                 CURATED_ALIASES.len(),
                 CONVERTED_ALIASES.len()
             );
@@ -182,7 +182,7 @@ fn generate_full(
         }
         if is_reserved(&alias) {
             errors.push(format!(
-                "{word}: derived alias {alias:?} is a Klaro keyword — pin required"
+                "{word}: derived alias {alias:?} is a nibli KR keyword — pin required"
             ));
             continue;
         }
@@ -263,7 +263,7 @@ fn generate_full(
 
     if !errors.is_empty() {
         panic!(
-            "klaro-dictionary full generation failed ({} error(s)):\n  {}",
+            "nibli-kr-dictionary full generation failed ({} error(s)):\n  {}",
             errors.len(),
             errors.join("\n  ")
         );
@@ -272,10 +272,10 @@ fn generate_full(
     let total_plain = CURATED_ALIASES.len() + generated;
     assert!(
         total_plain >= 1300,
-        "klaro-dictionary coverage floor: {total_plain} plain aliases < 1300"
+        "nibli-kr-dictionary coverage floor: {total_plain} plain aliases < 1300"
     );
     println!(
-        "cargo:warning=klaro-dictionary: FULL MODE ({} plain aliases = {} curated + {} generated; \
+        "cargo:warning=nibli-kr-dictionary: FULL MODE ({} plain aliases = {} curated + {} generated; \
          {} converted; labels: {} lensisku, {} prose, {} positional)",
         total_plain,
         CURATED_ALIASES.len(),
@@ -364,7 +364,7 @@ fn validate() {
             ));
         }
         if is_reserved(alias) {
-            errors.push(format!("alias {alias:?} collides with a Klaro keyword"));
+            errors.push(format!("alias {alias:?} collides with a nibli KR keyword"));
         }
         if !seen_aliases.insert(*alias) {
             errors.push(format!("duplicate alias {alias:?}"));
@@ -386,7 +386,7 @@ fn validate() {
             }
             if is_reserved(label) {
                 errors.push(format!(
-                    "{alias:?}: label {label:?} collides with a Klaro keyword"
+                    "{alias:?}: label {label:?} collides with a nibli KR keyword"
                 ));
             }
             if looks_like_place_tag(label) {
@@ -415,7 +415,7 @@ fn validate() {
         }
         if is_reserved(alias) {
             errors.push(format!(
-                "converted alias {alias:?} collides with a Klaro keyword"
+                "converted alias {alias:?} collides with a nibli KR keyword"
             ));
         }
         if !seen_aliases.insert(*alias) {
@@ -442,7 +442,7 @@ fn validate() {
         }
         if is_reserved(alias) {
             errors.push(format!(
-                "pin alias {alias:?} ({gismu}) collides with a Klaro keyword"
+                "pin alias {alias:?} ({gismu}) collides with a nibli KR keyword"
             ));
         }
         if !seen_aliases.insert(*alias) {
@@ -457,7 +457,7 @@ fn validate() {
 
     if !errors.is_empty() {
         panic!(
-            "klaro-dictionary curated-table validation failed ({} error(s)):\n  {}",
+            "nibli-kr-dictionary curated-table validation failed ({} error(s)):\n  {}",
             errors.len(),
             errors.join("\n  ")
         );

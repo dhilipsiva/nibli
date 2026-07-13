@@ -152,7 +152,7 @@ pub const EXAMPLES: &[Example] = &[
 ];
 
 /// nibli-ui's first native test: every shipped example must actually work in
-/// the UI's own compile path. Dual-mode like `verify-klaro-twins`: the CI
+/// the UI's own compile path. Dual-mode like the engine corpus gates: the CI
 /// fallback dictionary build may lack generated aliases for long-tail corpus
 /// words, so KB lines failing with a dictionary-unknown resolve error are
 /// vocab-skipped there (with a floor so the test can't silently check
@@ -166,11 +166,11 @@ mod tests {
     fn full_mode() -> bool {
         // Same probe as nibli-verify's alias-map differential: the generated
         // map only exists in a full (dictionary-en.json) build.
-        klaro_dictionary::GISMU_TO_ALIAS.len() >= 1000
+        nibli_kr_dictionary::GISMU_TO_ALIAS.len() >= 1000
     }
 
-    fn compile_klaro(line: &str) -> Result<(), String> {
-        let ast = klaro::parse_checked(line).map_err(|e| e.to_string())?;
+    fn compile_nibli_kr(line: &str) -> Result<(), String> {
+        let ast = nibli_kr::parse_checked(line).map_err(|e| e.to_string())?;
         smuni::compile_from_gerna_ast(ast).map_err(|e| e.to_string())?;
         Ok(())
     }
@@ -186,11 +186,11 @@ mod tests {
                 if line.is_empty() || line.starts_with('#') {
                     continue;
                 }
-                match compile_klaro(line) {
+                match compile_nibli_kr(line) {
                     Ok(()) => checked += 1,
                     // The fail-closed resolve error for a word only the full
                     // (generated) alias map knows — same key as the
-                    // verify-klaro-twins fallback skips.
+                    // the fallback-build vocab skips.
                     Err(e) if !full && e.contains("unknown predicate") => skipped += 1,
                     Err(e) => panic!(
                         "example {:?} KB line {} does not compile: {line:?} — {e}",
@@ -202,7 +202,7 @@ mod tests {
             for q in ex.queries {
                 // Queries never skip: curated-core vocabulary by policy, so the
                 // dropdown works even in a fallback-built bundle.
-                compile_klaro(q.query).unwrap_or_else(|e| {
+                compile_nibli_kr(q.query).unwrap_or_else(|e| {
                     panic!(
                         "example {:?} query {:?} does not compile: {e}",
                         ex.name, q.query

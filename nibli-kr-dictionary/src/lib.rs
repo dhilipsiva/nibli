@@ -1,8 +1,8 @@
-//! Compile-time alias map for the Klaro front-end: English alias → gismu +
+//! Compile-time alias map for the nibli KR front-end: English alias → gismu +
 //! optional place permutation + place labels.
 //!
-//! This is NEW TRUSTED BASE for the Klaro surface syntax (SURFACE_SYNTAX.md §13)
-//! and deliberately its own crate, NOT an extension of `smuni-dictionary`: klaro
+//! This is NEW TRUSTED BASE for the nibli KR surface syntax (NIBLI_KR.md §13)
+//! and deliberately its own crate, NOT an extension of `smuni-dictionary`: nibli-kr
 //! needs the reverse (English-keyed) direction plus per-place labels, and none of
 //! that belongs in the phf map that ships inside the smuni→lasna/nibli-wasm web
 //! bundle. The two crates' agreement (alias arity == smuni arity, swap validity)
@@ -15,7 +15,7 @@
 //!   then the first lensisku gloss keyword normalized (base-form as-is; user
 //!   decision 2026-07-12 — no mechanical inflection, the export has no
 //!   part-of-speech data). Arity comes from `smuni-dictionary` as a BUILD
-//!   dependency, so klaro/smuni arity agreement holds by construction. Unpinned
+//!   dependency, so nibli-kr/smuni arity agreement holds by construction. Unpinned
 //!   collisions/keyword-hits/dictionary-shadows FAIL THE BUILD listing every
 //!   offender; coverage floor ≥ 1,300.
 //! - **FALLBACK MODE** (no data file — what CI uses; loud banner): exactly the
@@ -62,8 +62,8 @@ pub mod label;
 pub mod reserved;
 
 /// Look up an English predicate alias. `None` means the name is unknown to the
-/// alias map — klaro's resolver then tries the identity-gismu passthrough and
-/// otherwise FAILS CLOSED (no arity-2 default; SURFACE_SYNTAX §13).
+/// alias map — nibli-kr's resolver then tries the identity-gismu passthrough and
+/// otherwise FAILS CLOSED (no arity-2 default; NIBLI_KR §13).
 pub fn alias(name: &str) -> Option<&'static AliasEntry> {
     ALIASES.get(name)
 }
@@ -144,7 +144,7 @@ mod tests {
 
     #[test]
     fn keyword_collision_pin() {
-        // bilga's lensisku gloss is "must" — a Klaro keyword. The plain alias is
+        // bilga's lensisku gloss is "must" — a nibli KR keyword. The plain alias is
         // the pinned honest form; "must" must never resolve.
         assert!(alias("must").is_none());
         let obliged = alias("obliged").expect("obliged");
@@ -258,7 +258,7 @@ mod tests {
         for (name, _) in ALIASES.entries() {
             assert!(
                 !reserved::is_reserved(name),
-                "shipped alias {name:?} collides with a Klaro keyword"
+                "shipped alias {name:?} collides with a nibli KR keyword"
             );
         }
     }

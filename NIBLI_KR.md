@@ -2,7 +2,7 @@
 
 > **Status: v0.1 compat profile IMPLEMENTED and shipping** — Klaro is the ONLY
 > front-end since THE DROP (the Lojban front-end retired 2026-07-13; the `klaro`
-> crate, tracker `TODO.md`). The executable grammar is `klaro/src/klaro.pest` — the
+> crate, tracker `TODO.md`). The executable grammar is `nibli-kr/src/nibli_kr.pest` — the
 > normative form of §15, from which the parser is generated, so this spec's grammar and
 > the shipped parser cannot drift. Working name "Klaro" (retiring for **"nibli KR"**
 > at the rename milestone). The spec was synthesized from a three-design panel judged
@@ -13,7 +13,7 @@
 > justification — no silent drops. The Lojban twin spellings quoted throughout are
 > HISTORICAL REFERENCE (they document what each construct means by its origin);
 > the per-construct equality they describe was CI-pinned up to THE DROP, and the
-> surviving front-end oracle is the KR seam gate (`verify-kr-seam`).
+> surviving front-end oracle is the KR seam gate (`verify-nibli-kr-seam`).
 >
 > The spec defines **two profiles**: §1–§13 is the **v0.1 compat profile** (mirrors
 > the pre-DROP engine semantics exactly); **§14 is the clean-core v2 profile** — the
@@ -80,7 +80,7 @@ all $x: at_risk($x) & takes(Adam, $x) -> alert($x).
 ## 2. Lexical structure
 
 > **Erratum (2026-07-12, pest switch):** the implementation is a scannerless
-> pest parser (`klaro/src/klaro.pest` is the executable grammar — user
+> pest parser (`nibli-kr/src/nibli_kr.pest` is the executable grammar — user
 > decision; grammar↔parser drift impossible by construction). The load-bearing
 > property below is therefore not a separate lexer but its OBSERVABLE
 > BEHAVIOR, carried by two grammar rules — every keyword is self-guarded
@@ -364,7 +364,7 @@ one operator set · selbri/sumti/bridi-tail connectives → written-out expansio
 
 The grammar is deterministic, but a handful of hazards are semantic, not syntactic. The
 linter is part of the design, not an afterthought — and it is IMPLEMENTED
-(2026-07-12): `klaro/src/lint.rs`, a data-returning pass (`klaro::lint::Linter`,
+(2026-07-12): `nibli-kr/src/lint.rs`, a data-returning pass (`nibli_kr::lint::Linter`,
 stateful per file/session for L1/L4/L7, reset with the KB). Surfaces render each note
 as `[Note: …]`: the nibli REPL and the lasna session echo them (verbose-gated, so
 `NIBLI_QUIET=1` suppresses them alongside `[Skolem]`/`[Rule]`), and the playground
@@ -428,11 +428,11 @@ BUILT and gated in `ci` as of 2026-07-12):
    end-to-end and check the FOL against hand-verified structure + metamorphic pairs
    (e.g. `pred(x2: a, x1: b)` ≡ the alias-permuted spelling, canonicalized by positional
    var-rename). **Built: `just verify-klaro`** (the CONSTRUCT_INVENTORY sweep with
-   Lojban twins, `nibli-verify/src/klaro_battery.rs` + `tests/klaro_gate.rs`).
+   Lojban twins, `nibli-verify/src/nibli_kr_battery.rs` + `tests/nibli_kr_gate.rs`).
 2. An **alias-map differential gate** (verify-dict style): alias → gismu →
    place-permutation round-trips checked against the smuni dictionary; the alias map is
    new trusted base and L4's echo does not replace a CI gate. **Built:
-   `just verify-klaro-dict`** (`tests/alias_differential.rs` — arity equality,
+   `just verify-nibli-kr-dict`** (`tests/alias_differential.rs` — arity equality,
    round-trips, swap/label integrity, plus a per-alias behavioral compile-equality
    battery).
 3. A **Klaro↔Lojban translation battery**: mechanically translate the shipped corpora
@@ -440,16 +440,16 @@ BUILT and gated in `ci` as of 2026-07-12):
    variable renaming). This is *stronger* than the camxes parse-differential (which
    checks acceptance only) and replaces it for this front-end. **Built: the render
    battery inside `just verify-klaro`** plus the committed corpus twins gate
-   **`just verify-klaro-twins`** (`tests/klaro_twins.rs` — per-line canonicalized-buffer
+   **`just verify-klaro-twins`** (`tests/nibli_kr_twins.rs` — per-line canonicalized-buffer
    equality + the Klaro determinism leg).
 4. **Fuzzing**: a `fuzz-parse`-style libFuzzer target for the Klaro parser. **Built:
-   `just fuzz-klaro`** (parse→resolve→emit with a corrupt-buffer oracle; seeded and run
+   `just fuzz-nibli-kr`** (parse→resolve→emit with a corrupt-buffer oracle; seeded and run
    in the `fuzz-ci` gate).
 
 **Fixed-in-synthesis defects** (from the judge panel, so they don't regress):
 maximal-munch keyword-boundary behavior (kills the `everyday`→`every day`,
 `theory`→`the ory`, `you-all`-unparseable class — since the 2026-07-12 pest switch this
-is carried by self-guarded keyword rules in `klaro.pest` + behavioral tests, not a
+is carried by self-guarded keyword rules in `nibli_kr.pest` + behavioral tests, not a
 separate lexer; see the §2 erratum); the bare-predicate clause-body sugar is
 a formal production (`ClauseBody ← Claim-with-it / "~"? PredSeq`), not prose; block and
 inline determiner grammars are consistent; underscore identifiers remove the
@@ -485,7 +485,7 @@ hyphen-vs-`->` lexing wrinkle.
   eats(me).` vs `every dog.eats`). Resolved fail-closed in the grammar: `selected` is
   compound-atomic (adjacency both sides), single-word, and takes no linked args — every
   residual compact collision is a parse error, never a silent statement merge. Pinned
-  by the O8 test battery in klaro/src/parser.rs.
+  by the O8 test battery in nibli-kr/src/parser.rs.
 - **O9**: relative-clause attachment to the RHS term of a clause-body-final equality is
   innermost-wins (see §7); the outer attachment needs parens. Surfaced by the
   2026-07-12 adversarial grammar review; lint L8 echoes the attachment. The same
@@ -626,7 +626,7 @@ page exists because a spoken conlang needed it.
 ## 15. Grammar (PEG sketch)
 
 > **Erratum (2026-07-12):** the NORMATIVE, executable form of this grammar is
-> `klaro/src/klaro.pest` (pest); this sketch is kept as the readable overview.
+> `nibli-kr/src/nibli_kr.pest` (pest); this sketch is kept as the readable overview.
 > Where they differ, the `.pest` file wins — its keyword rules are pinned to
 > the reserved-word list by a conformance test, and the §6 errata
 > (prefix/negation shape, arg ordering, count integrality) are enforced by the
@@ -697,7 +697,7 @@ String      <- '"' ('\\' . / !'"' .)* '"'
 > `at_risk`/`rises`/`takes` — which never enter the core map) and to the
 > emitter's landed forms (converted aliases carry positional labels, so
 > `obligated`'s duty place is `x2:`). The NORMATIVE, executable form of this
-> corpus is **`klaro/tests/acceptance.nibli`** (30 statements — this set plus
+> corpus is **`nibli-kr/tests/acceptance.nibli`** (30 statements — this set plus
 > operator/selector/block/tag coverage), pinned by klaro's render∘parse
 > fixpoint tests and reused as the fuzz seed.
 

@@ -1,5 +1,5 @@
 [package]
-name = "klaro-dictionary"
+name = "nibli-kr-dictionary"
 version = "0.1.0"
 edition = "2024"
 
@@ -11,6 +11,6 @@ phf_codegen = "0.13.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Arity source for generation: calling the ACTUAL shipped smuni map from the
-# build script makes klaro/smuni arity agreement hold by construction in both
+# build script makes nibli-kr/smuni arity agreement hold by construction in both
 # build modes (the alias differential gate still checks the shipped artifacts).
 smuni-dictionary = { path = "../smuni-dictionary" }

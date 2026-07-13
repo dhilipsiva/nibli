@@ -44,7 +44,7 @@ Klaro is a strict predicate-call surface for first-order claims: intuitive to re
 | `desires(desired: every teaches, desirer: event { studies() }).` | event abstraction |
 | `all $x: dangerous($x) & uses(Adam, $x) -> warns($x).` | explicit prenex rule with variables |
 
-The normative spec is **[SURFACE_SYNTAX.md](SURFACE_SYNTAX.md)** (v0.1 compat profile, implemented); the executable grammar is `klaro/src/klaro.pest` — the parser is generated from it, so the spec and the parser cannot drift. The front-end's independent oracle is the KR seam gate (`verify-kr-seam`: hand-verified FOL structural goldens + a construct-inventory sweep + metamorphic relations, in CI).
+The normative spec is **[NIBLI_KR.md](NIBLI_KR.md)** (v0.1 compat profile, implemented); the executable grammar is `nibli-kr/src/nibli_kr.pest` — the parser is generated from it, so the spec and the parser cannot drift. The front-end's independent oracle is the KR seam gate (`verify-nibli-kr-seam`: hand-verified FOL structural goldens + a construct-inventory sweep + metamorphic relations, in CI).
 
 ---
 
@@ -71,7 +71,7 @@ Supporting crates:
 
 | Crate | Role |
 |-------|------|
-| **klaro-dictionary** | Compile-time English-alias map for Klaro (alias → formal predicate + place labels) |
+| **nibli-kr-dictionary** | Compile-time English-alias map for Klaro (alias → formal predicate + place labels) |
 | **nibli-engine** | Native in-process embedding of the pipeline (used by tests and the store layer) |
 | **nibli-ui** | Standalone Dioxus web UI — the engine is compiled in and runs fully in-browser |
 | **nibli-wasm** | wasm-bindgen wrapper exposing the in-browser pipeline (powers the live demo) |
@@ -124,7 +124,7 @@ just test
 > bulk export from the [lensisku](https://lensisku.lojban.org) Lojban dictionary (jbovlaste
 > data, CC-BY-SA). It is a compile-time input to BOTH dictionaries: the predicate
 > arity/place-structure tables (smuni-dictionary) and the full ~1,341-word Klaro alias map
-> (klaro-dictionary). It is gitignored; fetch it with `just fetch-dict` (lensisku's cached
+> (nibli-kr-dictionary). It is gitignored; fetch it with `just fetch-dict` (lensisku's cached
 > dumps are a public download, no login needed) or drop the file in manually. Without it the
 > build falls back to the in-tree curated tables (~100 core aliases), so `just run`/`just
 > test` and CI work fully offline — only the long-tail vocabulary differs.
@@ -359,15 +359,15 @@ If an external predicate's backend is unreachable (or unconfigured), the query r
 | `just check` | Fast type-check (`cargo check --workspace`) |
 | `just test` | Run all unit tests |
 | `just test-engine` | Integration tests (full parse → compile → reason pipeline) |
-| `just test-klaro` | Klaro front-end tests only |
+| `just test-nibli-kr` | Klaro front-end tests only |
 | `just test-backend` | Python backend tests |
 | `just test-all` | Every test suite |
-| `just verify-kr-seam` | The KR seam gate (FOL structural goldens + construct sweep + metamorphics) |
+| `just verify-nibli-kr-seam` | The KR seam gate (FOL structural goldens + construct sweep + metamorphics) |
 | `just ui` | Standalone Transparency Triad web UI (port 8080) |
 | `just backend` | Python reference compute backend (port 5555) |
 | `just run-with-backend` | Build + run with compute backend |
 | `just run-persist` | Run with persistent Redb fact store |
-| `just fuzz-klaro [SECS]` | Fuzz the Klaro front-end |
+| `just fuzz-nibli-kr [SECS]` | Fuzz the Klaro front-end |
 | `just fuzz-assert [SECS]` | Fuzz assertion pipeline |
 | `just fuzz-query [SECS]` | Fuzz stateful KB queries |
 | `just fuzz-ci [SECS]` | Time-boxed fuzz gate (all 3 targets, corpus-seeded) — runs in CI |

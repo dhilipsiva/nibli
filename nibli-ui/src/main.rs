@@ -49,7 +49,7 @@ fn back_translate_ir(kb: &str) -> String {
 }
 
 fn render_kb_line(line: &str) -> String {
-    let parsed = klaro::parse_text(line);
+    let parsed = nibli_kr::parse_text(line);
     if parsed.errors.is_empty() {
         smuni::compile_from_gerna_ast(parsed.buffer)
             .map(|buf| nibli_render::render_logic_buffer(&buf, nibli_render::Register::Spec))
@@ -229,7 +229,7 @@ struct OutputEntry {
 /// Display carries the `[Syntax Error]` / `[Semantic Error]` prefixes the
 /// output log classifies on).
 fn compile_text(text: &str, preds: &HashSet<String>) -> Result<LogicBuffer, NibliError> {
-    let ast = klaro::parse_checked(text)?;
+    let ast = nibli_kr::parse_checked(text)?;
     let mut buf = smuni::compile_from_gerna_ast(ast)?;
     logji::transform_compute_nodes(&mut buf, preds);
     Ok(buf)
@@ -245,10 +245,10 @@ fn run_query(kb_text: &str, query_text: &str) -> OutputEntry {
     let mut errors = 0u32;
     let mut skipped = 0u32;
     let mut line_results: Vec<LineResult> = Vec::new();
-    // The Klaro lint pass (SURFACE_SYNTAX §12 L1–L9): a FRESH linter per run
+    // The Klaro lint pass (NIBLI_KR §12 L1–L9): a FRESH linter per run
     // — the stateless-KB model re-asserts the whole tab every query, so
     // "per session" is "per run" here. Notes ride each LineResult.
-    let mut linter = klaro::lint::Linter::new();
+    let mut linter = nibli_kr::lint::Linter::new();
     for (i, raw) in kb_text.lines().enumerate() {
         let line = raw.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -655,7 +655,7 @@ fn QueryTabs(
         if q.is_empty() {
             return QueryReading::Empty;
         }
-        let parsed = klaro::parse_text(q);
+        let parsed = nibli_kr::parse_text(q);
         if parsed.errors.is_empty() {
             match smuni::compile_from_gerna_ast(parsed.buffer) {
                 Ok(buf) => QueryReading::Reads(nibli_render::render_logic_buffer(

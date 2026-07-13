@@ -263,9 +263,9 @@ const CORE_GISMU_ARITIES: &[(&str, usize)] = &[
     // dilcu/jmive were the same flap in the other direction: the fallback
     // table said 3/1 while the full lensisku build derives 4 (quotient with
     // remainder x4) and 2 (alive by standard x2) — found 2026-07-12 by
-    // klaro-dictionary's build-time drift guard, now pinned so a future
-    // export change can't re-flap (the verify-klaro-dict gate checks both
-    // modes against the klaro alias map).
+    // nibli-kr-dictionary's build-time drift guard, now pinned so a future
+    // export change can't re-flap (the verify-nibli-kr-dict gate checks both
+    // modes against the nibli-kr alias map).
     ("dilcu", 4),
     ("jmive", 2),
     // tenfa: the external-compute smoke's KR payload (`? tenfa(8, 2, 3).`)
@@ -348,7 +348,7 @@ const FALLBACK_GISMU_ENTRIES: &[(&str, usize, &str)] = &[
     // dilcu/jmive arities follow the full lensisku derivation (4: quotient
     // with remainder x4; 2: alive by standard x2), matching the
     // CORE_GISMU_ARITIES pins above — the fallback table previously said
-    // 3/1, a cross-mode flap the verify-klaro-dict gate now trips on.
+    // 3/1, a cross-mode flap the verify-nibli-kr-dict gate now trips on.
     ("dilcu", 4, "divide"),
     ("tenfa", 3, "exponential"),
     ("klani", 3, "quantity"),
@@ -386,14 +386,14 @@ const FALLBACK_GISMU_ENTRIES: &[(&str, usize, &str)] = &[
     ("javni", 3, "rule"),
     ("datni", 3, "data"),
     ("turni", 2, "govern"),
-    // klaro-dictionary curated vocabulary: every gismu the klaro curated alias
+    // nibli-kr-dictionary curated vocabulary: every gismu the nibli-kr curated alias
     // table references must resolve here too, with the SAME arity in both build
     // modes — otherwise a CI fallback build silently compiles these words with
-    // the arity-2 default while klaro's curated table (and every full local
+    // the arity-2 default while nibli-kr's curated table (and every full local
     // build) says otherwise, the exact cross-mode drift class the
-    // verify-klaro-dict gate rejects (its first fallback run flagged all 34).
-    // Arities mirror the full lensisku derivation (verified equal to klaro's
-    // curated arities by klaro-dictionary's build-time drift guard); glosses
+    // verify-nibli-kr-dict gate rejects (its first fallback run flagged all 34).
+    // Arities mirror the full lensisku derivation (verified equal to nibli-kr's
+    // curated arities by nibli-kr-dictionary's build-time drift guard); glosses
     // are the first lensisku gloss keyword, matching the data build's chain.
     ("birti", 2, "certain"),
     ("cfila", 3, "flaw"),
