@@ -2682,6 +2682,7 @@ dependencies = [
  "gloo-net",
  "js-sys",
  "nibli-kr",
+ "nibli-lexicon",
  "nibli-render",
  "nibli-semantics",
  "nibli-types",

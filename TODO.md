@@ -138,34 +138,19 @@ gate repointed, its now-vacuous mixed-mode check removed). Recipes renamed
 `test-nibli-kr-dict`→`test-alias-map`, `verify-nibli-kr-dict`→`verify-alias-map`. Zero
 shipped-behavior change — verify-alias-map + verify-nibli-kr-seam + full ci green in
 BOTH dictionary modes.
-- **Grammar+dictionary-grounded Formalize prompts (user decision 2026-07-12)** — the
-  Transparency Triad's Formalize system prompt must contain the ACTUAL KR grammar and
-  the dictionary, so the LLM formalizes against ground truth instead of nine
-  few-shots; the agentic parse-error-feedback loop stays as-is. Design notes:
-  (a) GRAMMAR: `include_str!` the pest file (`nibli-kr/src/nibli_kr.pest`, 181 lines /
-  ~9 KB ≈ 2.5–3k tokens — affordable, and in-sync BY CONSTRUCTION since the file IS
-  the parser); distill the semantics tables the grammar can't carry (determiner
-  taxonomy §4, operator/prefix rules §6, `where`/`also` §7) into a compact prose
-  block.
-  (b) DICTIONARY: the full map is ~1,341 aliases (full mode) — three options,
-  decide at implementation: (i) full compact listing (`alias/arity: label1, label2…`
-  per line, ~15–20k tokens — BYO-key users pay per request), (ii) curated core +
-  the existing fail-closed-retry guidance (today's behavior), (iii) RECOMMENDED
-  source-relevant subset: extract content words from the English source, include
-  only matching/near aliases + the curated core — best token/accuracy trade. Any
-  dictionary embedding means the prompt stops being a `&'static str`: a
-  `system_prompt_for(source)` builder assembled at request time from the shipped
-  `nibli_lexicon` alias map (no drift possible; dual-mode — the CI fallback build
-  embeds the curated core only, loudly).
-  (c) Optimize BOTH prompts (system + the per-request user turn) and measure:
-  attempts-to-converge on a fixed English corpus is the metric (feeds the
-  authoring-study track). Guard tests: few-shots stay gate-valid (existing twin
-  guard), the embedded grammar is the shipped file by construction, the dictionary
-  block is generated from the shipped map in the same build.
-  Applies to all three nibli-ui LLM paths (agentic Formalize, single-shot query
-  formalize, the modal key-test). Sequencing: written after the KR rename bullet so
-  the prompt is born saying "nibli KR", but it is independent — pull it earlier if
-  wanted.
+**GRAMMAR+DICTIONARY-GROUNDED FORMALIZE PROMPTS: LANDED (2026-07-13).** The Formalize
+system prompt now embeds the ACTUAL grammar + dictionary instead of nine few-shots:
+`nibli-formalize/src/llm/system_prompt.rs` assembles it ONCE via `LazyLock` from the pest
+`nibli_kr::GRAMMAR` (in-sync by construction) + a distilled §4/§6/§7 semantics block +
+the FULL shipped `nibli_lexicon::ALIASES` map rendered `alias(places…) — predicate` +
+the few-shots. `system_prompt()` keeps its `&'static str` signature (the map is
+compile-time → source-independent), so all three nibli-ui LLM paths + the agentic loop
+are untouched. Dual-mode automatically (full ~1,341-alias map / curated core in
+fallback). User chose the FULL map (not a per-source subset). Two guards: few-shots
+stay gate-valid + the assembled prompt embeds the grammar and ≥65 alias lines. The
+empirical attempts-to-converge measurement (part (c) of the old note) is an EVALUATION
+that belongs to the adoption / non-expert authoring study (Roadmap ceiling), not engine
+code — done here is the grounding itself.
 - **Predicate-name de-Lojbanization (proof traces contain NO Lojban — the deep one)**
   — today every `LogicBuffer` relation is a gismu (`nibli-kr/src/emit.rs:379-387` maps
   alias→`entry.gismu`; smuni derives `gerku_x1`, `le_domain_gerku`; `=` mints `du`

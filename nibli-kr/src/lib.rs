@@ -25,6 +25,13 @@ pub mod parser;
 pub mod render;
 pub mod resolve;
 
+/// The pest PEG grammar source — the normative form of NIBLI_KR §15, embedded so
+/// downstream tooling (e.g. the nibli-formalize LLM prompt) can ground on the
+/// EXACT accepted syntax, in-sync BY CONSTRUCTION: this is the same file the
+/// `#[grammar = "nibli_kr.pest"]` derive consumes, so it can never drift from the
+/// parser.
+pub const GRAMMAR: &str = include_str!("nibli_kr.pest");
+
 use nibli_types::ast::{AstBuffer, ParseResult};
 use nibli_types::error::{NibliError, SyntaxDetail};
 
