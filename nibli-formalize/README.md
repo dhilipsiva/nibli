@@ -16,11 +16,11 @@ dictionary/grammar tools *while drafting* — and every candidate must then clea
 a three-gate, fail-fast, **local** firewall before it is accepted:
 
 - **nibli KR** (default): `nibli_kr::parse_checked` (grammar + fail-closed name
-  resolution) → `smuni` (semantics/arity) → the **render round-trip gate**
+  resolution) → `nibli-semantics` (semantics/arity) → the **render round-trip gate**
   (the candidate's canonical `nibli_kr::render` re-spelling must re-compile to
   the SAME `LogicBuffer` — nibli-kr's fixpoint contract as a per-candidate
   drift-catcher; pure Rust, runs native + wasm).
-- **Lojban** (legacy): `gerna::parse_checked` → `smuni` → the official
+- **Lojban** (legacy): `nibli-kr::parse_checked` → `nibli-semantics` → the official
   **camxes** parser (wasm-only JS-interop; skipped on native / without the
   shim).
 
@@ -31,7 +31,7 @@ gate-clean candidate then faces the **semantic verification turn**
 back-translation of each KB line and a MISMATCH retries through the same loop
 — best-effort advisory, fail-open. This is the **formalization** step
 (`agent::translate_agentic`): it runs before the KB text is shown, and is
-separate from the engine's own front-end→smuni→logji compile that `nibli-ui`
+separate from the engine's own front-end→nibli-semantics→nibli-reason compile that `nibli-ui`
 runs later, at query time.
 
 ```mermaid
@@ -54,8 +54,8 @@ flowchart TD
 
     tcq -->|no| clean["clean_lojban_output → candidate"]
 
-    clean -->|"per non-comment KB line"| g1{"gate 1 · front-end<br/>nibli-kr (default) / gerna (legacy)<br/>parse_checked — grammar"}
-    g1 -->|ok| g2{"gate 2 · smuni<br/>compile_from_gerna_ast — semantics / arity"}
+    clean -->|"per non-comment KB line"| g1{"gate 1 · front-end<br/>nibli-kr (default) / nibli-kr (legacy)<br/>parse_checked — grammar"}
+    g1 -->|ok| g2{"gate 2 · nibli-semantics<br/>compile_from_ast — semantics / arity"}
     g2 -->|ok| g3{"gate 3 · per language<br/>nibli KR: render round-trip (native+wasm)<br/>Lojban: camxes official_gate (wasm-only)"}
     g3 -->|ok| ver{"semantic verification turn<br/>fresh-context judge reads the<br/>IR back-translation (advisory)"}
     ver -->|MATCH / fail-open| ok["Success<br/>validated KB text → KB tab<br/>(nibli-ui compiles the FOL later)"]

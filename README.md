@@ -40,7 +40,7 @@ nibli KR is a strict predicate-call surface for first-order claims: intuitive to
 | `beautiful(every person where ~cat).` | rule with a negated restrictor (negation-as-failure) |
 | `Kim = Adam.` | identity — Kim and Adam are the same individual |
 | `red(exactly 2 red).` | exact-count claim |
-| `runs(some [big dog]).` | compound predicate (tanru): a big-dog kind of runner |
+| `runs(some [big dog]).` | compound predicate: a big-dog kind of runner |
 | `desires(desired: every teaches, desirer: event { studies() }).` | event abstraction |
 | `all $x: dangerous($x) & uses(Adam, $x) -> warns($x).` | explicit prenex rule with variables |
 
@@ -62,10 +62,10 @@ Both front-ends emit the same flat AST buffer, so everything downstream is share
 | Crate | Name origin | Role |
 |-------|---------------|------|
 | **nibli-kr** | — | nibli KR text → AST → flat WIT buffer (pest grammar + fail-closed alias resolution + the canonical renderer) |
-| **smuni** | meaning | AST buffer → FOL logic IR → flat WIT logic buffer |
-| **logji** | logic | FOL logic buffer → backward-chaining assertion, query, and proof |
-| **lasna** | fasten | Orchestrator: chains the front-end → smuni → logji into a single WASM component |
-| **gasnu** | agent | Native Wasmtime host, REPL, and TCP compute backend client |
+| **nibli-semantics** | — | AST buffer → FOL logic IR → flat WIT logic buffer |
+| **nibli-reason** | — | FOL logic buffer → backward-chaining assertion, query, and proof |
+| **nibli-pipeline** | — | Orchestrator: chains the front-end → nibli-semantics → nibli-reason into a single WASM component |
+| **nibli-host** | — | Native Wasmtime host, REPL, and TCP compute backend client |
 
 Supporting crates:
 
@@ -88,7 +88,7 @@ building alternative front-ends or consumers against it).
 
 **Canonical entrypoints:**
 
-- **`gasnu`** — Local REPL and operator runtime for the theorem prover. The main single-node runtime. Use `just run`.
+- **`nibli-host`** — Local REPL and operator runtime for the theorem prover. The main single-node runtime. Use `just run`.
 - **`nibli-ui`** — Standalone browser frontend (Dioxus). The engine is compiled into the WASM bundle and runs fully in-browser — no server. Use `just ui`.
 
 **Supporting surfaces:**
@@ -233,7 +233,7 @@ You query by **stating the proposition you want checked**, not by asking a quest
 
 ## Transparency Triad UI
 
-Nibli includes a standalone web UI (Dioxus) — the full reasoning engine (nibli-kr → smuni → logji) is compiled into the WASM bundle and runs **entirely in the browser**. nibli has no server.
+Nibli includes a standalone web UI (Dioxus) — the full reasoning engine (nibli-kr → nibli-semantics → nibli-reason) is compiled into the WASM bundle and runs **entirely in the browser**. nibli has no server.
 
 ```bash
 # Start the web UI (port 8080)
@@ -244,7 +244,7 @@ To build a release bundle (`just build-ui`) or self-host, see [`DEPLOY.md`](DEPL
 
 The three tabs are **Source** (plain English), **nibli KR** (the formal encoding), and **Back-translation** (the structure-exposing gloss). The reasoning is fully local; the **only** optional network call is **Formalize** on the Source tab — a *bring-your-own-key* LLM request sent **directly from your browser** to a provider you choose (Anthropic, OpenAI, OpenRouter, Google Gemini, or any OpenAI-compatible/local endpoint). Configure it via the gear button: the API key is held **in that tab's memory only** — never persisted to storage and never routed through any nibli server (there is none), and it is erased on tab close/reload.
 
-Formalize runs the **agentic formalizer** (`nibli-formalize`) — "formalize", not "compile": the LLM step is interpretive and sits *outside* the reasoning firewall, behind deterministic gates. The LLM's draft is validated by the *real compilers* — the nibli-kr front-end (grammar + fail-closed name resolution) + smuni (semantics) + a canonical render **round-trip** check — and any compiler error is fed back for the model to self-correct, so what lands in the nibli KR tab already passes those gates. It is still a *draft* — you review the nibli KR (and its back-translation) before the deterministic engine reasons over it, and you can skip Formalize entirely and type nibli KR directly.
+Formalize runs the **agentic formalizer** (`nibli-formalize`) — "formalize", not "compile": the LLM step is interpretive and sits *outside* the reasoning firewall, behind deterministic gates. The LLM's draft is validated by the *real compilers* — the nibli-kr front-end (grammar + fail-closed name resolution) + nibli-semantics (semantics) + a canonical render **round-trip** check — and any compiler error is fed back for the model to self-correct, so what lands in the nibli KR tab already passes those gates. It is still a *draft* — you review the nibli KR (and its back-translation) before the deterministic engine reasons over it, and you can skip Formalize entirely and type nibli KR directly.
 
 The header has an **example** dropdown that loads a preloaded, book-derived knowledge base into the triad — **Syllogism** (Ch 19), **GDPR compliance** (Ch 20), or **Drug interactions** (Ch 21). In an example the KB source is read-only, Formalize is disabled, and the query box becomes a dropdown of that example's preset queries (selecting one runs it immediately). The default, **Custom**, is the editable mode. The example corpora are the committed `gdpr.nibli` / `drug-interactions.nibli` files the engine's regression tests pin.
 
@@ -283,13 +283,13 @@ tenfa(8, 2, 3).                     # Assert: 8 = 2^3
 
 **Built-in arithmetic** (always local, no backend needed): `pilji` (multiply), `sumji` (add), `dilcu` (divide) — nibli KR spellings `product`/`sum`/`quotient`.
 
-> **One deliberate approximation.** `pilji`/`sumji`/`dilcu` check `x1 = x2 ∘ x3` with **tolerant** float equality — `isclose` with relative tolerance `1e-9` (matching Python's `math.isclose`), i.e. `|a − b| ≤ 1e-9 · max(|a|, |b|)`. So `0.3 = 0.1 + 0.2` answers `TRUE` despite IEEE-754 rounding making the sum `0.30000000000000004`. That is a real, bounded approximation on the numeric result — the one place Nibli is not bit-exact. The equality predicate **`dunli` (`=`) is exact** (`==`, tolerates no rounding); `dilcu`'s divide-by-zero check is likewise an exact guard. The single evaluator (`nibli-types/src/arithmetic.rs`) is shared by the in-WASM engine, the `gasnu` host, and the Python reference backend, so all three agree.
+> **One deliberate approximation.** `pilji`/`sumji`/`dilcu` check `x1 = x2 ∘ x3` with **tolerant** float equality — `isclose` with relative tolerance `1e-9` (matching Python's `math.isclose`), i.e. `|a − b| ≤ 1e-9 · max(|a|, |b|)`. So `0.3 = 0.1 + 0.2` answers `TRUE` despite IEEE-754 rounding making the sum `0.30000000000000004`. That is a real, bounded approximation on the numeric result — the one place Nibli is not bit-exact. The equality predicate **`dunli` (`=`) is exact** (`==`, tolerates no rounding); `dilcu`'s divide-by-zero check is likewise an exact guard. The single evaluator (`nibli-types/src/arithmetic.rs`) is shared by the in-WASM engine, the `nibli-host` host, and the Python reference backend, so all three agree.
 
 **External predicates** (via backend): `tenfa` (exponentiation), `dugri` (logarithm), and any custom predicates you add to the backend server.
 
 > **Trust boundary.** An external predicate is a **trusted oracle**, not something Nibli proves. When the backend replies `true`, that result is auto-asserted into the knowledge base as a ground fact mid-query, and the reasoner's rules chain on it exactly like a premise you asserted. Nibli never re-derives or checks it — the backend (and whoever operates it) is part of the trusted computing base. A proof that passes through `tenfa`/`dugri` is sound only relative to that oracle.
 
-Configure with `NIBLI_COMPUTE_ADDR=host:port` or `:backend host:port` in the REPL. Connection is lazy (connects on first dispatch) with auto-reconnect. The browser UI has no TCP, so external predicates resolve only in the `gasnu` REPL; built-in arithmetic still works everywhere.
+Configure with `NIBLI_COMPUTE_ADDR=host:port` or `:backend host:port` in the REPL. Connection is lazy (connects on first dispatch) with auto-reconnect. The browser UI has no TCP, so external predicates resolve only in the `nibli-host` REPL; built-in arithmetic still works everywhere.
 
 If an external predicate's backend is unreachable (or unconfigured), the query returns `UNKNOWN (backend-unavailable)` — never a definitive `FALSE`. A backend the engine cannot consult is genuinely undetermined, not a derived falsehood.
 

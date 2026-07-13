@@ -1,7 +1,7 @@
 # Deploying nibli
 
 nibli's web surfaces run **entirely in the browser** — the reasoning engine
-(nibli-kr → smuni → logji) is compiled into a WASM bundle and there is **no nibli
+(nibli-kr → nibli-semantics → nibli-reason) is compiled into a WASM bundle and there is **no nibli
 server**. "Deploying" is therefore just hosting static bundles.
 
 There are two distinct deployables (don't conflate them):
@@ -32,7 +32,7 @@ Formalize feature needs is baked into the `nibli-ui` bundle at build time:
   curated aliases and the deployed nibli KR examples/Formalize lose the long-tail
   vocabulary. `scripts/build_nibli.sh` in the site repo carries this step
   (warn-and-continue on fetch failure — the fallback still builds).
-- The local gates (**nibli-kr + smuni + round-trip**) run in-browser with **zero
+- The local gates (**nibli-kr + nibli-semantics + round-trip**) run in-browser with **zero
   network**. The *only* optional network call is the user's own BYO-key LLM
   request for Formalize.
 
@@ -61,7 +61,7 @@ Hosted **Formalize works end-to-end**:
 
 - Open the playground, enter your LLM API key in settings (BYO-key, held in
   that tab's memory only), click **Formalize** on the Source tab — the draft is
-  validated by the local nibli-kr+smuni+round-trip gates and the self-correction
+  validated by the local nibli-kr+nibli-semantics+round-trip gates and the self-correction
   trace shows the attempts; a valid result fills the nibli KR tab.
 - The example dropdown's GDPR/Drug KBs assert without "unknown predicate" errors —
   the proof the deployed bundle was built WITH the dictionary (full alias map).

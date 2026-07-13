@@ -63,22 +63,65 @@ session lands (its Lojban-era JS/KB no longer compiles; `nibli-wasm` keeps
 `set_language`/`back_translate` as deprecated no-op/gloss shims so the JS at
 least loads), and `verify-book` is red until the book migrates or pins the tag.
 
-- **Lojban identifier + crate purge (everything but the predicate names)** — rename
-  the surviving Lojban-named crates and boundary names. PROPOSALS (decide per crate
-  at implementation): `smuni` → `nibli-semantics`/`nibli-compile`, `logji` →
-  `nibli-logic`/`nibli-reason`, `lasna` → `nibli-pipeline` (artifact `nibli.wasm` →
-  `nibli.wasm`; WIT world `lasna-pipeline` → `nibli-pipeline`, interface `lasna` →
-  `engine`), `gasnu` → `nibli-host`/`nibli-repl` (~25 smoke recipes rename),
-  `nibli-formalize` → `nibli-formalize`, `nibli-lexicon` → `nibli-lexicon`
-  (consider folding `nibli-kr-dictionary` in behind a feature — the two-crate split
-  exists only to keep the reverse map out of the web bundle). WIT package
-  `lojban:nibli@0.1.0` → `nibli:engine@0.2.0` (bindings regen, one commit with both
-  sides). flake.nix description + shell banner ("Lojban NeSy Engine" →
-  "nibli — Zero-Hallucination Symbolic Reasoning Engine"). Internal vocabulary
-  sweep in surviving crates (selbri→predicate/relation, sumti→term/argument,
-  bridi→claim/statement, tanru→compound, xorlo→presupposition-witness,
-  gismu→root-word/lexeme, `fanva/PROMPT.md` archive → donation repo). The WIT doc
-  comments' Lojban glosses (zo'e/le/la/pu/ca/ba/du/go'i) go with it.
+**CRATE PURGE: LANDED (2026-07-13).** The 6 Lojban-named crates renamed —
+`smuni`→`nibli-semantics`, `logji`→`nibli-reason`, `lasna`→`nibli-pipeline`,
+`gasnu`→`nibli-host`, `nibli-fanva`→`nibli-formalize`, `smuni-dictionary`→
+`nibli-lexicon` (user choice "semantics/reason/host"). WIT package
+`lojban:nibli`→`nibli:engine`, world `lasna-pipeline`→`nibli-pipeline`, interface
+`lasna`→`engine`, artifact `nibli.wasm`. The flat-AST TYPE names + grammar-vocabulary
+fns/fields de-Lojbanized (Sumti→Argument, Selbri→Predicate, Bridi→Proposition,
+Gadri→Determiner, BaiTag→ModalRelation, Attitudinal→DeonticMood;
+`compile_from_gerna_ast`→`compile_from_ast`, JbovlasteSchema→LexiconSchema, …).
+DEFERRED to the two follow-up bullets below (user chose both; each an isolated,
+higher-risk change): the ~40 cmavo enum-VARIANT romanizations (paired with the vestige
+audit, which deletes half the variant enums) and the dictionary fold. The predicate-name
+VALUES (gismu in the wire protocol, dictionaries, IR strings, proof-trace output, redb
+keys) stay — that is the predicate-name de-Lojbanization bullet. `nibli` survives.
+
+- **Lojban-shaped vestige audit + surviving cmavo-variant rename** — two coupled
+  remainders of the crate purge (the audit DELETES several variant-bearing enums, so
+  rename only survivors). The AST retains Lojban capacity the ONLY front-end
+  (nibli-kr emit.rs) can never produce — it survives solely as render fail-closed arms
+  (forced by `__ast_parity_guard`), nibli-semantics match arms, and hand-built test
+  fixtures. Verify-then-remove each (parity-guard-protected: drop variant -> drop
+  render arm -> drop handling + tests, stay CI-green; check NIBLI_KR §14 v2 profile
+  before deleting):
+  - `PlaceTag`/`Place` -> collapse to a numeric place index. Redundant round-trip:
+    named arities resolve to an index (nibli-kr/src/resolve.rs:92 `label_index`
+    -> emit.rs:240), which nibli-semantics re-derives via `to_index()`
+    (semantic/compile.rs:116). Replace `Argument::Tagged((Place, ArgumentId))` with `u8`.
+  - `ModalRelation` (ex-BaiTag) + `ModalTag::Fixed` + `modal_relation_name()` — nibli-kr's
+    `via:` emits the general `Fio` modal, never the fixed BAI causal set. DEAD.
+  - `SentenceConnective::GaGi`/`GoGi` (forethought or/iff) — emit only produces
+    `GanaiGi`/`GeGi`. DEAD. `RelClauseKind::Voi` — emit produces only `Poi`/`Noi`. DEAD.
+  - `Determiner::La` (the la name-description) — names emit as `Argument::Name`. DEAD.
+  - The da/de/di 3-variable lowering cap (`VAR_NAMES`) — a Lojban-shaped limit; named
+    $vars make it arbitrary (cross-refs the predicate-name bullet, which lifts it).
+  - Also audit `question_vars` (the `?` form), the presupposition-witness machinery, the
+    `du`-equality path, elidable-terminator logic, `Sentence::Prenex`.
+  Then rename SURVIVING cmavo variants to English (compiler-guided — short tokens like
+  `Se`/`Je`/`Lo` appear inside other words, so rename `Type::Variant`-qualified + fix
+  bare match arms per rustc): `Tense` Pu/Ca/Ba->Past/Now/Future, `Conversion`
+  Se/Te/Ve/Xe->Swap12..15, `Connective` Je/Ja/Jo/Ju->And/Or/Iff/Whether, `Determiner`
+  Lo/Le/RoLo/RoLe->Indefinite/Definite/UniversalIndefinite/UniversalDefinite,
+  `AbstractionKind` Nu/Duhu/Ka/Ni/Siho->Event/Fact/Property/Amount/Concept,
+  `RelClauseKind` Poi/Noi->Restrictive/Incidental, `DeonticMood` Ei/Ehe->
+  Obligation/Permission, `SentenceConnective` GanaiGi/GeGi->Implies/And-Forethought,
+  `Predicate::Tanru`->`Predicate::Pair`/`Modified` (Compound is taken). Plus lowercase
+  local vocab (loop vars `sumtis`/`selbris`/`bridi`; `test_sumti_*`/`test_bridi_*` fn
+  names) — scope AWAY from the dictionary gismu VALUES. PredName VALUES stay (next bullet).
+- **Fold nibli-kr-dictionary into nibli-lexicon (feature-gated)** — user chose to fold;
+  deferred from the crate purge as its own isolated, revertable change (a ~500-line
+  build.rs merge with dual-mode + alias<->arity-agreement risk, orthogonal to
+  de-Lojbanization). Design: nibli-lexicon/build.rs already `#[path="src/arity.rs"]
+  mod arity`s; accumulate a `word->Option<usize>` arity_map during the forward-dict
+  loop (Some(n) for gismu/lujvo, None for cmavo — exactly what runtime `get_arity`
+  returns), then port nibli-kr-dictionary/build.rs's alias generation feature-gated
+  (`alias-map`), replacing every `nibli_lexicon::get_arity(w)` with
+  `arity_map.get(w).copied().flatten()`. Move curated.rs/label.rs/reserved.rs + the
+  alias API (alias/canonical_alias/AliasEntry/GISMU_TO_ALIAS) into nibli-lexicon under
+  the feature; nibli-kr/nibli-ui/nibli-verify depend with `features=["alias-map"]`;
+  delete the crate + workspace member; update verify-nibli-kr-dict/test-nibli-kr-dict.
 - **Grammar+dictionary-grounded Formalize prompts (user decision 2026-07-12)** — the
   Transparency Triad's Formalize system prompt must contain the ACTUAL KR grammar and
   the dictionary, so the LLM formalizes against ground truth instead of nine

@@ -9,7 +9,7 @@
      1  App shell / layout                  8  Query row + status badge
      2  Tabs                                9  Output log
      3  Source tab                         10  Network — gossip + summary
-     4  Lojban tab + KB status             11  Network — agents
+     4  KB tab + status             11  Network — agents
      5  Back-translation                   12  Network — events / envelopes
      6  Buttons (shared)                   13  Network — contradictions
                                            14  kbd hints, keyframes, scrollbars
@@ -326,7 +326,7 @@ body {
 }
 .translate-error::before { content: "⊥"; color: var(--danger); font-size: var(--fs-ui); line-height: 1.2; }
 
-/* ── 4 · LOJBAN TAB + KB STATUS ───────────────────────────────────────── */
+/* ── 4 · KB TAB + STATUS ───────────────────────────────────────── */
 .kb-toolbar { display: flex; align-items: center; gap: var(--s2); flex: none; }
 .kb-toolbar__sp { flex: 1; }
 
@@ -334,7 +334,7 @@ body {
   flex: 1; min-height: 180px; width: 100%; resize: none;
   padding: var(--s3) var(--s4);
   background: var(--surface-inset);
-  color: var(--quanta-300);               /* Lojban renders in the symbolic violet */
+  color: var(--quanta-300);               /* the KB renders in the symbolic violet */
   font-family: var(--font-mono); font-size: var(--fs-code); line-height: var(--lh-code);
   tab-size: 2;
   border: var(--bw-hair) solid var(--border-subtle);
@@ -638,7 +638,7 @@ body {
   min-height: 0;
 }
 /* The query column now reuses the `.col-tabs` card + `.tabs-container` chrome (a
-   tabbed mirror of the top column: Source | Lojban | Back-translation), so the
+   tabbed mirror of the top column: Source | nibli KR | Back-translation), so the
    old `.query-section` / `.query-header` rules are gone. */
 
 /* (The connection `.status-badge` was removed with the serverless rewrite — the
@@ -1059,7 +1059,7 @@ body {
 }
 
 /* ── LLM integration: config gear, modal, provider picker ──────────────────
-   The optional, bring-your-own-key Source→Lojban translate. The modal makes the
+   The optional, bring-your-own-key Source→KB formalize. The modal makes the
    "your key never leaves this tab" guarantee visible; styling stays on QUINE
    tokens. The translate-row/translate-btn/source-input/nb-eyebrow it sits beside
    are defined above.                                                          */

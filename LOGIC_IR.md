@@ -5,8 +5,8 @@ This is the specification of nibli's first-order-logic intermediate representati
 public document because three independent parties asked for the same thing — a shared logic
 representation to target from ontology tooling, from other loglang front-ends (Toaq / Xextan /
 Eberban), and as a JSON translation-pivot between languages ("Predilog"). **The IR is nibli's
-language-agnostic seam**: only the parser (`gerna`) and the word dictionary (`nibli-lexicon`)
-are front-end-specific; the IR, the backward-chaining reasoner (`logji`), the Vampire/clingo
+language-agnostic seam**: only the parser (`nibli-kr`) and the word dictionary (`nibli-lexicon`)
+are front-end-specific; the IR, the backward-chaining reasoner (`nibli-reason`), the Vampire/clingo
 differential gates, and the Lean 4 soundness proofs all operate on or below this format.
 
 Everything in this document is derived from source; file pointers are given so a claim can be
@@ -17,7 +17,7 @@ crate (no per-crate mirrors).
 ## Where the IR sits
 
 ```
-KR text ──nibli-kr──▶ AST ──smuni──▶ LogicBuffer ──logji──▶ TRUE / FALSE / UNKNOWN + ProofTrace
+KR text ──nibli-kr──▶ AST ──nibli-semantics──▶ LogicBuffer ──nibli-reason──▶ TRUE / FALSE / UNKNOWN + ProofTrace
                                           │
                                           ├──▶ TPTP (Vampire oracle, nibli-verify/src/tptp.rs)
                                           ├──▶ ASP  (clingo oracle,  nibli-verify/src/asp.rs)
@@ -113,7 +113,7 @@ contract, not accident:
   wrapping the compiled body **directly** — no restrictor, no arrow — so a `ForAllNode` body is
   the implication shape for description universals but not for prenex ones. Bare `da/de/di`
   close as `Exists` with the literal variable names `"da"/"de"/"di"`.
-- **Connectives.** Sentence/selbri/sumti conjunction → `AndNode`, disjunction → `OrNode`,
+- **Connectives.** Sentence/predicate/argument conjunction → `AndNode`, disjunction → `OrNode`,
   `ganai…gi` (conditional) → `Or(Not(left), right)`; biconditional/xor arrive pre-expanded as
   above.
 - **Tense and deontics** wrap the whole predication: `PastNode`/`PresentNode`/`FutureNode` and
@@ -132,7 +132,7 @@ contract, not accident:
   flat `rinka(…)` — so the same relation name can appear both flat and event-decomposed across
   buffers); `ro le`/`PA le` emit a flat unary `le_domain_<name>` restrictor atom; and
   abstraction *type* predicates (`nu`/`duhu`/`ka`/`ni`/`siho`) and `__abs_` markers are flat
-  unary. Main-bridi predications are always event-decomposed.
+  unary. Main-predication claims are always event-decomposed.
 - **Queries compile identically to assertions.** The divergence between asserting and querying
   is entirely post-buffer.
 
@@ -185,7 +185,7 @@ fragment filter scans source tokens for exactly this reason). Scope details live
 **Produce a buffer** (text → IR): `compile_debug(text)` on the two surfaces that expose it —
 native (`nibli_engine::NibliEngine::compile_debug`) and the WIT session
 (`compile-debug: func(input: string) -> result<logic-buffer, nibli-error>`) — or directly via
-`nibli_semantics::compile_from_gerna_ast` (remember `transform_compute_nodes` afterward; the browser
+`nibli_semantics::compile_from_ast` (remember `transform_compute_nodes` afterward; the browser
 `Session` does not export a compile-only method). Programmatic
 single facts: `nibli_semantics::compile_injected_fact(relation, args)` — event-decomposes and arity-pads
 exactly like surface text (with the flat-`du` exception).
@@ -204,7 +204,7 @@ without touching the IR:
 |---|---|---|
 | `nibli_engine::NibliEngine` (native Rust) | `assert_text -> Vec<u64>`, `query_text_with_proof`, `query_find_text`, `retract_fact`, `compile_debug`, optional redb persistence | Splits roots: a bare-`.i` multi-sentence text becomes N independent facts |
 | `nibli-wasm` `Session` (browser JS) | `assert_text -> Vec<u64>`, `query_with_proof -> JSON string`, `list_facts -> JSON`, `retract_fact`, `reset` | The query JSON has keys `status`, `detail`, `naf_dependent`, `cwa_false`, `proof_text`, `why`, `proof` (the full `ProofTrace`) |
-| `lasna` WASM component (WIT world `lasna-pipeline`) | `assert-text -> list<(fact-id, logic-buffer)>`, `assert-buffer-with-id` (recompile-free replay), `query-text-with-proof -> (query-result, proof-trace)`, `compile-debug -> logic-buffer`, `assert-fact`, `set-strict`, … | Imports `compute-backend` from the host. Splits roots like the native surfaces; each pair carries the root's compiled buffer so a persisting host (gasnu) stores the FACT itself. `assert-text-with-id` remains as a legacy replay path for pre-buffer text-payload store rows |
+| `nibli-pipeline` WASM component (WIT world `nibli-pipeline`) | `assert-text -> list<(fact-id, logic-buffer)>`, `assert-buffer-with-id` (recompile-free replay), `query-text-with-proof -> (query-result, proof-trace)`, `compile-debug -> logic-buffer`, `assert-fact`, `set-strict`, … | Imports `compute-backend` from the host. Splits roots like the native surfaces; each pair carries the root's compiled buffer so a persisting host (nibli-host) stores the FACT itself. `assert-text-with-id` remains as a legacy replay path for pre-buffer text-payload store rows |
 
 Verdicts everywhere are `QueryResult`: `True`, `False`, `Unknown(reason)` (cycle-cut /
 incomplete-knowledge / naf-dependent / backend-unavailable / non-finite), or
@@ -228,7 +228,7 @@ The two shipped external consumers are the templates, and they also define the d
 
 A **producer** (an alternative front-end) must emit the invariant shapes above — most importantly
 the event decomposition with consistent role arities, the ∀-as-implication arrow, and flat
-2-arg `du` — and hand the buffer to the `logji` entry points (running
+2-arg `du` — and hand the buffer to the `nibli-reason` entry points (running
 `transform_compute_nodes` if it uses compute relations). The reasoner rejects non-stratifiable
 rule sets at assert time (the stratification criterion is Lean-proved and
 differentially tested), so a producer gets soundness checking for free.
@@ -253,7 +253,7 @@ differentially tested), so a producer gets soundness checking for free.
   compiled buffer), the `__abs_` hash digits, `__neg_ev*` pattern variables (reasoner-internal),
   node ordering beyond the post-order guarantee, and concrete index values.
 - The compiler's internal tree IR (`nibli_semantics::ir::LogicalForm`, `Spur`-interned, with
-  `Biconditional`/`Xor`), `logji`'s stored-fact forms, and the `nibli-store` on-disk mirrors.
+  `Biconditional`/`Xor`), `nibli-reason`'s stored-fact forms, and the `nibli-store` on-disk mirrors.
 - `AggregateOp` and the compute wire structs are Rust-side auxiliaries, not buffer types.
 
 **Versioning:** the buffer itself carries no version field. The WIT package version
