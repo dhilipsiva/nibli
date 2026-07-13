@@ -393,7 +393,7 @@ impl SemanticCompiler {
                 for arg in args {
                     if let LogicalTerm::Variable(spur) = arg {
                         let name = interner.resolve(spur);
-                        if matches!(name, "da" | "de" | "di")
+                        if name.starts_with('$')
                             && !bound.contains(spur)
                             && !prenex.contains(spur)
                             && seen.insert(*spur)
@@ -444,7 +444,7 @@ impl SemanticCompiler {
     ) {
         if let LogicalTerm::Variable(spur) = term {
             let spur = *spur;
-            let is_logic_var = matches!(self.interner.resolve(&spur), "da" | "de" | "di");
+            let is_logic_var = self.interner.resolve(&spur).starts_with('$');
             if is_logic_var && !self.prenex_vars.contains(&spur) && introduced.insert(spur) {
                 markers.push(ScopeMarker::Bare(spur));
             }

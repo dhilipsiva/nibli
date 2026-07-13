@@ -346,7 +346,7 @@ mod tests {
     /// The quantifier-binder sequence from the ROOT inward, following the single
     /// body branch through transparent Not/tense/deontic wrappers and stopping at
     /// the first And/Or/Predicate. Lets a test distinguish `∃da.∀x`
-    /// (`[Exists("da"), ForAll]`) from `∀x.∃da` (`[ForAll]`, the `da` hidden in
+    /// (`[Exists("$da"), ForAll]`) from `∀x.∃da` (`[ForAll]`, the `da` hidden in
     /// the universal's matrix Or). Use `exists_outscopes_forall` for ∃-over-∀
     /// nesting that the Or/And hides from the spine.
     fn binder_spine(form: &LogicalForm, compiler: &SemanticCompiler) -> Vec<Binder> {
@@ -1086,8 +1086,8 @@ mod tests {
         // da prami mi → ∃da. event_decomposed_prami(da, mi, ...)
         let predicates = vec![Predicate::Root("prami".into())];
         let arguments = vec![
-            Argument::Pronoun("da".into()), // 0
-            Argument::Pronoun("mi".into()), // 1
+            Argument::Pronoun("$da".into()), // 0
+            Argument::Pronoun("mi".into()),  // 1
         ];
         let proposition = Proposition {
             relation: 0,
@@ -1103,7 +1103,7 @@ mod tests {
         // Outermost should be Exists(da, ...) wrapping the event form
         match &form {
             LogicalForm::Exists(var, _body) => {
-                assert_eq!(resolve(&compiler, var), "da");
+                assert_eq!(resolve(&compiler, var), "$da");
                 // Inside should have prami type pred and role preds
                 assert!(
                     has_pred(&form, "prami", &compiler),
@@ -1112,7 +1112,7 @@ mod tests {
                 // prami_x1 should have Variable(da)
                 let x1_args = get_pred_args(&form, "prami_x1", &compiler).unwrap();
                 match &x1_args[1] {
-                    LogicalTerm::Variable(v) => assert_eq!(resolve(&compiler, v), "da"),
+                    LogicalTerm::Variable(v) => assert_eq!(resolve(&compiler, v), "$da"),
                     other => panic!("expected Variable(da) in prami_x1, got {:?}", other),
                 }
                 // prami_x2 should have Constant(mi)
@@ -1131,8 +1131,8 @@ mod tests {
         // da prami de → ∃da. ∃de. event_decomposed_prami(da, de, ...)
         let predicates = vec![Predicate::Root("prami".into())];
         let arguments = vec![
-            Argument::Pronoun("da".into()), // 0
-            Argument::Pronoun("de".into()), // 1
+            Argument::Pronoun("$da".into()), // 0
+            Argument::Pronoun("$de".into()), // 1
         ];
         let proposition = Proposition {
             relation: 0,
@@ -1155,7 +1155,7 @@ mod tests {
                         // Both da and de should appear (order may vary)
                         let mut names = vec![name1, name2];
                         names.sort();
-                        assert_eq!(names, vec!["da", "de"]);
+                        assert_eq!(names, vec!["$da", "$de"]);
                         // The body is now an event-decomposed form (Exists wrapping event)
                         assert!(
                             has_pred(&form, "prami", &compiler),
@@ -1174,8 +1174,8 @@ mod tests {
         // da prami da → ∃da. event_decomposed_prami(da, da, ...) (only one entity Exists)
         let predicates = vec![Predicate::Root("prami".into())];
         let arguments = vec![
-            Argument::Pronoun("da".into()), // 0
-            Argument::Pronoun("da".into()), // 1 (same variable)
+            Argument::Pronoun("$da".into()), // 0
+            Argument::Pronoun("$da".into()), // 1 (same variable)
         ];
         let proposition = Proposition {
             relation: 0,
@@ -1191,7 +1191,7 @@ mod tests {
         // Should be Exists(da, Exists(ev, ...)) — NOT Exists(da, Exists(da, ...))
         match &form {
             LogicalForm::Exists(var, body) => {
-                assert_eq!(resolve(&compiler, var), "da");
+                assert_eq!(resolve(&compiler, var), "$da");
                 // The body should be the event Exists, not another da Exists
                 match body.as_ref() {
                     LogicalForm::Exists(ev_var, _) => {
@@ -1216,7 +1216,7 @@ mod tests {
     fn test_di_produces_exists() {
         // di barda → ∃di. barda(di, ...)
         let predicates = vec![Predicate::Root("barda".into())];
-        let arguments = vec![Argument::Pronoun("di".into())];
+        let arguments = vec![Argument::Pronoun("$di".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -1230,7 +1230,7 @@ mod tests {
 
         match &form {
             LogicalForm::Exists(var, _) => {
-                assert_eq!(resolve(&compiler, var), "di");
+                assert_eq!(resolve(&compiler, var), "$di");
             }
             other => panic!("expected Exists for di, got {:?}", other),
         }
@@ -1242,7 +1242,7 @@ mod tests {
         // negation wraps OUTSIDE the existential
         let predicates = vec![Predicate::Root("prami".into())];
         let arguments = vec![
-            Argument::Pronoun("da".into()),
+            Argument::Pronoun("$da".into()),
             Argument::Pronoun("mi".into()),
         ];
         let proposition = Proposition {
@@ -1573,8 +1573,8 @@ mod tests {
             Predicate::WithArgs((0, vec![1])), // 1: klama be da
         ];
         let arguments = vec![
-            Argument::Pronoun("mi".into()), // 0
-            Argument::Pronoun("da".into()), // 1 (be-arg)
+            Argument::Pronoun("mi".into()),  // 0
+            Argument::Pronoun("$da".into()), // 1 (be-arg)
         ];
         let proposition = Proposition {
             relation: 1,
@@ -1605,7 +1605,7 @@ mod tests {
         let arguments = vec![
             Argument::Pronoun("mi".into()),                     // 0
             Argument::Description((Determiner::Indefinite, 1)), // 1: lo nu ...
-            Argument::Pronoun("da".into()),                     // 2 (broda body x1)
+            Argument::Pronoun("$da".into()),                    // 2 (broda body x1)
         ];
         let sentences = vec![
             Sentence::Simple(Proposition {
@@ -1628,7 +1628,7 @@ mod tests {
         let (form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert_eq!(
-            count_exists_binding(&form, "da", &compiler),
+            count_exists_binding(&form, "$da", &compiler),
             1,
             "`da` must be wrapped exactly once (no double-wrap)"
         );
@@ -1651,7 +1651,7 @@ mod tests {
             Predicate::Root("gerku".into()), // 1
         ];
         let arguments = vec![
-            Argument::Pronoun("da".into()), // 0: da (x1)
+            Argument::Pronoun("$da".into()), // 0: da (x1)
             Argument::Description((Determiner::UniversalIndefinite, 1)), // 1: ro lo gerku (x2)
         ];
         let proposition = Proposition {
@@ -1666,12 +1666,12 @@ mod tests {
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert_eq!(
             binder_spine(&form, &compiler),
-            vec![Binder::Exists("da".into()), Binder::ForAll],
+            vec![Binder::Exists("$da".into()), Binder::ForAll],
             "leading `da` must outscope the universal (∃da.∀x): got {:?}",
             binder_spine(&form, &compiler)
         );
         assert!(
-            exists_outscopes_forall(&form, "da", &compiler),
+            exists_outscopes_forall(&form, "$da", &compiler),
             "`da` existential must dominate the universal"
         );
         assert!(free_vars(&form, &compiler).is_empty());
@@ -1689,7 +1689,7 @@ mod tests {
         ];
         let arguments = vec![
             Argument::Description((Determiner::UniversalIndefinite, 1)), // 0: ro lo gerku (x1)
-            Argument::Pronoun("da".into()),                              // 1: da (x2)
+            Argument::Pronoun("$da".into()),                             // 1: da (x2)
         ];
         let proposition = Proposition {
             relation: 0,
@@ -1707,10 +1707,10 @@ mod tests {
             "trailing `da` must stay under the universal (∀x.∃da)"
         );
         assert!(
-            !exists_outscopes_forall(&form, "da", &compiler),
+            !exists_outscopes_forall(&form, "$da", &compiler),
             "`da` must NOT outscope the universal in the after-case"
         );
-        assert!(count_exists_binding(&form, "da", &compiler) >= 1);
+        assert!(count_exists_binding(&form, "$da", &compiler) >= 1);
         assert!(free_vars(&form, &compiler).is_empty());
     }
 
@@ -1726,7 +1726,7 @@ mod tests {
         ];
         let arguments = vec![
             Argument::QuantifiedDescription((2, Determiner::Indefinite, 1)), // 0: re lo gerku (x1)
-            Argument::Pronoun("da".into()),                                  // 1: da (x2)
+            Argument::Pronoun("$da".into()),                                 // 1: da (x2)
             Argument::Description((Determiner::UniversalIndefinite, 2)),     // 2: ro lo mlatu (x3)
         ];
         let proposition = Proposition {
@@ -1746,10 +1746,10 @@ mod tests {
             binder_spine(&form, &compiler)
         );
         assert!(
-            exists_outscopes_forall(&form, "da", &compiler),
+            exists_outscopes_forall(&form, "$da", &compiler),
             "`da` (x2) must outscope the universal (x3) it precedes"
         );
-        assert_eq!(count_exists_binding(&form, "da", &compiler), 1);
+        assert_eq!(count_exists_binding(&form, "$da", &compiler), 1);
         assert!(free_vars(&form, &compiler).is_empty());
     }
 
@@ -1766,7 +1766,7 @@ mod tests {
         ];
         let arguments = vec![
             Argument::Description((Determiner::UniversalIndefinite, 2)), // 0: ro lo gerku (x1)
-            Argument::Pronoun("da".into()),                              // 1: da (be-arg)
+            Argument::Pronoun("$da".into()),                             // 1: da (be-arg)
         ];
         let proposition = Proposition {
             relation: 1,
@@ -1784,10 +1784,10 @@ mod tests {
             "root must stay ForAll (logji rule shape)"
         );
         assert!(
-            !exists_outscopes_forall(&form, "da", &compiler),
+            !exists_outscopes_forall(&form, "$da", &compiler),
             "a be-arg `da` is closed innermost, under the universal"
         );
-        assert_eq!(count_exists_binding(&form, "da", &compiler), 1);
+        assert_eq!(count_exists_binding(&form, "$da", &compiler), 1);
         assert!(free_vars(&form, &compiler).is_empty());
     }
 
@@ -1814,7 +1814,7 @@ mod tests {
                     body_sentence: 1,
                 },
             )), // 1: ro lo gerku poi <body>
-            Argument::Pronoun("da".into()),                              // 2: da
+            Argument::Pronoun("$da".into()),                             // 2: da
             Argument::Tagged((1, 2)), // 3: fe da (x2 of the poi body)
         ];
         let sentences = vec![
@@ -1847,7 +1847,7 @@ mod tests {
             Some(&Binder::ForAll),
             "root must stay ForAll (the `da` is closed inside the restrictor)"
         );
-        assert_eq!(count_exists_binding(&form, "da", &compiler), 1);
+        assert_eq!(count_exists_binding(&form, "$da", &compiler), 1);
     }
 
     #[test]
@@ -1860,11 +1860,11 @@ mod tests {
             Predicate::Root("gerku".into()), // 1
         ];
         let arguments = vec![
-            Argument::Pronoun("da".into()),                     // 0: da (x1)
+            Argument::Pronoun("$da".into()),                    // 0: da (x1)
             Argument::Description((Determiner::Indefinite, 1)), // 1: lo gerku (x2)
         ];
         let sentences = vec![
-            Sentence::Prenex((vec!["da".into()], 1)),
+            Sentence::Prenex((vec!["$da".into()], 1)),
             Sentence::Simple(Proposition {
                 relation: 0,
                 head_terms: vec![0],
@@ -1877,7 +1877,7 @@ mod tests {
         let (form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert_eq!(
-            count_exists_binding(&form, "da", &compiler),
+            count_exists_binding(&form, "$da", &compiler),
             0,
             "prenex `da` must NOT be existentially re-closed"
         );
@@ -1896,8 +1896,8 @@ mod tests {
         // the safety-net subtraction).
         let predicates = vec![Predicate::Root("citka".into())];
         let arguments = vec![
-            Argument::Pronoun("da".into()), // 0: da (x1)
-            Argument::Pronoun("da".into()), // 1: da (x2)
+            Argument::Pronoun("$da".into()), // 0: da (x1)
+            Argument::Pronoun("$da".into()), // 1: da (x2)
         ];
         let proposition = Proposition {
             relation: 0,
@@ -1910,7 +1910,7 @@ mod tests {
         let (form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         assert_eq!(
-            count_exists_binding(&form, "da", &compiler),
+            count_exists_binding(&form, "$da", &compiler),
             1,
             "co-referring `da` must wrap exactly once"
         );
@@ -1923,8 +1923,8 @@ mod tests {
         // (the flat-du shape must not hide the logic var from the walk).
         let predicates = vec![Predicate::Root("du".into())];
         let arguments = vec![
-            Argument::Pronoun("da".into()), // 0
-            Argument::Pronoun("mi".into()), // 1
+            Argument::Pronoun("$da".into()), // 0
+            Argument::Pronoun("mi".into()),  // 1
         ];
         let proposition = Proposition {
             relation: 0,
@@ -1941,7 +1941,7 @@ mod tests {
             "the du `da` must be bound: free={:?}",
             free_vars(&form, &compiler)
         );
-        assert_eq!(count_exists_binding(&form, "da", &compiler), 1, "da once");
+        assert_eq!(count_exists_binding(&form, "$da", &compiler), 1, "da once");
     }
 
     // ─── inject_variable ambiguity tests ────────────────────────
@@ -2827,7 +2827,7 @@ mod tests {
         fn exists_da_somewhere(f: &LogicalForm, c: &SemanticCompiler) -> bool {
             match f {
                 LogicalForm::Exists(v, inner) => {
-                    c.interner.resolve(v) == "da" || exists_da_somewhere(inner, c)
+                    c.interner.resolve(v) == "$da" || exists_da_somewhere(inner, c)
                 }
                 LogicalForm::And(l, r)
                 | LogicalForm::Or(l, r)
@@ -2851,7 +2851,7 @@ mod tests {
         ];
         let arguments = vec![
             Argument::Description((Determiner::UniversalIndefinite, 0)), // 0: ro lo gerku
-            Argument::Pronoun("da".into()),                              // 1: da
+            Argument::Pronoun("$da".into()),                             // 1: da
         ];
         let proposition = Proposition {
             relation: 1,

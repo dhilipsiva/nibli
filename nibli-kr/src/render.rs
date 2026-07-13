@@ -85,11 +85,8 @@ impl<'a> Renderer<'a> {
         let (text, prec) = match self.sentence_node(id)? {
             Sentence::Simple(proposition) => (self.proposition(proposition)?, PREC_ATOM),
             Sentence::Prenex((vars, body)) => {
-                let vars = vars
-                    .iter()
-                    .map(|v| format!("${v}"))
-                    .collect::<Vec<_>>()
-                    .join(", ");
+                // The prenex variable names already carry their `$` sigil.
+                let vars = vars.iter().cloned().collect::<Vec<_>>().join(", ");
                 (format!("all {vars}: {}", self.sentence(*body, 0)?), 0)
             }
             Sentence::Connected((conn, left, right)) => match conn {
@@ -512,9 +509,8 @@ impl<'a> Renderer<'a> {
                 "ce'u" => "slot".into(),
                 "ma" => "?".into(),
                 "zo'e" => "_".into(),
-                "da" => "$da".into(),
-                "de" => "$de".into(),
-                "di" => "$di".into(),
+                // A logic variable is preserved as `$name` (no da/de/di lowering).
+                other if other.starts_with('$') => other.into(),
                 other => {
                     // §10 out-of-scope pro-argument (ri/ra/ru anaphora, ko, an
                     // unresolved go'i, …) fail closed BY NAME — in the

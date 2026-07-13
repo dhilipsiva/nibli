@@ -265,7 +265,7 @@ impl SemanticCompiler {
                     let var = self.fresh_var();
                     self.question_vars.push(var);
                     LogicalTerm::Variable(var)
-                } else if matches!(p.as_str(), "da" | "de" | "di") {
+                } else if p.starts_with('$') {
                     LogicalTerm::Variable(self.interner.get_or_intern(p.as_str()))
                 } else if p.as_str() == "ke'a" {
                     if let Some(var) = self.rel_clause_var {

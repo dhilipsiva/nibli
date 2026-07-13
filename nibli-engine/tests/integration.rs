@@ -3019,7 +3019,7 @@ fn ddi_witness_cyp2c9_substrates() {
         .iter()
         .filter_map(|set| {
             set.iter()
-                .find(|b| b.variable == "da")
+                .find(|b| b.variable == "$da")
                 .map(|b| nibli_engine::display_term(&b.term))
         })
         .collect();
@@ -3061,7 +3061,7 @@ fn ddi_dose_sum_aggregation() {
         "klani(Fenitoin, 7).", // 7
     ]);
     let total = engine
-        .aggregate_text("klani($da, $de).", "de", EngineAggregateOp::Sum)
+        .aggregate_text("klani($da, $de).", "$de", EngineAggregateOp::Sum)
         .unwrap();
     assert_eq!(total, Some(12.0), "Summed dose across drugs should be 12");
 }

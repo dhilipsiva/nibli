@@ -7,8 +7,10 @@
 //! Emission map (NIBLI_KR §13; design-review decisions):
 //! - predicate names resolve HERE to word (alias → word, identity words pass
 //!   through); an alias with a place swap emits `Predicate::Converted`
-//! - `$x`/`$y`/`$z` lower to `da`/`de`/`di` by first emission encounter per
-//!   statement (resolve guarantees ≤3); `?`→`ma`, `it`→`ke'a`, `slot`→`ce'u`
+//! - logic variables pass through verbatim as `Pronoun("$name")` — the `$`
+//!   sigil IS the variable signal, so the user's own names survive into the IR
+//!   (no fixed `da`/`de`/`di` pool, no 3-variable cap); `?`→`ma`, `it`→`ke'a`,
+//!   `slot`→`ce'u`
 //! - named args → `Argument::Tagged((place_index, arg))` (the u8 index
 //!   addresses SURFACE places — those of the possibly-Converted predicate)
 //! - operators emit at SENTENCE level (`Afterthought`/`Implies`); operand
@@ -59,10 +61,8 @@ pub fn emit(input: &str, statements: &[Statement]) -> Result<AstBuffer, ParseErr
             sentences: Vec::new(),
             roots: Vec::new(),
         },
-        vars: Vec::new(),
     };
     for statement in statements {
-        emitter.vars.clear();
         let root = emitter.claim(&statement.claim, statement.span.start)?;
         emitter.buffer.roots.push(root);
     }
@@ -72,11 +72,7 @@ pub fn emit(input: &str, statements: &[Statement]) -> Result<AstBuffer, ParseErr
 struct Emitter<'a> {
     input: &'a str,
     buffer: AstBuffer,
-    /// Per-statement `$var` names in first-encounter order → da/de/di.
-    vars: Vec<String>,
 }
-
-const VAR_NAMES: [&str; 3] = ["da", "de", "di"];
 
 impl<'a> Emitter<'a> {
     fn fail(&self, at: usize, message: impl Into<String>) -> ParseError {
@@ -98,19 +94,10 @@ impl<'a> Emitter<'a> {
         (self.buffer.sentences.len() - 1) as u32
     }
 
-    fn var_particle(&mut self, name: &str, at: usize) -> Result<&'static str, ParseError> {
-        if let Some(i) = self.vars.iter().position(|v| v == name) {
-            return Ok(VAR_NAMES[i]);
-        }
-        if self.vars.len() >= 3 {
-            // resolve.rs enforces the cap; defensive.
-            return Err(self.fail(
-                at,
-                format!("internal: variable `${name}` exceeds the da/de/di lowering pool"),
-            ));
-        }
-        self.vars.push(name.to_owned());
-        Ok(VAR_NAMES[self.vars.len() - 1])
+    /// Preserve the user's `$var` name — the logic variable IS `$name`, so proof
+    /// traces read `$x = adam` (no da/de/di lowering, no 3-variable cap).
+    fn var_particle(&mut self, name: &str, _at: usize) -> Result<String, ParseError> {
+        Ok(format!("${name}"))
     }
 
     fn resolved(&self, word: &str, at: usize) -> Result<PredInfo, ParseError> {
@@ -124,7 +111,7 @@ impl<'a> Emitter<'a> {
             Claim::Prenex { vars, body } => {
                 let mut lowered = Vec::new();
                 for v in vars {
-                    lowered.push(self.var_particle(v, at)?.to_owned());
+                    lowered.push(self.var_particle(v, at)?);
                 }
                 let body_idx = self.claim(body, at)?;
                 Ok(self.push_sentence(Sentence::Prenex((lowered, body_idx))))
@@ -296,7 +283,7 @@ impl<'a> Emitter<'a> {
         }
         match det {
             Det::Every => {
-                let particle = self.var_particle(var, at)?.to_owned();
+                let particle = self.var_particle(var, at)?;
                 let restr_sentence = self.restr_proposition_sentence(restr, &particle)?;
                 let body_idx = self.claim(body, at)?;
                 let impl_idx = self.push_sentence(Sentence::Connected((
@@ -307,7 +294,7 @@ impl<'a> Emitter<'a> {
                 Ok(self.push_sentence(Sentence::Prenex((vec![particle], impl_idx))))
             }
             Det::Some => {
-                let particle = self.var_particle(var, at)?.to_owned();
+                let particle = self.var_particle(var, at)?;
                 let restr_sentence = self.restr_proposition_sentence(restr, &particle)?;
                 let body_idx = self.claim(body, at)?;
                 // Bare da/de/di closes existentially at its first occurrence
@@ -407,7 +394,7 @@ impl<'a> Emitter<'a> {
             Term::Witness => Argument::Pronoun("ma".into()),
             Term::Number(n) => Argument::Number(*n),
             Term::Str(s) => Argument::QuotedLiteral(s.clone()),
-            Term::Var(v) => Argument::Pronoun(self.var_particle(v, at)?.to_owned()),
+            Term::Var(v) => Argument::Pronoun(self.var_particle(v, at)?),
             Term::Key(k) => Argument::Pronoun(keyterm_particle(*k).into()),
             Term::Name { name, rel_clauses } => {
                 let mut idx =

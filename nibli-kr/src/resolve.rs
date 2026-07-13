@@ -122,19 +122,8 @@ impl<'a> Ctx<'a> {
     }
 
     fn var(&mut self, name: &str) -> Result<(), ParseError> {
-        if self.vars.contains(name) {
-            return Ok(());
-        }
-        if self.vars.len() >= 3 {
-            return Err(self.fail(
-                self.statement_start,
-                format!(
-                    "`${name}` is the 4th distinct variable in this statement — smuni \
-                     currently lowers bare variables onto da/de/di (3 per statement); \
-                     split the statement or reuse a variable (never silently merged)"
-                ),
-            ));
-        }
+        // No cap: `$var` names are PRESERVED (never lowered onto the da/de/di
+        // pool), so any number of distinct variables per statement is fine.
         self.vars.insert(name.to_owned());
         Ok(())
     }
@@ -515,14 +504,14 @@ mod tests {
     }
 
     #[test]
-    fn variable_cap() {
+    fn many_variables_ok() {
+        // The da/de/di 3-variable cap is LIFTED — user `$var` names are preserved
+        // (never lowered onto a fixed pool), so any number of distinct variables
+        // per statement compiles.
         ok("all $x, $y, $z: loves($x, $y) & dog($z).");
-        let e = bad("dog($a) & dog($b) & dog($c) & dog($d).");
-        assert!(e.message.contains("4th distinct variable"), "{e}");
-        assert!(e.message.contains("$d"), "{e}");
-        // Bound binders share the pool with free vars.
-        let e = bad("all $x, $y, $z: loves($x, $w).");
-        assert!(e.message.contains("4th distinct variable"), "{e}");
+        ok("dog($a) & dog($b) & dog($c) & dog($d).");
+        // A free body variable beyond the prenex binders is fine (existential).
+        ok("all $x, $y, $z: loves($x, $w).");
     }
 
     #[test]
