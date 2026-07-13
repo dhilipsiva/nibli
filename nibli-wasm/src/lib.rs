@@ -372,11 +372,11 @@ mod tests {
         // assertion; `ro` reads as a universal "For every X, if … then …" rule.
         assert_eq!(
             super::back_translate_ir("obliged(some data governs, event { message() })."),
-            "X govern, X is data, Y is event-of, and X is obligated to Y."
+            "X govern, X is data, Y is event, and X is obligated to Y."
         );
         assert_eq!(
             super::back_translate_ir("obliged(every data governs, event { message() })."),
-            "For every X, if X govern and X is data, then Y is event-of and X is obligated to Y."
+            "For every X, if X govern and X is data, then Y is event and X is obligated to Y."
         );
         // Missing negation (GDPR Art 17), single-condition restrictor so the
         // gloss has no spurious person-split — the dropped `na` is isolated in
@@ -385,7 +385,7 @@ mod tests {
             super::back_translate_ir(
                 "obligated(every permitted, event { removes(removed: some data) })."
             ),
-            "For every X, if something permits X, then Y is event-of, Z is data, \
+            "For every X, if something permits X, then Y is event, Z is data, \
              something is removed, and Y is obligated to X."
         );
         assert_eq!(
@@ -393,7 +393,7 @@ mod tests {
                 "obligated(every ~permitted, event { removes(removed: some data) })."
             ),
             "For every X, if it is not the case that something permits X, then Y is \
-             event-of, Z is data, something is removed, and Y is obligated to X."
+             event, Z is data, something is removed, and Y is obligated to X."
         );
         // The corrected negated-restrictor rule compiles and enters the KB — the
         // "engine refuses to compile it" claim C19 used to make is stale.

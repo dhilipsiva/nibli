@@ -182,14 +182,14 @@ impl SemanticCompiler {
                 // `du` (identity) is a pure binary equivalence relation with no
                 // event structure. It MUST stay a flat 2-arg `du(x1, x2)`
                 // predicate — logji's union-find ingestion and du-query arm only
-                // match `relation == "du" && args.len() == 2`, so the
+                // match `relation == "equals" && args.len() == 2`, so the
                 // Neo-Davidsonian event form would silently disable equality
                 // reasoning. (The >2-place fail-closed reject lives in
                 // `compile_proposition`, where the dropped-overflow argument are visible.)
-                if g == "du" {
+                if g == "equals" {
                     let fitted = Self::fit_args(args, 2);
                     return LogicalForm::Predicate {
-                        relation: self.interner.get_or_intern("du"),
+                        relation: self.interner.get_or_intern("equals"),
                         args: fitted,
                     };
                 }
@@ -323,11 +323,11 @@ impl SemanticCompiler {
             }
             Predicate::Abstraction((kind, body_sentence_idx)) => {
                 let type_name = match kind {
-                    AbstractionKind::Event => "nu",
-                    AbstractionKind::Fact => "duhu",
-                    AbstractionKind::Property => "ka",
-                    AbstractionKind::Amount => "ni",
-                    AbstractionKind::Concept => "siho",
+                    AbstractionKind::Event => "event",
+                    AbstractionKind::Fact => "fact",
+                    AbstractionKind::Property => "property",
+                    AbstractionKind::Amount => "amount",
+                    AbstractionKind::Concept => "concept",
                 };
 
                 let outer_ka_var = self.property_open_var;

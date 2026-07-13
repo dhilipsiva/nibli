@@ -49,7 +49,9 @@ pub fn buffer_non_classical(buf: &LogicBuffer) -> Option<&'static str> {
             LogicNode::ObligatoryNode(_) | LogicNode::PermittedNode(_) => "deontic",
             LogicNode::CountNode(_) => "exact-count quantifier",
             LogicNode::Predicate((rel, _)) if rel.starts_with("__abs_") => "abstraction",
-            LogicNode::Predicate((rel, args)) if rel == "du" && !du_mappable(buf, idx, args) => {
+            LogicNode::Predicate((rel, args))
+                if rel == "equals" && !du_mappable(buf, idx, args) =>
+            {
                 "equality (nested or non-ground)"
             }
             _ => continue,
@@ -79,7 +81,9 @@ pub fn buffer_asp_mappable(buf: &LogicBuffer) -> Option<&'static str> {
             LogicNode::ComputeNode(_) => "compute predicate",
             LogicNode::ObligatoryNode(_) | LogicNode::PermittedNode(_) => "deontic",
             LogicNode::CountNode(_) => "exact-count quantifier",
-            LogicNode::Predicate((rel, args)) if rel == "du" && !du_mappable(buf, idx, args) => {
+            LogicNode::Predicate((rel, args))
+                if rel == "equals" && !du_mappable(buf, idx, args) =>
+            {
                 "equality (nested or non-ground)"
             }
             _ => continue,
@@ -101,7 +105,9 @@ pub fn buffer_asp_mappable_query(buf: &LogicBuffer) -> Option<&'static str> {
             LogicNode::CountNode(_) if buf.roots.as_slice() != [idx as u32] => {
                 "exact-count quantifier (nested / non-root)"
             }
-            LogicNode::Predicate((rel, args)) if rel == "du" && !du_mappable(buf, idx, args) => {
+            LogicNode::Predicate((rel, args))
+                if rel == "equals" && !du_mappable(buf, idx, args) =>
+            {
                 "equality (nested or non-ground)"
             }
             _ => continue,
@@ -172,7 +178,7 @@ mod tests {
     fn ground_du() -> LogicBuffer {
         LogicBuffer {
             nodes: vec![LogicNode::Predicate((
-                "du".into(),
+                "equals".into(),
                 vec![
                     LogicalTerm::Constant("adam".into()),
                     LogicalTerm::Constant("bel".into()),
@@ -195,7 +201,7 @@ mod tests {
         // `du` with a variable arg (e.g. inside a rule) — not the verified shape.
         let non_ground = LogicBuffer {
             nodes: vec![LogicNode::Predicate((
-                "du".into(),
+                "equals".into(),
                 vec![
                     LogicalTerm::Variable("x".into()),
                     LogicalTerm::Constant("bel".into()),
@@ -217,7 +223,7 @@ mod tests {
         let negated = LogicBuffer {
             nodes: vec![
                 LogicNode::Predicate((
-                    "du".into(),
+                    "equals".into(),
                     vec![
                         LogicalTerm::Constant("adam".into()),
                         LogicalTerm::Constant("bel".into()),
@@ -240,7 +246,7 @@ mod tests {
         // territory; skipped.
         let numeric = LogicBuffer {
             nodes: vec![LogicNode::Predicate((
-                "du".into(),
+                "equals".into(),
                 vec![LogicalTerm::Number(1.0), LogicalTerm::Number(2.0)],
             ))],
             roots: vec![0],

@@ -412,23 +412,14 @@ fn relation_clause(relation: &str, subject: &str) -> Option<String> {
     }
 }
 
-/// Lojban abstraction operators (NU-class): they wrap an event/property and have
-/// no surface place-frame, so they are skipped when glossing a rule.
+/// Abstraction type predicates (the `AbstractionKind` set — `event`/`fact`/
+/// `property`/`amount`/`concept`): they wrap an event/property and have no
+/// surface place-frame, so they are skipped when glossing a rule.
 fn is_abstraction(relation: &str) -> bool {
     crate::is_internal_relation(relation)
         || matches!(
             relation,
-            "nu" | "du'u"
-                | "ka"
-                | "ni"
-                | "si'o"
-                | "jei"
-                | "su'u"
-                | "li'i"
-                | "mu'e"
-                | "zu'o"
-                | "za'i"
-                | "pu'u"
+            "event" | "fact" | "property" | "amount" | "concept"
         )
 }
 

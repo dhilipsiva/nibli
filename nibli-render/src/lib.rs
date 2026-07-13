@@ -178,7 +178,10 @@ mod tests {
         // Functional term notation (never LISP S-expr).
         assert!(tree.contains("gerku(_ev0)\n"), "tree:\n{tree}");
         assert!(tree.contains("gerku_x1(_ev0, _v0)\n"), "tree:\n{tree}");
-        assert!(tree.contains("gerku_x2(_ev0, zo'e)\n"), "tree:\n{tree}");
+        assert!(
+            tree.contains("gerku_x2(_ev0, something)\n"),
+            "tree:\n{tree}"
+        );
         assert!(!tree.contains("(Pred"), "S-expr leaked: {tree}");
         assert!(!tree.contains("(Cons"), "S-expr leaked: {tree}");
     }

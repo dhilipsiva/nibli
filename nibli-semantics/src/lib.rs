@@ -355,7 +355,7 @@ pub fn compile_from_ast(ast: flat_ast::AstBuffer) -> Result<LogicBuffer, NibliEr
 /// to text assertion: `fit_args` pads to `get_arity_or_default`, then
 /// `event_decompose`. `du` is the one exception — it stays a FLAT 2-arg
 /// `du(x1, x2)` predicate (NOT event-decomposed), because logji's union-find
-/// equality interception only fires on `relation == "du" && args.len() == 2`;
+/// equality interception only fires on `relation == "equals" && args.len() == 2`;
 /// the Neo-Davidsonian form would silently disable equality reasoning.
 pub fn compile_injected_fact(relation: &str, args: &[WitTerm]) -> LogicBuffer {
     let mut compiler = SemanticCompiler::new();
@@ -364,10 +364,10 @@ pub fn compile_injected_fact(relation: &str, args: &[WitTerm]) -> LogicBuffer {
         .map(|t| wit_term_to_ir(t, &mut compiler.interner))
         .collect();
 
-    let form = if relation == "du" {
+    let form = if relation == "equals" {
         let fitted = SemanticCompiler::fit_args(&ir_args, 2);
         LogicalForm::Predicate {
-            relation: compiler.interner.get_or_intern("du"),
+            relation: compiler.interner.get_or_intern("equals"),
             args: fitted,
         }
     } else {

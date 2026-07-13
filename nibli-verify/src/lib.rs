@@ -375,7 +375,7 @@ pub fn run_corpus_slice(label: &str, corpus: &str, cfg: &OracleConfig) -> Report
                 if args.len() == 1
                     && matches!(args[0], LogicalTerm::Variable(_))
                     && !rel.contains("_x")
-                    && rel != "du"
+                    && rel != "equals"
                 {
                     preds.insert(rel.clone());
                 }

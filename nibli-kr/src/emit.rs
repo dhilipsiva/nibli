@@ -187,7 +187,7 @@ impl<'a> Emitter<'a> {
         let proposition = match claim {
             Claim::Predication(p) => self.predication_proposition(p, negated, tense, deontic)?,
             Claim::Equality(lhs, rhs) => {
-                let relation = self.push_predicate(Predicate::Root("du".into()));
+                let relation = self.push_predicate(Predicate::Root("equals".into()));
                 let head = self.term(lhs, at)?;
                 let tail = self.term(rhs, at)?;
                 Proposition {

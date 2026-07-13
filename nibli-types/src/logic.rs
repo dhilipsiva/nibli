@@ -47,7 +47,7 @@ impl LogicalTerm {
             }
             LogicalTerm::Variable(s) => format!("?{s}"),
             LogicalTerm::Description(s) => format!("lo {s}"),
-            LogicalTerm::Unspecified => "zo'e".to_string(),
+            LogicalTerm::Unspecified => "something".to_string(),
         }
     }
 }

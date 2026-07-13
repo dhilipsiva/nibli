@@ -19,7 +19,7 @@
 //!
 //! Reachability: `du` is NOT parseable from surface Lojban, so the fact is
 //! injected via the engine's direct fact-injection API
-//! `NibliEngine::assert_fact_direct("du", [Constant("alis"), Constant("bob")])`
+//! `NibliEngine::assert_fact_direct("equals", [Constant("alis"), Constant("bob")])`
 //! (this routes through `process_assertion` → `collect_ground_facts` → the
 //! `union_terms` interception that populates the equivalence classes — exactly
 //! what the documented `:assert du` REPL command / `assert-fact` WIT method do).
@@ -46,7 +46,7 @@ fn du_equivalence_unprovable_query_must_not_abort() {
     // {alis, bob} into one equivalence class in logji's union-find.
     engine
         .assert_fact_direct(
-            "du".to_string(),
+            "equals".to_string(),
             vec![
                 EngineLogicalTerm::Constant("alis".to_string()),
                 EngineLogicalTerm::Constant("bob".to_string()),

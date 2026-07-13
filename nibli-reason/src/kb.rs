@@ -1782,7 +1782,7 @@ pub(super) fn process_assertion(
             for fact in &typed_leaves {
                 // Intercept `du` facts for equality equivalence indexing.
                 if let StoredFact::Bare(gf) = fact {
-                    if gf.relation == "du" && gf.args.len() == 2 {
+                    if gf.relation == "equals" && gf.args.len() == 2 {
                         union_terms(inner, &gf.args[0], &gf.args[1]);
                     }
                 }
@@ -1948,7 +1948,7 @@ pub(super) fn collect_entailment_candidates(
 /// Relations whose truth is not store-backed (query-time evaluation /
 /// equivalence machinery) — never sound to narrow candidates from.
 fn is_non_indexable_relation(rel: &str) -> bool {
-    matches!(rel, "du" | "greater" | "less" | "num_equal")
+    matches!(rel, "equals" | "greater" | "less" | "num_equal")
 }
 
 /// Candidate narrowing for a negated-exists group's event variable — the

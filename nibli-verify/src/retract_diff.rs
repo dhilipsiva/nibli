@@ -289,7 +289,7 @@ mod tests {
         for (label, n) in [
             ("ground", ground),
             ("exists", exists),
-            ("du", du),
+            ("equals", du),
             ("rule", rule),
             ("naf", naf),
             ("retract", retracts),

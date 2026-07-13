@@ -100,7 +100,7 @@ impl DuClasses {
 fn du_fact_args(buf: &LogicBuffer) -> Option<(String, String)> {
     if let [r] = buf.roots.as_slice() {
         if let Some(LogicNode::Predicate((rel, args))) = buf.nodes.get(*r as usize) {
-            if rel == "du" && args.len() == 2 {
+            if rel == "equals" && args.len() == 2 {
                 if let (LogicalTerm::Constant(a), LogicalTerm::Constant(b)) = (&args[0], &args[1]) {
                     return Some((a.clone(), b.clone()));
                 }
@@ -369,7 +369,7 @@ fn collect_query_body(
         // A `du` query after canonicalization: identity holds iff both sides rewrote to
         // the SAME representative. Delegate to clingo's term-equality builtin so the
         // oracle — not the translator — decides: `goal :- c1 == c2.`
-        LogicNode::Predicate((rel, args)) if rel == "du" && args.len() == 2 => {
+        LogicNode::Predicate((rel, args)) if rel == "equals" && args.len() == 2 => {
             let l = term(buf, &args[0], vars);
             let r = term(buf, &args[1], vars);
             out.push(BodyLit::Eq(l, r));
@@ -445,13 +445,13 @@ fn regroup_event(buf: &LogicBuffer, id: u32, vars: &mut VarMap) -> Result<Surfac
                 }
             }
             let rel = type_pred.ok_or_else(|| "event group has no type predicate".to_string())?;
-            // Dense x1..xN; a missing interior slot fills the rigid `zoe` (as for arity padding).
+            // Dense x1..xN; a missing interior slot fills the rigid `something` (as for arity padding).
             let n = roles.keys().copied().max().unwrap_or(0);
             let args = (1..=n)
                 .map(|k| {
                     roles
                         .remove(&k)
-                        .unwrap_or_else(|| AspTerm::Const("zoe".to_string()))
+                        .unwrap_or_else(|| AspTerm::Const("something".to_string()))
                 })
                 .collect();
             Ok(SurfaceAtom {
@@ -515,9 +515,9 @@ fn term(buf: &LogicBuffer, t: &LogicalTerm, vars: &mut VarMap) -> AspTerm {
         // Numbers belong to the compute fragment (filtered out); render defensively.
         LogicalTerm::Number(n) => AspTerm::Const(sanitize(&format!("num_{n}"))),
         // `zo'e` is a single RIGID unspecified referent — one shared constant, exactly as
-        // `tptp.rs`. A role filled with a specific constant must NOT satisfy a `zoe` query
+        // `tptp.rs`. A role filled with a specific constant must NOT satisfy a `something` query
         // (the existential-vs-rigid distinction the tptp fix established).
-        LogicalTerm::Unspecified => AspTerm::Const("zoe".to_string()),
+        LogicalTerm::Unspecified => AspTerm::Const("something".to_string()),
     }
 }
 
@@ -708,7 +708,7 @@ mod tests {
 
     #[test]
     fn rigid_zoe_constant() {
-        // A 2-role atom with a trailing Unspecified filler renders `zoe`, not a fresh var.
+        // A 2-role atom with a trailing Unspecified filler renders `something`, not a fresh var.
         let mut n = Vec::new();
         let t = pred(&mut n, "dunda", vec![var("_ev0")]);
         let r1 = pred(&mut n, "dunda_x1", vec![var("_ev0"), con("adam")]);
@@ -722,7 +722,7 @@ mod tests {
         let root = exists(&mut n, "_ev0", a2);
         let q = buf(n, vec![root]);
         let out = render_program(&[], &q).unwrap();
-        assert!(out.contains("goal :- dunda(adam, zoe)."), "{out}");
+        assert!(out.contains("goal :- dunda(adam, something)."), "{out}");
     }
 
     #[test]
@@ -817,7 +817,7 @@ mod tests {
     /// A sole-root ground `du(a, b)` buffer — the shape the filter admits.
     fn du_fact(a: &str, b: &str) -> LogicBuffer {
         let mut n = Vec::new();
-        let root = pred(&mut n, "du", vec![con(a), con(b)]);
+        let root = pred(&mut n, "equals", vec![con(a), con(b)]);
         buf(n, vec![root])
     }
 

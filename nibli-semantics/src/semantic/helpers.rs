@@ -188,11 +188,11 @@ impl SemanticCompiler {
             Predicate::WithArgs((core_id, _)) => self.get_predicate_head_name(*core_id, predicates),
             Predicate::Compound(parts) => parts.last().map(|s| s.as_str()).unwrap_or("entity"),
             Predicate::Abstraction((kind, _)) => match kind {
-                AbstractionKind::Event => "nu",
-                AbstractionKind::Fact => "duhu",
-                AbstractionKind::Property => "ka",
-                AbstractionKind::Amount => "ni",
-                AbstractionKind::Concept => "siho",
+                AbstractionKind::Event => "event",
+                AbstractionKind::Fact => "fact",
+                AbstractionKind::Property => "property",
+                AbstractionKind::Amount => "amount",
+                AbstractionKind::Concept => "concept",
             },
         }
     }

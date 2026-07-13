@@ -151,7 +151,7 @@ fn kr_smuni_seam_conformance() {
     // never event-decomposed.
     {
         let b = kompile("Kim = Adam.").unwrap();
-        let args = seam::pred_args(&b, "du").expect("flat du predicate");
+        let args = seam::pred_args(&b, "equals").expect("flat du predicate");
         assert!(
             matches!(
                 args.as_slice(),

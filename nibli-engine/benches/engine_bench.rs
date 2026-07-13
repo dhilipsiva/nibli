@@ -161,7 +161,7 @@ fn bench_equality(c: &mut Criterion) {
             for i in 0..n - 1 {
                 engine
                     .assert_fact_direct(
-                        "du".to_string(),
+                        "equals".to_string(),
                         vec![
                             EngineLogicalTerm::Constant(format!("e{}", i)),
                             EngineLogicalTerm::Constant(format!("e{}", i + 1)),

@@ -98,7 +98,7 @@ fn render_atom(rel: &str, args: &[LogicalTerm], vars: &mut VarMap) -> String {
     // equality atoms too. Rendering `du` as an uninterpreted binary predicate here
     // would be a soundness trap: nibli's TRUE-via-substitutivity would look like a
     // divergence. (The filter admits only the sole-root ground `du(c1, c2)` shape.)
-    if rel == "du" && args.len() == 2 {
+    if rel == "equals" && args.len() == 2 {
         let l = render_term(&args[0], vars);
         let r = render_term(&args[1], vars);
         return format!("({l} = {r})");
@@ -123,7 +123,7 @@ fn render_term(t: &LogicalTerm, vars: &mut VarMap) -> String {
         // for the unspecified filler (`pilno_x2(ev, zo'e)`), so `la .adam. cu pilno` is FALSE
         // even when Adam takes warfarin. (Dropping to `$true` wrongly made it existential and
         // diverged from nibli on the gdpr/ddi slices.)
-        LogicalTerm::Unspecified => "zoe".to_string(),
+        LogicalTerm::Unspecified => "something".to_string(),
     }
 }
 
@@ -194,7 +194,7 @@ mod tests {
 
     #[test]
     fn unspecified_arg_is_rigid_zoe_constant() {
-        // `zo'e` is a rigid unspecified referent, translated to the shared constant `zoe` —
+        // An unspecified referent is rigid, translated to the shared constant `something` —
         // NOT dropped to `$true` (which would wrongly make it existential; see render_term).
         let b = buf(
             vec![LogicNode::Predicate((
@@ -204,7 +204,10 @@ mod tests {
             vec![0],
         );
         let out = render_problem(&[], &b).unwrap();
-        assert!(out.contains("conjecture, gerku_x2(V0, zoe))."), "{out}");
+        assert!(
+            out.contains("conjecture, gerku_x2(V0, something))."),
+            "{out}"
+        );
     }
 
     #[test]
@@ -245,7 +248,7 @@ mod tests {
         let du = |a: &str, b: &str| {
             buf(
                 vec![LogicNode::Predicate((
-                    "du".into(),
+                    "equals".into(),
                     vec![
                         LogicalTerm::Constant(a.into()),
                         LogicalTerm::Constant(b.into()),
@@ -260,6 +263,9 @@ mod tests {
             out.contains("fof(goal, conjecture, (bel = adam))."),
             "{out}"
         );
-        assert!(!out.contains("du("), "uninterpreted du leaked: {out}");
+        assert!(
+            !out.contains("equals("),
+            "uninterpreted equality leaked: {out}"
+        );
     }
 }

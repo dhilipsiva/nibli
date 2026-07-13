@@ -434,11 +434,11 @@ mod tests {
 
     #[test]
     fn test_du_lowers_flat_not_event_decomposed() {
-        // `la .X. cu du la .Y.` (Root("du") + 2 argument) must lower to a FLAT
+        // `la .X. cu du la .Y.` (Root("equals") + 2 argument) must lower to a FLAT
         // 2-arg du(X,Y) predicate — NOT the Neo-Davidsonian event form
         // (∃e. du(e) ∧ du_x1(e,X) ∧ du_x2(e,Y)) — so logji's union-find
-        // ingestion (which matches relation=="du" && args.len()==2) fires.
-        let predicates = vec![Predicate::Root("du".into())];
+        // ingestion (which matches relation=="equals" && args.len()==2) fires.
+        let predicates = vec![Predicate::Root("equals".into())];
         let arguments = vec![
             Argument::Pronoun("mi".into()), // 0
             Argument::Pronoun("do".into()), // 1
@@ -453,7 +453,7 @@ mod tests {
         };
         let (form, compiler) = compile_one(predicates, arguments, proposition);
         let args =
-            get_pred_args(&form, "du", &compiler).expect("flat du predicate must be present");
+            get_pred_args(&form, "equals", &compiler).expect("flat du predicate must be present");
         assert_eq!(args.len(), 2, "du must be a flat 2-arg predicate");
         assert!(
             !has_pred(&form, "du_x1", &compiler),
@@ -466,7 +466,7 @@ mod tests {
         // Fail-closed: n-ary du is unsupported (logji handles only binary
         // identity). A 3-argument du must push a semantic error rather than
         // silently dropping the third argument.
-        let predicates = vec![Predicate::Root("du".into())];
+        let predicates = vec![Predicate::Root("equals".into())];
         let arguments = vec![
             Argument::Pronoun("mi".into()), // 0
             Argument::Pronoun("do".into()), // 1
@@ -641,7 +641,7 @@ mod tests {
                 assert!(resolve(&compiler, var).starts_with("_v"));
                 // Use the recursive helpers that descend into Exists
                 assert!(
-                    has_pred(&form, "duhu", &compiler),
+                    has_pred(&form, "fact", &compiler),
                     "expected 'duhu' predicate"
                 );
                 assert!(
@@ -670,7 +670,7 @@ mod tests {
             LogicalForm::Exists(var, _body) => {
                 let var_name = resolve(&compiler, var);
                 // ka type pred should reference the description variable
-                let ka_args = get_pred_args(&form, "ka", &compiler).unwrap();
+                let ka_args = get_pred_args(&form, "property", &compiler).unwrap();
                 let ka_arg0 = match &ka_args[0] {
                     LogicalTerm::Variable(v) => resolve(&compiler, v),
                     other => panic!("expected Variable for ka arg, got {:?}", other),
@@ -705,7 +705,10 @@ mod tests {
         match &form {
             LogicalForm::Exists(_, _) => {
                 // Use the recursive helpers that descend into Exists
-                assert!(has_pred(&form, "ni", &compiler), "expected 'ni' predicate");
+                assert!(
+                    has_pred(&form, "amount", &compiler),
+                    "expected 'ni' predicate"
+                );
                 assert!(
                     has_pred(&form, "gleki", &compiler),
                     "expected 'gleki' type predicate"
@@ -727,7 +730,7 @@ mod tests {
             LogicalForm::Exists(_, _) => {
                 // Use the recursive helpers that descend into Exists
                 assert!(
-                    has_pred(&form, "siho", &compiler),
+                    has_pred(&form, "concept", &compiler),
                     "expected 'siho' predicate"
                 );
                 assert!(
@@ -750,7 +753,10 @@ mod tests {
         match &form {
             LogicalForm::Exists(_, _) => {
                 // Use the recursive helpers that descend into Exists
-                assert!(has_pred(&form, "nu", &compiler), "expected 'nu' predicate");
+                assert!(
+                    has_pred(&form, "event", &compiler),
+                    "expected 'nu' predicate"
+                );
                 assert!(
                     has_pred(&form, "klama", &compiler),
                     "expected 'klama' type predicate"
@@ -1921,7 +1927,7 @@ mod tests {
     fn test_du_with_da_closed() {
         // `da du mi` — flat du(da, mi); the `da` must be existentially closed
         // (the flat-du shape must not hide the logic var from the walk).
-        let predicates = vec![Predicate::Root("du".into())];
+        let predicates = vec![Predicate::Root("equals".into())];
         let arguments = vec![
             Argument::Pronoun("$da".into()), // 0
             Argument::Pronoun("mi".into()),  // 1

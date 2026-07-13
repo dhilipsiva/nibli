@@ -175,7 +175,7 @@ impl SemanticCompiler {
         // false-firing).
         let head_name = self.get_predicate_head_name(proposition.relation, predicates);
         if overflow_untagged > 0 {
-            if head_name == "du" {
+            if head_name == "equals" {
                 self.errors.push(format!(
                     "`du` (identity) is a 2-place relation, but {} extra argument were supplied; \
                      n-ary identity is unsupported.",

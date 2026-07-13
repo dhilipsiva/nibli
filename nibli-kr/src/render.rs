@@ -160,7 +160,7 @@ impl<'a> Renderer<'a> {
         // du with exactly one head and one tail term is the equality spelling
         // (with an injected implicit ke'a, the head IS `it`).
         if let Predicate::Root(root) = self.predicate(proposition.relation)?
-            && root == "du"
+            && root == "equals"
         {
             if !inject_it && proposition.head_terms.len() == 1 && proposition.tail_terms.len() == 1
             {

@@ -8783,7 +8783,7 @@ fn make_du(a: &str, b: &str) -> LogicBuffer {
     let mut nodes = Vec::new();
     let root = pred(
         &mut nodes,
-        "du",
+        "equals",
         vec![
             LogicalTerm::Constant(a.to_string()),
             LogicalTerm::Constant(b.to_string()),
@@ -8885,7 +8885,7 @@ fn test_du_multiarg() {
 #[test]
 fn test_du_retraction_rebuild() {
     let kb = new_kb();
-    let du_id = assert_id(&kb, make_du("alis", "bob"), "du");
+    let du_id = assert_id(&kb, make_du("alis", "bob"), "equals");
     assert_buf(&kb, make_assertion("alis", "gerku"));
     assert!(
         query(&kb, make_query("bob", "gerku")),
@@ -8906,7 +8906,7 @@ fn test_du_no_tensed() {
     let mut nodes = Vec::new();
     let du_node = pred(
         &mut nodes,
-        "du",
+        "equals",
         vec![
             LogicalTerm::Constant("alis".to_string()),
             LogicalTerm::Constant("bob".to_string()),
@@ -8936,7 +8936,7 @@ fn make_negated_du(a: &str, b: &str) -> LogicBuffer {
     let mut nodes = Vec::new();
     let inner = pred(
         &mut nodes,
-        "du",
+        "equals",
         vec![
             LogicalTerm::Constant(a.to_string()),
             LogicalTerm::Constant(b.to_string()),
@@ -9857,7 +9857,7 @@ fn test_incremental_retract_rule() {
 #[test]
 fn test_incremental_retract_du() {
     let kb = new_kb();
-    let du_id = assert_id(&kb, make_du("alis", "bob"), "du");
+    let du_id = assert_id(&kb, make_du("alis", "bob"), "equals");
     assert_buf(&kb, make_assertion("alis", "gerku"));
 
     assert!(
@@ -11501,7 +11501,7 @@ mod flat_vs_surface {
         let mut du_nodes = Vec::new();
         let du_root = pred(
             &mut du_nodes,
-            "du",
+            "equals",
             vec![
                 LogicalTerm::Constant("adam".into()),
                 LogicalTerm::Constant("bob".into()),

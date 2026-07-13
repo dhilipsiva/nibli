@@ -278,7 +278,7 @@ impl KnowledgeBase {
                 }
             }
             if let StoredFact::Bare(gf) = fact {
-                if gf.relation == "du" {
+                if gf.relation == "equals" {
                     had_du = true;
                 }
             }
@@ -291,7 +291,7 @@ impl KnowledgeBase {
             let all_facts: Vec<StoredFact> = inner.fact_store.all_facts().iter().cloned().collect();
             for fact in &all_facts {
                 if let StoredFact::Bare(gf) = fact {
-                    if gf.relation == "du" && gf.args.len() == 2 {
+                    if gf.relation == "equals" && gf.args.len() == 2 {
                         union_terms(&mut inner, &gf.args[0], &gf.args[1]);
                     }
                 }
@@ -1217,7 +1217,7 @@ impl KnowledgeBase {
         fn flat_du_pair(group: &[StoredFact]) -> Option<(&GroundTerm, &GroundTerm)> {
             if group.len() == 1 {
                 if let StoredFact::Bare(gf) = &group[0] {
-                    if gf.relation == "du" && gf.args.len() == 2 {
+                    if gf.relation == "equals" && gf.args.len() == 2 {
                         return Some((&gf.args[0], &gf.args[1]));
                     }
                 }
