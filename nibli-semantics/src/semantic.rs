@@ -24,8 +24,8 @@ use crate::dictionary::LexiconSchema;
 use crate::ir::{LogicalForm, LogicalTerm};
 use lasso::Rodeo;
 use nibli_types::ast::{
-    AbstractionKind, Argument, Connective, Conversion, DeonticMood, Determiner, ModalRelation,
-    ModalTag, PlaceTag, Predicate, Proposition, RelClauseKind, Sentence, SentenceConnective, Tense,
+    AbstractionKind, Argument, Connective, Conversion, DeonticMood, Determiner, ModalTag,
+    Predicate, Proposition, RelClauseKind, Sentence, SentenceConnective, Tense,
 };
 
 mod compile;
@@ -241,21 +241,6 @@ mod tests {
             .into_iter()
             .find(|(n, _)| n == name)
             .map(|(_, args)| args)
-    }
-
-    /// Helper: get the args of EVERY predicate with the given name (in tree order).
-    /// Needed when a form distributes into multiple predications sharing a name
-    /// (e.g. two `rinka` modals, or four `prami` leaves).
-    fn get_all_pred_args(
-        form: &LogicalForm,
-        name: &str,
-        compiler: &SemanticCompiler,
-    ) -> Vec<Vec<LogicalTerm>> {
-        collect_predicates(form, compiler)
-            .into_iter()
-            .filter(|(n, _)| n == name)
-            .map(|(_, args)| args)
-            .collect()
     }
 
     /// Helper: extract a `Constant` term's interned string (panics otherwise).
@@ -504,395 +489,11 @@ mod tests {
 
     // ─── Argument connective expansion tests ────────────────────────
 
-    #[test]
-    fn test_sumti_connective_e_expands_to_and() {
-        // mi .e do klama → klama(mi, ...) ∧ klama(do, ...)
-        // Buffer layout:
-        //   sumtis: [0: mi, 1: do, 2: Connected(0, Je, false, 1)]
-        //   selbris: [0: klama]
-        //   bridi: { relation: 0, head_terms: [2], tail_terms: [] }
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![
-            Argument::Pronoun("mi".into()),                     // 0
-            Argument::Pronoun("do".into()),                     // 1
-            Argument::Connected((0, Connective::Je, false, 1)), // 2
-        ];
-        let bridi = Proposition {
-            relation: 0,
-            head_terms: vec![2],
-            tail_terms: vec![],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
-
-        // Should be And(klama_event(mi), klama_event(do))
-        // Each side is an event-decomposed form (Exists wrapping type+role preds)
-        match &form {
-            LogicalForm::And(left, right) => {
-                // Left: event-decomposed klama with mi in x1
-                assert!(
-                    has_pred(left, "klama", &compiler),
-                    "left should have klama type pred"
-                );
-                let x1_args = get_pred_args(left, "klama_x1", &compiler).unwrap();
-                match &x1_args[1] {
-                    LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "mi"),
-                    other => panic!("expected Constant(mi) in klama_x1, got {:?}", other),
-                }
-                // Right: event-decomposed klama with do in x1
-                assert!(
-                    has_pred(right, "klama", &compiler),
-                    "right should have klama type pred"
-                );
-                let x1_args_r = get_pred_args(right, "klama_x1", &compiler).unwrap();
-                match &x1_args_r[1] {
-                    LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "do"),
-                    other => panic!("expected Constant(do) in klama_x1, got {:?}", other),
-                }
-            }
-            other => panic!("expected And, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_sumti_connective_a_expands_to_or() {
-        // mi .a do klama → klama(mi, ...) ∨ klama(do, ...)
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![
-            Argument::Pronoun("mi".into()),
-            Argument::Pronoun("do".into()),
-            Argument::Connected((0, Connective::Ja, false, 1)),
-        ];
-        let bridi = Proposition {
-            relation: 0,
-            head_terms: vec![2],
-            tail_terms: vec![],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-
-        let (form, _) = compile_one(selbris, sumtis, bridi);
-        assert!(matches!(&form, LogicalForm::Or(_, _)));
-    }
-
-    #[test]
-    fn test_sumti_connective_o_expands_to_biconditional() {
-        // mi .o do klama → (¬klama(mi) ∨ klama(do)) ∧ (¬klama(do) ∨ klama(mi))
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![
-            Argument::Pronoun("mi".into()),
-            Argument::Pronoun("do".into()),
-            Argument::Connected((0, Connective::Jo, false, 1)),
-        ];
-        let bridi = Proposition {
-            relation: 0,
-            head_terms: vec![2],
-            tail_terms: vec![],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-
-        let (form, _) = compile_one(selbris, sumtis, bridi);
-        // Biconditional stored as first-class IR node (expanded at flattening)
-        assert!(
-            matches!(&form, LogicalForm::Biconditional(_, _)),
-            "expected Biconditional, got {:?}",
-            form
-        );
-    }
-
-    #[test]
-    fn test_sumti_connective_u_expands_to_xor() {
-        // mi .u do klama → (klama(mi) ∨ klama(do)) ∧ ¬(klama(mi) ∧ klama(do))
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![
-            Argument::Pronoun("mi".into()),
-            Argument::Pronoun("do".into()),
-            Argument::Connected((0, Connective::Ju, false, 1)),
-        ];
-        let bridi = Proposition {
-            relation: 0,
-            head_terms: vec![2],
-            tail_terms: vec![],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-
-        let (form, _) = compile_one(selbris, sumtis, bridi);
-        // XOR stored as first-class IR node (expanded at flattening)
-        assert!(
-            matches!(&form, LogicalForm::Xor(_, _)),
-            "expected Xor, got {:?}",
-            form
-        );
-    }
-
-    #[test]
-    fn test_sumti_connective_enai_negates_right() {
-        // mi .e nai do klama → klama(mi, ...) ∧ ¬klama(do, ...)
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![
-            Argument::Pronoun("mi".into()),
-            Argument::Pronoun("do".into()),
-            Argument::Connected((0, Connective::Je, true, 1)), // right_negated = true
-        ];
-        let bridi = Proposition {
-            relation: 0,
-            head_terms: vec![2],
-            tail_terms: vec![],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
-
-        // Should be And(klama_event(mi), Not(klama_event(do)))
-        match &form {
-            LogicalForm::And(left, right) => {
-                // Left: event-decomposed klama with mi in x1
-                assert!(
-                    has_pred(left, "klama", &compiler),
-                    "left should have klama type pred"
-                );
-                let x1_args = get_pred_args(left, "klama_x1", &compiler).unwrap();
-                match &x1_args[1] {
-                    LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "mi"),
-                    other => panic!("expected Constant(mi) in klama_x1, got {:?}", other),
-                }
-                // Right: Not(klama_event(do))
-                match right.as_ref() {
-                    LogicalForm::Not(inner) => {
-                        assert!(
-                            has_pred(inner, "klama", &compiler),
-                            "Not body should have klama type pred"
-                        );
-                        let x1_args_r = get_pred_args(inner, "klama_x1", &compiler).unwrap();
-                        match &x1_args_r[1] {
-                            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "do"),
-                            other => panic!("expected Constant(do) in klama_x1, got {:?}", other),
-                        }
-                    }
-                    other => panic!("expected Not, got {:?}", other),
-                }
-            }
-            other => panic!("expected And, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_sumti_connective_in_tail_position() {
-        // mi prami lo gerku .e lo mlatu
-        // head: [mi], selbri: prami, tail: [Connected(lo gerku, Je, lo mlatu)]
-        // → prami(mi, lo gerku) ∧ prami(mi, lo mlatu)
-        // But with descriptions: ∃v0.(gerku(v0) ∧ prami(mi, v0)) ∧ ∃v1.(mlatu(v1) ∧ prami(mi, v1))
-        let selbris = vec![
-            Predicate::Root("prami".into()), // 0
-            Predicate::Root("gerku".into()), // 1
-            Predicate::Root("mlatu".into()), // 2
-        ];
-        let sumtis = vec![
-            Argument::Pronoun("mi".into()),                     // 0
-            Argument::Description((Determiner::Lo, 1)),         // 1: lo gerku
-            Argument::Description((Determiner::Lo, 2)),         // 2: lo mlatu
-            Argument::Connected((1, Connective::Je, false, 2)), // 3
-        ];
-        let bridi = Proposition {
-            relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![3],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-
-        let (form, _) = compile_one(selbris, sumtis, bridi);
-
-        // The result should be And(Exists(...), Exists(...))
-        match &form {
-            LogicalForm::And(left, right) => {
-                assert!(
-                    matches!(left.as_ref(), LogicalForm::Exists(_, _)),
-                    "expected Exists on left, got {:?}",
-                    left
-                );
-                assert!(
-                    matches!(right.as_ref(), LogicalForm::Exists(_, _)),
-                    "expected Exists on right, got {:?}",
-                    right
-                );
-            }
-            other => panic!("expected And(Exists, Exists), got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_sumti_connective_with_bridi_negation() {
-        // mi .e do na klama → ¬(klama(mi) ∧ klama(do))
-        // Actually: na applies at bridi level, and .e expansion happens first
-        // → And(Not(klama(mi)), Not(klama(do)))? No...
-        // .e splits first: bridi(head:[mi], negated:true) and bridi(head:[do], negated:true)
-        // Each gets negated: Not(klama(mi)) ∧ Not(klama(do))
-        // Wait, the whole bridi is negated, so both copies inherit negated:true
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![
-            Argument::Pronoun("mi".into()),
-            Argument::Pronoun("do".into()),
-            Argument::Connected((0, Connective::Je, false, 1)),
-        ];
-        let bridi = Proposition {
-            relation: 0,
-            head_terms: vec![2],
-            tail_terms: vec![],
-            negated: true,
-            tense: None,
-            deontic: None,
-        };
-
-        let (form, _) = compile_one(selbris, sumtis, bridi);
-
-        // Both sub-bridis inherit negated:true → And(Not(klama(mi)), Not(klama(do)))
-        match &form {
-            LogicalForm::And(left, right) => {
-                assert!(
-                    matches!(left.as_ref(), LogicalForm::Not(_)),
-                    "expected Not on left, got {:?}",
-                    left
-                );
-                assert!(
-                    matches!(right.as_ref(), LogicalForm::Not(_)),
-                    "expected Not on right, got {:?}",
-                    right
-                );
-            }
-            other => panic!("expected And(Not, Not), got {:?}", other),
-        }
-    }
-
     // ─── Connected sumti under place tags / BAI modals + CLL place counter ───
     // Soundness fix: a connected sumti nested under a place tag or BAI modal
     // (`fa mi .e do`, `ri'a do .e ti`) previously dropped the right operand;
     // only the FIRST connected sumti in a bridi was split; and untagged sumti
     // after a tag filled the first free slot instead of the CLL place counter.
-
-    #[test]
-    fn test_fa_tagged_connected_distributes() {
-        // `fa mi .e do klama` parses as Tagged(Fa, Connected(mi, Je, do)) — the
-        // tag distributes over BOTH operands: klama(mi in x1) ∧ klama(do in x1).
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![
-            Argument::Pronoun("mi".into()),                     // 0
-            Argument::Pronoun("do".into()),                     // 1
-            Argument::Connected((0, Connective::Je, false, 1)), // 2: mi .e do
-            Argument::Tagged((PlaceTag::Fa, 2)),                // 3: fa (mi .e do)
-        ];
-        let bridi = Proposition {
-            relation: 0,
-            head_terms: vec![3],
-            tail_terms: vec![],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
-        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
-        match &form {
-            LogicalForm::And(left, right) => {
-                let l = get_pred_args(left, "klama_x1", &compiler).expect("left klama_x1");
-                let r = get_pred_args(right, "klama_x1", &compiler).expect("right klama_x1");
-                assert_eq!(const_str(&compiler, &l[1]), "mi");
-                assert_eq!(const_str(&compiler, &r[1]), "do");
-            }
-            other => panic!("expected And(klama(mi), klama(do)), got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_bai_modal_connected_distributes() {
-        // `mi klama ri'a do .e ti` → ModalTagged(Ria, Connected(do, Je, ti)).
-        // Must distribute into TWO rinka modals: rinka(do, mi) and rinka(ti, mi).
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![
-            Argument::Pronoun("mi".into()),                                  // 0
-            Argument::Pronoun("do".into()),                                  // 1
-            Argument::Pronoun("ti".into()),                                  // 2
-            Argument::Connected((1, Connective::Je, false, 2)),              // 3: do .e ti
-            Argument::ModalTagged((ModalTag::Fixed(ModalRelation::Ria), 3)), // 4: ri'a (do .e ti)
-        ];
-        let bridi = Proposition {
-            relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![4],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
-        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
-        let rinkas = get_all_pred_args(&form, "rinka", &compiler);
-        assert_eq!(
-            rinkas.len(),
-            2,
-            "expected two rinka modals (do .e ti), got {}: {:?}",
-            rinkas.len(),
-            rinkas
-        );
-        let tagged: Vec<String> = rinkas.iter().map(|a| const_str(&compiler, &a[0])).collect();
-        assert!(tagged.contains(&"do".to_string()), "missing rinka(do, ..)");
-        assert!(tagged.contains(&"ti".to_string()), "missing rinka(ti, ..)");
-        for a in &rinkas {
-            assert_eq!(const_str(&compiler, &a[1]), "mi", "rinka x2 = main x1 (mi)");
-        }
-    }
-
-    #[test]
-    fn test_two_connected_sumti_both_split() {
-        // `mi .e do prami ti .e ta` — TWO connected sumti must both distribute
-        // into four prami leaves: (mi,ti), (mi,ta), (do,ti), (do,ta).
-        let selbris = vec![Predicate::Root("prami".into())];
-        let sumtis = vec![
-            Argument::Pronoun("mi".into()),                     // 0
-            Argument::Pronoun("do".into()),                     // 1
-            Argument::Pronoun("ti".into()),                     // 2
-            Argument::Pronoun("ta".into()),                     // 3
-            Argument::Connected((0, Connective::Je, false, 1)), // 4: mi .e do
-            Argument::Connected((2, Connective::Je, false, 3)), // 5: ti .e ta
-        ];
-        let bridi = Proposition {
-            relation: 0,
-            head_terms: vec![4],
-            tail_terms: vec![5],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
-        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
-        let x1 = get_all_pred_args(&form, "prami_x1", &compiler);
-        let x2 = get_all_pred_args(&form, "prami_x2", &compiler);
-        assert_eq!(x1.len(), 4, "expected 4 prami leaves, got {}", x1.len());
-        let pairs: Vec<(String, String)> = x1
-            .iter()
-            .zip(x2.iter())
-            .map(|(a, b)| (const_str(&compiler, &a[1]), const_str(&compiler, &b[1])))
-            .collect();
-        for expected in [("mi", "ti"), ("mi", "ta"), ("do", "ti"), ("do", "ta")] {
-            assert!(
-                pairs
-                    .iter()
-                    .any(|(l, r)| l == expected.0 && r == expected.1),
-                "missing prami{:?} in {:?}",
-                expected,
-                pairs
-            );
-        }
-    }
 
     #[test]
     fn test_cll_place_counter_resumes_after_fi() {
@@ -1197,109 +798,6 @@ mod tests {
     // ─── BAI modal tag tests ──────────────────────────────────────
 
     #[test]
-    fn test_bai_ria_produces_conjoined_rinka() {
-        // mi klama ri'a do → And(klama(mi, ...), rinka(do, mi, ...))
-        // Buffer layout:
-        //   sumtis: [0: mi, 1: do, 2: ModalTagged(Fixed(Ria), 1)]
-        //   selbris: [0: klama]
-        //   bridi: { relation: 0, head_terms: [0], tail_terms: [2] }
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![
-            Argument::Pronoun("mi".into()),                                  // 0
-            Argument::Pronoun("do".into()),                                  // 1
-            Argument::ModalTagged((ModalTag::Fixed(ModalRelation::Ria), 1)), // 2
-        ];
-        let bridi = Proposition {
-            relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![2],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
-
-        // klama is event-decomposed, rinka is a flat modal Predicate
-        assert!(
-            has_pred(&form, "klama", &compiler),
-            "expected klama type predicate"
-        );
-        assert!(
-            has_pred(&form, "klama_x1", &compiler),
-            "expected klama_x1 role"
-        );
-        // Check klama_x1 has mi
-        let klama_x1 = get_pred_args(&form, "klama_x1", &compiler).unwrap();
-        assert_eq!(
-            klama_x1[1],
-            LogicalTerm::Constant(compiler.interner.get("mi").unwrap())
-        );
-        // rinka is a flat Predicate (modal tags are not event-decomposed)
-        let rinka_args = get_pred_args(&form, "rinka", &compiler).unwrap();
-        // x1 = tagged sumti (do), x2 = main x1 (mi)
-        assert_eq!(
-            rinka_args[0],
-            LogicalTerm::Constant(compiler.interner.get("do").unwrap())
-        );
-        assert_eq!(
-            rinka_args[1],
-            LogicalTerm::Constant(compiler.interner.get("mi").unwrap())
-        );
-    }
-
-    #[test]
-    fn test_bai_pio_produces_pilno() {
-        // mi citka pi'o lo forca → And(citka(mi, ...), pilno(lo_forca_var, mi, ...))
-        // Buffer:
-        //   sumtis: [0: mi, 1: Description(Lo, 1), 2: ModalTagged(Fixed(Pio), 1)]
-        //   selbris: [0: citka, 1: forca]
-        let selbris = vec![
-            Predicate::Root("citka".into()), // 0
-            Predicate::Root("forca".into()), // 1
-        ];
-        let sumtis = vec![
-            Argument::Pronoun("mi".into()),                                  // 0
-            Argument::Description((Determiner::Lo, 1)),                      // 1
-            Argument::ModalTagged((ModalTag::Fixed(ModalRelation::Pio), 1)), // 2
-        ];
-        let bridi = Proposition {
-            relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![2],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
-
-        // Should be ∃x.(forca_event(x) ∧ And(citka_event, pilno_event))
-        // The outermost is Exists wrapping the description's quantifier
-        match &form {
-            LogicalForm::Exists(_, _) => {
-                // Check all expected predicates exist (recursive through Exists)
-                assert!(
-                    has_pred(&form, "forca", &compiler),
-                    "expected forca restrictor type pred"
-                );
-                assert!(
-                    has_pred(&form, "citka", &compiler),
-                    "expected citka type pred"
-                );
-                assert!(
-                    has_pred(&form, "pilno", &compiler),
-                    "expected pilno type pred"
-                );
-            }
-            other => panic!(
-                "expected Exists wrapping modal conjunction, got {:?}",
-                other
-            ),
-        }
-    }
-
-    #[test]
     fn test_fio_produces_custom_modal() {
         // mi klama fi'o zbasu do → And(klama(mi,...), zbasu(do, mi,...))
         // Buffer:
@@ -1310,9 +808,9 @@ mod tests {
             Predicate::Root("zbasu".into()), // 1
         ];
         let sumtis = vec![
-            Argument::Pronoun("mi".into()),               // 0
-            Argument::Pronoun("do".into()),               // 1
-            Argument::ModalTagged((ModalTag::Fio(1), 1)), // 2
+            Argument::Pronoun("mi".into()),                  // 0
+            Argument::Pronoun("do".into()),                  // 1
+            Argument::ModalTagged((ModalTag::Custom(1), 1)), // 2
         ];
         let bridi = Proposition {
             relation: 0,
@@ -1359,9 +857,9 @@ mod tests {
             Predicate::Root("prenu".into()), // 1 (arity 1)
         ];
         let sumtis = vec![
-            Argument::Pronoun("mi".into()),               // 0
-            Argument::Pronoun("do".into()),               // 1
-            Argument::ModalTagged((ModalTag::Fio(1), 1)), // 2: fi'o prenu, inner=do
+            Argument::Pronoun("mi".into()),                  // 0
+            Argument::Pronoun("do".into()),                  // 1
+            Argument::ModalTagged((ModalTag::Custom(1), 1)), // 2: fi'o prenu, inner=do
         ];
         let bridi = Proposition {
             relation: 0,
@@ -1380,43 +878,6 @@ mod tests {
             compiler.errors.iter().any(|e| e.contains("Modal tag")),
             "error should name the modal-arity limitation, got: {:?}",
             compiler.errors
-        );
-    }
-
-    #[test]
-    fn test_multiple_bai_tags_conjoin() {
-        // mi klama ri'a do pi'o ti → And(And(klama(...), rinka(do,mi,...)), pilno(ti,mi,...))
-        let selbris = vec![Predicate::Root("klama".into())]; // 0
-        let sumtis = vec![
-            Argument::Pronoun("mi".into()),                                  // 0
-            Argument::Pronoun("do".into()),                                  // 1
-            Argument::ModalTagged((ModalTag::Fixed(ModalRelation::Ria), 1)), // 2
-            Argument::Pronoun("ti".into()),                                  // 3
-            Argument::ModalTagged((ModalTag::Fixed(ModalRelation::Pio), 3)), // 4
-        ];
-        let bridi = Proposition {
-            relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![2, 4],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
-
-        // All three predicates should be present as event-decomposed forms
-        assert!(
-            has_pred(&form, "klama", &compiler),
-            "expected klama type predicate"
-        );
-        assert!(
-            has_pred(&form, "rinka", &compiler),
-            "expected rinka type predicate"
-        );
-        assert!(
-            has_pred(&form, "pilno", &compiler),
-            "expected pilno type predicate"
         );
     }
 
@@ -1591,7 +1052,7 @@ mod tests {
 
     #[test]
     fn test_afterthought_je_compiles_to_and() {
-        let conn = SentenceConnective::Afterthought((false, Connective::Je, false));
+        let conn = SentenceConnective::Afterthought(Connective::Je);
         let (form, _) = compile_connected(conn, "klama", "mi", "prami", "do");
         assert!(
             matches!(&form, LogicalForm::And(_, _)),
@@ -1602,31 +1063,13 @@ mod tests {
 
     #[test]
     fn test_afterthought_ja_compiles_to_or() {
-        let conn = SentenceConnective::Afterthought((false, Connective::Ja, false));
+        let conn = SentenceConnective::Afterthought(Connective::Ja);
         let (form, _) = compile_connected(conn, "klama", "mi", "prami", "do");
         assert!(
             matches!(&form, LogicalForm::Or(_, _)),
             "expected Or, got {:?}",
             form
         );
-    }
-
-    #[test]
-    fn test_afterthought_naja_compiles_to_implies() {
-        // .i naja = ¬A ∨ B (material conditional)
-        let conn = SentenceConnective::Afterthought((true, Connective::Ja, false));
-        let (form, _) = compile_connected(conn, "klama", "mi", "prami", "do");
-        // Should be Or(Not(left), right)
-        match &form {
-            LogicalForm::Or(left, _right) => {
-                assert!(
-                    matches!(left.as_ref(), LogicalForm::Not(_)),
-                    "expected Not on left of Or, got {:?}",
-                    left
-                );
-            }
-            other => panic!("expected Or(Not(_), _), got {:?}", other),
-        }
     }
 
     // ─── da/de/di quantifier closure tests ──────────────────────
@@ -1822,7 +1265,7 @@ mod tests {
     #[test]
     fn test_afterthought_jo_compiles_to_biconditional() {
         // .i jo → Biconditional IR node (expanded at flattening)
-        let conn = SentenceConnective::Afterthought((false, Connective::Jo, false));
+        let conn = SentenceConnective::Afterthought(Connective::Jo);
         let (form, _) = compile_connected(conn, "klama", "mi", "prami", "do");
         assert!(
             matches!(&form, LogicalForm::Biconditional(_, _)),
@@ -2116,37 +1559,6 @@ mod tests {
     }
 
     #[test]
-    fn test_da_in_bai_modal_closed() {
-        // `mi klama ri'a da` — the `da` inside the BAI modal must be
-        // existentially closed. Pre-fix the args-scan never saw the modal arg.
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![
-            Argument::Pronoun("mi".into()),                                  // 0
-            Argument::Pronoun("da".into()),                                  // 1
-            Argument::ModalTagged((ModalTag::Fixed(ModalRelation::Ria), 1)), // 2: ri'a da
-        ];
-        let bridi = Proposition {
-            relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![2],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
-        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
-        assert!(
-            free_vars(&form, &compiler).is_empty(),
-            "the modal `da` must be bound: free={:?}",
-            free_vars(&form, &compiler)
-        );
-        assert!(
-            count_exists_binding(&form, "da", &compiler) >= 1,
-            "an Exists must bind `da`"
-        );
-    }
-
-    #[test]
     fn test_da_in_be_arg_closed() {
         // `mi klama be da` — the `da` in the be-arg must be existentially closed.
         let selbris = vec![
@@ -2171,81 +1583,6 @@ mod tests {
             free_vars(&form, &compiler).is_empty(),
             "the be-arg `da` must be bound: free={:?}",
             free_vars(&form, &compiler)
-        );
-    }
-
-    #[test]
-    fn test_da_in_modal_under_universal_stays_inside_forall() {
-        // `ro lo gerku cu klama ri'a da` — the modal `da` is closed by an Exists
-        // UNDER the ForAll (∀g.∃d), keeping ForAll at the root (logji rule shape).
-        let selbris = vec![
-            Predicate::Root("klama".into()), // 0
-            Predicate::Root("gerku".into()), // 1
-        ];
-        let sumtis = vec![
-            Argument::Description((Determiner::RoLo, 1)), // 0: ro lo gerku
-            Argument::Pronoun("da".into()),               // 1
-            Argument::ModalTagged((ModalTag::Fixed(ModalRelation::Ria), 1)), // 2: ri'a da
-        ];
-        let bridi = Proposition {
-            relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![2],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
-        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
-        assert!(
-            matches!(form, LogicalForm::ForAll(_, _)),
-            "root must stay ForAll (logji rule shape), got {:?}",
-            form
-        );
-        assert!(
-            free_vars(&form, &compiler).is_empty(),
-            "the modal `da` must be bound under the ForAll: free={:?}",
-            free_vars(&form, &compiler)
-        );
-        assert!(
-            count_exists_binding(&form, "da", &compiler) >= 1,
-            "an Exists must bind `da` inside the ForAll"
-        );
-    }
-
-    #[test]
-    fn test_prenex_da_in_modal_not_reclosed() {
-        // `ro da zo'u mi klama ri'a da` — `da` is universally bound by the prenex;
-        // the modal `da` must NOT be existentially re-closed (negative control for
-        // the preserved prenex exclusion).
-        let selbris = vec![Predicate::Root("klama".into())];
-        let sumtis = vec![
-            Argument::Pronoun("mi".into()),                                  // 0
-            Argument::Pronoun("da".into()),                                  // 1
-            Argument::ModalTagged((ModalTag::Fixed(ModalRelation::Ria), 1)), // 2: ri'a da
-        ];
-        let sentences = vec![
-            Sentence::Prenex((vec!["da".into()], 1)),
-            Sentence::Simple(Proposition {
-                relation: 0,
-                head_terms: vec![0],
-                tail_terms: vec![2],
-                negated: false,
-                tense: None,
-                deontic: None,
-            }),
-        ];
-        let (form, compiler) = compile_sentence_full(selbris, sumtis, sentences);
-        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
-        assert!(
-            free_vars(&form, &compiler).is_empty(),
-            "prenex `da` must be bound by the ForAll: free={:?}",
-            free_vars(&form, &compiler)
-        );
-        assert_eq!(
-            count_exists_binding(&form, "da", &compiler),
-            0,
-            "prenex `da` must NOT be existentially re-closed"
         );
     }
 
@@ -2571,39 +1908,6 @@ mod tests {
             "co-referring `da` must wrap exactly once"
         );
         assert!(free_vars(&form, &compiler).is_empty());
-    }
-
-    #[test]
-    fn test_be_arg_and_modal_da_de_both_closed() {
-        // `mi klama be da ri'a de` — both the be-arg `da` and the modal `de` must
-        // be existentially closed, each exactly once.
-        let selbris = vec![
-            Predicate::Root("klama".into()),   // 0
-            Predicate::WithArgs((0, vec![1])), // 1: klama be da
-        ];
-        let sumtis = vec![
-            Argument::Pronoun("mi".into()),                                  // 0
-            Argument::Pronoun("da".into()),                                  // 1 (be-arg)
-            Argument::Pronoun("de".into()),                                  // 2
-            Argument::ModalTagged((ModalTag::Fixed(ModalRelation::Ria), 2)), // 3: ri'a de
-        ];
-        let bridi = Proposition {
-            relation: 1,
-            head_terms: vec![0],
-            tail_terms: vec![3],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
-        assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
-        assert!(
-            free_vars(&form, &compiler).is_empty(),
-            "both da and de must be bound: free={:?}",
-            free_vars(&form, &compiler)
-        );
-        assert_eq!(count_exists_binding(&form, "da", &compiler), 1, "da once");
-        assert_eq!(count_exists_binding(&form, "de", &compiler), 1, "de once");
     }
 
     #[test]
@@ -3338,46 +2642,6 @@ mod tests {
     }
 
     #[test]
-    fn test_connected_in_be_arg_errors() {
-        // `mi klama be lo gerku .e lo mlatu` — the be-arg is a connected sumti,
-        // a position the distributor does not descend into. It must fail closed,
-        // not silently keep only the left operand (`lo gerku`).
-        let selbris = vec![
-            Predicate::Root("klama".into()),   // 0
-            Predicate::Root("gerku".into()),   // 1
-            Predicate::Root("mlatu".into()),   // 2
-            Predicate::WithArgs((0, vec![2])), // 3: klama be <be-arg id 2>
-        ];
-        let sumtis = vec![
-            Argument::Description((Determiner::Lo, 1)), // 0: lo gerku
-            Argument::Description((Determiner::Lo, 2)), // 1: lo mlatu
-            Argument::Connected((0, Connective::Je, false, 1)), // 2: lo gerku .e lo mlatu
-            Argument::Pronoun("mi".into()),             // 3: mi
-        ];
-        let bridi = Proposition {
-            relation: 3,
-            head_terms: vec![3],
-            tail_terms: vec![],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-        let (_form, compiler) = compile_one(selbris, sumtis, bridi);
-        assert!(
-            !compiler.errors.is_empty(),
-            "a connected sumti in a be-arg must error"
-        );
-        assert!(
-            compiler
-                .errors
-                .iter()
-                .any(|e| e.contains("Connected sumti")),
-            "error should name the connected-sumti limitation, got: {:?}",
-            compiler.errors
-        );
-    }
-
-    #[test]
     fn test_tanru_in_poi_not_falsely_rejected() {
         // lo gerku poi sutra bajra cu klama — the tanru `sutra bajra` shares
         // ONE event, so its two unfilled x1 roles are one candidate subject
@@ -4084,124 +3348,6 @@ mod tests {
 
     // ─── Predicate connective tests ──────────────────────────────
 
-    #[test]
-    fn test_selbri_connective_je_produces_and() {
-        // mi klama je sutra → And(klama(mi,...), sutra(mi,...))
-        let selbris = vec![
-            Predicate::Root("klama".into()),
-            Predicate::Root("sutra".into()),
-            Predicate::Connected((0, Connective::Je, 1)),
-        ];
-        let sumtis = vec![Argument::Pronoun("mi".into())];
-        let bridi = Proposition {
-            relation: 2,
-            head_terms: vec![0],
-            tail_terms: vec![],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-        let (form, _) = compile_one(selbris, sumtis, bridi);
-        assert!(matches!(form, LogicalForm::And(_, _)));
-    }
-
-    #[test]
-    fn test_selbri_connective_ja_produces_or() {
-        let selbris = vec![
-            Predicate::Root("klama".into()),
-            Predicate::Root("sutra".into()),
-            Predicate::Connected((0, Connective::Ja, 1)),
-        ];
-        let sumtis = vec![Argument::Pronoun("mi".into())];
-        let bridi = Proposition {
-            relation: 2,
-            head_terms: vec![0],
-            tail_terms: vec![],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-        let (form, _) = compile_one(selbris, sumtis, bridi);
-        assert!(matches!(form, LogicalForm::Or(_, _)));
-    }
-
-    #[test]
-    fn test_selbri_connective_jo_produces_biconditional() {
-        let selbris = vec![
-            Predicate::Root("klama".into()),
-            Predicate::Root("sutra".into()),
-            Predicate::Connected((0, Connective::Jo, 1)),
-        ];
-        let sumtis = vec![Argument::Pronoun("mi".into())];
-        let bridi = Proposition {
-            relation: 2,
-            head_terms: vec![0],
-            tail_terms: vec![],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-        let (form, _) = compile_one(selbris, sumtis, bridi);
-        assert!(matches!(form, LogicalForm::Biconditional(_, _)));
-    }
-
-    #[test]
-    fn test_selbri_connective_ju_produces_xor() {
-        let selbris = vec![
-            Predicate::Root("klama".into()),
-            Predicate::Root("sutra".into()),
-            Predicate::Connected((0, Connective::Ju, 1)),
-        ];
-        let sumtis = vec![Argument::Pronoun("mi".into())];
-        let bridi = Proposition {
-            relation: 2,
-            head_terms: vec![0],
-            tail_terms: vec![],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-        let (form, _) = compile_one(selbris, sumtis, bridi);
-        assert!(matches!(form, LogicalForm::Xor(_, _)));
-    }
-
-    #[test]
-    fn test_connected_selbri_uses_max_arity_for_right_operand() {
-        // `mi prami je klama do ti` — left `prami` is 2-place, right `klama` is
-        // 5-place. The connected selbri's effective arity must be max(2,5)=5 so
-        // the place counter captures `ti` (x3) instead of dropping it; the right
-        // operand `klama` then receives `ti` in its x3. `prami je klama` is a valid
-        // mixed-arity selbri connective (each operand fits its own arity) — no error.
-        let selbris = vec![
-            Predicate::Root("prami".into()),              // 0 (2-place)
-            Predicate::Root("klama".into()),              // 1 (5-place)
-            Predicate::Connected((0, Connective::Je, 1)), // 2: prami je klama
-        ];
-        let sumtis = vec![
-            Argument::Pronoun("mi".into()), // 0
-            Argument::Pronoun("do".into()), // 1
-            Argument::Pronoun("ti".into()), // 2
-        ];
-        let bridi = Proposition {
-            relation: 2,
-            head_terms: vec![0],
-            tail_terms: vec![1, 2],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
-        assert!(
-            compiler.errors.is_empty(),
-            "mixed-arity selbri connective must not error/overflow, got: {:?}",
-            compiler.errors
-        );
-        let x3 = get_pred_args(&form, "klama_x3", &compiler)
-            .expect("klama_x3 role predicate must exist");
-        let ti = LogicalTerm::Constant(compiler.interner.get("ti").unwrap());
-        assert_eq!(x3[1], ti, "klama's x3 must be `ti`, not Unspecified");
-    }
-
     // ─── Arity from dictionary ────────────────────────────────
 
     #[test]
@@ -4317,48 +3463,6 @@ mod tests {
         assert!(matches!(form, LogicalForm::And(_, _)));
     }
 
-    #[test]
-    fn test_sentence_connective_go_gi_produces_biconditional() {
-        // go mi klama gi do sutra → Biconditional(klama(mi,...), klama(do,...))
-        let selbris = vec![
-            Predicate::Root("klama".into()),
-            Predicate::Root("sutra".into()),
-        ];
-        let sumtis = vec![
-            Argument::Pronoun("mi".into()),
-            Argument::Pronoun("do".into()),
-        ];
-        let sentences = vec![
-            Sentence::Connected((
-                SentenceConnective::GoGi,
-                1, // left sentence idx
-                2, // right sentence idx
-            )),
-            Sentence::Simple(Proposition {
-                relation: 0,
-                head_terms: vec![0],
-                tail_terms: vec![],
-                negated: false,
-                tense: None,
-                deontic: None,
-            }),
-            Sentence::Simple(Proposition {
-                relation: 1,
-                head_terms: vec![1],
-                tail_terms: vec![],
-                negated: false,
-                tense: None,
-                deontic: None,
-            }),
-        ];
-        let (form, _) = compile_sentence_full(selbris, sumtis, sentences);
-        assert!(
-            matches!(form, LogicalForm::Biconditional(_, _)),
-            "expected Biconditional, got {:?}",
-            form
-        );
-    }
-
     // ─── Fresh variable generation ────────────────────────────
 
     #[test]
@@ -4376,34 +3480,6 @@ mod tests {
     }
 
     // ─── BAI tag gismu mapping ────────────────────────────────
-
-    #[test]
-    fn test_modal_relation_name_mapping() {
-        assert_eq!(
-            SemanticCompiler::modal_relation_name(&ModalRelation::Ria),
-            "rinka"
-        );
-        assert_eq!(
-            SemanticCompiler::modal_relation_name(&ModalRelation::Nii),
-            "nibli"
-        );
-        assert_eq!(
-            SemanticCompiler::modal_relation_name(&ModalRelation::Mui),
-            "mukti"
-        );
-        assert_eq!(
-            SemanticCompiler::modal_relation_name(&ModalRelation::Kiu),
-            "krinu"
-        );
-        assert_eq!(
-            SemanticCompiler::modal_relation_name(&ModalRelation::Pio),
-            "pilno"
-        );
-        assert_eq!(
-            SemanticCompiler::modal_relation_name(&ModalRelation::Bai),
-            "basti"
-        );
-    }
 
     // ─── inject_variable into conjunction ─────────────────────
 
@@ -4485,32 +3561,6 @@ mod tests {
     }
 
     // ─── C5: Description term opacity tests ──────────────────────
-
-    #[test]
-    fn test_la_gadri_compiles_to_constant() {
-        // la gerku cu barda → Constant("gerku") in x1 role predicate
-        let selbris = vec![
-            Predicate::Root("gerku".into()),
-            Predicate::Root("barda".into()),
-        ];
-        let sumtis = vec![Argument::Description((Determiner::La, 0))];
-        let bridi = Proposition {
-            relation: 1,
-            head_terms: vec![0],
-            tail_terms: vec![],
-            negated: false,
-            tense: None,
-            deontic: None,
-        };
-        let (form, compiler) = compile_one(selbris, sumtis, bridi);
-        let args =
-            get_pred_args(&form, "barda_x1", &compiler).expect("expected barda_x1 role predicate");
-        // x1 arg (index 1 after event) should be Constant("gerku")
-        match &args[1] {
-            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "gerku"),
-            other => panic!("expected Constant(gerku), got {:?}", other),
-        }
-    }
 
     #[test]
     fn test_le_description_stays_description() {

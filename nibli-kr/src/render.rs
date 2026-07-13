@@ -8,17 +8,14 @@
 //! nibli-formalize's render round-trip gate (every Formalize candidate's
 //! canonical re-spelling must re-compile to the same `LogicBuffer`).
 //!
-//! Totality policy (NIBLI_KR §13): gerna-reachable constructs render,
-//! sometimes via the §11 collapses (forethought `ge/ga/go…gi` → the one
-//! operator set; `.inaja` → `->`; `la`+selbri → a Name; BAI → `via`); §10
-//! out-of-scope constructs (`ri/ra/ru`, `ko`, `go'i`, exotic gadri×NU
-//! combinations, exponent-form floats) FAIL CLOSED with a named error — in
-//! the battery, such a failure is a genuine coverage signal, never silence.
-//! Predicate connectives on a MAIN relation render via bridi-level expansion
-//! (block-every for a universal subject, an operator claim for a constant —
-//! see [`Renderer::connected_bridi`]); the remaining deliberate gaps fail
-//! closed with named messages: SUMTI connectives, connected selbri outside
-//! main-bridi position, and `Converted` over a non-root selbri.
+//! Totality policy (NIBLI_KR §13): every AST construct nibli-kr's emitter can
+//! produce renders (the `ge…gi`/`ganai…gi` sentence connectives + afterthought
+//! operators; `via` modals; tense/deontic prefixes; conversions, tanru, and
+//! abstractions); §10 out-of-scope constructs (`ri/ra/ru`, `ko`, `go'i`, exotic
+//! gadri×NU combinations, exponent-form floats) FAIL CLOSED with a named error.
+//! The dead Lojban-only capacity the deleted gerna parser once produced (sumti/
+//! selbri connectives, fixed BAI tags, `la`-descriptions, `voi` clauses,
+//! forethought or/iff) has been removed from the AST.
 //!
 //! Fixpoint contract (pinned by tests): for nibli KR-originated buffers,
 //! `parse ∘ render ∘ parse` compiles — through smuni — to the SAME
@@ -29,7 +26,7 @@
 
 use nibli_types::ast::{
     AbstractionKind, Argument, AstBuffer, Connective, Conversion, DeonticMood, Determiner,
-    ModalRelation, ModalTag, PlaceTag, Predicate, Proposition, RelClause, RelClauseKind, Sentence,
+    ModalTag, PlaceTag, Predicate, Proposition, RelClause, RelClauseKind, Sentence,
     SentenceConnective, Tense,
 };
 use nibli_types::error::NibliError;
@@ -104,41 +101,14 @@ impl<'a> Renderer<'a> {
                     1,
                 ),
                 SentenceConnective::GeGi => (self.binary("&", 5, *left, *right)?, 5),
-                SentenceConnective::GaGi => (self.binary("|", 4, *left, *right)?, 4),
-                SentenceConnective::GoGi => (self.binary("<->", 2, *left, *right)?, 2),
-                SentenceConnective::Afterthought((na, conn, nai)) => {
-                    // `.inaja` (na + ja) is the material conditional — render
-                    // it as the one arrow. Other na/nai flags fold into the
-                    // operand bridi when it is simple (fail closed otherwise:
-                    // nibli KR rejects `~` over compounds).
-                    if *na && matches!(conn, Connective::Ja) && !*nai {
-                        (
-                            format!(
-                                "{} -> {}",
-                                self.sentence(*left, 2)?,
-                                self.sentence(*right, 1)?
-                            ),
-                            1,
-                        )
-                    } else {
-                        let (op, prec) = match conn {
-                            Connective::Je => ("&", 5),
-                            Connective::Ja => ("|", 4),
-                            Connective::Jo => ("<->", 2),
-                            Connective::Ju => ("^", 3),
-                        };
-                        let l = if *na {
-                            self.negated_operand(*left)?
-                        } else {
-                            self.sentence(*left, prec)?
-                        };
-                        let r = if *nai {
-                            self.negated_operand(*right)?
-                        } else {
-                            self.sentence(*right, prec + 1)?
-                        };
-                        (format!("{l} {op} {r}"), prec)
-                    }
+                SentenceConnective::Afterthought(conn) => {
+                    let (op, prec) = match conn {
+                        Connective::Je => ("&", 5),
+                        Connective::Ja => ("|", 4),
+                        Connective::Jo => ("<->", 2),
+                        Connective::Ju => ("^", 3),
+                    };
+                    (self.binary(op, prec, *left, *right)?, prec)
                 }
             },
         };
@@ -155,22 +125,6 @@ impl<'a> Renderer<'a> {
             self.sentence(left, prec)?,
             self.sentence(right, prec + 1)?
         ))
-    }
-
-    /// A connective operand carrying a Lojban `na`/`nai` polarity flag: only a
-    /// simple, not-already-negated bridi can absorb it as `~`.
-    fn negated_operand(&self, id: u32) -> R<String> {
-        match self.sentence_node(id)? {
-            Sentence::Simple(bridi) if !bridi.negated => {
-                let mut flipped = bridi.clone();
-                flipped.negated = true;
-                Ok(self.bridi(&flipped)?)
-            }
-            _ => Err(nope(
-                "a na/nai connective polarity over a compound (or already-negated) operand \
-                 has no nibli KR spelling — nibli KR rejects `~` over compounds; expand manually",
-            )),
-        }
     }
 
     // ── bridi ──
@@ -222,14 +176,6 @@ impl<'a> Renderer<'a> {
             }
         }
 
-        // A CONNECTED main selbri renders via bridi-level expansion (the
-        // operands share the subject): block-every for a universal subject,
-        // a plain operator claim for a constant subject — both probe-proven
-        // canonically equal to the Lojban connective compilation.
-        if matches!(self.selbri(bridi.relation)?, Predicate::Connected(_)) {
-            return self.connected_bridi(bridi, &prefix);
-        }
-
         // A conversion chain with NO curated converted alias renders by
         // PEELING the swaps and permuting the argument places onto the plain
         // alias with named args (`ta se citka ti` → `eats(x2: that, x1: this)`)
@@ -248,7 +194,6 @@ impl<'a> Renderer<'a> {
         // `via` after the argument list.
         let mut placed: Vec<(usize, Option<u32>)> = Vec::new();
         let mut vias: Vec<(u32, u32)> = Vec::new(); // (modal selbri-ish, term) — see below
-        let mut fixed_vias: Vec<(ModalRelation, u32)> = Vec::new();
         let mut counter = 0usize;
         if inject_it {
             placed.push((counter, None)); // the implicit ke'a — spelled `it`
@@ -265,10 +210,10 @@ impl<'a> Renderer<'a> {
                     placed.push((place, Some(*inner)));
                     counter = place + 1;
                 }
-                Argument::ModalTagged((modal, inner)) => match modal {
-                    ModalTag::Fio(selbri) => vias.push((*selbri, *inner)),
-                    ModalTag::Fixed(bai) => fixed_vias.push((*bai, *inner)),
-                },
+                Argument::ModalTagged((modal, inner)) => {
+                    let ModalTag::Custom(selbri) = modal;
+                    vias.push((*selbri, *inner));
+                }
                 Argument::Pronoun(_)
                 | Argument::Description(_)
                 | Argument::Name(_)
@@ -276,7 +221,6 @@ impl<'a> Renderer<'a> {
                 | Argument::Unspecified
                 | Argument::Restricted(_)
                 | Argument::Number(_)
-                | Argument::Connected(_)
                 | Argument::QuantifiedDescription(_) => {
                     placed.push((counter, Some(tail)));
                     counter += 1;
@@ -334,115 +278,7 @@ impl<'a> Renderer<'a> {
             };
             out.push_str(&format!(" via {name}({})", self.term(term)?));
         }
-        for (bai, term) in fixed_vias {
-            let gismu = match bai {
-                ModalRelation::Ria => "rinka",
-                ModalRelation::Nii => "nibli",
-                ModalRelation::Mui => "mukti",
-                ModalRelation::Kiu => "krinu",
-                ModalRelation::Pio => "pilno",
-                ModalRelation::Bai => "basti",
-            };
-            out.push_str(&format!(
-                " via {}({})",
-                self.alias_or_identity(gismu)?,
-                self.term(term)?
-            ));
-        }
         Ok(out)
-    }
-
-    /// Proposition-level expansion of a CONNECTED main selbri (`X A jenai B` and
-    /// family). The operands share the subject, so the sentence becomes a
-    /// block-every claim (universal-description subject) or a plain operator
-    /// claim (constant subject); both shapes are pinned canonically equal to
-    /// smuni's selbri-connective compilation by the seam gate (verify-nibli-kr-seam). Fail
-    /// closed BY NAME everywhere else — the expansion must never guess scope
-    /// (duplicating a `some`-subject would double the quantifier).
-    fn connected_bridi(&self, bridi: &Proposition, prefix: &str) -> R<String> {
-        if !prefix.is_empty() {
-            return Err(nope(
-                "a tense/deontic/negation prefix over a connected selbri has no nibli KR \
-                 spelling yet — expand manually",
-            ));
-        }
-        let Predicate::Connected((left_id, conn, right_id)) = self.selbri(bridi.relation)? else {
-            unreachable!("caller matched Connected");
-        };
-        if bridi.head_terms.len() != 1 || !bridi.tail_terms.is_empty() {
-            return Err(nope(
-                "a connected selbri sharing arguments beyond x1 has no nibli KR spelling \
-                 yet — expand manually",
-            ));
-        }
-        let op = match conn {
-            Connective::Je => "&",
-            Connective::Ja => "|",
-            Connective::Jo => "<->",
-            Connective::Ju => {
-                return Err(nope(
-                    "`ju` (whether-or-not) has no nibli KR operator — no spelling exists",
-                ));
-            }
-        };
-        // gerna spells jenai/janai/jonai as the connective + Negated(right).
-        let (right_id, right_neg) = match self.selbri(*right_id)? {
-            Predicate::Negated(inner) => (*inner, true),
-            _ => (*right_id, false),
-        };
-        if matches!(
-            self.selbri(*left_id)?,
-            Predicate::Connected(_) | Predicate::Negated(_)
-        ) || matches!(self.selbri(right_id)?, Predicate::Connected(_))
-        {
-            return Err(nope(
-                "a nested or negated-left connected selbri has no nibli KR spelling yet",
-            ));
-        }
-
-        let subject = bridi.head_terms[0];
-        match self.sumti(subject)? {
-            // Universal subject → the block form, minting `$x` (gerna-origin
-            // variables render as $da/$de/$di, so the name cannot collide).
-            Argument::Description((Determiner::RoLo, restr_id)) => {
-                let restr = self.restr_selbri(*restr_id)?;
-                let left = self.connective_operand(*left_id, "$x", false)?;
-                let right = self.connective_operand(right_id, "$x", right_neg)?;
-                Ok(format!("every {restr} $x: {left} {op} {right}"))
-            }
-            // Constant-ish subject → duplication is sound.
-            Argument::Name(_)
-            | Argument::Pronoun(_)
-            | Argument::Number(_)
-            | Argument::QuotedLiteral(_) => {
-                let t = self.term(subject)?;
-                let left = self.connective_operand(*left_id, &t, false)?;
-                let right = self.connective_operand(right_id, &t, right_neg)?;
-                Ok(format!("{left} {op} {right}"))
-            }
-            _ => Err(nope(
-                "a connected selbri over a non-universal quantified subject has no nibli KR \
-                 spelling — expansion would duplicate the quantifier",
-            )),
-        }
-    }
-
-    /// One connective operand as a single-subject predication: peel the
-    /// conversion chain and route the subject to its plain place (positional
-    /// when it stays x1, named otherwise) — the same routing `bridi()` uses.
-    fn connective_operand(&self, selbri_id: u32, subject: &str, negated: bool) -> R<String> {
-        let (relation_id, perm) = self.peel_conversions(selbri_id)?;
-        let head_gismu = self.head_gismu(relation_id)?;
-        let relation = self.predication_selbri(relation_id)?;
-        let neg = if negated { "~" } else { "" };
-        Ok(if perm[0] == 0 {
-            format!("{neg}{relation}({subject})")
-        } else {
-            format!(
-                "{neg}{relation}({}: {subject})",
-                self.place_label(&head_gismu, perm[0])
-            )
-        })
     }
 
     /// Peel outer `Converted` layers off a relation, composing their swaps
@@ -502,7 +338,6 @@ impl<'a> Renderer<'a> {
             Predicate::Negated(inner) => self.head_gismu(*inner)?,
             Predicate::Grouped(inner) => self.head_gismu(*inner)?,
             Predicate::WithArgs((core, _)) => self.head_gismu(*core)?,
-            Predicate::Connected((_, _, _)) => String::new(),
             Predicate::Abstraction(_) => String::new(),
         })
     }
@@ -617,12 +452,6 @@ impl<'a> Renderer<'a> {
                 }
                 format!("{core_text}({})", rendered.join(", "))
             }
-            Predicate::Connected((_, _, _)) => {
-                return Err(nope(
-                    "a connected selbri outside main-bridi position (restrictor / tanru \
-                     unit) has no nibli KR spelling — only the bridi-level expansion exists",
-                ));
-            }
             Predicate::Abstraction((kind, body)) => {
                 let keyword = match kind {
                     AbstractionKind::Nu => "event",
@@ -697,13 +526,11 @@ impl<'a> Renderer<'a> {
                 if let Predicate::Abstraction(_) = self.selbri(*selbri)? {
                     return match gadri {
                         Determiner::Lo => self.restr_selbri(*selbri),
-                        Determiner::Le | Determiner::La | Determiner::RoLo | Determiner::RoLe => {
-                            Err(nope(
-                                "abstractions are hard-wired to the implicit-some description; \
+                        Determiner::Le | Determiner::RoLo | Determiner::RoLe => Err(nope(
+                            "abstractions are hard-wired to the implicit-some description; \
                              other gadri × NU combinations are out of scope \
                              (NIBLI_KR §10)",
-                            ))
-                        }
+                        )),
                     };
                 }
                 match gadri {
@@ -711,15 +538,6 @@ impl<'a> Renderer<'a> {
                     Determiner::Le => format!("the {}", self.restr_selbri(*selbri)?),
                     Determiner::RoLo => format!("every {}", self.restr_selbri(*selbri)?),
                     Determiner::RoLe => format!("every the {}", self.restr_selbri(*selbri)?),
-                    Determiner::La => match self.selbri(*selbri)? {
-                        // §11 collapse: la + selbri ≡ a rigid Name.
-                        Predicate::Root(word) => render_name(word)?,
-                        other => {
-                            return Err(nope(format!(
-                                "la + a complex selbri has no nibli KR spelling: {other:?}"
-                            )));
-                        }
-                    },
                 }
             }
             Argument::QuantifiedDescription((count, gadri, selbri)) => match gadri {
@@ -731,7 +549,7 @@ impl<'a> Renderer<'a> {
                     }
                 }
                 Determiner::Le => format!("exactly {count} the {}", self.restr_selbri(*selbri)?),
-                Determiner::La | Determiner::RoLo | Determiner::RoLe => {
+                Determiner::RoLo | Determiner::RoLe => {
                     return Err(nope(format!(
                         "a quantified {gadri:?} description has no nibli KR spelling"
                     )));
@@ -750,20 +568,12 @@ impl<'a> Renderer<'a> {
                     "a modal-tagged term outside a predication has no nibli KR spelling",
                 ));
             }
-            Argument::Connected((_, _, _, _)) => {
-                return Err(nope(
-                    "sumti connectives render only via bridi-level expansion — not yet \
-                     renderable (translation-battery bullet)",
-                ));
-            }
         })
     }
 
     fn rel_clause(&self, clause: &RelClause) -> R<String> {
         let keyword = match clause.kind {
             RelClauseKind::Poi => "where",
-            // §11 collapse: the engine treats voi as poi.
-            RelClauseKind::Voi => "where",
             RelClauseKind::Noi => "also",
         };
         // Bare-predicate sugar: a body of shape `ke'a <selbri>` (no tail, no
@@ -830,7 +640,6 @@ impl<'a> Renderer<'a> {
             Ok(Predicate::Converted(_))
             | Ok(Predicate::Negated(_))
             | Ok(Predicate::WithArgs(_))
-            | Ok(Predicate::Connected(_))
             | Ok(Predicate::Abstraction(_)) => false,
             Err(_) => false,
         }
@@ -881,7 +690,6 @@ pub fn __ast_parity_guard(
     abstraction: &AbstractionKind,
     rel_kind: &RelClauseKind,
     place: &PlaceTag,
-    bai: &ModalRelation,
     modal: &ModalTag,
     conversion: &Conversion,
     logical: &Connective,
@@ -898,7 +706,6 @@ pub fn __ast_parity_guard(
         Argument::ModalTagged(_) => {}
         Argument::Restricted(_) => {}
         Argument::Number(_) => {}
-        Argument::Connected(_) => {}
         Argument::QuantifiedDescription(_) => {}
     }
     match selbri {
@@ -909,7 +716,6 @@ pub fn __ast_parity_guard(
         Predicate::Negated(_) => {}
         Predicate::Grouped(_) => {}
         Predicate::WithArgs(_) => {}
-        Predicate::Connected(_) => {}
         Predicate::Abstraction(_) => {}
     }
     match sentence {
@@ -920,14 +726,11 @@ pub fn __ast_parity_guard(
     match connective {
         SentenceConnective::GanaiGi => {}
         SentenceConnective::GeGi => {}
-        SentenceConnective::GaGi => {}
-        SentenceConnective::GoGi => {}
         SentenceConnective::Afterthought(_) => {}
     }
     match gadri {
         Determiner::Lo => {}
         Determiner::Le => {}
-        Determiner::La => {}
         Determiner::RoLo => {}
         Determiner::RoLe => {}
     }
@@ -941,7 +744,6 @@ pub fn __ast_parity_guard(
     match rel_kind {
         RelClauseKind::Poi => {}
         RelClauseKind::Noi => {}
-        RelClauseKind::Voi => {}
     }
     match place {
         PlaceTag::Fa => {}
@@ -950,17 +752,8 @@ pub fn __ast_parity_guard(
         PlaceTag::Fo => {}
         PlaceTag::Fu => {}
     }
-    match bai {
-        ModalRelation::Ria => {}
-        ModalRelation::Nii => {}
-        ModalRelation::Mui => {}
-        ModalRelation::Kiu => {}
-        ModalRelation::Pio => {}
-        ModalRelation::Bai => {}
-    }
     match modal {
-        ModalTag::Fixed(_) => {}
-        ModalTag::Fio(_) => {}
+        ModalTag::Custom(_) => {}
     }
     match conversion {
         Conversion::Se => {}

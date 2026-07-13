@@ -1,34 +1,9 @@
 //! Proposition and sentence compilation: the main compilation entry points.
 //!
-//! Compiles bridi (predication) nodes and sentence connectives into FOL.
-//! Handles place tags (fa/fe/fi/fo/fu), modal tags (BAI, fi'o), sumti
-//! connective expansion, quantifier closure, da/de/di existential wrapping,
-//! tense wrappers (pu/ca/ba), and deontic deontics (ei/e'e).
+//! Compiles predication nodes and sentence connectives into FOL. Handles place
+//! tags, modal tags (the `via` custom modal), quantifier closure, existential
+//! wrapping, tense wrappers, and deontic moods.
 use super::*;
-
-/// A connected sumti (`.e`/`.a`/`.o`/`.u`) found in a bridi's term list, ready to
-/// distribute. Captures the connective + operands plus the wrapper (if any) the
-/// connected sumti sits under, so distribution can preserve the place tag / BAI
-/// modal over each operand.
-struct ConnectedSplit {
-    /// Position of the connected term within `head_terms ++ tail_terms`.
-    term_pos: usize,
-    wrapper: ConnWrapper,
-    connective: Connective,
-    right_negated: bool,
-    left_id: u32,
-    right_id: u32,
-}
-
-/// What a connected sumti sits under in a bridi term slot.
-enum ConnWrapper {
-    /// A bare `Argument::Connected` term.
-    Bare,
-    /// `Argument::Tagged((tag, Connected(..)))` — a place tag over a connected sumti.
-    Place(PlaceTag),
-    /// `Argument::ModalTagged((modal, Connected(..)))` — a BAI modal over a connected sumti.
-    Modal(ModalTag),
-}
 
 impl SemanticCompiler {
     /// Compiles a bridi (predication) into FOL with quantifier scoping and tense wrapping.
@@ -57,16 +32,6 @@ impl SemanticCompiler {
             .chain(bridi.tail_terms.iter())
             .copied()
             .collect();
-
-        // Distribute connected sumti (`.e`/`.a`/`.o`/`.u`) — including a
-        // connected sumti nested under a place tag (`fa mi .e do`) or BAI modal
-        // (`ri'a do .e ti`), where the wrapper is preserved over each operand.
-        // Only the first connected term is split here; the recursive
-        // `compile_proposition` re-scans for the rest, so every connected sumti in the
-        // bridi distributes.
-        if let Some(split) = Self::find_connected_term(&all_terms, sumtis) {
-            return self.distribute_connected(bridi, split, selbris, sumtis, sentences);
-        }
 
         let target_arity = self.get_predicate_arity(bridi.relation, selbris);
 
@@ -228,12 +193,7 @@ impl SemanticCompiler {
             markers.extend(modal_quants.into_iter().map(ScopeMarker::Desc));
 
             let (modal_gismu, modal_arity) = match &modal_tag {
-                ModalTag::Fixed(bai) => {
-                    let gismu = Self::modal_relation_name(bai);
-                    let arity = LexiconSchema::get_arity_or_default(gismu);
-                    (self.interner.get_or_intern(gismu), arity)
-                }
-                ModalTag::Fio(selbri_id) => {
+                ModalTag::Custom(selbri_id) => {
                     let name = self.get_predicate_head_name(*selbri_id, selbris);
                     let arity = self.get_predicate_arity(*selbri_id, selbris);
                     (self.interner.get_or_intern(name), arity)
@@ -482,36 +442,6 @@ impl SemanticCompiler {
         }
     }
 
-    /// Find the first term (in `head_terms ++ tail_terms` order) that is — or
-    /// wraps, one level under a place tag / BAI modal — a connected sumti.
-    /// Returns everything `distribute_connected` needs to split it.
-    fn find_connected_term(all_terms: &[u32], sumtis: &[Argument]) -> Option<ConnectedSplit> {
-        for (term_pos, &term_id) in all_terms.iter().enumerate() {
-            let term = &sumtis[term_id as usize];
-            let (wrapper, inner) = match term {
-                Argument::Connected(_) => (ConnWrapper::Bare, term),
-                Argument::Tagged((tag, inner_id)) => {
-                    (ConnWrapper::Place(*tag), &sumtis[*inner_id as usize])
-                }
-                Argument::ModalTagged((modal, inner_id)) => {
-                    (ConnWrapper::Modal(*modal), &sumtis[*inner_id as usize])
-                }
-                _ => continue,
-            };
-            if let Argument::Connected((left_id, connective, right_negated, right_id)) = inner {
-                return Some(ConnectedSplit {
-                    term_pos,
-                    wrapper,
-                    connective: *connective,
-                    right_negated: *right_negated,
-                    left_id: *left_id,
-                    right_id: *right_id,
-                });
-            }
-        }
-        None
-    }
-
     /// Shallow scan of a proposition's direct terms for an explicit `ke'a` —
     /// bare, or under `fa`..`fu` place-tag wrappers (unwrapped transitively).
     /// Does NOT descend into Description/Restricted/Abstraction/Connected
@@ -530,76 +460,6 @@ impl SemanticCompiler {
                 }
             }
         })
-    }
-
-    /// Distribute a connected sumti into a logical combination of two bridi (one
-    /// per operand), preserving any place tag / BAI modal wrapper over each
-    /// operand. Recurses through `compile_proposition`, which re-scans for further
-    /// connected sumti, so every connected term in the bridi is distributed.
-    fn distribute_connected(
-        &mut self,
-        bridi: &Proposition,
-        split: ConnectedSplit,
-        selbris: &[Predicate],
-        sumtis: &[Argument],
-        sentences: &[Sentence],
-    ) -> LogicalForm {
-        // A wrapped connected sumti needs a tag/modal node synthesised over each
-        // operand (these don't exist in the immutable `sumtis` buffer); a bare
-        // connected sumti reuses its existing operand ids unchanged.
-        let mut ext: Vec<Argument> = sumtis.to_vec();
-        let (left_slot, right_slot) = match split.wrapper {
-            ConnWrapper::Bare => (split.left_id, split.right_id),
-            ConnWrapper::Place(tag) => {
-                let base = ext.len() as u32;
-                ext.push(Argument::Tagged((tag, split.left_id)));
-                ext.push(Argument::Tagged((tag, split.right_id)));
-                (base, base + 1)
-            }
-            ConnWrapper::Modal(modal) => {
-                let base = ext.len() as u32;
-                ext.push(Argument::ModalTagged((modal, split.left_id)));
-                ext.push(Argument::ModalTagged((modal, split.right_id)));
-                (base, base + 1)
-            }
-        };
-
-        let head_len = bridi.head_terms.len();
-        let term_pos = split.term_pos;
-        let substitute = |replacement_id: u32| -> Proposition {
-            let mut head = bridi.head_terms.clone();
-            let mut tail = bridi.tail_terms.clone();
-            if term_pos < head_len {
-                head[term_pos] = replacement_id;
-            } else {
-                tail[term_pos - head_len] = replacement_id;
-            }
-            Proposition {
-                relation: bridi.relation,
-                head_terms: head,
-                tail_terms: tail,
-                negated: bridi.negated,
-                tense: bridi.tense,
-                deontic: bridi.deontic,
-            }
-        };
-
-        let left_proposition = substitute(left_slot);
-        let right_proposition = substitute(right_slot);
-
-        let left_form = self.compile_proposition(&left_proposition, selbris, &ext, sentences);
-        let mut right_form = self.compile_proposition(&right_proposition, selbris, &ext, sentences);
-
-        if split.right_negated {
-            right_form = LogicalForm::Not(Box::new(right_form));
-        }
-
-        match split.connective {
-            Connective::Je => LogicalForm::And(Box::new(left_form), Box::new(right_form)),
-            Connective::Ja => LogicalForm::Or(Box::new(left_form), Box::new(right_form)),
-            Connective::Jo => LogicalForm::Biconditional(Box::new(left_form), Box::new(right_form)),
-            Connective::Ju => LogicalForm::Xor(Box::new(left_form), Box::new(right_form)),
-        }
     }
 
     /// Compiles a sentence node (simple bridi or connected sentences) into FOL.
@@ -653,30 +513,20 @@ impl SemanticCompiler {
                     SentenceConnective::GeGi => {
                         LogicalForm::And(Box::new(left_form), Box::new(right_form))
                     }
-                    SentenceConnective::GaGi => {
-                        LogicalForm::Or(Box::new(left_form), Box::new(right_form))
-                    }
-                    SentenceConnective::GoGi => {
-                        LogicalForm::Biconditional(Box::new(left_form), Box::new(right_form))
-                    }
-                    SentenceConnective::Afterthought((left_neg, conn, right_neg)) => {
-                        let l = if *left_neg {
-                            LogicalForm::Not(Box::new(left_form))
-                        } else {
-                            left_form
-                        };
-                        let r = if *right_neg {
-                            LogicalForm::Not(Box::new(right_form))
-                        } else {
-                            right_form
-                        };
-                        match conn {
-                            Connective::Je => LogicalForm::And(Box::new(l), Box::new(r)),
-                            Connective::Ja => LogicalForm::Or(Box::new(l), Box::new(r)),
-                            Connective::Jo => LogicalForm::Biconditional(Box::new(l), Box::new(r)),
-                            Connective::Ju => LogicalForm::Xor(Box::new(l), Box::new(r)),
+                    SentenceConnective::Afterthought(conn) => match conn {
+                        Connective::Je => {
+                            LogicalForm::And(Box::new(left_form), Box::new(right_form))
                         }
-                    }
+                        Connective::Ja => {
+                            LogicalForm::Or(Box::new(left_form), Box::new(right_form))
+                        }
+                        Connective::Jo => {
+                            LogicalForm::Biconditional(Box::new(left_form), Box::new(right_form))
+                        }
+                        Connective::Ju => {
+                            LogicalForm::Xor(Box::new(left_form), Box::new(right_form))
+                        }
+                    },
                 }
             }
         }

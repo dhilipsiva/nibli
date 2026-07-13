@@ -149,18 +149,6 @@ impl SemanticCompiler {
         }
     }
 
-    /// Maps a BAI modal tag to its underlying gismu relation name.
-    pub(crate) fn modal_relation_name(tag: &ModalRelation) -> &'static str {
-        match tag {
-            ModalRelation::Ria => "rinka",
-            ModalRelation::Nii => "nibli",
-            ModalRelation::Mui => "mukti",
-            ModalRelation::Kiu => "krinu",
-            ModalRelation::Pio => "pilno",
-            ModalRelation::Bai => "basti",
-        }
-    }
-
     /// Resolves the arity of a selbri by recursing through tanru, conversions, etc.
     pub(crate) fn get_predicate_arity(&self, selbri_id: u32, selbris: &[Predicate]) -> usize {
         match &selbris[selbri_id as usize] {
@@ -170,14 +158,6 @@ impl SemanticCompiler {
             Predicate::Negated(inner_id) => self.get_predicate_arity(*inner_id, selbris),
             Predicate::Grouped(inner_id) => self.get_predicate_arity(*inner_id, selbris),
             Predicate::WithArgs((core_id, _)) => self.get_predicate_arity(*core_id, selbris),
-            // A connected selbri (`broda je brode`) shares its sumti across both
-            // operands; each takes only its own arity's worth (via `fit_args` in
-            // `apply_predicate`). The EFFECTIVE arity is max(left, right) so the place
-            // counter sizes for — and captures — every sumti the larger operand
-            // needs; a left-only arity dropped the higher operand's slots.
-            Predicate::Connected((left_id, _, right_id)) => self
-                .get_predicate_arity(*left_id, selbris)
-                .max(self.get_predicate_arity(*right_id, selbris)),
             Predicate::Compound(parts) => parts
                 .last()
                 .map(|s| LexiconSchema::get_arity_or_default(s.as_str()))
@@ -199,9 +179,6 @@ impl SemanticCompiler {
             Predicate::Negated(inner_id) => self.get_predicate_head_name(*inner_id, selbris),
             Predicate::Grouped(inner_id) => self.get_predicate_head_name(*inner_id, selbris),
             Predicate::WithArgs((core_id, _)) => self.get_predicate_head_name(*core_id, selbris),
-            Predicate::Connected((left_id, _, _)) => {
-                self.get_predicate_head_name(*left_id, selbris)
-            }
             Predicate::Compound(parts) => parts.last().map(|s| s.as_str()).unwrap_or("entity"),
             Predicate::Abstraction((kind, _)) => match kind {
                 AbstractionKind::Nu => "nu",
@@ -357,13 +334,6 @@ impl SemanticCompiler {
                         }],
                     )
                 }
-                Determiner::La => {
-                    let name = self.get_predicate_head_name(*desc_id, selbris);
-                    (
-                        LogicalTerm::Constant(self.interner.get_or_intern(name)),
-                        vec![],
-                    )
-                }
                 Determiner::Le => {
                     let desc_str = self.get_predicate_head_name(*desc_id, selbris);
                     (
@@ -480,7 +450,7 @@ impl SemanticCompiler {
                                     None => new_restrictor,
                                 });
                         }
-                        RelClauseKind::Poi | RelClauseKind::Voi => {
+                        RelClauseKind::Poi => {
                             last.restrictor = Some(match last.restrictor.take() {
                                 Some(existing) => {
                                     LogicalForm::And(Box::new(existing), Box::new(new_restrictor))
@@ -509,25 +479,6 @@ impl SemanticCompiler {
             ),
             Argument::Number(n) => (LogicalTerm::Number(*n), vec![]),
             Argument::Unspecified => (LogicalTerm::Unspecified, vec![]),
-            Argument::Connected((left_id, _conn, _negated, _right_id)) => {
-                // A connected sumti filling a place — bare, or under a place tag /
-                // BAI modal — is distributed in `compile_proposition` (see
-                // `find_connected_term`/`distribute_connected`) and never reaches
-                // here. This arm is only hit for a connected sumti in a position the
-                // distributor doesn't descend into (a be/bei argument or a
-                // relative-clause body), where keeping the left operand silently
-                // drops the right. FAIL CLOSED instead of losing meaning.
-                self.errors.push(
-                    "Connected sumti (`.e`/`.a`/`.o`/`.u`) in a be/bei argument or \
-                     relative-clause body is not supported; restate it as separate \
-                     sentences or place the connective at the bridi level."
-                        .to_string(),
-                );
-                // Still resolve the left operand best-effort so a term is returned;
-                // the pushed error fail-closes the assertion.
-                let left = &sumtis[*left_id as usize];
-                self.resolve_argument(left, sumtis, selbris, sentences)
-            }
         }
     }
 

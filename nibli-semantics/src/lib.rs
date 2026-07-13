@@ -73,7 +73,6 @@ fn validate_ast_buffer(ast: &flat_ast::AstBuffer) -> Result<(), NibliError> {
                     v.extend(args.iter().map(|a| (Kind::Sum, *a)));
                     v
                 }
-                Predicate::Connected((l, _, r)) => vec![(Kind::Sel, *l), (Kind::Sel, *r)],
                 Predicate::Abstraction((_, s)) => vec![(Kind::Sen, *s)],
             },
             Kind::Sum => match &ast.sumtis[idx as usize] {
@@ -88,15 +87,13 @@ fn validate_ast_buffer(ast: &flat_ast::AstBuffer) -> Result<(), NibliError> {
                 Argument::Tagged((_, i)) => vec![(Kind::Sum, *i)],
                 Argument::ModalTagged((modal, i)) => {
                     let mut v = vec![(Kind::Sum, *i)];
-                    if let ModalTag::Fio(s) = modal {
-                        v.push((Kind::Sel, *s));
-                    }
+                    let ModalTag::Custom(s) = modal;
+                    v.push((Kind::Sel, *s));
                     v
                 }
                 Argument::Restricted((i, clause)) => {
                     vec![(Kind::Sum, *i), (Kind::Sen, clause.body_sentence)]
                 }
-                Argument::Connected((l, _, _, r)) => vec![(Kind::Sum, *l), (Kind::Sum, *r)],
             },
             Kind::Sen => match &ast.sentences[idx as usize] {
                 Sentence::Simple(b) => {

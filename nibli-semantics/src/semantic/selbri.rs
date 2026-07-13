@@ -314,27 +314,6 @@ impl SemanticCompiler {
 
                 form
             }
-            Predicate::Connected((left_id, conn, right_id)) => {
-                // The shared sumti fill each operand to its OWN arity (`fit_args`
-                // truncates/pads per operand), so a mixed-arity connective like
-                // `barda je xunre` (3+2 place) is valid Lojban — not an error. The
-                // place counter already sized for max(left, right) (see
-                // `get_predicate_arity`), so every supplied sumti reached `args`.
-                let left_arity = self.get_predicate_arity(*left_id, selbris);
-                let right_arity = self.get_predicate_arity(*right_id, selbris);
-                let left_args = Self::fit_args(args, left_arity);
-                let right_args = Self::fit_args(args, right_arity);
-                let left = self.apply_predicate(*left_id, &left_args, selbris, sumtis, sentences);
-                let right =
-                    self.apply_predicate(*right_id, &right_args, selbris, sumtis, sentences);
-
-                match conn {
-                    Connective::Je => LogicalForm::And(Box::new(left), Box::new(right)),
-                    Connective::Ja => LogicalForm::Or(Box::new(left), Box::new(right)),
-                    Connective::Jo => LogicalForm::Biconditional(Box::new(left), Box::new(right)),
-                    Connective::Ju => LogicalForm::Xor(Box::new(left), Box::new(right)),
-                }
-            }
             Predicate::Compound(parts) => {
                 let head = parts.last().map(|s| s.as_str()).unwrap_or("unknown");
                 let arity = LexiconSchema::get_arity_or_default(head);

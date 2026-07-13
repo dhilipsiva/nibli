@@ -161,7 +161,7 @@ impl<'a> Emitter<'a> {
         let l = self.claim(a, at)?;
         let r = self.claim(b, at)?;
         Ok(self.push_sentence(Sentence::Connected((
-            SentenceConnective::Afterthought((false, conn, false)),
+            SentenceConnective::Afterthought(conn),
             l,
             r,
         ))))
@@ -257,8 +257,10 @@ impl<'a> Emitter<'a> {
                 .unwrap_or_else(|| tag.pred.last().unwrap().clone());
             let modal_selbri = self.push_selbri(Predicate::Root(gismu));
             let inner = self.term(&tag.term, tag.span.start)?;
-            tail_terms
-                .push(self.push_sumti(Argument::ModalTagged((ModalTag::Fio(modal_selbri), inner))));
+            tail_terms.push(self.push_sumti(Argument::ModalTagged((
+                ModalTag::Custom(modal_selbri),
+                inner,
+            ))));
         }
         Ok(Proposition {
             relation,

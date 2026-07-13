@@ -42,26 +42,11 @@ impl PlaceTag {
     }
 }
 
-/// BAI modal tag — each maps to an underlying gismu:
-/// ri'a=rinka (cause), ni'i=nibli (entailment), mu'i=mukti (motivation),
-/// ki'u=krinu (reason), pi'o=pilno (tool), ba'i=basti (replace).
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum ModalRelation {
-    Ria,
-    Nii,
-    Mui,
-    Kiu,
-    Pio,
-    Bai,
-}
-
-/// Modal tag: either a fixed BAI shortcut or a fi'o custom modal.
+/// Modal tag: a custom modal built from a predicate reference (the `via:` tag).
 #[derive(Clone, Copy, Debug)]
 pub enum ModalTag {
-    /// One of the six built-in BAI cmavo.
-    Fixed(ModalRelation),
-    /// fi'o + selbri [+ fe'u]: user-defined modal via a selbri reference.
-    Fio(PredicateId),
+    /// `via` + predicate: user-defined modal via a predicate reference.
+    Custom(PredicateId),
 }
 
 /// SE-series conversion: permutes the x1 place with another.
@@ -91,8 +76,6 @@ pub enum Determiner {
     Lo,
     /// `le` — non-veridical description (opaque rigid designator).
     Le,
-    /// `la` — name gadri (proper name).
-    La,
     /// `ro lo` — universal over veridical description.
     RoLo,
     /// `ro le` — universal over non-veridical description.
@@ -114,15 +97,13 @@ pub enum AbstractionKind {
     Siho,
 }
 
-/// Relative clause kind: restrictive, non-restrictive, or voi.
+/// Relative clause kind: restrictive or non-restrictive (incidental).
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum RelClauseKind {
     /// `poi` — restrictive relative clause.
     Poi,
     /// `noi` — non-restrictive (incidental) relative clause.
     Noi,
-    /// `voi` — restrictive relative clause (designating).
-    Voi,
 }
 
 /// A relative clause attached to a sumti.
@@ -154,9 +135,6 @@ pub enum Argument {
     Restricted((ArgumentId, RelClause)),
     /// Number sumti: `li` + PA.
     Number(f64),
-    /// Connected sumti: left .e/.a/.o/.u [nai] right.
-    /// Fields: (left-id, connective, nai-flag, right-id).
-    Connected((ArgumentId, Connective, bool, ArgumentId)),
     /// Quantified description: PA lo/le selbri. Fields: (count, gadri, selbri-id).
     QuantifiedDescription((u32, Determiner, PredicateId)),
 }
@@ -178,8 +156,6 @@ pub enum Predicate {
     Grouped(PredicateId),
     /// Predicate with be/bei arguments. Fields: (core-id, argument-sumti-ids).
     WithArgs((PredicateId, Vec<ArgumentId>)),
-    /// Connected selbri: left je/ja/jo/ju right. Fields: (left-id, connective, right-id).
-    Connected((PredicateId, Connective, PredicateId)),
     /// Abstraction: nu/du'u/ka/ni/si'o + sentence. Fields: (kind, sentence-id).
     Abstraction((AbstractionKind, u32)),
 }
@@ -210,19 +186,15 @@ pub struct Proposition {
     pub deontic: Option<DeonticMood>,
 }
 
-/// Sentence connective for forethought/afterthought sentence-level connection.
+/// Sentence connective for sentence-level connection.
 #[derive(Clone, Debug)]
 pub enum SentenceConnective {
-    /// `ganai ... gi` — conditional.
+    /// `ganai ... gi` — conditional (implication).
     GanaiGi,
     /// `ge ... gi` — conjunctive (and).
     GeGi,
-    /// `ga ... gi` — disjunctive (or).
-    GaGi,
-    /// `go ... gi` — biconditional (iff).
-    GoGi,
-    /// `.i` + afterthought connective: (na-flag, connective, nai-flag).
-    Afterthought((bool, Connective, bool)),
+    /// Afterthought connective between two sentences.
+    Afterthought(Connective),
 }
 
 /// A sentence: a simple bridi, two connected sentences, or a prenex-quantified body.
