@@ -306,7 +306,9 @@ impl<'a> Renderer<'a> {
             };
             if nibli_lexicon::curated::CONVERTED_ALIASES
                 .iter()
-                .any(|(_, g, swap)| g == word && *swap == place)
+                .any(|(_, g, swap)| {
+                    nibli_lexicon::canonical_alias(g) == Some(word.as_str()) && *swap == place
+                })
             {
                 return Ok((id, IDENTITY));
             }
@@ -354,6 +356,11 @@ impl<'a> Renderer<'a> {
     /// (apostrophe lujvo are not). Render must NEVER emit unparseable text, so
     /// both cases fail closed by name here.
     fn alias_or_identity(&self, word: &str) -> R<String> {
+        // Since the predicate-name de-Lojbanization the IR relation IS the plain
+        // English alias — if it is a known alias, it already IS the KR spelling.
+        if nibli_lexicon::alias(word).is_some() {
+            return Ok(word.to_owned());
+        }
         if let Some(alias) = nibli_lexicon::canonical_alias(word) {
             return Ok(alias.to_owned());
         }
@@ -378,8 +385,13 @@ impl<'a> Renderer<'a> {
     /// Label for SURFACE place `place` (0-based) of `word`'s canonical alias:
     /// the dictionary label when curated, else raw `xN`.
     fn place_label(&self, word: &str, place: usize) -> String {
-        if let Some(alias) = nibli_lexicon::canonical_alias(word)
-            && let Some(entry) = nibli_lexicon::alias(alias)
+        // `word` may already be the English alias (post-flip) or a residual gismu.
+        let alias_name = if nibli_lexicon::alias(word).is_some() {
+            word
+        } else {
+            nibli_lexicon::canonical_alias(word).unwrap_or(word)
+        };
+        if let Some(entry) = nibli_lexicon::alias(alias_name)
             && let Some(label) = entry.place_labels.get(place)
             && !label.is_empty()
         {
@@ -435,9 +447,13 @@ impl<'a> Renderer<'a> {
                     Conversion::Swap15 => 5,
                 };
                 // Curated converted alias first (works everywhere)…
-                if let Some((alias, _, _)) = nibli_lexicon::curated::CONVERTED_ALIASES
-                    .iter()
-                    .find(|(_, g, swap)| g == word && *swap == place)
+                if let Some((alias, _, _)) =
+                    nibli_lexicon::curated::CONVERTED_ALIASES
+                        .iter()
+                        .find(|(_, g, swap)| {
+                            nibli_lexicon::canonical_alias(g) == Some(word.as_str())
+                                && *swap == place
+                        })
                 {
                     return Ok((*alias).to_owned());
                 }

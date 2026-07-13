@@ -290,7 +290,7 @@ fn trace_to_proto(trace: &ProofTrace) -> ProtoTrace {
 }
 
 /// Try built-in arithmetic evaluation for a single predicate.
-/// Returns Some(bool) for pilji/sumji/dilcu with 3+ numeric args.
+/// Returns Some(bool) for product/sum/quotient with 3+ numeric args.
 fn try_builtin_arithmetic(relation: &str, args: &[compute_backend::LogicalTerm]) -> Option<bool> {
     use compute_backend::LogicalTerm;
     let extract_num = |t: &LogicalTerm| -> Option<f64> {
@@ -1788,8 +1788,8 @@ mod tests {
             compute_backend::LogicalTerm::Number(2.0),
             compute_backend::LogicalTerm::Number(3.0),
         ];
-        // pilji: 6 == 2 * 3
-        assert_eq!(host.evaluate("pilji".to_string(), args).unwrap(), true);
+        // product: 6 == 2 * 3
+        assert_eq!(host.evaluate("product".to_string(), args).unwrap(), true);
     }
 
     #[test]
@@ -1802,7 +1802,7 @@ mod tests {
             compute_backend::LogicalTerm::Number(0.1),
             compute_backend::LogicalTerm::Number(0.2),
         ];
-        assert_eq!(try_builtin_arithmetic("sumji", &args), Some(true));
+        assert_eq!(try_builtin_arithmetic("sum", &args), Some(true));
     }
 
     #[test]
@@ -1815,8 +1815,11 @@ mod tests {
             compute_backend::LogicalTerm::Number(2.0),
             compute_backend::LogicalTerm::Number(3.0),
         ];
-        // tenfa is NOT built-in, should forward to backend
-        assert_eq!(host.evaluate("tenfa".to_string(), args).unwrap(), true);
+        // exponential is NOT built-in, should forward to backend
+        assert_eq!(
+            host.evaluate("exponential".to_string(), args).unwrap(),
+            true
+        );
     }
 
     // JSON wire-shape serialization is tested in
@@ -1852,9 +1855,12 @@ mod tests {
 
     #[test]
     fn test_format_nibli_error_backend() {
-        let e = NibliError::Backend(("tenfa".to_string(), "connection refused".to_string()));
+        let e = NibliError::Backend(("exponential".to_string(), "connection refused".to_string()));
         let out = format_nibli_error(&e);
-        assert_eq!(out, "[Backend Error] tenfa \u{2014} connection refused");
+        assert_eq!(
+            out,
+            "[Backend Error] exponential \u{2014} connection refused"
+        );
     }
 
     // ── evaluate wraps errors as NibliError::Backend ──
@@ -1865,10 +1871,10 @@ mod tests {
         // compute predicate"); evaluate wraps it as NibliError::Backend.
         let mut host = make_host(None);
         let args = vec![compute_backend::LogicalTerm::Number(1.0)];
-        let result = host.evaluate("tenfa".to_string(), args);
+        let result = host.evaluate("exponential".to_string(), args);
         match result {
             Err(NibliError::Backend((kind, msg))) => {
-                assert_eq!(kind, "tenfa");
+                assert_eq!(kind, "exponential");
                 assert!(msg.contains("Unknown compute predicate"));
             }
             other => panic!("expected NibliError::Backend, got {:?}", other),
@@ -1880,10 +1886,10 @@ mod tests {
         let (addr, _listener) = mock_server(r#"{"error": "division by zero"}"#);
         let mut host = make_host(Some(addr));
         let args = vec![compute_backend::LogicalTerm::Number(1.0)];
-        let result = host.evaluate("dilcu_ext".to_string(), args);
+        let result = host.evaluate("quotient_ext".to_string(), args);
         match result {
             Err(NibliError::Backend((kind, msg))) => {
-                assert_eq!(kind, "dilcu_ext");
+                assert_eq!(kind, "quotient_ext");
                 assert!(msg.contains("division by zero"));
             }
             other => panic!("expected NibliError::Backend, got {:?}", other),
@@ -2092,8 +2098,8 @@ mod tests {
 
     #[test]
     fn test_parse_assert_args_number() {
-        let (rel, args) = parse_assert_args("pilji 6 2 3").unwrap();
-        assert_eq!(rel, "pilji");
+        let (rel, args) = parse_assert_args("product 6 2 3").unwrap();
+        assert_eq!(rel, "product");
         assert_eq!(args.len(), 3);
         match &args[0] {
             EngineLogicalTerm::Number(n) => assert_eq!(*n, 6.0),
@@ -2112,91 +2118,91 @@ mod tests {
     // ─── Built-in arithmetic edge cases ──────────────────────────
 
     #[test]
-    fn test_builtin_pilji_correct() {
+    fn test_builtin_product_correct() {
         let mut host = make_host(None);
         let args = vec![
             compute_backend::LogicalTerm::Number(12.0),
             compute_backend::LogicalTerm::Number(3.0),
             compute_backend::LogicalTerm::Number(4.0),
         ];
-        assert_eq!(host.evaluate("pilji".to_string(), args).unwrap(), true);
+        assert_eq!(host.evaluate("product".to_string(), args).unwrap(), true);
     }
 
     #[test]
-    fn test_builtin_pilji_incorrect() {
+    fn test_builtin_product_incorrect() {
         let mut host = make_host(None);
         let args = vec![
             compute_backend::LogicalTerm::Number(13.0),
             compute_backend::LogicalTerm::Number(3.0),
             compute_backend::LogicalTerm::Number(4.0),
         ];
-        assert_eq!(host.evaluate("pilji".to_string(), args).unwrap(), false);
+        assert_eq!(host.evaluate("product".to_string(), args).unwrap(), false);
     }
 
     #[test]
-    fn test_builtin_sumji_correct() {
+    fn test_builtin_sum_correct() {
         let mut host = make_host(None);
         let args = vec![
             compute_backend::LogicalTerm::Number(7.0),
             compute_backend::LogicalTerm::Number(3.0),
             compute_backend::LogicalTerm::Number(4.0),
         ];
-        assert_eq!(host.evaluate("sumji".to_string(), args).unwrap(), true);
+        assert_eq!(host.evaluate("sum".to_string(), args).unwrap(), true);
     }
 
     #[test]
-    fn test_builtin_sumji_incorrect() {
+    fn test_builtin_sum_incorrect() {
         let mut host = make_host(None);
         let args = vec![
             compute_backend::LogicalTerm::Number(8.0),
             compute_backend::LogicalTerm::Number(3.0),
             compute_backend::LogicalTerm::Number(4.0),
         ];
-        assert_eq!(host.evaluate("sumji".to_string(), args).unwrap(), false);
+        assert_eq!(host.evaluate("sum".to_string(), args).unwrap(), false);
     }
 
     #[test]
-    fn test_builtin_dilcu_correct() {
+    fn test_builtin_quotient_correct() {
         let mut host = make_host(None);
         let args = vec![
             compute_backend::LogicalTerm::Number(4.0),
             compute_backend::LogicalTerm::Number(12.0),
             compute_backend::LogicalTerm::Number(3.0),
         ];
-        assert_eq!(host.evaluate("dilcu".to_string(), args).unwrap(), true);
+        assert_eq!(host.evaluate("quotient".to_string(), args).unwrap(), true);
     }
 
     #[test]
-    fn test_builtin_dilcu_incorrect() {
+    fn test_builtin_quotient_incorrect() {
         let mut host = make_host(None);
         let args = vec![
             compute_backend::LogicalTerm::Number(5.0),
             compute_backend::LogicalTerm::Number(12.0),
             compute_backend::LogicalTerm::Number(3.0),
         ];
-        assert_eq!(host.evaluate("dilcu".to_string(), args).unwrap(), false);
+        assert_eq!(host.evaluate("quotient".to_string(), args).unwrap(), false);
     }
 
     #[test]
-    fn test_builtin_sumji_fractional_correct() {
+    fn test_builtin_sum_fractional_correct() {
         let mut host = make_host(None);
         let args = vec![
             compute_backend::LogicalTerm::Number(2.5),
             compute_backend::LogicalTerm::Number(1.0),
             compute_backend::LogicalTerm::Number(1.5),
         ];
-        assert_eq!(host.evaluate("sumji".to_string(), args).unwrap(), true);
+        assert_eq!(host.evaluate("sum".to_string(), args).unwrap(), true);
     }
 
     #[test]
-    fn test_builtin_dilcu_fractional_correct() {
+    fn test_builtin_quotient_fractional_correct() {
         let mut host = make_host(None);
         let args = vec![
             compute_backend::LogicalTerm::Number(2.5),
             compute_backend::LogicalTerm::Number(5.0),
             compute_backend::LogicalTerm::Number(2.0),
         ];
-        assert_eq!(host.evaluate("dilcu".to_string(), args).unwrap(), true);
+        assert_eq!(host.evaluate("quotient".to_string(), args).unwrap(), true);
     }
 
     #[test]
@@ -2204,7 +2210,7 @@ mod tests {
         let mut host = make_host(None);
         let requests = vec![
             compute_backend::ComputeRequest {
-                relation: "sumji".to_string(),
+                relation: "sum".to_string(),
                 args: vec![
                     compute_backend::LogicalTerm::Number(2.5),
                     compute_backend::LogicalTerm::Number(1.0),
@@ -2212,7 +2218,7 @@ mod tests {
                 ],
             },
             compute_backend::ComputeRequest {
-                relation: "dilcu".to_string(),
+                relation: "quotient".to_string(),
                 args: vec![
                     compute_backend::LogicalTerm::Number(2.5),
                     compute_backend::LogicalTerm::Number(5.0),
@@ -2252,8 +2258,8 @@ mod tests {
 
     #[test]
     fn test_parse_assert_args_mixed_number_and_constant() {
-        let (rel, args) = parse_assert_args("pilji 6 alis 3").unwrap();
-        assert_eq!(rel, "pilji");
+        let (rel, args) = parse_assert_args("product 6 alis 3").unwrap();
+        assert_eq!(rel, "product");
         assert_eq!(args.len(), 3);
         assert!(matches!(&args[0], EngineLogicalTerm::Number(n) if *n == 6.0));
         assert!(matches!(&args[1], EngineLogicalTerm::Constant(s) if s == "alis"));

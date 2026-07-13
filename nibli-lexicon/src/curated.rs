@@ -218,6 +218,12 @@ pub const CURATED_ALIASES: &[(&str, &str, u8, [&str; 5])] = &[
         4,
         ["result", "dividend", "divisor", "remainder", ""],
     ),
+    (
+        "logarithm",
+        "dugri",
+        3,
+        ["result", "number", "base", "", ""],
+    ),
     // ── GISMU_PLACE_TEMPLATES word set (smuni's curated render frames) + the
     // remaining shipped-corpus/spec vocabulary — curated so the whole set the
     // renderer and corpora rely on carries pinned 3rd-person spellings and

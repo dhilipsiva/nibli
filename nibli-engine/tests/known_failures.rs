@@ -244,7 +244,7 @@ fn abstraction_body_over_connected_must_reference_real_body() {
         .compile_debug("desires(me, event { dog(Adam) -> goes(Adam) }).")
         .expect("should compile");
     assert!(
-        has_predicate_base(&buf, "klama"),
+        has_predicate_base(&buf, "goes"),
         "the abstraction body's consequent `klama` was dropped — flattener bound \
          the wrong (antecedent) sentence index. FOL:\n{buf:?}"
     );
@@ -260,7 +260,7 @@ fn abstraction_body_over_rel_clause_must_reference_real_body() {
         .compile_debug("desires(me, event { goes(some dog where big) }).")
         .expect("should compile");
     assert!(
-        has_predicate_base(&buf, "klama"),
+        has_predicate_base(&buf, "goes"),
         "the abstraction body head `klama` was dropped — flattener bound the \
          rel-clause (`barda`) sentence index instead. FOL:\n{buf:?}"
     );

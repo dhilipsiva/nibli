@@ -7,7 +7,7 @@ the Nibli runner and returns evaluation results.
 
 Protocol (JSON Lines — one JSON object per line):
 
-  Request:  {"relation":"tenfa","args":[{"type":"number","value":8.0},{"type":"number","value":2.0},{"type":"number","value":3.0}]}
+  Request:  {"relation":"exponential","args":[{"type":"number","value":8.0},{"type":"number","value":2.0},{"type":"number","value":3.0}]}
   Response: {"result":true}
   Error:    {"error":"Unknown relation: foobar"}
 
@@ -50,45 +50,45 @@ def get_string(arg):
 # Raise ValueError for bad inputs.
 
 
-def handle_pilji(args):
+def handle_product(args):
     """Multiplication: x1 = x2 * x3"""
     x1, x2, x3 = get_number(args[0]), get_number(args[1]), get_number(args[2])
     if None in (x1, x2, x3):
-        raise ValueError("pilji requires 3 numeric arguments")
+        raise ValueError("product requires 3 numeric arguments")
     return math.isclose(x1, x2 * x3)
 
 
-def handle_sumji(args):
+def handle_sum(args):
     """Addition: x1 = x2 + x3"""
     x1, x2, x3 = get_number(args[0]), get_number(args[1]), get_number(args[2])
     if None in (x1, x2, x3):
-        raise ValueError("sumji requires 3 numeric arguments")
+        raise ValueError("sum requires 3 numeric arguments")
     return math.isclose(x1, x2 + x3)
 
 
-def handle_dilcu(args):
+def handle_quotient(args):
     """Division: x1 = x2 / x3"""
     x1, x2, x3 = get_number(args[0]), get_number(args[1]), get_number(args[2])
     if None in (x1, x2, x3):
-        raise ValueError("dilcu requires 3 numeric arguments")
+        raise ValueError("quotient requires 3 numeric arguments")
     if x3 == 0:
         return False
     return math.isclose(x1, x2 / x3)
 
 
-def handle_tenfa(args):
+def handle_exponential(args):
     """Exponentiation: x1 = x2 ** x3"""
     x1, x2, x3 = get_number(args[0]), get_number(args[1]), get_number(args[2])
     if None in (x1, x2, x3):
-        raise ValueError("tenfa requires 3 numeric arguments")
+        raise ValueError("exponential requires 3 numeric arguments")
     return math.isclose(x1, x2**x3)
 
 
-def handle_dugri(args):
+def handle_logarithm(args):
     """Logarithm: x1 = log_x3(x2), i.e. x3^x1 = x2"""
     x1, x2, x3 = get_number(args[0]), get_number(args[1]), get_number(args[2])
     if None in (x1, x2, x3):
-        raise ValueError("dugri requires 3 numeric arguments")
+        raise ValueError("logarithm requires 3 numeric arguments")
     if x3 <= 0 or x3 == 1 or x2 <= 0:
         return False
     return math.isclose(x1, math.log(x2, x3))
@@ -97,11 +97,11 @@ def handle_dugri(args):
 # ── Handler registry ──
 
 HANDLERS = {
-    "pilji": handle_pilji,
-    "sumji": handle_sumji,
-    "dilcu": handle_dilcu,
-    "tenfa": handle_tenfa,
-    "dugri": handle_dugri,
+    "product": handle_product,
+    "sum": handle_sum,
+    "quotient": handle_quotient,
+    "exponential": handle_exponential,
+    "logarithm": handle_logarithm,
 }
 
 
@@ -152,7 +152,7 @@ def handle_connection(conn, addr):
                         response = {"result": result}
                 except Exception as e:
                     # Catch-all per request: any handler error (a bad value, or
-                    # an OverflowError from a huge-exponent tenfa) becomes an
+                    # an OverflowError from a huge-exponent exponential) becomes an
                     # error response — one bad request must never kill the
                     # connection thread (or, with the pool, leak a worker).
                     response = {"error": str(e)}

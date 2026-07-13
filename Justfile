@@ -181,7 +181,7 @@ smoke-host-debug: build-wasm build-host
         echo "$out" | grep -qF '[Logic]' || { echo 'FAIL: missing [Logic] block'; exit 1; }; \
         echo "$out" | grep -qF '∀ _v0:' || { echo 'FAIL: ForAll node not rendered (converter regression?)'; exit 1; }; \
         echo "$out" | grep -qF 'Or:' || { echo 'FAIL: material-conditional Or node not rendered'; exit 1; }; \
-        echo "$out" | grep -qF 'gerku_x1(' || { echo 'FAIL: role predicate not rendered functionally'; exit 1; }; \
+        echo "$out" | grep -qF 'dog_x1(' || { echo 'FAIL: role predicate not rendered functionally'; exit 1; }; \
         echo "$out" | grep -qF '[English] For every X, if X is a dog, then X is an animal.' || { echo 'FAIL: English back-translation wrong (round-trip corrupted)'; exit 1; }; \
         if echo "$out" | grep -qF '(Pred'; then echo 'FAIL: S-expression leaked into :debug output'; exit 1; fi; \
         echo 'PASS: :debug renders the typed buffer host-side (tree + English), no S-expr'

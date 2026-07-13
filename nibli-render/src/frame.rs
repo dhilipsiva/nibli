@@ -5,9 +5,17 @@
 //! predicates the corpora use (`gerku` -> `"{x1} is a dog"`); everything else
 //! falls back to a generic gloss-based frame here.
 
-use nibli_lexicon::{get_arity, get_gloss, get_template};
+use nibli_lexicon::{alias, get_arity, get_gloss, get_template};
 
 use crate::overlay;
+
+/// Map an IR relation — since the predicate-name de-Lojbanization it is the plain
+/// ENGLISH alias — back to its gismu, so the gismu-keyed domain overlays and the
+/// curated dictionary frames still resolve. A residual gismu (identity
+/// passthrough, or a fallback build) passes through unchanged.
+fn frame_key(relation: &str) -> &str {
+    alias(relation).map(|e| e.gismu).unwrap_or(relation)
+}
 
 /// Resolve a fill-template (a string with `{x1}`..`{xN}` placeholders) for a
 /// relation. DRY resolution chain: the active domain overlay (if any) wins, then
@@ -15,23 +23,25 @@ use crate::overlay;
 /// overlay is just the first tier — Custom KBs and non-UI surfaces fall straight
 /// through to the dictionary.
 pub(crate) fn frame_template(relation: &str) -> String {
-    if let Some(t) = overlay::active().and_then(|o| o.template(relation)) {
+    let key = frame_key(relation);
+    if let Some(t) = overlay::active().and_then(|o| o.template(key)) {
         return t.to_string();
     }
-    if let Some(t) = get_template(relation) {
+    if let Some(t) = get_template(key) {
         return t.to_string();
     }
     let gloss = gloss_for(relation);
-    let arity = get_arity(relation).unwrap_or(1).max(1);
+    let arity = get_arity(key).unwrap_or(1).max(1);
     generic_template(&gloss, arity)
 }
 
 /// Single-word gloss for a relation via the same overlay -> dictionary -> bare
 /// chain. Used for the generic frame fallback and the "a &lt;noun&gt;" rendering.
 pub(crate) fn gloss_for(relation: &str) -> String {
+    let key = frame_key(relation);
     overlay::active()
-        .and_then(|o| o.gloss(relation))
-        .or_else(|| get_gloss(relation))
+        .and_then(|o| o.gloss(key))
+        .or_else(|| get_gloss(key))
         .unwrap_or(relation)
         .to_string()
 }

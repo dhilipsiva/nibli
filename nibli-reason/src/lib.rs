@@ -48,7 +48,7 @@ use rules::*;
 /// `pilji` (×), `sumji` (+), `dilcu` (÷). The shared default for every embedder
 /// (nibli-engine, lasna, nibli-wasm), paired with `transform_compute_nodes`.
 pub fn default_compute_predicates() -> HashSet<String> {
-    ["pilji", "sumji", "dilcu"]
+    ["product", "sum", "quotient"]
         .iter()
         .map(|s| s.to_string())
         .collect()

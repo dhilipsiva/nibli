@@ -45,7 +45,7 @@ fn kr_smuni_seam_conformance() {
             seam::root(&b)
         );
         assert!(
-            seam::role_is_const(&b, "gerku_x1", "adam"),
+            seam::role_is_const(&b, "dog_x1", "adam"),
             "x1 role must carry the constant"
         );
         structural += 1;
@@ -110,11 +110,11 @@ fn kr_smuni_seam_conformance() {
     {
         let b = kompile("owned(Rex, Adam).").unwrap();
         assert!(
-            seam::role_is_const(&b, "ponse_x1", "adam"),
+            seam::role_is_const(&b, "owns_x1", "adam"),
             "converted alias must route the owner to ponse_x1"
         );
         assert!(
-            seam::role_is_const(&b, "ponse_x2", "rex"),
+            seam::role_is_const(&b, "owns_x2", "rex"),
             "converted alias must route the owned to ponse_x2"
         );
         structural += 1;
@@ -123,14 +123,14 @@ fn kr_smuni_seam_conformance() {
     // Named-argument place routing: `destination:` is klama's x2.
     {
         let b = kompile("goes(me, destination: some market).").unwrap();
-        let args = seam::pred_args(&b, "klama_x2").expect("klama_x2 role present");
+        let args = seam::pred_args(&b, "goes_x2").expect("klama_x2 role present");
         assert!(
             matches!(&args[1], LogicalTerm::Variable(_)),
             "named destination must fill x2 with the description's variable: {args:?}"
         );
         // And the description's restrictor is the market predicate.
         assert!(
-            seam::pred_args(&b, "zarci_x1").is_some(),
+            seam::pred_args(&b, "market_x1").is_some(),
             "the market description must decompose to zarci roles"
         );
         structural += 1;

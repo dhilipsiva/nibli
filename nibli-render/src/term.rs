@@ -2,12 +2,20 @@
 //! back-translation, and the proof renderer. ONE definition of role-predicate
 //! detection, event-Skolem detection, and Skolem humanization lives here.
 
-/// Detect a Neo-Davidsonian role predicate name (`gerku_x1`) and return its
-/// collapsed `gerku.x1` form. Returns `None` for non-role predicate names.
+/// Detect a Neo-Davidsonian role predicate name (`goes_x2`) and return its
+/// collapsed, ARGUMENT-NAMED form for the proof narrative: the curated place
+/// label where the alias carries one (`goes_x2` → `goes.destination`), else the
+/// positional `x<N>` fallback (`dog_x1` → `dog.x1`, since a class predicate's
+/// subject place has no argument name). Returns `None` for non-role names.
 pub(crate) fn collapse_role_name(name: &str) -> Option<String> {
     let base = role_base(name)?;
     let idx = role_index(name)?;
-    Some(format!("{base}.x{idx}"))
+    let place = nibli_lexicon::alias(base)
+        .and_then(|e| e.place_labels.get(idx - 1).copied())
+        .filter(|l| !l.is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("x{idx}"));
+    Some(format!("{base}.{place}"))
 }
 
 /// Base relation of a role predicate (`gerku_x1` -> `Some("gerku")`).
@@ -83,6 +91,18 @@ mod tests {
         assert_eq!(collapse_role_name("gerku"), None);
         assert_eq!(collapse_role_name("se_katna"), None); // not _xN
         assert_eq!(role_base("danlu"), None);
+    }
+
+    #[test]
+    fn role_names_use_argument_labels() {
+        // A labeled place renders the curated argument name…
+        assert_eq!(
+            collapse_role_name("goes_x2").as_deref(),
+            Some("goes.destination")
+        );
+        assert_eq!(collapse_role_name("goes_x1").as_deref(), Some("goes.goer"));
+        // …an unlabeled place (a class predicate's subject) keeps the x<N> fallback.
+        assert_eq!(collapse_role_name("dog_x1").as_deref(), Some("dog.x1"));
     }
 
     #[test]

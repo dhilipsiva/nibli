@@ -11,16 +11,21 @@
 pub struct LexiconSchema;
 
 impl LexiconSchema {
-    /// Retrieves the arity of a predicate in O(1) time. Returns None for unknown
-    /// words (cmavo, and words not in jbovlaste).
+    /// Retrieves the arity of a predicate in O(1) time. Since the predicate-name
+    /// de-Lojbanization, the canonical relation names in the IR are ENGLISH
+    /// aliases, so this tries the gismu-keyed forward dictionary first, then the
+    /// alias map (English alias → arity). The two can't collide — the alias
+    /// build's dictionary-shadow guard forbids any alias that is itself a
+    /// dictionary word. Returns None for unknown words (cmavo, non-predicates).
     pub fn get_arity(word: &str) -> Option<usize> {
         nibli_lexicon::get_arity(word)
+            .or_else(|| nibli_lexicon::alias(word).map(|e| e.arity as usize))
     }
 
     /// Retrieves the arity, defaulting to 2 for unknown words.
     /// Use this only when a fallback is acceptable (e.g., lujvo not in dictionary).
     pub fn get_arity_or_default(word: &str) -> usize {
-        nibli_lexicon::get_arity(word).unwrap_or(2)
+        Self::get_arity(word).unwrap_or(2)
     }
 }
 
@@ -94,6 +99,15 @@ mod tests {
     #[test]
     fn test_get_arity_or_default_empty_returns_two() {
         assert_eq!(LexiconSchema::get_arity_or_default(""), 2);
+    }
+
+    #[test]
+    fn test_get_arity_english_alias() {
+        // Since the predicate-name flip, the canonical relation is the English
+        // alias; arity must resolve through the alias map too (goes = klama, 5).
+        assert_eq!(LexiconSchema::get_arity("goes"), Some(5));
+        assert_eq!(LexiconSchema::get_arity("dog"), Some(2));
+        assert_eq!(LexiconSchema::get_arity_or_default("goes"), 5);
     }
 
     // ─── Dictionary coverage spot-checks ─────────────────────────

@@ -144,7 +144,7 @@ mod tests {
     #[test]
     fn flags_non_classical_nodes() {
         let compute = LogicBuffer {
-            nodes: vec![LogicNode::ComputeNode(("pilji".into(), vec![]))],
+            nodes: vec![LogicNode::ComputeNode(("product".into(), vec![]))],
             roots: vec![0],
         };
         assert_eq!(buffer_non_classical(&compute), Some("compute predicate"));
@@ -269,7 +269,7 @@ mod tests {
 
         // The non-classical reject list still applies (compute / deontic / …).
         let compute = LogicBuffer {
-            nodes: vec![LogicNode::ComputeNode(("pilji".into(), vec![]))],
+            nodes: vec![LogicNode::ComputeNode(("product".into(), vec![]))],
             roots: vec![0],
         };
         assert_eq!(buffer_asp_mappable(&compute), Some("compute predicate"));

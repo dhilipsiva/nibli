@@ -36,9 +36,9 @@ pub(super) fn try_numeric_comparison(
     let a = extract_num_value(args.get(0)?, subs)?;
     let b = extract_num_value(args.get(1)?, subs)?;
     let holds = match rel {
-        "zmadu" => a > b,
-        "mleca" => a < b,
-        "dunli" => a == b,
+        "greater" => a > b,
+        "less" => a < b,
+        "num_equal" => a == b,
         _ => return None,
     };
     if !a.is_finite() || !b.is_finite() {
@@ -168,7 +168,8 @@ pub(super) fn try_evaluate_numeric_group(
                 head = Some((rel.as_str(), true));
             }
             LogicNode::Predicate((rel, args))
-                if is_head_var(args) && matches!(rel.as_str(), "zmadu" | "mleca" | "dunli") =>
+                if is_head_var(args)
+                    && matches!(rel.as_str(), "greater" | "less" | "num_equal") =>
             {
                 if head.is_some() {
                     return None;
@@ -226,10 +227,10 @@ pub(super) fn try_evaluate_numeric_group(
             .filter_map(|t| extract_num_value(t, subs))
             .collect();
         let non_finite = match rel {
-            "pilji" | "sumji" | "dilcu" => {
+            "product" | "sum" | "quotient" => {
                 operands.len() == 3 && nibli_types::eval_arithmetic(rel, &operands).is_none()
             }
-            "zmadu" | "mleca" | "dunli" => {
+            "greater" | "less" | "num_equal" => {
                 operands.len() >= 2 && operands.iter().take(2).any(|n| !n.is_finite())
             }
             _ => false,

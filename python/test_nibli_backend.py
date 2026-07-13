@@ -65,82 +65,82 @@ class TestNibliBackend(unittest.TestCase):
             cls.proc.terminate()
             cls.proc.wait(timeout=5)
 
-    def test_pilji_true(self):
-        resp = send_request({"relation": "pilji", "args": [
+    def test_product_true(self):
+        resp = send_request({"relation": "product", "args": [
             {"type": "number", "value": 6.0},
             {"type": "number", "value": 2.0},
             {"type": "number", "value": 3.0},
         ]})
         self.assertTrue(resp["result"])
 
-    def test_pilji_false(self):
-        resp = send_request({"relation": "pilji", "args": [
+    def test_product_false(self):
+        resp = send_request({"relation": "product", "args": [
             {"type": "number", "value": 7.0},
             {"type": "number", "value": 2.0},
             {"type": "number", "value": 3.0},
         ]})
         self.assertFalse(resp["result"])
 
-    def test_sumji(self):
-        resp = send_request({"relation": "sumji", "args": [
+    def test_sum(self):
+        resp = send_request({"relation": "sum", "args": [
             {"type": "number", "value": 5.0},
             {"type": "number", "value": 2.0},
             {"type": "number", "value": 3.0},
         ]})
         self.assertTrue(resp["result"])
 
-    def test_sumji_float_tolerance(self):
+    def test_sum_float_tolerance(self):
         # 0.1 + 0.2 = 0.30000000000000004 in IEEE-754, but math.isclose answers
         # TRUE for 0.3. This is the canonical tolerant semantics the Rust engine
         # and host now share. A genuinely-wrong claim stays FALSE.
-        resp = send_request({"relation": "sumji", "args": [
+        resp = send_request({"relation": "sum", "args": [
             {"type": "number", "value": 0.3},
             {"type": "number", "value": 0.1},
             {"type": "number", "value": 0.2},
         ]})
         self.assertTrue(resp["result"])
-        resp = send_request({"relation": "sumji", "args": [
+        resp = send_request({"relation": "sum", "args": [
             {"type": "number", "value": 0.4},
             {"type": "number", "value": 0.1},
             {"type": "number", "value": 0.2},
         ]})
         self.assertFalse(resp["result"])
 
-    def test_dilcu(self):
-        resp = send_request({"relation": "dilcu", "args": [
+    def test_quotient(self):
+        resp = send_request({"relation": "quotient", "args": [
             {"type": "number", "value": 4.0},
             {"type": "number", "value": 12.0},
             {"type": "number", "value": 3.0},
         ]})
         self.assertTrue(resp["result"])
 
-    def test_dilcu_by_zero(self):
-        resp = send_request({"relation": "dilcu", "args": [
+    def test_quotient_by_zero(self):
+        resp = send_request({"relation": "quotient", "args": [
             {"type": "number", "value": 0.0},
             {"type": "number", "value": 5.0},
             {"type": "number", "value": 0.0},
         ]})
         self.assertFalse(resp["result"])
 
-    def test_tenfa(self):
-        resp = send_request({"relation": "tenfa", "args": [
+    def test_exponential(self):
+        resp = send_request({"relation": "exponential", "args": [
             {"type": "number", "value": 8.0},
             {"type": "number", "value": 2.0},
             {"type": "number", "value": 3.0},
         ]})
         self.assertTrue(resp["result"])
 
-    def test_tenfa_false(self):
-        resp = send_request({"relation": "tenfa", "args": [
+    def test_exponential_false(self):
+        resp = send_request({"relation": "exponential", "args": [
             {"type": "number", "value": 9.0},
             {"type": "number", "value": 2.0},
             {"type": "number", "value": 3.0},
         ]})
         self.assertFalse(resp["result"])
 
-    def test_dugri(self):
+    def test_logarithm(self):
         # log_2(8) = 3
-        resp = send_request({"relation": "dugri", "args": [
+        resp = send_request({"relation": "logarithm", "args": [
             {"type": "number", "value": 3.0},
             {"type": "number", "value": 8.0},
             {"type": "number", "value": 2.0},
@@ -157,7 +157,7 @@ class TestNibliBackend(unittest.TestCase):
         self.assertIn("Unknown relation", resp["error"])
 
     def test_too_few_args(self):
-        resp = send_request({"relation": "pilji", "args": [
+        resp = send_request({"relation": "product", "args": [
             {"type": "number", "value": 6.0},
         ]})
         self.assertIn("error", resp)
@@ -172,7 +172,7 @@ class TestNibliBackend(unittest.TestCase):
             writer = sock.makefile("w", encoding="utf-8")
 
             # Request 1
-            writer.write(json.dumps({"relation": "sumji", "args": [
+            writer.write(json.dumps({"relation": "sum", "args": [
                 {"type": "number", "value": 10.0},
                 {"type": "number", "value": 7.0},
                 {"type": "number", "value": 3.0},
@@ -182,7 +182,7 @@ class TestNibliBackend(unittest.TestCase):
             self.assertTrue(resp1["result"])
 
             # Request 2
-            writer.write(json.dumps({"relation": "pilji", "args": [
+            writer.write(json.dumps({"relation": "product", "args": [
                 {"type": "number", "value": 12.0},
                 {"type": "number", "value": 3.0},
                 {"type": "number", "value": 4.0},
@@ -194,7 +194,7 @@ class TestNibliBackend(unittest.TestCase):
             sock.close()
 
     def test_large_exponent_survives_connection(self):
-        """A huge-exponent tenfa raises OverflowError inside the handler; it must
+        """A huge-exponent exponential raises OverflowError inside the handler; it must
         return an error response and the connection must keep working."""
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(5)
@@ -204,7 +204,7 @@ class TestNibliBackend(unittest.TestCase):
             writer = sock.makefile("w", encoding="utf-8")
 
             # 10 ** 1000 overflows float exponentiation → OverflowError.
-            writer.write(json.dumps({"relation": "tenfa", "args": [
+            writer.write(json.dumps({"relation": "exponential", "args": [
                 {"type": "number", "value": 1.0},
                 {"type": "number", "value": 10.0},
                 {"type": "number", "value": 1000.0},
@@ -214,7 +214,7 @@ class TestNibliBackend(unittest.TestCase):
             self.assertIn("error", resp1)
 
             # The same connection must still serve a follow-up valid request.
-            writer.write(json.dumps({"relation": "sumji", "args": [
+            writer.write(json.dumps({"relation": "sum", "args": [
                 {"type": "number", "value": 5.0},
                 {"type": "number", "value": 2.0},
                 {"type": "number", "value": 3.0},
@@ -242,7 +242,7 @@ class TestNibliBackend(unittest.TestCase):
                 self.assertIn("error", resp)
 
             # Connection still serves a valid request afterward.
-            writer.write(json.dumps({"relation": "pilji", "args": [
+            writer.write(json.dumps({"relation": "product", "args": [
                 {"type": "number", "value": 6.0},
                 {"type": "number", "value": 2.0},
                 {"type": "number", "value": 3.0},
@@ -262,7 +262,7 @@ class TestNibliBackend(unittest.TestCase):
 
         def worker(i):
             try:
-                resp = send_request({"relation": "pilji", "args": [
+                resp = send_request({"relation": "product", "args": [
                     {"type": "number", "value": 6.0},
                     {"type": "number", "value": 2.0},
                     {"type": "number", "value": 3.0},
@@ -279,7 +279,7 @@ class TestNibliBackend(unittest.TestCase):
 
         self.assertEqual(errors, [], f"no connection should error: {errors}")
         self.assertEqual(len(results), 40, "all 40 requests completed")
-        self.assertTrue(all(results.values()), "all pilji(6,2,3) results are True")
+        self.assertTrue(all(results.values()), "all product(6,2,3) results are True")
 
 
 if __name__ == "__main__":

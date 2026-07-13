@@ -795,7 +795,7 @@ mod tests {
     fn non_classical_node_errors() {
         // A ComputeNode reaching the translator is a filter bug → Err (never mistranslated).
         let compute = buf(
-            vec![LogicNode::ComputeNode(("pilji".into(), vec![]))],
+            vec![LogicNode::ComputeNode(("product".into(), vec![]))],
             vec![0],
         );
         let query = {

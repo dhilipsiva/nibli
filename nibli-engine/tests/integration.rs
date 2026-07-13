@@ -1527,11 +1527,11 @@ fn be_clause_with_tagged_tail_term_compiles_both() {
         .compile_debug("goes(Adam, Paris, origin: Rom).")
         .expect("be-clause with fi-tagged tail should compile");
     assert!(
-        role_has_const(&buf, "klama_x2", "paris"),
+        role_has_const(&buf, "goes_x2", "paris"),
         "be must bind x2; buffer: {buf:?}"
     );
     assert!(
-        role_has_const(&buf, "klama_x3", "rom"),
+        role_has_const(&buf, "goes_x3", "rom"),
         "fi-tagged tail must land in x3; buffer: {buf:?}"
     );
 }
@@ -1583,11 +1583,11 @@ fn te_conversion_swaps_x1_and_x3() {
         .compile_debug("goes(origin: Rom, destination: _, goer: Adam).")
         .expect("te klama should compile");
     assert!(
-        role_has_const(&buf, "klama_x3", "rom"),
+        role_has_const(&buf, "goes_x3", "rom"),
         "te must move the head term to x3 (origin); buffer: {buf:?}"
     );
     assert!(
-        role_has_const(&buf, "klama_x1", "adam"),
+        role_has_const(&buf, "goes_x1", "adam"),
         "te must move the third term to x1 (goer); buffer: {buf:?}"
     );
 }
@@ -1942,11 +1942,11 @@ fn cll_place_counter_fi_then_untagged() {
         .compile_debug("goes(origin: the market, route: you).")
         .expect("`klama fi le zarci do` should compile");
     assert!(
-        role_has_const(&buf, "klama_x4", "do"),
+        role_has_const(&buf, "goes_x4", "do"),
         "untagged `do` must fill x4 after `fi`; buffer: {buf:?}"
     );
     assert!(
-        !role_has_const(&buf, "klama_x1", "do"),
+        !role_has_const(&buf, "goes_x1", "do"),
         "do must NOT land in x1 (pre-fix `first free slot` bug); buffer: {buf:?}"
     );
 }
@@ -1962,15 +1962,15 @@ fn xe_conversion_swaps_x1_and_x5() {
         .compile_debug("goes(means: Ford, destination: _, origin: _, route: _, goer: Adam).")
         .expect("xe klama with five places should compile");
     assert!(
-        role_has_const(&buf, "klama_x5", "ford"),
+        role_has_const(&buf, "goes_x5", "ford"),
         "xe must move the head term to x5 (vehicle); buffer: {buf:?}"
     );
     assert!(
-        role_has_const(&buf, "klama_x1", "adam"),
+        role_has_const(&buf, "goes_x1", "adam"),
         "xe must move the fifth term to x1 (goer); buffer: {buf:?}"
     );
     assert!(
-        !role_has_const(&buf, "klama_x1", "ford"),
+        !role_has_const(&buf, "goes_x1", "ford"),
         "xe must not leave the head term in x1; buffer: {buf:?}"
     );
 }
@@ -3219,18 +3219,20 @@ fn surface_numeric_pilji_true_and_false() {
 // A trivial backend that "knows" only `tenfa` (exponentiation), which logji has
 // no built-in for — so the query can only succeed via the registered dispatch.
 fn stub_tenfa_eval(rel: &str, _args: &[EngineLogicalTerm]) -> Result<bool, String> {
-    Ok(rel == "tenfa")
+    Ok(rel == "exponential")
 }
 
 fn stub_tenfa_batch(reqs: &[EngineComputeRequest]) -> Vec<Result<bool, String>> {
-    reqs.iter().map(|r| Ok(r.relation == "tenfa")).collect()
+    reqs.iter()
+        .map(|r| Ok(r.relation == "exponential"))
+        .collect()
 }
 
 #[test]
 fn per_instance_compute_dispatch_is_isolated() {
     // engine_a registers a per-instance dispatch → external `tenfa` resolves TRUE.
     let mut engine_a = fresh_engine();
-    engine_a.register_compute_predicate("tenfa".to_string());
+    engine_a.register_compute_predicate("exponential".to_string());
     engine_a.set_compute_dispatch(stub_tenfa_eval, stub_tenfa_batch);
     assert_true(
         &engine_a.query_holds("exponential(8, 2, 3).").unwrap(),
@@ -3242,7 +3244,7 @@ fn per_instance_compute_dispatch_is_isolated() {
     // the same thread; per-instance dispatch keeps them independent → `tenfa` is
     // unresolved (no built-in, no backend) and the query is not TRUE.
     let mut engine_b = fresh_engine();
-    engine_b.register_compute_predicate("tenfa".to_string());
+    engine_b.register_compute_predicate("exponential".to_string());
     let r = engine_b.query_holds("exponential(8, 2, 3).").unwrap();
     // Isolation: engine_a's dispatch must NOT leak here, so `tenfa` stays unresolved.
     assert!(
@@ -3355,7 +3357,7 @@ fn native_compute_backend_dispatches_external_predicate() {
     let addr = mock_compute_server(r#"{"result": true}"#);
     let mut engine = fresh_engine();
     engine.enable_compute_backend(&addr);
-    engine.register_compute_predicate("tenfa".to_string());
+    engine.register_compute_predicate("exponential".to_string());
     assert_true(
         &engine.query_holds("exponential(8, 2, 3).").unwrap(),
         "tenfa dispatches through the native TCP client to the backend",
@@ -3367,7 +3369,7 @@ fn native_compute_backend_is_opt_in() {
     // Without `enable_compute_backend`, an external predicate stays unprovable —
     // the dispatch hook is unregistered (per-instance isolation).
     let mut engine = fresh_engine();
-    engine.register_compute_predicate("tenfa".to_string());
+    engine.register_compute_predicate("exponential".to_string());
     let r = engine.query_holds("exponential(8, 2, 3).").unwrap();
     assert!(
         !r.is_true(),
@@ -3401,7 +3403,7 @@ fn native_compute_backend_real_python_tenfa() {
     let run = || {
         let mut engine = fresh_engine();
         engine.enable_compute_backend(&addr);
-        engine.register_compute_predicate("tenfa".to_string());
+        engine.register_compute_predicate("exponential".to_string());
         // 8 = 2^3 (TRUE); 9 = 2^3 (FALSE) — the backend does the arithmetic.
         let t = engine.query_holds("exponential(8, 2, 3).").unwrap();
         let f = engine.query_holds("exponential(9, 2, 3).").unwrap();
@@ -3492,7 +3494,7 @@ fn surface_numeric_traced_verdicts_agree() {
     let (verdict, trace, _json) = engine.query_text_with_proof("product(10, 2, 5).").unwrap();
     assert_true(&verdict, "traced 10 = 2 × 5 must be TRUE");
     assert!(
-        trace.contains("pilji"),
+        trace.contains("product"),
         "trace should mention the computed relation: {trace}"
     );
 }
@@ -3532,7 +3534,7 @@ fn injected_fact_matches_surface_text_query() {
     let engine = fresh_engine();
     engine
         .assert_fact_direct(
-            "gerku".to_string(),
+            "dog".to_string(),
             vec![nibli_engine::EngineLogicalTerm::Constant(
                 "adam".to_string(),
             )],
@@ -3551,7 +3553,7 @@ fn injected_fact_multiplace_arity_padding_matches_text_query() {
     let engine = fresh_engine();
     engine
         .assert_fact_direct(
-            "klama".to_string(),
+            "goes".to_string(),
             vec![
                 nibli_engine::EngineLogicalTerm::Constant("adam".to_string()),
                 nibli_engine::EngineLogicalTerm::Constant("paris".to_string()),
@@ -3570,7 +3572,7 @@ fn injected_fact_is_findable_as_witness() {
     let engine = fresh_engine();
     engine
         .assert_fact_direct(
-            "gerku".to_string(),
+            "dog".to_string(),
             vec![nibli_engine::EngineLogicalTerm::Constant(
                 "adam".to_string(),
             )],

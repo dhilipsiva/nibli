@@ -185,25 +185,34 @@ mod tests {
 
     #[test]
     fn logic_tree_renders_compute_and_integers() {
-        // A hand-built ComputeNode — the shape `tenfa` takes once it is registered
-        // for compute dispatch (as in the Ch 18 `:debug` after `:compute tenfa`);
-        // a bare `:debug li … tenfa …` in a default session compiles `tenfa` to a
+        // A hand-built ComputeNode — the shape `exponential` takes once it is registered
+        // for compute dispatch (as in the Ch 18 `:debug` after `:compute exponential`);
+        // a bare `:debug li … exponential …` in a default session compiles `exponential` to a
         // plain Predicate. Exercises the `[compute]` marker + integer term rendering.
         let ev0 = || LogicalTerm::Variable("_ev0".to_string());
         let buf = LogicBuffer {
             nodes: vec![
-                LogicNode::ComputeNode(("tenfa".into(), vec![ev0()])), // 0
-                LogicNode::Predicate(("tenfa_x1".into(), vec![ev0(), LogicalTerm::Number(1024.0)])), // 1
-                LogicNode::AndNode((0, 1)), // 2
-                LogicNode::Predicate(("tenfa_x2".into(), vec![ev0(), LogicalTerm::Number(2.0)])), // 3
-                LogicNode::AndNode((2, 3)), // 4
-                LogicNode::Predicate(("tenfa_x3".into(), vec![ev0(), LogicalTerm::Number(10.0)])), // 5
-                LogicNode::AndNode((4, 5)),                // 6
-                LogicNode::ExistsNode(("_ev0".into(), 6)), // 7
+                LogicNode::ComputeNode(("exponential".into(), vec![ev0()])), // 0
+                LogicNode::Predicate((
+                    "exponential_x1".into(),
+                    vec![ev0(), LogicalTerm::Number(1024.0)],
+                )), // 1
+                LogicNode::AndNode((0, 1)),                                  // 2
+                LogicNode::Predicate((
+                    "exponential_x2".into(),
+                    vec![ev0(), LogicalTerm::Number(2.0)],
+                )), // 3
+                LogicNode::AndNode((2, 3)),                                  // 4
+                LogicNode::Predicate((
+                    "exponential_x3".into(),
+                    vec![ev0(), LogicalTerm::Number(10.0)],
+                )), // 5
+                LogicNode::AndNode((4, 5)),                                  // 6
+                LogicNode::ExistsNode(("_ev0".into(), 6)),                   // 7
             ],
             roots: vec![7],
         };
-        let expected = "\u{2203} _ev0:\n  And:\n    And:\n      And:\n        tenfa(_ev0) [compute]\n        tenfa_x1(_ev0, 1024)\n      tenfa_x2(_ev0, 2)\n    tenfa_x3(_ev0, 10)\n";
+        let expected = "\u{2203} _ev0:\n  And:\n    And:\n      And:\n        exponential(_ev0) [compute]\n        exponential_x1(_ev0, 1024)\n      exponential_x2(_ev0, 2)\n    exponential_x3(_ev0, 10)\n";
         assert_eq!(render_logic_tree(&buf, Register::Spec), expected);
     }
 

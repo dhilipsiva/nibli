@@ -306,7 +306,7 @@ mod tests {
             BackendArg::Number(2.0),
             BackendArg::Number(3.0),
         ];
-        assert_eq!(c.dispatch("tenfa", &args), Ok(true));
+        assert_eq!(c.dispatch("exponential", &args), Ok(true));
     }
 
     #[test]
@@ -322,8 +322,8 @@ mod tests {
         let mut c = client_at(&mock_server(r#"{"result": true}"#));
         let n = BackendArg::Number;
         let results = c.dispatch_batch(&[
-            req("tenfa", vec![n(8.0), n(2.0), n(3.0)]),
-            req("dugri", vec![n(3.0), n(8.0), n(2.0)]),
+            req("exponential", vec![n(8.0), n(2.0), n(3.0)]),
+            req("logarithm", vec![n(3.0), n(8.0), n(2.0)]),
         ]);
         assert_eq!(results, vec![Ok(true), Ok(true)]);
     }
@@ -331,8 +331,11 @@ mod tests {
     #[test]
     fn no_addr_errors_not_panics() {
         let mut c = BackendClient::new();
-        assert!(c.dispatch("tenfa", &[BackendArg::Number(1.0)]).is_err());
-        let batch = c.dispatch_batch(&[req("tenfa", vec![BackendArg::Number(1.0)])]);
+        assert!(
+            c.dispatch("exponential", &[BackendArg::Number(1.0)])
+                .is_err()
+        );
+        let batch = c.dispatch_batch(&[req("exponential", vec![BackendArg::Number(1.0)])]);
         assert_eq!(batch.len(), 1);
         assert!(batch[0].is_err());
     }
@@ -342,16 +345,21 @@ mod tests {
         // The single-dispatch no-addr error names the predicate (gasnu surfaces it
         // as "Unknown compute predicate: ..."), distinct from the batch message.
         let mut c = BackendClient::new();
-        let err = c.dispatch("tenfa", &[BackendArg::Number(1.0)]).unwrap_err();
+        let err = c
+            .dispatch("exponential", &[BackendArg::Number(1.0)])
+            .unwrap_err();
         assert!(err.contains("Unknown compute predicate"));
-        assert!(err.contains("tenfa"));
+        assert!(err.contains("exponential"));
     }
 
     #[test]
     fn set_addr_change_drops_connection() {
         let addr = mock_server(r#"{"result": true}"#);
         let mut c = client_at(&addr);
-        assert!(c.dispatch("tenfa", &[BackendArg::Number(1.0)]).is_ok());
+        assert!(
+            c.dispatch("exponential", &[BackendArg::Number(1.0)])
+                .is_ok()
+        );
         assert!(c.is_connected());
         // Same address: keep the connection.
         c.set_addr(&addr);
@@ -365,7 +373,7 @@ mod tests {
     #[test]
     fn json_serialization_shape() {
         let req = BackendRequest {
-            relation: "tenfa".to_string(),
+            relation: "exponential".to_string(),
             args: vec![
                 BackendArg::Number(8.0),
                 BackendArg::Variable("x".to_string()),
@@ -375,7 +383,7 @@ mod tests {
             ],
         };
         let json = serde_json::to_string(&req).unwrap();
-        assert!(json.contains(r#""relation":"tenfa""#));
+        assert!(json.contains(r#""relation":"exponential""#));
         assert!(json.contains(r#""type":"number""#));
         assert!(json.contains(r#""type":"variable""#));
         assert!(json.contains(r#""type":"constant""#));

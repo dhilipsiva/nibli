@@ -445,7 +445,7 @@ mod tests {
                 LogicNode::NotNode(1),
                 LogicNode::ForAllNode(("y".into(), 5)),
                 LogicNode::ComputeNode((
-                    "pilji".into(),
+                    "product".into(),
                     vec![LogicalTerm::Number(3.0), LogicalTerm::Number(4.0)],
                 )),
                 LogicNode::CountNode(("z".into(), 2, 0)),

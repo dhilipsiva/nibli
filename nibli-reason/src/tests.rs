@@ -116,7 +116,7 @@ fn compile_surface(text: &str) -> LogicBuffer {
 #[test]
 fn compile_surface_smoke() {
     // A ground fact + query through the real front-end must reason correctly, and produce
-    // the event-decomposed shape (a `gerku_x1` role predicate, not a bare `gerku`).
+    // the event-decomposed shape (a `dog_x1` role predicate, not a bare `dog`).
     let kb = new_kb();
     assert_buf(&kb, compile_surface("dog(Adam)."));
     assert!(query(&kb, compile_surface("dog(Adam).")));
@@ -124,8 +124,8 @@ fn compile_surface_smoke() {
     let buf = compile_surface("dog(Adam).");
     assert!(
         buf.nodes.iter().any(|n| matches!(n,
-            LogicNode::Predicate((rel, _)) if rel == "gerku_x1")),
-        "surface compile must event-decompose (expected a gerku_x1 role predicate): {buf:?}"
+            LogicNode::Predicate((rel, _)) if rel == "dog_x1")),
+        "surface compile must event-decompose (expected a dog_x1 role predicate): {buf:?}"
     );
 }
 
@@ -1131,7 +1131,7 @@ fn flat_forall_and_count_over_compute_batch_stays_non_definitive() {
     let compute_body = |nodes: &mut Vec<LogicNode>| {
         compute(
             nodes,
-            "sumji",
+            "sum",
             vec![
                 LogicalTerm::Variable("_v0".to_string()),
                 LogicalTerm::Number(2.0),
@@ -2349,7 +2349,7 @@ fn make_numeric_pred(nodes: &mut Vec<LogicNode>, relation: &str, a: f64, b: f64)
         LogicalTerm::Unspecified,
     ];
     // zmadu and mleca have arity 4; dunli has arity 3
-    if relation == "zmadu" || relation == "mleca" {
+    if relation == "greater" || relation == "less" {
         args.push(LogicalTerm::Unspecified);
     }
     pred(nodes, relation, args)
@@ -2367,43 +2367,43 @@ fn make_numeric_query(relation: &str, a: f64, b: f64) -> LogicBuffer {
 #[test]
 fn test_zmadu_numeric_true() {
     let kb = new_kb();
-    assert!(query(&kb, make_numeric_query("zmadu", 2.0, 1.0)));
+    assert!(query(&kb, make_numeric_query("greater", 2.0, 1.0)));
 }
 
 #[test]
 fn test_zmadu_numeric_false() {
     let kb = new_kb();
-    assert!(query_false(&kb, make_numeric_query("zmadu", 1.0, 2.0)));
+    assert!(query_false(&kb, make_numeric_query("greater", 1.0, 2.0)));
 }
 
 #[test]
 fn test_zmadu_numeric_equal_false() {
     let kb = new_kb();
-    assert!(query_false(&kb, make_numeric_query("zmadu", 2.0, 2.0)));
+    assert!(query_false(&kb, make_numeric_query("greater", 2.0, 2.0)));
 }
 
 #[test]
 fn test_mleca_numeric_true() {
     let kb = new_kb();
-    assert!(query(&kb, make_numeric_query("mleca", 1.0, 2.0)));
+    assert!(query(&kb, make_numeric_query("less", 1.0, 2.0)));
 }
 
 #[test]
 fn test_mleca_numeric_false() {
     let kb = new_kb();
-    assert!(query_false(&kb, make_numeric_query("mleca", 2.0, 1.0)));
+    assert!(query_false(&kb, make_numeric_query("less", 2.0, 1.0)));
 }
 
 #[test]
 fn test_dunli_numeric_true() {
     let kb = new_kb();
-    assert!(query(&kb, make_numeric_query("dunli", 5.0, 5.0)));
+    assert!(query(&kb, make_numeric_query("num_equal", 5.0, 5.0)));
 }
 
 #[test]
 fn test_dunli_numeric_false() {
     let kb = new_kb();
-    assert!(query_false(&kb, make_numeric_query("dunli", 5.0, 3.0)));
+    assert!(query_false(&kb, make_numeric_query("num_equal", 5.0, 3.0)));
 }
 
 #[test]
@@ -2411,7 +2411,7 @@ fn test_zmadu_negated() {
     let kb = new_kb();
     // NOT (1 > 2) should be TRUE
     let mut nodes = Vec::new();
-    let cmp = make_numeric_pred(&mut nodes, "zmadu", 1.0, 2.0);
+    let cmp = make_numeric_pred(&mut nodes, "greater", 1.0, 2.0);
     let root = not(&mut nodes, cmp);
     assert!(query(
         &kb,
@@ -2429,7 +2429,7 @@ fn test_zmadu_non_numeric_fallback() {
     let mut a_nodes = Vec::new();
     let a_root = pred(
         &mut a_nodes,
-        "zmadu",
+        "greater",
         vec![
             LogicalTerm::Constant("alis".to_string()),
             LogicalTerm::Constant("bob".to_string()),
@@ -2448,7 +2448,7 @@ fn test_zmadu_non_numeric_fallback() {
     let mut q_nodes = Vec::new();
     let q_root = pred(
         &mut q_nodes,
-        "zmadu",
+        "greater",
         vec![
             LogicalTerm::Constant("alis".to_string()),
             LogicalTerm::Constant("bob".to_string()),
@@ -2470,15 +2470,15 @@ fn test_zmadu_large_numbers() {
     let kb = new_kb();
     assert!(query(
         &kb,
-        make_numeric_query("zmadu", 1_000_000.0, 999_999.0)
+        make_numeric_query("greater", 1_000_000.0, 999_999.0)
     ));
 }
 
 #[test]
 fn test_zmadu_negative_numbers() {
     let kb = new_kb();
-    assert!(query(&kb, make_numeric_query("zmadu", -1.0, -2.0)));
-    assert!(query_false(&kb, make_numeric_query("zmadu", -2.0, -1.0)));
+    assert!(query(&kb, make_numeric_query("greater", -1.0, -2.0)));
+    assert!(query_false(&kb, make_numeric_query("greater", -2.0, -1.0)));
 }
 
 // ─── ComputeNode Tests ───────────────────────────────────────
@@ -2512,42 +2512,48 @@ fn make_compute_query(rel: &str, x1: f64, x2: f64, x3: f64) -> LogicBuffer {
 fn test_compute_pilji_true() {
     let kb = new_kb();
     // 6 = 2 * 3
-    assert!(query(&kb, make_compute_query("pilji", 6.0, 2.0, 3.0)));
+    assert!(query(&kb, make_compute_query("product", 6.0, 2.0, 3.0)));
 }
 
 #[test]
 fn test_compute_pilji_false() {
     let kb = new_kb();
     // 7 != 2 * 3
-    assert!(query_false(&kb, make_compute_query("pilji", 7.0, 2.0, 3.0)));
+    assert!(query_false(
+        &kb,
+        make_compute_query("product", 7.0, 2.0, 3.0)
+    ));
 }
 
 #[test]
 fn test_compute_sumji_true() {
     let kb = new_kb();
     // 5 = 2 + 3
-    assert!(query(&kb, make_compute_query("sumji", 5.0, 2.0, 3.0)));
+    assert!(query(&kb, make_compute_query("sum", 5.0, 2.0, 3.0)));
 }
 
 #[test]
 fn test_compute_sumji_false() {
     let kb = new_kb();
     // 4 != 2 + 3
-    assert!(query_false(&kb, make_compute_query("sumji", 4.0, 2.0, 3.0)));
+    assert!(query_false(&kb, make_compute_query("sum", 4.0, 2.0, 3.0)));
 }
 
 #[test]
 fn test_compute_dilcu_true() {
     let kb = new_kb();
     // 3 = 6 / 2
-    assert!(query(&kb, make_compute_query("dilcu", 3.0, 6.0, 2.0)));
+    assert!(query(&kb, make_compute_query("quotient", 3.0, 6.0, 2.0)));
 }
 
 #[test]
 fn test_compute_dilcu_division_by_zero() {
     let kb = new_kb();
     // x / 0 is always false
-    assert!(query_false(&kb, make_compute_query("dilcu", 0.0, 5.0, 0.0)));
+    assert!(query_false(
+        &kb,
+        make_compute_query("quotient", 0.0, 5.0, 0.0)
+    ));
 }
 
 #[test]
@@ -2555,9 +2561,9 @@ fn test_compute_sumji_float_tolerance() {
     let kb = new_kb();
     // 0.1 + 0.2 = 0.30000000000000004 in IEEE-754; tolerant equality answers
     // TRUE (the user means 0.3). Exact `==` would wrongly say FALSE.
-    assert!(query(&kb, make_compute_query("sumji", 0.3, 0.1, 0.2)));
+    assert!(query(&kb, make_compute_query("sum", 0.3, 0.1, 0.2)));
     // A genuinely-wrong claim stays FALSE.
-    assert!(query_false(&kb, make_compute_query("sumji", 0.4, 0.1, 0.2)));
+    assert!(query_false(&kb, make_compute_query("sum", 0.4, 0.1, 0.2)));
 }
 
 // ─── Decomposed numeric groups (surface-Lojban shape) ─────────────
@@ -2596,7 +2602,7 @@ fn make_decomposed_comparison_query(rel: &str, a: f64, b: f64) -> LogicBuffer {
     let mut nodes = Vec::new();
     let ev = || LogicalTerm::Variable("_ev0".to_string());
     let head = pred(&mut nodes, rel, vec![ev()]);
-    let arity = if rel == "dunli" { 3 } else { 4 };
+    let arity = if rel == "num_equal" { 3 } else { 4 };
     let mut acc = head;
     for i in 1..=arity {
         let arg = match i {
@@ -2620,7 +2626,7 @@ fn test_decomposed_pilji_true() {
     // 10 = 2 * 5 through the decomposed surface shape
     assert!(query(
         &kb,
-        make_decomposed_compute_query("pilji", 10.0, 2.0, 5.0)
+        make_decomposed_compute_query("product", 10.0, 2.0, 5.0)
     ));
 }
 
@@ -2648,10 +2654,10 @@ fn non_finite_comparison_is_unknown_on_both_paths() {
         }
     };
     for (rel, a, b) in [
-        ("dunli", inf, inf),
-        ("dunli", inf, 1.0),
-        ("zmadu", inf, 1.0),
-        ("mleca", 1.0, f64::NEG_INFINITY),
+        ("num_equal", inf, inf),
+        ("num_equal", inf, 1.0),
+        ("greater", inf, 1.0),
+        ("less", 1.0, f64::NEG_INFINITY),
     ] {
         assert_eq!(
             query_result(&kb, flat(rel, a, b)),
@@ -2660,20 +2666,20 @@ fn non_finite_comparison_is_unknown_on_both_paths() {
         );
     }
     // Finite controls: the guard must not widen onto meaningful comparisons.
-    assert!(query(&kb, flat("dunli", 2.0, 2.0)));
+    assert!(query(&kb, flat("num_equal", 2.0, 2.0)));
     assert!(matches!(
-        query_result(&kb, flat("zmadu", 1.0, 2.0)),
+        query_result(&kb, flat("greater", 1.0, 2.0)),
         QueryResult::False
     ));
 
     // Event-decomposed path (the numeric-group guard): same contract.
     assert_eq!(
-        query_result(&kb, make_decomposed_comparison_query("dunli", inf, inf)),
+        query_result(&kb, make_decomposed_comparison_query("num_equal", inf, inf)),
         QueryResult::Unknown(UnknownReason::NonFinite),
         "decomposed dunli(inf, inf) must be UNKNOWN(non-finite)"
     );
     assert_eq!(
-        query_result(&kb, make_decomposed_comparison_query("zmadu", inf, 1.0)),
+        query_result(&kb, make_decomposed_comparison_query("greater", inf, 1.0)),
         QueryResult::Unknown(UnknownReason::NonFinite),
         "decomposed zmadu(inf, 1) must be UNKNOWN(non-finite)"
     );
@@ -2686,7 +2692,7 @@ fn test_decomposed_sumji_float_tolerance() {
     // 0.3 = 0.1 + 0.2 is TRUE despite IEEE-754 rounding.
     assert!(query(
         &kb,
-        make_decomposed_compute_query("sumji", 0.3, 0.1, 0.2)
+        make_decomposed_compute_query("sum", 0.3, 0.1, 0.2)
     ));
 }
 
@@ -2695,7 +2701,7 @@ fn test_decomposed_pilji_false() {
     let kb = new_kb();
     assert!(query_false(
         &kb,
-        make_decomposed_compute_query("pilji", 11.0, 2.0, 5.0)
+        make_decomposed_compute_query("product", 11.0, 2.0, 5.0)
     ));
 }
 
@@ -2704,11 +2710,11 @@ fn test_decomposed_sumji_true_false() {
     let kb = new_kb();
     assert!(query(
         &kb,
-        make_decomposed_compute_query("sumji", 5.0, 2.0, 3.0)
+        make_decomposed_compute_query("sum", 5.0, 2.0, 3.0)
     ));
     assert!(query_false(
         &kb,
-        make_decomposed_compute_query("sumji", 6.0, 2.0, 3.0)
+        make_decomposed_compute_query("sum", 6.0, 2.0, 3.0)
     ));
 }
 
@@ -2717,12 +2723,12 @@ fn test_decomposed_dilcu_true_and_division_by_zero() {
     let kb = new_kb();
     assert!(query(
         &kb,
-        make_decomposed_compute_query("dilcu", 3.0, 6.0, 2.0)
+        make_decomposed_compute_query("quotient", 3.0, 6.0, 2.0)
     ));
     // Division by zero is a definitive FALSE, not an error or fall-through.
     assert!(query_false(
         &kb,
-        make_decomposed_compute_query("dilcu", 3.0, 6.0, 0.0)
+        make_decomposed_compute_query("quotient", 3.0, 6.0, 0.0)
     ));
 }
 
@@ -2731,11 +2737,11 @@ fn test_decomposed_zmadu_true_false() {
     let kb = new_kb();
     assert!(query(
         &kb,
-        make_decomposed_comparison_query("zmadu", 5.0, 3.0)
+        make_decomposed_comparison_query("greater", 5.0, 3.0)
     ));
     assert!(query_false(
         &kb,
-        make_decomposed_comparison_query("zmadu", 3.0, 5.0)
+        make_decomposed_comparison_query("greater", 3.0, 5.0)
     ));
 }
 
@@ -2744,11 +2750,11 @@ fn test_decomposed_mleca_true_false() {
     let kb = new_kb();
     assert!(query(
         &kb,
-        make_decomposed_comparison_query("mleca", 2.0, 3.0)
+        make_decomposed_comparison_query("less", 2.0, 3.0)
     ));
     assert!(query_false(
         &kb,
-        make_decomposed_comparison_query("mleca", 3.0, 2.0)
+        make_decomposed_comparison_query("less", 3.0, 2.0)
     ));
 }
 
@@ -2757,11 +2763,11 @@ fn test_decomposed_dunli_true_false() {
     let kb = new_kb();
     assert!(query(
         &kb,
-        make_decomposed_comparison_query("dunli", 3.0, 3.0)
+        make_decomposed_comparison_query("num_equal", 3.0, 3.0)
     ));
     assert!(query_false(
         &kb,
-        make_decomposed_comparison_query("dunli", 3.0, 2.0)
+        make_decomposed_comparison_query("num_equal", 3.0, 2.0)
     ));
 }
 
@@ -2770,7 +2776,7 @@ fn test_decomposed_negated() {
     // Not(∃ev. group) — the Not arm recurses into the Exists arm, so the
     // group verdict flips with no special handling.
     let kb = new_kb();
-    let mut buf = make_decomposed_comparison_query("zmadu", 3.0, 5.0);
+    let mut buf = make_decomposed_comparison_query("greater", 3.0, 5.0);
     let inner_root = buf.roots[0];
     let neg = {
         let id = buf.nodes.len() as u32;
@@ -2789,7 +2795,7 @@ fn test_decomposed_extra_conjunct_falls_through() {
     let kb = new_kb();
     let mut nodes = Vec::new();
     let ev = || LogicalTerm::Variable("_ev0".to_string());
-    let head = compute(&mut nodes, "pilji", vec![ev()]);
+    let head = compute(&mut nodes, "product", vec![ev()]);
     let x1 = pred(
         &mut nodes,
         "pilji_x1",
@@ -2821,7 +2827,7 @@ fn test_decomposed_non_numeric_falls_through_to_store() {
     let make = || {
         let mut nodes = Vec::new();
         let ev = || LogicalTerm::Variable("_ev0".to_string());
-        let head = pred(&mut nodes, "zmadu", vec![ev()]);
+        let head = pred(&mut nodes, "greater", vec![ev()]);
         let x1 = pred(
             &mut nodes,
             "zmadu_x1",
@@ -2852,10 +2858,13 @@ fn test_decomposed_asserted_true_group_still_true() {
     // Asserting an arithmetically-true group then querying it: the computed
     // verdict agrees with the store, so shadowing is invisible for true facts.
     let kb = new_kb();
-    assert_buf(&kb, make_decomposed_compute_query("pilji", 10.0, 2.0, 5.0));
+    assert_buf(
+        &kb,
+        make_decomposed_compute_query("product", 10.0, 2.0, 5.0),
+    );
     assert!(query(
         &kb,
-        make_decomposed_compute_query("pilji", 10.0, 2.0, 5.0)
+        make_decomposed_compute_query("product", 10.0, 2.0, 5.0)
     ));
 }
 
@@ -2867,7 +2876,7 @@ fn test_assert_flat_numeric_comparison_rejected() {
     // comparison still asserts (covered by test_zmadu_non_numeric_fallback).
     let kb = new_kb();
     assert!(
-        kb.assert_fact_inner(make_numeric_query("zmadu", 5.0, 3.0), String::new())
+        kb.assert_fact_inner(make_numeric_query("greater", 5.0, 3.0), String::new())
             .is_err(),
         "asserting a flat numeric comparison must be rejected"
     );
@@ -2878,8 +2887,10 @@ fn test_decomposed_traced_compute_check() {
     // The traced evaluator must agree with the untraced verdict and record
     // a ComputeCheck step for the group.
     let kb = new_kb();
-    let (result, trace) =
-        query_with_proof(&kb, make_decomposed_compute_query("pilji", 10.0, 2.0, 5.0));
+    let (result, trace) = query_with_proof(
+        &kb,
+        make_decomposed_compute_query("product", 10.0, 2.0, 5.0),
+    );
     assert!(result, "traced 10 = 2 × 5 must be TRUE");
     assert!(
         trace
@@ -2890,7 +2901,7 @@ fn test_decomposed_traced_compute_check() {
     );
 
     let (result_f, trace_f) = kb
-        .query_entailment_with_proof_inner(make_decomposed_comparison_query("zmadu", 3.0, 5.0))
+        .query_entailment_with_proof_inner(make_decomposed_comparison_query("greater", 3.0, 5.0))
         .unwrap();
     assert!(result_f.is_false(), "traced 3 > 5 must be FALSE");
     assert!(
@@ -2909,7 +2920,7 @@ fn test_compute_negated() {
     let mut nodes = Vec::new();
     let inner = compute(
         &mut nodes,
-        "pilji",
+        "product",
         vec![
             LogicalTerm::Number(7.0),
             LogicalTerm::Number(2.0),
@@ -3363,7 +3374,7 @@ fn test_compute_result_ingested_into_kb() {
     let mut q_nodes = Vec::new();
     let q_root = compute(
         &mut q_nodes,
-        "pilji",
+        "product",
         vec![
             LogicalTerm::Number(6.0),
             LogicalTerm::Number(2.0),
@@ -3383,7 +3394,7 @@ fn test_compute_result_ingested_into_kb() {
     let mut p_nodes = Vec::new();
     let p_root = pred(
         &mut p_nodes,
-        "pilji",
+        "product",
         vec![
             LogicalTerm::Number(6.0),
             LogicalTerm::Number(2.0),
@@ -3407,7 +3418,7 @@ fn test_compute_false_not_ingested() {
     let mut q_nodes = Vec::new();
     let q_root = compute(
         &mut q_nodes,
-        "pilji",
+        "product",
         vec![
             LogicalTerm::Number(7.0),
             LogicalTerm::Number(2.0),
@@ -3426,7 +3437,7 @@ fn test_compute_false_not_ingested() {
     let mut p_nodes = Vec::new();
     let p_root = pred(
         &mut p_nodes,
-        "pilji",
+        "product",
         vec![
             LogicalTerm::Number(7.0),
             LogicalTerm::Number(2.0),
@@ -3450,7 +3461,7 @@ fn test_ingested_result_available_for_reasoning() {
     let mut q_nodes = Vec::new();
     let q_root = compute(
         &mut q_nodes,
-        "sumji",
+        "sum",
         vec![
             LogicalTerm::Number(5.0),
             LogicalTerm::Number(2.0),
@@ -3473,7 +3484,7 @@ fn test_ingested_result_available_for_reasoning() {
     let mut q2_nodes = Vec::new();
     let left = pred(
         &mut q2_nodes,
-        "sumji",
+        "sum",
         vec![
             LogicalTerm::Number(5.0),
             LogicalTerm::Number(2.0),
@@ -3501,7 +3512,7 @@ fn test_ingested_result_available_for_reasoning() {
     let mut q3_nodes = Vec::new();
     let l2 = pred(
         &mut q3_nodes,
-        "sumji",
+        "sum",
         vec![
             LogicalTerm::Number(99.0),
             LogicalTerm::Number(2.0),
@@ -3643,7 +3654,7 @@ fn compute_autoassert_invalidates_stale_cache() {
     let mut r_nodes = Vec::new();
     let cond = pred(
         &mut r_nodes,
-        "sumji",
+        "sum",
         vec![
             LogicalTerm::Number(5.0),
             LogicalTerm::Number(2.0),
@@ -3689,7 +3700,7 @@ fn compute_autoassert_invalidates_stale_cache() {
     let probe = or(&mut q, derived_probe, marker); // True overall, caches derived(c)=False
     let compute_node = compute(
         &mut q,
-        "sumji",
+        "sum",
         vec![
             LogicalTerm::Number(5.0),
             LogicalTerm::Number(2.0),
@@ -6231,42 +6242,42 @@ fn retract_count_quantified_fact_removes_witnesses() {
 #[test]
 fn test_compute_pilji_correct() {
     let kb = new_kb();
-    let buf = make_compute_query("pilji", 6.0, 2.0, 3.0);
+    let buf = make_compute_query("product", 6.0, 2.0, 3.0);
     assert!(query(&kb, buf));
 }
 
 #[test]
 fn test_compute_pilji_incorrect() {
     let kb = new_kb();
-    let buf = make_compute_query("pilji", 7.0, 2.0, 3.0);
+    let buf = make_compute_query("product", 7.0, 2.0, 3.0);
     assert!(query_false(&kb, buf));
 }
 
 #[test]
 fn test_compute_sumji_correct() {
     let kb = new_kb();
-    let buf = make_compute_query("sumji", 5.0, 2.0, 3.0);
+    let buf = make_compute_query("sum", 5.0, 2.0, 3.0);
     assert!(query(&kb, buf));
 }
 
 #[test]
 fn test_compute_sumji_incorrect() {
     let kb = new_kb();
-    let buf = make_compute_query("sumji", 6.0, 2.0, 3.0);
+    let buf = make_compute_query("sum", 6.0, 2.0, 3.0);
     assert!(query_false(&kb, buf));
 }
 
 #[test]
 fn test_compute_dilcu_correct() {
     let kb = new_kb();
-    let buf = make_compute_query("dilcu", 2.0, 6.0, 3.0);
+    let buf = make_compute_query("quotient", 2.0, 6.0, 3.0);
     assert!(query(&kb, buf));
 }
 
 #[test]
 fn test_compute_dilcu_incorrect() {
     let kb = new_kb();
-    let buf = make_compute_query("dilcu", 3.0, 6.0, 3.0);
+    let buf = make_compute_query("quotient", 3.0, 6.0, 3.0);
     assert!(query_false(&kb, buf));
 }
 
@@ -6275,31 +6286,31 @@ fn test_compute_dilcu_incorrect() {
 #[test]
 fn test_zmadu_greater_than() {
     let kb = new_kb();
-    assert!(query(&kb, make_numeric_query("zmadu", 5.0, 3.0)));
+    assert!(query(&kb, make_numeric_query("greater", 5.0, 3.0)));
 }
 
 #[test]
 fn test_zmadu_not_greater() {
     let kb = new_kb();
-    assert!(query_false(&kb, make_numeric_query("zmadu", 3.0, 5.0)));
+    assert!(query_false(&kb, make_numeric_query("greater", 3.0, 5.0)));
 }
 
 #[test]
 fn test_mleca_less_than() {
     let kb = new_kb();
-    assert!(query(&kb, make_numeric_query("mleca", 3.0, 5.0)));
+    assert!(query(&kb, make_numeric_query("less", 3.0, 5.0)));
 }
 
 #[test]
 fn test_dunli_equal() {
     let kb = new_kb();
-    assert!(query(&kb, make_numeric_query("dunli", 5.0, 5.0)));
+    assert!(query(&kb, make_numeric_query("num_equal", 5.0, 5.0)));
 }
 
 #[test]
 fn test_dunli_not_equal() {
     let kb = new_kb();
-    assert!(query_false(&kb, make_numeric_query("dunli", 5.0, 3.0)));
+    assert!(query_false(&kb, make_numeric_query("num_equal", 5.0, 3.0)));
 }
 
 // ─── Assert fact with various term types ──────────────────────
@@ -6310,7 +6321,7 @@ fn test_assert_fact_with_number_terms() {
     let mut nodes = Vec::new();
     let root = pred(
         &mut nodes,
-        "pilji",
+        "product",
         vec![
             LogicalTerm::Number(6.0),
             LogicalTerm::Number(2.0),
@@ -6329,7 +6340,7 @@ fn test_assert_fact_with_number_terms() {
     let mut q_nodes = Vec::new();
     let q_root = pred(
         &mut q_nodes,
-        "pilji",
+        "product",
         vec![
             LogicalTerm::Number(6.0),
             LogicalTerm::Number(2.0),
@@ -8101,7 +8112,7 @@ fn tenfa_query() -> LogicBuffer {
     let mut nodes = Vec::new();
     let root = compute(
         &mut nodes,
-        "tenfa", // external compute predicate, not built-in arithmetic
+        "exponential", // external compute predicate, not built-in arithmetic
         vec![
             LogicalTerm::Number(8.0),
             LogicalTerm::Number(2.0),
@@ -9539,7 +9550,7 @@ fn test_aggregate_sum() {
         let mut nodes = Vec::new();
         let root = pred(
             &mut nodes,
-            "tenfa",
+            "exponential",
             vec![LogicalTerm::Number(val), LogicalTerm::Unspecified],
         );
         assert_buf(
@@ -9554,7 +9565,7 @@ fn test_aggregate_sum() {
     let mut nodes = Vec::new();
     let body = pred(
         &mut nodes,
-        "tenfa",
+        "exponential",
         vec![
             LogicalTerm::Variable("x".to_string()),
             LogicalTerm::Unspecified,
@@ -11518,7 +11529,7 @@ mod flat_vs_surface {
             &[],
             "product(6, 2, 3).",
             vec![],
-            make_compute_query("pilji", 6.0, 2.0, 3.0),
+            make_compute_query("product", 6.0, 2.0, 3.0),
             true,
         );
     }
@@ -11530,7 +11541,7 @@ mod flat_vs_surface {
             &[],
             "num_equal(5, 5).",
             vec![],
-            make_numeric_query("dunli", 5.0, 5.0),
+            make_numeric_query("num_equal", 5.0, 5.0),
             true,
         );
     }
@@ -11544,7 +11555,7 @@ mod flat_vs_surface {
             &[],
             "num_equal(5, 3).",
             vec![],
-            make_numeric_query("dunli", 5.0, 3.0),
+            make_numeric_query("num_equal", 5.0, 3.0),
             false,
         );
         assert!(

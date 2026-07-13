@@ -23,9 +23,9 @@ pub fn eval_arithmetic(relation: &str, args: &[f64]) -> Option<bool> {
     // logji turns this into `Unknown(NonFinite)`; the gasnu host fast path declines too.
     let nonfinite_operand = !x1.is_finite() || !x2.is_finite() || !x3.is_finite();
     let result = match relation {
-        "pilji" => x2 * x3,
-        "sumji" => x2 + x3,
-        "dilcu" => {
+        "product" => x2 * x3,
+        "sum" => x2 + x3,
+        "quotient" => {
             if x3 == 0.0 {
                 // Divide-by-zero (exact guard): never equal — but only DECIDE that for
                 // finite operands; with a non-finite operand it is the undetermined case.
@@ -56,27 +56,27 @@ mod tests {
 
     #[test]
     fn integer_cases_exact() {
-        assert_eq!(eval_arithmetic("pilji", &[6.0, 2.0, 3.0]), Some(true)); // 6 = 2*3
-        assert_eq!(eval_arithmetic("pilji", &[7.0, 2.0, 3.0]), Some(false));
-        assert_eq!(eval_arithmetic("sumji", &[5.0, 2.0, 3.0]), Some(true)); // 5 = 2+3
-        assert_eq!(eval_arithmetic("sumji", &[4.0, 2.0, 3.0]), Some(false));
-        assert_eq!(eval_arithmetic("dilcu", &[3.0, 6.0, 2.0]), Some(true)); // 3 = 6/2
+        assert_eq!(eval_arithmetic("product", &[6.0, 2.0, 3.0]), Some(true)); // 6 = 2*3
+        assert_eq!(eval_arithmetic("product", &[7.0, 2.0, 3.0]), Some(false));
+        assert_eq!(eval_arithmetic("sum", &[5.0, 2.0, 3.0]), Some(true)); // 5 = 2+3
+        assert_eq!(eval_arithmetic("sum", &[4.0, 2.0, 3.0]), Some(false));
+        assert_eq!(eval_arithmetic("quotient", &[3.0, 6.0, 2.0]), Some(true)); // 3 = 6/2
     }
 
     #[test]
     fn float_tolerance_headline() {
         // 0.1 + 0.2 = 0.30000000000000004 in IEEE-754; exact `==` would say
         // FALSE, but the user means 0.3 — isclose makes it TRUE.
-        assert_eq!(eval_arithmetic("sumji", &[0.3, 0.1, 0.2]), Some(true));
+        assert_eq!(eval_arithmetic("sum", &[0.3, 0.1, 0.2]), Some(true));
         // A genuinely-wrong claim is still FALSE (the tolerance is tiny).
-        assert_eq!(eval_arithmetic("sumji", &[0.4, 0.1, 0.2]), Some(false));
+        assert_eq!(eval_arithmetic("sum", &[0.4, 0.1, 0.2]), Some(false));
         // Product with rounding: 0.1 * 0.1 = 0.010000000000000002.
-        assert_eq!(eval_arithmetic("pilji", &[0.01, 0.1, 0.1]), Some(true));
+        assert_eq!(eval_arithmetic("product", &[0.01, 0.1, 0.1]), Some(true));
     }
 
     #[test]
     fn dilcu_divide_by_zero_is_false_not_none() {
-        assert_eq!(eval_arithmetic("dilcu", &[0.0, 5.0, 0.0]), Some(false));
+        assert_eq!(eval_arithmetic("quotient", &[0.0, 5.0, 0.0]), Some(false));
     }
 
     #[test]
@@ -84,21 +84,21 @@ mod tests {
         let inf = f64::INFINITY;
         // A non-finite operand makes the relation undetermined → None (logji surfaces
         // Unknown(NonFinite)); never a confident TRUE/FALSE.
-        assert_eq!(eval_arithmetic("sumji", &[inf, inf, 1.0]), None);
-        assert_eq!(eval_arithmetic("pilji", &[1.0, inf, 2.0]), None);
-        assert_eq!(eval_arithmetic("dilcu", &[1.0, inf, 2.0]), None);
-        assert_eq!(eval_arithmetic("sumji", &[f64::NAN, 1.0, 2.0]), None);
+        assert_eq!(eval_arithmetic("sum", &[inf, inf, 1.0]), None);
+        assert_eq!(eval_arithmetic("product", &[1.0, inf, 2.0]), None);
+        assert_eq!(eval_arithmetic("quotient", &[1.0, inf, 2.0]), None);
+        assert_eq!(eval_arithmetic("sum", &[f64::NAN, 1.0, 2.0]), None);
         // Finite operands whose product overflows to ±inf are equally undetermined.
-        assert_eq!(eval_arithmetic("pilji", &[1.0, 1e200, 1e200]), None);
+        assert_eq!(eval_arithmetic("product", &[1.0, 1e200, 1e200]), None);
         // A divide-by-zero with FINITE operands is still a decided false (not None).
-        assert_eq!(eval_arithmetic("dilcu", &[0.0, 5.0, 0.0]), Some(false));
+        assert_eq!(eval_arithmetic("quotient", &[0.0, 5.0, 0.0]), Some(false));
         // A non-finite operand on a divide-by-zero is undetermined, not a decided false.
-        assert_eq!(eval_arithmetic("dilcu", &[inf, 5.0, 0.0]), None);
+        assert_eq!(eval_arithmetic("quotient", &[inf, 5.0, 0.0]), None);
     }
 
     #[test]
     fn unknown_relation_and_short_args_are_none() {
-        assert_eq!(eval_arithmetic("tenfa", &[8.0, 2.0, 3.0]), None);
-        assert_eq!(eval_arithmetic("sumji", &[5.0, 2.0]), None);
+        assert_eq!(eval_arithmetic("exponential", &[8.0, 2.0, 3.0]), None);
+        assert_eq!(eval_arithmetic("sum", &[5.0, 2.0]), None);
     }
 }

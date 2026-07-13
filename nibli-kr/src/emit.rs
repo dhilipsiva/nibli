@@ -37,6 +37,18 @@ use crate::ast::{
 use crate::parser::{ParseError, err_at};
 use crate::resolve::{PredInfo, label_index, lookup};
 
+/// The canonical ENGLISH predicate name for a resolved word — the plain,
+/// unswapped alias (`klama` → `goes`), so the logic IR and every proof trace are
+/// Lojban-free. A swapped alias's `Converted` wrapper carries the swap, so `Root`
+/// takes the PLAIN English form. Falls back to the word itself when it has no
+/// alias (an identity-passthrough word, or an uncurated gismu in a fallback
+/// build).
+fn english_name(name: &str) -> String {
+    nibli_lexicon::canonical_alias(name)
+        .map(str::to_owned)
+        .unwrap_or_else(|| name.to_owned())
+}
+
 /// Emit resolved statements into an `AstBuffer` (one root per statement).
 pub fn emit(input: &str, statements: &[Statement]) -> Result<AstBuffer, ParseError> {
     let mut emitter = Emitter {
@@ -245,8 +257,8 @@ impl<'a> Emitter<'a> {
             let word = self
                 .resolved(tag.pred.last().expect("tag pred non-empty"), tag.span.start)?
                 .entry
-                .map(|e| e.gismu.to_owned())
-                .unwrap_or_else(|| tag.pred.last().unwrap().clone());
+                .map(|e| english_name(e.gismu))
+                .unwrap_or_else(|| english_name(tag.pred.last().unwrap()));
             let modal_predicate = self.push_predicate(Predicate::Root(word));
             let inner = self.term(&tag.term, tag.span.start)?;
             tail_terms.push(self.push_argument(Argument::ModalTagged((
@@ -366,8 +378,8 @@ impl<'a> Emitter<'a> {
                         let info = self.resolved(part, at)?;
                         word_parts.push(
                             info.entry
-                                .map(|e| e.gismu.to_owned())
-                                .unwrap_or_else(|| part.clone()),
+                                .map(|e| english_name(e.gismu))
+                                .unwrap_or_else(|| english_name(part)),
                         );
                     }
                     return Ok(self.push_predicate(Predicate::Compound(word_parts)));
@@ -375,8 +387,8 @@ impl<'a> Emitter<'a> {
                 let word = &parts[0];
                 let info = self.resolved(word, at)?;
                 let (word, swap) = match info.entry {
-                    Some(entry) => (entry.gismu.to_owned(), entry.swap),
-                    None => (word.clone(), None),
+                    Some(entry) => (english_name(entry.gismu), entry.swap),
+                    None => (english_name(word), None),
                 };
                 let root = self.push_predicate(Predicate::Root(word));
                 Ok(match swap {
@@ -452,8 +464,8 @@ impl<'a> Emitter<'a> {
             RestrKind::Selected { pred, label } => {
                 let info = self.resolved(pred, at)?;
                 let (word, alias_swap) = match info.entry {
-                    Some(entry) => (entry.gismu.to_owned(), entry.swap),
-                    None => (pred.clone(), None),
+                    Some(entry) => (english_name(entry.gismu), entry.swap),
+                    None => (english_name(pred), None),
                 };
                 let mut idx = self.push_predicate(Predicate::Root(word));
                 if let Some(p) = alias_swap {

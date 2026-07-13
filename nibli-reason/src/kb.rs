@@ -1854,7 +1854,7 @@ pub(super) fn process_assertion(
 /// "taller-than" reading) returns None and asserts/stores normally, since it is
 /// answered from the store, not the built-in evaluator.
 fn asserted_numeric_comparison(leaves: &[StoredFact]) -> Option<&'static str> {
-    const CMP: [&str; 3] = ["zmadu", "mleca", "dunli"];
+    const CMP: [&str; 3] = ["greater", "less", "num_equal"];
     let is_num = |t: &GroundTerm| matches!(t, GroundTerm::Number(_));
     // Flat: rel(num, num, ...) — the evaluator (`try_numeric_comparison`) reads
     // only the first two operands, so a flat fact at full arity (`zmadu(5,3,_,_)`)
@@ -1948,7 +1948,7 @@ pub(super) fn collect_entailment_candidates(
 /// Relations whose truth is not store-backed (query-time evaluation /
 /// equivalence machinery) — never sound to narrow candidates from.
 fn is_non_indexable_relation(rel: &str) -> bool {
-    matches!(rel, "du" | "zmadu" | "mleca" | "dunli")
+    matches!(rel, "du" | "greater" | "less" | "num_equal")
 }
 
 /// Candidate narrowing for a negated-exists group's event variable — the
