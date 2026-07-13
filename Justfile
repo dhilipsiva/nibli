@@ -32,7 +32,7 @@ fetch-dict:
       -o dictionary-en.json
     @echo "Wrote dictionary-en.json ($(wc -c < dictionary-en.json) bytes)"
 
-# Compiles the single lasna WASM component (gerna/smuni/logji linked as internal crates)
+# Compiles the single lasna WASM component (klaro/smuni/logji linked as internal crates)
 build-wasm: clean-wasm
     @echo "Building WASI lasna component ({{wasi_target}}, {{profile}})..."
     cargo component build --target {{wasi_target}} {{cargo_profile_flag}} -p lasna
@@ -62,32 +62,6 @@ smoke-gasnu-script: build-wasm build-gasnu
         echo "$out" | grep -qF '[Facts] 1 active fact(s):' || { echo 'FAIL: missing :facts listing'; exit 1; }; \
         echo 'PASS: gasnu script mode emits echoed prompts + expected markers'
 
-# Lojban twin of the script smoke: the pre-flip payload verbatim under an
-# explicit `:lojban` switch — pins that the legacy language stays fully
-# usable through the WASM session (deleted at gerna retirement).
-smoke-gasnu-script-lojban: build-wasm build-gasnu
-    @echo "Smoke-testing gasnu script mode (Lojban via :lojban)..."
-    @out=$(printf ':lojban\nla .adam. cu gerku\n? la .adam. cu gerku\n:facts\n' \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
-        echo "$out"; \
-        echo "$out" | grep -qF '[Lang] lojban' || { echo 'FAIL: missing [Lang] lojban'; exit 1; }; \
-        echo "$out" | grep -qF '[Fact #0] Asserted.' || { echo 'FAIL: missing [Fact #0] Asserted.'; exit 1; }; \
-        echo "$out" | grep -qF '[Query] TRUE' || { echo 'FAIL: missing [Query] TRUE'; exit 1; }; \
-        echo "$out" | grep -qF '[Facts] 1 active fact(s):' || { echo 'FAIL: missing :facts listing'; exit 1; }; \
-        echo 'PASS: Lojban mode works through the WASM session'
-
-# Mixed-mode smoke: a Klaro assert must CLEAR the Lojban pro-bridi context —
-# a later `:lojban` + `? go'i` fails closed ("no antecedent"), never silently
-# repeats something older than the Klaro statements.
-smoke-gasnu-mixed-mode: build-wasm build-gasnu
-    @echo "Smoke-testing mixed-mode goi-clear (Klaro assert -> :lojban -> ? goi)..."
-    @out=$(printf ':lojban\nla .adam. cu gerku\n:klaro\ndog(Bel).\n:lojban\n? go'\''i\n' \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
-        echo "$out"; \
-        echo "$out" | grep -qF 'no antecedent' || { echo 'FAIL: goi after a Klaro compile must fail closed with no antecedent'; exit 1; }; \
-        if echo "$out" | grep -qF '[Query] TRUE'; then echo 'FAIL: goi silently repeated a pre-Klaro bridi'; exit 1; fi; \
-        echo 'PASS: Klaro compile clears the Lojban pro-bridi context'
-
 # Trap-recovery smoke: a fuel trap must not brick the session. The host
 # rebuilds the poisoned component instance lazily (before the next session
 # call, so an intervening :fuel raise applies) and replays the journaled
@@ -106,102 +80,6 @@ smoke-gasnu-trap-recovery: build-wasm build-gasnu
         if echo "$out" | grep -qF 'cannot enter component instance'; then echo 'FAIL: session still bricked after trap'; exit 1; fi; \
         if echo "$out" | grep -qF 'cannot remove owned resource'; then echo 'FAIL: resource-drop error at exit'; exit 1; fi; \
         echo 'PASS: fuel trap recovered — session rebuilt and replayed'
-
-# go'i snapshot-trap smoke: assert once, then run `? go'i` TWICE. Before the
-# graft-from-clone fix the second query grafted the drained snapshot, producing
-# an out-of-bounds selbri index that trapped the component instance. Both
-# queries must answer with no trap-rebuild and no brick. Pre-release gate like
-# the other smokes (needs the WASM build; not part of `ci`).
-smoke-gasnu-goi: build-wasm build-gasnu
-    @echo "Smoke-testing go'i snapshot trap (repeated ? go'i)..."
-    @out=$(printf ':lojban\nla .adam. cu gerku\n? la .adam. go'\''i\n? la .adam. go'\''i\n' \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
-        echo "$out"; \
-        n=$(echo "$out" | grep -cF '[Query] TRUE'); \
-        [ "$n" -ge 2 ] || { echo "FAIL: expected both ? la .adam. goi queries TRUE, got $n"; exit 1; }; \
-        if echo "$out" | grep -qF 'rebuilding and replaying'; then echo 'FAIL: repeated goi trapped the component'; exit 1; fi; \
-        if echo "$out" | grep -qF 'cannot enter component instance'; then echo 'FAIL: session bricked after goi'; exit 1; fi; \
-        echo 'PASS: repeated ? goi resolves correctly (TRUE) with no trap'
-
-# go'i full-bridi smoke: a BARE `? go'i` (no sumti) must repeat the WHOLE previous
-# bridi, inheriting its sumti. After `la .adam. cu gerku`, a bare `? go'i` queries
-# gerku(adam) -> TRUE. Pre-fix the selbri-only snapshot queried gerku(zo'e) -> FALSE.
-# Pre-release gate (needs the WASM build; not part of `ci`).
-smoke-gasnu-goi-bare: build-wasm build-gasnu
-    @echo "Smoke-testing bare go'i full-bridi inheritance (? go'i repeats the whole bridi)..."
-    @run() { printf ':lojban\nla .adam. cu gerku\n? go'\''i\n' \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1; }; \
-        ok() { echo "$1" | grep -qF '[Query] TRUE' && ! echo "$1" | grep -qF 'cannot enter component instance'; }; \
-        out=$(run); \
-        if ! ok "$out"; then \
-            echo 'note: first attempt not TRUE; retrying once. The engine verdict here is DETERMINISTIC at default fuel (the adam anchor pins the candidate set to a single event); a one-off non-TRUE is a rare WASM-host/CI transient, not a reasoning nondeterminism. A persistent fail across both attempts IS a real regression.'; \
-            out=$(run); \
-        fi; \
-        echo "$out"; \
-        echo "$out" | grep -qF '[Query] TRUE' || { echo 'FAIL: bare ? goi not TRUE after retry (real regression)'; exit 1; }; \
-        if echo "$out" | grep -qF 'cannot enter component instance'; then echo 'FAIL: session bricked after retry'; exit 1; fi; \
-        echo 'PASS: bare ? goi repeats the full previous bridi (gerku(adam) TRUE)'
-
-# Partial go'i per-place merge: `? la .karl. go'i` after `... prami la .bel.`
-# overrides x1 (karl) and INHERITS x2 (bel) -> prami(karl,bel) FALSE. Pre-fix the
-# partial path dropped the antecedent's places (prami(karl,zo'e) -> TRUE).
-smoke-gasnu-goi-partial: build-wasm build-gasnu
-    @echo "Smoke-testing partial go'i per-place merge (supplied x1 + inherited x2)..."
-    @out=$(printf ':lojban\nla .karl. cu prami la .kim.\nla .adam. cu prami la .bel.\n? la .karl. go'\''i\n' \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
-        echo "$out"; \
-        echo "$out" | grep -qF '[Query] FALSE' || { echo 'FAIL: partial go'\''i produced no verdict'; exit 1; }; \
-        if echo "$out" | grep -qF '[Query] TRUE'; then echo 'FAIL: partial go'\''i lost the inherited x2 (prami(karl,zoe) matched instead of prami(karl,bel))'; exit 1; fi; \
-        echo 'PASS: partial go'\''i merges per place (prami(karl,bel) FALSE — x1 overridden, x2 inherited)'
-
-# Queries update the go'i antecedent: after asserting gerku(adam), querying
-# gerku(bel) (FALSE) makes a following `? go'i` repeat gerku(bel) -> FALSE. Pre-fix
-# `? go'i` tracked only the last ASSERT (gerku(adam)) -> TRUE.
-smoke-gasnu-goi-after-query: build-wasm build-gasnu
-    @echo "Smoke-testing go'i tracks the last QUERIED bridi (not just the last assert)..."
-    @out=$(printf ':lojban\nla .adam. cu gerku\n? la .bel. cu gerku\n? go'\''i\n' \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
-        echo "$out"; \
-        echo "$out" | grep -qF '[Query] FALSE' || { echo 'FAIL: no FALSE verdict'; exit 1; }; \
-        if echo "$out" | grep -qF '[Query] TRUE'; then echo 'FAIL: ? goi tracked the last ASSERT (gerku(adam) TRUE) not the last QUERY (gerku(bel) FALSE)'; exit 1; fi; \
-        echo 'PASS: ? goi repeats the last queried bridi (gerku(bel) FALSE)'
-
-# Direct-API :assert go'i snapshot carries sumti: after `:assert prami adam bel`,
-# `? la .karl. go'i` inherits x2=bel -> prami(karl,bel) FALSE. Pre-fix the synthetic
-# snapshot had empty terms (prami(karl,zo'e) -> TRUE).
-smoke-gasnu-goi-assert-fact: build-wasm build-gasnu
-    @echo "Smoke-testing direct-API :assert go'i snapshot carries sumti..."
-    @out=$(printf ':lojban\n:assert prami karl kim\n:assert prami adam bel\n? la .karl. go'\''i\n' \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
-        echo "$out"; \
-        echo "$out" | grep -qF '[Query] FALSE' || { echo 'FAIL: no FALSE verdict'; exit 1; }; \
-        if echo "$out" | grep -qF '[Query] TRUE'; then echo 'FAIL: :assert snapshot lost args (prami(karl,zoe) matched instead of prami(karl,bel))'; exit 1; fi; \
-        echo 'PASS: :assert go'\''i snapshot carries args (prami(karl,bel) FALSE)'
-
-# Nested go'i in a `lo nu` abstraction body resolves instead of fail-closing.
-# `? mi nelci lo nu go'i` after `mi klama` must produce a [Query] verdict, NOT the
-# pre-fix "unsupported position" rejection.
-smoke-gasnu-goi-nested: build-wasm build-gasnu
-    @echo "Smoke-testing nested go'i in a lo nu abstraction body resolves (not fail-closed)..."
-    @out=$(printf ':lojban\nmi klama\n? mi nelci lo nu go'\''i\n' \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
-        echo "$out"; \
-        if echo "$out" | grep -qF 'unsupported position'; then echo 'FAIL: nested go'\''i still rejected (not resolved)'; exit 1; fi; \
-        echo "$out" | grep -qF '[Query]' || { echo 'FAIL: nested go'\''i did not produce a query verdict'; exit 1; }; \
-        echo 'PASS: nested go'\''i in lo nu resolves (no unsupported-position reject)'
-
-# Selbri-position go'i in a tanru: `mi sutra go'i` after `mi klama` resolves the
-# tanru arm to the antecedent's relation selbri (`mi sutra klama`). Asserting
-# `mi sutra klama` first makes the resolved query match -> TRUE. Pre-fix it was
-# rejected with "unsupported position". Pre-release gate (needs the WASM build).
-smoke-gasnu-goi-tanru: build-wasm build-gasnu
-    @echo "Smoke-testing selbri-position go'i in a tanru (mi sutra go'i resolves)..."
-    @out=$(printf ':lojban\nmi sutra klama\nmi klama\n? mi sutra go'\''i\n' \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
-        echo "$out"; \
-        if echo "$out" | grep -qF 'unsupported position'; then echo 'FAIL: tanru go'\''i still rejected (not resolved)'; exit 1; fi; \
-        echo "$out" | grep -qF '[Query] TRUE' || { echo 'FAIL: ? mi sutra go'\''i did not resolve to mi sutra klama (TRUE)'; exit 1; }; \
-        echo 'PASS: selbri-position go'\''i resolves (mi sutra go'\''i -> mi sutra klama, TRUE)'
 
 # Persistent restart-replay smoke: prove the live session's fact-ids stay equal
 # to the durable store's across a reopen, INCLUDING a tombstone gap. Run-1
@@ -330,38 +208,18 @@ smoke-gasnu-collapse: build-wasm build-gasnu
 
 # Backend-unavailable smoke: an external compute predicate (tenfa) with NO backend
 # configured must yield UNKNOWN (backend-unavailable), NEVER a definitive FALSE — a
-# backend outage is not a derived falsehood. Exercises the new four-valued reason
-# end-to-end across the WIT boundary. PINNED LOJBAN (`:lojban`): tenfa has no
-# curated Klaro alias, so a Klaro spelling would break the CI fallback build —
-# the smoke's subject is backend dispatch, not language. NOT in `ci` (needs the
-# WASM build).
+# backend outage is not a derived falsehood. Exercises the four-valued reason
+# end-to-end across the WIT boundary. The KR spelling resolves tenfa via identity
+# passthrough (pinned in smuni's fallback tables, so the CI fallback build
+# resolves it too). NOT in `ci` (needs the WASM build).
 smoke-gasnu-backend-unavailable: build-wasm build-gasnu
     @echo "Smoke-testing gasnu backend-unavailable verdict (no compute backend configured)..."
-    @out=$(printf ':lojban\n:compute tenfa\n? li bi tenfa li re li ci\n' \
+    @out=$(printf ':compute tenfa\n? tenfa(8, 2, 3).\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
         echo "$out"; \
         echo "$out" | grep -qF '[Query] UNKNOWN (backend-unavailable)' || { echo 'FAIL: an unreachable backend did not surface UNKNOWN (backend-unavailable)'; exit 1; }; \
         if echo "$out" | grep -qF '[Query] FALSE'; then echo 'FAIL: backend outage degraded to a definitive FALSE'; exit 1; fi; \
         echo 'PASS: an unreachable compute backend yields UNKNOWN (backend-unavailable), not FALSE'
-
-# Non-finite smoke: a numeric literal too large for an f64 (~309+ digits overflows to ±inf)
-# makes the comparison/arithmetic undetermined — the query must surface UNKNOWN (non-finite),
-# NEVER a confident TRUE/FALSE. Exercises the new four-valued reason across the WIT boundary.
-# (Repinned after the li parse-boundary overflow guard: the giant literal now
-# fails CLOSED at parse — strictly stronger than the old UNKNOWN(non-finite)
-# surfacing, which this smoke previously pinned. The downstream non-finite
-# catches are pinned at the logji level over flat buffers.) PINNED LOJBAN
-# (`:lojban`): this smoke pins the LOJBAN lexer's `li` overflow path; a Klaro
-# numeric-overflow pin is separate future work, not a blind re-pin.
-smoke-gasnu-non-finite: build-wasm build-gasnu
-    @echo "Smoke-testing gasnu overflowing numeric literal (fails closed at parse)..."
-    @nines=$(printf 'so %.0s' $(seq 320)); \
-        out=$(printf ":lojban\n? li ${nines}cu dunli li ${nines}\n" \
-        | NIBLI_WASM_PATH={{wasm_dir}}/lasna.wasm ./target/{{profile}}/gasnu 2>&1); \
-        echo "$out"; \
-        echo "$out" | grep -qF '[Syntax Error]' || { echo 'FAIL: an overflowing numeric literal must be a clean parse error (li overflow guard)'; exit 1; }; \
-        if echo "$out" | grep -qE '\[Query\] (TRUE|FALSE|UNKNOWN)'; then echo 'FAIL: an overflowing literal must not reach the reasoner at all'; exit 1; fi; \
-        echo 'PASS: an overflowing numeric literal fails closed at the parse boundary, never a verdict'
 
 # Quiet-mode smoke: NIBLI_QUIET=1 suppresses the per-assertion bookkeeping the book
 # strips — `[Fact #N]` on the host, `[Skolem]`/`[Rule]` in the guest (the latter reached
@@ -431,10 +289,6 @@ fmt-check:
 clippy-runtime:
     cargo clippy --no-deps -p nibli-protocol -p nibli-render -p nibli-store -p nibli-engine -p nibli --all-targets -- -D warnings
 
-# Run gerna unit tests only (bypasses cdylib linker issues)
-test-gerna:
-    cargo test -p gerna --lib -- --nocapture
-
 # Run klaro-dictionary unit tests only (dev loop; the workspace `test` recipe
 # already sweeps them into `ci`)
 test-klaro-dict:
@@ -479,14 +333,6 @@ run-with-backend: build-wasm
 test-backend:
     python3 -m pytest python/test_nibli_backend.py -v 2>/dev/null || python3 -m unittest python.test_nibli_backend -v 2>/dev/null || python3 python/test_nibli_backend.py
 
-# Classify Lojban readme — deterministic translation to FOL + English
-classify:
-    python3 python/lojban_classifier.py readme.lojban
-
-# Run Lojban classifier tests
-test-classifier:
-    python3 -m pytest python/test_classifier.py -v 2>/dev/null || python3 python/test_classifier.py
-
 # Launch the standalone Transparency Triad web UI (dev server with hot-reload) on
 # a fixed port (default 8080; override e.g. `just ui 9000`). Reasoning runs fully
 # in-browser; the only optional network call is the client-side Translate.
@@ -514,23 +360,24 @@ test-persistence-replay:
     cargo test -p nibli-engine --test integration persistent_engine_honors_store_retractions_after_reopen -- --nocapture --test-threads=1
 
 # Run every test suite (unit + integration + Python + store)
-test-all: test test-engine test-store test-backend test-classifier
+test-all: test test-engine test-store test-backend
 
 # CI gate for the hardened runtime surface (fast; native only — no WASM build).
 # For the WASM behavioral smokes too, run `just ci-all`.
 ci: fmt-check clippy-runtime test test-engine test-gasnu test-ui test-fanva test-backend test-store test-persistence-replay verify-harness verify-soundness verify-klaro-dict verify-kr-seam verify-dict verify-proofs verify-book-vocab
 
 # WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
-# verify-book-capture). Bundles the six gasnu smokes; each depends on
+# verify-book-capture). Bundles the gasnu smokes; each depends on
 # `build-wasm build-gasnu`, so `just` builds the component + host once, then runs
-# all six: fuel exhaustion + post-trap recovery + journal replay (trap-recovery),
-# plus the script transcript, go'i, persist-replay, NAF-note, and :debug round-trip.
-ci-wasm: smoke-gasnu-script smoke-gasnu-script-lojban smoke-gasnu-mixed-mode smoke-gasnu-trap-recovery smoke-gasnu-goi smoke-gasnu-goi-bare smoke-gasnu-goi-partial smoke-gasnu-goi-after-query smoke-gasnu-goi-assert-fact smoke-gasnu-goi-nested smoke-gasnu-goi-tanru smoke-gasnu-persist-replay smoke-gasnu-split smoke-gasnu-naf smoke-gasnu-cwa-false smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable smoke-gasnu-non-finite smoke-gasnu-quiet smoke-gasnu-strict smoke-gasnu-determinism verify-wasm-node test-fanva-wasm
+# them all: fuel exhaustion + post-trap recovery + journal replay
+# (trap-recovery), plus the script transcript, persist-replay, NAF-note,
+# :debug round-trip, and the determinism corpus.
+ci-wasm: smoke-gasnu-script smoke-gasnu-trap-recovery smoke-gasnu-persist-replay smoke-gasnu-split smoke-gasnu-naf smoke-gasnu-cwa-false smoke-gasnu-debug smoke-gasnu-collapse smoke-gasnu-backend-unavailable smoke-gasnu-quiet smoke-gasnu-strict smoke-gasnu-determinism verify-wasm-node
 
-# Three-way determinism, WASMTIME leg: the shared determinism-corpus.lojban must produce
-# exactly its pinned annotations through the lasna component under gasnu. The primary
-# native leg is the .klaro twin (determinism_corpus_klaro_native, verify-kr-seam);
-# the Lojban twin leg rides verify-soundness; the V8 leg is verify-wasm-node.
+# Three-way determinism, WASMTIME leg: the shared determinism-corpus.klaro must produce
+# exactly its pinned annotations through the lasna component under gasnu. The
+# native leg is determinism_corpus_klaro_native (verify-kr-seam); the V8 leg is
+# verify-wasm-node.
 smoke-gasnu-determinism: build-wasm build-gasnu
     @echo "Smoke-testing gasnu three-way determinism corpus..."
     @expected=$(grep '^# =>' determinism-corpus.klaro | sed 's/^# => //'); \
@@ -553,21 +400,11 @@ verify-wasm-node:
         wasm-pack test --node nibli-wasm; \
     fi
 
-# Run nibli-fanva native tests (agentic loop + history trim, local gates, LLM
-# request/response shapes, MCP wire/types, tool loop). The wasm-only camxes-gate
-# marshalling tests are `test-fanva-wasm`.
+# Run nibli-fanva native tests (agentic loop + history trim, local gates incl.
+# the render round-trip gate, the shipped-prompt guard, the semantic
+# verification turn, LLM request/response shapes).
 test-fanva:
     cargo test -p nibli-fanva --lib -- --nocapture
-
-# nibli-fanva camxes-gate marshalling under node (wasm-bindgen-test): verifies
-# read_camxes_result + the official_gate degrade path. The real camxes engine
-# needs a browser DOM and is checked manually. Skips cleanly when wasm-pack absent.
-test-fanva-wasm:
-    @if ! command -v wasm-pack >/dev/null 2>&1; then \
-        echo 'test-fanva-wasm SKIPPED: wasm-pack unavailable (cargo install wasm-pack)'; \
-    else \
-        wasm-pack test --node nibli-fanva; \
-    fi
 
 # Comprehensive pre-push / pre-release gate: the fast native `ci` plus the WASM
 # behavioral smokes. `ci` alone does not exercise the WASM component.
@@ -577,12 +414,13 @@ ci-all: ci ci-wasm
 build-validate:
     cargo build -p nibli --bin nibli-validate {{cargo_profile_flag}}
 
-# Manuscript gate: run every Lojban example in book/ through the engine (parse + vocab).
+# Manuscript gate: run every book/ example through the engine (parse + vocab).
 # Detection half of the manuscript-CI gate (see book/tools/README.md).
-# NIBLI_LANG=lojban: the book is Lojban and nibli-validate defaults to Klaro
-# since THE FLIP; the env var propagates through verify_book.py's subprocess.
+# EXPECTED RED until the book migrates to KR (or pins the v0.1-lojban-final
+# engine tag): the Lojban front-end retired at THE DROP, so the book's Lojban
+# examples no longer compile. Not part of `ci`.
 verify-book: build-validate
-    NIBLI_LANG=lojban python3 book/tools/verify_book.py --validate-bin target/debug/nibli-validate
+    python3 book/tools/verify_book.py --validate-bin target/debug/nibli-validate
 
 # Manuscript gate, vocab-only (fast; no build needed). book/ is a SEPARATE repo
 # (gitignored here), so it is absent on a fresh checkout / in CI — skip gracefully
@@ -677,42 +515,6 @@ verify-proofs:
         echo "verify-proofs: lean not found (the Nix dev shell provides it) — skipping"; \
     fi
 
-# Generate training data (requires ANTHROPIC_API_KEY env var)
-generate-training: build-validate
-    python3 python/generate_training_data.py --output data/training_raw.jsonl
-
-# Resume training data generation from existing file
-generate-training-resume: build-validate
-    python3 python/generate_training_data.py --output data/training_raw.jsonl --resume
-
-# Dry run: test validation pipeline without API calls
-generate-training-dry: build-validate
-    python3 python/generate_training_data.py --dry-run
-
-# Show training data statistics
-training-stats:
-    python3 python/training_stats.py data/training_raw.jsonl
-
-# Export valid pairs to HuggingFace-compatible format
-export-hf:
-    python3 python/training_stats.py data/training_raw.jsonl --export-hf data/nibli-lojban-dataset.jsonl
-
-# Fine-tune Qwen2.5-7B-Instruct on nibli-lojban dataset (QLoRA)
-model-train: build-validate
-    python3 python/nibli_model.py train --data data/training_raw.jsonl
-
-# Evaluate fine-tuned model — gerna pass rate is the key metric
-model-eval: build-validate
-    python3 python/nibli_model.py eval --model models/nibli-lojban-7b
-
-# Flywheel: add gerna-valid alternative translations back to training data
-model-refine:
-    python3 python/nibli_model.py refine --model models/nibli-lojban-7b --data data/training_raw.jsonl
-
-# Push adapter weights to HuggingFace Hub
-model-push:
-    python3 python/nibli_model.py push --model models/nibli-lojban-7b --repo dhilipsiva/nibli-lojban-7b
-
 # ── Fuzz testing (libFuzzer via the Nix shell's pinned nightly) ──
 #
 # The Nix shell exports NIBLI_NIGHTLY_BIN (flake.nix) — a pinned nightly
@@ -802,13 +604,13 @@ mutants JOBS="8":
 
 # Import an RDF Turtle / OWL file into a fresh KB and report (see
 # `nibli-import --help` for --raw / --export / --query flags). NOTE: just's
-# variadic ARGS lose shell quoting — for a multi-word `--query "<lojban>"`,
+# variadic ARGS lose shell quoting — for a multi-word `--query "<text>"`,
 # run the built binary directly (`./target/debug/nibli-import …`).
 import FILE *ARGS:
     cargo run -p nibli --bin nibli-import -- {{FILE}} {{ARGS}}
 
 # Timing pins for the book's quoted figures (Ch 13 latency numbers, Ch 20 full
-# Ch-20 sequence): release-profile, native in-process engine, gdpr.lojban corpus,
+# Ch-20 sequence): release-profile, native in-process engine, gdpr.klaro corpus,
 # min/median/max over NIBLI_BENCH_RUNS runs (default 10) with verdicts asserted.
 # The source for any latency figure the book quotes — never hand-write timings.
 bench-book:

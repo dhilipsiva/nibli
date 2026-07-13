@@ -22,7 +22,18 @@ const MIN_CHECKED_NAF: usize = 8;
 
 /// Minimum Predilex-taxonomy cases that must reach the Vampire oracle
 /// (first run checked 74; the lib tests separately floor the edge extraction).
+/// Full-dictionary builds only — the fallback build's curated vocabulary
+/// leaves few resolvable edges, so it gets `MIN_CHECKED_TAXONOMY_FALLBACK`.
 const MIN_CHECKED_TAXONOMY: usize = 40;
+
+/// Fallback-build taxonomy floor: the fail-closed KR resolve pre-filter keeps
+/// only edges whose BOTH words are in the curated fallback tables, so the
+/// surviving set is small — but it must never be empty (gate vacuous).
+const MIN_CHECKED_TAXONOMY_FALLBACK: usize = 1;
+
+/// Dictionary-size threshold separating a full lensisku build from the
+/// curated fallback build (same value as `predilex_differential.rs`).
+const FULL_DICT_MIN: usize = 1000;
 
 /// How many random stratified-NAF cases the ASP gate runs; override with
 /// `NIBLI_VERIFY_NAF_RANDOM_COUNT`.
@@ -173,11 +184,24 @@ fn predilex_taxonomy_agrees_with_vampire() {
 
     // Non-vacuity: the edge extraction is floor-pinned in the lib tests
     // (>= 20 edges); the case families multiply that. A compile-prune or
-    // filter regression that guts the set must fail loudly.
+    // filter regression that guts the set must fail loudly. Dual-mode: the
+    // fallback build's curated vocabulary leaves few edges the fail-closed
+    // KR resolve accepts, so its floor is lower (never zero).
+    let full_mode = smuni_dictionary::DICTIONARY.len() >= FULL_DICT_MIN;
+    let floor = if full_mode {
+        MIN_CHECKED_TAXONOMY
+    } else {
+        eprintln!(
+            "taxonomy gate: FALLBACK MODE — dictionary has {} entries (curated fallback \
+             build); floor relaxed to {MIN_CHECKED_TAXONOMY_FALLBACK}. Full validation \
+             needs `just fetch-dict` + rebuild.",
+            smuni_dictionary::DICTIONARY.len()
+        );
+        MIN_CHECKED_TAXONOMY_FALLBACK
+    };
     assert!(
-        report.checked() >= MIN_CHECKED_TAXONOMY,
-        "only {} taxonomy cases reached the oracle (need >= {MIN_CHECKED_TAXONOMY}); \
-         gate near-vacuous",
+        report.checked() >= floor,
+        "only {} taxonomy cases reached the oracle (need >= {floor}); gate near-vacuous",
         report.checked()
     );
 }

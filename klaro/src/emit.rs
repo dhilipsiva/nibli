@@ -607,11 +607,13 @@ fn abstraction_kind(kind: AbsKind) -> AbstractionKind {
 #[cfg(test)]
 mod tests {
     //! Golden tests. The load-bearing property: a Klaro statement and its
-    //! Lojban twin compile — through the SAME smuni — to EQUAL LogicBuffers
-    //! (compared via Debug formatting; smuni's variable naming is
-    //! deterministic, so structurally-equal ASTs give byte-equal buffers).
-    //! This is the in-crate preview of the nibli-verify translation battery.
-    //! All vocabulary is fallback-safe (CI has no dictionary-en.json).
+    //! smuni acceptance (compared via Debug formatting; smuni's variable
+    //! naming is deterministic, so structurally-equal ASTs give byte-equal
+    //! buffers). The Lojban-twin equality leg these pins carried retired with
+    //! the front-end at THE DROP — the structural-equality coverage lives in
+    //! the KR seam gate (nibli-verify) now; these remain the in-crate
+    //! acceptance pins. All vocabulary is fallback-safe (CI has no
+    //! dictionary-en.json).
 
     use crate::parse_checked;
 
@@ -622,30 +624,19 @@ mod tests {
         format!("{lb:?}")
     }
 
-    fn lojban_lb(text: &str) -> String {
-        let buffer = gerna::parse_checked(text).unwrap_or_else(|e| panic!("gerna {text:?}: {e}"));
-        let lb = smuni::compile_from_gerna_ast(buffer)
-            .unwrap_or_else(|e| panic!("smuni rejected lojban buffer for {text:?}: {e}"));
-        format!("{lb:?}")
-    }
-
-    fn twins(klaro: &str, lojban: &str) {
-        assert_eq!(
-            klaro_lb(klaro),
-            lojban_lb(lojban),
-            "\nklaro:  {klaro}\nlojban: {lojban}\ncompiled LogicBuffers differ"
-        );
+    fn twins(klaro: &str) {
+        let _ = klaro_lb(klaro);
     }
 
     // ── ground facts / terms ──
 
     #[test]
     fn ground_fact_twins() {
-        twins("person(Adam).", "la .adam. cu prenu");
-        twins("dog(Rex).", "la .rex. cu gerku");
-        twins("goes(me, some market).", "mi klama lo zarci");
-        twins("loves(me, _).", "mi prami zo'e");
-        twins("removes().", "vimcu");
+        twins("person(Adam).");
+        twins("dog(Rex).");
+        twins("goes(me, some market).");
+        twins("loves(me, _).");
+        twins("removes().");
     }
 
     #[test]
@@ -665,88 +656,64 @@ mod tests {
 
     #[test]
     fn determiner_twins() {
-        twins("animal(every dog).", "ro lo gerku cu danlu");
-        twins("goes(the dog).", "le gerku cu klama");
-        twins("red(exactly 2 red).", "re lo xunre cu xunre");
-        twins("goes(no dog).", "no lo gerku cu klama");
+        twins("animal(every dog).");
+        twins("goes(the dog).");
+        twins("red(exactly 2 red).");
+        twins("goes(no dog).");
     }
 
     // ── equality, negation, prefixes ──
 
     #[test]
     fn equality_negation_prefix_twins() {
-        twins("Kim = Adam.", "la .kim. cu du la .adam.");
-        twins("~goes(me).", "mi na klama");
-        twins("past dog(Dan).", "pu la .dan. cu gerku");
+        twins("Kim = Adam.");
+        twins("~goes(me).");
+        twins("past dog(Dan).");
     }
 
     // ── operators ──
 
     #[test]
     fn operator_twins() {
-        twins("goes(me) & eats(you).", "mi klama .ije do citka");
-        twins("goes(me) | eats(you).", "mi klama .ija do citka");
-        twins(
-            "dog(Rex) -> animal(Rex).",
-            "ganai la .rex. cu gerku gi la .rex. cu danlu",
-        );
+        twins("goes(me) & eats(you).");
+        twins("goes(me) | eats(you).");
+        twins("dog(Rex) -> animal(Rex).");
     }
 
     // ── quantification ──
 
     #[test]
     fn prenex_twins() {
-        twins(
-            "all $x: dog($x) -> animal($x).",
-            "ro da zo'u ganai da gerku gi da danlu",
-        );
+        twins("all $x: dog($x) -> animal($x).");
     }
 
     #[test]
     fn block_every_twin() {
         // O7 preview: the block-every form lowers to the prenex shape.
-        twins(
-            "every dog $d: animal($d).",
-            "ro da zo'u ganai da gerku gi da danlu",
-        );
+        twins("every dog $d: animal($d).");
     }
 
     // ── abstractions ──
 
     #[test]
     fn abstraction_twins() {
-        twins(
-            "desires(me, event { goes(you) }).",
-            "mi djica lo nu do klama",
-        );
-        twins(
-            "able(me, property { fast(slot) }).",
-            "mi kakne lo ka ce'u sutra",
-        );
+        twins("desires(me, event { goes(you) }).");
+        twins("able(me, property { fast(slot) }).");
     }
 
     // ── conversions, rel clauses, tanru, linked args ──
 
     #[test]
     fn converted_alias_and_selector_twins() {
-        twins(
-            "permitted(every person where approves).",
-            "ro lo prenu poi zanru cu se curmi",
-        );
-        twins(
-            "permitted(every loves.loved).",
-            "ro lo se prami cu se curmi",
-        );
+        twins("permitted(every person where approves).");
+        twins("permitted(every loves.loved).");
     }
 
     #[test]
     fn tanru_and_linked_arg_twins() {
-        twins("healthy data(Kanrek).", "la .kanrek. cu kanro datni");
-        twins(
-            "permitted(every tends(some data)).",
-            "ro lo kurji be lo datni cu se curmi",
-        );
-        twins("goes(Adam where dog).", "la .adam. poi gerku cu klama");
+        twins("healthy data(Kanrek).");
+        twins("permitted(every tends(some data)).");
+        twins("goes(Adam where dog).");
     }
 
     // ── acceptance-only shapes (no clean Lojban twin; smuni must accept) ──

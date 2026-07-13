@@ -2,31 +2,27 @@
 //! `nibli-import` crate, which was previously library-only).
 //!
 //! Usage:
-//!   nibli-import <file.ttl> [--raw] [--export] [--lang klaro|lojban] [--query "<text>"]...
+//!   nibli-import <file.ttl> [--raw] [--export] [--query "<text>"]...
 //!
 //! Imports the Turtle file into a fresh engine KB and reports the count.
 //!   --raw     import every triple as a 2-arg fact (skip OWL class handling:
-//!             rdfs:subClassOf → subsort, rdf:type → entity sort)
+//!             rdfs:subClassOf -> subsort, rdf:type -> entity sort)
 //!   --export  print the KB export after import (round-trip view)
-//!   --lang    front-end for --query text (default Klaro since THE FLIP;
-//!             NIBLI_LANG also honored, the flag wins). Import itself is
-//!             language-free (facts are injected directly, no parse).
-//!   --query   run a query against the imported KB (repeatable)
+//!   --query   run a KR query against the imported KB (repeatable)
 //!
-//! Note: `--query` reaches only relation names the selected front-end can
-//! SPELL. Klaro mode (the engine default since THE FLIP, 2026-07-12):
+//! Note: `--query` reaches only relation names the KR front-end can SPELL:
 //! dictionary/alias-resolvable names — an unknown name is a fail-closed
-//! compile error, never an arity guess (SURFACE_SYNTAX §13). Lojban mode
-//! (`--lang lojban`): Lojban-lexable local names (e.g. `ex:nelci`). English-named RDF predicates (e.g.
-//! `hasPart` — local names import VERBATIM, camelCase and all) import fine as
-//! facts but cannot be spelled in either query language; making them
-//! queryable awaits the v2 schema registry (SURFACE_SYNTAX §14.1) — decided
-//! 2026-07-12 over an unknown-word passthrough, which would have weakened
-//! Klaro's fail-closed guarantee while still not reaching camelCase names.
+//! compile error, never an arity guess (SURFACE_SYNTAX §13). English-named
+//! RDF predicates (e.g. `hasPart` — local names import VERBATIM, camelCase
+//! and all) import fine as facts but cannot be spelled in the query
+//! language; making them queryable awaits the v2 schema registry
+//! (SURFACE_SYNTAX §14.1) — decided 2026-07-12 over an unknown-word
+//! passthrough, which would have weakened the fail-closed guarantee while
+//! still not reaching camelCase names.
 //!
 //! Exit code: 0 on success, 1 on any parse/import/query error (fail closed).
 
-use nibli_engine::{Language, NibliEngine};
+use nibli_engine::NibliEngine;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -35,7 +31,6 @@ fn main() -> ExitCode {
     let mut file: Option<String> = None;
     let mut raw = false;
     let mut export = false;
-    let mut lang: Option<Language> = None;
     let mut queries: Vec<String> = Vec::new();
 
     let mut i = 0;
@@ -53,23 +48,9 @@ fn main() -> ExitCode {
                     }
                 }
             }
-            "--lang" => {
-                i += 1;
-                let Some(value) = args.get(i) else {
-                    eprintln!("error: --lang needs a value (klaro|lojban)");
-                    return ExitCode::FAILURE;
-                };
-                match value.parse::<Language>() {
-                    Ok(l) => lang = Some(l),
-                    Err(e) => {
-                        eprintln!("error: --lang: {e}");
-                        return ExitCode::FAILURE;
-                    }
-                }
-            }
             "--help" | "-h" => {
                 eprintln!(
-                    "usage: nibli-import <file.ttl> [--raw] [--export] [--lang klaro|lojban] [--query \"<text>\"]..."
+                    "usage: nibli-import <file.ttl> [--raw] [--export] [--query \"<text>\"]..."
                 );
                 return ExitCode::SUCCESS;
             }
@@ -83,7 +64,7 @@ fn main() -> ExitCode {
     }
 
     let Some(path) = file else {
-        eprintln!("usage: nibli-import <file.ttl> [--raw] [--export] [--query \"<lojban>\"]...");
+        eprintln!("usage: nibli-import <file.ttl> [--raw] [--export] [--query \"<text>\"]...");
         return ExitCode::FAILURE;
     };
 
@@ -95,22 +76,7 @@ fn main() -> ExitCode {
         }
     };
 
-    // --lang is fatal on bad values (explicit flag); NIBLI_LANG only warns and
-    // falls back (ambient config). Flag wins over env. Applies to --query text
-    // only — the import itself injects facts directly, no parse.
-    if lang.is_none()
-        && let Ok(value) = std::env::var("NIBLI_LANG")
-    {
-        match value.parse::<Language>() {
-            Ok(l) => lang = Some(l),
-            Err(e) => eprintln!("warning: NIBLI_LANG ignored: {e}"),
-        }
-    }
-
     let engine = NibliEngine::new();
-    if let Some(l) = lang {
-        engine.set_language(l);
-    }
     let result = if raw {
         nibli_import::import_triples_raw(&engine, &turtle)
     } else {

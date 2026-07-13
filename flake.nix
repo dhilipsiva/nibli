@@ -1,5 +1,5 @@
 {
-  description = "Lojban Neuro-Symbolic Engine Development Environment";
+  description = "nibli - Zero-Hallucination Symbolic Reasoning Engine (dev environment)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -8,15 +8,9 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # Reference Lojban parser (camxes PEG, Node.js) for the gerna parse-differential
-    # (`just verify-parser`): every sentence gerna accepts must be camxes-parseable.
-    ilmentufa = {
-      url = "github:lojban/ilmentufa";
-      flake = false;
-    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, rust-overlay, ilmentufa, ... }:
+  outputs = { self, nixpkgs, flake-utils, rust-overlay, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         overlays = [ (import rust-overlay) ];
@@ -75,9 +69,8 @@
             # `proofs/` Lean files are checked by `lean` in `just verify-proofs`.
             lean4
 
-            # Node.js runs the ilmentufa camxes reference parser for the gerna
-            # parse-differential (`just verify-parser`); the parser itself is the
-            # `ilmentufa` flake input, exported as NIBLI_CAMXES_DIR below.
+            # Node.js runs the wasm-pack test legs (verify-wasm-node; wasm-bindgen
+            # tests under node).
             nodejs
 
             # libFuzzer harness driver for the three fuzz targets (`just fuzz-ci`);
@@ -99,9 +92,6 @@
             # release optimization pass, and fails the build if it's missing.
             binaryen
           ];
-          # The pinned ilmentufa checkout (camxes.js + CLI wrappers) for the
-          # parse-differential; consumed by nibli-verify's parser_diff harness.
-          NIBLI_CAMXES_DIR = "${ilmentufa}";
 
           # The pinned nightly toolchain's bin dir for cargo-fuzz (see above).
           NIBLI_NIGHTLY_BIN = "${nightlyFuzzToolchain}/bin";
@@ -115,7 +105,7 @@
             echo "Target 'wasm32-wasip2' is active."
             export CARGO_INSTALL_ROOT="$PWD/.cargo-local"
             echo "=================================================="
-            echo " Lojban NeSy Engine - Nix Dev Environment Loaded  "
+            echo " nibli - Zero-Hallucination Reasoning Engine (dev) "
             echo "=================================================="
           '';
         };

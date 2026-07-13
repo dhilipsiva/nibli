@@ -312,7 +312,7 @@ fn kr_smuni_seam_conformance() {
 /// determinism legs must not share code paths beyond the engine.
 #[test]
 fn determinism_corpus_klaro_native() {
-    use nibli_engine::{Language, NibliEngine};
+    use nibli_engine::NibliEngine;
 
     enum COp {
         Assert(String),
@@ -344,7 +344,6 @@ fn determinism_corpus_klaro_native() {
     assert!(pending_q.is_none(), "trailing unannotated query");
 
     let engine = NibliEngine::new();
-    engine.set_language(Language::Klaro);
     let mut ids: Vec<Vec<u64>> = Vec::new();
     let mut checked = 0usize;
     for op in &ops {

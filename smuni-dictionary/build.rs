@@ -268,6 +268,32 @@ const CORE_GISMU_ARITIES: &[(&str, usize)] = &[
     // modes against the klaro alias map).
     ("dilcu", 4),
     ("jmive", 2),
+    // tenfa: the external-compute smoke's KR payload (`? tenfa(8, 2, 3).`)
+    // resolves via identity passthrough, so the fallback build needs the
+    // arity (full lensisku derives 3: result, base, exponent).
+    ("tenfa", 3),
+    // klani: the dose-aggregation engine test's KR payload (identity
+    // spelling; full lensisku derives 3: quantity, number, scale).
+    ("klani", 3),
+    // KR test-corpus + shipped-corpus vocabulary (post-DROP: the KR front-end
+    // fails closed on unknown names, so every word a shipped corpus or test
+    // uses must resolve in the fallback build too). Arities follow the full
+    // lensisku derivation.
+    ("pendo", 2),
+    ("xagji", 2),
+    ("batci", 4),
+    ("plise", 2),
+    ("tarmi", 2),
+    ("nupre", 3),
+    ("satci", 3),
+    ("judri", 3),
+    ("krici", 3),
+    ("kunti", 2),
+    ("lijda", 3),
+    ("marbi", 3),
+    ("natmi", 2),
+    ("sarcu", 3),
+    ("sipna", 1),
 ];
 
 /// Minimal fallback when dictionary-en.json is absent locally.
@@ -324,6 +350,23 @@ const FALLBACK_GISMU_ENTRIES: &[(&str, usize, &str)] = &[
     // CORE_GISMU_ARITIES pins above — the fallback table previously said
     // 3/1, a cross-mode flap the verify-klaro-dict gate now trips on.
     ("dilcu", 4, "divide"),
+    ("tenfa", 3, "exponential"),
+    ("klani", 3, "quantity"),
+    ("pendo", 2, "friend"),
+    ("xagji", 2, "hungry"),
+    ("batci", 4, "bite"),
+    ("plise", 2, "apple"),
+    ("tarmi", 2, "shape"),
+    ("nupre", 3, "promise"),
+    ("satci", 3, "exact"),
+    ("judri", 3, "address"),
+    ("krici", 3, "believe"),
+    ("kunti", 2, "empty"),
+    ("lijda", 3, "religion"),
+    ("marbi", 3, "shelter"),
+    ("natmi", 2, "nation"),
+    ("sarcu", 3, "necessary"),
+    ("sipna", 1, "sleep"),
     ("danlu", 2, "animal"),
     ("jmive", 2, "live"),
     // GDPR / drug-interaction corpus proxy + regulatory vocabulary. Without

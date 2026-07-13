@@ -1,6 +1,0 @@
-# Copy to `.dev.vars` (gitignored) for LOCAL `wrangler dev` only. Values here
-# override wrangler.toml [vars] during dev and are NEVER deployed.
-#
-# Add your local UI origin so `just ui` (http://localhost:8080) can reach the
-# proxy from the browser. Keep localhost OUT of the deployed wrangler.toml.
-ALLOWED_ORIGINS=https://dhilipsiva.dev,http://localhost:8080

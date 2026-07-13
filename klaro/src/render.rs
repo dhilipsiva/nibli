@@ -1027,54 +1027,6 @@ mod tests {
     }
 
     #[test]
-    fn gerna_buffers_render_to_equivalent_klaro() {
-        // The battery direction: Lojban → gerna AST → render → klaro parse →
-        // EQUAL compiled LogicBuffers. (Full corpus sweep is the nibli-verify
-        // battery bullet; these pin the mechanism.)
-        for lojban in [
-            "la .adam. cu prenu",
-            "mi klama lo zarci",
-            "ro lo gerku cu danlu",
-            "le gerku cu klama",
-            "re lo xunre cu xunre",
-            "no lo gerku cu klama",
-            "la .kim. cu du la .adam.",
-            "mi na klama",
-            "pu la .dan. cu gerku",
-            "mi klama .ije do citka",
-            "mi klama .inaja do citka",
-            "ganai la .rex. cu gerku gi la .rex. cu danlu",
-            "ge mi klama gi do citka",
-            "ro da zo'u ganai da gerku gi da danlu",
-            "mi djica lo nu do klama",
-            "mi kakne lo ka ce'u sutra",
-            "ro lo prenu poi zanru cu se curmi",
-            "ro lo se prami cu se curmi",
-            "la .kanrek. cu kanro datni",
-            "ro lo kurji be lo datni cu se curmi",
-            "la .adam. poi gerku cu klama",
-            "lo gerku noi barda cu klama",
-            "ro le gerku cu klama",
-            "mi prami zo'e",
-        ] {
-            let gerna_buffer =
-                gerna::parse_checked(lojban).unwrap_or_else(|e| panic!("gerna {lojban:?}: {e}"));
-            let gerna_lb = format!(
-                "{:?}",
-                smuni::compile_from_gerna_ast(gerna_buffer.clone())
-                    .unwrap_or_else(|e| panic!("smuni(gerna) {lojban:?}: {e}"))
-            );
-            let klaro_text =
-                render(&gerna_buffer).unwrap_or_else(|e| panic!("render(gerna) {lojban:?}: {e}"));
-            assert_eq!(
-                gerna_lb,
-                lb(&klaro_text),
-                "\nlojban: {lojban}\nklaro:  {klaro_text}\ncompiled LogicBuffers differ"
-            );
-        }
-    }
-
-    #[test]
     fn out_of_scope_constructs_fail_closed_by_name() {
         use nibli_types::ast::*;
         // Hand-built buffers with §10 constructs: render must name the
@@ -1102,59 +1054,5 @@ mod tests {
             let e = render(&buffer).expect_err("must fail closed");
             assert!(format!("{e}").contains(needle), "{e}");
         }
-    }
-
-    #[test]
-    fn conversions_in_predication_position() {
-        // se prami as a MAIN selbri has no curated converted alias — it
-        // renders by PEELING the swap onto named args of the plain alias
-        // (`loves(loved: Kim, lover: Adam)`), and round-trips to an equal
-        // LogicBuffer.
-        let lojban = "la .kim. cu se prami la .adam.";
-        let buffer = gerna::parse_checked(lojban).unwrap();
-        let text = render(&buffer).unwrap();
-        assert!(text.contains("loves("), "peeled rendering expected: {text}");
-        let gerna_lb = format!("{:?}", smuni::compile_from_gerna_ast(buffer).unwrap());
-        assert_eq!(
-            gerna_lb,
-            lb(&text),
-            "peeled conversion must round-trip: {text}"
-        );
-        // A curated converted alias still renders by name in the same spot.
-        let buffer = gerna::parse_checked("la .adam. cu se curmi").unwrap();
-        let text = render(&buffer).unwrap();
-        assert!(text.contains("permitted"), "{text}");
-    }
-
-    #[test]
-    fn connected_selbri_expands_at_bridi_level() {
-        // Universal subject → the block form, minting $x. (Canonical
-        // LogicBuffer equality with the Lojban original is pinned by the
-        // verify-klaro gate; here we pin the SPELLING and that it reparses.)
-        let buffer = gerna::parse_checked("ro lo se bilga cu se curmi jenai se fanta").unwrap();
-        let text = render(&buffer).unwrap();
-        assert_eq!(
-            text.trim(),
-            "every obligated $x: permitted($x) & ~prevents(prevented: $x)."
-        );
-        crate::parse_checked(text.trim()).expect("expansion must reparse");
-
-        // Constant subject → the claim-level operator form.
-        let buffer = gerna::parse_checked("la .adam. cu se curmi jenai se fanta").unwrap();
-        let text = render(&buffer).unwrap();
-        assert_eq!(text.trim(), "permitted(Adam) & ~prevents(prevented: Adam).");
-        crate::parse_checked(text.trim()).expect("expansion must reparse");
-
-        // Fail closed by name: quantified non-universal subject (duplication
-        // would double the quantifier) and `ju`.
-        let buffer = gerna::parse_checked("lo gerku cu se curmi jenai se fanta").unwrap();
-        let e = render(&buffer).expect_err("some-subject must fail closed");
-        assert!(
-            format!("{e}").contains("non-universal quantified subject"),
-            "{e}"
-        );
-        let buffer = gerna::parse_checked("la .adam. cu gerku ju danlu").unwrap();
-        let e = render(&buffer).expect_err("ju must fail closed");
-        assert!(format!("{e}").contains("no Klaro operator"), "{e}");
     }
 }

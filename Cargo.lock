@@ -1729,15 +1729,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gerna"
-version = "0.1.0"
-dependencies = [
- "bumpalo",
- "logos",
- "nibli-types",
-]
-
-[[package]]
 name = "getrandom"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2369,7 +2360,6 @@ dependencies = [
 name = "klaro"
 version = "0.1.0"
 dependencies = [
- "gerna",
  "klaro-dictionary",
  "nibli-types",
  "pest",
@@ -2393,7 +2383,6 @@ dependencies = [
 name = "lasna"
 version = "0.1.0"
 dependencies = [
- "gerna",
  "klaro",
  "logji",
  "nibli-types",
@@ -2514,38 +2503,6 @@ dependencies = [
  "serde",
  "smuni",
  "smuni-dictionary",
-]
-
-[[package]]
-name = "logos"
-version = "0.16.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb2c55a318a87600ea870ff8c2012148b44bf18b74fad48d0f835c38c7d07c5f"
-dependencies = [
- "logos-derive",
-]
-
-[[package]]
-name = "logos-codegen"
-version = "0.16.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58b3ffaa284e1350d017a57d04ada118c4583cf260c8fb01e0fe28a2e9cf8970"
-dependencies = [
- "fnv",
- "proc-macro2",
- "quote",
- "regex-automata",
- "regex-syntax",
- "syn",
-]
-
-[[package]]
-name = "logos-derive"
-version = "0.16.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52d3a9855747c17eaf4383823f135220716ab49bea5fbea7dd42cc9a92f8aa31"
-dependencies = [
- "logos-codegen",
 ]
 
 [[package]]
@@ -2766,7 +2723,6 @@ name = "nibli-engine"
 version = "0.1.0"
 dependencies = [
  "criterion",
- "gerna",
  "klaro",
  "logji",
  "nibli-protocol",
@@ -2783,7 +2739,6 @@ name = "nibli-fanva"
 version = "0.1.0"
 dependencies = [
  "futures",
- "gerna",
  "gloo-net",
  "js-sys",
  "klaro",
@@ -2843,7 +2798,6 @@ name = "nibli-ui"
 version = "0.1.0"
 dependencies = [
  "dioxus",
- "gerna",
  "gloo-net",
  "klaro",
  "klaro-dictionary",
@@ -2874,7 +2828,6 @@ dependencies = [
 name = "nibli-wasm"
 version = "0.1.0"
 dependencies = [
- "gerna",
  "klaro",
  "logji",
  "nibli-protocol",
@@ -3971,7 +3924,6 @@ dependencies = [
 name = "smuni"
 version = "0.1.0"
 dependencies = [
- "gerna",
  "lasso",
  "nibli-types",
  "smuni-dictionary",

@@ -46,36 +46,23 @@ quantified-head witness sharing, determinism-corpus GIhA lines — those now liv
 fanva's TODO, not here) — and its full test matrix is green (411/411 camxes
 differential, zero divergences). fanva VENDORS the crate closure
 (nibli-types/smuni/smuni-dictionary/nibli-protocol/nibli-render) under the upstream
-names, so nibli's later crate renames do NOT ripple into it. **Nothing was deleted
-from nibli** — THE DROP below does the deleting.
+names, so nibli's later crate renames do NOT ripple into it.
 
-- **THE DROP (single-surface milestone)** — BOTH preconditions are SATISFIED: the
-  donation repo is extracted (see above) and the Lojban-free KR oracle is live
-  (`just verify-kr-seam`, in `ci` since 2026-07-12 — hand-verified FOL goldens +
-  inventory sweep + KR-internal metamorphic families + the re-homed determinism
-  leg, so the twin battery can die without the front-end going unverified).
-  Delete Lojban from nibli in one milestone: the `gerna` dep
-  everywhere (9 dependents), `Language` enum + `NIBLI_LANG` + WIT
-  `enum language`/`set-language` (component ABI break — version-bump the WIT
-  package), `:lojban`/`:klaro`/`:lang` + `--lang` flags, the `.lojban` corpora +
-  twins machinery (`migrate-corpora` runs once more, then dies with `lojban2klaro`),
-  goi snapshots in lasna/nibli-engine + the 7 goi smokes +
-  `smoke-gasnu-script-lojban` + mixed-mode smoke + `determinism_corpus_lojban_twin`,
-  `verify-parser`, the camxes gate + `test-fanva-wasm`'s marshalling tests + jbotci
-  MCP + tersmu view + `fanva-proxy` (tear down nibli's copy; worker hand-over
-  below), python flywheel recipes, `LOJBAN_COVERAGE.md`. Corpus feeds re-point:
-  `nibli-verify/src/corpora.rs` still `include_str!`s the `.lojban` sides for the
-  Vampire/clingo legs — re-point to the KR corpora (the oracles are language-free).
-  `verify-klaro-dict` keeps its behavioral battery + structural invariants, drops
-  the gerna-twin compiles. CROSS-REPO GATES: the book harness pins
-  `NIBLI_LANG=lojban` (`Justfile` verify-book + `book/tools/capture_book.py`) — the
-  book repo must migrate its transcripts or pin a pre-drop engine tag BEFORE this
-  lands; the deployed /nibli demo JS must migrate first (see the site bullet).
-  WORKER HAND-OVER: the deployed `fanva-proxy.dhilipsiva.workers.dev` worker is
-  referenced by BOTH repos — fanva's docs hold off touching `ALLOWED_ORIGINS` until
-  nibli's purge lands, so at THE DROP hand the worker's ownership/config over to
-  the fanva repo (nibli's `fanva-proxy/` dir deletes; the live worker survives
-  under fanva's stewardship).
+**THE DROP: LANDED (2026-07-13).** The Lojban front-end is gone: gerna deleted, the
+`Language` enum + `NIBLI_LANG` + WIT `set-language` removed (WIT bumped to
+`lojban:nibli@0.2.0` — the package RENAME rides the purge bullet), go'i machinery +
+smokes deleted, camxes/jbotci/fanva-proxy/tersmu torn out (the deployed worker is
+the fanva repo's now), `.lojban` corpora + twins machinery + `verify-klaro`/
+`verify-klaro-twins`/`verify-parser` retired (coverage re-anchored in
+`verify-kr-seam`), python flywheel + LOJBAN_COVERAGE.md deleted, every test
+surface machine-ported to KR with per-literal round-trip-equality verification.
+The last dual-front-end engine is tagged **`v0.1-lojban-final`** (the pin point
+for the book harness and the pre-migration demo site). Two known consequences,
+both user-accepted: the deployed /nibli demo is BROKEN until the site-migration
+session lands (its Lojban-era JS/KB no longer compiles; `nibli-wasm` keeps
+`set_language`/`back_translate` as deprecated no-op/gloss shims so the JS at
+least loads), and `verify-book` is red until the book migrates or pins the tag.
+
 - **"Klaro" → "nibli KR" rename** — ~1,096 occurrences across 78 files. Display
   name: "nibli KR", first mention "nibli knowledge representation (KR) language".
   UI: both tab strips' label via `kb_tab_label()` → "nibli KR" + the "?" icon
@@ -84,15 +71,14 @@ from nibli** — THE DROP below does the deleting.
   nibli-ui/src/main.rs, the two `button { class: "tab" … }` sites), "Load .klaro" /
   placeholder / hint strings / settings copy / examples.rs docs. Code: crate
   `klaro` → `nibli-kr`, `klaro-dictionary` → `nibli-kr-dictionary` (7 + 3
-  dependents), `Language::Klaro` handling (moot if THE DROP lands first — then the
-  enum is already gone), `KLARO_SYSTEM_PROMPT` → `KR_SYSTEM_PROMPT`, gate name
+  dependents), `KLARO_SYSTEM_PROMPT` → `KR_SYSTEM_PROMPT`, gate name
   "klaro" → "kr" (chips + GateError::gate + pinned tests), `klaro.pest` →
   `nibli_kr.pest`, `fuzz_klaro` → `fuzz_kr`, Justfile recipes `test-klaro`/
-  `verify-klaro*` → `test-kr`/`verify-kr*`, `acceptance.klaro` + the corpus files'
-  extension **`.klaro` → `.nkr` (PROPOSAL — decide before renaming; alternatives
-  `.kr`, `.nibli`)**, `Language::FromStr`/`set_language` string "klaro" → "kr"
-  (keep "klaro" as a deprecated parse alias through the site window — the deployed
-  playground JS is a published consumer), SURFACE_SYNTAX.md retitled "The nibli KR
+  `verify-klaro-dict` → `test-kr`/`verify-kr-dict`, `acceptance.klaro` + the corpus
+  files' extension **`.klaro` → `.nkr` (PROPOSAL — decide before renaming;
+  alternatives `.kr`, `.nibli`)**, the deprecated `nibli-wasm` shims
+  (`set_language`/`back_translate`) DELETE here once the site migration has
+  landed, SURFACE_SYNTAX.md retitled "The nibli KR
   language" (keep the filename — dozens of §-references in code comments — or
   sweep them all in the same commit).
 - **Lojban identifier + crate purge (everything but the predicate names)** — rename
@@ -177,21 +163,23 @@ from nibli** — THE DROP below does the deleting.
   Also the natural moment to fold in the **ontology-row import** bullet below (rows
   arrive keyed on gismu; the alias bridge from (g) is the same mapping).
 - **demo site migration (cross-repo, dhilipsiva.dev — SEPARATE Claude session)** —
-  the copy-pastable prompt was handed to the user 2026-07-12. Site session scope:
-  /nibli guided demo KBs+queries+copy → nibli KR, worker calls
-  `set_language("klaro")` explicitly against current main (survives until the
-  string rename lands, then "kr"). NIBLI-SIDE residual that lands in the same
-  window: flip `nibli-wasm`'s pinned-Lojban session default + `back_translate_ir`'s
-  front-end (`compile_for_render` is language-parameterized — a one-arg flip),
-  then THE DROP removes the pin entirely. Sequencing: site migrates first (works
-  against current main), nibli flips after.
+  the copy-pastable prompt was handed to the user 2026-07-12. URGENCY UP since THE
+  DROP landed (2026-07-13, user-accepted): the deployed /nibli demo is BROKEN —
+  its Lojban-era KBs no longer compile against main. Site session scope: /nibli
+  guided demo KBs+queries+copy → nibli KR. The engine side is DONE: nibli-wasm is
+  KR-only; `set_language` is a deprecated NO-OP shim (any string accepted, so
+  the prompt's `set_language("klaro")` instruction still works) and
+  `back_translate` survives as a deprecated gloss shim — both DELETE at the
+  rename milestone once the site stops calling them. If the site needs the old
+  engine meanwhile, pin the `v0.1-lojban-final` tag in `build_nibli.sh`.
 - **book migration (separate repo — book/TODO.md carries the details)** — the book
   is Lojban-heavy by design ("Lojban as IR" framing, Part II Ch 3–6); the pivot
   replaces it with nibli KR. Key restructuring (user decision): MERGE Ch 3 ("Why
   Not English?") + Ch 4 ("Lojban — A Gift from Linguists, Logicians, and
-  Mathematicians") into ONE chapter about the nibli KR language. The capture
-  harness's `NIBLI_LANG=lojban` pin breaks at THE DROP — the book must re-capture
-  its transcripts in KR (or pin a pre-drop engine tag) before then.
+  Mathematicians") into ONE chapter about the nibli KR language. THE DROP landed
+  (2026-07-13): `verify-book` is EXPECTED RED and the capture harness cannot
+  run against main until the book re-captures its transcripts in KR — or pins the
+  `v0.1-lojban-final` engine tag meanwhile.
 
 Engine bullets (language-independent; the KR program above takes precedence):
 

@@ -14,10 +14,6 @@ klaro-dictionary = { path = "../klaro-dictionary" }
 smuni-dictionary = { path = "../smuni-dictionary" }
 # emit.rs targets nibli-types' AstBuffer; parse_checked returns NibliError.
 nibli-types = { path = "../nibli-types" }
-# The lojban2klaro migration bin (src/bin/) parses the Lojban side; a regular
-# dep (bins cannot see dev-deps) — harmless, every klaro consumer already
-# compiles gerna. The library itself never calls it.
-gerna = { path = "../gerna" }
 
 [dev-dependencies]
 # Golden tests: every emitted buffer must be accepted by smuni, and Klaro

@@ -4,13 +4,11 @@
 //!
 //! Powers the live Transparency Triad demo at <https://dhilipsiva.dev/nibli>.
 
-use std::cell::Cell;
 use std::collections::HashSet;
 
 use wasm_bindgen::prelude::*;
 
 use nibli_types::error::NibliError as PipelineError;
-use nibli_types::lang::Language;
 use nibli_types::logic as logji_logic;
 
 // The canonical proof types ARE the wire types now; `nibli_protocol` only
@@ -19,18 +17,11 @@ use nibli_types::logic as logji_logic;
 // ── the session ──────────────────────────────────────────────────────────
 
 /// One in-memory knowledge base. The page creates one per loaded example;
-/// "Reset" just builds a fresh Session and re-asserts the .lojban lines.
+/// "Reset" just builds a fresh Session and re-asserts the KB lines.
 #[wasm_bindgen]
 pub struct Session {
     kb: logji::KnowledgeBase,
     compute_predicates: HashSet<String>,
-    /// The input language. PINNED LOJBAN here — NOT `Language::default()`
-    /// (Klaro since THE FLIP): this crate powers the DEPLOYED playground,
-    /// which is rebuilt on every push to main (redeploy-site.yml), and its
-    /// JS/KB still speak Lojban. The default flips only in the same window
-    /// as the dhilipsiva.dev site-repo migration; until then Klaro is
-    /// opt-in via `set_language("klaro")`.
-    language: Cell<Language>,
 }
 
 impl Default for Session {
@@ -46,15 +37,15 @@ impl Session {
         Session {
             kb: logji::KnowledgeBase::new(),
             compute_predicates: logji::default_compute_predicates(),
-            language: Cell::new(Language::Lojban),
         }
     }
 
-    /// Select the input language for `assert_text`/`query_with_proof`:
-    /// `"klaro"` or `"lojban"`. The session default is LOJBAN until the
-    /// deployed site's migration window (see the `language` field note).
-    pub fn set_language(&self, lang: &str) -> Result<(), JsError> {
-        self.language.set(lang.parse::<Language>().map_err(js_err)?);
+    /// DEPRECATED NO-OP compatibility shim: the Lojban front-end retired at
+    /// THE DROP, so there is no language to select — every session is KR.
+    /// Kept (accepting and ignoring any string) so deployed-site JS written
+    /// against the dual-front-end API keeps loading; dies at the "nibli KR"
+    /// rename milestone.
+    pub fn set_language(&self, _lang: &str) -> Result<(), JsError> {
         Ok(())
     }
 
@@ -120,18 +111,9 @@ impl Session {
 
 impl Session {
     fn compile_text(&self, input: &str) -> Result<logji_logic::LogicBuffer, String> {
-        // Language dispatch (fail-closed parse either way) + smuni compile
-        // + compute-node marking. String-error surface preserved via
-        // `to_string`. This session is stateless per compile — no goi
-        // machinery exists here, so the Klaro arm needs no snapshot logic.
-        let ast = match self.language.get() {
-            Language::Lojban => {
-                gerna::parse_checked(input).map_err(|e: PipelineError| e.to_string())?
-            }
-            Language::Klaro => {
-                klaro::parse_checked(input).map_err(|e: PipelineError| e.to_string())?
-            }
-        };
+        // Fail-closed KR parse + smuni compile + compute-node marking.
+        // String-error surface preserved via `to_string`.
+        let ast = klaro::parse_checked(input).map_err(|e: PipelineError| e.to_string())?;
         let mut buf =
             smuni::compile_from_gerna_ast(ast).map_err(|e: PipelineError| e.to_string())?;
         logji::transform_compute_nodes(&mut buf, &self.compute_predicates);
@@ -143,9 +125,10 @@ fn js_err(msg: impl std::fmt::Display) -> JsError {
     JsError::new(&msg.to_string())
 }
 
-/// Word-by-word robotic back-translation (smuni-dictionary, 10k+ jbovlaste
-/// entries). Mechanical by design — the labeled "lexical gloss" fallback for
-/// tokens that do not compile.
+/// DEPRECATED compatibility shim (dies at the "nibli KR" rename milestone):
+/// the word-by-word Lojban lexical gloss the pre-DROP playground JS calls.
+/// Kept so deployed-site JS written against the dual-front-end API keeps
+/// loading; meaningless for KR input (it echoes unknown tokens).
 #[wasm_bindgen]
 pub fn back_translate(lojban: &str) -> String {
     smuni_dictionary::back_translate(lojban)
@@ -155,25 +138,19 @@ pub fn back_translate(lojban: &str) -> String {
 /// exposing English via nibli-render. This is the default Transparency Triad
 /// reading; it falls back to the lexical gloss when the input does not compile.
 #[wasm_bindgen]
-pub fn back_translate_ir(lojban: &str) -> String {
-    // Session-less free export: stays LOJBAN for the deployed site's JS (the
-    // Klaro-aware render path arrives with the site-repo migration window).
-    match compile_for_render(Language::Lojban, lojban) {
+pub fn back_translate_ir(text: &str) -> String {
+    match compile_for_render(text) {
         Ok(buf) => nibli_render::render_logic_buffer(&buf, nibli_render::Register::Spec),
-        Err(_) => smuni_dictionary::back_translate(lojban),
+        // A non-compiling line echoes as-is (KR is already readable; the
+        // Lojban word-gloss fallback retired with the front-end).
+        Err(_) => text.to_string(),
     }
 }
 
 /// Parse + compile a line to the FOL `LogicBuffer` for rendering (no compute
-/// transform, no assertion — display only). Language-parameterized so the
-/// site-window flip is a one-arg change.
-fn compile_for_render(lang: Language, input: &str) -> Result<logji_logic::LogicBuffer, String> {
-    let ast = match lang {
-        Language::Lojban => {
-            gerna::parse_checked(input).map_err(|e: PipelineError| e.to_string())?
-        }
-        Language::Klaro => klaro::parse_checked(input).map_err(|e: PipelineError| e.to_string())?,
-    };
+/// transform, no assertion — display only).
+fn compile_for_render(input: &str) -> Result<logji_logic::LogicBuffer, String> {
+    let ast = klaro::parse_checked(input).map_err(|e: PipelineError| e.to_string())?;
     smuni::compile_from_gerna_ast(ast).map_err(|e: PipelineError| e.to_string())
 }
 
@@ -183,25 +160,36 @@ fn compile_for_render(lang: Language, input: &str) -> Result<logji_logic::LogicB
 mod tests {
     use super::Session;
 
+    /// Load a KR KB, vocab-skipping lines the FALLBACK dictionary build
+    /// cannot resolve (the corpora carry full-mode generated aliases; the
+    /// shipped_examples_compile pattern) — with a non-vacuity floor so the
+    /// skip can never hollow a test out.
     fn load(kb_text: &str) -> Session {
         let session = Session::new();
-        // PINNED LOJBAN with the .lojban corpora (deviation from the tracker's
-        // ".klaro re-point", recorded 2026-07-12): the gdpr/ddi .klaro twins
-        // carry full-mode-only aliases, so loading them here would break the
-        // CI fallback build; the twins gate already proves per-line
-        // equivalence. Explicit — future-proofs the site-window default flip.
-        session
-            .set_language("lojban")
-            .expect("set_language(lojban) must succeed");
+        let (mut asserted, mut skipped) = (0usize, 0usize);
         for line in kb_text.lines() {
             let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
+            if line.is_empty() || line.starts_with('#') || line.starts_with(':') {
                 continue;
             }
-            session
-                .assert_text(line)
-                .unwrap_or_else(|_| panic!("failed to assert: {line}"));
+            let line = line.strip_prefix("? ").unwrap_or(line);
+            // Skip-check via the native-safe parse path (a JsError cannot be
+            // formatted on non-wasm targets, so probe klaro directly).
+            if let Err(e) = klaro::parse_checked(line) {
+                if e.to_string().contains("unknown predicate") {
+                    skipped += 1;
+                    continue;
+                }
+            }
+            match session.assert_text(line) {
+                Ok(_) => asserted += 1,
+                Err(_) => panic!("failed to assert: {line}"),
+            }
         }
+        assert!(
+            asserted > skipped,
+            "vocab-skip hollowed the KB out: {asserted} asserted, {skipped} skipped"
+        );
         session
     }
 
@@ -214,10 +202,10 @@ mod tests {
     #[test]
     fn syllogism_two_hop_proof() {
         // Book Ch 19's minimal worked example — the demo's first tab.
-        let session = load("ro lo gerku cu danlu\nro lo danlu cu citka\nla .adam. cu gerku");
-        assert_eq!(status(&session, "la .adam. cu citka"), "TRUE");
-        assert_eq!(status(&session, "la .adam. cu danlu"), "TRUE");
-        assert_eq!(status(&session, "la .adam. cu cipni"), "FALSE");
+        let session = load("animal(every dog).\neats(every animal).\ndog(Adam).");
+        assert_eq!(status(&session, "eats(Adam)."), "TRUE");
+        assert_eq!(status(&session, "animal(Adam)."), "TRUE");
+        assert_eq!(status(&session, "bird(Adam)."), "FALSE");
     }
 
     #[test]
@@ -226,35 +214,39 @@ mod tests {
         // words, GDPR consent). The captured Show-It/Glorp blocks are byte-gated;
         // the GDPR-consent block is flagged (its long proof is elided), so pin its
         // verdict here so the transcript cannot drift to a wrong answer.
-        let syllog = load("la .adam. gerku\nro lo gerku cu danlu");
-        assert_eq!(status(&syllog, "la .adam. danlu"), "TRUE");
+        let syllog = load("dog(Adam).\nanimal(every dog).");
+        assert_eq!(status(&syllog, "animal(Adam)."), "TRUE");
 
-        let glorp = load("la .adam. glorpi\nro lo glorpi cu flimbi");
-        assert_eq!(status(&glorp, "la .adam. flimbi"), "TRUE");
+        // (The Ch-2 made-up-word "glorp" block retired with the Lojban
+        // front-end: KR fails closed on unknown names by design, so the
+        // arity-2-tolerance demo has no KR twin.)
 
         let gdpr = load(
-            "lo prenu cu ponse lo datni\n\
-             ro lo prenu poi ke'a ponse lo datni cu bilga lo nu curmi",
+            "owns(some person, some data).\n\
+             obliged(every person where owns(it, some data), event { permits() }).",
         );
-        assert_eq!(status(&gdpr, "lo prenu cu bilga lo nu curmi"), "TRUE");
+        assert_eq!(
+            status(&gdpr, "obliged(some person, event { permits() })."),
+            "TRUE"
+        );
     }
 
-    // NOTE: the Ch 20 breach-notification queries (`... se bilga lo nu notci`)
-    // are deliberately NOT exercised here or in the /nibli demo: against the
-    // FULL gdpr.lojban corpus the traced query does not return in bounded time
+    // NOTE: the Ch 20 breach-notification queries (obligated-to-notify) are
+    // deliberately NOT exercised here or in the /nibli demo: against the
+    // FULL gdpr corpus the traced query does not return in bounded time
     // (confirmed >240s in release, 2026-06-11) — matching the suspicion in
     // code-review-panel-2026-06-10.json. Upstream pins that query shape only
     // against smaller inline KBs (nibli-engine/tests/integration.rs).
     #[test]
     fn gdpr_lawful_basis_and_withdrawal() {
-        let session = load(include_str!("../../gdpr.lojban"));
+        let session = load(include_str!("../../gdpr.klaro"));
         // Book Ch 20: consent gives Adam a lawful basis.
-        assert_eq!(status(&session, "la .adam. cu se curmi"), "TRUE");
-        assert_eq!(status(&session, "la .adam. na se curmi"), "FALSE");
+        assert_eq!(status(&session, "permitted(Adam)."), "TRUE");
+        assert_eq!(status(&session, "~permitted(Adam)."), "FALSE");
         // A controller is not a consenting person — a real, exhaustive FALSE.
-        assert_eq!(status(&session, "la .gugli. cu se curmi"), "FALSE");
+        assert_eq!(status(&session, "permitted(Gugli)."), "FALSE");
         // Special-category derivation: health record → personal data (Art 4/9).
-        assert_eq!(status(&session, "la .kanrek. cu datni"), "TRUE");
+        assert_eq!(status(&session, "data(Kanrek)."), "TRUE");
 
         // Withdraw consent (retract `la .adam. cu zanru`) — basis collapses.
         let facts = session.list_facts().unwrap();
@@ -263,24 +255,24 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .find(|r| r["label"].as_str().unwrap_or("").contains("zanru"))
+            .find(|r| r["label"].as_str().unwrap_or("").contains("approves(Adam)"))
             .expect("consent fact present")["id"]
             .as_u64()
             .unwrap();
         session.retract_fact(consent_id).unwrap();
-        assert_eq!(status(&session, "la .adam. cu se curmi"), "FALSE");
-        assert_eq!(status(&session, "la .adam. na se curmi"), "TRUE");
+        assert_eq!(status(&session, "permitted(Adam)."), "FALSE");
+        assert_eq!(status(&session, "~permitted(Adam)."), "TRUE");
     }
 
     #[test]
     fn drug_interaction_chain_and_discontinuation() {
-        let session = load(include_str!("../../drug-interactions.lojban"));
+        let session = load(include_str!("../../drug-interactions.klaro"));
         // Book Ch 21: warfarin chain fires end to end.
-        assert_eq!(status(&session, "la .varfarin. cu zenba"), "TRUE");
-        assert_eq!(status(&session, "la .varfarin. cu ckape"), "TRUE");
-        assert_eq!(status(&session, "la .varfarin. cu kajde"), "TRUE");
+        assert_eq!(status(&session, "increases(Varfarin)."), "TRUE");
+        assert_eq!(status(&session, "dangerous(Varfarin)."), "TRUE");
+        assert_eq!(status(&session, "warns(Varfarin)."), "TRUE");
         // Negative control: apixaban (CYP3A4) does not alert.
-        assert_eq!(status(&session, "la .apiksaban. cu kajde"), "FALSE");
+        assert_eq!(status(&session, "warns(Apiksaban)."), "FALSE");
 
         // Discontinue fluconazole (retract the inhibition fact) — chain collapses.
         let facts = session.list_facts().unwrap();
@@ -291,25 +283,13 @@ mod tests {
             .iter()
             .find(|r| {
                 let l = r["label"].as_str().unwrap_or("");
-                l.contains("flukonazol") && l.contains("fanta")
+                l.contains("prevents(Flukonazol")
             })
             .expect("inhibition fact present")["id"]
             .as_u64()
             .unwrap();
         session.retract_fact(inhibit_id).unwrap();
-        assert_eq!(status(&session, "la .varfarin. cu kajde"), "FALSE");
-    }
-
-    #[test]
-    fn lexical_fallback_gloss_is_word_level() {
-        // `back_translate` is the LEXICAL fallback (smuni-dictionary), used only
-        // when a line does not compile. It is the word-salad gloss — NOT what the
-        // Transparency Triad's Back-translation tab shows for a compiling line
-        // (that is `back_translate_ir`, pinned below).
-        assert_eq!(
-            super::back_translate("ro lo gerku cu danlu"),
-            "all the dog animal"
-        );
+        assert_eq!(status(&session, "warns(Varfarin)."), "FALSE");
     }
 
     /// The exact bytes Chapter 19's Syllogism walkthrough reproduces click-for-
@@ -322,19 +302,16 @@ mod tests {
     fn syllogism_playground_bytes_are_verbatim() {
         // Back-translation tab: structure-exposing IR English (not the fallback).
         assert_eq!(
-            super::back_translate_ir("ro lo gerku cu danlu"),
+            super::back_translate_ir("animal(every dog)."),
             "For every X, if X is a dog, then X is an animal."
         );
         assert_eq!(
-            super::back_translate_ir("ro lo danlu cu citka"),
+            super::back_translate_ir("eats(every animal)."),
             "For every X, if X is an animal, then X eats."
         );
-        assert_eq!(
-            super::back_translate_ir("la .adam. cu gerku"),
-            "Adam is a dog."
-        );
+        assert_eq!(super::back_translate_ir("dog(Adam)."), "Adam is a dog.");
 
-        let session = load("ro lo gerku cu danlu\nro lo danlu cu citka\nla .adam. cu gerku");
+        let session = load("animal(every dog).\neats(every animal).\ndog(Adam).");
         let q = |query: &str| -> (String, String, String) {
             let json = session.query_with_proof(query).expect("query failed");
             let v: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -350,7 +327,7 @@ mod tests {
         };
 
         // 2-hop: does Adam eat?  (the preset's first/auto-run query)
-        let (status, why, proof) = q("la .adam. cu citka");
+        let (status, why, proof) = q("eats(Adam).");
         assert_eq!(status, "TRUE");
         assert_eq!(
             why,
@@ -364,7 +341,7 @@ mod tests {
         );
 
         // 1-hop: is Adam an animal?
-        let (status, why, proof) = q("la .adam. cu danlu");
+        let (status, why, proof) = q("animal(Adam).");
         assert_eq!(status, "TRUE");
         assert_eq!(why, "Because adam is a dog, adam is an animal.");
         assert_eq!(
@@ -375,7 +352,7 @@ mod tests {
 
         // A real FALSE: is Adam a bird? Closed-world (not derivable), so the proof
         // now carries the symmetric CWA-FALSE caveat.
-        let (status, why, proof) = q("la .adam. cu cipni");
+        let (status, why, proof) = q("bird(Adam).");
         assert_eq!(status, "FALSE");
         assert_eq!(why, "No example could be found that satisfies the query.");
         assert_eq!(
@@ -394,23 +371,27 @@ mod tests {
         // Quantifier swap (GDPR Art 33): `su'o` reads as a flat existential
         // assertion; `ro` reads as a universal "For every X, if … then …" rule.
         assert_eq!(
-            super::back_translate_ir("su'o lo datni turni cu bilga lo nu notci"),
+            super::back_translate_ir("obliged(some data governs, event { message() })."),
             "X govern, X is data, Y is event-of, and X is obligated to Y."
         );
         assert_eq!(
-            super::back_translate_ir("ro lo datni turni cu bilga lo nu notci"),
+            super::back_translate_ir("obliged(every data governs, event { message() })."),
             "For every X, if X govern and X is data, then Y is event-of and X is obligated to Y."
         );
         // Missing negation (GDPR Art 17), single-condition restrictor so the
         // gloss has no spurious person-split — the dropped `na` is isolated in
         // the antecedent.
         assert_eq!(
-            super::back_translate_ir("ro lo se curmi cu se bilga lo nu lo datni cu se vimcu"),
+            super::back_translate_ir(
+                "obligated(every permitted, event { removes(removed: some data) })."
+            ),
             "For every X, if something permits X, then Y is event-of, Z is data, \
              something is removed, and Y is obligated to X."
         );
         assert_eq!(
-            super::back_translate_ir("ro lo na se curmi cu se bilga lo nu lo datni cu se vimcu"),
+            super::back_translate_ir(
+                "obligated(every ~permitted, event { removes(removed: some data) })."
+            ),
             "For every X, if it is not the case that something permits X, then Y is \
              event-of, Z is data, something is removed, and Y is obligated to X."
         );
@@ -419,7 +400,7 @@ mod tests {
         let session = Session::new();
         assert!(
             session
-                .assert_text("ro lo na se curmi cu se bilga lo nu lo datni cu se vimcu")
+                .assert_text("obligated(every ~permitted, event { removes(removed: some data) }).")
                 .is_ok(),
             "negated-restrictor universal rule should assert, not be rejected"
         );

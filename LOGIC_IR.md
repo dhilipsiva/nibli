@@ -1,12 +1,12 @@
 # The nibli logic IR (`LogicBuffer`) — a consumable format
 
 This is the specification of nibli's first-order-logic intermediate representation: the
-`LogicBuffer` that the Lojban front-end compiles into and the reasoner consumes. It exists as a
+`LogicBuffer` that the KR front-end compiles into and the reasoner consumes. It exists as a
 public document because three independent parties asked for the same thing — a shared logic
 representation to target from ontology tooling, from other loglang front-ends (Toaq / Xextan /
 Eberban), and as a JSON translation-pivot between languages ("Predilog"). **The IR is nibli's
 language-agnostic seam**: only the parser (`gerna`) and the word dictionary (`smuni-dictionary`)
-are Lojban-specific; the IR, the backward-chaining reasoner (`logji`), the Vampire/clingo
+are front-end-specific; the IR, the backward-chaining reasoner (`logji`), the Vampire/clingo
 differential gates, and the Lean 4 soundness proofs all operate on or below this format.
 
 Everything in this document is derived from source; file pointers are given so a claim can be
@@ -17,7 +17,7 @@ crate (no per-crate mirrors).
 ## Where the IR sits
 
 ```
-Lojban text ──gerna──▶ AST ──smuni──▶ LogicBuffer ──logji──▶ TRUE / FALSE / UNKNOWN + ProofTrace
+KR text ──klaro──▶ AST ──smuni──▶ LogicBuffer ──logji──▶ TRUE / FALSE / UNKNOWN + ProofTrace
                                           │
                                           ├──▶ TPTP (Vampire oracle, nibli-verify/src/tptp.rs)
                                           ├──▶ ASP  (clingo oracle,  nibli-verify/src/asp.rs)
@@ -49,7 +49,7 @@ WASM component boundary unchanged. Structural guarantees:
   connectives); the post-order emission makes cycles impossible. Buffers you build yourself get
   **bounds checking** from the reasoner (out-of-range indices return descriptive errors, never
   panics) but no up-front cycle validation — acyclicity is the producer's responsibility.
-- **Root granularity is fact granularity.** The Lojban front-end emits *one root per bare `.i`
+- **Root granularity is fact granularity.** The front-end emits *one root per statement
   sentence*, but a *single* root for logical connectives (`.ije`/`.ija`/`ge…gi` compile to one
   `AndNode`/`OrNode` root). `LogicBuffer::split_roots()`
   ([logic.rs](nibli-types/src/logic.rs)) splits a multi-root buffer into independently
@@ -93,7 +93,7 @@ them, but the flattener expands `A ↔ B` to `(¬A ∨ B) ∧ (¬B ∨ A)` and `
 All names in the flat IR are owned `String`s — the compiler's internal interner (`lasso::Spur`)
 never crosses the flatten boundary.
 
-## What the Lojban front-end emits (invariants a consumer can rely on)
+## What the KR front-end emits (invariants a consumer can rely on)
 
 These shapes are pinned by the compiler-seam conformance gate (hand-verified structural golden
 cases in `nibli-verify/tests/differential_gate.rs` + `nibli-verify/src/seam.rs`), so they are
@@ -175,7 +175,7 @@ fragment filter scans source tokens for exactly this reason). Scope details live
 - **Persistence** uses postcard (binary) over the same serde derives — `nibli-engine` stores
   each asserted root's `LogicBuffer` verbatim; a round-trip test covers every node and term
   variant.
-- **WIT** ([wit/world.wit](wit/world.wit), package `lojban:nibli@0.1.0`) declares a 1:1 mirror
+- **WIT** ([wit/world.wit](wit/world.wit), package `lojban:nibli@0.2.0` — the package NAME rename rides the identifier-purge milestone) declares a 1:1 mirror
   of the same types for the WASM component boundary: kebab-case variant names
   (`for-all-node` ↔ `ForAllNode`), identical declaration order (the component-model discriminant
   is positional), tuple-shaped payloads.
@@ -197,7 +197,7 @@ exactly like surface text (with the flat-`du` exception).
 (hypothetical reasoning on a clone), `retract_fact(id)`, plus
 `set_compute_dispatch(eval, batch_eval)` for wiring a compute backend.
 
-**The three packaged surfaces**, for integrators who want "does this Lojban entail that claim"
+**The three packaged surfaces**, for integrators who want "does this KB entail that claim"
 without touching the IR:
 
 | Surface | Shape | Notes |
@@ -226,7 +226,7 @@ The two shipped external consumers are the templates, and they also define the d
 - [`nibli-verify/src/filter.rs`](nibli-verify/src/filter.rs) documents the fragment criteria
   both rely on.
 
-A **producer** (a non-Lojban front-end) must emit the invariant shapes above — most importantly
+A **producer** (an alternative front-end) must emit the invariant shapes above — most importantly
 the event decomposition with consistent role arities, the ∀-as-implication arrow, and flat
 2-arg `du` — and hand the buffer to the `logji` entry points (running
 `transform_compute_nodes` if it uses compute relations). The reasoner rejects non-stratifiable
@@ -246,7 +246,7 @@ differentially tested), so a producer gets soundness checking for free.
 - The `ProofRule`/`ProofStep`/`ProofTrace` JSON contract, and the `[Syntax Error]` /
   `[Semantic Error]` / `[Reasoning Error]` / `[Backend Error]` prefixes of `NibliError`'s
   `Display` (documented in-source as a formal cross-consumer contract).
-- The WIT `logic-types` interface (`lojban:nibli@0.1.0`).
+- The WIT `logic-types` interface (`lojban:nibli@0.2.0`).
 
 **Internal (may change without notice):**
 - Variable naming (`_v0…`, `_ev0…`), Skolem names (`sk_N` — minted by the reasoner, never in a
@@ -257,14 +257,14 @@ differentially tested), so a producer gets soundness checking for free.
 - `AggregateOp` and the compute wire structs are Rust-side auxiliaries, not buffer types.
 
 **Versioning:** the buffer itself carries no version field. The WIT package version
-(`lojban:nibli@0.1.0`) and the persistence layers' fail-closed schema versions (`nibli-store`)
+(`lojban:nibli@0.2.0`) and the persistence layers' fail-closed schema versions (`nibli-store`)
 are the only version markers; adding a `LogicNode`/`LogicalTerm` variant is a breaking change
 across every conversion site (an in-source exhaustiveness guard enumerates them). Treat the
 format as pre-1.0: pin a commit if you build against it, and expect additive evolution.
 
 ## Non-goals (today)
 
-- **No non-Lojban front-end ships in this repo** — this document exists so one *could* be built
+- **No alternative front-end ships in this repo** — this document exists so one *could* be built
   against a specified target.
 - **No standalone versioned serialization standard.** The JSON that exists (proof traces,
   feature-gated type serde) is documented above as-is; a "Predilog"-style standalone pivot

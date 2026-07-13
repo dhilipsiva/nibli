@@ -2,7 +2,7 @@
 
 **A zero-hallucination symbolic reasoning engine.**
 
-Nibli is a deterministic theorem prover compiled to WebAssembly (WASI P2). It compiles **Klaro** — a human-readable predicate-call knowledge-representation language (`dog(Adam).`, `animal(every dog).`) — into First-Order Logic and performs inference via demand-driven backward chaining over an indexed fact store. Every conclusion is a formal derivation — never a guess, never a generated step. Lojban, nibli's original surface syntax, remains fully supported as the [legacy front-end](#legacy-lojban-front-end); both compile to the identical logic.
+Nibli is a deterministic theorem prover compiled to WebAssembly (WASI P2). It compiles **Klaro** — a human-readable predicate-call knowledge-representation language (`dog(Adam).`, `animal(every dog).`) — into First-Order Logic and performs inference via demand-driven backward chaining over an indexed fact store. Every conclusion is a formal derivation — never a guess, never a generated step. (Lojban, nibli's original surface syntax, retired at THE DROP — the last dual-front-end engine is tagged `v0.1-lojban-final`, and the Lojban tooling was donated to a separate repo.)
 
 > *nibli* (Lojban): x1 logically entails x2 under rules x3
 
@@ -44,14 +44,14 @@ Klaro is a strict predicate-call surface for first-order claims: intuitive to re
 | `desires(desired: every teaches, desirer: event { studies() }).` | event abstraction |
 | `all $x: dangerous($x) & uses(Adam, $x) -> warns($x).` | explicit prenex rule with variables |
 
-The normative spec is **[SURFACE_SYNTAX.md](SURFACE_SYNTAX.md)** (v0.1 compat profile, implemented); the executable grammar is `klaro/src/klaro.pest` — the parser is generated from it, so the spec and the parser cannot drift. Klaro↔Lojban equivalence (identical compiled logic per statement) is enforced in CI by the `verify-klaro` / `verify-klaro-twins` gates.
+The normative spec is **[SURFACE_SYNTAX.md](SURFACE_SYNTAX.md)** (v0.1 compat profile, implemented); the executable grammar is `klaro/src/klaro.pest` — the parser is generated from it, so the spec and the parser cannot drift. The front-end's independent oracle is the KR seam gate (`verify-kr-seam`: hand-verified FOL structural goldens + a construct-inventory sweep + metamorphic relations, in CI).
 
 ---
 
 ## Pipeline
 
 ```
-Klaro text ──> Front-end (klaro; legacy: gerna) ──> Semantic Compiler (FOL IR) ──> Reasoning Engine
+Klaro text ──> Front-end (klaro) ──> Semantic Compiler (FOL IR) ──> Reasoning Engine
                         │                                   │                            │
               pest grammar → AST buffer               Skolemization              Backward chaining
              (fail-closed name resolution)          + event semantics         over indexed fact store
@@ -59,10 +59,9 @@ Klaro text ──> Front-end (klaro; legacy: gerna) ──> Semantic Compiler (F
 
 Both front-ends emit the same flat AST buffer, so everything downstream is shared. The pipeline stages are linked as internal Rust crate dependencies and compiled into a single WASM component:
 
-| Crate | Lojban meaning | Role |
+| Crate | Name origin | Role |
 |-------|---------------|------|
 | **klaro** | clear (working name) | Klaro text → AST → flat WIT buffer (pest grammar + fail-closed alias resolution + the canonical renderer) |
-| **gerna** | grammar | Legacy Lojban text → the same AST buffer |
 | **smuni** | meaning | AST buffer → FOL logic IR → flat WIT logic buffer |
 | **logji** | logic | FOL logic buffer → backward-chaining assertion, query, and proof |
 | **lasna** | fasten | Orchestrator: chains the front-end → smuni → logji into a single WASM component |
@@ -98,7 +97,7 @@ building alternative front-ends or consumers against it).
 - **`nibli-wasm`** — wasm-bindgen wrapper exposing the in-browser pipeline (powers the live demo at dhilipsiva.dev/nibli).
 - **`nibli`** — Native direct-crate REPL and `nibli-validate`. Developer tooling, not the canonical production path.
 
-Every surface speaks Klaro by default and Lojban in legacy mode: the REPLs via `:lang` / `:klaro` / `:lojban`, the CLIs via `--lang klaro|lojban`, and all of them via the `NIBLI_LANG` environment variable.
+Every surface speaks Klaro — the single front-end since THE DROP.
 
 ---
 
@@ -215,12 +214,10 @@ You query by **stating the proposition you want checked**, not by asking a quest
 | `? <statement>` | Query with proof trace |
 | `?? <statement>` | Witness extraction (find all satisfying bindings, `$x` variables) |
 | `:debug <statement>` | Show compiled FOL logic |
-| `:lang [klaro\|lojban]` | Show or switch the session language (also `NIBLI_LANG` at startup) |
-| `:klaro` / `:lojban` | Shorthand language switches |
 | `:assert <rel> <args...>` | Assert a fact directly (bypasses text parsing) |
 | `:retract <id>` | Retract a fact by ID and rebuild the KB |
 | `:facts` | List all active facts |
-| `:load <filepath>` | Batch-load a `.klaro` or `.lojban` file (front-end chosen by extension, file-scoped) |
+| `:load <filepath>` | Batch-load a `.klaro` file |
 | `:reset` | Clear the entire knowledge base |
 | `:compute <predicate>` | Register a predicate for external compute dispatch |
 | `:backend [host:port]` | Show or change the compute backend address |
@@ -236,24 +233,24 @@ You query by **stating the proposition you want checked**, not by asking a quest
 
 ## Transparency Triad UI
 
-Nibli includes a standalone web UI (Dioxus) — the full reasoning engine (klaro/gerna → smuni → logji) is compiled into the WASM bundle and runs **entirely in the browser**. nibli has no server.
+Nibli includes a standalone web UI (Dioxus) — the full reasoning engine (klaro → smuni → logji) is compiled into the WASM bundle and runs **entirely in the browser**. nibli has no server.
 
 ```bash
 # Start the web UI (port 8080)
 just ui
 ```
 
-To build a release bundle (`just build-ui`) or self-host — plus the optional jbotci proxy — see [`DEPLOY.md`](DEPLOY.md).
+To build a release bundle (`just build-ui`) or self-host, see [`DEPLOY.md`](DEPLOY.md).
 
 The three tabs are **Source** (plain English), **Klaro** (the formal encoding; the tab follows the language mode), and **Back-translation** (the structure-exposing gloss). The reasoning is fully local; the **only** optional network call is **Formalize** on the Source tab — a *bring-your-own-key* LLM request sent **directly from your browser** to a provider you choose (Anthropic, OpenAI, OpenRouter, Google Gemini, or any OpenAI-compatible/local endpoint). Configure it via the gear button: the API key is held **in that tab's memory only** — never persisted to storage and never routed through any nibli server (there is none), and it is erased on tab close/reload.
 
-Formalize runs the **agentic formalizer** (`nibli-fanva`) — "formalize", not "compile": the LLM step is interpretive and sits *outside* the reasoning firewall, behind deterministic gates. The LLM's draft is validated by the *real compilers* — the klaro front-end (grammar + fail-closed name resolution) + smuni (semantics) + a canonical render **round-trip** check — and any compiler error is fed back for the model to self-correct, so what lands in the Klaro tab already passes those gates. It is still a *draft* — you review the Klaro (and its back-translation) before the deterministic engine reasons over it, and you can skip Formalize entirely and type Klaro directly. In the legacy Lojban input mode (a settings toggle) the gates are gerna + smuni + the official **camxes** parser, and two Lojban-only extras become available: an app-owned **jbotci proxy** (`fanva-proxy/`) for dictionary/grammar tool-use while drafting, and jbotci's `tersmu` deep-meaning graph beside the local gloss.
+Formalize runs the **agentic formalizer** (`nibli-fanva`) — "formalize", not "compile": the LLM step is interpretive and sits *outside* the reasoning firewall, behind deterministic gates. The LLM's draft is validated by the *real compilers* — the klaro front-end (grammar + fail-closed name resolution) + smuni (semantics) + a canonical render **round-trip** check — and any compiler error is fed back for the model to self-correct, so what lands in the Klaro tab already passes those gates. It is still a *draft* — you review the Klaro (and its back-translation) before the deterministic engine reasons over it, and you can skip Formalize entirely and type Klaro directly.
 
-The header has an **example** dropdown that loads a preloaded, book-derived knowledge base into the triad — **Syllogism** (Ch 19), **GDPR compliance** (Ch 20), or **Drug interactions** (Ch 21). In an example the KB source is read-only, Formalize is disabled, and the query box becomes a dropdown of that example's preset queries (selecting one runs it immediately). The default, **Custom**, is the editable mode. The example corpora are the committed `gdpr.klaro` / `drug-interactions.klaro` twins of the same `.lojban` files the engine's regression tests pin — per-line logical equality between twin corpora is itself CI-enforced (`verify-klaro-twins`).
+The header has an **example** dropdown that loads a preloaded, book-derived knowledge base into the triad — **Syllogism** (Ch 19), **GDPR compliance** (Ch 20), or **Drug interactions** (Ch 21). In an example the KB source is read-only, Formalize is disabled, and the query box becomes a dropdown of that example's preset queries (selecting one runs it immediately). The default, **Custom**, is the editable mode. The example corpora are the committed `gdpr.klaro` / `drug-interactions.klaro` files the engine's regression tests pin.
 
 The UI uses a stateless KB model: every query builds a fresh engine, re-asserts the full KB tab as the knowledge base, then runs the query. The query bar is queries only (no assertions). The KB tab is the single source of truth.
 
-As in the REPL, you **state the claim to check, not ask a question**: type `eats(Adam).` ("Adam eats"), not "Does Adam eat?". The query box shows a fixed `?` purely as a reading cue (`xu` in legacy Lojban mode) — it is never typed into the field and never reaches the engine; the verdict (`TRUE` / `FALSE` / `UNKNOWN`) is the answer.
+As in the REPL, you **state the claim to check, not ask a question**: type `eats(Adam).` ("Adam eats"), not "Does Adam eat?". The query box shows a fixed `?` purely as a reading cue — it is never typed into the field and never reaches the engine; the verdict (`TRUE` / `FALSE` / `UNKNOWN`) is the answer.
 
 ```
 animal(every dog).            # Every dog is an animal
@@ -306,36 +303,12 @@ If an external predicate's backend is unreachable (or unconfigured), the query r
 | WASM target | WASI Preview 2 Component Model (cargo-component) |
 | WASM runtime | Wasmtime |
 | Reasoning | Demand-driven backward chaining over indexed fact store |
-| Front-end parsers | pest (Klaro — the grammar file is the parser) · Logos + recursive descent (legacy Lojban) |
+| Front-end parser | pest (Klaro — the grammar file is the parser) |
 | Dictionary | Compile-time perfect hash function (PHF) |
 | Dev environment | Nix flake |
 | Compute protocol | TCP + JSON Lines |
 | Task runner | Just |
 | Web UI | Dioxus (standalone — engine compiled into the WASM bundle) |
-
----
-
-## Legacy Lojban Front-End
-
-Lojban was nibli's original surface syntax and remains a fully supported **legacy front-end**: select it with `:lojban` / `:lang lojban` in the REPLs, `--lang lojban` on the CLIs, or `NIBLI_LANG=lojban` anywhere. Both front-ends compile to the identical `LogicBuffer` — the equivalence is not aspirational but CI-enforced, per construct (`verify-klaro`) and per corpus line (`verify-klaro-twins`), and the Lojban parser itself is differentially checked against the official grammar (`verify-parser` vs camxes). Feature-level status lives in [LOJBAN_COVERAGE.md](LOJBAN_COVERAGE.md); the engine-behavior contract in [GUARANTEES.md](GUARANTEES.md). The gerna parser retires only at the clean-core v2 milestone (SURFACE_SYNTAX.md §14).
-
-The parser (`gerna`) accepts a practical subset of Lojban sufficient for formal encoding of domain rules:
-
-- **Articles (gadri):** `lo` (existential: "something that is..."), `le` (descriptive: "the thing I have in mind"), `la` (name → constant)
-- **Quantifiers:** `ro lo` / `ro le` (universal), `PA lo` / `PA le` (numeric), `su'o lo` (at least one)
-- **Prenex:** `ro da [ro de ...] zo'u <body>` — multi-variable universally-quantified rules (lowers to nested `∀`). Firing is currently `members^dep_count`-expensive for two or more free join variables; see `todo.md`.
-- **Place tags:** `fa`/`fe`/`fi`/`fo`/`fu` (explicit argument positions)
-- **Modal tags:** BAI (`ri'a`, `ni'i`, `mu'i`, `ki'u`, `pi'o`, `ba'i`) and `fi'o`...`fe'u`
-- **Selbri (predicates):** root, tanru with Neo-Davidsonian event semantics (resolves the intersective fallacy), conversion (`se`/`te`/`ve`/`xe`), negation (`na`), grouping (`ke`...`ke'e`), compounds (`zei`), argument attachment (`be`...`bei`...`be'o`)
-- **Relative clauses:** `poi`/`noi`/`voi` with `ke'a` bound variable and clause stacking. A **disjunctive** restrictor in a universal (`ro lo X poi P ja Q cu R`, also `ganai ga P gi Q gi R`) compiles to one backward-chaining rule per disjunct (DNF rule-splitting) and fires when either disjunct holds; `je` (AND) restrictors still require all conjuncts
-- **Connectives:** sumti (`.e`/`.a`/`.o`/`.u` + `nai`), selbri (`je`/`ja`/`jo`/`ju` + the compound negated `jenai`/`janai`/`jonai`/`junai`; bare `na` after a connective is rejected, matching the official grammar), bridi-tail (GIhA: `gi'e`/`gi'a`/`gi'o`/`gi'u` + `nai` fused or spaced, each tail a full predication sharing the head terms, optional `na` per tail; **constant heads only** — a quantified or description head is rejected fail-closed rather than silently re-quantified per tail), sentence (forethought: `ge`...`gi`, `ga`...`gi`, `ganai`...`gi`; afterthought: `.i je`/`ja`/`jo`/`ju` with `na`/`nai` — solid spellings `.ije`/`.ijenai`/`.inaja` etc. accepted too)
-- **Rule conclusions:** a **tensed** conclusion (`ganai A gi pu B`, `ro da zo'u ganai da P gi pu da Q`) derives the tensed fact (tense-exact; the simple `ro lo X cu pu Q` is whole-rule and stays rejected). A **disjunctive** conclusion (`ro lo X cu Q ja R`) is registered as the integrity constraint `¬(P ∧ ¬Q ∧ ¬R)` — flagged as a contradiction when P holds and every disjunct is explicitly denied (`na`); for the positive use, ask a disjunctive **query** (`? … Q ja R`)
-- **Abstractions:** `nu` (event), `du'u` (proposition), `ka` with `ce'u` (property), `ni` (amount), `si'o` (concept)
-- **Tense:** `pu` (past), `ca` (present), `ba` (future)
-- **Deontic modifiers:** `ei` (obligation), `e'e` (permission)
-- **Special forms:** observative sentences, `go'i` pro-bridi (deep-clones previous selbri structure), `ma` question pro-sumti (compiles to existential for witness extraction), quoted literals (`lu`...`li'u`), number sumti (`li` + PA)
-- **Metalinguistic erasure:** `si` (word), `sa` (construct-class with selma'o classification), `su` (sentence)
-- **Error recovery:** per-sentence recovery (skips to next `.i` on failure, continues parsing)
 
 ---
 
@@ -374,7 +347,7 @@ The parser (`gerna`) accepts a practical subset of Lojban sufficient for formal 
 - **WASM fuel limits:** configurable via `NIBLI_FUEL` or `:fuel` REPL command
 - **WASM memory limits:** configurable via `NIBLI_MEMORY_MB` or `:memory` REPL command
 - **Error types:** `nibli-error` variant (`syntax`/`semantic`/`reasoning`/`backend`) with line:column for parse errors
-- **Batch loading:** `:load <filepath>` loads `.klaro` / `.lojban` files (front-end by extension); `#` lines are comments
+- **Batch loading:** `:load <filepath>` loads `.klaro` files; `#` lines are comments
 
 ---
 
@@ -387,19 +360,17 @@ The parser (`gerna`) accepts a practical subset of Lojban sufficient for formal 
 | `just test` | Run all unit tests |
 | `just test-engine` | Integration tests (full parse → compile → reason pipeline) |
 | `just test-klaro` | Klaro front-end tests only |
-| `just test-gerna` | Legacy Lojban parser tests only |
 | `just test-backend` | Python backend tests |
 | `just test-all` | Every test suite |
-| `just verify-klaro` | Klaro conformance gates (construct sweep + Klaro↔Lojban translation battery) |
+| `just verify-kr-seam` | The KR seam gate (FOL structural goldens + construct sweep + metamorphics) |
 | `just ui` | Standalone Transparency Triad web UI (port 8080) |
 | `just backend` | Python reference compute backend (port 5555) |
 | `just run-with-backend` | Build + run with compute backend |
 | `just run-persist` | Run with persistent Redb fact store |
-| `just fuzz-parse [SECS]` | Fuzz the legacy Lojban parser |
 | `just fuzz-klaro [SECS]` | Fuzz the Klaro front-end |
 | `just fuzz-assert [SECS]` | Fuzz assertion pipeline |
 | `just fuzz-query [SECS]` | Fuzz stateful KB queries |
-| `just fuzz-ci [SECS]` | Time-boxed fuzz gate (all 4 targets, corpus-seeded) — runs in CI |
+| `just fuzz-ci [SECS]` | Time-boxed fuzz gate (all 3 targets, corpus-seeded) — runs in CI |
 | `just ci` | Full CI suite |
 | `just clean` | `cargo clean` |
 

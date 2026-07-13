@@ -3057,11 +3057,11 @@ fn ddi_regimen_count_aggregation() {
 fn ddi_dose_sum_aggregation() {
     // klani(drug, amount): "drug measures <amount>". Numbers via `li`.
     let engine = engine_with_facts(&[
-        "quantity(Varfarin, 5).", // 5
-        "quantity(Fenitoin, 7).", // 7
+        "klani(Varfarin, 5).", // 5
+        "klani(Fenitoin, 7).", // 7
     ]);
     let total = engine
-        .aggregate_text("quantity($da, $de).", "de", EngineAggregateOp::Sum)
+        .aggregate_text("klani($da, $de).", "de", EngineAggregateOp::Sum)
         .unwrap();
     assert_eq!(total, Some(12.0), "Summed dose across drugs should be 12");
 }

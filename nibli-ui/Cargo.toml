@@ -10,7 +10,6 @@ gloo-net = { version = "0.6", features = ["http"] }
 nibli-protocol = { path = "../nibli-protocol" }
 nibli-render = { path = "../nibli-render" }
 nibli-types = { path = "../nibli-types" }
-gerna = { path = "../gerna" }
 klaro = { path = "../klaro" }
 smuni = { path = "../smuni" }
 logji = { path = "../logji" }

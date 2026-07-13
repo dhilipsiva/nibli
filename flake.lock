@@ -18,22 +18,6 @@
         "type": "github"
       }
     },
-    "ilmentufa": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1768044991,
-        "narHash": "sha256-v4Nafe5ZBht4jfC5pxZhirvF1o+3z1o021Ym/AJbsNk=",
-        "owner": "lojban",
-        "repo": "ilmentufa",
-        "rev": "778ea138f7d150121ca722db7536ce3b123943ac",
-        "type": "github"
-      },
-      "original": {
-        "owner": "lojban",
-        "repo": "ilmentufa",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1773821835,
@@ -53,7 +37,6 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
-        "ilmentufa": "ilmentufa",
         "nixpkgs": "nixpkgs",
         "rust-overlay": "rust-overlay"
       }

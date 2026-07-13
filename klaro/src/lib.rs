@@ -1,4 +1,4 @@
-//! Klaro — the non-Lojban surface syntax front-end for nibli.
+//! Klaro (nibli KR) — the surface-syntax front-end for nibli.
 //!
 //! Klaro is a predicate-call language (`goes(me, some market).`) that compiles
 //! to the same `nibli_types::ast::AstBuffer` the Lojban parser produces,
@@ -15,9 +15,8 @@
 //! resolution alias→identity-gismu→COMPILE ERROR, place checks, the
 //! 3-variable lowering cap, `it`/`slot` position rules) → [`emit`]
 //! (tree → `AstBuffer`, `$vars` lowered to da/de/di, aliases to gismu with
-//! `Converted` swaps). [`parse_checked`] is the fail-closed drop-in analog of
-//! `gerna::parse_checked` — same signature, NO go'i step (Klaro has no
-//! pro-bridi; spec §10).
+//! `Converted` swaps). [`parse_checked`] is the engine's fail-closed
+//! text→AST seam.
 
 pub mod ast;
 pub mod emit;
@@ -38,15 +37,14 @@ fn to_nibli(e: parser::ParseError) -> NibliError {
 }
 
 /// FAIL CLOSED: parse + resolve + emit, or the first (source-order) error.
-/// The drop-in analog of `gerna::parse_checked` — feed the result to
-/// `smuni::compile_from_gerna_ast`.
+/// Feed the result to `smuni::compile_from_gerna_ast`.
 pub fn parse_checked(text: &str) -> Result<AstBuffer, NibliError> {
     let statements = parser::parse_statements(text).map_err(to_nibli)?;
     resolve::resolve(text, &statements).map_err(to_nibli)?;
     emit::emit(text, &statements).map_err(to_nibli)
 }
 
-/// Per-statement recovery variant (gerna's `ParseResult` contract): every
+/// Per-statement recovery variant (the `ParseResult` contract): every
 /// statement that parses, resolves, AND emits lands in the buffer; every
 /// failure is reported. `errors` non-empty ⇒ the buffer is PARTIAL — callers
 /// wanting fail-closed behavior use [`parse_checked`].

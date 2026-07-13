@@ -4,16 +4,13 @@
 //! and a set of preset queries (English label + Klaro query). Selecting one in
 //! the header loads it read-only into the Transparency Triad; the query box
 //! becomes a dropdown of that example's queries. "Custom" (the default,
-//! `None`) keeps the editable behavior. Examples are Klaro-sourced regardless
-//! of the legacy-Lojban input toggle — the UI compiles them with the Klaro
+//! `None`) keeps the editable behavior. Examples compile with the Klaro
 //! front-end.
 //!
-//! The KB corpora are the committed `.klaro` twins of the SAME files the
-//! engine's regression tests pin (`gdpr_*` / `ddi_*` in
-//! `nibli-engine/tests/integration.rs` run the `.lojban` sources;
-//! `verify-klaro-twins` proves the twins compile to the identical logic
-//! per line), pulled in via `include_str!` so the UI examples cannot drift
-//! from the tested corpora. The `shipped_examples_compile` guard test below
+//! The KB corpora are the SAME committed `.klaro` files the engine's
+//! regression tests pin (`gdpr_*` / `ddi_*` in
+//! `nibli-engine/tests/integration.rs`), pulled in via `include_str!` so
+//! the UI examples cannot drift from the tested corpora. The `shipped_examples_compile` guard test below
 //! pins every KB line + query through the Klaro front-end.
 //!
 //! NOTE: the `name` and `label` strings are quoted VERBATIM by the book

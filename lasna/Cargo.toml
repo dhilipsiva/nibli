@@ -1,11 +1,10 @@
 [package]
 name = "lasna"
-description = "Pipeline orchestrator — chains gerna, smuni, logji into a single WASM component"
+description = "Pipeline orchestrator — chains klaro, smuni, logji into a single WASM component"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-gerna = { path = "../gerna" }
 # The Klaro front-end (language dispatch in compile_pipeline). Grows the
 # component by pest + klaro-dictionary — the cost of the dual-front-end phase.
 klaro = { path = "../klaro" }

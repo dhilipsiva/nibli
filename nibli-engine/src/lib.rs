@@ -2,7 +2,7 @@
 //! No WASM, no Wasmtime — full stack traces for debugging.
 #![allow(dead_code)]
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::path::Path;
 
@@ -21,7 +21,6 @@ pub use nibli_types::logic::{
 /// re-exported so embedders, tests, and the server can pattern-match the error
 /// CLASS instead of string-parsing the `[Xxx Error]` Display prefix.
 pub use nibli_types::error::NibliError as EngineError;
-pub use nibli_types::lang::Language;
 use nibli_types::logic as logji_logic;
 
 mod compute_client;
@@ -58,17 +57,6 @@ pub struct NibliEngine {
     kb: logji::KnowledgeBase,
     compute_predicates: HashSet<String>,
     store: RefCell<Option<NibliStore>>,
-    /// Prior-bridi snapshot for `go'i` resolution — the native analog of lasna's
-    /// `Session.last_relation`, so both runtimes resolve the pro-bridi identically
-    /// (shared `gerna::goi::resolve_go_i`). Updated on every text compile (assert
-    /// and query); cleared by `reset`.
-    last_relation: RefCell<Option<gerna::goi::BridiSnapshot>>,
-    /// The input language for every TEXT entry point (assert/query/validate/
-    /// compile_debug — all funnel through `compile_text`). Configuration, like
-    /// verbose/strict: survives `reset()`. Buffer-level replay is language-free.
-    /// Default KLARO since THE FLIP (2026-07-12); Lojban stays selectable
-    /// throughout the dual-front-end phase.
-    language: Cell<Language>,
 }
 
 impl Default for NibliEngine {
@@ -117,21 +105,6 @@ impl NibliEngine {
         self.kb.set_strict(strict);
     }
 
-    /// Select the input language for every TEXT entry point (assert/query/
-    /// validate/compile_debug — all funnel through `compile_text`). Klaro
-    /// compiles skip `go'i` resolution and CLEAR the prior-bridi snapshot (a
-    /// later Lojban `go'i` fails closed with "no antecedent" instead of
-    /// silently repeating something older than the Klaro statements).
-    /// Configuration, like verbose/strict — survives `reset()`.
-    pub fn set_language(&self, lang: Language) {
-        self.language.set(lang);
-    }
-
-    /// The currently selected input language (default Klaro since THE FLIP).
-    pub fn language(&self) -> Language {
-        self.language.get()
-    }
-
     /// Register this engine's external compute dispatch (per-instance). Without
     /// it, external predicates (e.g. `tenfa`/`dugri`) return an error; built-in
     /// arithmetic (pilji/sumji/dilcu) works regardless. Replaces the old
@@ -170,8 +143,6 @@ impl NibliEngine {
             kb: logji::KnowledgeBase::new(),
             compute_predicates: logji::default_compute_predicates(),
             store: RefCell::new(None),
-            last_relation: RefCell::new(None),
-            language: Cell::new(Language::default()),
         }
     }
 
@@ -203,8 +174,6 @@ impl NibliEngine {
             kb: logji::KnowledgeBase::with_store(Box::new(typed_store)),
             compute_predicates: logji::default_compute_predicates(),
             store: RefCell::new(Some(store)),
-            last_relation: RefCell::new(None),
-            language: Cell::new(Language::default()),
         };
         engine.replay_from_store()?;
         Ok(engine)
@@ -229,7 +198,7 @@ impl NibliEngine {
         Ok(())
     }
 
-    /// Validate Lojban text without asserting — returns Ok if it parses and compiles.
+    /// Validate KR text without asserting — returns Ok if it parses and compiles.
     pub fn validate(&self, text: &str) -> Result<(), String> {
         self.compile_text(text)
             .map(|_| ())
@@ -242,57 +211,17 @@ impl NibliEngine {
     }
 
     fn compile_text(&self, input: &str) -> Result<logji_logic::LogicBuffer, EngineError> {
-        // Language dispatch (the SOLE text→AST seam — every public text method
-        // funnels through here). Both front-ends emit the same
-        // `nibli_types::ast::AstBuffer` and share the smuni + compute-marking
-        // tail; `EngineError` is the re-exported `NibliError`.
-        match self.language.get() {
-            Language::Lojban => {
-                // Fail-closed parse, then the SAME `go'i` resolution lasna runs
-                // (shared `gerna::goi`) so native and WASM agree.
-                let mut ast = gerna::parse_checked(input)?;
-                // Resolve `go'i` against the prior bridi, then snapshot the (resolved)
-                // antecedent so a FOLLOWING go'i can repeat THIS bridi. Mirrors lasna's
-                // `compile_pipeline`; the snapshot updates for asserts AND queries.
-                // Bound a partial go'i's FA places by the relation's arity (smuni's
-                // dictionary), so a beyond-arity tag fails closed instead of being
-                // silently dropped post-merge.
-                let last_bridi_sid = gerna::goi::resolve_go_i_with_arity(
-                    &mut ast,
-                    &mut self.last_relation.borrow_mut(),
-                    &|n| smuni::dictionary::JbovlasteSchema::get_arity(n),
-                )
-                .map_err(EngineError::Semantic)?;
-                let new_snapshot =
-                    last_bridi_sid.map(|sid| gerna::goi::extract_bridi_snapshot(&ast, sid));
-                let mut buf = smuni::compile_from_gerna_ast(ast)?;
-                logji::transform_compute_nodes(&mut buf, &self.compute_predicates);
-                *self.last_relation.borrow_mut() = new_snapshot;
-                Ok(buf)
-            }
-            Language::Klaro => {
-                // Klaro has no pro-bridi (SURFACE_SYNTAX §10): skip go'i
-                // resolution entirely, and CLEAR the prior-bridi snapshot at
-                // arm entry — any Klaro-mode submission invalidates the Lojban
-                // pro-bridi context, so a later Lojban `go'i` fails closed
-                // ("no antecedent") instead of silently repeating a bridi
-                // older than the Klaro statements.
-                *self.last_relation.borrow_mut() = None;
-                let ast = klaro::parse_checked(input)?;
-                let mut buf = smuni::compile_from_gerna_ast(ast)?;
-                logji::transform_compute_nodes(&mut buf, &self.compute_predicates);
-                Ok(buf)
-            }
-        }
+        // The SOLE text→AST seam — every public text method funnels through
+        // here; `EngineError` is the re-exported `NibliError`.
+        let ast = klaro::parse_checked(input)?;
+        let mut buf = smuni::compile_from_gerna_ast(ast)?;
+        logji::transform_compute_nodes(&mut buf, &self.compute_predicates);
+        Ok(buf)
     }
 
     /// Reset the knowledge base, clearing all facts and rules.
     pub fn reset(&self) {
         self.kb.reset().ok();
-        // Clear go'i context too, so a post-reset `go'i` has no stale antecedent
-        // (mirrors lasna's reset). `nibli-validate` resets per line → each line
-        // stays independent.
-        *self.last_relation.borrow_mut() = None;
         if let Ok(mut store) = self.store.try_borrow_mut()
             && let Some(s) = store.as_mut()
         {
@@ -300,7 +229,7 @@ impl NibliEngine {
         }
     }
 
-    /// Parse Lojban text, compile to FOL, and assert into the knowledge base.
+    /// Parse KR text, compile to FOL, and assert into the knowledge base.
     ///
     /// A bare-`.i` multi-sentence text becomes N INDEPENDENT facts — one per root —
     /// each with its own id, store record, and retraction (connectives compile to a
@@ -338,7 +267,7 @@ impl NibliEngine {
         Ok(ids)
     }
 
-    /// Assert a fact directly by relation name and arguments, bypassing Lojban parsing.
+    /// Assert a fact directly by relation name and arguments, bypassing text parsing.
     pub fn assert_fact_direct(
         &self,
         relation: String,
@@ -352,7 +281,7 @@ impl NibliEngine {
         self.kb.assert_fact(buf, label)
     }
 
-    /// Parse Lojban query, run entailment check, return result + formatted proof + JSON proof.
+    /// Parse KR query, run entailment check, return result + formatted proof + JSON proof.
     pub fn query_text_with_proof(
         &self,
         text: &str,
@@ -365,7 +294,7 @@ impl NibliEngine {
         Ok((result, formatted, json))
     }
 
-    /// Parse a Lojban query, run the entailment check, and return the typed
+    /// Parse a KR query, run the entailment check, and return the typed
     /// result together with the raw wire [`nibli_protocol::ProofTrace`] — for
     /// callers/tests that need structured proof access (the plain-English "why"
     /// summary, the collapsed macro-DAG view) rather than the pre-formatted text.
@@ -377,13 +306,13 @@ impl NibliEngine {
         self.kb.query_entailment_with_proof(buf)
     }
 
-    /// Evaluate a Lojban query against the KB and return the typed query result.
+    /// Evaluate a KR query against the KB and return the typed query result.
     pub fn query_holds(&self, text: &str) -> Result<EngineQueryResult, EngineError> {
         let buf = self.compile_text(text)?;
         self.kb.query_entailment(buf)
     }
 
-    /// Parse Lojban query and extract all satisfying witness bindings.
+    /// Parse a KR query and extract all satisfying witness bindings.
     pub fn query_find_text(
         &self,
         text: &str,
@@ -392,7 +321,7 @@ impl NibliEngine {
         self.kb.query_find(buf)
     }
 
-    /// Count the number of distinct witness binding sets satisfying a Lojban query.
+    /// Count the number of distinct witness binding sets satisfying a KR query.
     /// Exposes `logji::KnowledgeBase::count_witnesses` at the embedding level.
     pub fn count_witnesses_text(&self, text: &str) -> Result<usize, EngineError> {
         let buf = self.compile_text(text)?;
@@ -400,7 +329,7 @@ impl NibliEngine {
     }
 
     /// Aggregate the numeric values bound to `variable` across all witness binding
-    /// sets of a Lojban query, applying `op` (Sum/Min/Max/Avg). Returns `Ok(None)`
+    /// sets of a KR query, applying `op` (Sum/Min/Max/Avg). Returns `Ok(None)`
     /// when no numeric witnesses are found. Exposes `logji::KnowledgeBase::aggregate`.
     pub fn aggregate_text(
         &self,
@@ -412,7 +341,7 @@ impl NibliEngine {
         self.kb.aggregate(buf, variable, op)
     }
 
-    /// Compile Lojban text to the typed FOL `LogicBuffer` without asserting.
+    /// Compile KR text to the typed FOL `LogicBuffer` without asserting.
     ///
     /// Returns the IR directly — the caller renders it (e.g. via
     /// `nibli_render::render_logic_tree` / `render_logic_buffer`). No
@@ -476,7 +405,7 @@ impl NibliEngine {
 
 #[cfg(test)]
 mod tests {
-    use super::{Language, NibliEngine};
+    use super::NibliEngine;
     use std::fs;
     use std::path::{Path, PathBuf};
 
@@ -535,82 +464,15 @@ mod tests {
     }
 
     #[test]
-    fn language_defaults_to_klaro_and_survives_reset() {
-        let engine = NibliEngine::new();
-        assert_eq!(
-            engine.language(),
-            Language::Klaro,
-            "Klaro is the default since THE FLIP (2026-07-12)"
-        );
-        engine.set_language(Language::Lojban);
-        engine.reset();
-        assert_eq!(
-            engine.language(),
-            Language::Lojban,
-            "language is configuration, like verbose/strict — reset() keeps it"
-        );
-    }
-
-    #[test]
-    fn language_dispatch_selects_the_front_end() {
-        // Klaro mode (the default): Klaro compiles end-to-end (assert +
-        // query), Lojban text fails closed.
-        let engine = NibliEngine::new();
-        engine.assert_text("dog(Rex).").expect("klaro assert");
-        let result = engine.query_holds("dog(Rex).").expect("klaro query");
-        assert_eq!(result.status_label(), "TRUE", "{result:?}");
-        engine
-            .assert_text("la .adam. cu gerku")
-            .expect_err("Lojban text must fail in Klaro mode");
-
-        // Lojban mode (explicit): Lojban compiles, Klaro text fails closed.
-        let engine = NibliEngine::new();
-        engine.set_language(Language::Lojban);
-        engine
-            .assert_text("la .adam. cu gerku")
-            .expect("lojban assert");
-        engine
-            .assert_text("dog(Rex).")
-            .expect_err("Klaro text must fail in Lojban mode");
-    }
-
-    #[test]
-    fn klaro_compile_clears_the_goi_snapshot() {
-        let engine = NibliEngine::new();
-        engine.set_language(Language::Lojban);
-        engine
-            .assert_text("la .adam. cu gerku")
-            .expect("lojban assert");
-        // The pro-bridi resolves against the prior assertion...
-        let result = engine.query_holds("go'i").expect("go'i repeats the bridi");
-        assert_eq!(result.status_label(), "TRUE", "{result:?}");
-        // ...but ANY Klaro-mode compile clears the snapshot: a later Lojban
-        // `go'i` must fail closed instead of silently repeating a bridi older
-        // than the Klaro statements.
-        engine.set_language(Language::Klaro);
-        engine.assert_text("dog(Rex).").expect("klaro assert");
-        engine.set_language(Language::Lojban);
-        let err = engine
-            .query_holds("go'i")
-            .expect_err("go'i after a Klaro compile has no antecedent");
-        assert!(
-            err.to_string().contains("no antecedent"),
-            "expected the fail-closed no-antecedent error, got: {err}"
-        );
-    }
-
-    #[test]
     fn persistent_assert_does_not_mutate_kb_when_store_is_unavailable() {
         let path = temp_db_path("atomic_assert_store_busy");
         cleanup(&path);
 
         let engine = NibliEngine::open(&path).expect("Persistent engine should open");
-        // The probe text is Lojban (Klaro is the default since THE FLIP).
-        engine.set_language(Language::Lojban);
         let _borrow = engine.store.borrow();
 
         let err = engine
-            .assert_text("lo gerku cu barda")
+            .assert_text("big(some dog).")
             .expect_err("Store borrow conflict should abort assertion");
         assert!(
             err.to_string().contains("Store error"),
@@ -618,7 +480,7 @@ mod tests {
         );
         assert!(
             engine
-                .query_holds("lo gerku cu barda")
+                .query_holds("big(some dog).")
                 .expect("Query should still run")
                 .is_false(),
             "Failed persistent assertions must not leak into the live KB"

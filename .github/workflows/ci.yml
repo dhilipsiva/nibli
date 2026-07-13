@@ -30,10 +30,10 @@ jobs:
       - name: Runtime CI gates (native + WASM)
         run: nix develop --extra-experimental-features 'nix-command flakes' --command just ci-all
 
-  # Time-boxed libFuzzer sweep (4 targets × 120 s), parallel to runtime-ci so it
+  # Time-boxed libFuzzer sweep (3 targets × 120 s), parallel to runtime-ci so it
   # never extends the main gate's critical path. Corpora are seeded from the
-  # shipped .lojban files (+ the Klaro acceptance corpus for fuzz_klaro); any
-  # crash/OOM fails the job.
+  # shipped .klaro files (+ the Klaro acceptance corpus); any crash/OOM fails
+  # the job.
   fuzz:
     runs-on: ubuntu-latest
     timeout-minutes: 45

@@ -8,17 +8,14 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 use klaro::lint::Linter;
-use nibli_engine::{EngineLogicalTerm, Language, NibliEngine, display_query_result, display_term};
+use nibli_engine::{EngineLogicalTerm, NibliEngine, display_query_result, display_term};
 use reedline::{DefaultPrompt, Reedline, Signal};
 
 /// Print the Klaro lint notes for `text` (SURFACE_SYNTAX §12 L1–L9) —
 /// non-blocking `[Note: …]` echoes, Klaro mode only. The `Linter` is
 /// session-stateful (L1 introductions, L4 first-use dedup, L7 latch) and is
 /// reset with the KB.
-fn print_lints(linter: &mut Linter, lang: Language, text: &str) {
-    if lang != Language::Klaro {
-        return;
-    }
+fn print_lints(linter: &mut Linter, text: &str) {
     for note in linter.lint(text) {
         println!("[Note: {}]", note.message);
     }
@@ -45,57 +42,7 @@ fn parse_assert_args(input: &str) -> Result<(String, Vec<EngineLogicalTerm>), St
     Ok((relation, args))
 }
 
-fn run_test_book() {
-    eprintln!("[test-book] Starting book example test...");
-    let engine = NibliEngine::new();
-    // The book examples are Lojban (Klaro is the default since THE FLIP).
-    engine.set_language(Language::Lojban);
-
-    let commands = vec![
-        (".i lo prenu cu ponse lo datni", "assert1"),
-        (
-            ".i ro lo prenu poi ponse lo datni cu bilga lo nu curmi",
-            "assert2",
-        ),
-        ("? lo prenu cu bilga lo nu curmi", "query-with-proof"),
-    ];
-
-    for (input, label) in &commands {
-        eprintln!("\n[test-book] === {label}: {input} ===");
-        let trimmed = input.trim();
-
-        if let Some(text) = trimmed.strip_prefix('?') {
-            let text = text.trim();
-            eprintln!("[test-book] Calling query_text_with_proof...");
-            match engine.query_text_with_proof(text) {
-                Ok((result, trace, _json)) => {
-                    println!("Result: {}", display_query_result(&result));
-                    print!("{}", trace);
-                }
-                Err(e) => println!("Error: {}", e),
-            }
-        } else {
-            match engine.assert_text(trimmed) {
-                Ok(ids) => {
-                    for id in &ids {
-                        println!("[Fact #{id}] Asserted.");
-                    }
-                }
-                Err(e) => println!("Error: {}", e),
-            }
-        }
-    }
-
-    eprintln!("[test-book] Done.");
-}
-
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    if args.iter().any(|a| a == "--test-book") {
-        run_test_book();
-        return;
-    }
-
     println!("==================================================");
     println!(" Nibli Native REPL - Direct Rust (no WASM)        ");
     println!("==================================================");
@@ -104,23 +51,14 @@ fn main() {
     // Interactive debug REPL: opt into the engine's [Rule]/[Skolem]/[Constraint]
     // diagnostics (off by default — nibli-engine is a silent library).
     engine.set_verbose(true);
-    // NIBLI_LANG selects the startup front-end; a bad value only warns and
-    // keeps the default (ambient config must not break the session).
-    if let Ok(value) = std::env::var("NIBLI_LANG") {
-        match value.parse::<Language>() {
-            Ok(l) => engine.set_language(l),
-            Err(e) => eprintln!("[Lang] NIBLI_LANG ignored: {e}"),
-        }
-    }
-
     let mut line_editor = Reedline::create();
     let prompt = DefaultPrompt::default();
-    // The Klaro lint session (SURFACE_SYNTAX §12): non-blocking [Note: …]
-    // echoes on Klaro-mode inputs, reset together with the KB.
+    // The KR lint session (SURFACE_SYNTAX §12): non-blocking [Note: …]
+    // echoes on interactive inputs, reset together with the KB.
     let mut linter = Linter::new();
 
     println!(
-        "Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :lang :klaro :lojban :help"
+        "Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :help"
     );
     println!(
         "Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.\n"
@@ -140,20 +78,6 @@ fn main() {
                         engine.reset();
                         linter.reset();
                         println!("[Reset] Knowledge base cleared.");
-                        continue;
-                    }
-                    ":klaro" => {
-                        engine.set_language(Language::Klaro);
-                        println!("[Lang] klaro");
-                        continue;
-                    }
-                    ":lojban" => {
-                        engine.set_language(Language::Lojban);
-                        println!("[Lang] lojban");
-                        continue;
-                    }
-                    ":lang" => {
-                        println!("[Lang] {}", engine.language());
                         continue;
                     }
                     ":facts" => {
@@ -205,15 +129,11 @@ fn main() {
                         continue;
                     }
                     ":help" | ":h" => {
-                        println!("  <text>              Assert text as fact (current language)");
+                        println!("  <text>              Assert KR text as fact");
                         println!("  ? <text>            Query with proof trace");
                         println!("  ?? <text>           Find witnesses (answer variables)");
-                        println!("  :lang               Show the current input language");
-                        println!("  :klaro / :lojban    Switch the input language");
                         println!("  :debug <text>       Show compiled logic tree");
-                        println!(
-                            "  :load <filepath>    Load a .lojban/.klaro file (assert each line; language by extension)"
-                        );
+                        println!("  :load <filepath>    Load a .klaro file (assert each line)");
                         println!("  :compute <name>     Register predicate for compute dispatch");
                         println!("  :assert <rel> <args..> Assert a ground fact directly");
                         println!("  :retract <id>       Retract a fact by ID (rebuilds KB)");
@@ -324,22 +244,6 @@ fn main() {
                         }
                     };
 
-                    // Language by extension, FILE-SCOPED: .lojban/.klaro set the
-                    // front-end for this load and the previous language is
-                    // restored after; any other extension uses the current mode.
-                    let file_lang = match path.extension().and_then(|e| e.to_str()) {
-                        Some("lojban") => Some(Language::Lojban),
-                        Some("klaro") => Some(Language::Klaro),
-                        _ => None,
-                    };
-                    let prev_lang = engine.language();
-                    if let Some(l) = file_lang
-                        && l != prev_lang
-                    {
-                        engine.set_language(l);
-                        println!("[Load] {} mode for this file", l);
-                    }
-
                     let reader = BufReader::new(file);
                     let mut asserted = 0u32;
                     let mut skipped = 0u32;
@@ -361,7 +265,7 @@ fn main() {
                             continue;
                         }
 
-                        print_lints(&mut linter, engine.language(), trimmed);
+                        print_lints(&mut linter, trimmed);
                         match engine.assert_text(trimmed) {
                             Ok(ids) => {
                                 for id in &ids {
@@ -380,11 +284,6 @@ fn main() {
                         "[Load] Done: {} asserted, {} skipped, {} errors",
                         asserted, skipped, errors
                     );
-                    // Restore the pre-load language (the extension pick is
-                    // file-scoped, never a sticky mode switch).
-                    if engine.language() != prev_lang {
-                        engine.set_language(prev_lang);
-                    }
                 } else if let Some(find_text) = input.strip_prefix("??") {
                     let text = find_text.trim();
                     if text.is_empty() {
@@ -392,7 +291,7 @@ fn main() {
                         continue;
                     }
 
-                    print_lints(&mut linter, engine.language(), text);
+                    print_lints(&mut linter, text);
                     match engine.query_find_text(text) {
                         Ok(binding_sets) => {
                             if binding_sets.is_empty() {
@@ -422,7 +321,7 @@ fn main() {
                         continue;
                     }
 
-                    print_lints(&mut linter, engine.language(), text);
+                    print_lints(&mut linter, text);
                     match engine.query_text_with_proof(text) {
                         Ok((result, trace, _json)) => {
                             println!("[Query] {}", display_query_result(&result));
@@ -431,7 +330,7 @@ fn main() {
                         Err(e) => println!("{}", e),
                     }
                 } else {
-                    print_lints(&mut linter, engine.language(), input);
+                    print_lints(&mut linter, input);
                     match engine.assert_text(input) {
                         Ok(ids) => {
                             for id in &ids {

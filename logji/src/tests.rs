@@ -1038,14 +1038,14 @@ fn depth_boundary_contract() {
 /// a depth-1 bound (RESOURCE_EXCEEDED(Depth) — never a silent True/False).
 #[test]
 fn exact_count_with_unresolved_member_bounds() {
-    // KB 1: kim is a ground gerku; danlu(kim) needs mabru→jmive→danlu (2 rule
+    // KB 1: kim is a ground gerku; danlu(kim) needs cipni→jmive→danlu (2 rule
     // steps) — unreachable under depth 1, so that member is unresolved.
     // satisfying=0, unresolved=1.
     let kb = new_kb();
     for s in [
         "dog(Kim).",
-        "mammal(Kim).",
-        "all $da: mammal($da) -> alive($da).",
+        "bird(Kim).",
+        "all $da: bird($da) -> alive($da).",
         "all $da: alive($da) -> animal($da).",
     ] {
         assert_buf(&kb, compile_surface(s));
@@ -1078,8 +1078,8 @@ fn exact_count_with_unresolved_member_bounds() {
         "dog(Kim).",
         "animal(Adam).",
         "animal(Bel).",
-        "mammal(Kim).",
-        "all $da: mammal($da) -> alive($da).",
+        "bird(Kim).",
+        "all $da: bird($da) -> alive($da).",
         "all $da: alive($da) -> animal($da).",
     ] {
         assert_buf(&kb2, compile_surface(s));

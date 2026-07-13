@@ -2,10 +2,9 @@
 //!
 //! A standalone, in-browser interface with three tabs: Source (plain English,
 //! optionally FORMALIZED into the KB language by a bring-your-own-key LLM),
-//! the KB tab (the formal Klaro encoding — legacy Lojban behind a settings
-//! toggle — with per-line validation), and Back-translation
-//! (structure-exposing English gloss). A bottom query bar runs proof-queries.
-//! The reasoning engine (klaro/gerna → smuni → logji) is compiled into the
+//! the KB tab (the formal Klaro/KR encoding, with per-line validation), and
+//! Back-translation (structure-exposing English gloss). A bottom query bar runs proof-queries.
+//! The reasoning engine (klaro → smuni → logji) is compiled into the
 //! WASM bundle and runs entirely client-side (mirrors `nibli-wasm`). The ONLY
 //! network call is the optional Formalize step, sent directly from the browser
 //! to the user's chosen LLM provider — the client lives in `nibli_fanva::llm`
@@ -20,7 +19,6 @@ use dioxus::prelude::*;
 use logji::KnowledgeBase;
 use nibli_protocol::{KbStatus, LineResult, ProofTrace};
 use nibli_types::error::NibliError;
-use nibli_types::lang::Language;
 use nibli_types::logic::LogicBuffer;
 
 mod examples;
@@ -33,59 +31,32 @@ fn main() {
 
 /// IR-driven back-translation of the (multi-line) KB tab, computed entirely
 /// client-side: each non-comment line is parsed + compiled to FOL and rendered as
-/// structure-exposing English by `nibli-render` (IR-level, so the gloss is the
-/// same whichever front-end compiled the line). A line that does not compile
-/// falls back so the panel always shows something: the lexical word-by-word
-/// gloss in Lojban mode, the raw line itself in Klaro mode (Klaro is already
-/// readable and has no gloss table). This is the "What Nibli Understood" reading.
-fn back_translate_ir(lang: Language, kb: &str) -> String {
+/// structure-exposing English by `nibli-render` (IR-level). A line that does
+/// not compile falls back to the raw line itself, so the panel always shows
+/// something. This is the "What Nibli Understood" reading.
+fn back_translate_ir(kb: &str) -> String {
     kb.lines()
         .filter_map(|line| {
             let trimmed = line.trim();
             if trimmed.is_empty() || trimmed.starts_with('#') {
                 None
             } else {
-                Some(render_kb_line(lang, trimmed))
+                Some(render_kb_line(trimmed))
             }
         })
         .collect::<Vec<_>>()
         .join("\n")
 }
 
-fn render_kb_line(lang: Language, line: &str) -> String {
-    let parsed = match lang {
-        Language::Klaro => klaro::parse_text(line),
-        Language::Lojban => match gerna::parse_text_native(line.to_string()) {
-            Ok(p) => p,
-            Err(_) => return smuni_dictionary::back_translate(line),
-        },
-    };
-    let fallback = || match lang {
-        Language::Klaro => line.to_string(),
-        Language::Lojban => smuni_dictionary::back_translate(line),
-    };
+fn render_kb_line(line: &str) -> String {
+    let parsed = klaro::parse_text(line);
     if parsed.errors.is_empty() {
         smuni::compile_from_gerna_ast(parsed.buffer)
             .map(|buf| nibli_render::render_logic_buffer(&buf, nibli_render::Register::Spec))
-            .unwrap_or_else(|_| fallback())
+            .unwrap_or_else(|_| line.to_string())
     } else {
-        fallback()
+        line.to_string()
     }
-}
-
-/// Collapse the active KB into one multi-sentence Lojban text for jbotci `tersmu`
-/// (tersmu is a Lojban semantic parser — this whole view exists only in legacy
-/// Lojban mode): drop empty + `#`-comment lines (same filter as
-/// [`back_translate_ir`]) and join with the neutral sentence separator `.i`, so
-/// tersmu analyses the whole KB in a single call and returns one coherent
-/// semantic graph.
-fn kb_to_tersmu_text(lojban: &str) -> String {
-    lojban
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty() && !l.starts_with('#'))
-        .collect::<Vec<_>>()
-        .join(" .i ")
 }
 
 const MAX_OUTPUT_ENTRIES: usize = 200;
@@ -96,41 +67,14 @@ const DEFAULT_SOURCE: &str = "All dogs are animals.\nAll animals eat.\nAdam is a
 // modes swaps the buffers only while they still hold the other default).
 const DEFAULT_KB: &str = "animal(every dog).\neats(every animal).\ndog(Adam).";
 const DEFAULT_QUERY: &str = "eats(Adam).";
-const DEFAULT_KB_LOJBAN: &str = "ro lo gerku cu danlu\nro lo danlu cu citka\nla .adam. cu gerku";
-const DEFAULT_QUERY_LOJBAN: &str = "la .adam. cu citka";
 
-/// The default KB/query pair for a language (the legacy-toggle swap helper).
-fn default_kb_query(lang: Language) -> (&'static str, &'static str) {
-    match lang {
-        Language::Klaro => (DEFAULT_KB, DEFAULT_QUERY),
-        Language::Lojban => (DEFAULT_KB_LOJBAN, DEFAULT_QUERY_LOJBAN),
-    }
-}
-
-/// The lowercase display name of the KB language for hint copy.
-fn lang_lower(lang: Language) -> &'static str {
-    match lang {
-        Language::Klaro => "klaro",
-        Language::Lojban => "lojban",
-    }
-}
-
-/// The KB tab's label (language-driven since `ActiveTab::Kb`).
-fn kb_tab_label(lang: Language) -> &'static str {
-    match lang {
-        Language::Klaro => "Klaro",
-        Language::Lojban => "Lojban",
-    }
-}
+/// The KB tab's label.
+const KB_TAB_LABEL: &str = "Klaro";
 
 // ── Agentic formalize (nibli-fanva) ──
 // The Source→KB button runs the self-correcting loop: formalize → validate
-// (klaro+smuni+round-trip, or gerna+smuni+camxes in legacy mode) → feed the
-// compiler error back → retry, bounded below. All gates are local/in-browser;
-// the only network call is the LLM itself.
-
-/// Cap on jbotci tool calls within a single formalize attempt (Lojban mode only).
-const MAX_TOOL_STEPS: u32 = 4;
+// (klaro+smuni+round-trip) → feed the compiler error back → retry, bounded
+// below. All gates are local/in-browser; the only network call is the LLM.
 
 /// One row of the self-correction trace rendered under the Source tab.
 #[derive(Clone, Copy)]
@@ -140,43 +84,21 @@ enum GateState {
     Skip,
 }
 
-/// One jbotci tool call, summarized for a trace sub-row.
-#[derive(Clone)]
-struct ToolRow {
-    name: String,
-    detail: String,
-    is_error: bool,
-}
-
 #[derive(Clone)]
 struct TraceRow {
     n: u32,
     ok: bool,
     detail: String,
-    /// Per-gate chips: (label like "gerna ✓", css class).
+    /// Per-gate chips: (label like "klaro ✓", css class).
     gates: Vec<(String, &'static str)>,
-    /// jbotci tool calls made in this attempt (empty when jbotci is off).
-    tools: Vec<ToolRow>,
 }
 
-/// The default jbotci proxy: the app-owned "blind" CORS reverse-proxy Worker
-/// (`fanva-proxy/`). Prefilled so opting in is one click, but jbotci ships OFF
-/// (`jbotci_enabled = false`) — the URL stays inert until the user enables it, so the
-/// default translate run is fully local and makes NO call to the proxy. The proxy
-/// only strips the browser Origin and forwards to jbotci verbatim; it stores nothing
-/// (source is linked from the settings modal).
-const DEFAULT_JBOTCI_PROXY_URL: &str = "https://fanva-proxy.dhilipsiva.workers.dev/mcp";
-
 /// nibli-ui's settings bundle: the LLM provider config (`nibli_fanva::llm::LlmConfig`,
-/// the single source of truth) plus the agent/jbotci knobs that aren't LLM-provider
+/// the single source of truth) plus the agent knobs that aren't LLM-provider
 /// settings. Held in one in-memory signal; never persisted.
 #[derive(Clone, PartialEq)]
 struct Settings {
     llm: LlmConfig,
-    proxy_url: String,
-    /// jbotci tool-use opt-in. OFF by default: the prefilled `proxy_url` is inert
-    /// until the user flips this, keeping the default run local-only (no proxy call).
-    jbotci_enabled: bool,
     max_attempts: u32,
 }
 
@@ -184,21 +106,7 @@ impl Settings {
     fn new(provider: Provider) -> Self {
         Settings {
             llm: LlmConfig::new(provider),
-            proxy_url: DEFAULT_JBOTCI_PROXY_URL.to_string(),
-            jbotci_enabled: false,
             max_attempts: 5,
-        }
-    }
-
-    /// The proxy URL actually handed to the MCP client: the configured URL only when
-    /// jbotci is explicitly enabled, else empty. Empty ⇒ the translate loop and the
-    /// tersmu view degrade to the local gates and make NO network call — this is what
-    /// makes "disabled by default" a real privacy guarantee, not a hidden-but-live URL.
-    fn active_proxy_url(&self) -> String {
-        if self.jbotci_enabled {
-            self.proxy_url.trim().to_string()
-        } else {
-            String::new()
         }
     }
 }
@@ -206,15 +114,12 @@ impl Settings {
 /// Single-shot English→KB formalize via nibli-fanva's transport — used by the
 /// query formalize and the modal key-test (the agentic Source formalize uses
 /// `translate_agentic`). Returns the cleaned KB text or a user-facing error.
-async fn fanva_translate(cfg: &LlmConfig, lang: Language, english: &str) -> Result<String, String> {
+async fn fanva_translate(cfg: &LlmConfig, english: &str) -> Result<String, String> {
     use nibli_fanva::llm::{Chat, HttpChat, Turn, clean_lojban_output, system_prompt};
-    let request = match lang {
-        Language::Klaro => format!("Formalize into Klaro: {}", english.trim()),
-        Language::Lojban => format!("Translate to Lojban: {}", english.trim()),
-    };
+    let request = format!("Formalize into Klaro: {}", english.trim());
     let turns = [Turn::user(request)];
     let raw = HttpChat
-        .chat(cfg, system_prompt(lang), &turns)
+        .chat(cfg, system_prompt(), &turns)
         .await
         .map_err(|e| e.to_string())?;
     let cleaned = clean_lojban_output(&raw);
@@ -224,27 +129,18 @@ async fn fanva_translate(cfg: &LlmConfig, lang: Language, english: &str) -> Resu
     Ok(cleaned)
 }
 
-/// The local gates per language, in the fail-fast order `validate` runs them.
-fn gate_order(lang: Language) -> [&'static str; 3] {
-    match lang {
-        Language::Klaro => ["klaro", "smuni", "round-trip"],
-        Language::Lojban => ["gerna", "smuni", "camxes"],
-    }
-}
+/// The local gates, in the fail-fast order `validate` runs them.
+const GATE_ORDER: [&'static str; 3] = ["klaro", "smuni", "round-trip"];
 
 /// Derive the per-gate chips from an attempt's error. `validate` is fail-fast in
-/// `gate_order(lang)`, so `error.gate(lang)` is the failing gate; earlier gates
-/// passed, later ones were skipped. (In Lojban mode, assumes camxes ran
-/// in-browser; if its shim failed to load it silently passes — a rare edge.)
-fn gate_chips(
-    lang: Language,
-    error: &Option<nibli_fanva::gates::GateError>,
-) -> Vec<(String, &'static str)> {
-    let order = gate_order(lang);
+/// [`GATE_ORDER`], so `error.gate()` is the failing gate; earlier gates
+/// passed, later ones were skipped.
+fn gate_chips(error: &Option<nibli_fanva::gates::GateError>) -> Vec<(String, &'static str)> {
+    let order = GATE_ORDER;
     let states: [GateState; 3] = match error {
         None => [GateState::Pass; 3],
         Some(e) => {
-            let fail_idx = order.iter().position(|g| *g == e.gate(lang)).unwrap_or(0);
+            let fail_idx = order.iter().position(|g| *g == e.gate()).unwrap_or(0);
             std::array::from_fn(|i| {
                 if i < fail_idx {
                     GateState::Pass
@@ -270,13 +166,6 @@ fn gate_chips(
         .collect()
 }
 
-/// A compact `args → result` snippet for a tool-call trace row.
-fn tool_summary(t: &nibli_fanva::tools::ToolCallTrace) -> String {
-    let args = truncate(&t.args.to_string(), 40);
-    let result = truncate(&t.result.replace('\n', " "), 80);
-    format!("{args} \u{2192} {result}")
-}
-
 fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() > max {
         let cut: String = s.chars().take(max).collect();
@@ -286,9 +175,9 @@ fn truncate(s: &str, max: usize) -> String {
     }
 }
 
-/// Collapse the agent's attempts into UI trace rows (per-gate chips + first error
-/// line + any jbotci tool calls made).
-fn trace_rows(lang: Language, attempts: &[nibli_fanva::agent::Attempt]) -> Vec<TraceRow> {
+/// Collapse the agent's attempts into UI trace rows (per-gate chips + first
+/// error line).
+fn trace_rows(attempts: &[nibli_fanva::agent::Attempt]) -> Vec<TraceRow> {
     attempts
         .iter()
         .map(|a| TraceRow {
@@ -299,19 +188,10 @@ fn trace_rows(lang: Language, attempts: &[nibli_fanva::agent::Attempt]) -> Vec<T
                 Some(e) => {
                     let msg = e.message();
                     let first = msg.lines().next().unwrap_or(msg);
-                    format!("{}: {first}", e.gate(lang))
+                    format!("{}: {first}", e.gate())
                 }
             },
-            gates: gate_chips(lang, &a.error),
-            tools: a
-                .tool_calls
-                .iter()
-                .map(|t| ToolRow {
-                    name: t.name.clone(),
-                    detail: tool_summary(t),
-                    is_error: t.is_error,
-                })
-                .collect(),
+            gates: gate_chips(&a.error),
         })
         .collect()
 }
@@ -337,26 +217,19 @@ struct OutputEntry {
 }
 
 // ── Local reasoning (in-browser) ──
-// The full klaro/gerna → smuni → logji pipeline runs in the WASM bundle
+// The full klaro → smuni → logji pipeline runs in the WASM bundle
 // (mirrors `nibli-wasm`). Every query builds a fresh KnowledgeBase, re-asserts
 // the KB tab, then queries — matching the "queries reset the engine each
 // time" semantics. Built-in arithmetic (pilji/sumji/dilcu/zmadu/mleca/dunli)
 // resolves locally; external compute predicates (tenfa/dugri) have no TCP
 // backend in the browser and surface as errors, same as the live demo.
 
-/// Parse one KB line with the active front-end, compile to FOL, and mark
+/// Parse one KB line with the KR front-end, compile to FOL, and mark
 /// compute nodes. Fail-closed on any parse/compile error (the `NibliError`
 /// Display carries the `[Syntax Error]` / `[Semantic Error]` prefixes the
 /// output log classifies on).
-fn compile_text(
-    lang: Language,
-    text: &str,
-    preds: &HashSet<String>,
-) -> Result<LogicBuffer, NibliError> {
-    let ast = match lang {
-        Language::Klaro => klaro::parse_checked(text)?,
-        Language::Lojban => gerna::parse_checked(text)?,
-    };
+fn compile_text(text: &str, preds: &HashSet<String>) -> Result<LogicBuffer, NibliError> {
+    let ast = klaro::parse_checked(text)?;
     let mut buf = smuni::compile_from_gerna_ast(ast)?;
     logji::transform_compute_nodes(&mut buf, preds);
     Ok(buf)
@@ -364,7 +237,7 @@ fn compile_text(
 
 /// Build a fresh KB from the KB tab, assert it (recording a per-line status),
 /// then run the query and return the result + proof trace as an `OutputEntry`.
-fn run_query(lang: Language, kb_text: &str, query_text: &str) -> OutputEntry {
+fn run_query(kb_text: &str, query_text: &str) -> OutputEntry {
     let preds = logji::default_compute_predicates();
     let kb = KnowledgeBase::new();
 
@@ -375,7 +248,7 @@ fn run_query(lang: Language, kb_text: &str, query_text: &str) -> OutputEntry {
     // The Klaro lint pass (SURFACE_SYNTAX §12 L1–L9): a FRESH linter per run
     // — the stateless-KB model re-asserts the whole tab every query, so
     // "per session" is "per run" here. Notes ride each LineResult.
-    let mut linter = (lang == Language::Klaro).then(klaro::lint::Linter::new);
+    let mut linter = klaro::lint::Linter::new();
     for (i, raw) in kb_text.lines().enumerate() {
         let line = raw.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -383,11 +256,8 @@ fn run_query(lang: Language, kb_text: &str, query_text: &str) -> OutputEntry {
             continue;
         }
         let line_number = (i + 1) as u32;
-        let notes: Vec<String> = match linter.as_mut() {
-            Some(l) => l.lint(line).into_iter().map(|n| n.message).collect(),
-            None => Vec::new(),
-        };
-        match compile_text(lang, line, &preds) {
+        let notes: Vec<String> = linter.lint(line).into_iter().map(|n| n.message).collect();
+        match compile_text(line, &preds) {
             Ok(buf) => {
                 // Each bare-`.i` sentence becomes its OWN fact (connectives stay
                 // whole — they compile to a single root). `asserted` counts facts,
@@ -448,8 +318,7 @@ fn run_query(lang: Language, kb_text: &str, query_text: &str) -> OutputEntry {
         line_results,
     });
 
-    match compile_text(lang, query_text, &preds).and_then(|buf| kb.query_entailment_with_proof(buf))
-    {
+    match compile_text(query_text, &preds).and_then(|buf| kb.query_entailment_with_proof(buf)) {
         Ok((result, trace)) => {
             let status = result.status_label();
             let result = match result.detail_label() {
@@ -518,27 +387,8 @@ fn App() -> Element {
     let mut output_log: Signal<Vec<OutputEntry>> = use_signal(Vec::new);
     let proof_text: Signal<Option<String>> = use_signal(|| None);
     let proof_data: Signal<Option<ProofTrace>> = use_signal(|| None);
-    let mut kb_text: Signal<String> = use_signal(|| DEFAULT_KB.to_string());
+    let kb_text: Signal<String> = use_signal(|| DEFAULT_KB.to_string());
     let kb_status: Signal<Option<KbStatus>> = use_signal(|| None);
-    // The custom-KB front-end language: Klaro since THE FLIP; the settings
-    // modal offers a legacy-Lojban toggle (writes this signal directly — it is
-    // a KB mode, not an LLM setting, so it works without a saved LLM config).
-    // Preloaded examples are always Klaro-sourced regardless of this toggle.
-    let kb_lang: Signal<Language> = use_signal(Language::default);
-    // Toggling the mode swaps the KB buffer between the two built-in defaults
-    // — but only while it still holds the other language's default, so a
-    // user's own text is never overwritten. (peek: don't re-fire on kb_text.)
-    use_effect(move || {
-        let lang = *kb_lang.read();
-        let (kb_default, _) = default_kb_query(lang);
-        let (other_default, _) = default_kb_query(match lang {
-            Language::Klaro => Language::Lojban,
-            Language::Lojban => Language::Klaro,
-        });
-        if *kb_text.peek() == other_default {
-            kb_text.set(kb_default.to_string());
-        }
-    });
     // The LLM translate config lives ONLY here, in memory — never persisted to
     // storage, cleared on tab close/reload. `None` until the user configures it.
     let settings: Signal<Option<Settings>> = use_signal(|| None);
@@ -574,7 +424,7 @@ fn App() -> Element {
         }
     };
 
-    // Source is the triad's natural entry point (English → Lojban → back-trans).
+    // Source is the triad's natural entry point (English → KR → back-trans).
     let active_tab: Signal<ActiveTab> = use_signal(|| ActiveTab::Source);
     // "" = dark (the instrument default); "light" = the QUINE paper theme. The
     // attribute rides on `.app-shell`, so the [data-theme="light"] overrides cascade.
@@ -583,15 +433,6 @@ fn App() -> Element {
     rsx! {
         document::Link { rel: "stylesheet", href: asset!("/assets/tokens.css") }
         document::Link { rel: "stylesheet", href: asset!("/assets/style.css") }
-        // Local "official" grammar gate for LEGACY LOJBAN MODE: the vendored
-        // ilmentufa camxes parser + preprocessor, then a shim exposing
-        // window.camxes_validate. Served as static assets (no network at
-        // reason-time); nibli-fanva's official_gate calls the shim (Lojban
-        // only — Klaro mode uses the render round-trip gate instead). The shim
-        // resolves the globals at call time, so load order is not critical.
-        document::Script { src: asset!("/assets/js/vendor/camxes/camxes_preproc.js") }
-        document::Script { src: asset!("/assets/js/vendor/camxes/camxes.js") }
-        document::Script { src: asset!("/assets/js/vendor/camxes/camxes_shim.js") }
         // Outer shell owns the viewport: the QUINE masthead sits above the
         // instrument. data-theme rides here (not on `.app`) so the header
         // themes alongside the panels.
@@ -639,7 +480,7 @@ fn App() -> Element {
             div { class: "app", tabindex: "0", onkeydown: on_global_keydown,
                 div { class: "main-row",
                     div { class: "col-tabs",
-                        SourceTabs { kb_text, kb_status, active_tab, settings, modal_open, example, kb_lang }
+                        SourceTabs { kb_text, kb_status, active_tab, settings, modal_open, example }
                     }
                     div { class: "col-proof",
                         ProofPanel { proof_text, proof_data, example }
@@ -656,7 +497,6 @@ fn App() -> Element {
                             settings,
                             modal_open,
                             example,
-                            kb_lang,
                         }
                     }
                     OutputLog { output_log }
@@ -678,7 +518,7 @@ fn App() -> Element {
                 }
             }
             if *modal_open.read() {
-                LlmConfigModal { settings, modal_open, kb_lang }
+                LlmConfigModal { settings, modal_open }
             }
         }
     }
@@ -788,7 +628,6 @@ fn QueryTabs(
     settings: Signal<Option<Settings>>,
     modal_open: Signal<bool>,
     example: Signal<Option<usize>>,
-    kb_lang: Signal<Language>,
 ) -> Element {
     let mut query_text = use_signal(|| DEFAULT_QUERY.to_string());
     let mut query_source = use_signal(String::new);
@@ -799,30 +638,6 @@ fn QueryTabs(
     // In example mode the query box is a dropdown; this indexes the active
     // example's `queries`.
     let mut selected_query = use_signal(|| 0usize);
-
-    // Legacy-toggle default swap, same rule as the KB buffer: only while the
-    // query still holds the other language's default.
-    use_effect(move || {
-        let lang = *kb_lang.read();
-        let (_, q_default) = default_kb_query(lang);
-        let (_, other_default) = default_kb_query(match lang {
-            Language::Klaro => Language::Lojban,
-            Language::Lojban => Language::Klaro,
-        });
-        if *query_text.peek() == other_default {
-            query_text.set(q_default.to_string());
-        }
-    });
-
-    // The front-end that compiles the ACTIVE (kb, query): examples are always
-    // Klaro-sourced; the Custom buffers follow the settings toggle.
-    let effective_lang = move || -> Language {
-        if example.read().is_some() {
-            Language::Klaro
-        } else {
-            *kb_lang.read()
-        }
-    };
 
     // Live back-translation of the ACTIVE query — the typed Custom query, or the
     // selected example query. Shown only for a cleanly-parsed query; a transient
@@ -840,13 +655,7 @@ fn QueryTabs(
         if q.is_empty() {
             return QueryReading::Empty;
         }
-        let parsed = match effective_lang() {
-            Language::Klaro => klaro::parse_text(q),
-            Language::Lojban => match gerna::parse_text_native(q.to_string()) {
-                Ok(p) => p,
-                Err(_) => return QueryReading::Incomplete,
-            },
-        };
+        let parsed = klaro::parse_text(q);
         if parsed.errors.is_empty() {
             match smuni::compile_from_gerna_ast(parsed.buffer) {
                 Ok(buf) => QueryReading::Reads(nibli_render::render_logic_buffer(
@@ -864,13 +673,13 @@ fn QueryTabs(
     // panel + output log. Arg-driven so the auto-run effect can call it WITHOUT
     // reading `selected_query` (which would make the effect re-fire — and reset —
     // every time the dropdown changes).
-    let mut run_into_log = move |lang: Language, kb: &str, query: &str| {
+    let mut run_into_log = move |kb: &str, query: &str| {
         let trimmed = query.trim();
         if trimmed.is_empty() {
             return;
         }
         // The engine runs in-browser and synchronously — no await, no server.
-        let entry = run_query(lang, kb, trimmed);
+        let entry = run_query(kb, trimmed);
         // Always reflect the latest query in the proof panel (clear on error).
         proof_text.set(entry.proof_trace.clone());
         proof_data.set(entry.proof_trace_data.clone());
@@ -907,7 +716,7 @@ fn QueryTabs(
             ),
             None => (kb_text.read().clone(), query_text.read().clone()),
         };
-        run_into_log(effective_lang(), &kb, &query);
+        run_into_log(&kb, &query);
         if ex.is_none() {
             query_text.set(String::new());
         }
@@ -920,7 +729,7 @@ fn QueryTabs(
         if let Some(i) = *example.read() {
             selected_query.set(0);
             if let Some(q) = EXAMPLES[i].queries.first() {
-                run_into_log(Language::Klaro, EXAMPLES[i].kb, q.query);
+                run_into_log(EXAMPLES[i].kb, q.query);
             }
         }
     });
@@ -944,11 +753,10 @@ fn QueryTabs(
             modal_open.set(true);
             return;
         };
-        let lang = *kb_lang.read();
         translating.set(true);
         translate_error.set(None);
         spawn(async move {
-            match fanva_translate(&cfg.llm, lang, &text).await {
+            match fanva_translate(&cfg.llm, &text).await {
                 Ok(formal) => {
                     query_text.set(formal);
                     query_tab.set(ActiveTab::Kb);
@@ -971,19 +779,11 @@ fn QueryTabs(
     let ex = *example.read();
     let is_example = ex.is_some();
     let reading = query_reading.read().clone();
-    let lang = effective_lang();
-    // The decorative query cue: "xu" is Lojban's yes/no marker; Klaro mode
-    // shows a plain "?" instead (the same cue the script format uses).
-    let (affix, affix_title) = match lang {
-        Language::Klaro => (
-            "?",
-            "The ? just marks this box as a query \u{2014} a reading cue only, never typed or sent. You state a claim (e.g. eats(Adam).); the engine answers TRUE / FALSE / UNKNOWN.",
-        ),
-        Language::Lojban => (
-            "xu",
-            "xu just marks this box as a query \u{2014} a reading cue only, never typed or sent. You state a claim (e.g. la .adam. cu citka); the engine answers TRUE / FALSE / UNKNOWN.",
-        ),
-    };
+    // The decorative query cue (the same cue the script format uses).
+    let (affix, affix_title) = (
+        "?",
+        "The ? just marks this box as a query \u{2014} a reading cue only, never typed or sent. You state a claim (e.g. eats(Adam).); the engine answers TRUE / FALSE / UNKNOWN.",
+    );
 
     rsx! {
         div { class: "tabs-container",
@@ -998,16 +798,15 @@ fn QueryTabs(
                 button {
                     class: if is_example || *query_tab.read() == ActiveTab::Kb { "tab active" } else { "tab" },
                     onclick: move |_| query_tab.set(ActiveTab::Kb),
-                    {kb_tab_label(lang)}
+                    {KB_TAB_LABEL}
                 }
             }
             div { class: "tab-content",
                 match (is_example, *query_tab.read()) {
                     (false, ActiveTab::Source) => {
-                        let target = lang_lower(lang);
                         let hint = match settings.read().as_ref().map(|c| c.llm.provider.short_name()) {
-                            Some(p) => format!("english claim \u{2192} {target} via {p}"),
-                            None => format!("english claim \u{2192} {target} \u{2014} configure an llm"),
+                            Some(p) => format!("english claim \u{2192} klaro via {p}"),
+                            None => format!("english claim \u{2192} klaro \u{2014} configure an llm"),
                         };
                         rsx! {
                             span { class: "nb-eyebrow", "query \u{2014} state a claim in english" }
@@ -1111,7 +910,7 @@ fn QueryTabs(
                                     span { class: "nb-eyebrow", "back-translation" }
                                     div { class: "query-gloss__reading query-gloss__reading--pending",
                                         "\u{26A0} incomplete or invalid "
-                                        {kb_tab_label(lang)}
+                                        {KB_TAB_LABEL}
                                     }
                                 }
                             },
@@ -1208,49 +1007,23 @@ fn SourceTabs(
     settings: Signal<Option<Settings>>,
     modal_open: Signal<bool>,
     example: Signal<Option<usize>>,
-    kb_lang: Signal<Language>,
 ) -> Element {
     let mut source_text = use_signal(|| DEFAULT_SOURCE.to_string());
-    // The front-end for the ACTIVE KB: examples are always Klaro-sourced; the
-    // Custom buffer follows the settings toggle.
-    let effective_lang = move || -> Language {
-        if example.read().is_some() {
-            Language::Klaro
-        } else {
-            *kb_lang.read()
-        }
-    };
     let mut translating = use_signal(|| false);
     let mut translate_error = use_signal(|| Option::<String>::None);
     let mut translate_trace = use_signal(Vec::<TraceRow>::new);
-    let mut translate_degraded = use_signal(|| false);
-
-    // Deep-meaning (jbotci tersmu) view state — a network result, so held in signals
-    // (not a memo). On-demand + proxy-gated; see `do_tersmu` below.
-    let mut tersmu_loading = use_signal(|| false);
-    let mut tersmu_error = use_signal(|| Option::<String>::None);
-    let mut tersmu_result = use_signal(|| Option::<String>::None);
-
-    // Invalidate a shown graph whenever the active KB changes (edited Lojban, a Clear/
-    // Load, a translate, or a different example) so tersmu output never shows stale.
-    use_effect(move || {
-        let _ = example.read();
-        let _ = kb_text.read();
-        tersmu_result.set(None);
-        tersmu_error.set(None);
-    });
 
     // Back-translation reflects the ACTIVE KB: a loaded example's corpus, else
     // the user's editable KB tab.
     let back_translation = use_memo(move || {
-        let (lang, text) = match *example.read() {
-            Some(i) => (Language::Klaro, EXAMPLES[i].kb.to_string()),
-            None => (*kb_lang.read(), kb_text.read().clone()),
+        let text = match *example.read() {
+            Some(i) => EXAMPLES[i].kb.to_string(),
+            None => kb_text.read().clone(),
         };
         if text.is_empty() {
             String::new()
         } else {
-            back_translate_ir(lang, &text)
+            back_translate_ir(&text)
         }
     });
 
@@ -1265,49 +1038,30 @@ fn SourceTabs(
             modal_open.set(true);
             return;
         };
-        let lang = *kb_lang.read();
         translating.set(true);
         translate_error.set(None);
         translate_trace.set(Vec::new());
-        translate_degraded.set(false);
         spawn(async move {
             use nibli_fanva::agent::Outcome;
-            // The self-correcting loop: formalize → (optionally call jbotci
-            // tools, Lojban mode only) → validate (klaro+smuni+round-trip, or
-            // gerna+smuni+camxes in legacy mode) → semantic verification (a
+            // The self-correcting loop: formalize → validate
+            // (klaro+smuni+round-trip) → semantic verification (a
             // fresh-context judge reads the engine's back-translation) → feed
             // any error back → retry, up to the configured max attempts.
             let http = nibli_fanva::llm::HttpChat;
-            // jbotci is Lojban-only tooling: in Klaro mode the client is
-            // constructed with an empty proxy (tool-free loop, no network),
-            // whatever the settings say. In Lojban mode the proxy stays inert
-            // unless the user enabled jbotci.
-            let mcp = nibli_fanva::mcp::McpClient::new(match lang {
-                Language::Lojban => cfg.active_proxy_url(),
-                Language::Klaro => String::new(),
-            });
             // The same zero-sized HttpChat serves as the semantic validator: the
             // Chat seam is stateless, so the judge call is a genuinely fresh
             // conversation (same provider/key, no shared history).
             let outcome = nibli_fanva::agent::translate_agentic(
                 &http,
                 &http,
-                &mcp,
                 &cfg.llm,
-                lang,
                 &text,
                 cfg.max_attempts.max(1),
-                MAX_TOOL_STEPS,
             )
             .await;
             match outcome {
-                Outcome::Success {
-                    lojban,
-                    attempts,
-                    degraded,
-                } => {
-                    translate_trace.set(trace_rows(lang, &attempts));
-                    translate_degraded.set(degraded);
+                Outcome::Success { lojban, attempts } => {
+                    translate_trace.set(trace_rows(&attempts));
                     kb_text.set(lojban);
                     active_tab.set(ActiveTab::Kb);
                 }
@@ -1315,11 +1069,9 @@ fn SourceTabs(
                     best,
                     last_error,
                     attempts,
-                    degraded,
                 } => {
                     let n = attempts.len();
-                    translate_trace.set(trace_rows(lang, &attempts));
-                    translate_degraded.set(degraded);
+                    translate_trace.set(trace_rows(&attempts));
                     // Show the best effort so the user can edit from there.
                     kb_text.set(best);
                     active_tab.set(ActiveTab::Kb);
@@ -1328,10 +1080,8 @@ fn SourceTabs(
                         last_error.message()
                     )));
                 }
-                Outcome::ChatFailed {
-                    error, attempts, ..
-                } => {
-                    translate_trace.set(trace_rows(lang, &attempts));
+                Outcome::ChatFailed { error, attempts } => {
+                    translate_trace.set(trace_rows(&attempts));
                     translate_error.set(Some(error));
                 }
             }
@@ -1348,63 +1098,10 @@ fn SourceTabs(
         }
     };
 
-    // Deep meaning: send the ACTIVE KB (as one `.i`-joined text) to jbotci's tersmu
-    // tool and show the raw semantic graph. LEGACY LOJBAN MODE ONLY (tersmu is a
-    // Lojban semantic parser; the button renders only there). On-demand (network)
-    // + proxy-gated; any failure (incl. no proxy / native) degrades to a notice,
-    // never a hard error.
-    let mut do_tersmu = move || {
-        if *tersmu_loading.read() || effective_lang() != Language::Lojban {
-            return;
-        }
-        let Some(cfg) = settings.read().clone() else {
-            return;
-        };
-        if cfg.active_proxy_url().is_empty() {
-            return;
-        }
-        let active = match *example.read() {
-            Some(i) => EXAMPLES[i].kb.to_string(),
-            None => kb_text.read().clone(),
-        };
-        let joined = kb_to_tersmu_text(&active);
-        if joined.is_empty() {
-            return;
-        }
-        tersmu_loading.set(true);
-        tersmu_error.set(None);
-        tersmu_result.set(None);
-        spawn(async move {
-            let mcp = nibli_fanva::mcp::McpClient::new(cfg.active_proxy_url());
-            let outcome = mcp.tersmu(&joined).await;
-            // Drop the result if the KB changed while the request was in flight.
-            let current = match *example.read() {
-                Some(i) => EXAMPLES[i].kb.to_string(),
-                None => kb_text.read().clone(),
-            };
-            if kb_to_tersmu_text(&current) == joined {
-                match outcome {
-                    Ok(res) if !res.is_error => tersmu_result.set(Some(res.text)),
-                    Ok(res) => tersmu_error.set(Some(format!(
-                        "jbotci tersmu reported an error: {}",
-                        res.text
-                    ))),
-                    // McpError::Display is self-describing (429/5xx/network/…).
-                    Err(e) => tersmu_error.set(Some(e.to_string())),
-                }
-            }
-            tersmu_loading.set(false);
-        });
-    };
-    let tersmu_click = move |_: Event<MouseData>| {
-        do_tersmu();
-    };
-
     // In example mode the KB is a read-only preview of the loaded corpus; the
     // user's Custom buffers (`source_text`/`kb_text`) are left untouched.
     let ex = *example.read();
     let is_example = ex.is_some();
-    let lang = effective_lang();
     let active_source = match ex {
         Some(i) => EXAMPLES[i].source.to_string(),
         None => source_text.read().clone(),
@@ -1413,14 +1110,6 @@ fn SourceTabs(
         Some(i) => EXAMPLES[i].kb.to_string(),
         None => kb_text.read().clone(),
     };
-    // The deep-meaning (tersmu) view only appears in legacy Lojban mode when
-    // jbotci is enabled with a proxy (tersmu is a Lojban semantic parser).
-    let jbotci_on = lang == Language::Lojban
-        && settings
-            .read()
-            .as_ref()
-            .map(|s| !s.active_proxy_url().is_empty())
-            .unwrap_or(false);
 
     rsx! {
         div { class: "tabs-container",
@@ -1433,7 +1122,7 @@ fn SourceTabs(
                 button {
                     class: if *active_tab.read() == ActiveTab::Kb { "tab active" } else { "tab" },
                     onclick: move |_| active_tab.set(ActiveTab::Kb),
-                    {kb_tab_label(lang)}
+                    {KB_TAB_LABEL}
                 }
                 button {
                     class: if *active_tab.read() == ActiveTab::BackTranslation { "tab active" } else { "tab" },
@@ -1444,13 +1133,12 @@ fn SourceTabs(
             div { class: "tab-content",
                 match *active_tab.read() {
                     ActiveTab::Source => {
-                        let target = lang_lower(lang);
                         let hint = if is_example {
                             "loaded example \u{2014} read-only".to_string()
                         } else {
                             match settings.read().as_ref().map(|c| c.llm.provider.short_name()) {
-                                Some(p) => format!("english \u{2192} {target} via {p}"),
-                                None => format!("english \u{2192} {target} \u{2014} configure an llm"),
+                                Some(p) => format!("english \u{2192} klaro via {p}"),
+                                None => format!("english \u{2192} klaro \u{2014} configure an llm"),
                             }
                         };
                         rsx! {
@@ -1499,24 +1187,8 @@ fn SourceTabs(
                                                 }
                                                 span { class: "trace-detail", "{row.detail}" }
                                             }
-                                            for (ti, tool) in row.tools.iter().enumerate() {
-                                                div {
-                                                    key: "{ti}",
-                                                    class: if tool.is_error { "trace-tool err" } else { "trace-tool ok" },
-                                                    "\u{21B3} {tool.name} \u{00B7} {tool.detail}"
-                                                }
-                                            }
                                         }
                                     }
-                                }
-                            }
-                            // The degraded notice is Lojban-mode-only: in Klaro
-                            // mode jbotci is off BY CONSTRUCTION (it is Lojban
-                            // tooling), so "degraded" is the normal state and
-                            // the notice would only mislead.
-                            if *translate_degraded.read() && lang == Language::Lojban {
-                                div { class: "translate-degraded",
-                                    "jbotci tools off \u{2014} validated with the local gerna+smuni+camxes gates only. Enable jbotci in settings for dictionary/grammar lookups."
                                 }
                             }
                         }
@@ -1535,7 +1207,7 @@ fn SourceTabs(
                                         let _ = res.await;
                                     });
                                 },
-                                if lang == Language::Klaro { "Load .klaro" } else { "Load .lojban" }
+                                "Load .klaro"
                                 kbd { class: "kbd-hint", "Ctrl+O" }
                             }
                             button {
@@ -1548,7 +1220,7 @@ fn SourceTabs(
                             }
                             input {
                                 r#type: "file",
-                                accept: ".klaro,.lojban,.txt",
+                                accept: ".klaro,.txt",
                                 style: "display: none",
                                 id: "lojban-file-input",
                                 onchange: move |_| {
@@ -1575,7 +1247,7 @@ fn SourceTabs(
                         }
                         textarea {
                             class: "lojban-input",
-                            placeholder: if lang == Language::Klaro { "Enter Klaro facts and rules (one per line)..." } else { "Enter Lojban facts and rules (one per line)..." },
+                            placeholder: "Enter Klaro facts and rules (one per line)...",
                             value: "{active_kb}",
                             readonly: is_example,
                             oninput: move |e| {
@@ -1594,51 +1266,18 @@ fn SourceTabs(
                             .map(|(i, l)| (i + 1, l.to_string()))
                             .collect();
                         let empty = lines.is_empty();
-                        // Deep-meaning view state, snapshotted for this render.
-                        let tersmu_err = tersmu_error.read().clone();
-                        let tersmu_graph = tersmu_result.read().clone();
-                        let tersmu_busy = *tersmu_loading.read();
                         rsx! {
                             span { class: "nb-eyebrow", "what nibli understood" }
                             div { class: "back-translation",
                                 if empty {
                                     span { class: "back-translation__placeholder",
-                                        if lang == Language::Klaro {
-                                            "Type Klaro in the Klaro tab to see the structure-exposing gloss."
-                                        } else {
-                                            "Type Lojban in the Lojban tab to see the structure-exposing gloss."
-                                        }
+                                        "Type Klaro in the Klaro tab to see the structure-exposing gloss."
                                     }
                                 } else {
                                     for (n, line) in lines.iter() {
                                         div { key: "{n}", class: "back-translation__line",
                                             span { class: "back-translation__num", "{n}" }
                                             span { class: "back-translation__gloss", "{line}" }
-                                        }
-                                    }
-                                }
-                            }
-                            // Optional deep-meaning view — jbotci's tersmu semantic graph,
-                            // shown verbatim (nibli adds zero interpretation). Only when a
-                            // jbotci proxy is configured.
-                            if jbotci_on {
-                                div { class: "tersmu",
-                                    div { class: "tersmu__head",
-                                        span { class: "nb-eyebrow", "deep meaning \u{00b7} jbotci tersmu" }
-                                        button {
-                                            class: "tersmu-button",
-                                            disabled: tersmu_busy,
-                                            onclick: tersmu_click,
-                                            if tersmu_busy { "Analyzing\u{2026}" } else { "Deep meaning (tersmu)" }
-                                        }
-                                    }
-                                    if let Some(err) = tersmu_err {
-                                        div { class: "tersmu__error", "{err}" }
-                                    } else if let Some(graph) = tersmu_graph {
-                                        pre { class: "tersmu-graph", "{graph}" }
-                                    } else if !tersmu_busy {
-                                        span { class: "tersmu__hint",
-                                            "jbotci's deep semantic graph for the current KB \u{2014} an independent second opinion on the meaning."
                                         }
                                     }
                                 }
@@ -1653,15 +1292,9 @@ fn SourceTabs(
 
 /// Bring-your-own-key LLM integration modal. Edits a draft config held in local
 /// signals; on Save it lands in the App's in-memory `settings`. The key never
-/// leaves this tab (see the security note + `llm.rs`). Also hosts the
-/// legacy-Lojban input toggle, which writes `kb_lang` DIRECTLY (it is a KB
-/// mode, not an LLM setting — it must work without a saved LLM config).
+/// leaves this tab (see the security note + `llm.rs`).
 #[component]
-fn LlmConfigModal(
-    settings: Signal<Option<Settings>>,
-    modal_open: Signal<bool>,
-    kb_lang: Signal<Language>,
-) -> Element {
+fn LlmConfigModal(settings: Signal<Option<Settings>>, modal_open: Signal<bool>) -> Element {
     let initial = settings
         .read()
         .clone()
@@ -1670,8 +1303,6 @@ fn LlmConfigModal(
     let mut api_key = use_signal(|| initial.llm.api_key.clone());
     let mut model = use_signal(|| initial.llm.model.clone());
     let mut base_url = use_signal(|| initial.llm.base_url.clone());
-    let mut proxy_url = use_signal(|| initial.proxy_url.clone());
-    let mut jbotci_enabled = use_signal(|| initial.jbotci_enabled);
     let mut max_attempts = use_signal(|| initial.max_attempts);
     let mut testing = use_signal(|| false);
     let mut test_msg = use_signal(|| Option::<(bool, String)>::None);
@@ -1686,8 +1317,6 @@ fn LlmConfigModal(
             base_url: base_url.read().trim().to_string(),
             max_tokens: 1024,
         },
-        proxy_url: proxy_url.read().trim().to_string(),
-        jbotci_enabled: *jbotci_enabled.read(),
         max_attempts: (*max_attempts.read()).max(1),
     };
     // A key is required for everyone except Custom (which may be a local server).
@@ -1712,19 +1341,16 @@ fn LlmConfigModal(
             test_msg.set(Some((false, "Enter your API key first.".to_string())));
             return;
         }
-        let lang = *kb_lang.read();
         testing.set(true);
         test_msg.set(None);
         spawn(async move {
-            match fanva_translate(&s.llm, lang, "Adam is a dog").await {
+            match fanva_translate(&s.llm, "Adam is a dog").await {
                 Ok(formal) => test_msg.set(Some((true, format!("OK \u{2014} {formal}")))),
                 Err(e) => test_msg.set(Some((false, e))),
             }
             testing.set(false);
         });
     };
-    let legacy_lojban = *kb_lang.read() == Language::Lojban;
-
     rsx! {
         // Backdrop click closes; the card stops propagation so inner clicks don't.
         div { class: "modal-backdrop", onclick: move |_| modal_open.set(false),
@@ -1821,68 +1447,6 @@ fn LlmConfigModal(
                     }
                 }
 
-                // The KB-language mode switch. Writes `kb_lang` immediately —
-                // deliberately NOT part of the Save'd Settings, so it works
-                // with no LLM key. Default Klaro (THE FLIP); Lojban is the
-                // legacy front-end (and the only mode where jbotci applies).
-                label { class: "llm-field llm-field--toggle",
-                    input {
-                        class: "llm-field__checkbox",
-                        r#type: "checkbox",
-                        checked: legacy_lojban,
-                        onchange: move |e| {
-                            kb_lang.set(if e.checked() { Language::Lojban } else { Language::Klaro });
-                        },
-                    }
-                    span { class: "llm-field__label", "Legacy Lojban input mode (default is Klaro)" }
-                }
-                if legacy_lojban {
-                    label { class: "llm-field llm-field--toggle",
-                        input {
-                            class: "llm-field__checkbox",
-                            r#type: "checkbox",
-                            checked: jbotci_enabled(),
-                            onchange: move |e| jbotci_enabled.set(e.checked()),
-                        }
-                        span { class: "llm-field__label", "Enable jbotci tools (dictionary / grammar / morphology)" }
-                    }
-                    label { class: "llm-field",
-                        span { class: "llm-field__label", "jbotci proxy URL" }
-                        input {
-                            class: "llm-field__input",
-                            r#type: "text",
-                            placeholder: "https://your-proxy.example/mcp",
-                            disabled: !jbotci_enabled(),
-                            value: "{proxy_url}",
-                            oninput: move |e| proxy_url.set(e.value()),
-                        }
-                        span { class: "llm-field__hint",
-                            "Off by default \u{2014} the formalize run stays fully local (gerna+smuni+camxes) and makes no network call to the proxy. Enable it to let the model call jbotci for dictionary/grammar/morphology lookups while drafting Lojban. Your LLM key is never sent here. (jbotci is Lojban tooling \u{2014} Klaro mode never uses it.)"
-                        }
-                    }
-                    div { class: "llm-security-note",
-                        span { class: "llm-security-note__title", "\u{1F441}\u{FE0F} It's a blind proxy \u{2014} nothing is stored" }
-                        p {
-                            "jbotci refuses direct browser calls (CORS), so the URL above points at "
-                            b { "fanva-proxy" }
-                            " \u{2014} an app-owned Cloudflare Worker that strips your browser \u{2018}Origin\u{2019} and forwards the request verbatim to jbotci. It's a stateless blind relay: no logs, no database, no cookies. The upstream is hardcoded (not an open proxy), and every line is public \u{2014} read it yourself:"
-                        }
-                        div { class: "llm-security-note__links",
-                            a {
-                                href: "https://github.com/dhilipsiva/nibli/blob/main/fanva-proxy/src/index.js",
-                                target: "_blank",
-                                rel: "noopener noreferrer",
-                                "index.js \u{2014} the entire proxy"
-                            }
-                            a {
-                                href: "https://github.com/dhilipsiva/nibli/blob/main/fanva-proxy/README.md",
-                                target: "_blank",
-                                rel: "noopener noreferrer",
-                                "README \u{2014} why & what it strips"
-                            }
-                        }
-                    }
-                }
                 div { class: "llm-security-note",
                     span { class: "llm-security-note__title", "\u{1F512} Your key stays in this tab" }
                     p {

@@ -12,7 +12,6 @@ crate-type = ["cdylib", "rlib"]
 wasm-opt = false
 
 [dependencies]
-gerna = { path = "../gerna" }
 # The Klaro front-end for the opt-in `set_language("klaro")` dispatch.
 klaro = { path = "../klaro" }
 smuni = { path = "../smuni" }

@@ -1,9 +1,8 @@
 /// Nibli WIT (WebAssembly Interface Types) definition.
 ///
 /// The Nibli symbolic reasoning engine ships as ONE WASM component (`lasna`,
-/// world `lasna-pipeline`): the front-end (klaro by default, gerna for legacy
-/// Lojban — see `language`) → smuni (compile) → logji (reason) are internal
-/// Rust crate stages, NOT separate components. This file defines only that
+/// world `lasna-pipeline`): the KR front-end (klaro) → smuni (compile) →
+/// logji (reason) are internal Rust crate stages, NOT separate components. This file defines only that
 /// component's host boundary:
 ///   - `logic-types`: First-Order Logic IR (logic buffers, proof traces, …)
 ///   - `error-types`: structured error variants shared across the pipeline
@@ -12,7 +11,7 @@
 ///
 /// Data crossing the host↔component boundary uses flat index-based arrays
 /// (`u32` indices into parallel lists) — no heap pointers cross the WASM boundary.
-package lojban:nibli@0.1.0;
+package lojban:nibli@0.2.0;
 
 /// Structured error types shared across all Nibli components.
 interface error-types {
@@ -201,8 +200,8 @@ interface logic-types {
     record fact-summary {
         /// Unique fact identifier (assigned at assertion time).
         id: fact-id,
-        /// Human-readable label (the original source text — Klaro or Lojban —
-        /// or the ":assert rel args" form).
+        /// Human-readable label (the original KR source text or the
+        /// ":assert rel args" form).
         label: string,
         /// Number of root formulas in this fact's logic buffer.
         root-count: u32,
@@ -250,54 +249,39 @@ interface compute-backend {
 /// High-level lasna interface: the single shipping component's API.
 ///
 /// Provides a `session` resource with text-level assert/query methods that
-/// internally orchestrate the full front-end → smuni → logji pipeline (linked
-/// as Rust crate stages; the front-end is klaro or legacy gerna per the
-/// session `language`). This is the primary API for end users (e.g., the REPL
+/// internally orchestrate the full klaro → smuni → logji pipeline (linked
+/// as Rust crate stages). This is the primary API for end users (e.g., the REPL
 /// gasnu; the in-browser surfaces nibli-ui/nibli-wasm embed the same crates
 /// natively rather than through this component).
 interface lasna {
     use logic-types.{fact-id, fact-summary, logic-buffer, logical-term, proof-trace, query-result, witness-binding};
     use error-types.{nibli-error};
 
-    /// The surface language every TEXT entry point parses. Both compile to
-    /// the same AST buffer and share the smuni→logji pipeline. KLARO is the
-    /// session default since THE FLIP (2026-07-12); the host can override at
-    /// creation via the `NIBLI_LANG` WASI env ("klaro"/"lojban") or at any
-    /// time via `set-language`. Buffer-level replay is language-free.
-    enum language {
-        klaro,
-        lojban,
-    }
-
     /// A user-facing session that wraps the full pipeline.
-    /// Internally creates a gerna → smuni → logji chain with a fresh KB.
+    /// Internally creates a klaro → smuni → logji chain with a fresh KB.
     resource session {
         /// Create a new session (internally creates a fresh KB).
         constructor();
-        /// Assert text (in the session language — Klaro by default) as facts.
-        /// A multi-statement input (bare-`.i` in Lojban; one statement per
-        /// sentence in Klaro) splits into one INDEPENDENT fact per root
-        /// (logical connectives compile to a
+        /// Assert KR text as facts. A multi-statement input splits into one
+        /// INDEPENDENT fact per root (logical connectives compile to a
         /// single root and stay one compound fact — same granularity as the
         /// native surfaces). Returns one (fact-id, logic-buffer) pair per
         /// asserted root, in root order: the id for later retraction, the
         /// root's compiled buffer so a persisting host can store the FACT
-        /// itself (recompile-free replay via `assert-buffer-with-id`). The
-        /// go'i snapshot updates once, after the whole input.
+        /// itself (recompile-free replay via `assert-buffer-with-id`).
         assert-text: func(input: string) -> result<list<tuple<fact-id, logic-buffer>>, nibli-error>;
         /// LEGACY REPLAY ONLY — recompiles `input` and asserts it as ONE fact
         /// (multi-root buffers stay composite) under a CALLER-CHOSEN id. Kept
         /// so durable stores written before buffer persistence (text-payload
-        /// rows) still replay with their original single-fact granularity and
-        /// go'i snapshot semantics. New code persists buffers and replays via
-        /// `assert-buffer-with-id`.
+        /// rows) still replay with their original single-fact granularity.
+        /// New code persists buffers and replays via `assert-buffer-with-id`.
         assert-text-with-id: func(input: string, id: fact-id) -> result<_, nibli-error>;
-        /// Query whether text (in the session language) is entailed.
+        /// Query whether KR text is entailed.
         query-text: func(input: string) -> result<query-result, nibli-error>;
-        /// Query text (in the session language) with proof trace.
+        /// Query KR text with proof trace.
         query-text-with-proof: func(input: string) -> result<tuple<query-result, proof-trace>, nibli-error>;
-        /// Query text (in the session language) and return witness bindings
-        /// for existential variables.
+        /// Query KR text and return witness bindings for existential
+        /// variables.
         query-find-text: func(input: string) -> result<list<list<witness-binding>>, nibli-error>;
         /// Debug: compile text to the typed logic buffer without asserting.
         /// The host renders it (structural tree + English gloss); no S-expression
@@ -315,8 +299,7 @@ interface lasna {
         /// Assert an already-compiled logic buffer under a CALLER-CHOSEN fact
         /// id — the recompile-free replay primitive for hosts that persist the
         /// per-root buffers `assert-text` returns. `label` is the fact's
-        /// display label (the original source text). Does NOT update the go'i
-        /// snapshot (a buffer carries no surface bridi to snapshot).
+        /// display label (the original source text).
         assert-buffer-with-id: func(buffer: logic-buffer, label: string, id: fact-id) -> result<_, nibli-error>;
         /// Retract a previously asserted fact by its ID.
         retract-fact: func(id: fact-id) -> result<_, nibli-error>;
@@ -326,14 +309,10 @@ interface lasna {
         /// warn-and-insert): when on, arity mismatches and integrity-constraint
         /// violations REJECT the offending fact and fail the assertion.
         set-strict: func(strict: bool);
-        /// Select the input language for every TEXT entry point. A Klaro
-        /// compile skips `go'i` resolution and CLEARS the prior-bridi
-        /// snapshot (a later Lojban `go'i` fails closed with "no antecedent").
-        set-language: func(lang: language);
     }
 }
 
-/// The single Nibli WASM component: gerna/smuni/logji are internal Rust crate
+/// The single Nibli WASM component: klaro/smuni/logji are internal Rust crate
 /// deps. Imports compute-backend (host-provided), exports the lasna session API.
 world lasna-pipeline {
     import compute-backend;

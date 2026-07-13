@@ -1,29 +1,22 @@
-//! The agentic translation loop — the self-correcting core.
+//! The agentic formalization loop — the self-correcting core.
 //!
-//! [`translate_agentic`] asks the LLM for a candidate — letting it call the jbotci
-//! tools via [`crate::tools::run_llm_tool_loop`] when a proxy is configured — runs
-//! the candidate through the validation gate, and on failure appends the compiler's
-//! own message to the conversation and asks again, up to `max_attempts`. A
-//! provider/transport error aborts as [`Outcome::ChatFailed`] (not a gate failure);
-//! an exact repeat of the previous candidate stops early as [`Outcome::Exhausted`].
+//! [`translate_agentic`] asks the LLM for a candidate, runs it through the
+//! validation gate, and on failure appends the compiler's own message to the
+//! conversation and asks again, up to `max_attempts`. A provider/transport
+//! error aborts as [`Outcome::ChatFailed`] (not a gate failure); an exact
+//! repeat of the previous candidate stops early as [`Outcome::Exhausted`].
 //!
 //! A gate-clean candidate then faces the SEMANTIC VERIFICATION TURN
 //! ([`crate::verify`]): a fresh-context judge reads the engine's own
 //! back-translation of each KB line and a MISMATCH verdict retries through the
 //! same feedback loop as a gate failure (`GateError::Verification`) — the
 //! syntax gates prove well-formedness, this turn checks MEANING (best-effort).
-//!
-//! When the MCP client has no proxy (or it is unreachable) the loop runs with NO
-//! tools — the local gerna+smuni+camxes gates only — and flags the `Outcome` as
-//! `degraded`; it never hard-fails on jbotci being unavailable. The whole thing is
-//! native-testable via a mock [`crate::llm::ToolChat`] + an empty [`McpClient`].
+//! The whole thing is native-testable via a mock [`crate::llm::ToolChat`].
+//! (The jbotci MCP tool loop retired with the Lojban front-end at THE DROP.)
 
 use crate::gates::{self, GateError};
 use crate::llm::{LlmConfig, ToolChat, Turn, clean_lojban_output, system_prompt};
-use crate::mcp::McpClient;
-use crate::tools;
 use crate::verify;
-use nibli_types::lang::Language;
 
 /// One outer-loop iteration: the candidate the LLM produced and the gate error it
 /// hit (`None` = it passed every gate).
@@ -32,21 +25,17 @@ pub struct Attempt {
     pub n: u32,
     pub candidate: String,
     pub error: Option<GateError>,
-    /// The jbotci tools the model called while producing this candidate (empty
-    /// when jbotci is off / no proxy configured).
-    pub tool_calls: Vec<crate::tools::ToolCallTrace>,
 }
 
-/// The result of a translation run, always carrying the full attempt trace for the
-/// UI. `degraded` is true when jbotci was unavailable (no proxy / unreachable), so
-/// the run used only the local gates with no tool-use.
+/// The result of a formalization run, always carrying the full attempt trace
+/// for the UI.
 #[derive(Debug)]
 pub enum Outcome {
-    /// Converged — `lojban` passed every gate.
+    /// Converged — `lojban` passed every gate. (Field name predates THE DROP;
+    /// the rename rides the identifier-purge milestone.)
     Success {
         lojban: String,
         attempts: Vec<Attempt>,
-        degraded: bool,
     },
     /// Hit the attempt cap or an oscillation without converging; `best` is the last
     /// candidate and `last_error` the gate it failed.
@@ -54,14 +43,12 @@ pub enum Outcome {
         best: String,
         last_error: GateError,
         attempts: Vec<Attempt>,
-        degraded: bool,
     },
     /// The provider call itself failed (network/auth/parse) — distinct from a gate
-    /// failure, so the caller can show a transport error rather than "invalid Lojban".
+    /// failure, so the caller can show a transport error rather than "invalid KR".
     ChatFailed {
         error: String,
         attempts: Vec<Attempt>,
-        degraded: bool,
     },
 }
 
@@ -86,11 +73,8 @@ fn trim_history(convo: &mut Vec<Turn>, keep_pairs: usize) {
     convo.drain(1..first_kept);
 }
 
-/// Translate/formalize `source` into a valid KB in `lang` (Klaro since THE
-/// FLIP; Lojban in legacy mode), self-correcting against the validation gate,
-/// with optional jbotci tool-use (Lojban-only tooling — callers construct the
-/// `McpClient` with an empty proxy in Klaro mode). See the module docs for the
-/// termination rules and the degrade behavior.
+/// Formalize `source` into a valid KR KB, self-correcting against the
+/// validation gate. See the module docs for the termination rules.
 ///
 /// `validator` is the FRESH-CONTEXT semantic judge (int19h's suggestion): after
 /// the gates pass, the engine's own back-translation of the candidate is sent
@@ -102,39 +86,19 @@ fn trim_history(convo: &mut Vec<Turn>, keep_pairs: usize) {
 /// transport error or malformed verdict never blocks a gate-clean translation
 /// (the deterministic gates remain the hard guarantee). Callers typically pass
 /// the same zero-sized `HttpChat` for `chat` and `validator`.
-// Deliberately loose params (no config struct in this crate — the UI's
-// `Settings` is the bundle); the `lang` addition tipped the arg-count lint.
-#[allow(clippy::too_many_arguments)]
 pub async fn translate_agentic<C: ToolChat, V: ToolChat>(
     chat: &C,
     validator: &V,
-    mcp: &McpClient,
     cfg: &LlmConfig,
-    lang: Language,
     source: &str,
     max_attempts: u32,
-    max_tool_steps: u32,
 ) -> Outcome {
     let max_attempts = max_attempts.max(1);
 
-    // Discover the jbotci tools once. No proxy / unreachable ⇒ run tool-free on the
-    // local gates and flag the run as degraded (never hard-fail).
-    let (tool_decls, degraded) = if mcp.is_available() {
-        match mcp.list_tools().await {
-            Ok(t) => (tools::to_tool_decls(&t), false),
-            Err(_) => (Vec::new(), true),
-        }
-    } else {
-        (Vec::new(), true)
-    };
-
-    // "Formalize", not "translate", in Klaro mode: the LLM step is
-    // interpretive formalization behind gates — "compile" stays reserved for
-    // the deterministic KB→logic step (user decision 2026-07-12).
-    let request = match lang {
-        Language::Klaro => format!("Formalize into Klaro: {}", source.trim()),
-        Language::Lojban => format!("Translate to Lojban: {}", source.trim()),
-    };
+    // "Formalize", not "translate": the LLM step is interpretive
+    // formalization behind gates — "compile" stays reserved for the
+    // deterministic KB→logic step (user decision 2026-07-12).
+    let request = format!("Formalize into Klaro: {}", source.trim());
     let mut convo = vec![Turn::user(request)];
     let mut attempts: Vec<Attempt> = Vec::new();
     let mut prev: Option<String> = None;
@@ -142,25 +106,12 @@ pub async fn translate_agentic<C: ToolChat, V: ToolChat>(
     for n in 1..=max_attempts {
         // Bound the context: keep the request + the most recent failed attempts.
         trim_history(&mut convo, MAX_HISTORY_PAIRS);
-        // Inner jbotci tool loop: the model may call tools while producing a
-        // candidate. With `tool_decls` empty (degraded) this is a single text call.
-        let (raw, tool_calls) = match tools::run_llm_tool_loop(
-            chat,
-            mcp,
-            cfg,
-            system_prompt(lang),
-            convo.clone(),
-            &tool_decls,
-            max_tool_steps,
-        )
-        .await
-        {
-            Ok(pair) => pair,
+        let raw = match chat.chat_tools(cfg, system_prompt(), &convo, &[]).await {
+            Ok(reply) => reply.text.unwrap_or_default(),
             Err(e) => {
                 return Outcome::ChatFailed {
                     error: e.to_string(),
                     attempts,
-                    degraded,
                 };
             }
         };
@@ -170,8 +121,8 @@ pub async fn translate_agentic<C: ToolChat, V: ToolChat>(
         // semantic verifier. Folding the verifier's MISMATCH into the same
         // `Err` arm reuses the whole retry machinery (trace, oscillation
         // guard, feedback turns, exhaustion).
-        let gate_result = match gates::validate_kb(lang, &candidate) {
-            Ok(()) => verify_semantics(validator, cfg, lang, source, &candidate).await,
+        let gate_result = match gates::validate_kb(&candidate) {
+            Ok(()) => verify_semantics(validator, cfg, source, &candidate).await,
             Err(e) => Err(e),
         };
         match gate_result {
@@ -180,12 +131,10 @@ pub async fn translate_agentic<C: ToolChat, V: ToolChat>(
                     n,
                     candidate: candidate.clone(),
                     error: None,
-                    tool_calls,
                 });
                 return Outcome::Success {
                     lojban: candidate,
                     attempts,
-                    degraded,
                 };
             }
             Err(err) => {
@@ -194,19 +143,17 @@ pub async fn translate_agentic<C: ToolChat, V: ToolChat>(
                     n,
                     candidate: candidate.clone(),
                     error: Some(err.clone()),
-                    tool_calls,
                 });
                 if oscillated {
                     return Outcome::Exhausted {
                         best: candidate,
                         last_error: err,
                         attempts,
-                        degraded,
                     };
                 }
                 prev = Some(candidate.clone());
                 convo.push(Turn::assistant(candidate));
-                convo.push(Turn::user(gates::feedback_for(lang, &err)));
+                convo.push(Turn::user(gates::feedback_for(&err)));
             }
         }
     }
@@ -227,7 +174,6 @@ pub async fn translate_agentic<C: ToolChat, V: ToolChat>(
         best,
         last_error,
         attempts,
-        degraded,
     }
 }
 
@@ -241,11 +187,10 @@ pub async fn translate_agentic<C: ToolChat, V: ToolChat>(
 async fn verify_semantics<V: ToolChat>(
     validator: &V,
     cfg: &LlmConfig,
-    lang: Language,
     source: &str,
     candidate: &str,
 ) -> Result<(), gates::GateError> {
-    let Ok(back) = verify::back_translation(lang, candidate) else {
+    let Ok(back) = verify::back_translation(candidate) else {
         return Ok(());
     };
     if back.is_empty() {
@@ -334,42 +279,26 @@ mod tests {
         })
     }
 
-    /// A candidate gerna rejects (contains an invalid character), distinct per tag.
+    /// A candidate the klaro resolve rejects (unknown alias), distinct per tag.
     fn bad(tag: &str) -> String {
-        format!("la .adam. cu gerku .i \u{ff}{tag}")
+        format!("zzyzxq{tag}(Adam).")
     }
-    const GOOD: &str = "la .adam. cu gerku";
+    const GOOD: &str = "dog(Adam).";
 
     fn run(replies: Vec<Result<ChatResponse, ChatError>>, max: u32) -> Outcome {
-        let chat = Scripted::new(replies);
-        let mcp = McpClient::new(""); // empty proxy ⇒ degrade to the local gates
-        let cfg = LlmConfig::new(Provider::Anthropic);
-        futures::executor::block_on(translate_agentic(
-            &chat,
-            &AlwaysMatch,
-            &mcp,
-            &cfg,
-            Language::Lojban,
-            "Adam is a dog",
-            max,
-            4,
-        ))
+        run_seen(replies, max).0
     }
 
-    /// Klaro-mode twin of `run` (returns the chat mock too, for prompt checks).
-    fn run_klaro(replies: Vec<Result<ChatResponse, ChatError>>, max: u32) -> (Outcome, Scripted) {
+    /// Like `run`, returning the chat mock too, for prompt checks.
+    fn run_seen(replies: Vec<Result<ChatResponse, ChatError>>, max: u32) -> (Outcome, Scripted) {
         let chat = Scripted::new(replies);
-        let mcp = McpClient::new("");
         let cfg = LlmConfig::new(Provider::Anthropic);
         let out = futures::executor::block_on(translate_agentic(
             &chat,
             &AlwaysMatch,
-            &mcp,
             &cfg,
-            Language::Klaro,
             "Adam is a dog",
             max,
-            4,
         ));
         (out, chat)
     }
@@ -384,18 +313,9 @@ mod tests {
     ) -> (Outcome, Scripted, Scripted) {
         let chat = Scripted::new(replies);
         let validator = Scripted::new(validator_replies);
-        let mcp = McpClient::new("");
         let cfg = LlmConfig::new(Provider::Anthropic);
-        let out = futures::executor::block_on(translate_agentic(
-            &chat,
-            &validator,
-            &mcp,
-            &cfg,
-            Language::Lojban,
-            source,
-            max,
-            4,
-        ));
+        let out =
+            futures::executor::block_on(translate_agentic(&chat, &validator, &cfg, source, max));
         (out, chat, validator)
     }
 
@@ -439,11 +359,9 @@ mod tests {
         assert!(matches!(out, Outcome::ChatFailed { .. }));
     }
 
-    // ── Klaro mode (the default language since THE FLIP) ──
-
     #[test]
     fn klaro_mode_converges_and_uses_the_klaro_prompt() {
-        let (out, chat) = run_klaro(vec![text("dog(Adam).")], 5);
+        let (out, chat) = run_seen(vec![text("dog(Adam).")], 5);
         match out {
             Outcome::Success { lojban, .. } => assert_eq!(lojban, "dog(Adam)."),
             other => panic!("expected Success, got {other:?}"),
@@ -464,7 +382,7 @@ mod tests {
     fn klaro_mode_feeds_the_gate_error_back_then_converges() {
         // Attempt 1 fails closed at the klaro grammar gate (unknown alias);
         // the feedback turn must carry the Klaro correction prose.
-        let (out, chat) = run_klaro(vec![text("zzyzxq(Adam)."), text("dog(Adam).")], 5);
+        let (out, chat) = run_seen(vec![text("zzyzxq(Adam)."), text("dog(Adam).")], 5);
         match out {
             Outcome::Success {
                 lojban, attempts, ..
@@ -485,21 +403,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn mcp_unavailable_marks_degraded_and_uses_local_gates() {
-        // Empty proxy ⇒ no tools ⇒ local gates only, and the run is flagged degraded.
-        let out = run(vec![text(GOOD)], 5);
-        match out {
-            Outcome::Success {
-                lojban, degraded, ..
-            } => {
-                assert_eq!(lojban, GOOD);
-                assert!(degraded, "empty-proxy run must be marked degraded");
-            }
-            other => panic!("expected Success, got {other:?}"),
-        }
-    }
-
     // ── The semantic verification turn (int19h feedback, 2026-07-10) ──
     // Fixture: the Genesis 1:1–8 pair. Gemini's attempt PARSES — these 8 lines
     // pass every local gate verbatim (probe-verified) — while claiming nonsense
@@ -511,20 +414,18 @@ mod tests {
 And God saw the light, that it was good: and God divided the light from the darkness. \
 And God called the light Day, and the darkness he called Night.";
 
-    /// Gemini's Genesis lines that pass ALL local gates (the garbage-that-parses).
+    /// Gate-valid nonsense — the KR re-creation of the original Lojban fixture
+    /// (Gemini's Genesis lines, which passed every gate while claiming things
+    /// like "John is a name-word meaning a sun"). Curated-core vocabulary so
+    /// the fixture stays gate-valid in the CI fallback dictionary build.
     const GENESIS_GEMINI_PARSING: &str = "\
-.i pu lo purci la .djan. finti lo tsani .e lo terdi
-.i lo manku cu zvati lo stodi be lo dembi
-.i lo jmive be la .djan. cu cadzu lo stodi be lo djacu
-.i lo solri cu fasnu
-.i la .djan. viska lo solri
-.i la .djan. cmevla lo solri
-.i lo manku cu cmevla lo nicte
-.i la .djan. finti lo tcadu";
+past goes(John, some market).
+sees(John, some dog).
+eats(some person, some food).";
 
     /// A simplified corrected retry (must genuinely pass the gates).
     const GENESIS_CORRECTED: &str =
-        "la cevni cu finti lo tsani .e lo terdi\nla cevni cu viska lo gusni";
+        "past sees(some person, some animal).\nloves(some person, some animal).";
 
     const GENESIS_MISMATCH_VERDICT: &str = "MISMATCH\n\
 1. Line 6 claims John is a name-word meaning a sun; the source says God called the light Day.\n\
@@ -537,12 +438,12 @@ And God called the light Day, and the darkness he called Night.";
     fn genesis_gemini_lines_pass_gates() {
         for line in GENESIS_GEMINI_PARSING.lines() {
             assert!(
-                gates::validate(Language::Lojban, line.trim()).is_ok(),
+                gates::validate(line.trim()).is_ok(),
                 "fixture line no longer passes the gates (fixture rot): {line}"
             );
         }
         assert!(
-            gates::validate_kb(Language::Lojban, GENESIS_CORRECTED).is_ok(),
+            gates::validate_kb(GENESIS_CORRECTED).is_ok(),
             "the corrected retry KB must pass the gates"
         );
     }
@@ -604,8 +505,8 @@ And God called the light Day, and the darkness he called Night.";
             "the single turn carries source + candidate + claims"
         );
         assert!(
-            !format!("{turns:?}").contains("Translate to Lojban"),
-            "the validator must never see the translation conversation"
+            !format!("{turns:?}").contains("Formalize into Klaro:"),
+            "the validator must never see the formalization conversation"
         );
     }
 
@@ -701,23 +602,19 @@ And God called the light Day, and the darkness he called Night.";
         // (1 + 2*5); trimming must bound it to 1 + 2*MAX_HISTORY_PAIRS, keeping the
         // original request as convo[0].
         let chat = Capturing::new();
-        let mcp = McpClient::new("");
         let cfg = LlmConfig::new(Provider::Anthropic);
         let out = futures::executor::block_on(translate_agentic(
             &chat,
             &AlwaysMatch,
-            &mcp,
             &cfg,
-            Language::Lojban,
             "Adam is a dog",
             6,
-            4,
         ));
         assert!(matches!(out, Outcome::Exhausted { .. }));
         let seen = chat.seen.borrow();
         assert_eq!(seen.len(), 6, "one chat call per attempt");
         let cap = 1 + MAX_HISTORY_PAIRS * 2;
-        let request = Turn::user("Translate to Lojban: Adam is a dog");
+        let request = Turn::user("Formalize into Klaro: Adam is a dog");
         for turns in seen.iter() {
             assert!(
                 turns.len() <= cap,
