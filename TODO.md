@@ -192,14 +192,6 @@ from the lensisku dump — accepted as an invisible build-time input.
   rename milestone LANDED without deleting them (the deployed site still calls
   them); both DELETE here, in this session, once the site stops calling them. If the site needs the old
   engine meanwhile, pin the `v0.1-lojban-final` tag in `build_nibli.sh`.
-- **book migration (separate repo — book/TODO.md carries the details)** — the book
-  is Lojban-heavy by design ("Lojban as IR" framing, Part II Ch 3–6); the pivot
-  replaces it with nibli KR. Key restructuring (user decision): MERGE Ch 3 ("Why
-  Not English?") + Ch 4 ("Lojban — A Gift from Linguists, Logicians, and
-  Mathematicians") into ONE chapter about the nibli KR language. THE DROP landed
-  (2026-07-13): `verify-book` is EXPECTED RED and the capture harness cannot
-  run against main until the book re-captures its transcripts in KR — or pins the
-  `v0.1-lojban-final` engine tag meanwhile.
 
 Engine bullets (language-independent; the KR program above takes precedence):
 
