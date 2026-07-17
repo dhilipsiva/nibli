@@ -2299,12 +2299,12 @@ fn try_backward_chain_core<S: TraceSink>(
         // horizon does not pessimistically keep dead candidates alive in the
         // unbound-event-variable search (the members^k cartesian blowup) — and
         // so the result becomes cacheable. Gated off for the special-cased `du`
-        // relation, when du-equivalence classes exist (the equivalence fallback
-        // could rewrite the goal into a provable variant), and when legacy
-        // `__fallback__` rules exist (their conclusions are not relation-indexed).
+        // relation and when du-equivalence classes exist (the equivalence
+        // fallback could rewrite the goal into a provable variant). Every
+        // registered rule is relation-indexed by conclusion — register_rule
+        // fails closed on empty conclusions, so no unindexed bucket exists.
         if fact.relation() != "equals"
             && inner.equivalence_parent.is_empty()
-            && !inner.universal_rules.contains_key("__fallback__")
             && !any_rule_conclusion_unifies(fact, inner)
         {
             return (QueryResult::False, None);

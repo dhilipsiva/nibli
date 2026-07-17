@@ -306,16 +306,6 @@ impl ProofTrace {
             .iter()
             .any(|s| matches!(s.rule, ProofRule::Negation) && s.holds)
     }
-
-    /// Collect indices of all NAF-dependent steps in this trace.
-    pub fn naf_dependent_steps(&self) -> Vec<u32> {
-        self.steps
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| matches!(s.rule, ProofRule::Negation) && s.holds)
-            .map(|(i, _)| i as u32)
-            .collect()
-    }
 }
 
 /// Aggregation operation for numeric witness values.

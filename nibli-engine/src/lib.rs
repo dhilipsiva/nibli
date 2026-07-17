@@ -1,6 +1,5 @@
 //! Native nibli engine library: calls nibli-kr/nibli-semantics/nibli-reason directly as Rust crates.
 //! No WASM, no Wasmtime — full stack traces for debugging.
-#![allow(dead_code)]
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -44,10 +43,6 @@ pub fn display_query_result(result: &EngineQueryResult) -> String {
         None => result.status_label().to_string(),
     }
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// ENGINE WRAPPER
-// ═══════════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════════
 // ENGINE WRAPPER

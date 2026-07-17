@@ -530,6 +530,17 @@ pub(super) fn register_rule(
     negated_exists_groups: Vec<NegatedExistsGroup>,
     forward: bool,
 ) -> Result<(), String> {
+    // FAIL CLOSED: a rule with no extractable conclusions can never fire
+    // (backward chaining indexes rules by conclusion relation). Such a rule
+    // used to be parked in an unindexed `__fallback__` bucket that only
+    // existed to pessimize the depth-horizon fast path — reject instead.
+    if typed_conclusions.is_empty() {
+        return Err(
+            "rule with no extractable conclusions — refusing to register an unfireable rule"
+                .to_string(),
+        );
+    }
+
     // Each negated-exists group contributes one negative edge per inner condition
     // relation (added below alongside the flat-condition edges), so the rollback
     // must pop that many extra edges per conclusion.
@@ -595,7 +606,6 @@ pub(super) fn register_rule(
         priority: 0, // Default priority; can be changed via set_rule_priority.
     };
     let rc = Arc::new(rule);
-    let mut indexed = false;
     for concl in &rc.typed_conclusions {
         let bucket = inner
             .universal_rules
@@ -606,15 +616,6 @@ pub(super) fn register_rule(
         // read path (`matching_rules_typed`) can borrow it without re-sorting.
         // (A new rule has priority 0, the minimum, so this is order-preserving
         // today; the explicit sort makes the invariant robust to future changes.)
-        sort_rule_bucket(bucket);
-        indexed = true;
-    }
-    if !indexed {
-        let bucket = inner
-            .universal_rules
-            .entry("__fallback__".to_string())
-            .or_default();
-        bucket.push(rc.clone());
         sort_rule_bucket(bucket);
     }
 

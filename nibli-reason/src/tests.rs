@@ -623,9 +623,10 @@ fn test_native_rule_negated_universal() {
     //
     // This used to be silently dropped to an empty-conclusion `__fallback__` rule
     // (dead, never matched), and the test "passed for the wrong reason": danlu(alis)
-    // was simply never derivable. The compiler now FAILS CLOSED (todo.md: "Negated
-    // conclusions silently dropped to __fallback__") — the assertion is rejected
-    // rather than registering a misleading dead rule.
+    // was simply never derivable. The compiler now FAILS CLOSED — and since the
+    // hygiene pass, register_rule itself also rejects empty-conclusion rules
+    // (the __fallback__ bucket is gone) — the assertion is rejected rather than
+    // registering a misleading dead rule.
     let kb = new_kb();
     assert_buf(&kb, make_assertion("alis", "gerku"));
 

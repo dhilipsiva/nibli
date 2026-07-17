@@ -245,14 +245,6 @@ Pipeline-audit backlog (2026-07-17; three-agent audit of front-end / middle IRs 
 back-end — effort tags S/M/L; ordered quick-wins → correctness → structure →
 performance → future-facing):
 
-- **Back-end hygiene bundle (S)** — revisit nibli-engine's crate-root
-  `#![allow(dead_code)]` (the rustc ICE it worked around is fixed in the pinned
-  1.94) and fix whatever real dead code it was masking; verify the
-  `__fallback__` rule bucket (reasoning.rs:2307) is unreachable post-migration
-  and delete the branch; remove dead pub `ProofTrace::naf_dependent_steps`
-  (logic.rs:311, zero callers); the duplicated "ENGINE WRAPPER" banner
-  (nibli-engine/src/lib.rs:48-54); note: `compound_by_relation`'s linear scan
-  (nibli-lexicon/src/lib.rs:49) needs an index only if the compound table grows.
 - **Single-source the magic relation names (M)** — the `equals` identity
   special-case is string-matched at ≥5 sites (nibli-semantics predicate.rs:189,
   lib.rs:367, compile.rs:178; nibli-reason kb.rs:1786,1951, reasoning.rs:1636);
