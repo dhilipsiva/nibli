@@ -193,7 +193,7 @@ mod tests {
     }
 
     #[test]
-    fn unspecified_arg_is_rigid_zoe_constant() {
+    fn unspecified_arg_is_rigid_constant() {
         // An unspecified referent is rigid, translated to the shared constant `something` —
         // NOT dropped to `$true` (which would wrongly make it existential; see render_term).
         let b = buf(
@@ -241,7 +241,7 @@ mod tests {
     }
 
     #[test]
-    fn du_maps_to_native_equality() {
+    fn equals_maps_to_native_equality() {
         // `la .adam. cu du la .bel.` (axiom) + `la .bel. cu du la .adam.` (conjecture):
         // both must render as TPTP `=`, never as an uninterpreted `du(...)` predicate
         // (which would lack congruence and fake a divergence).

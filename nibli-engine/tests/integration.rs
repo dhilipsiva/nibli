@@ -96,7 +96,7 @@ fn simple_negation_query_false() {
 // ─── du (identity) equivalence through the surface pipeline (G-M1) ───
 
 #[test]
-fn du_surface_equivalence_transfers_fact() {
+fn equals_surface_equivalence_transfers_fact() {
     // la .coumadin. cu du la .varfarin.  (brand name == generic name)
     // la .coumadin. cu xukmi             (Coumadin is a drug)
     // ? la .varfarin. cu xukmi           → TRUE via du-equivalence transfer.
@@ -109,7 +109,7 @@ fn du_surface_equivalence_transfers_fact() {
 }
 
 #[test]
-fn du_surface_equivalence_is_symmetric() {
+fn equals_surface_equivalence_is_symmetric() {
     // Assert the fact about the SECOND name, query the FIRST.
     let engine = engine_with_facts(&["Coumadin = Varfarin.", "chemical(Varfarin)."]);
     let (holds, _t, _j) = engine.query_text_with_proof("chemical(Coumadin).").unwrap();
@@ -117,7 +117,7 @@ fn du_surface_equivalence_is_symmetric() {
 }
 
 #[test]
-fn du_surface_negative_control() {
+fn equals_surface_negative_control() {
     // No du link → no transfer.
     let engine = engine_with_facts(&["chemical(Coumadin)."]);
     let (holds, _t, _j) = engine.query_text_with_proof("chemical(Varfarin).").unwrap();
@@ -125,7 +125,7 @@ fn du_surface_negative_control() {
 }
 
 #[test]
-fn du_over_numeric_literals() {
+fn equals_over_numeric_literals() {
     // `du` (identity) over `li` number literals resolves by reflexivity with nothing
     // asserted: identical literals are TRUE, distinct literals FALSE. Pins the resolved
     // sub-part (c) of the former "numeric-group only covers ∃-query" item — the
@@ -148,7 +148,7 @@ fn du_over_numeric_literals() {
 }
 
 #[test]
-fn na_du_surface_contradiction() {
+fn not_equals_surface_contradiction() {
     // Asserting both an identity and an inequality for the same pair is flagged.
     let engine = engine_with_facts(&["Djan = Jan.", "~Djan = Jan."]);
     let violations = engine.check_contradictions();
@@ -348,7 +348,7 @@ fn disjunctive_restrictor_negative_control() {
 }
 
 #[test]
-fn conjunctive_poi_je_requires_both() {
+fn conjunctive_where_clauses_require_both() {
     // Control: `poi prami je pendo` (AND) still requires both — one is not enough.
     let engine = engine_with_facts(&[
         "animal(every dog where loves(it) & friend(it)).",
@@ -363,7 +363,7 @@ fn conjunctive_poi_je_requires_both() {
 }
 
 #[test]
-fn disjunctive_forethought_ganai_ga_fires() {
+fn disjunctive_forethought_implication_fires() {
     // `ganai ga P gi Q gi R` — (P ∨ Q) → R, a ground conditional with a disjunctive
     // antecedent. Fires when either disjunct holds.
     let engine = engine_with_facts(&[
@@ -383,7 +383,7 @@ fn disjunctive_forethought_ganai_ga_fires() {
 // whole-rule `Past(ForAll(...))` and stays correctly rejected).
 
 #[test]
-fn tensed_conclusion_ganai_fires() {
+fn tensed_conclusion_implication_fires() {
     let engine = engine_with_facts(&["dog(Rex) -> past animal(Rex).", "dog(Rex)."]);
     let (past_holds, _t, _j) = engine.query_text_with_proof("past animal(Rex).").unwrap();
     assert_true(
@@ -498,7 +498,7 @@ fn disjunctive_conclusion_jo_ju_stay_fail_closed() {
 // idiomatic reference translations use `gi'e` in nearly every sentence.
 
 #[test]
-fn giha_gi_e_asserts_both_conjuncts() {
+fn conjoined_tails_assert_both_conjuncts() {
     let engine = engine_with_facts(&["goes(me) & eats(me)."]);
     let (klama, _, _) = engine.query_text_with_proof("goes(me).").unwrap();
     assert_true(&klama, "first gi'e tail is independently queryable");
@@ -509,7 +509,7 @@ fn giha_gi_e_asserts_both_conjuncts() {
 }
 
 #[test]
-fn giha_per_tail_trailing_sumti() {
+fn conjoined_tails_per_tail_trailing_argument() {
     // Each tail keeps its own trailing sumti; the head is shared.
     let engine = engine_with_facts(&["goes(me, the market) & eats(me, some apple)."]);
     let (klama, _, _) = engine
@@ -527,13 +527,12 @@ fn giha_per_tail_trailing_sumti() {
 }
 
 #[test]
-fn giha_genesis_na_tail_verse() {
+fn conjoined_tails_genesis_negated_tail_verse() {
     // int19h's Genesis 1:2 shape, with a NAME head: `la .terdi. cu na se tarmi
     // gi'e kunti` ("the earth was without form AND void") — the `na` binds its
-    // tail only. The description-head original (`lo terdi cu …`) is REJECTED:
-    // a description head would mint a fresh witness per tail, silently
-    // splitting one surface referent into two (wrong TRUE on disjoint
-    // witnesses — see giha_quantified_or_description_head_rejected).
+    // tail only. A description head would mint a fresh witness per tail,
+    // silently splitting one surface referent into two (wrong TRUE on
+    // disjoint witnesses) — the Name head avoids that trap.
     let engine = engine_with_facts(&["~shape(object: Terdi) & empty(Terdi)."]);
     let (kunti, _, _) = engine.query_text_with_proof("empty(Terdi).").unwrap();
     assert_true(&kunti, "positive tail asserted");
@@ -544,7 +543,7 @@ fn giha_genesis_na_tail_verse() {
 }
 
 #[test]
-fn giha_fused_nai_negates_right_tail() {
+fn conjoined_tails_fused_negation_negates_right_tail() {
     // Solid `gi'enai` must behave exactly like `gi'e nai` (before the lexer
     // fix it parsed as a phantom lujvo tanru that INVERTED the negation:
     // `mi citka` came back TRUE and `mi klama` FALSE).
@@ -561,7 +560,7 @@ fn giha_fused_nai_negates_right_tail() {
 }
 
 #[test]
-fn giha_xor_negated_tail_fabricates_no_contradiction() {
+fn conjoined_tails_xor_negated_tail_fabricates_no_contradiction() {
     // `mi klama gi'u na citka` is Xor(K, ¬C): smuni lowers it to
     // And(Or(K,¬C), Not(And(K,¬C))). The Not(And(K,¬C)) conjunct's body is
     // NOT a pure positive conjunction — recording it would degrade ¬(K ∧ ¬C)
@@ -600,7 +599,7 @@ fn negation_inside_abstraction_fabricates_no_contradiction() {
 }
 
 #[test]
-fn giha_retraction_removes_both_conjuncts_and_negative_entry() {
+fn conjoined_tails_retraction_removes_both_conjuncts_and_negative_entry() {
     // A gi'e sentence is ONE fact-id; retracting it must remove both stored
     // conjuncts AND the na-tail's negative-registry entry (retract ≡
     // never-asserted).
@@ -620,7 +619,7 @@ fn giha_retraction_removes_both_conjuncts_and_negative_entry() {
 }
 
 #[test]
-fn ije_negated_conjunct_preserves_tense_context() {
+fn and_statement_negated_conjunct_preserves_tense_context() {
     // The negative template must carry the negated conjunct's tense — a
     // contrary positive with the SAME tense flags a contradiction.
     let engine = engine_with_facts(&["dog(Rex) & past ~goes(Rex).", "past goes(Rex)."]);
@@ -631,7 +630,7 @@ fn ije_negated_conjunct_preserves_tense_context() {
 }
 
 #[test]
-fn giha_gi_o_gi_u_assert_behavior_pinned() {
+fn conjoined_tails_iff_and_whether_assert_behavior_pinned() {
     // `gi'o` (iff) asserts like its `.i jo` counterpart: the biconditional
     // registers two material-conditional rules (accepted; they form a cycle,
     // so a bare side queries Unknown(CycleCut), never TRUE — no ground fact
@@ -652,7 +651,7 @@ fn giha_gi_o_gi_u_assert_behavior_pinned() {
 }
 
 #[test]
-fn giha_na_tail_records_negative_fact_for_contradiction() {
+fn conjoined_tails_negated_tail_records_negative_fact_for_contradiction() {
     // The `na`-negated tail must land in the negative-fact registry exactly
     // like a standalone `na` assertion, so a later contrary positive is
     // flagged. Before the fix, a negated conjunct inside a compound assertion
@@ -665,7 +664,7 @@ fn giha_na_tail_records_negative_fact_for_contradiction() {
 }
 
 #[test]
-fn ije_na_conjunct_records_negative_fact() {
+fn and_statement_negated_conjunct_records_negative_fact() {
     // Same registry fix through the pre-existing `.i je` surface: the `na`
     // half of `P .i je na Q` was silently dropped before.
     let engine = engine_with_facts(&["dog(Rex) & ~animal(Rex).", "animal(Rex)."]);
@@ -676,7 +675,7 @@ fn ije_na_conjunct_records_negative_fact() {
 }
 
 #[test]
-fn giha_all_negative_conjunction_accepted() {
+fn conjoined_tails_all_negative_conjunction_accepted() {
     // `mi na klama gi'e na citka` — EVERY conjunct negated. Previously the
     // zero-ingest guard rejected this shape outright ("no representable
     // content"); now it is accepted like two standalone `na` assertions, each
@@ -692,7 +691,7 @@ fn giha_all_negative_conjunction_accepted() {
 }
 
 #[test]
-fn giha_gi_a_assert_stays_fail_closed_like_ija() {
+fn conjoined_tails_or_assert_stays_fail_closed_like_or_statement() {
     // A bare disjunction ingests no facts — `gi'a` at assert time fails closed
     // exactly like its `.i ja` spelled-out form (parity), while remaining fine
     // as a QUERY.
@@ -714,7 +713,7 @@ fn giha_gi_a_assert_stays_fail_closed_like_ija() {
 // ∀x.∃da regardless of word order.
 
 #[test]
-fn query_leading_da_is_existential_over_universal() {
+fn query_leading_existential_over_universal() {
     // ∃da.∀x is TRUE only when ONE entity eats every dog. Pre-fix the query
     // compiled to ∀x.∃da, wrongly returning TRUE for the split-eater KB.
     let one_eater = engine_with_facts(&[
@@ -744,7 +743,7 @@ fn query_leading_da_is_existential_over_universal() {
 }
 
 #[test]
-fn assert_leading_da_over_universal_compiles_and_round_trips() {
+fn assert_leading_existential_over_universal_compiles_and_round_trips() {
     // Asserting `da citka ro lo gerku` (∃da.∀x) must SUCCEED — logji skolemizes
     // the leading ∃ to a fresh constant and compiles the inner ∀ as a rule (sk₀
     // eats every dog). Before the dispatch change this errored as a "bare
@@ -765,7 +764,7 @@ fn assert_leading_da_over_universal_compiles_and_round_trips() {
 }
 
 #[test]
-fn tensed_leading_da_over_universal_rejected() {
+fn tensed_leading_existential_over_universal_rejected() {
     // `pu da citka ro lo gerku` → Past(Exists(ForAll)): a tense wrapping a whole
     // ∃∀ rule is rejected with the clear whole-rule message, not the ground
     // path's misleading "bare disjunction" error.
@@ -780,7 +779,7 @@ fn tensed_leading_da_over_universal_rejected() {
 }
 
 #[test]
-fn trailing_da_after_universal_is_per_witness() {
+fn trailing_existential_after_universal_is_per_witness() {
     // CONTROL: `ro lo gerku cu se citka da` (every dog is eaten by something) is
     // ∀x.∃da — a possibly-different eater per dog — so the ∃∀ query "is there one
     // eater of all dogs?" is FALSE. Confirms the after-case stays ∀∃ (unchanged).
@@ -799,7 +798,7 @@ fn trailing_da_after_universal_is_per_witness() {
 }
 
 #[test]
-fn ganai_tensed_antecedent_fires_with_premise() {
+fn implication_tensed_antecedent_fires_with_premise() {
     // Positive companion to the `ganai_tensed_antecedent_must_not_fire_unconditionally`
     // known-failure guard: a ground conditional with a tensed antecedent fires when
     // (and only when) the matching Past premise is present.
@@ -878,7 +877,7 @@ fn prenex_tensed_body_universal_rejected() {
 }
 
 #[test]
-fn fio_arity_one_modal_rejected() {
+fn via_modal_arity_one_rejected() {
     // `mi barda fi'o prenu fe'u do` — `prenu` (person) is a 1-place selbri, so the
     // fi'o modal has no x2 slot to carry the main bridi's x1 (`mi`). The engine
     // fails closed rather than silently dropping that link. (Latent end-to-end:
@@ -937,7 +936,7 @@ fn binary_restrictor_negative_control() {
 // ─── noi (non-restrictive) vs poi (restrictive) relative clauses ─────
 
 #[test]
-fn noi_incidental_predicate_is_asserted() {
+fn incidental_clause_predicate_is_asserted() {
     // "every dog, which is big, goes" — noi is NON-restrictive: it asserts the
     // dogs ARE big (a side-fact about every domain member) rather than
     // restricting the rule's domain to big dogs. So from gerku(rex) alone the
@@ -956,7 +955,7 @@ fn noi_incidental_predicate_is_asserted() {
 }
 
 #[test]
-fn poi_restrictive_does_not_assert_incidental() {
+fn restrictive_where_does_not_assert_incidental() {
     // Same shape with poi: the clause RESTRICTS the domain, so `barda` is a
     // premise (must be independently known), never a conclusion. Guards that
     // the noi fix does not leak into poi.
@@ -1010,7 +1009,7 @@ fn object_position_universal_negative_control() {
 }
 
 #[test]
-fn object_position_xorlo_no_phantom_entity() {
+fn object_position_existential_import_no_phantom_entity() {
     // The xorlo existential-import presupposition for `ro lo gerku cu pendo ro lo
     // mlatu` must assert a dog witness and a cat witness as DISTINCT entities — NOT
     // one phantom entity that is both. So "is some dog a cat?" is FALSE. RED before
@@ -1186,7 +1185,7 @@ fn temporal_future_and_present_matrix() {
 
 #[test]
 fn future_rule_consequent_derives_future_fact() {
-    // Mirrors tensed_conclusion_ganai_fires for `ba`: derives Future(B) only.
+    // Mirrors tensed_conclusion_implication_fires for `ba`: derives Future(B) only.
     let engine = engine_with_facts(&["dog(Rex) -> future dead(Rex).", "dog(Rex)."]);
     assert_true(
         &engine.query_holds("future dead(Rex).").unwrap(),
@@ -1429,7 +1428,7 @@ fn count_assertion_materializes_witnesses() {
 }
 
 #[test]
-fn exact_count_excludes_xorlo_import_witness() {
+fn exact_count_excludes_existential_import_witness() {
     // DECIDED 2026-07-02 (GUARANTEES §Aggregation): the xorlo presupposition
     // witness a description universal asserts satisfies ∃/∀ but is EXCLUDED
     // from counting — a phantom entity a rule presupposed must not change
@@ -1447,7 +1446,7 @@ fn exact_count_excludes_xorlo_import_witness() {
 }
 
 #[test]
-fn find_witnesses_collapse_du_and_events() {
+fn find_witnesses_collapse_equals_and_events() {
     // The audit scenario: broda(adam), broda(karl), adam du karl used to
     // return FOUR ?? tuples (2 derivation events × 2 du-merged names) for ONE
     // entity. Entity-level enumeration returns exactly one.
@@ -1477,7 +1476,7 @@ fn zero_count_assertion_mints_no_witness() {
 }
 
 #[test]
-fn over_arity_untagged_sumti_is_rejected() {
+fn over_arity_untagged_argument_is_rejected() {
     // gerku has 2 places; three untagged sumti overflow — the compile must
     // REJECT (fail-closed), never silently drop the extra argument.
     let engine = fresh_engine();
@@ -1537,7 +1536,7 @@ fn be_clause_with_tagged_tail_term_compiles_both() {
 }
 
 #[test]
-fn du_equivalence_transfers_across_tense_flavor() {
+fn equals_equivalence_transfers_across_tense_flavor() {
     // A du-merged name must answer a FLAVORED query via its equivalent: the
     // equivalence variant lookup must respect the stored flavor.
     let engine = engine_with_facts(&["past dog(Adam).", "Adam = Bob."]);
@@ -1575,7 +1574,7 @@ fn explicitly_tensed_rule_condition_is_flavor_exact() {
 }
 
 #[test]
-fn te_conversion_swaps_x1_and_x3() {
+fn x3_conversion_swaps_x1_and_x3() {
     // `te klama` swaps x1↔x3 — the 3-place conversion arm (sibling of the xe
     // pin above; the swap must actually happen, not silently no-op).
     let engine = fresh_engine();
@@ -1642,7 +1641,7 @@ fn lo_under_connective_is_per_occurrence_existential() {
 }
 
 #[test]
-fn exact_count_collapses_du_classes() {
+fn exact_count_collapses_equals_classes() {
     // DECIDED 2026-07-02 (GUARANTEES §Aggregation): `du` means identity, so
     // counting is ENTITY-level — two du-merged names for one entity count as
     // ONE. (This pin previously asserted the opposite, uncollapsed behavior;
@@ -1693,7 +1692,7 @@ fn naf_antecedent_rule_fires_and_blocks() {
 // ─── Description opacity (le vs lo) ────────────────────────────────
 
 #[test]
-fn description_opacity_le_vs_lo() {
+fn description_opacity_definite_vs_indefinite() {
     let engine = engine_with_facts(&["big(the dog)."]);
 
     // le query should hold (opaque description)
@@ -1848,7 +1847,7 @@ fn universal_rule_with_named_entity() {
 }
 
 #[test]
-fn forethought_implication_ganai_reasons() {
+fn forethought_implication_reasons() {
     // ganai A gi B  ==  A -> B. Assert the conditional + A (gerku), derive B (danlu).
     let engine = engine_with_facts(&["dog(Adam) -> animal(Adam).", "dog(Adam)."]);
     let (holds, _t, _j) = engine.query_text_with_proof("animal(Adam).").unwrap();
@@ -1902,7 +1901,7 @@ fn afterthought_biconditional_jo_reasons_both_directions() {
 // ─── Conversion (se) ────────────────────────────────────────────────
 
 #[test]
-fn se_conversion_assertion_and_query() {
+fn x2_conversion_assertion_and_query() {
     let engine = engine_with_facts(&["owned(Adam, some dog)."]);
     let (holds, _trace, _json) = engine
         .query_text_with_proof("owned(Adam, some dog).")
@@ -1911,7 +1910,7 @@ fn se_conversion_assertion_and_query() {
 }
 
 #[test]
-fn connected_sumti_under_fa_holds_for_both() {
+fn connected_arguments_under_x1_tag_hold_for_both() {
     // `fa mi .e do klama` parses as Tagged(Fa, Connected(mi, Je, do)). The tag
     // distributes over BOTH operands, so both `mi` and `do` are goers. Before
     // the fix, the right operand `do` was silently dropped → `do klama` FALSE.
@@ -1926,7 +1925,7 @@ fn connected_sumti_under_fa_holds_for_both() {
 }
 
 #[test]
-fn connected_under_fa_negative_control() {
+fn connected_under_x1_tag_negative_control() {
     // Only `mi` asserted → `do klama` must be FALSE (the fix must not over-assert).
     let engine = engine_with_facts(&["goes(me)."]);
     let (do_holds, _, _) = engine.query_text_with_proof("goes(you).").unwrap();
@@ -1934,7 +1933,7 @@ fn connected_under_fa_negative_control() {
 }
 
 #[test]
-fn cll_place_counter_fi_then_untagged() {
+fn cll_place_counter_x3_tag_then_untagged() {
     // `klama fi le zarci do` — CLL: `fi` sets the place counter to x3 (le zarci),
     // and the following UNTAGGED `do` resumes at x4 (NOT x1, the pre-fix bug).
     let engine = fresh_engine();
@@ -1952,7 +1951,7 @@ fn cll_place_counter_fi_then_untagged() {
 }
 
 #[test]
-fn xe_conversion_swaps_x1_and_x5() {
+fn x5_conversion_swaps_x1_and_x5() {
     // `xe klama` swaps x1↔x5 (mutation-baseline kill: the 5-place conversion arm
     // in smuni's apply_predicate was exercised by no per-mutant-suite test). All
     // five places are filled (`zo'e` middles) so the swap is observable: the
@@ -2531,7 +2530,7 @@ fn gdpr_full_corpus_lawful_basis_query_completes() {
 /// assert error fails the test — the book transcripts print `0 errors`).
 /// Returns the (asserted, skipped) counters plus every asserted line's
 /// returned fact id, in file order.
-fn load_corpus_like_gasnu(engine: &NibliEngine, corpus: &str) -> (u32, u32, Vec<(String, u64)>) {
+fn load_corpus_like_host(engine: &NibliEngine, corpus: &str) -> (u32, u32, Vec<(String, u64)>) {
     let mut asserted = 0u32;
     let mut skipped = 0u32;
     let mut ids = Vec::new();
@@ -2580,8 +2579,7 @@ fn pinned_id(ids: &[(String, u64)], line: &str) -> u64 {
 #[test]
 fn gdpr_corpus_transcript_pins() {
     let engine = fresh_engine();
-    let (asserted, skipped, ids) =
-        load_corpus_like_gasnu(&engine, include_str!("../../gdpr.nibli"));
+    let (asserted, skipped, ids) = load_corpus_like_host(&engine, include_str!("../../gdpr.nibli"));
     assert_eq!(
         (asserted, skipped),
         (24, 77),
@@ -2610,7 +2608,7 @@ fn gdpr_corpus_transcript_pins() {
 fn ddi_corpus_transcript_pins() {
     let engine = fresh_engine();
     let (asserted, skipped, ids) =
-        load_corpus_like_gasnu(&engine, include_str!("../../drug-interactions.nibli"));
+        load_corpus_like_host(&engine, include_str!("../../drug-interactions.nibli"));
     assert_eq!(
         (asserted, skipped),
         (16, 78),
@@ -2638,7 +2636,7 @@ fn ddi_corpus_transcript_pins() {
 /// so the rule degenerated to `cinla -> ckape` and a cinla-only drug wrongly
 /// triggered the conclusion.
 #[test]
-fn stacked_poi_conjoins_both_clauses() {
+fn stacked_where_clauses_conjoin_both() {
     let engine = engine_with_facts(&[
         "dangerous(every chemical where increases where thin).",
         "chemical(Alfan).",
@@ -3419,7 +3417,7 @@ fn native_compute_backend_real_python_tenfa() {
 }
 
 #[test]
-fn surface_numeric_comparison_zmadu_mleca_dunli() {
+fn surface_numeric_comparison_greater_less_num_equal() {
     let engine = fresh_engine();
     assert_true(
         &engine.query_holds("greater(5, 3).").unwrap(),
@@ -3634,21 +3632,18 @@ fn abstraction_subject_does_not_leak_inner_predicate() {
     );
 }
 
-// ─── go'i (pro-bridi) resolution — native↔WASM parity (shared gerna::goi) ───
-//
-// nibli-engine now resolves `go'i` against a prior-bridi snapshot exactly as the
-// lasna WASM Session does (the divergence fix): these mirror lasna's ci-wasm go'i
-// smokes at the native-engine level. Before the fix, `go'i` compiled to a literal
-// `go'i(...)` predicate and these all silently mismatched.
+// ─── post-reset fail-closed queries (the pro-claim machinery died at THE DROP) ───
 
 #[test]
-fn goi_reset_clears_antecedent() {
-    // reset() clears go'i context (mirrors lasna + nibli-validate's per-line reset).
+fn unresolvable_query_after_reset_errors() {
+    // The Lojban-era `go'i` (repeat-last-claim) machinery is gone; the spelling
+    // is now just an unresolvable word. Pin that a reset engine fails such a
+    // query CLOSED (a compile error, never a fabricated verdict).
     let engine = engine_with_facts(&["dog(Adam)."]);
     engine.reset();
     assert!(
         engine.query_holds("go'i").is_err(),
-        "after reset, go'i has no antecedent and must error"
+        "an unresolvable spelling must error, not answer"
     );
 }
 

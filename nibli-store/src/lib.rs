@@ -730,8 +730,8 @@ mod tests {
             .insert_fact_with_predicates(3, "c".into(), vec![3], &["mlatu"])
             .unwrap();
 
-        let gerku_ids = store.facts_for_predicate("gerku").unwrap();
-        assert_eq!(gerku_ids, vec![1, 2]);
+        let dog_ids = store.facts_for_predicate("gerku").unwrap();
+        assert_eq!(dog_ids, vec![1, 2]);
 
         let danlu_ids = store.facts_for_predicate("danlu").unwrap();
         assert_eq!(danlu_ids, vec![1]);
@@ -760,8 +760,8 @@ mod tests {
 
         store.retract_fact(1).unwrap();
 
-        let gerku_ids = store.facts_for_predicate("gerku").unwrap();
-        assert_eq!(gerku_ids, vec![2]);
+        let dog_ids = store.facts_for_predicate("gerku").unwrap();
+        assert_eq!(dog_ids, vec![2]);
 
         cleanup(&path);
     }

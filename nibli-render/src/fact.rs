@@ -243,7 +243,7 @@ mod tests {
     }
 
     #[test]
-    fn zoe_and_description_args() {
+    fn unspecified_and_description_args() {
         assert_eq!(humanize_fact("goes(adam, _)"), "goes(adam, _)");
         assert_eq!(humanize_fact("goes(le dog)"), "goes(le dog)");
     }

@@ -707,7 +707,7 @@ mod tests {
     }
 
     #[test]
-    fn rigid_zoe_constant() {
+    fn rigid_unspecified_constant() {
         // A 2-role atom with a trailing Unspecified filler renders `something`, not a fresh var.
         let mut n = Vec::new();
         let t = pred(&mut n, "dunda", vec![var("_ev0")]);
@@ -822,7 +822,7 @@ mod tests {
     }
 
     #[test]
-    fn du_facts_canonicalize_constants_and_are_dropped() {
+    fn equality_facts_canonicalize_constants_and_are_dropped() {
         // du(bel, adam) + du(kim, bel) → one class, rep = lexicographic min = adam.
         // A fact over `kim` and a query over `bel` must BOTH rewrite to `adam`, and no
         // `du` atom may survive into the program.
@@ -888,7 +888,7 @@ mod tests {
     }
 
     #[test]
-    fn du_canonicalization_is_order_independent() {
+    fn equals_canonicalization_is_order_independent() {
         // The representative is the lexicographically-smallest member, regardless of the
         // order the du facts arrive in.
         let a = DuClasses::collect(&[du_fact("kim", "adam"), du_fact("bel", "kim")]);

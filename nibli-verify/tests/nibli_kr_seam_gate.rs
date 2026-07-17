@@ -29,7 +29,7 @@ use nibli_verify::{nibli_kr_seam, seam};
 const SEAM_BATCH: u64 = 60;
 
 #[test]
-fn kr_smuni_seam_conformance() {
+fn kr_semantics_seam_conformance() {
     let mut structural = 0usize;
     let mut metamorphic = 0usize;
 

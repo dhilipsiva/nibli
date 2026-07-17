@@ -39,7 +39,7 @@ fn fresh_engine() -> NibliEngine {
 }
 
 #[test]
-fn du_equivalence_unprovable_query_must_not_abort() {
+fn equals_equivalence_unprovable_query_must_not_abort() {
     let engine = fresh_engine();
 
     // Inject `du(alis, bob)` directly (du is not surface-parseable). This unions

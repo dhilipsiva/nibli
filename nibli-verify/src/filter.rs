@@ -189,7 +189,7 @@ mod tests {
     }
 
     #[test]
-    fn ground_sole_root_du_is_mappable_in_both_fragments() {
+    fn ground_sole_root_equals_is_mappable_in_both_fragments() {
         // `la .X. cu du la .Y.` — Vampire judges it as native `=`; the ASP translator
         // canonicalizes the equivalence class away. Accepted by BOTH filters.
         assert_eq!(buffer_non_classical(&ground_equals()), None);
@@ -197,7 +197,7 @@ mod tests {
     }
 
     #[test]
-    fn nested_or_non_ground_du_is_skipped_in_both_fragments() {
+    fn nested_or_non_ground_equals_is_skipped_in_both_fragments() {
         // `du` with a variable arg (e.g. inside a rule) — not the verified shape.
         let non_ground = LogicBuffer {
             nodes: vec![LogicNode::Predicate((

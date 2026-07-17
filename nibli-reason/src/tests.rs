@@ -278,7 +278,7 @@ fn cancelled_query_returns_err() {
 // ─── Existential introduction (xorlo presupposition) ─────────
 
 #[test]
-fn test_xorlo_presupposition_basic() {
+fn test_existential_import_presupposition_basic() {
     // ro lo gerku cu danlu → presupposition: ∃x. gerku(x)
     // Query ∃x. gerku(x) should find the presupposition Skolem
     let kb = new_kb();
@@ -305,7 +305,7 @@ fn test_xorlo_presupposition_basic() {
 }
 
 #[test]
-fn test_xorlo_presupposition_consequent() {
+fn test_existential_import_presupposition_consequent() {
     // ro lo gerku cu danlu → presupposition creates sk entity → rule fires
     // Query ∃x. danlu(x) should find the derived fact
     let kb = new_kb();
@@ -331,7 +331,7 @@ fn test_xorlo_presupposition_consequent() {
 }
 
 #[test]
-fn test_xorlo_presupposition_conjunction() {
+fn test_existential_import_presupposition_conjunction() {
     // THE BUG FIX: ro lo gerku cu danlu, then ? lo gerku cu danlu
     // (∃x. gerku(x) ∧ danlu(x)) should be TRUE
     let kb = new_kb();
@@ -366,7 +366,7 @@ fn test_xorlo_presupposition_conjunction() {
 }
 
 #[test]
-fn test_xorlo_presupposition_with_real_entity() {
+fn test_existential_import_presupposition_with_real_entity() {
     // Real entity + presupposition Skolem both satisfy BOOLEAN queries, but
     // the phantom is NOT an enumerable "thing": witness enumeration excludes
     // xorlo presupposition witnesses (GUARANTEES §Aggregation — pre-change
@@ -544,7 +544,7 @@ fn test_bare_universal_asserts_no_presupposition_witness() {
 }
 
 #[test]
-fn test_xorlo_presupposition_transitive() {
+fn test_existential_import_presupposition_transitive() {
     // ro lo gerku cu danlu, ro lo danlu cu xanlu
     // Each universal creates its own presupposition Skolem
     // Query ∃x. xanlu(x) should find witnesses via chain
@@ -572,7 +572,7 @@ fn test_xorlo_presupposition_transitive() {
 }
 
 #[test]
-fn test_xorlo_presupposition_no_false_positives() {
+fn test_existential_import_presupposition_no_false_positives() {
     // ro lo gerku cu danlu should NOT make mlatu(x) exist
     let kb = new_kb();
     assert_buf(&kb, make_universal("gerku", "danlu"));
@@ -670,7 +670,7 @@ fn test_native_rule_negated_universal() {
 /// encoded as ∀x. ¬(gerku(x) ∧ ¬mlatu(x)) ∨ danlu(x).
 fn make_negated_antecedent_rule() -> LogicBuffer {
     let mut nodes = Vec::new();
-    let gerku = pred(
+    let dog = pred(
         &mut nodes,
         "gerku",
         vec![
@@ -687,7 +687,7 @@ fn make_negated_antecedent_rule() -> LogicBuffer {
         ],
     );
     let neg_mlatu = not(&mut nodes, mlatu);
-    let antecedent = and(&mut nodes, gerku, neg_mlatu);
+    let antecedent = and(&mut nodes, dog, neg_mlatu);
     let danlu = pred(
         &mut nodes,
         "danlu",
@@ -1654,7 +1654,7 @@ fn trace_soundness_conformance() {
     //     RuleAttemptFailed child (the missing `gerku` condition) — exercises the `supported` bridge.
     {
         let kb = new_kb();
-        assert_buf(&kb, make_universal("gerku", "danlu")); // rule present, but no gerku(adam)
+        assert_buf(&kb, make_universal("gerku", "danlu")); // rule present, but no dog(adam)
         run_case("horn_blocked_false", &kb, make_query("adam", "danlu"));
         checked += 1;
     }
@@ -1779,11 +1779,11 @@ fn unknown_left_and_evaluates_right_conjunct() {
     // invisible to verify-book-capture); pinned here instead.
     let kb = new_kb();
     assert_buf(&kb, make_universal("gerku", "danlu"));
-    assert_buf(&kb, make_universal("danlu", "gerku")); // gerku ⟸ danlu ⟸ gerku cycle
+    assert_buf(&kb, make_universal("danlu", "gerku")); // dog ⟸ danlu ⟸ dog cycle
     assert_buf(&kb, make_assertion("rex", "mlatu")); // a definitively-True conjunct
 
     let mut nodes = Vec::new();
-    let gerku_rex = pred(
+    let dog_rex = pred(
         &mut nodes,
         "gerku",
         vec![
@@ -1799,7 +1799,7 @@ fn unknown_left_and_evaluates_right_conjunct() {
             LogicalTerm::Unspecified,
         ],
     );
-    let root = and(&mut nodes, gerku_rex, mlatu_rex);
+    let root = and(&mut nodes, dog_rex, mlatu_rex);
     let buf = LogicBuffer {
         nodes,
         roots: vec![root],
@@ -1833,7 +1833,7 @@ fn true_and_unknown_right_is_unknown() {
     // `combine_conjunction` previously collapsed to FALSE via `.unwrap_or(False)`.
     let kb = new_kb();
     assert_buf(&kb, make_universal("gerku", "danlu"));
-    assert_buf(&kb, make_universal("danlu", "gerku")); // gerku ⟸ danlu ⟸ gerku cycle
+    assert_buf(&kb, make_universal("danlu", "gerku")); // dog ⟸ danlu ⟸ dog cycle
     assert_buf(&kb, make_assertion("rex", "mlatu")); // definitively-True conjunct
 
     let mut nodes = Vec::new();
@@ -1845,7 +1845,7 @@ fn true_and_unknown_right_is_unknown() {
             LogicalTerm::Unspecified,
         ],
     );
-    let gerku_rex = pred(
+    let dog_rex = pred(
         &mut nodes,
         "gerku",
         vec![
@@ -1853,7 +1853,7 @@ fn true_and_unknown_right_is_unknown() {
             LogicalTerm::Unspecified,
         ],
     );
-    let root = and(&mut nodes, mlatu_rex, gerku_rex); // True (left) ∧ Unknown (right)
+    let root = and(&mut nodes, mlatu_rex, dog_rex); // True (left) ∧ Unknown (right)
     let buf = LogicBuffer {
         nodes,
         roots: vec![root],
@@ -1883,7 +1883,7 @@ fn false_or_unknown_right_is_unknown() {
             LogicalTerm::Unspecified,
         ],
     ); // no facts/rules for blanu → definitively False (CWA)
-    let gerku_rex = pred(
+    let dog_rex = pred(
         &mut nodes,
         "gerku",
         vec![
@@ -1891,7 +1891,7 @@ fn false_or_unknown_right_is_unknown() {
             LogicalTerm::Unspecified,
         ],
     );
-    let root = or(&mut nodes, absent, gerku_rex); // False (left) ∨ Unknown (right)
+    let root = or(&mut nodes, absent, dog_rex); // False (left) ∨ Unknown (right)
     let buf = LogicBuffer {
         nodes,
         roots: vec![root],
@@ -2365,49 +2365,49 @@ fn make_numeric_query(relation: &str, a: f64, b: f64) -> LogicBuffer {
 }
 
 #[test]
-fn test_zmadu_numeric_true() {
+fn test_greater_numeric_true() {
     let kb = new_kb();
     assert!(query(&kb, make_numeric_query("greater", 2.0, 1.0)));
 }
 
 #[test]
-fn test_zmadu_numeric_false() {
+fn test_greater_numeric_false() {
     let kb = new_kb();
     assert!(query_false(&kb, make_numeric_query("greater", 1.0, 2.0)));
 }
 
 #[test]
-fn test_zmadu_numeric_equal_false() {
+fn test_greater_numeric_equal_false() {
     let kb = new_kb();
     assert!(query_false(&kb, make_numeric_query("greater", 2.0, 2.0)));
 }
 
 #[test]
-fn test_mleca_numeric_true() {
+fn test_less_numeric_true() {
     let kb = new_kb();
     assert!(query(&kb, make_numeric_query("less", 1.0, 2.0)));
 }
 
 #[test]
-fn test_mleca_numeric_false() {
+fn test_less_numeric_false() {
     let kb = new_kb();
     assert!(query_false(&kb, make_numeric_query("less", 2.0, 1.0)));
 }
 
 #[test]
-fn test_dunli_numeric_true() {
+fn test_num_equal_numeric_true() {
     let kb = new_kb();
     assert!(query(&kb, make_numeric_query("num_equal", 5.0, 5.0)));
 }
 
 #[test]
-fn test_dunli_numeric_false() {
+fn test_num_equal_numeric_false() {
     let kb = new_kb();
     assert!(query_false(&kb, make_numeric_query("num_equal", 5.0, 3.0)));
 }
 
 #[test]
-fn test_zmadu_negated() {
+fn test_greater_negated() {
     let kb = new_kb();
     // NOT (1 > 2) should be TRUE
     let mut nodes = Vec::new();
@@ -2423,7 +2423,7 @@ fn test_zmadu_negated() {
 }
 
 #[test]
-fn test_zmadu_non_numeric_fallback() {
+fn test_greater_non_numeric_fallback() {
     let kb = new_kb();
     // Non-numeric zmadu: assert then query via standard KB path
     let mut a_nodes = Vec::new();
@@ -2466,7 +2466,7 @@ fn test_zmadu_non_numeric_fallback() {
 }
 
 #[test]
-fn test_zmadu_large_numbers() {
+fn test_greater_large_numbers() {
     let kb = new_kb();
     assert!(query(
         &kb,
@@ -2475,7 +2475,7 @@ fn test_zmadu_large_numbers() {
 }
 
 #[test]
-fn test_zmadu_negative_numbers() {
+fn test_greater_negative_numbers() {
     let kb = new_kb();
     assert!(query(&kb, make_numeric_query("greater", -1.0, -2.0)));
     assert!(query_false(&kb, make_numeric_query("greater", -2.0, -1.0)));
@@ -2733,7 +2733,7 @@ fn test_decomposed_dilcu_true_and_division_by_zero() {
 }
 
 #[test]
-fn test_decomposed_zmadu_true_false() {
+fn test_decomposed_greater_true_false() {
     let kb = new_kb();
     assert!(query(
         &kb,
@@ -2746,7 +2746,7 @@ fn test_decomposed_zmadu_true_false() {
 }
 
 #[test]
-fn test_decomposed_mleca_true_false() {
+fn test_decomposed_less_true_false() {
     let kb = new_kb();
     assert!(query(
         &kb,
@@ -2759,7 +2759,7 @@ fn test_decomposed_mleca_true_false() {
 }
 
 #[test]
-fn test_decomposed_dunli_true_false() {
+fn test_decomposed_num_equal_true_false() {
     let kb = new_kb();
     assert!(query(
         &kb,
@@ -2873,7 +2873,7 @@ fn test_assert_flat_numeric_comparison_rejected() {
     // The flat 2-arg form `zmadu(5, 3)` over number literals is computed ground
     // truth, not an assertable fact — reject it at assert time (the surface path
     // decomposes, so this guards the flat detection arm). A non-numeric flat
-    // comparison still asserts (covered by test_zmadu_non_numeric_fallback).
+    // comparison still asserts (covered by test_greater_non_numeric_fallback).
     let kb = new_kb();
     assert!(
         kb.assert_fact_inner(make_numeric_query("greater", 5.0, 3.0), String::new())
@@ -3101,7 +3101,7 @@ fn make_deontic_assertion(entity: &str, relation: &str, action: &str) -> LogicBu
 }
 
 #[test]
-fn test_deontic_bilga_assert_query() {
+fn test_deontic_obliged_assert_query() {
     // bilga(alis, klama, Zoe) — Alice is obligated to go
     let kb = new_kb();
     assert_buf(&kb, make_deontic_assertion("alis", "bilga", "klama"));
@@ -3113,7 +3113,7 @@ fn test_deontic_bilga_assert_query() {
 }
 
 #[test]
-fn test_deontic_curmi_assert_query() {
+fn test_deontic_permits_assert_query() {
     // curmi(alis, klama, Zoe) — Alice is permitted to go
     let kb = new_kb();
     assert_buf(&kb, make_deontic_assertion("alis", "curmi", "klama"));
@@ -3125,7 +3125,7 @@ fn test_deontic_curmi_assert_query() {
 }
 
 #[test]
-fn test_deontic_nitcu_assert_query() {
+fn test_deontic_needs_assert_query() {
     // nitcu(alis, klama, Zoe) — Alice needs to go
     let kb = new_kb();
     assert_buf(&kb, make_deontic_assertion("alis", "nitcu", "klama"));
@@ -3546,7 +3546,7 @@ fn assert_typed_fact_invalidates_pred_cache() {
     // re-check returned the cached False (order-dependent wrong answers);
     // post-fix `assert_typed_fact` clears the cache so the re-check re-derives.
     let kb = new_kb();
-    assert_buf(&kb, make_universal("gerku", "danlu")); // ∀x. gerku(x) → danlu(x)
+    assert_buf(&kb, make_universal("gerku", "danlu")); // ∀x. dog(x) → danlu(x)
 
     let danlu_adam = StoredFact::Bare(GroundFact::new(
         "danlu",
@@ -3555,7 +3555,7 @@ fn assert_typed_fact_invalidates_pred_cache() {
             GroundTerm::Unspecified,
         ],
     ));
-    let gerku_adam = StoredFact::Bare(GroundFact::new(
+    let dog_adam = StoredFact::Bare(GroundFact::new(
         "gerku",
         vec![
             GroundTerm::Constant("adam".to_string()),
@@ -3579,7 +3579,7 @@ fn assert_typed_fact_invalidates_pred_cache() {
     // (2) Assert gerku(adam) through the mutation point.
     {
         let mut inner = kb.inner.borrow_mut();
-        assert_typed_fact(gerku_adam, &mut inner);
+        assert_typed_fact(dog_adam, &mut inner);
     }
 
     // (3) Re-check: a stale cached False here means the cache was NOT invalidated.
@@ -3589,7 +3589,7 @@ fn assert_typed_fact_invalidates_pred_cache() {
         let r = check_predicate_in_kb_typed(&danlu_adam, &inner, 0, &mut visited);
         assert!(
             r.is_true(),
-            "danlu(adam) must derive True once gerku(adam) is asserted — a stale \
+            "danlu(adam) must derive True once dog(adam) is asserted — a stale \
              cached False means assert_typed_fact failed to invalidate the cache"
         );
     }
@@ -3610,7 +3610,7 @@ fn pred_cache_is_per_instance_no_cross_kb_leak() {
     ));
 
     let kb_a = new_kb();
-    assert_buf(&kb_a, make_universal("gerku", "danlu")); // ∀x. gerku(x) → danlu(x)
+    assert_buf(&kb_a, make_universal("gerku", "danlu")); // ∀x. dog(x) → danlu(x)
     {
         let inner = kb_a.inner.borrow();
         clear_and_enable_pred_cache(&inner);
@@ -3624,14 +3624,14 @@ fn pred_cache_is_per_instance_no_cross_kb_leak() {
 
     let kb_b = new_kb();
     assert_buf(&kb_b, make_universal("gerku", "danlu"));
-    assert_buf(&kb_b, make_assertion("adam", "gerku")); // gerku(adam)
+    assert_buf(&kb_b, make_assertion("adam", "gerku")); // dog(adam)
     {
         let inner = kb_b.inner.borrow();
         let mut visited = std::collections::HashSet::new();
         let r = check_predicate_in_kb_typed(&danlu_adam, &inner, 0, &mut visited);
         assert!(
             r.is_true(),
-            "KB-B: danlu(adam) IS derivable (gerku(adam) present); KB-A's cached \
+            "KB-B: danlu(adam) IS derivable (dog(adam) present); KB-A's cached \
              False must not leak across per-instance caches"
         );
     }
@@ -4581,7 +4581,7 @@ fn cwa_cda_relativity_of_false_and_forall_verified() {
     // (3) CDA-relativity made concrete: introduce a NEW domain member that breaks
     // the rule. The SAME ∀ query now flips to FALSE (ForallCounterexample), proving
     // the earlier True was an artifact of the closed domain — not an absolute truth.
-    assert_buf(&kb, make_assertion("carl", "gerku")); // carl is gerku but NOT danlu
+    assert_buf(&kb, make_assertion("carl", "gerku")); // carl is dog but NOT danlu
     let (verdict2, trace2) = kb
         .query_entailment_with_proof_inner(make_universal("gerku", "danlu"))
         .unwrap();
@@ -4687,7 +4687,7 @@ fn test_proof_trace_derived_depth_limit() {
 }
 
 #[test]
-fn test_proof_trace_xorlo_presup_is_asserted() {
+fn test_proof_trace_existential_import_presup_is_asserted() {
     // Universal "animal(every dog)." creates xorlo presupposition Skolem.
     // That fact should show as Asserted, not trigger backward-chaining.
     let kb = new_kb();
@@ -4884,7 +4884,7 @@ fn make_universal_2arg(restrictor: &str, consequent: &str, fixed_entity: &str) -
 }
 
 #[test]
-fn test_se_conversion_universal_rule() {
+fn test_x2_conversion_universal_rule() {
     // Simulates the REPL demo:
     //   la .alis. gerku          → gerku(alis)
     //   ro lo gerku cu se nelci la .bob.  → ∀x. gerku(x) → nelci(bob, x)
@@ -4914,7 +4914,7 @@ fn test_se_conversion_universal_rule() {
 }
 
 #[test]
-fn test_se_conversion_universal_multiple_entities() {
+fn test_x2_conversion_universal_multiple_entities() {
     // Two dogs: both should be liked by bob via universal rule
     let kb = new_kb();
     assert_buf(&kb, make_assertion("alis", "gerku"));
@@ -5472,7 +5472,7 @@ fn test_temporal_rule_lifting() {
 
     // Compile the universal rule: ForAll(x, Or(Not(gerku(x)), danlu(x)))
     let mut r_nodes = Vec::new();
-    let gerku = pred(
+    let dog = pred(
         &mut r_nodes,
         "gerku",
         vec![
@@ -5488,8 +5488,8 @@ fn test_temporal_rule_lifting() {
             LogicalTerm::Unspecified,
         ],
     );
-    let neg_gerku = not(&mut r_nodes, gerku);
-    let impl_body = or(&mut r_nodes, neg_gerku, danlu);
+    let neg_dog = not(&mut r_nodes, dog);
+    let impl_body = or(&mut r_nodes, neg_dog, danlu);
     let forall = {
         let id = r_nodes.len() as u32;
         r_nodes.push(LogicNode::ForAllNode(("_v0".into(), impl_body)));
@@ -5505,7 +5505,7 @@ fn test_temporal_rule_lifting() {
 
     // Assert Past(gerku(alis))
     let mut a_nodes = Vec::new();
-    let gerku_alis = pred(
+    let dog_alis = pred(
         &mut a_nodes,
         "gerku",
         vec![
@@ -5513,12 +5513,12 @@ fn test_temporal_rule_lifting() {
             LogicalTerm::Unspecified,
         ],
     );
-    let past_gerku = past(&mut a_nodes, gerku_alis);
+    let past_dog = past(&mut a_nodes, dog_alis);
     assert_buf(
         &kb,
         LogicBuffer {
             nodes: a_nodes,
-            roots: vec![past_gerku],
+            roots: vec![past_dog],
         },
     );
 
@@ -5551,7 +5551,7 @@ fn test_temporal_rule_no_cross_tense() {
 
     // Universal rule
     let mut r_nodes = Vec::new();
-    let gerku = pred(
+    let dog = pred(
         &mut r_nodes,
         "gerku",
         vec![
@@ -5567,8 +5567,8 @@ fn test_temporal_rule_no_cross_tense() {
             LogicalTerm::Unspecified,
         ],
     );
-    let neg_gerku = not(&mut r_nodes, gerku);
-    let impl_body = or(&mut r_nodes, neg_gerku, danlu);
+    let neg_dog = not(&mut r_nodes, dog);
+    let impl_body = or(&mut r_nodes, neg_dog, danlu);
     let forall = {
         let id = r_nodes.len() as u32;
         r_nodes.push(LogicNode::ForAllNode(("_v0".into(), impl_body)));
@@ -5584,7 +5584,7 @@ fn test_temporal_rule_no_cross_tense() {
 
     // Assert Past(gerku(alis))
     let mut a_nodes = Vec::new();
-    let gerku_alis = pred(
+    let dog_alis = pred(
         &mut a_nodes,
         "gerku",
         vec![
@@ -5592,12 +5592,12 @@ fn test_temporal_rule_no_cross_tense() {
             LogicalTerm::Unspecified,
         ],
     );
-    let past_gerku = past(&mut a_nodes, gerku_alis);
+    let past_dog = past(&mut a_nodes, dog_alis);
     assert_buf(
         &kb,
         LogicBuffer {
             nodes: a_nodes,
-            roots: vec![past_gerku],
+            roots: vec![past_dog],
         },
     );
 
@@ -5626,9 +5626,9 @@ fn test_temporal_rule_no_cross_tense() {
 /// Assert the tensed-antecedent rule `∀x. Past(citka(x)) → xagji(x)`
 /// ("everything that ATE is hungry"). Pre-fix this panics (the rule is
 /// rejected at compile time because the tensed condition cannot be templated).
-fn assert_pu_citka_then_xagji(kb: &KnowledgeBase) {
+fn assert_past_eats_then_hungry(kb: &KnowledgeBase) {
     let mut r = Vec::new();
-    let citka = pred(
+    let eats = pred(
         &mut r,
         "citka",
         vec![
@@ -5636,9 +5636,9 @@ fn assert_pu_citka_then_xagji(kb: &KnowledgeBase) {
             LogicalTerm::Unspecified,
         ],
     );
-    let past_citka = past(&mut r, citka);
+    let past_citka = past(&mut r, eats);
     let neg = not(&mut r, past_citka);
-    let xagji = pred(
+    let hungry = pred(
         &mut r,
         "xagji",
         vec![
@@ -5646,7 +5646,7 @@ fn assert_pu_citka_then_xagji(kb: &KnowledgeBase) {
             LogicalTerm::Unspecified,
         ],
     );
-    let body = or(&mut r, neg, xagji);
+    let body = or(&mut r, neg, hungry);
     let forall = {
         let id = r.len() as u32;
         r.push(LogicNode::ForAllNode(("_v0".into(), body)));
@@ -5662,9 +5662,9 @@ fn assert_pu_citka_then_xagji(kb: &KnowledgeBase) {
 }
 
 /// Query bare `xagji(rex)`.
-fn query_xagji_rex(kb: &KnowledgeBase) -> bool {
+fn query_hungry_rex(kb: &KnowledgeBase) -> bool {
     let mut q = Vec::new();
-    let xagji = pred(
+    let hungry = pred(
         &mut q,
         "xagji",
         vec![
@@ -5676,13 +5676,13 @@ fn query_xagji_rex(kb: &KnowledgeBase) -> bool {
         kb,
         LogicBuffer {
             nodes: q,
-            roots: vec![xagji],
+            roots: vec![hungry],
         },
     )
 }
 
 /// Assert a `citka(rex)` fact under the given tense wrapper (`None` = bare).
-fn assert_citka_rex(kb: &KnowledgeBase, tense: Option<&str>) {
+fn assert_eats_rex(kb: &KnowledgeBase, tense: Option<&str>) {
     let mut a = Vec::new();
     let citka_rex = pred(
         &mut a,
@@ -5711,10 +5711,10 @@ fn assert_citka_rex(kb: &KnowledgeBase, tense: Option<&str>) {
 fn test_tensed_antecedent_rule_compiles_and_fires() {
     // ∀x. Past(citka(x)) → xagji(x); given Past(citka(rex)), derive bare xagji(rex).
     let kb = new_kb();
-    assert_pu_citka_then_xagji(&kb);
-    assert_citka_rex(&kb, Some("Past"));
+    assert_past_eats_then_hungry(&kb);
+    assert_eats_rex(&kb, Some("Past"));
     assert!(
-        query_xagji_rex(&kb),
+        query_hungry_rex(&kb),
         "tensed-antecedent rule must fire on a matching Past premise"
     );
 }
@@ -5723,9 +5723,9 @@ fn test_tensed_antecedent_rule_compiles_and_fires() {
 fn test_tensed_antecedent_no_premise_does_not_fire() {
     // The rule compiles, but with no premise the tensed condition fails.
     let kb = new_kb();
-    assert_pu_citka_then_xagji(&kb);
+    assert_past_eats_then_hungry(&kb);
     assert!(
-        !query_xagji_rex(&kb),
+        !query_hungry_rex(&kb),
         "tensed-antecedent rule must NOT fire with no supporting premise"
     );
 }
@@ -5734,10 +5734,10 @@ fn test_tensed_antecedent_no_premise_does_not_fire() {
 fn test_tensed_antecedent_wrong_tense_does_not_fire() {
     // A Future premise must not satisfy a Past antecedent (strict tense).
     let kb = new_kb();
-    assert_pu_citka_then_xagji(&kb);
-    assert_citka_rex(&kb, Some("Future"));
+    assert_past_eats_then_hungry(&kb);
+    assert_eats_rex(&kb, Some("Future"));
     assert!(
-        !query_xagji_rex(&kb),
+        !query_hungry_rex(&kb),
         "Past antecedent must NOT fire on a Future premise"
     );
 }
@@ -5746,10 +5746,10 @@ fn test_tensed_antecedent_wrong_tense_does_not_fire() {
 fn test_tensed_antecedent_bare_premise_does_not_fire() {
     // A bare premise must not satisfy a Past antecedent.
     let kb = new_kb();
-    assert_pu_citka_then_xagji(&kb);
-    assert_citka_rex(&kb, None);
+    assert_past_eats_then_hungry(&kb);
+    assert_eats_rex(&kb, None);
     assert!(
-        !query_xagji_rex(&kb),
+        !query_hungry_rex(&kb),
         "Past antecedent must NOT fire on a bare premise"
     );
 }
@@ -5758,9 +5758,9 @@ fn test_tensed_antecedent_bare_premise_does_not_fire() {
 
 /// Assert ∀x. citka(x) → Past(xagji(x)) — a BARE antecedent with a tensed (Past)
 /// CONCLUSION. The rule derives the PAST fact xagji, not a bare/future one.
-fn assert_citka_then_pu_xagji(kb: &KnowledgeBase) {
+fn assert_eats_then_past_hungry(kb: &KnowledgeBase) {
     let mut r = Vec::new();
-    let citka = pred(
+    let eats = pred(
         &mut r,
         "citka",
         vec![
@@ -5768,8 +5768,8 @@ fn assert_citka_then_pu_xagji(kb: &KnowledgeBase) {
             LogicalTerm::Unspecified,
         ],
     );
-    let neg = not(&mut r, citka);
-    let xagji = pred(
+    let neg = not(&mut r, eats);
+    let hungry = pred(
         &mut r,
         "xagji",
         vec![
@@ -5777,7 +5777,7 @@ fn assert_citka_then_pu_xagji(kb: &KnowledgeBase) {
             LogicalTerm::Unspecified,
         ],
     );
-    let past_xagji = past(&mut r, xagji);
+    let past_xagji = past(&mut r, hungry);
     let body = or(&mut r, neg, past_xagji);
     let forall = {
         let id = r.len() as u32;
@@ -5794,9 +5794,9 @@ fn assert_citka_then_pu_xagji(kb: &KnowledgeBase) {
 }
 
 /// Query `xagji(rex)` under the given tense wrapper (`None` = bare).
-fn query_xagji_rex_tense(kb: &KnowledgeBase, tense: Option<&str>) -> bool {
+fn query_hungry_rex_tense(kb: &KnowledgeBase, tense: Option<&str>) -> bool {
     let mut q = Vec::new();
-    let xagji = pred(
+    let hungry = pred(
         &mut q,
         "xagji",
         vec![
@@ -5805,10 +5805,10 @@ fn query_xagji_rex_tense(kb: &KnowledgeBase, tense: Option<&str>) -> bool {
         ],
     );
     let root = match tense {
-        Some("Past") => past(&mut q, xagji),
-        Some("Future") => future(&mut q, xagji),
-        Some("Present") => present(&mut q, xagji),
-        _ => xagji,
+        Some("Past") => past(&mut q, hungry),
+        Some("Future") => future(&mut q, hungry),
+        Some("Present") => present(&mut q, hungry),
+        _ => hungry,
     };
     query(
         kb,
@@ -5824,18 +5824,18 @@ fn test_tensed_conclusion_rule_fires_on_matching_tense() {
     // ∀x. citka(x) → Past(xagji(x)); a bare citka(rex) premise derives Past(xagji(rex)),
     // and ONLY the Past fact (not bare, not Future) — tense-exact via unify_facts.
     let kb = new_kb();
-    assert_citka_then_pu_xagji(&kb);
-    assert_citka_rex(&kb, None); // bare antecedent premise
+    assert_eats_then_past_hungry(&kb);
+    assert_eats_rex(&kb, None); // bare antecedent premise
     assert!(
-        query_xagji_rex_tense(&kb, Some("Past")),
+        query_hungry_rex_tense(&kb, Some("Past")),
         "tensed conclusion derives the Past fact"
     );
     assert!(
-        !query_xagji_rex_tense(&kb, None),
+        !query_hungry_rex_tense(&kb, None),
         "tensed conclusion must NOT derive a bare fact"
     );
     assert!(
-        !query_xagji_rex_tense(&kb, Some("Future")),
+        !query_hungry_rex_tense(&kb, Some("Future")),
         "tensed conclusion must NOT derive a Future fact"
     );
 }
@@ -5843,9 +5843,9 @@ fn test_tensed_conclusion_rule_fires_on_matching_tense() {
 #[test]
 fn test_tensed_conclusion_no_premise_does_not_fire() {
     let kb = new_kb();
-    assert_citka_then_pu_xagji(&kb);
+    assert_eats_then_past_hungry(&kb);
     assert!(
-        !query_xagji_rex_tense(&kb, Some("Past")),
+        !query_hungry_rex_tense(&kb, Some("Past")),
         "tensed-conclusion rule must NOT fire without the antecedent premise"
     );
 }
@@ -6284,31 +6284,31 @@ fn test_compute_dilcu_incorrect() {
 // ─── Numerical comparison predicate tests ────────────────────
 
 #[test]
-fn test_zmadu_greater_than() {
+fn test_greater_holds() {
     let kb = new_kb();
     assert!(query(&kb, make_numeric_query("greater", 5.0, 3.0)));
 }
 
 #[test]
-fn test_zmadu_not_greater() {
+fn test_greater_rejects_smaller() {
     let kb = new_kb();
     assert!(query_false(&kb, make_numeric_query("greater", 3.0, 5.0)));
 }
 
 #[test]
-fn test_mleca_less_than() {
+fn test_less_holds() {
     let kb = new_kb();
     assert!(query(&kb, make_numeric_query("less", 3.0, 5.0)));
 }
 
 #[test]
-fn test_dunli_equal() {
+fn test_num_equal_holds() {
     let kb = new_kb();
     assert!(query(&kb, make_numeric_query("num_equal", 5.0, 5.0)));
 }
 
 #[test]
-fn test_dunli_not_equal() {
+fn test_num_equal_rejects_unequal() {
     let kb = new_kb();
     assert!(query_false(&kb, make_numeric_query("num_equal", 5.0, 3.0)));
 }
@@ -6365,7 +6365,7 @@ fn test_assert_fact_with_description_terms() {
         "nelci",
         vec![
             LogicalTerm::Constant("bob".to_string()),
-            LogicalTerm::Description("lo_gerku".to_string()),
+            LogicalTerm::Description("some_dog".to_string()),
         ],
     );
     assert_buf(
@@ -6383,7 +6383,7 @@ fn test_assert_fact_with_description_terms() {
         "nelci",
         vec![
             LogicalTerm::Constant("bob".to_string()),
-            LogicalTerm::Description("lo_gerku".to_string()),
+            LogicalTerm::Description("some_dog".to_string()),
         ],
     );
     assert!(query(
@@ -7330,7 +7330,7 @@ fn test_event_decomposed_proof_trace() {
 }
 
 #[test]
-fn test_event_decomposed_xorlo() {
+fn test_event_decomposed_existential_import() {
     let kb = new_kb();
     // Only add the rule (no ground facts) — xorlo presupposition should
     // create Skolem constants that make the restrictor domain non-empty
@@ -7733,7 +7733,7 @@ fn proof_ref_children_are_holds_true() {
     {
         let kb = new_kb();
         assert_buf(&kb, make_assertion("adam", "gerku"));
-        assert_buf(&kb, make_du("adam", "betty"));
+        assert_buf(&kb, make_equals("adam", "betty"));
         let (_holds, trace) = kb
             .query_entailment_with_proof_inner(make_query("betty", "gerku"))
             .unwrap();
@@ -8641,11 +8641,8 @@ fn test_retraction_rebuilds_dep_graph() {
         // danlu should still be in graph (from rule2: mlatu → danlu).
         if let Some(edges) = inner.pred_dep_graph.get("danlu") {
             // Only mlatu should remain as a dependency, not gerku.
-            let has_gerku = edges.iter().any(|(dep, _)| dep == "gerku");
-            assert!(
-                !has_gerku,
-                "gerku edge should be gone after retracting rule1"
-            );
+            let has_dog = edges.iter().any(|(dep, _)| dep == "gerku");
+            assert!(!has_dog, "gerku edge should be gone after retracting rule1");
             let has_mlatu = edges.iter().any(|(dep, _)| dep == "mlatu");
             assert!(has_mlatu, "mlatu edge should remain from rule2");
         }
@@ -8779,7 +8776,7 @@ fn test_compute_sccs_partition() {
 // ═══════════════════════════════════════════════════════════════════
 
 /// Helper: build du(a, b) assertion.
-fn make_du(a: &str, b: &str) -> LogicBuffer {
+fn make_equals(a: &str, b: &str) -> LogicBuffer {
     let mut nodes = Vec::new();
     let root = pred(
         &mut nodes,
@@ -8796,8 +8793,8 @@ fn make_du(a: &str, b: &str) -> LogicBuffer {
 }
 
 /// Helper: build du query.
-fn make_du_query(a: &str, b: &str) -> LogicBuffer {
-    make_du(a, b)
+fn make_equals_query(a: &str, b: &str) -> LogicBuffer {
+    make_equals(a, b)
 }
 
 /// Helper: build a 2-arg assertion P(a, b).
@@ -8818,10 +8815,10 @@ fn make_assertion_2(entity1: &str, entity2: &str, predicate: &str) -> LogicBuffe
 }
 
 #[test]
-fn test_du_basic_substitution() {
+fn test_equals_basic_substitution() {
     let kb = new_kb();
     assert_buf(&kb, make_assertion("alis", "gerku"));
-    assert_buf(&kb, make_du("alis", "bob"));
+    assert_buf(&kb, make_equals("alis", "bob"));
     assert!(
         query(&kb, make_query("bob", "gerku")),
         "gerku(bob) should hold via du(alis, bob) + gerku(alis)"
@@ -8829,42 +8826,42 @@ fn test_du_basic_substitution() {
 }
 
 #[test]
-fn test_du_symmetry() {
+fn test_equals_symmetry() {
     let kb = new_kb();
-    assert_buf(&kb, make_du("alis", "bob"));
+    assert_buf(&kb, make_equals("alis", "bob"));
     assert!(
-        query(&kb, make_du_query("bob", "alis")),
+        query(&kb, make_equals_query("bob", "alis")),
         "du(bob, alis) should hold via symmetry"
     );
 }
 
 #[test]
-fn test_du_transitivity() {
+fn test_equals_transitivity() {
     let kb = new_kb();
-    assert_buf(&kb, make_du("alis", "bob"));
-    assert_buf(&kb, make_du("bob", "carol"));
+    assert_buf(&kb, make_equals("alis", "bob"));
+    assert_buf(&kb, make_equals("bob", "carol"));
     assert!(
-        query(&kb, make_du_query("alis", "carol")),
+        query(&kb, make_equals_query("alis", "carol")),
         "du(alis, carol) should hold via transitivity"
     );
 }
 
 #[test]
-fn test_du_reflexivity() {
+fn test_equals_reflexivity() {
     let kb = new_kb();
     // du(alis, alis) should hold without any assertion.
     assert!(
-        query(&kb, make_du_query("alis", "alis")),
+        query(&kb, make_equals_query("alis", "alis")),
         "du(alis, alis) should hold via reflexivity"
     );
 }
 
 #[test]
-fn test_du_with_backward_chain() {
+fn test_equals_with_backward_chain() {
     let kb = new_kb();
     assert_buf(&kb, make_universal("gerku", "danlu"));
     assert_buf(&kb, make_assertion("alis", "gerku"));
-    assert_buf(&kb, make_du("alis", "bob"));
+    assert_buf(&kb, make_equals("alis", "bob"));
     assert!(
         query(&kb, make_query("bob", "danlu")),
         "danlu(bob) should hold via gerku→danlu + gerku(alis) + du(alis, bob)"
@@ -8872,10 +8869,10 @@ fn test_du_with_backward_chain() {
 }
 
 #[test]
-fn test_du_multiarg() {
+fn test_equals_multiarg() {
     let kb = new_kb();
     assert_buf(&kb, make_assertion_2("alis", "bob", "prami"));
-    assert_buf(&kb, make_du("bob", "carol"));
+    assert_buf(&kb, make_equals("bob", "carol"));
     assert!(
         query(&kb, make_assertion_2("alis", "carol", "prami")),
         "prami(alis, carol) should hold via du(bob, carol) + prami(alis, bob)"
@@ -8883,16 +8880,16 @@ fn test_du_multiarg() {
 }
 
 #[test]
-fn test_du_retraction_rebuild() {
+fn test_equals_retraction_rebuild() {
     let kb = new_kb();
-    let du_id = assert_id(&kb, make_du("alis", "bob"), "equals");
+    let equals_id = assert_id(&kb, make_equals("alis", "bob"), "equals");
     assert_buf(&kb, make_assertion("alis", "gerku"));
     assert!(
         query(&kb, make_query("bob", "gerku")),
         "should hold before retraction"
     );
 
-    kb.retract_fact_inner(du_id).unwrap();
+    kb.retract_fact_inner(equals_id).unwrap();
     assert!(
         query_false(&kb, make_query("bob", "gerku")),
         "gerku(bob) should be FALSE after retracting du(alis, bob)"
@@ -8900,11 +8897,11 @@ fn test_du_retraction_rebuild() {
 }
 
 #[test]
-fn test_du_no_tensed() {
+fn test_equals_no_tensed() {
     // Past(du(alis, bob)) should NOT activate equivalence.
     let kb = new_kb();
     let mut nodes = Vec::new();
-    let du_node = pred(
+    let equals_node = pred(
         &mut nodes,
         "equals",
         vec![
@@ -8914,7 +8911,7 @@ fn test_du_no_tensed() {
     );
     let past = {
         let id = nodes.len() as u32;
-        nodes.push(LogicNode::PastNode(du_node));
+        nodes.push(LogicNode::PastNode(equals_node));
         id
     };
     assert_buf(
@@ -8932,7 +8929,7 @@ fn test_du_no_tensed() {
 }
 
 /// Helper: build a flat negated du assertion/query: Not(du(a, b)).
-fn make_negated_du(a: &str, b: &str) -> LogicBuffer {
+fn make_negated_equals(a: &str, b: &str) -> LogicBuffer {
     let mut nodes = Vec::new();
     let inner = pred(
         &mut nodes,
@@ -8950,15 +8947,15 @@ fn make_negated_du(a: &str, b: &str) -> LogicBuffer {
 }
 
 #[test]
-fn test_na_du_transitive_contradiction() {
+fn test_not_equals_transitive_contradiction() {
     // du(alis,bob) ∧ du(bob,carol) makes alis ≡ carol via the union-find even
     // though du(alis,carol) was never stored; asserting `na du(alis, carol)`
     // must be flagged. RED before the union-find-aware section: section 4 only
     // checks store membership, and du(alis,carol) is not in the store.
     let kb = new_kb();
-    assert_buf(&kb, make_du("alis", "bob"));
-    assert_buf(&kb, make_du("bob", "carol"));
-    assert_id(&kb, make_negated_du("alis", "carol"), "na du");
+    assert_buf(&kb, make_equals("alis", "bob"));
+    assert_buf(&kb, make_equals("bob", "carol"));
+    assert_id(&kb, make_negated_equals("alis", "carol"), "na du");
     let violations = kb.check_contradictions();
     assert!(
         violations
@@ -8969,11 +8966,11 @@ fn test_na_du_transitive_contradiction() {
 }
 
 #[test]
-fn test_na_du_unrelated_no_contradiction() {
+fn test_not_equals_unrelated_no_contradiction() {
     // du(alis,bob) but carol is unrelated: `na du(alis, carol)` is consistent.
     let kb = new_kb();
-    assert_buf(&kb, make_du("alis", "bob"));
-    assert_id(&kb, make_negated_du("alis", "carol"), "na du");
+    assert_buf(&kb, make_equals("alis", "bob"));
+    assert_id(&kb, make_negated_equals("alis", "carol"), "na du");
     assert!(
         kb.check_contradictions().is_empty(),
         "an inequality between non-equivalent terms is not a contradiction"
@@ -8981,17 +8978,17 @@ fn test_na_du_unrelated_no_contradiction() {
 }
 
 #[test]
-fn test_na_du_inequality_query() {
+fn test_not_equals_inequality_query() {
     // Inequality querying via NAF over the union-find: na du holds when the two
     // terms are not equivalent, and fails when they are.
     let kb = new_kb();
-    assert_buf(&kb, make_du("alis", "bob"));
+    assert_buf(&kb, make_equals("alis", "bob"));
     assert!(
-        query(&kb, make_negated_du("alis", "carol")),
+        query(&kb, make_negated_equals("alis", "carol")),
         "na du(alis, carol) should hold — they are not equivalent"
     );
     assert!(
-        query_false(&kb, make_negated_du("alis", "bob")),
+        query_false(&kb, make_negated_equals("alis", "bob")),
         "na du(alis, bob) should fail — they ARE equivalent"
     );
 }
@@ -9296,7 +9293,7 @@ fn test_failure_trace_rule_attempt_failed() {
     // Assert rule gerku→danlu, query danlu(alis) where gerku(alis) is NOT asserted.
     let kb = new_kb();
     assert_buf(&kb, make_universal("gerku", "danlu"));
-    assert_buf(&kb, make_assertion("alis", "mlatu")); // alis exists but not as gerku.
+    assert_buf(&kb, make_assertion("alis", "mlatu")); // alis exists but not as dog.
     let (result, trace) = kb
         .query_entailment_with_proof_inner(make_query("alis", "danlu"))
         .unwrap();
@@ -9857,9 +9854,9 @@ fn test_incremental_retract_rule() {
 }
 
 #[test]
-fn test_incremental_retract_du() {
+fn test_incremental_retract_equals() {
     let kb = new_kb();
-    let du_id = assert_id(&kb, make_du("alis", "bob"), "equals");
+    let equals_id = assert_id(&kb, make_equals("alis", "bob"), "equals");
     assert_buf(&kb, make_assertion("alis", "gerku"));
 
     assert!(
@@ -9868,7 +9865,7 @@ fn test_incremental_retract_du() {
     );
 
     // Retract the du fact.
-    kb.retract_fact_inner(du_id).unwrap();
+    kb.retract_fact_inner(equals_id).unwrap();
 
     assert!(
         query_false(&kb, make_query("bob", "gerku")),
@@ -10255,7 +10252,7 @@ fn matching_rules_bucket_stays_descending_after_late_registration() {
     // matching_rules_typed is the broader net; this pins one explicit case.)
     let kb = new_kb();
     assert_buf(&kb, make_universal("gerku", "danlu"));
-    kb.set_rule_priority("danlu", 10); // the gerku→danlu rule now has priority 10
+    kb.set_rule_priority("danlu", 10); // the dog→danlu rule now has priority 10
     assert_buf(&kb, make_universal("mlatu", "danlu")); // new rule, default priority 0
     let inner = kb.inner.borrow();
     let bucket = inner
@@ -10403,7 +10400,7 @@ fn test_cycle_cut_does_not_poison_sibling_conjunct() {
 /// GROUND conclusion, so `danlu(betty)` does not unify with it and routes through the
 /// du-equivalence fallback that the traced path previously lacked.
 #[test]
-fn test_proof_trace_du_substitution_rule_derived() {
+fn test_proof_trace_equals_substitution_rule_derived() {
     let kb = new_kb();
     assert_buf(&kb, make_assertion("adam", "seed"));
 
@@ -10435,7 +10432,7 @@ fn test_proof_trace_du_substitution_rule_derived() {
             roots: vec![cond],
         },
     );
-    assert_buf(&kb, make_du("adam", "betty"));
+    assert_buf(&kb, make_equals("adam", "betty"));
 
     // Sanity: danlu(betty) holds (untraced) via the du-equivalence fallback over the
     // rule-derived danlu(adam).
@@ -10474,10 +10471,10 @@ fn test_proof_trace_du_substitution_rule_derived() {
 /// genuinely-asserted xukmi(coumadin). RED pre-fix (the trace had a bare
 /// Asserted(xukmi(warfarin)) and no EqualitySubstitution).
 #[test]
-fn test_proof_trace_du_substitution_directly_asserted() {
+fn test_proof_trace_equals_substitution_directly_asserted() {
     let kb = new_kb();
     assert_buf(&kb, make_assertion("coumadin", "xukmi"));
-    assert_buf(&kb, make_du("coumadin", "warfarin"));
+    assert_buf(&kb, make_equals("coumadin", "warfarin"));
 
     assert!(
         query(&kb, make_query("warfarin", "xukmi")),
@@ -11220,12 +11217,12 @@ fn test_mixed_conclusion_conservative_p_check_misses_derived_antecedent() {
     // only. A rule-DERIVED gerku(rex) does NOT trigger the constraint — sound +
     // conservative (it can only MISS a contradiction, never falsely flag one).
     let kb = new_kb();
-    assert_buf(&kb, make_universal("mlatu", "gerku")); // mlatu → gerku (DERIVES P)
+    assert_buf(&kb, make_universal("mlatu", "gerku")); // mlatu → dog (DERIVES P)
     assert_buf(
         &kb,
         make_mixed_conclusion("gerku", "broda", "danlu", "xanlu"),
     );
-    assert_buf(&kb, make_assertion("rex", "mlatu")); // derives gerku(rex); NOT stored as gerku
+    assert_buf(&kb, make_assertion("rex", "mlatu")); // derives dog(rex); NOT stored as dog
     assert_buf(&kb, make_negated_assertion("rex", "danlu"));
     assert_buf(&kb, make_negated_assertion("rex", "xanlu"));
     assert!(
@@ -11498,10 +11495,10 @@ mod flat_vs_surface {
     }
 
     #[test]
-    fn du_equality_substitution_true() {
+    fn equals_substitution_true() {
         // adam = bob, bob is a dog -> adam is a dog (substitutivity). `du` stays flat by design.
         let mut du_nodes = Vec::new();
-        let du_root = pred(
+        let equals_root = pred(
             &mut du_nodes,
             "equals",
             vec![
@@ -11509,15 +11506,15 @@ mod flat_vs_surface {
                 LogicalTerm::Constant("bob".into()),
             ],
         );
-        let du_buf = LogicBuffer {
+        let equals_buf = LogicBuffer {
             nodes: du_nodes,
-            roots: vec![du_root],
+            roots: vec![equals_root],
         };
         check(
             "du_equality",
             &["Adam = Bob.", "dog(Bob)."],
             "dog(Adam).",
-            vec![du_buf, make_assertion("bob", "gerku")],
+            vec![equals_buf, make_assertion("bob", "gerku")],
             make_query("adam", "gerku"),
             true,
         );
@@ -11600,9 +11597,9 @@ fn strict_mode_rejects_arity_mismatch() {
 
     // The mismatching fact must NOT be in the store; the original must be.
     let inner = kb.inner.borrow();
-    let gerku_facts = inner.fact_store.lookup_predicate("gerku").unwrap();
+    let dog_facts = inner.fact_store.lookup_predicate("gerku").unwrap();
     assert!(
-        !gerku_facts.iter().any(|f| f.inner().args.len() == 1),
+        !dog_facts.iter().any(|f| f.inner().args.len() == 1),
         "the rejected arity-1 fact must not be stored"
     );
 }
@@ -11708,9 +11705,9 @@ fn strict_mode_is_inert_during_rebuild() {
     kb.retract_fact(unrelated).unwrap();
 
     let inner = kb.inner.borrow();
-    let gerku_facts = inner.fact_store.lookup_predicate("gerku").unwrap();
+    let dog_facts = inner.fact_store.lookup_predicate("gerku").unwrap();
     assert!(
-        gerku_facts.iter().any(|f| f.inner().args.len() == 1),
+        dog_facts.iter().any(|f| f.inner().args.len() == 1),
         "fact {id}: a previously-accepted mismatch must survive a strict-era rebuild"
     );
 }

@@ -433,7 +433,7 @@ mod tests {
     // ─── du (identity) predicate lowering ───────────────────────────
 
     #[test]
-    fn test_du_lowers_flat_not_event_decomposed() {
+    fn test_equals_lowers_flat_not_event_decomposed() {
         // `la .X. cu du la .Y.` (Root("equals") + 2 argument) must lower to a FLAT
         // 2-arg du(X,Y) predicate — NOT the Neo-Davidsonian event form
         // (∃e. du(e) ∧ du_x1(e,X) ∧ du_x2(e,Y)) — so logji's union-find
@@ -462,7 +462,7 @@ mod tests {
     }
 
     #[test]
-    fn test_du_with_more_than_two_argument_is_rejected() {
+    fn test_equals_with_more_than_two_arguments_is_rejected() {
         // Fail-closed: n-ary du is unsupported (logji handles only binary
         // identity). A 3-argument du must push a semantic error rather than
         // silently dropping the third argument.
@@ -625,7 +625,7 @@ mod tests {
     }
 
     #[test]
-    fn test_duhu_abstraction_produces_duhu_predicate() {
+    fn test_fact_abstraction_produces_fact_predicate() {
         // lo du'u mi klama kei cu barda
         // → Exists(_v0, And(duhu(_v0), And(klama(mi, ...), barda(_v0, ...))))
         let (form, compiler) = compile_abstraction(
@@ -654,7 +654,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ka_with_ceu_binds_open_variable() {
+    fn test_property_with_slot_binds_open_variable() {
         // lo ka ce'u melbi kei cu barda
         // ce'u should resolve to the same variable as the quantified entity
         let (form, compiler) = compile_abstraction(
@@ -695,7 +695,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ni_abstraction_produces_ni_predicate() {
+    fn test_amount_abstraction_produces_amount_predicate() {
         let (form, compiler) = compile_abstraction(
             AbstractionKind::Amount,
             "happy",
@@ -719,7 +719,7 @@ mod tests {
     }
 
     #[test]
-    fn test_siho_abstraction_produces_siho_predicate() {
+    fn test_concept_abstraction_produces_concept_predicate() {
         let (form, compiler) = compile_abstraction(
             AbstractionKind::Concept,
             "goes",
@@ -743,7 +743,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nu_abstraction_still_works() {
+    fn test_event_abstraction_still_works() {
         let (form, compiler) = compile_abstraction(
             AbstractionKind::Event,
             "goes",
@@ -767,7 +767,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ceu_outside_ka_is_rejected() {
+    fn test_slot_outside_property_is_rejected() {
         // `ce'u` outside a `ka` abstraction has no binder. The old behavior minted a
         // fresh variable that stayed FREE through compilation (the da/de/di safety net
         // does not close `_v` fresh vars) — a non-ground form leaking toward the store.
@@ -807,7 +807,7 @@ mod tests {
     // ─── BAI modal tag tests ──────────────────────────────────────
 
     #[test]
-    fn test_fio_produces_custom_modal() {
+    fn test_via_modal_produces_custom_modal() {
         // mi klama fi'o zbasu do → And(klama(mi,...), zbasu(do, mi,...))
         // Buffer:
         //   arguments: [0: mi, 1: do, 2: ModalTagged(Fio(1), 1)]
@@ -854,7 +854,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fio_arity_one_predicate_errors() {
+    fn test_via_modal_arity_one_predicate_errors() {
         // `mi barda fi'o prenu fe'u do` — `prenu` (person) is a 1-place predicate, so
         // the modal has no x2 slot to carry the main proposition's x1 (`mi`). A 1-place
         // modal that silently drops that link loses meaning, so it must fail closed.
@@ -1492,7 +1492,7 @@ mod tests {
     }
 
     #[test]
-    fn poi_restrictor_stays_in_universal_antecedent() {
+    fn where_restrictor_stays_in_universal_antecedent() {
         // Guard: poi is RESTRICTIVE, so `barda` stays in the antecedent. Green
         // before AND after — pins that the noi fix does not leak into poi.
         let (form, compiler) = compile_ro_lo_gerku_rel_barda_klama(RelClauseKind::Restrictive);
@@ -1509,7 +1509,7 @@ mod tests {
     }
 
     #[test]
-    fn noi_under_exact_count_is_restrictive_documented_residual() {
+    fn incidental_under_exact_count_is_restrictive_documented_residual() {
         // DOCUMENTED RESIDUAL: under an exact-count quantifier, noi is folded into
         // the counted body (== restrictive), because the principled non-restrictive
         // form `Count(…) ∧ ∀x.(desc→noi)` would need close_quantifier to emit two
@@ -1915,7 +1915,7 @@ mod tests {
     }
 
     #[test]
-    fn test_du_with_da_closed() {
+    fn test_equals_with_existential_closed() {
         // `da du mi` — flat du(da, mi); the `da` must be existentially closed
         // (the flat-du shape must not hide the logic var from the walk).
         let predicates = vec![Predicate::Root("equals".into())];
@@ -2187,7 +2187,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fa_name_fe_kea_skips_x1_injection() {
+    fn test_x1_tag_name_x2_tag_it_skips_x1_injection() {
         // `ro lo gerku poi prami fa la .alis. fe ke'a cu danlu` — the exact KR
         // spelling `animal(every dog where loves(lover: Alis, loved: it)).`
         // The all-named lowering leaves the body HEAD EMPTY with FA-tagged tail
@@ -2253,7 +2253,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fa_tagged_kea_skips_x1_injection() {
+    fn test_x1_tagged_it_skips_x1_injection() {
         // `ro lo gerku poi prami fa ke'a fe la .alis. cu danlu` —
         // `animal(every dog where loves(lover: it, loved: Alis)).`
         // Mirror image of the above: the explicit ke'a rides UNDER the `fa` (x1)
@@ -2318,7 +2318,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fe_tagged_lone_kea_leaves_x1_unspecified() {
+    fn test_x2_tagged_lone_it_leaves_x1_unspecified() {
         // `ro lo gerku poi prami fe ke'a cu danlu` —
         // `animal(every dog where loves(loved: it)).` (x1 omitted).
         // Regression for the SILENT variant: the injection used to pre-fill x1
@@ -2501,7 +2501,7 @@ mod tests {
     // ─── Panel-finding regressions (2026-06-10): meaning loss ────
 
     #[test]
-    fn test_fa_tag_beyond_arity_errors() {
+    fn test_place_tag_beyond_arity_errors() {
         // fu do gerku → `fu` targets x5 but gerku is 2-place: semantic error,
         // never a silent drop of `do`.
         let predicates = vec![Predicate::Root("dog".into())];
@@ -2530,7 +2530,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fa_tag_within_arity_no_error() {
+    fn test_place_tag_within_arity_no_error() {
         // fe do gerku → `fe` targets x2; gerku is 2-place: fine.
         let predicates = vec![Predicate::Root("dog".into())];
         let arguments = vec![
@@ -2877,7 +2877,7 @@ mod tests {
     // ─── Tense wrapper tests ──────────────────────────────────
 
     #[test]
-    fn test_tense_pu_produces_past() {
+    fn test_tense_past_produces_past() {
         // pu mi klama → Past(klama(mi, ...))
         let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![Argument::Pronoun("me".into())];
@@ -2894,7 +2894,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tense_ca_produces_present() {
+    fn test_tense_now_produces_present() {
         let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
@@ -2910,7 +2910,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tense_ba_produces_future() {
+    fn test_tense_future_produces_future() {
         let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
@@ -2928,7 +2928,7 @@ mod tests {
     // ─── DeonticMood tests ────────────────────────────────────
 
     #[test]
-    fn test_deontic_ei_produces_obligatory() {
+    fn test_deontic_must_produces_obligatory() {
         let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
@@ -2944,7 +2944,7 @@ mod tests {
     }
 
     #[test]
-    fn test_deontic_ehe_produces_permitted() {
+    fn test_deontic_may_produces_permitted() {
         let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
@@ -2981,7 +2981,7 @@ mod tests {
     // ─── Conversion SE tests ──────────────────────────────────
 
     #[test]
-    fn test_se_conversion_swaps_args() {
+    fn test_x2_conversion_swaps_args() {
         // se prami mi do → prami(do, mi, ...) (x1↔x2 swapped)
         let predicates = vec![
             Predicate::Root("loves".into()),
@@ -3036,7 +3036,7 @@ mod tests {
     // ─── Unspecified argument (zo'e) test ────────────────────────
 
     #[test]
-    fn test_zo_e_compiles_to_unspecified() {
+    fn test_something_compiles_to_unspecified() {
         let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![Argument::Unspecified];
         let proposition = Proposition {
@@ -3228,7 +3228,7 @@ mod tests {
     }
 
     #[test]
-    fn test_event_conversion_se() {
+    fn test_event_conversion_x2() {
         // mi se prami do → prami(do, mi, ...) with se-swapped args
         // Event form: ∃e. prami(e) ∧ prami_x1(e, do) ∧ prami_x2(e, mi)
         let predicates = vec![

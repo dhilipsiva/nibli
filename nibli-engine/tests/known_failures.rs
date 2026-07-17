@@ -46,7 +46,7 @@ fn has_predicate_base(buf: &EngineLogicBuffer, base: &str) -> bool {
 // registered anyway — possibly with zero conditions, so it fires unconditionally.
 
 #[test] // FIXED (fail-closed rule compilation): promoted from the backlog to a live guard.
-fn ganai_tensed_antecedent_must_not_fire_unconditionally() {
+fn implication_tensed_antecedent_must_not_fire_unconditionally() {
     let engine = fresh_engine();
     // "if Adam ran (past), then Adam is an animal" — on an empty KB, Adam never ran.
     // Fail-closed (reject the unrepresentable rule) and fail-open-fixed (represent the
@@ -65,7 +65,7 @@ fn ganai_tensed_antecedent_must_not_fire_unconditionally() {
 }
 
 #[test] // FIXED (fail-closed rule compilation): promoted from the backlog to a live guard.
-fn ganai_disjunctive_antecedent_must_not_fire_unconditionally() {
+fn implication_disjunctive_antecedent_must_not_fire_unconditionally() {
     let engine = fresh_engine();
     // "if (Adam is a dog OR Adam is a cat) then Adam is an animal" — neither disjunct holds.
     // Reject-or-represent (see the tensed-antecedent test); the invariant is that
@@ -181,7 +181,7 @@ fn fa_tag_beyond_arity_must_error_not_silently_drop() {
 }
 
 #[test] // FIXED (tanru decomposition emits Unspecified roles; firewall counts per shared event): promoted.
-fn tanru_in_poi_must_not_be_falsely_rejected() {
+fn pair_in_where_clause_must_not_be_falsely_rejected() {
     let engine = fresh_engine();
     // "a dog that runs fast goes" — valid Lojban; `sutra bajra` is a tanru inside the poi clause.
     assert!(
@@ -283,7 +283,7 @@ fn abstraction_body_over_rel_clause_must_reference_real_body() {
 // (which stores flat buffers verbatim) and retract one record by id. The fact
 // must still hold while a second live record asserts it.
 fn duplicate_ground_fact_survives_retracting_one_copy() {
-    let flat_gerku_adam = || nibli_types::logic::LogicBuffer {
+    let flat_dog_adam = || nibli_types::logic::LogicBuffer {
         nodes: vec![nibli_types::logic::LogicNode::Predicate((
             "gerku".to_string(),
             vec![nibli_types::logic::LogicalTerm::Constant(
@@ -296,21 +296,21 @@ fn duplicate_ground_fact_survives_retracting_one_copy() {
     let engine = fresh_engine();
     let id1 = engine
         .kb()
-        .assert_fact(flat_gerku_adam(), ":assert gerku".to_string())
+        .assert_fact(flat_dog_adam(), ":assert gerku".to_string())
         .unwrap();
     let _id2 = engine
         .kb()
-        .assert_fact(flat_gerku_adam(), ":assert gerku".to_string())
+        .assert_fact(flat_dog_adam(), ":assert gerku".to_string())
         .unwrap();
     // Sanity: both records assert the flat fact (FOL contract) while live.
-    let before = engine.kb().query_entailment(flat_gerku_adam()).unwrap();
+    let before = engine.kb().query_entailment(flat_dog_adam()).unwrap();
     assert!(
         before.is_true(),
         "sanity: two live records assert gerku(adam): {before:?}"
     );
     // Retract only the FIRST record; the second still asserts gerku(adam).
     engine.kb().retract_fact(id1).unwrap();
-    let r = engine.kb().query_entailment(flat_gerku_adam()).unwrap();
+    let r = engine.kb().query_entailment(flat_dog_adam()).unwrap();
     assert!(
         r.is_true(),
         "a live record still asserts gerku(adam), but retracting the duplicate \
