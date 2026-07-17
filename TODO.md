@@ -266,17 +266,16 @@ performance → future-facing):
   nibli-semantics→nibli-kr dev-dep, and the crate has no KR-text helper) —
   keep the corrupt-buffer negative controls where they are (they exist to
   exercise the programmatic-build path).
-- **Shared CoreSession (L)** — the compile chain (`parse_checked →
-  compile_from_ast → transform_compute_nodes`) + the compute-predicate registry
-  + assert/query wrappers are hand-mirrored across nibli-engine (lib.rs:213),
-  nibli-pipeline (lib.rs:333 — its comment literally says "the mirror of
-  nibli-engine's compile_text, so native and WASM agree"), nibli-wasm
-  (lib.rs:113), and nibli-ui (main.rs:230) (+ verify/formalize call sites);
-  `assert_fact_inner` is duplicated engine↔pipeline. Extract one shared core (in
-  nibli-engine or a small crate) that pipeline/wasm/ui wrap with only boundary
-  conversion. Related sub-item (may split out — 0.2.x ABI touch): align the WIT
-  `proof-rule` tuple shape with the canonical named-field enum so pipeline's
-  ~260-line `convert_proof_rule` glue can go.
+- **Align the WIT proof-rule tuple shape with the canonical named-field enum
+  (M, 0.2.x ABI touch)** — the deferred sub-item of the Shared CoreSession
+  extraction (landed 2026-07-18: nibli-session's `CoreSession` is now the one
+  compile/assert/query core every surface wraps). nibli-pipeline still carries
+  ~290 lines of WIT boundary conversion (lib.rs ~40-330: terms/nodes/buffers
+  both directions, query-result, `convert_proof_rule` + `convert_proof_trace`,
+  witness/fact-summary, error) that exist only because the WIT
+  `proof-rule`/`logic-node` types are tuple-shaped mirrors of the canonical
+  named-field enums. Aligning the WIT shapes (a 0.2.x→0.3.0 ABI break —
+  regenerate bindings, update nibli-host) lets most of that glue go.
 - **Sound tabling for the deep-chain cliff (L)** — confirmed root cause:
   `pred_cache` stores only DEFINITIVE verdicts (reasoning.rs:1736-1746);
   depth-cut/cycle-cut results are context-dependent and uncached, so iterative
