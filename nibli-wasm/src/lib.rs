@@ -4,8 +4,6 @@
 //!
 //! Powers the live Transparency Triad demo at <https://dhilipsiva.dev/nibli>.
 
-use std::collections::HashSet;
-
 use wasm_bindgen::prelude::*;
 
 use nibli_types::error::NibliError as PipelineError;
@@ -20,8 +18,11 @@ use nibli_types::logic;
 /// "Reset" just builds a fresh Session and re-asserts the KB lines.
 #[wasm_bindgen]
 pub struct Session {
-    kb: nibli_reason::KnowledgeBase,
-    compute_predicates: HashSet<String>,
+    /// The SHARED compile/assert/query core (nibli-session) — the same
+    /// CoreSession the native engine and the WASM component wrap, so all
+    /// three runtimes agree by construction. External compute stays
+    /// unregistered (no TCP backend in the browser).
+    core: nibli_session::CoreSession,
 }
 
 impl Default for Session {
@@ -35,8 +36,7 @@ impl Session {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Session {
         Session {
-            kb: nibli_reason::KnowledgeBase::new(),
-            compute_predicates: nibli_reason::default_compute_predicates(),
+            core: nibli_session::CoreSession::new(),
         }
     }
 
@@ -53,25 +53,19 @@ impl Session {
     /// multi-sentence text becomes N INDEPENDENT facts (one per root; connectives
     /// stay whole); returns the minted fact ids in root order.
     pub fn assert_text(&self, text: &str) -> Result<Vec<u64>, JsError> {
-        let buf = self.compile_text(text).map_err(js_err)?;
-        let mut ids = Vec::new();
-        for sub in buf.split_roots() {
-            ids.push(
-                self.kb
-                    .assert_fact(sub, text.to_string())
-                    .map_err(|e| js_err(e.to_string()))?,
-            );
-        }
-        Ok(ids)
+        let pairs = self
+            .core
+            .assert_text(text)
+            .map_err(|e| js_err(e.to_string()))?;
+        Ok(pairs.into_iter().map(|(id, _)| id).collect())
     }
 
     /// Run a Lojban query. Returns JSON:
     /// `{ status, detail, naf_dependent, cwa_false, proof_text, why, proof }`.
     pub fn query_with_proof(&self, text: &str) -> Result<String, JsError> {
-        let buf = self.compile_text(text).map_err(js_err)?;
         let (result, trace) = self
-            .kb
-            .query_entailment_with_proof(buf)
+            .core
+            .query_text_with_proof(text)
             .map_err(|e| js_err(e.to_string()))?;
         // `trace` IS the wire `ProofTrace` (canonical == wire now) — no conversion.
         let out = serde_json::json!({
@@ -90,12 +84,14 @@ impl Session {
 
     /// Retract a fact by id and rebuild derived state.
     pub fn retract_fact(&self, id: u64) -> Result<(), JsError> {
-        self.kb.retract_fact(id).map_err(|e| js_err(e.to_string()))
+        self.core
+            .retract_fact(id)
+            .map_err(|e| js_err(e.to_string()))
     }
 
     /// All active facts as JSON: `[{ id, label }]`.
     pub fn list_facts(&self) -> Result<String, JsError> {
-        let facts = self.kb.list_facts().map_err(|e| js_err(e.to_string()))?;
+        let facts = self.core.list_facts().map_err(|e| js_err(e.to_string()))?;
         let rows: Vec<serde_json::Value> = facts
             .iter()
             .map(|f| serde_json::json!({ "id": f.id, "label": f.label }))
@@ -105,19 +101,7 @@ impl Session {
 
     /// Clear all facts and rules.
     pub fn reset(&self) {
-        self.kb.reset().ok();
-    }
-}
-
-impl Session {
-    fn compile_text(&self, input: &str) -> Result<logic::LogicBuffer, String> {
-        // Fail-closed KR parse + nibli-semantics compile + compute-node marking.
-        // String-error surface preserved via `to_string`.
-        let ast = nibli_kr::parse_checked(input).map_err(|e: PipelineError| e.to_string())?;
-        let mut buf =
-            nibli_semantics::compile_from_ast(ast).map_err(|e: PipelineError| e.to_string())?;
-        nibli_reason::transform_compute_nodes(&mut buf, &self.compute_predicates);
-        Ok(buf)
+        self.core.reset().ok();
     }
 }
 

@@ -10,6 +10,7 @@ edition = "2024"
 nibli-kr = { path = "../nibli-kr" }
 nibli-semantics = { path = "../nibli-semantics" }
 nibli-reason = { path = "../nibli-reason" }
+nibli-session = { path = "../nibli-session" }
 nibli-types = { path = "../nibli-types" }
 wit-bindgen-rt = "0.44.0"
 

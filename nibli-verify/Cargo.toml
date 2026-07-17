@@ -12,6 +12,7 @@ nibli-types = { path = "../nibli-types" }
 nibli-kr = { path = "../nibli-kr" }
 nibli-semantics = { path = "../nibli-semantics" }
 nibli-reason = { path = "../nibli-reason" }
+nibli-session = { path = "../nibli-session" }
 # The Predilex gates key their Lojban lemmas through the provenance bridge
 # (nibli_lexicon::by_provenance) — a regular dep since the taxonomy leg
 # (src/lib.rs::run_predilex_taxonomy) re-keys edges to English corpus names;

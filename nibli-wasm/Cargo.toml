@@ -16,6 +16,7 @@ wasm-opt = false
 nibli-kr = { path = "../nibli-kr" }
 nibli-semantics = { path = "../nibli-semantics" }
 nibli-reason = { path = "../nibli-reason" }
+nibli-session = { path = "../nibli-session" }
 nibli-types = { path = "../nibli-types" }
 nibli-protocol = { path = "../nibli-protocol" }
 nibli-render = { path = "../nibli-render" }

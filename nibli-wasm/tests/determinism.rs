@@ -19,8 +19,11 @@ enum COp {
     Retract(usize),
 }
 
-/// Parse the shared corpus format (independently reimplemented per runner — the
-/// runners must not share code paths beyond the engine itself).
+/// Parse the shared corpus format (independently reimplemented per runner —
+/// the runners must not share code paths beyond the engine itself; since the
+/// nibli-session extraction "the engine" INCLUDES the shared CoreSession, so
+/// the three-way corpus oracles the three runtime STACKS — native, Wasmtime,
+/// V8 — rather than hand-mirrored compile chains).
 fn parse_corpus(text: &str) -> Vec<COp> {
     let mut ops: Vec<COp> = Vec::new();
     let mut pending_q: Option<String> = None;

@@ -2746,6 +2746,7 @@ dependencies = [
  "nibli-kr",
  "nibli-reason",
  "nibli-semantics",
+ "nibli-session",
  "nibli-types",
  "wit-bindgen-rt",
 ]
@@ -2828,6 +2829,7 @@ dependencies = [
  "nibli-reason",
  "nibli-render",
  "nibli-semantics",
+ "nibli-session",
  "nibli-types",
  "serde_json",
 ]
@@ -2841,6 +2843,7 @@ dependencies = [
  "nibli-lexicon",
  "nibli-reason",
  "nibli-semantics",
+ "nibli-session",
  "nibli-types",
 ]
 
@@ -2854,6 +2857,7 @@ dependencies = [
  "nibli-reason",
  "nibli-render",
  "nibli-semantics",
+ "nibli-session",
  "nibli-types",
  "serde_json",
  "wasm-bindgen",

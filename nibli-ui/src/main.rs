@@ -13,13 +13,8 @@
 //! step is interpretive formalization behind gates; "compile" is reserved for
 //! the deterministic KB→logic step.)
 
-use std::collections::HashSet;
-
 use dioxus::prelude::*;
 use nibli_protocol::{KbStatus, LineResult, ProofTrace};
-use nibli_reason::KnowledgeBase;
-use nibli_types::error::NibliError;
-use nibli_types::logic::LogicBuffer;
 
 mod examples;
 use examples::EXAMPLES;
@@ -223,22 +218,16 @@ struct OutputEntry {
 // logarithm) have no TCP backend in the browser and surface as errors, same
 // as the live demo.
 
-/// Parse one KB line with the KR front-end, compile to FOL, and mark
-/// compute nodes. Fail-closed on any parse/compile error (the `NibliError`
-/// Display carries the `[Syntax Error]` / `[Semantic Error]` prefixes the
-/// output log classifies on).
-fn compile_text(text: &str, preds: &HashSet<String>) -> Result<LogicBuffer, NibliError> {
-    let ast = nibli_kr::parse_checked(text)?;
-    let mut buf = nibli_semantics::compile_from_ast(ast)?;
-    nibli_reason::transform_compute_nodes(&mut buf, preds);
-    Ok(buf)
-}
-
-/// Build a fresh KB from the KB tab, assert it (recording a per-line status),
-/// then run the query and return the result + proof trace as an `OutputEntry`.
+/// Build a fresh session from the KB tab, assert it (recording a per-line
+/// status), then run the query and return the result + proof trace as an
+/// `OutputEntry`. The compile chain is the SHARED `nibli_session::CoreSession`
+/// (the same core the native engine and both wasm surfaces wrap — fail-closed;
+/// the `NibliError` Display carries the `[Syntax Error]` / `[Semantic Error]`
+/// prefixes the output log classifies on). The per-root assert loop stays
+/// UI-side: a failed root records the first error but keeps asserting the
+/// remaining roots (the KbStatusBar's per-line tolerance).
 fn run_query(kb_text: &str, query_text: &str) -> OutputEntry {
-    let preds = nibli_reason::default_compute_predicates();
-    let kb = KnowledgeBase::new();
+    let session = nibli_session::CoreSession::new();
 
     let mut asserted = 0u32;
     let mut errors = 0u32;
@@ -256,7 +245,7 @@ fn run_query(kb_text: &str, query_text: &str) -> OutputEntry {
         }
         let line_number = (i + 1) as u32;
         let notes: Vec<String> = linter.lint(line).into_iter().map(|n| n.message).collect();
-        match compile_text(line, &preds) {
+        match session.compile_text(line) {
             Ok(buf) => {
                 // Each bare-`.i` sentence becomes its OWN fact (connectives stay
                 // whole — they compile to a single root). `asserted` counts facts,
@@ -265,7 +254,7 @@ fn run_query(kb_text: &str, query_text: &str) -> OutputEntry {
                 let mut first_id: Option<u64> = None;
                 let mut first_err: Option<String> = None;
                 for sub in buf.split_roots() {
-                    match kb.assert_fact(sub, line.to_string()) {
+                    match session.kb().assert_fact(sub, line.to_string()) {
                         Ok(id) => {
                             asserted += 1;
                             first_id.get_or_insert(id);
@@ -317,7 +306,7 @@ fn run_query(kb_text: &str, query_text: &str) -> OutputEntry {
         line_results,
     });
 
-    match compile_text(query_text, &preds).and_then(|buf| kb.query_entailment_with_proof(buf)) {
+    match session.query_text_with_proof(query_text) {
         Ok((result, trace)) => {
             let status = result.status_label();
             let result = match result.detail_label() {

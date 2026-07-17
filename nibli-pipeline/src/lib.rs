@@ -18,15 +18,18 @@ use nibli_types::error as pipeline_err;
 use nibli_types::logic;
 
 use std::cell::RefCell;
-use std::collections::HashSet;
 
 /// WIT component implementation for the `nibli-pipeline` interface.
 struct NibliPipeline;
 
 /// A user-facing session wrapping the full nibli-kr → nibli-semantics → nibli-reason pipeline.
 pub struct Session {
-    kb: nibli_reason::KnowledgeBase,
-    compute_predicates: RefCell<HashSet<String>>,
+    /// The SHARED compile/assert/query core (nibli-session) — the same
+    /// CoreSession nibli-engine wraps natively, so native and WASM agree BY
+    /// CONSTRUCTION. RefCell only for `register_compute_predicate` (the WIT
+    /// resource methods take `&self`; the KB inside has its own interior
+    /// mutability).
+    core: RefCell<nibli_session::CoreSession>,
     /// The KR lint session (NIBLI_KR §12 L1–L9): non-blocking
     /// `[Note: …]` guest-stdout echoes on interactive text inputs — the
     /// `[Skolem]`/`[Rule]` precedent, gated by the same NIBLI_QUIET verbose
@@ -328,20 +331,10 @@ fn batch_eval_via_host(requests: &[nibli_reason::ComputeRequest]) -> Vec<Result<
         .collect()
 }
 
-// ─── Shared pipeline: text → AST → LogicBuffer ───
-
-fn compile_pipeline(
-    text: &str,
-    compute_predicates: &HashSet<String>,
-) -> Result<logic::LogicBuffer, export_err::NibliError> {
-    // The mirror of nibli-engine's `compile_text`, so native and WASM agree.
-    let ast = nibli_kr::parse_checked(text).map_err(convert_pipeline_error)?;
-    let mut buf = nibli_semantics::compile_from_ast(ast).map_err(convert_pipeline_error)?;
-    nibli_reason::transform_compute_nodes(&mut buf, compute_predicates);
-    Ok(buf)
-}
-
 // ─── WIT exports ───
+// (The compile chain lives in nibli-session's CoreSession — the SAME core
+// nibli-engine wraps natively, so native and WASM agree by construction; the
+// old `compile_pipeline` mirror is gone.)
 
 impl Guest for NibliPipeline {
     type Session = Session;
@@ -357,8 +350,9 @@ impl Session {
     /// fails closed on any parse error, so no per-caller warning check is
     /// needed.)
     fn assert_text_inner(&self, input: String, id: u64) -> Result<(), export_err::NibliError> {
-        let buf = compile_pipeline(&input, &self.compute_predicates.borrow())?;
-        self.kb
+        let core = self.core.borrow();
+        let buf = core.compile_text(&input).map_err(convert_pipeline_error)?;
+        core.kb()
             .assert_fact_with_id(buf, input, id)
             // The assert is the reasoning stage (buffer already past nibli-semantics);
             // nibli-reason's `assert_fact_with_id` returns a String, so wrap as Reasoning.
@@ -381,8 +375,10 @@ impl Session {
         }
     }
 
-    /// Shared body for `assert_fact` / `assert_fact_with_id` (see
-    /// `assert_text_inner` for the `id` semantics).
+    /// Shared body for `assert_fact` / `assert_fact_with_id` — delegates to
+    /// the core's `assert_fact_direct` (label `":assert {relation}"`,
+    /// event-decomposed to the surface shape, caller-chosen id for replay);
+    /// only the WIT term/error conversion happens here.
     fn assert_fact_inner(
         &self,
         relation: String,
@@ -391,27 +387,10 @@ impl Session {
     ) -> Result<u64, export_err::NibliError> {
         let logic_args: Vec<logic::LogicalTerm> =
             args.iter().map(convert_logical_term_from_export).collect();
-        let label = format!(":assert {}", relation);
-        // Event-decompose to the SAME shape a surface assertion produces, so the
-        // injected fact is matched by surface text queries (not just raw-FOL /
-        // same-shape direct queries). Identity stays flat; arity follows the
-        // injected-arity policy (fail-closed) — see compile_injected_fact.
-        let buf = nibli_semantics::compile_injected_fact(&relation, &logic_args)
-            .map_err(convert_pipeline_error)?;
-        match id {
-            Some(i) => {
-                self.kb
-                    .assert_fact_with_id(buf, label, i)
-                    // The assert is the reasoning stage (buffer already past nibli-semantics);
-                    // nibli-reason's `assert_fact_with_id` returns a String, so wrap as Reasoning.
-                    .map_err(export_err::NibliError::Reasoning)?;
-                Ok(i)
-            }
-            None => self
-                .kb
-                .assert_fact(buf, label)
-                .map_err(convert_pipeline_error),
-        }
+        self.core
+            .borrow()
+            .assert_fact_direct(&relation, &logic_args, id)
+            .map_err(convert_pipeline_error)
     }
 }
 
@@ -419,32 +398,33 @@ impl GuestSession for Session {
     fn new() -> Self {
         // Register compute dispatch PER-KB so nibli-reason can call the host's
         // compute-backend (was a thread-local global — now per-instance).
-        let kb = nibli_reason::KnowledgeBase::new();
-        kb.set_compute_dispatch(eval_via_host, batch_eval_via_host);
+        let core = nibli_session::CoreSession::new();
+        core.set_compute_dispatch(eval_via_host, batch_eval_via_host);
         // The nibli-host REPL opts the guest INTO verbose stdout — the per-assertion
         // `[Skolem]`/`[Rule]`/`[Constraint]` diagnostics — unlike the native
         // nibli-engine library, which stays quiet by default. The host forwards
         // `NIBLI_QUIET=1` into the WASI environment to suppress that bookkeeping
         // (the book's default capture mode); any other value stays verbose. A
         // post-trap rebuild re-runs this constructor, so the setting survives replay.
+        // (The env reads live HERE, not in the shared core — the browser
+        // surfaces have no process env.)
         let verbose = std::env::var("NIBLI_QUIET").ok().as_deref() != Some("1");
-        kb.set_verbose(verbose);
+        core.set_verbose(verbose);
         // Same pattern for STRICT MODE: the host forwards `NIBLI_STRICT=1` into
         // the WASI env; the `:strict` REPL toggle re-applies via `set-strict`
         // after any post-trap rebuild.
         if std::env::var("NIBLI_STRICT").ok().as_deref() == Some("1") {
-            kb.set_strict(true);
+            core.set_strict(true);
         }
         Session {
-            kb,
-            compute_predicates: RefCell::new(nibli_reason::default_compute_predicates()),
+            core: RefCell::new(core),
             linter: RefCell::new(nibli_kr::lint::Linter::new()),
             verbose,
         }
     }
 
     fn set_strict(&self, strict: bool) {
-        self.kb.set_strict(strict);
+        self.core.borrow().set_strict(strict);
     }
 
     /// Assert KR text, splitting a multi-statement input into one independent
@@ -458,17 +438,15 @@ impl GuestSession for Session {
         input: String,
     ) -> Result<Vec<(u64, export_logic::LogicBuffer)>, export_err::NibliError> {
         self.emit_lints(&input);
-        let buf = compile_pipeline(&input, &self.compute_predicates.borrow())?;
-        let mut out = Vec::new();
-        for sub in buf.split_roots() {
-            let exported = convert_logic_buffer_to_export(&sub);
-            let id = self
-                .kb
-                .assert_fact(sub, input.clone())
-                .map_err(convert_pipeline_error)?;
-            out.push((id, exported));
-        }
-        Ok(out)
+        let pairs = self
+            .core
+            .borrow()
+            .assert_text(&input)
+            .map_err(convert_pipeline_error)?;
+        Ok(pairs
+            .into_iter()
+            .map(|(id, sub)| (id, convert_logic_buffer_to_export(&sub)))
+            .collect())
     }
 
     fn assert_text_with_id(&self, input: String, id: u64) -> Result<(), export_err::NibliError> {
@@ -484,7 +462,9 @@ impl GuestSession for Session {
         id: u64,
     ) -> Result<(), export_err::NibliError> {
         let buf = convert_logic_buffer_from_export(&buffer);
-        self.kb
+        self.core
+            .borrow()
+            .kb()
             .assert_fact_with_id(buf, label, id)
             .map_err(export_err::NibliError::Reasoning)
     }
@@ -494,9 +474,9 @@ impl GuestSession for Session {
         input: String,
     ) -> Result<export_logic::QueryResult, export_err::NibliError> {
         self.emit_lints(&input);
-        let buf = compile_pipeline(&input, &self.compute_predicates.borrow())?;
-        self.kb
-            .query_entailment(buf)
+        self.core
+            .borrow()
+            .query_text(&input)
             .map(|result| convert_query_result_to_export(&result))
             .map_err(convert_pipeline_error)
     }
@@ -506,8 +486,11 @@ impl GuestSession for Session {
         input: String,
     ) -> Result<Vec<Vec<export_logic::WitnessBinding>>, export_err::NibliError> {
         self.emit_lints(&input);
-        let buf = compile_pipeline(&input, &self.compute_predicates.borrow())?;
-        let result = self.kb.query_find(buf).map_err(convert_pipeline_error)?;
+        let result = self
+            .core
+            .borrow()
+            .query_find_text(&input)
+            .map_err(convert_pipeline_error)?;
         Ok(convert_witness_bindings(result))
     }
 
@@ -516,10 +499,10 @@ impl GuestSession for Session {
         input: String,
     ) -> Result<(export_logic::QueryResult, export_logic::ProofTrace), export_err::NibliError> {
         self.emit_lints(&input);
-        let buf = compile_pipeline(&input, &self.compute_predicates.borrow())?;
         let (result, trace) = self
-            .kb
-            .query_entailment_with_proof(buf)
+            .core
+            .borrow()
+            .query_text_with_proof(&input)
             .map_err(convert_pipeline_error)?;
         Ok((
             convert_query_result_to_export(&result),
@@ -531,17 +514,21 @@ impl GuestSession for Session {
         &self,
         input: String,
     ) -> Result<export_logic::LogicBuffer, export_err::NibliError> {
-        let buf = compile_pipeline(&input, &self.compute_predicates.borrow())?;
+        let buf = self
+            .core
+            .borrow()
+            .compile_text(&input)
+            .map_err(convert_pipeline_error)?;
         Ok(convert_logic_buffer_to_export(&buf))
     }
 
     fn reset_kb(&self) -> Result<(), export_err::NibliError> {
         self.linter.borrow_mut().reset();
-        self.kb.reset().map_err(convert_pipeline_error)
+        self.core.borrow().reset().map_err(convert_pipeline_error)
     }
 
     fn register_compute_predicate(&self, name: String) {
-        self.compute_predicates.borrow_mut().insert(name);
+        self.core.borrow_mut().register_compute_predicate(name);
     }
 
     fn assert_fact(
@@ -562,11 +549,18 @@ impl GuestSession for Session {
     }
 
     fn retract_fact(&self, id: u64) -> Result<(), export_err::NibliError> {
-        self.kb.retract_fact(id).map_err(convert_pipeline_error)
+        self.core
+            .borrow()
+            .retract_fact(id)
+            .map_err(convert_pipeline_error)
     }
 
     fn list_facts(&self) -> Result<Vec<export_logic::FactSummary>, export_err::NibliError> {
-        let facts = self.kb.list_facts().map_err(convert_pipeline_error)?;
+        let facts = self
+            .core
+            .borrow()
+            .list_facts()
+            .map_err(convert_pipeline_error)?;
         Ok(convert_fact_summaries(facts))
     }
 }

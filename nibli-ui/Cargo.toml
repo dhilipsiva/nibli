@@ -13,6 +13,7 @@ nibli-types = { path = "../nibli-types" }
 nibli-kr = { path = "../nibli-kr" }
 nibli-semantics = { path = "../nibli-semantics" }
 nibli-reason = { path = "../nibli-reason" }
+nibli-session = { path = "../nibli-session" }
 nibli-lexicon = { path = "../nibli-lexicon" }
 nibli-formalize = { path = "../nibli-formalize" }
 serde_json = "1"

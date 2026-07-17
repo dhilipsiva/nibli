@@ -25,15 +25,12 @@ use nibli_types::logic::LogicBuffer;
 
 use crate::seam;
 
-/// Compile nibli KR text end-to-end: `nibli_kr::parse_checked` (parse + resolve +
-/// emit) → nibli-semantics → compute-node marking with nibli-reason's default compute set —
-/// the shipped engine runs after its parse step.
+/// Compile nibli KR text end-to-end through THE shared chain
+/// (`nibli_session::compile_text` with nibli-reason's default compute set) —
+/// the seam gate exercises the same core every runtime surface wraps.
 pub fn kompile(text: &str) -> Result<LogicBuffer, String> {
-    let ast = nibli_kr::parse_checked(text).map_err(|e| format!("nibli-kr parse '{text}': {e}"))?;
-    let mut buf = nibli_semantics::compile_from_ast(ast)
-        .map_err(|e| format!("nibli-semantics(nibli-kr) '{text}': {e}"))?;
-    nibli_reason::transform_compute_nodes(&mut buf, &nibli_reason::default_compute_predicates());
-    Ok(buf)
+    nibli_session::compile_text(text, &nibli_reason::default_compute_predicates())
+        .map_err(|e| format!("nibli-kr/nibli-semantics '{text}': {e}"))
 }
 
 /// Canonicalized Debug form — the comparison key for buffer equality.
