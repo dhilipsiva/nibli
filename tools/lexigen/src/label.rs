@@ -4,8 +4,8 @@
 //! Extracts a candidate label per place from a lensisku definition string by
 //! taking the content word immediately before each `$x_{N}$` / `$x_N$` marker
 //! (e.g. klama's "… goes to destination $x_{2}$ from origin $x_{3}$ …" yields
-//! `destination`/`origin`). Pure functions, unit-tested here; consumed by
-//! `tools/lexigen` (the corpus regeneration tool), which applies the
+//! `destination`/`origin`). Pure functions, unit-tested here; used by
+//! the regeneration binary (this crate), which applies the
 //! reserved-word/dup/x-tag sanitization on top. Measured on the lensisku
 //! dump this fully labels only ~56% of gismu — that is fine: a place
 //! this heuristic can't label stays positional (`""`), which is always honest.

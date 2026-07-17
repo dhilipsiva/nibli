@@ -186,8 +186,8 @@ struct Candidate {
 
 /// Build a candidate entry for an export gismu ABSENT from the corpus.
 fn build_candidate(name: &str, lens: &LensiskuEntry) -> Candidate {
-    let arity = nibli_lexicon::arity::definition_arity(&lens.definition).clamp(1, 5);
-    let prose = nibli_lexicon::label::prose_labels(&lens.definition, arity as u8);
+    let arity = nibli_lexigen::arity::definition_arity(&lens.definition).clamp(1, 5);
+    let prose = nibli_lexigen::label::prose_labels(&lens.definition, arity as u8);
     let mut places: Vec<String> = Vec::with_capacity(arity);
     let mut tiers: Vec<Tier> = Vec::with_capacity(arity);
     for i in 0..arity {
@@ -281,7 +281,7 @@ fn regen(dict_path: &str, out_path: &str) {
         match nibli_lexicon::by_provenance(word) {
             Some(entry) => {
                 // Drift report only — regen never rewrites committed entries.
-                let fresh_arity = nibli_lexicon::arity::definition_arity(&lens.definition);
+                let fresh_arity = nibli_lexigen::arity::definition_arity(&lens.definition);
                 if fresh_arity != entry.places.len() {
                     drift += 1;
                     println!(

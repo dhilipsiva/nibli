@@ -245,9 +245,6 @@ Pipeline-audit backlog (2026-07-17; three-agent audit of front-end / middle IRs 
 back-end — effort tags S/M/L; ordered quick-wins → correctness → structure →
 performance → future-facing):
 
-- **Move arity.rs + label.rs into tools/lexigen (S)** — consumed ONLY by lexigen
-  (main.rs:189,190,284); their "#[path]-shared with build.rs" rationale died at
-  the committed-corpus milestone; ~395 lines off the library's public surface.
 - **Back-end hygiene bundle (S)** — revisit nibli-engine's crate-root
   `#![allow(dead_code)]` (the rustc ICE it worked around is fixed in the pinned
   1.94) and fix whatever real dead code it was masking; verify the

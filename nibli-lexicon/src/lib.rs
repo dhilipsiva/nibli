@@ -21,9 +21,7 @@
 //! names (and `a+b` compound spellings). The source gismu survives solely as
 //! the [`by_provenance`] bridge — provenance metadata, never input.
 
-pub mod arity;
 pub mod corpus;
-pub mod label;
 pub mod reserved;
 
 pub use corpus::{CompoundEntry, CorpusTier, PredicateEntry, Swap};
