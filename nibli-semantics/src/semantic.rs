@@ -440,8 +440,8 @@ mod tests {
         // ingestion (which matches relation=="equals" && args.len()==2) fires.
         let predicates = vec![Predicate::Root("equals".into())];
         let arguments = vec![
-            Argument::Pronoun("mi".into()), // 0
-            Argument::Pronoun("do".into()), // 1
+            Argument::Pronoun("me".into()),  // 0
+            Argument::Pronoun("you".into()), // 1
         ];
         let proposition = Proposition {
             relation: 0,
@@ -468,9 +468,9 @@ mod tests {
         // silently dropping the third argument.
         let predicates = vec![Predicate::Root("equals".into())];
         let arguments = vec![
-            Argument::Pronoun("mi".into()), // 0
-            Argument::Pronoun("do".into()), // 1
-            Argument::Pronoun("ti".into()), // 2
+            Argument::Pronoun("me".into()),   // 0
+            Argument::Pronoun("you".into()),  // 1
+            Argument::Pronoun("this".into()), // 2
         ];
         let proposition = Proposition {
             relation: 0,
@@ -507,7 +507,7 @@ mod tests {
         let arguments = vec![
             Argument::Description((Determiner::Definite, 1)), // 0: le zarci
             Argument::Tagged((2, 0)),                         // 1: fi le zarci
-            Argument::Pronoun("do".into()),                   // 2: do (untagged)
+            Argument::Pronoun("you".into()),                  // 2: do (untagged)
         ];
         let proposition = Proposition {
             relation: 0,
@@ -522,12 +522,12 @@ mod tests {
         let x4 = get_pred_args(&form, "klama_x4", &compiler).expect("klama_x4 present");
         assert_eq!(
             const_str(&compiler, &x4[1]),
-            "do",
+            "you",
             "untagged `do` must fill x4 after fi"
         );
         let x1 = get_pred_args(&form, "klama_x1", &compiler).expect("klama_x1 present");
         assert!(
-            !matches!(&x1[1], LogicalTerm::Constant(c) if resolve(&compiler, c) == "do"),
+            !matches!(&x1[1], LogicalTerm::Constant(c) if resolve(&compiler, c) == "you"),
             "do must NOT land in x1 (pre-fix bug), got {:?}",
             x1[1]
         );
@@ -544,9 +544,9 @@ mod tests {
         // Regression: `mi klama fe do` — untagged `mi` fills x1, `fe do` fills x2.
         let predicates = vec![Predicate::Root("klama".into())];
         let arguments = vec![
-            Argument::Pronoun("mi".into()), // 0
-            Argument::Pronoun("do".into()), // 1
-            Argument::Tagged((1, 1)),       // 2: fe do
+            Argument::Pronoun("me".into()),  // 0
+            Argument::Pronoun("you".into()), // 1
+            Argument::Tagged((1, 1)),        // 2: fe do
         ];
         let proposition = Proposition {
             relation: 0,
@@ -560,8 +560,8 @@ mod tests {
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         let x1 = get_pred_args(&form, "klama_x1", &compiler).expect("klama_x1");
         let x2 = get_pred_args(&form, "klama_x2", &compiler).expect("klama_x2");
-        assert_eq!(const_str(&compiler, &x1[1]), "mi");
-        assert_eq!(const_str(&compiler, &x2[1]), "do");
+        assert_eq!(const_str(&compiler, &x1[1]), "me");
+        assert_eq!(const_str(&compiler, &x2[1]), "you");
     }
 
     // ─── Abstraction type tests ──────────────────────────────────
@@ -631,7 +631,7 @@ mod tests {
         let (form, compiler) = compile_abstraction(
             AbstractionKind::Fact,
             "klama",
-            vec![Argument::Pronoun("mi".into())],
+            vec![Argument::Pronoun("me".into())],
         );
 
         // Should be Exists(_v0, And(duhu(_v0), And(klama_event, barda_event)))
@@ -660,7 +660,7 @@ mod tests {
         let (form, compiler) = compile_abstraction(
             AbstractionKind::Property,
             "melbi",
-            vec![Argument::Pronoun("ce'u".into())],
+            vec![Argument::Pronoun("slot".into())],
         );
 
         // Should be Exists(_v0, And(ka(_v0), And(melbi_event, barda_event)))
@@ -699,7 +699,7 @@ mod tests {
         let (form, compiler) = compile_abstraction(
             AbstractionKind::Amount,
             "gleki",
-            vec![Argument::Pronoun("mi".into())],
+            vec![Argument::Pronoun("me".into())],
         );
 
         match &form {
@@ -723,7 +723,7 @@ mod tests {
         let (form, compiler) = compile_abstraction(
             AbstractionKind::Concept,
             "klama",
-            vec![Argument::Pronoun("mi".into())],
+            vec![Argument::Pronoun("me".into())],
         );
 
         match &form {
@@ -747,7 +747,7 @@ mod tests {
         let (form, compiler) = compile_abstraction(
             AbstractionKind::Event,
             "klama",
-            vec![Argument::Pronoun("mi".into())],
+            vec![Argument::Pronoun("me".into())],
         );
 
         match &form {
@@ -774,7 +774,7 @@ mod tests {
         // Fail closed: a semantic error is accumulated (NibliError::Semantic downstream),
         // and no free variable escapes.
         let predicates = vec![Predicate::Root("melbi".into())];
-        let arguments = vec![Argument::Pronoun("ce'u".into())];
+        let arguments = vec![Argument::Pronoun("slot".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -790,8 +790,8 @@ mod tests {
             compiler
                 .errors
                 .iter()
-                .any(|e| e.contains("ce'u outside a ka abstraction")),
-            "bare ce'u must accumulate a semantic error, got: {:?}",
+                .any(|e| e.contains("`slot` outside a `property")),
+            "bare slot must accumulate a semantic error, got: {:?}",
             compiler.errors
         );
         // The placeholder term is the rigid Unspecified, never a free variable.
@@ -817,8 +817,8 @@ mod tests {
             Predicate::Root("zbasu".into()), // 1
         ];
         let arguments = vec![
-            Argument::Pronoun("mi".into()),                  // 0
-            Argument::Pronoun("do".into()),                  // 1
+            Argument::Pronoun("me".into()),                  // 0
+            Argument::Pronoun("you".into()),                 // 1
             Argument::ModalTagged((ModalTag::Custom(1), 1)), // 2
         ];
         let proposition = Proposition {
@@ -845,11 +845,11 @@ mod tests {
         let zbasu_args = get_pred_args(&form, "zbasu", &compiler).unwrap();
         assert_eq!(
             zbasu_args[0],
-            LogicalTerm::Constant(compiler.interner.get("do").unwrap())
+            LogicalTerm::Constant(compiler.interner.get("you").unwrap())
         );
         assert_eq!(
             zbasu_args[1],
-            LogicalTerm::Constant(compiler.interner.get("mi").unwrap())
+            LogicalTerm::Constant(compiler.interner.get("me").unwrap())
         );
     }
 
@@ -866,8 +866,8 @@ mod tests {
             Predicate::Root("prenu".into()), // 1 (arity 1)
         ];
         let arguments = vec![
-            Argument::Pronoun("mi".into()),                  // 0
-            Argument::Pronoun("do".into()),                  // 1
+            Argument::Pronoun("me".into()),                  // 0
+            Argument::Pronoun("you".into()),                 // 1
             Argument::ModalTagged((ModalTag::Custom(1), 1)), // 2: fi'o prenu, inner=do
         ];
         let proposition = Proposition {
@@ -1066,7 +1066,7 @@ mod tests {
     #[test]
     fn test_afterthought_je_compiles_to_and() {
         let conn = SentenceConnective::Afterthought(Connective::And);
-        let (form, _) = compile_connected(conn, "klama", "mi", "prami", "do");
+        let (form, _) = compile_connected(conn, "klama", "me", "prami", "you");
         assert!(
             matches!(&form, LogicalForm::And(_, _)),
             "expected And, got {:?}",
@@ -1077,7 +1077,7 @@ mod tests {
     #[test]
     fn test_afterthought_ja_compiles_to_or() {
         let conn = SentenceConnective::Afterthought(Connective::Or);
-        let (form, _) = compile_connected(conn, "klama", "mi", "prami", "do");
+        let (form, _) = compile_connected(conn, "klama", "me", "prami", "you");
         assert!(
             matches!(&form, LogicalForm::Or(_, _)),
             "expected Or, got {:?}",
@@ -1093,7 +1093,7 @@ mod tests {
         let predicates = vec![Predicate::Root("prami".into())];
         let arguments = vec![
             Argument::Pronoun("$da".into()), // 0
-            Argument::Pronoun("mi".into()),  // 1
+            Argument::Pronoun("me".into()),  // 1
         ];
         let proposition = Proposition {
             relation: 0,
@@ -1124,7 +1124,7 @@ mod tests {
                 // prami_x2 should have Constant(mi)
                 let x2_args = get_pred_args(&form, "prami_x2", &compiler).unwrap();
                 match &x2_args[1] {
-                    LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "mi"),
+                    LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "me"),
                     other => panic!("expected Constant(mi) in prami_x2, got {:?}", other),
                 }
             }
@@ -1249,7 +1249,7 @@ mod tests {
         let predicates = vec![Predicate::Root("prami".into())];
         let arguments = vec![
             Argument::Pronoun("$da".into()),
-            Argument::Pronoun("mi".into()),
+            Argument::Pronoun("me".into()),
         ];
         let proposition = Proposition {
             relation: 0,
@@ -1279,7 +1279,7 @@ mod tests {
     fn test_afterthought_jo_compiles_to_biconditional() {
         // .i jo → Biconditional IR node (expanded at flattening)
         let conn = SentenceConnective::Afterthought(Connective::Iff);
-        let (form, _) = compile_connected(conn, "klama", "mi", "prami", "do");
+        let (form, _) = compile_connected(conn, "klama", "me", "prami", "you");
         assert!(
             matches!(&form, LogicalForm::Biconditional(_, _)),
             "expected Biconditional, got {:?}",
@@ -1295,7 +1295,7 @@ mod tests {
         // Each `ma` gets a fresh variable (independent query unknowns).
         let predicates = vec![Predicate::Root("klama".into())];
         let arguments = vec![
-            Argument::Pronoun("ma".into()), // 0
+            Argument::Pronoun("?".into()), // 0
         ];
         let proposition = Proposition {
             relation: 0,
@@ -1311,7 +1311,7 @@ mod tests {
         // Outermost should be Exists wrapping the event form
         match &form {
             LogicalForm::Exists(var, _body) => {
-                // ma now generates a fresh variable (_v0), not "ma"
+                // ma now generates a fresh variable (_v0), not "?"
                 assert!(resolve(&compiler, var).starts_with("_v"));
                 // klama type pred should exist inside
                 assert!(
@@ -1336,8 +1336,8 @@ mod tests {
         // each wrapped in its own ∃.
         let predicates = vec![Predicate::Root("nelci".into())];
         let arguments = vec![
-            Argument::Pronoun("ma".into()), // 0
-            Argument::Pronoun("ma".into()), // 1
+            Argument::Pronoun("?".into()), // 0
+            Argument::Pronoun("?".into()), // 1
         ];
         let proposition = Proposition {
             relation: 0,
@@ -1393,7 +1393,7 @@ mod tests {
             Predicate::Root("barda".into()), // 2
         ];
         let arguments = vec![
-            Argument::Pronoun("ma".into()),                     // 0: ma
+            Argument::Pronoun("?".into()),                      // 0: ma
             Argument::Description((Determiner::Indefinite, 1)), // 1: lo gerku
             Argument::Restricted((
                 1,
@@ -1579,7 +1579,7 @@ mod tests {
             Predicate::WithArgs((0, vec![1])), // 1: klama be da
         ];
         let arguments = vec![
-            Argument::Pronoun("mi".into()),  // 0
+            Argument::Pronoun("me".into()),  // 0
             Argument::Pronoun("$da".into()), // 1 (be-arg)
         ];
         let proposition = Proposition {
@@ -1609,7 +1609,7 @@ mod tests {
             Predicate::Root("broda".into()),                     // 2
         ];
         let arguments = vec![
-            Argument::Pronoun("mi".into()),                     // 0
+            Argument::Pronoun("me".into()),                     // 0
             Argument::Description((Determiner::Indefinite, 1)), // 1: lo nu ...
             Argument::Pronoun("$da".into()),                    // 2 (broda body x1)
         ];
@@ -1930,7 +1930,7 @@ mod tests {
         let predicates = vec![Predicate::Root("equals".into())];
         let arguments = vec![
             Argument::Pronoun("$da".into()), // 0
-            Argument::Pronoun("mi".into()),  // 1
+            Argument::Pronoun("me".into()),  // 1
         ];
         let proposition = Proposition {
             relation: 0,
@@ -2068,8 +2068,8 @@ mod tests {
             "Expected an ambiguity/ke'a error for an implicit-ke'a nested description"
         );
         assert!(
-            compiler.errors.iter().any(|e| e.contains("ke'a")),
-            "Error should direct the user to explicit ke'a, got: {:?}",
+            compiler.errors.iter().any(|e| e.contains("explicit `it`")),
+            "Error should direct the user to an explicit `it`, got: {:?}",
             compiler.errors
         );
     }
@@ -2081,7 +2081,7 @@ mod tests {
         //
         // Buffer layout:
         //   predicates: [0: gerku, 1: barda, 2: klama]
-        //   arguments:  [0: Description(Lo, 0), 1: Pronoun("ke'a"), 2: Restricted(0, poi body=1)]
+        //   arguments:  [0: Description(Lo, 0), 1: Pronoun("it"), 2: Restricted(0, poi body=1)]
         //   sentences: [0: Simple(klama, head=[2]), 1: Simple(barda, head=[1])]
         let predicates = vec![
             Predicate::Root("gerku".into()), // 0
@@ -2090,7 +2090,7 @@ mod tests {
         ];
         let arguments = vec![
             Argument::Description((Determiner::Indefinite, 0)), // 0: lo gerku
-            Argument::Pronoun("ke'a".into()),                   // 1: ke'a
+            Argument::Pronoun("it".into()),                     // 1: ke'a
             Argument::Restricted((
                 0,
                 RelClause {
@@ -2218,7 +2218,7 @@ mod tests {
                     body_sentence: 1,
                 },
             )), // 1: ro lo gerku poi <body>
-            Argument::Pronoun("ke'a".into()),                            // 2: ke'a
+            Argument::Pronoun("it".into()),                              // 2: ke'a
             Argument::Name("alis".into()),                               // 3: alis
             Argument::Tagged((0, 3)),                                    // 4: fa alis  (x1, lover)
             Argument::Tagged((1, 2)),                                    // 5: fe ke'a  (x2, loved)
@@ -2283,7 +2283,7 @@ mod tests {
                     body_sentence: 1,
                 },
             )), // 1
-            Argument::Pronoun("ke'a".into()),                            // 2: ke'a
+            Argument::Pronoun("it".into()),                              // 2: ke'a
             Argument::Name("alis".into()),                               // 3: alis
             Argument::Tagged((0, 2)),                                    // 4: fa ke'a (x1, lover)
             Argument::Tagged((1, 3)),                                    // 5: fe alis (x2, loved)
@@ -2348,7 +2348,7 @@ mod tests {
                     body_sentence: 1,
                 },
             )), // 1
-            Argument::Pronoun("ke'a".into()),                            // 2: ke'a
+            Argument::Pronoun("it".into()),                              // 2: ke'a
             Argument::Tagged((1, 2)),                                    // 3: fe ke'a (x2, loved)
         ];
         let sentences = vec![
@@ -2515,8 +2515,8 @@ mod tests {
         // never a silent drop of `do`.
         let predicates = vec![Predicate::Root("gerku".into())];
         let arguments = vec![
-            Argument::Pronoun("do".into()), // 0
-            Argument::Tagged((4, 0)),       // 1: fu do
+            Argument::Pronoun("you".into()), // 0
+            Argument::Tagged((4, 0)),        // 1: fu do
         ];
         let proposition = Proposition {
             relation: 0,
@@ -2543,8 +2543,8 @@ mod tests {
         // fe do gerku → `fe` targets x2; gerku is 2-place: fine.
         let predicates = vec![Predicate::Root("gerku".into())];
         let arguments = vec![
-            Argument::Pronoun("do".into()), // 0
-            Argument::Tagged((1, 0)),       // 1: fe do
+            Argument::Pronoun("you".into()), // 0
+            Argument::Tagged((1, 0)),        // 1: fe do
         ];
         let proposition = Proposition {
             relation: 0,
@@ -2561,7 +2561,7 @@ mod tests {
             compiler.errors
         );
         let x2 = get_pred_args(&form, "gerku_x2", &compiler).unwrap();
-        let do_term = LogicalTerm::Constant(compiler.interner.get("do").unwrap());
+        let do_term = LogicalTerm::Constant(compiler.interner.get("you").unwrap());
         assert_eq!(x2[1], do_term, "fe must place `do` into gerku_x2");
     }
 
@@ -2572,9 +2572,9 @@ mod tests {
         // dropping it.
         let predicates = vec![Predicate::Root("gerku".into())];
         let arguments = vec![
-            Argument::Pronoun("mi".into()), // 0
-            Argument::Pronoun("do".into()), // 1
-            Argument::Pronoun("ti".into()), // 2
+            Argument::Pronoun("me".into()),   // 0
+            Argument::Pronoun("you".into()),  // 1
+            Argument::Pronoun("this".into()), // 2
         ];
         let proposition = Proposition {
             relation: 0,
@@ -2603,9 +2603,9 @@ mod tests {
         // the no-XML build defaults many proxy words to 2).
         let predicates = vec![Predicate::Root("zzzzz".into())];
         let arguments = vec![
-            Argument::Pronoun("mi".into()), // 0
-            Argument::Pronoun("do".into()), // 1
-            Argument::Pronoun("ti".into()), // 2
+            Argument::Pronoun("me".into()),   // 0
+            Argument::Pronoun("you".into()),  // 1
+            Argument::Pronoun("this".into()), // 2
         ];
         let proposition = Proposition {
             relation: 0,
@@ -2629,10 +2629,10 @@ mod tests {
         // error, not silently last-wins (dropping `do`).
         let predicates = vec![Predicate::Root("gerku".into())];
         let arguments = vec![
-            Argument::Pronoun("do".into()), // 0
-            Argument::Pronoun("ti".into()), // 1
-            Argument::Tagged((1, 0)),       // 2: fe do
-            Argument::Tagged((1, 1)),       // 3: fe ti
+            Argument::Pronoun("you".into()),  // 0
+            Argument::Pronoun("this".into()), // 1
+            Argument::Tagged((1, 0)),         // 2: fe do
+            Argument::Tagged((1, 1)),         // 3: fe ti
         ];
         let proposition = Proposition {
             relation: 0,
@@ -2818,8 +2818,8 @@ mod tests {
             "ambiguous implicit-ke'a clause on a name must be rejected"
         );
         assert!(
-            compiler.errors.iter().any(|e| e.contains("ke'a")),
-            "error should direct the user to explicit ke'a, got: {:?}",
+            compiler.errors.iter().any(|e| e.contains("explicit `it`")),
+            "error should direct the user to an explicit `it`, got: {:?}",
             compiler.errors
         );
     }
@@ -2889,7 +2889,7 @@ mod tests {
     fn test_tense_pu_produces_past() {
         // pu mi klama → Past(klama(mi, ...))
         let predicates = vec![Predicate::Root("klama".into())];
-        let arguments = vec![Argument::Pronoun("mi".into())];
+        let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -2905,7 +2905,7 @@ mod tests {
     #[test]
     fn test_tense_ca_produces_present() {
         let predicates = vec![Predicate::Root("klama".into())];
-        let arguments = vec![Argument::Pronoun("mi".into())];
+        let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -2921,7 +2921,7 @@ mod tests {
     #[test]
     fn test_tense_ba_produces_future() {
         let predicates = vec![Predicate::Root("klama".into())];
-        let arguments = vec![Argument::Pronoun("mi".into())];
+        let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -2939,7 +2939,7 @@ mod tests {
     #[test]
     fn test_deontic_ei_produces_obligatory() {
         let predicates = vec![Predicate::Root("klama".into())];
-        let arguments = vec![Argument::Pronoun("mi".into())];
+        let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -2955,7 +2955,7 @@ mod tests {
     #[test]
     fn test_deontic_ehe_produces_permitted() {
         let predicates = vec![Predicate::Root("klama".into())];
-        let arguments = vec![Argument::Pronoun("mi".into())];
+        let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -2974,7 +2974,7 @@ mod tests {
     fn test_predication_negation_produces_not() {
         // na mi klama → Not(klama(mi, ...))
         let predicates = vec![Predicate::Root("klama".into())];
-        let arguments = vec![Argument::Pronoun("mi".into())];
+        let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -2997,8 +2997,8 @@ mod tests {
             Predicate::Converted((Conversion::Swap12, 0)),
         ];
         let arguments = vec![
-            Argument::Pronoun("mi".into()),
-            Argument::Pronoun("do".into()),
+            Argument::Pronoun("me".into()),
+            Argument::Pronoun("you".into()),
         ];
         let proposition = Proposition {
             relation: 1,
@@ -3025,7 +3025,7 @@ mod tests {
         // Check prami_x1 has do (originally x2, swapped to x1)
         let x1_args = get_pred_args(&form, "prami_x1", &compiler).unwrap();
         match &x1_args[1] {
-            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "do"),
+            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "you"),
             other => panic!(
                 "expected Constant(do) in prami_x1 after se-swap, got {:?}",
                 other
@@ -3034,7 +3034,7 @@ mod tests {
         // Check prami_x2 has mi (originally x1, swapped to x2)
         let x2_args = get_pred_args(&form, "prami_x2", &compiler).unwrap();
         match &x2_args[1] {
-            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "mi"),
+            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "me"),
             other => panic!(
                 "expected Constant(mi) in prami_x2 after se-swap, got {:?}",
                 other
@@ -3079,7 +3079,7 @@ mod tests {
     fn test_event_decompose_basic() {
         // mi klama → ∃e. klama(e) ∧ klama_x1(e, mi) ∧ klama_x2(e, zo'e) ∧ ...
         let predicates = vec![Predicate::Root("klama".into())];
-        let arguments = vec![Argument::Pronoun("mi".into())];
+        let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -3094,11 +3094,11 @@ mod tests {
         assert!(matches!(&form, LogicalForm::Exists(_, _)));
         // Type predicate exists
         assert!(has_pred(&form, "klama", &compiler));
-        // x1 role has Constant("mi")
+        // x1 role has Constant("me")
         let x1 = get_pred_args(&form, "klama_x1", &compiler).unwrap();
         assert_eq!(
             x1[1],
-            LogicalTerm::Constant(compiler.interner.get("mi").unwrap())
+            LogicalTerm::Constant(compiler.interner.get("me").unwrap())
         );
         // Event variable is shared between type and role predicates
         let type_args = get_pred_args(&form, "klama", &compiler).unwrap();
@@ -3110,7 +3110,7 @@ mod tests {
     fn test_event_decompose_all_roles_emitted() {
         // klama has arity 5, all roles should be emitted
         let predicates = vec![Predicate::Root("klama".into())];
-        let arguments = vec![Argument::Pronoun("mi".into())];
+        let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -3138,7 +3138,7 @@ mod tests {
             Predicate::Root("gerku".into()), // 1
             Predicate::Pair((0, 1)),         // 2
         ];
-        let arguments = vec![Argument::Pronoun("mi".into())];
+        let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 2,
             head_terms: vec![0],
@@ -3165,7 +3165,7 @@ mod tests {
         );
 
         // Both x1 entity args should be mi
-        let mi = LogicalTerm::Constant(compiler.interner.get("mi").unwrap());
+        let mi = LogicalTerm::Constant(compiler.interner.get("me").unwrap());
         assert_eq!(gerku_x1[1], mi);
         assert_eq!(sutra_x1[1], mi);
     }
@@ -3180,7 +3180,7 @@ mod tests {
             Predicate::Root("gerku".into()), // 1
             Predicate::Pair((0, 1)),         // 2
         ];
-        let arguments = vec![Argument::Pronoun("mi".into())];
+        let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 2,
             head_terms: vec![0],
@@ -3245,8 +3245,8 @@ mod tests {
             Predicate::Converted((Conversion::Swap12, 0)), // 1
         ];
         let arguments = vec![
-            Argument::Pronoun("mi".into()), // 0
-            Argument::Pronoun("do".into()), // 1
+            Argument::Pronoun("me".into()),  // 0
+            Argument::Pronoun("you".into()), // 1
         ];
         let proposition = Proposition {
             relation: 1,
@@ -3263,11 +3263,11 @@ mod tests {
         let x2 = get_pred_args(&form, "prami_x2", &compiler).unwrap();
         assert_eq!(
             x1[1],
-            LogicalTerm::Constant(compiler.interner.get("do").unwrap())
+            LogicalTerm::Constant(compiler.interner.get("you").unwrap())
         );
         assert_eq!(
             x2[1],
-            LogicalTerm::Constant(compiler.interner.get("mi").unwrap())
+            LogicalTerm::Constant(compiler.interner.get("me").unwrap())
         );
     }
 
@@ -3367,7 +3367,7 @@ mod tests {
     fn test_known_gismu_gets_correct_arity() {
         // klama has arity 5, so there should be 5 role predicates (klama_x1..klama_x5)
         let predicates = vec![Predicate::Root("klama".into())];
-        let arguments = vec![Argument::Pronoun("mi".into())];
+        let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -3401,7 +3401,7 @@ mod tests {
     fn test_unknown_gismu_defaults_to_arity_2() {
         // An unrecognized word should default to arity 2 → 2 role predicates
         let predicates = vec![Predicate::Root("xyzzy".into())];
-        let arguments = vec![Argument::Pronoun("mi".into())];
+        let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -3446,8 +3446,8 @@ mod tests {
             Predicate::Root("sutra".into()),
         ];
         let arguments = vec![
-            Argument::Pronoun("mi".into()),
-            Argument::Pronoun("do".into()),
+            Argument::Pronoun("me".into()),
+            Argument::Pronoun("you".into()),
         ];
         let sentences = vec![
             Sentence::Connected((

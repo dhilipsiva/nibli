@@ -1942,12 +1942,12 @@ fn cll_place_counter_fi_then_untagged() {
         .compile_debug("goes(origin: the market, route: you).")
         .expect("`klama fi le zarci do` should compile");
     assert!(
-        role_has_const(&buf, "goes_x4", "do"),
-        "untagged `do` must fill x4 after `fi`; buffer: {buf:?}"
+        role_has_const(&buf, "goes_x4", "you"),
+        "untagged `you` must fill x4 after the route tag; buffer: {buf:?}"
     );
     assert!(
-        !role_has_const(&buf, "goes_x1", "do"),
-        "do must NOT land in x1 (pre-fix `first free slot` bug); buffer: {buf:?}"
+        !role_has_const(&buf, "goes_x1", "you"),
+        "you must NOT land in x1 (pre-fix `first free slot` bug); buffer: {buf:?}"
     );
 }
 

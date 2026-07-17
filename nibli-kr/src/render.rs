@@ -131,8 +131,9 @@ impl<'a> Renderer<'a> {
         self.proposition_impl(proposition, false)
     }
 
-    /// Render a relative-clause body proposition whose ke'a is IMPLICIT (gerna-origin
-    /// buffers leave the head empty and smuni injects ke'a at x1): spell the
+    /// Render a relative-clause body proposition whose bound entity is IMPLICIT
+    /// (a hand-built buffer may leave the head empty and nibli-semantics injects
+    /// the bound entity at x1): spell the
     /// relativized entity as `it` in x1 so the KR re-parses (mandatory-it, §7).
     fn proposition_with_it(&self, proposition: &Proposition) -> R<String> {
         self.proposition_impl(proposition, true)
@@ -158,7 +159,7 @@ impl<'a> Renderer<'a> {
         }
 
         // du with exactly one head and one tail term is the equality spelling
-        // (with an injected implicit ke'a, the head IS `it`).
+        // (with an injected implicit bound entity, the head IS `it`).
         if let Predicate::Root(root) = self.predicate(proposition.relation)?
             && root == "equals"
         {
@@ -198,7 +199,7 @@ impl<'a> Renderer<'a> {
         let mut vias: Vec<(u32, u32)> = Vec::new(); // (modal predicate-ish, term) — see below
         let mut counter = 0usize;
         if inject_it {
-            placed.push((counter, None)); // the implicit ke'a — spelled `it`
+            placed.push((counter, None)); // the implicit bound entity — spelled `it`
             counter += 1;
         }
         for &head in &proposition.head_terms {
@@ -491,30 +492,19 @@ impl<'a> Renderer<'a> {
     fn term(&self, id: u32) -> R<String> {
         Ok(match self.argument(id)? {
             Argument::Pronoun(word) => match word.as_str() {
-                "mi" => "me".into(),
-                "do" => "you".into(),
-                "mi'o" => "we".into(),
-                "ma'a" => "we_all".into(),
-                "mi'a" => "we_others".into(),
-                "do'o" => "you_all".into(),
-                "ti" => "this".into(),
-                "ta" => "that".into(),
-                "tu" => "yonder".into(),
-                "ko'a" => "it_a".into(),
-                "ko'e" => "it_e".into(),
-                "ko'i" => "it_i".into(),
-                "ko'o" => "it_o".into(),
-                "ko'u" => "it_u".into(),
-                "ke'a" => "it".into(),
-                "ce'u" => "slot".into(),
-                "ma" => "?".into(),
-                "zo'e" => "_".into(),
+                // Pronoun strings ARE their KR spellings since the pronoun
+                // flip — identity over the emitter's exact vocabulary, so an
+                // unknown string still fails closed below.
+                "me" | "you" | "we" | "we_all" | "we_others" | "you_all" | "this" | "that"
+                | "yonder" | "it_a" | "it_e" | "it_i" | "it_o" | "it_u" | "it" | "slot" | "?" => {
+                    word.clone()
+                }
                 // A logic variable is preserved as `$name` (no da/de/di lowering).
                 other if other.starts_with('$') => other.into(),
                 other => {
-                    // §10 out-of-scope pro-argument (ri/ra/ru anaphora, ko, an
-                    // unresolved go'i, …) fail closed BY NAME — in the
-                    // battery this is a genuine coverage signal.
+                    // Out-of-scope pro-argument (§10 anaphora, a legacy cmavo
+                    // like `zo'e`, …) fail closed BY NAME — in the battery this
+                    // is a genuine coverage signal.
                     return Err(nope(format!(
                         "pro-argument {other:?} is out of nibli KR's scope (NIBLI_KR §10) — \
                          no spelling exists"
@@ -604,15 +594,16 @@ impl<'a> Renderer<'a> {
             RelClauseKind::Restrictive => "where",
             RelClauseKind::Incidental => "also",
         };
-        // Bare-predicate sugar: a body of shape `ke'a <predicate>` (no tail, no
+        // Bare-predicate sugar: a body of shape `it <predicate>` (no tail, no
         // prefixes) prints as the sugar form.
-        // The bound entity is either an explicit ke'a head (nibli-kr-emitted
-        // buffers) or IMPLICIT (gerna leaves the head empty and smuni injects
-        // ke'a at x1) — both print as the sugar.
+        // The bound entity is either an explicit `it` head (nibli-kr-emitted
+        // buffers) or IMPLICIT (a hand-built buffer may leave the head empty and
+        // nibli-semantics injects the bound entity at x1) — both print as the
+        // sugar.
         let head_is_kehah = |proposition: &Proposition| -> R<bool> {
             Ok(match proposition.head_terms.as_slice() {
                 [] => true,
-                [only] => matches!(self.argument(*only)?, Argument::Pronoun(w) if w == "ke'a"),
+                [only] => matches!(self.argument(*only)?, Argument::Pronoun(w) if w == "it"),
                 _ => false,
             })
         };
@@ -629,19 +620,19 @@ impl<'a> Renderer<'a> {
                 self.predicate_text(proposition.relation, false)?
             ));
         }
-        // Full-claim body. A gerna-origin Simple body leaves the head EMPTY
-        // (smuni injects ke'a at x1) — spell that implicit ke'a as `it` so the
-        // rendered KR re-parses (§7 mandatory-it). nibli KR-emitted bodies carry
-        // an explicit ke'a (head, or a tail term — nibli-semantics skips its
-        // implicit-x1 injection when the body already contains an explicit ke'a)
-        // and render through the normal path.
+        // Full-claim body. A hand-built Simple body may leave the head EMPTY
+        // (nibli-semantics injects the bound entity at x1) — spell that implicit
+        // binding as `it` so the rendered KR re-parses (§7 mandatory-it). nibli
+        // KR-emitted bodies carry an explicit `it` (head, or a tail term —
+        // nibli-semantics skips its implicit-x1 injection when the body already
+        // contains an explicit `it`) and render through the normal path.
         let has_explicit_keha = |proposition: &Proposition| -> R<bool> {
             for &tail in &proposition.tail_terms {
                 let inner = match self.argument(tail)? {
                     Argument::Tagged((_, inner)) => *inner,
                     _ => tail,
                 };
-                if matches!(self.argument(inner)?, Argument::Pronoun(w) if w == "ke'a") {
+                if matches!(self.argument(inner)?, Argument::Pronoun(w) if w == "it") {
                     return Ok(true);
                 }
             }
@@ -694,6 +685,20 @@ fn render_name(name: &str) -> R<String> {
     {
         return Err(nope(format!(
             "Name {name:?} contains characters outside [A-Za-z0-9_] — no nibli KR spelling"
+        )));
+    }
+    // Parity with the resolve-side collision guard: a single-word Name equal to
+    // a pronoun constant (`me`) would render `Me`, which `parse_checked` now
+    // REJECTS — fail closed here so rendered text always reparses.
+    if !name.contains(' ')
+        && matches!(
+            name.to_lowercase().as_str(),
+            "me" | "you" | "we" | "this" | "that" | "yonder"
+        )
+    {
+        return Err(nope(format!(
+            "Name {name:?} collides with the pronoun constant of the same spelling — \
+             no nibli KR spelling (the parse-side guard rejects it)"
         )));
     }
     Ok(candidate)
@@ -879,6 +884,20 @@ mod tests {
                 mk(Argument::Pronoun("go'i".into())),
                 "out of nibli KR's scope",
             ),
+            // A legacy cmavo pronoun string (the emitter's pre-flip vocabulary)
+            // has no spelling — the old `zo'e`→`_` arm silently changed meaning
+            // (Constant → Unspecified on reparse) and is gone.
+            (
+                mk(Argument::Pronoun("zo'e".into())),
+                "out of nibli KR's scope",
+            ),
+            (
+                mk(Argument::Pronoun("mi".into())),
+                "out of nibli KR's scope",
+            ),
+            // A Name that collides with a pronoun constant would render `Me`,
+            // which the parse-side guard now rejects — fail closed for parity.
+            (mk(Argument::Name("me".into())), "collides with the pronoun"),
             (mk(Argument::Number(f64::INFINITY)), "no nibli KR literal"),
             (mk(Argument::Number(-2.0)), "no nibli KR literal"),
         ] {

@@ -9,8 +9,11 @@
 //!   through); an alias with a place swap emits `Predicate::Converted`
 //! - logic variables pass through verbatim as `Pronoun("$name")` — the `$`
 //!   sigil IS the variable signal, so the user's own names survive into the IR
-//!   (no fixed `da`/`de`/`di` pool, no 3-variable cap); `?`→`ma`, `it`→`ke'a`,
-//!   `slot`→`ce'u`
+//!   (no fixed `da`/`de`/`di` pool, no 3-variable cap); pronoun keyterms emit
+//!   their KR spellings verbatim (`me`, `you`, `this`, `it_a`…; `?`, `it`, and
+//!   `slot` are consumed by nibli-semantics as witness/bound-entity/open-place
+//!   markers, never constants). Resolve fail-closes a capitalized Name that
+//!   would lower onto a pronoun constant (`Me` vs `me`)
 //! - named args → `Argument::Tagged((place_index, arg))` (the u8 index
 //!   addresses SURFACE places — those of the possibly-Converted predicate)
 //! - operators emit at SENTENCE level (`Afterthought`/`Implies`); operand
@@ -391,7 +394,7 @@ impl<'a> Emitter<'a> {
     fn term(&mut self, term: &Term, at: usize) -> Result<u32, ParseError> {
         let argument = match term {
             Term::Unspecified => Argument::Unspecified,
-            Term::Witness => Argument::Pronoun("ma".into()),
+            Term::Witness => Argument::Pronoun("?".into()),
             Term::Number(n) => Argument::Number(*n),
             Term::Str(s) => Argument::QuotedLiteral(s.clone()),
             Term::Var(v) => Argument::Pronoun(self.var_particle(v, at)?),
@@ -551,7 +554,7 @@ impl<'a> Emitter<'a> {
         let body_sentence = match &rc.body {
             ClauseBody::Bare { negated, seq } => {
                 let relation = self.pred_seq(seq, rc.span.start)?;
-                let head = self.push_argument(Argument::Pronoun("ke'a".into()));
+                let head = self.push_argument(Argument::Pronoun("it".into()));
                 self.push_sentence(Sentence::Simple(Proposition {
                     relation,
                     head_terms: vec![head],
@@ -582,22 +585,22 @@ fn conversion_for(place: u8) -> Conversion {
 
 fn keyterm_particle(k: KeyTerm) -> &'static str {
     match k {
-        KeyTerm::Me => "mi",
-        KeyTerm::You => "do",
-        KeyTerm::We => "mi'o",
-        KeyTerm::WeAll => "ma'a",
-        KeyTerm::WeOthers => "mi'a",
-        KeyTerm::YouAll => "do'o",
-        KeyTerm::This => "ti",
-        KeyTerm::That => "ta",
-        KeyTerm::Yonder => "tu",
-        KeyTerm::ItA => "ko'a",
-        KeyTerm::ItE => "ko'e",
-        KeyTerm::ItI => "ko'i",
-        KeyTerm::ItO => "ko'o",
-        KeyTerm::ItU => "ko'u",
-        KeyTerm::It => "ke'a",
-        KeyTerm::Slot => "ce'u",
+        KeyTerm::Me => "me",
+        KeyTerm::You => "you",
+        KeyTerm::We => "we",
+        KeyTerm::WeAll => "we_all",
+        KeyTerm::WeOthers => "we_others",
+        KeyTerm::YouAll => "you_all",
+        KeyTerm::This => "this",
+        KeyTerm::That => "that",
+        KeyTerm::Yonder => "yonder",
+        KeyTerm::ItA => "it_a",
+        KeyTerm::ItE => "it_e",
+        KeyTerm::ItI => "it_i",
+        KeyTerm::ItO => "it_o",
+        KeyTerm::ItU => "it_u",
+        KeyTerm::It => "it",
+        KeyTerm::Slot => "slot",
     }
 }
 
@@ -662,7 +665,7 @@ mod tests {
     #[test]
     fn named_args_equal_positional_in_where_body() {
         // All-named args in a where-body lower as empty head + FA-tagged tail;
-        // nibli-semantics's implicit-ke'a x1 injection must SKIP when the body
+        // nibli-semantics's implicit-`it` x1 injection must SKIP when the body
         // carries an explicit `it` (regression: the named spelling used to
         // reject with "Place tag `fa` targets place x1, which is already
         // filled").
@@ -672,7 +675,7 @@ mod tests {
         );
         // x1 omitted: the lone fe-tagged `it` must leave x1 Unspecified, equal to
         // the explicit-placeholder twin (regression: it used to silently compile
-        // prami(dog, dog) — "a dog that loves itself" — instead of prami(zo'e, dog)).
+        // loves(dog, dog) — "a dog that loves itself" — instead of loves(unspecified, dog)).
         assert_eq!(
             nibli_kr_lb("animal(every dog where loves(loved: it))."),
             nibli_kr_lb("animal(every dog where loves(_, it))."),

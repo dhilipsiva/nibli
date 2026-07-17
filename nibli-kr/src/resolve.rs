@@ -16,11 +16,12 @@
 //! 3. LINKED ARGS on restrictors: positionals fill x2.. (the bound variable
 //!    takes x1, like be/bei); a NAMED `it` marks the bound place instead; at
 //!    most one `it`; x1 must stay free for the bound variable otherwise.
-//! 4. VARIABLE CAP: ≤3 distinct `$var` names per STATEMENT — bound
-//!    prenex/det_block vars share smuni's da/de/di pool with free vars; the
-//!    4th distinct name is an error (the smuni lowering cap; never merged).
-//! 5. POSITION RULES: `it` only inside rel-clause bodies or as a named
-//!    linked-arg marker; `slot` only inside `property { }` bodies.
+//! 4. POSITION RULES: `it` only inside rel-clause bodies or as a named
+//!    linked-arg marker; `slot` only inside `property { }` bodies. (The old
+//!    3-variable cap is GONE — `$var` names are preserved verbatim.)
+//! 5. NAME↔PRONOUN COLLISION: a single-word Name that lowercases onto a
+//!    pronoun constant (`Me` → `me`) is rejected — the two would silently
+//!    co-refer in the fact store.
 //!
 //! Tag (`via`) predicates additionally need arity ≥ 2, mirroring smuni's
 //! fail-closed modal check (spec §5).
@@ -343,12 +344,33 @@ impl<'a> Ctx<'a> {
                     Err(self.fail(
                         self.statement_start,
                         "`slot` (the open place) is only meaningful inside a \
-                         `property { … }` body (NIBLI_KR §3 — like ce'u outside ka)",
+                         `property { … }` body (NIBLI_KR §3)",
                     ))
                 }
             }
             Term::Var(v) => self.var(v),
-            Term::Name { rel_clauses, .. } => {
+            Term::Name { name, rel_clauses } => {
+                // A single-word Name that lowercases onto a pronoun constant
+                // (`Me` → "me") would silently co-refer with the pronoun in the
+                // fact store — fail closed instead. Compound names are safe
+                // (emit maps `_` to a space: `We_All` → "we all" ≠ `we_all`),
+                // and `It`/`Slot`/`?` never compile to constants.
+                if !name.contains('_')
+                    && matches!(
+                        name.to_lowercase().as_str(),
+                        "me" | "you" | "we" | "this" | "that" | "yonder"
+                    )
+                {
+                    return Err(self.fail(
+                        self.statement_start,
+                        format!(
+                            "the name `{name}` collides with the pronoun `{}` — after \
+                             lowering both would denote the same constant; pick a \
+                             different name (NIBLI_KR §3)",
+                            name.to_lowercase()
+                        ),
+                    ));
+                }
                 for rc in rel_clauses {
                     self.rel_clause(rc)?;
                 }
@@ -512,6 +534,32 @@ mod tests {
         ok("dog($a) & dog($b) & dog($c) & dog($d).");
         // A free body variable beyond the prenex binders is fine (existential).
         ok("all $x, $y, $z: loves($x, $w).");
+    }
+
+    #[test]
+    fn name_colliding_with_pronoun_fails() {
+        // A single-word Name that lowercases onto a pronoun constant would
+        // silently co-refer with the pronoun in the fact store — fail closed.
+        let e = bad("goes(Me).");
+        assert!(e.message.contains("collides with the pronoun `me`"), "{e}");
+        let e = bad("loves(Adam, You).");
+        assert!(e.message.contains("collides with the pronoun `you`"), "{e}");
+        let e = bad("dog(This).");
+        assert!(
+            e.message.contains("collides with the pronoun `this`"),
+            "{e}"
+        );
+        // Case-insensitive: any capitalization lowers onto the same constant.
+        let e = bad("dog(YONDER).");
+        assert!(
+            e.message.contains("collides with the pronoun `yonder`"),
+            "{e}"
+        );
+        // Compound names are safe — emit maps `_` to a space (`We_All` becomes
+        // the constant "we all", never the pronoun "we_all").
+        ok("goes(We_All).");
+        // Non-colliding names are untouched.
+        ok("dog(Metis).");
     }
 
     #[test]

@@ -83,7 +83,8 @@ pub struct RelClause {
 /// A argument (argument term) in the AST.
 #[derive(Clone, Debug)]
 pub enum Argument {
-    /// Pro-argument: mi, do, da, de, di, ti, ta, tu, ke'a, ma, ko, etc.
+    /// Pro-argument: me, you, this, that, yonder, it_a…it_u, `$vars`, plus the
+    /// markers `it` (bound entity), `slot` (open place), and `?` (witness).
     Pronoun(String),
     /// Determiner description: `lo/le` + predicate. Fields: (gadri, predicate-id).
     Description((Determiner, PredicateId)),

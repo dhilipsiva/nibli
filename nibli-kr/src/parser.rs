@@ -762,7 +762,7 @@ fn build_clause_body(
             Rule::claim => {
                 let claim = build_claim(child, input, base)?;
                 // Mandatory-`it` (NIBLI_KR §7): a full-claim body that
-                // never mentions the relativized entity is the implicit-ke'a
+                // never mentions the relativized entity is the implicit-`it`
                 // ambiguity the firewall exists to prevent.
                 if !claim_contains_it(&claim) {
                     return Err(err_at(
@@ -789,7 +789,7 @@ fn build_clause_body(
 }
 
 /// Does the claim mention `it`, NOT counting nested relative-clause bodies
-/// (those own their `it`s — innermost binding, like ke'a)? Abstraction and
+/// (those own their `it`s — innermost binding, like the bound entity)? Abstraction and
 /// nested block/prenex bodies DO count; `it` inside a restr's linked args also
 /// counts (documented over-acceptance — it is a bound-place marker there).
 fn claim_contains_it(claim: &Claim) -> bool {

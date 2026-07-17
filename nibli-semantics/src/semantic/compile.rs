@@ -37,30 +37,30 @@ impl SemanticCompiler {
 
         let mut positioned: Vec<Option<LogicalTerm>> = vec![None; target_arity];
 
-        // A relative clause's implicit `ke'a` subject occupies x1 (the CLL
+        // A relative clause's implicit `it` subject occupies x1 (the CLL
         // default), pushing the clause's explicit argument to x2+. Place it as the
         // x1 ARGUMENT here — BEFORE `apply_predicate` runs any `se`/`te`/`ve`/`xe`
-        // conversion — so `poi se prami la .alis.` routes `ke'a` through the
+        // conversion — so `poi se prami la .alis.` routes `it` through the
         // conversion to the correct underlying role (prami_x2), exactly as an
         // explicit subject would. One-shot: the first empty-head proposition WITHOUT
-        // its own explicit `ke'a` consumes it; nested proposition (abstraction bodies)
+        // its own explicit `it` consumes it; nested proposition (abstraction bodies)
         // see `None`. Marking `ref_used` makes the caller skip the post-hoc
         // `inject_variable`, which cannot see conversion and would refill the
         // vacated x1 slot.
         //
         // SKIP RULE: when the proposition's own direct terms already carry an
-        // explicit `ke'a` — bare, or under a `fa`..`fu` place tag (the shape the
+        // explicit `it` — bare, or under a `fa`..`fu` place tag (the shape the
         // KR front-end emits for all-named args: empty head + FA-tagged tail,
         // e.g. `where loves(lover: Alis, loved: it)`) — the user has placed the
         // clause variable, and injecting would double-fill x1: a hard "place
-        // already filled" reject for `fa ke'a` / a tag colliding with the
-        // pre-fill, or a silently self-referring x1 for a lone `fe`..`fu` ke'a.
-        // The explicit `ke'a` resolves in the term loop below and sets `ref_used`
+        // already filled" reject for a place-tagged `it` colliding with the
+        // pre-fill, or a silently self-referring x1 for a lone tagged `it`.
+        // The explicit `it` resolves in the term loop below and sets `ref_used`
         // itself, exactly like the positional spelling (whose non-empty head
         // never reaches this branch) — so named ≡ positional, including leaving
-        // `pending_clause_subject` untouched. The scan is SHALLOW: a `ke'a`
+        // `pending_clause_subject` untouched. The scan is SHALLOW: a `it`
         // nested in a Description/Restricted/Abstraction belongs to the inner
-        // clause; a BAI-modal-carried `ke'a` (`ModalTagged`) is not place-filling
+        // clause; a BAI-modal-carried `it` (`ModalTagged`) is not place-filling
         // and keeps the implicit-x1 default.
         if proposition.head_terms.is_empty()
             && target_arity >= 1
@@ -88,7 +88,7 @@ impl SemanticCompiler {
         // CLL place counter (CLL ch.9, FA cmavo): `fa/fe/fi/fo/fu` set the place
         // number; a following UNTAGGED argument fills the place AFTER the last tag,
         // not the first free slot. Starts at x1 and skips slots already filled
-        // (a ke'a x1 pre-fill, or an out-of-order tag).
+        // (a `it` x1 pre-fill, or an out-of-order tag).
         let mut next_place: usize = 0;
 
         for &term_id in proposition
@@ -145,7 +145,7 @@ impl SemanticCompiler {
                         self.resolve_argument(other, arguments, predicates, sentences);
                     self.record_bare_marker(&term, &mut introduced, &mut markers);
                     markers.extend(quants.into_iter().map(ScopeMarker::Desc));
-                    // Skip slots already filled (ke'a x1, or an out-of-order tag),
+                    // Skip slots already filled (`it` x1, or an out-of-order tag),
                     // then fill the current place and advance.
                     while next_place < target_arity && positioned[next_place].is_some() {
                         next_place += 1;
@@ -451,20 +451,20 @@ impl SemanticCompiler {
         }
     }
 
-    /// Shallow scan of a proposition's direct terms for an explicit `ke'a` —
-    /// bare, or under `fa`..`fu` place-tag wrappers (unwrapped transitively).
-    /// Does NOT descend into Description/Restricted/Abstraction/Connected
-    /// arguments (a nested clause's `ke'a` belongs to that clause), and does NOT
-    /// count a BAI-modal-carried `ke'a` (`ModalTagged` is not place-filling, so
-    /// it cannot collide with the implicit-x1 injection — see the skip rule at
-    /// the call site). Mirrors the nibli-kr render-side `has_explicit_keha` scan.
+    /// Shallow scan of a proposition's direct terms for an explicit `it` (the
+    /// bound-entity marker) — bare, or under place-tag wrappers (unwrapped
+    /// transitively). Does NOT descend into Description/Restricted/Abstraction
+    /// arguments (a nested clause's `it` belongs to that clause), and does NOT
+    /// count a modal-carried `it` (`ModalTagged` is not place-filling, so it
+    /// cannot collide with the implicit-x1 injection — see the skip rule at the
+    /// call site). Mirrors the nibli-kr render-side `has_explicit_keha` scan.
     fn terms_contain_explicit_kea(term_ids: &[u32], arguments: &[Argument]) -> bool {
         term_ids.iter().any(|&id| {
             let mut s = &arguments[id as usize];
             loop {
                 match s {
                     Argument::Tagged((_, inner_id)) => s = &arguments[*inner_id as usize],
-                    Argument::Pronoun(p) => return p.as_str() == "ke'a",
+                    Argument::Pronoun(p) => return p.as_str() == "it",
                     _ => return false,
                 }
             }

@@ -1,7 +1,7 @@
 //! Helper methods for the semantic compiler.
 //!
 //! Provides fresh variable generation, argument resolution, relative clause
-//! handling, argument fitting, and variable injection for implicit ke'a.
+//! handling, argument fitting, and variable injection for implicit `it`.
 use super::*;
 
 impl SemanticCompiler {
@@ -261,33 +261,34 @@ impl SemanticCompiler {
     ) -> (LogicalTerm, Vec<QuantifierEntry>) {
         match argument {
             Argument::Pronoun(p) => {
-                let term = if p.as_str() == "ma" {
+                let term = if p.as_str() == "?" {
                     let var = self.fresh_var();
                     self.question_vars.push(var);
                     LogicalTerm::Variable(var)
                 } else if p.starts_with('$') {
                     LogicalTerm::Variable(self.interner.get_or_intern(p.as_str()))
-                } else if p.as_str() == "ke'a" {
+                } else if p.as_str() == "it" {
                     if let Some(var) = self.rel_clause_var {
                         self.ref_used = true;
                         LogicalTerm::Variable(var)
                     } else {
                         LogicalTerm::Unspecified
                     }
-                } else if p.as_str() == "ce'u" {
+                } else if p.as_str() == "slot" {
                     if let Some(var) = self.property_open_var {
                         LogicalTerm::Variable(var)
                     } else {
-                        // `ce'u` is the open place of a `ka` property abstraction; outside
-                        // one it has no binder. The old "degrade to a fresh variable"
-                        // behavior leaked a FREE variable through compilation — the da/de/di
-                        // free-variable safety net does not close `_v` fresh vars, so the
-                        // form reached logji non-ground (the exact shape the groundness
-                        // boundary at `assert_typed_fact` now drops). Fail closed at the
-                        // SOURCE instead: reject with a semantic error.
+                        // `slot` is the open place of a `property { … }` abstraction;
+                        // outside one it has no binder. The old "degrade to a fresh
+                        // variable" behavior leaked a FREE variable through compilation —
+                        // the free-variable safety net does not close `_v` fresh vars, so
+                        // the form reached the reasoner non-ground (the exact shape the
+                        // groundness boundary at `assert_typed_fact` now drops). Fail
+                        // closed at the SOURCE instead: reject with a semantic error.
                         self.errors.push(
-                            "ce'u outside a ka abstraction has no binder — property \
-                             placeholders are only meaningful inside `lo ka ... kei`"
+                            "`slot` outside a `property { … }` abstraction has no \
+                             binder — the open place is only meaningful inside a \
+                             property block"
                                 .to_string(),
                         );
                         LogicalTerm::Unspecified
@@ -393,7 +394,7 @@ impl SemanticCompiler {
                 };
                 self.rel_clause_var = Some(clause_var);
                 self.ref_used = false;
-                // Offer the clause variable as the implicit ke'a subject (x1) of
+                // Offer the clause variable as the implicit `it` subject (x1) of
                 // the clause's main proposition, consumed there before predicate
                 // conversion. Save/restore so a nested Restricted clause does not
                 // steal this one.
@@ -425,17 +426,17 @@ impl SemanticCompiler {
                         // Firewall (book Ch6): reject rather than guess.
                         // 0 = the referent has no subject (_x1) slot to bind into (its
                         //     place would be a non-subject slot); >1 = multiple candidate
-                        //     subject slots. Either way, require explicit ke'a.
+                        //     subject slots. Either way, require an explicit `it`.
                         self.errors.push(if unspec_count == 0 {
                             "Relative clause: the described entity has no unambiguous \
-                             subject (x1) slot to bind into; use explicit ke'a to mark its \
-                             place."
+                             subject (x1) slot to bind into; use an explicit `it` to mark \
+                             its place."
                                 .to_string()
                         } else {
                             format!(
                                 "Relative clause has {} predicates with unspecified subject \
-                                 slots; implicit variable injection is ambiguous. Use \
-                                 explicit ke'a for precise control.",
+                                 slots; implicit variable injection is ambiguous. Use an \
+                                 explicit `it` for precise control.",
                                 unspec_count
                             )
                         });
