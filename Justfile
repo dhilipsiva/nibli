@@ -300,9 +300,11 @@ test-alias-map:
 test-nibli-kr:
     cargo test -p nibli-kr --lib -- --nocapture
 
-# Run all unit tests across workspace
+# Run all unit tests across workspace (parallel — the old --test-threads=1
+# constraint died with the thread-local dispatch/cache: both are per-KB
+# instance fields now, kb.rs; integration recipes below keep theirs)
 test:
-    cargo test --lib -- --nocapture --test-threads=1
+    cargo test --lib -- --nocapture
 
 # Run nibli-engine integration tests (full pipeline: parse → compile → reason)
 test-engine:

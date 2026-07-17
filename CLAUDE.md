@@ -20,7 +20,7 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 |---------|-------------|
 | `just run` | Full pipeline: clean WASM -> build nibli-pipeline component -> launch REPL (KR-only since THE DROP, 2026-07-13) |
 | `just check` | Fast type-check all workspace crates (`cargo check --workspace`) |
-| `just test` | Run all unit tests (`cargo test --lib -- --nocapture --test-threads=1`) |
+| `just test` | Run all unit tests (`cargo test --lib -- --nocapture`, parallel — the old `--test-threads=1` constraint died with the thread-local dispatch/cache, now per-KB instance fields) |
 | `just test-engine` | Run nibli-engine integration tests (full pipeline: parse → compile → reason) |
 | `just test-nibli-kr` | Run nibli-kr (surface-syntax front-end) tests only — dev loop; `just test` already sweeps them into `ci` |
 | `just test-alias-map` | Run nibli-lexicon's unit tests only — the committed-corpus tests (lookups, converted/compound entries, provenance bridge, reserved/place invariants, const-guard `#[test]` twins with offender lists, TODO ratchet) — dev loop; `just test` already sweeps them into `ci` |
@@ -64,7 +64,7 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 - **Regenerate WIT bindings:** `cargo component build` (bindings appear in each crate's `src/bindings.rs`)
   - Note: full build fails on `io-extras` crate (`#![feature]` on stable). Bindings still generate successfully before the failure.
 - **REPL uses reedline** — does not work with piped stdin
-- Logji (reasoning) tests require `--test-threads=1` (shared global state via RefCell). The Justfile handles this.
+- The `--lib` unit sweep runs PARALLEL since 2026-07-18 — the old `--test-threads=1` constraint is gone (the thread-local compute dispatch + predicate cache became per-`KnowledgeBase` instance fields, kb.rs). The integration/gate recipes (`test-engine`, known-failures, the nibli-verify gates) keep `--test-threads=1` for their own reasons (fixed redb paths, oracle runs).
 
 ## Dictionary Data — the committed English corpus
 
@@ -159,7 +159,7 @@ Use these assumptions when selecting entrypoints:
 - `resolve(&compiler, &spur)` helper to get string from interner in tests
 - The `Connective` enum (`And`/`Or`/`Iff`/`Xor`) is used only at the sentence level (`SentenceConnective::Afterthought`) — the argument/predicate connective variants were removed (dead capacity no emitter produced)
 - `via` modals carry the target predicate directly (`ModalTag`, a single-field newtype over the tagged predicate id) — there is no fixed modal-tag table
-- **Test discipline — flat vs surface (nibli-reason):** nibli-reason's flat `make_*` test helpers hand-build bare `LogicBuffer`s and skip nibli-semantics's event decomposition + `transform_compute_nodes`, so they match the shipped pipeline on *verdicts* but NOT on shape-dependent behavior (`cwa_false`/`naf_dependent` flags, the `ComputeCheck` step, witness/Skolem shape). For anything shape-dependent, build the buffer the real way via `compile_surface("<kr text>")` (a nibli-reason test helper = `nibli_kr::parse_checked` → `nibli_semantics::compile_from_ast` → `transform_compute_nodes`), or use the `make_decomposed_*` helpers, or write a `nibli-engine` integration test — never assert those on a bare flat buffer. `nibli-reason/src/tests.rs`'s `mod flat_vs_surface` is a metamorphic guard that keeps every behavior class' flat verdict == the surface verdict; keep it green. (See the header comment above the flat helpers in `nibli-reason/src/tests.rs`.)
+- **Test discipline — flat vs surface (nibli-reason):** nibli-reason's flat `make_*` test helpers hand-build bare `LogicBuffer`s and skip nibli-semantics's event decomposition + `transform_compute_nodes`, so they match the shipped pipeline on *verdicts* but NOT on shape-dependent behavior (`cwa_false`/`naf_dependent` flags, the `ComputeCheck` step, witness/Skolem shape). For anything shape-dependent, build the buffer the real way via `compile_surface("<kr text>")` (a nibli-reason test helper = `nibli_kr::parse_checked` → `nibli_semantics::compile_from_ast` → `transform_compute_nodes`), or use the `make_decomposed_*` helpers, or write a `nibli-engine` integration test — never assert those on a bare flat buffer. `nibli-reason/src/tests/flat_vs_surface.rs` is a metamorphic guard that keeps every behavior class' flat verdict == the surface verdict; keep it green. (See the header comment in `nibli-reason/src/tests.rs` — the tests-module ROOT, which since the 2026-07-18 split holds the shared harness + hoisted cross-section helpers and declares the ~20 topical submodules under `src/tests/`; nibli-semantics' test module is likewise split under `src/semantic/tests/`.)
 
 ## Codebase Exclusions
 

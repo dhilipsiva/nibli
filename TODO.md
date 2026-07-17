@@ -256,15 +256,16 @@ performance → future-facing):
   free-var + scope-marker passes still `starts_with('$')`), so it is a
   HALF-win, and it costs ~70 semantic.rs test-literal rewrites. Deferred from
   the naming bundle (user chose the `Atom` rename) for that reason.
-- **Test-suite hygiene (M)** — nibli-reason/src/tests.rs is 11,713 lines / 369
-  tests in ONE file (keep `mod flat_vs_surface` intact); nibli-semantics
-  semantic.rs is 96% tests (3,577 of 3,727 lines) — split both into topical
-  `#[path]` submodules; migrate semantic-shape tests that hand-build flat
-  AstBuffers toward KR-text level (nibli-engine/nibli-kr) per the
-  flat-vs-surface discipline; VERIFY whether `--test-threads=1` is now vestigial
-  for `--lib` (the thread_local dispatch that motivated it became per-KB fn
-  pointers — kb.rs:600-607) and drop it from the Justfile recipes if so
-  (parallel test time).
+- **Migrate hand-built semantic-shape tests toward KR-text level (M)** — the
+  deferred remainder of the test-suite hygiene item (the splits + the
+  parallel `--lib` sweep landed 2026-07-18): all 89 nibli-semantics
+  `semantic/tests/*` tests plus lib.rs's `ast_buffer_validation_tests` /
+  `injected_fact_tests` hand-build flat AstBuffers and assert IrForm shapes.
+  Migrating them per the flat-vs-surface discipline means RELOCATING to
+  nibli-engine or nibli-kr (dependency direction forbids a
+  nibli-semantics→nibli-kr dev-dep, and the crate has no KR-text helper) —
+  keep the corrupt-buffer negative controls where they are (they exist to
+  exercise the programmatic-build path).
 - **Drop InMemoryFactStore's double storage (M)** — every fact is stored twice
   (`facts: HashSet` + `predicate_index`, fact_store.rs:60-61) purely so
   `all_facts()` can return `&HashSet`; return an iterator instead.
