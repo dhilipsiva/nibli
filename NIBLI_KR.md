@@ -373,10 +373,10 @@ The grammar is deterministic, but a handful of hazards are semantic, not syntact
 linter is part of the design, not an afterthought — and it is IMPLEMENTED
 (2026-07-12): `nibli-kr/src/lint.rs`, a data-returning pass (`nibli_kr::lint::Linter`,
 stateful per file/session for L1/L4/L7, reset with the KB). Surfaces render each note
-as `[Note: …]`: the nibli REPL and the lasna session echo them (verbose-gated, so
-`NIBLI_QUIET=1` suppresses them alongside `[Skolem]`/`[Rule]`), and the playground
+as `[Note: …]`: the nibli REPL and the nibli-pipeline session echo them (verbose-gated,
+so `NIBLI_QUIET=1` suppresses them alongside `[Skolem]`/`[Rule]`), and the playground
 carries them per KB line on `nibli_protocol::LineResult::notes` into the KB status
-bar. Surfaces whose stdout is data (nibli-validate, lojban2klaro, the verify harness)
+bar. Surfaces whose stdout is data (nibli-validate, the verify harness)
 never invoke the linter.
 
 - **L1 — `the` trap:** warn when `the X` is used and `X` was never introduced by a

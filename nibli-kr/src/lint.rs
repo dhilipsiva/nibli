@@ -48,7 +48,7 @@ pub struct Linter {
     /// determiner (in walk order, so `owns(some dog, the dog)` is quiet).
     introduced: BTreeSet<String>,
     /// L7 state: a `must`/`may` prefix has appeared / an
-    /// `obligated`/`permitted`-class predicate (word bilga/curmi) has
+    /// `obligated`/`permitted`-class predicate ([`DEONTIC_PREDICATES`]) has
     /// appeared / the note already fired (once per session).
     deontic_prefix_seen: bool,
     norm_pred_seen: bool,
@@ -180,15 +180,12 @@ fn push(notes: &mut Vec<LintNote>, input: &str, at: usize, code: &'static str, m
     });
 }
 
-/// The word underlying a predicate word, if it resolves: through the alias
-/// map, or as an identity dictionary word. `None` = unknown (the compiler
-/// rejects it; the linter stays quiet).
-fn resolved_word(word: &str) -> Option<&str> {
-    if let Some(entry) = nibli_lexicon::alias(word) {
-        return Some(entry.source_gismu);
-    }
-    nibli_lexicon::get_arity(word).map(|_| word)
-}
+/// L7 — the English corpus names of the obligated/permitted predicate idiom.
+/// The runtime keys ONLY on these names (never on gismu provenance — that
+/// field is metadata, not a classifier); the
+/// `deontic_predicates_match_the_corpus_family` test keeps this set honest
+/// against the corpus.
+const DEONTIC_PREDICATES: &[&str] = &["obligated", "obliged", "permits", "permitted"];
 
 /// Is this determiner an introducing quantifier for L1 purposes?
 fn introduces(det: Det) -> bool {
@@ -421,10 +418,8 @@ impl Walk<'_> {
             return;
         }
         let word = &parts[0];
-        if let Some(word) = resolved_word(word) {
-            if matches!(word, "bilga" | "curmi") {
-                self.linter.norm_pred_seen = true;
-            }
+        if DEONTIC_PREDICATES.contains(&word.as_str()) {
+            self.linter.norm_pred_seen = true;
         }
         // L4 — echo a CONVERTED alias's canonical predicate + permutation on
         // first use: the alias map is trusted base, and a wrong permutation
@@ -627,6 +622,20 @@ mod tests {
                 .iter()
                 .any(|n| n.code == "L7")
         );
+    }
+
+    #[test]
+    fn deontic_predicates_match_the_corpus_family() {
+        // Test-ONLY provenance use (the bridge's sanctioned role): the runtime
+        // set must equal every corpus entry derived from the deontic source
+        // family, so a corpus re-key or a new deontic entry breaks THIS test
+        // instead of silently disabling L7. corpus_entries() is name-sorted,
+        // matching the const's alphabetical order.
+        let family: Vec<&str> = nibli_lexicon::corpus::corpus_entries()
+            .filter(|e| matches!(e.source_gismu, "bilga" | "curmi"))
+            .map(|e| e.name)
+            .collect();
+        assert_eq!(family, DEONTIC_PREDICATES);
     }
 
     #[test]

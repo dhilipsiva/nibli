@@ -245,13 +245,6 @@ Pipeline-audit backlog (2026-07-17; three-agent audit of front-end / middle IRs 
 back-end — effort tags S/M/L; ordered quick-wins → correctness → structure →
 performance → future-facing):
 
-- **De-provenance the L7 lint (S)** — `lint.rs:186 resolved_word` returns
-  `entry.source_gismu` and L7 matches `"bilga" | "curmi"` — classifying deontic
-  predicates through RETIRED gismu provenance (documented "never resolvable");
-  any `source_gismu` re-key silently breaks L7. Key on English names (a const
-  DEONTIC_PREDICATES set) or, better, a classification field on
-  `PredicateEntry`; retire `resolved_word`'s gismu return (this is its only
-  consumer).
 - **Move arity.rs + label.rs into tools/lexigen (S)** — consumed ONLY by lexigen
   (main.rs:189,190,284); their "#[path]-shared with build.rs" rationale died at
   the committed-corpus milestone; ~395 lines off the library's public surface.
