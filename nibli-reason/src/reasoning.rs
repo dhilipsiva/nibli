@@ -1457,6 +1457,9 @@ fn witness_search_cut(v: &QueryResult) -> bool {
 
 pub(super) fn clear_typed_pred_cache(inner: &KnowledgeBaseInner) {
     inner.pred_cache.borrow_mut().clear();
+    // The depth-cut table shares the pred_cache lifecycle exactly (query
+    // start clear + every-mutation invalidation route through here).
+    inner.depth_cut_table.borrow_mut().clear();
 }
 
 /// Check if a typed fact is asserted in the typed fact store.
@@ -1660,6 +1663,30 @@ pub(super) fn check_predicate_in_kb_typed(
     if let Some(result) = cached {
         return result;
     }
+    // SOUND DEPTH-CUT TABLE lookup (budget monotonicity): if this goal is
+    // KNOWN to exhaust a remaining budget of at least `remaining` without
+    // deciding, re-deriving it here cannot do better — less (or equal)
+    // budget can never prove more, and a definitive False would need an
+    // exhaustive search a smaller budget cuts even earlier. This is what
+    // stops iterative deepening re-deriving every horizon-cut subgoal on
+    // every occurrence and every pass (the deep-chain cliff).
+    //
+    // The lookup must NOT preempt the cycle guard: a goal already on the
+    // `visited` stack has to yield `Unknown(CycleCut)` (which TERMINATES
+    // deepening) — replaying a Depth entry there would flip the final
+    // verdict class of recursive programs to `ResourceExceeded`.
+    let remaining = inner.max_chain_depth.saturating_sub(depth);
+    if inner.pred_cache_enabled.get()
+        && !visited.contains(&cycle_key(fact))
+        && inner
+            .depth_cut_table
+            .borrow()
+            .get(fact)
+            .is_some_and(|&r| r >= remaining)
+    {
+        return QueryResult::ResourceExceeded(ResourceKind::Depth);
+    }
+    let epoch_before = inner.cycle_cut_epoch.get();
     let mut result = try_backward_chain_typed(fact, inner, depth, visited);
 
     // If backward chaining failed, try equivalence variants.
@@ -1733,16 +1760,32 @@ pub(super) fn check_predicate_in_kb_typed(
         );
     }
 
-    // Only cache definitive (True/False) results. Non-definitive results
-    // (Unknown(CycleCut), ResourceExceeded(Depth)) are context-dependent — they
-    // depend on the current `visited` stack and `max_chain_depth` — so caching
-    // them keyed by fact alone would poison sibling branches and later, deeper
-    // iterative-deepening passes. True/False are context-independent for a fixed KB.
-    if inner.pred_cache_enabled.get() && result.is_definitive() {
-        inner
-            .pred_cache
-            .borrow_mut()
-            .insert(fact.clone(), result.clone());
+    // Only cache definitive (True/False) results in the verdict cache.
+    // Non-definitive results (Unknown(CycleCut), ResourceExceeded(Depth)) are
+    // context-dependent — they depend on the current `visited` stack and
+    // `max_chain_depth` — so caching them keyed by fact alone would poison
+    // sibling branches and later, deeper iterative-deepening passes.
+    // True/False are context-independent for a fixed KB.
+    //
+    // A Depth cut, however, IS soundly tabulable when keyed by the REMAINING
+    // BUDGET it exhausted (budget monotonicity — see the lookup above),
+    // provided its subtree saw no cycle cut (epoch unchanged ⇒ the verdict is
+    // path-independent). CycleCut itself stays untabled.
+    if inner.pred_cache_enabled.get() {
+        if result.is_definitive() {
+            inner
+                .pred_cache
+                .borrow_mut()
+                .insert(fact.clone(), result.clone());
+        } else if matches!(result, QueryResult::ResourceExceeded(ResourceKind::Depth))
+            && inner.cycle_cut_epoch.get() == epoch_before
+        {
+            let mut table = inner.depth_cut_table.borrow_mut();
+            let entry = table.entry(fact.clone()).or_insert(0);
+            if remaining > *entry {
+                *entry = remaining;
+            }
+        }
     }
     result
 }
@@ -2312,6 +2355,12 @@ fn try_backward_chain_core<S: TraceSink>(
         return (QueryResult::ResourceExceeded(ResourceKind::Depth), None);
     }
     if !visited.insert(cycle_key(fact)) {
+        // Contamination signal for the depth-cut table: a Depth verdict whose
+        // subtree saw ANY cycle cut is path-dependent (an ancestor on the
+        // visited stack suppressed a branch that could prove the goal
+        // elsewhere) and must not be tabled — the epoch snapshot in
+        // `check_predicate_in_kb_typed` detects this bump.
+        inner.cycle_cut_epoch.set(inner.cycle_cut_epoch.get() + 1);
         return (QueryResult::Unknown(UnknownReason::CycleCut), None);
     }
 

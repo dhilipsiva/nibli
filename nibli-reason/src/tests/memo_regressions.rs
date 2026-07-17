@@ -557,3 +557,72 @@ fn test_proof_ref_carries_cached_index() {
         }
     }
 }
+
+// ─── Depth-cut table (sound tabling for the deep-chain cliff) ────────────
+
+/// The cliff-recovery pin, SURFACE shape (event-decomposed rules — the
+/// engine_bench cliff workload): an 8-hop chain resolves TRUE. Before the
+/// budget-keyed depth-cut table, iterative deepening re-derived every
+/// horizon-cut subgoal on every occurrence and every pass (~30x/hop measured
+/// release; a debug 8-hop was effectively unbounded) — this test HANGS
+/// without the table.
+#[test]
+fn depth_cut_table_recovers_deep_surface_chain() {
+    let kb = new_kb();
+    let chain = [
+        "dog", "animal", "alive", "big", "fast", "healthy", "thin", "eats", "goes",
+    ];
+    assert_buf(&kb, compile_surface("dog(Adam)."));
+    for w in chain.windows(2) {
+        assert_buf(&kb, compile_surface(&format!("{}(every {}).", w[1], w[0])));
+    }
+    assert!(
+        query(&kb, compile_surface("goes(Adam).")),
+        "the 8-hop chain must derive TRUE"
+    );
+}
+
+/// Mixed cycle + deep chain stays COMPLETE: aaa/bbb form a genuine cycle,
+/// and bbb is also provable via a 3-hop chain from an asserted fact. The
+/// cycle-cut contaminates shallow-pass Depth verdicts; the cycle_cut_epoch
+/// guard keeps those OUT of the depth-cut table, so the deeper pass still
+/// proves bbb through the chain. A tabling bug that recorded a
+/// cycle-contaminated cut would freeze the query at a non-TRUE verdict.
+#[test]
+fn cycle_plus_deep_chain_stays_complete() {
+    let kb = new_kb();
+    assert_buf(&kb, make_universal("bbb", "aaa"));
+    assert_buf(&kb, make_universal("aaa", "bbb"));
+    assert_buf(&kb, make_universal("ccc3", "bbb"));
+    assert_buf(&kb, make_universal("ccc2", "ccc3"));
+    assert_buf(&kb, make_universal("ccc1", "ccc2"));
+    assert_buf(&kb, make_assertion("adam", "ccc1"));
+    assert!(
+        query(&kb, make_query("adam", "aaa")),
+        "the chain entry point must prove aaa despite the aaa/bbb cycle"
+    );
+}
+
+/// The depth-cut table shares pred_cache's mutation lifecycle: a query that
+/// populates the table (unresolvable chain head) must not leak stale Depth
+/// entries into the re-query after the missing base fact is asserted.
+#[test]
+fn depth_cut_table_invalidated_by_assert() {
+    let kb = new_kb();
+    for i in 0..8 {
+        assert_buf(
+            &kb,
+            make_universal(&format!("qqq{i}"), &format!("qqq{}", i + 1)),
+        );
+    }
+    let before = query_result(&kb, make_query("adam", "qqq8"));
+    assert!(
+        !before.is_true(),
+        "no base fact: the chain head cannot be TRUE"
+    );
+    assert_buf(&kb, make_assertion("adam", "qqq0"));
+    assert!(
+        query(&kb, make_query("adam", "qqq8")),
+        "post-assert the chain must fire (a stale depth-cut table would block it)"
+    );
+}

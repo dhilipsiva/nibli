@@ -3726,3 +3726,31 @@ fn predicate_less_clause_rejected() {
     // A complete proposition still asserts fine (the change is scoped to predicate-less clauses).
     assert!(engine.assert_text("dog(Adam).").is_ok());
 }
+
+/// The deep-chain cliff recovery pin (the nibli-reason depth-cut table),
+/// surface-driven: an 8-hop `every`-rule chain query completes TRUE well
+/// within a 10 s watchdog (the ch12 pattern — a complexity regression fails
+/// on timeout instead of hanging the suite). Pre-table, a release 6-hop
+/// chain measured ~47 s; 8 hops did not complete.
+#[test]
+fn deep_chain_query_completes_within_watchdog() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let engine = nibli_engine::NibliEngine::new();
+        engine.assert_text("dog(Adam).").unwrap();
+        let chain = [
+            "dog", "animal", "alive", "big", "fast", "healthy", "thin", "eats", "goes",
+        ];
+        for w in chain.windows(2) {
+            engine
+                .assert_text(&format!("{}(every {}).", w[1], w[0]))
+                .unwrap();
+        }
+        let result = engine.query_holds("goes(Adam).").unwrap();
+        tx.send(result.is_true()).unwrap();
+    });
+    let is_true = rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("deep-chain query exceeded the 10 s watchdog (cliff regression)");
+    assert!(is_true, "the 8-hop chain must derive TRUE");
+}

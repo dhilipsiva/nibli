@@ -616,6 +616,26 @@ pub(super) struct KnowledgeBaseInner {
     /// blocking-pool worker); byte-identical for single-KB embedders.
     pub(super) pred_cache: RefCell<HashMap<StoredFact, QueryResult>>,
     pub(super) pred_cache_enabled: Cell<bool>,
+    /// SOUND DEPTH-CUT TABLE (the deep-chain-cliff fix): goal → the MAXIMUM
+    /// remaining budget (`max_chain_depth - depth`) at which the goal is
+    /// KNOWN to return `ResourceExceeded(Depth)`. Budget monotonicity makes
+    /// the entry reusable for any remaining budget ≤ the recorded one (less
+    /// budget can never prove more, and a definitive False requires an
+    /// exhaustive search a smaller budget cuts even earlier) — within a
+    /// deepening pass AND across passes (a deeper pass queries a larger
+    /// budget, misses, re-derives once, raises the entry). Entries are only
+    /// written when the derivation subtree saw NO cycle cut
+    /// (`cycle_cut_epoch` unchanged) — a cycle-contaminated Depth is
+    /// path-dependent and tabling it would be a completeness regression.
+    /// Same lifecycle as `pred_cache` (cleared by `clear_typed_pred_cache`,
+    /// gated by `pred_cache_enabled`, empty in Clone/reset). This is what
+    /// keeps iterative deepening from re-deriving every horizon-cut subgoal
+    /// ~30×/hop (see GUARANTEES §Completeness).
+    pub(super) depth_cut_table: RefCell<HashMap<StoredFact, usize>>,
+    /// Monotone counter bumped at every cycle cut — the contamination
+    /// detector for `depth_cut_table` inserts (snapshot before deriving a
+    /// goal; unchanged ⇒ the subtree's Depth verdict is path-independent).
+    pub(super) cycle_cut_epoch: Cell<u64>,
     /// Diagnostic verbosity. When `false` (the default) the informational stdout
     /// `println!` diagnostics (`[Rule]`/`[Skolem]`/`[Constraint] Registered`) are
     /// suppressed — a silent library for the server/validate/tavla. nibli-pipeline (the
@@ -688,6 +708,8 @@ impl Clone for KnowledgeBaseInner {
             compute_batch_eval: self.compute_batch_eval,
             pred_cache: RefCell::new(HashMap::new()),
             pred_cache_enabled: Cell::new(false),
+            depth_cut_table: RefCell::new(HashMap::new()),
+            cycle_cut_epoch: Cell::new(0),
             verbose: self.verbose,
             strict: self.strict,
             strict_violations: Vec::new(),
@@ -734,6 +756,8 @@ impl KnowledgeBaseInner {
             compute_batch_eval: None,
             pred_cache: RefCell::new(HashMap::new()),
             pred_cache_enabled: Cell::new(false),
+            depth_cut_table: RefCell::new(HashMap::new()),
+            cycle_cut_epoch: Cell::new(0),
             verbose: false,
             strict: false,
             strict_violations: Vec::new(),
@@ -770,6 +794,7 @@ impl KnowledgeBaseInner {
         self.presupposition_witnesses.clear();
         self.pred_cache.borrow_mut().clear();
         self.pred_cache_enabled.set(false);
+        self.depth_cut_table.borrow_mut().clear();
         // Note: integrity_constraints, compute_eval/compute_batch_eval, cancel,
         // and verbose are NOT cleared on reset — they're structural declarations /
         // configuration, not derived state. Clear explicitly if needed.
