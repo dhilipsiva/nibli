@@ -115,8 +115,7 @@ in the two crates).
 STILL DE-LOJBANIZING (a holistic identifier/comment pass — cosmetic, post-flip): the
 word-class vocabulary as identifiers (`gismu`/`cmavo`/`lujvo`/`cmevla` build locals, the
 `GISMU_GLOSS_OVERRIDES`/`GISMU_PLACE_TEMPLATES`/`CMAVO_GLOSS_OVERRIDES` consts, the
-cross-crate-public `GISMU_TO_ALIAS` + `AliasEntry.gismu`), the `?`/`it`/`slot`→`ma`/
-`ke'a`/`ce'u` output strings + da/de/di variable pool, `xorlo`/`goi` named-feature test
+cross-crate-public `GISMU_TO_ALIAS` + `AliasEntry.gismu`), `xorlo`/`goi` named-feature test
 names, and the broader-cmavo (poi/fa/fio/giha/du) comments + test-fn names in the OTHER
 crates (nibli-reason/render/host/formalize/engine/verify). The predicate-name VALUES (IR
 strings, proof-trace output, the wire protocol, da/de/di, du, zo'e) are DONE (milestone
@@ -172,17 +171,23 @@ persists are already English — nothing in-repo to migrate); (g) verify-dict ne
 lexicon FORWARD dict stays gismu-keyed; only emit OUTPUT flipped); (h) the lexicon is still BUILT
 from the lensisku dump — accepted as an invisible build-time input.
 
-- **Residual user-facing Lojban (cosmetic; proof-trace VALUES are already English)** — two
-  narrow surfaces still show Lojban to the user, for a follow-up: (a) the **argument-pronoun
-  cmavo** the emitter produces — `me`/`you`/`it`/`?`/`slot`/we-all/anaphora lower to
-  `mi`/`do`/`ke'a`/`ma`/`ce'u`/`ma'a`/`ko'a` (`nibli-kr/src/emit.rs` KeyTerm + `Term::Witness`
-  arms), surfacing in witnesses and `?`-finds; (b) the §12 **L4 alias-echo lint**
-  (`nibli-kr/src/lint.rs`) still prints `dog ↦ gerku` — now stylistically stale (the IR relation
-  is the English `dog`); its genuine value (a converted alias silently reroutes args) survives
-  only for SWAPPED aliases, so rework to a Lojban-free converted-swap-only note (ripples into the
-  acceptance-corpus L4 test + the §12 book catalog). SEQUENCING: this bullet + the mechanical
-  identifier refactor below land BEFORE the book migration begins (book/TODO.md timing gate 4
-  blocks re-capture + engine-source quoting on both).
+**RESIDUAL USER-FACING LOJBAN: LANDED (2026-07-17, 3 commits).** The last Lojban a user
+could see is gone. (a) The pronoun constants flipped to their KR spellings — the emitter's
+keyterm table now writes `me`/`you`/`we`/`this`/`it_a`… verbatim into the IR, and the
+three consumed markers are `?` (witness, fresh var per occurrence), `it` (bound entity),
+`slot` (open place); the recognition sites (nibli-semantics resolve_argument + the
+explicit-`it` scan) and the render reverse map (now an identity whitelist) re-keyed in
+lockstep. NEW fail-closed guard (user decision): a single-word capitalized Name that
+lowercases onto a pronoun constant ({Me,You,We,This,That,Yonder}) is a compile error —
+it would silently co-refer with the pronoun (compound names are safe: `We_All`→"we all").
+The dead render `zo'e`→`_` arm deleted (was silently meaning-changing); the ce'u/ke'a
+USER-FACING ERROR TEXTS went English ("`slot` outside a `property { }` abstraction",
+"use an explicit `it`"). (b) The §12 L4 lint fires ONLY for converted aliases and speaks
+English: `metabolized_by ↦ cuts⟨x1↔x2⟩` (the canonical base + permutation — the note's
+real value, disclosing argument rerouting; plain aliases resolve to themselves and went
+quiet). Witnesses/traces read `goes_x1(_ev0, me)`, `[Find]  = adam`. Zero verdict
+change; full ci green in BOTH dictionary modes; book/TODO.md timing gate 4(a) is CLEARED
+(4(b), the identifier refactor below, still pending).
 - **Mechanical identifier refactor (Lojban names in CODE — cosmetic, zero behavior)** —
   function/variable/struct/trait names (and substrings) still carry the Lojban grammar
   vocabulary outside nibli-kr/nibli-semantics: `bridi`/`sumti`/`selbri`/`tanru`-class
@@ -193,9 +198,9 @@ from the lensisku dump — accepted as an invisible build-time input.
   test names, and the broader-cmavo (poi/fa/fio/giha/du) comments + test-fn names across
   nibli-reason/render/host/formalize/engine/verify/lexicon. Same compiler-guided method
   as the earlier sweeps — delimiter-safe patterns only (bridi/sumti/selbri/gismu are ALSO
-  dictionary VALUES; never bare-token sweep). SEQUENCING: lands (with the residual bullet
-  above) BEFORE the book migration — the book quotes engine source, so quoted identifiers
-  re-extract after this.
+  dictionary VALUES; never bare-token sweep). SEQUENCING: the LAST gate before the book
+  migration (book/TODO.md timing gate 4(b); 4(a), the residual user-facing Lojban, LANDED
+  2026-07-17) — the book quotes engine source, so quoted identifiers re-extract after this.
 - **demo site migration (cross-repo, dhilipsiva.dev — SEPARATE Claude session)** —
   the copy-pastable prompt was handed to the user 2026-07-12. URGENCY UP since THE
   DROP landed (2026-07-13, user-accepted): the deployed /nibli demo is BROKEN —

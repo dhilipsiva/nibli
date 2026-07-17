@@ -109,16 +109,16 @@ The token-level behavior (however implemented) is:
 | nibli KR | Lojban | Compiles to |
 |---|---|---|
 | `Adam`, `Djan_Smit` | `la .adam.`, `la .djan. .smit.` | `Constant("adam")`, `Constant("djan smit")` (rigid; `_` → space, name lowercased) |
-| `me`, `you`, `we`, `we_all`, `we_others`, `you_all` | `mi do mi'o ma'a mi'a do'o` | opaque `Constant(cmavo)` |
-| `this`, `that`, `yonder` | `ti ta tu` | opaque constants |
-| `it_a` … `it_u` | `ko'a` … `ko'u` | opaque session constants (no assignment mechanism, matching the engine) |
+| `me`, `you`, `we`, `we_all`, `we_others`, `you_all` | `mi do mi'o ma'a mi'a do'o` | opaque constants under their KR spellings (`Constant("me")`, …); a capitalized Name that lowercases onto one (`Me`) is a compile error — the two would silently co-refer |
+| `this`, `that`, `yonder` | `ti ta tu` | opaque constants (`Constant("this")`, …; same Name-collision guard) |
+| `it_a` … `it_u` | `ko'a` … `ko'u` | opaque session constants under their KR spellings (no assignment mechanism, matching the engine) |
 | `$x` | `da/de/di` | logic variable; see §6 for binding |
 | `?` | `ma` | fresh independent witness per occurrence (never co-refers — exact `ma` semantics); a query containing `?` returns `[Find]` bindings |
 | `_` or an omitted place | `zo'e` / elided place | `Unspecified` |
 | `2`, `2.5` | `li re`, PA digits | `Number(f64)`; unsigned; overflow = parse error |
 | `"any text"` | `zo` / `zoi` quotes | `Constant(exact string)` |
 | `it` | `ke'a` | the relativized entity — **only** inside `where`/`also` bodies (§7) |
-| `slot` | `ce'u` | the open place — **only** inside `property { }` (fail-closed elsewhere, like `ce'u` outside `ka`) |
+| `slot` | `ce'u` | the open place — **only** inside `property { }` (fail-closed elsewhere: "`slot` outside a `property { }` abstraction has no binder") |
 | `the market` | `le zarci` | `Description("zarci")` — **opaque rigid designator, NO quantifier** |
 | determiner phrases | `lo` / `ro lo` / … | §4 |
 | `event { … }` etc. | `lo nu …` | §5 |
