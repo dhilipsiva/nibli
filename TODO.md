@@ -112,14 +112,15 @@ compiler-guided rename; zero wire/serialization/public-API/behavior change (veri
 methods private, protocol/store/engine carry none of this vocab, no dictionary VALUES
 in the two crates).
 
-STILL DE-LOJBANIZING (a holistic identifier/comment pass — cosmetic, post-flip): the
-word-class vocabulary as identifiers (`gismu`/`cmavo`/`lujvo`/`cmevla` build locals, the
-`GISMU_GLOSS_OVERRIDES`/`GISMU_PLACE_TEMPLATES`/`CMAVO_GLOSS_OVERRIDES` consts, the
-cross-crate-public `GISMU_TO_ALIAS` + `AliasEntry.gismu`), `xorlo`/`goi` named-feature test
-names, and the broader-cmavo (poi/fa/fio/giha/du) comments + test-fn names in the OTHER
-crates (nibli-reason/render/host/formalize/engine/verify). The predicate-name VALUES (IR
+STILL DE-LOJBANIZING (a holistic identifier/comment pass — cosmetic, post-flip):
+`xorlo`/`goi` named-feature test names and the broader-cmavo (poi/fa/fio/giha/du)
+comments + test-fn names in the OTHER crates
+(nibli-reason/render/host/formalize/engine/verify). The predicate-name VALUES (IR
 strings, proof-trace output, the wire protocol, da/de/di, du, zo'e) are DONE (milestone
-below); the identifier tail is now ITEMIZED as the mechanical-refactor bullet below.
+below), and the build-time word-class identifiers (`gismu`/`cmavo` build locals, the
+`GISMU_*`/`CMAVO_*` consts, `GISMU_TO_ALIAS`, `AliasEntry.gismu`) DIED with build.rs at
+the committed-corpus milestone; the remaining identifier tail is ITEMIZED as the
+mechanical-refactor bullet below.
 **DICTIONARY FOLD: LANDED (2026-07-13, 2 commits).** `nibli-kr-dictionary` folded
 into `nibli-lexicon` and deleted. The merged `nibli-lexicon/build.rs` parses
 `dictionary-en.json` ONCE, building `DICTIONARY` + an in-loop `arity_map`
@@ -188,25 +189,26 @@ real value, disclosing argument rerouting; plain aliases resolve to themselves a
 quiet). Witnesses/traces read `goes_x1(_ev0, me)`, `[Find]  = adam`. Zero verdict
 change; full ci green in BOTH dictionary modes; book/TODO.md timing gate 4(a) is CLEARED
 (4(b), the identifier refactor below, still pending).
-- **Committed English corpus (kill the dictionary-en.json build dependency) — IN
-  PROGRESS (6-commit series; plan approved 2026-07-17)** — replace nibli-lexicon's
-  build-time lensisku parse with a COMMITTED strongly-typed Rust corpus: one
-  English-keyed `PredicateEntry` table (arity = places.len(), EVERY place named in
-  English — zero positional; `source_gismu` is a provenance FIELD only), const-eval
-  validation replaces build.rs (which dies, with phf + the fallback tables), sorted-slice
-  lookup, `tools/lexigen` bootstrap/regen (scratch-output only — never rewrites
-  refinements; `fetch-dict` survives solely as its input), `a+b` compounds resolve ONLY
-  via curated `CompoundEntry` rows with hand-authored places (fail-closed otherwise;
-  `Predicate::Compound` dies — its silent last-part-only semantics was a meaning trap),
-  gismu spellings STOP resolving (English-only input; the Predilex gates re-key through
-  the provenance bridge), the cmavo layer + `back_translate` die (nibli-wasm shim → echo
-  no-op until the site migration), and the FULL/FALLBACK dual-mode collapses to ONE mode
-  (CI flips to full coverage with zero workflow edits). User decisions: curated lujvo
-  subset + mechanism; keep the regen tool; English-only; generate+refine labels
-  (`TODO(corpus)` markers + count ratchet). Commit series: (1) pre-stage English vocab
-  in test surfaces [landing], (2) corpus + lexigen additive + bridge cross-check,
-  (3) THE SWAP (build.rs + dual-mode die), (4) gismu-input death + coupled re-keys,
-  (5) compound mechanism, (6) docs/tracker/memory.
+**COMMITTED ENGLISH CORPUS: LANDED (2026-07-17, 6-commit series).** The dictionary IS
+Rust source: nibli-lexicon's build-time lensisku parse replaced by the COMMITTED
+strongly-typed corpus (`src/corpus/predicates.rs`, ~1,342 English-keyed
+`PredicateEntry` rows — arity = places.len(), EVERY place named, zero positional;
+`source_gismu` a provenance FIELD only; `Swap{with,base}` types the converted link) +
+curated `CompoundEntry` seeds. build.rs, phf, the fallback tables, the cmavo layer, and
+the FULL/FALLBACK dual-mode all DIED — ONE build mode forever (CI flipped to full
+coverage with zero workflow edits; the site build needs no dictionary fetch). Const-eval
+validation + `#[test]` twins guard the invariants fail-closed; machine-guessed places
+carry `TODO(corpus)` markers with a count ratchet (baseline 1,278). Gismu spellings
+STOPPED resolving (`klama(...)` = compile error; the Predilex/taxonomy gates re-key
+through the permanent `by_provenance` bridge — 132/39 checked, floors 120/35). `a+b`
+compounds resolve ONLY via committed entries and emit their relation ident
+(`computer_user`); `Predicate::Compound` deleted (its silent last-part-only semantics
+was a meaning trap); the L4 lint echoes the committed structure on first use.
+`tools/lexigen` (`just regen-lexicon`) is the report-only regeneration path —
+`fetch-dict` survives solely as its input. nibli-wasm's `back_translate` → echo no-op
+(deletion rides the site-migration bullet). Zero verdict drift across the series: full
+ci + ci-wasm green per commit (determinism corpus pinned identically on
+native/Wasmtime/V8).
 - **Mechanical identifier refactor (Lojban names in CODE — cosmetic, zero behavior)** —
   function/variable/struct/trait names (and substrings) still carry the Lojban grammar
   vocabulary outside nibli-kr/nibli-semantics: `bridi`/`sumti`/`selbri`/`tanru`-class
@@ -214,9 +216,9 @@ change; full ci green in BOTH dictionary modes; book/TODO.md timing gate 4(a) is
   (poi/fa/fio/giha/du) comments + test-fn names across
   nibli-reason/render/host/formalize/engine/verify/lexicon. (The `gismu`/`cmavo`/`lujvo`
   build locals, the `GISMU_*`/`CMAVO_*` consts, and the cross-crate-public
-  `GISMU_TO_ALIAS` + `AliasEntry.gismu` now fold into the committed-corpus bullet above —
-  build.rs and those tables DIE there; `AliasEntry.gismu` becomes
-  `PredicateEntry.source_gismu`.) Same compiler-guided method
+  `GISMU_TO_ALIAS` + `AliasEntry.gismu` DIED with build.rs at the committed-corpus
+  milestone — `AliasEntry.gismu` became `PredicateEntry.source_gismu`; nothing of that
+  class remains here.) Same compiler-guided method
   as the earlier sweeps — delimiter-safe patterns only (bridi/sumti/selbri/gismu are ALSO
   dictionary VALUES; never bare-token sweep). SEQUENCING: the LAST gate before the book
   migration (book/TODO.md timing gate 4(b); 4(a), the residual user-facing Lojban, LANDED
@@ -228,10 +230,12 @@ change; full ci green in BOTH dictionary modes; book/TODO.md timing gate 4(a) is
   guided demo KBs+queries+copy → nibli KR. The engine side is DONE: nibli-wasm is
   KR-only; `set_language` is a deprecated NO-OP shim (any string accepted, so
   the prompt's `set_language("klaro")` instruction still works) and
-  `back_translate` survives as a deprecated gloss shim. The "Klaro"→"nibli KR"
-  rename milestone LANDED without deleting them (the deployed site still calls
-  them); both DELETE here, in this session, once the site stops calling them. If the site needs the old
-  engine meanwhile, pin the `v0.1-lojban-final` tag in `build_nibli.sh`.
+  `back_translate` is a deprecated echo no-op since the committed-corpus
+  milestone (the gloss layer died with the cmavo tables). Both DELETE here, in
+  this session, once the site stops calling them. ALSO in scope: remove
+  `build_nibli.sh`'s now-obsolete `dictionary-en.json` fetch step (the corpus
+  is committed — no build reads the JSON). If the site needs the old engine
+  meanwhile, pin the `v0.1-lojban-final` tag in `build_nibli.sh`.
 
 Engine bullets (language-independent; the KR program above takes precedence):
 
@@ -251,9 +255,10 @@ Engine bullets (language-independent; the KR program above takes precedence):
   baseline export. Spec feedback already sent in-thread: the mapping-list direction
   is ambiguous (a 3-cycle case pins it), and rows want a source field for
   provenance. POST-PIVOT NOTE: rows arrive keyed on gismu (they come from the
-  Lojban community's tools) — once the predicate-name flip lands, the importer maps
-  them through the frozen gismu→canonical-name bridge (the same table the Predilex
-  gate keeps); the importer itself is language-independent.
+  Lojban community's tools) — the importer maps them through
+  `nibli_lexicon::by_provenance`, the permanent gismu→English bridge (the same
+  one the Predilex gates key through); the importer itself is
+  language-independent.
 - **logji: upgrade the reversed material-conditional arm (`Or(Q, Not P)`)** — a
   negation on the RIGHT operand of an asserted disjunction (KR:
   `goes(me) | ~eats(me).`) registers a conditional whose condition templates carry

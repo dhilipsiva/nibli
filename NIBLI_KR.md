@@ -520,6 +520,14 @@ camxes gate when the shared fragment stops being useful.
 
 ### 14.1 Schema declarations replace the dictionary (the deepest cut)
 
+> **Status (2026-07-17):** the committed English corpus is the nearer-term realization
+> of this direction, landed in v0.1: predicate identity already routes through English
+> names (gismu spellings are a compile error; the gismu survives only as a provenance
+> field), every place is named, arity = place count by construction, and compounds are
+> corpus-declared. What v2 still adds over the corpus is USER-authored `pred`
+> declarations (vocabulary owned by the KB rather than the shipped table) — the deltas
+> below are written against that remaining step.
+
 In v2, predicate identity no longer routes through gismu at all. A KB (or an imported
 prelude) **declares its vocabulary**:
 
@@ -541,13 +549,13 @@ pred obligated(who, duty).
   source becomes the schema, not the lensisku export).
 - Grammar delta: `Statement <- PredDecl / Claim "."` with
   `PredDecl <- "pred" ident "(" ident ("," ident)* ")" (":" String)? "."`.
-- **Engine change:** smuni's arity/label source becomes injectable (a schema registry
-  behind the same lookup seam `JbovlasteSchema` occupies today); `nibli-lexicon` +
-  lensisku remain only for the Lojban front-end while it lives.
-- **Verification impact:** `verify-dict` (Predilex lower bounds) stops covering nibli KR
-  KBs — it pins the *Lojban* dictionary. Replacement obligation is much weaker: schema
-  self-consistency (duplicate place names, reserved-word collisions, arity stability
-  across redeclaration = error).
+- **Engine change:** nibli-semantics's arity/label source becomes injectable (a schema
+  registry behind the same lookup seam `LexiconSchema` occupies today); the committed
+  corpus demotes to a standard-library prelude.
+- **Verification impact:** `verify-dict` (Predilex lower bounds) stops covering
+  user-declared vocabulary — it pins the committed corpus (via the provenance bridge).
+  Replacement obligation is much weaker: schema self-consistency (duplicate place
+  names, reserved-word collisions, arity stability across redeclaration = error).
 
 ### 14.2 Removals — Lojban-only residue
 
@@ -563,7 +571,7 @@ pred obligated(who, duty).
 | builtin BAI tag names (`cause entails motive reason tool instead_of`) | BAI→gismu table | **Demoted** to a standard-library schema prelude; the `via` mechanism itself is unchanged. |
 | `every the` (`ro le`) | gadri product | Gone with `the` (resolves O4). |
 | `seeming` keyword reservation | `voi` placeholder | Dropped — with `le` and `voi` gone there is no veridicality distinction left to reserve for. |
-| gismu identity aliases (writing `klama(...)` directly) | Lojban interop | Gone with the dictionary; a migration tool can mechanically rewrite Lojban-named KBs against a schema prelude. |
+| gismu identity aliases (writing `klama(...)` directly) | Lojban interop | **Already gone in v0.1** (the committed-corpus milestone: gismu never resolve; provenance-field only). |
 
 ### 14.3 Kept — deliberately, with reasons
 

@@ -27,7 +27,7 @@ The guarantee is **soundness relative to what you asserted**, not omniscience �
 
 ## The nibli KR Language
 
-nibli KR is a strict predicate-call surface for first-order claims: intuitive to read, but every semantic distinction stays visible in the spelling (the anti-silent-mistranslation design rule). One statement per line, ending with a period. Unknown predicate words are a **compile error**, never a guess — names resolve through a curated+generated English alias map (~1,341 aliases in a full build) down to the underlying formal vocabulary, fail-closed.
+nibli KR is a strict predicate-call surface for first-order claims: intuitive to read, but every semantic distinction stays visible in the spelling (the anti-silent-mistranslation design rule). One statement per line, ending with a period. Unknown predicate words are a **compile error**, never a guess — names resolve through the committed English corpus (~1,342 strongly-typed predicate entries, every place named), fail-closed; `a+b` compounds resolve only via committed compound entries.
 
 | nibli KR | Reads as |
 |-------|----------|
@@ -71,7 +71,7 @@ Supporting crates:
 
 | Crate | Role |
 |-------|------|
-| **nibli-lexicon** | Compile-time PHF dictionary — the forward dict (arity + gloss + place-frame per word) and the folded-in English-alias map for nibli KR (alias → formal predicate + place labels) |
+| **nibli-lexicon** | The committed English corpus — strongly-typed predicate + compound entries (name, named places, gloss, template, gismu provenance), const-validated; the single vocabulary source for every stage |
 | **nibli-engine** | Native in-process embedding of the pipeline (used by tests and the store layer) |
 | **nibli-ui** | Standalone Dioxus web UI — the engine is compiled in and runs fully in-browser |
 | **nibli-wasm** | wasm-bindgen wrapper exposing the in-browser pipeline (powers the live demo) |
@@ -120,14 +120,16 @@ just run
 just test
 ```
 
-> **Dictionary data.** The build reads `dictionary-en.json` at the repo root — the English
-> bulk export from the [lensisku](https://lensisku.lojban.org) Lojban dictionary (jbovlaste
-> data, CC-BY-SA). It is a compile-time input to BOTH layers of the dictionary: the
-> predicate arity/place-structure tables and the full ~1,341-word nibli KR alias map
-> (both in nibli-lexicon, one parse). It is gitignored; fetch it with `just fetch-dict` (lensisku's cached
-> dumps are a public download, no login needed) or drop the file in manually. Without it the
-> build falls back to the in-tree curated tables (~100 core aliases), so `just run`/`just
-> test` and CI work fully offline — only the long-tail vocabulary differs.
+> **Dictionary data.** The dictionary is COMMITTED Rust source: `nibli-lexicon/src/corpus/`
+> holds ~1,342 strongly-typed predicate entries (every place named in English;
+> `arity = places.len()` by construction) plus curated `a+b` compound entries, derived
+> from the [lensisku](https://lensisku.lojban.org) Lojban dictionary (jbovlaste data,
+> CC-BY-SA) and const-validated on every compile. There is ONE build mode — no JSON is
+> read at build time, so `just run`/`just test`, CI, and the deployed site all carry the
+> identical full vocabulary, fully offline. `dictionary-en.json` (gitignored; `just
+> fetch-dict`) is only the input of the `tools/lexigen` regeneration tool
+> (`just regen-lexicon`), which reports drift and candidate new entries but never
+> rewrites committed rows.
 
 ### REPL Usage
 

@@ -25,13 +25,13 @@ Formalize feature needs is baked into the `nibli-ui` bundle at build time:
 
 - `nibli-formalize` is a **path dependency compiled into the bundle** (`nibli-ui/Cargo.toml`)
   — no separate service.
-- **The site build MUST fetch `dictionary-en.json` before `dx build`** (the same
-  public lensisku dump `just fetch-dict` pulls, dropped at the checkout root).
-  The dictionary is a compile-time input: with it, the bundle ships the FULL
-  ~1,341-alias nibli KR map; without it, the build silently falls back to the ~100
-  curated aliases and the deployed nibli KR examples/Formalize lose the long-tail
-  vocabulary. `scripts/build_nibli.sh` in the site repo carries this step
-  (warn-and-continue on fetch failure — the fallback still builds).
+- **No dictionary fetch is needed** (since the committed-corpus milestone,
+  2026-07-17): the full vocabulary is COMMITTED Rust source
+  (`nibli-lexicon/src/corpus/`), so every build — local, CI, site — carries the
+  identical ~1,342-entry corpus with zero network. The site repo's
+  `scripts/build_nibli.sh` still carries a now-OBSOLETE `dictionary-en.json`
+  fetch step from the dual-mode era; it is harmless (nothing reads the file at
+  build time) but should be removed on the next site-repo touch.
 - The local gates (**nibli-kr + nibli-semantics + round-trip**) run in-browser with **zero
   network**. The *only* optional network call is the user's own BYO-key LLM
   request for Formalize.
@@ -64,7 +64,8 @@ Hosted **Formalize works end-to-end**:
   validated by the local nibli-kr+nibli-semantics+round-trip gates and the self-correction
   trace shows the attempts; a valid result fills the nibli KR tab.
 - The example dropdown's GDPR/Drug KBs assert without "unknown predicate" errors —
-  the proof the deployed bundle was built WITH the dictionary (full alias map).
+  guaranteed by construction since the committed corpus (one build mode; the old
+  built-with-the-dictionary check is moot).
 
 Exercising Formalize needs a user-supplied LLM key — there is no shared key and no
 nibli server; the request goes straight from the browser to the chosen provider.
